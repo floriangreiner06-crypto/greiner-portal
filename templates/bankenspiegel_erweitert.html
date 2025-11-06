@@ -1,0 +1,1193 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bankenspiegel 2.0 - Greiner Portal</title>
+    
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    
+    <style>
+        :root {
+            --primary-color: #0d6efd;
+            --success-color: #198754;
+            --danger-color: #dc3545;
+            --warning-color: #ffc107;
+            --info-color: #0dcaf0;
+        }
+        
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .stat-card {
+            border-radius: 10px;
+            border: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+            height: 100%;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        
+        .stat-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin: 20px 0;
+        }
+        
+        .table-container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .filter-section {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .positive-amount {
+            color: var(--success-color);
+            font-weight: 600;
+        }
+        
+        .negative-amount {
+            color: var(--danger-color);
+            font-weight: 600;
+        }
+        
+        .loading-spinner {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 9999;
+        }
+        
+        .tab-content {
+            padding: 20px 0;
+        }
+        
+        .konto-badge {
+            font-size: 0.8em;
+            padding: 4px 8px;
+        }
+    
+        /* Optimiertes Kachel-Layout */
+        .info-card {
+            height: 100%;
+            min-height: 200px;
+            max-height: 250px;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .info-card .card-body {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 1.5rem;
+        }
+        
+        .info-card h5 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            min-height: 2.5rem;
+            display: flex;
+            align-items: center;
+        }
+        
+        /* Stellantis-Kachel kompakter */
+        #stellantis-card {
+            max-height: 250px;
+        }
+        
+        #stellantis-card .card-body {
+            padding: 1rem;
+        }
+        
+        #stellantis-content .row {
+            margin-bottom: 0.5rem !important;
+        }
+        
+        #stellantis-content h6 {
+            font-size: 0.85rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        #stellantis-content h5 {
+            font-size: 1.1rem;
+            margin-bottom: 0;
+        }
+        
+        #stellantis-content small {
+            font-size: 0.75rem;
+        }
+        
+        #stellantis-content hr {
+            margin: 0.5rem 0;
+        }
+        
+        #stellantis-bestand-stats {
+            font-size: 0.85rem;
+        }
+        
+        /* Grid-Layout gleichmäßig */
+        .row.mb-4 {
+            margin-bottom: 1.5rem !important;
+        }
+        
+        .row.mb-4 > [class*='col-'] {
+            margin-bottom: 1.5rem;
+        }
+        
+        /* Responsive Anpassungen */
+        @media (max-width: 1200px) {
+            .info-card {
+                max-height: none;
+                min-height: 180px;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .info-card {
+                max-height: none;
+                min-height: 150px;
+            }
+            
+            #stellantis-card {
+                max-height: none;
+            }
+        }
+        
+        /* Buttons einheitlich */
+        .btn-sm {
+            padding: 0.4rem 0.8rem;
+            font-size: 0.85rem;
+        }
+        
+        /* Alert-Box kompakter */
+        #stellantis-alerts {
+            max-height: 60px;
+            overflow-y: auto;
+            font-size: 0.85rem;
+        }
+
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-bank2"></i> Greiner Portal - Bankenspiegel 2.0
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">
+                            <i class="bi bi-house"></i> Startseite
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/bankenspiegel">
+                            <i class="bi bi-graph-up"></i> Bankenspiegel
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Loading Spinner -->
+    <div class="loading-spinner">
+        <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+            <span class="visually-hidden">Lädt...</span>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container-fluid py-4">
+        
+        <!-- Dashboard Statistics -->
+        <div class="row g-4 mb-4" id="dashboard-stats">
+            <div class="col-md-3">
+                <div class="card stat-card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="text-muted mb-2">Gesamtsaldo</h6>
+                                <h3 class="mb-0" id="stat-gesamtsaldo">€ 0,00</h3>
+                            </div>
+                            <div class="stat-icon bg-primary bg-opacity-10 text-primary">
+                                <i class="bi bi-wallet2"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-3">
+                <div class="card stat-card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="text-muted mb-2">Aktive Konten</h6>
+                                <h3 class="mb-0" id="stat-konten">0</h3>
+                                <small class="text-muted" id="stat-banken">0 Banken</small>
+                            </div>
+                            <div class="stat-icon bg-success bg-opacity-10 text-success">
+                                <i class="bi bi-credit-card"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-3">
+                <div class="card stat-card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="text-muted mb-2">Einnahmen (Monat)</h6>
+                                <h3 class="mb-0 text-success" id="stat-einnahmen">€ 0,00</h3>
+                            </div>
+                            <div class="stat-icon bg-success bg-opacity-10 text-success">
+                                <i class="bi bi-arrow-down-circle"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-3">
+                <div class="card stat-card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="text-muted mb-2">Ausgaben (Monat)</h6>
+                                <h3 class="mb-0 text-danger" id="stat-ausgaben">€ 0,00</h3>
+                            </div>
+        
+                            
+                            <div id="stellantis-alerts" class="alert alert-warning mb-0" style="display: none;">
+                                <strong><i class="bi bi-exclamation-triangle"></i> Zinsfreiheit läuft aus:</strong>
+                                <div id="stellantis-alerts-content" class="mt-2"></div>
+                            </div>
+                            
+                            <div class="text-end mt-3">
+                                <div class="d-flex gap-2 justify-content-end">
+                                    <a href="/bankenspiegel/fahrzeugfinanzierungen" class="btn btn-warning btn-sm">
+                                        <i class="bi bi-currency-euro"></i> Finanzierungs-Details
+                                    </a>
+                                    <a href="/bankenspiegel/stellantis_bestand" class="btn btn-info btn-sm">
+                                        <i class="bi bi-list-ul"></i> Bestandsliste
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="stellantis-error" class="alert alert-danger mb-0" style="display: none;">
+                            <strong>Fehler:</strong> Stellantis-Daten konnten nicht geladen werden.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+            </div>
+        </div>
+
+                            <div class="stat-icon bg-danger bg-opacity-10 text-danger">
+                                <i class="bi bi-arrow-up-circle"></i>
+                            </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+                        </div>
+                    </div>
+                </div>
+
+        
+        
+                            
+                            <div id="stellantis-alerts" class="alert alert-warning mb-0" style="display: none;">
+                                <strong><i class="bi bi-exclamation-triangle"></i> Zinsfreiheit läuft aus:</strong>
+                                <div id="stellantis-alerts-content" class="mt-2"></div>
+                            </div>
+                            
+                            <div class="text-end mt-3">
+                                <div class="d-flex gap-2 justify-content-end">
+                                    <a href="/bankenspiegel/fahrzeugfinanzierungen" class="btn btn-warning btn-sm">
+                                        <i class="bi bi-currency-euro"></i> Finanzierungs-Details
+                                    </a>
+                                    <a href="/bankenspiegel/stellantis_bestand" class="btn btn-info btn-sm">
+                                        <i class="bi bi-list-ul"></i> Bestandsliste
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="stellantis-error" class="alert alert-danger mb-0" style="display: none;">
+                            <strong>Fehler:</strong> Stellantis-Daten konnten nicht geladen werden.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        
+                            
+                            <div id="stellantis-alerts" class="alert alert-warning mb-0" style="display: none;">
+                                <strong><i class="bi bi-exclamation-triangle"></i> Zinsfreiheit läuft aus:</strong>
+                                <div id="stellantis-alerts-content" class="mt-2"></div>
+                            </div>
+                            
+                            <div class="text-end mt-3">
+                                <div class="d-flex gap-2 justify-content-end">
+                                    <a href="/bankenspiegel/fahrzeugfinanzierungen" class="btn btn-warning btn-sm">
+                                        <i class="bi bi-currency-euro"></i> Finanzierungs-Details
+                                    </a>
+                                    <a href="/bankenspiegel/stellantis_bestand" class="btn btn-info btn-sm">
+                                        <i class="bi bi-list-ul"></i> Bestandsliste
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="stellantis-error" class="alert alert-danger mb-0" style="display: none;">
+                            <strong>Fehler:</strong> Stellantis-Daten konnten nicht geladen werden.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- Stellantis Fahrzeugfinanzierungen -->
+        <div class="row g-4 mb-4">
+            <div class="col-12">
+                <div class="card border-warning">
+                    <div class="card-header bg-warning text-white">
+                        <h5 class="mb-0">
+                            <i class="bi bi-car-front"></i> Fahrzeugfinanzierungen (Stellantis Bank)
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="stellantis-loading" class="text-center py-3">
+                            <div class="spinner-border text-warning" role="status">
+                                <span class="visually-hidden">Lädt...</span>
+                            </div>
+                        </div>
+                        <div id="stellantis-content" style="display: none;">
+                            <!-- Finanzierungssalden -->
+                            <div class="row mb-2">
+                                <div class="col-12">
+                                    <h6 class="text-warning mb-2">💰 Finanzierungssalden</h6>
+                                </div>
+                                <div class="col-md-4">
+                                    <h5 class="text-warning mb-0" id="stellantis-fahrzeuge">-</h5>
+                                    <small class="text-muted">Finanzierungen</small>
+                                </div>
+                                <div class="col-md-4">
+                                    <h5 class="text-warning mb-0" id="stellantis-saldo">-</h5>
+                                    <small class="text-muted">Gesamtsaldo</small>
+                                </div>
+                                <div class="col-md-4">
+                                    <div id="stellantis-rrdi" class="small">
+                                        <!-- RRDI Details -->
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <hr>
+                            
+                            <!-- LocoSoft-Bestand -->
+                            <div class="row mb-2">
+                                <div class="col-12">
+                                    <h6 class="text-info mb-2">🏢 Fahrzeugbestand</h6>
+                                </div>
+                                <div class="col-md-12">
+                                    <div id="stellantis-bestand-stats">
+                                        <div class="spinner-border spinner-border-sm text-warning" role="status"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            </div>
+                            
+</div>
+                            
+                            <div id="stellantis-alerts" class="alert alert-warning mb-0" style="display: none;">
+                                <strong><i class="bi bi-exclamation-triangle"></i> Zinsfreiheit läuft aus:</strong>
+                                <div id="stellantis-alerts-content" class="mt-2"></div>
+                            </div>
+                            
+                            <div class="text-end mt-3">
+                                <div class="d-flex gap-2 justify-content-end">
+                                    <a href="/bankenspiegel/fahrzeugfinanzierungen" class="btn btn-warning btn-sm">
+                                        <i class="bi bi-currency-euro"></i> Finanzierungs-Details
+                                    </a>
+                                    <a href="/bankenspiegel/stellantis_bestand" class="btn btn-info btn-sm">
+                                        <i class="bi bi-list-ul"></i> Bestandsliste
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="stellantis-error" class="alert alert-danger mb-0" style="display: none;">
+                            <strong>Fehler:</strong> Stellantis-Daten konnten nicht geladen werden.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+<!-- Tabs -->
+        <ul class="nav nav-tabs mb-3" id="mainTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button">
+                    <i class="bi bi-speedometer2"></i> Übersicht
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="konten-tab" data-bs-toggle="tab" data-bs-target="#konten" type="button">
+                    <i class="bi bi-credit-card"></i> Konten
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="transaktionen-tab" data-bs-toggle="tab" data-bs-target="#transaktionen" type="button">
+                    <i class="bi bi-list-ul"></i> Transaktionen
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="charts-tab" data-bs-toggle="tab" data-bs-target="#charts" type="button">
+                    <i class="bi bi-graph-up"></i> Analysen
+                </button>
+            </li>
+        </ul>
+
+        <!-- Tab Content -->
+        <div class="tab-content" id="mainTabContent">
+            
+            <!-- ÜBERSICHT TAB -->
+            <div class="tab-pane fade show active" id="overview" role="tabpanel">
+                <div class="row g-4">
+                    <div class="col-lg-8">
+                        <div class="table-container">
+                            <h5 class="mb-3">
+                                <i class="bi bi-clock-history"></i> Letzte Transaktionen
+                            </h5>
+                            <div class="table-responsive">
+                                <table class="table table-hover" id="recent-transactions-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Datum</th>
+                                            <th>Konto</th>
+                                            <th>Beschreibung</th>
+                                            <th class="text-end">Betrag</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- Wird dynamisch gefüllt -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-lg-4">
+                        <div class="table-container">
+                            <h5 class="mb-3">
+                                <i class="bi bi-pie-chart"></i> Top Ausgaben-Kategorien
+                            </h5>
+                            <div id="top-kategorien-list">
+                                <!-- Wird dynamisch gefüllt -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- KONTEN TAB -->
+            <div class="tab-pane fade" id="konten" role="tabpanel">
+                <div class="table-container">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5>
+                            <i class="bi bi-credit-card"></i> Kontenübersicht
+                        </h5>
+                        <button class="btn btn-sm btn-primary" onclick="refreshKonten()">
+                            <i class="bi bi-arrow-clockwise"></i> Aktualisieren
+                        </button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="konten-table">
+                            <thead>
+                                <tr>
+                                    <th>Bank</th>
+                                    <th>Kontoname</th>
+                                    <th>IBAN</th>
+                                    <th>Typ</th>
+                                    <th class="text-end">Saldo</th>
+                                    <th>Stand</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Wird dynamisch gefüllt -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TRANSAKTIONEN TAB -->
+            <div class="tab-pane fade" id="transaktionen" role="tabpanel">
+                <!-- Filter -->
+                <div class="filter-section">
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Von Datum</label>
+                            <input type="date" class="form-control" id="filter-von-datum">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Bis Datum</label>
+                            <input type="date" class="form-control" id="filter-bis-datum">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Suche</label>
+                            <input type="text" class="form-control" id="filter-suche" placeholder="Buchungstext oder Verwendungszweck...">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">&nbsp;</label>
+                            <button class="btn btn-primary w-100" onclick="filterTransaktionen()">
+                                <i class="bi bi-funnel"></i> Filtern
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Tabelle -->
+                <div class="table-container">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm" id="transaktionen-table">
+                            <thead>
+                                <tr>
+                                    <th>Datum</th>
+                                    <th>Valuta</th>
+                                    <th>Bank / Konto</th>
+                                    <th>Buchungstext</th>
+                                    <th>Verwendungszweck</th>
+                                    <th>Kategorie</th>
+                                    <th class="text-end">Betrag</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Wird dynamisch gefüllt -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ANALYSEN TAB -->
+            <div class="tab-pane fade" id="charts" role="tabpanel">
+                <div class="row g-4">
+                    <div class="col-lg-8">
+                        <div class="table-container">
+                            <h5 class="mb-3">
+                                <i class="bi bi-graph-up"></i> Monatliche Umsatzentwicklung
+                            </h5>
+                            <div class="chart-container">
+                                <canvas id="umsatz-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-lg-4">
+                        <div class="table-container">
+                            <h5 class="mb-3">
+                                <i class="bi bi-pie-chart-fill"></i> Ausgaben nach Kategorie
+                            </h5>
+                            <div class="chart-container" style="height: 250px;">
+                                <canvas id="kategorie-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-12">
+                        <div class="table-container">
+                            <h5 class="mb-3">
+                                <i class="bi bi-arrow-down-up"></i> Saldo-Entwicklung
+                            </h5>
+                            <div class="chart-container">
+                                <canvas id="saldo-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Custom JavaScript -->
+    <script>
+        // ========================================================================
+        // GLOBAL VARIABLES & CONFIG
+        // ========================================================================
+        
+        let charts = {
+            umsatz: null,
+            kategorie: null,
+            saldo: null
+        };
+        
+        const API_BASE = '/api/bankenspiegel';
+        
+        // ========================================================================
+        // INITIALIZATION
+        // ========================================================================
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🚀 Bankenspiegel 2.0 initialisiert');
+            
+            // Initial load
+            loadDashboard();
+            loadKonten();
+            loadRecentTransactions();
+            loadTopKategorien();
+            
+            // Tab change events
+            document.querySelectorAll('button[data-bs-toggle="tab"]').forEach(tab => {
+                tab.addEventListener('shown.bs.tab', function(e) {
+                    const target = e.target.getAttribute('data-bs-target');
+                    
+                    if (target === '#transaktionen') {
+                        loadTransaktionen();
+                    } else if (target === '#charts') {
+                        loadCharts();
+                    }
+                });
+            });
+            
+            // Auto-refresh Dashboard alle 5 Minuten
+            setInterval(loadDashboard, 300000);
+        });
+        
+        // ========================================================================
+        // HELPER FUNCTIONS
+        // ========================================================================
+        
+        function showLoading() {
+            document.querySelector('.loading-spinner').style.display = 'block';
+        }
+        
+        function hideLoading() {
+            document.querySelector('.loading-spinner').style.display = 'none';
+        }
+        
+        function formatCurrency(amount) {
+            return new Intl.NumberFormat('de-DE', {
+                style: 'currency',
+                currency: 'EUR'
+            }).format(amount);
+        }
+        
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('de-DE');
+        }
+        
+        async function fetchAPI(endpoint) {
+            try {
+                const response = await fetch(`${API_BASE}${endpoint}`);
+                const data = await response.json();
+                
+                if (!data.success) {
+                    throw new Error(data.error || 'API Fehler');
+                }
+                
+                return data.data;
+            } catch (error) {
+                console.error('API Fehler:', error);
+                alert('Fehler beim Laden der Daten: ' + error.message);
+                return null;
+            }
+        }
+        
+        // ========================================================================
+        // DASHBOARD
+        // ========================================================================
+        
+        async function loadDashboard() {
+            loadStellantisData();
+            const data = await fetchAPI('/dashboard');
+            if (!data) return;
+            
+            document.getElementById('stat-gesamtsaldo').textContent = formatCurrency(data.gesamtsaldo);
+            document.getElementById('stat-konten').textContent = data.anzahl_konten;
+            document.getElementById('stat-banken').textContent = `${data.anzahl_banken} Banken`;
+            document.getElementById('stat-einnahmen').textContent = formatCurrency(data.einnahmen_monat);
+            document.getElementById('stat-ausgaben').textContent = formatCurrency(data.ausgaben_monat);
+        }
+        
+        // ========================================================================
+        // KONTEN
+        // ========================================================================
+        
+        async function loadKonten() {
+            showLoading();
+            const konten = await fetchAPI('/konten');
+            hideLoading();
+            
+            if (!konten) return;
+            
+            const tbody = document.querySelector('#konten-table tbody');
+            tbody.innerHTML = '';
+            
+            konten.forEach(konto => {
+                const row = `
+                    <tr>
+                        <td>${konto.bank_name}</td>
+                        <td>${konto.kontoname || '-'}</td>
+                        <td><small class="text-muted">${konto.iban || '-'}</small></td>
+                        <td><span class="badge bg-info">${konto.kontotyp || '-'}</span></td>
+                        <td class="text-end ${konto.saldo >= 0 ? 'positive-amount' : 'negative-amount'}">
+                            ${formatCurrency(konto.saldo)}
+                        </td>
+                        <td><small class="text-muted">${formatDate(konto.stand_datum)}</small></td>
+                        <td>
+                            <span class="badge ${konto.aktiv ? 'bg-success' : 'bg-secondary'}">
+                                ${konto.aktiv ? 'Aktiv' : 'Inaktiv'}
+                            </span>
+                        </td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+        }
+        
+        function refreshKonten() {
+            loadKonten();
+        }
+        
+        // ========================================================================
+        // TRANSAKTIONEN
+        // ========================================================================
+        
+        async function loadTransaktionen() {
+            showLoading();
+            
+            const vonDatum = document.getElementById('filter-von-datum').value;
+            const bisDatum = document.getElementById('filter-bis-datum').value;
+            
+            let url = '/transaktionen?limit=200';
+            if (vonDatum) url += `&von=${vonDatum}`;
+            if (bisDatum) url += `&bis=${bisDatum}`;
+            
+            const transaktionen = await fetchAPI(url);
+            hideLoading();
+            
+            if (!transaktionen) return;
+            
+            renderTransaktionen(transaktionen);
+        }
+        
+        async function loadRecentTransactions() {
+            const transaktionen = await fetchAPI('/transaktionen?limit=10');
+            if (!transaktionen) return;
+            
+            const tbody = document.querySelector('#recent-transactions-table tbody');
+            tbody.innerHTML = '';
+            
+            transaktionen.forEach(t => {
+                const row = `
+                    <tr>
+                        <td><small>${formatDate(t.buchungsdatum)}</small></td>
+                        <td>
+                            <small class="text-muted">${t.bank_name}</small><br>
+                            <strong>${t.kontoname}</strong>
+                        </td>
+                        <td>
+                            ${t.buchungstext}<br>
+                            <small class="text-muted">${t.verwendungszweck || ''}</small>
+                        </td>
+                        <td class="text-end ${t.betrag >= 0 ? 'positive-amount' : 'negative-amount'}">
+                            ${formatCurrency(t.betrag)}
+                        </td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+        }
+        
+        function renderTransaktionen(transaktionen) {
+            const tbody = document.querySelector('#transaktionen-table tbody');
+            tbody.innerHTML = '';
+            
+            transaktionen.forEach(t => {
+                const row = `
+                    <tr>
+                        <td><small>${formatDate(t.buchungsdatum)}</small></td>
+                        <td><small>${formatDate(t.valutadatum)}</small></td>
+                        <td>
+                            <small class="text-muted">${t.bank_name}</small><br>
+                            <small>${t.kontoname}</small>
+                        </td>
+                        <td>${t.buchungstext}</td>
+                        <td><small class="text-muted">${t.verwendungszweck || '-'}</small></td>
+                        <td>
+                            ${t.kategorie ? `<span class="badge bg-secondary">${t.kategorie}</span>` : '-'}
+                        </td>
+                        <td class="text-end ${t.betrag >= 0 ? 'positive-amount' : 'negative-amount'}">
+                            ${formatCurrency(t.betrag)}
+                        </td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+        }
+        
+        function filterTransaktionen() {
+            loadTransaktionen();
+        }
+        
+        // ========================================================================
+        // KATEGORIEN
+        // ========================================================================
+        
+        async function loadTopKategorien() {
+            const kategorien = await fetchAPI('/kategorien');
+            if (!kategorien) return;
+            
+            const container = document.getElementById('top-kategorien-list');
+            container.innerHTML = '';
+            
+            // Top 5
+            kategorien.slice(0, 5).forEach((k, index) => {
+                const item = `
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <strong>${k.kategorie}</strong><br>
+                            <small class="text-muted">${k.anzahl} Transaktionen</small>
+                        </div>
+                        <div class="text-end">
+                            <strong class="text-danger">${formatCurrency(k.summe)}</strong>
+                        </div>
+                    </div>
+                    ${index < 4 ? '<hr>' : ''}
+                `;
+                container.innerHTML += item;
+            });
+        }
+        
+        // ========================================================================
+        // CHARTS
+        // ========================================================================
+        
+        async function loadCharts() {
+            await loadUmsatzChart();
+            await loadKategorieChart();
+            await loadSaldoChart();
+        }
+        
+        async function loadUmsatzChart() {
+            const data = await fetchAPI('/umsaetze_monatlich?monate=12');
+            if (!data) return;
+            
+            const labels = data.map(d => {
+                const [year, month] = d.monat.split('-');
+                return new Date(year, month - 1).toLocaleDateString('de-DE', { month: 'short', year: '2-digit' });
+            });
+            
+            const ctx = document.getElementById('umsatz-chart').getContext('2d');
+            
+            if (charts.umsatz) {
+                charts.umsatz.destroy();
+            }
+            
+            charts.umsatz = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Einnahmen',
+                            data: data.map(d => d.einnahmen),
+                            backgroundColor: 'rgba(25, 135, 84, 0.7)',
+                            borderColor: 'rgba(25, 135, 84, 1)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Ausgaben',
+                            data: data.map(d => d.ausgaben),
+                            backgroundColor: 'rgba(220, 53, 69, 0.7)',
+                            borderColor: 'rgba(220, 53, 69, 1)',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return formatCurrency(value);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        async function loadKategorieChart() {
+            const data = await fetchAPI('/kategorien');
+            if (!data) return;
+            
+            const top5 = data.slice(0, 5);
+            
+            const ctx = document.getElementById('kategorie-chart').getContext('2d');
+            
+            if (charts.kategorie) {
+                charts.kategorie.destroy();
+            }
+            
+            charts.kategorie = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: top5.map(d => d.kategorie),
+                    datasets: [{
+                        data: top5.map(d => d.summe),
+                        backgroundColor: [
+                            'rgba(220, 53, 69, 0.7)',
+                            'rgba(255, 193, 7, 0.7)',
+                            'rgba(13, 202, 240, 0.7)',
+                            'rgba(102, 126, 234, 0.7)',
+                            'rgba(108, 117, 125, 0.7)'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right'
+                        }
+                    }
+                }
+            });
+        }
+        
+        async function loadSaldoChart() {
+            const data = await fetchAPI('/saldo_entwicklung?tage=90');
+            if (!data) return;
+            
+            const ctx = document.getElementById('saldo-chart').getContext('2d');
+            
+            if (charts.saldo) {
+                charts.saldo.destroy();
+            }
+            
+            charts.saldo = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.map(d => formatDate(d.datum)),
+                    datasets: [{
+                        label: 'Gesamtsaldo',
+                        data: data.map(d => d.saldo),
+                        borderColor: 'rgba(13, 110, 253, 1)',
+                        backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                        tension: 0.3,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            ticks: {
+                                callback: function(value) {
+                                    return formatCurrency(value);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // =================================================================
+        // STELLANTIS FAHRZEUGFINANZIERUNGEN
+        // =================================================================
+        
+        function loadStellantisData() {
+            fetch('/api/bankenspiegel/fahrzeugfinanzierungen')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        displayStellantisData(data.data);
+                    } else {
+                        showStellantisError();
+                    }
+                })
+                .catch(error => {
+                    console.error('Stellantis Fehler:', error);
+                    showStellantisError();
+                });
+        }
+        
+        function displayStellantisData(data) {
+            document.getElementById('stellantis-loading').style.display = 'none';
+            document.getElementById('stellantis-content').style.display = 'block';
+            
+            const gesamt = data.gesamt || {};
+            document.getElementById('stellantis-fahrzeuge').textContent = 
+                (gesamt.anzahl_fahrzeuge || 0).toLocaleString('de-DE');
+            document.getElementById('stellantis-saldo').textContent = 
+                formatEuro(gesamt.gesamt_saldo || 0);
+            
+            // RRDI Details
+            const rrdiContainer = document.getElementById('stellantis-rrdi');
+            rrdiContainer.innerHTML = '';
+            
+            if (data.nach_rrdi && data.nach_rrdi.length > 0) {
+                data.nach_rrdi.forEach(rrdi => {
+                    const prozent = rrdi.original > 0 
+                        ? ((rrdi.abbezahlt / rrdi.original) * 100).toFixed(1)
+                        : 0;
+                    
+                    rrdiContainer.innerHTML += `
+                        <div class="d-inline-block me-3 mb-1">
+                            <span class="badge bg-warning text-dark">${rrdi.rrdi}</span>
+                            <strong>${rrdi.anzahl}</strong> Fzg. | 
+                            ${formatEuro(rrdi.saldo)} 
+                            <small class="text-muted">(${prozent}% getilgt)</small>
+                        </div>
+                    `;
+                });
+            }
+            
+            // Alerts
+            if (data.alerts && data.alerts.length > 0) {
+                document.getElementById('stellantis-alerts').style.display = 'block';
+                const alertsContent = document.getElementById('stellantis-alerts-content');
+                alertsContent.innerHTML = '<div class="row small">';
+                
+                data.alerts.forEach(alert => {
+                    alertsContent.innerHTML += `
+                        <div class="col-md-6 mb-1">
+                            <strong>${alert.rrdi}</strong> - VIN ${alert.vin}: 
+                            <span class="text-danger">${alert.tage_bis_zinsen} Tage</span>
+                            (${formatEuro(alert.aktueller_saldo)})
+                        </div>
+                    `;
+                });
+                
+                alertsContent.innerHTML += '</div>';
+            }
+        }
+        
+        
+    function displayStellantisBestand(data) {
+        const bestandDiv = document.getElementById('stellantis-bestand-stats');
+        if (!bestandDiv) return;
+        
+        const stats = data.statistik || {};
+        bestandDiv.innerHTML = `
+            <div class="small">
+                <strong>${stats.anzahl || 0}</strong> Fahrzeuge im Bestand<br>
+                Neu: ${stats.neu || 0} | Transit: ${stats.transit || 0} | Sonstige: ${stats.sonstige || 0}
+            </div>
+        `;
+    }
+    
+    function showStellantisError() {
+            document.getElementById('stellantis-loading').style.display = 'none';
+            document.getElementById('stellantis-error').style.display = 'block';
+        }
+        
+        function formatEuro(value) {
+            return new Intl.NumberFormat('de-DE', {
+                style: 'currency',
+                currency: 'EUR',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+            }).format(value);
+        }
+
+
+    </script>
+</body>
+</html>

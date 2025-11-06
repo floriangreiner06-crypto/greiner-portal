@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto Greiner - Organigramm</title>
+    <script src="https://d3js.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 30px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid #667eea;
+        }
+
+        h1 {
+            color: #2d3748;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .stat {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 0.9em;
+        }
+
+        .stat strong {
+            font-size: 1.5em;
+            display: block;
+        }
+
+        .controls {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f7fafc;
+            border-radius: 10px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .controls label {
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .controls select, .controls input {
+            padding: 8px 15px;
+            border: 2px solid #e2e8f0;
+            border-radius: 5px;
+            font-size: 0.95em;
+        }
+
+        .controls button {
+            padding: 8px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .controls button:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+        }
+
+        #orgChart {
+            width: 100%;
+            height: 800px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            overflow: auto;
+            background: #f8f9fa;
+        }
+
+        .node {
+            cursor: pointer;
+        }
+
+        .node-rect {
+            fill: white;
+            stroke: #667eea;
+            stroke-width: 2px;
+            rx: 8;
+            transition: all 0.3s;
+        }
+
+        .node-rect:hover {
+            fill: #f0f4ff;
+            stroke: #764ba2;
+            stroke-width: 3px;
+        }
+
+        .node-rect.level-1 {
+            fill: #667eea;
+            stroke: #5568d3;
+        }
+
+        .node-rect.level-2 {
+            fill: #7c3aed;
+            stroke: #6d28d9;
+        }
+
+        .node-rect.level-1 + text,
+        .node-rect.level-2 + text {
+            fill: white !important;
+        }
+
+        .node-text {
+            font-size: 13px;
+            fill: #2d3748;
+            pointer-events: none;
+        }
+
+        .node-name {
+            font-weight: 700;
+            font-size: 14px;
+        }
+
+        .node-function {
+            font-size: 11px;
+            fill: #718096;
+        }
+
+        .node-location {
+            font-size: 10px;
+            fill: #a0aec0;
+        }
+
+        .link {
+            fill: none;
+            stroke: #cbd5e0;
+            stroke-width: 2px;
+        }
+
+        .tooltip {
+            position: absolute;
+            background: white;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            max-width: 300px;
+            z-index: 1000;
+        }
+
+        .tooltip.show {
+            opacity: 1;
+        }
+
+        .tooltip-name {
+            font-size: 16px;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 8px;
+        }
+
+        .tooltip-item {
+            font-size: 13px;
+            margin: 5px 0;
+            color: #4a5568;
+        }
+
+        .tooltip-item strong {
+            color: #2d3748;
+        }
+
+        .legend {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f7fafc;
+            border-radius: 10px;
+        }
+
+        .legend-title {
+            font-weight: 700;
+            margin-bottom: 10px;
+            color: #2d3748;
+        }
+
+        .legend-items {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .legend-color {
+            width: 30px;
+            height: 20px;
+            border-radius: 4px;
+            border: 2px solid #cbd5e0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏢 Auto Greiner Organigramm</h1>
+            <p style="color: #718096; font-size: 1.1em;">Organisationsstruktur & Hierarchie</p>
+        </div>
+
+        <div class="stats">
+            <div class="stat">
+                <strong id="totalEmployees">70</strong>
+                <span>Mitarbeiter</span>
+            </div>
+            <div class="stat">
+                <strong>2</strong>
+                <span>Standorte</span>
+            </div>
+            <div class="stat">
+                <strong>4</strong>
+                <span>Hierarchie-Ebenen</span>
+            </div>
+            <div class="stat">
+                <strong id="departmentCount">12</strong>
+                <span>Abteilungen</span>
+            </div>
+        </div>
+
+        <div class="controls">
+            <label>🔍 Suche:</label>
+            <input type="text" id="searchInput" placeholder="Name, Funktion oder Standort..." style="flex: 1; min-width: 250px;">
+            
+            <label>📍 Standort:</label>
+            <select id="locationFilter">
+                <option value="">Alle Standorte</option>
+                <option value="Deggendorf">Deggendorf</option>
+                <option value="Landau">Landau</option>
+            </select>
+
+            <button onclick="expandAll()">➕ Alle Aufklappen</button>
+            <button onclick="collapseAll()">➖ Alle Zuklappen</button>
+            <button onclick="resetView()">🔄 Zurücksetzen</button>
+        </div>
+
+        <div id="orgChart"></div>
+
+        <div class="legend">
+            <div class="legend-title">🎨 Legende</div>
+            <div class="legend-items">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #667eea;"></div>
+                    <span>Geschäftsführung</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #7c3aed;"></div>
+                    <span>Führungsebene 2</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: white; border-color: #667eea;"></div>
+                    <span>Mitarbeiter</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tooltip" id="tooltip"></div>
+
+    <script>
+        // Organigramm-Daten (werden vom Python-Script eingefügt)
+        const orgData = {"root": {"id": 9001, "name": "Florian Greiner", "function": "Geschäftsführer", "location": "Deggendorf/Landau", "email": "florian.greiner@auto-greiner.de", "phone": "0991-25013172", "boss_id": 0, "children": [{"id": 1003, "name": "Rolf Sterr", "function": "Filialleiter", "location": "Landau", "email": "rolf.sterr@auto-greiner.de", "phone": "09951-9807471", "boss_id": 9001, "children": [{"id": 1006, "name": "Stephan Metzner", "function": "Service", "location": "Landau", "email": "stephan.metzner@auto-greiner.de", "phone": "09951-9807441", "boss_id": 1003, "children": []}, {"id": 1023, "name": "Margit Schreder", "function": "Service", "location": "Landau", "email": "margit.schreder@auto-greiner.de", "phone": "09951-9807442", "boss_id": 1003, "children": []}, {"id": 4002, "name": "Leonhard Keidl", "function": "Service", "location": "Landau", "email": "leo.keidl@auto-greiner.de", "phone": "09951-9807449", "boss_id": 1003, "children": []}, {"id": 1013, "name": "Rosmarie Erlmeier", "function": "Fahrzeugpflege", "location": "Landau", "email": "rosmarie.erlmeier@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5003, "name": "Walter Smola", "function": "Service", "location": "Landau", "email": "walter.smola@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5011, "name": "Manuel Kerscher", "function": "Service", "location": "Landau", "email": "manuel.kerscher@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5015, "name": "Viktor Stabel", "function": "Service", "location": "Landau", "email": "viktor.stabel@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5018, "name": "Jan-Thorben Majer", "function": "Service", "location": "Landau", "email": "jan.majer@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5016, "name": "Sascha Berger", "function": "Service", "location": "Landau", "email": "sascha.berger@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5025, "name": "Lena Wagner", "function": "Auszubildende Service", "location": "Landau", "email": "lena.wagner@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5026, "name": "Andreas Suttner", "function": "Auszubildender Service", "location": "Landau", "email": "andreas.suttner@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}]}, {"id": 1005, "name": "Christian Aichinger ", "function": "Verwaltung", "location": "Deggendorf", "email": "christian.aichinger@auto-greiner.de", "phone": "0991-25013167", "boss_id": 9001, "children": [{"id": 1033, "name": "Vanessa Groll", "function": "Verwaltung", "location": "Deggendorf", "email": "vanessa.groll@auto-greiner.de", "phone": "0991-25013164", "boss_id": 1005, "children": []}, {"id": 1009, "name": "Silvia Eiglmaier", "function": "Verwaltung", "location": "Deggendorf", "email": "silvia.eiglmaier@auto-greiner.de", "phone": "0991-25013182", "boss_id": 1005, "children": []}]}, {"id": 1015, "name": "Brigitte Lackerbeck ", "function": "CRM", "location": "Deggendorf", "email": "brigitte.lackerbeck@auto-greiner.de", "phone": "0991-25013200", "boss_id": 9001, "children": [{"id": 1032, "name": "Bianca Greindl", "function": "CRM", "location": "Deggendorf", "email": "bainca.greindl@auto-greiner.de", "phone": "0991-25013204", "boss_id": 1015, "children": []}, {"id": 1029, "name": "Katrina Kramhöller", "function": "CRM", "location": "Deggendorf", "email": "katrina.kramhoeller@auto-greiner.de", "phone": "0991-25013205", "boss_id": 1015, "children": []}, {"id": 1027, "name": "Katrin Geppert", "function": "CRM", "location": "Deggendorf", "email": "katrin.geppert@auto-greiner.de", "phone": "0991-25013203", "boss_id": 1015, "children": []}, {"id": 1031, "name": "Daniela Geiger", "function": "CRM", "location": "Deggendorf", "email": "daniela.geiger@auto-greiner.de", "phone": "0991-25013201", "boss_id": 1015, "children": []}]}, {"id": 2000, "name": "Anton Süß", "function": "Verkauf", "location": "Deggendorf", "email": "anton.suess@auto-greiner.de", "phone": "0991-25013121", "boss_id": 9001, "children": [{"id": 2002, "name": "Michael Penn", "function": "Verkauf", "location": "Deggendorf", "email": "michael.penn@auto-greiner.de", "phone": "0991-25013127", "boss_id": 2000, "children": []}, {"id": 2003, "name": "Daniel Fialkowski", "function": "Verkauf", "location": "Deggendorf", "email": "daniel.fialkowski@auto-greiner.de", "phone": "0991-25013124", "boss_id": 2000, "children": []}, {"id": 2004, "name": "Florian Pellkofer", "function": "Verkauf", "location": "Deggendorf", "email": "florian.pellkofer@auto-greiner.de", "phone": "0991-25013123", "boss_id": 2000, "children": []}, {"id": 2007, "name": "Rafael Kraus ", "function": "Verkauf", "location": "Deggendorf", "email": "rafael.kraus@auto-greiner.de", "phone": "0991-25013122", "boss_id": 2000, "children": []}, {"id": 2006, "name": "Roland Schmid", "function": "Verkauf", "location": "Deggendorf", "email": "roland.schmid@auto-greiner.de", "phone": "0991-25013129", "boss_id": 2000, "children": []}, {"id": 2001, "name": "Edeltraud Punzmann", "function": "Verkauf", "location": "Deggendorf", "email": "edeltraud.punzmann@auto-greiner.de", "phone": "0991-25013135", "boss_id": 2000, "children": []}, {"id": 2005, "name": "Marius Löbel", "function": "Verkauf", "location": "Landau", "email": "marius.loebel@auto-greiner.de", "phone": "09951-9807422", "boss_id": 2000, "children": []}, {"id": 1004, "name": "Margit Loibl", "function": "Disposition", "location": "Deggendorf", "email": "margit.loibl@auto-greiner.de", "phone": "0991-25013161", "boss_id": 2000, "children": [{"id": 1008, "name": "Jennifer Bielmeier", "function": "Disposition", "location": "Deggendorf", "email": "jennifer@bielmeier@auto-greiner.de", "phone": "0991-25013162", "boss_id": 1004, "children": []}, {"id": 1037, "name": "Susanne Kerscher", "function": "Disposition", "location": "Deggendorf", "email": "susanne.kerscher@auto-greiner.de", "phone": "0991-25013165", "boss_id": 1004, "children": []}, {"id": 1030, "name": "Ilayda Sahbaz", "function": "Disposition", "location": "Deggendorf", "email": "ilayda.sahbaz@auto-greiner.de", "phone": "0991-25013141", "boss_id": 1004, "children": []}]}]}, {"id": 3007, "name": "Matthias König", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "matthias.koenig@auto-greiner.de", "phone": "0991-25013132", "boss_id": 9001, "children": [{"id": 3001, "name": "Bruno Wieland", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "bruno.wieland@auto-greiner.de", "phone": "0991-25013133", "boss_id": 3007, "children": []}, {"id": 3003, "name": "Dennis Blüml", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "dennis.blueml@auto-greiner.de", "phone": "0991-25013131", "boss_id": 3007, "children": []}, {"id": 1011, "name": "Zuzana Kiselova ", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "zuzana.kiselova@auto-greiner.de", "phone": "0175-4400895", "boss_id": 3007, "children": []}, {"id": 3006, "name": "Stefan Geier", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "stefan.geier@auto-greiner.de", "phone": "0171-9049977", "boss_id": 3007, "children": []}, {"id": 3004, "name": "Thomas Stangl", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "thomas.stangl@auto-greiner.de", "phone": "0991-25013134", "boss_id": 3007, "children": []}, {"id": 3000, "name": "Georg Kandler", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "georg.kandler@auto-greiner.de", "phone": "", "boss_id": 3007, "children": []}, {"id": 3002, "name": "Matthias Steinbauer", "function": "Teile & Zubehör", "location": "Landau", "email": "matthias.steinbauer@auto-greiner.de", "phone": "09951-9807431", "boss_id": 3007, "children": []}, {"id": 3009, "name": "Fabian Klammsteiner", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "fabian.klammsteiner@auto-greiner.de", "phone": "", "boss_id": 3007, "children": []}, {"id": 1016, "name": "Sandra Brendel", "function": "Kundenzentrale", "location": "Deggendorf", "email": "sandra.brendel@auto-greiner.de", "phone": "0991-25013145", "boss_id": 3007, "children": [{"id": 1025, "name": "Aleyna Irep", "function": "Kundenzentrale", "location": "Deggendorf", "email": "aleyna.irep@auto-greiner.de", "phone": "0991-25013163", "boss_id": 1016, "children": []}, {"id": 1036, "name": "Doris Egginger", "function": "Kundenzentrale", "location": "Deggendorf", "email": "doris.egginger@auto-greiner.de", "phone": "0991-25013154", "boss_id": 1016, "children": []}, {"id": 1034, "name": "Andrea Pfeffer", "function": "Kundenzentrale", "location": "Deggendorf", "email": "andrea.pfeffer@auto-greiner.de", "phone": "0991-25013144", "boss_id": 1016, "children": []}, {"id": 1021, "name": "Christopher Gegenfurtner", "function": "Kundenzentrale", "location": "Deggendorf", "email": "christopher.gegenfurtner@auto-greiner.de", "phone": "0991-25013142", "boss_id": 1016, "children": []}, {"id": 1010, "name": "Ramona Aufschläger", "function": "Kundenzentrale", "location": "Deggendorf", "email": "ramona.aufschlaeger@auto-greiner.de", "phone": "0991-25013155", "boss_id": 1016, "children": []}, {"id": 1000, "name": "Brunhilde Triendl", "function": "Kundenzentrale", "location": "Deggendorf", "email": "brunhilfe.triendl@auto-greiner.de", "phone": "0991-25013143", "boss_id": 1016, "children": []}]}, {"id": 4003, "name": "Edith Egner", "function": "Kundenzentrale", "location": "Deggendorf", "email": "edith.egner@auto-greiner.de", "phone": "0991-25013152", "boss_id": 3007, "children": []}, {"id": 4000, "name": "Herbert Huber", "function": "Service", "location": "Deggendorf", "email": "herbert.huber@auto-greiner.de", "phone": "0991-25013128", "boss_id": 3007, "children": []}, {"id": 5009, "name": "Valentin Salmansberger", "function": "Service", "location": "Deggendorf", "email": "valentin.salmansberger@auto-greiner.de", "phone": "0991-25013147", "boss_id": 3007, "children": []}, {"id": 4005, "name": "Andreas Kraus ", "function": "Service", "location": "Deggendorf", "email": "andreas.kraus@auto-greiner.de", "phone": "0991-25013146", "boss_id": 3007, "children": []}, {"id": 5005, "name": "Wolfgang Scheingraber", "function": "Werkstatt", "location": "Deggendorf", "email": "wolfgang.scheingraber@auto-greiner.de", "phone": "0991-25013148", "boss_id": 3007, "children": [{"id": 5004, "name": "Andreas Dederer", "function": "Werkstatt", "location": "Deggendorf", "email": "andreas.dederer@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5000, "name": "Andreas Bretzendorfer", "function": "Werkstatt", "location": "Deggendorf", "email": "andreas.bretzendorfer@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5002, "name": "Christian Raith", "function": "Werkstatt", "location": "Deggendorf", "email": "christian.raith@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5007, "name": "Tobias Reitmeier", "function": "Werkstatt", "location": "Deggendorf", "email": "tobias.reitmeier@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5008, "name": "Patrick Ebner", "function": "Werkstatt", "location": "Deggendorf", "email": "patrick.ebner@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5014, "name": "Jaroslaw Litwin", "function": "Werkstatt", "location": "Deggendorf", "email": "jaroslaw.litwin@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5017, "name": "Luca Kreulinger", "function": "Werkstatt", "location": "Deggendorf", "email": "luca.kreulinger@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5020, "name": "Lucas Hoffmann", "function": "Werkstatt", "location": "Deggendorf", "email": "lucas.hoffmann@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5027, "name": "Luca Löw", "function": "Werkstatt", "location": "Deggendorf", "email": "luca.loew@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5028, "name": "Daniel Thammer", "function": "Werkstatt", "location": "Deggendorf", "email": "daniel.thammer@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5029, "name": "Angelo Rolof", "function": "Werkstatt", "location": "Deggendorf", "email": "angelo.rolof@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}]}, {"id": 1014, "name": "Christian Meyer", "function": "Werkstatt", "location": "Deggendorf", "email": "christian.meyer@auto-greiner.de", "phone": "0176-11199801", "boss_id": 3007, "children": [{"id": 1017, "name": "Sandra Schimmer", "function": "Fahrzeugpflege", "location": "Deggendorf", "email": "sandra.schimmer@auto-greiner.de", "phone": "0151-52891701", "boss_id": 1014, "children": []}, {"id": 1019, "name": "Götz Klein", "function": "Fahrzeugpflege", "location": "Deggendorf", "email": "goetz.klein@auto-greiner.de", "phone": "0179-4994001", "boss_id": 1014, "children": []}]}, {"id": 1002, "name": "Franz Loibl", "function": "Service", "location": "Deggendorf", "email": "franz.loibl@auto-greiner.de", "phone": "0991-25013153", "boss_id": 3007, "children": []}]}, {"id": 1038, "name": "Stephan Wittmann", "function": "Hausmeister", "location": "Deggendorf", "email": "stephan.wittmann@auto-greiner.de", "phone": "0151-15968465", "boss_id": 9001, "children": []}]}, "all_employees": [{"id": 9001, "name": "Florian Greiner", "function": "Geschäftsführer", "location": "Deggendorf/Landau", "email": "florian.greiner@auto-greiner.de", "phone": "0991-25013172", "boss_id": 0, "children": [{"id": 1003, "name": "Rolf Sterr", "function": "Filialleiter", "location": "Landau", "email": "rolf.sterr@auto-greiner.de", "phone": "09951-9807471", "boss_id": 9001, "children": [{"id": 1006, "name": "Stephan Metzner", "function": "Service", "location": "Landau", "email": "stephan.metzner@auto-greiner.de", "phone": "09951-9807441", "boss_id": 1003, "children": []}, {"id": 1023, "name": "Margit Schreder", "function": "Service", "location": "Landau", "email": "margit.schreder@auto-greiner.de", "phone": "09951-9807442", "boss_id": 1003, "children": []}, {"id": 4002, "name": "Leonhard Keidl", "function": "Service", "location": "Landau", "email": "leo.keidl@auto-greiner.de", "phone": "09951-9807449", "boss_id": 1003, "children": []}, {"id": 1013, "name": "Rosmarie Erlmeier", "function": "Fahrzeugpflege", "location": "Landau", "email": "rosmarie.erlmeier@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5003, "name": "Walter Smola", "function": "Service", "location": "Landau", "email": "walter.smola@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5011, "name": "Manuel Kerscher", "function": "Service", "location": "Landau", "email": "manuel.kerscher@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5015, "name": "Viktor Stabel", "function": "Service", "location": "Landau", "email": "viktor.stabel@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5018, "name": "Jan-Thorben Majer", "function": "Service", "location": "Landau", "email": "jan.majer@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5016, "name": "Sascha Berger", "function": "Service", "location": "Landau", "email": "sascha.berger@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5025, "name": "Lena Wagner", "function": "Auszubildende Service", "location": "Landau", "email": "lena.wagner@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5026, "name": "Andreas Suttner", "function": "Auszubildender Service", "location": "Landau", "email": "andreas.suttner@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}]}, {"id": 1005, "name": "Christian Aichinger ", "function": "Verwaltung", "location": "Deggendorf", "email": "christian.aichinger@auto-greiner.de", "phone": "0991-25013167", "boss_id": 9001, "children": [{"id": 1033, "name": "Vanessa Groll", "function": "Verwaltung", "location": "Deggendorf", "email": "vanessa.groll@auto-greiner.de", "phone": "0991-25013164", "boss_id": 1005, "children": []}, {"id": 1009, "name": "Silvia Eiglmaier", "function": "Verwaltung", "location": "Deggendorf", "email": "silvia.eiglmaier@auto-greiner.de", "phone": "0991-25013182", "boss_id": 1005, "children": []}]}, {"id": 1015, "name": "Brigitte Lackerbeck ", "function": "CRM", "location": "Deggendorf", "email": "brigitte.lackerbeck@auto-greiner.de", "phone": "0991-25013200", "boss_id": 9001, "children": [{"id": 1032, "name": "Bianca Greindl", "function": "CRM", "location": "Deggendorf", "email": "bainca.greindl@auto-greiner.de", "phone": "0991-25013204", "boss_id": 1015, "children": []}, {"id": 1029, "name": "Katrina Kramhöller", "function": "CRM", "location": "Deggendorf", "email": "katrina.kramhoeller@auto-greiner.de", "phone": "0991-25013205", "boss_id": 1015, "children": []}, {"id": 1027, "name": "Katrin Geppert", "function": "CRM", "location": "Deggendorf", "email": "katrin.geppert@auto-greiner.de", "phone": "0991-25013203", "boss_id": 1015, "children": []}, {"id": 1031, "name": "Daniela Geiger", "function": "CRM", "location": "Deggendorf", "email": "daniela.geiger@auto-greiner.de", "phone": "0991-25013201", "boss_id": 1015, "children": []}]}, {"id": 2000, "name": "Anton Süß", "function": "Verkauf", "location": "Deggendorf", "email": "anton.suess@auto-greiner.de", "phone": "0991-25013121", "boss_id": 9001, "children": [{"id": 2002, "name": "Michael Penn", "function": "Verkauf", "location": "Deggendorf", "email": "michael.penn@auto-greiner.de", "phone": "0991-25013127", "boss_id": 2000, "children": []}, {"id": 2003, "name": "Daniel Fialkowski", "function": "Verkauf", "location": "Deggendorf", "email": "daniel.fialkowski@auto-greiner.de", "phone": "0991-25013124", "boss_id": 2000, "children": []}, {"id": 2004, "name": "Florian Pellkofer", "function": "Verkauf", "location": "Deggendorf", "email": "florian.pellkofer@auto-greiner.de", "phone": "0991-25013123", "boss_id": 2000, "children": []}, {"id": 2007, "name": "Rafael Kraus ", "function": "Verkauf", "location": "Deggendorf", "email": "rafael.kraus@auto-greiner.de", "phone": "0991-25013122", "boss_id": 2000, "children": []}, {"id": 2006, "name": "Roland Schmid", "function": "Verkauf", "location": "Deggendorf", "email": "roland.schmid@auto-greiner.de", "phone": "0991-25013129", "boss_id": 2000, "children": []}, {"id": 2001, "name": "Edeltraud Punzmann", "function": "Verkauf", "location": "Deggendorf", "email": "edeltraud.punzmann@auto-greiner.de", "phone": "0991-25013135", "boss_id": 2000, "children": []}, {"id": 2005, "name": "Marius Löbel", "function": "Verkauf", "location": "Landau", "email": "marius.loebel@auto-greiner.de", "phone": "09951-9807422", "boss_id": 2000, "children": []}, {"id": 1004, "name": "Margit Loibl", "function": "Disposition", "location": "Deggendorf", "email": "margit.loibl@auto-greiner.de", "phone": "0991-25013161", "boss_id": 2000, "children": [{"id": 1008, "name": "Jennifer Bielmeier", "function": "Disposition", "location": "Deggendorf", "email": "jennifer@bielmeier@auto-greiner.de", "phone": "0991-25013162", "boss_id": 1004, "children": []}, {"id": 1037, "name": "Susanne Kerscher", "function": "Disposition", "location": "Deggendorf", "email": "susanne.kerscher@auto-greiner.de", "phone": "0991-25013165", "boss_id": 1004, "children": []}, {"id": 1030, "name": "Ilayda Sahbaz", "function": "Disposition", "location": "Deggendorf", "email": "ilayda.sahbaz@auto-greiner.de", "phone": "0991-25013141", "boss_id": 1004, "children": []}]}]}, {"id": 3007, "name": "Matthias König", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "matthias.koenig@auto-greiner.de", "phone": "0991-25013132", "boss_id": 9001, "children": [{"id": 3001, "name": "Bruno Wieland", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "bruno.wieland@auto-greiner.de", "phone": "0991-25013133", "boss_id": 3007, "children": []}, {"id": 3003, "name": "Dennis Blüml", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "dennis.blueml@auto-greiner.de", "phone": "0991-25013131", "boss_id": 3007, "children": []}, {"id": 1011, "name": "Zuzana Kiselova ", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "zuzana.kiselova@auto-greiner.de", "phone": "0175-4400895", "boss_id": 3007, "children": []}, {"id": 3006, "name": "Stefan Geier", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "stefan.geier@auto-greiner.de", "phone": "0171-9049977", "boss_id": 3007, "children": []}, {"id": 3004, "name": "Thomas Stangl", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "thomas.stangl@auto-greiner.de", "phone": "0991-25013134", "boss_id": 3007, "children": []}, {"id": 3000, "name": "Georg Kandler", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "georg.kandler@auto-greiner.de", "phone": "", "boss_id": 3007, "children": []}, {"id": 3002, "name": "Matthias Steinbauer", "function": "Teile & Zubehör", "location": "Landau", "email": "matthias.steinbauer@auto-greiner.de", "phone": "09951-9807431", "boss_id": 3007, "children": []}, {"id": 3009, "name": "Fabian Klammsteiner", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "fabian.klammsteiner@auto-greiner.de", "phone": "", "boss_id": 3007, "children": []}, {"id": 1016, "name": "Sandra Brendel", "function": "Kundenzentrale", "location": "Deggendorf", "email": "sandra.brendel@auto-greiner.de", "phone": "0991-25013145", "boss_id": 3007, "children": [{"id": 1025, "name": "Aleyna Irep", "function": "Kundenzentrale", "location": "Deggendorf", "email": "aleyna.irep@auto-greiner.de", "phone": "0991-25013163", "boss_id": 1016, "children": []}, {"id": 1036, "name": "Doris Egginger", "function": "Kundenzentrale", "location": "Deggendorf", "email": "doris.egginger@auto-greiner.de", "phone": "0991-25013154", "boss_id": 1016, "children": []}, {"id": 1034, "name": "Andrea Pfeffer", "function": "Kundenzentrale", "location": "Deggendorf", "email": "andrea.pfeffer@auto-greiner.de", "phone": "0991-25013144", "boss_id": 1016, "children": []}, {"id": 1021, "name": "Christopher Gegenfurtner", "function": "Kundenzentrale", "location": "Deggendorf", "email": "christopher.gegenfurtner@auto-greiner.de", "phone": "0991-25013142", "boss_id": 1016, "children": []}, {"id": 1010, "name": "Ramona Aufschläger", "function": "Kundenzentrale", "location": "Deggendorf", "email": "ramona.aufschlaeger@auto-greiner.de", "phone": "0991-25013155", "boss_id": 1016, "children": []}, {"id": 1000, "name": "Brunhilde Triendl", "function": "Kundenzentrale", "location": "Deggendorf", "email": "brunhilfe.triendl@auto-greiner.de", "phone": "0991-25013143", "boss_id": 1016, "children": []}]}, {"id": 4003, "name": "Edith Egner", "function": "Kundenzentrale", "location": "Deggendorf", "email": "edith.egner@auto-greiner.de", "phone": "0991-25013152", "boss_id": 3007, "children": []}, {"id": 4000, "name": "Herbert Huber", "function": "Service", "location": "Deggendorf", "email": "herbert.huber@auto-greiner.de", "phone": "0991-25013128", "boss_id": 3007, "children": []}, {"id": 5009, "name": "Valentin Salmansberger", "function": "Service", "location": "Deggendorf", "email": "valentin.salmansberger@auto-greiner.de", "phone": "0991-25013147", "boss_id": 3007, "children": []}, {"id": 4005, "name": "Andreas Kraus ", "function": "Service", "location": "Deggendorf", "email": "andreas.kraus@auto-greiner.de", "phone": "0991-25013146", "boss_id": 3007, "children": []}, {"id": 5005, "name": "Wolfgang Scheingraber", "function": "Werkstatt", "location": "Deggendorf", "email": "wolfgang.scheingraber@auto-greiner.de", "phone": "0991-25013148", "boss_id": 3007, "children": [{"id": 5004, "name": "Andreas Dederer", "function": "Werkstatt", "location": "Deggendorf", "email": "andreas.dederer@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5000, "name": "Andreas Bretzendorfer", "function": "Werkstatt", "location": "Deggendorf", "email": "andreas.bretzendorfer@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5002, "name": "Christian Raith", "function": "Werkstatt", "location": "Deggendorf", "email": "christian.raith@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5007, "name": "Tobias Reitmeier", "function": "Werkstatt", "location": "Deggendorf", "email": "tobias.reitmeier@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5008, "name": "Patrick Ebner", "function": "Werkstatt", "location": "Deggendorf", "email": "patrick.ebner@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5014, "name": "Jaroslaw Litwin", "function": "Werkstatt", "location": "Deggendorf", "email": "jaroslaw.litwin@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5017, "name": "Luca Kreulinger", "function": "Werkstatt", "location": "Deggendorf", "email": "luca.kreulinger@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5020, "name": "Lucas Hoffmann", "function": "Werkstatt", "location": "Deggendorf", "email": "lucas.hoffmann@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5027, "name": "Luca Löw", "function": "Werkstatt", "location": "Deggendorf", "email": "luca.loew@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5028, "name": "Daniel Thammer", "function": "Werkstatt", "location": "Deggendorf", "email": "daniel.thammer@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5029, "name": "Angelo Rolof", "function": "Werkstatt", "location": "Deggendorf", "email": "angelo.rolof@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}]}, {"id": 1014, "name": "Christian Meyer", "function": "Werkstatt", "location": "Deggendorf", "email": "christian.meyer@auto-greiner.de", "phone": "0176-11199801", "boss_id": 3007, "children": [{"id": 1017, "name": "Sandra Schimmer", "function": "Fahrzeugpflege", "location": "Deggendorf", "email": "sandra.schimmer@auto-greiner.de", "phone": "0151-52891701", "boss_id": 1014, "children": []}, {"id": 1019, "name": "Götz Klein", "function": "Fahrzeugpflege", "location": "Deggendorf", "email": "goetz.klein@auto-greiner.de", "phone": "0179-4994001", "boss_id": 1014, "children": []}]}, {"id": 1002, "name": "Franz Loibl", "function": "Service", "location": "Deggendorf", "email": "franz.loibl@auto-greiner.de", "phone": "0991-25013153", "boss_id": 3007, "children": []}]}, {"id": 1038, "name": "Stephan Wittmann", "function": "Hausmeister", "location": "Deggendorf", "email": "stephan.wittmann@auto-greiner.de", "phone": "0151-15968465", "boss_id": 9001, "children": []}]}, {"id": 1003, "name": "Rolf Sterr", "function": "Filialleiter", "location": "Landau", "email": "rolf.sterr@auto-greiner.de", "phone": "09951-9807471", "boss_id": 9001, "children": [{"id": 1006, "name": "Stephan Metzner", "function": "Service", "location": "Landau", "email": "stephan.metzner@auto-greiner.de", "phone": "09951-9807441", "boss_id": 1003, "children": []}, {"id": 1023, "name": "Margit Schreder", "function": "Service", "location": "Landau", "email": "margit.schreder@auto-greiner.de", "phone": "09951-9807442", "boss_id": 1003, "children": []}, {"id": 4002, "name": "Leonhard Keidl", "function": "Service", "location": "Landau", "email": "leo.keidl@auto-greiner.de", "phone": "09951-9807449", "boss_id": 1003, "children": []}, {"id": 1013, "name": "Rosmarie Erlmeier", "function": "Fahrzeugpflege", "location": "Landau", "email": "rosmarie.erlmeier@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5003, "name": "Walter Smola", "function": "Service", "location": "Landau", "email": "walter.smola@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5011, "name": "Manuel Kerscher", "function": "Service", "location": "Landau", "email": "manuel.kerscher@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5015, "name": "Viktor Stabel", "function": "Service", "location": "Landau", "email": "viktor.stabel@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5018, "name": "Jan-Thorben Majer", "function": "Service", "location": "Landau", "email": "jan.majer@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5016, "name": "Sascha Berger", "function": "Service", "location": "Landau", "email": "sascha.berger@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5025, "name": "Lena Wagner", "function": "Auszubildende Service", "location": "Landau", "email": "lena.wagner@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5026, "name": "Andreas Suttner", "function": "Auszubildender Service", "location": "Landau", "email": "andreas.suttner@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}]}, {"id": 1005, "name": "Christian Aichinger ", "function": "Verwaltung", "location": "Deggendorf", "email": "christian.aichinger@auto-greiner.de", "phone": "0991-25013167", "boss_id": 9001, "children": [{"id": 1033, "name": "Vanessa Groll", "function": "Verwaltung", "location": "Deggendorf", "email": "vanessa.groll@auto-greiner.de", "phone": "0991-25013164", "boss_id": 1005, "children": []}, {"id": 1009, "name": "Silvia Eiglmaier", "function": "Verwaltung", "location": "Deggendorf", "email": "silvia.eiglmaier@auto-greiner.de", "phone": "0991-25013182", "boss_id": 1005, "children": []}]}, {"id": 1033, "name": "Vanessa Groll", "function": "Verwaltung", "location": "Deggendorf", "email": "vanessa.groll@auto-greiner.de", "phone": "0991-25013164", "boss_id": 1005, "children": []}, {"id": 1009, "name": "Silvia Eiglmaier", "function": "Verwaltung", "location": "Deggendorf", "email": "silvia.eiglmaier@auto-greiner.de", "phone": "0991-25013182", "boss_id": 1005, "children": []}, {"id": 1015, "name": "Brigitte Lackerbeck ", "function": "CRM", "location": "Deggendorf", "email": "brigitte.lackerbeck@auto-greiner.de", "phone": "0991-25013200", "boss_id": 9001, "children": [{"id": 1032, "name": "Bianca Greindl", "function": "CRM", "location": "Deggendorf", "email": "bainca.greindl@auto-greiner.de", "phone": "0991-25013204", "boss_id": 1015, "children": []}, {"id": 1029, "name": "Katrina Kramhöller", "function": "CRM", "location": "Deggendorf", "email": "katrina.kramhoeller@auto-greiner.de", "phone": "0991-25013205", "boss_id": 1015, "children": []}, {"id": 1027, "name": "Katrin Geppert", "function": "CRM", "location": "Deggendorf", "email": "katrin.geppert@auto-greiner.de", "phone": "0991-25013203", "boss_id": 1015, "children": []}, {"id": 1031, "name": "Daniela Geiger", "function": "CRM", "location": "Deggendorf", "email": "daniela.geiger@auto-greiner.de", "phone": "0991-25013201", "boss_id": 1015, "children": []}]}, {"id": 1032, "name": "Bianca Greindl", "function": "CRM", "location": "Deggendorf", "email": "bainca.greindl@auto-greiner.de", "phone": "0991-25013204", "boss_id": 1015, "children": []}, {"id": 1029, "name": "Katrina Kramhöller", "function": "CRM", "location": "Deggendorf", "email": "katrina.kramhoeller@auto-greiner.de", "phone": "0991-25013205", "boss_id": 1015, "children": []}, {"id": 1027, "name": "Katrin Geppert", "function": "CRM", "location": "Deggendorf", "email": "katrin.geppert@auto-greiner.de", "phone": "0991-25013203", "boss_id": 1015, "children": []}, {"id": 1031, "name": "Daniela Geiger", "function": "CRM", "location": "Deggendorf", "email": "daniela.geiger@auto-greiner.de", "phone": "0991-25013201", "boss_id": 1015, "children": []}, {"id": 2000, "name": "Anton Süß", "function": "Verkauf", "location": "Deggendorf", "email": "anton.suess@auto-greiner.de", "phone": "0991-25013121", "boss_id": 9001, "children": [{"id": 2002, "name": "Michael Penn", "function": "Verkauf", "location": "Deggendorf", "email": "michael.penn@auto-greiner.de", "phone": "0991-25013127", "boss_id": 2000, "children": []}, {"id": 2003, "name": "Daniel Fialkowski", "function": "Verkauf", "location": "Deggendorf", "email": "daniel.fialkowski@auto-greiner.de", "phone": "0991-25013124", "boss_id": 2000, "children": []}, {"id": 2004, "name": "Florian Pellkofer", "function": "Verkauf", "location": "Deggendorf", "email": "florian.pellkofer@auto-greiner.de", "phone": "0991-25013123", "boss_id": 2000, "children": []}, {"id": 2007, "name": "Rafael Kraus ", "function": "Verkauf", "location": "Deggendorf", "email": "rafael.kraus@auto-greiner.de", "phone": "0991-25013122", "boss_id": 2000, "children": []}, {"id": 2006, "name": "Roland Schmid", "function": "Verkauf", "location": "Deggendorf", "email": "roland.schmid@auto-greiner.de", "phone": "0991-25013129", "boss_id": 2000, "children": []}, {"id": 2001, "name": "Edeltraud Punzmann", "function": "Verkauf", "location": "Deggendorf", "email": "edeltraud.punzmann@auto-greiner.de", "phone": "0991-25013135", "boss_id": 2000, "children": []}, {"id": 2005, "name": "Marius Löbel", "function": "Verkauf", "location": "Landau", "email": "marius.loebel@auto-greiner.de", "phone": "09951-9807422", "boss_id": 2000, "children": []}, {"id": 1004, "name": "Margit Loibl", "function": "Disposition", "location": "Deggendorf", "email": "margit.loibl@auto-greiner.de", "phone": "0991-25013161", "boss_id": 2000, "children": [{"id": 1008, "name": "Jennifer Bielmeier", "function": "Disposition", "location": "Deggendorf", "email": "jennifer@bielmeier@auto-greiner.de", "phone": "0991-25013162", "boss_id": 1004, "children": []}, {"id": 1037, "name": "Susanne Kerscher", "function": "Disposition", "location": "Deggendorf", "email": "susanne.kerscher@auto-greiner.de", "phone": "0991-25013165", "boss_id": 1004, "children": []}, {"id": 1030, "name": "Ilayda Sahbaz", "function": "Disposition", "location": "Deggendorf", "email": "ilayda.sahbaz@auto-greiner.de", "phone": "0991-25013141", "boss_id": 1004, "children": []}]}]}, {"id": 2002, "name": "Michael Penn", "function": "Verkauf", "location": "Deggendorf", "email": "michael.penn@auto-greiner.de", "phone": "0991-25013127", "boss_id": 2000, "children": []}, {"id": 2003, "name": "Daniel Fialkowski", "function": "Verkauf", "location": "Deggendorf", "email": "daniel.fialkowski@auto-greiner.de", "phone": "0991-25013124", "boss_id": 2000, "children": []}, {"id": 2004, "name": "Florian Pellkofer", "function": "Verkauf", "location": "Deggendorf", "email": "florian.pellkofer@auto-greiner.de", "phone": "0991-25013123", "boss_id": 2000, "children": []}, {"id": 2007, "name": "Rafael Kraus ", "function": "Verkauf", "location": "Deggendorf", "email": "rafael.kraus@auto-greiner.de", "phone": "0991-25013122", "boss_id": 2000, "children": []}, {"id": 2006, "name": "Roland Schmid", "function": "Verkauf", "location": "Deggendorf", "email": "roland.schmid@auto-greiner.de", "phone": "0991-25013129", "boss_id": 2000, "children": []}, {"id": 2001, "name": "Edeltraud Punzmann", "function": "Verkauf", "location": "Deggendorf", "email": "edeltraud.punzmann@auto-greiner.de", "phone": "0991-25013135", "boss_id": 2000, "children": []}, {"id": 2005, "name": "Marius Löbel", "function": "Verkauf", "location": "Landau", "email": "marius.loebel@auto-greiner.de", "phone": "09951-9807422", "boss_id": 2000, "children": []}, {"id": 3007, "name": "Matthias König", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "matthias.koenig@auto-greiner.de", "phone": "0991-25013132", "boss_id": 9001, "children": [{"id": 3001, "name": "Bruno Wieland", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "bruno.wieland@auto-greiner.de", "phone": "0991-25013133", "boss_id": 3007, "children": []}, {"id": 3003, "name": "Dennis Blüml", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "dennis.blueml@auto-greiner.de", "phone": "0991-25013131", "boss_id": 3007, "children": []}, {"id": 1011, "name": "Zuzana Kiselova ", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "zuzana.kiselova@auto-greiner.de", "phone": "0175-4400895", "boss_id": 3007, "children": []}, {"id": 3006, "name": "Stefan Geier", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "stefan.geier@auto-greiner.de", "phone": "0171-9049977", "boss_id": 3007, "children": []}, {"id": 3004, "name": "Thomas Stangl", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "thomas.stangl@auto-greiner.de", "phone": "0991-25013134", "boss_id": 3007, "children": []}, {"id": 3000, "name": "Georg Kandler", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "georg.kandler@auto-greiner.de", "phone": "", "boss_id": 3007, "children": []}, {"id": 3002, "name": "Matthias Steinbauer", "function": "Teile & Zubehör", "location": "Landau", "email": "matthias.steinbauer@auto-greiner.de", "phone": "09951-9807431", "boss_id": 3007, "children": []}, {"id": 3009, "name": "Fabian Klammsteiner", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "fabian.klammsteiner@auto-greiner.de", "phone": "", "boss_id": 3007, "children": []}, {"id": 1016, "name": "Sandra Brendel", "function": "Kundenzentrale", "location": "Deggendorf", "email": "sandra.brendel@auto-greiner.de", "phone": "0991-25013145", "boss_id": 3007, "children": [{"id": 1025, "name": "Aleyna Irep", "function": "Kundenzentrale", "location": "Deggendorf", "email": "aleyna.irep@auto-greiner.de", "phone": "0991-25013163", "boss_id": 1016, "children": []}, {"id": 1036, "name": "Doris Egginger", "function": "Kundenzentrale", "location": "Deggendorf", "email": "doris.egginger@auto-greiner.de", "phone": "0991-25013154", "boss_id": 1016, "children": []}, {"id": 1034, "name": "Andrea Pfeffer", "function": "Kundenzentrale", "location": "Deggendorf", "email": "andrea.pfeffer@auto-greiner.de", "phone": "0991-25013144", "boss_id": 1016, "children": []}, {"id": 1021, "name": "Christopher Gegenfurtner", "function": "Kundenzentrale", "location": "Deggendorf", "email": "christopher.gegenfurtner@auto-greiner.de", "phone": "0991-25013142", "boss_id": 1016, "children": []}, {"id": 1010, "name": "Ramona Aufschläger", "function": "Kundenzentrale", "location": "Deggendorf", "email": "ramona.aufschlaeger@auto-greiner.de", "phone": "0991-25013155", "boss_id": 1016, "children": []}, {"id": 1000, "name": "Brunhilde Triendl", "function": "Kundenzentrale", "location": "Deggendorf", "email": "brunhilfe.triendl@auto-greiner.de", "phone": "0991-25013143", "boss_id": 1016, "children": []}]}, {"id": 4003, "name": "Edith Egner", "function": "Kundenzentrale", "location": "Deggendorf", "email": "edith.egner@auto-greiner.de", "phone": "0991-25013152", "boss_id": 3007, "children": []}, {"id": 4000, "name": "Herbert Huber", "function": "Service", "location": "Deggendorf", "email": "herbert.huber@auto-greiner.de", "phone": "0991-25013128", "boss_id": 3007, "children": []}, {"id": 5009, "name": "Valentin Salmansberger", "function": "Service", "location": "Deggendorf", "email": "valentin.salmansberger@auto-greiner.de", "phone": "0991-25013147", "boss_id": 3007, "children": []}, {"id": 4005, "name": "Andreas Kraus ", "function": "Service", "location": "Deggendorf", "email": "andreas.kraus@auto-greiner.de", "phone": "0991-25013146", "boss_id": 3007, "children": []}, {"id": 5005, "name": "Wolfgang Scheingraber", "function": "Werkstatt", "location": "Deggendorf", "email": "wolfgang.scheingraber@auto-greiner.de", "phone": "0991-25013148", "boss_id": 3007, "children": [{"id": 5004, "name": "Andreas Dederer", "function": "Werkstatt", "location": "Deggendorf", "email": "andreas.dederer@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5000, "name": "Andreas Bretzendorfer", "function": "Werkstatt", "location": "Deggendorf", "email": "andreas.bretzendorfer@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5002, "name": "Christian Raith", "function": "Werkstatt", "location": "Deggendorf", "email": "christian.raith@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5007, "name": "Tobias Reitmeier", "function": "Werkstatt", "location": "Deggendorf", "email": "tobias.reitmeier@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5008, "name": "Patrick Ebner", "function": "Werkstatt", "location": "Deggendorf", "email": "patrick.ebner@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5014, "name": "Jaroslaw Litwin", "function": "Werkstatt", "location": "Deggendorf", "email": "jaroslaw.litwin@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5017, "name": "Luca Kreulinger", "function": "Werkstatt", "location": "Deggendorf", "email": "luca.kreulinger@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5020, "name": "Lucas Hoffmann", "function": "Werkstatt", "location": "Deggendorf", "email": "lucas.hoffmann@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5027, "name": "Luca Löw", "function": "Werkstatt", "location": "Deggendorf", "email": "luca.loew@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5028, "name": "Daniel Thammer", "function": "Werkstatt", "location": "Deggendorf", "email": "daniel.thammer@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5029, "name": "Angelo Rolof", "function": "Werkstatt", "location": "Deggendorf", "email": "angelo.rolof@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}]}, {"id": 1014, "name": "Christian Meyer", "function": "Werkstatt", "location": "Deggendorf", "email": "christian.meyer@auto-greiner.de", "phone": "0176-11199801", "boss_id": 3007, "children": [{"id": 1017, "name": "Sandra Schimmer", "function": "Fahrzeugpflege", "location": "Deggendorf", "email": "sandra.schimmer@auto-greiner.de", "phone": "0151-52891701", "boss_id": 1014, "children": []}, {"id": 1019, "name": "Götz Klein", "function": "Fahrzeugpflege", "location": "Deggendorf", "email": "goetz.klein@auto-greiner.de", "phone": "0179-4994001", "boss_id": 1014, "children": []}]}, {"id": 1002, "name": "Franz Loibl", "function": "Service", "location": "Deggendorf", "email": "franz.loibl@auto-greiner.de", "phone": "0991-25013153", "boss_id": 3007, "children": []}]}, {"id": 3001, "name": "Bruno Wieland", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "bruno.wieland@auto-greiner.de", "phone": "0991-25013133", "boss_id": 3007, "children": []}, {"id": 3003, "name": "Dennis Blüml", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "dennis.blueml@auto-greiner.de", "phone": "0991-25013131", "boss_id": 3007, "children": []}, {"id": 1011, "name": "Zuzana Kiselova ", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "zuzana.kiselova@auto-greiner.de", "phone": "0175-4400895", "boss_id": 3007, "children": []}, {"id": 3006, "name": "Stefan Geier", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "stefan.geier@auto-greiner.de", "phone": "0171-9049977", "boss_id": 3007, "children": []}, {"id": 3004, "name": "Thomas Stangl", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "thomas.stangl@auto-greiner.de", "phone": "0991-25013134", "boss_id": 3007, "children": []}, {"id": 3000, "name": "Georg Kandler", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "georg.kandler@auto-greiner.de", "phone": "", "boss_id": 3007, "children": []}, {"id": 3002, "name": "Matthias Steinbauer", "function": "Teile & Zubehör", "location": "Landau", "email": "matthias.steinbauer@auto-greiner.de", "phone": "09951-9807431", "boss_id": 3007, "children": []}, {"id": 3009, "name": "Fabian Klammsteiner", "function": "Teile & Zubehör", "location": "Deggendorf", "email": "fabian.klammsteiner@auto-greiner.de", "phone": "", "boss_id": 3007, "children": []}, {"id": 1004, "name": "Margit Loibl", "function": "Disposition", "location": "Deggendorf", "email": "margit.loibl@auto-greiner.de", "phone": "0991-25013161", "boss_id": 2000, "children": [{"id": 1008, "name": "Jennifer Bielmeier", "function": "Disposition", "location": "Deggendorf", "email": "jennifer@bielmeier@auto-greiner.de", "phone": "0991-25013162", "boss_id": 1004, "children": []}, {"id": 1037, "name": "Susanne Kerscher", "function": "Disposition", "location": "Deggendorf", "email": "susanne.kerscher@auto-greiner.de", "phone": "0991-25013165", "boss_id": 1004, "children": []}, {"id": 1030, "name": "Ilayda Sahbaz", "function": "Disposition", "location": "Deggendorf", "email": "ilayda.sahbaz@auto-greiner.de", "phone": "0991-25013141", "boss_id": 1004, "children": []}]}, {"id": 1008, "name": "Jennifer Bielmeier", "function": "Disposition", "location": "Deggendorf", "email": "jennifer@bielmeier@auto-greiner.de", "phone": "0991-25013162", "boss_id": 1004, "children": []}, {"id": 1037, "name": "Susanne Kerscher", "function": "Disposition", "location": "Deggendorf", "email": "susanne.kerscher@auto-greiner.de", "phone": "0991-25013165", "boss_id": 1004, "children": []}, {"id": 1030, "name": "Ilayda Sahbaz", "function": "Disposition", "location": "Deggendorf", "email": "ilayda.sahbaz@auto-greiner.de", "phone": "0991-25013141", "boss_id": 1004, "children": []}, {"id": 1038, "name": "Stephan Wittmann", "function": "Hausmeister", "location": "Deggendorf", "email": "stephan.wittmann@auto-greiner.de", "phone": "0151-15968465", "boss_id": 9001, "children": []}, {"id": 1017, "name": "Sandra Schimmer", "function": "Fahrzeugpflege", "location": "Deggendorf", "email": "sandra.schimmer@auto-greiner.de", "phone": "0151-52891701", "boss_id": 1014, "children": []}, {"id": 1019, "name": "Götz Klein", "function": "Fahrzeugpflege", "location": "Deggendorf", "email": "goetz.klein@auto-greiner.de", "phone": "0179-4994001", "boss_id": 1014, "children": []}, {"id": 1016, "name": "Sandra Brendel", "function": "Kundenzentrale", "location": "Deggendorf", "email": "sandra.brendel@auto-greiner.de", "phone": "0991-25013145", "boss_id": 3007, "children": [{"id": 1025, "name": "Aleyna Irep", "function": "Kundenzentrale", "location": "Deggendorf", "email": "aleyna.irep@auto-greiner.de", "phone": "0991-25013163", "boss_id": 1016, "children": []}, {"id": 1036, "name": "Doris Egginger", "function": "Kundenzentrale", "location": "Deggendorf", "email": "doris.egginger@auto-greiner.de", "phone": "0991-25013154", "boss_id": 1016, "children": []}, {"id": 1034, "name": "Andrea Pfeffer", "function": "Kundenzentrale", "location": "Deggendorf", "email": "andrea.pfeffer@auto-greiner.de", "phone": "0991-25013144", "boss_id": 1016, "children": []}, {"id": 1021, "name": "Christopher Gegenfurtner", "function": "Kundenzentrale", "location": "Deggendorf", "email": "christopher.gegenfurtner@auto-greiner.de", "phone": "0991-25013142", "boss_id": 1016, "children": []}, {"id": 1010, "name": "Ramona Aufschläger", "function": "Kundenzentrale", "location": "Deggendorf", "email": "ramona.aufschlaeger@auto-greiner.de", "phone": "0991-25013155", "boss_id": 1016, "children": []}, {"id": 1000, "name": "Brunhilde Triendl", "function": "Kundenzentrale", "location": "Deggendorf", "email": "brunhilfe.triendl@auto-greiner.de", "phone": "0991-25013143", "boss_id": 1016, "children": []}]}, {"id": 1025, "name": "Aleyna Irep", "function": "Kundenzentrale", "location": "Deggendorf", "email": "aleyna.irep@auto-greiner.de", "phone": "0991-25013163", "boss_id": 1016, "children": []}, {"id": 4003, "name": "Edith Egner", "function": "Kundenzentrale", "location": "Deggendorf", "email": "edith.egner@auto-greiner.de", "phone": "0991-25013152", "boss_id": 3007, "children": []}, {"id": 1036, "name": "Doris Egginger", "function": "Kundenzentrale", "location": "Deggendorf", "email": "doris.egginger@auto-greiner.de", "phone": "0991-25013154", "boss_id": 1016, "children": []}, {"id": 1034, "name": "Andrea Pfeffer", "function": "Kundenzentrale", "location": "Deggendorf", "email": "andrea.pfeffer@auto-greiner.de", "phone": "0991-25013144", "boss_id": 1016, "children": []}, {"id": 1021, "name": "Christopher Gegenfurtner", "function": "Kundenzentrale", "location": "Deggendorf", "email": "christopher.gegenfurtner@auto-greiner.de", "phone": "0991-25013142", "boss_id": 1016, "children": []}, {"id": 1010, "name": "Ramona Aufschläger", "function": "Kundenzentrale", "location": "Deggendorf", "email": "ramona.aufschlaeger@auto-greiner.de", "phone": "0991-25013155", "boss_id": 1016, "children": []}, {"id": 1000, "name": "Brunhilde Triendl", "function": "Kundenzentrale", "location": "Deggendorf", "email": "brunhilfe.triendl@auto-greiner.de", "phone": "0991-25013143", "boss_id": 1016, "children": []}, {"id": 4000, "name": "Herbert Huber", "function": "Service", "location": "Deggendorf", "email": "herbert.huber@auto-greiner.de", "phone": "0991-25013128", "boss_id": 3007, "children": []}, {"id": 5009, "name": "Valentin Salmansberger", "function": "Service", "location": "Deggendorf", "email": "valentin.salmansberger@auto-greiner.de", "phone": "0991-25013147", "boss_id": 3007, "children": []}, {"id": 4005, "name": "Andreas Kraus ", "function": "Service", "location": "Deggendorf", "email": "andreas.kraus@auto-greiner.de", "phone": "0991-25013146", "boss_id": 3007, "children": []}, {"id": 5005, "name": "Wolfgang Scheingraber", "function": "Werkstatt", "location": "Deggendorf", "email": "wolfgang.scheingraber@auto-greiner.de", "phone": "0991-25013148", "boss_id": 3007, "children": [{"id": 5004, "name": "Andreas Dederer", "function": "Werkstatt", "location": "Deggendorf", "email": "andreas.dederer@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5000, "name": "Andreas Bretzendorfer", "function": "Werkstatt", "location": "Deggendorf", "email": "andreas.bretzendorfer@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5002, "name": "Christian Raith", "function": "Werkstatt", "location": "Deggendorf", "email": "christian.raith@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5007, "name": "Tobias Reitmeier", "function": "Werkstatt", "location": "Deggendorf", "email": "tobias.reitmeier@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5008, "name": "Patrick Ebner", "function": "Werkstatt", "location": "Deggendorf", "email": "patrick.ebner@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5014, "name": "Jaroslaw Litwin", "function": "Werkstatt", "location": "Deggendorf", "email": "jaroslaw.litwin@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5017, "name": "Luca Kreulinger", "function": "Werkstatt", "location": "Deggendorf", "email": "luca.kreulinger@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5020, "name": "Lucas Hoffmann", "function": "Werkstatt", "location": "Deggendorf", "email": "lucas.hoffmann@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5027, "name": "Luca Löw", "function": "Werkstatt", "location": "Deggendorf", "email": "luca.loew@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5028, "name": "Daniel Thammer", "function": "Werkstatt", "location": "Deggendorf", "email": "daniel.thammer@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5029, "name": "Angelo Rolof", "function": "Werkstatt", "location": "Deggendorf", "email": "angelo.rolof@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}]}, {"id": 1014, "name": "Christian Meyer", "function": "Werkstatt", "location": "Deggendorf", "email": "christian.meyer@auto-greiner.de", "phone": "0176-11199801", "boss_id": 3007, "children": [{"id": 1017, "name": "Sandra Schimmer", "function": "Fahrzeugpflege", "location": "Deggendorf", "email": "sandra.schimmer@auto-greiner.de", "phone": "0151-52891701", "boss_id": 1014, "children": []}, {"id": 1019, "name": "Götz Klein", "function": "Fahrzeugpflege", "location": "Deggendorf", "email": "goetz.klein@auto-greiner.de", "phone": "0179-4994001", "boss_id": 1014, "children": []}]}, {"id": 5004, "name": "Andreas Dederer", "function": "Werkstatt", "location": "Deggendorf", "email": "andreas.dederer@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5000, "name": "Andreas Bretzendorfer", "function": "Werkstatt", "location": "Deggendorf", "email": "andreas.bretzendorfer@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5002, "name": "Christian Raith", "function": "Werkstatt", "location": "Deggendorf", "email": "christian.raith@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5007, "name": "Tobias Reitmeier", "function": "Werkstatt", "location": "Deggendorf", "email": "tobias.reitmeier@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5008, "name": "Patrick Ebner", "function": "Werkstatt", "location": "Deggendorf", "email": "patrick.ebner@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5014, "name": "Jaroslaw Litwin", "function": "Werkstatt", "location": "Deggendorf", "email": "jaroslaw.litwin@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5017, "name": "Luca Kreulinger", "function": "Werkstatt", "location": "Deggendorf", "email": "luca.kreulinger@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5020, "name": "Lucas Hoffmann", "function": "Werkstatt", "location": "Deggendorf", "email": "lucas.hoffmann@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5027, "name": "Luca Löw", "function": "Werkstatt", "location": "Deggendorf", "email": "luca.loew@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5028, "name": "Daniel Thammer", "function": "Werkstatt", "location": "Deggendorf", "email": "daniel.thammer@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 5029, "name": "Angelo Rolof", "function": "Werkstatt", "location": "Deggendorf", "email": "angelo.rolof@auto-greiner.de", "phone": "", "boss_id": 5005, "children": []}, {"id": 1002, "name": "Franz Loibl", "function": "Service", "location": "Deggendorf", "email": "franz.loibl@auto-greiner.de", "phone": "0991-25013153", "boss_id": 3007, "children": []}, {"id": 1006, "name": "Stephan Metzner", "function": "Service", "location": "Landau", "email": "stephan.metzner@auto-greiner.de", "phone": "09951-9807441", "boss_id": 1003, "children": []}, {"id": 1023, "name": "Margit Schreder", "function": "Service", "location": "Landau", "email": "margit.schreder@auto-greiner.de", "phone": "09951-9807442", "boss_id": 1003, "children": []}, {"id": 4002, "name": "Leonhard Keidl", "function": "Service", "location": "Landau", "email": "leo.keidl@auto-greiner.de", "phone": "09951-9807449", "boss_id": 1003, "children": []}, {"id": 1013, "name": "Rosmarie Erlmeier", "function": "Fahrzeugpflege", "location": "Landau", "email": "rosmarie.erlmeier@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5003, "name": "Walter Smola", "function": "Service", "location": "Landau", "email": "walter.smola@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5011, "name": "Manuel Kerscher", "function": "Service", "location": "Landau", "email": "manuel.kerscher@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5015, "name": "Viktor Stabel", "function": "Service", "location": "Landau", "email": "viktor.stabel@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5018, "name": "Jan-Thorben Majer", "function": "Service", "location": "Landau", "email": "jan.majer@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5016, "name": "Sascha Berger", "function": "Service", "location": "Landau", "email": "sascha.berger@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5025, "name": "Lena Wagner", "function": "Auszubildende Service", "location": "Landau", "email": "lena.wagner@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}, {"id": 5026, "name": "Andreas Suttner", "function": "Auszubildender Service", "location": "Landau", "email": "andreas.suttner@auto-greiner.de", "phone": "", "boss_id": 1003, "children": []}], "stats": {"total": 70, "locations": {"Deggendorf": 55, "Landau": 14, "Deggendorf/Landau": 1}, "functions": {"Werkstatt": 13, "Service": 12, "Teile & Zubehör": 9, "Kundenzentrale": 8, "Verkauf": 8, "CRM": 5, "Disposition": 4, "Fahrzeugpflege": 3, "Verwaltung": 3, "Filialleiter": 1}, "levels": {"1": 1, "2": 6, "3": 41, "4": 22}}};
+
+        // D3.js Visualisierung
+        const margin = {top: 40, right: 90, bottom: 50, left: 90};
+        const width = 1600;
+        const height = 800;
+
+        const svg = d3.select("#orgChart")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        const tree = d3.tree().size([width, height - 100]);
+        const root = d3.hierarchy(orgData.root, d => d.children);
+        
+        let currentView = tree(root);
+
+        function update(source) {
+            const treeData = tree(root);
+            const nodes = treeData.descendants();
+            const links = treeData.descendants().slice(1);
+
+            // Nodes
+            const node = svg.selectAll('g.node')
+                .data(nodes, d => d.data.id);
+
+            const nodeEnter = node.enter().append('g')
+                .attr('class', 'node')
+                .attr('transform', d => `translate(${d.x},${d.y})`)
+                .on('click', click)
+                .on('mouseover', showTooltip)
+                .on('mouseout', hideTooltip);
+
+            // Node-Rechteck
+            nodeEnter.append('rect')
+                .attr('class', d => {
+                    const level = getLevel(d.data);
+                    return `node-rect level-${level}`;
+                })
+                .attr('x', -75)
+                .attr('y', -30)
+                .attr('width', 150)
+                .attr('height', 60);
+
+            // Node-Text
+            nodeEnter.append('text')
+                .attr('class', 'node-text node-name')
+                .attr('dy', -5)
+                .attr('text-anchor', 'middle')
+                .text(d => d.data.name);
+
+            nodeEnter.append('text')
+                .attr('class', 'node-text node-function')
+                .attr('dy', 12)
+                .attr('text-anchor', 'middle')
+                .text(d => truncate(d.data.function, 18));
+
+            nodeEnter.append('text')
+                .attr('class', 'node-text node-location')
+                .attr('dy', 26)
+                .attr('text-anchor', 'middle')
+                .text(d => d.data.location);
+
+            // Links
+            const link = svg.selectAll('path.link')
+                .data(links, d => d.data.id);
+
+            link.enter().insert('path', 'g')
+                .attr('class', 'link')
+                .attr('d', d => {
+                    return `M${d.x},${d.y}
+                            C${d.x},${(d.y + d.parent.y) / 2}
+                             ${d.parent.x},${(d.y + d.parent.y) / 2}
+                             ${d.parent.x},${d.parent.y}`;
+                });
+        }
+
+        function getLevel(data) {
+            let level = 1;
+            let current = data;
+            while (current.boss_id !== 0) {
+                level++;
+                current = orgData.all_employees.find(e => e.id === current.boss_id) || {boss_id: 0};
+            }
+            return level;
+        }
+
+        function truncate(str, n) {
+            return (str && str.length > n) ? str.substr(0, n-1) + '...' : str;
+        }
+
+        function click(event, d) {
+            if (d.children) {
+                d._children = d.children;
+                d.children = null;
+            } else {
+                d.children = d._children;
+                d._children = null;
+            }
+            update(d);
+        }
+
+        function showTooltip(event, d) {
+            const tooltip = document.getElementById('tooltip');
+            tooltip.innerHTML = `
+                <div class="tooltip-name">${d.data.name}</div>
+                <div class="tooltip-item"><strong>Funktion:</strong> ${d.data.function}</div>
+                <div class="tooltip-item"><strong>Standort:</strong> ${d.data.location}</div>
+                ${d.data.email ? `<div class="tooltip-item"><strong>E-Mail:</strong> ${d.data.email}</div>` : ''}
+                ${d.data.phone ? `<div class="tooltip-item"><strong>Tel:</strong> ${d.data.phone}</div>` : ''}
+                <div class="tooltip-item"><strong>MA-ID:</strong> ${d.data.id}</div>
+            `;
+            tooltip.classList.add('show');
+            tooltip.style.left = (event.pageX + 10) + 'px';
+            tooltip.style.top = (event.pageY - 10) + 'px';
+        }
+
+        function hideTooltip() {
+            document.getElementById('tooltip').classList.remove('show');
+        }
+
+        function expandAll() {
+            root.descendants().forEach(d => {
+                if (d._children) {
+                    d.children = d._children;
+                    d._children = null;
+                }
+            });
+            update(root);
+        }
+
+        function collapseAll() {
+            root.descendants().forEach(d => {
+                if (d.children && d.depth > 0) {
+                    d._children = d.children;
+                    d.children = null;
+                }
+            });
+            update(root);
+        }
+
+        function resetView() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('locationFilter').value = '';
+            collapseAll();
+        }
+
+        // Suche
+        document.getElementById('searchInput').addEventListener('input', function(e) {
+            const searchTerm = e.target.value.toLowerCase();
+            svg.selectAll('.node-rect').style('opacity', d => {
+                if (!searchTerm) return 1;
+                const match = d.data.name.toLowerCase().includes(searchTerm) ||
+                             d.data.function.toLowerCase().includes(searchTerm) ||
+                             d.data.location.toLowerCase().includes(searchTerm);
+                return match ? 1 : 0.2;
+            });
+        });
+
+        // Standort-Filter
+        document.getElementById('locationFilter').addEventListener('change', function(e) {
+            const location = e.target.value;
+            svg.selectAll('.node-rect').style('opacity', d => {
+                if (!location) return 1;
+                return d.data.location.includes(location) ? 1 : 0.2;
+            });
+        });
+
+        // Initial render
+        update(root);
+        collapseAll();
+
+        // Statistiken
+        document.getElementById('totalEmployees').textContent = orgData.stats.total;
+        document.getElementById('departmentCount').textContent = Object.keys(orgData.stats.functions).length;
+    </script>
+</body>
+</html>

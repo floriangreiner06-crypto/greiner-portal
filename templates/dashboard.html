@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block page_title %}Dashboard{% endblock %}
+{% block content %}
+<div style="max-width: 1400px;">
+    <div style="background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px;">
+        <h2 style="color: #1a2332; margin-bottom: 15px;">📊 Dashboard - Übersicht</h2>
+        <p style="color: #6b7280;">Willkommen im Dashboard. Hier finden Sie die wichtigsten Kennzahlen auf einen Blick.</p>
+    </div>
+    
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
+        <div style="background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 4px solid #10b981;">
+            <div style="font-size: 0.85em; color: #6b7280; margin-bottom: 8px;">UMSATZ HEUTE</div>
+            <div style="font-size: 2em; font-weight: 600; color: #1a2332;">€ 45.280</div>
+            <div style="color: #10b981; font-size: 0.9em; margin-top: 5px;">↑ +12% vs. gestern</div>
+        </div>
+        
+        <div style="background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 4px solid #3b82f6;">
+            <div style="font-size: 0.85em; color: #6b7280; margin-bottom: 8px;">WERKSTATT AUSLASTUNG</div>
+            <div style="font-size: 2em; font-weight: 600; color: #1a2332;">87%</div>
+            <div style="color: #3b82f6; font-size: 0.9em; margin-top: 5px;">12 von 14 Plätzen belegt</div>
+        </div>
+        
+        <div style="background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 4px solid #f59e0b;">
+            <div style="font-size: 0.85em; color: #6b7280; margin-bottom: 8px;">OFFENE ANGEBOTE</div>
+            <div style="font-size: 2em; font-weight: 600; color: #1a2332;">23</div>
+            <div style="color: #f59e0b; font-size: 0.9em; margin-top: 5px;">Gesamtwert: € 485.000</div>
+        </div>
+        
+        <div style="background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 4px solid #8b5cf6;">
+            <div style="font-size: 0.85em; color: #6b7280; margin-bottom: 8px;">AKTIVE MITARBEITER</div>
+            <div style="font-size: 2em; font-weight: 600; color: #1a2332;">68</div>
+            <div style="color: #8b5cf6; font-size: 0.9em; margin-top: 5px;">3 im Urlaub, 2 krank</div>
+        </div>
+    </div>
+</div>
+{% endblock %}

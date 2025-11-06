@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Greiner Portal{% endblock %}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        /* Sidebar - Greiner Farben */
+        .sidebar {
+            width: 260px;
+            background: linear-gradient(180deg, #1a2332 0%, #2d3e50 100%);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.15);
+            overflow-y: auto;
+        }
+        
+        .sidebar-header {
+            padding: 25px 20px;
+            background: rgba(0,0,0,0.15);
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            text-align: center;
+        }
+        
+        .logo-container {
+            margin-bottom: 15px;
+        }
+        
+        .logo-container img {
+            max-width: 180px;
+            height: auto;
+            filter: brightness(0) invert(1);
+        }
+        
+        .logo-text {
+            font-size: 1.8em;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: 2px;
+        }
+        
+        .sidebar-subtitle {
+            font-size: 0.8em;
+            color: rgba(255,255,255,0.6);
+            margin-top: 8px;
+            letter-spacing: 1px;
+        }
+        
+        .nav-section {
+            padding: 12px 0;
+        }
+        
+        .nav-item {
+            display: flex;
+            align-items: center;
+            padding: 13px 20px;
+            color: rgba(255,255,255,0.85);
+            text-decoration: none;
+            transition: all 0.2s;
+            cursor: pointer;
+            border-left: 3px solid transparent;
+            font-size: 0.95em;
+        }
+        
+        .nav-item:hover {
+            background: rgba(255,255,255,0.08);
+            border-left-color: #4a90e2;
+            color: white;
+        }
+        
+        .nav-item.active {
+            background: rgba(74, 144, 226, 0.15);
+            border-left-color: #4a90e2;
+            font-weight: 500;
+            color: white;
+        }
+        
+        .nav-item-icon {
+            width: 24px;
+            margin-right: 12px;
+            font-size: 1.15em;
+            text-align: center;
+            opacity: 0.9;
+        }
+        
+        .nav-item-text {
+            flex: 1;
+        }
+        
+        .nav-item.has-submenu::after {
+            content: '›';
+            font-size: 1.4em;
+            margin-left: auto;
+            transition: transform 0.2s;
+            opacity: 0.6;
+        }
+        
+        .nav-item.has-submenu.open::after {
+            transform: rotate(90deg);
+        }
+        
+        .submenu {
+            display: none;
+            background: rgba(0,0,0,0.2);
+            border-left: 2px solid rgba(74, 144, 226, 0.3);
+            margin-left: 20px;
+        }
+        
+        .submenu.open {
+            display: block;
+        }
+        
+        .submenu-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 20px 10px 44px;
+            color: rgba(255,255,255,0.75);
+            text-decoration: none;
+            font-size: 0.88em;
+            transition: all 0.2s;
+            position: relative;
+        }
+        
+        .submenu-item::before {
+            content: '';
+            width: 4px;
+            height: 4px;
+            background: rgba(255,255,255,0.4);
+            border-radius: 50%;
+            position: absolute;
+            left: 30px;
+        }
+        
+        .submenu-item:hover {
+            background: rgba(255,255,255,0.08);
+            color: white;
+        }
+        
+        .submenu-item:hover::before {
+            background: #4a90e2;
+        }
+        
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .top-bar {
+            background: white;
+            padding: 18px 30px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .top-bar h2 {
+            color: #1a2332;
+            font-size: 1.6em;
+            font-weight: 600;
+        }
+        
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            color: #6b7280;
+            font-size: 0.9em;
+        }
+        
+        .content-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 25px;
+        }
+        
+        /* Footer Status */
+        .sidebar-footer {
+            margin-top: auto;
+            padding: 18px 20px;
+            border-top: 1px solid rgba(255,255,255,0.08);
+            font-size: 0.82em;
+            color: rgba(255,255,255,0.5);
+        }
+        
+        .status-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        
+        .status-indicator {
+            width: 7px;
+            height: 7px;
+            background: #10b981;
+            border-radius: 50%;
+            display: inline-block;
+            margin-left: 8px;
+            box-shadow: 0 0 6px #10b981;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        
+        /* Scrollbar */
+        .sidebar::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .sidebar::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.1);
+        }
+        
+        .sidebar::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.2);
+            border-radius: 3px;
+        }
+        
+        .sidebar::-webkit-scrollbar-thumb:hover {
+            background: rgba(255,255,255,0.3);
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar Navigation -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <div class="logo-container">
+                <!-- Logo wird hier eingefügt, falls vorhanden -->
+<img src="/static/images/greiner-logo.png" alt="Greiner" style="max-width: 180px; height: auto;">
+            </div>
+            <div class="sidebar-subtitle">PORTAL · CONTROLLING</div>
+        </div>
+        
+        <nav class="nav-section">
+            <a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}">
+                <span class="nav-item-icon">🏠</span>
+                <span class="nav-item-text">Startseite</span>
+            </a>
+            
+            <a href="/dashboard" class="nav-item {% if request.path == '/dashboard' %}active{% endif %}">
+                <span class="nav-item-icon">📊</span>
+                <span class="nav-item-text">Dashboard</span>
+            </a>
+            
+            <div class="nav-item has-submenu" onclick="toggleSubmenu(this)">
+                <span class="nav-item-icon">💰</span>
+                <span class="nav-item-text">Finanzbuchhaltung</span>
+            </div>
+            <div class="submenu">
+                <a href="/finanzen/zeitreihe" class="submenu-item">F.01 Entwicklung Zeitreihe</a>
+                <a href="/finanzen/kosten" class="submenu-item">F.02 Kostenstellenbericht</a>
+                <a href="/finanzen/bwa" class="submenu-item">F.03 BWA Vorjahres-Vergleich</a>
+                <a href="/finanzen/erfolgskontrolle" class="submenu-item">F.04 Tägliche Erfolgskontrolle</a>
+                <a href="/finanzen/betriebsvergleich" class="submenu-item">F.05 Betriebsvergleich nach Marken</a>
+                <a href="/finanzen/markenvergleich" class="submenu-item">F.06 Markenvergleich nach Betrieben</a>
+                <a href="/finanzen/soll-ist" class="submenu-item">F.07 Soll/Ist Vergleich</a>
+                <a href="/finanzen/guv" class="submenu-item">F.08 GuV</a>
+                <a href="/finanzen/bilanz" class="submenu-item">F.09 Bilanz</a>
+                <a href="/finanzen/ergebnis" class="submenu-item">F.10 Ergebniskontrolle</a>
+            </div>
+            
+            
+            
+            
+            
+            
+            <div class="nav-item has-submenu" onclick="toggleSubmenu(this)">
+                <span class="nav-item-icon">👥</span>
+                <span class="nav-item-text">Mitarbeiter</span>
+            </div>
+            <div class="submenu">
+                <a href="/mitarbeiter/urlaubsplaner" class="submenu-item {% if request.path == '/mitarbeiter/urlaubsplaner' %}active{% endif %}">📅 Urlaubsplaner</a>
+                <a href="/mitarbeiter/zeiterfassung" class="submenu-item {% if request.path == '/mitarbeiter/zeiterfassung' %}active{% endif %}">⏱️ Zeiterfassung</a>
+                <a href="/mitarbeiter/organigramm" class="submenu-item {% if request.path == '/mitarbeiter/organigramm' %}active{% endif %}">🏢 Organigramm</a>
+            </div>
+<div class="nav-item has-submenu" onclick="toggleSubmenu(this)">
+                <span class="nav-item-icon">🔧</span>
+                <span class="nav-item-text">Aftersales</span>
+            </div>
+            <div class="submenu">
+                <a href="/aftersales/werkstatt" class="submenu-item">Werkstattauslastung</a>
+                <a href="/aftersales/teile" class="submenu-item">Teileverkauf</a>
+                <a href="/aftersales/kundenservice" class="submenu-item">Kundenservice</a>
+            </div>
+            
+            <div class="nav-item has-submenu" onclick="toggleSubmenu(this)">
+                <span class="nav-item-icon">🚙</span>
+                <span class="nav-item-text">Verkauf</span>
+            </div>
+            <div class="submenu">
+                <a href="/verkauf/fahrzeugverkauefe" class="submenu-item">Fahrzeugverkäufe</a>
+                <a href="/verkauf/auftragseingang" class="submenu-item">Auftragseingang</a>
+                <a href="/verkauf/fahrzeuge" class="submenu-item">Fahrzeugverkauf</a>
+                <a href="/verkauf/pipeline" class="submenu-item">Sales Pipeline</a>
+                <a href="/verkauf/bestand" class="submenu-item">Fahrzeugbestand</a>
+            </div>
+            
+            <a href="/eigener-inhalt" class="nav-item">
+                <span class="nav-item-icon">📁</span>
+                <span class="nav-item-text">Eigener Inhalt</span>
+            </a>
+            
+            <a href="/teaminhalt" class="nav-item">
+                <span class="nav-item-icon">👥</span>
+                <span class="nav-item-text">Teaminhalt</span>
+            </a>
+        </nav>
+        
+        <div class="sidebar-footer">
+            <div class="status-row">
+                <span>System Status</span>
+                <span class="status-indicator"></span>
+            </div>
+            <div>Version 1.0 · 2025</div>
+        </div>
+    </div>
+    
+    <!-- Main Content Area -->
+    <div class="main-content">
+        <div class="top-bar">
+            <h2>{% block page_title %}Startseite{% endblock %}</h2>
+            <div class="user-info">
+                <span>👤 Administrator</span>
+                <span style="color: #d1d5db;">|</span>
+                <span>{{ now.strftime("%d.%m.%Y %H:%M") }}</span>
+            </div>
+        </div>
+        
+        <div class="content-area">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+    
+    <script>
+        function toggleSubmenu(element) {
+            element.classList.toggle('open');
+            const submenu = element.nextElementSibling;
+            if (submenu && submenu.classList.contains('submenu')) {
+                submenu.classList.toggle('open');
+            }
+        }
+        
+        // Auto-open active submenu
+        document.addEventListener('DOMContentLoaded', function() {
+            const activeItem = document.querySelector('.submenu-item.active');
+            if (activeItem) {
+                const submenu = activeItem.closest('.submenu');
+                const trigger = submenu ? submenu.previousElementSibling : null;
+                if (submenu && trigger) {
+                    submenu.classList.add('open');
+                    trigger.classList.add('open');
+                }
+            }
+        });
+    </script>
+</body>
+</html>

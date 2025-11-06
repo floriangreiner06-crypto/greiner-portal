@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Greiner Controlling Portal</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="login-page">
+    <div class="login-container">
+        <div class="login-box">
+            <div class="login-header">
+                <h1>Greiner Controlling Portal</h1>
+                <p>Bitte melden Sie sich an</p>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <form method="POST" action="{{ url_for('login') }}" class="login-form">
+                <div class="form-group">
+                    <label for="username">Benutzername</label>
+                    <input type="text" id="username" name="username" required autofocus>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Passwort</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+
+                <button type="submit" class="btn-primary btn-block">Anmelden</button>
+            </form>
+
+            <div class="login-demo">
+                <h3>Demo-Zugänge:</h3>
+                <ul>
+                    <li><strong>admin</strong> / admin123 (Geschäftsleitung)</li>
+                    <li><strong>service</strong> / service123 (Serviceleitung)</li>
+                    <li><strong>finanz</strong> / finanz123 (Finanzleitung)</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

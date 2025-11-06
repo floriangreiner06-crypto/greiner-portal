@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}Auftragseingang - Greiner Portal{% endblock %}
+
+{% block content %}
+<div class="content-header">
+    <h1>📝 Auftragseingang</h1>
+    <p class="subtitle">Verkaufsaufträge nach Verkäufern und Fahrzeugart (Stückzahlen)</p>
+</div>
+
+<div class="filter-section">
+    <form method="GET" action="{{ url_for('verkauf_auftragseingang') }}" class="filter-form">
+        <div class="filter-group">
+            <label for="month">Monat:</label>
+            <select name="month" id="month">
+                {% for m in range(1, 13) %}
+                    <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>
+                        {{ ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 
+                            'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'][m-1] }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-group">
+            <label for="year">Jahr:</label>
+            <select name="year" id="year">
+                {% for y in range(2020, 2030) %}
+                    <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn-primary">Anzeigen</button>
+    </form>
+</div>
+
+{% if error %}
+<div class="error-message">
+    <strong>⚠️ Fehler:</strong> {{ error }}
+</div>
+{% else %}
+
+<div class="info-boxes">
+    <div class="info-box blue">
+        <div class="info-label">Periode</div>
+        <div class="info-value">{{ monatsname }} {{ selected_year }}</div>
+    </div>
+    <div class="info-box green">
+        <div class="info-label">Aktueller Tag</div>
+        <div class="info-value">{{ heute }}</div>
+    </div>
+</div>
+
+<div class="section-card">
+    <h2>🔥 Auftragseingang Heute ({{ heute }})</h2>
+    {% if summe_heute.gesamt.anzahl == 0 %}
+        <div class="no-data"><p>📭 Heute noch keine Aufträge erfasst</p></div>
+    {% else %}
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th class="col-verkaufer">Verkäufer</th>
+                        <th class="col-anzahl">NW</th>
+                        <th class="col-anzahl">GW</th>
+                        <th class="col-anzahl total">Gesamt</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for vk_nr in alle_verkaeufer %}
+                        {% if vk_nr in auftragseingang_heute %}
+                            {% set vk = auftragseingang_heute[vk_nr] %}
+                            <tr>
+                                <td class="verkaufer-name" title="{{ vk.long_name }}">{{ vk.name }}</td>
+                                <td class="anzahl">{% if 'NW' in vk.data %}{{ vk.data.NW.anzahl }}{% else %}-{% endif %}</td>
+                                <td class="anzahl">{% if 'GW' in vk.data %}{{ vk.data.GW.anzahl }}{% else %}-{% endif %}</td>
+                                <td class="anzahl total-col">
+                                    {% set gesamt_anzahl = 0 %}
+                                    {% if 'NW' in vk.data %}{% set gesamt_anzahl = gesamt_anzahl + vk.data.NW.anzahl %}{% endif %}
+                                    {% if 'GW' in vk.data %}{% set gesamt_anzahl = gesamt_anzahl + vk.data.GW.anzahl %}{% endif %}
+                                    <strong>{{ gesamt_anzahl }}</strong>
+                                </td>
+                            </tr>
+                        {% endif %}
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="summe-row">
+                        <td><strong>SUMME HEUTE</strong></td>
+                        <td class="anzahl"><strong>{{ summe_heute.NW.anzahl }}</strong></td>
+                        <td class="anzahl"><strong>{{ summe_heute.GW.anzahl }}</strong></td>
+                        <td class="anzahl total-col"><strong>{{ summe_heute.gesamt.anzahl }}</strong></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    {% endif %}
+</div>
+
+<div class="section-card">
+    <h2>📊 Kumulierter Auftragseingang {{ monatsname }} {{ selected_year }}</h2>
+    {% if summe_periode.gesamt.anzahl == 0 %}
+        <div class="no-data"><p>📭 Keine Aufträge in diesem Monat</p></div>
+    {% else %}
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th class="col-verkaufer">Verkäufer</th>
+                        <th class="col-anzahl">NW</th>
+                        <th class="col-anzahl">GW</th>
+                        <th class="col-anzahl total">Gesamt</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for vk_nr in alle_verkaeufer %}
+                        {% set vk = auftragseingang_periode[vk_nr] %}
+                        <tr>
+                            <td class="verkaufer-name" title="{{ vk.long_name }}">{{ vk.name }}</td>
+                            <td class="anzahl">{% if 'NW' in vk.data %}{{ vk.data.NW.anzahl }}{% else %}-{% endif %}</td>
+                            <td class="anzahl">{% if 'GW' in vk.data %}{{ vk.data.GW.anzahl }}{% else %}-{% endif %}</td>
+                            <td class="anzahl total-col">
+                                {% set gesamt_anzahl = 0 %}
+                                {% if 'NW' in vk.data %}{% set gesamt_anzahl = gesamt_anzahl + vk.data.NW.anzahl %}{% endif %}
+                                {% if 'GW' in vk.data %}{% set gesamt_anzahl = gesamt_anzahl + vk.data.GW.anzahl %}{% endif %}
+                                <strong>{{ gesamt_anzahl }}</strong>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="summe-row">
+                        <td><strong>SUMME {{ monatsname|upper }}</strong></td>
+                        <td class="anzahl"><strong>{{ summe_periode.NW.anzahl }}</strong></td>
+                        <td class="anzahl"><strong>{{ summe_periode.GW.anzahl }}</strong></td>
+                        <td class="anzahl total-col"><strong>{{ summe_periode.gesamt.anzahl }}</strong></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    {% endif %}
+</div>
+
+<div class="legend-section">
+    <h3>ℹ️ Hinweise</h3>
+    <ul>
+        <li><strong>Auftragseingang:</strong> Basiert auf dem Vertragsdatum (sale_date), nicht auf Faktura</li>
+        <li><strong>NW:</strong> Neuwagen (N) und Vorführwagen (V)</li>
+        <li><strong>GW:</strong> Gebrauchtwagen (D, G, T, U)</li>
+        <li><strong>Stückzahlen:</strong> Nur Anzahl der Fahrzeuge, keine Beträge</li>
+        <li><strong>Standorte:</strong> Deggendorf (1) + Standort 2</li>
+        <li><strong>Bestellfahrzeuge:</strong> Werden angezeigt auch wenn nicht im Bestand</li>
+    </ul>
+</div>
+{% endif %}
+
+<style>
+.filter-section { background: white; padding: 20px; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.filter-form { display: flex; gap: 20px; align-items: flex-end; }
+.filter-group { display: flex; flex-direction: column; gap: 5px; }
+.filter-group label { font-weight: 600; color: #1a2332; font-size: 14px; }
+.filter-group select { padding: 8px 12px; border: 2px solid #e2e8f0; border-radius: 6px; font-size: 14px; background: white; min-width: 150px; }
+.btn-primary { padding: 10px 24px; background: #1a2332; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+.btn-primary:hover { background: #2a3342; transform: translateY(-1px); }
+.info-boxes { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 25px; }
+.info-box { padding: 20px; border-radius: 8px; color: white; text-align: center; }
+.info-box.blue { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+.info-box.green { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+.info-label { font-size: 13px; opacity: 0.9; margin-bottom: 5px; }
+.info-value { font-size: 22px; font-weight: 700; }
+.section-card { background: white; padding: 25px; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.section-card h2 { color: #1a2332; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 3px solid #e2e8f0; }
+.table-responsive { overflow-x: auto; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.data-table thead { background: #1a2332; color: white; }
+.data-table th { padding: 14px 12px; text-align: left; font-weight: 600; white-space: nowrap; }
+.data-table tbody tr { border-bottom: 1px solid #e2e8f0; transition: background 0.2s; }
+.data-table tbody tr:hover { background: #f7fafc; }
+.data-table td { padding: 14px 12px; }
+.col-verkaufer { min-width: 180px; }
+.col-anzahl { width: 120px; text-align: center; }
+.verkaufer-name { font-weight: 600; color: #1a2332; cursor: help; }
+.anzahl { text-align: center; font-weight: 500; font-size: 16px; }
+.total-col { background: #f7fafc; font-weight: 700; }
+.data-table th.total { background: #2d3748; }
+.summe-row { background: #1a2332 !important; color: white; font-weight: 700; }
+.summe-row td { padding: 16px 12px; border-top: 3px solid #2d3748; }
+.summe-row .anzahl { font-size: 17px; }
+.no-data { text-align: center; padding: 40px; color: #718096; font-size: 16px; }
+.error-message { background: #fed7d7; border: 2px solid #fc8181; color: #742a2a; padding: 15px 20px; border-radius: 8px; margin-bottom: 20px; }
+.legend-section { background: #f7fafc; padding: 20px; border-radius: 8px; border-left: 4px solid #1a2332; }
+.legend-section h3 { color: #1a2332; margin-bottom: 12px; }
+.legend-section ul { list-style: none; padding: 0; }
+.legend-section li { padding: 6px 0; color: #4a5568; font-size: 14px; }
+@media (max-width: 768px) {
+    .filter-form { flex-direction: column; align-items: stretch; }
+    .filter-group select { width: 100%; }
+    .data-table { font-size: 13px; }
+    .data-table th, .data-table td { padding: 10px 8px; }
+}
+</style>
+
+{% endblock %}

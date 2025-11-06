@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block page_title %}Verkauf - Fahrzeugverkäufe{% endblock %}
+
+{% block content %}
+<div style="max-width: 1800px;">
+    <div style="background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
+            <div>
+                <h2 style="color: #1a2332; margin-bottom: 10px;">🚗 Fahrzeugverkäufe</h2>
+                <p style="color: #6b7280; margin: 0;">Live-Daten aus Locosoft</p>
+            </div>
+            
+            <form method="get" style="display: flex; gap: 10px; align-items: center;">
+                <select name="month" style="padding: 10px 15px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 0.95em; cursor: pointer;">
+                    <option value="1" {% if selected_month == 1 %}selected{% endif %}>Januar</option>
+                    <option value="2" {% if selected_month == 2 %}selected{% endif %}>Februar</option>
+                    <option value="3" {% if selected_month == 3 %}selected{% endif %}>März</option>
+                    <option value="4" {% if selected_month == 4 %}selected{% endif %}>April</option>
+                    <option value="5" {% if selected_month == 5 %}selected{% endif %}>Mai</option>
+                    <option value="6" {% if selected_month == 6 %}selected{% endif %}>Juni</option>
+                    <option value="7" {% if selected_month == 7 %}selected{% endif %}>Juli</option>
+                    <option value="8" {% if selected_month == 8 %}selected{% endif %}>August</option>
+                    <option value="9" {% if selected_month == 9 %}selected{% endif %}>September</option>
+                    <option value="10" {% if selected_month == 10 %}selected{% endif %}>Oktober</option>
+                    <option value="11" {% if selected_month == 11 %}selected{% endif %}>November</option>
+                    <option value="12" {% if selected_month == 12 %}selected{% endif %}>Dezember</option>
+                </select>
+                
+                <select name="year" style="padding: 10px 15px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 0.95em; cursor: pointer;">
+                    {% for year in range(2025, 2019, -1) %}
+                    <option value="{{ year }}" {% if selected_year == year %}selected{% endif %}>{{ year }}</option>
+                    {% endfor %}
+                </select>
+                
+                <button type="submit" style="padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 0.95em;">
+                    Anzeigen
+                </button>
+            </form>
+        </div>
+    </div>
+    
+    {% if error %}
+    <div style="background: #fee; padding: 20px; border-radius: 8px; border-left: 4px solid #e74c3c; margin-bottom: 20px;">
+        <strong>⚠️ Fehler:</strong> {{ error }}
+    </div>
+    {% endif %}
+    
+    <div style="background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <div style="margin-bottom: 20px; display: flex; gap: 15px; flex-wrap: wrap;">
+            <div style="padding: 15px 25px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 8px; flex: 1; min-width: 200px;">
+                <div style="font-size: 0.85em; opacity: 0.9; margin-bottom: 5px;">Gesamt Verkäufe</div>
+                <div style="font-size: 2.2em; font-weight: 700;">{{ vehicles|length }}</div>
+            </div>
+            
+            <div style="padding: 15px 25px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border-radius: 8px; flex: 1; min-width: 200px;">
+                <div style="font-size: 0.85em; opacity: 0.9; margin-bottom: 5px;">✅ Fakturiert</div>
+                <div style="font-size: 2.2em; font-weight: 700;">{{ vehicles|selectattr('is_invoiced')|list|length }}</div>
+            </div>
+            
+            <div style="padding: 15px 25px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; border-radius: 8px; flex: 1; min-width: 200px;">
+                <div style="font-size: 0.85em; opacity: 0.9; margin-bottom: 5px;">⏳ Unfakturiert</div>
+                <div style="font-size: 2.2em; font-weight: 700;">{{ (vehicles|length) - (vehicles|selectattr('is_invoiced')|list|length) }}</div>
+            </div>
+            
+            <div style="padding: 15px 25px; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; border-radius: 8px; flex: 1; min-width: 200px;">
+                <div style="font-size: 0.85em; opacity: 0.9; margin-bottom: 5px;">💰 Gesamtwert</div>
+                <div style="font-size: 2.2em; font-weight: 700;">
+                    {% set total = vehicles|map(attribute='price')|select|sum %}
+                    € {{ '{:,.0f}'.format(total).replace(',', '.') }}
+                </div>
+            </div>
+        </div>
+        
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.88em;">
+                <thead>
+                    <tr style="background: #f8fafc; border-bottom: 2px solid #e5e7eb;">
+                        <th style="padding: 12px 8px; text-align: left; font-weight: 600; color: #1a2332;">Fzg-Nr</th>
+                        <th style="padding: 12px 8px; text-align: left; font-weight: 600; color: #1a2332;">VIN</th>
+                        <th style="padding: 12px 8px; text-align: left; font-weight: 600; color: #1a2332;">Verkauft</th>
+                        <th style="padding: 12px 8px; text-align: left; font-weight: 600; color: #1a2332;">Farbe</th>
+                        <th style="padding: 12px 8px; text-align: right; font-weight: 600; color: #1a2332;">KM</th>
+                        <th style="padding: 12px 8px; text-align: right; font-weight: 600; color: #1a2332;">Verkaufspreis</th>
+                        <th style="padding: 12px 8px; text-align: center; font-weight: 600; color: #1a2332;">Rechnung</th>
+                        <th style="padding: 12px 8px; text-align: left; font-weight: 600; color: #1a2332;">Faktura-Datum</th>
+                        <th style="padding: 12px 8px; text-align: center; font-weight: 600; color: #1a2332;">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for vehicle in vehicles %}
+                    <tr style="border-bottom: 1px solid #f1f5f9; {% if loop.index % 2 == 0 %}background: #f8fafc;{% endif %}">
+                        <td style="padding: 12px 8px; font-weight: 500; color: #1a2332; font-family: monospace;">{{ vehicle.fzg_nr }}</td>
+                        <td style="padding: 12px 8px; font-family: monospace; color: #6b7280; font-size: 0.9em;">{{ vehicle.vin_short }}</td>
+                        <td style="padding: 12px 8px; color: #374151;">{{ vehicle.sale_date.strftime('%d.%m.%Y') if vehicle.sale_date else '-' }}</td>
+                        <td style="padding: 12px 8px; color: #6b7280; font-size: 0.85em;">{{ vehicle.color[:25] if vehicle.color else '-' }}</td>
+                        <td style="padding: 12px 8px; text-align: right; font-family: monospace; color: #374151;">{{ '{:,}'.format(vehicle.mileage).replace(',', '.') }}</td>
+                        <td style="padding: 12px 8px; text-align: right; font-weight: 500; color: #059669; font-family: monospace;">
+                            {% if vehicle.price %}€ {{ '{:,.2f}'.format(vehicle.price).replace(',', 'X').replace('.', ',').replace('X', '.') }}{% else %}-{% endif %}
+                        </td>
+                        <td style="padding: 12px 8px; text-align: center; font-family: monospace; font-size: 0.9em; color: #6b7280;">
+                            {{ vehicle.invoice_nr or '-' }}
+                        </td>
+                        <td style="padding: 12px 8px; color: #374151;">
+                            {{ vehicle.invoice_date.strftime('%d.%m.%Y') if vehicle.invoice_date else '-' }}
+                        </td>
+                        <td style="padding: 12px 8px; text-align: center;">
+                            {% if vehicle.is_invoiced %}
+                            <span style="padding: 4px 12px; background: #d1fae5; color: #065f46; border-radius: 12px; font-size: 0.85em; font-weight: 500;">
+                                ✅ Fakturiert
+                            </span>
+                            {% else %}
+                            <span style="padding: 4px 12px; background: #fef3c7; color: #92400e; border-radius: 12px; font-size: 0.85em; font-weight: 500;">
+                                ⏳ Offen
+                            </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

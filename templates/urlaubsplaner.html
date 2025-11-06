@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="urlaubsplaner-wrapper">
+    <div class="planer-header">
+        <h1>📅 Urlaubsplaner {{ year }}</h1>
+        <div class="controls">
+            <div class="year-nav">
+                <a href="/urlaubsplaner?year={{ year-1 }}&month={{ month }}" class="btn-arrow">◀</a>
+                <span class="year-display">{{ year }}</span>
+                <a href="/urlaubsplaner?year={{ year+1 }}&month={{ month }}" class="btn-arrow">▶</a>
+            </div>
+            <select id="monthSelect" class="month-select">
+                {% for m in range(1, 13) %}
+                <option value="{{ m }}" {% if m == month %}selected{% endif %}>
+                    {{ ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'][m-1] }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+    
+    <div class="calendar-container">
+        <table class="vacation-calendar">
+            <thead>
+                <tr>
+                    <th class="employee-header">
+                        <div class="header-content">Standort / Abteilung / Mitarbeiter</div>
+                    </th>
+                    {% for day in days %}
+                    <th class="day-header{% if day.is_weekend or day.is_holiday %} weekend{% endif %}">
+                        <div class="day-number">{{ day.day }}</div>
+                        <div class="day-name">{{ day.weekday }}</div>
+                    </th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% set ns = namespace(current_loc=None, current_dept=None) %}
+                {% for employee in employees %}
+                    {# Neue Standort-Zeile #}
+                    {% if employee.location != ns.current_loc %}
+                        {% set ns.current_loc = employee.location %}
+                        {% set ns.current_dept = None %}
+                        <tr class="location-row collapsed" data-location="{{ ns.current_loc }}">
+                            <td class="location-cell" onclick="toggleLocation('{{ ns.current_loc }}')">
+                                <span class="toggle-icon">►</span> 📍 {{ ns.current_loc or 'Kein Standort' }}
+                            </td>
+                            {% for day in days %}<td class="loc-day"></td>{% endfor %}
+                        </tr>
+                    {% endif %}
+                    
+                    {# Neue Abteilungs-Zeile #}
+                    {% if employee.department_name != ns.current_dept %}
+                        {% set ns.current_dept = employee.department_name %}
+                        <tr class="department-row collapsed hidden loc-{{ ns.current_loc }} dept-{{ ns.current_loc }}-{{ ns.current_dept }}" data-dept="{{ ns.current_dept }}">
+                            <td class="department-cell" onclick="toggleDepartment('{{ ns.current_loc }}', '{{ ns.current_dept }}')">
+                                <span class="toggle-icon-dept">►</span> &nbsp;&nbsp;&nbsp;{{ ns.current_dept or 'Ohne Abteilung' }}
+                            </td>
+                            {% for day in days %}<td class="dept-day"></td>{% endfor %}
+                        </tr>
+                    {% endif %}
+                    
+                    {# Mitarbeiter-Zeile #}
+                    <tr class="employee-row hidden loc-{{ ns.current_loc }} emp-{{ ns.current_loc }}-{{ ns.current_dept }}">
+                        <td class="employee-name">
+                            <span class="emp-indent">→</span>
+                            <span class="emp-short">{{ employee.first_name }}</span>
+                            <span class="emp-full">{{ employee.last_name }}</span>
+                            <span class="emp-days">({{ (employee.vacation_entitlement - employee.vacation_used_2025)|round(1) }}/{{ employee.vacation_entitlement }})</span>
+                        </td>
+                        {% for day in days %}
+                            {% set day_key = '%04d-%02d-%02d'|format(year, month, day.day) %}
+                            {% set found = namespace(id=none, color=none, name=none, icon=none) %}
+                            {% for booking in bookings %}
+                                {% if booking.employee_id == employee.id and booking.booking_date == day_key %}
+                                    {% set found.id = booking.id %}
+                                    {% set found.color = booking.color %}
+                                    {% set found.name = booking.type_name %}
+                                    {% set found.icon = booking.icon %}
+                                {% endif %}
+                            {% endfor %}
+                            <td class="day-cell{% if day.is_weekend or day.is_holiday %} weekend{% endif %}" 
+                                data-emp="{{ employee.id }}" 
+                                data-date="{{ day_key }}" 
+                                data-name="{{ employee.last_name }}, {{ employee.first_name }}" 
+                                data-booking="{{ found.id or '' }}">
+                                {% if found.id %}
+                                <div class="booking-indicator" style="background-color:{{ found.color }}" title="{{ found.name }}">
+                                    {{ found.icon or '' }}
+                                </div>
+                                {% endif %}
+                            </td>
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="legend-container collapsed">
+        <div class="legend-header" onclick="toggleLegend()">
+            <span class="legend-toggle">►</span>
+            <span>Legende</span>
+        </div>
+        <div class="legend-grid">
+            <div class="legend-item"><span class="dot" style="background:#90EE90"></span>Urlaubstag (beantragt)</div>
+            <div class="legend-item"><span class="dot" style="background:#006400"></span>Urlaubstag (genehmigt)</div>
+            <div class="legend-item"><span class="dot" style="background:#FFB6C1"></span>Krankheit</div>
+            <div class="legend-item"><span class="dot" style="background:#fff;border:1px solid #999">☕</span>Ausgleichstag</div>
+            <div class="legend-item"><span class="dot" style="background:#64B5F6;color:#fff">S</span>Schulung</div>
+            <div class="legend-item"><span class="dot" style="background:#64B5F6;color:#fff">S</span>Seminar</div>
+            <div class="legend-item"><span class="dot" style="background:#FFA726"></span>Sonderurlaub</div>
+            <div class="legend-item"><span class="dot" style="background:#E1BEE7">E</span>Elternzeit</div>
+            <div class="legend-item"><span class="dot" style="background:#FFE082">M</span>Meistervertretung</div>
+            <div class="legend-item"><span class="dot" style="background:#FF6B6B;color:#fff">|</span>Urlaubssperre</div>
+        </div>
+    </div>
+</div>
+
+<div id="bookingModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header"><h2>Urlaub buchen</h2><button class="close-btn" onclick="closeBookingDialog()">&times;</button></div>
+        <div class="modal-body">
+            <div class="form-group"><label>Mitarbeiter:</label><div id="employeeName" class="info-text"></div></div>
+            <div class="form-group"><label>Datum:</label><div id="bookingDate" class="info-text"></div></div>
+            <div class="form-group">
+                <label>Urlaubstyp:</label>
+                <select id="vacationType" class="form-control">
+                    <option value="1">Urlaubstag (beantragt)</option>
+                    <option value="2">Urlaubstag (genehmigt)</option>
+                    <option value="5">Krankheit</option>
+                    <option value="6">Ausgleichstag</option>
+                    <option value="9">Schulung</option>
+                    <option value="12">Seminar</option>
+                    <option value="11">Sonderurlaub</option>
+                    <option value="7">Elternzeit</option>
+                    <option value="8">Meistervertretung</option>
+                    <option value="10">Urlaubssperre</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Status:</label>
+                <select id="status" class="form-control">
+                    <option value="pending">Beantragt</option>
+                    <option value="approved">Genehmigt</option>
+                </select>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-danger" onclick="deleteBooking()" id="deleteBtn" style="display:none">Löschen</button>
+            <button class="btn btn-secondary" onclick="closeBookingDialog()">Abbrechen</button>
+            <button class="btn btn-primary" onclick="saveBooking()">Speichern</button>
+        </div>
+    </div>
+</div>
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.urlaubsplaner-wrapper{padding:10px;background:#f5f5f5;font-family:Arial,sans-serif}
+.planer-header{background:#fff;padding:15px 20px;margin-bottom:10px;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,0.1);display:flex;justify-content:space-between;align-items:center}
+.planer-header h1{margin:0;font-size:1.3em;color:#1e40af}
+.controls{display:flex;gap:15px;align-items:center}
+.year-nav{display:flex;gap:10px;align-items:center}
+.year-display{font-size:1.2em;font-weight:bold;color:#1e40af;min-width:70px;text-align:center}
+.btn-arrow{padding:5px 10px;background:#e2e8f0;border-radius:4px;text-decoration:none;color:#334155;font-weight:bold;font-size:0.9em}
+.btn-arrow:hover{background:#cbd5e1}
+.month-select{padding:6px 10px;font-size:0.95em;border:1px solid #cbd5e1;border-radius:4px;background:#fff;cursor:pointer}
+.calendar-container{background:#fff;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,0.1);overflow:auto;max-height:calc(100vh - 350px)}
+.vacation-calendar{width:100%;border-collapse:collapse;font-size:10px}
+.vacation-calendar thead{position:sticky;top:0;z-index:10;background:#fff}
+.employee-header{text-align:left;padding:8px 10px;background:#2563eb;color:#fff;font-weight:bold;border:1px solid #1e40af;min-width:220px;position:sticky;left:0;z-index:11}
+.day-header{padding:4px 2px;text-align:center;background:#e8f0fe;border:1px solid #d1d5db;font-weight:bold;min-width:26px;font-size:9px}
+.day-header.weekend{background:#cbd5e1}
+.day-number{font-size:10px;font-weight:bold}
+.day-name{font-size:8px;color:#666}
+.location-row{background:#0c4a6e;cursor:pointer}
+.location-row:hover{background:#0369a1}
+.location-cell{padding:8px 10px;color:#fff;font-weight:bold;border:1px solid #075985;font-size:11px}
+.loc-day{background:#0c4a6e;border:1px solid #075985}
+.department-row{background:#2563eb;cursor:pointer}
+.department-row:hover{background:#1d4ed8}
+.department-cell{padding:6px 10px;color:#fff;font-weight:bold;border:1px solid #1e40af;font-size:10px;padding-left:25px}
+.toggle-icon,.toggle-icon-dept{display:inline-block;transition:transform 0.2s;font-size:10px}
+.location-row.collapsed .toggle-icon{transform:rotate(0deg)}
+.location-row:not(.collapsed) .toggle-icon{transform:rotate(90deg)}
+.department-row.collapsed .toggle-icon-dept{transform:rotate(0deg)}
+.department-row:not(.collapsed) .toggle-icon-dept{transform:rotate(90deg)}
+.dept-day{background:#2563eb;border:1px solid #1e40af}
+.employee-row{border-bottom:1px solid #e2e8f0}
+.employee-row:hover{background:#f8fafc}
+.employee-row.hidden{display:none}
+.department-row.hidden{display:none}
+.employee-name{padding:4px 8px;background:#f8fafc;border:1px solid #e2e8f0;font-size:10px;white-space:nowrap;position:sticky;left:0;z-index:5;min-width:220px}
+.emp-indent{color:#94a3b8;margin-right:4px}
+.emp-short{color:#64748b;margin-right:4px}
+.emp-full{font-weight:500}
+.emp-days{color:#94a3b8;font-size:9px;margin-left:4px}
+.day-cell{padding:0;text-align:center;border:1px solid #e2e8f0;min-width:26px;height:22px;cursor:pointer;background:#fff;position:relative}
+.day-cell:hover:not(.weekend){background:#dbeafe}
+.day-cell.weekend{background:#f1f5f9}
+.booking-indicator{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:bold;position:absolute;top:0;left:0;pointer-events:none}
+.legend-container{background:#fff;padding:10px 15px;margin-top:10px;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,0.1)}
+.legend-header{cursor:pointer;font-weight:bold;font-size:0.9em;color:#334155;padding:5px 0;display:flex;align-items:center;gap:8px}
+.legend-header:hover{color:#1e40af}
+.legend-toggle{display:inline-block;transition:transform 0.2s;font-size:10px}
+.legend-container.collapsed .legend-toggle{transform:rotate(0deg)}
+.legend-container:not(.collapsed) .legend-toggle{transform:rotate(90deg)}
+.legend-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:6px;margin-top:8px}
+.legend-container.collapsed .legend-grid{display:none !important;visibility:hidden !important;height:0 !important;overflow:hidden !important}
+.legend-item{display:flex;align-items:center;gap:6px;font-size:0.8em;padding:2px}
+.dot{width:20px;height:16px;display:inline-flex;align-items:center;justify-content:center;border-radius:3px;font-weight:bold;font-size:9px}
+.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;justify-content:center;align-items:center}
+.modal-content{background:#fff;border-radius:8px;width:90%;max-width:500px}
+.modal-header{padding:20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center}
+.modal-header h2{margin:0;font-size:1.3em}
+.close-btn{background:none;border:none;font-size:2em;cursor:pointer;color:#64748b}
+.modal-body{padding:20px}
+.form-group{margin-bottom:15px}
+.form-group label{display:block;margin-bottom:5px;font-weight:500;color:#334155}
+.form-control{width:100%;padding:8px 12px;border:1px solid #cbd5e1;border-radius:4px;font-size:1em}
+.info-text{padding:8px 12px;background:#f1f5f9;border-radius:4px;font-weight:500}
+.modal-footer{padding:15px 20px;border-top:1px solid #e2e8f0;display:flex;gap:10px;justify-content:flex-end}
+.btn{padding:8px 16px;border:none;border-radius:4px;cursor:pointer;font-size:1em}
+.btn-primary{background:#2563eb;color:#fff}
+.btn-secondary{background:#e2e8f0;color:#334155}
+.btn-danger{background:#dc2626;color:#fff;margin-right:auto}
+</style>
+
+<script>
+let currentEmployeeId=null,currentDate=null,currentBookingId=null;
+document.getElementById('monthSelect').addEventListener('change',function(){window.location.href='/urlaubsplaner?year={{ year }}&month='+this.value});
+document.querySelectorAll('.day-cell').forEach(cell=>cell.addEventListener('click',function(){openBookingDialog(parseInt(this.dataset.emp),this.dataset.date,this.dataset.name,this.dataset.booking||null)}));
+function toggleLocation(loc){const row=document.querySelector('.location-row[data-location="'+loc+'"]');const depts=document.querySelectorAll('.loc-'+loc);row.classList.toggle('collapsed');depts.forEach(d=>d.classList.toggle('hidden'))}
+function toggleDepartment(loc,dept){const row=document.querySelector('.dept-'+loc+'-'+dept);const emps=document.querySelectorAll('.emp-'+loc+'-'+dept);row.classList.toggle('collapsed');emps.forEach(e=>e.classList.toggle('hidden'))}
+function toggleLegend(){document.querySelector('.legend-container').classList.toggle('collapsed')}
+function openBookingDialog(e,d,n,b){currentEmployeeId=e;currentDate=d;currentBookingId=b;document.getElementById('employeeName').textContent=n;document.getElementById('bookingDate').textContent=d;document.getElementById('deleteBtn').style.display=b?'inline-block':'none';document.getElementById('bookingModal').style.display='flex'}
+function closeBookingDialog(){document.getElementById('bookingModal').style.display='none'}
+function saveBooking(){fetch('/api/book_vacation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({employee_id:currentEmployeeId,booking_date:currentDate,vacation_type_id:document.getElementById('vacationType').value,day_part:'full',comment:'',status:document.getElementById('status').value})}).then(r=>r.json()).then(d=>{if(d.success)location.reload();else alert('Fehler: '+d.error)})}
+function deleteBooking(){if(!confirm('Buchung löschen?'))return;fetch('/api/delete_vacation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({employee_id:currentEmployeeId,booking_date:currentDate})}).then(r=>r.json()).then(d=>{if(d.success)location.reload()})}
+</script>
+{% endblock %}

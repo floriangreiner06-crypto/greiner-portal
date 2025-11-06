@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block title %}Bankenspiegel - Greiner Controlling Portal{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h2>Bankenspiegel</h2>
+        <p>Übersicht aller Konten und Bestände</p>
+    </div>
+
+    {% if balances_data %}
+        {% for item in balances_data %}
+        <div class="account-section">
+            <div class="account-header">
+                <h3>{{ item.account.account_name }}</h3>
+                <span class="badge">{{ item.account.account_type }}</span>
+                <span class="text-muted">{{ item.account.bank_name }}</span>
+            </div>
+
+            {% if item.balances %}
+            <div class="account-stats">
+                <div class="stat-card">
+                    <div class="stat-label">Aktueller Stand</div>
+                    <div class="stat-value">{{ "%.2f"|format(item.balances[0].balance) }} €</div>
+                    <div class="stat-date">{{ item.balances[0].date }}</div>
+                </div>
+
+                {% if item.balances[0].loans != 0 %}
+                <div class="stat-card">
+                    <div class="stat-label">Darlehen</div>
+                    <div class="stat-value">{{ "%.2f"|format(item.balances[0].loans) }} €</div>
+                </div>
+                {% endif %}
+
+                {% if item.balances[0].vehicles_value != 0 %}
+                <div class="stat-card">
+                    <div class="stat-label">Fahrzeugbestand</div>
+                    <div class="stat-value">{{ "%.2f"|format(item.balances[0].vehicles_value) }} €</div>
+                </div>
+                {% endif %}
+
+                {% if item.balances[0].receivables != 0 %}
+                <div class="stat-card">
+                    <div class="stat-label">Forderungen</div>
+                    <div class="stat-value">{{ "%.2f"|format(item.balances[0].receivables) }} €</div>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="chart-container">
+                <canvas id="chart-{{ item.account.id }}"></canvas>
+            </div>
+
+            <div class="data-table-container">
+                <h4>Historie (letzte 30 Tage)</h4>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Datum</th>
+                            <th>Kontostand</th>
+                            <th>Darlehen</th>
+                            <th>Fahrzeuge</th>
+                            <th>Forderungen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for balance in item.balances[:10] %}
+                        <tr>
+                            <td>{{ balance.date }}</td>
+                            <td>{{ "%.2f"|format(balance.balance) }} €</td>
+                            <td>{{ "%.2f"|format(balance.loans) }} €</td>
+                            <td>{{ "%.2f"|format(balance.vehicles_value) }} €</td>
+                            <td>{{ "%.2f"|format(balance.receivables) }} €</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-info">
+                Noch keine Daten für dieses Konto vorhanden. <a href="{{ url_for('eingabe') }}">Jetzt Daten eingeben</a>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="alert alert-warning">
+            Noch keine Konten vorhanden. Bitte legen Sie zunächst Bankkonten an.
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Create charts for each account
+    {% for item in balances_data %}
+    {% if item.balances %}
+    fetch('/api/chart-data/{{ item.account.id }}')
+        .then(response => response.json())
+        .then(data => {
+            const ctx = document.getElementById('chart-{{ item.account.id }}');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.dates,
+                    datasets: [
+                        {
+                            label: 'Kontostand',
+                            data: data.balances,
+                            borderColor: 'rgb(75, 192, 192)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Darlehen',
+                            data: data.loans,
+                            borderColor: 'rgb(255, 99, 132)',
+                            backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Fahrzeuge',
+                            data: data.vehicles,
+                            borderColor: 'rgb(255, 205, 86)',
+                            backgroundColor: 'rgba(255, 205, 86, 0.1)',
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Forderungen',
+                            data: data.receivables,
+                            borderColor: 'rgb(54, 162, 235)',
+                            backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                            tension: 0.1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        title: {
+                            display: true,
+                            text: 'Verlauf der letzten 30 Tage'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString('de-DE') + ' €';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        });
+    {% endif %}
+    {% endfor %}
+</script>
+{% endblock %}

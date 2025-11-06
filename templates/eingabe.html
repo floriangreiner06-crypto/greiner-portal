@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block title %}Dateneingabe - Greiner Controlling Portal{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h2>Dateneingabe</h2>
+        <p>Tagesaktuelle Kontostände erfassen</p>
+    </div>
+
+    <div class="form-container">
+        <form method="POST" action="{{ url_for('eingabe') }}" class="data-entry-form" id="dataEntryForm">
+            <div class="form-section">
+                <h3>Allgemeine Informationen</h3>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="date">Datum *</label>
+                        <input type="date" id="date" name="date" value="{{ today }}" required>
+                        <small class="form-text">Wählen Sie das Datum für die Kontostände</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="account_id">Bankkonto *</label>
+                        <select id="account_id" name="account_id" required onchange="loadExistingData()">
+                            <option value="">-- Bitte wählen --</option>
+                            {% for account in accounts %}
+                            <option value="{{ account.id }}">{{ account.account_name }} ({{ account.bank_name }})</option>
+                            {% endfor %}
+                        </select>
+                        <small class="form-text">Wählen Sie das Konto aus</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h3>Finanzielle Werte</h3>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="balance">Kontostand *</label>
+                        <div class="input-group">
+                            <input type="number" id="balance" name="balance" step="0.01" required>
+                            <span class="input-addon">€</span>
+                        </div>
+                        <small class="form-text">Aktueller Kontostand laut Kontoauszug</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="loans">Darlehensstand</label>
+                        <div class="input-group">
+                            <input type="number" id="loans" name="loans" step="0.01" value="0">
+                            <span class="input-addon">€</span>
+                        </div>
+                        <small class="form-text">Aktueller Darlehensstand (falls zutreffend)</small>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="vehicles_value">Fahrzeugbestand</label>
+                        <div class="input-group">
+                            <input type="number" id="vehicles_value" name="vehicles_value" step="0.01" value="0">
+                            <span class="input-addon">€</span>
+                        </div>
+                        <small class="form-text">Wert der Fahrzeuge (aus Locosoft)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="receivables">Forderungsbestand</label>
+                        <div class="input-group">
+                            <input type="number" id="receivables" name="receivables" step="0.01" value="0">
+                            <span class="input-addon">€</span>
+                        </div>
+                        <small class="form-text">Offene Forderungen (aus Locosoft)</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h3>Zusätzliche Informationen</h3>
+                
+                <div class="form-group">
+                    <label for="notes">Notizen</label>
+                    <textarea id="notes" name="notes" rows="3" placeholder="Optionale Bemerkungen oder Hinweise zu diesem Eintrag..."></textarea>
+                    <small class="form-text">Freiwillige Anmerkungen</small>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn-primary">
+                    <span>💾</span> Daten speichern
+                </button>
+                <button type="reset" class="btn-secondary" onclick="clearForm()">
+                    <span>🔄</span> Formular zurücksetzen
+                </button>
+                <a href="{{ url_for('bankenspiegel') }}" class="btn-secondary">
+                    <span>📊</span> Zum Bankenspiegel
+                </a>
+            </div>
+
+            <div class="form-info">
+                <p><strong>Hinweis:</strong> Die Felder mit * sind Pflichtfelder. Wenn für ein Datum und Konto bereits Daten existieren, werden diese überschrieben.</p>
+            </div>
+        </form>
+    </div>
+
+    <div class="help-section">
+        <h3>❓ Hilfe zur Dateneingabe</h3>
+        <div class="help-cards">
+            <div class="help-card">
+                <h4>Schritt 1: Datum wählen</h4>
+                <p>Wählen Sie das Datum aus, für das Sie die Kontostände erfassen möchten. Standardmäßig ist heute vorausgewählt.</p>
+            </div>
+            <div class="help-card">
+                <h4>Schritt 2: Konto auswählen</h4>
+                <p>Wählen Sie das entsprechende Bankkonto aus der Dropdown-Liste aus.</p>
+            </div>
+            <div class="help-card">
+                <h4>Schritt 3: Werte eingeben</h4>
+                <p>Geben Sie die aktuellen Werte ein. Der Kontostand ist verpflichtend, die anderen Felder sind optional.</p>
+            </div>
+            <div class="help-card">
+                <h4>Schritt 4: Speichern</h4>
+                <p>Klicken Sie auf "Daten speichern". Die Werte werden in der Datenbank gespeichert und sind sofort im Bankenspiegel sichtbar.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const existingData = {{ existing_data | tojson | safe }};
+
+    function loadExistingData() {
+        const accountId = document.getElementById('account_id').value;
+        const date = document.getElementById('date').value;
+        
+        if (accountId && existingData[accountId]) {
+            const data = existingData[accountId];
+            document.getElementById('balance').value = data.balance || 0;
+            document.getElementById('loans').value = data.loans || 0;
+            document.getElementById('vehicles_value').value = data.vehicles_value || 0;
+            document.getElementById('receivables').value = data.receivables || 0;
+            document.getElementById('notes').value = data.notes || '';
+            
+            // Show info message
+            showInfoMessage('Vorhandene Daten für dieses Konto am ausgewählten Datum wurden geladen.');
+        }
+    }
+
+    function clearForm() {
+        document.getElementById('balance').value = '';
+        document.getElementById('loans').value = '0';
+        document.getElementById('vehicles_value').value = '0';
+        document.getElementById('receivables').value = '0';
+        document.getElementById('notes').value = '';
+    }
+
+    function showInfoMessage(message) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-info';
+        alertDiv.innerHTML = message + '<button class="close-alert" onclick="this.parentElement.remove()">×</button>';
+        
+        const formContainer = document.querySelector('.form-container');
+        formContainer.insertBefore(alertDiv, formContainer.firstChild);
+        
+        setTimeout(() => {
+            alertDiv.remove();
+        }, 5000);
+    }
+
+    // Form validation
+    document.getElementById('dataEntryForm').addEventListener('submit', function(e) {
+        const balance = parseFloat(document.getElementById('balance').value);
+        
+        if (isNaN(balance)) {
+            e.preventDefault();
+            alert('Bitte geben Sie einen gültigen Kontostand ein.');
+            return false;
+        }
+        
+        return true;
+    });
+</script>
+{% endblock %}

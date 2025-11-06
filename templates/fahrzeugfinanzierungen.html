@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fahrzeugfinanzierungen - Bankenspiegel 2.0</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f5f5; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .stat-card h3 { font-size: 14px; color: #666; margin-bottom: 10px; }
+        .stat-card .value { font-size: 28px; font-weight: bold; color: #333; }
+        .stat-card .sub { font-size: 12px; color: #999; margin-top: 5px; }
+        
+        .alert-box {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        
+        .alert-box h3 { color: #856404; margin-bottom: 10px; }
+        
+        table {
+            width: 100%;
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+        
+        th, td { padding: 12px; text-align: left; }
+        th { background: #667eea; color: white; font-weight: 600; }
+        tr:nth-child(even) { background: #f9f9f9; }
+        tr:hover { background: #f0f0f0; }
+        
+        .amount { text-align: right; font-weight: 600; }
+        .positive { color: #28a745; }
+        .negative { color: #dc3545; }
+        
+        .nav-back {
+            display: inline-block;
+            padding: 10px 20px;
+            background: white;
+            color: #667eea;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        
+        .nav-back:hover { background: #667eea; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/bankenspiegel" class="nav-back">← Zurück zum Dashboard</a>
+        
+        <div class="header">
+            <h1>🚗 Fahrzeugfinanzierungen</h1>
+            <p>Stellantis Bank Floor Plan</p>
+        </div>
+        
+        <!-- GESAMT-STATISTIK -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Fahrzeuge gesamt</h3>
+                <div class="value">{{ stats['anzahl_fahrzeuge'] }}</div>
+            </div>
+            <div class="stat-card">
+                <h3>Aktueller Saldo</h3>
+                <div class="value">{{ "{:,.2f}".format(stats['gesamt_saldo']) }} €</div>
+            </div>
+            <div class="stat-card">
+                <h3>Original Finanzierung</h3>
+                <div class="value">{{ "{:,.2f}".format(stats['gesamt_original']) }} €</div>
+            </div>
+            <div class="stat-card">
+                <h3>Abbezahlt</h3>
+                <div class="value positive">{{ "{:,.2f}".format(stats['gesamt_abbezahlt']) }} €</div>
+                <div class="sub">{{ "{:.1f}".format(stats['gesamt_abbezahlt'] / stats['gesamt_original'] * 100 if stats['gesamt_original'] > 0 else 0) }}%</div>
+            </div>
+        </div>
+        
+        <!-- ALERTS -->
+        {% if alerts %}
+        <div class="alert-box">
+            <h3>⚠️ Zinsfreiheit läuft bald ab!</h3>
+            <table>
+                <tr>
+                    <th>RRDI</th>
+                    <th>VIN</th>
+                    <th>Modell</th>
+                    <th>Tage bis Zinsen</th>
+                    <th>Saldo</th>
+                </tr>
+                {% for alert in alerts %}
+                <tr>
+                    <td>{{ alert['rrdi'] }}</td>
+                    <td>{{ alert['vin'] }}</td>
+                    <td>{{ alert['modell'] }}</td>
+                    <td><strong>{{ alert['tage_bis_zinsen'] }} Tage</strong></td>
+                    <td class="amount">{{ "{:,.2f}".format(alert['aktueller_saldo']) }} €</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+        {% endif %}
+        
+        <!-- NACH RRDI -->
+        <h2>Nach Konto</h2>
+        <table>
+            <tr>
+                <th>RRDI</th>
+                <th>Fahrzeuge</th>
+                <th>Saldo</th>
+                <th>Original</th>
+                <th>Abbezahlt</th>
+                <th>Ø Alter (Tage)</th>
+            </tr>
+            {% for row in rrdi_stats %}
+            <tr>
+                <td><strong>{{ row['rrdi'] }}</strong></td>
+                <td>{{ row['anzahl'] }}</td>
+                <td class="amount">{{ "{:,.2f}".format(row['saldo']) }} €</td>
+                <td class="amount">{{ "{:,.2f}".format(row['original']) }} €</td>
+                <td class="amount positive">{{ "{:,.2f}".format(row['abbezahlt']) }} € ({{ "{:.1f}".format(row['abbezahlt'] / row['original'] * 100 if row['original'] > 0 else 0) }}%)</td>
+                <td>{{ "{:.0f}".format(row['durchschnitt_alter']) }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        
+        <!-- NACH PRODUKTFAMILIE -->
+        <h2>Nach Produktfamilie</h2>
+        <table>
+            <tr>
+                <th>Produktfamilie</th>
+                <th>Fahrzeuge</th>
+                <th>Saldo</th>
+            </tr>
+            {% for row in produkt_stats %}
+            <tr>
+                <td>{{ row['produktfamilie'] }}</td>
+                <td>{{ row['anzahl'] }}</td>
+                <td class="amount">{{ "{:,.2f}".format(row['saldo']) }} €</td>
+            </tr>
+            {% endfor %}
+        </table>
+        
+        <!-- ALLE FAHRZEUGE -->
+        <h2>Alle Fahrzeuge (Top 50)</h2>
+        <table>
+            <tr>
+                <th>RRDI</th>
+                <th>Produktfamilie</th>
+                <th>VIN</th>
+                <th>Modell</th>
+                <th>Vertragsbeginn</th>
+                <th>Alter</th>
+                <th>Saldo</th>
+            </tr>
+            {% for fz in fahrzeuge[:50] %}
+            <tr>
+                <td>{{ fz['rrdi'] }}</td>
+                <td>{{ fz['produktfamilie'] }}</td>
+                <td>{{ fz['vin'] }}</td>
+                <td>{{ fz['modell'] }}</td>
+                <td>{{ fz['vertragsbeginn'] }}</td>
+                <td>{{ fz['alter_tage'] }} Tage</td>
+                <td class="amount">{{ "{:,.2f}".format(fz['aktueller_saldo']) }} €</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+</body>
+</html>
