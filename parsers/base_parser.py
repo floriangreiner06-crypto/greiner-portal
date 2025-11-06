@@ -37,12 +37,14 @@ class Transaction:
         verwendungszweck: Beschreibung der Transaktion
         betrag: Betrag (positiv = Eingang, negativ = Ausgang)
         iban: IBAN des Kontos (optional)
+        konto_id: Konto-ID aus Datenbank (wird später gesetzt)
     """
     buchungsdatum: datetime
     valutadatum: datetime
     verwendungszweck: str
     betrag: float
     iban: Optional[str] = None
+    konto_id: Optional[int] = None
     
     def __str__(self) -> str:
         return (f"{self.buchungsdatum.strftime('%d.%m.%Y')} | "
@@ -124,12 +126,13 @@ class BaseParser(ABC):
         
         return None
     
-    def parse_german_date(self, date_str: str) -> Optional[datetime]:
+    def parse_german_date(self, date_str: str, year: Optional[int] = None) -> Optional[datetime]:
         """
-        Parst deutsches Datum (DD.MM.YYYY oder DD.MM.YY)
+        Parst deutsches Datum (DD.MM.YYYY, DD.MM.YY oder DD.MM. mit Jahr)
         
         Args:
             date_str: Datum als String
+            year: Optional - Jahr für DD.MM. Format (z.B. für VR-Bank)
             
         Returns:
             datetime Objekt oder None bei Fehler
@@ -141,6 +144,10 @@ class BaseParser(ABC):
             # Versuche DD.MM.YY
             elif len(date_str) == 8:
                 return datetime.strptime(date_str, '%d.%m.%y')
+            # DD.MM. mit Jahr-Parameter (VR-Bank Format)
+            elif len(date_str) == 6 and date_str.endswith('.') and year is not None:
+                # DD.MM. -> DD.MM.YYYY
+                return datetime.strptime(f"{date_str[:-1]}.{year}", '%d.%m.%Y')
             else:
                 logger.warning(f"⚠️ Ungültiges Datumsformat: {date_str}")
                 return None
