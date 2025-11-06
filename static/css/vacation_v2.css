@@ -1,0 +1,361 @@
+/* ====================================
+   URLAUBSPLANER V2 - CUSTOM STYLES
+   ==================================== */
+
+/* General Styling */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa;
+}
+
+.container-fluid {
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+/* Header Styling */
+.bg-primary {
+    background-color: #0056b3 !important;
+}
+
+h1 {
+    font-size: 1.8rem;
+    font-weight: 600;
+}
+
+/* Cards */
+.card {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    border: none;
+    border-radius: 8px;
+    transition: transform 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.card-header {
+    border-radius: 8px 8px 0 0 !important;
+    font-weight: 600;
+}
+
+/* Tabs */
+.nav-tabs .nav-link {
+    color: #495057;
+    font-weight: 500;
+    border: none;
+    border-bottom: 3px solid transparent;
+    transition: all 0.3s;
+}
+
+.nav-tabs .nav-link:hover {
+    border-bottom: 3px solid #0056b3;
+    color: #0056b3;
+}
+
+.nav-tabs .nav-link.active {
+    border-bottom: 3px solid #0056b3;
+    color: #0056b3;
+    background-color: transparent;
+    font-weight: 600;
+}
+
+/* Badges */
+.badge {
+    border-radius: 10px;
+    padding: 4px 8px;
+    font-size: 0.75rem;
+}
+
+/* Balance Display */
+.balance-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.balance-item:last-child {
+    border-bottom: none;
+}
+
+.balance-label {
+    color: #6c757d;
+    font-size: 0.9rem;
+}
+
+.balance-value {
+    font-weight: 600;
+    font-size: 1.1rem;
+    color: #0056b3;
+}
+
+/* Request List */
+.request-item {
+    padding: 12px;
+    margin-bottom: 10px;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    background-color: #fff;
+    transition: all 0.2s;
+}
+
+.request-item:hover {
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+.request-status {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.status-pending {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.status-approved {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.status-rejected {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+/* Approval List */
+.approval-item {
+    padding: 15px;
+    margin-bottom: 12px;
+    border: 2px solid #dee2e6;
+    border-radius: 8px;
+    background-color: #fff;
+    transition: all 0.2s;
+}
+
+.approval-item.selected {
+    border-color: #0056b3;
+    background-color: #e7f3ff;
+}
+
+.approval-checkbox {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+.employee-info {
+    font-weight: 600;
+    color: #212529;
+    margin-bottom: 5px;
+}
+
+.vacation-dates {
+    color: #495057;
+    font-size: 0.95rem;
+}
+
+.vacation-days {
+    font-weight: 600;
+    color: #0056b3;
+}
+
+/* Buttons */
+.btn {
+    border-radius: 6px;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.btn-lg {
+    padding: 12px 24px;
+    font-size: 1.1rem;
+}
+
+/* Forms */
+.form-control, .form-select {
+    border-radius: 6px;
+    border: 1px solid #ced4da;
+    transition: all 0.2s;
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: #0056b3;
+    box-shadow: 0 0 0 0.2rem rgba(0,86,179,0.25);
+}
+
+/* Alerts */
+.alert {
+    border-radius: 6px;
+    border: none;
+}
+
+.alert-info {
+    background-color: #d1ecf1;
+    color: #0c5460;
+}
+
+.alert-warning {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.alert-success {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.alert-danger {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+/* Calendar Styling */
+#teamCalendar {
+    min-height: 600px;
+    background-color: #fff;
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.calendar-event {
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 0.85rem;
+    margin: 2px 0;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.calendar-event:hover {
+    transform: scale(1.02);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+/* Vacation Types Colors */
+.vtype-urlaub {
+    background-color: #28a745;
+    color: white;
+}
+
+.vtype-sonderurlaub {
+    background-color: #17a2b8;
+    color: white;
+}
+
+.vtype-krank {
+    background-color: #dc3545;
+    color: white;
+}
+
+.vtype-unbezahlt {
+    background-color: #6c757d;
+    color: white;
+}
+
+/* Loading Spinner */
+.spinner-border {
+    width: 3rem;
+    height: 3rem;
+    border-width: 0.3rem;
+}
+
+/* Empty State */
+.empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: #6c757d;
+}
+
+.empty-state i {
+    font-size: 3rem;
+    margin-bottom: 15px;
+    opacity: 0.5;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    h1 {
+        font-size: 1.4rem;
+    }
+    
+    .card-body {
+        padding: 12px;
+    }
+    
+    .nav-tabs .nav-link {
+        font-size: 0.9rem;
+        padding: 8px 12px;
+    }
+    
+    .approval-item {
+        padding: 10px;
+    }
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-in;
+}
+
+/* Success/Error Messages */
+.message-toast {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    min-width: 300px;
+    z-index: 9999;
+    animation: slideInRight 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Comment Box */
+.comment-box {
+    background-color: #f8f9fa;
+    border-left: 4px solid #0056b3;
+    padding: 10px;
+    margin-top: 10px;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    font-style: italic;
+}
+
+/* Batch Action Buttons */
+.batch-actions {
+    margin: 15px 0;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+}

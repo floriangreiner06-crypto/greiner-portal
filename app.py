@@ -1,10 +1,8 @@
-#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Greiner Portal - Flask Application
 """
-
-from flask import Flask, jsonify
+from flask import Flask, jsonify, render_template
 from api.vacation_api import vacation_api
 
 app = Flask(__name__)
@@ -27,6 +25,12 @@ def index():
 @app.route('/health')
 def health():
     return jsonify({'status': 'healthy'})
+
+# Neue Route für Urlaubsplaner V2
+@app.route('/urlaubsplaner/v2')
+def urlaubsplaner_v2():
+    """Moderne Urlaubsplaner Oberfläche (V2)"""
+    return render_template('urlaubsplaner_v2.html')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

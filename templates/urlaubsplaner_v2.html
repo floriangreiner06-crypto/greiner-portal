@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Urlaubsplaner V2 - Greiner Portal</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link href="{{ url_for('static', filename='css/vacation_v2.css') }}" rel="stylesheet">
+</head>
+<body>
+    <div class="container-fluid">
+        <!-- Header -->
+        <div class="row bg-primary text-white py-3 mb-4">
+            <div class="col">
+                <h1 class="mb-0">
+                    <i class="fas fa-umbrella-beach"></i> Urlaubsplaner V2
+                </h1>
+                <small>Greiner Portal - Moderne Urlaubsverwaltung</small>
+            </div>
+            <div class="col-auto text-end">
+                <div id="currentUser" class="mb-1">
+                    <i class="fas fa-user"></i> <span id="userName">Wird geladen...</span>
+                </div>
+                <div id="userBalance" class="small">
+                    <i class="fas fa-calendar-check"></i> Resturlaub: <span id="remainingDays">-</span> Tage
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Navigation -->
+        <ul class="nav nav-tabs mb-4" id="mainTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard" type="button" role="tab">
+                    <i class="fas fa-chart-line"></i> Dashboard
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="request-tab" data-bs-toggle="tab" data-bs-target="#request" type="button" role="tab">
+                    <i class="fas fa-plus-circle"></i> Urlaub beantragen
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="approval-tab" data-bs-toggle="tab" data-bs-target="#approval" type="button" role="tab">
+                    <i class="fas fa-check-circle"></i> Genehmigungen
+                    <span id="pendingBadge" class="badge bg-danger ms-2" style="display: none;">0</span>
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="calendar-tab" data-bs-toggle="tab" data-bs-target="#calendar" type="button" role="tab">
+                    <i class="fas fa-calendar-alt"></i> Team-Kalender
+                </button>
+            </li>
+        </ul>
+
+        <!-- Tab Content -->
+        <div class="tab-content" id="mainTabContent">
+            
+            <!-- DASHBOARD TAB -->
+            <div class="tab-pane fade show active" id="dashboard" role="tabpanel">
+                <div class="row">
+                    <!-- Mein Urlaubssaldo -->
+                    <div class="col-md-4 mb-3">
+                        <div class="card">
+                            <div class="card-header bg-primary text-white">
+                                <i class="fas fa-user"></i> Mein Urlaubssaldo
+                            </div>
+                            <div class="card-body">
+                                <div id="myBalanceDetails">
+                                    <div class="text-center">
+                                        <div class="spinner-border" role="status">
+                                            <span class="visually-hidden">Lädt...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Meine Anträge -->
+                    <div class="col-md-4 mb-3">
+                        <div class="card">
+                            <div class="card-header bg-info text-white">
+                                <i class="fas fa-list"></i> Meine Anträge
+                            </div>
+                            <div class="card-body">
+                                <div id="myRequestsList">
+                                    <div class="text-center">
+                                        <div class="spinner-border" role="status">
+                                            <span class="visually-hidden">Lädt...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Team-Abwesenheiten -->
+                    <div class="col-md-4 mb-3">
+                        <div class="card">
+                            <div class="card-header bg-warning text-dark">
+                                <i class="fas fa-users"></i> Team heute abwesend
+                            </div>
+                            <div class="card-body">
+                                <div id="teamAbsenceToday">
+                                    <div class="text-center">
+                                        <div class="spinner-border" role="status">
+                                            <span class="visually-hidden">Lädt...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- URLAUB BEANTRAGEN TAB -->
+            <div class="tab-pane fade" id="request" role="tabpanel">
+                <div class="row justify-content-center">
+                    <div class="col-md-8">
+                        <div class="card">
+                            <div class="card-header bg-success text-white">
+                                <h5 class="mb-0"><i class="fas fa-plus-circle"></i> Neuer Urlaubsantrag</h5>
+                            </div>
+                            <div class="card-body">
+                                <form id="vacationRequestForm">
+                                    <!-- Mitarbeiter-Auswahl -->
+                                    <div class="mb-3">
+                                        <label for="employeeSelect" class="form-label">Mitarbeiter *</label>
+                                        <select class="form-select" id="employeeSelect" required>
+                                            <option value="">Bitte wählen...</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- Urlaubsart -->
+                                    <div class="mb-3">
+                                        <label for="vacationTypeSelect" class="form-label">Urlaubsart *</label>
+                                        <select class="form-select" id="vacationTypeSelect" required>
+                                            <option value="">Bitte wählen...</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- Start- und Enddatum -->
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label for="startDate" class="form-label">Startdatum *</label>
+                                            <input type="date" class="form-control" id="startDate" required>
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label for="endDate" class="form-label">Enddatum *</label>
+                                            <input type="date" class="form-control" id="endDate" required>
+                                        </div>
+                                    </div>
+
+                                    <!-- Live-Berechnung -->
+                                    <div class="alert alert-info" id="calculationResult" style="display: none;">
+                                        <h6><i class="fas fa-calculator"></i> Berechnung:</h6>
+                                        <div id="calculationDetails"></div>
+                                    </div>
+
+                                    <!-- Warnung bei Überschneidung -->
+                                    <div class="alert alert-warning" id="overlapWarning" style="display: none;">
+                                        <i class="fas fa-exclamation-triangle"></i> <span id="overlapMessage"></span>
+                                    </div>
+
+                                    <!-- Kommentar -->
+                                    <div class="mb-3">
+                                        <label for="requestComment" class="form-label">Kommentar (optional)</label>
+                                        <textarea class="form-control" id="requestComment" rows="3"></textarea>
+                                    </div>
+
+                                    <!-- Buttons -->
+                                    <div class="d-grid gap-2">
+                                        <button type="submit" class="btn btn-success btn-lg" id="submitRequestBtn">
+                                            <i class="fas fa-paper-plane"></i> Antrag einreichen
+                                        </button>
+                                        <button type="reset" class="btn btn-secondary">
+                                            <i class="fas fa-redo"></i> Zurücksetzen
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- GENEHMIGUNGEN TAB -->
+            <div class="tab-pane fade" id="approval" role="tabpanel">
+                <div class="card">
+                    <div class="card-header bg-warning text-dark">
+                        <h5 class="mb-0">
+                            <i class="fas fa-check-circle"></i> Offene Genehmigungen
+                            <button class="btn btn-sm btn-dark float-end" id="refreshApprovalsBtn">
+                                <i class="fas fa-sync"></i> Aktualisieren
+                            </button>
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Filter -->
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label for="filterDepartment" class="form-label">Filter Abteilung:</label>
+                                <select class="form-select" id="filterDepartment">
+                                    <option value="">Alle Abteilungen</option>
+                                </select>
+                            </div>
+                            <div class="col-md-8 text-end">
+                                <button class="btn btn-success" id="batchApproveBtn" disabled>
+                                    <i class="fas fa-check"></i> Ausgewählte genehmigen
+                                </button>
+                                <button class="btn btn-danger" id="batchRejectBtn" disabled>
+                                    <i class="fas fa-times"></i> Ausgewählte ablehnen
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Antrags-Liste -->
+                        <div id="approvalsList">
+                            <div class="text-center">
+                                <div class="spinner-border" role="status">
+                                    <span class="visually-hidden">Lädt...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- KALENDER TAB -->
+            <div class="tab-pane fade" id="calendar" role="tabpanel">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-calendar-alt"></i> Team-Kalender
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Filter -->
+                        <div class="row mb-3">
+                            <div class="col-md-3">
+                                <label for="calendarDepartment" class="form-label">Abteilung:</label>
+                                <select class="form-select" id="calendarDepartment">
+                                    <option value="">Alle Abteilungen</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label for="calendarVacationType" class="form-label">Urlaubsart:</label>
+                                <select class="form-select" id="calendarVacationType">
+                                    <option value="">Alle Arten</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Kalender-Container -->
+                        <div id="teamCalendar">
+                            <div class="text-center py-5">
+                                <div class="spinner-border" role="status">
+                                    <span class="visually-hidden">Lädt...</span>
+                                </div>
+                                <p class="mt-3">Kalender wird geladen...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Bootstrap Bundle JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Custom JavaScript (wird später hinzugefügt) -->
+    <script src="{{ url_for('static', filename='js/vacation_manager.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/vacation_request.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/vacation_approval.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/vacation_calendar.js') }}"></script>
+</body>
+</html>
