@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Datenbank & Backups
+*.db
+*.db-journal
+*.db.gz
+backups/
+
+# Logs
+*.log
+logs/
+
+# Sensitive Config
+config/credentials.json
+config/.env
+*.key
+*.pem
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Uploads
+uploads/
+temp/
