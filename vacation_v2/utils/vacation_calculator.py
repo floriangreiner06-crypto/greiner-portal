@@ -137,7 +137,7 @@ class VacationCalculator:
         
         # 1. Anspruch aus vacation_entitlements
         cursor.execute("""
-            SELECT COALESCE(SUM(days_total), 0) as anspruch
+            SELECT COALESCE(SUM(total_days), 0) as anspruch
             FROM vacation_entitlements
             WHERE employee_id = ? AND year = ?
         """, (employee_id, year))
