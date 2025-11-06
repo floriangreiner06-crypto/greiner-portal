@@ -1,0 +1,20 @@
+# ============================================================================
+# Bankenspiegel 3.0 - Python Dependencies
+# ============================================================================
+# Installation: pip install -r requirements.txt
+# ============================================================================
+
+# PDF Parsing
+pdfplumber==0.11.0
+
+# Flask (fÃ¼r Web-Interface)
+Flask==3.0.0
+
+# Datenbank
+# sqlite3 ist in Python Standard Library enthalten
+
+# Optional aber empfohlen:
+python-dateutil==2.8.2
+
+# FÃ¼r Produktiv-Deployment (optional)
+gunicorn==21.2.0
