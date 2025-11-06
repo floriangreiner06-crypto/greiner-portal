@@ -369,3 +369,192 @@ def health_check():
         'version': '2.0',
         'timestamp': datetime.now().isoformat()
     })
+
+# ============================================================================
+# ENDPOINTS - Genehmigungsprozess
+# ============================================================================
+
+@vacation_api.route('/request/<int:request_id>/approve', methods=['POST'])
+def approve_request(request_id):
+    """POST /api/vacation/request/:request_id/approve - Genehmigt einen Urlaubsantrag"""
+    try:
+        data = request.get_json()
+        approved_by = data.get('approved_by')
+        comment = data.get('comment', '')
+        
+        if not approved_by:
+            return error_response('approved_by erforderlich', 400)
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT id, employee_id, booking_date, status FROM vacation_bookings WHERE id = ?", (request_id,))
+        booking = cursor.fetchone()
+        
+        if not booking:
+            conn.close()
+            return error_response('Buchung nicht gefunden', 404)
+        
+        if booking['status'] != 'pending':
+            conn.close()
+            return error_response(f'Nur pending Anträge können genehmigt werden (Status: {booking["status"]})', 400)
+        
+        now = datetime.now().isoformat()
+        cursor.execute("""
+            UPDATE vacation_bookings 
+            SET status = 'approved', approved_by = ?, approved_at = ?,
+                comment = CASE WHEN comment IS NULL OR comment = '' THEN ? ELSE comment || ' | Genehmigung: ' || ? END
+            WHERE id = ?
+        """, (approved_by, now, comment, comment, request_id))
+        
+        conn.commit()
+        conn.close()
+        
+        return json_response({'success': True, 'message': 'Urlaubsantrag genehmigt', 'request_id': request_id, 'approved_by': approved_by, 'approved_at': now})
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@vacation_api.route('/request/<int:request_id>/reject', methods=['POST'])
+def reject_request(request_id):
+    """POST /api/vacation/request/:request_id/reject - Lehnt einen Urlaubsantrag ab"""
+    try:
+        data = request.get_json()
+        approved_by = data.get('approved_by')
+        comment = data.get('comment', '')
+        
+        if not approved_by:
+            return error_response('approved_by erforderlich', 400)
+        if not comment:
+            return error_response('Ablehnungsgrund (comment) erforderlich', 400)
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT id, employee_id, booking_date, status FROM vacation_bookings WHERE id = ?", (request_id,))
+        booking = cursor.fetchone()
+        
+        if not booking:
+            conn.close()
+            return error_response('Buchung nicht gefunden', 404)
+        
+        if booking['status'] != 'pending':
+            conn.close()
+            return error_response(f'Nur pending Anträge können abgelehnt werden (Status: {booking["status"]})', 400)
+        
+        now = datetime.now().isoformat()
+        cursor.execute("""
+            UPDATE vacation_bookings 
+            SET status = 'rejected', approved_by = ?, approved_at = ?,
+                comment = CASE WHEN comment IS NULL OR comment = '' THEN ? ELSE comment || ' | Ablehnung: ' || ? END
+            WHERE id = ?
+        """, (approved_by, now, comment, comment, request_id))
+        
+        conn.commit()
+        conn.close()
+        
+        return json_response({'success': True, 'message': 'Urlaubsantrag abgelehnt', 'request_id': request_id, 'approved_by': approved_by, 'approved_at': now, 'reason': comment})
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@vacation_api.route('/approvals/pending', methods=['GET'])
+def get_pending_approvals():
+    """GET /api/vacation/approvals/pending - Gibt alle offenen Genehmigungen zurück"""
+    try:
+        department = request.args.get('department')
+        limit = request.args.get('limit', 50, type=int)
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        query = """
+            SELECT vb.id, vb.employee_id, e.first_name || ' ' || e.last_name as employee_name,
+                   e.department_name, e.location, vb.booking_date, vb.day_part,
+                   vt.name as vacation_type, vt.color, vb.comment, vb.created_at
+            FROM vacation_bookings vb
+            JOIN employees e ON vb.employee_id = e.id
+            JOIN vacation_types vt ON vb.vacation_type_id = vt.id
+            WHERE vb.status = 'pending'
+        """
+        params = []
+        if department:
+            query += " AND e.department_name = ?"
+            params.append(department)
+        query += " ORDER BY vb.created_at ASC LIMIT ?"
+        params.append(limit)
+        
+        cursor.execute(query, params)
+        
+        approvals = []
+        for row in cursor.fetchall():
+            approvals.append({
+                'id': row['id'],
+                'employee': {'id': row['employee_id'], 'name': row['employee_name'], 'department': row['department_name'], 'location': row['location']},
+                'booking_date': row['booking_date'],
+                'day_part': row['day_part'],
+                'vacation_type': {'name': row['vacation_type'], 'color': row['color']},
+                'comment': row['comment'],
+                'created_at': row['created_at']
+            })
+        
+        conn.close()
+        return json_response({'count': len(approvals), 'pending_approvals': approvals})
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@vacation_api.route('/approvals/batch', methods=['POST'])
+def batch_approve():
+    """POST /api/vacation/approvals/batch - Genehmigt/lehnt mehrere Anträge ab"""
+    try:
+        data = request.get_json()
+        approved_by = data.get('approved_by')
+        approvals = data.get('approvals', [])
+        
+        if not approved_by:
+            return error_response('approved_by erforderlich', 400)
+        if not approvals:
+            return error_response('approvals Liste erforderlich', 400)
+        
+        results = []
+        conn = get_db()
+        cursor = conn.cursor()
+        now = datetime.now().isoformat()
+        
+        for approval in approvals:
+            request_id = approval.get('request_id')
+            action = approval.get('action')
+            comment = approval.get('comment', '')
+            
+            if not request_id or not action:
+                results.append({'request_id': request_id, 'success': False, 'error': 'request_id und action erforderlich'})
+                continue
+            if action not in ['approve', 'reject']:
+                results.append({'request_id': request_id, 'success': False, 'error': 'action muss approve oder reject sein'})
+                continue
+            
+            new_status = 'approved' if action == 'approve' else 'rejected'
+            
+            try:
+                cursor.execute("""
+                    UPDATE vacation_bookings 
+                    SET status = ?, approved_by = ?, approved_at = ?,
+                        comment = CASE WHEN comment IS NULL OR comment = '' THEN ? ELSE comment || ' | ' || ? END
+                    WHERE id = ? AND status = 'pending'
+                """, (new_status, approved_by, now, comment, comment, request_id))
+                
+                if cursor.rowcount > 0:
+                    results.append({'request_id': request_id, 'success': True, 'action': action})
+                else:
+                    results.append({'request_id': request_id, 'success': False, 'error': 'Buchung nicht gefunden oder nicht pending'})
+            except Exception as e:
+                results.append({'request_id': request_id, 'success': False, 'error': str(e)})
+        
+        conn.commit()
+        conn.close()
+        
+        successful = len([r for r in results if r['success']])
+        return json_response({'total': len(approvals), 'successful': successful, 'failed': len(approvals) - successful, 'results': results})
+    except Exception as e:
+        return error_response(str(e), 500)
