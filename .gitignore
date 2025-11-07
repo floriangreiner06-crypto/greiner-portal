@@ -39,3 +39,23 @@ Thumbs.db
 # Uploads
 uploads/
 temp/
+
+# Backups
+*.backup
+*.backup_*
+app.py.backup_*
+
+# Datenbank (WICHTIG!)
+data/
+*.db
+*.db-*
+
+# Temporäre Scripts
+fix_*.py
+test_*.py
+analyze_*.py
+
+# Logs
+*.log
+logs/
+
