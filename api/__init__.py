@@ -1,7 +1,3 @@
 """
-Vacation API Routes
+API Package für Greiner Portal
 """
-
-from .vacation_api import vacation_api
-
-__all__ = ['vacation_api']
