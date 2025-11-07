@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+
+{% block title %}Bankenspiegel - Dashboard{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h2 mb-0">
+                <i class="bi bi-bank2 me-2"></i>Bankenspiegel Dashboard
+            </h1>
+            <p class="text-muted mb-0">Übersicht über alle Konten und Transaktionen</p>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-outline-primary" onclick="location.reload()">
+                <i class="bi bi-arrow-clockwise me-1"></i>Aktualisieren
+            </button>
+        </div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="row g-3 mb-4" id="kpiCards">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <p class="text-muted mb-1 small">Gesamtsaldo</p>
+                            <h3 class="mb-0" id="gesamtsaldo">
+                                <span class="spinner-border spinner-border-sm"></span>
+                            </h3>
+                        </div>
+                        <div class="bg-primary bg-opacity-10 rounded p-2">
+                            <i class="bi bi-cash-coin text-primary fs-4"></i>
+                        </div>
+                    </div>
+                    <small class="text-muted">Über alle aktiven Konten</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <p class="text-muted mb-1 small">Banken</p>
+                            <h3 class="mb-0" id="anzahlBanken">
+                                <span class="spinner-border spinner-border-sm"></span>
+                            </h3>
+                        </div>
+                        <div class="bg-success bg-opacity-10 rounded p-2">
+                            <i class="bi bi-building text-success fs-4"></i>
+                        </div>
+                    </div>
+                    <small class="text-muted">Bankverbindungen</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <p class="text-muted mb-1 small">Konten</p>
+                            <h3 class="mb-0">
+                                <span id="anzahlKontenAktiv">
+                                    <span class="spinner-border spinner-border-sm"></span>
+                                </span>
+                                <small class="text-muted fs-6">/ <span id="anzahlKontenGesamt">-</span></small>
+                            </h3>
+                        </div>
+                        <div class="bg-info bg-opacity-10 rounded p-2">
+                            <i class="bi bi-credit-card text-info fs-4"></i>
+                        </div>
+                    </div>
+                    <small class="text-muted">Aktiv / Gesamt</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <p class="text-muted mb-1 small">Transaktionen</p>
+                            <h3 class="mb-0" id="anzahlTransaktionen">
+                                <span class="spinner-border spinner-border-sm"></span>
+                            </h3>
+                        </div>
+                        <div class="bg-warning bg-opacity-10 rounded p-2">
+                            <i class="bi bi-arrow-left-right text-warning fs-4"></i>
+                        </div>
+                    </div>
+                    <small class="text-muted">Letzte 30 Tage</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Monatliche Übersicht (Letzte 30 Tage) -->
+    <div class="row mb-4">
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0 pt-3">
+                    <h5 class="mb-0">Monatliche Umsätze (Letzte 30 Tage)</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <div class="border rounded p-3 text-center">
+                                <small class="text-muted d-block mb-1">Einnahmen</small>
+                                <h4 class="mb-0 text-success" id="einnahmen30Tage">
+                                    <span class="spinner-border spinner-border-sm"></span>
+                                </h4>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="border rounded p-3 text-center">
+                                <small class="text-muted d-block mb-1">Ausgaben</small>
+                                <h4 class="mb-0 text-danger" id="ausgaben30Tage">
+                                    <span class="spinner-border spinner-border-sm"></span>
+                                </h4>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="border rounded p-3 text-center">
+                                <small class="text-muted d-block mb-1">Saldo</small>
+                                <h4 class="mb-0" id="saldo30Tage">
+                                    <span class="spinner-border spinner-border-sm"></span>
+                                </h4>
+                            </div>
+                        </div>
+                    </div>
+                    <canvas id="umsatzChart" height="80"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white border-0 pt-3">
+                    <h5 class="mb-0">Interne Transfers</h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info mb-3">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <small>Umbuchungen zwischen eigenen Konten</small>
+                    </div>
+                    <div class="mb-3">
+                        <small class="text-muted d-block mb-1">Anzahl Transfers</small>
+                        <h4 class="mb-0" id="interneTransfersAnzahl">
+                            <span class="spinner-border spinner-border-sm"></span>
+                        </h4>
+                    </div>
+                    <div>
+                        <small class="text-muted d-block mb-1">Volumen (30 Tage)</small>
+                        <h4 class="mb-0 text-muted" id="interneTransfersVolumen">
+                            <span class="spinner-border spinner-border-sm"></span>
+                        </h4>
+                    </div>
+                    <hr>
+                    <small class="text-muted">
+                        Diese Beträge werden nicht in den Umsätzen gezählt, da es sich um interne Umbuchungen handelt.
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Letzte Transaktionen -->
+    <div class="row">
+        <div class="col">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0 pt-3 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Letzte Transaktionen</h5>
+                    <a href="/bankenspiegel/transaktionen" class="btn btn-sm btn-outline-primary">
+                        Alle anzeigen <i class="bi bi-arrow-right ms-1"></i>
+                    </a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0" id="letzteTransaktionen">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Datum</th>
+                                    <th>Konto</th>
+                                    <th>Verwendungszweck</th>
+                                    <th class="text-end">Betrag</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="4" class="text-center py-4">
+                                        <span class="spinner-border spinner-border-sm me-2"></span>
+                                        Lade Transaktionen...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/bankenspiegel_dashboard.js') }}"></script>
+{% endblock %}

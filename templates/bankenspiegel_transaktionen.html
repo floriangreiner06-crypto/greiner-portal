@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block title %}Bankenspiegel - Transaktionen{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h2 mb-0">
+                <i class="bi bi-arrow-left-right me-2"></i>Transaktionen
+            </h1>
+            <p class="text-muted mb-0">Alle Buchungen im Detail</p>
+        </div>
+        <div class="col-auto">
+            <a href="/bankenspiegel/dashboard" class="btn btn-outline-secondary me-2">
+                <i class="bi bi-arrow-left me-1"></i>Zurück
+            </a>
+            <button class="btn btn-outline-primary" onclick="loadTransaktionen()">
+                <i class="bi bi-arrow-clockwise me-1"></i>Aktualisieren
+            </button>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="row mb-4">
+        <div class="col">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted mb-1">Von Datum</label>
+                            <input type="date" class="form-control" id="vonDatum">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted mb-1">Bis Datum</label>
+                            <input type="date" class="form-control" id="bisDatum">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted mb-1">Konto</label>
+                            <select class="form-select" id="kontoFilter">
+                                <option value="">Alle Konten</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted mb-1">Typ</label>
+                            <select class="form-select" id="typFilter">
+                                <option value="">Alle</option>
+                                <option value="einnahmen">Nur Einnahmen</option>
+                                <option value="ausgaben">Nur Ausgaben</option>
+                            </select>
+                        </div>
+                        <div class="col-md-9">
+                            <label class="form-label small text-muted mb-1">Suche in Verwendungszweck</label>
+                            <input type="text" class="form-control" id="searchTransaktionen" placeholder="Suchbegriff eingeben...">
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button class="btn btn-primary w-100" onclick="applyFilters()">
+                                <i class="bi bi-funnel me-1"></i>Filter anwenden
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistik -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <small class="text-muted d-block mb-1">Einnahmen (gefiltert)</small>
+                    <h4 class="mb-0 text-success" id="einnahmenGefiltert">0,00 €</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <small class="text-muted d-block mb-1">Ausgaben (gefiltert)</small>
+                    <h4 class="mb-0 text-danger" id="ausgabenGefiltert">0,00 €</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <small class="text-muted d-block mb-1">Saldo (gefiltert)</small>
+                    <h4 class="mb-0" id="saldoGefiltert">0,00 €</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <small class="text-muted d-block mb-1">Anzahl</small>
+                    <h4 class="mb-0 text-primary" id="anzahlGefiltert">0</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Transaktionen-Tabelle -->
+    <div class="row">
+        <div class="col">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0" id="transaktionenTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 110px;">Datum</th>
+                                    <th style="width: 150px;">Konto</th>
+                                    <th>Verwendungszweck</th>
+                                    <th style="width: 140px;" class="text-end">Betrag</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="4" class="text-center py-5">
+                                        <span class="spinner-border spinner-border-sm me-2"></span>
+                                        Lade Transaktionen...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="card-footer bg-white border-0">
+                    <div class="row align-items-center">
+                        <div class="col">
+                            <small class="text-muted" id="transaktionenInfo">Lade Transaktionen...</small>
+                        </div>
+                        <div class="col-auto">
+                            <nav>
+                                <ul class="pagination pagination-sm mb-0" id="pagination">
+                                    <li class="page-item disabled">
+                                        <a class="page-link" href="#">Lädt...</a>
+                                    </li>
+                                </ul>
+                            </nav>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/bankenspiegel_transaktionen.js') }}"></script>
+{% endblock %}

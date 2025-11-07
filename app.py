@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Greiner Portal - Flask Application
 """
@@ -32,7 +31,6 @@ def urlaubsplaner_v2():
     """Moderne Urlaubsplaner Oberfläche (V2)"""
     return render_template('urlaubsplaner_v2.html')
 
-
 # ============================================================================
 # BANKENSPIEGEL REST API
 # ============================================================================
@@ -40,7 +38,12 @@ from api.bankenspiegel_api import bankenspiegel_api
 app.register_blueprint(bankenspiegel_api)
 print("✅ Bankenspiegel API registriert: /api/bankenspiegel/")
 
+# ============================================================================
+# BANKENSPIEGEL FRONTEND ROUTES
+# ============================================================================
+from routes.bankenspiegel_routes import bankenspiegel_bp
+app.register_blueprint(bankenspiegel_bp)
+print("✅ Bankenspiegel Frontend registriert: /bankenspiegel/")
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
-
-
