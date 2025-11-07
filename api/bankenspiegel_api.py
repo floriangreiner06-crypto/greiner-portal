@@ -65,7 +65,7 @@ def get_dashboard():
         """)
         saldo_data = row_to_dict(cursor.fetchone())
         
-        # 2. Transaktionen letzte 30 Tage
+        # 2. Transaktionen letzte 30 Tage (OHNE INTERNE TRANSFERS)
         cursor.execute("""
             SELECT 
                 COUNT(*) as anzahl,
@@ -73,8 +73,32 @@ def get_dashboard():
                 SUM(CASE WHEN betrag < 0 THEN ABS(betrag) ELSE 0 END) as ausgaben
             FROM transaktionen
             WHERE buchungsdatum >= DATE('now', '-30 days')
+              AND NOT (
+                verwendungszweck LIKE '%Autohaus Greiner%Autohaus Greiner%'
+                OR verwendungszweck LIKE '%Umbuchung%'
+                OR verwendungszweck LIKE '%Einlage%'
+                OR verwendungszweck LIKE '%Rückzahlung Einlage%'
+                OR (verwendungszweck LIKE '%PN:801%' AND verwendungszweck LIKE '%Autohaus Greiner%')
+              )
         """)
         trans_30d = row_to_dict(cursor.fetchone())
+        
+        # 2b. Interne Transfers der letzten 30 Tage (SEPARAT)
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as anzahl,
+                SUM(ABS(betrag)) as volumen
+            FROM transaktionen
+            WHERE buchungsdatum >= DATE('now', '-30 days')
+              AND (
+                verwendungszweck LIKE '%Autohaus Greiner%Autohaus Greiner%'
+                OR verwendungszweck LIKE '%Umbuchung%'
+                OR verwendungszweck LIKE '%Einlage%'
+                OR verwendungszweck LIKE '%Rückzahlung Einlage%'
+                OR (verwendungszweck LIKE '%PN:801%' AND verwendungszweck LIKE '%Autohaus Greiner%')
+              )
+        """)
+        interne_30d = row_to_dict(cursor.fetchone())
         
         # 3. Aktueller Monat (aus v_monatliche_umsaetze View)
         aktueller_monat = date.today().strftime('%Y-%m')
@@ -89,7 +113,7 @@ def get_dashboard():
         """, (aktueller_monat,))
         monat_data = row_to_dict(cursor.fetchone())
         
-        # 4. Top 5 Ausgaben-Kategorien (aktueller Monat)
+        # 4. Top 5 Ausgaben-Kategorien (aktueller Monat, OHNE INTERNE TRANSFERS)
         cursor.execute("""
             SELECT 
                 kategorie,
@@ -99,6 +123,13 @@ def get_dashboard():
             WHERE buchungsdatum >= DATE('now', 'start of month')
             AND betrag < 0
             AND kategorie IS NOT NULL
+            AND NOT (
+                verwendungszweck LIKE '%Autohaus Greiner%Autohaus Greiner%'
+                OR verwendungszweck LIKE '%Umbuchung%'
+                OR verwendungszweck LIKE '%Einlage%'
+                OR verwendungszweck LIKE '%Rückzahlung Einlage%'
+                OR (verwendungszweck LIKE '%PN:801%' AND verwendungszweck LIKE '%Autohaus Greiner%')
+            )
             GROUP BY kategorie
             ORDER BY summe DESC
             LIMIT 5
@@ -124,6 +155,11 @@ def get_dashboard():
                     'einnahmen': round(trans_30d['einnahmen'] or 0, 2),
                     'ausgaben': round(trans_30d['ausgaben'] or 0, 2),
                     'saldo': round((trans_30d['einnahmen'] or 0) - (trans_30d['ausgaben'] or 0), 2)
+                },
+                'interne_transfers_30_tage': {
+                    'anzahl_transaktionen': interne_30d['anzahl'] or 0,
+                    'volumen': round(interne_30d['volumen'] or 0, 2),
+                    'hinweis': 'Interne Umbuchungen zwischen eigenen Konten (nicht in Umsätzen gezählt)'
                 },
                 'aktueller_monat': {
                     'monat': aktueller_monat,
