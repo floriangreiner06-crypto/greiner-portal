@@ -347,6 +347,19 @@
                 </a>
             </div>
 
+            <!-- Verkauf -->
+            <div class="nav-item has-submenu {% if '/verkauf/' in request.path %}open{% endif %}"
+                 onclick="toggleSubmenu(this)">
+                <span class="nav-item-icon">🚗</span>
+                <span class="nav-item-text">Verkauf</span>
+            </div>
+            <div class="submenu {% if '/verkauf/' in request.path %}open{% endif %}">
+                <a href="/verkauf/auftragseingang"
+                   class="submenu-item {% if request.path == '/verkauf/auftragseingang' %}active{% endif %}">
+                    <i class="bi bi-cart-check me-2"></i>Auftragseingang
+                </a>
+            </div>
+
             <!-- Mitarbeiter / Urlaubsplaner -->
             <div class="nav-item has-submenu {% if '/urlaubsplaner' in request.path or '/mitarbeiter/urlaubsplaner' in request.path %}open{% endif %}" 
                  onclick="toggleSubmenu(this)">

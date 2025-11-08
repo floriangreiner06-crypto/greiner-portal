@@ -45,5 +45,19 @@ from routes.bankenspiegel_routes import bankenspiegel_bp
 app.register_blueprint(bankenspiegel_bp)
 print("✅ Bankenspiegel Frontend registriert: /bankenspiegel/")
 
+# ============================================================================
+# VERKAUF REST API
+# ============================================================================
+from api.verkauf_api import verkauf_api
+app.register_blueprint(verkauf_api)
+print("✅ Verkauf API registriert: /api/verkauf/")
+
+# ============================================================================
+# VERKAUF FRONTEND ROUTES
+# ============================================================================
+from routes.verkauf_routes import verkauf_bp
+app.register_blueprint(verkauf_bp)
+print("✅ Verkauf Frontend registriert: /verkauf/")
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

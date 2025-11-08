@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block title %}Auftragseingang - Greiner Portal{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h2 mb-0">
+                <i class="bi bi-cart-check me-2"></i>Auftragseingang
+            </h1>
+            <p class="text-muted mb-0">Verkaufsaufträge nach Verkäufer und Fahrzeugart</p>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-outline-primary" onclick="loadData()">
+                <i class="bi bi-arrow-clockwise me-1"></i>Aktualisieren
+            </button>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label for="filterMonth" class="form-label small fw-semibold">Monat</label>
+                    <select class="form-select" id="filterMonth">
+                        <option value="1">Januar</option>
+                        <option value="2">Februar</option>
+                        <option value="3">März</option>
+                        <option value="4">April</option>
+                        <option value="5">Mai</option>
+                        <option value="6">Juni</option>
+                        <option value="7">Juli</option>
+                        <option value="8">August</option>
+                        <option value="9">September</option>
+                        <option value="10">Oktober</option>
+                        <option value="11">November</option>
+                        <option value="12">Dezember</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="filterYear" class="form-label small fw-semibold">Jahr</label>
+                    <select class="form-select" id="filterYear">
+                        <option value="2023">2023</option>
+                        <option value="2024">2024</option>
+                        <option value="2025">2025</option>
+                        <option value="2026">2026</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-primary w-100" onclick="loadData()">
+                        <i class="bi bi-search me-1"></i>Anzeigen
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Info Boxes -->
+    <div class="row g-3 mb-4" id="infoBoxes">
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm h-100 bg-primary text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <p class="mb-1 opacity-75">Periode</p>
+                            <h4 class="mb-0" id="periodeInfo">-</h4>
+                        </div>
+                        <i class="bi bi-calendar-month fs-1 opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm h-100 bg-success text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <p class="mb-1 opacity-75">Aktueller Tag</p>
+                            <h4 class="mb-0" id="heuteInfo">-</h4>
+                        </div>
+                        <i class="bi bi-calendar-day fs-1 opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Aufträge HEUTE -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white border-bottom">
+            <h5 class="mb-0">
+                <i class="bi bi-fire text-danger me-2"></i>Auftragseingang Heute
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" id="tableHeute">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Verkäufer</th>
+                            <th class="text-center">NW</th>
+                            <th class="text-center">GW</th>
+                            <th class="text-center fw-bold">Gesamt</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="4" class="text-center py-5">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Lädt...</span>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Kumuliert MONAT -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white border-bottom">
+            <h5 class="mb-0">
+                <i class="bi bi-graph-up text-primary me-2"></i>Kumulierter Auftragseingang
+                <span id="periodeTitle"></span>
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" id="tablePeriode">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Verkäufer</th>
+                            <th class="text-center">NW</th>
+                            <th class="text-center">GW</th>
+                            <th class="text-center fw-bold">Gesamt</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="4" class="text-center py-5">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Lädt...</span>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Legende -->
+    <div class="alert alert-info border-0 shadow-sm">
+        <h6 class="alert-heading">
+            <i class="bi bi-info-circle me-2"></i>Hinweise
+        </h6>
+        <ul class="mb-0 small">
+            <li><strong>Auftragseingang:</strong> Basiert auf Vertragsdatum (out_sales_contract_date)</li>
+            <li><strong>NW:</strong> Neuwagen (N) und Vorführwagen (V)</li>
+            <li><strong>GW:</strong> Gebrauchtwagen (D, G, T)</li>
+            <li><strong>Stückzahlen:</strong> Nur Anzahl Fahrzeuge, keine Beträge</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/verkauf_auftragseingang.js') }}"></script>
+{% endblock %}
