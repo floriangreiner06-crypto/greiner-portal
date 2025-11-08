@@ -466,7 +466,64 @@ GROUP BY dealer_vehicle_type;
 **Autor:** Claude AI (Sonnet 4.5)  
 **Projekt:** Greiner Portal - Verkaufs-Dashboard-System  
 **Status:** 🟢 TAG 19 ERFOLGREICH ABGESCHLOSSEN  
+---
 
+## 🚗 TODO TAG 20: HYUNDAI BANK INTEGRATION
+
+**Aktueller Status Einkaufsfinanzierungen:**
+- ✅ **Stellantis Bank** - ZIP-Import funktioniert (104 Fahrzeuge, 2,98 Mio EUR)
+- ✅ **Santander** - CSV-Import funktioniert (41 Fahrzeuge, 824k EUR)
+- ❌ **Hyundai Bank** - FEHLT NOCH!
+
+**Geplante Implementierung (TAG 20):**
+
+### 1. Web Scraping / Daten-Import
+**Zu klären:**
+- URL der Hyundai Bank Website mit Finanzierungsdaten
+- Datenformat (HTML-Tabelle, PDF, CSV, API?)
+- Login-Credentials erforderlich?
+- Aktualisierungsfrequenz (täglich/wöchentlich?)
+
+### 2. Technische Umsetzung
+```python
+# Mögliche Ansätze:
+
+# Option A: Web Scraping (wenn HTML)
+import requests
+from bs4 import BeautifulSoup
+
+# Option B: PDF-Parser (wenn PDF wie Stellantis)
+from pdf_parser import HyundaiBankParser
+
+# Option C: API (wenn verfügbar)
+response = requests.get('https://hyundai-bank.de/api/...')
+```
+
+### 3. Datenbank-Integration
+```sql
+-- Hyundai Bank Fahrzeuge in fahrzeugfinanzierungen
+INSERT INTO fahrzeugfinanzierungen (
+    bank_name,
+    konto_nummer,
+    vin,
+    fahrzeug_modell,
+    finanzierungsbetrag,
+    ...
+) VALUES (
+    'Hyundai Bank',
+    'HYU-12345',
+    ...
+);
+```
+
+### 4. Dashboard-Update
+- Einkaufsfinanzierung Dashboard erweitern
+- 3. Karte "Hyundai Bank" hinzufügen (wie Stellantis & Santander)
+- Summe aller 3 Banken anzeigen
+
+**Geschätzte Zeit:** 1-2 Stunden (je nach Komplexität der Website)
+
+---
 ---
 
 # 🎉 HERZLICHEN GLÜCKWUNSCH ZU TAG 19! 🎉
