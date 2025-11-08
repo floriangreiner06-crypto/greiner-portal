@@ -112,7 +112,7 @@ function updateKontenTable() {
     
     // Tabelle befüllen
     tbody.innerHTML = gefiltert.map(konto => {
-        const saldo = konto.aktueller_saldo || 0;
+        const saldo = konto.saldo || 0;
         const saldoClass = saldo >= 0 ? 'text-success' : 'text-danger';
         const statusBadge = konto.aktiv 
             ? '<span class="badge bg-success">Aktiv</span>'
