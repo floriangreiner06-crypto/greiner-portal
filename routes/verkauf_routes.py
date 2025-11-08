@@ -17,3 +17,7 @@ def auftragseingang():
 def auftragseingang_detail():
     """Detail-Ansicht mit Modellen"""
     return render_template('verkauf_auftragseingang_detail.html')
+@verkauf_bp.route('/auslieferung/detail')
+def auslieferung_detail():
+    """Detail-Ansicht Auslieferungen mit Modellen"""
+    return render_template('verkauf_auslieferung_detail.html', now=datetime.now())

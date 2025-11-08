@@ -1,4 +1,4 @@
-// Auftragseingang Detail - JavaScript (KORRIGIERT TAG 19)
+// Auslieferungen Detail - JavaScript (KORRIGIERT TAG 19)
 // Kategorisierung nach dealer_vehicle_type, NICHT nach Marke!
 let currentMonth = 11;
 let currentYear = 2025;
@@ -26,7 +26,7 @@ async function loadSummary() {
     container.innerHTML = '<div class="col-12 text-center"><div class="spinner-border"></div></div>';
 
     try {
-        const response = await fetch(`/api/verkauf/auftragseingang/summary?month=${currentMonth}&year=${currentYear}`);
+        const response = await fetch(`/api/verkauf/auslieferung/summary?month=${currentMonth}&year=${currentYear}`);
         const data = await response.json();
 
         if (data.error) {
@@ -205,7 +205,7 @@ async function loadDetails() {
     container.innerHTML = '<div class="text-center"><div class="spinner-border"></div></div>';
 
     try {
-        let url = `/api/verkauf/auftragseingang/detail?month=${currentMonth}&year=${currentYear}`;
+        let url = `/api/verkauf/auslieferung/detail?month=${currentMonth}&year=${currentYear}`;
         if (currentLocation) {
             url += `&location=${encodeURIComponent(currentLocation)}`;
         }
@@ -219,7 +219,7 @@ async function loadDetails() {
         }
 
         if (!data.verkaufer || data.verkaufer.length === 0) {
-            container.innerHTML = '<div class="alert alert-info">Keine Daten für diesen Zeitraum</div>';
+            container.innerHTML = '<div class="alert alert-info">Keine Auslieferungen für diesen Zeitraum</div>';
             return;
         }
 
