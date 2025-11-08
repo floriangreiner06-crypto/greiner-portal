@@ -497,6 +497,183 @@ def health_check():
             'error': str(e)
         }), 500
 
+# ============================================================================
+# EINKAUFSFINANZIERUNG ENDPOINT
+# ============================================================================
+@bankenspiegel_api.route('/einkaufsfinanzierung', methods=['GET'])
+def get_einkaufsfinanzierung():
+    """
+    GET /api/bankenspiegel/einkaufsfinanzierung
+    Einkaufsfinanzierung - Übersicht Stellantis & Santander
+    
+    Returns:
+        JSON mit:
+        - gesamt: Gesamt-Statistik
+        - institute: Liste mit Daten pro Institut
+        - top_fahrzeuge: Teuerste Fahrzeuge
+        - warnungen: Zinsfreiheit-Warnungen
+    """
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # 1. GESAMT-ÜBERSICHT
+        cursor.execute("""
+            SELECT
+                COUNT(*) as anzahl_fahrzeuge,
+                SUM(aktueller_saldo) as gesamt_finanzierung,
+                SUM(original_betrag) as gesamt_original,
+                SUM(original_betrag - aktueller_saldo) as gesamt_abbezahlt
+            FROM fahrzeugfinanzierungen
+        """)
+        gesamt_row = cursor.fetchone()
+        
+        # 2. DATEN PRO INSTITUT
+        cursor.execute("""
+            SELECT DISTINCT finanzinstitut 
+            FROM fahrzeugfinanzierungen 
+            ORDER BY finanzinstitut
+        """)
+        institute_liste = [row['finanzinstitut'] for row in cursor.fetchall()]
+        
+        institute = []
+        for institut in institute_liste:
+            # Statistik pro Institut
+            cursor.execute("""
+                SELECT
+                    COUNT(*) as anzahl,
+                    SUM(aktueller_saldo) as finanzierung,
+                    SUM(original_betrag) as original,
+                    AVG(aktueller_saldo) as durchschnitt,
+                    MAX(alter_tage) as aeltestes_fahrzeug,
+                    MIN(zinsfreiheit_tage) as min_zinsfreiheit,
+                    SUM(original_betrag - aktueller_saldo) as abbezahlt
+                FROM fahrzeugfinanzierungen
+                WHERE finanzinstitut = ?
+            """, (institut,))
+            stats = cursor.fetchone()
+            
+            # Marken-Verteilung
+            cursor.execute("""
+                SELECT
+                    rrdi,
+                    COUNT(*) as anzahl,
+                    SUM(aktueller_saldo) as finanzierung
+                FROM fahrzeugfinanzierungen
+                WHERE finanzinstitut = ?
+                GROUP BY rrdi
+                ORDER BY anzahl DESC
+            """, (institut,))
+            marken = []
+            for row in cursor.fetchall():
+                marke_name = row['rrdi'] if row['rrdi'] else "Unbekannt"
+                # Vereinfachung für Stellantis
+                if institut == 'Stellantis':
+                    if "0154X" in str(marke_name):
+                        marke_name = "Leapmotor"
+                    else:
+                        marke_name = "Opel/Hyundai"
+                
+                marken.append({
+                    'name': marke_name,
+                    'anzahl': row['anzahl'],
+                    'finanzierung': float(row['finanzierung']) if row['finanzierung'] else 0
+                })
+            
+            institute.append({
+                'name': institut,
+                'anzahl': stats['anzahl'],
+                'finanzierung': float(stats['finanzierung']) if stats['finanzierung'] else 0,
+                'original': float(stats['original']) if stats['original'] else 0,
+                'durchschnitt': float(stats['durchschnitt']) if stats['durchschnitt'] else 0,
+                'aeltestes': stats['aeltestes_fahrzeug'],
+                'min_zinsfreiheit': stats['min_zinsfreiheit'],
+                'abbezahlt': float(stats['abbezahlt']) if stats['abbezahlt'] else 0,
+                'marken': marken
+            })
+        
+        # 3. TOP 10 TEUERSTE FAHRZEUGE
+        cursor.execute("""
+            SELECT
+                finanzinstitut,
+                vin,
+                modell,
+                rrdi,
+                aktueller_saldo,
+                original_betrag,
+                alter_tage,
+                zinsfreiheit_tage
+            FROM fahrzeugfinanzierungen
+            ORDER BY aktueller_saldo DESC
+            LIMIT 10
+        """)
+        
+        top_fahrzeuge = []
+        for row in cursor.fetchall():
+            top_fahrzeuge.append({
+                'institut': row['finanzinstitut'],
+                'vin': row['vin'][-8:] if row['vin'] else '???',
+                'modell': row['modell'],
+                'marke': row['rrdi'],
+                'saldo': float(row['aktueller_saldo']) if row['aktueller_saldo'] else 0,
+                'original': float(row['original_betrag']) if row['original_betrag'] else 0,
+                'alter': row['alter_tage'],
+                'zinsfreiheit': row['zinsfreiheit_tage']
+            })
+        
+        # 4. ZINSFREIHEIT-WARNUNGEN (< 30 Tage)
+        cursor.execute("""
+            SELECT
+                finanzinstitut,
+                vin,
+                modell,
+                rrdi,
+                zinsfreiheit_tage,
+                aktueller_saldo,
+                alter_tage
+            FROM fahrzeugfinanzierungen
+            WHERE zinsfreiheit_tage IS NOT NULL
+            AND zinsfreiheit_tage < 30
+            ORDER BY zinsfreiheit_tage ASC
+        """)
+        
+        warnungen = []
+        for row in cursor.fetchall():
+            warnungen.append({
+                'institut': row['finanzinstitut'],
+                'vin': row['vin'][-8:] if row['vin'] else '???',
+                'modell': row['modell'],
+                'marke': row['rrdi'],
+                'tage_uebrig': row['zinsfreiheit_tage'],
+                'saldo': float(row['aktueller_saldo']) if row['aktueller_saldo'] else 0,
+                'alter': row['alter_tage'],
+                'kritisch': row['zinsfreiheit_tage'] < 15 if row['zinsfreiheit_tage'] else False
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'gesamt': {
+                'anzahl_fahrzeuge': gesamt_row['anzahl_fahrzeuge'],
+                'finanzierung': float(gesamt_row['gesamt_finanzierung']) if gesamt_row['gesamt_finanzierung'] else 0,
+                'original': float(gesamt_row['gesamt_original']) if gesamt_row['gesamt_original'] else 0,
+                'abbezahlt': float(gesamt_row['gesamt_abbezahlt']) if gesamt_row['gesamt_abbezahlt'] else 0,
+                'abbezahlt_prozent': round(gesamt_row['gesamt_abbezahlt'] / gesamt_row['gesamt_original'] * 100, 1) if gesamt_row['gesamt_original'] else 0
+            },
+            'institute': institute,
+            'top_fahrzeuge': top_fahrzeuge,
+            'warnungen': warnungen,
+            'timestamp': datetime.now().isoformat()
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 
 # ============================================================================
 # ERROR HANDLERS

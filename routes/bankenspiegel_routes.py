@@ -17,3 +17,8 @@ def konten():
 def transaktionen():
     """Transaktionsliste"""
     return render_template('bankenspiegel_transaktionen.html', now=datetime.now())
+
+@bankenspiegel_bp.route('/einkaufsfinanzierung')
+def einkaufsfinanzierung():
+    """Einkaufsfinanzierung Dashboard (Stellantis & Santander)"""
+    return render_template('einkaufsfinanzierung.html', now=datetime.now())

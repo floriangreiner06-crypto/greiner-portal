@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+
+{% block title %}Einkaufsfinanzierung - Greiner Portal{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/einkaufsfinanzierung.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h2 mb-1">🚗 Einkaufsfinanzierung</h1>
+                    <p class="text-muted mb-0">Bestandskonten: Stellantis & Santander</p>
+                </div>
+                <div>
+                    <button id="refreshBtn" class="btn btn-outline-primary">
+                        <i class="bi bi-arrow-clockwise"></i> Aktualisieren
+                    </button>
+                    <span id="lastUpdate" class="ms-2 text-muted small"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div id="loadingSpinner" class="text-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Lade Daten...</span>
+        </div>
+        <p class="mt-3 text-muted">Lade Einkaufsfinanzierung...</p>
+    </div>
+
+    <!-- Error Alert -->
+    <div id="errorAlert" class="alert alert-danger d-none" role="alert">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+        <span id="errorMessage"></span>
+    </div>
+
+    <!-- Main Content -->
+    <div id="mainContent" class="d-none">
+        
+        <!-- KPI Cards -->
+        <div class="row g-3 mb-4">
+            <!-- Gesamt Fahrzeuge -->
+            <div class="col-lg-3 col-md-6">
+                <div class="card kpi-card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <p class="text-muted small mb-1">Gesamt Fahrzeuge</p>
+                                <h2 class="mb-0" id="kpiGesamtFahrzeuge">-</h2>
+                            </div>
+                            <div class="kpi-icon bg-primary">
+                                <i class="bi bi-car-front-fill"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gesamt Finanzierung -->
+            <div class="col-lg-3 col-md-6">
+                <div class="card kpi-card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <p class="text-muted small mb-1">Finanzierungssaldo</p>
+                                <h2 class="mb-0 text-danger" id="kpiFinanzierung">-</h2>
+                                <small class="text-muted" id="kpiOriginal">-</small>
+                            </div>
+                            <div class="kpi-icon bg-danger">
+                                <i class="bi bi-wallet2"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Abbezahlt -->
+            <div class="col-lg-3 col-md-6">
+                <div class="card kpi-card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <p class="text-muted small mb-1">Bereits abbezahlt</p>
+                                <h2 class="mb-0 text-success" id="kpiAbbezahlt">-</h2>
+                                <div class="progress mt-2" style="height: 8px;">
+                                    <div id="abbezahltProgress" class="progress-bar bg-success" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div class="kpi-icon bg-success">
+                                <i class="bi bi-check-circle-fill"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Warnungen -->
+            <div class="col-lg-3 col-md-6">
+                <div class="card kpi-card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <p class="text-muted small mb-1">Zinsfreiheit-Warnungen</p>
+                                <h2 class="mb-0 text-warning" id="kpiWarnungen">-</h2>
+                                <small class="text-muted">< 30 Tage übrig</small>
+                            </div>
+                            <div class="kpi-icon bg-warning">
+                                <i class="bi bi-exclamation-triangle-fill"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Institute Cards -->
+        <div class="row g-3 mb-4" id="instituteCards">
+            <!-- Dynamisch generiert via JS -->
+        </div>
+
+        <!-- Charts Row -->
+        <div class="row g-3 mb-4">
+            <!-- Verteilung nach Institut -->
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">
+                            <i class="bi bi-pie-chart-fill text-primary me-2"></i>
+                            Verteilung nach Institut
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="chartInstitute" height="250"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Marken-Verteilung -->
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">
+                            <i class="bi bi-bar-chart-fill text-success me-2"></i>
+                            Marken-Verteilung
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="chartMarken" height="250"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Zinsfreiheit Warnungen -->
+        <div id="warnungenSection" class="d-none mb-4">
+            <div class="card border-warning">
+                <div class="card-header bg-warning bg-opacity-10">
+                    <h5 class="mb-0">
+                        <i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>
+                        ⚠️ Zinsfreiheit läuft bald ab
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Institut</th>
+                                    <th>VIN</th>
+                                    <th>Modell</th>
+                                    <th>Tage übrig</th>
+                                    <th class="text-end">Saldo</th>
+                                    <th class="text-end">Alter</th>
+                                </tr>
+                            </thead>
+                            <tbody id="warnungenTable">
+                                <!-- Dynamisch via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Top Fahrzeuge -->
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">
+                    <i class="bi bi-trophy-fill text-warning me-2"></i>
+                    Top 10 - Teuerste Fahrzeuge im Bestand
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Institut</th>
+                                <th>VIN</th>
+                                <th>Modell</th>
+                                <th>Marke</th>
+                                <th class="text-end">Aktuell</th>
+                                <th class="text-end">Original</th>
+                                <th class="text-end">Alter (Tage)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="topFahrzeugeTable">
+                            <!-- Dynamisch via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/einkaufsfinanzierung.js') }}"></script>
+{% endblock %}
