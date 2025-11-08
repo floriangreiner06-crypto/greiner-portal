@@ -59,3 +59,7 @@ analyze_*.py
 *.log
 logs/
 
+check_locosoft_models.py
+find_model_mapping.py
+sync_sales_v1_backup.py
+git_commit_tag18.sh

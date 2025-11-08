@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 """
 ============================================================================
-SALES-SYNC: Locosoft PostgreSQL → SQLite
+SALES-SYNC V2: Mit Modellbeschreibungen
 ============================================================================
 Erstellt: 08.11.2025
-Zweck: Synchronisiert Verkaufsdaten aus Locosoft dealer_vehicles
-Filter: Nur valide Daten (Datum zwischen 2020 und 2030)
+Erweitert: JOIN mit models Tabelle für Modellnamen
 ============================================================================
 """
 
 import sys
 import psycopg2
 import sqlite3
-from datetime import datetime, date
+from datetime import datetime
 
 def log(message, level="INFO"):
     """Simple logging"""
@@ -33,7 +32,7 @@ def load_env():
 def sync_sales():
     """Synchronisiert Sales von Locosoft nach SQLite"""
     
-    log("=== SALES SYNC GESTARTET ===")
+    log("=== SALES SYNC V2 GESTARTET ===")
     
     # 1. Credentials laden
     log("Lade Credentials...")
@@ -58,8 +57,8 @@ def sync_sales():
     sqlite_conn = sqlite3.connect(sqlite_path)
     sqlite_cursor = sqlite_conn.cursor()
     
-    # 3. Sales aus Locosoft laden
-    log("Lade Sales aus Locosoft...")
+    # 3. Sales aus Locosoft laden MIT MODELLBESCHREIBUNG
+    log("Lade Sales aus Locosoft (mit Modellnamen)...")
     pg_cursor.execute("""
         SELECT 
             dv.dealer_vehicle_number,
@@ -75,10 +74,15 @@ def sync_sales():
             dv.out_make_number,
             dv.mileage_km,
             dv.out_salesman_number_1,
-            dv.buyer_customer_no::TEXT
+            dv.buyer_customer_no::TEXT,
+            m.description as model_description
         FROM dealer_vehicles dv
-        LEFT JOIN vehicles v ON dv.dealer_vehicle_number = v.dealer_vehicle_number 
-                             AND dv.dealer_vehicle_type = v.dealer_vehicle_type
+        LEFT JOIN vehicles v 
+            ON dv.dealer_vehicle_number = v.dealer_vehicle_number 
+            AND dv.dealer_vehicle_type = v.dealer_vehicle_type
+        LEFT JOIN models m
+            ON dv.out_model_code = m.model_code
+            AND dv.out_make_number = m.make_number
         WHERE dv.out_sales_contract_date IS NOT NULL
           AND dv.out_sales_contract_date >= '2020-01-01'
           AND dv.out_sales_contract_date <= '2030-12-31'
@@ -91,7 +95,6 @@ def sync_sales():
     # 4. Zähler
     inserted = 0
     updated = 0
-    skipped = 0
     errors = 0
     
     # 5. Sales synchronisieren
@@ -101,9 +104,9 @@ def sync_sales():
             (dealer_vehicle_number, dealer_vehicle_type, vin, internal_number,
              out_invoice_date, out_invoice_number, out_sale_price, out_sale_type,
              out_subsidiary, out_sales_contract_date, make_number, mileage_km,
-             salesman_number, buyer_customer_no) = row
+             salesman_number, buyer_customer_no, model_description) = row
             
-            # ALLE Decimal-Werte zu float/int konvertieren (SQLite mag keine Decimals!)
+            # ALLE Decimal-Werte zu float/int konvertieren
             out_sale_price = float(out_sale_price) if out_sale_price else None
             make_number = int(make_number) if make_number else None
             mileage_km = int(mileage_km) if mileage_km else None
@@ -111,7 +114,7 @@ def sync_sales():
             out_subsidiary = int(out_subsidiary) if out_subsidiary else None
             internal_number = int(internal_number) if internal_number else None
             
-            # Netto-Preis berechnen (Brutto / 1.19)
+            # Netto-Preis berechnen
             netto_price = out_sale_price / 1.19 if out_sale_price else None
             
             # Prüfen ob existiert
@@ -136,6 +139,7 @@ def sync_sales():
                         out_subsidiary = ?,
                         out_sales_contract_date = ?,
                         make_number = ?,
+                        model_description = ?,
                         mileage_km = ?,
                         salesman_number = ?,
                         buyer_customer_no = ?,
@@ -146,7 +150,7 @@ def sync_sales():
                 """, (
                     vin, internal_number, out_invoice_date, out_invoice_number,
                     out_sale_price, out_sale_type, out_subsidiary, out_sales_contract_date,
-                    make_number, mileage_km, salesman_number, buyer_customer_no,
+                    make_number, model_description, mileage_km, salesman_number, buyer_customer_no,
                     netto_price, dealer_vehicle_number, dealer_vehicle_type
                 ))
                 updated += 1
@@ -156,14 +160,14 @@ def sync_sales():
                     INSERT INTO sales (
                         dealer_vehicle_number, dealer_vehicle_type, vin, internal_number,
                         out_invoice_date, out_invoice_number, out_sale_price, out_sale_type,
-                        out_subsidiary, out_sales_contract_date, make_number, mileage_km,
-                        salesman_number, buyer_customer_no, netto_price, synced_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                        out_subsidiary, out_sales_contract_date, make_number, model_description,
+                        mileage_km, salesman_number, buyer_customer_no, netto_price, synced_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 """, (
                     dealer_vehicle_number, dealer_vehicle_type, vin, internal_number,
                     out_invoice_date, out_invoice_number, out_sale_price, out_sale_type,
-                    out_subsidiary, out_sales_contract_date, make_number, mileage_km,
-                    salesman_number, buyer_customer_no, netto_price
+                    out_subsidiary, out_sales_contract_date, make_number, model_description,
+                    mileage_km, salesman_number, buyer_customer_no, netto_price
                 ))
                 inserted += 1
             
@@ -175,7 +179,7 @@ def sync_sales():
         except Exception as e:
             log(f"Fehler bei {dealer_vehicle_number}/{dealer_vehicle_type}: {e}", "ERROR")
             errors += 1
-            if errors > 50:  # Erhöht auf 50 Fehler
+            if errors > 50:
                 log("Zu viele Fehler - Abbruch!", "ERROR")
                 break
     
@@ -186,7 +190,6 @@ def sync_sales():
     log("=== SYNC ABGESCHLOSSEN ===")
     log(f"Neu eingefügt:  {inserted}")
     log(f"Aktualisiert:    {updated}")
-    log(f"Übersprungen:    {skipped}")
     log(f"Fehler:          {errors}")
     
     # 8. Validierung
@@ -201,11 +204,20 @@ def sync_sales():
     nov = sqlite_cursor.fetchone()[0]
     log(f"November 2025:   {nov}")
     
-    # 9. Aufräumen
+    # 9. Modell-Check
+    sqlite_cursor.execute("""
+        SELECT COUNT(*) FROM sales 
+        WHERE out_sales_contract_date >= '2025-11-01'
+          AND model_description IS NOT NULL
+    """)
+    nov_models = sqlite_cursor.fetchone()[0]
+    log(f"  → Mit Modell:  {nov_models}")
+    
+    # 10. Aufräumen
     pg_conn.close()
     sqlite_conn.close()
     
-    log("✅ Sync erfolgreich beendet!")
+    log("✅ Sync V2 erfolgreich beendet!")
     return inserted, updated, errors
 
 if __name__ == '__main__':
