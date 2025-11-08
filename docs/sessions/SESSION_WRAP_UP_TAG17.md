@@ -435,3 +435,46 @@ Von **Charts funktionieren nicht** zu **Alles perfekt!**
 ---
 
 *Session Wrap-Up für Greiner Portal - TAG 17*
+
+---
+
+## 🚨 KRITISCHES PROBLEM GELÖST (15:30-15:45)
+
+### Salden-Bug zum 2. Mal aufgetreten!
+
+**Problem:**
+- Alle Konten zeigten 0,00 EUR Saldo
+- kontostand_historie war wieder leer (trotz früherem Fix!)
+
+**Root Cause:**
+1. Import-Scripts schreiben NICHT in kontostand_historie
+2. Kein automatisches Update nach Transaktions-Import
+3. Bug ist STRUKTURELL, nicht einmalig!
+
+**Lösung (temporär):**
+- Maintenance-Script erstellt: scripts/maintenance/update_kontostand_historie.py
+- JavaScript-Bug gefixt: aktueller_saldo zu saldo
+
+**Lösung (langfristig - TODO):**
+- Import-Scripts müssen kontostand_historie IMMER aktualisieren
+- Oder: DB-Trigger erstellen
+- Oder: Cron-Job für tägliches Update
+
+---
+
+## TODO NAECHSTE SESSION (KRITISCH!)
+
+### PRIO 1: Salden-Bug permanent fixen
+- Option 1: Import-Scripts erweitern
+- Option 2: DB-Trigger erstellen
+- Option 3: Cron-Job (schnellste Lösung)
+
+### PRIO 2: Dashboard-Filter einbauen (30 Min)
+- Datei: api/bankenspiegel_api.py
+- IBAN + Text-Filter (bereits entwickelt, nur nicht implementiert)
+
+---
+
+**Session beendet:** 08.11.2025, 15:50 Uhr  
+**Status:** Zinsen LIVE | Salden temporär gefixt  
+**Nächste Priorität:** Salden-Bug permanent lösen
