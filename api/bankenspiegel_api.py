@@ -674,6 +674,107 @@ def get_einkaufsfinanzierung():
         }), 500
 
 
+# ============================================================================
+# FAHRZEUGE MIT ZINSEN
+# ============================================================================
+
+@bankenspiegel_api.route('/fahrzeuge-mit-zinsen', methods=['GET'])
+def get_fahrzeuge_mit_zinsen():
+    """
+    GET /api/bankenspiegel/fahrzeuge-mit-zinsen
+    
+    Gibt Fahrzeuge zurück, bei denen aktuell Zinsen laufen
+    
+    Query-Parameter:
+    - status: 'zinsen_laufen', 'warnung', 'alle' (default: 'zinsen_laufen')
+    - institut: 'Stellantis', 'Santander', 'alle' (default: 'alle')
+    - limit: Anzahl (default: 100)
+    
+    Response:
+    {
+        "fahrzeuge": [...],
+        "statistik": {
+            "anzahl_fahrzeuge": 41,
+            "gesamt_saldo": 823793.61,
+            "gesamt_zinsen": 14018.31,
+            "santander": {...},
+            "stellantis": {...}
+        }
+    }
+    """
+    try:
+        conn = get_db()
+        c = conn.cursor()
+        
+        # Query-Parameter
+        status = request.args.get('status', 'zinsen_laufen')
+        institut = request.args.get('institut', 'alle')
+        limit = int(request.args.get('limit', 100))
+        
+        # Query zusammenbauen
+        query = "SELECT * FROM fahrzeuge_mit_zinsen WHERE 1=1"
+        params = []
+        
+        if status == 'zinsen_laufen':
+            query += " AND zinsstatus = 'Zinsen laufen'"
+        elif status == 'warnung':
+            query += " AND zinsstatus LIKE '%Warnung%'"
+        
+        if institut != 'alle':
+            query += " AND finanzinstitut = ?"
+            params.append(institut)
+        
+        query += " ORDER BY zinsen_gesamt DESC LIMIT ?"
+        params.append(limit)
+        
+        c.execute(query, params)
+        columns = [description[0] for description in c.description]
+        rows = c.fetchall()
+        
+        fahrzeuge = [dict(zip(columns, row)) for row in rows]
+        
+        # Statistik berechnen
+        gesamt_saldo = sum(f.get('aktueller_saldo') or 0 for f in fahrzeuge)
+        gesamt_zinsen = sum(f.get('zinsen_gesamt') or 0 for f in fahrzeuge)
+        
+        # Nach Institut aufschlüsseln
+        santander_fz = [f for f in fahrzeuge if f.get('finanzinstitut') == 'Santander']
+        stellantis_fz = [f for f in fahrzeuge if f.get('finanzinstitut') == 'Stellantis']
+        
+        santander_zinsen = sum(f.get('zinsen_gesamt') or 0 for f in santander_fz)
+        santander_zinsen_monatlich = sum(f.get('zinsen_monatlich_geschaetzt') or 0 for f in santander_fz)
+        
+        avg_tage = sum(f.get('tage_seit_zinsstart') or 0 for f in fahrzeuge) / len(fahrzeuge) if fahrzeuge else 0
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'fahrzeuge': fahrzeuge,
+            'statistik': {
+                'anzahl_fahrzeuge': len(fahrzeuge),
+                'gesamt_saldo': round(gesamt_saldo, 2),
+                'gesamt_zinsen': round(gesamt_zinsen, 2) if gesamt_zinsen > 0 else None,
+                'durchschnitt_tage_seit_zinsstart': round(avg_tage, 1),
+                'santander': {
+                    'anzahl': len(santander_fz),
+                    'zinsen_gesamt': round(santander_zinsen, 2) if santander_zinsen > 0 else None,
+                    'zinsen_monatlich': round(santander_zinsen_monatlich, 2) if santander_zinsen_monatlich > 0 else None
+                },
+                'stellantis': {
+                    'anzahl': len(stellantis_fz),
+                    'zinsen_gesamt': None  # Stellantis hat keine Zinsdaten
+                }
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 
 # ============================================================================
 # ERROR HANDLERS

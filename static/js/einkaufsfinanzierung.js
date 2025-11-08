@@ -42,6 +42,7 @@ async function loadData() {
         updateCharts(data.institute);
         updateTopFahrzeuge(data.top_fahrzeuge);
         updateWarnungen(data.warnungen);
+        loadFahrzeugeMitZinsen();
         
         // Timestamp
         const timestamp = new Date(data.timestamp);
@@ -350,6 +351,114 @@ function updateWarnungen(warnungen) {
 /**
  * Währung formatieren
  */
+
+/**
+ * Fahrzeuge mit laufenden Zinsen laden
+ */
+async function loadFahrzeugeMitZinsen() {
+    try {
+        const response = await fetch('/api/bankenspiegel/fahrzeuge-mit-zinsen?status=zinsen_laufen&institut=alle');
+        
+        if (!response.ok) {
+            console.error('Zinsen-API Fehler:', response.status);
+            return;
+        }
+        
+        const data = await response.json();
+        
+        if (!data.success || !data.fahrzeuge || data.fahrzeuge.length === 0) {
+            // Keine Fahrzeuge mit Zinsen - Section ausblenden
+            document.getElementById('zinsenSection').classList.add('d-none');
+            return;
+        }
+        
+        // Section anzeigen
+        document.getElementById('zinsenSection').classList.remove('d-none');
+        
+        // Statistik aktualisieren
+        document.getElementById('zinsenAnzahl').textContent = data.statistik.anzahl_fahrzeuge;
+        document.getElementById('zinsenSaldo').textContent = formatCurrency(data.statistik.gesamt_saldo);
+        
+        // Santander/Stellantis Split
+        document.getElementById('zinsenSantanderCount').textContent = data.statistik.santander.anzahl;
+        document.getElementById('zinsenStellantisCount').textContent = data.statistik.stellantis.anzahl;
+        
+        // Zinsen Gesamt (nur Santander)
+        if (data.statistik.gesamt_zinsen) {
+            document.getElementById('zinsenGesamt').textContent = formatCurrency(data.statistik.gesamt_zinsen);
+        } else {
+            document.getElementById('zinsenGesamt').textContent = 'N/A';
+        }
+        
+        // Zinsen Monatlich (nur Santander)
+        if (data.statistik.santander.zinsen_monatlich) {
+            document.getElementById('zinsenMonatlich').textContent = formatCurrency(data.statistik.santander.zinsen_monatlich);
+        } else {
+            document.getElementById('zinsenMonatlich').textContent = 'N/A';
+        }
+        
+        // Tabelle füllen
+        const tbody = document.getElementById('zinsenTableBody');
+        tbody.innerHTML = data.fahrzeuge.map(fz => {
+            const tage = fz.tage_seit_zinsstart || 0;
+            const severity = tage > 90 ? 'danger' : tage > 60 ? 'warning' : 'info';
+            
+            // Zinsen-Spalten (nur bei Santander)
+            const zinsenGesamt = fz.zinsen_gesamt 
+                ? `<span class="text-danger fw-bold">${formatCurrency(fz.zinsen_gesamt)}</span>`
+                : '<span class="text-muted">N/A</span>';
+            
+            const zinsenMonatlich = fz.zinsen_monatlich_geschaetzt 
+                ? `<span class="text-warning">${formatCurrency(fz.zinsen_monatlich_geschaetzt)}</span>`
+                : '<span class="text-muted">N/A</span>';
+            
+            // Endfälligkeit (nur bei Santander)
+            let endfaelligkeit = '<span class="text-muted">N/A</span>';
+            if (fz.endfaelligkeit) {
+                const tage_bis = fz.tage_bis_endfaelligkeit || 0;
+                const datum = new Date(fz.endfaelligkeit).toLocaleDateString('de-DE');
+                const color = tage_bis < 180 ? 'danger' : tage_bis < 365 ? 'warning' : 'info';
+                endfaelligkeit = `
+                    <div class="small">
+                        ${datum}<br>
+                        <span class="badge bg-${color}">${tage_bis} Tage</span>
+                    </div>
+                `;
+            }
+            
+            return `
+                <tr>
+                    <td><span class="badge bg-${severity}">${fz.finanzinstitut}</span></td>
+                    <td><code class="small">${fz.vin}</code></td>
+                    <td>${fz.modell || 'N/A'}</td>
+                    <td class="text-end">
+                        <span class="badge bg-${severity} px-3">
+                            <strong>${tage}</strong> Tage
+                        </span>
+                    </td>
+                    <td class="text-end text-danger fw-bold">
+                        ${formatCurrency(fz.aktueller_saldo)}
+                    </td>
+                    <td class="text-end">${zinsenGesamt}</td>
+                    <td class="text-end">${zinsenMonatlich}</td>
+                    <td class="text-end">${endfaelligkeit}</td>
+                    <td class="text-end">
+                        <div class="progress" style="height: 8px; width: 80px; display: inline-block;">
+                            <div class="progress-bar bg-success" 
+                                 style="width: ${fz.tilgung_prozent || 0}%"></div>
+                        </div>
+                        <small class="ms-2">${(fz.tilgung_prozent || 0).toFixed(1)}%</small>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+        
+    } catch (error) {
+        console.error('Fehler beim Laden der Zinsen-Daten:', error);
+        document.getElementById('zinsenSection').classList.add('d-none');
+    }
+}
+
 function formatCurrency(amount) {
     return new Intl.NumberFormat('de-DE', {
         style: 'currency',

@@ -189,6 +189,106 @@
         </div>
 
         <!-- Top Fahrzeuge -->
+
+        <!-- ZINSEN-TRACKING (NEU!) -->
+        <div id="zinsenSection" class="mb-4">
+            <div class="card border-danger">
+                <div class="card-header bg-danger bg-opacity-10">
+                    <h5 class="mb-0">
+                        <i class="bi bi-cash-coin text-danger me-2"></i>
+                        💰 Fahrzeuge mit laufenden Zinsen
+                    </h5>
+                </div>
+                <div class="card-body">
+                    
+                    <!-- Zinsen-KPI Cards -->
+                    <div class="row g-3 mb-3">
+                        <!-- Betroffene Fahrzeuge -->
+                        <div class="col-md-3">
+                            <div class="card bg-danger bg-opacity-10">
+                                <div class="card-body text-center">
+                                    <small class="text-muted d-block mb-1">Betroffene Fahrzeuge</small>
+                                    <h3 id="zinsenAnzahl" class="mb-0 text-danger">-</h3>
+                                    <small class="text-muted mt-1">
+                                        <span id="zinsenSantanderCount">-</span> Santander | 
+                                        <span id="zinsenStellantisCount">-</span> Stellantis
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Gesamt-Finanzierung -->
+                        <div class="col-md-3">
+                            <div class="card bg-danger bg-opacity-10">
+                                <div class="card-body text-center">
+                                    <small class="text-muted d-block mb-1">Finanzierung unter Zinsen</small>
+                                    <h3 id="zinsenSaldo" class="mb-0 text-danger">-</h3>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Zinsen Gesamt -->
+                        <div class="col-md-3">
+                            <div class="card bg-warning bg-opacity-10">
+                                <div class="card-body text-center">
+                                    <small class="text-muted d-block mb-1">
+                                        <i class="bi bi-cash-coin me-1"></i>Zinsen Gesamt
+                                    </small>
+                                    <h3 id="zinsenGesamt" class="mb-0 text-warning">-</h3>
+                                    <small class="text-muted mt-1">Nur Santander</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Zinsen/Monat -->
+                        <div class="col-md-3">
+                            <div class="card bg-info bg-opacity-10">
+                                <div class="card-body text-center">
+                                    <small class="text-muted d-block mb-1">
+                                        <i class="bi bi-calendar-month me-1"></i>Zinsen/Monat Ø
+                                    </small>
+                                    <h3 id="zinsenMonatlich" class="mb-0 text-info">-</h3>
+                                    <small class="text-muted mt-1">Nur Santander</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Zinsen-Tabelle -->
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm mb-0" id="zinsenTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Institut</th>
+                                    <th>VIN</th>
+                                    <th>Modell</th>
+                                    <th class="text-end">
+                                        <i class="bi bi-clock-history me-1"></i>Tage seit Zinsstart
+                                    </th>
+                                    <th class="text-end">
+                                        <i class="bi bi-wallet2 me-1"></i>Saldo
+                                    </th>
+                                    <th class="text-end">
+                                        <i class="bi bi-cash-coin me-1"></i>Zinsen Gesamt
+                                    </th>
+                                    <th class="text-end">
+                                        <i class="bi bi-calendar-month me-1"></i>Zinsen/Monat
+                                    </th>
+                                    <th class="text-end">
+                                        <i class="bi bi-calendar-event me-1"></i>Endfälligkeit
+                                    </th>
+                                    <th class="text-end">Tilgung</th>
+                                </tr>
+                            </thead>
+                            <tbody id="zinsenTableBody">
+                                <!-- Dynamisch via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="card mb-4">
             <div class="card-header bg-white">
                 <h5 class="mb-0">
