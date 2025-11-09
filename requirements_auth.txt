@@ -1,0 +1,25 @@
+# AUTH SYSTEM REQUIREMENTS
+# ========================
+#
+# Zusätzliche Packages für das Authentication-System
+# 
+# Installation:
+#   pip install -r requirements_auth.txt --break-system-packages
+
+# LDAP Integration
+ldap3>=2.9.1
+
+# Flask Auth & Session Management
+Flask-Login>=0.6.3
+
+# Password Hashing (zusätzlich zu werkzeug)
+bcrypt>=4.1.1
+
+# Environment Variables
+python-dotenv>=1.0.0
+
+# Token Generation
+itsdangerous>=2.1.2
+
+# Optional: Rate Limiting für Login
+Flask-Limiter>=3.5.0
