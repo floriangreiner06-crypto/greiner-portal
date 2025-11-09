@@ -173,7 +173,7 @@ class User(UserMixin):
 class AuthManager:
     """Verwaltet Authentication und Authorization"""
     
-    def __init__(self, db_path: str = 'data/greiner_portal.db'):
+    def __init__(self, db_path: str = 'data/greiner_controlling.db'):
         self.db_path = db_path
         self.ldap = LDAPConnector()
         
