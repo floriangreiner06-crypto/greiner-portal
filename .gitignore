@@ -63,3 +63,17 @@ check_locosoft_models.py
 find_model_mapping.py
 sync_sales_v1_backup.py
 git_commit_tag18.sh
+
+# Auth-Backups (Tag 21)
+*.backup
+*.backup_*
+app.py.backup*
+auth/*.backup*
+
+# Temporäre Auth-Dateien
+app_integration.py
+ldap_connector.py
+AUTH_PHASE2_README.md
+
+# LDAP-Credentials (SENSIBEL!)
+config/ldap_credentials.env
