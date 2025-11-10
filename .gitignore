@@ -77,3 +77,6 @@ AUTH_PHASE2_README.md
 
 # LDAP-Credentials (SENSIBEL!)
 config/ldap_credentials.env
+*.backup*
+*.broken
+*.before_*

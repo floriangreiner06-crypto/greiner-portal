@@ -30,6 +30,7 @@ bankenspiegel_bp = Blueprint('bankenspiegel', __name__, url_prefix='/bankenspieg
 
 # ============================================================================
 # KRITISCHER 404-FIX - NIEMALS LÖSCHEN!
+import sqlite3
 # ============================================================================
 
 @bankenspiegel_bp.route('/')
@@ -167,27 +168,79 @@ def einkaufsfinanzierung():
 @bankenspiegel_bp.route('/fahrzeugfinanzierungen')
 def fahrzeugfinanzierungen():
     """
-    Alternative Route für Fahrzeugfinanzierungen
-    
-    Falls separate/detaillierte Ansicht gewünscht ist.
-    Kann die gleiche oder eine andere Template nutzen.
-    
-    Template: fahrzeugfinanzierungen.html
-    
-    Hinweis: Diese Route ist optional und kann auf
-    einkaufsfinanzierung() redirecten falls nicht benötigt.
+    Fahrzeugfinanzierungen Dashboard
+    Zeigt Stellantis + Santander getrennt
+    Fixed: Tag 24 (10.11.2025) - Final Version
     """
+    conn = sqlite3.connect('/opt/greiner-portal/data/greiner_controlling.db')
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    
+    try:
+        # Gesamt-Stats
+        c.execute("""
+            SELECT 
+                COUNT(*) as anzahl,
+                SUM(aktueller_saldo) as gesamt_saldo,
+                SUM(original_betrag) as gesamt_original,
+                SUM(original_betrag - aktueller_saldo) as gesamt_abbezahlt
+            FROM fahrzeugfinanzierungen
+        """)
+        row = c.fetchone()
+        stats = {
+            'anzahl_fahrzeuge': row['anzahl'] or 0,
+            'gesamt_saldo': row['gesamt_saldo'] or 0,
+            'gesamt_original': row['gesamt_original'] or 0,
+            'gesamt_abbezahlt': row['gesamt_abbezahlt'] or 0
+        }
+        
+        # Stats nach Bank
+        c.execute("""
+            SELECT 
+                finanzinstitut,
+                COUNT(*) as anzahl,
+                SUM(aktueller_saldo) as saldo,
+                SUM(original_betrag) as original,
+                SUM(original_betrag - aktueller_saldo) as abbezahlt
+            FROM fahrzeugfinanzierungen 
+            GROUP BY finanzinstitut
+            ORDER BY finanzinstitut
+        """)
+        stats_by_bank = [dict(row) for row in c.fetchall()]
+        
+        # Nach RRDI gruppiert
+        c.execute("""
+            SELECT 
+                rrdi,
+                finanzinstitut,
+                COUNT(*) as anzahl,
+                SUM(aktueller_saldo) as saldo
+            FROM fahrzeugfinanzierungen 
+            GROUP BY rrdi, finanzinstitut
+            ORDER BY finanzinstitut, rrdi
+        """)
+        fahrzeuge_by_rrdi = [dict(row) for row in c.fetchall()]
+        
+        # Alle Fahrzeuge (Top 100)
+        c.execute("""
+            SELECT * FROM fahrzeugfinanzierungen 
+            ORDER BY finanzinstitut, vertragsbeginn DESC 
+            LIMIT 100
+        """)
+        fahrzeuge = [dict(row) for row in c.fetchall()]
+        
+    finally:
+        conn.close()
+    
     return render_template(
         'fahrzeugfinanzierungen.html',
+        stats=stats,
+        stats_by_bank=stats_by_bank,
+        fahrzeuge_by_rrdi=fahrzeuge_by_rrdi,
+        fahrzeuge=fahrzeuge,
         now=datetime.now()
     )
 
-
-# ============================================================================
-# ERROR HANDLERS (optional)
-# ============================================================================
-
-@bankenspiegel_bp.errorhandler(404)
 def bankenspiegel_404(error):
     """
     Custom 404-Handler für Bankenspiegel
