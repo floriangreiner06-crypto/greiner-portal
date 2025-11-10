@@ -191,3 +191,75 @@
 - Vollständiger Dokumentation
 
 **Status erreicht:** ⚠️ UNKLAR - ANALYSE ERFORDERLICH
+
+---
+
+## 🖥️ SERVER-KONTEXT (WICHTIG FÜR CLAUDE!)
+
+**Claude arbeitet NICHT auf dem Server direkt!**
+**User arbeitet via SSH/PuTTY auf dem Server.**
+
+### Aktuelle Umgebung:
+```
+User:     ag-admin
+Server:   srvlinux01 (10.80.80.20)
+Pfad:     /opt/greiner-portal
+Shell:    (venv) ag-admin@srvlinux01:/opt/greiner-portal$
+```
+
+### Workflow:
+1. **User verbindet sich via SSH:**
+```bash
+   ssh ag-admin@10.80.80.20
+   cd /opt/greiner-portal
+   source venv/bin/activate
+```
+
+2. **User führt Befehle aus** die Claude vorschlägt
+
+3. **User postet Ausgaben** zurück zu Claude
+
+### Was Claude tun sollte:
+✅ **Befehle geben** (nicht selbst ausführen)
+✅ **Ausgaben analysieren** (User postet sie)
+✅ **Schritt-für-Schritt** Anleitungen
+✅ **SSH-Kontext** immer im Kopf behalten
+
+### Was Claude NICHT kann:
+❌ Direkt auf Server zugreifen
+❌ Befehle selbst ausführen
+❌ Dateien direkt lesen (nur via User)
+
+---
+
+
+---
+
+## 🖥️ SERVER-KONTEXT (WICHTIG FÜR CLAUDE!)
+
+**Claude arbeitet NICHT auf dem Server direkt!**
+**User arbeitet via SSH/PuTTY auf dem Server.**
+
+### Aktuelle Umgebung:
+```
+User:     ag-admin
+Server:   srvlinux01 (10.80.80.20)
+Pfad:     /opt/greiner-portal
+Shell:    (venv) ag-admin@srvlinux01:/opt/greiner-portal$
+```
+
+### Workflow:
+1. User verbindet sich via SSH
+2. User führt Befehle aus die Claude vorschlägt
+3. User postet Ausgaben zurück zu Claude
+
+### Was Claude tun sollte:
+✅ Befehle geben (nicht selbst ausführen)
+✅ Ausgaben analysieren (User postet sie)
+✅ Schritt-für-Schritt Anleitungen
+
+### Was Claude NICHT kann:
+❌ Direkt auf Server zugreifen
+❌ Befehle selbst ausführen
+❌ Dateien direkt lesen
+

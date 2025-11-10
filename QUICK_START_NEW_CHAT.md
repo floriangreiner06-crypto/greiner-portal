@@ -6,6 +6,12 @@
 
 ## ⚡ SCHNELL-KONTEXT (30 Sekunden)
 
+### ⚠️ WICHTIG FÜR CLAUDE:
+**Du arbeitest NICHT direkt auf dem Server!**
+User ist via SSH verbunden: `(venv) ag-admin@srvlinux01:/opt/greiner-portal$`
+**Gib Befehle**, User führt sie aus und postet Ausgaben zurück!
+
+
 ### Was ist das Projekt?
 **Greiner Portal** - Internes Web-Portal für:
 - 🏦 Bankenspiegel (Transaktionsübersicht mehrerer Banken)
