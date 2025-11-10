@@ -4,441 +4,181 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Greiner Portal{% endblock %}</title>
-
+    
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-
+    
     <!-- Bootstrap Icons -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
-
-    <!-- Custom Styles -->
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f5f5f5;
-            display: flex;
-            height: 100vh;
-            overflow: hidden;
-        }
-
-        /* Sidebar - Greiner Farben */
-        .sidebar {
-            width: 260px;
-            background: linear-gradient(180deg, #1a2332 0%, #2d3e50 100%);
-            color: white;
-            display: flex;
-            flex-direction: column;
-            box-shadow: 2px 0 10px rgba(0,0,0,0.15);
-            overflow-y: auto;
-        }
-
-        .sidebar-header {
-            padding: 25px 20px;
-            background: rgba(0,0,0,0.15);
-            border-bottom: 1px solid rgba(255,255,255,0.08);
-            text-align: center;
-        }
-
-        .logo-container {
-            margin-bottom: 15px;
-        }
-
-        .logo-container img {
-            max-width: 180px;
-            height: auto;
-            filter: brightness(0) invert(1);
-        }
-
-        .sidebar-subtitle {
-            font-size: 0.8em;
-            color: rgba(255,255,255,0.6);
-            margin-top: 8px;
-            letter-spacing: 1px;
-        }
-
-        .nav-section {
-            padding: 12px 0;
-        }
-
-        .nav-item {
-            display: flex;
-            align-items: center;
-            padding: 13px 20px;
-            color: rgba(255,255,255,0.85);
-            text-decoration: none;
-            transition: all 0.2s;
-            cursor: pointer;
-            border-left: 3px solid transparent;
-            font-size: 0.95em;
-        }
-
-        .nav-item:hover {
-            background: rgba(255,255,255,0.08);
-            border-left-color: #4a90e2;
-            color: white;
-        }
-
-        .nav-item.active {
-            background: rgba(74, 144, 226, 0.15);
-            border-left-color: #4a90e2;
-            font-weight: 500;
-            color: white;
-        }
-
-        .nav-item-icon {
-            width: 24px;
-            margin-right: 12px;
-            font-size: 1.15em;
-            text-align: center;
-            opacity: 0.9;
-        }
-
-        .nav-item-text {
-            flex: 1;
-        }
-
-        .nav-item.has-submenu::after {
-            content: '›';
-            font-size: 1.4em;
-            margin-left: auto;
-            transition: transform 0.2s;
-            opacity: 0.6;
-        }
-
-        .nav-item.has-submenu.open::after {
-            transform: rotate(90deg);
-        }
-
-        .submenu {
-            display: none;
-            background: rgba(0,0,0,0.2);
-            border-left: 2px solid rgba(74, 144, 226, 0.3);
-            margin-left: 20px;
-        }
-
-        .submenu.open {
-            display: block;
-        }
-
-        .submenu-item {
-            display: flex;
-            align-items: center;
-            padding: 10px 20px 10px 44px;
-            color: rgba(255,255,255,0.75);
-            text-decoration: none;
-            font-size: 0.88em;
-            transition: all 0.2s;
-            position: relative;
-        }
-
-        .submenu-item::before {
-            content: '';
-            width: 4px;
-            height: 4px;
-            background: rgba(255,255,255,0.4);
-            border-radius: 50%;
-            position: absolute;
-            left: 30px;
-        }
-
-        .submenu-item:hover {
-            background: rgba(255,255,255,0.08);
-            color: white;
-        }
-
-        .submenu-item:hover::before {
-            background: #4a90e2;
-        }
-
-        .submenu-item.active {
-            background: rgba(74, 144, 226, 0.2);
-            color: white;
-            font-weight: 500;
-        }
-
-        .submenu-item.active::before {
-            background: #4a90e2;
-            box-shadow: 0 0 6px #4a90e2;
-        }
-
-        /* Main Content */
-        .main-content {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        .top-bar {
-            background: white;
-            padding: 18px 30px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            border-bottom: 1px solid #e5e7eb;
-        }
-
-        .top-bar h2 {
-            color: #1a2332;
-            font-size: 1.6em;
-            font-weight: 600;
-        }
-
-        .user-info {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            color: #6b7280;
-            font-size: 0.9em;
-        }
-
-        .content-area {
-            flex: 1;
-            overflow-y: auto;
-            padding: 25px;
-        }
-
-        /* Footer Status */
-        .sidebar-footer {
-            margin-top: auto;
-            padding: 18px 20px;
-            border-top: 1px solid rgba(255,255,255,0.08);
-            font-size: 0.82em;
-            color: rgba(255,255,255,0.5);
-        }
-
-        .status-row {
-            display: flex;
-            align-items: center;
-            margin-bottom: 6px;
-        }
-
-        .status-indicator {
-            width: 7px;
-            height: 7px;
-            background: #10b981;
-            border-radius: 50%;
-            display: inline-block;
-            margin-left: 8px;
-            box-shadow: 0 0 6px #10b981;
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.6; }
-        }
-
-        /* Scrollbar Styling */
-        .sidebar::-webkit-scrollbar {
-            width: 6px;
-        }
-
-        .sidebar::-webkit-scrollbar-track {
-            background: rgba(0,0,0,0.1);
-        }
-
-        .sidebar::-webkit-scrollbar-thumb {
-            background: rgba(255,255,255,0.2);
-            border-radius: 3px;
-        }
-
-        .sidebar::-webkit-scrollbar-thumb:hover {
-            background: rgba(255,255,255,0.3);
-        }
-
-        .content-area::-webkit-scrollbar {
-            width: 8px;
-        }
-
-        .content-area::-webkit-scrollbar-track {
-            background: #f1f1f1;
-        }
-
-        .content-area::-webkit-scrollbar-thumb {
-            background: #888;
-            border-radius: 4px;
-        }
-
-        .content-area::-webkit-scrollbar-thumb:hover {
-            background: #555;
-        }
-
-        /* Responsive Design */
-        @media (max-width: 768px) {
-            body {
-                flex-direction: column;
-            }
-
-            .sidebar {
-                width: 100%;
-                height: auto;
-                overflow-y: visible;
-            }
-
-            .main-content {
-                height: auto;
-            }
-
-            .top-bar {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 10px;
-            }
-
-            .user-info {
-                font-size: 0.8em;
-            }
-        }
-    </style>
-
-    <!-- Extra CSS Block für Child-Templates -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/navbar.css') }}">
+    
     {% block extra_css %}{% endblock %}
 </head>
 <body>
-    <!-- Sidebar Navigation -->
-    <div class="sidebar">
-        <div class="sidebar-header">
-            <div class="logo-container">
+
+    <!-- TOP NAVBAR -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary sticky-top">
+        <div class="container-fluid">
+            
+            <!-- Logo & Brand -->
+            <a class="navbar-brand d-flex align-items-center" href="/">
                 <img src="{{ url_for('static', filename='images/greiner-logo.png') }}" 
-                     alt="Greiner" 
-                     style="max-width: 180px; height: auto;" 
-                     onerror="this.style.display='none'">
-            </div>
-            <div class="sidebar-subtitle">PORTAL · CONTROLLING</div>
-        </div>
-
-        <nav class="nav-section">
-            <!-- Startseite -->
-            <a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}">
-                <span class="nav-item-icon">🏠</span>
-                <span class="nav-item-text">Startseite</span>
+                     alt="Greiner Logo" 
+                     height="40" 
+                     class="me-2"
+                     onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                <span class="logo-fallback" style="display:none;">
+                    <i class="bi bi-building"></i>
+                </span>
+                <span class="fw-bold">Greiner Portal</span>
             </a>
-
-            <!-- Bankenspiegel -->
-            <div class="nav-item has-submenu {% if '/bankenspiegel/' in request.path %}open{% endif %}" 
-                 onclick="toggleSubmenu(this)">
-                <span class="nav-item-icon">💰</span>
-                <span class="nav-item-text">Bankenspiegel</span>
+            
+            <!-- Mobile Toggle -->
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <!-- Navigation Links -->
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    
+                    <!-- Dashboard -->
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="/">
+                            <i class="bi bi-house-door"></i> Dashboard
+                        </a>
+                    </li>
+                    
+                    <!-- Bankenspiegel Dropdown -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="bankenspiegelDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-bank2"></i> Bankenspiegel
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="/bankenspiegel/dashboard">
+                                <i class="bi bi-speedometer2"></i> Dashboard
+                            </a></li>
+                            <li><a class="dropdown-item" href="/bankenspiegel/konten">
+                                <i class="bi bi-wallet2"></i> Kontenübersicht
+                            </a></li>
+                            <li><a class="dropdown-item" href="/bankenspiegel/transaktionen">
+                                <i class="bi bi-receipt"></i> Transaktionen
+                            </a></li>
+                        </ul>
+                    </li>
+                    
+                    <!-- Urlaubsplaner (vorerst disabled) -->
+                    <li class="nav-item">
+                        <a class="nav-link disabled" href="#" onclick="alert('Urlaubsplaner-Frontend folgt in Kürze!'); return false;">
+                            <i class="bi bi-calendar-check"></i> Urlaubsplaner
+                        </a>
+                    </li>
+                    
+                    <!-- Verkauf Dropdown -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="verkaufDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-cart3"></i> Verkauf
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="/verkauf/auftragseingang">
+                                <i class="bi bi-clipboard-data"></i> Auftragseingang
+                            </a></li>
+                            <li><a class="dropdown-item" href="/verkauf/auftragseingang/detail">
+                                <i class="bi bi-list-check"></i> Detail-Ansicht
+                            </a></li>
+                            <li><a class="dropdown-item" href="/verkauf/auslieferung/detail">
+                                <i class="bi bi-truck"></i> Auslieferungen
+                            </a></li>
+                        </ul>
+                    </li>
+                    
+                </ul>
+                
+                <!-- Right Side: User Menu -->
+                <ul class="navbar-nav ms-auto">
+                    
+                    <!-- Notifications -->
+                    <li class="nav-item">
+                        <a class="nav-link position-relative" href="#" title="Benachrichtigungen">
+                            <i class="bi bi-bell"></i>
+                            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="font-size: 0.6rem;">
+                                0
+                            </span>
+                        </a>
+                    </li>
+                    
+                    <!-- User Dropdown -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown">
+                            <div class="user-avatar me-2">
+                                <i class="bi bi-person-circle"></i>
+                            </div>
+                            <span class="d-none d-md-inline">
+                                {% if current_user.is_authenticated %}
+                                    {{ current_user.display_name.split()[0] }}
+                                {% else %}
+                                    Gast
+                                {% endif %}
+                            </span>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            {% if current_user.is_authenticated %}
+                                <li>
+                                    <div class="dropdown-header">
+                                        <strong>{{ current_user.display_name }}</strong><br>
+                                        <small class="text-muted">{{ current_user.email }}</small>
+                                    </div>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="#">
+                                    <i class="bi bi-person"></i> Profil
+                                </a></li>
+                                <li><a class="dropdown-item" href="#">
+                                    <i class="bi bi-gear"></i> Einstellungen
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item text-danger" href="/logout">
+                                    <i class="bi bi-box-arrow-right"></i> Logout
+                                </a></li>
+                            {% else %}
+                                <li><a class="dropdown-item" href="/login">
+                                    <i class="bi bi-box-arrow-in-right"></i> Login
+                                </a></li>
+                            {% endif %}
+                        </ul>
+                    </li>
+                    
+                </ul>
             </div>
-            <div class="submenu {% if '/bankenspiegel/' in request.path %}open{% endif %}">
-                <a href="/bankenspiegel/dashboard" 
-                   class="submenu-item {% if request.path == '/bankenspiegel/dashboard' %}active{% endif %}">
-                    <i class="bi bi-speedometer2 me-2"></i>Dashboard
-                </a>
-                <a href="/bankenspiegel/konten" 
-                   class="submenu-item {% if request.path == '/bankenspiegel/konten' %}active{% endif %}">
-                    <i class="bi bi-credit-card me-2"></i>Konten
-                </a>
-                <a href="/bankenspiegel/transaktionen" 
-                   class="submenu-item {% if request.path == '/bankenspiegel/transaktionen' %}active{% endif %}">
-                    <i class="bi bi-arrow-left-right me-2"></i>Transaktionen
-                </a>
-                <a href="/bankenspiegel/einkaufsfinanzierung" 
-                   class="submenu-item {% if request.path == '/bankenspiegel/einkaufsfinanzierung' %}active{% endif %}">
-                    <i class="bi bi-car-front-fill me-2"></i>Einkaufsfinanzierung
-                </a>
-            </div>
-
-            <!-- Verkauf -->
-            <div class="nav-item has-submenu {% if '/verkauf/' in request.path %}open{% endif %}"
-                 onclick="toggleSubmenu(this)">
-                <span class="nav-item-icon">🚗</span>
-                <span class="nav-item-text">Verkauf</span>
-            </div>
-            <div class="submenu {% if '/verkauf/' in request.path %}open{% endif %}">
-                <a href="/verkauf/auftragseingang"
-                   class="submenu-item {% if request.path == '/verkauf/auftragseingang' %}active{% endif %}">
-                    <i class="bi bi-cart-check me-2"></i>Auftragseingang
-                </a>
-                <a href="/verkauf/auslieferung/detail"
-                   class="submenu-item {% if request.path == '/verkauf/auslieferung/detail' %}active{% endif %}">
-                    <i class="bi bi-box-seam me-2"></i>Auslieferungen
-                </a>
-            </div>
-
-            <!-- Mitarbeiter / Urlaubsplaner -->
-            <div class="nav-item has-submenu {% if '/urlaubsplaner' in request.path or '/mitarbeiter/urlaubsplaner' in request.path %}open{% endif %}" 
-                 onclick="toggleSubmenu(this)">
-                <span class="nav-item-icon">👥</span>
-                <span class="nav-item-text">Mitarbeiter</span>
-            </div>
-            <div class="submenu {% if '/urlaubsplaner' in request.path or '/mitarbeiter/urlaubsplaner' in request.path %}open{% endif %}">
-                <a href="/urlaubsplaner/v2" 
-                   class="submenu-item {% if '/urlaubsplaner' in request.path %}active{% endif %}">
-                    <i class="bi bi-calendar-check me-2"></i>Urlaubsplaner
-                </a>
-            </div>
-        </nav>
-
-        <div class="sidebar-footer">
-            <div class="status-row">
-                <span>System Status</span>
-                <span class="status-indicator"></span>
-            </div>
-            <div>Version 2.0 · 2025</div>
         </div>
-    </div>
+    </nav>
 
-    <!-- Main Content Area -->
-    <div class="main-content">
-        <div class="top-bar">
-            <h2>{% block page_title %}Startseite{% endblock %}</h2>
-            <div class="user-info">
-                <span>👤 Administrator</span>
-                <span style="color: #d1d5db;">|</span>
-                <span>{{ now.strftime("%d.%m.%Y %H:%M") if now else "" }}</span>
-            </div>
+    <!-- MAIN CONTENT -->
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="footer mt-auto py-3 bg-light">
+        <div class="container-fluid text-center">
+            <span class="text-muted">
+                © 2025 Autohaus Greiner GmbH & Co. KG | 
+                <i class="bi bi-server"></i> srvlinux01.auto-greiner.de |
+                Version 2.0
+            </span>
         </div>
+    </footer>
 
-        <div class="content-area">
-            {% block content %}{% endblock %}
-        </div>
-    </div>
-
-    <!-- Bootstrap 5 JS Bundle (mit Popper) -->
+    <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-
-    <!-- Base JavaScript -->
-    <script>
-        /**
-         * Toggle Submenu in Sidebar
-         */
-        function toggleSubmenu(element) {
-            element.classList.toggle('open');
-            const submenu = element.nextElementSibling;
-            if (submenu && submenu.classList.contains('submenu')) {
-                submenu.classList.toggle('open');
-            }
-        }
-
-        /**
-         * Auto-open active submenu on page load
-         */
-        document.addEventListener('DOMContentLoaded', function() {
-            const activeItem = document.querySelector('.submenu-item.active');
-            if (activeItem) {
-                const submenu = activeItem.closest('.submenu');
-                const trigger = submenu ? submenu.previousElementSibling : null;
-                if (submenu && trigger) {
-                    submenu.classList.add('open');
-                    trigger.classList.add('open');
-                }
-            }
-        });
-    </script>
-
-    <!-- Extra JS Block (für Chart.js, etc.) - WICHTIG! -->
-    {% block extra_js %}{% endblock %}
-
-    <!-- Custom Scripts Block (für page-spezifische Scripts) - WICHTIG! -->
+    
+    <!-- Custom Scripts -->
     {% block scripts %}{% endblock %}
+
 </body>
 </html>

@@ -1,36 +1,291 @@
 {% extends "base.html" %}
-{% block page_title %}Dashboard{% endblock %}
+
+{% block title %}Dashboard - Greiner Portal{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+{% endblock %}
+
 {% block content %}
-<div style="max-width: 1400px;">
-    <div style="background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px;">
-        <h2 style="color: #1a2332; margin-bottom: 15px;">📊 Dashboard - Übersicht</h2>
-        <p style="color: #6b7280;">Willkommen im Dashboard. Hier finden Sie die wichtigsten Kennzahlen auf einen Blick.</p>
-    </div>
+<div class="container-fluid dashboard-container">
     
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
-        <div style="background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 4px solid #10b981;">
-            <div style="font-size: 0.85em; color: #6b7280; margin-bottom: 8px;">UMSATZ HEUTE</div>
-            <div style="font-size: 2em; font-weight: 600; color: #1a2332;">€ 45.280</div>
-            <div style="color: #10b981; font-size: 0.9em; margin-top: 5px;">↑ +12% vs. gestern</div>
-        </div>
-        
-        <div style="background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 4px solid #3b82f6;">
-            <div style="font-size: 0.85em; color: #6b7280; margin-bottom: 8px;">WERKSTATT AUSLASTUNG</div>
-            <div style="font-size: 2em; font-weight: 600; color: #1a2332;">87%</div>
-            <div style="color: #3b82f6; font-size: 0.9em; margin-top: 5px;">12 von 14 Plätzen belegt</div>
-        </div>
-        
-        <div style="background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 4px solid #f59e0b;">
-            <div style="font-size: 0.85em; color: #6b7280; margin-bottom: 8px;">OFFENE ANGEBOTE</div>
-            <div style="font-size: 2em; font-weight: 600; color: #1a2332;">23</div>
-            <div style="color: #f59e0b; font-size: 0.9em; margin-top: 5px;">Gesamtwert: € 485.000</div>
-        </div>
-        
-        <div style="background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 4px solid #8b5cf6;">
-            <div style="font-size: 0.85em; color: #6b7280; margin-bottom: 8px;">AKTIVE MITARBEITER</div>
-            <div style="font-size: 2em; font-weight: 600; color: #1a2332;">68</div>
-            <div style="color: #8b5cf6; font-size: 0.9em; margin-top: 5px;">3 im Urlaub, 2 krank</div>
+    <!-- Header mit Begrüßung -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="welcome-header">
+                <div class="welcome-content">
+                    <h1 class="display-4">
+                        <i class="bi bi-house-door"></i> 
+                        Willkommen, <span class="user-name">{{ current_user.display_name }}</span>
+                    </h1>
+                    <p class="lead">
+                        <i class="bi bi-calendar-event"></i> {{ now.strftime('%A, %d. %B %Y') }}
+                        {% if current_user.last_login %}
+                        <span class="ms-3">
+                            <i class="bi bi-clock-history"></i> 
+                            Letzter Login: {{ current_user.last_login.strftime('%d.%m.%Y %H:%M') }} Uhr
+                        </span>
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
         </div>
     </div>
+
+    <!-- Live-KPIs Übersicht -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="kpi-card">
+                <div class="kpi-icon bg-primary">
+                    <i class="bi bi-bank2"></i>
+                </div>
+                <div class="kpi-content">
+                    <h3 id="kpi-saldo">Lädt...</h3>
+                    <p>Gesamtsaldo Bankkonten</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-card">
+                <div class="kpi-icon bg-success">
+                    <i class="bi bi-car-front"></i>
+                </div>
+                <div class="kpi-content">
+                    <h3 id="kpi-fahrzeuge">Lädt...</h3>
+                    <p>Finanzierte Fahrzeuge</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-card">
+                <div class="kpi-icon bg-warning">
+                    <i class="bi bi-calendar-check"></i>
+                </div>
+                <div class="kpi-content">
+                    <h3 id="kpi-urlaub">Lädt...</h3>
+                    <p>Offene Urlaubsanträge</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-card">
+                <div class="kpi-icon bg-info">
+                    <i class="bi bi-graph-up"></i>
+                </div>
+                <div class="kpi-content">
+                    <h3 id="kpi-umsatz">Lädt...</h3>
+                    <p>Umsatz (30 Tage)</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modul-Kacheln -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="section-title">
+                <i class="bi bi-grid-3x3-gap"></i> Ihre Module
+            </h2>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        
+        <!-- Bankenspiegel -->
+        <div class="col-lg-4 col-md-6">
+            <div class="module-card" onclick="window.location.href='/bankenspiegel/dashboard'">
+                <div class="module-icon bg-primary">
+                    <i class="bi bi-bank2"></i>
+                </div>
+                <div class="module-content">
+                    <h3>Bankenspiegel</h3>
+                    <p>Übersicht über alle Bankkonten, Transaktionen und Salden</p>
+                    <ul class="feature-list">
+                        <li><i class="bi bi-check-circle"></i> Kontenübersicht</li>
+                        <li><i class="bi bi-check-circle"></i> Transaktionen</li>
+                        <li><i class="bi bi-check-circle"></i> Monatsauswertungen</li>
+                    </ul>
+                </div>
+                <div class="module-footer">
+                    <span class="badge bg-success">Aktiv</span>
+                    <span class="live-count" id="banken-count">15 Konten</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Urlaubsplaner -->
+        <div class="col-lg-4 col-md-6">
+            <div class="module-card" onclick="alert('Urlaubsplaner-Frontend folgt in Kürze! API verfügbar unter /api/vacation/'); return false;">
+                <div class="module-icon bg-warning">
+                    <i class="bi bi-calendar-check"></i>
+                </div>
+                <div class="module-content">
+                    <h3>Urlaubsplaner</h3>
+                    <p>Verwaltung von Urlaubsanträgen und Abwesenheiten</p>
+                    <ul class="feature-list">
+                        <li><i class="bi bi-check-circle"></i> Anträge stellen</li>
+                        <li><i class="bi bi-check-circle"></i> Genehmigungen</li>
+                        <li><i class="bi bi-check-circle"></i> Team-Kalender</li>
+                    </ul>
+                </div>
+                <div class="module-footer">
+                    <span class="badge bg-success">Aktiv</span>
+                    <span class="live-count" id="vacation-count">0 offen</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Verkauf (geplant) -->
+        <div class="col-lg-4 col-md-6">
+            <div class="module-card" onclick="window.location.href='/verkauf/auftragseingang'">
+                <div class="module-icon bg-success">
+                    <i class="bi bi-cart3"></i>
+                </div>
+                <div class="module-content">
+                    <h3>Verkauf & Aufträge</h3>
+                    <p>Auftragseingang, Pipeline und Verkaufsstatistiken</p>
+                    <ul class="feature-list">
+                        <li><i class="bi bi-clock"></i> Auftragseingang</li>
+                        <li><i class="bi bi-clock"></i> Pipeline</li>
+                        <li><i class="bi bi-clock"></i> Verkäufer-Ranking</li>
+                    </ul>
+                </div>
+                <div class="module-footer">
+                    <span class="badge bg-success">Aktiv</span>
+                    <span class="live-count" id="verkauf-count">Auftragseingang</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Aftersales (geplant) -->
+        <div class="col-lg-4 col-md-6">
+            <div class="module-card module-disabled">
+                <div class="module-icon bg-secondary">
+                    <i class="bi bi-wrench"></i>
+                </div>
+                <div class="module-content">
+                    <h3>Aftersales</h3>
+                    <p>Werkstatt, Service und Kundendienst-Auswertungen</p>
+                    <ul class="feature-list">
+                        <li><i class="bi bi-clock"></i> Werkstatt-Auslastung</li>
+                        <li><i class="bi bi-clock"></i> Service-Termine</li>
+                        <li><i class="bi bi-clock"></i> Ersatzteile</li>
+                    </ul>
+                </div>
+                <div class="module-footer">
+                    <span class="badge bg-secondary">In Planung</span>
+                    <span class="live-count">Demnächst</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Controlling (geplant) -->
+        <div class="col-lg-4 col-md-6">
+            <div class="module-card module-disabled">
+                <div class="module-icon bg-secondary">
+                    <i class="bi bi-graph-up-arrow"></i>
+                </div>
+                <div class="module-content">
+                    <h3>Controlling</h3>
+                    <p>Kennzahlen, Reports und Unternehmenssteuerung</p>
+                    <ul class="feature-list">
+                        <li><i class="bi bi-clock"></i> KPI-Dashboards</li>
+                        <li><i class="bi bi-clock"></i> Monatsberichte</li>
+                        <li><i class="bi bi-clock"></i> Forecasts</li>
+                    </ul>
+                </div>
+                <div class="module-footer">
+                    <span class="badge bg-secondary">In Planung</span>
+                    <span class="live-count">Demnächst</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- HR & Personal (geplant) -->
+        <div class="col-lg-4 col-md-6">
+            <div class="module-card module-disabled">
+                <div class="module-icon bg-secondary">
+                    <i class="bi bi-people"></i>
+                </div>
+                <div class="module-content">
+                    <h3>Personal & HR</h3>
+                    <p>Mitarbeiterverwaltung und Personalcontrolling</p>
+                    <ul class="feature-list">
+                        <li><i class="bi bi-clock"></i> Mitarbeiter-Stammdaten</li>
+                        <li><i class="bi bi-clock"></i> Personalkosten</li>
+                        <li><i class="bi bi-clock"></i> Auslastung</li>
+                    </ul>
+                </div>
+                <div class="module-footer">
+                    <span class="badge bg-secondary">In Planung</span>
+                    <span class="live-count">Demnächst</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row mt-5 mb-4">
+        <div class="col-12">
+            <h2 class="section-title">
+                <i class="bi bi-lightning"></i> Quick Actions
+            </h2>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-3 col-md-6">
+            <a href="/bankenspiegel/transaktionen" class="quick-action-card">
+                <i class="bi bi-receipt"></i>
+                <span>Letzte Transaktionen</span>
+            </a>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <a href="/bankenspiegel/konten" class="quick-action-card">
+                <i class="bi bi-wallet2"></i>
+                <span>Kontenstände</span>
+            </a>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <a href="/vacation/dashboard" class="quick-action-card">
+                <i class="bi bi-calendar-plus"></i>
+                <span>Urlaub beantragen</span>
+            </a>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <a href="#" class="quick-action-card" onclick="alert('Export-Funktion in Entwicklung'); return false;">
+                <i class="bi bi-download"></i>
+                <span>Reports exportieren</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- System Status -->
+    <div class="row mt-5">
+        <div class="col-12">
+            <div class="system-status">
+                <div class="status-item">
+                    <span class="status-label">System Status:</span>
+                    <span class="badge bg-success">
+                        <i class="bi bi-check-circle"></i> Alle Systeme betriebsbereit
+                    </span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Letzte Aktualisierung:</span>
+                    <span id="last-update">{{ now.strftime('%H:%M:%S') }} Uhr</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Server:</span>
+                    <span>srvlinux01.auto-greiner.de</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% endblock %}

@@ -133,25 +133,6 @@ def logout():
 # MAIN ROUTES
 # ============================================================================
 
-@app.route('/')
-def index():
-    """Startseite - Redirect zu Login wenn nicht eingeloggt"""
-    if not current_user.is_authenticated:
-        return redirect(url_for('login'))
-    
-    return jsonify({
-        'status': 'running',
-        'app': 'Greiner Portal',
-        'user': current_user.display_name if current_user.is_authenticated else 'Guest',
-        'apis': [
-            '/api/vacation/health',
-            '/api/vacation/balance/<id>',
-            '/api/vacation/requests',
-            '/api/bankenspiegel/dashboard',
-            '/api/verkauf/auftragseingang'
-        ]
-    })
-
 @app.route('/health')
 def health():
     """Health-Check Endpoint"""
@@ -222,3 +203,16 @@ if __name__ == '__main__':
     print("=" * 80)
     
     app.run(host='0.0.0.0', port=5000, debug=True)
+
+# ========================================
+# DASHBOARD (STARTSEITE)
+# ========================================
+
+@app.route('/')
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    """Hauptdashboard - Startseite nach Login"""
+    from datetime import datetime
+    return render_template('dashboard.html', now=datetime.now())
+
