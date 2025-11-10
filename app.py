@@ -109,7 +109,7 @@ def login():
     """Login-Page und Authentication"""
     # Wenn bereits eingeloggt, redirect zu Home
     if current_user.is_authenticated:
-        return redirect(url_for('index'))
+        return redirect(url_for('dashboard'))
     
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
@@ -131,7 +131,7 @@ def login():
                     next_page = request.args.get('next')
                     if next_page and next_page.startswith('/'):
                         return redirect(next_page)
-                    return redirect(url_for('index'))
+                    return redirect(url_for('dashboard'))
                 else:
                     flash('Ungültiger Benutzername oder Passwort.', 'danger')
             except Exception as e:
@@ -211,7 +211,7 @@ def unauthorized(e):
 def forbidden(e):
     """Handler für 403 Forbidden"""
     flash('Sie haben keine Berechtigung für diesen Bereich.', 'danger')
-    return redirect(url_for('index'))
+    return redirect(url_for('dashboard'))
 
 # ============================================================================
 # MAIN
