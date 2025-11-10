@@ -187,9 +187,7 @@ def get_dashboard():
 def get_konten():
     """
     GET /api/bankenspiegel/konten?bank_id=1&aktiv=1
-    
     Gibt Liste aller Konten mit aktuellem Saldo zurück
-    
     Query-Parameter:
     - bank_id: Filter nach Bank-ID (optional)
     - aktiv: Filter nach aktiv (1) oder inaktiv (0) (optional, default: 1)
@@ -201,9 +199,9 @@ def get_konten():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Query mit optionalen Filtern
+        # Query mit DISTINCT auf konto_id - nimmt nur neuesten Saldo
         query = """
-            SELECT 
+            SELECT
                 konto_id,
                 bank_name,
                 kontoname,
@@ -214,37 +212,26 @@ def get_konten():
                 stand_datum,
                 aktiv
             FROM v_aktuelle_kontostaende
-            WHERE 1=1
+            WHERE (konto_id, stand_datum) IN (
+                SELECT konto_id, MAX(stand_datum)
+                FROM v_aktuelle_kontostaende
+                GROUP BY konto_id
+            )
         """
+        
         params = []
         
+        # Filter nach aktiv
         if aktiv is not None:
             query += " AND aktiv = ?"
             params.append(aktiv)
         
+        # Filter nach Bank
         if bank_id:
-            # Filter nach Bank über Subquery
-            query = """
-                SELECT 
-                    konto_id,
-                    bank_name,
-                    kontoname,
-                    iban,
-                    kontotyp,
-                    waehrung,
-                    saldo,
-                    stand_datum,
-                    aktiv
-                FROM v_aktuelle_kontostaende
-                WHERE konto_id IN (SELECT id FROM konten WHERE bank_id = ?)
-            """
-            params = [bank_id]
-            
-            if aktiv is not None:
-                query += " AND aktiv = ?"
-                params.append(aktiv)
+            query += " AND konto_id IN (SELECT id FROM konten WHERE bank_id = ?)"
+            params.append(bank_id)
         
-        query += " ORDER BY bank_name, kontoname"
+        query += " ORDER BY CASE WHEN kontotyp = 'Girokonto' THEN 0 WHEN kontotyp = 'Sonstiges' THEN 1 ELSE 2 END, bank_name, kontoname"
         
         cursor.execute(query, params)
         konten = rows_to_list(cursor.fetchall())
@@ -267,10 +254,6 @@ def get_konten():
             'error': str(e)
         }), 500
 
-
-# ============================================================================
-# ENDPOINT 3: TRANSAKTIONEN (Filterbare Liste)
-# ============================================================================
 
 @bankenspiegel_api.route('/transaktionen', methods=['GET'])
 def get_transaktionen():

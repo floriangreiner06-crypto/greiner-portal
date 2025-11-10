@@ -3,7 +3,7 @@
 {% block title %}Dashboard - Greiner Portal{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}?v={{ STATIC_VERSION }}">
 {% endblock %}
 
 {% block content %}
@@ -287,5 +287,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}?v={{ STATIC_VERSION }}"></script>
 {% endblock %}

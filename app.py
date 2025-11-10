@@ -14,6 +14,29 @@ import os
 app = Flask(__name__)
 
 # ============================================================================
+# CACHE-BUSTING KONFIGURATION (siehe docs/CACHING_STRATEGY.md)
+# ============================================================================
+import os
+from datetime import datetime
+
+# Entwicklung: Kein Caching
+if os.getenv('FLASK_ENV') == 'development' or app.debug:
+    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+else:
+    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 Jahr in Produktion
+
+# Globale Static-Version (ändert sich bei jedem Flask-Neustart)
+STATIC_VERSION = datetime.now().strftime('%Y%m%d%H%M%S')
+print(f"📦 Static Version: {STATIC_VERSION}")
+
+# Template-Kontext: Macht STATIC_VERSION in allen Templates verfügbar
+@app.context_processor
+def inject_version():
+    return {'STATIC_VERSION': STATIC_VERSION}
+# ============================================================================
+
+
+# ============================================================================
 # KONFIGURATION
 # ============================================================================
 

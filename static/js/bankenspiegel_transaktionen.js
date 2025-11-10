@@ -75,7 +75,7 @@ async function loadKontenFilter() {
         kontoFilter.innerHTML = '<option value="">Alle Konten</option>' +
             alleKonten
                 .filter(k => k.aktiv)
-                .map(k => `<option value="${k.id}">${k.bank_name} - ${k.kontoname || k.iban}</option>`)
+                .map(k => `<option value="${k.konto_id}">${k.bank_name} - ${k.kontoname || k.iban}</option>`)
                 .join('');
         
     } catch (error) {
@@ -83,14 +83,14 @@ async function loadKontenFilter() {
     }
 }
 
-// Standard-Datum setzen (letzte 90 Tage)
+// Standard-Datum setzen (heutiger Tag)
 function setDefaultDates() {
     const heute = new Date();
-    const vor90Tagen = new Date();
-    vor90Tagen.setDate(heute.getDate() - 90);
+    const heuteStart = new Date();
+    heuteStart.setHours(0, 0, 0, 0);
     
-    document.getElementById('bisDatum').valueAsDate = heute;
-    document.getElementById('vonDatum').valueAsDate = vor90Tagen;
+    document.getElementById('bisDatum').valueAsDate = heuteStart;
+    document.getElementById('vonDatum').valueAsDate = heuteStart;
 }
 
 // URL-Parameter prüfen

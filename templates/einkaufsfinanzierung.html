@@ -3,7 +3,7 @@
 {% block title %}Einkaufsfinanzierung - Greiner Portal{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/einkaufsfinanzierung.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/einkaufsfinanzierung.css') }}?v={{ STATIC_VERSION }}">
 {% endblock %}
 
 {% block content %}
@@ -325,5 +325,5 @@
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="{{ url_for('static', filename='js/einkaufsfinanzierung.js') }}"></script>
+<script src="{{ url_for('static', filename='js/einkaufsfinanzierung.js') }}?v={{ STATIC_VERSION }}"></script>
 {% endblock %}

@@ -150,5 +150,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/bankenspiegel_transaktionen.js') }}"></script>
+<script src="{{ url_for('static', filename='js/bankenspiegel_transaktionen.js') }}?v={{ STATIC_VERSION }}"></script>
 {% endblock %}

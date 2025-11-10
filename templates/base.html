@@ -15,7 +15,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/navbar.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/navbar.css') }}?v={{ STATIC_VERSION }}">
     
     {% block extra_css %}{% endblock %}
 </head>
@@ -27,7 +27,7 @@
             
             <!-- Logo & Brand -->
             <a class="navbar-brand d-flex align-items-center" href="/">
-                <img src="{{ url_for('static', filename='images/greiner-logo.png') }}" 
+                <img src="{{ url_for('static', filename='images/greiner-logo.png') }}?v={{ STATIC_VERSION }}" 
                      alt="Greiner Logo" 
                      height="40" 
                      class="me-2"
