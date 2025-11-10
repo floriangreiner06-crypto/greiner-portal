@@ -127,7 +127,7 @@ try:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     
-    c.execute("DELETE FROM fahrzeugfinanzierungen")
+    c.execute("DELETE FROM fahrzeugfinanzierungen WHERE finanzinstitut = 'Stellantis'")
     print("🗑️  Alte Fahrzeugdaten gelöscht\n")
     
     stats = {'neu': 0}
