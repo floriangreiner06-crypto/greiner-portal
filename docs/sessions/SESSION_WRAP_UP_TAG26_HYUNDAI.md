@@ -89,25 +89,6 @@ GROUP BY finanzinstitut;
 
 ---
 
-## 📸 Screenshots
-
-Alle in `/tmp/hyundai_screenshots/`:
-- `01_nach_login.png` - FIONA nach Login
-- `02_standort_gewählt.png` - Standortauswahl
-- `03_ekf_portal.png` - EKF Startseite
-- `04_bestandsliste.png` - Bestandsliste (leer)
-
----
-
-## 💡 Lessons Learned
-
-1. **Hyundai hat 2-Portal-System** - Nicht dokumentiert, musste reverse-engineered werden
-2. **Tab-Wechsel erforderlich** - `driver.switch_to.window()`
-3. **JavaScript-Clicks nötig** - Normale Clicks funktionieren nicht immer
-4. **Bestandsliste braucht Filter** - Nicht automatisch geladen
-
----
-
 ## 🔄 Wiedereinsteig beim nächsten Mal
 ```bash
 cd /opt/greiner-portal
