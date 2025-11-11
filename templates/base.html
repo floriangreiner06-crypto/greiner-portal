@@ -4,19 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Greiner Portal{% endblock %}</title>
-    
+
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    
+
     <!-- Bootstrap Icons -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
-    
+
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    
+
     <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/navbar.css') }}?v={{ STATIC_VERSION }}">
-    
+
     {% block extra_css %}{% endblock %}
 </head>
 <body>
@@ -24,12 +24,12 @@
     <!-- TOP NAVBAR -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary sticky-top">
         <div class="container-fluid">
-            
+
             <!-- Logo & Brand -->
             <a class="navbar-brand d-flex align-items-center" href="/">
-                <img src="{{ url_for('static', filename='images/greiner-logo.png') }}?v={{ STATIC_VERSION }}" 
-                     alt="Greiner Logo" 
-                     height="40" 
+                <img src="{{ url_for('static', filename='images/greiner-logo.png') }}?v={{ STATIC_VERSION }}"
+                     alt="Greiner Logo"
+                     height="40"
                      class="me-2"
                      onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
                 <span class="logo-fallback" style="display:none;">
@@ -37,23 +37,23 @@
                 </span>
                 <span class="fw-bold">Greiner Portal</span>
             </a>
-            
+
             <!-- Mobile Toggle -->
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
-            
+
             <!-- Navigation Links -->
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
-                    
+
                     <!-- Dashboard -->
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="/">
                             <i class="bi bi-house-door"></i> Dashboard
                         </a>
                     </li>
-                    
+
                     <!-- Bankenspiegel Dropdown -->
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="bankenspiegelDropdown" role="button" data-bs-toggle="dropdown">
@@ -69,16 +69,19 @@
                             <li><a class="dropdown-item" href="/bankenspiegel/transaktionen">
                                 <i class="bi bi-receipt"></i> Transaktionen
                             </a></li>
+                            <li><a class="dropdown-item" href="/bankenspiegel/fahrzeugfinanzierungen">
+                                <i class="bi bi-car-front"></i> Fahrzeugfinanzierungen
+                            </a></li>
                         </ul>
                     </li>
-                    
-                    <!-- Urlaubsplaner (vorerst disabled) -->
+
+                    <!-- Urlaubsplaner -->
                     <li class="nav-item">
-                        <a class="nav-link disabled" href="#" onclick="alert('Urlaubsplaner-Frontend folgt in Kürze!'); return false;">
+                        <a class="nav-link {% if request.endpoint == 'urlaubsplaner_v2' %}active{% endif %}" href="/urlaubsplaner/v2">
                             <i class="bi bi-calendar-check"></i> Urlaubsplaner
                         </a>
                     </li>
-                    
+
                     <!-- Verkauf Dropdown -->
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="verkaufDropdown" role="button" data-bs-toggle="dropdown">
@@ -88,20 +91,17 @@
                             <li><a class="dropdown-item" href="/verkauf/auftragseingang">
                                 <i class="bi bi-clipboard-data"></i> Auftragseingang
                             </a></li>
-                            <li><a class="dropdown-item" href="/verkauf/auftragseingang/detail">
-                                <i class="bi bi-list-check"></i> Detail-Ansicht
-                            </a></li>
                             <li><a class="dropdown-item" href="/verkauf/auslieferung/detail">
                                 <i class="bi bi-truck"></i> Auslieferungen
                             </a></li>
                         </ul>
                     </li>
-                    
+
                 </ul>
-                
+
                 <!-- Right Side: User Menu -->
                 <ul class="navbar-nav ms-auto">
-                    
+
                     <!-- Notifications -->
                     <li class="nav-item">
                         <a class="nav-link position-relative" href="#" title="Benachrichtigungen">
@@ -111,7 +111,7 @@
                             </span>
                         </a>
                     </li>
-                    
+
                     <!-- User Dropdown -->
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown">
@@ -152,7 +152,7 @@
                             {% endif %}
                         </ul>
                     </li>
-                    
+
                 </ul>
             </div>
         </div>
@@ -167,7 +167,7 @@
     <footer class="footer mt-auto py-3 bg-light">
         <div class="container-fluid text-center">
             <span class="text-muted">
-                © 2025 Autohaus Greiner GmbH & Co. KG | 
+                © 2025 Autohaus Greiner GmbH & Co. KG |
                 <i class="bi bi-server"></i> srvlinux01.auto-greiner.de |
                 Version 2.0
             </span>
@@ -176,7 +176,7 @@
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    
+
     <!-- Custom Scripts -->
     {% block scripts %}{% endblock %}
 
