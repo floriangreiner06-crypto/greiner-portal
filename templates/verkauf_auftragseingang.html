@@ -1,173 +1,384 @@
 {% extends "base.html" %}
-
 {% block title %}Auftragseingang - Greiner Portal{% endblock %}
-
 {% block content %}
-<div class="container-fluid py-4">
-    <!-- Header -->
+<div class="container-fluid mt-4">
     <div class="row mb-4">
-        <div class="col">
-            <h1 class="h2 mb-0">
-                <i class="bi bi-cart-check me-2"></i>Auftragseingang
-            </h1>
-            <p class="text-muted mb-0">Verkaufsaufträge nach Verkäufer und Fahrzeugart</p>
+        <div class="col-12">
+            <h2><i class="bi bi-clipboard-data"></i> Auftragseingang</h2>
+            <p class="text-muted">Verkaufsaufträge nach Verkäufer und Modellen (Vertragsdatum)</p>
         </div>
-        <div class="col-auto">
-            <button class="btn btn-outline-primary" onclick="loadData()">
-                <i class="bi bi-arrow-clockwise me-1"></i>Aktualisieren
+    </div>
+    
+    <!-- Filter -->
+    <div class="row mb-4">
+        <div class="col-md-2">
+            <label>Zeitraum:</label>
+            <select id="periodSelect" class="form-select">
+                <option value="month" selected>Monat</option>
+                <option value="day">Tag</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label>Monat:</label>
+            <select id="monthSelect" class="form-select">
+                <option value="1">Januar</option>
+                <option value="2">Februar</option>
+                <option value="3">März</option>
+                <option value="4">April</option>
+                <option value="5">Mai</option>
+                <option value="6">Juni</option>
+                <option value="7">Juli</option>
+                <option value="8">August</option>
+                <option value="9">September</option>
+                <option value="10">Oktober</option>
+                <option value="11" selected>November</option>
+                <option value="12">Dezember</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label>Tag:</label>
+            <input type="date" id="daySelect" class="form-control" style="display:none;">
+        </div>
+        <div class="col-md-1">
+            <label>Jahr:</label>
+            <input type="number" id="yearSelect" class="form-control" value="2025" min="2020" max="2030">
+        </div>
+        <div class="col-md-2">
+            <label>Standort:</label>
+            <select id="locationSelect" class="form-select">
+                <option value="">Alle Standorte</option>
+                <option value="1">Deggendorf (Opel)</option>
+                <option value="2">Deggendorf (Hyundai)</option>
+                <option value="3">Landau</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label>Verkäufer:</label>
+            <select id="verkauferSelect" class="form-select">
+                <option value="">Alle Verkäufer</option>
+            </select>
+        </div>
+        <div class="col-md-1">
+            <label>&nbsp;</label>
+            <button id="loadBtn" class="btn btn-primary w-100">
+                <i class="bi bi-search"></i>
             </button>
         </div>
     </div>
-
-    <!-- Filter -->
-    <div class="card border-0 shadow-sm mb-4">
-        <div class="card-body">
-            <div class="row g-3 align-items-end">
-                <div class="col-md-3">
-                    <label for="filterMonth" class="form-label small fw-semibold">Monat</label>
-                    <select class="form-select" id="filterMonth">
-                        <option value="1">Januar</option>
-                        <option value="2">Februar</option>
-                        <option value="3">März</option>
-                        <option value="4">April</option>
-                        <option value="5">Mai</option>
-                        <option value="6">Juni</option>
-                        <option value="7">Juli</option>
-                        <option value="8">August</option>
-                        <option value="9">September</option>
-                        <option value="10">Oktober</option>
-                        <option value="11">November</option>
-                        <option value="12">Dezember</option>
-                    </select>
+    
+    <!-- Zusammenfassung -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-bar-chart"></i> Zusammenfassung Auftragseingang</h5>
                 </div>
-                <div class="col-md-3">
-                    <label for="filterYear" class="form-label small fw-semibold">Jahr</label>
-                    <select class="form-select" id="filterYear">
-                        <option value="2023">2023</option>
-                        <option value="2024">2024</option>
-                        <option value="2025">2025</option>
-                        <option value="2026">2026</option>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <button class="btn btn-primary w-100" onclick="loadData()">
-                        <i class="bi bi-search me-1"></i>Anzeigen
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Info Boxes -->
-    <div class="row g-3 mb-4" id="infoBoxes">
-        <div class="col-md-6">
-            <div class="card border-0 shadow-sm h-100 bg-primary text-white">
                 <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <div>
-                            <p class="mb-1 opacity-75">Periode</p>
-                            <h4 class="mb-0" id="periodeInfo">-</h4>
+                    <div id="summaryContainer" class="row">
+                        <div class="col-12 text-center">
+                            <div class="spinner-border" role="status"></div>
+                            <p>Lade Daten...</p>
                         </div>
-                        <i class="bi bi-calendar-month fs-1 opacity-50"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-6">
-            <div class="card border-0 shadow-sm h-100 bg-success text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <div>
-                            <p class="mb-1 opacity-75">Aktueller Tag</p>
-                            <h4 class="mb-0" id="heuteInfo">-</h4>
-                        </div>
-                        <i class="bi bi-calendar-day fs-1 opacity-50"></i>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-
-    <!-- Aufträge HEUTE -->
-    <div class="card border-0 shadow-sm mb-4">
-        <div class="card-header bg-white border-bottom">
-            <h5 class="mb-0">
-                <i class="bi bi-fire text-danger me-2"></i>Auftragseingang Heute
-            </h5>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover mb-0" id="tableHeute">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>Verkäufer</th>
-                            <th class="text-center">NW</th>
-                            <th class="text-center">GW</th>
-                            <th class="text-center fw-bold">Gesamt</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td colspan="4" class="text-center py-5">
-                                <div class="spinner-border text-primary" role="status">
-                                    <span class="visually-hidden">Lädt...</span>
-                                </div>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+    
+    <!-- Verkäufer-Details -->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0"><i class="bi bi-people"></i> Verkäufer-Übersicht</h5>
+                </div>
+                <div class="card-body">
+                    <div id="verkauferContainer">
+                        <div class="text-center">
+                            <div class="spinner-border" role="status"></div>
+                            <p>Lade Daten...</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
-
-    <!-- Kumuliert MONAT -->
-    <div class="card border-0 shadow-sm mb-4">
-        <div class="card-header bg-white border-bottom">
-            <h5 class="mb-0">
-                <i class="bi bi-graph-up text-primary me-2"></i>Kumulierter Auftragseingang
-                <span id="periodeTitle"></span>
-            </h5>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover mb-0" id="tablePeriode">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>Verkäufer</th>
-                            <th class="text-center">NW</th>
-                            <th class="text-center">GW</th>
-                            <th class="text-center fw-bold">Gesamt</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td colspan="4" class="text-center py-5">
-                                <div class="spinner-border text-primary" role="status">
-                                    <span class="visually-hidden">Lädt...</span>
-                                </div>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    <!-- Legende -->
-    <div class="alert alert-info border-0 shadow-sm">
-        <h6 class="alert-heading">
-            <i class="bi bi-info-circle me-2"></i>Hinweise
-        </h6>
-        <ul class="mb-0 small">
-            <li><strong>Auftragseingang:</strong> Basiert auf Vertragsdatum (out_sales_contract_date)</li>
-            <li><strong>NW:</strong> Neuwagen (N) und Vorführwagen (V)</li>
-            <li><strong>GW:</strong> Gebrauchtwagen (D, G, T)</li>
-            <li><strong>Stückzahlen:</strong> Nur Anzahl Fahrzeuge, keine Beträge</li>
-        </ul>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/verkauf_auftragseingang.js') }}?v={{ STATIC_VERSION }}"></script>
+<script>
+// Auftragseingang - JavaScript mit erweiterten Filtern
+let currentMonth = 11;
+let currentYear = 2025;
+let currentLocation = '';
+let currentVerkaufer = '';
+let currentPeriod = 'month';
+let currentDay = '';
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Event Listeners
+    document.getElementById('loadBtn').addEventListener('click', loadData);
+    document.getElementById('periodSelect').addEventListener('change', togglePeriodInputs);
+    
+    // Verkäufer-Liste laden
+    loadVerkauferList();
+    
+    // Datum auf heute setzen
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('daySelect').value = today;
+    
+    // Initial Load
+    loadData();
+});
+
+function togglePeriodInputs() {
+    const period = document.getElementById('periodSelect').value;
+    const monthSelect = document.getElementById('monthSelect');
+    const daySelect = document.getElementById('daySelect');
+    
+    if (period === 'day') {
+        monthSelect.style.display = 'none';
+        daySelect.style.display = 'block';
+    } else {
+        monthSelect.style.display = 'block';
+        daySelect.style.display = 'none';
+    }
+}
+
+async function loadVerkauferList() {
+    try {
+        const response = await fetch('/api/verkauf/verkaufer');
+        if (response.ok) {
+            const data = await response.json();
+            const select = document.getElementById('verkauferSelect');
+            data.verkaufer.forEach(vk => {
+                const option = document.createElement('option');
+                option.value = vk.nummer;
+                option.textContent = vk.name;
+                select.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.warn('Verkäufer-Liste konnte nicht geladen werden:', error);
+    }
+}
+
+async function loadData() {
+    currentPeriod = document.getElementById('periodSelect').value;
+    currentMonth = document.getElementById('monthSelect').value;
+    currentYear = document.getElementById('yearSelect').value;
+    currentDay = document.getElementById('daySelect').value;
+    currentLocation = document.getElementById('locationSelect').value;
+    currentVerkaufer = document.getElementById('verkauferSelect').value;
+
+    await loadSummary();
+    await loadDetails();
+}
+
+async function loadSummary() {
+    const container = document.getElementById('summaryContainer');
+    container.innerHTML = '<div class="col-12 text-center"><div class="spinner-border"></div></div>';
+
+    try {
+        let url = `/api/verkauf/auftragseingang/summary?year=${currentYear}`;
+        
+        if (currentPeriod === 'month') {
+            url += `&month=${currentMonth}`;
+        } else {
+            url += `&day=${currentDay}`;
+        }
+        
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.error) {
+            container.innerHTML = `<div class="col-12"><div class="alert alert-danger">${data.error}</div></div>`;
+            return;
+        }
+
+        // Summary Cards erstellen
+        let neuwagen = { gesamt: 0, neu: 0, test_vorfuehr: 0, gebraucht: 0, umsatz: 0 };
+        let testvorfuehr = { gesamt: 0, neu: 0, test_vorfuehr: 0, gebraucht: 0, umsatz: 0 };
+        let gebrauchtwagen = { gesamt: 0, neu: 0, test_vorfuehr: 0, gebraucht: 0, umsatz: 0 };
+
+        data.summary.forEach(marke => {
+            neuwagen.gesamt += marke.neu;
+            neuwagen.umsatz += (marke.umsatz_gesamt / marke.gesamt) * marke.neu;
+            
+            testvorfuehr.gesamt += marke.test_vorfuehr;
+            testvorfuehr.umsatz += (marke.umsatz_gesamt / marke.gesamt) * marke.test_vorfuehr;
+            
+            gebrauchtwagen.gesamt += marke.gebraucht;
+            gebrauchtwagen.umsatz += (marke.umsatz_gesamt / marke.gesamt) * marke.gebraucht;
+        });
+
+        let html = '<div class="row">';
+        
+        // Neuwagen
+        html += `
+            <div class="col-md-3">
+                <div class="card text-center border-success">
+                    <div class="card-body">
+                        <h6><strong>Neuwagen</strong></h6>
+                        <h3 class="text-success"><strong>${neuwagen.gesamt}</strong></h3>
+                        <p class="text-muted small">${formatCurrency(neuwagen.umsatz)}</p>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Test/Vorführ
+        html += `
+            <div class="col-md-3">
+                <div class="card text-center border-warning">
+                    <div class="card-body">
+                        <h6><strong>Test/Vorführ</strong></h6>
+                        <h3 class="text-warning"><strong>${testvorfuehr.gesamt}</strong></h3>
+                        <p class="text-muted small">${formatCurrency(testvorfuehr.umsatz)}</p>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Gebrauchtwagen
+        html += `
+            <div class="col-md-3">
+                <div class="card text-center border-secondary">
+                    <div class="card-body">
+                        <h6><strong>Gebrauchtwagen</strong></h6>
+                        <h3 class="text-secondary"><strong>${gebrauchtwagen.gesamt}</strong></h3>
+                        <p class="text-muted small">${formatCurrency(gebrauchtwagen.umsatz)}</p>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Gesamt
+        const gesamt = neuwagen.gesamt + testvorfuehr.gesamt + gebrauchtwagen.gesamt;
+        const gesamt_umsatz = neuwagen.umsatz + testvorfuehr.umsatz + gebrauchtwagen.umsatz;
+        
+        html += `
+            <div class="col-md-3">
+                <div class="card text-center border-dark">
+                    <div class="card-body">
+                        <h6><strong>GESAMT</strong></h6>
+                        <h3 class="text-dark"><strong>${gesamt}</strong></h3>
+                        <p class="text-muted small"><strong>${formatCurrency(gesamt_umsatz)}</strong></p>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        html += '</div>';
+        container.innerHTML = html;
+    } catch (error) {
+        container.innerHTML = `<div class="col-12"><div class="alert alert-danger">Fehler: ${error.message}</div></div>`;
+    }
+}
+
+async function loadDetails() {
+    const container = document.getElementById('verkauferContainer');
+    container.innerHTML = '<div class="text-center"><div class="spinner-border"></div></div>';
+
+    try {
+        let url = `/api/verkauf/auftragseingang/detail?year=${currentYear}`;
+        
+        if (currentPeriod === 'month') {
+            url += `&month=${currentMonth}`;
+        } else {
+            url += `&day=${currentDay}`;
+        }
+        
+        if (currentLocation) url += `&location=${encodeURIComponent(currentLocation)}`;
+        if (currentVerkaufer) url += `&verkaufer=${encodeURIComponent(currentVerkaufer)}`;
+
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.error) {
+            container.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+            return;
+        }
+
+        if (!data.verkaufer || data.verkaufer.length === 0) {
+            container.innerHTML = '<div class="alert alert-info">Keine Daten für diesen Zeitraum</div>';
+            return;
+        }
+
+        let html = '<div class="table-responsive"><table class="table table-striped table-hover">';
+        html += `
+            <thead class="table-dark">
+                <tr>
+                    <th>Verkäufer</th>
+                    <th class="text-center">Neu</th>
+                    <th class="text-center">Test/Vorführ</th>
+                    <th class="text-center">Gebraucht</th>
+                    <th class="text-center">Gesamt</th>
+                    <th>Modelle</th>
+                </tr>
+            </thead>
+            <tbody>
+        `;
+
+        data.verkaufer.forEach(vk => {
+            html += `
+                <tr>
+                    <td><strong>${vk.verkaufer_name || 'Unbekannt'}</strong></td>
+                    <td class="text-center">
+                        <span class="badge bg-success">${vk.summe_neu}</span>
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-warning text-dark">${vk.summe_test_vorfuehr}</span>
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-secondary">${vk.summe_gebraucht}</span>
+                    </td>
+                    <td class="text-center">
+                        <strong>${vk.summe_gesamt}</strong>
+                    </td>
+                    <td>${formatModelle(vk)}</td>
+                </tr>
+            `;
+        });
+
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+
+    } catch (error) {
+        container.innerHTML = `<div class="alert alert-danger">Fehler: ${error.message}</div>`;
+    }
+}
+
+function formatModelle(vk) {
+    let html = '';
+    
+    if (vk.neu.length > 0) {
+        html += '<div class="mb-2"><strong class="text-success">Neuwagen:</strong><ul class="mb-0">';
+        vk.neu.forEach(m => html += `<li>${m.modell} (${m.anzahl}x)</li>`);
+        html += '</ul></div>';
+    }
+    
+    if (vk.test_vorfuehr.length > 0) {
+        html += '<div class="mb-2"><strong class="text-warning">Test/Vorführ:</strong><ul class="mb-0">';
+        vk.test_vorfuehr.forEach(m => html += `<li>${m.modell} (${m.anzahl}x)</li>`);
+        html += '</ul></div>';
+    }
+    
+    if (vk.gebraucht.length > 0) {
+        html += '<div class="mb-2"><strong class="text-secondary">Gebraucht:</strong><ul class="mb-0">';
+        vk.gebraucht.forEach(m => html += `<li>${m.modell} (${m.anzahl}x)</li>`);
+        html += '</ul></div>';
+    }
+    
+    return html || '<em class="text-muted">Keine Daten</em>';
+}
+
+function formatCurrency(value) {
+    return new Intl.NumberFormat('de-DE', {
+        style: 'currency',
+        currency: 'EUR'
+    }).format(value);
+}
+</script>
 {% endblock %}

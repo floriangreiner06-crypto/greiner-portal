@@ -410,6 +410,7 @@ def get_auslieferung_detail():
     Liefert detaillierte Aufschlüsselung der Auslieferungen nach Verkäufer und Modellen
     Basiert auf Rechnungsdatum (out_invoice_date)
     Unterstützt sowohl Monats- als auch Tages-Filter
+    NEU: Inkl. Deckungsbeitrag-Daten
     """
     try:
         # Parameter
@@ -453,9 +454,9 @@ def get_auslieferung_detail():
         # Dedup-Filter hinzufügen
         where_clauses.append("""
             NOT EXISTS (
-                SELECT 1 
-                FROM sales s2 
-                WHERE s2.vin = s.vin 
+                SELECT 1
+                FROM sales s2
+                WHERE s2.vin = s.vin
                     AND s2.out_sales_contract_date = s.out_sales_contract_date
                     AND s2.dealer_vehicle_type IN ('T', 'V')
                     AND s.dealer_vehicle_type = 'N'
@@ -464,14 +465,17 @@ def get_auslieferung_detail():
 
         where_sql = " AND ".join(where_clauses)
 
-        # Verkäufer mit Details (Rechnungsdatum!)
+        # Verkäufer mit Details (Rechnungsdatum!) + DECKUNGSBEITRAG
         cursor.execute(f"""
             SELECT
                 s.salesman_number,
                 COALESCE(e.first_name || ' ' || e.last_name, 'Verkäufer #' || s.salesman_number || ' (nicht in LocoSoft)') as verkaufer_name,
                 s.dealer_vehicle_type,
                 s.model_description,
-                COUNT(*) as anzahl
+                COUNT(*) as anzahl,
+                ROUND(SUM(COALESCE(s.out_sale_price, 0)), 2) as umsatz,
+                ROUND(SUM(COALESCE(s.deckungsbeitrag, 0)), 2) as deckungsbeitrag,
+                ROUND(AVG(COALESCE(s.db_prozent, 0)), 2) as avg_db_prozent
             FROM sales s
             LEFT JOIN employees e ON s.salesman_number = e.locosoft_id
             WHERE {where_sql}
@@ -482,7 +486,7 @@ def get_auslieferung_detail():
         rows = cursor.fetchall()
         conn.close()
 
-        # Aggregiere nach Verkäufer (gleiche Logik wie Auftragseingang)
+        # Aggregiere nach Verkäufer
         verkaufer_dict = {}
 
         for row in rows:
@@ -491,6 +495,9 @@ def get_auslieferung_detail():
             typ = row['dealer_vehicle_type']
             modell = row['model_description'] or 'Unbekannt'
             anzahl = row['anzahl']
+            umsatz = row['umsatz'] or 0
+            db = row['deckungsbeitrag'] or 0
+            db_prozent = row['avg_db_prozent'] or 0
 
             if vk_nr not in verkaufer_dict:
                 verkaufer_dict[vk_nr] = {
@@ -502,22 +509,66 @@ def get_auslieferung_detail():
                     'summe_neu': 0,
                     'summe_test_vorfuehr': 0,
                     'summe_gebraucht': 0,
-                    'summe_gesamt': 0
+                    'summe_gesamt': 0,
+                    'umsatz_neu': 0,
+                    'umsatz_test_vorfuehr': 0,
+                    'umsatz_gebraucht': 0,
+                    'umsatz_gesamt': 0,
+                    'db_neu': 0,
+                    'db_test_vorfuehr': 0,
+                    'db_gebraucht': 0,
+                    'db_gesamt': 0
                 }
 
-            modell_info = {'modell': modell, 'anzahl': anzahl}
+            modell_info = {
+                'modell': modell, 
+                'anzahl': anzahl,
+                'umsatz': umsatz,
+                'deckungsbeitrag': db,
+                'db_prozent': db_prozent
+            }
 
             if typ == 'N':
                 verkaufer_dict[vk_nr]['neu'].append(modell_info)
                 verkaufer_dict[vk_nr]['summe_neu'] += anzahl
+                verkaufer_dict[vk_nr]['umsatz_neu'] += umsatz
+                verkaufer_dict[vk_nr]['db_neu'] += db
             elif typ in ('T', 'V'):
                 verkaufer_dict[vk_nr]['test_vorfuehr'].append(modell_info)
                 verkaufer_dict[vk_nr]['summe_test_vorfuehr'] += anzahl
+                verkaufer_dict[vk_nr]['umsatz_test_vorfuehr'] += umsatz
+                verkaufer_dict[vk_nr]['db_test_vorfuehr'] += db
             elif typ in ('G', 'D'):
                 verkaufer_dict[vk_nr]['gebraucht'].append(modell_info)
                 verkaufer_dict[vk_nr]['summe_gebraucht'] += anzahl
+                verkaufer_dict[vk_nr]['umsatz_gebraucht'] += umsatz
+                verkaufer_dict[vk_nr]['db_gebraucht'] += db
 
             verkaufer_dict[vk_nr]['summe_gesamt'] += anzahl
+            verkaufer_dict[vk_nr]['umsatz_gesamt'] += umsatz
+            verkaufer_dict[vk_nr]['db_gesamt'] += db
+
+        # DB% für Gesamt-Kategorien berechnen
+        for vk_data in verkaufer_dict.values():
+            if vk_data['umsatz_neu'] > 0:
+                vk_data['db_prozent_neu'] = round((vk_data['db_neu'] / (vk_data['umsatz_neu'] / 1.19)) * 100, 2)
+            else:
+                vk_data['db_prozent_neu'] = 0
+                
+            if vk_data['umsatz_test_vorfuehr'] > 0:
+                vk_data['db_prozent_test_vorfuehr'] = round((vk_data['db_test_vorfuehr'] / (vk_data['umsatz_test_vorfuehr'] / 1.19)) * 100, 2)
+            else:
+                vk_data['db_prozent_test_vorfuehr'] = 0
+                
+            if vk_data['umsatz_gebraucht'] > 0:
+                vk_data['db_prozent_gebraucht'] = round((vk_data['db_gebraucht'] / (vk_data['umsatz_gebraucht'] / 1.19)) * 100, 2)
+            else:
+                vk_data['db_prozent_gebraucht'] = 0
+                
+            if vk_data['umsatz_gesamt'] > 0:
+                vk_data['db_prozent_gesamt'] = round((vk_data['db_gesamt'] / (vk_data['umsatz_gesamt'] / 1.19)) * 100, 2)
+            else:
+                vk_data['db_prozent_gesamt'] = 0
 
         # Liste erstellen
         verkaufer_list = list(verkaufer_dict.values())
@@ -536,41 +587,6 @@ def get_auslieferung_detail():
             'error': str(e)
         }), 500
 
-
-# ============================================================================
-# HELPER FUNCTIONS
-# ============================================================================
-
-def aggregate_verkaufer_daten(raw_data):
-    """Aggregiert Rohdaten zu Verkäufer-Struktur"""
-    verkaeufer = {}
-    summe = {'NW': 0, 'GW': 0, 'gesamt': 0}
-
-    for row in raw_data:
-        vk_nr = row['salesman_number']
-        vk_name = row['verkaufer_name']
-        fahrzeugart = row['fahrzeugart']
-        anzahl = row['anzahl']
-
-        if vk_nr not in verkaeufer:
-            verkaeufer[vk_nr] = {
-                'nummer': vk_nr,
-                'name': vk_name,
-                'NW': 0,
-                'GW': 0,
-                'gesamt': 0
-            }
-
-        verkaeufer[vk_nr][fahrzeugart] = anzahl
-        verkaeufer[vk_nr]['gesamt'] += anzahl
-
-        summe[fahrzeugart] += anzahl
-        summe['gesamt'] += anzahl
-
-    return {
-        'verkaeufer': verkaeufer,
-        'summe': summe
-    }
 
 
 @verkauf_api.route('/health', methods=['GET'])

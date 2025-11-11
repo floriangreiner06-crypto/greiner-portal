@@ -1,19 +1,24 @@
 {% extends "base.html" %}
-
-{% block title %}Auslieferungen Detail - Greiner Portal{% endblock %}
-
+{% block title %}Auslieferungen - Greiner Portal{% endblock %}
 {% block content %}
 <div class="container-fluid mt-4">
     <div class="row mb-4">
         <div class="col-12">
-            <h2><i class="bi bi-box-seam"></i> Auslieferungen - Detailansicht</h2>
-            <p class="text-muted">Ausgelieferte Fahrzeuge aufgeschlüsselt nach Verkäufer und Modellen (Rechnungsdatum)</p>
+            <h2><i class="bi bi-truck"></i> Auslieferungen</h2>
+            <p class="text-muted">Ausgelieferte Fahrzeuge nach Verkäufer und Modellen (Rechnungsdatum)</p>
         </div>
     </div>
 
     <!-- Filter -->
     <div class="row mb-4">
-        <div class="col-md-3">
+        <div class="col-md-2">
+            <label>Zeitraum:</label>
+            <select id="periodSelect" class="form-select">
+                <option value="month" selected>Monat</option>
+                <option value="day">Tag</option>
+            </select>
+        </div>
+        <div class="col-md-2">
             <label>Monat:</label>
             <select id="monthSelect" class="form-select">
                 <option value="1">Januar</option>
@@ -31,50 +36,42 @@
             </select>
         </div>
         <div class="col-md-2">
-            <label>Jahr:</label>
-            <input type="number" id="yearSelect" class="form-control" value="2025">
+            <label>Tag:</label>
+            <input type="date" id="daySelect" class="form-control" style="display:none;">
         </div>
-        <div class="col-md-3">
+        <div class="col-md-1">
+            <label>Jahr:</label>
+            <input type="number" id="yearSelect" class="form-control" value="2025" min="2020" max="2030">
+        </div>
+        <div class="col-md-2">
             <label>Standort:</label>
             <select id="locationSelect" class="form-select">
                 <option value="">Alle Standorte</option>
-                <option value="Deggendorf">Deggendorf</option>
-                <option value="Landau a.d. Isar">Landau</option>
+                <option value="1">Deggendorf (Opel)</option>
+                <option value="2">Deggendorf (Hyundai)</option>
+                <option value="3">Landau</option>
             </select>
         </div>
         <div class="col-md-2">
+            <label>Verkäufer:</label>
+            <select id="verkauferSelect" class="form-select">
+                <option value="">Alle Verkäufer</option>
+            </select>
+        </div>
+        <div class="col-md-1">
             <label>&nbsp;</label>
             <button id="loadBtn" class="btn btn-primary w-100">
-                <i class="bi bi-search"></i> Laden
+                <i class="bi bi-search"></i>
             </button>
         </div>
     </div>
 
-    <!-- Zusammenfassung -->
-    <div class="row mb-4">
-        <div class="col-md-12">
-            <div class="card">
-                <div class="card-header bg-success text-white">
-                    <h5 class="mb-0"><i class="bi bi-bar-chart"></i> Zusammenfassung Auslieferungen</h5>
-                </div>
-                <div class="card-body">
-                    <div id="summaryContainer" class="row">
-                        <div class="col-12 text-center">
-                            <div class="spinner-border" role="status"></div>
-                            <p>Lade Daten...</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Verkäufer-Details -->
+    <!-- Verkäufer-Details mit Deckungsbeitrag -->
     <div class="row">
         <div class="col-md-12">
             <div class="card">
                 <div class="card-header bg-secondary text-white">
-                    <h5 class="mb-0"><i class="bi bi-people"></i> Verkäufer-Übersicht</h5>
+                    <h5 class="mb-0"><i class="bi bi-people"></i> Verkäufer-Übersicht mit Deckungsbeitrag</h5>
                 </div>
                 <div class="card-body">
                     <div id="verkauferContainer">
@@ -88,8 +85,259 @@
         </div>
     </div>
 </div>
-{% endblock %}
 
-{% block scripts %}
-<script src="/static/js/verkauf_auslieferung_detail.js"></script>
+<script>
+// State
+let currentYear = 2025;
+let currentMonth = 11;
+let currentDay = '';
+let currentPeriod = 'month';
+let currentLocation = '';
+let currentVerkaufer = '';
+
+// Helper
+function formatCurrency(value) {
+    return new Intl.NumberFormat('de-DE', {
+        style: 'currency',
+        currency: 'EUR'
+    }).format(value);
+}
+
+function formatPercent(value) {
+    return value.toFixed(1) + '%';
+}
+
+function getDBColor(db_prozent) {
+    if (db_prozent >= 10) return 'success';
+    if (db_prozent >= 5) return 'primary';
+    if (db_prozent >= 0) return 'warning';
+    return 'danger';
+}
+
+// Event Listeners
+document.getElementById('periodSelect').addEventListener('change', (e) => {
+    currentPeriod = e.target.value;
+    if (currentPeriod === 'day') {
+        document.getElementById('monthSelect').style.display = 'none';
+        document.getElementById('daySelect').style.display = 'block';
+    } else {
+        document.getElementById('monthSelect').style.display = 'block';
+        document.getElementById('daySelect').style.display = 'none';
+    }
+});
+
+document.getElementById('monthSelect').addEventListener('change', (e) => {
+    currentMonth = e.target.value;
+});
+
+document.getElementById('daySelect').addEventListener('change', (e) => {
+    currentDay = e.target.value;
+});
+
+document.getElementById('yearSelect').addEventListener('change', (e) => {
+    currentYear = e.target.value;
+});
+
+document.getElementById('locationSelect').addEventListener('change', (e) => {
+    currentLocation = e.target.value;
+});
+
+document.getElementById('verkauferSelect').addEventListener('change', (e) => {
+    currentVerkaufer = e.target.value;
+});
+
+document.getElementById('loadBtn').addEventListener('click', () => {
+    loadDetails();
+});
+
+// Load Verkäufer-Liste
+async function loadVerkauferListe() {
+    try {
+        const response = await fetch('/api/verkauf/verkaufer');
+        const data = await response.json();
+        
+        const select = document.getElementById('verkauferSelect');
+        select.innerHTML = '<option value="">Alle Verkäufer</option>';
+        
+        if (data.verkaufer) {
+            data.verkaufer.forEach(vk => {
+                const option = document.createElement('option');
+                option.value = vk.nummer;
+                option.textContent = vk.name;
+                select.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.error('Fehler beim Laden der Verkäufer:', error);
+    }
+}
+
+async function loadDetails() {
+    const container = document.getElementById('verkauferContainer');
+    container.innerHTML = '<div class="text-center"><div class="spinner-border"></div></div>';
+
+    try {
+        let url = `/api/verkauf/auslieferung/detail?year=${currentYear}`;
+
+        if (currentPeriod === 'month') {
+            url += `&month=${currentMonth}`;
+        } else {
+            url += `&day=${currentDay}`;
+        }
+
+        if (currentLocation) url += `&location=${encodeURIComponent(currentLocation)}`;
+        if (currentVerkaufer) url += `&verkaufer=${encodeURIComponent(currentVerkaufer)}`;
+
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.error) {
+            container.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+            return;
+        }
+
+        if (!data.verkaufer || data.verkaufer.length === 0) {
+            container.innerHTML = '<div class="alert alert-info">Keine Daten für diesen Zeitraum</div>';
+            return;
+        }
+
+        let html = '<div class="table-responsive"><table class="table table-sm">';
+        html += `
+            <thead class="table-dark">
+                <tr>
+                    <th rowspan="2">Verkäufer</th>
+                    <th colspan="4" class="text-center">Fahrzeuge</th>
+                    <th colspan="3" class="text-center bg-success">Deckungsbeitrag</th>
+                </tr>
+                <tr>
+                    <th class="text-center">Neu</th>
+                    <th class="text-center">T/V</th>
+                    <th class="text-center">GW</th>
+                    <th class="text-center">∑</th>
+                    <th class="text-center bg-success">Umsatz</th>
+                    <th class="text-center bg-success">DB €</th>
+                    <th class="text-center bg-success">DB %</th>
+                </tr>
+            </thead>
+            <tbody>
+        `;
+
+        // Gesamt-Summen
+        let totalFzg = 0, totalUmsatz = 0, totalDB = 0;
+
+        data.verkaufer.forEach(vk => {
+            const dbColor = getDBColor(vk.db_prozent_gesamt);
+            
+            html += `
+                <tr>
+                    <td><strong>${vk.verkaufer_name || 'Unbekannt'}</strong></td>
+                    <td class="text-center">
+                        <span class="badge bg-success">${vk.summe_neu}</span>
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-warning text-dark">${vk.summe_test_vorfuehr}</span>
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-secondary">${vk.summe_gebraucht}</span>
+                    </td>
+                    <td class="text-center">
+                        <strong>${vk.summe_gesamt}</strong>
+                    </td>
+                    <td class="text-end">${formatCurrency(vk.umsatz_gesamt)}</td>
+                    <td class="text-end">
+                        <span class="badge bg-${dbColor}">${formatCurrency(vk.db_gesamt)}</span>
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-${dbColor}">${formatPercent(vk.db_prozent_gesamt)}</span>
+                    </td>
+                </tr>
+            `;
+
+            // Details aufklappbar
+            if (vk.neu.length > 0 || vk.test_vorfuehr.length > 0 || vk.gebraucht.length > 0) {
+                html += `
+                    <tr class="table-light">
+                        <td colspan="8">
+                            <div class="ms-4">
+                                <small class="text-muted">
+                `;
+
+                // Neuwagen
+                if (vk.neu.length > 0) {
+                    html += '<strong class="text-success">Neuwagen:</strong> ';
+                    vk.neu.forEach((m, i) => {
+                        html += `${m.modell} (${m.anzahl}x | ${formatCurrency(m.deckungsbeitrag)} | ${formatPercent(m.db_prozent)})`;
+                        if (i < vk.neu.length - 1) html += ', ';
+                    });
+                    html += '<br>';
+                }
+
+                // Test/Vorführ
+                if (vk.test_vorfuehr.length > 0) {
+                    html += '<strong class="text-warning">Test/Vorführ:</strong> ';
+                    vk.test_vorfuehr.forEach((m, i) => {
+                        html += `${m.modell} (${m.anzahl}x | ${formatCurrency(m.deckungsbeitrag)} | ${formatPercent(m.db_prozent)})`;
+                        if (i < vk.test_vorfuehr.length - 1) html += ', ';
+                    });
+                    html += '<br>';
+                }
+
+                // Gebraucht
+                if (vk.gebraucht.length > 0) {
+                    html += '<strong class="text-secondary">Gebraucht:</strong> ';
+                    vk.gebraucht.forEach((m, i) => {
+                        html += `${m.modell} (${m.anzahl}x | ${formatCurrency(m.deckungsbeitrag)} | ${formatPercent(m.db_prozent)})`;
+                        if (i < vk.gebraucht.length - 1) html += ', ';
+                    });
+                }
+
+                html += `
+                                </small>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }
+
+            totalFzg += vk.summe_gesamt;
+            totalUmsatz += vk.umsatz_gesamt;
+            totalDB += vk.db_gesamt;
+        });
+
+        // Gesamt-Zeile
+        const totalDBProzent = totalUmsatz > 0 ? (totalDB / (totalUmsatz / 1.19)) * 100 : 0;
+        const totalColor = getDBColor(totalDBProzent);
+
+        html += `
+            </tbody>
+            <tfoot class="table-dark">
+                <tr>
+                    <th>GESAMT</th>
+                    <th colspan="3"></th>
+                    <th class="text-center">${totalFzg}</th>
+                    <th class="text-end">${formatCurrency(totalUmsatz)}</th>
+                    <th class="text-end">
+                        <span class="badge bg-${totalColor}">${formatCurrency(totalDB)}</span>
+                    </th>
+                    <th class="text-center">
+                        <span class="badge bg-${totalColor}">${formatPercent(totalDBProzent)}</span>
+                    </th>
+                </tr>
+            </tfoot>
+        `;
+
+        html += '</table></div>';
+        container.innerHTML = html;
+    } catch (error) {
+        container.innerHTML = `<div class="alert alert-danger">Fehler: ${error.message}</div>`;
+    }
+}
+
+// Initial Load
+document.addEventListener('DOMContentLoaded', () => {
+    loadVerkauferListe();
+    loadDetails();
+});
+</script>
+
 {% endblock %}
