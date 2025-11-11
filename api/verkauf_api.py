@@ -1,6 +1,10 @@
 """
 Verkauf REST API
 Auftragseingang und Auslieferungen nach Verkäufern und Fahrzeugart
+
+VERSION 2.1 - Mit Deduplizierungs-Filter
+- Verhindert Doppelzählungen bei N→T/V Umsetzungen
+- Regel: Wenn T oder V existiert, ignoriere N für dieselbe VIN am gleichen Datum
 """
 
 from flask import Blueprint, jsonify, request
@@ -19,7 +23,22 @@ def get_db():
 
 
 # ============================================================================
-# AUFTRAGSEINGANG (bestehend)
+# DEDUP-FILTER (Konstante für alle Queries)
+# ============================================================================
+DEDUP_FILTER = """
+    AND NOT EXISTS (
+        SELECT 1 
+        FROM sales s2 
+        WHERE s2.vin = s.vin 
+            AND s2.out_sales_contract_date = s.out_sales_contract_date
+            AND s2.dealer_vehicle_type IN ('T', 'V')
+            AND s.dealer_vehicle_type = 'N'
+    )
+"""
+
+
+# ============================================================================
+# AUFTRAGSEINGANG (bestehend - mit Dedup-Filter)
 # ============================================================================
 
 @verkauf_api.route('/auftragseingang', methods=['GET'])
@@ -40,7 +59,7 @@ def get_auftragseingang():
         cursor = conn.cursor()
 
         # 1. Aufträge HEUTE
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT
                 s.salesman_number,
                 COALESCE(e.first_name || ' ' || e.last_name, 'Verkäufer #' || s.salesman_number || ' (nicht in LocoSoft)') as verkaufer_name,
@@ -54,12 +73,13 @@ def get_auftragseingang():
             LEFT JOIN employees e ON s.salesman_number = e.locosoft_id
             WHERE DATE(s.out_sales_contract_date) = DATE('now')
               AND s.salesman_number IS NOT NULL
+              {DEDUP_FILTER}
             GROUP BY s.salesman_number, verkaufer_name, fahrzeugart
         """)
         heute_raw = cursor.fetchall()
 
         # 2. Aufträge PERIODE (ganzer Monat)
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT
                 s.salesman_number,
                 COALESCE(e.first_name || ' ' || e.last_name, 'Verkäufer #' || s.salesman_number || ' (nicht in LocoSoft)') as verkaufer_name,
@@ -74,6 +94,7 @@ def get_auftragseingang():
             WHERE strftime('%Y', s.out_sales_contract_date) = ?
               AND strftime('%m', s.out_sales_contract_date) = ?
               AND s.salesman_number IS NOT NULL
+              {DEDUP_FILTER}
             GROUP BY s.salesman_number, verkaufer_name, fahrzeugart
         """, (str(year), f"{month:02d}"))
         periode_raw = cursor.fetchall()
@@ -115,7 +136,7 @@ def get_auftragseingang():
 
 
 # ============================================================================
-# AUFTRAGSEINGANG DETAIL (NEU)
+# AUFTRAGSEINGANG DETAIL (NEU - mit Dedup-Filter)
 # ============================================================================
 
 @verkauf_api.route('/auftragseingang/summary', methods=['GET'])
@@ -123,28 +144,29 @@ def get_auftragseingang_summary():
     """
     GET /api/verkauf/auftragseingang/summary?month=11&year=2025
     GET /api/verkauf/auftragseingang/summary?day=2025-11-11
-    
+
     Liefert Zusammenfassung nach Marke und Fahrzeugtyp für Auftragseingang
     """
     try:
         day = request.args.get('day', '')
         month = request.args.get('month', datetime.now().month, type=int)
         year = request.args.get('year', datetime.now().year, type=int)
-        
+
         conn = get_db()
         cursor = conn.cursor()
-        
+
         # Zeit-Filter aufbauen
         if day:
-            where_clause = "WHERE DATE(s.out_sales_contract_date) = ?"
+            where_clause = f"WHERE DATE(s.out_sales_contract_date) = ? {DEDUP_FILTER}"
             params = [day]
         else:
-            where_clause = """
+            where_clause = f"""
                 WHERE strftime('%Y', s.out_sales_contract_date) = ?
                   AND strftime('%m', s.out_sales_contract_date) = ?
+                  {DEDUP_FILTER}
             """
             params = [str(year), f"{month:02d}"]
-        
+
         # Zusammenfassung nach Marke
         cursor.execute(f"""
             SELECT
@@ -158,10 +180,10 @@ def get_auftragseingang_summary():
             {where_clause}
             GROUP BY s.make_number
         """, params)
-        
+
         summary = [dict(row) for row in cursor.fetchall()]
         conn.close()
-        
+
         return jsonify({
             'success': True,
             'day': day if day else None,
@@ -169,7 +191,7 @@ def get_auftragseingang_summary():
             'year': year,
             'summary': summary
         })
-        
+
     except Exception as e:
         return jsonify({
             'success': False,
@@ -182,7 +204,7 @@ def get_auftragseingang_detail():
     """
     GET /api/verkauf/auftragseingang/detail?month=11&year=2025&location=&verkaufer=
     GET /api/verkauf/auftragseingang/detail?day=2025-11-11&location=&verkaufer=
-    
+
     Liefert detaillierte Aufschlüsselung nach Verkäufer und Modellen
     Unterstützt sowohl Monats- als auch Tages-Filter
     """
@@ -193,14 +215,14 @@ def get_auftragseingang_detail():
         year = request.args.get('year', datetime.now().year, type=int)
         location = request.args.get('location', '')
         verkaufer = request.args.get('verkaufer', '')
-        
+
         conn = get_db()
         cursor = conn.cursor()
-        
+
         # Basis-Query mit dynamischen Filtern
         where_clauses = ["s.salesman_number IS NOT NULL"]
         params = []
-        
+
         # Zeit-Filter: Tag ODER Monat
         if day:
             # Tages-Filter
@@ -211,19 +233,31 @@ def get_auftragseingang_detail():
             where_clauses.append("strftime('%Y', s.out_sales_contract_date) = ?")
             where_clauses.append("strftime('%m', s.out_sales_contract_date) = ?")
             params.extend([str(year), f"{month:02d}"])
-        
+
         # Standort-Filter
         if location:
             where_clauses.append("s.out_subsidiary = ?")
             params.append(int(location))
-        
+
         # Verkäufer-Filter
         if verkaufer:
             where_clauses.append("s.salesman_number = ?")
             params.append(int(verkaufer))
-        
+
+        # Dedup-Filter hinzufügen
+        where_clauses.append("""
+            NOT EXISTS (
+                SELECT 1 
+                FROM sales s2 
+                WHERE s2.vin = s.vin 
+                    AND s2.out_sales_contract_date = s.out_sales_contract_date
+                    AND s2.dealer_vehicle_type IN ('T', 'V')
+                    AND s.dealer_vehicle_type = 'N'
+            )
+        """)
+
         where_sql = " AND ".join(where_clauses)
-        
+
         # Verkäufer mit Details
         cursor.execute(f"""
             SELECT
@@ -238,20 +272,20 @@ def get_auftragseingang_detail():
             GROUP BY s.salesman_number, verkaufer_name, s.dealer_vehicle_type, s.model_description
             ORDER BY verkaufer_name, s.dealer_vehicle_type, s.model_description
         """, params)
-        
+
         rows = cursor.fetchall()
         conn.close()
-        
+
         # Aggregiere nach Verkäufer
         verkaufer_dict = {}
-        
+
         for row in rows:
             vk_nr = row['salesman_number']
             vk_name = row['verkaufer_name']
             typ = row['dealer_vehicle_type']
             modell = row['model_description'] or 'Unbekannt'
             anzahl = row['anzahl']
-            
+
             if vk_nr not in verkaufer_dict:
                 verkaufer_dict[vk_nr] = {
                     'verkaufer_nummer': vk_nr,
@@ -264,9 +298,9 @@ def get_auftragseingang_detail():
                     'summe_gebraucht': 0,
                     'summe_gesamt': 0
                 }
-            
+
             modell_info = {'modell': modell, 'anzahl': anzahl}
-            
+
             if typ == 'N':
                 verkaufer_dict[vk_nr]['neu'].append(modell_info)
                 verkaufer_dict[vk_nr]['summe_neu'] += anzahl
@@ -276,12 +310,12 @@ def get_auftragseingang_detail():
             elif typ in ('G', 'D'):
                 verkaufer_dict[vk_nr]['gebraucht'].append(modell_info)
                 verkaufer_dict[vk_nr]['summe_gebraucht'] += anzahl
-            
+
             verkaufer_dict[vk_nr]['summe_gesamt'] += anzahl
-        
+
         # Liste erstellen
         verkaufer_list = list(verkaufer_dict.values())
-        
+
         return jsonify({
             'success': True,
             'day': day if day else None,
@@ -289,7 +323,7 @@ def get_auftragseingang_detail():
             'year': year,
             'verkaufer': verkaufer_list
         })
-        
+
     except Exception as e:
         return jsonify({
             'success': False,
@@ -298,7 +332,7 @@ def get_auftragseingang_detail():
 
 
 # ============================================================================
-# AUSLIEFERUNGEN DETAIL (NEU)
+# AUSLIEFERUNGEN DETAIL (NEU - mit Dedup-Filter)
 # ============================================================================
 
 @verkauf_api.route('/auslieferung/summary', methods=['GET'])
@@ -306,7 +340,7 @@ def get_auslieferung_summary():
     """
     GET /api/verkauf/auslieferung/summary?month=11&year=2025
     GET /api/verkauf/auslieferung/summary?day=2025-11-11
-    
+
     Liefert Zusammenfassung nach Marke und Fahrzeugtyp für Auslieferungen
     Basiert auf Rechnungsdatum (out_invoice_date)
     """
@@ -314,25 +348,27 @@ def get_auslieferung_summary():
         day = request.args.get('day', '')
         month = request.args.get('month', datetime.now().month, type=int)
         year = request.args.get('year', datetime.now().year, type=int)
-        
+
         conn = get_db()
         cursor = conn.cursor()
-        
+
         # Zeit-Filter aufbauen (Rechnungsdatum!)
         if day:
-            where_clause = """
+            where_clause = f"""
                 WHERE DATE(s.out_invoice_date) = ?
                   AND s.out_invoice_date IS NOT NULL
+                  {DEDUP_FILTER}
             """
             params = [day]
         else:
-            where_clause = """
+            where_clause = f"""
                 WHERE strftime('%Y', s.out_invoice_date) = ?
                   AND strftime('%m', s.out_invoice_date) = ?
                   AND s.out_invoice_date IS NOT NULL
+                  {DEDUP_FILTER}
             """
             params = [str(year), f"{month:02d}"]
-        
+
         # Zusammenfassung nach Marke (Rechnungsdatum!)
         cursor.execute(f"""
             SELECT
@@ -346,10 +382,10 @@ def get_auslieferung_summary():
             {where_clause}
             GROUP BY s.make_number
         """, params)
-        
+
         summary = [dict(row) for row in cursor.fetchall()]
         conn.close()
-        
+
         return jsonify({
             'success': True,
             'day': day if day else None,
@@ -357,7 +393,7 @@ def get_auslieferung_summary():
             'year': year,
             'summary': summary
         })
-        
+
     except Exception as e:
         return jsonify({
             'success': False,
@@ -370,7 +406,7 @@ def get_auslieferung_detail():
     """
     GET /api/verkauf/auslieferung/detail?month=11&year=2025&location=&verkaufer=
     GET /api/verkauf/auslieferung/detail?day=2025-11-11&location=&verkaufer=
-    
+
     Liefert detaillierte Aufschlüsselung der Auslieferungen nach Verkäufer und Modellen
     Basiert auf Rechnungsdatum (out_invoice_date)
     Unterstützt sowohl Monats- als auch Tages-Filter
@@ -382,17 +418,17 @@ def get_auslieferung_detail():
         year = request.args.get('year', datetime.now().year, type=int)
         location = request.args.get('location', '')
         verkaufer = request.args.get('verkaufer', '')
-        
+
         conn = get_db()
         cursor = conn.cursor()
-        
+
         # Basis-Query mit dynamischen Filtern
         where_clauses = [
             "s.salesman_number IS NOT NULL",
             "s.out_invoice_date IS NOT NULL"
         ]
         params = []
-        
+
         # Zeit-Filter: Tag ODER Monat (auf Rechnungsdatum!)
         if day:
             # Tages-Filter
@@ -403,19 +439,31 @@ def get_auslieferung_detail():
             where_clauses.append("strftime('%Y', s.out_invoice_date) = ?")
             where_clauses.append("strftime('%m', s.out_invoice_date) = ?")
             params.extend([str(year), f"{month:02d}"])
-        
+
         # Standort-Filter
         if location:
             where_clauses.append("s.out_subsidiary = ?")
             params.append(int(location))
-        
+
         # Verkäufer-Filter
         if verkaufer:
             where_clauses.append("s.salesman_number = ?")
             params.append(int(verkaufer))
-        
+
+        # Dedup-Filter hinzufügen
+        where_clauses.append("""
+            NOT EXISTS (
+                SELECT 1 
+                FROM sales s2 
+                WHERE s2.vin = s.vin 
+                    AND s2.out_sales_contract_date = s.out_sales_contract_date
+                    AND s2.dealer_vehicle_type IN ('T', 'V')
+                    AND s.dealer_vehicle_type = 'N'
+            )
+        """)
+
         where_sql = " AND ".join(where_clauses)
-        
+
         # Verkäufer mit Details (Rechnungsdatum!)
         cursor.execute(f"""
             SELECT
@@ -430,20 +478,20 @@ def get_auslieferung_detail():
             GROUP BY s.salesman_number, verkaufer_name, s.dealer_vehicle_type, s.model_description
             ORDER BY verkaufer_name, s.dealer_vehicle_type, s.model_description
         """, params)
-        
+
         rows = cursor.fetchall()
         conn.close()
-        
+
         # Aggregiere nach Verkäufer (gleiche Logik wie Auftragseingang)
         verkaufer_dict = {}
-        
+
         for row in rows:
             vk_nr = row['salesman_number']
             vk_name = row['verkaufer_name']
             typ = row['dealer_vehicle_type']
             modell = row['model_description'] or 'Unbekannt'
             anzahl = row['anzahl']
-            
+
             if vk_nr not in verkaufer_dict:
                 verkaufer_dict[vk_nr] = {
                     'verkaufer_nummer': vk_nr,
@@ -456,9 +504,9 @@ def get_auslieferung_detail():
                     'summe_gebraucht': 0,
                     'summe_gesamt': 0
                 }
-            
+
             modell_info = {'modell': modell, 'anzahl': anzahl}
-            
+
             if typ == 'N':
                 verkaufer_dict[vk_nr]['neu'].append(modell_info)
                 verkaufer_dict[vk_nr]['summe_neu'] += anzahl
@@ -468,12 +516,12 @@ def get_auslieferung_detail():
             elif typ in ('G', 'D'):
                 verkaufer_dict[vk_nr]['gebraucht'].append(modell_info)
                 verkaufer_dict[vk_nr]['summe_gebraucht'] += anzahl
-            
+
             verkaufer_dict[vk_nr]['summe_gesamt'] += anzahl
-        
+
         # Liste erstellen
         verkaufer_list = list(verkaufer_dict.values())
-        
+
         return jsonify({
             'success': True,
             'day': day if day else None,
@@ -481,7 +529,7 @@ def get_auslieferung_detail():
             'year': year,
             'verkaufer': verkaufer_list
         })
-        
+
     except Exception as e:
         return jsonify({
             'success': False,
@@ -528,20 +576,20 @@ def aggregate_verkaufer_daten(raw_data):
 @verkauf_api.route('/health', methods=['GET'])
 def health():
     """Health Check"""
-    return jsonify({'status': 'ok', 'service': 'verkauf_api'})
+    return jsonify({'status': 'ok', 'service': 'verkauf_api', 'version': '2.1-dedup'})
 
 
 @verkauf_api.route('/verkaufer', methods=['GET'])
 def get_verkaufer_liste():
     """
     GET /api/verkauf/verkaufer
-    
+
     Liefert Liste aller Verkäufer (auch ohne LocoSoft-Match)
     """
     try:
         conn = get_db()
         cursor = conn.cursor()
-        
+
         cursor.execute("""
             SELECT DISTINCT
                 s.salesman_number as nummer,
@@ -552,22 +600,22 @@ def get_verkaufer_liste():
             FROM sales s
             LEFT JOIN employees e ON s.salesman_number = e.locosoft_id
             WHERE s.salesman_number IS NOT NULL
-            ORDER BY 
-                CASE 
-                    WHEN e.first_name IS NOT NULL THEN 0 
-                    ELSE 1 
+            ORDER BY
+                CASE
+                    WHEN e.first_name IS NOT NULL THEN 0
+                    ELSE 1
                 END,
                 name
         """)
-        
+
         verkaufer = [dict(row) for row in cursor.fetchall()]
         conn.close()
-        
+
         return jsonify({
             'success': True,
             'verkaufer': verkaufer
         })
-        
+
     except Exception as e:
         return jsonify({
             'success': False,
