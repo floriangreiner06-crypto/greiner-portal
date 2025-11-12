@@ -398,15 +398,49 @@ def get_transaktionen():
         cursor.execute(count_query, count_params)
         total = cursor.fetchone()['total']
         
-        # Statistik über gefilterte Transaktionen
-        if transaktionen:
-            summe_einnahmen = sum(t['betrag'] for t in transaktionen if t['betrag'] > 0)
-            summe_ausgaben = sum(abs(t['betrag']) for t in transaktionen if t['betrag'] < 0)
-            saldo = summe_einnahmen - summe_ausgaben
-        else:
-            summe_einnahmen = 0
-            summe_ausgaben = 0
-            saldo = 0
+        # Statistik über ALLE gefilterten Transaktionen (nicht nur die gepagte Seite!)
+        stats_query = """
+            SELECT 
+                SUM(CASE WHEN betrag > 0 THEN betrag ELSE 0 END) as summe_einnahmen,
+                SUM(CASE WHEN betrag < 0 THEN ABS(betrag) ELSE 0 END) as summe_ausgaben,
+                SUM(betrag) as saldo
+            FROM v_transaktionen_uebersicht
+            WHERE 1=1
+        """
+        stats_params = []
+        
+        # Gleiche Filter wie bei count_query anwenden
+        if konto_id:
+            stats_query += " AND konto_id = ?"
+            stats_params.append(konto_id)
+        if bank_id:
+            stats_query += " AND bank_name IN (SELECT bank_name FROM banken WHERE id = ?)"
+            stats_params.append(bank_id)
+        if von:
+            stats_query += " AND buchungsdatum >= ?"
+            stats_params.append(von)
+        if bis:
+            stats_query += " AND buchungsdatum <= ?"
+            stats_params.append(bis)
+        if kategorie:
+            stats_query += " AND kategorie = ?"
+            stats_params.append(kategorie)
+        if betrag_min is not None:
+            stats_query += " AND betrag >= ?"
+            stats_params.append(betrag_min)
+        if betrag_max is not None:
+            stats_query += " AND betrag <= ?"
+            stats_params.append(betrag_max)
+        if suche:
+            stats_query += " AND (buchungstext LIKE ? OR verwendungszweck LIKE ?)"
+            search_term = f"%{suche}%"
+            stats_params.extend([search_term, search_term])
+        
+        cursor.execute(stats_query, stats_params)
+        stats = cursor.fetchone()
+        summe_einnahmen = stats['summe_einnahmen'] or 0
+        summe_ausgaben = stats['summe_ausgaben'] or 0
+        saldo = stats['saldo'] or 0
         
         conn.close()
         

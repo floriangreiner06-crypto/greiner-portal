@@ -262,16 +262,17 @@ class GenobankUniversalParser:
             default_datum = datetime.now()
             logger.warning("⚠️ Kein Datum im Dateinamen - nutze heute")
         
-        # Startsaldo finden
+        # Startsaldo finden (über mehrere Zeilen!)
         startsaldo = None
-        for line in lines:
-            if '(Startsaldo)' in line:
-                # Pattern: "(Startsaldo) +XXX.XXX,XX EUR"
-                saldo_match = re.search(r'\+?([-\d.,]+)\s+EUR', line)
-                if saldo_match:
-                    startsaldo = self._parse_german_amount(saldo_match.group(1))
-                    logger.info(f"Startsaldo: {startsaldo:.2f} EUR")
-                    break
+        
+        # Kombiniere alle Zeilen für Multiline-Regex
+        full_text_search = '\n'.join(lines)
+        if '(Startsaldo)' in full_text_search:
+            # Regex mit \s* erlaubt Zeilenumbrüche zwischen Startsaldo und Betrag
+            saldo_match = re.search(r'\(Startsaldo\)\s*\+?([-\d.,]+)\s*EUR', full_text_search)
+            if saldo_match:
+                startsaldo = self._parse_german_amount(saldo_match.group(1))
+                logger.info(f"✅ Startsaldo gefunden: {startsaldo:.2f} EUR")
         
         if startsaldo is None:
             logger.warning("⚠️ Kein Startsaldo gefunden")
