@@ -1,265 +1,99 @@
-# 🎯 GREINER PORTAL - PROJECT STATUS
-**Letzte Aktualisierung:** 2025-11-10  
-**Branch:** feature/bankenspiegel-komplett  
-**Version:** v2.3.1
+# 🏦 GREINER PORTAL - PROJEKT-STATUS
+
+**Letztes Update:** 2025-11-12 11:47:37
+**Auto-generiert bei Git-Commit**
 
 ---
 
-## 📊 SCHNELL-ÜBERBLICK
+## ⚡ QUICK FACTS
 
-### ✅ Was funktioniert AKTUELL
-- [ ] Login/Logout (zu prüfen)
-- [ ] Dashboard (zu prüfen)
-- [ ] Bankenspiegel Anzeige (zu prüfen)
-- [ ] PDF Import (zu prüfen)
-- [ ] Grafana Integration (zu prüfen)
-- [ ] Urlaubsplaner (zu prüfen)
+- **Anzahl Konten:** 14
+- **Gesamt-Saldo:** -281,043.07 €
+- **Gesamt-Transaktionen:** 50,021
 
-### ❌ Bekannte Probleme / Verlorene Features
-- [ ] TODO: Liste erstellen nach Analyse
+## 🏦 KONTEN-ÜBERSICHT
 
-### ⚠️ Kritische Punkte
-- Viele Änderungen in letzten Sessions
-- Möglicherweise Funktionsverlust durch Refactoring
-- Überblick verloren gegangen
+| ID | Kontoname | IBAN | Bank | Saldo | Trans | Letzte |
+|----|-----------|------|------|-------|-------|--------|
+| 1 | Sparkasse KK | ...0760036467 | Sparkasse Deggendorf | 2,838.00 € | 7697 | 2025-11-06 |
+| 5 | 57908 KK | ...0000057908 | Genobank Autohaus Gr | 140,122.61 € | 11972 | 2025-11-11 |
+| 6 | 22225 Immo KK | ...0000022225 | Genobank Greiner Imm | 0.00 € | 3223 | 2025-10-31 00:00:00 |
+| 7 | 20057908 Darlehen | ...0020057908 | Genobank Autohaus Gr | 0.00 € | 20 | 2025-10-30 00:00:00 |
+| 8 | 1700057908 Festgeld | ...1700057908 | Genobank Autohaus Gr | 0.00 € | 40 | 2025-10-31 00:00:00 |
+| 9 | Hypovereinsbank KK | ...0006407420 | Hypovereinsbank | -64,445.92 € | 17924 | 2025-11-07 |
+| 10 | Postbank - Hauptkonto | keine | Postbank | 0.00 € | 0 | - |
+| 13 | Stellantis - Hauptkonto | keine | Stellantis | 0.00 € | 0 | - |
+| 14 | 303585 VR Landau KK | ...0000303585 | VR Bank Landau | 248.00 € | 396 | 2025-10-31 |
+| 15 | 1501500 HYU KK | ...0001501500 | Genobank Auto Greine | -2,058.50 € | 8645 | 2025-11-11 |
+| 17 | 4700057908 Darlehen | ...4700057908 | Genobank Autohaus Gr | 11,697.74 € | 95 | 2025-11-07 |
+| 19 | Darlehen Peter Greiner | keine | Genobank Auto Greine | 0.00 € | 0 | - |
+| 20 | KfW 120057908 | ...0120057908 | Genobank Autohaus Gr | -369,445.00 € | 9 | 2025-09-30 |
+| 23 | 3700057908 Festgeld | ...3700057908 | Genobank Auto Greine | 0.00 € | 0 | - |
+| **TOTAL** | | | **-281,043.07 €** | | |
 
----
+## 📅 NOVEMBER 2025 - IMPORT-STATUS
 
-## 🗂️ FEATURE-STATUS-MATRIX
+| ID | Kontoname | Trans | Von | Bis | Status |
+|----|-----------|-------|-----|-----|--------|
+| 1 | Sparkasse KK | 7 | 2025-11-03 | 2025-11-06 | ⚠️ Unvollständig (bis 2025-11-06) |
+| 5 | 57908 KK | 330 | 2025-11-03 | 2025-11-11 | ✅ Komplett |
+| 6 | 22225 Immo KK | 0 | - | - | ❌ Keine Daten |
+| 7 | 20057908 Darlehen | 0 | - | - | ❌ Keine Daten |
+| 8 | 1700057908 Festgeld | 0 | - | - | ❌ Keine Daten |
+| 9 | Hypovereinsbank KK | 128 | 2025-11-03 | 2025-11-07 | ⚠️ Unvollständig (bis 2025-11-07) |
+| 10 | Postbank - Hauptkonto | 0 | - | - | ❌ Keine Daten |
+| 13 | Stellantis - Hauptkonto | 0 | - | - | ❌ Keine Daten |
+| 14 | 303585 VR Landau KK | 0 | - | - | ❌ Keine Daten |
+| 15 | 1501500 HYU KK | 212 | 2025-11-03 | 2025-11-11 | ✅ Komplett |
+| 17 | 4700057908 Darlehen | 14 | 2025-11-07 | 2025-11-07 | ⚠️ Unvollständig (bis 2025-11-07) |
+| 19 | Darlehen Peter Greiner | 0 | - | - | ❌ Keine Daten |
+| 20 | KfW 120057908 | 0 | - | - | ❌ Keine Daten |
+| 23 | 3700057908 Festgeld | 0 | - | - | ❌ Keine Daten |
 
-| Feature | Status | Letzte Änderung | Funktioniert | Bemerkung |
-|---------|--------|-----------------|--------------|-----------|
-| **AUTHENTICATION** |
-| Login | ? | TAG21 | ? | Redirect zu dashboard |
-| Logout | ? | - | ? | |
-| Session Management | ? | - | ? | |
-| **BANKENSPIEGEL** |
-| Transaktionen Anzeige | ? | TAG23 | ? | Cache-Fixes |
-| Sparkasse Parser | ? | TAG23 | ? | Duplikate behoben |
-| VR Bank Parser | ? | - | ? | |
-| HypoVereinsbank Parser | ? | - | ? | |
-| PDF Import | ? | TAG20 | ? | |
-| Sortierung | ? | TAG23 | ? | Nach Datum DESC |
-| Filtering | ? | - | ? | |
-| **GRAFANA INTEGRATION** |
-| Dashboard Einbindung | ? | TAG17-18 | ? | |
-| Authentifizierung | ? | - | ? | |
-| **URLAUBSPLANER** |
-| Anzeige | ? | TAG1 | ? | Alte Implementierung |
-| CRUD Operations | ? | - | ? | |
-| **FRONTEND** |
-| Static Files | ? | TAG23 | ? | Cache-Busting |
-| Responsive Design | ? | - | ? | |
-| Navigation | ? | - | ? | |
+## 📊 TRANSAKTIONS-STATISTIK (letzte 3 Monate)
 
----
+- **2025-11:** 691 Transaktionen
+- **2025-10:** 3,287 Transaktionen
+- **2025-09:** 2,893 Transaktionen
+- **2025-08:** 1,731 Transaktionen
 
-## 📋 SYSTEM-ARCHITEKTUR
+## 🚧 OFFENE AUFGABEN
 
-### Backend
-- **Framework:** Flask
-- **Datenbank:** PostgreSQL (Greiner DB)
-- **Python Version:** 3.x
-- **Virtual Env:** `/opt/greiner-portal/venv`
+### ⚠️  Unvollständige November-Daten:
+- **ID 1:** Sparkasse KK (nur bis 2025-11-06)
+- **ID 9:** Hypovereinsbank KK (nur bis 2025-11-07)
+- **ID 17:** 4700057908 Darlehen (nur bis 2025-11-07)
 
-### Frontend
-- **Template Engine:** Jinja2
-- **Static Files:** `/static/` mit Cache-Busting
-- **CSS Framework:** ?
+### ❌ Keine November-Daten:
+- **ID 10:** Postbank - Hauptkonto
+- **ID 13:** Stellantis - Hauptkonto
+- **ID 19:** Darlehen Peter Greiner
 
-### Deployment
-- **Server:** srvlinux01
-- **User:** ag-admin
-- **Path:** `/opt/greiner-portal`
-- **Service:** systemd service
+## 🛠️ SYSTEM-INFO
 
----
-
-## 🗺️ VERZEICHNIS-STRUKTUR
-
+### Pfade:
 ```
-/opt/greiner-portal/
-├── app/                    # Flask Application
-│   ├── __init__.py
-│   ├── routes/            # Route Handler
-│   ├── models/            # DB Models
-│   ├── services/          # Business Logic
-│   └── templates/         # Jinja Templates
-├── static/                # CSS, JS, Images
-├── docs/                  # Dokumentation
-│   └── sessions/          # Session Protokolle (neu: Datum-basiert)
-├── tests/                 # Tests
-├── config/                # Konfigurationsdateien
-├── venv/                  # Virtual Environment
-└── requirements.txt
+Projekt-Root:     /opt/greiner-portal
+Datenbank:        /opt/greiner-portal/data/greiner_controlling.db
+PDFs:             /opt/greiner-portal/data/kontoauszuege/
+Status-Export:    /opt/greiner-portal/docs/status/
 ```
 
----
+### Parser:
+- ✅ `genobank_universal_parser` → 057908, 4700057908
+- ✅ `hypovereinsbank_parser` → Hypovereinsbank
+- ✅ `sparkasse_parser` → Sparkasse
+- ✅ `hyundai_finance_scraper` → 1501500 HYU KK
 
-## 🔄 LETZTE SESSIONS - WICHTIGE ÄNDERUNGEN
-
-### TAG 23 (2025-11-10)
-- Cache-Busting für Static Files implementiert
-- Sparkasse Duplikate behoben
-- Transaktionen Sortierung korrigiert
-- Session-Dateien umbenannt (Datum-basiert)
-
-### TAG 22 (2025-11-09)
-- ?
-
-### TAG 21 (2025-11-09)
-- Login Redirect zu Dashboard geändert
-- Auth-Fixes
-
-### TAG 20 (2025-11-09)
-- ?
-
-### TAG 18-19 (2025-11-08)
-- Grafana Integration
-- Auth-Probleme
-
----
-
-## 🔍 ANALYSE-BEDARF
-
-### Sofort zu prüfen:
-1. **Funktionstest aller Features** - Systematisch durchgehen
-2. **Vergleich mit alten Sessions** - Was ging verloren?
-3. **Code-Review kritischer Bereiche**
-4. **Datenbank-Zustand prüfen**
-
-### Fragen zu klären:
-- [ ] Welche Features funktionierten in TAG 1-10?
-- [ ] Welche Änderungen in TAG 11-20?
-- [ ] Was wurde in TAG 21-23 geändert?
-- [ ] Gibt es alte Backup-Branches?
-
----
-
-## 📝 NÄCHSTE SCHRITTE
-
-### Phase 1: Analyse (JETZT)
-1. Alle Features systematisch testen
-2. Status-Matrix ausfüllen
-3. Verlorene Features identifizieren
-4. Session-Dokumente durchgehen (TAG 1-23)
-
-### Phase 2: Stabilisierung
-1. Kritische Bugs fixen
-2. Verlorene Features wiederherstellen
-3. Tests schreiben
-4. Dokumentation aktualisieren
-
-### Phase 3: Weiterentwicklung
-1. Neue Features (nach Stabilisierung!)
-2. Performance-Optimierung
-3. Security-Audit
-
----
-
-## 🔗 WICHTIGE LINKS / CREDENTIALS
-
-- **Datenbank:** `CREDENTIALS.md` (siehe Projekt)
-- **Grafana:** `PHASE1_HYBRID_CREDENTIALS.md`
-- **Server:** srvlinux01 (SSH)
-
----
-
-## 💡 NOTIZEN FÜR NEUE CHAT-SESSIONS
-
-**Beim Chat-Einstieg prüfen:**
-1. Dieses Dokument lesen
-2. `git log --oneline -10` für letzte Commits
-3. `git status` für aktuellen Stand
-4. Session-Dateien der letzten 3 TAGs durchsehen
-
-**Kontext schnell aufbauen:**
-- Frage: "Was wurde in den letzten 3 Sessions gemacht?"
-- Antwort: Session-Dateien zeigen
-- Feature-Test: Systematisch Matrix durchgehen
-
----
-
-## 🎯 ZIEL
-
-**Ein funktionierendes, stabiles Portal mit:**
-- Zuverlässigem Login
-- Funktionierendem Bankenspiegel
-- Grafana-Integration
-- Urlaubsplaner
-- Sauberer Code-Basis
-- Vollständiger Dokumentation
-
-**Status erreicht:** ⚠️ UNKLAR - ANALYSE ERFORDERLICH
-
----
-
-## 🖥️ SERVER-KONTEXT (WICHTIG FÜR CLAUDE!)
-
-**Claude arbeitet NICHT auf dem Server direkt!**
-**User arbeitet via SSH/PuTTY auf dem Server.**
-
-### Aktuelle Umgebung:
-```
-User:     ag-admin
-Server:   srvlinux01 (10.80.80.20)
-Pfad:     /opt/greiner-portal
-Shell:    (venv) ag-admin@srvlinux01:/opt/greiner-portal$
-```
-
-### Workflow:
-1. **User verbindet sich via SSH:**
+### Git-Branch:
 ```bash
-   ssh ag-admin@10.80.80.20
-   cd /opt/greiner-portal
-   source venv/bin/activate
+# Aktueller Branch:
+git branch --show-current
+
+# Alle Branches:
+git branch -a
 ```
-
-2. **User führt Befehle aus** die Claude vorschlägt
-
-3. **User postet Ausgaben** zurück zu Claude
-
-### Was Claude tun sollte:
-✅ **Befehle geben** (nicht selbst ausführen)
-✅ **Ausgaben analysieren** (User postet sie)
-✅ **Schritt-für-Schritt** Anleitungen
-✅ **SSH-Kontext** immer im Kopf behalten
-
-### Was Claude NICHT kann:
-❌ Direkt auf Server zugreifen
-❌ Befehle selbst ausführen
-❌ Dateien direkt lesen (nur via User)
 
 ---
 
-
----
-
-## 🖥️ SERVER-KONTEXT (WICHTIG FÜR CLAUDE!)
-
-**Claude arbeitet NICHT auf dem Server direkt!**
-**User arbeitet via SSH/PuTTY auf dem Server.**
-
-### Aktuelle Umgebung:
-```
-User:     ag-admin
-Server:   srvlinux01 (10.80.80.20)
-Pfad:     /opt/greiner-portal
-Shell:    (venv) ag-admin@srvlinux01:/opt/greiner-portal$
-```
-
-### Workflow:
-1. User verbindet sich via SSH
-2. User führt Befehle aus die Claude vorschlägt
-3. User postet Ausgaben zurück zu Claude
-
-### Was Claude tun sollte:
-✅ Befehle geben (nicht selbst ausführen)
-✅ Ausgaben analysieren (User postet sie)
-✅ Schritt-für-Schritt Anleitungen
-
-### Was Claude NICHT kann:
-❌ Direkt auf Server zugreifen
-❌ Befehle selbst ausführen
-❌ Dateien direkt lesen
-
+**🤖 Automatisch generiert** | Siehe auch: `SESSION_WRAP_UP_TAG*.md` für Details
