@@ -40,12 +40,14 @@ def export_status():
     # ========================================
     cursor.execute("""
         SELECT 
-            k.id, k.kontoname, k.iban, k.bank,
+            k.id, k.kontoname, k.iban, b.bank_name,
             COALESCE((SELECT t.saldo_nach_buchung FROM transaktionen t 
                       WHERE t.konto_id = k.id ORDER BY t.buchungsdatum DESC, t.id DESC LIMIT 1), 0) as saldo,
             (SELECT COUNT(*) FROM transaktionen t WHERE t.konto_id = k.id) as trans_count,
             (SELECT MAX(t.buchungsdatum) FROM transaktionen t WHERE t.konto_id = k.id) as letzte
-        FROM konten k ORDER BY k.id
+        FROM konten k
+        LEFT JOIN banken b ON k.bank_id = b.id
+        ORDER BY k.id
     """)
     konten = cursor.fetchall()
     total_saldo = sum(k[4] for k in konten)
@@ -101,14 +103,15 @@ def export_status():
     # KONTEN-ÜBERSICHT
     md.append("## 🏦 KONTEN-ÜBERSICHT")
     md.append("")
-    md.append("| ID | Kontoname | IBAN | Saldo | Trans | Letzte Buchung |")
-    md.append("|----|-----------|------|-------|-------|----------------|")
+    md.append("| ID | Kontoname | IBAN | Bank | Saldo | Trans | Letzte |")
+    md.append("|----|-----------|------|------|-------|-------|--------|")
     
     for k in konten:
         kid, name, iban, bank, saldo, trans, letzte = k
         iban_short = f"...{iban[-10:]}" if iban else "keine"
+        bank_short = bank[:20] if bank else "keine"
         letzte_str = letzte if letzte else "-"
-        md.append(f"| {kid} | {name[:30]} | {iban_short} | {saldo:,.2f} € | {trans} | {letzte_str} |")
+        md.append(f"| {kid} | {name[:25]} | {iban_short} | {bank_short} | {saldo:,.2f} € | {trans} | {letzte_str} |")
     
     md.append(f"| **TOTAL** | | | **{total_saldo:,.2f} €** | | |")
     md.append("")
