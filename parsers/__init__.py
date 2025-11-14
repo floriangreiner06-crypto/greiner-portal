@@ -11,14 +11,15 @@ Unterstützte Banken:
 - HypoVereinsbank
 
 Author: Claude AI
-Version: 3.0
-Date: 2025-11-06
+Version: 3.0.1
+Date: 2025-11-13
 """
 
 from .base_parser import BaseParser, Transaction
 from .sparkasse_parser import SparkasseParser
 from .vrbank_parser import VRBankParser
-from .hypovereinsbank_parser import HypovereinsbankParser
+from .vrbank_landau_parser import VRBankLandauParser
+from .hypovereinsbank_parser import HypoVereinsbankParser, HypovereinsbankParser  # Beide Schreibweisen!
 from .parser_factory import ParserFactory
 
 __all__ = [
@@ -26,8 +27,10 @@ __all__ = [
     'Transaction',
     'SparkasseParser',
     'VRBankParser',
-    'HypovereinsbankParser',
+    'VRBankLandauParser',
+    'HypoVereinsbankParser',
+    'HypovereinsbankParser',  # Alias für Typo-Kompatibilität
     'ParserFactory'
 ]
 
-__version__ = '3.0'
+__version__ = '3.0.1'

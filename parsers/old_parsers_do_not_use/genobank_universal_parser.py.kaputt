@@ -1,0 +1,297 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Genobank Universal Parser - FIXED VERSION
+==========================================
+FIX: Tagesauszüge haben Endsaldo OBEN und Startsaldo UNTEN!
+
+Author: Claude AI
+Version: 3.0 (FIXED)
+Date: 2025-11-13
+"""
+
+import pdfplumber
+import re
+import logging
+from typing import List, Optional, Dict
+from datetime import datetime
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+
+class GenobankUniversalParser:
+    """
+    Universal-Parser für alle Genobank PDF-Formate
+    FIXED: Korrekte Endsaldo/Startsaldo Behandlung
+    """
+    
+    def __init__(self, pdf_path: str):
+        self.pdf_path = Path(pdf_path)
+        self.transactions = []
+        self.format_type = None
+        self.iban = None
+        self.year = None
+        self.endsaldo = None
+        self.startsaldo = None
+        
+    def parse(self) -> List[Dict]:
+        """
+        Parst PDF und erkennt automatisch das Format
+        """
+        logger.info(f"📄 Parse Genobank PDF: {self.pdf_path.name}")
+        
+        try:
+            with pdfplumber.open(str(self.pdf_path)) as pdf:
+                full_text = self._extract_full_text(pdf)
+                
+                # IBAN extrahieren
+                self.iban = self._extract_iban(full_text)
+                
+                # Format-Erkennung
+                self.format_type = self._detect_format(full_text)
+                logger.info(f"✔ Format erkannt: {self.format_type}")
+                
+                # Jahr ermitteln
+                self.year = self._extract_year(full_text)
+                if not self.year:
+                    self.year = datetime.now().year
+                
+                # Je nach Format parsen
+                if self.format_type == 'tagesauszug':
+                    self.transactions = self._parse_tagesauszug(full_text)
+                else:
+                    self.transactions = self._parse_standard(full_text)
+                
+                logger.info(f"✅ {len(self.transactions)} Transaktionen, Endsaldo: {self.endsaldo}")
+                return self.transactions
+                
+        except Exception as e:
+            logger.error(f"❌ Fehler beim Parsen: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+    
+    def _extract_full_text(self, pdf) -> str:
+        """Extrahiert Text von allen Seiten"""
+        full_text = ""
+        for page in pdf.pages:
+            text = page.extract_text()
+            if text:
+                full_text += text + "\n"
+        return full_text
+    
+    def _extract_iban(self, text: str) -> Optional[str]:
+        """Extrahiert IBAN aus PDF-Header"""
+        header = text[:1000]
+        
+        # Suche nach IBAN-Zeile
+        for line in header.split('\n'):
+            if 'IBAN' in line.upper() and 'Kontoinhaber' in line:
+                # Das ist die Zeile mit der Konto-IBAN
+                iban_pattern = r'(DE\d{20})'
+                match = re.search(iban_pattern, line)
+                if match:
+                    return match.group(1)
+        
+        # Fallback: Erste IBAN im Header
+        iban_pattern = r'(DE\d{20})'
+        match = re.search(iban_pattern, header)
+        if match:
+            return match.group(1)
+        
+        return None
+    
+    def _detect_format(self, text: str) -> str:
+        """Erkennt Format: tagesauszug oder standard"""
+        # Tagesauszug hat (Endsaldo) am Anfang und (Startsaldo) am Ende
+        if '(Endsaldo)' in text[:2000] or '(Startsaldo)' in text[-2000:]:
+            return 'tagesauszug'
+        return 'standard'
+    
+    def _extract_year(self, text: str) -> Optional[int]:
+        """Extrahiert Jahr"""
+        # Aus Datum-Zeile
+        date_match = re.search(r'Datum\s+\d{2}\.\d{2}\.(\d{4})', text)
+        if date_match:
+            return int(date_match.group(1))
+        
+        # Aus Dateinamen
+        filename = self.pdf_path.name
+        year_match = re.search(r'20(\d{2})', filename)
+        if year_match:
+            return 2000 + int(year_match.group(1))
+        
+        return None
+    
+    def _parse_tagesauszug(self, text: str) -> List[Dict]:
+        """
+        Parst Tagesauszug-Format
+        WICHTIG: Endsaldo steht OBEN, Startsaldo UNTEN!
+        """
+        transactions = []
+        lines = text.split('\n')
+        
+        # Datum aus Dateiname oder Text
+        filename = self.pdf_path.name
+        date_match = re.search(r'(\d{2})\.(\d{2})\.(\d{2})', filename)
+        if date_match:
+            day, month, yy = date_match.groups()
+            year = 2000 + int(yy)
+            default_datum = datetime(year, int(month), int(day))
+        else:
+            default_datum = datetime.now()
+        
+        # FIXED: Endsaldo ist OBEN (erste Zeilen)
+        for i, line in enumerate(lines[:50]):  # Nur erste 50 Zeilen
+            if '(Endsaldo)' in line:
+                # Suche Betrag in derselben oder nächsten Zeile
+                saldo_match = re.search(r'\+?([\d.,]+)\s*EUR', line)
+                if not saldo_match and i + 1 < len(lines):
+                    saldo_match = re.search(r'\+?([\d.,]+)\s*EUR', lines[i + 1])
+                if saldo_match:
+                    self.endsaldo = self._parse_german_amount(saldo_match.group(1))
+                    logger.info(f"✅ Endsaldo gefunden (oben): {self.endsaldo:.2f} EUR")
+                break
+        
+        # FIXED: Startsaldo ist UNTEN (letzte Zeilen)
+        for i, line in enumerate(lines[-50:]):  # Nur letzte 50 Zeilen
+            if '(Startsaldo)' in line:
+                # Suche Betrag in derselben oder nächsten Zeile
+                saldo_match = re.search(r'\+?([\d.,]+)\s*EUR', line)
+                if not saldo_match and i + 1 < len(lines[-50:]):
+                    saldo_match = re.search(r'\+?([\d.,]+)\s*EUR', lines[-50:][i + 1])
+                if saldo_match:
+                    self.startsaldo = self._parse_german_amount(saldo_match.group(1))
+                    logger.info(f"✅ Startsaldo gefunden (unten): {self.startsaldo:.2f} EUR")
+                break
+        
+        # Start mit Startsaldo
+        current_saldo = self.startsaldo if self.startsaldo else 0.0
+        
+        # Parse Transaktionen (zwischen Endsaldo und Startsaldo)
+        in_transactions = False
+        
+        for i, line in enumerate(lines):
+            line = line.strip()
+            
+            # Start nach Endsaldo
+            if '(Endsaldo)' in line:
+                in_transactions = True
+                continue
+            
+            # Ende bei Startsaldo
+            if '(Startsaldo)' in line:
+                break
+            
+            if not in_transactions:
+                continue
+            
+            # Transaktions-Pattern
+            # Format: "Empfänger/Text" und dann "+/-Betrag EUR Datum"
+            if i + 1 < len(lines):
+                next_line = lines[i + 1].strip()
+                
+                # Suche Betrag und Datum in nächster Zeile
+                betrag_match = re.search(r"([+-]?\d{1,3}(?:\.\d{3})*(?:,\d{2})?)\s+EUR", line)
+                
+                if betrag_match:
+                    empfaenger = line
+                    betrag_str = betrag_datum_match.group(1)
+                    datum_str = betrag_datum_match.group(2)
+                    
+                    # Parse Betrag
+                    betrag = self._parse_german_amount(betrag_str.replace('+', '').replace('-', ''))
+                    if betrag_str.startswith('-'):
+                        betrag = -abs(betrag)
+                    
+                    # Parse Datum
+                    day, month, year = datum_str.split('.')
+                    datum = datetime(int(year), int(month), int(day))
+                    
+                    # Berechne neuen Saldo
+                    current_saldo += betrag
+                    
+                    # Sammle weitere Zeilen für Verwendungszweck
+                    verwendungszweck_lines = [empfaenger]
+                    j = i + 2
+                    while j < len(lines) and j < i + 5:
+                        extra_line = lines[j].strip()
+                        if not extra_line or 'EUR' in extra_line or '(Startsaldo)' in extra_line:
+                            break
+                        verwendungszweck_lines.append(extra_line)
+                        j += 1
+                    
+                    verwendungszweck = ' '.join(verwendungszweck_lines)
+                    
+                    transaction = {
+                        'buchungsdatum': datum,
+                        'valutadatum': datum,
+                        'verwendungszweck': verwendungszweck[:500],
+                        'betrag': betrag,
+                        'iban': self.iban,
+                        'saldo_nach_buchung': current_saldo
+                    }
+                    
+                    transactions.append(transaction)
+        
+        # Wenn wir Transaktionen haben, setze letzten Saldo auf Endsaldo
+        if transactions and self.endsaldo:
+            # Korrigiere den letzten Saldo auf den tatsächlichen Endsaldo
+            transactions[-1]['saldo_nach_buchung'] = self.endsaldo
+        
+        return transactions
+    
+    def _parse_standard(self, text: str) -> List[Dict]:
+        """Parst Standard-Format (Monatsauszüge)"""
+        transactions = []
+        lines = text.split('\n')
+        
+        for line in lines:
+            # DD.MM. DD.MM. Text Betrag H/S
+            match = re.match(r'(\d{2})\.(\d{2})\.\s+(\d{2})\.(\d{2})\.\s+(.+?)\s+([\d.,]+)\s+([HS])', line)
+            if match:
+                buch_day, buch_month = match.group(1), match.group(2)
+                val_day, val_month = match.group(3), match.group(4)
+                verwendungszweck = match.group(5).strip()
+                betrag_str = match.group(6)
+                haben_soll = match.group(7)
+                
+                betrag = self._parse_german_amount(betrag_str)
+                if haben_soll == 'S':
+                    betrag = -betrag
+                
+                buchungsdatum = datetime(self.year, int(buch_month), int(buch_day))
+                valutadatum = datetime(self.year, int(val_month), int(val_day))
+                
+                transaction = {
+                    'buchungsdatum': buchungsdatum,
+                    'valutadatum': valutadatum,
+                    'verwendungszweck': verwendungszweck,
+                    'betrag': betrag,
+                    'iban': self.iban,
+                    'saldo_nach_buchung': None
+                }
+                
+                transactions.append(transaction)
+        
+        return transactions
+    
+    def _parse_german_amount(self, amount_str: str) -> float:
+        """Konvertiert deutsches Format zu float"""
+        try:
+            amount_str = amount_str.replace('.', '').replace(',', '.')
+            return float(amount_str)
+        except:
+            return 0.0
+
+
+if __name__ == '__main__':
+    import sys
+    if len(sys.argv) > 1:
+        parser = GenobankUniversalParser(sys.argv[1])
+        trans = parser.parse()
+        print(f"IBAN: {parser.iban}")
+        print(f"Transaktionen: {len(trans)}")
+        print(f"Startsaldo: {parser.startsaldo:.2f} EUR")
+        print(f"Endsaldo: {parser.endsaldo:.2f} EUR")

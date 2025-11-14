@@ -811,3 +811,66 @@ def internal_error(error):
         'success': False,
         'error': 'Interner Server-Fehler'
     }), 500
+
+
+@bankenspiegel_api.route('/konto/<int:konto_id>/snapshots')
+def get_konto_snapshots(konto_id):
+    '''
+    Historische Snapshots für ein Konto
+    
+    Returns:
+        JSON mit Snapshots (Stichtag, Saldo, Zinssatz, Ausnutzung)
+    '''
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Konto-Info
+        cursor.execute('''
+            SELECT k.kontoname, k.iban, k.kreditlinie, b.bank_name
+            FROM konten k
+            JOIN banken b ON k.bank_id = b.id
+            WHERE k.id = ?
+        ''', (konto_id,))
+        
+        konto_row = cursor.fetchone()
+        if not konto_row:
+            conn.close()
+            return jsonify({'error': 'Konto nicht gefunden'}), 404
+        
+        konto_info = dict(konto_row)
+        
+        # Snapshots
+        cursor.execute('''
+            SELECT 
+                stichtag,
+                kapitalsaldo,
+                kreditlinie,
+                zinssatz,
+                ausnutzung_prozent,
+                zinstyp
+            FROM konto_snapshots
+            WHERE konto_id = ?
+            ORDER BY stichtag ASC
+        ''', (konto_id,))
+        
+        snapshots = [dict(row) for row in cursor.fetchall()]
+        
+        conn.close()
+        
+        return jsonify({
+            'konto': {
+                'id': konto_id,
+                'name': konto_info['kontoname'],
+                'iban': konto_info['iban'],
+                'kreditlinie': konto_info['kreditlinie'],
+                'bank': konto_info['bank_name']
+            },
+            'snapshots': snapshots,
+            'count': len(snapshots)
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+

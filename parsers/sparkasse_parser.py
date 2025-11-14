@@ -1,164 +1,147 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Sparkasse PDF Parser fÃ¼r Bankenspiegel 3.0
-==========================================
-Parser fÃ¼r Sparkasse KontoauszÃ¼ge (PDF)
+Sparkasse Parser für Bankenspiegel 3.0
+======================================
+Parser für Sparkasse PDF-Kontoauszüge
 
-Format:
-    DD.MM.YYYY Verwendungszweck... Betrag
+Neues Format (2025):
+- Zwei Daten direkt hintereinander: 03.11.202503.11.2025
+- Dann Betrag: -21.460,00 EUR
 
-Features:
-- Mehrzeiliger Verwendungszweck
-- IBAN-Extraktion
-- Duplikats-Check vorbereitet
+Endsaldo-Format:
+- Kontostand am 13.11.2025:    16.207,46 EUR*
 
 Author: Claude AI
-Version: 3.0
-Date: 2025-11-06
+Version: 3.2
+Date: 2025-11-14
 """
 
+from .base_parser import BaseParser, Transaction
 import pdfplumber
 import re
+from datetime import datetime
+from typing import List, Optional
 import logging
-from typing import List
-from .base_parser import BaseParser, Transaction
 
 logger = logging.getLogger(__name__)
 
 
 class SparkasseParser(BaseParser):
-    """
-    Parser fÃ¼r Sparkasse KontoauszÃ¼ge
-    
-    Format-Beispiel:
-        01.01.2025 SEPA-Ãœberweisung Max Mustermann 1.234,56
-        Verwendungszweck Zeile 2
-        Verwendungszweck Zeile 3
-        
-    Usage:
-        parser = SparkasseParser('path/to/sparkasse.pdf')
-        transactions = parser.parse()
-    """
-    
+    """Parser für Sparkasse PDF-Kontoauszüge"""
+
+    def __init__(self, pdf_path: str):
+        """Initialisiert Parser"""
+        super().__init__(pdf_path)
+        self.endsaldo: Optional[float] = None
+
     @property
     def bank_name(self) -> str:
+        """Name der Bank"""
         return "Sparkasse"
-    
+
     def parse(self) -> List[Transaction]:
         """
         Parst Sparkasse PDF und extrahiert Transaktionen
-        
+
         Returns:
             Liste von Transaction-Objekten
         """
-        logger.info(f"ðŸ“„ Parse {self.bank_name}: {self.pdf_path.name}")
-        
+        self.transactions = []
+
         try:
             with pdfplumber.open(str(self.pdf_path)) as pdf:
-                # Text von allen Seiten sammeln
-                full_text = self._extract_full_text(pdf)
-                
+
+                # Sammle Text von allen Seiten
+                full_text = ""
+                for page in pdf.pages:
+                    text = page.extract_text()
+                    if text:
+                        full_text += text + "\n"
+
                 # IBAN extrahieren
                 self.iban = self.extract_iban(full_text)
-                
                 if not self.iban:
-                    logger.warning(f"âš ï¸ Keine IBAN gefunden in {self.pdf_path.name}")
-                
-                # Transaktionen parsen
-                self.transactions = self._parse_transactions(full_text)
-                
-                # Zusammenfassung loggen
-                self.log_summary()
-                
-                return self.transactions
-        
-        except Exception as e:
-            logger.error(f"âŒ Fehler beim Parsen: {e}")
-            self.errors.append(str(e))
-            return []
-    
-    def _extract_full_text(self, pdf) -> str:
-        """Extrahiert Text von allen Seiten"""
-        full_text = ""
-        for page in pdf.pages:
-            text = page.extract_text()
-            if text:
-                full_text += text + "\n"
-        return full_text
-    
-    def _parse_transactions(self, full_text: str) -> List[Transaction]:
-        """
-        Parst Transaktionen aus dem Text
-        
-        Sparkasse-Format:
-            DD.MM.YYYY Text... Betrag
-            
-        Betrag steht AM ENDE der Zeile, davor steht der Verwendungszweck.
-        Folgezeilen ohne Datum gehÃ¶ren zum Verwendungszweck.
-        """
-        transactions = []
-        lines = full_text.split('\n')
-        
-        i = 0
-        while i < len(lines):
-            line = lines[i].strip()
-            
-            # Suche nach Zeile die mit Datum beginnt
-            # Pattern: DD.MM.YYYY rest_der_zeile
-            date_match = re.match(r'^(\d{2}\.\d{2}\.\d{4})(.+)', line)
-            
-            if date_match:
-                datum = date_match.group(1)
-                rest = date_match.group(2).strip()
-                
-                # Ãœberspringe "Kontostand am..." Zeilen
-                if 'Kontostand am' in rest or not rest:
-                    i += 1
-                    continue
-                
-                # Suche Betrag am Ende der Zeile
-                # Pattern: Betrag mit Tausender-Punkt und Komma
-                betrag_match = re.search(r'([-]?\d{1,3}(?:\.\d{3})*,\d{2})$', line)
-                
-                if betrag_match:
-                    betrag_str = betrag_match.group(1)
-                    betrag = self.parse_german_amount(betrag_str)
-                    
-                    # Verwendungszweck = alles zwischen Datum und Betrag
-                    verwendungszweck = line[len(datum):betrag_match.start()].strip()
-                    
-                    # Sammle zusÃ¤tzliche Zeilen (Verwendungszweck kann mehrzeilig sein)
-                    zusatz_lines = []
-                    j = i + 1
-                    
-                    while j < len(lines) and j < i + 10:  # Max 10 Zeilen vorausschauen
-                        next_line = lines[j].strip()
-                        
-                        # Stopp wenn nÃ¤chste Transaktion beginnt
-                        if re.match(r'^\d{2}\.\d{2}\.\d{4}', next_line):
-                            break
-                        
-                        # Stopp bei leeren Zeilen oder Footer
-                        if not next_line or 'Sparkasse' in next_line or 'Vorstand' in next_line:
-                            break
-                        
-                        zusatz_lines.append(next_line)
-                        j += 1
-                    
-                    # Verwendungszweck zusammensetzen
-                    if zusatz_lines:
-                        verwendungszweck = verwendungszweck + " " + " ".join(zusatz_lines)
-                    
-                    # Text sÃ¤ubern und kÃ¼rzen
-                    verwendungszweck = self.clean_text(verwendungszweck)
-                    verwendungszweck = self.truncate_text(verwendungszweck, 500)
-                    
-                    # Datum konvertieren
-                    buchungsdatum = self.parse_german_date(datum)
-                    valutadatum = buchungsdatum  # Sparkasse hat oft nur ein Datum
-                    
-                    if buchungsdatum:
+                    logger.warning(f"⚠️ Keine IBAN gefunden in {self.pdf_path.name}")
+
+                # Endsaldo extrahieren (Format: "Kontostand am 13.11.2025:    16.207,46 EUR*")
+                endsaldo_match = re.search(
+                    r'Kontostand am\s+\d{2}\.\d{2}\.\d{4}:\s+([\d.,]+)\s+EUR',
+                    full_text
+                )
+                if endsaldo_match:
+                    self.endsaldo = self.parse_german_amount(endsaldo_match.group(1))
+                    logger.debug(f"✓ Endsaldo: {self.endsaldo} EUR")
+
+                lines = full_text.split('\n')
+
+                for i, line in enumerate(lines):
+                    line_stripped = line.strip()
+
+                    # NEUES FORMAT: Zwei Daten direkt hintereinander, dann Betrag
+                    # Pattern: 03.11.202503.11.2025 -21.460,00 EUR
+                    match = re.match(
+                        r'^(\d{2}\.\d{2}\.\d{4})(\d{2}\.\d{2}\.\d{4})\s+([-+]?\d{1,3}(?:\.\d{3})*,\d{2})\s+EUR',
+                        line_stripped
+                    )
+
+                    if match:
+                        buchungsdatum_str = match.group(1)
+                        valutadatum_str = match.group(2)
+                        betrag_str = match.group(3)
+
+                        # Parse Datum
+                        buchungsdatum = self.parse_german_date(buchungsdatum_str)
+                        valutadatum = self.parse_german_date(valutadatum_str)
+
+                        if not buchungsdatum:
+                            logger.warning(f"⚠️ Ungültiges Datum: {buchungsdatum_str}")
+                            continue
+
+                        if not valutadatum:
+                            valutadatum = buchungsdatum
+
+                        # Parse Betrag
+                        betrag = self.parse_german_amount(betrag_str.replace('+', ''))
+
+                        # Verwendungszweck ist in den Zeilen davor
+                        verwendungszweck_lines = []
+
+                        # Schaue 1-2 Zeilen zurück für Empfänger/Absender
+                        for j in range(max(0, i-2), i):
+                            prev_line = lines[j].strip()
+                            # Skip Überschriften und leere Zeilen
+                            if (prev_line and
+                                not prev_line.startswith('BUCHUNG') and
+                                not prev_line.startswith('Kontostand') and
+                                not prev_line.startswith('Umsätze')):
+                                verwendungszweck_lines.append(prev_line)
+
+                        # Schaue auch Zeilen danach für weitere Details
+                        j = i + 1
+                        while j < len(lines) and j < i + 3:
+                            next_line = lines[j].strip()
+
+                            # Stop bei neuer Transaktion
+                            if re.match(r'^\d{2}\.\d{2}\.\d{4}\d{2}\.\d{2}\.\d{4}', next_line):
+                                break
+
+                            # Sammle Verwendungszweck-Details
+                            if next_line and '|' in next_line:
+                                verwendungszweck_lines.append(next_line)
+                            elif next_line and not next_line.startswith('Kontostand'):
+                                verwendungszweck_lines.append(next_line)
+
+                            j += 1
+
+                        # Kombiniere Verwendungszweck
+                        verwendungszweck = ' '.join(verwendungszweck_lines) if verwendungszweck_lines else "Buchung"
+
+                        # Säubere und kürze Text
+                        verwendungszweck = self.clean_text(verwendungszweck)
+                        verwendungszweck = self.truncate_text(verwendungszweck, 500)
+
+                        # Erstelle Transaction-Objekt
                         transaction = Transaction(
                             buchungsdatum=buchungsdatum,
                             valutadatum=valutadatum,
@@ -166,59 +149,58 @@ class SparkasseParser(BaseParser):
                             betrag=betrag,
                             iban=self.iban
                         )
-                        transactions.append(transaction)
-                        logger.debug(f"âœ“ Transaktion: {datum} | {betrag:.2f} EUR")
-                    else:
-                        self.errors.append(f"UngÃ¼ltiges Datum: {datum}")
-                    
-                    # Springe zu nÃ¤chster mÃ¶glichen Transaktion
-                    i = j
-                    continue
-            
-            i += 1
-        
-        logger.info(f"âœ… {self.bank_name}: {len(transactions)} Transaktionen gefunden")
-        return transactions
 
+                        self.transactions.append(transaction)
+                        logger.debug(f"✓ Transaction: {transaction}")
 
-# FÃ¼r Direktaufruf / Testing
-if __name__ == "__main__":
-    import sys
-    
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format='%(asctime)s - %(levelname)s - %(message)s'
-    )
-    
-    if len(sys.argv) < 2:
-        print("Usage: python sparkasse_parser.py <pdf_path>")
-        sys.exit(1)
-    
-    pdf_path = sys.argv[1]
-    
-    try:
-        parser = SparkasseParser(pdf_path)
-        transactions = parser.parse()
-        
-        print(f"\n{'='*70}")
-        print(f"ERGEBNIS")
-        print(f"{'='*70}")
-        print(f"Transaktionen: {len(transactions)}")
-        
-        if transactions:
-            print(f"\nErste 5 Transaktionen:")
-            for i, t in enumerate(transactions[:5], 1):
-                print(f"{i}. {t}")
-        
-        stats = parser.get_statistics()
-        print(f"\nStatistiken:")
-        print(f"  Anzahl: {stats['count']}")
-        print(f"  Summe: {stats['total_amount']:,.2f} EUR")
-        print(f"  Zeitraum: {stats['date_range']}")
-        print(f"  IBAN: {stats['has_iban']}")
-        
-    except Exception as e:
-        print(f"Fehler: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+                    # ALTES FORMAT als Fallback
+                    elif re.match(r'^(\d{2}\.\d{2}\.\d{4})([^0-9].+)', line_stripped):
+                        date_match = re.match(r'^(\d{2}\.\d{2}\.\d{4})(.+)', line_stripped)
+                        if date_match:
+                            datum_str = date_match.group(1)
+                            rest = date_match.group(2).strip()
+
+                            # Skip Kontostand-Zeilen
+                            if 'Kontostand am' in rest:
+                                continue
+
+                            # Suche Betrag am Ende
+                            betrag_match = re.search(r'([-]?\d{1,3}(?:\.\d{3})*,\d{2})$', line_stripped)
+
+                            if betrag_match:
+                                betrag_str = betrag_match.group(1)
+
+                                # Parse Datum
+                                buchungsdatum = self.parse_german_date(datum_str)
+                                if not buchungsdatum:
+                                    continue
+
+                                # Parse Betrag
+                                betrag = self.parse_german_amount(betrag_str)
+
+                                # Verwendungszweck
+                                verwendungszweck = line_stripped[len(datum_str):betrag_match.start()].strip()
+
+                                # Erstelle Transaction
+                                transaction = Transaction(
+                                    buchungsdatum=buchungsdatum,
+                                    valutadatum=buchungsdatum,
+                                    verwendungszweck=self.truncate_text(self.clean_text(verwendungszweck), 500),
+                                    betrag=betrag,
+                                    iban=self.iban
+                                )
+
+                                self.transactions.append(transaction)
+
+                # Log Summary
+                logger.info(f"✅ {self.bank_name}: {len(self.transactions)} Transaktionen, Endsaldo: {self.endsaldo}")
+
+                return self.transactions
+
+        except Exception as e:
+            error_msg = f"❌ Fehler beim Parsen von {self.pdf_path.name}: {e}"
+            logger.error(error_msg)
+            self.errors.append(error_msg)
+            import traceback
+            traceback.print_exc()
+            return []

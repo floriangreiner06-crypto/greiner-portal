@@ -406,3 +406,21 @@ v2.0 - Tag 20: KOMPLETT - Alle Routes inkl. Einkaufsfinanzierung
 
 STATUS: 🟢 PRODUCTION-READY | 🛡️ BULLETPROOF | ✅ KOMPLETT
 """
+
+
+@bankenspiegel_bp.route('/konto/<int:konto_id>')
+def konto_detail(konto_id):
+    """
+    Konto-Detail mit historischen Daten
+    
+    Features:
+    - Aktuelle Konto-Info
+    - Historische Snapshots
+    - Zinsentwicklung-Chart
+    - Ausnutzungs-Chart
+    """
+    return render_template(
+        'bankenspiegel_konto_detail.html',
+        konto_id=konto_id,
+        now=datetime.now()
+    )
