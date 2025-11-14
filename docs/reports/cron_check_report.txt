@@ -1,0 +1,398 @@
+╔════════════════════════════════════════════════════════════════════════╗
+║  ⏰ CRON-JOBS CHECK - IMPORT AUTOMATISIERUNG                          ║
+╚════════════════════════════════════════════════════════════════════════╝
+
+═══════════════════════════════════════════════════════════════════════════
+1️⃣  ALLE AKTIVEN CRON-JOBS
+═══════════════════════════════════════════════════════════════════════════
+
+User: ag-admin
+
+# Edit this file to introduce tasks to be run by cron.
+# 
+# Each task to run has to be defined through a single line
+# indicating with different fields when the task will be run
+# and what command to run for the task
+# 
+# To define the time you can provide concrete values for
+# minute (m), hour (h), day of month (dom), month (mon),
+# and day of week (dow) or use '*' in these fields (for 'any').
+# 
+# Notice that tasks will be started based on the cron's system
+# daemon's notion of time and timezones.
+# 
+# Output of the crontab jobs (including errors) is sent through
+# email to the user the crontab file belongs to (unless redirected).
+# 
+# For example, you can run a backup of all your user accounts
+# at 5 a.m every week with:
+# 0 5 * * 1 tar -zcf /var/backups/home.tgz /home/
+# 
+# For more information see the manual pages of crontab(5) and cron(8)
+# 
+# m h  dom mon dow   command
+
+# Verkauf Sync - stündlich von 7-18 Uhr
+0 7-18 * * * cd /opt/greiner-portal && /opt/greiner-portal/venv/bin/python3 sync_sales.py >> logs/sync_sales.log 2>&1
+# Stellantis Import - stündlich von 7-18 Uhr
+0 7-18 * * * cd /opt/greiner-portal && /opt/greiner-portal/venv/bin/python3 import_stellantis.py >> logs/stellantis_import.log 2>&1
+
+# Bank-PDFs Import - stündlich von 7-18 Uhr
+#0 7-18 * * * cd /opt/greiner-portal && /opt/greiner-portal/venv/bin/python3 scripts/imports/import_november_all_accounts_v2.py >> logs/bank_import.log 2>&1
+
+# Bank-PDFs Import - täglich 8:30 Uhr
+30 8 * * * cd /opt/greiner-portal && /opt/greiner-portal/venv/bin/python3 scripts/imports/import_november_all_accounts_v2.py >> logs/bank_import.log 2>&1
+
+# DB Backup - stündlich (NEU HINZUFÜGEN!)
+0 * * * * cd /opt/greiner-portal && cp data/greiner_controlling.db data/greiner_controlling.db.backup_auto_$(date +\%H00) 2>/dev/null
+
+# Alte Backups löschen - täglich 2:30 Uhr (älter als 7 Tage)
+30 2 * * * find /opt/greiner-portal/data -name "*.backup_auto_*" -mtime +7 -delete 2>/dev/null
+
+
+# Santander Import - täglich 8 Uhr
+0 8 * * * cd /opt/greiner-portal && /opt/greiner-portal/venv/bin/python3 scripts/imports/import_santander_bestand.py >> logs/santander_import.log 2>&1
+
+# Hyundai Finance Import - täglich 9 Uhr (manueller CSV-Upload nötig!)
+0 9 * * * cd /opt/greiner-portal && /opt/greiner-portal/venv/bin/python3 scripts/imports/import_hyundai_finance.py >> logs/hyundai_import.log 2>&1
+
+# Employee Sync - täglich 6 Uhr
+0 6 * * * cd /opt/greiner-portal && /opt/greiner-portal/venv/bin/python3 sync_employees.py --real >> logs/employee_sync.log 2>&1
+
+
+═══════════════════════════════════════════════════════════════════════════
+2️⃣  CRON-SERVICE STATUS
+═══════════════════════════════════════════════════════════════════════════
+
+● cron.service - Regular background program processing daemon
+     Loaded: loaded (/usr/lib/systemd/system/cron.service; enabled; preset: enabled)
+     Active: active (running) since Wed 2025-11-05 13:58:00 CET; 1 week 1 day ago
+       Docs: man:cron(8)
+   Main PID: 901 (cron)
+      Tasks: 1 (limit: 14260)
+     Memory: 1.5G (peak: 1.6G)
+        CPU: 5min 50.317s
+     CGroup: /system.slice/cron.service
+             └─901 /usr/sbin/cron -f -P
+
+Nov 14 08:00:01 srvlinux01 CRON[87964]: (ag-admin) CMD (cd /opt/greiner-portal && /opt/greiner-portal/venv/bin/python3 sync_sales.py >> logs/sync_sales.log 2>&1)
+Nov 14 08:00:01 srvlinux01 CRON[87958]: pam_unix(cron:session): session opened for user ag-admin(uid=1000) by ag-admin(uid=0)
+Nov 14 08:00:01 srvlinux01 CRON[87965]: (ag-admin) CMD (cd /opt/greiner-portal && cp data/greiner_controlling.db data/greiner_controlling.db.backup_auto_$(date +%H00) 2>/dev/null)
+Nov 14 08:00:01 srvlinux01 CRON[87958]: pam_unix(cron:session): session closed for user ag-admin
+Nov 14 08:00:01 srvlinux01 CRON[87957]: pam_unix(cron:session): session closed for user ag-admin
+Nov 14 08:00:02 srvlinux01 CRON[87960]: pam_unix(cron:session): session closed for user ag-admin
+Nov 14 08:00:03 srvlinux01 CRON[87959]: pam_unix(cron:session): session closed for user ag-admin
+Nov 14 08:05:01 srvlinux01 CRON[88033]: pam_unix(cron:session): session opened for user root(uid=0) by root(uid=0)
+Nov 14 08:05:01 srvlinux01 CRON[88034]: (root) CMD (command -v debian-sa1 > /dev/null && debian-sa1 1 1)
+Nov 14 08:05:01 srvlinux01 CRON[88033]: pam_unix(cron:session): session closed for user root
+
+
+═══════════════════════════════════════════════════════════════════════════
+3️⃣  CRON-LOGS (letzte 50 Zeilen, gefiltert nach greiner)
+═══════════════════════════════════════════════════════════════════════════
+
+=== System Cron Log ===
+2025-11-13T19:00:01.594933+00:00 srvlinux01 CRON[85527]: (ag-admin) CMD (cd /opt/greiner-portal && cp data/greiner_controlling.db data/greiner_controlling.db.backup_auto_$(date +%H00) 2>/dev/null)
+2025-11-13T19:20:53.025430+00:00 srvlinux01 systemd[1]: Stopping greiner-portal.service - Greiner Portal Flask Application...
+2025-11-13T19:20:53.245234+00:00 srvlinux01 systemd[1]: greiner-portal.service: Deactivated successfully.
+2025-11-13T19:20:53.245468+00:00 srvlinux01 systemd[1]: Stopped greiner-portal.service - Greiner Portal Flask Application.
+2025-11-13T19:20:53.245524+00:00 srvlinux01 systemd[1]: greiner-portal.service: Consumed 2.225s CPU time, 192.2M memory peak, 0B memory swap peak.
+2025-11-13T19:20:53.256118+00:00 srvlinux01 systemd[1]: Starting greiner-portal.service - Greiner Portal Flask Application...
+2025-11-13T19:20:53.324088+00:00 srvlinux01 systemd[1]: Started greiner-portal.service - Greiner Portal Flask Application.
+2025-11-13T19:20:53.416165+00:00 srvlinux01 gunicorn[85659]: INFO:auth.ldap_connector:✅ LDAP Config geladen: srvdc01.auto-greiner.de
+2025-11-13T19:20:53.416275+00:00 srvlinux01 gunicorn[85659]: INFO:auth.ldap_connector:✅ LDAP Server konfiguriert: srvdc01.auto-greiner.de:389 (SSL: False)
+2025-11-13T19:20:53.433349+00:00 srvlinux01 gunicorn[85661]: INFO:auth.ldap_connector:✅ LDAP Config geladen: srvdc01.auto-greiner.de
+2025-11-13T19:20:53.433427+00:00 srvlinux01 gunicorn[85661]: INFO:auth.ldap_connector:✅ LDAP Server konfiguriert: srvdc01.auto-greiner.de:389 (SSL: False)
+2025-11-13T19:20:53.527953+00:00 srvlinux01 gunicorn[85662]: INFO:auth.ldap_connector:✅ LDAP Config geladen: srvdc01.auto-greiner.de
+2025-11-13T19:20:53.528039+00:00 srvlinux01 gunicorn[85662]: INFO:auth.ldap_connector:✅ LDAP Server konfiguriert: srvdc01.auto-greiner.de:389 (SSL: False)
+2025-11-13T19:20:53.577415+00:00 srvlinux01 gunicorn[85663]: INFO:auth.ldap_connector:✅ LDAP Config geladen: srvdc01.auto-greiner.de
+2025-11-13T19:20:53.577497+00:00 srvlinux01 gunicorn[85663]: INFO:auth.ldap_connector:✅ LDAP Server konfiguriert: srvdc01.auto-greiner.de:389 (SSL: False)
+2025-11-13T19:20:53.577709+00:00 srvlinux01 gunicorn[85664]: INFO:auth.ldap_connector:✅ LDAP Config geladen: srvdc01.auto-greiner.de
+2025-11-13T19:20:53.577772+00:00 srvlinux01 gunicorn[85664]: INFO:auth.ldap_connector:✅ LDAP Server konfiguriert: srvdc01.auto-greiner.de:389 (SSL: False)
+2025-11-13T19:20:53.682623+00:00 srvlinux01 gunicorn[85665]: INFO:auth.ldap_connector:✅ LDAP Config geladen: srvdc01.auto-greiner.de
+2025-11-13T19:20:53.682736+00:00 srvlinux01 gunicorn[85665]: INFO:auth.ldap_connector:✅ LDAP Server konfiguriert: srvdc01.auto-greiner.de:389 (SSL: False)
+2025-11-13T19:20:53.710187+00:00 srvlinux01 gunicorn[85666]: INFO:auth.ldap_connector:✅ LDAP Config geladen: srvdc01.auto-greiner.de
+2025-11-13T19:20:53.710249+00:00 srvlinux01 gunicorn[85666]: INFO:auth.ldap_connector:✅ LDAP Server konfiguriert: srvdc01.auto-greiner.de:389 (SSL: False)
+2025-11-13T19:20:53.757516+00:00 srvlinux01 gunicorn[85667]: INFO:auth.ldap_connector:✅ LDAP Config geladen: srvdc01.auto-greiner.de
+2025-11-13T19:20:53.757589+00:00 srvlinux01 gunicorn[85667]: INFO:auth.ldap_connector:✅ LDAP Server konfiguriert: srvdc01.auto-greiner.de:389 (SSL: False)
+2025-11-13T19:20:53.820999+00:00 srvlinux01 gunicorn[85668]: INFO:auth.ldap_connector:✅ LDAP Config geladen: srvdc01.auto-greiner.de
+2025-11-13T19:20:53.821086+00:00 srvlinux01 gunicorn[85668]: INFO:auth.ldap_connector:✅ LDAP Server konfiguriert: srvdc01.auto-greiner.de:389 (SSL: False)
+2025-11-13T19:30:17.491599+00:00 srvlinux01 gunicorn[85667]: INFO:auth.ldap_connector:✅ User authentifiziert: florian.greiner@auto-greiner.de
+2025-11-13T19:30:17.640655+00:00 srvlinux01 gunicorn[85667]: INFO:auth.ldap_connector:✅ User-Details geladen: florian.greiner@auto-greiner.de (Gruppen: 3)
+2025-11-13T19:30:17.659892+00:00 srvlinux01 gunicorn[85667]: INFO:auth.auth_manager:✅ Login erfolgreich: Florian Greiner (Geschäftsleitung) → Rollen: ['admin']
+2025-11-13T20:00:01.717839+00:00 srvlinux01 CRON[85715]: (ag-admin) CMD (cd /opt/greiner-portal && cp data/greiner_controlling.db data/greiner_controlling.db.backup_auto_$(date +%H00) 2>/dev/null)
+2025-11-13T21:00:01.858217+00:00 srvlinux01 CRON[85802]: (ag-admin) CMD (cd /opt/greiner-portal && cp data/greiner_controlling.db data/greiner_controlling.db.backup_auto_$(date +%H00) 2>/dev/null)
+2025-11-13T22:00:01.024102+00:00 srvlinux01 CRON[85896]: (ag-admin) CMD (cd /opt/greiner-portal && cp data/greiner_controlling.db data/greiner_controlling.db.backup_auto_$(date +%H00) 2>/dev/null)
+2025-11-13T23:00:01.193068+00:00 srvlinux01 CRON[85980]: (ag-admin) CMD (cd /opt/greiner-portal && cp data/greiner_controlling.db data/greiner_controlling.db.backup_auto_$(date +%H00) 2>/dev/null)
+2025-11-14T00:00:01.351431+00:00 srvlinux01 CRON[86649]: (ag-admin) CMD (cd /opt/greiner-portal && cp data/greiner_controlling.db data/greiner_controlling.db.backup_auto_$(date +%H00) 2>/dev/null)
+2025-11-14T01:00:01.508375+00:00 srvlinux01 CRON[86736]: (ag-admin) CMD (cd /opt/greiner-portal && cp data/greiner_controlling.db data/greiner_controlling.db.backup_auto_$(date +%H00) 2>/dev/null)
+2025-11-14T01:30:01.654946+00:00 srvlinux01 CRON[86785]: (ag-admin) CMD (find /opt/greiner-portal/data -name "*.backup_auto_*" -mtime +7 -delete 2>/dev/null)
+2025-11-14T02:00:01.700875+00:00 srvlinux01 CRON[86821]: (ag-admin) CMD (cd /opt/greiner-portal && cp data/greiner_controlling.db data/greiner_controlling.db.backup_auto_$(date +%H00) 2>/dev/null)
+2025-11-14T03:00:01.907922+00:00 srvlinux01 CRON[86906]: (ag-admin) CMD (cd /opt/greiner-portal && cp data/greiner_controlling.db data/greiner_controlling.db.backup_auto_$(date +%H00) 2>/dev/null)
+2025-11-14T04:00:01.081147+00:00 srvlinux01 CRON[87004]: (ag-admin) CMD (cd /opt/greiner-portal && cp data/greiner_controlling.db data/greiner_controlling.db.backup_auto_$(date +%H00) 2>/dev/null)
+2025-11-14T05:00:01.228145+00:00 srvlinux01 CRON[87089]: (ag-admin) CMD (cd /opt/greiner-portal && cp data/greiner_controlling.db data/greiner_controlling.db.backup_auto_$(date +%H00) 2>/dev/null)
+2025-11-14T05:00:01.237423+00:00 srvlinux01 CRON[87091]: (ag-admin) CMD (cd /opt/greiner-portal && /opt/greiner-portal/venv/bin/python3 sync_employees.py --real >> logs/employee_sync.log 2>&1)
+2025-11-14T06:00:01.428229+00:00 srvlinux01 CRON[87569]: (ag-admin) CMD (cd /opt/greiner-portal && cp data/greiner_controlling.db data/greiner_controlling.db.backup_auto_$(date +%H00) 2>/dev/null)
+2025-11-14T06:00:01.428470+00:00 srvlinux01 CRON[87570]: (ag-admin) CMD (cd /opt/greiner-portal && /opt/greiner-portal/venv/bin/python3 import_stellantis.py >> logs/stellantis_import.log 2>&1)
+2025-11-14T06:00:01.428893+00:00 srvlinux01 CRON[87571]: (ag-admin) CMD (cd /opt/greiner-portal && /opt/greiner-portal/venv/bin/python3 sync_sales.py >> logs/sync_sales.log 2>&1)
+2025-11-14T06:43:03.178197+00:00 srvlinux01 gunicorn[85662]: INFO:auth.ldap_connector:✅ User authentifiziert: florian.greiner@auto-greiner.de
+2025-11-14T06:43:03.227382+00:00 srvlinux01 gunicorn[85662]: INFO:auth.ldap_connector:✅ User-Details geladen: florian.greiner@auto-greiner.de (Gruppen: 3)
+2025-11-14T06:43:03.248708+00:00 srvlinux01 gunicorn[85662]: INFO:auth.auth_manager:✅ Login erfolgreich: Florian Greiner (Geschäftsleitung) → Rollen: ['admin']
+2025-11-14T07:00:01.429266+00:00 srvlinux01 CRON[87961]: (ag-admin) CMD (cd /opt/greiner-portal && /opt/greiner-portal/venv/bin/python3 import_stellantis.py >> logs/stellantis_import.log 2>&1)
+2025-11-14T07:00:01.430294+00:00 srvlinux01 CRON[87962]: (ag-admin) CMD (cd /opt/greiner-portal && /opt/greiner-portal/venv/bin/python3 scripts/imports/import_santander_bestand.py >> logs/santander_import.log 2>&1)
+2025-11-14T07:00:01.430515+00:00 srvlinux01 CRON[87964]: (ag-admin) CMD (cd /opt/greiner-portal && /opt/greiner-portal/venv/bin/python3 sync_sales.py >> logs/sync_sales.log 2>&1)
+2025-11-14T07:00:01.442432+00:00 srvlinux01 CRON[87965]: (ag-admin) CMD (cd /opt/greiner-portal && cp data/greiner_controlling.db data/greiner_controlling.db.backup_auto_$(date +%H00) 2>/dev/null)
+
+
+═══════════════════════════════════════════════════════════════════════════
+4️⃣  IMPORT-SCRIPT LOGS
+═══════════════════════════════════════════════════════════════════════════
+
+=== Stellantis Log (letzte 30 Zeilen) ===
+Datei: -rw-rw-r-- 1 ag-admin ag-admin 88K Nov 14 08:00 /opt/greiner-portal/logs/stellantis_import.log
+
+📊 Excel-Dateien zu verarbeiten: 5
+
+🗑️  Alte Fahrzeugdaten gelöscht
+
+📋 Verarbeite RRDI: DE0154X
+   ✓ 28 Fahrzeuge importiert
+📋 Verarbeite RRDI: DE08250
+   ✓ 71 Fahrzeuge importiert
+📋 Verarbeite RRDI: DE0154X
+   ✓ 28 Fahrzeuge importiert
+📋 Verarbeite RRDI: DE08250
+   ✓ 70 Fahrzeuge importiert
+📋 Verarbeite RRDI: DE0154X
+   ✓ 29 Fahrzeuge importiert
+
+📊 ERGEBNIS:
+
+DE0154X:  29 Fz |      834,244.38 €
+DE08250:  71 Fz |    2,028,376.41 €
+HYUNDAI:   7 Fz |      142,814.30 €
+Hyundai:  46 Fz |    1,423,411.04 €
+OPEL:  33 Fz |      661,932.31 €
+VW:   1 Fz |       19,047.00 €
+
+──────────────────────────────────────────────────
+GESAMT: 187 Fz |    5,109,825.44 €
+================================================================================
+
+✅ Stellantis-Import erfolgreich abgeschlossen!
+
+
+
+=== Santander Log (letzte 30 Zeilen) ===
+Datei: -rw-rw-r-- 1 ag-admin ag-admin 6.4K Nov 14 08:00 /opt/greiner-portal/logs/santander_import.log
+
+📖 Lese CSV-Datei...
+
+💾 Änderungen gespeichert!
+
+================================================================================
+📊 IMPORT-STATISTIK
+================================================================================
+Zeilen gelesen:                41
+  └─ Aktiv:                    35
+  └─ Abgelöst:                  6
+  └─ Mit Zinsdaten:            41
+Neu importiert:                41
+Übersprungen (kein VIN):        0
+Fehler:                         0
+
+📊 DATENBANK-ÜBERSICHT:
+Institut             |   Anzahl |       Finanzierung |           Original
+--------------------------------------------------------------------------------
+Hyundai Finance      |       46 |    1,423,411.04 € |    1,756,846.31 €
+Santander            |       41 |      823,793.61 € |    1,026,476.29 €
+Stellantis           |      100 |    2,862,620.79 € |    2,889,455.75 €
+
+💰 ZINSEN-ÜBERSICHT:
+  Fahrzeuge mit Zinsen:        41
+  Finanzierung (Zinsen):        823,793.61 €
+  Zinsen gesamt:                 14,018.31 €
+  Ø Tage seit Zinsstart:               106 Tage
+
+✅ Import erfolgreich abgeschlossen!
+
+
+
+=== Hyundai Log (letzte 30 Zeilen) ===
+Datei: -rw-rw-r-- 1 ag-admin ag-admin 7.3K Nov 13 09:00 /opt/greiner-portal/logs/hyundai_import.log
+
+      Saldo:         25,231.12 €
+      Status:       Finanziert
+
+   5. TMAH151D6SJ255767
+      Modell:       i30 FL 5-Türer (MY25) 1.5 T-GDI (140 PS) 48V 7-DCT
+      Original:      35,014.01 €
+      Saldo:         26,260.51 €
+      Status:       Finanziert
+
+
+💾 IMPORT IN DATENBANK...
+   🗑️  46 alte Einträge gelöscht
+   ✅ 46 Fahrzeuge importiert
+
+✅ IMPORT ERFOLGREICH!
+   Fahrzeuge in DB:  46
+   Gesamtsaldo:      1,423,411.04 €
+   Original-Betrag:  1,756,846.31 €
+
+📊 ÜBERSICHT ALLE BANKEN:
+   Hyundai Finance       46 Fz.  Saldo: 1,423,411.04 €  Original: 1,756,846.31 €
+   Santander             41 Fz.  Saldo:   823,793.61 €  Original: 1,026,476.29 €
+   Stellantis            99 Fz.  Saldo: 2,827,054.55 €  Original: 2,853,889.51 €
+   --------------------------------------------------------------------------------
+   GESAMT               186 Fz.  Saldo: 5,074,259.20 €  Original: 5,637,212.11 €
+
+======================================================================
+✅ IMPORT ABGESCHLOSSEN
+======================================================================
+
+
+
+=== November Import Log (letzte 30 Zeilen) ===
+Datei: -rw-rw-r-- 1 ag-admin ag-admin 13K Nov  7 20:52 /opt/greiner-portal/logs/imports/november_import_v2.log
+
+2025-11-07 20:52:47,433 - INFO -   PDFs: 4
+2025-11-07 20:52:47,433 - INFO -   Transaktionen: 0
+2025-11-07 20:52:47,433 - INFO -   Betroffene Konten: keine
+2025-11-07 20:52:47,433 - INFO - 
+======================================================================
+2025-11-07 20:52:47,433 - INFO - 📊 IMPORT-ZUSAMMENFASSUNG
+2025-11-07 20:52:47,433 - INFO - ======================================================================
+2025-11-07 20:52:47,433 - INFO - 
+📄 Gesamt:
+2025-11-07 20:52:47,433 - INFO -   PDFs verarbeitet:       16
+2025-11-07 20:52:47,433 - INFO -   Transaktionen neu:      159
+2025-11-07 20:52:47,433 - INFO -   Duplikate übersprungen: 0
+2025-11-07 20:52:47,433 - INFO -   Fehler:                 0
+2025-11-07 20:52:47,433 - INFO - 
+📁 Pro Verzeichnis:
+2025-11-07 20:52:47,433 - INFO -   Genobank Auto Greiner:
+2025-11-07 20:52:47,433 - INFO -     PDFs: 4, Transaktionen: 71
+2025-11-07 20:52:47,433 - INFO -     Konten: 9 (Hypovereinsbank KK), 16 (57908)
+2025-11-07 20:52:47,433 - INFO -   Genobank Autohaus Greiner:
+2025-11-07 20:52:47,433 - INFO -     PDFs: 4, Transaktionen: 88
+2025-11-07 20:52:47,433 - INFO -     Konten: 15 (1501500 HYU KK), 9 (Hypovereinsbank KK)
+2025-11-07 20:52:47,433 - INFO -   Genobank Darlehenskonten:
+2025-11-07 20:52:47,433 - INFO -     PDFs: 4, Transaktionen: 0
+2025-11-07 20:52:47,434 - INFO -   Sparkasse:
+2025-11-07 20:52:47,434 - INFO -     PDFs: 4, Transaktionen: 0
+2025-11-07 20:52:47,434 - INFO - 
+✅ November-Transaktionen in DB: 451
+2025-11-07 20:52:47,434 - INFO - 
+✅ Import abgeschlossen!
+2025-11-07 20:52:47,434 - INFO - 📦 Backup: /opt/greiner-portal/data/greiner_controlling.db.backup_20251107_205242
+
+
+═══════════════════════════════════════════════════════════════════════════
+5️⃣  LAUFENDE IMPORT-PROZESSE
+═══════════════════════════════════════════════════════════════════════════
+
+✅ Keine Import-Prozesse laufen gerade
+
+
+═══════════════════════════════════════════════════════════════════════════
+6️⃣  IMPORT-SCRIPTS - PFADE & RECHTE
+═══════════════════════════════════════════════════════════════════════════
+
+=== Stellantis ===
+lrwxrwxrwx 1 ag-admin ag-admin 36 Nov 12 11:15 /opt/greiner-portal/import_stellantis.py -> scripts/imports/import_stellantis.py
+-rwxrwxr-x 1 ag-admin ag-admin 7.2K Nov 12 11:21 /opt/greiner-portal/scripts/imports/import_stellantis.py
+
+=== Santander ===
+-rwxrwxr-x 1 ag-admin ag-admin 12K Nov 12 11:21 /opt/greiner-portal/scripts/imports/import_santander_bestand.py
+
+=== Hyundai ===
+-rwxrwxr-x 1 ag-admin ag-admin 9.9K Nov 12 11:21 /opt/greiner-portal/scripts/imports/import_hyundai_finance.py
+-rwxrwxr-x 1 ag-admin ag-admin 9.8K Nov 12 11:21 /opt/greiner-portal/tools/scrapers/hyundai_finance_scraper.py
+
+=== November Import ===
+-rwxrwxr-x 1 ag-admin ag-admin  16K Nov 12 11:15 /opt/greiner-portal/scripts/imports/import_hypovereinsbank_november.py
+-rwxrwxr-x 1 ag-admin ag-admin  13K Nov 13 07:54 /opt/greiner-portal/scripts/imports/import_november_all_accounts_v2.py
+-rwxrwxr-x 1 ag-admin ag-admin  13K Nov 13 07:54 /opt/greiner-portal/scripts/imports/import_november_all_accounts_v2.py.backup
+-rwxrwxr-x 1 ag-admin ag-admin 3.2K Nov 12 11:15 /opt/greiner-portal/scripts/imports/import_november_all_tag15.py
+-rwxrwxr-x 1 ag-admin ag-admin 6.8K Nov 13 09:57 /opt/greiner-portal/scripts/imports/import_november_SIMPLE.py
+-rwxrwxr-x 1 ag-admin ag-admin  16K Nov 12 11:15 /opt/greiner-portal/scripts/imports/import_sparkasse_november.py
+
+
+═══════════════════════════════════════════════════════════════════════════
+7️⃣  PYTHON VENV CHECK
+═══════════════════════════════════════════════════════════════════════════
+
+VEnv-Pfad in Cron: /opt/greiner-portal/venv/bin/python3
+
+✅ VEnv existiert
+Python 3.12.3
+
+
+═══════════════════════════════════════════════════════════════════════════
+8️⃣  LETZTES ERFOLGREICHES IMPORT-DATUM (aus Logs)
+═══════════════════════════════════════════════════════════════════════════
+
+=== Stellantis ===
+✅ Stellantis-Import erfolgreich abgeschlossen!
+✅ Stellantis-Import erfolgreich abgeschlossen!
+✅ Stellantis-Import erfolgreich abgeschlossen!
+✅ Stellantis-Import erfolgreich abgeschlossen!
+✅ Stellantis-Import erfolgreich abgeschlossen!
+
+=== Santander ===
+✅ Import erfolgreich abgeschlossen!
+✅ Import erfolgreich abgeschlossen!
+✅ Import erfolgreich abgeschlossen!
+✅ Import erfolgreich abgeschlossen!
+
+=== Hyundai ===
+✅ IMPORT ABGESCHLOSSEN
+✅ IMPORT ERFOLGREICH!
+✅ IMPORT ABGESCHLOSSEN
+✅ IMPORT ERFOLGREICH!
+✅ IMPORT ABGESCHLOSSEN
+
+
+═══════════════════════════════════════════════════════════════════════════
+9️⃣  FEHLER IN LOGS (letzte 10)
+═══════════════════════════════════════════════════════════════════════════
+
+=== Stellantis Fehler ===
+
+=== Santander Fehler ===
+Fehler:                         0
+Fehler:                         0
+Fehler:                         0
+Fehler:                         0
+
+=== Hyundai Fehler ===
+
+
+═══════════════════════════════════════════════════════════════════════════
+🔟  ZUSAMMENFASSUNG
+═══════════════════════════════════════════════════════════════════════════
+
+PRÜFPUNKTE:
+-----------
+1. Cron-Jobs aktiv?          → Siehe Abschnitt 1
+2. Cron-Service läuft?       → Siehe Abschnitt 2
+3. Scripts existieren?       → Siehe Abschnitt 6
+4. VEnv funktioniert?        → Siehe Abschnitt 7
+5. Letzte Erfolge?           → Siehe Abschnitt 8
+6. Fehler in Logs?           → Siehe Abschnitt 9
+7. Laufende Prozesse?        → Siehe Abschnitt 5
+
+MÖGLICHE PROBLEME:
+------------------
+❌ Cron-Pfade falsch         → Scripts in falschem Verzeichnis
+❌ VEnv-Pfad falsch          → Python kann Module nicht finden
+❌ Berechtigungen fehlen     → Scripts nicht ausführbar
+❌ Überschneidungen          → Imports blockieren sich gegenseitig
+❌ Cron-Service gestoppt     → Keine automatischen Imports
+❌ Verzeichnis nicht mounted → PDFs nicht erreichbar
+
+
+═══════════════════════════════════════════════════════════════════════════
+✅ CRON-CHECK ABGESCHLOSSEN
+═══════════════════════════════════════════════════════════════════════════

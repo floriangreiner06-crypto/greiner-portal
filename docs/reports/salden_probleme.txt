@@ -1,0 +1,196 @@
+2025-11-13 09:48:55,470 - INFO -    Zeitraum: 03.11. - 03.11.
+2025-11-13 09:48:55,470 - WARNING -   ⚠️ Start-Saldo-Differenz: 28,762.18 EUR
+     DB:  252,449.96 EUR
+     PDF: 223,687.78 EUR
+2025-11-13 09:48:55,470 - INFO -   🔄 Nehme PDF-Saldo (Differenz > 1000)
+2025-11-13 09:48:55,480 - WARNING -   ⚠️ End-Saldo-Differenz: 71,327.29 EUR
+2025-11-13 09:48:55,481 - INFO -   📊 Importiert: 8, Übersprungen: 0
+2025-11-13 09:48:55,481 - INFO - 
+📄 Genobank Auszug Auto Greiner 04.11.25.pdf
+2025-11-13 09:48:55,481 - INFO -    Zeitraum: 04.11. - 04.11.
+2025-11-13 09:48:55,481 - WARNING -   ⚠️ Start-Saldo-Differenz: 71,327.29 EUR
+     DB:  201,401.86 EUR
+     PDF: 130,074.57 EUR
+2025-11-13 09:48:55,481 - INFO -   🔄 Nehme PDF-Saldo (Differenz > 1000)
+2025-11-13 09:48:55,490 - WARNING -   ⚠️ End-Saldo-Differenz: 4,396.28 EUR
+2025-11-13 09:48:55,490 - INFO -   📊 Importiert: 9, Übersprungen: 0
+2025-11-13 09:48:55,490 - INFO - 
+📄 Genobank Auto Greiner Auszug 05.11.25.pdf
+2025-11-13 09:48:55,490 - INFO -    Zeitraum: 05.11. - 05.11.
+2025-11-13 09:48:55,490 - WARNING -   ⚠️ Start-Saldo-Differenz: 4,396.28 EUR
+     DB:  118,436.01 EUR
+     PDF: 122,832.29 EUR
+2025-11-13 09:48:55,490 - INFO -   🔄 Nehme PDF-Saldo (Differenz > 1000)
+2025-11-13 09:48:55,496 - WARNING -   ⚠️ End-Saldo-Differenz: 21,665.08 EUR
+2025-11-13 09:48:55,496 - INFO -   📊 Importiert: 14, Übersprungen: 0
+2025-11-13 09:48:55,496 - INFO - 
+📄 Genobank Auszug Auto Greiner 06.11.25.pdf
+2025-11-13 09:48:55,497 - INFO -    Zeitraum: 06.11. - 06.11.
+2025-11-13 09:48:55,497 - WARNING -   ⚠️ Start-Saldo-Differenz: 21,665.08 EUR
+     DB:  134,130.86 EUR
+     PDF: 155,795.94 EUR
+2025-11-13 09:48:55,497 - INFO -   🔄 Nehme PDF-Saldo (Differenz > 1000)
+2025-11-13 09:48:55,502 - WARNING -   ⚠️ End-Saldo-Differenz: 45,103.49 EUR
+2025-11-13 09:48:55,502 - INFO -   📊 Importiert: 8, Übersprungen: 0
+2025-11-13 09:48:55,502 - INFO - 
+📄 Genobank Auszug Auto Greiner 07.11.25.pdf
+2025-11-13 09:48:55,502 - INFO -    Zeitraum: 07.11. - 07.11.
+2025-11-13 09:48:55,502 - WARNING -   ⚠️ Start-Saldo-Differenz: 45,103.49 EUR
+     DB:  157,901.78 EUR
+     PDF: 112,798.29 EUR
+2025-11-13 09:48:55,502 - INFO -   🔄 Nehme PDF-Saldo (Differenz > 1000)
+2025-11-13 09:48:55,508 - WARNING -   ⚠️ End-Saldo-Differenz: 9,829.02 EUR
+2025-11-13 09:48:55,508 - INFO -   📊 Importiert: 7, Übersprungen: 0
+2025-11-13 09:48:55,508 - INFO - 
+📄 Genobank Auszug Auto Greiner 10.11.25.pdf
+2025-11-13 09:48:55,508 - INFO -    Zeitraum: 10.11. - 10.11.
+2025-11-13 09:48:55,508 - WARNING -   ⚠️ Start-Saldo-Differenz: 9,829.02 EUR
+     DB:  114,667.01 EUR
+     PDF: 124,496.03 EUR
+2025-11-13 09:48:55,508 - INFO -   🔄 Nehme PDF-Saldo (Differenz > 1000)
+2025-11-13 09:48:55,514 - WARNING -   ⚠️ End-Saldo-Differenz: 52,357.75 EUR
+2025-11-13 09:48:55,514 - INFO -   📊 Importiert: 7, Übersprungen: 1
+2025-11-13 09:48:55,514 - INFO - 
+📄 Genobank Auszug Auto Greiner 11.11.25.pdf
+2025-11-13 09:48:55,514 - INFO -    Zeitraum: 11.11. - 11.11.
+2025-11-13 09:48:55,514 - WARNING -   ⚠️ Start-Saldo-Differenz: 52,357.75 EUR
+     DB:  120,904.52 EUR
+     PDF: 173,262.27 EUR
+2025-11-13 09:48:55,514 - INFO -   🔄 Nehme PDF-Saldo (Differenz > 1000)
+2025-11-13 09:48:55,523 - WARNING -   ⚠️ End-Saldo-Differenz: 37,490.02 EUR
+2025-11-13 09:48:55,523 - INFO -   📊 Importiert: 6, Übersprungen: 1
+2025-11-13 09:48:55,523 - INFO - 
+📄 Genobank Auszug Auto Greiner 12.11.25.pdf
+2025-11-13 09:48:55,523 - INFO -    Zeitraum: 12.11. - 12.11.
+2025-11-13 09:48:55,523 - WARNING -   ⚠️ Start-Saldo-Differenz: 37,490.02 EUR
+     DB:  177,612.63 EUR
+     PDF: 140,122.61 EUR
+2025-11-13 09:48:55,523 - INFO -   🔄 Nehme PDF-Saldo (Differenz > 1000)
+2025-11-13 09:48:55,529 - WARNING -   ⚠️ End-Saldo-Differenz: 30,720.54 EUR
+2025-11-13 09:48:55,529 - INFO -   📊 Importiert: 8, Übersprungen: 0
+2025-11-13 09:48:55,529 - INFO - 
+✅ Konto fertig - Endsaldo: 160,768.78 EUR
+--
+2025-11-13 09:48:55,565 - INFO -    Zeitraum: 03.11. - 03.11.
+2025-11-13 09:48:55,565 - WARNING -   ⚠️ Start-Saldo-Differenz: 47,715.48 EUR
+     DB:  -8,665.79 EUR
+     PDF: 39,049.69 EUR
+2025-11-13 09:48:55,565 - INFO -   🔄 Nehme PDF-Saldo (Differenz > 1000)
+2025-11-13 09:48:55,575 - WARNING -   ⚠️ End-Saldo-Differenz: 26,399.25 EUR
+2025-11-13 09:48:55,575 - INFO -   📊 Importiert: 25, Übersprungen: 1
+2025-11-13 09:48:55,575 - INFO - 
+📄 Genobank Auszug Autohaus Greiner 04.11.25.pdf
+2025-11-13 09:48:55,575 - INFO -    Zeitraum: 04.11. - 04.11.
+2025-11-13 09:48:55,575 - WARNING -   ⚠️ Start-Saldo-Differenz: 26,399.25 EUR
+     DB:  95,317.27 EUR
+     PDF: 121,716.52 EUR
+2025-11-13 09:48:55,575 - INFO -   🔄 Nehme PDF-Saldo (Differenz > 1000)
+2025-11-13 09:48:55,586 - WARNING -   ⚠️ End-Saldo-Differenz: 18,746.15 EUR
+2025-11-13 09:48:55,586 - INFO -   📊 Importiert: 14, Übersprungen: 0
+2025-11-13 09:48:55,586 - INFO - 
+📄 Genobank Auszug Autohaus Greiner 05.11.25.pdf
+2025-11-13 09:48:55,587 - INFO -    Zeitraum: 05.11. - 05.11.
+2025-11-13 09:48:55,587 - WARNING -   ⚠️ Start-Saldo-Differenz: 18,746.15 EUR
+     DB:  108,342.71 EUR
+     PDF: 89,596.56 EUR
+2025-11-13 09:48:55,587 - INFO -   🔄 Nehme PDF-Saldo (Differenz > 1000)
+2025-11-13 09:48:55,594 - WARNING -   ⚠️ End-Saldo-Differenz: 3,991.76 EUR
+2025-11-13 09:48:55,595 - INFO -   📊 Importiert: 24, Übersprungen: 0
+2025-11-13 09:48:55,595 - INFO - 
+📄 Genobank Auszug Autohaus Greiner 06.11.25.pdf
+2025-11-13 09:48:55,595 - INFO -    Zeitraum: 06.11. - 06.11.
+2025-11-13 09:48:55,595 - WARNING -   ⚠️ Start-Saldo-Differenz: 3,991.76 EUR
+     DB:  143,293.82 EUR
+     PDF: 147,285.58 EUR
+2025-11-13 09:48:55,595 - INFO -   🔄 Nehme PDF-Saldo (Differenz > 1000)
+2025-11-13 09:48:55,602 - WARNING -   ⚠️ End-Saldo-Differenz: 91,152.34 EUR
+2025-11-13 09:48:55,602 - INFO -   📊 Importiert: 21, Übersprungen: 0
+2025-11-13 09:48:55,602 - INFO - 
+📄 Genobank Auszug Autohaus Greiner 07.11.25.pdf
+2025-11-13 09:48:55,602 - INFO -    Zeitraum: 07.11. - 07.11.
+2025-11-13 09:48:55,602 - WARNING -   ⚠️ Start-Saldo-Differenz: 91,152.34 EUR
+     DB:  225,183.27 EUR
+     PDF: 134,030.93 EUR
+2025-11-13 09:48:55,602 - INFO -   🔄 Nehme PDF-Saldo (Differenz > 1000)
+2025-11-13 09:48:55,614 - WARNING -   ⚠️ End-Saldo-Differenz: 8,612.57 EUR
+2025-11-13 09:48:55,614 - INFO -   📊 Importiert: 13, Übersprungen: 0
+2025-11-13 09:48:55,614 - INFO - 
+📄 Genobank Auszug Autohaus Greiner 10.11.25.pdf
+2025-11-13 09:48:55,614 - INFO -    Zeitraum: 10.11. - 10.11.
+2025-11-13 09:48:55,614 - WARNING -   ⚠️ Start-Saldo-Differenz: 8,612.57 EUR
+     DB:  78,197.58 EUR
+     PDF: 69,585.01 EUR
+2025-11-13 09:48:55,614 - INFO -   🔄 Nehme PDF-Saldo (Differenz > 1000)
+2025-11-13 09:48:55,623 - WARNING -   ⚠️ End-Saldo-Differenz: 4,556.21 EUR
+2025-11-13 09:48:55,623 - INFO -   📊 Importiert: 24, Übersprungen: 0
+2025-11-13 09:48:55,623 - INFO - 
+📄 Genobank Auszug Autohaus Greiner 11.11.25.pdf
+2025-11-13 09:48:55,623 - INFO -    Zeitraum: 11.11. - 11.11.
+2025-11-13 09:48:55,624 - WARNING -   ⚠️ Start-Saldo-Differenz: 4,556.21 EUR
+     DB:  65,777.75 EUR
+     PDF: 70,333.96 EUR
+2025-11-13 09:48:55,624 - INFO -   🔄 Nehme PDF-Saldo (Differenz > 1000)
+2025-11-13 09:48:55,633 - WARNING -   ⚠️ End-Saldo-Differenz: 4,399.32 EUR
+2025-11-13 09:48:55,633 - INFO -   📊 Importiert: 18, Übersprungen: 0
+2025-11-13 09:48:55,633 - INFO - 
+📄 Genobank Auszug Autohaus Greiner 12.11.25.pdf
+2025-11-13 09:48:55,633 - INFO -    Zeitraum: 12.11. - 12.11.
+2025-11-13 09:48:55,633 - WARNING -   ⚠️ Start-Saldo-Differenz: 4,399.32 EUR
+     DB:  63,876.14 EUR
+     PDF: 68,275.46 EUR
+2025-11-13 09:48:55,633 - INFO -   🔄 Nehme PDF-Saldo (Differenz > 1000)
+2025-11-13 09:48:55,644 - WARNING -   ⚠️ End-Saldo-Differenz: 11,108.06 EUR
+2025-11-13 09:48:55,644 - INFO -   📊 Importiert: 24, Übersprungen: 1
+2025-11-13 09:48:55,644 - INFO - 
+✅ Konto fertig - Endsaldo: 95,883.42 EUR
+--
+2025-11-13 09:48:55,644 - INFO -    Zeitraum: 03.11. - 03.11.
+2025-11-13 09:48:55,644 - WARNING -   ⚠️ Start-Saldo-Differenz: 54.41 EUR
+     DB:  248.00 EUR
+     PDF: 193.59 EUR
+2025-11-13 09:48:55,656 - WARNING -   ⚠️ End-Saldo-Differenz: 1,195.59 EUR
+2025-11-13 09:48:55,656 - INFO -   📊 Importiert: 5, Übersprungen: 0
+2025-11-13 09:48:55,656 - INFO - 
+📄 VR Bank Auszug 04.11.25.pdf
+2025-11-13 09:48:55,656 - INFO -    Zeitraum: 04.11. - 04.11.
+2025-11-13 09:48:55,656 - WARNING -   ⚠️ Start-Saldo-Differenz: 1,195.59 EUR
+     DB:  -201.33 EUR
+     PDF: 994.26 EUR
+2025-11-13 09:48:55,656 - INFO -   🔄 Nehme PDF-Saldo (Differenz > 1000)
+2025-11-13 09:48:55,661 - WARNING -   ⚠️ End-Saldo-Differenz: 714.00 EUR
+2025-11-13 09:48:55,661 - INFO -   📊 Importiert: 2, Übersprungen: 0
+2025-11-13 09:48:55,661 - INFO - 
+📄 VR Bank Auszug 05.11.25.pdf
+2025-11-13 09:48:55,661 - INFO -    Zeitraum: 05.11. - 05.11.
+2025-11-13 09:48:55,661 - WARNING -   ⚠️ Start-Saldo-Differenz: 714.00 EUR
+     DB:  901.87 EUR
+     PDF: 1,615.87 EUR
+2025-11-13 09:48:55,671 - WARNING -   ⚠️ End-Saldo-Differenz: 714.00 EUR
+2025-11-13 09:48:55,671 - INFO -   📊 Importiert: 1, Übersprungen: 0
+2025-11-13 09:48:55,671 - INFO - 
+📄 VR Bank Auszug 07.11.25.pdf
+2025-11-13 09:48:55,671 - INFO -    Zeitraum: 07.11. - 07.11.
+2025-11-13 09:48:55,671 - WARNING -   ⚠️ Start-Saldo-Differenz: 714.00 EUR
+     DB:  2,386.20 EUR
+     PDF: 3,100.20 EUR
+2025-11-13 09:48:55,681 - WARNING -   ⚠️ End-Saldo-Differenz: 2,177.10 EUR
+2025-11-13 09:48:55,681 - INFO -   📊 Importiert: 2, Übersprungen: 0
+2025-11-13 09:48:55,681 - INFO - 
+📄 VR Bank Auszug 10.11.25.pdf
+2025-11-13 09:48:55,682 - INFO -    Zeitraum: 10.11. - 10.11.
+2025-11-13 09:48:55,682 - WARNING -   ⚠️ Start-Saldo-Differenz: 2,177.10 EUR
+     DB:  3,180.52 EUR
+     PDF: 1,003.42 EUR
+2025-11-13 09:48:55,682 - INFO -   🔄 Nehme PDF-Saldo (Differenz > 1000)
+2025-11-13 09:48:55,688 - WARNING -   ⚠️ End-Saldo-Differenz: 150.06 EUR
+2025-11-13 09:48:55,688 - INFO -   📊 Importiert: 2, Übersprungen: 0
+2025-11-13 09:48:55,688 - INFO - 
+📄 VR Bank Auszug 11.11.25.pdf
+2025-11-13 09:48:55,688 - INFO -    Zeitraum: 11.11. - 11.11.
+2025-11-13 09:48:55,689 - WARNING -   ⚠️ Start-Saldo-Differenz: 150.06 EUR
+     DB:  1,538.46 EUR
+     PDF: 1,688.52 EUR
+2025-11-13 09:48:55,698 - WARNING -   ⚠️ End-Saldo-Differenz: 150.06 EUR
+2025-11-13 09:48:55,699 - INFO -   📊 Importiert: 1, Übersprungen: 0
+2025-11-13 09:48:55,699 - INFO - 
+✅ Konto fertig - Endsaldo: 1,637.36 EUR

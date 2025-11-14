@@ -2,7 +2,7 @@
 ║  🔍 GREINER PORTAL - SERVER STATUS CHECK                              ║
 ╚════════════════════════════════════════════════════════════════════════╝
 
-Datum: 2025-11-12 15:37:52
+Datum: 2025-11-14 13:09:27
 User:  ag-admin
 Host:  srvlinux01
 
@@ -13,8 +13,8 @@ Host:  srvlinux01
 ✅ Portal-Verzeichnis existiert: /opt/greiner-portal
 
 Hauptverzeichnis-Inhalt:
-total 1.4M
-drwxr-xr-x 23 ag-admin ag-admin 4.0K Nov 12 15:35 .
+total 2.0M
+drwxr-xr-x 23 ag-admin ag-admin  12K Nov 14 09:04 .
 drwxr-xr-x  3 root     root     4.0K Nov  6 08:30 ..
 -rw-rw-r--  1 ag-admin ag-admin 2.2K Nov 12 11:21 ACTION_ITEMS_TAG29.md
 -rwxrwxr-x  1 ag-admin ag-admin 2.2K Nov  7 14:46 add_missing_columns.py
@@ -32,21 +32,21 @@ drwxr-xr-x  3 ag-admin ag-admin 4.0K Nov  8 20:11 app.UNUSED_TAG24
 drwxrwxr-x  3 ag-admin ag-admin 4.0K Nov 12 11:21 auth
 drwxrwxr-x  7 ag-admin ag-admin 4.0K Nov 10 12:38 backups
 -rw-rw-r--  1 ag-admin ag-admin  16K Nov 12 11:15 bankenspiegel_api.py
--rwxrwxr-x  1 ag-admin ag-admin 6.5K Nov  7 14:46 check_db_status.py
+-rwxrwxr-x  1 ag-admin ag-admin 7.1K Nov 14 07:49 bankenspiegel_check_phase1.sh
 
 Wichtige Unterverzeichnisse:
   ✅ api/ (28 files, 560K)
   ✅ routes/ (17 files, 152K)
   ✅ auth/ (8 files, 112K)
   ✅ decorators/ (4 files, 36K)
-  ✅ parsers/ (13 files, 136K)
-  ✅ templates/ (50 files, 624K)
+  ✅ parsers/ (40 files, 420K)
+  ✅ templates/ (51 files, 636K)
   ✅ static/ (28 files, 720K)
-  ✅ data/ (79 files, 1.9G)
-  ✅ scripts/ (26 files, 324K)
-  ✅ docs/ (71 files, 800K)
+  ✅ data/ (161 files, 4.1G)
+  ✅ scripts/ (54 files, 632K)
+  ✅ docs/ (75 files, 820K)
   ✅ migrations/ (22 files, 108K)
-  ✅ logs/ (15 files, 26M)
+  ✅ logs/ (15 files, 27M)
   ✅ config/ (6 files, 32K)
 
 Kritische Dateien:
@@ -65,7 +65,7 @@ Current Branch:
 develop
 
 Alle Branches (lokal):
-* develop                        9886738 docs: Komplette Projekt-Dokumentation TAG33
+* develop                        04acee5 chore(tag34): Server-Status-Check Integration
   feature/bankenspiegel-komplett 1c3c3e4 [ahead 1] chore: Cleanup - uncommitted changes vor Umstrukturierung
   feature/controlling-dashboard  1c3c3e4 chore: Cleanup - uncommitted changes vor Umstrukturierung
   feature/november-import-tag34  9886738 docs: Komplette Projekt-Dokumentation TAG33
@@ -82,25 +82,90 @@ Remote Branches:
   origin/main
 
 Git-Status:
-## develop
-?? SERVER_STATUS.txt
-?? server_status_check.sh
+## develop...origin/develop
+ M SERVER_STATUS.txt
+ M api/bankenspiegel_api.py
+ M parsers/__init__.py
+ M parsers/hypovereinsbank_parser.py
+ M parsers/parser_factory.py
+ M parsers/sparkasse_parser.py
+ M parsers/vrbank_parser.py
+ M routes/bankenspiegel_routes.py
+ M scripts/imports/import_november_all_accounts_v2.py
+ M templates/base.html
+?? SESSION_WRAP_UP_TAG37_FINAL.md
+?? SESSION_WRAP_UP_TAG38.md
+?? TODO_FOR_CLAUDE_SESSION_START_TAG39.md
+?? "View fehlt, erstelle sie:"
+?? bankenspiegel_check_phase1.sh
+?? bankkonten_november_check.sh
+?? check_einkaufsfinanzierung.sh
+?? check_fahrzeugfinanzierungen.sh
+?? cron_check_complete.sh
+?? cron_check_report.txt
+?? diagnose_saldo_problem.sh
+?? docs/CURRENT_DB_STATE.md
+?? docs/FIRMENSTRUKTUR.md
+?? docs/sessions/SESSION_WRAP_UP_TAG37_FINAL.md
+?? docs/sessions/SESSION_WRAP_UP_TAG41.md
+?? "er-Cache leeren (WICHTIG!)"
+?? fahrzeugfinanzierungen_final_report.sh
+?? parsers/genobank_universal_parser.py
+?? parsers/old_parsers_do_not_use/
+?? parsers/vrbank_landau_parser.py
+?? salden_probleme.txt
+?? scripts/build_iban_detection_system.py
+?? scripts/check_limits.py
+?? scripts/import_final_test_tag39.py
+?? scripts/import_final_test_tag39_v2.py
+?? scripts/import_final_test_tag39_v3.py
+?? scripts/import_kontoabrechnungen.py
+?? scripts/imports/import_2025_clean.py
+?? scripts/imports/import_2025_v2_with_genobank.py
+?? scripts/imports/import_complete_2025.py
+?? scripts/imports/import_kontoauszuege.py
+?? scripts/imports/import_november_SIMPLE.py
+?? scripts/imports/tag35_fix/
+?? scripts/patch_parser_factory_final.py
+?? scripts/update_limits.py
+?? scripts/update_parser_factory.py
+?? scripts/update_snapshots_mit_zinsen.py
+?? templates/bankenspiegel_konto_detail.html
+?? "tiert (WICHTIG!):"
 
 Letzte 5 Commits:
-9886738 (HEAD -> develop, origin/main, origin/develop, main, feature/november-import-tag34) docs: Komplette Projekt-Dokumentation TAG33
+04acee5 (HEAD -> develop, origin/develop) chore(tag34): Server-Status-Check Integration
+9886738 (origin/main, main, feature/november-import-tag34) docs: Komplette Projekt-Dokumentation TAG33
 dbbb0f1 test: Hook-Test
 1c3c3e4 (tag: archive/bankenspiegel-komplett, origin/feature/verkauf-dashboard, origin/feature/controlling-dashboard, feature/verkauf-dashboard, feature/controlling-dashboard, feature/bankenspiegel-komplett) chore: Cleanup - uncommitted changes vor Umstrukturierung
 80ed7b1 (tag: backup-before-cleanup-20251112-112151, origin/feature/bankenspiegel-komplett) docs(tag31): Parser-Fix + API-Statistik + Kontenstruktur-Problem
-de15b67 fix(parser): Startsaldo Multiline-Regex + API Statistik-Fix
 
 Remote-URL:
 origin	git@github.com:floriangreiner06-crypto/greiner-portal.git (fetch)
 origin	git@github.com:floriangreiner06-crypto/greiner-portal.git (push)
 
 Uncommitted Changes:
-  ⚠️  2 uncommitted changes!
-?? SERVER_STATUS.txt
-?? server_status_check.sh
+  ⚠️  49 uncommitted changes!
+ M SERVER_STATUS.txt
+ M api/bankenspiegel_api.py
+ M parsers/__init__.py
+ M parsers/hypovereinsbank_parser.py
+ M parsers/parser_factory.py
+ M parsers/sparkasse_parser.py
+ M parsers/vrbank_parser.py
+ M routes/bankenspiegel_routes.py
+ M scripts/imports/import_november_all_accounts_v2.py
+ M templates/base.html
+?? SESSION_WRAP_UP_TAG37_FINAL.md
+?? SESSION_WRAP_UP_TAG38.md
+?? TODO_FOR_CLAUDE_SESSION_START_TAG39.md
+?? "View fehlt, erstelle sie:"
+?? bankenspiegel_check_phase1.sh
+?? bankkonten_november_check.sh
+?? check_einkaufsfinanzierung.sh
+?? check_fahrzeugfinanzierungen.sh
+?? cron_check_complete.sh
+?? cron_check_report.txt
 
 Unpushed Commits:
   ✅ Keine unpushed commits
@@ -110,55 +175,55 @@ Unpushed Commits:
 ═══════════════════════════════════════════════════════════════════════════
 
 ✅ Datenbank vorhanden: /opt/greiner-portal/data/greiner_controlling.db
-   Größe: 27M
-   Geändert: 2025-11-12 15:00:04
+   Größe: 29M
+   Geändert: 2025-11-14 13:00:02
 
 Konten-Übersicht:
-id  kontoname            bank                         saldo             trans  letzte             
---  -------------------  ---------------------------  ----------------  -----  -------------------
-1   Sparkasse KK         Sparkasse Deggendorf         2838.00000000005  7697   2025-11-06         
-5   57908 KK             Genobank Autohaus Greiner    140122.61         11972  2025-11-11         
-6   22225 Immo KK        Genobank Greiner Immob.Verw  0                 3223   2025-10-31 00:00:00
-7   20057908 Darlehen    Genobank Autohaus Greiner    0                 20     2025-10-30 00:00:00
-8   1700057908 Festgeld  Genobank Autohaus Greiner    0                 40     2025-10-31 00:00:00
-9   Hypovereinsbank KK   Hypovereinsbank              -64445.92         17924  2025-11-07         
-14  303585 VR Landau KK  VR Bank Landau               248.000000000007  396    2025-10-31         
-15  1501500 HYU KK       Genobank Auto Greiner        -2058.5           8645   2025-11-11         
-17  4700057908 Darlehen  Genobank Autohaus Greiner    11697.74          95     2025-11-07         
-20  KfW 120057908        Genobank Autohaus Greiner    -369445.0         9      2025-09-30         
+id  kontoname            bank                         saldo        trans  letzte             
+--  -------------------  ---------------------------  -----------  -----  -------------------
+1   Sparkasse KK         Sparkasse Deggendorf         8156.99      7769   2025-11-12         
+5   57908 KK             Genobank Autohaus Greiner    0.0          14381  2025-11-13         
+6   22225 Immo KK        Genobank Greiner Immob.Verw  -1434271.92  3261   2025-10-31 00:00:00
+7   20057908 Darlehen    Genobank Autohaus Greiner    9135.73      22     2025-10-30 00:00:00
+8   1700057908 Festgeld  Genobank Autohaus Greiner    0.0          44     2025-10-31 00:00:00
+9   Hypovereinsbank KK   Hypovereinsbank              0            18430  2025-11-13         
+14  303585 VR Landau KK  VR Bank Landau               0            583    2025-11-13         
+15  1501500 HYU KK       Genobank Auto Greiner        0.0          10281  2025-11-13         
+17  4700057908 Darlehen  Genobank Autohaus Greiner    -109759.05   123    2025-11-07         
+20  KfW 120057908        Genobank Autohaus Greiner    -291667.24   12     2025-09-30         
 
 Gesamt-Statistik:
        konten_gesamt = 10
-transaktionen_gesamt = 50021
-        gesamt_saldo = -281043.07
+transaktionen_gesamt = 54906
+        gesamt_saldo = -1818405.49
 
 November 2025 Import-Status:
 id  kontoname            trans_nov  von         bis       
 --  -------------------  ---------  ----------  ----------
-1   Sparkasse KK         7          2025-11-03  2025-11-06
-5   57908 KK             330        2025-11-03  2025-11-11
+1   Sparkasse KK         5          2025-11-03  2025-11-12
+5   57908 KK             398        2025-11-03  2025-11-13
 6   22225 Immo KK        0                                
 7   20057908 Darlehen    0                                
 8   1700057908 Festgeld  0                                
-9   Hypovereinsbank KK   128        2025-11-03  2025-11-07
-14  303585 VR Landau KK  0                                
-15  1501500 HYU KK       212        2025-11-03  2025-11-11
+9   Hypovereinsbank KK   203        2025-11-03  2025-11-13
+14  303585 VR Landau KK  39         2025-11-03  2025-11-13
+15  1501500 HYU KK       258        2025-11-03  2025-11-13
 17  4700057908 Darlehen  14         2025-11-07  2025-11-07
 20  KfW 120057908        0                                
 
 Letzte 10 Transaktionen (gesamt):
-id     buchungsdatum  kontoname  betrag    saldo      zweck                                   
------  -------------  ---------  --------  ---------  ----------------------------------------
-99805  2025-11-11     57908 KK   -1725.85  140122.61  Hyundai Capital Bank Europe GmbH DE50550
-99804  2025-11-11     57908 KK   -38422.5  141848.46  Hyundai Capital Bank Europe GmbH DE50550
-99803  2025-11-11     57908 KK   -1725.85  180270.96  Hyundai Capital Bank Europe GmbH DE50550
-99802  2025-11-11     57908 KK   442.85    181996.81  Einzahlung 11.11.2025                   
-99801  2025-11-11     57908 KK   77.0      181553.96  Einzahlung 11.11.2025                   
-99800  2025-11-11     57908 KK   91.98     181476.96  Einzahlung 11.11.2025                   
-99799  2025-11-11     57908 KK   672.6     181384.98  Autohaus Greiner GmbH & Co. KG Vertragsh
-99798  2025-11-11     57908 KK   2475.2    180712.38  Autohaus Greiner GmbH & Co. KG Vertragsh
-99797  2025-11-11     57908 KK   -81.4     178237.18  Autohaus Greiner GmbH & Co. KG DE2774190
-99796  2025-11-11     57908 KK   3997.11   178318.58  Adyen N.V. NL92ADYB2017400998 11.11.2025
+id      buchungsdatum  kontoname            betrag      saldo  zweck                                   
+------  -------------  -------------------  ----------  -----  ----------------------------------------
+106989  2025-11-13     303585 VR Landau KK  945.08             EINZAHLUNG                              
+106988  2025-11-13     Hypovereinsbank KK   18538.65           SEPA-GUTSCHRIFT Stellantis Bank S.A. NL 
+106987  2025-11-13     Hypovereinsbank KK   7800.0             SEPA-GUTSCHRIFT ECHTZEITÜBERWEISUNG Sant
+106986  2025-11-13     Hypovereinsbank KK   40000.0            SEPA-GUTSCHRIFT ECHTZEITÜBERWEISUNG Auto
+106985  2025-11-13     Hypovereinsbank KK   -113.0             LASTSCHRIFT (B2B) Gamma Reifen + Felgen 
+106984  2025-11-13     Hypovereinsbank KK   -760.86            LASTSCHRIFT (B2B) IM AUFTR.V. Stellantis
+106983  2025-11-13     Hypovereinsbank KK   -4512.35           LASTSCHRIFT (B2B) TECHNO-EINKAUF GMBH Za
+106982  2025-11-13     Hypovereinsbank KK   -131236.12         LASTSCHRIFT (B2B) IM AUFTR.V. Stellantis
+106981  2025-11-13     Hypovereinsbank KK   -81.0              LASTSCHRIFT Bundeskasse Kfz-Steuer fuer 
+106980  2025-11-13     Hypovereinsbank KK   -81.0              LASTSCHRIFT Bundeskasse Kfz-Steuer fuer 
 
 ═══════════════════════════════════════════════════════════════════════════
 🐍 PYTHON-ENVIRONMENT
@@ -190,22 +255,22 @@ requirements.txt vorhanden (20 Zeilen)
 ✅ greiner-portal.service: LÄUFT
 ● greiner-portal.service - Greiner Portal Flask Application
      Loaded: loaded (/etc/systemd/system/greiner-portal.service; enabled; preset: enabled)
-     Active: active (running) since Wed 2025-11-12 08:19:28 CET; 7h ago
-   Main PID: 76307 (gunicorn)
+     Active: active (running) since Thu 2025-11-13 20:20:53 CET; 16h ago
+   Main PID: 85657 (gunicorn)
      Status: "Gunicorn arbiter booted"
       Tasks: 10 (limit: 14260)
-     Memory: 205.2M (peak: 207.6M)
-        CPU: 15.014s
+     Memory: 229.9M (peak: 231.9M)
+        CPU: 24.633s
      CGroup: /system.slice/greiner-portal.service
-             ├─76307 /opt/greiner-portal/venv/bin/python3 /opt/greiner-portal/venv/bin/gunicorn --config /opt/greiner-portal/config/gunicorn.conf.py --chdir /opt/greiner-portal app:app
-             ├─76310 /opt/greiner-portal/venv/bin/python3 /opt/greiner-portal/venv/bin/gunicorn --config /opt/greiner-portal/config/gunicorn.conf.py --chdir /opt/greiner-portal app:app
-             ├─76312 /opt/greiner-portal/venv/bin/python3 /opt/greiner-portal/venv/bin/gunicorn --config /opt/greiner-portal/config/gunicorn.conf.py --chdir /opt/greiner-portal app:app
-             ├─76313 /opt/greiner-portal/venv/bin/python3 /opt/greiner-portal/venv/bin/gunicorn --config /opt/greiner-portal/config/gunicorn.conf.py --chdir /opt/greiner-portal app:app
-             ├─76314 /opt/greiner-portal/venv/bin/python3 /opt/greiner-portal/venv/bin/gunicorn --config /opt/greiner-portal/config/gunicorn.conf.py --chdir /opt/greiner-portal app:app
-             ├─76315 /opt/greiner-portal/venv/bin/python3 /opt/greiner-portal/venv/bin/gunicorn --config /opt/greiner-portal/config/gunicorn.conf.py --chdir /opt/greiner-portal app:app
+             ├─85657 /opt/greiner-portal/venv/bin/python3 /opt/greiner-portal/venv/bin/gunicorn --config /opt/greiner-portal/config/gunicorn.conf.py --chdir /opt/greiner-portal app:app
+             ├─85659 /opt/greiner-portal/venv/bin/python3 /opt/greiner-portal/venv/bin/gunicorn --config /opt/greiner-portal/config/gunicorn.conf.py --chdir /opt/greiner-portal app:app
+             ├─85661 /opt/greiner-portal/venv/bin/python3 /opt/greiner-portal/venv/bin/gunicorn --config /opt/greiner-portal/config/gunicorn.conf.py --chdir /opt/greiner-portal app:app
+             ├─85662 /opt/greiner-portal/venv/bin/python3 /opt/greiner-portal/venv/bin/gunicorn --config /opt/greiner-portal/config/gunicorn.conf.py --chdir /opt/greiner-portal app:app
+             ├─85663 /opt/greiner-portal/venv/bin/python3 /opt/greiner-portal/venv/bin/gunicorn --config /opt/greiner-portal/config/gunicorn.conf.py --chdir /opt/greiner-portal app:app
+             ├─85664 /opt/greiner-portal/venv/bin/python3 /opt/greiner-portal/venv/bin/gunicorn --config /opt/greiner-portal/config/gunicorn.conf.py --chdir /opt/greiner-portal app:app
 
 Listening Ports:
-LISTEN 0      2048       127.0.0.1:5000      0.0.0.0:*    users:(("gunicorn",pid=76319,fd=7),("gunicorn",pid=76318,fd=7),("gunicorn",pid=76317,fd=7),("gunicorn",pid=76316,fd=7),("gunicorn",pid=76315,fd=7),("gunicorn",pid=76314,fd=7),("gunicorn",pid=76313,fd=7),("gunicorn",pid=76312,fd=7),("gunicorn",pid=76310,fd=7),("gunicorn",pid=76307,fd=7))
+LISTEN 0      2048       127.0.0.1:5000      0.0.0.0:*    users:(("gunicorn",pid=85668,fd=7),("gunicorn",pid=85667,fd=7),("gunicorn",pid=85666,fd=7),("gunicorn",pid=85665,fd=7),("gunicorn",pid=85664,fd=7),("gunicorn",pid=85663,fd=7),("gunicorn",pid=85662,fd=7),("gunicorn",pid=85661,fd=7),("gunicorn",pid=85659,fd=7),("gunicorn",pid=85657,fd=7))
 LISTEN 0      4096               *:3000            *:*                                                                                                                                                                                                                                                                                                   
 
 ═══════════════════════════════════════════════════════════════════════════
@@ -216,15 +281,16 @@ Geänderte Python-Files:
 ./liquiditaets_dashboard.py
 ./check_vehicles_schema.py
 ./delete_bookings.py
-./test_pypdf2.py
 ./auth/auth_manager.py
 ./auth/__init__.py
 ./auth/ldap_connector.py
 ./debug_hyundai_bestandsliste.py
-./analyze_text.py
 ./fix_hyundai_navigation.py
+./test_bestandsliste_final.py
+./backups/fix_vacation_views_final.py
 
 Geänderte Templates:
+templates/bankenspiegel_konto_detail.html
 templates/zeiterfassung.html
 templates/urlaubsplaner.html
 templates/verkauf_auftragseingang_detail.html
@@ -234,7 +300,6 @@ templates/werkstatt.html
 templates/eingabe.html
 templates/organigramm.html
 templates/bankenspiegel.html
-templates/login.html
 
 Neue/geänderte Logs:
 logs/sync_sales.log
@@ -253,19 +318,19 @@ logs/hyundai_import.log
 ═══════════════════════════════════════════════════════════════════════════
 
 Filesystem                         Size  Used Avail Use% Mounted on
-/dev/mapper/ubuntu--vg-ubuntu--lv   15G  7.4G  6.6G  54% /
+/dev/mapper/ubuntu--vg-ubuntu--lv   15G  9.6G  4.4G  69% /
 
 Größte Verzeichnisse in Portal:
-1.9G	/opt/greiner-portal/data
+4.1G	/opt/greiner-portal/data
 330M	/opt/greiner-portal/venv
-26M	/opt/greiner-portal/logs
+27M	/opt/greiner-portal/logs
 5.5M	/opt/greiner-portal/backups
-800K	/opt/greiner-portal/docs
+828K	/opt/greiner-portal/november_import_v2.log
+820K	/opt/greiner-portal/docs
 720K	/opt/greiner-portal/static
-624K	/opt/greiner-portal/templates
+636K	/opt/greiner-portal/templates
+632K	/opt/greiner-portal/scripts
 560K	/opt/greiner-portal/api
-460K	/opt/greiner-portal/november_import_v2.log
-324K	/opt/greiner-portal/scripts
 
 ═══════════════════════════════════════════════════════════════════════════
 🚨 KRITISCHE PRÜFUNGEN
@@ -278,14 +343,14 @@ Größte Verzeichnisse in Portal:
 ═══════════════════════════════════════════════════════════════════════════
 
 Git Branch:     develop
-Uncommitted:    2
+Uncommitted:    49
 Konten (aktiv): 10
-Transaktionen:  50021
+Transaktionen:  54906
 Service:        ✅ LÄUFT
 
 ═══════════════════════════════════════════════════════════════════════════
 ✅ STATUS-CHECK ABGESCHLOSSEN
 ═══════════════════════════════════════════════════════════════════════════
 
-Timestamp: 2025-11-12 15:37:52
+Timestamp: 2025-11-14 13:09:28
 

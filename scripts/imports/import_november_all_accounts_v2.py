@@ -28,7 +28,7 @@ import sys
 import os
 import shutil
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, "/opt/greiner-portal/parsers")
 from genobank_universal_parser import GenobankUniversalParser
 
 # Logging konfigurieren

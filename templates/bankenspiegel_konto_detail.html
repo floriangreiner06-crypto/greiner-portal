@@ -1,0 +1,364 @@
+{% extends "base.html" %}
+
+{% block title %}Konto-Details - Bankenspiegel{% endblock %}
+
+{% block extra_css %}
+<style>
+.metric-card {
+    border-left: 4px solid #0d6efd;
+    transition: transform 0.2s;
+}
+.metric-card:hover {
+    transform: translateY(-2px);
+}
+.chart-container {
+    position: relative;
+    height: 300px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h2 mb-0">
+                <i class="bi bi-credit-card me-2"></i>
+                <span id="kontoName">Lade...</span>
+            </h1>
+            <p class="text-muted mb-0" id="kontoIban">...</p>
+        </div>
+        <div class="col-auto">
+            <a href="/bankenspiegel/konten" class="btn btn-outline-secondary me-2">
+                <i class="bi bi-arrow-left me-1"></i>Zurück
+            </a>
+            <button class="btn btn-outline-primary" onclick="loadData()">
+                <i class="bi bi-arrow-clockwise me-1"></i>Aktualisieren
+            </button>
+        </div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="row mb-4" id="metricsRow">
+        <div class="col">
+            <div class="text-center py-5">
+                <span class="spinner-border spinner-border-sm"></span>
+                Lade Daten...
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="row mb-4">
+        <div class="col-lg-6 mb-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0">
+                    <h5 class="mb-0">
+                        <i class="bi bi-graph-up me-2"></i>Zinsentwicklung
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="zinsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6 mb-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0">
+                    <h5 class="mb-0">
+                        <i class="bi bi-pie-chart me-2"></i>Ausnutzung
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="ausnutzungChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Snapshots-Tabelle -->
+    <div class="row">
+        <div class="col">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0">
+                    <h5 class="mb-0">
+                        <i class="bi bi-clock-history me-2"></i>Historische Daten
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0" id="snapshotsTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Stichtag</th>
+                                    <th class="text-end">Kapitalsaldo</th>
+                                    <th class="text-end">Kreditlinie</th>
+                                    <th class="text-end">Ausnutzung</th>
+                                    <th class="text-end">Zinssatz</th>
+                                </tr>
+                            </thead>
+                            <tbody id="snapshotsBody">
+                                <tr>
+                                    <td colspan="5" class="text-center py-4">
+                                        <span class="spinner-border spinner-border-sm"></span>
+                                        Lade Snapshots...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+let zinsChart = null;
+let ausnutzungChart = null;
+
+// Daten laden
+async function loadData() {
+    try {
+        const kontoId = {{ konto_id }};
+        const response = await fetch(`/api/bankenspiegel/konto/${kontoId}/snapshots`);
+        const data = await response.json();
+        
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        // Header aktualisieren
+        document.getElementById('kontoName').textContent = data.konto.name;
+        document.getElementById('kontoIban').textContent = `${data.konto.bank} • ${data.konto.iban}`;
+        
+        // Metrics
+        renderMetrics(data);
+        
+        // Charts
+        renderCharts(data.snapshots);
+        
+        // Tabelle
+        renderTable(data.snapshots);
+        
+    } catch (error) {
+        console.error('Fehler beim Laden:', error);
+        alert('Fehler beim Laden der Daten: ' + error.message);
+    }
+}
+
+// Metrics rendern
+function renderMetrics(data) {
+    const snapshots = data.snapshots;
+    if (snapshots.length === 0) {
+        document.getElementById('metricsRow').innerHTML = `
+            <div class="col">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-2"></i>
+                    Keine historischen Daten vorhanden
+                </div>
+            </div>
+        `;
+        return;
+    }
+    
+    const latest = snapshots[snapshots.length - 1];
+    const oldest = snapshots[0];
+    
+    // Durchschnittswerte
+    const avgZins = snapshots.reduce((sum, s) => sum + (s.zinssatz || 0), 0) / snapshots.length;
+    const avgAusnutzung = snapshots.reduce((sum, s) => sum + (s.ausnutzung_prozent || 0), 0) / snapshots.length;
+    
+    document.getElementById('metricsRow').innerHTML = `
+        <div class="col-md-3">
+            <div class="card metric-card border-0 shadow-sm">
+                <div class="card-body">
+                    <small class="text-muted d-block">Aktueller Saldo</small>
+                    <h4 class="mb-0">${formatCurrency(latest.kapitalsaldo)}</h4>
+                    <small class="text-muted">${latest.stichtag}</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card metric-card border-0 shadow-sm">
+                <div class="card-body">
+                    <small class="text-muted d-block">Kreditlinie</small>
+                    <h4 class="mb-0">${formatCurrency(latest.kreditlinie)}</h4>
+                    <small class="text-muted">Limit</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card metric-card border-0 shadow-sm">
+                <div class="card-body">
+                    <small class="text-muted d-block">Ø Zinssatz</small>
+                    <h4 class="mb-0">${avgZins.toFixed(3)}%</h4>
+                    <small class="text-muted">Aktuell: ${(latest.zinssatz || 0).toFixed(3)}%</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card metric-card border-0 shadow-sm">
+                <div class="card-body">
+                    <small class="text-muted d-block">Ø Ausnutzung</small>
+                    <h4 class="mb-0">${avgAusnutzung.toFixed(1)}%</h4>
+                    <small class="text-muted">Aktuell: ${(latest.ausnutzung_prozent || 0).toFixed(1)}%</small>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Charts rendern
+function renderCharts(snapshots) {
+    if (snapshots.length === 0) return;
+    
+    const labels = snapshots.map(s => formatDate(s.stichtag));
+    const zinsen = snapshots.map(s => s.zinssatz || 0);
+    const ausnutzung = snapshots.map(s => s.ausnutzung_prozent || 0);
+    
+    // Zinsentwicklung
+    const zinsCtx = document.getElementById('zinsChart').getContext('2d');
+    if (zinsChart) zinsChart.destroy();
+    zinsChart = new Chart(zinsCtx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Zinssatz (%)',
+                data: zinsen,
+                borderColor: '#0d6efd',
+                backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => `${context.parsed.y.toFixed(3)}%`
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: false,
+                    ticks: {
+                        callback: (value) => value.toFixed(2) + '%'
+                    }
+                }
+            }
+        }
+    });
+    
+    // Ausnutzung
+    const ausnutzungCtx = document.getElementById('ausnutzungChart').getContext('2d');
+    if (ausnutzungChart) ausnutzungChart.destroy();
+    ausnutzungChart = new Chart(ausnutzungCtx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Ausnutzung (%)',
+                data: ausnutzung,
+                backgroundColor: ausnutzung.map(v => 
+                    v > 90 ? '#dc3545' : v > 75 ? '#ffc107' : '#198754'
+                ),
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => `${context.parsed.y.toFixed(1)}%`
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    ticks: {
+                        callback: (value) => value + '%'
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Tabelle rendern
+function renderTable(snapshots) {
+    const tbody = document.getElementById('snapshotsBody');
+    
+    if (snapshots.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="5" class="text-center py-4 text-muted">
+                    Keine Snapshots vorhanden
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = snapshots.reverse().map(s => `
+        <tr>
+            <td>${formatDate(s.stichtag)}</td>
+            <td class="text-end">${formatCurrency(s.kapitalsaldo)}</td>
+            <td class="text-end">${formatCurrency(s.kreditlinie)}</td>
+            <td class="text-end">
+                <span class="badge ${getAusnutzungColor(s.ausnutzung_prozent)}">
+                    ${(s.ausnutzung_prozent || 0).toFixed(1)}%
+                </span>
+            </td>
+            <td class="text-end">${(s.zinssatz || 0).toFixed(3)}%</td>
+        </tr>
+    `).join('');
+}
+
+// Helper
+function formatCurrency(value) {
+    if (!value) return '0,00 €';
+    return new Intl.NumberFormat('de-DE', {
+        style: 'currency',
+        currency: 'EUR',
+        minimumFractionDigits: 0
+    }).format(value);
+}
+
+function formatDate(dateStr) {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('de-DE', { 
+        year: 'numeric', 
+        month: 'short'
+    });
+}
+
+function getAusnutzungColor(percent) {
+    if (!percent) return 'bg-secondary';
+    if (percent > 90) return 'bg-danger';
+    if (percent > 75) return 'bg-warning';
+    return 'bg-success';
+}
+
+// Initial laden
+document.addEventListener('DOMContentLoaded', loadData);
+</script>
+{% endblock %}
