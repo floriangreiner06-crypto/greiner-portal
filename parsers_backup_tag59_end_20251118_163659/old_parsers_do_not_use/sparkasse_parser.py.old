@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Sparkasse Parser für Bankenspiegel 3.0
+======================================
+Parser für Sparkasse PDF-Kontoauszüge
+
+Besonderheiten:
+- Format: Datum DIREKT vor Text (kein Leerzeichen!)
+- Betrag am Zeilenende
+- Mehrere Verwendungszweck-Zeilen möglich
+
+Author: Claude AI
+Version: 3.0
+Date: 2025-11-13
+"""
+
+from .base_parser import BaseParser, Transaction
+import pdfplumber
+import re
+from datetime import datetime
+from typing import List, Optional
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class SparkasseParser(BaseParser):
+    """
+    Parser für Sparkasse PDF-Kontoauszüge
+    
+    Erkennt Sparkasse Deggendorf und andere Sparkassen-Formate
+    """
+    
+    @property
+    def bank_name(self) -> str:
+        """Name der Bank"""
+        return "Sparkasse"
+    
+    def parse(self) -> List[Transaction]:
+        """
+        Parst Sparkasse PDF und extrahiert Transaktionen
+        
+        Returns:
+            Liste von Transaction-Objekten
+        """
+        self.transactions = []
+        
+        try:
+            with pdfplumber.open(str(self.pdf_path)) as pdf:
+                
+                # Sammle Text von allen Seiten
+                full_text = ""
+                for page in pdf.pages:
+                    text = page.extract_text()
+                    if text:
+                        full_text += text + "\n"
+                
+                # IBAN extrahieren
+                self.iban = self.extract_iban(full_text)
+                if not self.iban:
+                    logger.warning(f"⚠️ Keine IBAN gefunden in {self.pdf_path.name}")
+                
+                lines = full_text.split('\n')
+                
+                for i, line in enumerate(lines):
+                    line = line.strip()
+                    
+                    # WICHTIG: Sparkasse hat KEIN Leerzeichen zwischen Datum und Text!
+                    # Format: 13.11.2025Überweisung...
+                    date_match = re.match(r'^(\d{2}\.\d{2}\.\d{4})(.+)', line)
+                    
+                    if date_match:
+                        datum_str = date_match.group(1)
+                        rest = date_match.group(2).strip()
+                        
+                        # Überspringe "Kontostand am..." Zeilen
+                        if 'Kontostand am' in rest or not rest:
+                            continue
+                        
+                        # Suche Betrag am Ende der Zeile
+                        betrag_match = re.search(r'([-]?\d{1,3}(?:\.\d{3})*,\d{2})$', line)
+                        
+                        if betrag_match:
+                            betrag_str = betrag_match.group(1)
+                            
+                            # Parse Datum
+                            buchungsdatum = self.parse_german_date(datum_str)
+                            if not buchungsdatum:
+                                logger.warning(f"⚠️ Ungültiges Datum: {datum_str}")
+                                continue
+                            
+                            # Parse Betrag
+                            betrag = self.parse_german_amount(betrag_str)
+                            
+                            # Verwendungszweck = alles zwischen Datum und Betrag
+                            verwendungszweck = line[len(datum_str):betrag_match.start()].strip()
+                            
+                            # Sammle zusätzliche Zeilen (mehrzeiliger Verwendungszweck)
+                            zusatz_lines = []
+                            j = i + 1
+                            while j < len(lines) and j < i + 5:  # Max 5 Zeilen
+                                next_line = lines[j].strip()
+                                
+                                # Stop wenn neue Transaktion beginnt
+                                if re.match(r'^\d{2}\.\d{2}\.\d{4}', next_line):
+                                    break
+                                
+                                # Stop bei Footer/leeren Zeilen
+                                if not next_line or 'Sparkasse' in next_line or 'Vorstand' in next_line:
+                                    break
+                                
+                                # Stop bei Seiteninfo
+                                if 'Seite' in next_line and 'von' in next_line:
+                                    break
+                                
+                                zusatz_lines.append(next_line)
+                                j += 1
+                            
+                            # Kombiniere Verwendungszweck
+                            if zusatz_lines:
+                                verwendungszweck = verwendungszweck + " " + " ".join(zusatz_lines)
+                            
+                            # Säubere und kürze Text
+                            verwendungszweck = self.clean_text(verwendungszweck)
+                            verwendungszweck = self.truncate_text(verwendungszweck, 500)
+                            
+                            # Erstelle Transaction-Objekt
+                            transaction = Transaction(
+                                buchungsdatum=buchungsdatum,
+                                valutadatum=buchungsdatum,  # Sparkasse zeigt nur Buchungsdatum
+                                verwendungszweck=verwendungszweck,
+                                betrag=betrag,
+                                iban=self.iban
+                            )
+                            
+                            self.transactions.append(transaction)
+                            logger.debug(f"✓ Transaction: {transaction}")
+                
+                # Log Summary
+                self.log_summary()
+                
+                return self.transactions
+                
+        except Exception as e:
+            error_msg = f"❌ Fehler beim Parsen von {self.pdf_path.name}: {e}"
+            logger.error(error_msg)
+            self.errors.append(error_msg)
+            return []

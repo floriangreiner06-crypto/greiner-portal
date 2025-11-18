@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-11-18 19:30:31",
+  "timestamp": "2025-11-18 20:21:04",
   "konten": [
     {
       "id": 1,
@@ -7,7 +7,7 @@
       "iban": "DE63741500000760036467",
       "bank": "Sparkasse Deggendorf",
       "saldo": 0,
-      "trans_count": 24,
+      "trans_count": 28,
       "letzte_buchung": "2025-11-12 00:00:00"
     },
     {
@@ -52,7 +52,7 @@
       "iban": "DE22741200710006407420",
       "bank": "Hypovereinsbank",
       "saldo": 0,
-      "trans_count": 553,
+      "trans_count": 825,
       "letzte_buchung": "2025-11-17 00:00:00"
     },
     {
@@ -79,7 +79,7 @@
       "iban": "DE76741910000000303585",
       "bank": "VR Bank Landau",
       "saldo": 0,
-      "trans_count": 55,
+      "trans_count": 69,
       "letzte_buchung": "2025-11-17 00:00:00"
     },
     {
@@ -88,7 +88,7 @@
       "iban": "DE68741900000001501500",
       "bank": "Genobank Auto Greiner",
       "saldo": 0,
-      "trans_count": 497,
+      "trans_count": 589,
       "letzte_buchung": "2025-11-17 00:00:00"
     },
     {
@@ -195,7 +195,7 @@
     {
       "id": 15,
       "name": "1501500 HYU KK",
-      "trans": 360,
+      "trans": 368,
       "von": "2025-11-03",
       "bis": "2025-11-17 00:00:00"
     },
@@ -229,5 +229,5 @@
     }
   ],
   "total_saldo": 0,
-  "total_transaktionen": 2198
+  "total_transaktionen": 2580
 }

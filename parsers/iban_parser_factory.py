@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-IBAN-Parser-Factory (Version 1.2 - mit SparkasseOnlineParser)
+IBAN-Parser-Factory (Version 1.3 - mit GenobankOnlineParser)
 ==============================================================
 
 Automatische Parser-Wahl basierend auf IBAN-Extraktion aus PDF.
 
+ÄNDERUNGEN v1.3:
+- GenobankOnlineParser für Genobank Online-Banking Format
+- Verbesserte Fallback-Logik: "Genobank Auszug" → GenobankOnlineParser
+- Unterscheidung: Tagesauszug vs Kontoauszug vs Online-Export
+
 ÄNDERUNGEN v1.2:
 - SparkasseOnlineParser integriert für Online-Banking Format
-- Alter sparkasse_parser.py als Fallback behalten
-- IBAN DE63741500000760036467 → SparkasseOnlineParser
+- Genobank-Kontonummern-Fallbacks
 
 Autor: Claude (Tag 60)
 Datum: 2025-11-18
@@ -24,6 +28,7 @@ from typing import Optional, Type
 from .base_parser import BaseParser
 from .genobank.genobank_tagesauszug_parser import GenobankTagesauszugParser
 from .genobank.genobank_kontoauszug_parser import GenobankKontoauszugParser
+from .genobank_online_parser import GenobankOnlineParser
 from .hypovereinsbank_parser import HypoVereinsbankParser
 from .sparkasse_online_parser import SparkasseOnlineParser
 from .vrbank_landau_parser import VRBankLandauParser
@@ -155,11 +160,16 @@ class IBANParserFactory:
         genobank_patterns = ['genobank', '57908', '1501500', '22225', '1700057908', 
                              '1703057908', '1704057908', '1705057908', '1706057908', '1709057908']
         if any(x in filename_lower for x in genobank_patterns):
-            # Versuche zu unterscheiden: Tagesauszug vs Kontoauszug
+            # Unterscheide: Tagesauszug vs Kontoauszug vs Online-Export
             if 'tagesauszug' in filename_lower:
                 logger.debug(f"Dateiname '{pdf_path.name}' → GenobankTagesauszugParser (Fallback)")
                 return GenobankTagesauszugParser
+            elif 'auszug' in filename_lower and 'nr.' not in filename_lower:
+                # "Genobank Auszug Auto Greiner" → Online-Format
+                logger.debug(f"Dateiname '{pdf_path.name}' → GenobankOnlineParser (Fallback)")
+                return GenobankOnlineParser
             else:
+                # "1501500_2025_Nr.010_Kontoauszug" → Klassischer Kontoauszug
                 logger.debug(f"Dateiname '{pdf_path.name}' → GenobankKontoauszugParser (Fallback)")
                 return GenobankKontoauszugParser
         

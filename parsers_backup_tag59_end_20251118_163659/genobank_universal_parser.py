@@ -1,0 +1,238 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Genobank Universal Parser - FIXED VERSION
+==========================================
+FIX: Tagesauszüge haben Endsaldo OBEN und Startsaldo UNTEN!
+
+Author: Claude AI
+Version: 3.0 (FIXED)
+Date: 2025-11-13
+"""
+
+import pdfplumber
+import re
+import logging
+from typing import List, Optional, Dict
+from datetime import datetime
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+
+class GenobankUniversalParser:
+    """
+    Universal-Parser für alle Genobank PDF-Formate
+    FIXED: Korrekte Endsaldo/Startsaldo Behandlung
+    """
+    
+    def __init__(self, pdf_path: str):
+        self.pdf_path = Path(pdf_path)
+        self.transactions = []
+        self.format_type = None
+        self.iban = None
+        self.year = None
+        self.endsaldo = None
+        self.startsaldo = None
+        
+    def parse(self) -> List[Dict]:
+        """
+        Parst PDF und erkennt automatisch das Format
+        """
+        logger.info(f"📄 Parse Genobank PDF: {self.pdf_path.name}")
+        
+        try:
+            with pdfplumber.open(str(self.pdf_path)) as pdf:
+                full_text = self._extract_full_text(pdf)
+                
+                # IBAN extrahieren
+                self.iban = self._extract_iban(full_text)
+                
+                # Format-Erkennung
+                self.format_type = self._detect_format(full_text)
+                logger.info(f"✔ Format erkannt: {self.format_type}")
+                
+                # Jahr ermitteln
+                self.year = self._extract_year(full_text)
+                if not self.year:
+                    self.year = datetime.now().year
+                
+                # Je nach Format parsen
+                if self.format_type == 'tagesauszug':
+                    self.transactions = self._parse_tagesauszug(full_text)
+                else:
+                    self.transactions = self._parse_standard(full_text)
+                
+                logger.info(f"✅ {len(self.transactions)} Transaktionen, Endsaldo: {self.endsaldo}")
+                return self.transactions
+                
+        except Exception as e:
+            logger.error(f"❌ Fehler beim Parsen: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+    
+    def _extract_full_text(self, pdf) -> str:
+        """Extrahiert Text von allen Seiten"""
+        full_text = ""
+        for page in pdf.pages:
+            text = page.extract_text()
+            if text:
+                full_text += text + "\n"
+        return full_text
+    
+    def _extract_iban(self, text: str) -> Optional[str]:
+        """Extrahiert IBAN - funktioniert für BEIDE Formate: Tagesauszug UND Kontoauszug"""
+        header = text[:1500]  # Mehr Text für Kontoauszüge
+        
+        # 1. PRIORITÄT: "IBAN:" mit Doppelpunkt (Kontoauszüge - September PDFs)
+        #    Format: "IBAN: DE58 7419 0000 4700 0579 08 BIC:"
+        for line in header.split('\n'):
+            if 'IBAN:' in line and 'BIC' in line:
+                # IBAN mit Leerzeichen: "DE58 7419 0000 4700 0579 08"
+                iban_match = re.search(r'IBAN:\s*(DE\s*\d{2}(?:\s*\d{4}){4}\s*\d{2})', line)
+                if iban_match:
+                    iban = iban_match.group(1).replace(' ', '')
+                    if len(iban) == 22:
+                        return iban
+        
+        # 2. FALLBACK: "IBAN" ohne Doppelpunkt (Tagesauszüge - November PDFs)
+        #    Format: "IBAN DE27741900000000057908"
+        for line in header.split('\n'):
+            if 'IBAN' in line.upper() and 'Kontoinhaber' in line:
+                iban_match = re.search(r'(DE\d{20})', line)
+                if iban_match:
+                    return iban_match.group(1)
+        
+        # 3. LETZTER FALLBACK: Erste IBAN im Header (ohne Kontoinhaber)
+        iban_match = re.search(r'IBAN[:\s]+(DE\d{20}|DE\s*\d{2}(?:\s*\d{4}){4}\s*\d{2})', header)
+        if iban_match:
+            iban = iban_match.group(1).replace(' ', '')
+            if len(iban) == 22:
+                return iban
+        
+        return None
+    def _detect_format(self, text: str) -> str:
+        """Erkennt Format: tagesauszug oder standard"""
+        # Tagesauszug hat (Endsaldo) am Anfang und (Startsaldo) am Ende
+        if '(Endsaldo)' in text[:2000] or '(Startsaldo)' in text[-2000:]:
+            return 'tagesauszug'
+        return 'standard'
+    
+    def _extract_year(self, text: str) -> Optional[int]:
+        """Extrahiert Jahr"""
+        # Aus Datum-Zeile
+        date_match = re.search(r'Datum\s+\d{2}\.\d{2}\.(\d{4})', text)
+        if date_match:
+            return int(date_match.group(1))
+        
+        # Aus Dateinamen
+        filename = self.pdf_path.name
+        year_match = re.search(r'20(\d{2})', filename)
+        if year_match:
+            return 2000 + int(year_match.group(1))
+        
+        return None
+    
+    def _parse_tagesauszug(self, text: str) -> List[Dict]:
+        """Parst Tagesauszug-Format - FIXED für November 2025"""
+        transactions = []
+        lines = text.split('\n')
+        
+        # Datum aus Filename
+        filename = self.pdf_path.name
+        date_match = re.search(r'(\d{2})\.(\d{2})\.(\d{2})', filename)
+        if date_match:
+            day, month, yy = date_match.groups()
+            datum = datetime(2000 + int(yy), int(month), int(day))
+        else:
+            datum = datetime.now()
+        
+        # Endsaldo extrahieren (oben)
+        for i, line in enumerate(lines[:50]):
+            if '(Endsaldo)' in line:
+                # Betrag steht oft auf nächster Zeile
+                next_line = lines[i+1] if i+1 < len(lines) else ""
+                combined = line + " " + next_line
+                saldo_match = re.search(r'\+?([\d.,]+)\s*EUR', combined)
+                if saldo_match:
+                    self.endsaldo = self._parse_german_amount(saldo_match.group(1))
+                break
+        
+        # Transaktionen extrahieren - NEUES Pattern für November
+        for line in lines:
+            # Skip Header/Footer
+            if any(skip in line for skip in ['Endsaldo', 'Startsaldo', 'Filter', 'Datum']):
+                continue
+                
+            # Suche Beträge
+            betrag_match = re.search(r'([+-]?\d{1,3}(?:\.\d{3})*(?:,\d{2})?)\s+EUR', line)
+            if betrag_match:
+                betrag_str = betrag_match.group(1).replace('.', '').replace(',', '.')
+                betrag = float(betrag_str)
+                
+                transaction = {
+                    'buchungsdatum': datum,
+                    'valutadatum': datum,
+                    'verwendungszweck': line.strip()[:500],
+                    'betrag': betrag,
+                    'iban': self.iban,
+                    'saldo_nach_buchung': 0
+                }
+                transactions.append(transaction)
+        
+        return transactions
+
+    def _parse_standard(self, text: str) -> List[Dict]:
+        """Parst Standard-Format (Monatsauszüge)"""
+        transactions = []
+        lines = text.split('\n')
+        
+        for line in lines:
+            # DD.MM. DD.MM. Text Betrag H/S
+            match = re.match(r'(\d{2})\.(\d{2})\.\s+(\d{2})\.(\d{2})\.\s+(.+?)\s+([\d.,]+)\s+([HS])', line)
+            if match:
+                buch_day, buch_month = match.group(1), match.group(2)
+                val_day, val_month = match.group(3), match.group(4)
+                verwendungszweck = match.group(5).strip()
+                betrag_str = match.group(6)
+                haben_soll = match.group(7)
+                
+                betrag = self._parse_german_amount(betrag_str)
+                if haben_soll == 'S':
+                    betrag = -betrag
+                
+                buchungsdatum = datetime(self.year, int(buch_month), int(buch_day))
+                valutadatum = datetime(self.year, int(val_month), int(val_day))
+                
+                transaction = {
+                    'buchungsdatum': buchungsdatum,
+                    'valutadatum': valutadatum,
+                    'verwendungszweck': verwendungszweck,
+                    'betrag': betrag,
+                    'iban': self.iban,
+                    'saldo_nach_buchung': None
+                }
+                
+                transactions.append(transaction)
+        
+        return transactions
+    
+    def _parse_german_amount(self, amount_str: str) -> float:
+        """Konvertiert deutsches Format zu float"""
+        try:
+            amount_str = amount_str.replace('.', '').replace(',', '.')
+            return float(amount_str)
+        except:
+            return 0.0
+
+
+if __name__ == '__main__':
+    import sys
+    if len(sys.argv) > 1:
+        parser = GenobankUniversalParser(sys.argv[1])
+        trans = parser.parse()
+        print(f"IBAN: {parser.iban}")
+        print(f"Transaktionen: {len(trans)}")
+        print(f"Startsaldo: {parser.startsaldo:.2f} EUR")
+        print(f"Endsaldo: {parser.endsaldo:.2f} EUR")
