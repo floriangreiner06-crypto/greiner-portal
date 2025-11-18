@@ -68,7 +68,7 @@ class VRBankLandauParser(BaseParser):
                     logger.debug(f"✓ Endsaldo: {self.endsaldo} EUR")
 
                 logger.info(f"📊 {self.bank_name}: {len(self.transactions)} Transaktionen, Summe: {sum(t.betrag for t in self.transactions):.2f} EUR")
-                return self.transactions
+                return {"transactions": self.transactions, "endsaldo": self.endsaldo}
 
         except Exception as e:
             logger.error(f"❌ Fehler beim Parsen: {e}")

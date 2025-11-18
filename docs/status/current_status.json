@@ -1,50 +1,50 @@
 {
-  "timestamp": "2025-11-14 13:37:17",
+  "timestamp": "2025-11-18 12:24:58",
   "konten": [
     {
       "id": 1,
       "name": "Sparkasse KK",
       "iban": "DE63741500000760036467",
       "bank": "Sparkasse Deggendorf",
-      "saldo": 8156.99,
-      "trans_count": 7769,
-      "letzte_buchung": "2025-11-12"
+      "saldo": 0,
+      "trans_count": 23,
+      "letzte_buchung": "2025-11-12 00:00:00"
     },
     {
       "id": 5,
       "name": "57908 KK",
       "iban": "DE27741900000000057908",
       "bank": "Genobank Autohaus Greiner",
-      "saldo": 0.0,
-      "trans_count": 14381,
-      "letzte_buchung": "2025-11-13"
+      "saldo": 0,
+      "trans_count": 1034,
+      "letzte_buchung": "2025-11-17 00:00:00"
     },
     {
       "id": 6,
       "name": "22225 Immo KK",
       "iban": "DE64741900000000022225",
       "bank": "Genobank Greiner Immob.Verw",
-      "saldo": -1434271.92,
-      "trans_count": 3261,
-      "letzte_buchung": "2025-10-31 00:00:00"
+      "saldo": 0,
+      "trans_count": 0,
+      "letzte_buchung": null
     },
     {
       "id": 7,
       "name": "20057908 Darlehen",
       "iban": "DE94741900000020057908",
       "bank": "Genobank Autohaus Greiner",
-      "saldo": 9135.73,
-      "trans_count": 22,
-      "letzte_buchung": "2025-10-30 00:00:00"
+      "saldo": 0,
+      "trans_count": 2,
+      "letzte_buchung": "2025-10-30"
     },
     {
       "id": 8,
       "name": "1700057908 Festgeld",
       "iban": "DE96741900001700057908",
       "bank": "Genobank Autohaus Greiner",
-      "saldo": 0.0,
-      "trans_count": 44,
-      "letzte_buchung": "2025-10-31 00:00:00"
+      "saldo": 0,
+      "trans_count": 4,
+      "letzte_buchung": "2025-10-31"
     },
     {
       "id": 9,
@@ -52,8 +52,8 @@
       "iban": "DE22741200710006407420",
       "bank": "Hypovereinsbank",
       "saldo": 0,
-      "trans_count": 18430,
-      "letzte_buchung": "2025-11-13"
+      "trans_count": 409,
+      "letzte_buchung": "2025-11-17 00:00:00"
     },
     {
       "id": 10,
@@ -79,26 +79,26 @@
       "iban": "DE76741910000000303585",
       "bank": "VR Bank Landau",
       "saldo": 0,
-      "trans_count": 583,
-      "letzte_buchung": "2025-11-13"
+      "trans_count": 50,
+      "letzte_buchung": "2025-11-17 00:00:00"
     },
     {
       "id": 15,
       "name": "1501500 HYU KK",
       "iban": "DE68741900000001501500",
       "bank": "Genobank Auto Greiner",
-      "saldo": 0.0,
-      "trans_count": 10281,
-      "letzte_buchung": "2025-11-13"
+      "saldo": 0,
+      "trans_count": 497,
+      "letzte_buchung": "2025-11-17 00:00:00"
     },
     {
       "id": 17,
       "name": "4700057908 Darlehen",
       "iban": "DE58741900004700057908",
       "bank": "Genobank Autohaus Greiner",
-      "saldo": -109759.05,
-      "trans_count": 123,
-      "letzte_buchung": "2025-11-07"
+      "saldo": 0,
+      "trans_count": 14,
+      "letzte_buchung": "2025-10-30"
     },
     {
       "id": 19,
@@ -114,9 +114,9 @@
       "name": "KfW 120057908",
       "iban": "DE41741900000120057908",
       "bank": "Genobank Autohaus Greiner",
-      "saldo": -291667.24,
-      "trans_count": 12,
-      "letzte_buchung": "2025-09-30"
+      "saldo": 0,
+      "trans_count": 0,
+      "letzte_buchung": null
     },
     {
       "id": 23,
@@ -132,16 +132,16 @@
     {
       "id": 1,
       "name": "Sparkasse KK",
-      "trans": 5,
+      "trans": 20,
       "von": "2025-11-03",
-      "bis": "2025-11-12"
+      "bis": "2025-11-12 00:00:00"
     },
     {
       "id": 5,
       "name": "57908 KK",
-      "trans": 398,
+      "trans": 765,
       "von": "2025-11-03",
-      "bis": "2025-11-13"
+      "bis": "2025-11-17 00:00:00"
     },
     {
       "id": 6,
@@ -167,9 +167,9 @@
     {
       "id": 9,
       "name": "Hypovereinsbank KK",
-      "trans": 203,
+      "trans": 276,
       "von": "2025-11-03",
-      "bis": "2025-11-13"
+      "bis": "2025-11-17 00:00:00"
     },
     {
       "id": 10,
@@ -188,23 +188,23 @@
     {
       "id": 14,
       "name": "303585 VR Landau KK",
-      "trans": 39,
+      "trans": 41,
       "von": "2025-11-03",
-      "bis": "2025-11-13"
+      "bis": "2025-11-17 00:00:00"
     },
     {
       "id": 15,
       "name": "1501500 HYU KK",
-      "trans": 258,
+      "trans": 360,
       "von": "2025-11-03",
-      "bis": "2025-11-13"
+      "bis": "2025-11-17 00:00:00"
     },
     {
       "id": 17,
       "name": "4700057908 Darlehen",
-      "trans": 14,
-      "von": "2025-11-07",
-      "bis": "2025-11-07"
+      "trans": 0,
+      "von": null,
+      "bis": null
     },
     {
       "id": 19,
@@ -228,6 +228,6 @@
       "bis": null
     }
   ],
-  "total_saldo": -1818405.49,
-  "total_transaktionen": 54906
+  "total_saldo": 0,
+  "total_transaktionen": 2033
 }
