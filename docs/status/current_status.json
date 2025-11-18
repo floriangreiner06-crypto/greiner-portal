@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-11-18 12:24:58",
+  "timestamp": "2025-11-18 16:30:36",
   "konten": [
     {
       "id": 1,
@@ -7,7 +7,7 @@
       "iban": "DE63741500000760036467",
       "bank": "Sparkasse Deggendorf",
       "saldo": 0,
-      "trans_count": 23,
+      "trans_count": 24,
       "letzte_buchung": "2025-11-12 00:00:00"
     },
     {
@@ -16,7 +16,7 @@
       "iban": "DE27741900000000057908",
       "bank": "Genobank Autohaus Greiner",
       "saldo": 0,
-      "trans_count": 1034,
+      "trans_count": 1038,
       "letzte_buchung": "2025-11-17 00:00:00"
     },
     {
@@ -43,7 +43,7 @@
       "iban": "DE96741900001700057908",
       "bank": "Genobank Autohaus Greiner",
       "saldo": 0,
-      "trans_count": 4,
+      "trans_count": 8,
       "letzte_buchung": "2025-10-31"
     },
     {
@@ -52,7 +52,7 @@
       "iban": "DE22741200710006407420",
       "bank": "Hypovereinsbank",
       "saldo": 0,
-      "trans_count": 409,
+      "trans_count": 553,
       "letzte_buchung": "2025-11-17 00:00:00"
     },
     {
@@ -79,7 +79,7 @@
       "iban": "DE76741910000000303585",
       "bank": "VR Bank Landau",
       "saldo": 0,
-      "trans_count": 50,
+      "trans_count": 55,
       "letzte_buchung": "2025-11-17 00:00:00"
     },
     {
@@ -97,7 +97,7 @@
       "iban": "DE58741900004700057908",
       "bank": "Genobank Autohaus Greiner",
       "saldo": 0,
-      "trans_count": 14,
+      "trans_count": 21,
       "letzte_buchung": "2025-10-30"
     },
     {
@@ -229,5 +229,5 @@
     }
   ],
   "total_saldo": 0,
-  "total_transaktionen": 2033
+  "total_transaktionen": 2198
 }

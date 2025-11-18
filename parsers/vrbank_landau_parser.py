@@ -15,8 +15,8 @@ Endsaldo-Format (2 Zeilen):
     +2.831,40EUR  ← OHNE Leerzeichen!
 
 Author: Claude AI
-Version: 1.2
-Date: 2025-11-14
+Version: 1.3
+Date: 2025-11-18
 """
 
 import pdfplumber
@@ -24,7 +24,7 @@ import re
 import logging
 from typing import List, Optional
 from datetime import datetime
-from .base_parser import BaseParser, Transaction
+from parsers.base_parser import BaseParser, Transaction
 
 logger = logging.getLogger(__name__)
 
@@ -67,8 +67,12 @@ class VRBankLandauParser(BaseParser):
                     self.endsaldo = self.parse_german_amount(endsaldo_match.group(1))
                     logger.debug(f"✓ Endsaldo: {self.endsaldo} EUR")
 
-                logger.info(f"📊 {self.bank_name}: {len(self.transactions)} Transaktionen, Summe: {sum(t.betrag for t in self.transactions):.2f} EUR")
-                return {"transactions": self.transactions, "endsaldo": self.endsaldo}
+                # IBAN zu allen Transaktionen hinzufügen
+                for tx in self.transactions:
+                    tx.iban = self.iban
+
+                self.log_summary()
+                return self.transactions
 
         except Exception as e:
             logger.error(f"❌ Fehler beim Parsen: {e}")

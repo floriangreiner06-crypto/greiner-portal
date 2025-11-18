@@ -1,0 +1,50 @@
+# Edit this file to introduce tasks to be run by cron.
+# 
+# Each task to run has to be defined through a single line
+# indicating with different fields when the task will be run
+# and what command to run for the task
+# 
+# To define the time you can provide concrete values for
+# minute (m), hour (h), day of month (dom), month (mon),
+# and day of week (dow) or use '*' in these fields (for 'any').
+# 
+# Notice that tasks will be started based on the cron's system
+# daemon's notion of time and timezones.
+# 
+# Output of the crontab jobs (including errors) is sent through
+# email to the user the crontab file belongs to (unless redirected).
+# 
+# For example, you can run a backup of all your user accounts
+# at 5 a.m every week with:
+# 0 5 * * 1 tar -zcf /var/backups/home.tgz /home/
+# 
+# For more information see the manual pages of crontab(5) and cron(8)
+# 
+# m h  dom mon dow   command
+
+# Verkauf Sync - stündlich von 7-18 Uhr
+0 7-18 * * * cd /opt/greiner-portal && /opt/greiner-portal/venv/bin/python3 sync_sales.py >> logs/sync_sales.log 2>&1
+# Stellantis Import - stündlich von 7-18 Uhr
+0 7-18 * * * cd /opt/greiner-portal && /opt/greiner-portal/venv/bin/python3 import_stellantis.py >> logs/stellantis_import.log 2>&1
+
+# Bank-PDFs Import - stündlich von 7-18 Uhr
+#0 7-18 * * * cd /opt/greiner-portal && /opt/greiner-portal/venv/bin/python3 scripts/imports/import_november_all_accounts_v2.py >> logs/bank_import.log 2>&1
+
+# Bank-PDFs Import - täglich 8:30 Uhr
+30 8 * * * cd /opt/greiner-portal && /opt/greiner-portal/venv/bin/python3 scripts/imports/import_kontoauszuege.py >> logs/bank_import.log 2>&1
+
+# DB Backup - stündlich (NEU HINZUFÜGEN!)
+0 * * * * cd /opt/greiner-portal && cp data/greiner_controlling.db data/greiner_controlling.db.backup_auto_$(date +\%H00) 2>/dev/null
+
+# Alte Backups löschen - täglich 2:30 Uhr (älter als 7 Tage)
+30 2 * * * find /opt/greiner-portal/data -name "*.backup_auto_*" -mtime +7 -delete 2>/dev/null
+
+
+# Santander Import - täglich 8 Uhr
+0 8 * * * cd /opt/greiner-portal && /opt/greiner-portal/venv/bin/python3 scripts/imports/import_santander_bestand.py >> logs/santander_import.log 2>&1
+
+# Hyundai Finance Import - täglich 9 Uhr (manueller CSV-Upload nötig!)
+0 9 * * * cd /opt/greiner-portal && /opt/greiner-portal/venv/bin/python3 scripts/imports/import_hyundai_finance.py >> logs/hyundai_import.log 2>&1
+
+# Employee Sync - täglich 6 Uhr
+0 6 * * * cd /opt/greiner-portal && /opt/greiner-portal/venv/bin/python3 sync_employees.py --real >> logs/employee_sync.log 2>&1
