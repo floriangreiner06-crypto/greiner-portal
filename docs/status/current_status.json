@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-11-18 20:21:04",
+  "timestamp": "2025-11-19 12:10:45",
   "konten": [
     {
       "id": 1,
@@ -7,8 +7,8 @@
       "iban": "DE63741500000760036467",
       "bank": "Sparkasse Deggendorf",
       "saldo": 0,
-      "trans_count": 28,
-      "letzte_buchung": "2025-11-12 00:00:00"
+      "trans_count": 87,
+      "letzte_buchung": "2025-11-18"
     },
     {
       "id": 5,
@@ -16,17 +16,17 @@
       "iban": "DE27741900000000057908",
       "bank": "Genobank Autohaus Greiner",
       "saldo": 0,
-      "trans_count": 1038,
-      "letzte_buchung": "2025-11-17 00:00:00"
+      "trans_count": 30,
+      "letzte_buchung": "2025-11-18"
     },
     {
       "id": 6,
       "name": "22225 Immo KK",
       "iban": "DE64741900000000022225",
-      "bank": "Genobank Greiner Immob.Verw",
+      "bank": "Genobank Greiner Immobilien Verwaltung",
       "saldo": 0,
-      "trans_count": 0,
-      "letzte_buchung": null
+      "trans_count": 61,
+      "letzte_buchung": "2025-11-17"
     },
     {
       "id": 7,
@@ -34,8 +34,8 @@
       "iban": "DE94741900000020057908",
       "bank": "Genobank Autohaus Greiner",
       "saldo": 0,
-      "trans_count": 2,
-      "letzte_buchung": "2025-10-30"
+      "trans_count": 0,
+      "letzte_buchung": null
     },
     {
       "id": 8,
@@ -43,32 +43,14 @@
       "iban": "DE96741900001700057908",
       "bank": "Genobank Autohaus Greiner",
       "saldo": 0,
-      "trans_count": 8,
-      "letzte_buchung": "2025-10-31"
+      "trans_count": 0,
+      "letzte_buchung": null
     },
     {
       "id": 9,
       "name": "Hypovereinsbank KK",
       "iban": "DE22741200710006407420",
       "bank": "Hypovereinsbank",
-      "saldo": 0,
-      "trans_count": 825,
-      "letzte_buchung": "2025-11-17 00:00:00"
-    },
-    {
-      "id": 10,
-      "name": "Postbank - Hauptkonto",
-      "iban": null,
-      "bank": "Postbank",
-      "saldo": 0,
-      "trans_count": 0,
-      "letzte_buchung": null
-    },
-    {
-      "id": 13,
-      "name": "Stellantis - Hauptkonto",
-      "iban": null,
-      "bank": "Stellantis",
       "saldo": 0,
       "trans_count": 0,
       "letzte_buchung": null
@@ -79,8 +61,8 @@
       "iban": "DE76741910000000303585",
       "bank": "VR Bank Landau",
       "saldo": 0,
-      "trans_count": 69,
-      "letzte_buchung": "2025-11-17 00:00:00"
+      "trans_count": 2,
+      "letzte_buchung": "2025-11-18"
     },
     {
       "id": 15,
@@ -88,8 +70,8 @@
       "iban": "DE68741900000001501500",
       "bank": "Genobank Auto Greiner",
       "saldo": 0,
-      "trans_count": 589,
-      "letzte_buchung": "2025-11-17 00:00:00"
+      "trans_count": 19,
+      "letzte_buchung": "2025-11-18"
     },
     {
       "id": 17,
@@ -97,17 +79,8 @@
       "iban": "DE58741900004700057908",
       "bank": "Genobank Autohaus Greiner",
       "saldo": 0,
-      "trans_count": 21,
-      "letzte_buchung": "2025-10-30"
-    },
-    {
-      "id": 19,
-      "name": "Darlehen Peter Greiner",
-      "iban": null,
-      "bank": "Genobank Auto Greiner",
-      "saldo": 0,
-      "trans_count": 0,
-      "letzte_buchung": null
+      "trans_count": 25,
+      "letzte_buchung": "2025-11-10"
     },
     {
       "id": 20,
@@ -117,38 +90,29 @@
       "saldo": 0,
       "trans_count": 0,
       "letzte_buchung": null
-    },
-    {
-      "id": 23,
-      "name": "3700057908 Darlehen",
-      "iban": "DE06741900003700057908",
-      "bank": "Genobank Auto Greiner",
-      "saldo": 0,
-      "trans_count": 0,
-      "letzte_buchung": null
     }
   ],
   "november_status": [
     {
       "id": 1,
       "name": "Sparkasse KK",
-      "trans": 20,
-      "von": "2025-11-03",
-      "bis": "2025-11-12 00:00:00"
+      "trans": 22,
+      "von": "2025-11-01",
+      "bis": "2025-11-18"
     },
     {
       "id": 5,
       "name": "57908 KK",
-      "trans": 765,
-      "von": "2025-11-03",
-      "bis": "2025-11-17 00:00:00"
+      "trans": 30,
+      "von": "2025-11-18",
+      "bis": "2025-11-18"
     },
     {
       "id": 6,
       "name": "22225 Immo KK",
-      "trans": 0,
-      "von": null,
-      "bis": null
+      "trans": 13,
+      "von": "2025-11-03",
+      "bis": "2025-11-17"
     },
     {
       "id": 7,
@@ -167,20 +131,6 @@
     {
       "id": 9,
       "name": "Hypovereinsbank KK",
-      "trans": 276,
-      "von": "2025-11-03",
-      "bis": "2025-11-17 00:00:00"
-    },
-    {
-      "id": 10,
-      "name": "Postbank - Hauptkonto",
-      "trans": 0,
-      "von": null,
-      "bis": null
-    },
-    {
-      "id": 13,
-      "name": "Stellantis - Hauptkonto",
       "trans": 0,
       "von": null,
       "bis": null
@@ -188,30 +138,23 @@
     {
       "id": 14,
       "name": "303585 VR Landau KK",
-      "trans": 41,
-      "von": "2025-11-03",
-      "bis": "2025-11-17 00:00:00"
+      "trans": 2,
+      "von": "2025-11-18",
+      "bis": "2025-11-18"
     },
     {
       "id": 15,
       "name": "1501500 HYU KK",
-      "trans": 368,
-      "von": "2025-11-03",
-      "bis": "2025-11-17 00:00:00"
+      "trans": 19,
+      "von": "2025-11-18",
+      "bis": "2025-11-18"
     },
     {
       "id": 17,
       "name": "4700057908 Darlehen",
-      "trans": 0,
-      "von": null,
-      "bis": null
-    },
-    {
-      "id": 19,
-      "name": "Darlehen Peter Greiner",
-      "trans": 0,
-      "von": null,
-      "bis": null
+      "trans": 3,
+      "von": "2025-11-04",
+      "bis": "2025-11-10"
     },
     {
       "id": 20,
@@ -219,15 +162,8 @@
       "trans": 0,
       "von": null,
       "bis": null
-    },
-    {
-      "id": 23,
-      "name": "3700057908 Darlehen",
-      "trans": 0,
-      "von": null,
-      "bis": null
     }
   ],
   "total_saldo": 0,
-  "total_transaktionen": 2580
+  "total_transaktionen": 224
 }
