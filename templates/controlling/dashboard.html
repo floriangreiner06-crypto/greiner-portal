@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block page_title %}Controlling Dashboard{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/controlling/dashboard.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="controlling-hero">
+    <!-- Header -->
+    <div class="hero-header">
+        <h1 class="hero-title">
+            <i class="bi bi-graph-up-arrow"></i>
+            Controlling Dashboard
+        </h1>
+        <p class="hero-subtitle">Executive Financial Overview</p>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="kpi-grid">
+        <!-- KPI 1: Liquidität -->
+        <div class="kpi-card kpi-danger">
+            <div class="kpi-icon">
+                <i class="bi bi-droplet-fill"></i>
+            </div>
+            <div class="kpi-content">
+                <div class="kpi-label">Liquidität</div>
+                <div class="kpi-value" id="kpi-liquiditaet">
+                    <span class="loading">Lädt...</span>
+                </div>
+                <div class="kpi-change" id="kpi-liquiditaet-change">
+                    <i class="bi bi-arrow-down"></i> -5%
+                </div>
+            </div>
+        </div>
+
+        <!-- KPI 2: Zinsen -->
+        <div class="kpi-card kpi-warning">
+            <div class="kpi-icon">
+                <i class="bi bi-percent"></i>
+            </div>
+            <div class="kpi-content">
+                <div class="kpi-label">Zinsen (12M)</div>
+                <div class="kpi-value" id="kpi-zinsen">
+                    <span class="loading">Lädt...</span>
+                </div>
+                <div class="kpi-change" id="kpi-zinsen-change">
+                    <i class="bi bi-exclamation-triangle"></i> Hoch
+                </div>
+            </div>
+        </div>
+
+        <!-- KPI 3: Einkaufsfinanzierung -->
+        <div class="kpi-card kpi-success">
+            <div class="kpi-icon">
+                <i class="bi bi-truck"></i>
+            </div>
+            <div class="kpi-content">
+                <div class="kpi-label">Einkaufsfinanzierung</div>
+                <div class="kpi-value" id="kpi-einkauf">
+                    <span class="loading">Lädt...</span>
+                </div>
+                <div class="kpi-change" id="kpi-einkauf-change">
+                    <i class="bi bi-check-circle"></i> OK
+                </div>
+            </div>
+        </div>
+
+        <!-- KPI 4: Umsatz -->
+        <div class="kpi-card kpi-info">
+            <div class="kpi-icon">
+                <i class="bi bi-cash-stack"></i>
+            </div>
+            <div class="kpi-content">
+                <div class="kpi-label">Umsatz (12M)</div>
+                <div class="kpi-value" id="kpi-umsatz">
+                    <span class="loading">Lädt...</span>
+                </div>
+                <div class="kpi-change" id="kpi-umsatz-change">
+                    <i class="bi bi-arrow-up"></i> +8%
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="charts-row">
+        <div class="chart-card">
+            <h3 class="chart-title">Liquiditätsverlauf (6 Monate)</h3>
+            <canvas id="liquiditaet-chart"></canvas>
+        </div>
+
+        <div class="chart-card">
+            <h3 class="chart-title">Top Alerts</h3>
+            <div class="alerts-list">
+                <div class="alert-item alert-danger">
+                    <i class="bi bi-exclamation-circle-fill"></i>
+                    <div>
+                        <strong>Genobank Überziehung</strong>
+                        <p>Kontokorrent stark belastet: ~10k €/Monat Zinsen</p>
+                    </div>
+                </div>
+                <div class="alert-item alert-warning">
+                    <i class="bi bi-info-circle-fill"></i>
+                    <div>
+                        <strong>Zinslast erhöht</strong>
+                        <p>290k € Zinsen p.a. - Optimierungspotential 30-50k €</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="quick-actions">
+        <a href="/controlling/liquiditaet" class="action-btn">
+            <i class="bi bi-droplet"></i> Liquidität
+        </a>
+        <a href="/controlling/zinsen" class="action-btn">
+            <i class="bi bi-percent"></i> Zinsen
+        </a>
+        <a href="/bankenspiegel/einkaufsfinanzierung" class="action-btn">
+            <i class="bi bi-truck"></i> Einkauf
+        </a>
+        <a href="/controlling/reports" class="action-btn">
+            <i class="bi bi-file-earmark-bar-graph"></i> Reports
+        </a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/controlling/dashboard.js"></script>
+{% endblock %}
