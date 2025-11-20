@@ -1,6 +1,6 @@
 # 🏦 GREINER PORTAL - PROJEKT-STATUS
 
-**Letztes Update:** 2025-11-19 19:41:37
+**Letztes Update:** 2025-11-20 20:08:19
 **Auto-generiert bei Git-Commit**
 
 ---
@@ -51,7 +51,7 @@
 - **2025-11:** 865 Transaktionen
 - **2025-10:** 1,476 Transaktionen
 - **2025-09:** 1,435 Transaktionen
-- **2025-08:** 565 Transaktionen
+- **2025-08:** 502 Transaktionen
 
 ## 🚧 OFFENE AUFGABEN
 
