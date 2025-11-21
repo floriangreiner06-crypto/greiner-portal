@@ -1,3 +1,4 @@
+
 """
 Greiner Portal - Flask Application
 Mit Active Directory Authentication
@@ -189,8 +190,11 @@ print("✅ Bankenspiegel Frontend registriert: /bankenspiegel/")
 
 # Verkauf API
 from api.verkauf_api import verkauf_api
+from api.stellantis_api import stellantis_api
 app.register_blueprint(verkauf_api)
+app.register_blueprint(stellantis_api)
 print("✅ Verkauf API registriert: /api/verkauf/")
+print("✅ Stellantis API registriert: /api/stellantis/")
 
 # Verkauf Frontend Routes
 from routes.verkauf_routes import verkauf_bp
