@@ -35,7 +35,7 @@ os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 
 # KONFIGURATION
 TEST_MODE = False  # True = nur erste 3 Bestellungen GESAMT
-MAX_PAGES = 10     # Maximum Seiten (Safety)
+MAX_PAGES = 20     # Maximum Seiten (Safety)
 
 def log(message):
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
