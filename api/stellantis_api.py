@@ -2,7 +2,6 @@
 Stellantis ServiceBox API
 Endpoints für Bestellungen aus dem ServiceBox-Scraper
 """
-
 from flask import Blueprint, jsonify, request
 import sqlite3
 from datetime import datetime, timedelta
@@ -32,7 +31,6 @@ def rows_to_list(rows):
     """Konvertiere Liste von sqlite3.Row zu Liste von Dictionaries"""
     return [row_to_dict(row) for row in rows]
 
-
 # =============================================================================
 # ENDPOINTS
 # =============================================================================
@@ -44,15 +42,12 @@ def health_check():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Zähle Bestellungen
         cursor.execute("SELECT COUNT(*) as count FROM stellantis_bestellungen")
         bestellungen_count = cursor.fetchone()['count']
         
-        # Zähle Positionen
         cursor.execute("SELECT COUNT(*) as count FROM stellantis_positionen")
         positionen_count = cursor.fetchone()['count']
         
-        # Letzte Bestellung
         cursor.execute("SELECT MAX(bestelldatum) as letzte_bestellung FROM stellantis_bestellungen")
         letzte_bestellung = cursor.fetchone()['letzte_bestellung']
         
@@ -66,24 +61,23 @@ def health_check():
             'letzte_bestellung': letzte_bestellung,
             'timestamp': datetime.now().isoformat()
         })
-        
     except Exception as e:
         return jsonify({
             'status': 'error',
             'message': str(e)
         }), 500
 
-
 @stellantis_api.route('/api/stellantis/bestellungen', methods=['GET'])
 def get_bestellungen():
     """
     Hole alle Bestellungen mit optionalen Filtern
-    
     Query Parameters:
     - datum_von: YYYY-MM-DD (Default: heute - 30 Tage)
     - datum_bis: YYYY-MM-DD (Default: heute)
     - lokale_nr: Filtern nach lokale_nr
     - absender_code: Filtern nach Absender-Code
+    - teilenummer: Filtern nach Teilenummer
+    - suche: Volltextsuche (Bestellnummer, Lokale Nr, Teilenummer)
     - limit: Max. Anzahl (Default: 100)
     - offset: Offset für Pagination (Default: 0)
     """
@@ -93,15 +87,39 @@ def get_bestellungen():
         datum_bis = request.args.get('datum_bis', datetime.now().strftime('%Y-%m-%d'))
         lokale_nr = request.args.get('lokale_nr')
         absender_code = request.args.get('absender_code')
+        teilenummer = request.args.get('teilenummer')
+        suche = request.args.get('suche')
         limit = int(request.args.get('limit', 100))
         offset = int(request.args.get('offset', 0))
         
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Base Query
-        query = """
-            SELECT 
+        # Base Filter
+        where_conditions = ["DATE(b.bestelldatum) >= ?", "DATE(b.bestelldatum) <= ?"]
+        params = [datum_von, datum_bis]
+        
+        if lokale_nr:
+            where_conditions.append("b.lokale_nr = ?")
+            params.append(lokale_nr)
+            
+        if absender_code:
+            where_conditions.append("b.absender_code = ?")
+            params.append(absender_code)
+            
+        if teilenummer:
+            where_conditions.append("EXISTS (SELECT 1 FROM stellantis_positionen p WHERE p.bestellung_id = b.id AND p.teilenummer LIKE ?)")
+            params.append(f"%{teilenummer}%")
+            
+        if suche:
+            where_conditions.append("(b.bestellnummer LIKE ? OR b.lokale_nr LIKE ? OR EXISTS (SELECT 1 FROM stellantis_positionen p WHERE p.bestellung_id = b.id AND p.teilenummer LIKE ?))")
+            params.extend([f"%{suche}%", f"%{suche}%", f"%{suche}%"])
+        
+        where_clause = " AND ".join(where_conditions)
+        
+        # 1. BESTELLUNGEN mit Pagination
+        query = f"""
+            SELECT
                 b.id,
                 b.bestellnummer,
                 b.bestelldatum,
@@ -110,49 +128,70 @@ def get_bestellungen():
                 b.empfaenger_code,
                 b.lokale_nr,
                 b.url,
-                COUNT(p.id) as anzahl_positionen,
-                ROUND(SUM(p.summe_inkl_mwst), 2) as gesamtwert,
+                (SELECT COUNT(*) FROM stellantis_positionen WHERE bestellung_id = b.id) as anzahl_positionen,
+                (SELECT COALESCE(ROUND(SUM(summe_inkl_mwst), 2), 0) FROM stellantis_positionen WHERE bestellung_id = b.id) as gesamtwert,
                 b.import_timestamp
             FROM stellantis_bestellungen b
-            LEFT JOIN stellantis_positionen p ON b.id = p.bestellung_id
-            WHERE DATE(b.bestelldatum) >= ? AND DATE(b.bestelldatum) <= ?
+            WHERE {where_clause}
+            ORDER BY b.bestelldatum DESC 
+            LIMIT ? OFFSET ?
         """
-        
-        params = [datum_von, datum_bis]
-        
-        # Zusätzliche Filter
-        if lokale_nr:
-            query += " AND b.lokale_nr = ?"
-            params.append(lokale_nr)
-            
-        if absender_code:
-            query += " AND b.absender_code = ?"
-            params.append(absender_code)
-        
-        query += " GROUP BY b.id ORDER BY b.bestelldatum DESC LIMIT ? OFFSET ?"
-        params.extend([limit, offset])
-        
-        cursor.execute(query, params)
+        cursor.execute(query, params + [limit, offset])
         bestellungen = rows_to_list(cursor.fetchall())
         
-        # Gesamtanzahl für Pagination
-        count_query = """
+        # 2. GESAMT-ANZAHL
+        count_query = f"""
             SELECT COUNT(*) as total
             FROM stellantis_bestellungen b
-            WHERE DATE(b.bestelldatum) >= ? AND DATE(b.bestelldatum) <= ?
+            WHERE {where_clause}
         """
-        count_params = [datum_von, datum_bis]
-        
-        if lokale_nr:
-            count_query += " AND b.lokale_nr = ?"
-            count_params.append(lokale_nr)
-            
-        if absender_code:
-            count_query += " AND b.absender_code = ?"
-            count_params.append(absender_code)
-        
-        cursor.execute(count_query, count_params)
+        cursor.execute(count_query, params)
         total = cursor.fetchone()['total']
+        
+        # 3. STATISTIKEN
+        if total > 0:
+            # Hole alle IDs die dem Filter entsprechen
+            ids_query = f"""
+                SELECT b.id
+                FROM stellantis_bestellungen b
+                WHERE {where_clause}
+            """
+            cursor.execute(ids_query, params)
+            bestellung_ids = [row['id'] for row in cursor.fetchall()]
+            
+            # Stats über diese IDs
+            if bestellung_ids:
+                placeholders = ','.join('?' * len(bestellung_ids))
+                stats_query = f"""
+                    SELECT
+                        COUNT(*) as total_positionen,
+                        COALESCE(SUM(summe_inkl_mwst), 0) as gesamtwert
+                    FROM stellantis_positionen
+                    WHERE bestellung_id IN ({placeholders})
+                """
+                cursor.execute(stats_query, bestellung_ids)
+                stats_row = cursor.fetchone()
+                
+                stats = {
+                    'total_bestellungen': total,
+                    'total_positionen': int(stats_row['total_positionen'] or 0),
+                    'durchschnitt_positionen': round((stats_row['total_positionen'] or 0) / total, 1),
+                    'gesamtwert': round(float(stats_row['gesamtwert'] or 0), 2)
+                }
+            else:
+                stats = {
+                    'total_bestellungen': total,
+                    'total_positionen': 0,
+                    'durchschnitt_positionen': 0,
+                    'gesamtwert': 0
+                }
+        else:
+            stats = {
+                'total_bestellungen': 0,
+                'total_positionen': 0,
+                'durchschnitt_positionen': 0,
+                'gesamtwert': 0
+            }
         
         conn.close()
         
@@ -161,7 +200,8 @@ def get_bestellungen():
             'total': total,
             'limit': limit,
             'offset': offset,
-            'has_more': (offset + limit) < total
+            'has_more': (offset + limit) < total,
+            'stats': stats
         })
         
     except Exception as e:
@@ -169,7 +209,7 @@ def get_bestellungen():
             'error': str(e)
         }), 500
 
-
+@stellantis_api.route('/api/stellantis/bestellung/<bestellnummer>', methods=['GET'])
 @stellantis_api.route('/api/stellantis/bestellungen/<bestellnummer>', methods=['GET'])
 def get_bestellung_detail(bestellnummer):
     """
@@ -193,32 +233,17 @@ def get_bestellung_detail(bestellnummer):
         
         # Positionen
         cursor.execute("""
-            SELECT 
-                id,
-                teilenummer,
-                beschreibung,
-                menge,
-                menge_in_lieferung,
-                menge_in_bestellung,
-                preis_ohne_mwst_text,
-                preis_mit_mwst_text,
-                summe_inkl_mwst_text,
-                preis_ohne_mwst,
-                preis_mit_mwst,
-                summe_inkl_mwst
-            FROM stellantis_positionen
+            SELECT * FROM stellantis_positionen
             WHERE bestellung_id = ?
             ORDER BY id
         """, (bestellung['id'],))
         
         positionen = rows_to_list(cursor.fetchall())
         
-        # Statistik berechnen
-        gesamtwert = sum(p['summe_inkl_mwst'] or 0 for p in positionen)
-        
-        bestellung['positionen'] = positionen
+        # Berechne Gesamtwerte
         bestellung['anzahl_positionen'] = len(positionen)
-        bestellung['gesamtwert'] = round(gesamtwert, 2)
+        bestellung['gesamtwert'] = round(sum(p.get('summe_inkl_mwst', 0) or 0 for p in positionen), 2)
+        bestellung['positionen'] = positionen
         
         conn.close()
         
@@ -229,376 +254,36 @@ def get_bestellung_detail(bestellnummer):
             'error': str(e)
         }), 500
 
-
-@stellantis_api.route('/api/stellantis/positionen', methods=['GET'])
-def get_positionen():
-    """
-    Hole alle Positionen mit optionalen Filtern
-    
-    Query Parameters:
-    - teilenummer: Filtern nach Teilenummer
-    - beschreibung: Suchen in Beschreibung (LIKE)
-    - limit: Max. Anzahl (Default: 100)
-    """
+@stellantis_api.route('/api/stellantis/absender', methods=['GET'])
+def get_absender():
+    """Hole Liste aller eindeutigen Absender"""
     try:
-        teilenummer = request.args.get('teilenummer')
-        beschreibung = request.args.get('beschreibung')
-        limit = int(request.args.get('limit', 100))
-        
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        query = """
-            SELECT 
-                p.*,
-                b.bestellnummer,
-                b.bestelldatum,
-                b.lokale_nr
-            FROM stellantis_positionen p
-            JOIN stellantis_bestellungen b ON p.bestellung_id = b.id
-            WHERE 1=1
-        """
-        
-        params = []
-        
-        if teilenummer:
-            query += " AND p.teilenummer = ?"
-            params.append(teilenummer)
-            
-        if beschreibung:
-            query += " AND p.beschreibung LIKE ?"
-            params.append(f'%{beschreibung}%')
-        
-        query += " ORDER BY b.bestelldatum DESC LIMIT ?"
-        params.append(limit)
-        
-        cursor.execute(query, params)
-        positionen = rows_to_list(cursor.fetchall())
-        
-        conn.close()
-        
-        return jsonify({
-            'positionen': positionen,
-            'count': len(positionen)
-        })
-        
-    except Exception as e:
-        return jsonify({
-            'error': str(e)
-        }), 500
-
-
-@stellantis_api.route('/api/stellantis/top-teile', methods=['GET'])
-def get_top_teile():
-    """
-    Hole die häufigsten Teile
-    
-    Query Parameters:
-    - limit: Anzahl Top-Teile (Default: 10)
-    - datum_von: YYYY-MM-DD
-    - datum_bis: YYYY-MM-DD
-    """
-    try:
-        limit = int(request.args.get('limit', 10))
-        datum_von = request.args.get('datum_von')
-        datum_bis = request.args.get('datum_bis')
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        query = """
-            SELECT 
-                p.teilenummer,
-                p.beschreibung,
-                COUNT(*) as anzahl_bestellungen,
-                SUM(p.menge) as gesamt_menge,
-                ROUND(AVG(p.preis_ohne_mwst), 2) as durchschnittspreis,
-                ROUND(SUM(p.summe_inkl_mwst), 2) as gesamtwert,
-                MAX(b.bestelldatum) as letzte_bestellung
-            FROM stellantis_positionen p
-            JOIN stellantis_bestellungen b ON p.bestellung_id = b.id
-            WHERE 1=1
-        """
-        
-        params = []
-        
-        if datum_von:
-            query += " AND DATE(b.bestelldatum) >= ?"
-            params.append(datum_von)
-            
-        if datum_bis:
-            query += " AND DATE(b.bestelldatum) <= ?"
-            params.append(datum_bis)
-        
-        query += """
-            GROUP BY p.teilenummer, p.beschreibung
-            ORDER BY anzahl_bestellungen DESC
-            LIMIT ?
-        """
-        params.append(limit)
-        
-        cursor.execute(query, params)
-        top_teile = rows_to_list(cursor.fetchall())
-        
-        conn.close()
-        
-        return jsonify({
-            'top_teile': top_teile,
-            'count': len(top_teile)
-        })
-        
-    except Exception as e:
-        return jsonify({
-            'error': str(e)
-        }), 500
-
-
-@stellantis_api.route('/api/stellantis/statistik', methods=['GET'])
-def get_statistik():
-    """
-    Hole Gesamt-Statistik
-    
-    Query Parameters:
-    - datum_von: YYYY-MM-DD (Default: heute - 30 Tage)
-    - datum_bis: YYYY-MM-DD (Default: heute)
-    """
-    try:
-        datum_von = request.args.get('datum_von', (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'))
-        datum_bis = request.args.get('datum_bis', datetime.now().strftime('%Y-%m-%d'))
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Basis-Statistik
         cursor.execute("""
-            SELECT 
-                COUNT(DISTINCT b.id) as anzahl_bestellungen,
-                COUNT(p.id) as anzahl_positionen,
-                ROUND(SUM(p.summe_inkl_mwst), 2) as gesamtwert,
-                ROUND(AVG(p.summe_inkl_mwst), 2) as durchschnitt_position,
-                COUNT(DISTINCT p.teilenummer) as anzahl_verschiedene_teile
-            FROM stellantis_bestellungen b
-            LEFT JOIN stellantis_positionen p ON b.id = p.bestellung_id
-            WHERE DATE(b.bestelldatum) >= ? AND DATE(b.bestelldatum) <= ?
-        """, (datum_von, datum_bis))
-        
-        statistik = row_to_dict(cursor.fetchone())
-        
-        # Bestellungen pro Tag
-        cursor.execute("""
-            SELECT 
-                DATE(bestelldatum) as datum,
-                COUNT(*) as anzahl
+            SELECT DISTINCT
+                absender_code as code,
+                absender_name as name,
+                COUNT(*) as anzahl_bestellungen
             FROM stellantis_bestellungen
-            WHERE DATE(bestelldatum) >= ? AND DATE(bestelldatum) <= ?
-            GROUP BY DATE(bestelldatum)
-            ORDER BY datum
-        """, (datum_von, datum_bis))
-        
-        bestellungen_pro_tag = rows_to_list(cursor.fetchall())
-        
-        # Top 5 Absender
-        cursor.execute("""
-            SELECT 
-                absender_code,
-                absender_name,
-                COUNT(*) as anzahl
-            FROM stellantis_bestellungen
-            WHERE DATE(bestelldatum) >= ? AND DATE(bestelldatum) <= ?
+            WHERE absender_code IS NOT NULL
             GROUP BY absender_code, absender_name
-            ORDER BY anzahl DESC
-            LIMIT 5
-        """, (datum_von, datum_bis))
+            ORDER BY anzahl_bestellungen DESC
+        """)
         
-        top_absender = rows_to_list(cursor.fetchall())
-        
-        # Top 5 lokale_nr
-        cursor.execute("""
-            SELECT 
-                lokale_nr,
-                COUNT(*) as anzahl,
-                ROUND(SUM(
-                    (SELECT SUM(summe_inkl_mwst) FROM stellantis_positionen WHERE bestellung_id = b.id)
-                ), 2) as gesamtwert
-            FROM stellantis_bestellungen b
-            WHERE DATE(bestelldatum) >= ? AND DATE(bestelldatum) <= ?
-            AND lokale_nr IS NOT NULL
-            GROUP BY lokale_nr
-            ORDER BY anzahl DESC
-            LIMIT 5
-        """, (datum_von, datum_bis))
-        
-        top_lokale_nr = rows_to_list(cursor.fetchall())
-        
+        absender = rows_to_list(cursor.fetchall())
         conn.close()
         
         return jsonify({
-            'zeitraum': {
-                'von': datum_von,
-                'bis': datum_bis
-            },
-            'statistik': statistik,
-            'bestellungen_pro_tag': bestellungen_pro_tag,
-            'top_absender': top_absender,
-            'top_lokale_nr': top_lokale_nr
+            'absender': absender,
+            'anzahl': len(absender)
         })
         
     except Exception as e:
         return jsonify({
             'error': str(e)
         }), 500
-
-
-@stellantis_api.route('/api/stellantis/suche', methods=['GET'])
-def suche():
-    """
-    Universelle Suche über Bestellungen und Positionen
-    
-    Query Parameters:
-    - q: Suchbegriff
-    - limit: Max. Ergebnisse (Default: 20)
-    """
-    try:
-        suchbegriff = request.args.get('q', '').strip()
-        limit = int(request.args.get('limit', 20))
-        
-        if not suchbegriff:
-            return jsonify({
-                'error': 'Suchbegriff fehlt'
-            }), 400
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Suche in Bestellungen
-        cursor.execute("""
-            SELECT 
-                'bestellung' as typ,
-                id,
-                bestellnummer as nummer,
-                bestelldatum as datum,
-                lokale_nr,
-                absender_name as details
-            FROM stellantis_bestellungen
-            WHERE bestellnummer LIKE ?
-               OR lokale_nr LIKE ?
-               OR absender_name LIKE ?
-            LIMIT ?
-        """, (f'%{suchbegriff}%', f'%{suchbegriff}%', f'%{suchbegriff}%', limit))
-        
-        bestellungen_treffer = rows_to_list(cursor.fetchall())
-        
-        # Suche in Positionen
-        cursor.execute("""
-            SELECT 
-                'position' as typ,
-                p.id,
-                p.teilenummer as nummer,
-                b.bestelldatum as datum,
-                b.lokale_nr,
-                p.beschreibung as details
-            FROM stellantis_positionen p
-            JOIN stellantis_bestellungen b ON p.bestellung_id = b.id
-            WHERE p.teilenummer LIKE ?
-               OR p.beschreibung LIKE ?
-            LIMIT ?
-        """, (f'%{suchbegriff}%', f'%{suchbegriff}%', limit))
-        
-        positionen_treffer = rows_to_list(cursor.fetchall())
-        
-        conn.close()
-        
-        # Kombiniere Ergebnisse
-        ergebnisse = bestellungen_treffer + positionen_treffer
-        ergebnisse.sort(key=lambda x: x['datum'], reverse=True)
-        
-        return jsonify({
-            'suchbegriff': suchbegriff,
-            'ergebnisse': ergebnisse[:limit],
-            'anzahl_bestellungen': len(bestellungen_treffer),
-            'anzahl_positionen': len(positionen_treffer),
-            'gesamt': len(ergebnisse)
-        })
-        
-    except Exception as e:
-        return jsonify({
-            'error': str(e)
-        }), 500
-
-
-# =============================================================================
-# EXPORT ENDPOINTS
-# =============================================================================
-
-@stellantis_api.route('/api/stellantis/export/csv', methods=['GET'])
-def export_csv():
-    """
-    Exportiere Bestellungen als CSV
-    """
-    try:
-        from io import StringIO
-        import csv
-        
-        datum_von = request.args.get('datum_von', (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'))
-        datum_bis = request.args.get('datum_bis', datetime.now().strftime('%Y-%m-%d'))
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT 
-                b.bestellnummer,
-                b.bestelldatum,
-                b.absender_code,
-                b.absender_name,
-                b.empfaenger_code,
-                b.lokale_nr,
-                p.teilenummer,
-                p.beschreibung,
-                p.menge,
-                p.preis_ohne_mwst,
-                p.summe_inkl_mwst
-            FROM stellantis_bestellungen b
-            LEFT JOIN stellantis_positionen p ON b.id = p.bestellung_id
-            WHERE DATE(b.bestelldatum) >= ? AND DATE(b.bestelldatum) <= ?
-            ORDER BY b.bestelldatum DESC
-        """, (datum_von, datum_bis))
-        
-        rows = cursor.fetchall()
-        conn.close()
-        
-        # CSV erstellen
-        si = StringIO()
-        writer = csv.writer(si, delimiter=';')
-        
-        # Header
-        writer.writerow([
-            'Bestellnummer', 'Bestelldatum', 'Absender Code', 'Absender Name',
-            'Empfänger Code', 'Lokale Nr', 'Teilenummer', 'Beschreibung',
-            'Menge', 'Preis (netto)', 'Summe (brutto)'
-        ])
-        
-        # Daten
-        for row in rows:
-            writer.writerow(row)
-        
-        output = si.getvalue()
-        si.close()
-        
-        from flask import Response
-        return Response(
-            output,
-            mimetype='text/csv',
-            headers={
-                'Content-Disposition': f'attachment; filename=stellantis_bestellungen_{datum_von}_{datum_bis}.csv'
-            }
-        )
-        
-    except Exception as e:
-        return jsonify({
-            'error': str(e)
-        }), 500
-
 
 if __name__ == '__main__':
     print("Stellantis API - Standalone-Test nicht möglich")

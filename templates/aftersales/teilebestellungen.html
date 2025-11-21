@@ -1,0 +1,323 @@
+{% extends "base.html" %}
+
+{% block title %}Teilebestellungen - Stellantis ServiceBox{% endblock %}
+
+{% block extra_css %}
+<style>
+.stats-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+.stats-card h3 {
+    font-size: 2rem;
+    margin: 0;
+    font-weight: 700;
+}
+.stats-card p {
+    margin: 5px 0 0 0;
+    opacity: 0.9;
+}
+.table-hover tbody tr:hover {
+    background-color: #f8f9fa;
+    cursor: pointer;
+}
+.badge-stellantis {
+    background-color: #667eea;
+    color: white;
+}
+.filter-section {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1>
+                <i class="bi bi-box-seam"></i> 
+                Teilebestellungen
+                <span class="badge badge-stellantis">Stellantis ServiceBox</span>
+            </h1>
+            <p class="text-muted">Übersicht aller Teilebestellungen vom BTZ (Bayerische Teilezentrum)</p>
+        </div>
+    </div>
+
+    <!-- Statistik Cards -->
+    <div class="row mb-4" id="statsCards">
+        <div class="col-md-4">
+            <div class="stats-card">
+                <h3 id="totalBestellungen">-</h3>
+                <p>Bestellungen</p>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="stats-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                <h3 id="totalPositionen">-</h3>
+                <p>Positionen</p>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="stats-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                <h3 id="gesamtwert">-</h3>
+                <p>Gesamtwert (geschätzt)</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter Section -->
+    <div class="filter-section">
+        <div class="row">
+            <div class="col-md-3">
+                <label>Von Datum:</label>
+                <input type="date" class="form-control" id="filterDatumVon">
+            </div>
+            <div class="col-md-3">
+                <label>Bis Datum:</label>
+                <input type="date" class="form-control" id="filterDatumBis">
+            </div>
+            <div class="col-md-3">
+                <label>Absender:</label>
+                <select class="form-control" id="filterAbsender">
+                    <option value="">Alle</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label>Suche (Bestellnr, Lokale Nr):</label>
+                <input type="text" class="form-control" id="filterSuche" placeholder="Suche...">
+            </div>
+        </div>
+        <div class="row mt-3">
+            <div class="col-12">
+                <button class="btn btn-primary" onclick="loadBestellungen()">
+                    <i class="bi bi-search"></i> Filtern
+                </button>
+                <button class="btn btn-secondary" onclick="resetFilter()">
+                    <i class="bi bi-x-circle"></i> Filter zurücksetzen
+                </button>
+                <button class="btn btn-success" onclick="exportCSV()">
+                    <i class="bi bi-download"></i> CSV Export
+                </button>
+                <button class="btn btn-info" onclick="loadBestellungen()">
+                    <i class="bi bi-arrow-clockwise"></i> Aktualisieren
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div id="loadingSpinner" class="text-center" style="display: none;">
+        <div class="spinner-border text-primary" role="status">
+            <span class="sr-only">Laden...</span>
+        </div>
+        <p>Lade Bestellungen...</p>
+    </div>
+
+    <!-- Bestellungen Tabelle -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="bi bi-list-ul"></i> Bestellungen
+                <span class="badge badge-secondary" id="tableCount">0</span>
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped" id="bestellungenTable">
+                    <thead class="thead-dark">
+                        <tr>
+                            <th>Datum</th>
+                            <th>Bestellnummer</th>
+                            <th>Absender</th>
+                            <th>Lokale Nr</th>
+                            <th>Positionen</th>
+                            <th>Aktionen</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bestellungenBody">
+                        <tr>
+                            <td colspan="6" class="text-center">Keine Daten geladen</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let bestellungenData = [];
+
+// Beim Laden der Seite
+$(document).ready(function() {
+    loadBestellungen();
+    loadAbsenderFilter();
+    
+    // Enter-Taste in Suche
+    $('#filterSuche').keypress(function(e) {
+        if (e.which == 13) {
+            loadBestellungen();
+        }
+    });
+});
+
+// Bestellungen laden
+function loadBestellungen() {
+    $('#loadingSpinner').show();
+    $('#bestellungenBody').html('<tr><td colspan="6" class="text-center">Lade...</td></tr>');
+    
+    // Filter-Parameter sammeln
+    const params = new URLSearchParams();
+    
+    const datumVon = $('#filterDatumVon').val();
+    const datumBis = $('#filterDatumBis').val();
+    const absender = $('#filterAbsender').val();
+    const suche = $('#filterSuche').val();
+    
+    if (datumVon) params.append('datum_von', datumVon);
+    if (datumBis) params.append('datum_bis', datumBis);
+    if (absender) params.append('absender_code', absender);
+    if (suche) params.append('suche', suche);
+    
+    // API-Call
+    $.ajax({
+        url: '/api/stellantis/bestellungen?' + params.toString(),
+        method: 'GET',
+        success: function(data) {
+            bestellungenData = data.bestellungen || [];
+            renderBestellungen(bestellungenData);
+            updateStats(data.stats || {});
+            $('#loadingSpinner').hide();
+        },
+        error: function(xhr, status, error) {
+            console.error('Fehler beim Laden:', error);
+            $('#bestellungenBody').html('<tr><td colspan="6" class="text-center text-danger">Fehler beim Laden der Daten</td></tr>');
+            $('#loadingSpinner').hide();
+            alert('Fehler beim Laden der Bestellungen: ' + error);
+        }
+    });
+}
+
+// Bestellungen rendern
+function renderBestellungen(bestellungen) {
+    const tbody = $('#bestellungenBody');
+    tbody.empty();
+    
+    if (bestellungen.length === 0) {
+        tbody.html('<tr><td colspan="6" class="text-center">Keine Bestellungen gefunden</td></tr>');
+        $('#tableCount').text('0');
+        return;
+    }
+    
+    $('#tableCount').text(bestellungen.length);
+    
+    bestellungen.forEach(function(b) {
+        const row = `
+            <tr onclick="openDetail('${b.bestellnummer}')">
+                <td>${formatDate(b.bestelldatum)}</td>
+                <td><strong>${b.bestellnummer}</strong></td>
+                <td>
+                    <span class="badge badge-info">${b.absender_code || '-'}</span><br>
+                    <small>${b.absender_name || '-'}</small>
+                </td>
+                <td>${b.lokale_nr || '-'}</td>
+                <td>
+                    <span class="badge badge-primary">${b.anzahl_positionen || 0}</span>
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); openDetail('${b.bestellnummer}')">
+                        <i class="bi bi-eye"></i> Details
+                    </button>
+                </td>
+            </tr>
+        `;
+        tbody.append(row);
+    });
+}
+
+// Statistik aktualisieren
+function updateStats(stats) {
+    $('#totalBestellungen').text(stats.total_bestellungen || 0);
+    $('#totalPositionen').text(stats.total_positionen || 0);
+    $('#gesamtwert').text((stats.durchschnitt_positionen || 0).toFixed(1) + ' Pos/Best.');
+}
+
+// Absender-Filter laden
+function loadAbsenderFilter() {
+    $.ajax({
+        url: '/api/stellantis/absender',
+        method: 'GET',
+        success: function(data) {
+            const select = $('#filterAbsender');
+            select.empty();
+            select.append('<option value="">Alle</option>');
+            
+            if (data.absender) {
+                data.absender.forEach(function(a) {
+                    select.append(`<option value="${a.code}">${a.code} - ${a.name}</option>`);
+                });
+            }
+        }
+    });
+}
+
+// Detail-Ansicht öffnen
+function openDetail(bestellnummer) {
+    window.location.href = '/aftersales/teile/bestellung/' + bestellnummer;
+}
+
+// Filter zurücksetzen
+function resetFilter() {
+    $('#filterDatumVon').val('');
+    $('#filterDatumBis').val('');
+    $('#filterAbsender').val('');
+    $('#filterSuche').val('');
+    loadBestellungen();
+}
+
+// CSV Export
+function exportCSV() {
+    if (bestellungenData.length === 0) {
+        alert('Keine Daten zum Exportieren');
+        return;
+    }
+    
+    let csv = 'Datum;Bestellnummer;Absender Code;Absender Name;Lokale Nr;Positionen\n';
+    
+    bestellungenData.forEach(function(b) {
+        csv += `${formatDate(b.bestelldatum)};${b.bestellnummer};${b.absender_code || ''};${b.absender_name || ''};${b.lokale_nr || ''};${b.anzahl_positionen || 0}\n`;
+    });
+    
+    // Download
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'teilebestellungen_' + new Date().toISOString().split('T')[0] + '.csv';
+    link.click();
+}
+
+// Datum formatieren
+function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('de-DE', { 
+        day: '2-digit', 
+        month: '2-digit', 
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+</script>
+{% endblock %}

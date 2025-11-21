@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block title %}Bestellung {{ bestellnummer }} - Details{% endblock %}
+
+{% block extra_css %}
+<style>
+.detail-card {
+    border-left: 4px solid #667eea;
+    margin-bottom: 20px;
+}
+.position-row {
+    border-bottom: 1px solid #dee2e6;
+    padding: 10px 0;
+}
+.position-row:last-child {
+    border-bottom: none;
+}
+.badge-artikelnr {
+    background-color: #28a745;
+    color: white;
+    font-family: monospace;
+    font-size: 0.9rem;
+}
+.info-label {
+    font-weight: 600;
+    color: #6c757d;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    
+    <!-- Zurück-Button -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <a href="/aftersales/teile/bestellungen" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Zurück zur Übersicht
+            </a>
+        </div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div id="loadingSpinner" class="text-center">
+        <div class="spinner-border text-primary" role="status">
+            <span class="sr-only">Laden...</span>
+        </div>
+        <p>Lade Bestelldetails...</p>
+    </div>
+
+    <!-- Bestellung Header -->
+    <div class="row" id="bestellungHeader" style="display: none;">
+        <div class="col-12">
+            <div class="card detail-card">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">
+                        <i class="bi bi-box-seam"></i> 
+                        Bestellung <strong id="headerBestellnummer">{{ bestellnummer }}</strong>
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <p class="info-label">Bestelldatum:</p>
+                            <p id="headerDatum">-</p>
+                        </div>
+                        <div class="col-md-3">
+                            <p class="info-label">Absender:</p>
+                            <p id="headerAbsender">-</p>
+                        </div>
+                        <div class="col-md-3">
+                            <p class="info-label">Empfänger:</p>
+                            <p id="headerEmpfaenger">-</p>
+                        </div>
+                        <div class="col-md-3">
+                            <p class="info-label">Lokale Nr:</p>
+                            <p id="headerLokaleNr">-</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Positionen -->
+    <div class="row mt-4" id="positionenSection" style="display: none;">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-list-ul"></i> 
+                        Positionen
+                        <span class="badge badge-primary" id="positionenCount">0</span>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="positionenList">
+                        <!-- Wird mit JavaScript gefüllt -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const bestellnummer = '{{ bestellnummer }}';
+
+$(document).ready(function() {
+    loadBestellungDetail();
+});
+
+function loadBestellungDetail() {
+    $('#loadingSpinner').show();
+    $('#bestellungHeader').hide();
+    $('#positionenSection').hide();
+    
+    $.ajax({
+        url: '/api/stellantis/bestellung/' + bestellnummer,
+        method: 'GET',
+        success: function(data) {
+            // WICHTIG: data enthält die Bestellung direkt, nicht als data.bestellung
+            renderBestellungHeader(data);
+            renderPositionen(data.positionen);
+            $('#loadingSpinner').hide();
+            $('#bestellungHeader').show();
+            $('#positionenSection').show();
+        },
+        error: function(xhr, status, error) {
+            console.error('Fehler beim Laden:', error);
+            $('#loadingSpinner').hide();
+            alert('Fehler beim Laden der Bestellung: ' + error);
+        }
+    });
+}
+
+function renderBestellungHeader(bestellung) {
+    $('#headerBestellnummer').text(bestellung.bestellnummer);
+    $('#headerDatum').text(formatDate(bestellung.bestelldatum));
+    $('#headerAbsender').html(`
+        <span class="badge badge-info">${bestellung.absender_code || '-'}</span><br>
+        ${bestellung.absender_name || '-'}
+    `);
+    $('#headerEmpfaenger').html(`
+        <span class="badge badge-secondary">${bestellung.empfaenger_code || '-'}</span>
+    `);
+    $('#headerLokaleNr').html(`<strong>${bestellung.lokale_nr || '-'}</strong>`);
+}
+
+function renderPositionen(positionen) {
+    const container = $('#positionenList');
+    container.empty();
+    
+    if (!positionen || positionen.length === 0) {
+        container.html('<p class="text-center text-muted">Keine Positionen gefunden</p>');
+        $('#positionenCount').text('0');
+        return;
+    }
+    
+    $('#positionenCount').text(positionen.length);
+    
+    positionen.forEach(function(pos, index) {
+        const posHtml = `
+            <div class="position-row">
+                <div class="row">
+                    <div class="col-md-1">
+                        <strong>Pos. ${index + 1}</strong>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="badge badge-artikelnr">${pos.teilenummer || '-'}</span>
+                    </div>
+                    <div class="col-md-4">
+                        <strong>${pos.beschreibung || '-'}</strong>
+                    </div>
+                    <div class="col-md-2 text-center">
+                        Menge: <strong>${pos.menge || '-'}</strong>
+                    </div>
+                    <div class="col-md-2 text-right">
+                        ${pos.preis_ohne_mwst ? formatPrice(pos.preis_ohne_mwst) + ' €' : '-'}
+                    </div>
+                </div>
+            </div>
+        `;
+        container.append(posHtml);
+    });
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('de-DE', { 
+        day: '2-digit', 
+        month: '2-digit', 
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function formatPrice(price) {
+    if (!price) return '-';
+    return parseFloat(price).toFixed(2).replace('.', ',');
+}
+</script>
+{% endblock %}

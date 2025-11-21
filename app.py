@@ -246,3 +246,7 @@ def dashboard():
     from datetime import datetime
     return render_template('dashboard.html', now=datetime.now())
 
+
+# After Sales Routes
+from routes.aftersales import teile_routes
+app.register_blueprint(teile_routes.bp)
