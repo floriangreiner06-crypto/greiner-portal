@@ -9,7 +9,7 @@ Kompatibel mit ECHTEM DB-Schema (TAG 71 Fix)
 - Keine nicht-existierenden Views mehr
 - Direkte Queries auf Tabellen
 
-Fixed: 21.11.2025
+Fixed: 21.11.2025 - TAG 72 - Einkaufsfinanzierung repariert
 """
 
 from flask import Blueprint, jsonify, request
@@ -429,20 +429,27 @@ def get_transaktionen():
         }), 500
 
 # ============================================================================
-# ENDPOINT 4: EINKAUFSFINANZIERUNG
+# ENDPOINT 4: EINKAUFSFINANZIERUNG (FIXED - TAG 72)
 # ============================================================================
 
 @bankenspiegel_api.route('/einkaufsfinanzierung', methods=['GET'])
 def get_einkaufsfinanzierung():
     """
     GET /api/bankenspiegel/einkaufsfinanzierung
-    Einkaufsfinanzierung - Übersicht
+    Einkaufsfinanzierung - Übersicht Stellantis & Santander
+
+    Returns:
+        JSON mit:
+        - gesamt: Gesamt-Statistik
+        - institute: Liste mit Daten pro Institut
+        - top_fahrzeuge: Teuerste Fahrzeuge
+        - warnungen: Zinsfreiheit-Warnungen
     """
     try:
         conn = get_db()
         cursor = conn.cursor()
 
-        # Gesamt-Übersicht
+        # 1. GESAMT-ÜBERSICHT
         cursor.execute("""
             SELECT
                 COUNT(*) as anzahl_fahrzeuge,
@@ -453,7 +460,7 @@ def get_einkaufsfinanzierung():
         """)
         gesamt_row = cursor.fetchone()
 
-        # Institute
+        # 2. DATEN PRO INSTITUT
         cursor.execute("""
             SELECT DISTINCT finanzinstitut
             FROM fahrzeugfinanzierungen
@@ -463,6 +470,7 @@ def get_einkaufsfinanzierung():
 
         institute = []
         for institut in institute_liste:
+            # Statistik pro Institut
             cursor.execute("""
                 SELECT
                     COUNT(*) as anzahl,
@@ -477,6 +485,7 @@ def get_einkaufsfinanzierung():
             """, (institut,))
             stats = cursor.fetchone()
 
+            # Marken-Verteilung
             cursor.execute("""
                 SELECT
                     rrdi,
@@ -487,7 +496,21 @@ def get_einkaufsfinanzierung():
                 GROUP BY rrdi
                 ORDER BY anzahl DESC
             """, (institut,))
-            marken = rows_to_list(cursor.fetchall())
+            marken = []
+            for row in cursor.fetchall():
+                marke_name = row['rrdi'] if row['rrdi'] else "Unbekannt"
+                # Vereinfachung für Stellantis
+                if institut == 'Stellantis':
+                    if "0154X" in str(marke_name):
+                        marke_name = "Leapmotor"
+                    else:
+                        marke_name = "Opel/Hyundai"
+
+                marken.append({
+                    'name': marke_name,
+                    'anzahl': row['anzahl'],
+                    'finanzierung': float(row['finanzierung']) if row['finanzierung'] else 0
+                })
 
             institute.append({
                 'name': institut,
@@ -495,7 +518,68 @@ def get_einkaufsfinanzierung():
                 'finanzierung': float(stats['finanzierung']) if stats['finanzierung'] else 0,
                 'original': float(stats['original']) if stats['original'] else 0,
                 'durchschnitt': float(stats['durchschnitt']) if stats['durchschnitt'] else 0,
+                'aeltestes': stats['aeltestes_fahrzeug'],
+                'min_zinsfreiheit': stats['min_zinsfreiheit'],
+                'abbezahlt': float(stats['abbezahlt']) if stats['abbezahlt'] else 0,
                 'marken': marken
+            })
+
+        # 3. TOP 10 TEUERSTE FAHRZEUGE
+        cursor.execute("""
+            SELECT
+                finanzinstitut,
+                vin,
+                modell,
+                rrdi,
+                aktueller_saldo,
+                original_betrag,
+                alter_tage,
+                zinsfreiheit_tage
+            FROM fahrzeugfinanzierungen
+            ORDER BY aktueller_saldo DESC
+            LIMIT 10
+        """)
+
+        top_fahrzeuge = []
+        for row in cursor.fetchall():
+            top_fahrzeuge.append({
+                'institut': row['finanzinstitut'],
+                'vin': row['vin'][-8:] if row['vin'] else '???',
+                'modell': row['modell'],
+                'marke': row['rrdi'],
+                'saldo': float(row['aktueller_saldo']) if row['aktueller_saldo'] else 0,
+                'original': float(row['original_betrag']) if row['original_betrag'] else 0,
+                'alter': row['alter_tage'],
+                'zinsfreiheit': row['zinsfreiheit_tage']
+            })
+
+        # 4. ZINSFREIHEIT-WARNUNGEN (< 30 Tage)
+        cursor.execute("""
+            SELECT
+                finanzinstitut,
+                vin,
+                modell,
+                rrdi,
+                zinsfreiheit_tage,
+                aktueller_saldo,
+                alter_tage
+            FROM fahrzeugfinanzierungen
+            WHERE zinsfreiheit_tage IS NOT NULL
+            AND zinsfreiheit_tage < 30
+            ORDER BY zinsfreiheit_tage ASC
+        """)
+
+        warnungen = []
+        for row in cursor.fetchall():
+            warnungen.append({
+                'institut': row['finanzinstitut'],
+                'vin': row['vin'][-8:] if row['vin'] else '???',
+                'modell': row['modell'],
+                'marke': row['rrdi'],
+                'tage_uebrig': row['zinsfreiheit_tage'],
+                'saldo': float(row['aktueller_saldo']) if row['aktueller_saldo'] else 0,
+                'alter': row['alter_tage'],
+                'kritisch': row['zinsfreiheit_tage'] < 15 if row['zinsfreiheit_tage'] else False
             })
 
         conn.close()
@@ -506,9 +590,12 @@ def get_einkaufsfinanzierung():
                 'anzahl_fahrzeuge': gesamt_row['anzahl_fahrzeuge'],
                 'finanzierung': float(gesamt_row['gesamt_finanzierung']) if gesamt_row['gesamt_finanzierung'] else 0,
                 'original': float(gesamt_row['gesamt_original']) if gesamt_row['gesamt_original'] else 0,
-                'abbezahlt': float(gesamt_row['gesamt_abbezahlt']) if gesamt_row['gesamt_abbezahlt'] else 0
+                'abbezahlt': float(gesamt_row['gesamt_abbezahlt']) if gesamt_row['gesamt_abbezahlt'] else 0,
+                'abbezahlt_prozent': round(gesamt_row['gesamt_abbezahlt'] / gesamt_row['gesamt_original'] * 100, 1) if gesamt_row['gesamt_original'] else 0
             },
             'institute': institute,
+            'top_fahrzeuge': top_fahrzeuge,
+            'warnungen': warnungen,
             'timestamp': datetime.now().isoformat()
         }), 200
 
@@ -557,8 +644,16 @@ def get_fahrzeuge_mit_zinsen():
 
         fahrzeuge = [dict(zip(columns, row)) for row in rows]
 
+        # Statistik berechnen
         gesamt_saldo = sum(f.get('aktueller_saldo') or 0 for f in fahrzeuge)
         gesamt_zinsen = sum(f.get('zinsen_gesamt') or 0 for f in fahrzeuge)
+        
+        # Santander vs Stellantis Split
+        santander = [f for f in fahrzeuge if f.get('finanzinstitut') == 'Santander']
+        stellantis = [f for f in fahrzeuge if f.get('finanzinstitut') == 'Stellantis']
+        
+        santander_zinsen = sum(f.get('zinsen_gesamt') or 0 for f in santander)
+        santander_zinsen_monatlich = sum(f.get('zinsen_monatlich_geschaetzt') or 0 for f in santander) if santander else None
 
         conn.close()
 
@@ -568,7 +663,14 @@ def get_fahrzeuge_mit_zinsen():
             'statistik': {
                 'anzahl_fahrzeuge': len(fahrzeuge),
                 'gesamt_saldo': round(gesamt_saldo, 2),
-                'gesamt_zinsen': round(gesamt_zinsen, 2) if gesamt_zinsen > 0 else None
+                'gesamt_zinsen': round(gesamt_zinsen, 2) if gesamt_zinsen > 0 else None,
+                'santander': {
+                    'anzahl': len(santander),
+                    'zinsen_monatlich': round(santander_zinsen_monatlich, 2) if santander_zinsen_monatlich else None
+                },
+                'stellantis': {
+                    'anzahl': len(stellantis)
+                }
             }
         })
 
