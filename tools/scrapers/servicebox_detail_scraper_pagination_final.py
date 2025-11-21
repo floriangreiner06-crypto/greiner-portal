@@ -141,10 +141,10 @@ def click_mehr_bestellungen_mit_validierung(driver):
         
         # Button finden und klicken
         selectors = [
-            (By.LINK_TEXT, "Mehr Bestellungen anzeigen"),
-            (By.PARTIAL_LINK_TEXT, "Mehr Bestellungen"),
-            (By.XPATH, "//a[contains(text(), 'Mehr Bestellungen')]"),
-            (By.CSS_SELECTOR, "a[href*='#']")
+            (By.XPATH, "//input[@value='Mehr Bestellungen anzeigen']"),
+            (By.CSS_SELECTOR, "input.bt-plus[onclick*='displayAll']"),
+            (By.XPATH, "//input[@type='button' and contains(@value, 'Mehr Bestellungen')]"),
+            (By.CSS_SELECTOR, "input[value*='Mehr Bestellungen']")
         ]
         
         button_found = False
