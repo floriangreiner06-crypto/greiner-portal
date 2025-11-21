@@ -55,40 +55,34 @@
                         </a>
                     </li>
 
-                    <!-- Controlling Dropdown -->
+                    <!-- Controlling Dropdown (inkl. Bankenspiegel) -->
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="controllingDropdown" role="button" data-bs-toggle="dropdown">
                             <i class="bi bi-graph-up-arrow"></i> Controlling
                         </a>
                         <ul class="dropdown-menu">
+                            <!-- Dashboard -->
                             <li><a class="dropdown-item" href="/controlling/dashboard">
                                 <i class="bi bi-speedometer2"></i> Dashboard
                             </a></li>
+                            
                             <li><hr class="dropdown-divider"></li>
+                            
+                            <!-- Liquidität & Analysen -->
+                            <li><h6 class="dropdown-header text-muted">Analysen</h6></li>
                             <li><a class="dropdown-item" href="/controlling/liquiditaet">
                                 <i class="bi bi-droplet"></i> Liquidität
                             </a></li>
                             <li><a class="dropdown-item" href="/controlling/zinsen">
                                 <i class="bi bi-percent"></i> Zinsen-Analyse
                             </a></li>
-                            <li><a class="dropdown-item" href="/bankenspiegel/einkaufsfinanzierung">
-                                <i class="bi bi-truck"></i> Einkaufsfinanzierung
-                            </a></li>
+                            
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="/controlling/reports">
-                                <i class="bi bi-file-earmark-bar-graph"></i> Reports
-                            </a></li>
-                        </ul>
-                    </li>
-
-                    <!-- Bankenspiegel Dropdown -->
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="bankenspiegelDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-bank2"></i> Bankenspiegel
-                        </a>
-                        <ul class="dropdown-menu">
+                            
+                            <!-- Bankenspiegel Bereich -->
+                            <li><h6 class="dropdown-header text-muted">Bankenspiegel</h6></li>
                             <li><a class="dropdown-item" href="/bankenspiegel/dashboard">
-                                <i class="bi bi-speedometer2"></i> Dashboard
+                                <i class="bi bi-bank2"></i> Bankenspiegel Dashboard
                             </a></li>
                             <li><a class="dropdown-item" href="/bankenspiegel/konten">
                                 <i class="bi bi-wallet2"></i> Kontenübersicht
@@ -100,16 +94,16 @@
                                 <i class="bi bi-car-front"></i> Fahrzeugfinanzierungen
                             </a></li>
                             <li><a class="dropdown-item" href="/bankenspiegel/einkaufsfinanzierung">
-                                <i class="bi bi-building"></i> Einkaufsfinanzierung
+                                <i class="bi bi-truck"></i> Einkaufsfinanzierung
+                            </a></li>
+                            
+                            <li><hr class="dropdown-divider"></li>
+                            
+                            <!-- Reports -->
+                            <li><a class="dropdown-item" href="/controlling/reports">
+                                <i class="bi bi-file-earmark-bar-graph"></i> Reports
                             </a></li>
                         </ul>
-                    </li>
-
-                    <!-- Urlaubsplaner -->
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'urlaubsplaner_v2' %}active{% endif %}" href="/urlaubsplaner/v2">
-                            <i class="bi bi-calendar-check"></i> Urlaubsplaner
-                        </a>
                     </li>
 
                     <!-- Verkauf Dropdown -->
@@ -125,6 +119,13 @@
                                 <i class="bi bi-truck"></i> Auslieferungen
                             </a></li>
                         </ul>
+                    </li>
+
+                    <!-- Urlaubsplaner (prominent als eigener Link) -->
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'urlaubsplaner_v2' %}active{% endif %}" href="/urlaubsplaner/v2">
+                            <i class="bi bi-calendar-check"></i> Urlaubsplaner
+                        </a>
                     </li>
 
                 </ul>

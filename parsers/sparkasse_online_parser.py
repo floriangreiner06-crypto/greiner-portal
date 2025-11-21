@@ -104,8 +104,10 @@ class SparkasseOnlineParser(BaseParser):
             matches = re.findall(pattern, text, re.IGNORECASE)
             
             if matches:
-                # Nimm letzten Kontostand (= Endsaldo)
-                datum_str, betrag_str = matches[-1]
+                # KRITISCHER FIX: Nimm ERSTEN Kontostand (= aktueller Endsaldo)
+                # Im Sparkasse-Format steht der neueste Kontostand OBEN im PDF!
+                # Der letzte Match ist oft der Vortags-Saldo (steht unten)
+                datum_str, betrag_str = matches[0]
                 
                 # Parse Betrag
                 betrag_str = betrag_str.replace('.', '').replace(',', '.')
@@ -114,9 +116,9 @@ class SparkasseOnlineParser(BaseParser):
                 self.kontostand_datum = datum_str
                 logger.info(f"Endsaldo: {endsaldo:.2f} EUR (am {datum_str})")
                 
-                # Anfangssaldo ist der erste Kontostand
+                # Anfangssaldo ist der letzte Kontostand (wenn mehrere vorhanden)
                 if len(matches) > 1:
-                    anfang_datum, anfang_betrag = matches[0]
+                    anfang_datum, anfang_betrag = matches[-1]
                     self.anfangssaldo = float(anfang_betrag.replace('.', '').replace(',', '.'))
                     logger.debug(f"Anfangssaldo: {self.anfangssaldo:.2f} EUR (am {anfang_datum})")
                 

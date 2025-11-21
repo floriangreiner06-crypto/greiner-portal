@@ -194,8 +194,11 @@ print("✅ Verkauf API registriert: /api/verkauf/")
 
 # Verkauf Frontend Routes
 from routes.verkauf_routes import verkauf_bp
+from routes.controlling_routes import controlling_bp
 app.register_blueprint(verkauf_bp)
 print("✅ Verkauf Frontend registriert: /verkauf/")
+app.register_blueprint(controlling_bp)
+print("✅ Controlling registriert: /controlling/")
 
 # ============================================================================
 # ERROR HANDLERS

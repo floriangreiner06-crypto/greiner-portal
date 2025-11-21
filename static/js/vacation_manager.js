@@ -18,7 +18,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         await loadVacationTypes();
         await loadDepartments();
         
-        currentUserId = 1;
+        // currentUserId wird automatisch aus Session geholt (via /my-balance)
         await loadCurrentUserInfo();
         await initDashboard();
         
@@ -109,23 +109,27 @@ function loadDepartments() {
 }
 
 async function loadCurrentUserInfo() {
-    if (!currentUserId) return;
-    
-    console.log(`📥 Lade Info für User ${currentUserId}...`);
+    console.log('📥 Lade Info für aktuellen User...');
     
     try {
-        const balance = await apiCall(`/balance/${currentUserId}`);
+        // Verwende /my-balance - holt automatisch den eingeloggten User
+        const response = await apiCall('/my-balance');
         
-        // Finde Mitarbeiter-Objekt für vollen Namen
-        const employee = employees.find(e => e.employee_id === currentUserId);
-        const userName = employee ? employee.name : 'Unbekannt';
-        
-        document.getElementById('userName').textContent = userName;
-        document.getElementById('remainingDays').textContent = balance.resturlaub || 0;
-        
-        console.log(`✅ User-Info geladen: ${userName}`);
+        if (response.success && response.balance) {
+            const balance = response.balance;
+            
+            // Setze currentUserId aus Response
+            currentUserId = balance.employee_id;
+            
+            // Zeige User-Info an
+            document.getElementById('userName').textContent = balance.name || 'Unbekannt';
+            document.getElementById('remainingDays').textContent = balance.resturlaub || 0;
+            
+            console.log(`✅ User-Info geladen: ${balance.name} (ID: ${currentUserId})`);
+        }
     } catch (error) {
         console.error('❌ Fehler beim Laden der User-Info:', error);
+        showToast('Fehler beim Laden der Benutzerdaten', 'danger');
     }
 }
 
@@ -206,22 +210,27 @@ async function loadMyBalance() {
     if (!container) return;
     
     try {
-        const balance = await apiCall(`/balance/${currentUserId}`);
+        // Verwende /my-balance
+        const response = await apiCall('/my-balance');
         
-        container.innerHTML = `
-            <div class="balance-item">
-                <span class="balance-label">Jahresanspruch:</span>
-                <span class="balance-value">${balance.anspruch || 0} Tage</span>
-            </div>
-            <div class="balance-item">
-                <span class="balance-label">Bereits genommen:</span>
-                <span class="balance-value">${balance.verbraucht || 0} Tage</span>
-            </div>
-            <div class="balance-item">
-                <span class="balance-label">Resturlaub:</span>
-                <span class="balance-value text-success">${balance.resturlaub || 0} Tage</span>
-            </div>
-        `;
+        if (response.success && response.balance) {
+            const balance = response.balance;
+            
+            container.innerHTML = `
+                <div class="balance-item">
+                    <span class="balance-label">Jahresanspruch:</span>
+                    <span class="balance-value">${balance.anspruch || 0} Tage</span>
+                </div>
+                <div class="balance-item">
+                    <span class="balance-label">Bereits genommen:</span>
+                    <span class="balance-value">${balance.verbraucht || 0} Tage</span>
+                </div>
+                <div class="balance-item">
+                    <span class="balance-label">Resturlaub:</span>
+                    <span class="balance-value text-success">${balance.resturlaub || 0} Tage</span>
+                </div>
+            `;
+        }
     } catch (error) {
         console.error('❌ Fehler beim Laden des Saldos:', error);
         container.innerHTML = '<p class="text-danger">Fehler beim Laden</p>';
@@ -233,24 +242,25 @@ async function loadMyRequests() {
     if (!container) return;
     
     try {
-        const response = await apiCall(`/requests?employee_id=${currentUserId}`);
+        // Verwende /my-bookings statt /requests mit employee_id
+        const response = await apiCall('/my-bookings');
         
-        if (response.requests && response.requests.length > 0) {
+        if (response.success && response.bookings && response.bookings.length > 0) {
             // Nur die letzten 5 Buchungen
-            const requests = response.requests.slice(0, 5);
+            const bookings = response.bookings.slice(0, 5);
             
-            container.innerHTML = requests.map(req => `
+            container.innerHTML = bookings.map(booking => `
                 <div class="request-item">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <strong>${formatDate(req.booking_date)}</strong>
+                            <strong>${formatDate(booking.date)}</strong>
                             <div class="small text-muted">
-                                ${req.vacation_type || 'Urlaub'}
+                                ${booking.type_name || 'Urlaub'}
                             </div>
                         </div>
-                        <span class="request-status status-${req.status}">
-                            ${req.status === 'pending' ? 'Offen' : 
-                              req.status === 'approved' ? 'Genehmigt' : 'Abgelehnt'}
+                        <span class="request-status status-${booking.status}">
+                            ${booking.status === 'pending' ? 'Offen' : 
+                              booking.status === 'approved' ? 'Genehmigt' : 'Abgelehnt'}
                         </span>
                     </div>
                 </div>
@@ -282,7 +292,7 @@ function setupEventListeners() {
 
 function handleTabChange(event) {
     const targetId = event.target.getAttribute('data-bs-target');
-    console.log(`📑 Tab gewechselt zu: ${targetId}`);
+    console.log(`🔀 Tab gewechselt zu: ${targetId}`);
 }
 
 function formatDate(dateString) {

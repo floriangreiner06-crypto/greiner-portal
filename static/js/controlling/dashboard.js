@@ -1,117 +1,102 @@
-/**
- * GREINER DRIVE - CONTROLLING DASHBOARD
- * Executive Dashboard with Live KPIs & Charts
- */
+// TAG 67: Multi-Entity Dashboard
+let showGesellschafter = false;
 
-// Utility: Format Currency
-function formatCurrency(value) {
-    const absValue = Math.abs(value);
-    if (absValue >= 1000000) {
-        return (value / 1000000).toFixed(2) + ' Mio €';
-    } else if (absValue >= 1000) {
-        return (value / 1000).toFixed(0) + 'k €';
-    }
-    return value.toFixed(2) + ' €';
-}
-
-// Load Overview KPIs
-async function loadOverview() {
-    try {
-        const response = await fetch('/controlling/api/overview');
-        if (!response.ok) throw new Error('API Error');
-        
-        const data = await response.json();
-        
-        // Update KPI 1: Liquidität
-        document.getElementById('kpi-liquiditaet').innerHTML = 
-            `<span style="color: ${data.liquiditaet < 0 ? '#f87171' : '#10b981'}">${formatCurrency(data.liquiditaet)}</span>`;
-        
-        // Update KPI 2: Zinsen
-        document.getElementById('kpi-zinsen').innerHTML = 
-            `<span style="color: #f59e0b">${formatCurrency(data.zinsen)}</span>`;
-        
-        // Update KPI 3: Einkaufsfinanzierung
-        document.getElementById('kpi-einkauf').innerHTML = 
-            `<div style="font-size: 1.5rem;">${data.einkauf.anzahl} Fzg</div>
-             <div style="font-size: 1rem; color: #6b7280;">${formatCurrency(data.einkauf.saldo)}</div>`;
-        
-        // Update KPI 4: Umsatz
-        document.getElementById('kpi-umsatz').innerHTML = 
-            `<span style="color: #10b981">${formatCurrency(data.umsatz)}</span>`;
-        
-        console.log('✅ Overview loaded:', data);
-        
-    } catch (error) {
-        console.error('Error loading overview:', error);
-        document.querySelectorAll('.kpi-value .loading').forEach(el => {
-            el.textContent = 'Fehler';
-            el.style.color = '#ef4444';
+document.addEventListener('DOMContentLoaded', function() {
+    const toggleCheckbox = document.getElementById('showGesellschafter');
+    if (toggleCheckbox) {
+        toggleCheckbox.addEventListener('change', function() {
+            showGesellschafter = this.checked;
+            loadDashboardData();
         });
     }
+    
+    loadDashboardData();
+    setInterval(loadDashboardData, 60000);
+});
+
+function loadDashboardData() {
+    const apiUrl = showGesellschafter 
+        ? '/controlling/api/overview?include_gesellschafter=true'
+        : '/controlling/api/overview';
+    
+    fetch(apiUrl)
+        .then(response => response.json())
+        .then(data => {
+            updateKPIs(data);
+            updateGesellschafterSection(data);
+        })
+        .catch(error => console.error('Fehler:', error));
 }
 
-// Initialize Liquidität Chart
-function initLiquiditaetChart() {
-    const ctx = document.getElementById('liquiditaet-chart');
-    if (!ctx) return;
-    
-    // Dummy data for now - TODO: Load from API in Phase 2
-    const chart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: ['Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov'],
-            datasets: [{
-                label: 'Liquidität',
-                data: [-1200000, -1500000, -1800000, -1650000, -1700000, -1690000],
-                borderColor: '#667eea',
-                backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                borderWidth: 3,
-                tension: 0.4,
-                fill: true
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: false
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            return formatCurrency(context.parsed.y);
-                        }
-                    }
-                }
-            },
-            scales: {
-                y: {
-                    ticks: {
-                        callback: function(value) {
-                            return formatCurrency(value);
-                        }
-                    }
-                }
-            }
-        }
-    });
-}
-
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('🚀 Controlling Dashboard loading...');
-    
-    // Load KPIs
-    loadOverview();
-    
-    // Initialize Chart
-    if (typeof Chart !== 'undefined') {
-        initLiquiditaetChart();
-    } else {
-        console.warn('Chart.js not loaded');
+function updateKPIs(data) {
+    // Operative Liquidität
+    const operativElement = document.getElementById('kpi-liquiditaet-operativ');
+    if (operativElement && data.liquiditaet) {
+        operativElement.textContent = formatCurrency(data.liquiditaet.operativ);
     }
     
-    // Auto-refresh every 60 seconds
-    setInterval(loadOverview, 60000);
-});
+    // Verfügbare Liquidität
+    const verfuegbarElement = document.getElementById('kpi-liquiditaet-verfuegbar');
+    if (verfuegbarElement && data.liquiditaet) {
+        verfuegbarElement.textContent = formatCurrency(data.liquiditaet.verfuegbar);
+    }
+    
+    // Kreditlinien
+    const kreditlinienElement = document.getElementById('kpi-kreditlinien');
+    if (kreditlinienElement && data.liquiditaet) {
+        kreditlinienElement.textContent = formatCurrency(data.liquiditaet.kreditlinien);
+    }
+    
+    // Nutzungsgrad
+    const nutzungsgradElement = document.getElementById('kpi-nutzungsgrad');
+    if (nutzungsgradElement && data.liquiditaet) {
+        const grad = data.liquiditaet.nutzungsgrad;
+        nutzungsgradElement.textContent = grad.toFixed(1) + '%';
+        nutzungsgradElement.className = grad < 50 ? 'text-success' : grad < 80 ? 'text-warning' : 'text-danger';
+    }
+    
+    // Zinsen
+    if (data.zinsen) {
+        const zinsenEl = document.getElementById('kpi-zinsen');
+        if (zinsenEl) zinsenEl.textContent = formatCurrency(data.zinsen);
+    }
+    
+    // Einkauf
+    if (data.einkauf) {
+        const anzahlEl = document.getElementById('kpi-einkauf-anzahl');
+        const summeEl = document.getElementById('kpi-einkauf-summe');
+        if (anzahlEl) anzahlEl.textContent = data.einkauf.anzahl_fahrzeuge;
+        if (summeEl) summeEl.textContent = formatCurrency(data.einkauf.finanzierungssumme);
+    }
+    
+    // Umsatz
+    if (data.umsatz) {
+        const umsatzEl = document.getElementById('kpi-umsatz');
+        if (umsatzEl) umsatzEl.textContent = formatCurrency(data.umsatz);
+    }
+}
+
+function updateGesellschafterSection(data) {
+    const section = document.getElementById('gesellschafter-section');
+    if (!section) return;
+    
+    if (showGesellschafter && data.gesellschafter && data.gesellschafter.saldo !== null) {
+        section.style.display = 'block';
+        const saldoElement = document.getElementById('gesellschafter-saldo');
+        if (saldoElement) {
+            saldoElement.textContent = formatCurrency(data.gesellschafter.saldo);
+        }
+    } else {
+        section.style.display = 'none';
+    }
+}
+
+function formatCurrency(value) {
+    if (value === null || value === undefined) return '0,00 €';
+    return new Intl.NumberFormat('de-DE', {
+        style: 'currency',
+        currency: 'EUR',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(value);
+}

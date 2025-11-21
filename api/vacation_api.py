@@ -4,14 +4,20 @@
 ========================================
 VACATION API - MIT LDAP-INTEGRATION
 ========================================
-Version: 2.0 - LDAP-Ready
-Datum: 11.11.2025
+Version: 2.2 - TAG 69 FINAL
+Datum: 20.11.2025
 
 Features:
 - /my-balance: Persönlicher Urlaubsstand (aus LDAP-Session)
 - /my-team: Team-Übersicht für Manager
 - /balance: Alle Mitarbeiter (Admin/HR)
-- /bookings: Urlaubsbuchungen verwalten
+- /my-bookings: Eigene Urlaubsbuchungen
+- /requests: Urlaubsanträge (für JavaScript-Kompatibilität)
+- /book: Urlaubsbuchungen verwalten
+
+FIXES TAG 69:
+- get_employee_from_session() verwendet jetzt _user_id aus Flask-Login Session
+- notes → comment (DB-Spalten-Name korrigiert)
 """
 
 from flask import Blueprint, request, jsonify, session
@@ -31,26 +37,54 @@ def get_db():
 
 def get_employee_from_session():
     """
-    Holt employee_id aus LDAP-Session via ldap_employee_mapping
+    Holt employee_id aus Flask-Login Session via ldap_employee_mapping
+    
+    Verwendet _user_id aus Flask-Login Session, holt dann username aus users Tabelle,
+    und matched gegen ldap_employee_mapping.
     
     Returns:
         tuple: (employee_id, ldap_username, employee_data) oder (None, None, None)
     """
-    # Session-Keys die LDAP-Username enthalten könnten
-    ldap_username = (
-        session.get('username') or 
-        session.get('user') or 
-        session.get('ldap_user') or
-        session.get('sAMAccountName')
-    )
+    # 1. Hole user_id aus Flask-Login Session
+    user_id = session.get('_user_id')
     
-    if not ldap_username:
-        return None, None, None
+    if not user_id:
+        # Fallback: Versuche alte Session-Keys
+        ldap_username = (
+            session.get('username') or 
+            session.get('user') or 
+            session.get('ldap_user') or
+            session.get('sAMAccountName')
+        )
+        
+        if not ldap_username:
+            return None, None, None
+        
+        # Normalisiere (entferne @domain falls vorhanden)
+        ldap_username = ldap_username.split('@')[0] if '@' in ldap_username else ldap_username
+    else:
+        # 2. Hole username aus users Tabelle
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT username FROM users WHERE id = ?", (user_id,))
+        user_row = cursor.fetchone()
+        
+        if not user_row:
+            conn.close()
+            return None, None, None
+        
+        username = user_row[0]  # z.B. "christian.aichinger@auto-greiner.de"
+        
+        # 3. Normalisiere zu ldap_username (ohne @domain)
+        ldap_username = username.split('@')[0] if '@' in username else username
+        
+        conn.close()
     
+    # 4. Lookup in ldap_employee_mapping
     conn = get_db()
     cursor = conn.cursor()
     
-    # Lookup in ldap_employee_mapping
     cursor.execute("""
         SELECT 
             lem.employee_id,
@@ -95,7 +129,7 @@ def health_check():
     return jsonify({
         'status': 'ok',
         'service': 'vacation-api',
-        'version': '2.0',
+        'version': '2.2',
         'timestamp': datetime.now().isoformat()
     })
 
@@ -401,7 +435,7 @@ def get_my_bookings():
                 vb.status,
                 vb.vacation_type_id,
                 vt.name as vacation_type_name,
-                vb.notes,
+                vb.comment,
                 vb.created_at
             FROM vacation_bookings vb
             LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
@@ -428,7 +462,7 @@ def get_my_bookings():
                 'status': row[3],
                 'type_id': row[4],
                 'type_name': row[5],
-                'notes': row[6],
+                'comment': row[6],
                 'created_at': row[7]
             })
         
@@ -451,6 +485,110 @@ def get_my_bookings():
         }), 500
 
 
+@vacation_api.route('/requests', methods=['GET'])
+def get_requests():
+    """
+    GET /api/vacation/requests
+    
+    Gibt Urlaubsanträge zurück (für Manager/Admin oder spezifischen Mitarbeiter)
+    
+    Query-Parameter:
+    - employee_id (optional): Mitarbeiter-ID (falls nicht angegeben: aktueller User)
+    - year (optional): Jahr (default: 2025)
+    - status (optional): Filter nach Status (pending/approved/rejected)
+    
+    HINWEIS: Dieser Endpoint ist für JavaScript-Kompatibilität gedacht.
+    Er gibt die gleichen Daten zurück wie /my-bookings, nur mit "requests" statt "bookings".
+    """
+    try:
+        # Aktuellen User aus Session holen
+        current_employee_id, ldap_username, employee_data = get_employee_from_session()
+        
+        if not current_employee_id:
+            return jsonify({
+                'success': False,
+                'error': 'Nicht angemeldet'
+            }), 401
+        
+        # employee_id aus Query-Parameter (optional)
+        requested_employee_id = request.args.get('employee_id', None, type=int)
+        
+        # Wenn employee_id angegeben: verwende diese, sonst aktuellen User
+        employee_id = requested_employee_id if requested_employee_id else current_employee_id
+        
+        # Prüfe ob User berechtigt ist (entweder eigene Daten oder Manager)
+        if employee_id != current_employee_id:
+            # Prüfe ob Manager
+            if not employee_data or not employee_data.get('is_manager'):
+                return jsonify({
+                    'success': False,
+                    'error': 'Keine Berechtigung - nur Manager können andere Mitarbeiter abfragen'
+                }), 403
+        
+        year = request.args.get('year', 2025, type=int)
+        status_filter = request.args.get('status', None)
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        query = """
+            SELECT
+                vb.id,
+                vb.booking_date,
+                vb.day_part,
+                vb.status,
+                vb.vacation_type_id,
+                vt.name as vacation_type_name,
+                vb.comment,
+                vb.created_at
+            FROM vacation_bookings vb
+            LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
+            WHERE vb.employee_id = ?
+              AND strftime('%Y', vb.booking_date) = ?
+        """
+        
+        params = [employee_id, str(year)]
+        
+        if status_filter:
+            query += " AND vb.status = ?"
+            params.append(status_filter)
+        
+        query += " ORDER BY vb.booking_date DESC"
+        
+        cursor.execute(query, params)
+        
+        requests = []
+        for row in cursor.fetchall():
+            requests.append({
+                'id': row[0],
+                'date': row[1],
+                'day_part': row[2],
+                'status': row[3],
+                'type_id': row[4],
+                'type_name': row[5],
+                'comment': row[6],
+                'created_at': row[7]
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'year': year,
+            'employee_id': employee_id,
+            'count': len(requests),
+            'requests': requests
+        })
+    
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+
 @vacation_api.route('/book', methods=['POST'])
 def book_vacation():
     """
@@ -463,7 +601,7 @@ def book_vacation():
         "date": "2025-12-24",
         "day_part": "full",  // oder "half"
         "vacation_type_id": 1,
-        "notes": "optional"
+        "comment": "optional"
     }
     """
     try:
@@ -486,7 +624,7 @@ def book_vacation():
         booking_date = data['date']
         day_part = data.get('day_part', 'full')
         vacation_type_id = data.get('vacation_type_id', 1)
-        notes = data.get('notes', None)
+        comment = data.get('comment', None)
         
         # Validierung
         try:
@@ -523,9 +661,9 @@ def book_vacation():
         cursor.execute("""
             INSERT INTO vacation_bookings (
                 employee_id, booking_date, vacation_type_id,
-                day_part, status, notes, created_at
+                day_part, status, comment, created_at
             ) VALUES (?, ?, ?, ?, 'pending', ?, ?)
-        """, (employee_id, booking_date, vacation_type_id, day_part, notes, datetime.now().isoformat()))
+        """, (employee_id, booking_date, vacation_type_id, day_part, comment, datetime.now().isoformat()))
         
         booking_id = cursor.lastrowid
         conn.commit()

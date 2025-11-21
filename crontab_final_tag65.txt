@@ -1,0 +1,37 @@
+# ============================================================================
+# GREINER PORTAL - CRON JOBS (TAG 65 - FINAL)
+# ============================================================================
+
+# Verkauf Sync - stündlich von 7-18 Uhr
+0 7-18 * * * cd /opt/greiner-portal && venv/bin/python3 scripts/sync/sync_sales.py >> logs/sync_sales.log 2>&1
+
+# Stellantis Import - stündlich von 7-18 Uhr
+0 7-18 * * * cd /opt/greiner-portal && venv/bin/python3 scripts/sync/import_stellantis.py >> logs/stellantis_import.log 2>&1
+
+# Employee Sync - täglich 6 Uhr
+0 6 * * * cd /opt/greiner-portal && venv/bin/python3 scripts/sync/sync_employees.py --real >> logs/employee_sync.log 2>&1
+
+# ✅ NEU: Hybrid Bank Import (MT940 + CAMT.053) - täglich 7:30 Uhr
+30 7 * * * cd /opt/greiner-portal && venv/bin/python3 scripts/imports/import_bank_statements_hybrid.py >> logs/bank_import_hybrid.log 2>&1
+
+# Santander Import - täglich 8 Uhr
+0 8 * * * cd /opt/greiner-portal && venv/bin/python3 scripts/imports/import_santander_bestand.py >> logs/santander_import.log 2>&1
+
+# Hyundai Finance Import - täglich 9 Uhr
+0 9 * * * cd /opt/greiner-portal && venv/bin/python3 scripts/imports/import_hyundai_finance.py >> logs/hyundai_import.log 2>&1
+
+# DB Backup - täglich 3 Uhr
+0 3 * * * cd /opt/greiner-portal && cp data/greiner_controlling.db data/greiner_controlling.db.backup_$(date +\%Y\%m\%d_\%H\%M\%S) 2>/dev/null
+
+# Alte Backups löschen - behalte nur letzte 7
+30 3 * * * cd /opt/greiner-portal/data && ls -t greiner_controlling.db.backup_* 2>/dev/null | tail -n +8 | xargs rm -f 2>/dev/null
+
+# ========================================
+# GREINER PORTAL - Umsatz-Bereinigung
+# ========================================
+
+# Täglich 9:30 Uhr - Aktueller Monat (nach Bank-Import!)
+30 9 * * * cd /opt/greiner-portal && venv/bin/python3 scripts/analysis/umsatz_bereinigung_production.py $(date +\%Y-\%m) >> logs/umsatz_bereinigung_$(date +\%Y-\%m).log 2>&1
+
+# Am 1. des Monats, 10:00 Uhr - Vormonat finalisieren
+0 10 1 * * cd /opt/greiner-portal && venv/bin/python3 scripts/analysis/umsatz_bereinigung_production.py $(date -d "last month" +\%Y-\%m) >> logs/umsatz_bereinigung_$(date -d "last month" +\%Y-\%m).log 2>&1

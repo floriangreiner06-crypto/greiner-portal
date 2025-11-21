@@ -194,9 +194,10 @@ class AuthManager:
                 username = f"{username}@auto-greiner.de"
             
             # LDAP-Authentifizierung
-            if not self.ldap.authenticate_user(username, password):
-                logger.warning(f"❌ Login fehlgeschlagen für: {username}")
-                self._log_auth_event(username, 'login_failed', 'Invalid credentials')
+            success, error_msg = self.ldap.authenticate_user(username, password)
+            if not success:
+                logger.warning(f"❌ Login fehlgeschlagen für: {username}: {error_msg}")
+                self._log_auth_event(username, 'login_failed', error_msg or 'Invalid credentials')
                 return None
             
             # User-Details aus AD holen
