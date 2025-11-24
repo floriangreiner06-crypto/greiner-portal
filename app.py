@@ -27,7 +27,7 @@ else:
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 Jahr in Produktion
 
 # Globale Static-Version (ändert sich bei jedem Flask-Neustart)
-STATIC_VERSION = datetime.now().strftime('%Y%m%d%H%M%S')
+STATIC_VERSION = '20251124094758'
 print(f"📦 Static Version: {STATIC_VERSION}")
 
 # Template-Kontext: Macht STATIC_VERSION in allen Templates verfügbar
@@ -250,3 +250,17 @@ def dashboard():
 # After Sales Routes
 from routes.aftersales import teile_routes
 app.register_blueprint(teile_routes.bp)
+
+# DEBUG Route für TAG76 - später entfernen!
+@app.route('/debug/user')
+@login_required
+def debug_user():
+    """Debug: Zeigt aktuelle User-Session-Daten"""
+    return {
+        'username': current_user.username,
+        'display_name': current_user.display_name,
+        'title': getattr(current_user, 'title', 'N/A'),
+        'portal_role': getattr(current_user, 'portal_role', 'N/A'),
+        'allowed_features': getattr(current_user, 'allowed_features', []),
+        'roles': current_user.roles
+    }

@@ -16,6 +16,7 @@ import sqlite3
 import json
 
 from auth.ldap_connector import LDAPConnector
+from config.roles_config import get_role_from_title, get_allowed_features
 
 # Logging
 logging.basicConfig(level=logging.INFO)
@@ -119,7 +120,8 @@ class User(UserMixin):
     """User-Klasse für Flask-Login"""
     
     def __init__(self, user_id: int, username: str, display_name: str, 
-                 email: str, ou: str, roles: List[str], permissions: Dict[str, Any]):
+                 email: str, ou: str, roles: List[str], permissions: Dict[str, Any],
+                 title: str = None, portal_role: str = None, allowed_features: List[str] = None):
         self.id = user_id
         self.username = username
         self.display_name = display_name
@@ -127,6 +129,9 @@ class User(UserMixin):
         self.ou = ou
         self.roles = roles
         self.permissions = permissions
+        self.title = title
+        self.portal_role = portal_role or 'mitarbeiter'
+        self.allowed_features = allowed_features or []
     
     def get_id(self):
         """Flask-Login benötigt diese Methode"""
@@ -139,6 +144,10 @@ class User(UserMixin):
     def has_permission(self, permission: str) -> bool:
         """Prüft ob User eine bestimmte Berechtigung hat"""
         return self.permissions.get(permission, False)
+
+    def can_access_feature(self, feature: str) -> bool:
+        """Prüft ob User auf ein Feature zugreifen darf (TAG76)"""
+        return feature in self.allowed_features
     
     def can_access_module(self, module: str) -> bool:
         """Prüft ob User auf ein Modul zugreifen darf"""
@@ -209,6 +218,15 @@ class AuthManager:
             # OU aus DN extrahieren
             ou = self._extract_ou_from_dn(user_details['dn'])
             
+            # Title aus LDAP holen
+            ldap_title = user_details.get('title')
+            
+            # Portal-Rolle aus Title ermitteln (TAG76)
+            portal_role = get_role_from_title(ldap_title)
+            
+            # Erlaubte Features für diese Rolle
+            allowed_features = get_allowed_features(portal_role)
+            
             # Rollen basierend auf OU zuweisen
             roles, permissions = self._get_roles_for_ou(ou)
             
@@ -219,7 +237,8 @@ class AuthManager:
                 email=user_details['email'],
                 ou=ou,
                 ad_groups=user_details['groups'],
-                roles=roles
+                roles=roles,
+                title=ldap_title
             )
             
             # User-Objekt erstellen
@@ -230,12 +249,15 @@ class AuthManager:
                 email=user_details['email'],
                 ou=ou,
                 roles=roles,
-                permissions=permissions
+                permissions=permissions,
+                title=ldap_title,
+                portal_role=portal_role,
+                allowed_features=allowed_features
             )
             
             # Erfolgreichen Login loggen
             self._log_auth_event(username, 'login_success', f'OU: {ou}, Rollen: {roles}')
-            logger.info(f"✅ Login erfolgreich: {user.display_name} ({ou}) → Rollen: {roles}")
+            logger.info(f"✅ Login erfolgreich: {user.display_name} ({ou}) → Portal-Rolle: {portal_role}, Features: {len(allowed_features)}")
             
             return user
             
@@ -292,7 +314,7 @@ class AuthManager:
             return (['user'], {'see_own_data': True})
     
     def _cache_user(self, username: str, display_name: str, email: str, 
-                    ou: str, ad_groups: List[str], roles: List[str]) -> int:
+                    ou: str, ad_groups: List[str], roles: List[str], title: str = None) -> int:
         """
         Speichert/aktualisiert User in lokaler DB (Cache)
         
@@ -312,10 +334,10 @@ class AuthManager:
                 user_id = existing[0]
                 cursor.execute('''
                     UPDATE users 
-                    SET display_name = ?, email = ?, ou = ?, 
+                    SET display_name = ?, email = ?, ou = ?, title = ?, 
                         ad_groups = ?, last_login = ?
                     WHERE id = ?
-                ''', (display_name, email, ou, json.dumps(ad_groups), 
+                ''', (display_name, email, ou, title, json.dumps(ad_groups), 
                       datetime.now().isoformat(), user_id))
                 
                 # Rollen aktualisieren
@@ -390,6 +412,12 @@ class AuthManager:
                     if config['role'] == role_name:
                         permissions.update(config['permissions'])
             
+            # Title und Portal-Rolle ermitteln (TAG76)
+            from config.roles_config import get_role_from_title, get_allowed_features
+            user_title = user_row['title']
+            portal_role = get_role_from_title(user_title)
+            allowed_features = get_allowed_features(portal_role)
+            
             # User-Objekt erstellen
             user = User(
                 user_id=user_row['id'],
@@ -398,7 +426,10 @@ class AuthManager:
                 email=user_row['email'],
                 ou=user_row['ou'],
                 roles=roles,
-                permissions=permissions
+                permissions=permissions,
+                title=user_title,
+                portal_role=portal_role,
+                allowed_features=allowed_features
             )
             
             return user

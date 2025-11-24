@@ -55,6 +55,7 @@
                     </li>
 
                     <!-- Controlling Dropdown (inkl. Bankenspiegel) -->
+                    {% if current_user.is_authenticated and current_user.can_access_feature('bankenspiegel') %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="controllingDropdown" role="button" data-bs-toggle="dropdown">
                             <i class="bi bi-graph-up-arrow"></i> Controlling
@@ -69,10 +70,10 @@
                             
                             <!-- Liquidität & Analysen -->
                             <li><h6 class="dropdown-header text-muted">Analysen</h6></li>
-                            <li><a class="dropdown-item" href="/controlling/liquiditaet">
+                            <li><a class="dropdown-item disabled text-muted" href="#" title="Bereits im Dashboard integriert">
                                 <i class="bi bi-droplet"></i> Liquidität
                             </a></li>
-                            <li><a class="dropdown-item" href="/controlling/zinsen">
+                            <li><a class="dropdown-item disabled text-muted" href="#" title="Coming Soon">
                                 <i class="bi bi-percent"></i> Zinsen-Analyse
                             </a></li>
                             
@@ -99,13 +100,15 @@
                             <li><hr class="dropdown-divider"></li>
                             
                             <!-- Reports -->
-                            <li><a class="dropdown-item" href="/controlling/reports">
+                            <li><a class="dropdown-item disabled text-muted" href="#" title="Coming Soon">
                                 <i class="bi bi-file-earmark-bar-graph"></i> Reports
                             </a></li>
                         </ul>
                     </li>
+                    {% endif %}
 
                     <!-- Verkauf Dropdown -->
+                    {% if current_user.is_authenticated and current_user.can_access_feature('auftragseingang') %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="verkaufDropdown" role="button" data-bs-toggle="dropdown">
                             <i class="bi bi-cart3"></i> Verkauf
@@ -119,6 +122,7 @@
                             </a></li>
                         </ul>
                     </li>
+                    {% endif %}
 
                     <!-- Urlaubsplaner (prominent als eigener Link) -->
                     <li class="nav-item">
@@ -128,6 +132,7 @@
                     </li>
 
                     <!-- After Sales Dropdown -->
+                    {% if current_user.is_authenticated and current_user.can_access_feature('teilebestellungen') %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="aftersalesDropdown" role="button" data-bs-toggle="dropdown">
                             <i class="bi bi-tools"></i> After Sales
@@ -148,6 +153,7 @@
                             </a></li>
                         </ul>
                     </li>
+                    {% endif %}
 
                 </ul>
 
