@@ -209,7 +209,7 @@ def get_konten():
             query += " AND bank_id = ?"
             params.append(bank_id)
 
-        query += " ORDER BY CASE WHEN kontotyp = 'Girokonto' THEN 0 ELSE 1 END, bank_name, kontoname"
+        query += " ORDER BY sort_order, kontoname"
 
         cursor.execute(query, params)
         konten = rows_to_list(cursor.fetchall())

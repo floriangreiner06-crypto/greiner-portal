@@ -23,7 +23,7 @@ function formatZahl(zahl) {
 function formatIBAN(iban) {
     if (!iban) return '-';
     if (iban.length <= 8) return iban;
-    return '•••• ' + iban.slice(-4);
+    return iban;  // Volle IBAN anzeigen
 }
 
 // Konten laden

@@ -345,9 +345,9 @@ class AuthManager:
             else:
                 # Neuen User anlegen
                 cursor.execute('''
-                    INSERT INTO users (username, display_name, email, ou, ad_groups, last_login, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (username, display_name, email, ou, json.dumps(ad_groups),
+                    INSERT INTO users (username, display_name, email, ou, title, ad_groups, last_login, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (username, display_name, email, ou, title, json.dumps(ad_groups),
                       datetime.now().isoformat(), datetime.now().isoformat()))
                 user_id = cursor.lastrowid
             

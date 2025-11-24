@@ -90,59 +90,58 @@ class MT940Importer:
         return str(date_obj)
     
     def parse_salden_from_file(self, file_path, konto_id):
-        """Parst Salden aus MT940"""
+        """Parst Salden aus MT940 - Schlusssaldo (62F) hat Prioritaet ueber Anfangssaldo (60F)"""
         salden_imported = 0
-        
+        salden_updated = 0
+
         try:
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                 content = f.read()
-            
-            # Alle Salden sammeln (60F und 62F)
-            all_salden = []
-            
-            # :60F: (Anfangssaldo)
+
+            # Dictionary: Datum -> (saldo, typ) wobei typ = '60F' oder '62F'
+            salden_dict = {}
+
+            # :60F: (Anfangssaldo) - wird zuerst gesammelt
             for match in re.finditer(r':60F:([CD])(\d{6})EUR([\d,\.]+)', content):
                 vorzeichen = match.group(1)
                 datum_str = match.group(2)
                 betrag_str = match.group(3).replace(',', '.')
-                
+
                 jahr = '20' + datum_str[0:2]
                 monat = datum_str[2:4]
                 tag = datum_str[4:6]
                 datum = f"{jahr}-{monat}-{tag}"
-                
+
                 saldo = float(betrag_str)
                 if vorzeichen == 'D':
                     saldo = -saldo
-                
-                all_salden.append((datum, saldo))
-            
-            # :62F: (Schlusssaldo)
+
+                # Nur setzen wenn noch nicht vorhanden
+                if datum not in salden_dict:
+                    salden_dict[datum] = (saldo, '60F')
+
+            # :62F: (Schlusssaldo) - UEBERSCHREIBT immer den Anfangssaldo!
             for match in re.finditer(r':62F:([CD])(\d{6})EUR([\d,\.]+)', content):
                 vorzeichen = match.group(1)
                 datum_str = match.group(2)
                 betrag_str = match.group(3).replace(',', '.')
-                
+
                 jahr = '20' + datum_str[0:2]
                 monat = datum_str[2:4]
                 tag = datum_str[4:6]
                 datum = f"{jahr}-{monat}-{tag}"
-                
+
                 saldo = float(betrag_str)
                 if vorzeichen == 'D':
                     saldo = -saldo
-                
-                all_salden.append((datum, saldo))
-            
-            # Importieren (eindeutige Kombinationen)
-            seen = set()
-            for datum, saldo in all_salden:
-                key = (datum, saldo)
-                if key in seen:
-                    continue
-                seen.add(key)
-                
+
+                # Schlusssaldo ueberschreibt IMMER den Anfangssaldo
+                salden_dict[datum] = (saldo, '62F')
+
+            # Importieren - INSERT oder UPDATE
+            for datum, (saldo, typ) in salden_dict.items():
                 if not self.saldo_exists(konto_id, datum):
+                    # Neuer Eintrag
                     self.cursor.execute(
                         """INSERT INTO salden (konto_id, datum, saldo, quelle, import_datei)
                            VALUES (?, ?, ?, 'MT940', ?)""",
@@ -150,17 +149,28 @@ class MT940Importer:
                     )
                     salden_imported += 1
                 else:
-                    self.stats['salden_duplicates'] += 1
-            
+                    # Update wenn 62F (Schlusssaldo)
+                    if typ == '62F':
+                        self.cursor.execute(
+                            """UPDATE salden SET saldo = ?, import_datei = ?
+                               WHERE konto_id = ? AND datum = ?""",
+                            (saldo, file_path.name, konto_id, datum)
+                        )
+                        salden_updated += 1
+                    else:
+                        self.stats['salden_duplicates'] += 1
+
             self.stats['salden_imported'] += salden_imported
-            return salden_imported
-            
+            if salden_updated > 0:
+                print(f"   Salden aktualisiert: {salden_updated} (Schlusssaldo)")
+            return salden_imported + salden_updated
+
         except Exception as e:
-            print(f"   ⚠️  Salden-Fehler: {e}")
+            print(f"   Salden-Fehler: {e}")
             import traceback
             traceback.print_exc()
             return 0
-    
+
     def import_transaction_from_statement(self, konto_id, statement_data, import_datei):
         try:
             buchungsdatum = self.date_to_string(statement_data.get('date'))

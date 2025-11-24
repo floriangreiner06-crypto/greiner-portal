@@ -1,1 +1,1 @@
-scripts/imports/import_stellantis.py
+../imports/import_stellantis.py
