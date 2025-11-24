@@ -191,12 +191,15 @@ print("✅ Bankenspiegel Frontend registriert: /bankenspiegel/")
 # Verkauf API
 from api.verkauf_api import verkauf_api
 from api.stellantis_api import stellantis_api
+from api.admin_api import admin_api
 from api.zins_optimierung_api import zins_api
 app.register_blueprint(verkauf_api)
 app.register_blueprint(stellantis_api)
+app.register_blueprint(admin_api)
 app.register_blueprint(zins_api)
 print("✅ Verkauf API registriert: /api/verkauf/")
 print("✅ Stellantis API registriert: /api/stellantis/")
+print("✅ Admin API registriert: /api/admin/")
 
 # Verkauf Frontend Routes
 from routes.verkauf_routes import verkauf_bp
@@ -251,7 +254,9 @@ def dashboard():
 
 # After Sales Routes
 from routes.aftersales import teile_routes
+from routes.admin_routes import admin_routes
 app.register_blueprint(teile_routes.bp)
+app.register_blueprint(admin_routes)
 
 # DEBUG Route für TAG76 - später entfernen!
 @app.route('/debug/user')
