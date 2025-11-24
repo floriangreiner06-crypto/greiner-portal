@@ -265,3 +265,97 @@ def zins_dashboard():
         'santander_zinsen': santander['zinsen_monat'],
         'handlungsbedarf': stellantis_ueber['anzahl'] + stellantis_bald['anzahl']
     })
+
+
+@zins_api.route('/api/zinsen/umbuchung-empfehlung', methods=['GET'])
+def umbuchung_empfehlung():
+    """Umbuchungs-Empfehlungen mit Firmen-Beruecksichtigung"""
+    conn = get_db()
+    c = conn.cursor()
+    
+    empfehlungen = []
+    
+    # Konten im Soll finden
+    c.execute("""
+        SELECT k.id, k.kontoname, k.firma, k.sollzins,
+               (SELECT saldo FROM salden WHERE konto_id = k.id ORDER BY datum DESC LIMIT 1) as saldo
+        FROM konten k 
+        WHERE k.aktiv = 1 AND k.sollzins IS NOT NULL
+        AND (SELECT saldo FROM salden WHERE konto_id = k.id ORDER BY datum DESC LIMIT 1) < 0
+    """)
+    soll_konten = c.fetchall()
+    
+    for soll in soll_konten:
+        soll_id = soll['id']
+        soll_name = soll['kontoname']
+        soll_firma = soll['firma']
+        sollzins = soll['sollzins']
+        soll_saldo = soll['saldo']
+        bedarf = abs(soll_saldo)
+        zinsen_monat = bedarf * (sollzins / 100) / 12
+        
+        # Haben-Konten gleiche Firma (normale Umbuchung)
+        c.execute("""
+            SELECT k.id, k.kontoname,
+                   (SELECT saldo FROM salden WHERE konto_id = k.id ORDER BY datum DESC LIMIT 1) as saldo
+            FROM konten k 
+            WHERE k.aktiv = 1 AND k.firma = ? AND k.id != ?
+            AND (SELECT saldo FROM salden WHERE konto_id = k.id ORDER BY datum DESC LIMIT 1) > 10000
+            ORDER BY saldo DESC
+        """, (soll_firma, soll_id))
+        
+        for haben in c.fetchall():
+            umbuchbar = min(haben['saldo'], bedarf)
+            ersparnis = umbuchbar * (sollzins / 100) / 12
+            empfehlungen.append({
+                'von_konto': haben['kontoname'],
+                'nach_konto': soll_name,
+                'betrag': umbuchbar,
+                'firma': soll_firma,
+                'typ': 'normale_umbuchung',
+                'beschreibung': 'Bank an Bank (gleiche Firma)',
+                'ersparnis_monat': round(ersparnis, 2),
+                'ersparnis_jahr': round(ersparnis * 12, 2),
+                'prioritaet': 1
+            })
+            bedarf -= umbuchbar
+            if bedarf <= 0:
+                break
+        
+        # Falls noch Bedarf: Andere Firmen (Privatentnahme)
+        if bedarf > 10000:
+            c.execute("""
+                SELECT k.id, k.kontoname, k.firma,
+                       (SELECT saldo FROM salden WHERE konto_id = k.id ORDER BY datum DESC LIMIT 1) as saldo
+                FROM konten k 
+                WHERE k.aktiv = 1 
+                AND k.firma != ? AND k.firma != 'EXTERN' AND k.firma IS NOT NULL
+                AND (SELECT saldo FROM salden WHERE konto_id = k.id ORDER BY datum DESC LIMIT 1) > 10000
+                ORDER BY saldo DESC
+            """, (soll_firma,))
+            
+            for haben in c.fetchall():
+                umbuchbar = min(haben['saldo'], bedarf)
+                ersparnis = umbuchbar * (sollzins / 100) / 12
+                empfehlungen.append({
+                    'von_konto': haben['kontoname'],
+                    'von_firma': haben['firma'],
+                    'nach_konto': soll_name,
+                    'nach_firma': soll_firma,
+                    'betrag': umbuchbar,
+                    'typ': 'privatentnahme_einlage',
+                    'beschreibung': 'Privatentnahme an Bank / Bank an Privateinlage',
+                    'ersparnis_monat': round(ersparnis, 2),
+                    'ersparnis_jahr': round(ersparnis * 12, 2),
+                    'prioritaet': 2
+                })
+                bedarf -= umbuchbar
+                if bedarf <= 0:
+                    break
+    
+    conn.close()
+    return jsonify({
+        'empfehlungen': sorted(empfehlungen, key=lambda x: x['prioritaet']),
+        'gesamt_ersparnis_monat': round(sum(e['ersparnis_monat'] for e in empfehlungen), 2),
+        'gesamt_ersparnis_jahr': round(sum(e['ersparnis_jahr'] for e in empfehlungen), 2)
+    })
