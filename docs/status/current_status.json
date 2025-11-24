@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-11-24 08:30:00",
+  "timestamp": "2025-11-24 08:32:37",
   "konten": [
     {
       "id": 1,
@@ -52,8 +52,8 @@
       "iban": "DE22741200710006407420",
       "bank": "Hypovereinsbank",
       "saldo": 0,
-      "trans_count": 2593,
-      "letzte_buchung": "2025-11-20"
+      "trans_count": 2595,
+      "letzte_buchung": "2025-11-24"
     },
     {
       "id": 14,
@@ -149,9 +149,9 @@
     {
       "id": 9,
       "name": "Hypovereinsbank KK",
-      "trans": 169,
+      "trans": 171,
       "von": "2025-11-03",
-      "bis": "2025-11-20"
+      "bis": "2025-11-24"
     },
     {
       "id": 14,
@@ -197,5 +197,5 @@
     }
   ],
   "total_saldo": 0,
-  "total_transaktionen": 14449
+  "total_transaktionen": 14451
 }
