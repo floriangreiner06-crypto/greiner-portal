@@ -1,0 +1,417 @@
+{% extends "base.html" %}
+
+{% block title %}Zinsen-Analyse{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h2 mb-0">
+                <i class="bi bi-percent me-2"></i>Zinsen-Analyse
+            </h1>
+            <p class="text-muted mb-0">Alle Finanzierungszinsen auf einen Blick</p>
+        </div>
+        <div class="col-auto">
+            <span class="text-muted small me-3" id="lastUpdate">Stand: --</span>
+            <button class="btn btn-outline-success me-2" onclick="exportCSV()">
+                <i class="bi bi-download me-1"></i>Export
+            </button>
+            <button class="btn btn-outline-primary" onclick="loadData()">
+                <i class="bi bi-arrow-clockwise me-1"></i>Aktualisieren
+            </button>
+        </div>
+    </div>
+
+    <!-- Gesamt-KPIs -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 bg-danger bg-opacity-10">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <p class="text-muted mb-1 small">Zinskosten / Monat</p>
+                            <h3 class="mb-0 text-danger" id="zinsenMonat">
+                                <span class="spinner-border spinner-border-sm"></span>
+                            </h3>
+                        </div>
+                        <div class="bg-danger bg-opacity-25 rounded p-2">
+                            <i class="bi bi-cash-stack text-danger fs-4"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <p class="text-muted mb-1 small">Zinskosten / Jahr</p>
+                            <h3 class="mb-0" id="zinsenJahr">
+                                <span class="spinner-border spinner-border-sm"></span>
+                            </h3>
+                        </div>
+                        <div class="bg-secondary bg-opacity-10 rounded p-2">
+                            <i class="bi bi-calendar3 text-secondary fs-4"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 border-danger border-2" id="cardDringend">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <p class="text-muted mb-1 small">🔴 DRINGEND</p>
+                            <h3 class="mb-0 text-danger" id="anzahlDringend">
+                                <span class="spinner-border spinner-border-sm"></span>
+                            </h3>
+                            <small class="text-muted">Über Zinsfreiheit</small>
+                        </div>
+                        <div class="bg-danger bg-opacity-25 rounded p-2">
+                            <i class="bi bi-exclamation-triangle text-danger fs-4"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 border-warning border-2" id="cardWarnung">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <p class="text-muted mb-1 small">🟡 WARNUNG</p>
+                            <h3 class="mb-0 text-warning" id="anzahlWarnung">
+                                <span class="spinner-border spinner-border-sm"></span>
+                            </h3>
+                            <small class="text-muted">Bald ablaufend (&lt;14 Tage)</small>
+                        </div>
+                        <div class="bg-warning bg-opacity-25 rounded p-2">
+                            <i class="bi bi-clock-history text-warning fs-4"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Aufschlüsselung nach Institut -->
+    <div class="row g-3 mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="bi bi-bank me-2"></i>Aufschlüsselung nach Institut</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Institut</th>
+                                    <th class="text-end">Fahrzeuge</th>
+                                    <th class="text-end">Saldo</th>
+                                    <th class="text-end">Zinsen/Monat</th>
+                                    <th class="text-end">Zinsen/Jahr</th>
+                                    <th class="text-center">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="institutTabelle">
+                                <tr><td colspan="6" class="text-center"><span class="spinner-border spinner-border-sm"></span> Laden...</td></tr>
+                            </tbody>
+                            <tfoot class="table-light fw-bold">
+                                <tr>
+                                    <td>GESAMT</td>
+                                    <td class="text-end" id="gesamtFahrzeuge">-</td>
+                                    <td class="text-end" id="gesamtSaldo">-</td>
+                                    <td class="text-end text-danger" id="gesamtMonat">-</td>
+                                    <td class="text-end" id="gesamtJahr">-</td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fahrzeuge über Zinsfreiheit (DRINGEND) -->
+    <div class="row g-3 mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm border-danger border-top border-3">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 text-danger">
+                        <i class="bi bi-exclamation-triangle me-2"></i>Fahrzeuge über Zinsfreiheit
+                        <span class="badge bg-danger ms-2" id="badgeDringend">0</span>
+                    </h5>
+                    <span class="text-muted small" id="saldoDringend">Saldo: -</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Institut</th>
+                                    <th>VIN</th>
+                                    <th>Modell</th>
+                                    <th class="text-end">Tage über</th>
+                                    <th class="text-end">Saldo</th>
+                                    <th class="text-end">Zinsen bisher</th>
+                                    <th class="text-end">Zinsen/Monat</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabelleDringend">
+                                <tr><td colspan="7" class="text-center py-3"><span class="spinner-border spinner-border-sm"></span> Laden...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bald ablaufende Zinsfreiheit (WARNUNG) -->
+    <div class="row g-3 mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm border-warning border-top border-3">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 text-warning">
+                        <i class="bi bi-clock-history me-2"></i>Bald ablaufende Zinsfreiheit (&lt;14 Tage)
+                        <span class="badge bg-warning text-dark ms-2" id="badgeWarnung">0</span>
+                    </h5>
+                    <span class="text-muted small" id="saldoWarnung">Saldo: -</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Institut</th>
+                                    <th>VIN</th>
+                                    <th>Modell</th>
+                                    <th class="text-end">Tage verbleibend</th>
+                                    <th class="text-end">Saldo</th>
+                                    <th class="text-end">Zinsen ab dann/Monat</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabelleWarnung">
+                                <tr><td colspan="6" class="text-center py-3"><span class="spinner-border spinner-border-sm"></span> Laden...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+const API_DASHBOARD = '/api/zinsen/dashboard';
+const API_REPORT = '/api/zinsen/report';
+
+// Daten laden
+async function loadData() {
+    try {
+        const [dashboard, report] = await Promise.all([
+            fetch(API_DASHBOARD).then(r => r.json()),
+            fetch(API_REPORT).then(r => r.json())
+        ]);
+        
+        updateKPIs(dashboard);
+        updateInstitutTabelle(dashboard, report);
+        updateDringendTabelle(report);
+        updateWarnungTabelle(report);
+        
+        document.getElementById('lastUpdate').textContent = 'Stand: ' + new Date().toLocaleString('de-DE');
+    } catch (error) {
+        console.error('Fehler beim Laden:', error);
+        alert('Fehler beim Laden der Daten');
+    }
+}
+
+// KPIs aktualisieren
+function updateKPIs(data) {
+    document.getElementById('zinsenMonat').textContent = formatCurrency(data.zinskosten_monat);
+    document.getElementById('zinsenJahr').textContent = formatCurrency(data.zinskosten_jahr);
+    document.getElementById('anzahlDringend').textContent = data.stellantis_ueber_zinsfreiheit?.anzahl || 0;
+    document.getElementById('anzahlWarnung').textContent = data.stellantis_bald_ablaufend?.anzahl || 0;
+}
+
+// Institut-Tabelle
+function updateInstitutTabelle(dashboard, report) {
+    const tbody = document.getElementById('institutTabelle');
+    
+    // Daten sammeln
+    const institute = [
+        {
+            name: 'Konten Sollzinsen',
+            fahrzeuge: '-',
+            saldo: '-',
+            monat: dashboard.konten_sollzinsen || 0,
+            jahr: (dashboard.konten_sollzinsen || 0) * 12,
+            status: 'ok'
+        },
+        {
+            name: 'Stellantis',
+            fahrzeuge: dashboard.stellantis_ueber_zinsfreiheit?.anzahl || 0,
+            saldo: dashboard.stellantis_ueber_zinsfreiheit?.saldo || 0,
+            monat: dashboard.stellantis_ueber_zinsfreiheit?.zinsen_monat || 0,
+            jahr: (dashboard.stellantis_ueber_zinsfreiheit?.zinsen_monat || 0) * 12,
+            status: (dashboard.stellantis_ueber_zinsfreiheit?.anzahl || 0) > 0 ? 'danger' : 'ok'
+        },
+        {
+            name: 'Santander',
+            fahrzeuge: report.santander?.anzahl || 0,
+            saldo: report.santander?.saldo || 0,
+            monat: dashboard.santander_zinsen || 0,
+            jahr: (dashboard.santander_zinsen || 0) * 12,
+            status: 'ok'
+        },
+        {
+            name: 'Hyundai Finance',
+            fahrzeuge: dashboard.hyundai?.anzahl || 0,
+            saldo: dashboard.hyundai?.saldo || 0,
+            monat: dashboard.hyundai?.zinsen_monat || 0,
+            jahr: (dashboard.hyundai?.zinsen_monat || 0) * 12,
+            status: 'ok'
+        }
+    ];
+    
+    let html = '';
+    let gesamtFz = 0, gesamtSaldo = 0;
+    
+    institute.forEach(inst => {
+        const statusBadge = inst.status === 'danger' 
+            ? '<span class="badge bg-danger">Handeln!</span>'
+            : '<span class="badge bg-success">OK</span>';
+        
+        html += `<tr>
+            <td><strong>${inst.name}</strong></td>
+            <td class="text-end">${inst.fahrzeuge}</td>
+            <td class="text-end">${inst.saldo !== '-' ? formatCurrency(inst.saldo) : '-'}</td>
+            <td class="text-end ${inst.monat > 500 ? 'text-danger fw-bold' : ''}">${formatCurrency(inst.monat)}</td>
+            <td class="text-end">${formatCurrency(inst.jahr)}</td>
+            <td class="text-center">${statusBadge}</td>
+        </tr>`;
+        
+        if (typeof inst.fahrzeuge === 'number') gesamtFz += inst.fahrzeuge;
+        if (typeof inst.saldo === 'number') gesamtSaldo += inst.saldo;
+    });
+    
+    tbody.innerHTML = html;
+    
+    // Footer aktualisieren
+    document.getElementById('gesamtFahrzeuge').textContent = gesamtFz;
+    document.getElementById('gesamtSaldo').textContent = formatCurrency(gesamtSaldo);
+    document.getElementById('gesamtMonat').textContent = formatCurrency(dashboard.zinskosten_monat);
+    document.getElementById('gesamtJahr').textContent = formatCurrency(dashboard.zinskosten_jahr);
+}
+
+// Dringend-Tabelle (über Zinsfreiheit)
+function updateDringendTabelle(report) {
+    const tbody = document.getElementById('tabelleDringend');
+    const fahrzeuge = report.stellantis_ueber_zinsfreiheit || [];
+    
+    if (fahrzeuge.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-3 text-success"><i class="bi bi-check-circle me-2"></i>Keine Fahrzeuge über Zinsfreiheit</td></tr>';
+        document.getElementById('badgeDringend').textContent = '0';
+        document.getElementById('saldoDringend').textContent = 'Saldo: 0 €';
+        return;
+    }
+    
+    let html = '';
+    let gesamtSaldo = 0;
+    
+    fahrzeuge.forEach(fz => {
+        const tageUeber = fz.tage_ueber || 0;
+        html += `<tr class="table-danger">
+            <td><span class="badge bg-primary">Stellantis</span></td>
+            <td><code>${fz.vin || '-'}</code></td>
+            <td>${fz.modell || '-'}</td>
+            <td class="text-end"><span class="badge bg-danger">${tageUeber} Tage</span></td>
+            <td class="text-end">${formatCurrency(fz.saldo)}</td>
+            <td class="text-end text-danger">${formatCurrency(fz.zinsen_gesamt)}</td>
+            <td class="text-end">${formatCurrency(fz.zinsen_monat)}</td>
+        </tr>`;
+        gesamtSaldo += fz.saldo || 0;
+    });
+    
+    tbody.innerHTML = html;
+    document.getElementById('badgeDringend').textContent = fahrzeuge.length;
+    document.getElementById('saldoDringend').textContent = 'Saldo: ' + formatCurrency(gesamtSaldo);
+}
+
+// Warnung-Tabelle (bald ablaufend)
+function updateWarnungTabelle(report) {
+    const tbody = document.getElementById('tabelleWarnung');
+    const fahrzeuge = report.stellantis_bald_ablaufend || [];
+    
+    if (fahrzeuge.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-3 text-success"><i class="bi bi-check-circle me-2"></i>Keine Fahrzeuge mit bald ablaufender Zinsfreiheit</td></tr>';
+        document.getElementById('badgeWarnung').textContent = '0';
+        document.getElementById('saldoWarnung').textContent = 'Saldo: 0 €';
+        return;
+    }
+    
+    let html = '';
+    let gesamtSaldo = 0;
+    const STELLANTIS_ZINS = 9.03;
+    
+    fahrzeuge.forEach(fz => {
+        const tageVerbleibend = fz.tage_bis_zinsende || 0;
+        const prognoseMonat = (fz.saldo || 0) * (STELLANTIS_ZINS / 100) / 12;
+        html += `<tr class="table-warning">
+            <td><span class="badge bg-primary">Stellantis</span></td>
+            <td><code>${fz.vin || '-'}</code></td>
+            <td>${fz.modell || '-'}</td>
+            <td class="text-end"><span class="badge bg-warning text-dark">${tageVerbleibend} Tage</span></td>
+            <td class="text-end">${formatCurrency(fz.saldo)}</td>
+            <td class="text-end text-warning">${formatCurrency(prognoseMonat)}</td>
+        </tr>`;
+        gesamtSaldo += fz.saldo || 0;
+    });
+    
+    tbody.innerHTML = html;
+    document.getElementById('badgeWarnung').textContent = fahrzeuge.length;
+    document.getElementById('saldoWarnung').textContent = 'Saldo: ' + formatCurrency(gesamtSaldo);
+}
+
+// Hilfsfunktionen
+function formatCurrency(value) {
+    if (value === null || value === undefined) return '-';
+    return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value);
+}
+
+// CSV Export
+function exportCSV() {
+    fetch(API_REPORT)
+        .then(r => r.json())
+        .then(data => {
+            let csv = 'Institut;VIN;Modell;Status;Saldo;Zinsen Gesamt;Zinsen/Monat\n';
+            
+            // Über Zinsfreiheit
+            (data.stellantis_ueber_zinsfreiheit || []).forEach(fz => {
+                csv += `Stellantis;${fz.vin};${fz.modell};ÜBER ZINSFREIHEIT;${fz.saldo};${fz.zinsen_gesamt};${fz.zinsen_monat}\n`;
+            });
+            
+            // Bald ablaufend
+            (data.stellantis_bald_ablaufend || []).forEach(fz => {
+                csv += `Stellantis;${fz.vin};${fz.modell};BALD ABLAUFEND;${fz.saldo};;;\n`;
+            });
+            
+            // Download
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'zinsen_handlungsbedarf_' + new Date().toISOString().slice(0,10) + '.csv';
+            link.click();
+        });
+}
+
+// Initial laden
+document.addEventListener('DOMContentLoaded', loadData);
+</script>
+{% endblock %}

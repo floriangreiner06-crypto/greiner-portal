@@ -132,6 +132,34 @@ def transaktionen():
         now=datetime.now()
     )
 
+# ============================================================================
+# ZINSEN-ANALYSE (Alle Finanzierungszinsen)
+# ============================================================================
+@bankenspiegel_bp.route("/zinsen-analyse")
+def zinsen_analyse():
+    """
+    Zinsen-Analyse Dashboard
+    Zeigt alle Zinskosten auf einen Blick:
+    - Konten Sollzinsen
+    - Stellantis (über Zinsfreiheit)
+    - Santander
+    - Hyundai Finance
+    
+    Features:
+    - KPI-Cards mit Gesamtzinsen (Monat/Jahr)
+    - Ampel-System für Handlungsbedarf
+    - Tabelle: Fahrzeuge über Zinsfreiheit (DRINGEND)
+    - Tabelle: Bald ablaufende Zinsfreiheit (WARNUNG)
+    - Export-Funktion
+    
+    Template: zinsen_analyse.html
+    API: /api/zinsen/dashboard, /api/zinsen/report
+    """
+    return render_template(
+        "zinsen_analyse.html",
+        now=datetime.now()
+    )
+
 
 # ============================================================================
 # EINKAUFSFINANZIERUNG (Stellantis & Santander)
