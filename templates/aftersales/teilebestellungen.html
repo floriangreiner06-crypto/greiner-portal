@@ -84,7 +84,7 @@
                 <label>Bis Datum:</label>
                 <input type="date" class="form-control" id="filterDatumBis">
             </div>
-            <div class="col-md-3">
+            <div class="col-md-3 d-none">
                 <label>Absender:</label>
                 <select class="form-control" id="filterAbsender">
                     <option value="">Alle</option>
@@ -155,7 +155,7 @@
 </div>
 {% endblock %}
 
-{% block extra_js %}
+{% block scripts %}
 <script>
 let bestellungenData = [];
 
@@ -250,7 +250,7 @@ function renderBestellungen(bestellungen) {
 function updateStats(stats) {
     $('#totalBestellungen').text(stats.total_bestellungen || 0);
     $('#totalPositionen').text(stats.total_positionen || 0);
-    $('#gesamtwert').text((stats.durchschnitt_positionen || 0).toFixed(1) + ' Pos/Best.');
+    $('#gesamtwert').text((stats.gesamtwert || 0).toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' €');
 }
 
 // Absender-Filter laden
