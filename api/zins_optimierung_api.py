@@ -373,6 +373,81 @@ def umbuchung_empfehlung():
                 if bedarf <= 0:
                     break
 
+
+    # ============================================
+    # FAHRZEUG-UMFINANZIERUNGEN (Stellantis -> Santander)
+    # ============================================
+    
+    # Santander freies Limit prüfen
+    c.execute("""SELECT gesamt_limit FROM ek_finanzierung_konditionen WHERE finanzinstitut = 'Santander'""")
+    row = c.fetchone()
+    santander_limit = row[0] if row else 1500000
+    
+    c.execute("""SELECT SUM(aktueller_saldo) FROM fahrzeugfinanzierungen WHERE finanzinstitut = 'Santander'""")
+    row = c.fetchone()
+    santander_belegt = row[0] if row and row[0] else 0
+    santander_frei = santander_limit - santander_belegt
+    
+    # Stellantis über Zinsfreiheit (9,03% -> 4,5% = 4,53% Ersparnis)
+    c.execute("""
+        SELECT vin, modell, aktueller_saldo, (alter_tage - zinsfreiheit_tage) as tage_ueber
+        FROM fahrzeugfinanzierungen
+        WHERE finanzinstitut = 'Stellantis' AND alter_tage > zinsfreiheit_tage
+        ORDER BY tage_ueber DESC
+    """)
+    stellantis_ueber = c.fetchall()
+    
+    if stellantis_ueber and santander_frei > 50000:
+        gesamt_saldo = sum(f["aktueller_saldo"] for f in stellantis_ueber)
+        umfinanzierbar = min(gesamt_saldo, santander_frei)
+        # Stellantis 9,03% vs Santander ~4,5% = 4,53% Ersparnis
+        ersparnis_prozent = 4.53
+        ersparnis_monat = umfinanzierbar * (ersparnis_prozent / 100) / 12
+        empfehlungen.append({
+            'typ': 'fahrzeug_umfinanzierung',
+            'von': 'Stellantis',
+            'nach': 'Santander',
+            'anzahl_fahrzeuge': len(stellantis_ueber),
+            'fahrzeuge': [{"vin": f["vin"], "modell": f["modell"].strip() if f["modell"] else "", "saldo": f["aktueller_saldo"], "tage_ueber": f["tage_ueber"]} for f in stellantis_ueber],
+            'betrag': round(gesamt_saldo, 2),
+            'santander_frei': round(santander_frei, 2),
+            'beschreibung': f'Umfinanzierung von {len(stellantis_ueber)} Fahrzeugen (über Zinsfreiheit) zu Santander',
+            'ersparnis_monat': round(ersparnis_monat, 2),
+            'ersparnis_jahr': round(ersparnis_monat * 12, 2),
+            'prioritaet': 1
+        })
+    
+    # Stellantis bald ablaufend (< 14 Tage)
+    c.execute("""
+        SELECT vin, modell, aktueller_saldo, (zinsfreiheit_tage - alter_tage) as tage_verbleibend
+        FROM fahrzeugfinanzierungen
+        WHERE finanzinstitut = 'Stellantis'
+        AND alter_tage <= zinsfreiheit_tage
+        AND (zinsfreiheit_tage - alter_tage) <= 14
+        ORDER BY tage_verbleibend ASC
+    """)
+    stellantis_bald = c.fetchall()
+    
+    if stellantis_bald:
+        gesamt_saldo_bald = sum(f["aktueller_saldo"] for f in stellantis_bald)
+        noch_frei = santander_frei - (umfinanzierbar if stellantis_ueber else 0)
+        if noch_frei > 50000:
+            ersparnis_monat_bald = min(gesamt_saldo_bald, noch_frei) * (4.53 / 100) / 12
+            empfehlungen.append({
+                'typ': 'fahrzeug_umfinanzierung_warnung',
+                'von': 'Stellantis',
+                'nach': 'Santander',
+                'anzahl_fahrzeuge': len(stellantis_bald),
+                'fahrzeuge': [{"vin": f["vin"], "modell": f["modell"].strip() if f["modell"] else "", "saldo": f["aktueller_saldo"], "tage_verbleibend": f["tage_verbleibend"]} for f in stellantis_bald],
+                'betrag': round(gesamt_saldo_bald, 2),
+                'santander_noch_frei': round(noch_frei, 2),
+                'beschreibung': f'{len(stellantis_bald)} Fahrzeuge mit bald ablaufender Zinsfreiheit (<14 Tage) - Umfinanzierung prüfen',
+                'potenzielle_zinsen_monat': round(gesamt_saldo_bald * (9.03 / 100) / 12, 2),
+                'ersparnis_monat': round(ersparnis_monat_bald, 2),
+                'ersparnis_jahr': round(ersparnis_monat_bald * 12, 2),
+                'prioritaet': 2
+            })
+
     conn.close()
     return jsonify({
         'empfehlungen': sorted(empfehlungen, key=lambda x: x['prioritaet']),

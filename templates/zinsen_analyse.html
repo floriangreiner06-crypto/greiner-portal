@@ -206,11 +206,30 @@
         </div>
     </div>
 
+
+    <!-- Handlungsempfehlungen -->
+    <div class="row g-3 mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm border-success border-top border-3">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 text-success">
+                        <i class="bi bi-lightbulb me-2"></i>Handlungsempfehlungen
+                        <span class="badge bg-success ms-2" id="badgeEmpfehlungen">0</span>
+                    </h5>
+                    <span class="text-success fw-bold" id="gesamtErsparnis">Potenzielle Ersparnis: -</span>
+                </div>
+                <div class="card-body p-0">
+                    <div id="empfehlungenListe"></div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
 const API_DASHBOARD = '/api/zinsen/dashboard';
-const API_REPORT = '/api/zinsen/report';
+const API_REPORT = "/api/zinsen/report";
+const API_EMPFEHLUNG = "/api/zinsen/umbuchung-empfehlung";
 
 // Daten laden
 async function loadData() {
@@ -224,6 +243,10 @@ async function loadData() {
         updateInstitutTabelle(dashboard, report);
         updateDringendTabelle(report);
         updateWarnungTabelle(report);
+        
+        // Empfehlungen laden
+        const empfehlungen = await fetch(API_EMPFEHLUNG).then(r => r.json());
+        updateEmpfehlungen(empfehlungen);
         
         document.getElementById('lastUpdate').textContent = 'Stand: ' + new Date().toLocaleString('de-DE');
     } catch (error) {
@@ -380,6 +403,107 @@ function updateWarnungTabelle(report) {
 }
 
 // Hilfsfunktionen
+
+// Empfehlungen aktualisieren
+function updateEmpfehlungen(data) {
+    const container = document.getElementById("empfehlungenListe");
+    const empfehlungen = data.empfehlungen || [];
+    
+    if (empfehlungen.length === 0) {
+        container.innerHTML = '<div class="p-3 text-center text-success"><i class="bi bi-check-circle me-2"></i>Keine Handlungsempfehlungen - alles optimal!</div>';
+        document.getElementById("badgeEmpfehlungen").textContent = "0";
+        document.getElementById("gesamtErsparnis").textContent = "Potenzielle Ersparnis: 0 €";
+        return;
+    }
+    
+    let html = '<div class="list-group list-group-flush">';
+    
+    empfehlungen.forEach((emp, idx) => {
+        const priorityClass = emp.prioritaet === 1 ? "border-danger" : "border-warning";
+        const priorityBadge = emp.prioritaet === 1 
+            ? '<span class="badge bg-danger">SOFORT</span>' 
+            : '<span class="badge bg-warning text-dark">BALD</span>';
+        
+        if (emp.typ === "normale_umbuchung") {
+            html += `<div class="list-group-item ${priorityClass} border-start border-3">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="mb-1">${priorityBadge} <i class="bi bi-arrow-left-right me-1"></i>Konten-Umbuchung</h6>
+                        <p class="mb-1"><strong>${emp.von_konto}</strong> → <strong>${emp.nach_konto}</strong></p>
+                        <small class="text-muted">${emp.beschreibung} (${emp.firma})</small>
+                    </div>
+                    <div class="text-end">
+                        <div class="fs-5 fw-bold">${formatCurrency(emp.betrag)}</div>
+                        <div class="text-success"><i class="bi bi-piggy-bank me-1"></i>${formatCurrency(emp.ersparnis_monat)}/Monat</div>
+                        <small class="text-muted">${formatCurrency(emp.ersparnis_jahr)}/Jahr</small>
+                    </div>
+                </div>
+            </div>`;
+        } else if (emp.typ === "fahrzeug_umfinanzierung") {
+            html += `<div class="list-group-item ${priorityClass} border-start border-3">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="mb-1">${priorityBadge} <i class="bi bi-truck me-1"></i>Fahrzeug-Umfinanzierung</h6>
+                        <p class="mb-1"><strong>${emp.anzahl_fahrzeuge} Fahrzeuge</strong> von ${emp.von} → ${emp.nach}</p>
+                        <small class="text-muted">${emp.beschreibung}</small>
+                        <div class="mt-2"><small class="text-info"><i class="bi bi-info-circle me-1"></i>Santander frei: ${formatCurrency(emp.santander_frei)}</small></div>
+                        <details class="mt-2"><summary class="text-primary" style="cursor:pointer">Fahrzeuge anzeigen (${emp.anzahl_fahrzeuge})</summary>
+                        <table class="table table-sm mt-2 mb-0"><thead><tr><th>VIN</th><th>Modell</th><th>Saldo</th><th>Tage über</th></tr></thead><tbody>
+                        ${emp.fahrzeuge.map(f => `<tr><td><code>${f.vin}</code></td><td>${f.modell || "-"}</td><td>${formatCurrency(f.saldo)}</td><td><span class="badge bg-danger">${f.tage_ueber}</span></td></tr>`).join("")}
+                        </tbody></table></details>
+                    </div>
+                    <div class="text-end">
+                        <div class="fs-5 fw-bold">${formatCurrency(emp.betrag)}</div>
+                        <div class="text-success"><i class="bi bi-piggy-bank me-1"></i>${formatCurrency(emp.ersparnis_monat)}/Monat</div>
+                        <small class="text-muted">${formatCurrency(emp.ersparnis_jahr)}/Jahr</small>
+                    </div>
+                </div>
+            </div>`;
+        } else if (emp.typ === "fahrzeug_umfinanzierung_warnung") {
+            html += `<div class="list-group-item ${priorityClass} border-start border-3">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="mb-1">${priorityBadge} <i class="bi bi-exclamation-triangle me-1"></i>Bald ablaufende Zinsfreiheit</h6>
+                        <p class="mb-1"><strong>${emp.anzahl_fahrzeuge} Fahrzeuge</strong> - Umfinanzierung zu ${emp.nach} prüfen</p>
+                        <small class="text-muted">${emp.beschreibung}</small>
+                        <div class="mt-2"><small class="text-warning"><i class="bi bi-exclamation-circle me-1"></i>Potenzielle Zinsen ohne Aktion: ${formatCurrency(emp.potenzielle_zinsen_monat)}/Monat</small></div>
+                        <details class="mt-2"><summary class="text-primary" style="cursor:pointer">Fahrzeuge anzeigen (${emp.anzahl_fahrzeuge})</summary>
+                        <table class="table table-sm mt-2 mb-0"><thead><tr><th>VIN</th><th>Modell</th><th>Saldo</th><th>Tage verbl.</th></tr></thead><tbody>
+                        ${emp.fahrzeuge.map(f => `<tr><td><code>${f.vin}</code></td><td>${f.modell || "-"}</td><td>${formatCurrency(f.saldo)}</td><td><span class="badge bg-warning text-dark">${f.tage_verbleibend}</span></td></tr>`).join("")}
+                        </tbody></table></details>
+                    </div>
+                    <div class="text-end">
+                        <div class="fs-5 fw-bold">${formatCurrency(emp.betrag)}</div>
+                        <div class="text-success"><i class="bi bi-piggy-bank me-1"></i>${formatCurrency(emp.ersparnis_monat)}/Monat</div>
+                        <small class="text-muted">${formatCurrency(emp.ersparnis_jahr)}/Jahr</small>
+                    </div>
+                </div>
+            </div>`;
+        } else if (emp.typ === "privatentnahme_einlage") {
+            html += `<div class="list-group-item ${priorityClass} border-start border-3">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="mb-1">${priorityBadge} <i class="bi bi-building me-1"></i>Firmen-Umbuchung</h6>
+                        <p class="mb-1"><strong>${emp.von_konto}</strong> (${emp.von_firma}) → <strong>${emp.nach_konto}</strong> (${emp.nach_firma})</p>
+                        <small class="text-muted">${emp.beschreibung}</small>
+                    </div>
+                    <div class="text-end">
+                        <div class="fs-5 fw-bold">${formatCurrency(emp.betrag)}</div>
+                        <div class="text-success"><i class="bi bi-piggy-bank me-1"></i>${formatCurrency(emp.ersparnis_monat)}/Monat</div>
+                        <small class="text-muted">${formatCurrency(emp.ersparnis_jahr)}/Jahr</small>
+                    </div>
+                </div>
+            </div>`;
+        }
+    });
+    
+    html += '</div>';
+    container.innerHTML = html;
+    
+    document.getElementById("badgeEmpfehlungen").textContent = empfehlungen.length;
+    document.getElementById("gesamtErsparnis").textContent = `Potenzielle Ersparnis: ${formatCurrency(data.gesamt_ersparnis_monat)}/Monat (${formatCurrency(data.gesamt_ersparnis_jahr)}/Jahr)`;
+}
+
 function formatCurrency(value) {
     if (value === null || value === undefined) return '-';
     return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value);
