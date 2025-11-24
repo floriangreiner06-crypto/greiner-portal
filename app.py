@@ -191,8 +191,10 @@ print("✅ Bankenspiegel Frontend registriert: /bankenspiegel/")
 # Verkauf API
 from api.verkauf_api import verkauf_api
 from api.stellantis_api import stellantis_api
+from api.zins_optimierung_api import zins_api
 app.register_blueprint(verkauf_api)
 app.register_blueprint(stellantis_api)
+app.register_blueprint(zins_api)
 print("✅ Verkauf API registriert: /api/verkauf/")
 print("✅ Stellantis API registriert: /api/stellantis/")
 
