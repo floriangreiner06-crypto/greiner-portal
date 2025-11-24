@@ -217,7 +217,7 @@ def zins_dashboard():
 
     # Stellantis über Zinsfreiheit
     c.execute("""
-        SELECT COUNT(*) as anzahl, SUM(aktueller_saldo) as saldo
+        SELECT COUNT(*) as anzahl, SUM(aktueller_saldo) as saldo, SUM(zinsen_letzte_periode) as zinsen_monat
         FROM fahrzeugfinanzierungen
         WHERE finanzinstitut = 'Stellantis'
           AND zinsfreiheit_tage IS NOT NULL
@@ -227,7 +227,7 @@ def zins_dashboard():
     stellantis_ueber = {
         'anzahl': row['anzahl'] or 0,
         'saldo': row['saldo'] or 0,
-        'zinsen_monat': round((row['saldo'] or 0) * (stellantis_zins / 100) / 12, 2)
+        'zinsen_monat': round(row['zinsen_monat'] or 0, 2)
     }
 
     # Stellantis bald ablaufend

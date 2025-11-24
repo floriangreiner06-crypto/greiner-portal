@@ -216,6 +216,37 @@ try:
         conn.commit()
         print(f"   ✓ {count_rrdi} Fahrzeuge importiert")
 
+    # ========================================
+    # ZINSEN BERECHNEN für Stellantis (9,03% p.a.)
+    # ========================================
+    print("\n📊 Berechne Zinsen für Fahrzeuge über Zinsfreiheit...")
+    
+    STELLANTIS_ZINSSATZ = 9.03  # % p.a.
+    
+    c.execute("""
+        UPDATE fahrzeugfinanzierungen
+        SET 
+            zinsen_gesamt = ROUND(aktueller_saldo * ? / 100 * (alter_tage - zinsfreiheit_tage) / 365.0, 2),
+            zinsen_letzte_periode = ROUND(aktueller_saldo * ? / 100 * 30 / 365.0, 2),
+            zins_startdatum = date(vertragsbeginn, '+' || zinsfreiheit_tage || ' days')
+        WHERE finanzinstitut = 'Stellantis'
+          AND alter_tage > zinsfreiheit_tage
+    """, (STELLANTIS_ZINSSATZ, STELLANTIS_ZINSSATZ))
+    
+    updated = c.rowcount
+    conn.commit()
+    print(f"   ✓ {updated} Fahrzeuge mit Zinsen aktualisiert")
+    
+    # Zinsen-Summary
+    c.execute("""
+        SELECT COUNT(*), ROUND(SUM(aktueller_saldo),0), ROUND(SUM(zinsen_gesamt),2)
+        FROM fahrzeugfinanzierungen
+        WHERE finanzinstitut = 'Stellantis' AND zinsen_gesamt > 0
+    """)
+    cnt, saldo, zinsen = c.fetchone()
+    if cnt:
+        print(f"   → {cnt} Fz mit {saldo:,.0f} € Saldo = {zinsen:,.2f} € Zinsen")
+
     # Statistik - nur Stellantis
     print("\n" + "="*60)
     print("📊 STELLANTIS ERGEBNIS:")
