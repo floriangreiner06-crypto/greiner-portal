@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
 ============================================================================
-SALES-SYNC V3: Mit Deckungsbeitrag-Berechnung
+SALES-SYNC V4: Mit korrigierter Deckungsbeitrag-Berechnung
 ============================================================================
 Erstellt: 11.11.2025
-Neu: Deckungsbeitrag wird aus PostgreSQL berechnet
+Aktualisiert: 25.11.2025 (TAG83)
+Fix: calc_usage_value_encr_internal zum Einsatzwert addiert
 Formel: (VK-Preis/1.19) - Einsatzwert - Var.Kosten + VKU
 ============================================================================
 """
@@ -33,7 +34,8 @@ def load_env():
 def sync_sales():
     """Synchronisiert Sales von Locosoft nach SQLite mit DB-Berechnung"""
 
-    log("=== SALES SYNC V3 MIT DECKUNGSBEITRAG GESTARTET ===")
+    log("=== SALES SYNC V4 MIT DECKUNGSBEITRAG GESTARTET ===")
+    log("Fix TAG83: calc_usage_value_encr_internal zum Einsatzwert addiert")
 
     # 1. Credentials laden
     log("Lade Credentials...")
@@ -78,11 +80,14 @@ def sync_sales():
             dv.buyer_customer_no::TEXT,
             m.description as model_description,
             
-            -- NEU: Deckungsbeitrag-Komponenten
+            -- Deckungsbeitrag-Komponenten
             COALESCE(dv.calc_basic_charge, 0) as fahrzeuggrundpreis,
             COALESCE(dv.calc_accessory, 0) as zubehoer,
             COALESCE(dv.calc_extra_expenses, 0) as fracht_brief_neben,
             COALESCE(dv.calc_cost_internal_invoices, 0) as kosten_intern_rg,
+            
+            -- NEU TAG83: Einsatzerhöhung interne Rechnungen
+            COALESCE(dv.calc_usage_value_encr_internal, 0) as einsatz_erhoehung_intern,
             
             -- Verkaufsunterstützung (claimed = gefordert)
             COALESCE(
@@ -123,7 +128,7 @@ def sync_sales():
              out_subsidiary, out_sales_contract_date, make_number, mileage_km,
              salesman_number, buyer_customer_no, model_description,
              fahrzeuggrundpreis, zubehoer, fracht_brief_neben, 
-             kosten_intern_rg, verkaufsunterstuetzung) = row
+             kosten_intern_rg, einsatz_erhoehung_intern, verkaufsunterstuetzung) = row
 
             # Decimal-Werte zu float/int konvertieren
             out_sale_price = float(out_sale_price) if out_sale_price else None
@@ -138,6 +143,7 @@ def sync_sales():
             zubehoer = float(zubehoer) if zubehoer else 0.0
             fracht_brief_neben = float(fracht_brief_neben) if fracht_brief_neben else 0.0
             kosten_intern_rg = float(kosten_intern_rg) if kosten_intern_rg else 0.0
+            einsatz_erhoehung_intern = float(einsatz_erhoehung_intern) if einsatz_erhoehung_intern else 0.0
             verkaufsunterstuetzung = float(verkaufsunterstuetzung) if verkaufsunterstuetzung else 0.0
 
             # DECKUNGSBEITRAG BERECHNEN
@@ -145,8 +151,8 @@ def sync_sales():
                 # Netto-VK-Preis (MwSt rausrechnen)
                 netto_vk_preis = out_sale_price / 1.19
                 
-                # Einsatzwert
-                einsatzwert = fahrzeuggrundpreis + zubehoer + fracht_brief_neben
+                # Einsatzwert (FIX TAG83: + einsatz_erhoehung_intern)
+                einsatzwert = fahrzeuggrundpreis + zubehoer + fracht_brief_neben + einsatz_erhoehung_intern
                 
                 # Deckungsbeitrag
                 deckungsbeitrag = netto_vk_preis - einsatzwert - kosten_intern_rg + verkaufsunterstuetzung
@@ -267,26 +273,20 @@ def sync_sales():
     mit_db = sqlite_cursor.fetchone()[0]
     log(f"Mit Deckungsbeitrag: {mit_db}")
     
-    # 10. Oktober 2025 Check (Test-Monat)
+    # 10. Test: Fahrzeug 111186 prüfen (sollte jetzt 2231.34 zeigen)
     sqlite_cursor.execute("""
-        SELECT 
-            COUNT(*) as anzahl,
-            ROUND(SUM(deckungsbeitrag), 2) as summe_db,
-            ROUND(AVG(db_prozent), 2) as avg_db_prozent
-        FROM sales
-        WHERE out_invoice_date >= '2025-10-01'
-        AND out_invoice_date < '2025-11-01'
-        AND deckungsbeitrag IS NOT NULL
+        SELECT deckungsbeitrag, db_prozent FROM sales
+        WHERE dealer_vehicle_number = 111186
     """)
-    okt_data = sqlite_cursor.fetchone()
-    if okt_data:
-        log(f"Oktober 2025: {okt_data[0]} Verkäufe | DB-Summe: {okt_data[1]}€ | Ø DB%: {okt_data[2]}%")
+    test_row = sqlite_cursor.fetchone()
+    if test_row:
+        log(f"Test Fzg 111186: DB={test_row[0]:.2f}€ | DB%={test_row[1]:.2f}%")
 
     # 11. Aufräumen
     pg_conn.close()
     sqlite_conn.close()
 
-    log("✅ Sync V3 mit Deckungsbeitrag erfolgreich beendet!")
+    log("✅ Sync V4 mit korrigiertem Deckungsbeitrag erfolgreich beendet!")
     return inserted, updated, errors
 
 if __name__ == '__main__':
