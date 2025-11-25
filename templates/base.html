@@ -55,31 +55,38 @@
                     </li>
 
                     <!-- Controlling Dropdown (inkl. Bankenspiegel) -->
-                    {% if current_user.is_authenticated and current_user.can_access_feature('bankenspiegel') %}
+                    {% if current_user.is_authenticated and (current_user.can_access_feature('bankenspiegel') or current_user.can_access_feature('zinsen') or current_user.can_access_feature('einkaufsfinanzierung')) %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="controllingDropdown" role="button" data-bs-toggle="dropdown">
                             <i class="bi bi-graph-up-arrow"></i> Controlling
                         </a>
                         <ul class="dropdown-menu">
-                            <!-- Dashboard -->
+                            <!-- Dashboard (nur für Bankenspiegel-Berechtigte) -->
+                            {% if current_user.can_access_feature('bankenspiegel') %}
                             <li><a class="dropdown-item" href="/controlling/dashboard">
                                 <i class="bi bi-speedometer2"></i> Dashboard
                             </a></li>
-                            
                             <li><hr class="dropdown-divider"></li>
+                            {% endif %}
                             
-                            <!-- Liquidität & Analysen -->
+                            <!-- Zinsen-Analyse (für alle mit zinsen-Berechtigung) -->
+                            {% if current_user.can_access_feature('zinsen') %}
                             <li><h6 class="dropdown-header text-muted">Analysen</h6></li>
-                            <li><a class="dropdown-item disabled text-muted" href="#" title="Bereits im Dashboard integriert">
-                                <i class="bi bi-droplet"></i> Liquidität
-                            </a></li>
                             <li><a class="dropdown-item" href="/bankenspiegel/zinsen-analyse">
                                 <i class="bi bi-percent"></i> Zinsen-Analyse
                             </a></li>
+                            {% endif %}
                             
+                            <!-- Einkaufsfinanzierung (für Disposition) -->
+                            {% if current_user.can_access_feature('einkaufsfinanzierung') %}
+                            <li><a class="dropdown-item" href="/bankenspiegel/einkaufsfinanzierung">
+                                <i class="bi bi-truck"></i> Einkaufsfinanzierung
+                            </a></li>
+                            {% endif %}
+                            
+                            <!-- Bankenspiegel Bereich (nur für Bankenspiegel-Berechtigte) -->
+                            {% if current_user.can_access_feature('bankenspiegel') %}
                             <li><hr class="dropdown-divider"></li>
-                            
-                            <!-- Bankenspiegel Bereich -->
                             <li><h6 class="dropdown-header text-muted">Bankenspiegel</h6></li>
                             <li><a class="dropdown-item" href="/bankenspiegel/dashboard">
                                 <i class="bi bi-bank2"></i> Bankenspiegel Dashboard
@@ -93,9 +100,6 @@
                             <li><a class="dropdown-item" href="/bankenspiegel/fahrzeugfinanzierungen">
                                 <i class="bi bi-car-front"></i> Fahrzeugfinanzierungen
                             </a></li>
-                            <li><a class="dropdown-item" href="/bankenspiegel/einkaufsfinanzierung">
-                                <i class="bi bi-truck"></i> Einkaufsfinanzierung
-                            </a></li>
                             
                             <li><hr class="dropdown-divider"></li>
                             
@@ -103,6 +107,7 @@
                             <li><a class="dropdown-item disabled text-muted" href="#" title="Coming Soon">
                                 <i class="bi bi-file-earmark-bar-graph"></i> Reports
                             </a></li>
+                            {% endif %}
                         </ul>
                     </li>
                     {% endif %}
@@ -199,6 +204,16 @@
                                 <li><a class="dropdown-item" href="#">
                                     <i class="bi bi-gear"></i> Einstellungen
                                 </a></li>
+                                {% if current_user.portal_role == 'admin' %}
+                                <li><hr class="dropdown-divider"></li>
+                                <li><h6 class="dropdown-header text-muted">Administration</h6></li>
+                                <li><a class="dropdown-item" href="/admin/system-status">
+                                    <i class="bi bi-activity"></i> System Status
+                                </a></li>
+                                <li><a class="dropdown-item" href="/debug/user">
+                                    <i class="bi bi-bug"></i> Debug User
+                                </a></li>
+                                {% endif %}
                                 <li><hr class="dropdown-divider"></li>
                                 <li><a class="dropdown-item text-danger" href="/logout">
                                     <i class="bi bi-box-arrow-right"></i> Logout
