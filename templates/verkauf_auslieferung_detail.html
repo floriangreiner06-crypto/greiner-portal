@@ -1,6 +1,65 @@
 {% extends "base.html" %}
 {% block title %}Auslieferungen - Greiner Portal{% endblock %}
 {% block content %}
+<style>
+/* Accordion Styles */
+.verkaufer-header {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+.verkaufer-header:hover {
+    background-color: #f8f9fa;
+}
+.verkaufer-header.collapsed .toggle-icon {
+    transform: rotate(-90deg);
+}
+.toggle-icon {
+    transition: transform 0.2s;
+    font-size: 0.8rem;
+}
+.fahrzeug-details {
+    background-color: #fafbfc;
+}
+.fahrzeug-table {
+    font-size: 0.9rem;
+    margin-bottom: 0;
+}
+.fahrzeug-table th {
+    font-weight: 600;
+    background-color: #f1f3f5;
+}
+.typ-badge {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    font-weight: bold;
+    font-size: 0.75rem;
+}
+.typ-n { background-color: #28a745; color: white; }
+.typ-tv { background-color: #ffc107; color: #212529; }
+.typ-g { background-color: #6c757d; color: white; }
+.vin-cell {
+    font-family: monospace;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+.vin-cell:hover {
+    background-color: #e9ecef;
+}
+.copy-hint {
+    font-size: 0.7rem;
+    color: #6c757d;
+}
+/* Summary Row */
+.summary-row td {
+    font-weight: 600;
+    background-color: #e9ecef;
+}
+</style>
+
 <div class="container-fluid mt-4">
     <div class="row mb-4">
         <div class="col-12">
@@ -11,16 +70,16 @@
 
     <!-- Filter -->
     <div class="row mb-4">
-        <div class="col-md-2">
+        <div class="col-md-2 col-lg-1">
             <label>Zeitraum:</label>
-            <select id="periodSelect" class="form-select">
+            <select id="periodSelect" class="form-select form-select-sm">
                 <option value="month" selected>Monat</option>
                 <option value="day">Tag</option>
             </select>
         </div>
         <div class="col-md-2">
             <label>Monat:</label>
-            <select id="monthSelect" class="form-select">
+            <select id="monthSelect" class="form-select form-select-sm">
                 <option value="1">Januar</option>
                 <option value="2">Februar</option>
                 <option value="3">März</option>
@@ -37,15 +96,15 @@
         </div>
         <div class="col-md-2">
             <label>Tag:</label>
-            <input type="date" id="daySelect" class="form-control" style="display:none;">
+            <input type="date" id="daySelect" class="form-control form-control-sm" style="display:none;">
         </div>
         <div class="col-md-1">
             <label>Jahr:</label>
-            <input type="number" id="yearSelect" class="form-control" value="2025" min="2020" max="2030">
+            <input type="number" id="yearSelect" class="form-control form-control-sm" value="2025" min="2020" max="2030">
         </div>
         <div class="col-md-2">
             <label>Standort:</label>
-            <select id="locationSelect" class="form-select">
+            <select id="locationSelect" class="form-select form-select-sm">
                 <option value="">Alle Standorte</option>
                 <option value="1">Deggendorf (Opel)</option>
                 <option value="2">Deggendorf (Hyundai)</option>
@@ -54,13 +113,17 @@
         </div>
         <div class="col-md-2">
             <label>Verkäufer:</label>
-            <select id="verkauferSelect" class="form-select">
+            <select id="verkauferSelect" class="form-select form-select-sm">
                 <option value="">Alle Verkäufer</option>
             </select>
         </div>
-        <div class="col-md-1">
+        <div class="col-md-2">
+            <label>VIN-Suche:</label>
+            <input type="text" id="vinSearch" class="form-control form-control-sm" placeholder="z.B. ABC12345">
+        </div>
+        <div class="col-md-1 col-lg-1">
             <label>&nbsp;</label>
-            <button id="loadBtn" class="btn btn-primary w-100">
+            <button id="loadBtn" class="btn btn-primary btn-sm w-100">
                 <i class="bi bi-search"></i>
             </button>
         </div>
@@ -68,20 +131,40 @@
 
     <!-- Verkäufer-Details mit Deckungsbeitrag -->
     <div class="row">
-        <div class="col-md-12">
+        <div class="col-12">
             <div class="card">
-                <div class="card-header bg-secondary text-white">
+                <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="bi bi-people"></i> Verkäufer-Übersicht mit Deckungsbeitrag</h5>
+                    <div>
+                        <button id="expandAllBtn" class="btn btn-sm btn-outline-light me-2">
+                            <i class="bi bi-chevron-expand"></i> Alle öffnen
+                        </button>
+                        <button id="collapseAllBtn" class="btn btn-sm btn-outline-light">
+                            <i class="bi bi-chevron-contract"></i> Alle schließen
+                        </button>
+                    </div>
                 </div>
-                <div class="card-body">
+                <div class="card-body p-0">
                     <div id="verkauferContainer">
-                        <div class="text-center">
+                        <div class="text-center p-4">
                             <div class="spinner-border" role="status"></div>
-                            <p>Lade Daten...</p>
+                            <p class="mt-2">Lade Daten...</p>
                         </div>
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast für VIN-Kopieren -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1100">
+    <div id="copyToast" class="toast align-items-center text-bg-success" role="alert">
+        <div class="d-flex">
+            <div class="toast-body">
+                <i class="bi bi-check-circle"></i> VIN kopiert!
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
         </div>
     </div>
 </div>
@@ -94,6 +177,7 @@ let currentDay = '';
 let currentPeriod = 'month';
 let currentLocation = '';
 let currentVerkaufer = '';
+let currentVin = '';
 
 // Helper
 function formatCurrency(value) {
@@ -112,6 +196,25 @@ function getDBColor(db_prozent) {
     if (db_prozent >= 5) return 'primary';
     if (db_prozent >= 0) return 'warning';
     return 'danger';
+}
+
+function getTypBadge(typ) {
+    switch(typ) {
+        case 'N': return '<span class="typ-badge typ-n" title="Neuwagen">N</span>';
+        case 'T': return '<span class="typ-badge typ-tv" title="Tageszulassung">T</span>';
+        case 'V': return '<span class="typ-badge typ-tv" title="Vorführwagen">V</span>';
+        case 'G': return '<span class="typ-badge typ-g" title="Gebrauchtwagen">G</span>';
+        case 'D': return '<span class="typ-badge typ-g" title="Demonstration">D</span>';
+        default: return '<span class="typ-badge bg-secondary">?</span>';
+    }
+}
+
+function copyVin(vin, btn) {
+    navigator.clipboard.writeText(vin).then(() => {
+        // Toast anzeigen
+        const toast = new bootstrap.Toast(document.getElementById('copyToast'));
+        toast.show();
+    });
 }
 
 // Event Listeners
@@ -146,8 +249,32 @@ document.getElementById('verkauferSelect').addEventListener('change', (e) => {
     currentVerkaufer = e.target.value;
 });
 
+document.getElementById('vinSearch').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        loadDetails();
+    }
+});
+
 document.getElementById('loadBtn').addEventListener('click', () => {
     loadDetails();
+});
+
+document.getElementById('expandAllBtn').addEventListener('click', () => {
+    document.querySelectorAll('.fahrzeug-collapse').forEach(el => {
+        el.classList.add('show');
+    });
+    document.querySelectorAll('.verkaufer-header').forEach(el => {
+        el.classList.remove('collapsed');
+    });
+});
+
+document.getElementById('collapseAllBtn').addEventListener('click', () => {
+    document.querySelectorAll('.fahrzeug-collapse').forEach(el => {
+        el.classList.remove('show');
+    });
+    document.querySelectorAll('.verkaufer-header').forEach(el => {
+        el.classList.add('collapsed');
+    });
 });
 
 // Load Verkäufer-Liste
@@ -174,7 +301,9 @@ async function loadVerkauferListe() {
 
 async function loadDetails() {
     const container = document.getElementById('verkauferContainer');
-    container.innerHTML = '<div class="text-center"><div class="spinner-border"></div></div>';
+    container.innerHTML = '<div class="text-center p-4"><div class="spinner-border"></div></div>';
+    
+    currentVin = document.getElementById('vinSearch').value.trim();
 
     try {
         let url = `/api/verkauf/auslieferung/detail?year=${currentYear}`;
@@ -187,154 +316,143 @@ async function loadDetails() {
 
         if (currentLocation) url += `&location=${encodeURIComponent(currentLocation)}`;
         if (currentVerkaufer) url += `&verkaufer=${encodeURIComponent(currentVerkaufer)}`;
+        if (currentVin) url += `&vin=${encodeURIComponent(currentVin)}`;
 
         const response = await fetch(url);
         const data = await response.json();
 
         if (data.error) {
-            container.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+            container.innerHTML = `<div class="alert alert-danger m-3">${data.error}</div>`;
             return;
         }
 
         if (!data.verkaufer || data.verkaufer.length === 0) {
-            container.innerHTML = '<div class="alert alert-info">Keine Daten für diesen Zeitraum</div>';
+            container.innerHTML = '<div class="alert alert-info m-3">Keine Daten für diesen Zeitraum</div>';
             return;
         }
 
-        let html = '<div class="table-responsive"><table class="table table-sm">';
-        html += `
-            <thead class="table-dark">
-                <tr>
-                    <th rowspan="2">Verkäufer</th>
-                    <th colspan="4" class="text-center">Fahrzeuge</th>
-                    <th colspan="3" class="text-center bg-success">Deckungsbeitrag</th>
-                </tr>
-                <tr>
-                    <th class="text-center">Neu</th>
-                    <th class="text-center">T/V</th>
-                    <th class="text-center">GW</th>
-                    <th class="text-center">∑</th>
-                    <th class="text-center bg-success">Umsatz</th>
-                    <th class="text-center bg-success">DB €</th>
-                    <th class="text-center bg-success">DB %</th>
-                </tr>
-            </thead>
-            <tbody>
-        `;
-
+        let html = '<div class="accordion" id="verkauferAccordion">';
+        
         // Gesamt-Summen
-        let totalFzg = 0, totalUmsatz = 0, totalDB = 0;
+        let totalFzg = 0, totalNeu = 0, totalTV = 0, totalGW = 0;
+        let totalUmsatz = 0, totalDB = 0;
 
-        data.verkaufer.forEach(vk => {
+        data.verkaufer.forEach((vk, idx) => {
             const dbColor = getDBColor(vk.db_prozent_gesamt);
+            const collapseId = `collapse-${idx}`;
             
+            // Header-Zeile (klappbar)
             html += `
-                <tr>
-                    <td><strong>${vk.verkaufer_name || 'Unbekannt'}</strong></td>
-                    <td class="text-center">
-                        <span class="badge bg-success">${vk.summe_neu}</span>
-                    </td>
-                    <td class="text-center">
-                        <span class="badge bg-warning text-dark">${vk.summe_test_vorfuehr}</span>
-                    </td>
-                    <td class="text-center">
-                        <span class="badge bg-secondary">${vk.summe_gebraucht}</span>
-                    </td>
-                    <td class="text-center">
-                        <strong>${vk.summe_gesamt}</strong>
-                    </td>
-                    <td class="text-end">${formatCurrency(vk.umsatz_gesamt)}</td>
-                    <td class="text-end">
-                        <span class="badge bg-${dbColor}">${formatCurrency(vk.db_gesamt)}</span>
-                    </td>
-                    <td class="text-center">
-                        <span class="badge bg-${dbColor}">${formatPercent(vk.db_prozent_gesamt)}</span>
-                    </td>
-                </tr>
+                <div class="accordion-item border-0 border-bottom">
+                    <div class="verkaufer-header collapsed p-3 d-flex align-items-center" 
+                         data-bs-toggle="collapse" 
+                         data-bs-target="#${collapseId}">
+                        <i class="bi bi-chevron-down toggle-icon me-3"></i>
+                        <div class="flex-grow-1">
+                            <strong>${vk.verkaufer_name || 'Unbekannt'}</strong>
+                        </div>
+                        <div class="d-flex align-items-center gap-3">
+                            <span class="badge bg-success" title="Neuwagen">${vk.summe_neu}</span>
+                            <span class="badge bg-warning text-dark" title="Test/Vorführ">${vk.summe_test_vorfuehr}</span>
+                            <span class="badge bg-secondary" title="Gebraucht">${vk.summe_gebraucht}</span>
+                            <strong class="mx-2">${vk.summe_gesamt}</strong>
+                            <span class="text-muted" style="min-width: 100px; text-align: right;">${formatCurrency(vk.umsatz_gesamt)}</span>
+                            <span class="badge bg-${dbColor}" style="min-width: 90px;">${formatCurrency(vk.db_gesamt)}</span>
+                            <span class="badge bg-${dbColor}" style="min-width: 60px;">${formatPercent(vk.db_prozent_gesamt)}</span>
+                        </div>
+                    </div>
+                    
+                    <div id="${collapseId}" class="collapse fahrzeug-collapse" data-bs-parent="#verkauferAccordion">
+                        <div class="fahrzeug-details p-3">
+                            <table class="table table-sm table-hover fahrzeug-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 50px;">Typ</th>
+                                        <th>Modell</th>
+                                        <th style="width: 120px;">VIN <span class="copy-hint">(klick = kopieren)</span></th>
+                                        <th style="width: 100px;" class="text-end">Umsatz</th>
+                                        <th style="width: 100px;" class="text-end">DB €</th>
+                                        <th style="width: 70px;" class="text-center">DB %</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
             `;
-
-            // Details aufklappbar
-            if (vk.neu.length > 0 || vk.test_vorfuehr.length > 0 || vk.gebraucht.length > 0) {
+            
+            // Einzelfahrzeuge
+            vk.fahrzeuge.forEach(fzg => {
+                const fzgDbColor = getDBColor(fzg.db_prozent);
                 html += `
-                    <tr class="table-light">
-                        <td colspan="8">
-                            <div class="ms-4">
-                                <small class="text-muted">
-                `;
-
-                // Neuwagen
-                if (vk.neu.length > 0) {
-                    html += '<strong class="text-success">Neuwagen:</strong> ';
-                    vk.neu.forEach((m, i) => {
-                        html += `${m.modell} (${m.anzahl}x | ${formatCurrency(m.deckungsbeitrag)} | ${formatPercent(m.db_prozent)})`;
-                        if (i < vk.neu.length - 1) html += ', ';
-                    });
-                    html += '<br>';
-                }
-
-                // Test/Vorführ
-                if (vk.test_vorfuehr.length > 0) {
-                    html += '<strong class="text-warning">Test/Vorführ:</strong> ';
-                    vk.test_vorfuehr.forEach((m, i) => {
-                        html += `${m.modell} (${m.anzahl}x | ${formatCurrency(m.deckungsbeitrag)} | ${formatPercent(m.db_prozent)})`;
-                        if (i < vk.test_vorfuehr.length - 1) html += ', ';
-                    });
-                    html += '<br>';
-                }
-
-                // Gebraucht
-                if (vk.gebraucht.length > 0) {
-                    html += '<strong class="text-secondary">Gebraucht:</strong> ';
-                    vk.gebraucht.forEach((m, i) => {
-                        html += `${m.modell} (${m.anzahl}x | ${formatCurrency(m.deckungsbeitrag)} | ${formatPercent(m.db_prozent)})`;
-                        if (i < vk.gebraucht.length - 1) html += ', ';
-                    });
-                }
-
-                html += `
-                                </small>
-                            </div>
+                    <tr>
+                        <td>${getTypBadge(fzg.typ)}</td>
+                        <td>${fzg.modell}</td>
+                        <td class="vin-cell" onclick="copyVin('${fzg.vin}', this)" title="${fzg.vin}">
+                            ...${fzg.vin_kurz}
+                        </td>
+                        <td class="text-end">${formatCurrency(fzg.umsatz)}</td>
+                        <td class="text-end">
+                            <span class="badge bg-${fzgDbColor}">${formatCurrency(fzg.deckungsbeitrag)}</span>
+                        </td>
+                        <td class="text-center">
+                            <span class="badge bg-${fzgDbColor}">${formatPercent(fzg.db_prozent)}</span>
                         </td>
                     </tr>
                 `;
-            }
+            });
+            
+            html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
 
             totalFzg += vk.summe_gesamt;
+            totalNeu += vk.summe_neu;
+            totalTV += vk.summe_test_vorfuehr;
+            totalGW += vk.summe_gebraucht;
             totalUmsatz += vk.umsatz_gesamt;
             totalDB += vk.db_gesamt;
         });
 
-        // Gesamt-Zeile
+        html += '</div>';
+
+        // Gesamt-Footer
         const totalDBProzent = totalUmsatz > 0 ? (totalDB / (totalUmsatz / 1.19)) * 100 : 0;
         const totalColor = getDBColor(totalDBProzent);
 
         html += `
-            </tbody>
-            <tfoot class="table-dark">
-                <tr>
-                    <th>GESAMT</th>
-                    <th colspan="3"></th>
-                    <th class="text-center">${totalFzg}</th>
-                    <th class="text-end">${formatCurrency(totalUmsatz)}</th>
-                    <th class="text-end">
-                        <span class="badge bg-${totalColor}">${formatCurrency(totalDB)}</span>
-                    </th>
-                    <th class="text-center">
-                        <span class="badge bg-${totalColor}">${formatPercent(totalDBProzent)}</span>
-                    </th>
-                </tr>
-            </tfoot>
+            <div class="p-3 bg-dark text-white d-flex align-items-center">
+                <div class="flex-grow-1">
+                    <strong>GESAMT</strong>
+                </div>
+                <div class="d-flex align-items-center gap-3">
+                    <span class="badge bg-success">${totalNeu}</span>
+                    <span class="badge bg-warning text-dark">${totalTV}</span>
+                    <span class="badge bg-secondary">${totalGW}</span>
+                    <strong class="mx-2">${totalFzg}</strong>
+                    <span style="min-width: 100px; text-align: right;">${formatCurrency(totalUmsatz)}</span>
+                    <span class="badge bg-${totalColor}" style="min-width: 90px;">${formatCurrency(totalDB)}</span>
+                    <span class="badge bg-${totalColor}" style="min-width: 60px;">${formatPercent(totalDBProzent)}</span>
+                </div>
+            </div>
         `;
 
-        html += '</table></div>';
         container.innerHTML = html;
     } catch (error) {
-        container.innerHTML = `<div class="alert alert-danger">Fehler: ${error.message}</div>`;
+        container.innerHTML = `<div class="alert alert-danger m-3">Fehler: ${error.message}</div>`;
     }
 }
 
 // Initial Load
 document.addEventListener('DOMContentLoaded', () => {
+    // Aktuellen Monat setzen
+    const now = new Date();
+    currentMonth = now.getMonth() + 1;
+    currentYear = now.getFullYear();
+    document.getElementById('monthSelect').value = currentMonth;
+    document.getElementById('yearSelect').value = currentYear;
+    
     loadVerkauferListe();
     loadDetails();
 });

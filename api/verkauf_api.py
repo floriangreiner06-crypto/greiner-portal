@@ -2,9 +2,11 @@
 Verkauf REST API
 Auftragseingang und Auslieferungen nach Verkäufern und Fahrzeugart
 
-VERSION 2.1 - Mit Deduplizierungs-Filter
+VERSION 2.2 - Mit Deduplizierungs-Filter + VIN-Suche + Einzelfahrzeuge
 - Verhindert Doppelzählungen bei N→T/V Umsetzungen
 - Regel: Wenn T oder V existiert, ignoriere N für dieselbe VIN am gleichen Datum
+- NEU: VIN-Filter für Suche
+- NEU: Einzelfahrzeuge statt Aggregation für bessere Lesbarkeit
 """
 
 from flask import Blueprint, jsonify, request
@@ -35,6 +37,46 @@ DEDUP_FILTER = """
             AND s.dealer_vehicle_type = 'N'
     )
 """
+
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+def aggregate_verkaufer_daten(rows):
+    """Aggregiert Rohdaten nach Verkäufer"""
+    verkaufer_dict = {}
+    summe = {'nw': 0, 'gw': 0, 'gesamt': 0}
+    
+    for row in rows:
+        vk_nr = row['salesman_number']
+        vk_name = row['verkaufer_name']
+        art = row['fahrzeugart']
+        anzahl = row['anzahl']
+        
+        if vk_nr not in verkaufer_dict:
+            verkaufer_dict[vk_nr] = {
+                'nummer': vk_nr,
+                'name': vk_name,
+                'nw': 0,
+                'gw': 0,
+                'gesamt': 0
+            }
+        
+        if art == 'NW':
+            verkaufer_dict[vk_nr]['nw'] += anzahl
+            summe['nw'] += anzahl
+        elif art == 'GW':
+            verkaufer_dict[vk_nr]['gw'] += anzahl
+            summe['gw'] += anzahl
+        
+        verkaufer_dict[vk_nr]['gesamt'] += anzahl
+        summe['gesamt'] += anzahl
+    
+    return {
+        'verkaeufer': list(verkaufer_dict.values()),
+        'summe': summe
+    }
 
 
 # ============================================================================
@@ -136,7 +178,7 @@ def get_auftragseingang():
 
 
 # ============================================================================
-# AUFTRAGSEINGANG DETAIL (NEU - mit Dedup-Filter)
+# AUFTRAGSEINGANG DETAIL (mit Dedup-Filter)
 # ============================================================================
 
 @verkauf_api.route('/auftragseingang/summary', methods=['GET'])
@@ -332,7 +374,7 @@ def get_auftragseingang_detail():
 
 
 # ============================================================================
-# AUSLIEFERUNGEN DETAIL (NEU - mit Dedup-Filter)
+# AUSLIEFERUNGEN DETAIL (NEU V2.2 - mit VIN + Einzelfahrzeuge)
 # ============================================================================
 
 @verkauf_api.route('/auslieferung/summary', methods=['GET'])
@@ -404,13 +446,13 @@ def get_auslieferung_summary():
 @verkauf_api.route('/auslieferung/detail', methods=['GET'])
 def get_auslieferung_detail():
     """
-    GET /api/verkauf/auslieferung/detail?month=11&year=2025&location=&verkaufer=
-    GET /api/verkauf/auslieferung/detail?day=2025-11-11&location=&verkaufer=
+    GET /api/verkauf/auslieferung/detail?month=11&year=2025&location=&verkaufer=&vin=
+    GET /api/verkauf/auslieferung/detail?day=2025-11-11&location=&verkaufer=&vin=
 
-    Liefert detaillierte Aufschlüsselung der Auslieferungen nach Verkäufer und Modellen
-    Basiert auf Rechnungsdatum (out_invoice_date)
-    Unterstützt sowohl Monats- als auch Tages-Filter
-    NEU: Inkl. Deckungsbeitrag-Daten
+    VERSION 2.2: Liefert EINZELFAHRZEUGE (nicht aggregiert) für bessere Lesbarkeit
+    - Inkl. VIN für Suche und Anzeige
+    - Inkl. Deckungsbeitrag-Daten
+    - Basiert auf Rechnungsdatum (out_invoice_date)
     """
     try:
         # Parameter
@@ -419,6 +461,7 @@ def get_auslieferung_detail():
         year = request.args.get('year', datetime.now().year, type=int)
         location = request.args.get('location', '')
         verkaufer = request.args.get('verkaufer', '')
+        vin_search = request.args.get('vin', '')  # NEU: VIN-Suche
 
         conn = get_db()
         cursor = conn.cursor()
@@ -432,11 +475,9 @@ def get_auslieferung_detail():
 
         # Zeit-Filter: Tag ODER Monat (auf Rechnungsdatum!)
         if day:
-            # Tages-Filter
             where_clauses.append("DATE(s.out_invoice_date) = ?")
             params.append(day)
         else:
-            # Monats-Filter (Fallback)
             where_clauses.append("strftime('%Y', s.out_invoice_date) = ?")
             where_clauses.append("strftime('%m', s.out_invoice_date) = ?")
             params.extend([str(year), f"{month:02d}"])
@@ -450,6 +491,11 @@ def get_auslieferung_detail():
         if verkaufer:
             where_clauses.append("s.salesman_number = ?")
             params.append(int(verkaufer))
+
+        # NEU: VIN-Filter (Teilsuche)
+        if vin_search:
+            where_clauses.append("s.vin LIKE ?")
+            params.append(f"%{vin_search}%")
 
         # Dedup-Filter hinzufügen
         where_clauses.append("""
@@ -465,28 +511,28 @@ def get_auslieferung_detail():
 
         where_sql = " AND ".join(where_clauses)
 
-        # Verkäufer mit Details (Rechnungsdatum!) + DECKUNGSBEITRAG
+        # EINZELFAHRZEUGE abrufen (nicht aggregiert!)
         cursor.execute(f"""
             SELECT
                 s.salesman_number,
                 COALESCE(e.first_name || ' ' || e.last_name, 'Verkäufer #' || s.salesman_number || ' (nicht in LocoSoft)') as verkaufer_name,
                 s.dealer_vehicle_type,
                 s.model_description,
-                COUNT(*) as anzahl,
-                ROUND(SUM(COALESCE(s.out_sale_price, 0)), 2) as umsatz,
-                ROUND(SUM(COALESCE(s.deckungsbeitrag, 0)), 2) as deckungsbeitrag,
-                ROUND(AVG(COALESCE(s.db_prozent, 0)), 2) as avg_db_prozent
+                s.vin,
+                s.out_invoice_date,
+                COALESCE(s.out_sale_price, 0) as umsatz,
+                COALESCE(s.deckungsbeitrag, 0) as deckungsbeitrag,
+                COALESCE(s.db_prozent, 0) as db_prozent
             FROM sales s
             LEFT JOIN employees e ON s.salesman_number = e.locosoft_id
             WHERE {where_sql}
-            GROUP BY s.salesman_number, verkaufer_name, s.dealer_vehicle_type, s.model_description
             ORDER BY verkaufer_name, s.dealer_vehicle_type, s.model_description
         """, params)
 
         rows = cursor.fetchall()
         conn.close()
 
-        # Aggregiere nach Verkäufer
+        # Aggregiere nach Verkäufer mit EINZELFAHRZEUGEN
         verkaufer_dict = {}
 
         for row in rows:
@@ -494,90 +540,76 @@ def get_auslieferung_detail():
             vk_name = row['verkaufer_name']
             typ = row['dealer_vehicle_type']
             modell = row['model_description'] or 'Unbekannt'
-            anzahl = row['anzahl']
+            vin = row['vin'] or ''
+            invoice_date = row['out_invoice_date']
             umsatz = row['umsatz'] or 0
             db = row['deckungsbeitrag'] or 0
-            db_prozent = row['avg_db_prozent'] or 0
+            db_prozent = row['db_prozent'] or 0
 
             if vk_nr not in verkaufer_dict:
                 verkaufer_dict[vk_nr] = {
                     'verkaufer_nummer': vk_nr,
                     'verkaufer_name': vk_name,
-                    'neu': [],
-                    'test_vorfuehr': [],
-                    'gebraucht': [],
+                    'fahrzeuge': [],  # NEU: Einzelfahrzeuge statt Kategorien
                     'summe_neu': 0,
                     'summe_test_vorfuehr': 0,
                     'summe_gebraucht': 0,
                     'summe_gesamt': 0,
-                    'umsatz_neu': 0,
-                    'umsatz_test_vorfuehr': 0,
-                    'umsatz_gebraucht': 0,
                     'umsatz_gesamt': 0,
-                    'db_neu': 0,
-                    'db_test_vorfuehr': 0,
-                    'db_gebraucht': 0,
                     'db_gesamt': 0
                 }
 
-            modell_info = {
-                'modell': modell, 
-                'anzahl': anzahl,
-                'umsatz': umsatz,
-                'deckungsbeitrag': db,
-                'db_prozent': db_prozent
+            # Einzelfahrzeug-Info
+            fahrzeug_info = {
+                'typ': typ,
+                'modell': modell,
+                'vin': vin,
+                'vin_kurz': vin[-8:] if len(vin) >= 8 else vin,  # Letzte 8 Zeichen
+                'datum': invoice_date,
+                'umsatz': round(umsatz, 2),
+                'deckungsbeitrag': round(db, 2),
+                'db_prozent': round(db_prozent, 2)
             }
 
-            if typ == 'N':
-                verkaufer_dict[vk_nr]['neu'].append(modell_info)
-                verkaufer_dict[vk_nr]['summe_neu'] += anzahl
-                verkaufer_dict[vk_nr]['umsatz_neu'] += umsatz
-                verkaufer_dict[vk_nr]['db_neu'] += db
-            elif typ in ('T', 'V'):
-                verkaufer_dict[vk_nr]['test_vorfuehr'].append(modell_info)
-                verkaufer_dict[vk_nr]['summe_test_vorfuehr'] += anzahl
-                verkaufer_dict[vk_nr]['umsatz_test_vorfuehr'] += umsatz
-                verkaufer_dict[vk_nr]['db_test_vorfuehr'] += db
-            elif typ in ('G', 'D'):
-                verkaufer_dict[vk_nr]['gebraucht'].append(modell_info)
-                verkaufer_dict[vk_nr]['summe_gebraucht'] += anzahl
-                verkaufer_dict[vk_nr]['umsatz_gebraucht'] += umsatz
-                verkaufer_dict[vk_nr]['db_gebraucht'] += db
+            verkaufer_dict[vk_nr]['fahrzeuge'].append(fahrzeug_info)
 
-            verkaufer_dict[vk_nr]['summe_gesamt'] += anzahl
+            # Summen aktualisieren
+            if typ == 'N':
+                verkaufer_dict[vk_nr]['summe_neu'] += 1
+            elif typ in ('T', 'V'):
+                verkaufer_dict[vk_nr]['summe_test_vorfuehr'] += 1
+            elif typ in ('G', 'D'):
+                verkaufer_dict[vk_nr]['summe_gebraucht'] += 1
+
+            verkaufer_dict[vk_nr]['summe_gesamt'] += 1
             verkaufer_dict[vk_nr]['umsatz_gesamt'] += umsatz
             verkaufer_dict[vk_nr]['db_gesamt'] += db
 
-        # DB% für Gesamt-Kategorien berechnen
+        # DB% für Gesamt berechnen
         for vk_data in verkaufer_dict.values():
-            if vk_data['umsatz_neu'] > 0:
-                vk_data['db_prozent_neu'] = round((vk_data['db_neu'] / (vk_data['umsatz_neu'] / 1.19)) * 100, 2)
-            else:
-                vk_data['db_prozent_neu'] = 0
-                
-            if vk_data['umsatz_test_vorfuehr'] > 0:
-                vk_data['db_prozent_test_vorfuehr'] = round((vk_data['db_test_vorfuehr'] / (vk_data['umsatz_test_vorfuehr'] / 1.19)) * 100, 2)
-            else:
-                vk_data['db_prozent_test_vorfuehr'] = 0
-                
-            if vk_data['umsatz_gebraucht'] > 0:
-                vk_data['db_prozent_gebraucht'] = round((vk_data['db_gebraucht'] / (vk_data['umsatz_gebraucht'] / 1.19)) * 100, 2)
-            else:
-                vk_data['db_prozent_gebraucht'] = 0
-                
             if vk_data['umsatz_gesamt'] > 0:
-                vk_data['db_prozent_gesamt'] = round((vk_data['db_gesamt'] / (vk_data['umsatz_gesamt'] / 1.19)) * 100, 2)
+                vk_data['db_prozent_gesamt'] = round(
+                    (vk_data['db_gesamt'] / (vk_data['umsatz_gesamt'] / 1.19)) * 100, 2
+                )
             else:
                 vk_data['db_prozent_gesamt'] = 0
+            
+            # Runden
+            vk_data['umsatz_gesamt'] = round(vk_data['umsatz_gesamt'], 2)
+            vk_data['db_gesamt'] = round(vk_data['db_gesamt'], 2)
 
-        # Liste erstellen
-        verkaufer_list = list(verkaufer_dict.values())
+        # Liste erstellen und nach Name sortieren
+        verkaufer_list = sorted(
+            verkaufer_dict.values(), 
+            key=lambda x: x['verkaufer_name']
+        )
 
         return jsonify({
             'success': True,
             'day': day if day else None,
             'month': month if not day else None,
             'year': year,
+            'vin_filter': vin_search if vin_search else None,
             'verkaufer': verkaufer_list
         })
 
@@ -588,11 +620,10 @@ def get_auslieferung_detail():
         }), 500
 
 
-
 @verkauf_api.route('/health', methods=['GET'])
 def health():
     """Health Check"""
-    return jsonify({'status': 'ok', 'service': 'verkauf_api', 'version': '2.1-dedup'})
+    return jsonify({'status': 'ok', 'service': 'verkauf_api', 'version': '2.2-vin'})
 
 
 @verkauf_api.route('/verkaufer', methods=['GET'])
