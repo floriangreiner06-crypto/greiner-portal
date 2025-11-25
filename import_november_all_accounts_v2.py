@@ -1,1 +1,0 @@
-scripts/imports/import_november_all_accounts_v2.py

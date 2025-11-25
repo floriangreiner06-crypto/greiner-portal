@@ -1,6 +1,6 @@
 # 🏦 GREINER PORTAL - PROJEKT-STATUS
 
-**Letztes Update:** 2025-11-24 22:39:51
+**Letztes Update:** 2025-11-25 08:19:20
 **Auto-generiert bei Git-Commit**
 
 ---
@@ -9,21 +9,21 @@
 
 - **Anzahl Konten:** 12
 - **Gesamt-Saldo:** 0.00 €
-- **Gesamt-Transaktionen:** 14,451
+- **Gesamt-Transaktionen:** 14,496
 
 ## 🏦 KONTEN-ÜBERSICHT
 
 | ID | Kontoname | IBAN | Bank | Saldo | Trans | Letzte |
 |----|-----------|------|------|-------|-------|--------|
 | 1 | Sparkasse KK | ...0760036467 | Sparkasse Deggendorf | 0.00 € | 285 | 2025-11-21 |
-| 5 | 57908 KK | ...0000057908 | Genobank Autohaus Gr | 0.00 € | 7231 | 2025-11-21 |
+| 5 | 57908 KK | ...0000057908 | Genobank Autohaus Gr | 0.00 € | 7261 | 2025-11-24 |
 | 6 | 22225 Immo KK | ...0000022225 | Genobank Greiner Imm | 0.00 € | 232 | 2025-11-17 |
 | 7 | 20057908 Darlehen | ...0020057908 | Genobank Autohaus Gr | 0.00 € | 20 | 2025-10-30 |
 | 8 | 1700057908 Festgeld | ...1700057908 | Genobank Autohaus Gr | 0.00 € | 40 | 2025-10-31 |
 | 9 | Hypovereinsbank KK | ...0006407420 | Hypovereinsbank | 0.00 € | 2595 | 2025-11-24 |
-| 14 | 303585 VR Landau KK | ...0000303585 | VR Bank Landau | 0.00 € | 426 | 2025-11-21 |
-| 15 | 1501500 HYU KK | ...0001501500 | Genobank Auto Greine | 0.00 € | 3542 | 2025-11-21 |
-| 17 | 4700057908 Darlehen | ...4700057908 | Genobank Autohaus Gr | 0.00 € | 71 | 2025-11-20 |
+| 14 | 303585 VR Landau KK | ...0000303585 | VR Bank Landau | 0.00 € | 427 | 2025-11-24 |
+| 15 | 1501500 HYU KK | ...0001501500 | Genobank Auto Greine | 0.00 € | 3555 | 2025-11-24 |
+| 17 | 4700057908 Darlehen | ...4700057908 | Genobank Autohaus Gr | 0.00 € | 72 | 2025-11-24 |
 | 20 | KfW 120057908 | ...0120057908 | Genobank Autohaus Gr | 0.00 € | 9 | 2025-09-30 |
 | 21 | 3700057908 Festgeld | ...3700057908 | Genobank Auto Greine | 0.00 € | 0 | - |
 | 22 | Peter Greiner Darlehen | keine | Intern / Gesellschaf | 0.00 € | 0 | - |
@@ -34,21 +34,21 @@
 | ID | Kontoname | Trans | Von | Bis | Status |
 |----|-----------|-------|-----|-----|--------|
 | 1 | Sparkasse KK | 28 | 2025-11-01 | 2025-11-21 | ✅ Komplett |
-| 5 | 57908 KK | 515 | 2025-11-03 | 2025-11-21 | ✅ Komplett |
+| 5 | 57908 KK | 545 | 2025-11-03 | 2025-11-24 | ✅ Komplett |
 | 6 | 22225 Immo KK | 13 | 2025-11-03 | 2025-11-17 | ✅ Komplett |
 | 7 | 20057908 Darlehen | 0 | - | - | ❌ Keine Daten |
 | 8 | 1700057908 Festgeld | 0 | - | - | ❌ Keine Daten |
 | 9 | Hypovereinsbank KK | 171 | 2025-11-03 | 2025-11-24 | ✅ Komplett |
-| 14 | 303585 VR Landau KK | 29 | 2025-11-03 | 2025-11-21 | ✅ Komplett |
-| 15 | 1501500 HYU KK | 245 | 2025-11-03 | 2025-11-21 | ✅ Komplett |
-| 17 | 4700057908 Darlehen | 4 | 2025-11-04 | 2025-11-20 | ✅ Komplett |
+| 14 | 303585 VR Landau KK | 30 | 2025-11-03 | 2025-11-24 | ✅ Komplett |
+| 15 | 1501500 HYU KK | 258 | 2025-11-03 | 2025-11-24 | ✅ Komplett |
+| 17 | 4700057908 Darlehen | 5 | 2025-11-04 | 2025-11-24 | ✅ Komplett |
 | 20 | KfW 120057908 | 0 | - | - | ❌ Keine Daten |
 | 21 | 3700057908 Festgeld | 0 | - | - | ❌ Keine Daten |
 | 22 | Peter Greiner Darlehen | 0 | - | - | ❌ Keine Daten |
 
 ## 📊 TRANSAKTIONS-STATISTIK (letzte 3 Monate)
 
-- **2025-11:** 1,005 Transaktionen
+- **2025-11:** 1,050 Transaktionen
 - **2025-10:** 1,476 Transaktionen
 - **2025-09:** 1,435 Transaktionen
 - **2025-08:** 330 Transaktionen

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-11-24 22:39:51",
+  "timestamp": "2025-11-25 08:19:20",
   "konten": [
     {
       "id": 1,
@@ -16,8 +16,8 @@
       "iban": "DE27741900000000057908",
       "bank": "Genobank Autohaus Greiner",
       "saldo": 0,
-      "trans_count": 7231,
-      "letzte_buchung": "2025-11-21"
+      "trans_count": 7261,
+      "letzte_buchung": "2025-11-24"
     },
     {
       "id": 6,
@@ -61,8 +61,8 @@
       "iban": "DE76741910000000303585",
       "bank": "VR Bank Landau",
       "saldo": 0,
-      "trans_count": 426,
-      "letzte_buchung": "2025-11-21"
+      "trans_count": 427,
+      "letzte_buchung": "2025-11-24"
     },
     {
       "id": 15,
@@ -70,8 +70,8 @@
       "iban": "DE68741900000001501500",
       "bank": "Genobank Auto Greiner",
       "saldo": 0,
-      "trans_count": 3542,
-      "letzte_buchung": "2025-11-21"
+      "trans_count": 3555,
+      "letzte_buchung": "2025-11-24"
     },
     {
       "id": 17,
@@ -79,8 +79,8 @@
       "iban": "DE58741900004700057908",
       "bank": "Genobank Autohaus Greiner",
       "saldo": 0,
-      "trans_count": 71,
-      "letzte_buchung": "2025-11-20"
+      "trans_count": 72,
+      "letzte_buchung": "2025-11-24"
     },
     {
       "id": 20,
@@ -121,9 +121,9 @@
     {
       "id": 5,
       "name": "57908 KK",
-      "trans": 515,
+      "trans": 545,
       "von": "2025-11-03",
-      "bis": "2025-11-21"
+      "bis": "2025-11-24"
     },
     {
       "id": 6,
@@ -156,23 +156,23 @@
     {
       "id": 14,
       "name": "303585 VR Landau KK",
-      "trans": 29,
+      "trans": 30,
       "von": "2025-11-03",
-      "bis": "2025-11-21"
+      "bis": "2025-11-24"
     },
     {
       "id": 15,
       "name": "1501500 HYU KK",
-      "trans": 245,
+      "trans": 258,
       "von": "2025-11-03",
-      "bis": "2025-11-21"
+      "bis": "2025-11-24"
     },
     {
       "id": 17,
       "name": "4700057908 Darlehen",
-      "trans": 4,
+      "trans": 5,
       "von": "2025-11-04",
-      "bis": "2025-11-20"
+      "bis": "2025-11-24"
     },
     {
       "id": 20,
@@ -197,5 +197,5 @@
     }
   ],
   "total_saldo": 0,
-  "total_transaktionen": 14451
+  "total_transaktionen": 14496
 }
