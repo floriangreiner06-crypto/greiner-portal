@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import os
 
 # Blueprint erstellen
-stellantis_api = Blueprint('stellantis_api', __name__)
+parts_api = Blueprint('parts_api', __name__)
 
 # Datenbank-Pfad (wird in app.py konfiguriert)
 DB_PATH = '/opt/greiner-portal/data/greiner_controlling.db'
@@ -31,11 +31,69 @@ def rows_to_list(rows):
     """Konvertiere Liste von sqlite3.Row zu Liste von Dictionaries"""
     return [row_to_dict(row) for row in rows]
 
+
+# =============================================================================
+# LIEFERSCHEIN-STATUS HELPER
+# =============================================================================
+
+def get_lieferschein_status_for_bestellungen(cursor, bestellnummern):
+    """
+    Hole Lieferschein-Status für eine Liste von Bestellnummern
+    Status: bestellt → geliefert → in_locosoft → zugebucht
+    """
+    if not bestellnummern:
+        return {}
+    
+    placeholders = ','.join('?' * len(bestellnummern))
+    
+    cursor.execute(f"""
+        SELECT 
+            servicebox_bestellnr,
+            COUNT(*) as pos_total,
+            SUM(CASE WHEN locosoft_zugebucht = 1 THEN 1 ELSE 0 END) as zugebucht,
+            SUM(CASE WHEN locosoft_gefunden = 1 AND locosoft_zugebucht = 0 THEN 1 ELSE 0 END) as in_locosoft,
+            SUM(CASE WHEN locosoft_gefunden = 0 THEN 1 ELSE 0 END) as geliefert,
+            MAX(lieferdatum) as letztes_lieferdatum
+        FROM teile_lieferscheine
+        WHERE servicebox_bestellnr IN ({placeholders})
+          AND servicebox_bestellnr != ''
+        GROUP BY servicebox_bestellnr
+    """, bestellnummern)
+    
+    result = {}
+    for row in cursor.fetchall():
+        bestellnr = row[0]
+        total = row[1] or 0
+        zugebucht = row[2] or 0
+        in_loco = row[3] or 0
+        gelief = row[4] or 0
+        
+        if total == 0:
+            status = 'bestellt'
+        elif zugebucht == total:
+            status = 'zugebucht'
+        elif zugebucht > 0 or in_loco > 0:
+            status = 'in_locosoft'
+        else:
+            status = 'geliefert'
+        
+        result[bestellnr] = {
+            'status': status,
+            'lieferschein_positionen': total,
+            'zugebucht': zugebucht,
+            'in_locosoft': in_loco,
+            'geliefert': gelief,
+            'letztes_lieferdatum': row[5]
+        }
+    
+    return result
+
+
 # =============================================================================
 # ENDPOINTS
 # =============================================================================
 
-@stellantis_api.route('/api/stellantis/health', methods=['GET'])
+@parts_api.route('/api/parts/health', methods=['GET'])
 def health_check():
     """Health Check"""
     try:
@@ -67,7 +125,7 @@ def health_check():
             'message': str(e)
         }), 500
 
-@stellantis_api.route('/api/stellantis/bestellungen', methods=['GET'])
+@parts_api.route('/api/parts/bestellungen', methods=['GET'])
 def get_bestellungen():
     """
     Hole alle Bestellungen mit optionalen Filtern
@@ -144,6 +202,16 @@ def get_bestellungen():
         cursor.execute(query, params + [limit, offset])
         bestellungen = rows_to_list(cursor.fetchall())
         
+        # Lieferschein-Status für alle Bestellungen holen
+        if bestellungen:
+            bestellnummern = [b['bestellnummer'] for b in bestellungen if b.get('bestellnummer')]
+            lieferschein_status = get_lieferschein_status_for_bestellungen(cursor, bestellnummern)
+            
+            for b in bestellungen:
+                ls_info = lieferschein_status.get(b['bestellnummer'], {})
+                b['lieferschein_status'] = ls_info.get('status', 'bestellt')
+                b['lieferschein_info'] = ls_info
+        
         # 2. GESAMT-ANZAHL
         count_query = f"""
             SELECT COUNT(*) as total
@@ -214,8 +282,8 @@ def get_bestellungen():
             'error': str(e)
         }), 500
 
-@stellantis_api.route('/api/stellantis/bestellung/<bestellnummer>', methods=['GET'])
-@stellantis_api.route('/api/stellantis/bestellungen/<bestellnummer>', methods=['GET'])
+@parts_api.route('/api/parts/bestellung/<bestellnummer>', methods=['GET'])
+@parts_api.route('/api/parts/bestellungen/<bestellnummer>', methods=['GET'])
 def get_bestellung_detail(bestellnummer):
     """
     Hole Details einer einzelnen Bestellung inkl. aller Positionen
@@ -259,7 +327,7 @@ def get_bestellung_detail(bestellnummer):
             'error': str(e)
         }), 500
 
-@stellantis_api.route('/api/stellantis/absender', methods=['GET'])
+@parts_api.route('/api/parts/absender', methods=['GET'])
 def get_absender():
     """Hole Liste aller eindeutigen Absender"""
     try:
@@ -291,7 +359,7 @@ def get_absender():
         }), 500
 
 
-@stellantis_api.route('/api/stellantis/sync-status', methods=['GET'])
+@parts_api.route('/api/parts/sync-status', methods=['GET'])
 def get_sync_status():
     """
     Liefert den aktuellen Sync-Status für ServiceBox

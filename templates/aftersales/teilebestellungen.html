@@ -29,6 +29,18 @@
     background-color: #667eea;
     color: white;
 }
+.status-badge {
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+.status-bestellt { background-color: #6c757d; color: white; }
+.status-geliefert { background-color: #ffc107; color: #212529; }
+.status-in_locosoft { background-color: #20c997; color: white; }
+.status-zugebucht { background-color: #28a745; color: white; }
+
 .filter-section {
     background-color: #f8f9fa;
     padding: 15px;
@@ -158,12 +170,13 @@
                             <th>Kunde</th>
                             <th>Lokale Nr</th>
                             <th>Positionen</th>
+                            <th>Lieferstatus</th>
                             <th>Aktionen</th>
                         </tr>
                     </thead>
                     <tbody id="bestellungenBody">
                         <tr>
-                            <td colspan="7" class="text-center">Keine Daten geladen</td>
+                            <td colspan="8" class="text-center">Keine Daten geladen</td>
                         </tr>
                     </tbody>
                 </table>
@@ -195,7 +208,7 @@ $(document).ready(function() {
 // Sync-Status laden
 function loadSyncStatus() {
     $.ajax({
-        url: '/api/stellantis/sync-status',
+        url: '/api/parts/sync-status',
         method: 'GET',
         success: function(data) {
             const banner = $('#syncStatusBanner');
@@ -249,7 +262,7 @@ function getNextSyncTime() {
 // Bestellungen laden
 function loadBestellungen() {
     $('#loadingSpinner').show();
-    $('#bestellungenBody').html('<tr><td colspan="7" class="text-center">Lade...</td></tr>');
+    $('#bestellungenBody').html('<tr><td colspan="8" class="text-center">Lade...</td></tr>');
     
     // Filter-Parameter sammeln
     const params = new URLSearchParams();
@@ -266,7 +279,7 @@ function loadBestellungen() {
     
     // API-Call
     $.ajax({
-        url: '/api/stellantis/bestellungen?' + params.toString(),
+        url: '/api/parts/bestellungen?' + params.toString(),
         method: 'GET',
         success: function(data) {
             bestellungenData = data.bestellungen || [];
@@ -276,11 +289,22 @@ function loadBestellungen() {
         },
         error: function(xhr, status, error) {
             console.error('Fehler beim Laden:', error);
-            $('#bestellungenBody').html('<tr><td colspan="7" class="text-center text-danger">Fehler beim Laden der Daten</td></tr>');
+            $('#bestellungenBody').html('<tr><td colspan="8" class="text-center text-danger">Fehler beim Laden der Daten</td></tr>');
             $('#loadingSpinner').hide();
             alert('Fehler beim Laden der Bestellungen: ' + error);
         }
     });
+}
+
+// Status-Badge Helper für Lieferschein
+function getStatusBadge(status) {
+    const badges = {
+        'bestellt': '<span class="status-badge status-bestellt"><i class="bi bi-clock"></i> Bestellt</span>',
+        'geliefert': '<span class="status-badge status-geliefert"><i class="bi bi-box-seam"></i> Geliefert</span>',
+        'in_locosoft': '<span class="status-badge status-in_locosoft"><i class="bi bi-check2-circle"></i> DMS zugebucht</span>',
+        'zugebucht': '<span class="status-badge status-zugebucht"><i class="bi bi-check-circle"></i> Zugebucht</span>'
+    };
+    return badges[status] || badges['bestellt'];
 }
 
 // Bestellungen rendern
@@ -289,7 +313,7 @@ function renderBestellungen(bestellungen) {
     tbody.empty();
     
     if (bestellungen.length === 0) {
-        tbody.html('<tr><td colspan="7" class="text-center">Keine Bestellungen gefunden</td></tr>');
+        tbody.html('<tr><td colspan="8" class="text-center">Keine Bestellungen gefunden</td></tr>');
         $('#tableCount').text('0');
         return;
     }
@@ -319,6 +343,9 @@ function renderBestellungen(bestellungen) {
                     <span class="badge badge-primary">${b.anzahl_positionen || 0}</span>
                 </td>
                 <td>
+                    ${getStatusBadge(b.lieferschein_status || 'bestellt')}
+                </td>
+                <td>
                     <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); openDetail('${b.bestellnummer}')">
                         <i class="bi bi-eye"></i> Details
                     </button>
@@ -339,7 +366,7 @@ function updateStats(stats) {
 // Absender-Filter laden
 function loadAbsenderFilter() {
     $.ajax({
-        url: '/api/stellantis/absender',
+        url: '/api/parts/absender',
         method: 'GET',
         success: function(data) {
             const select = $('#filterAbsender');
