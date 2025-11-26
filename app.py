@@ -198,8 +198,16 @@ app.register_blueprint(parts_api)
 app.register_blueprint(admin_api)
 app.register_blueprint(zins_api)
 print("✅ Verkauf API registriert: /api/verkauf/")
-print("✅ Stellantis API registriert: /api/stellantis/")
+print("✅ Parts API registriert: /api/stellantis/")
 print("✅ Admin API registriert: /api/admin/")
+
+# Mail API (Graph/Office 365)
+try:
+    from api.mail_api import mail_api
+    app.register_blueprint(mail_api)
+    print("✅ Mail API registriert: /api/mail/")
+except Exception as e:
+    print(f"⚠️  Mail API nicht geladen: {e}")
 
 # Verkauf Frontend Routes
 from routes.verkauf_routes import verkauf_bp
@@ -271,8 +279,3 @@ def debug_user():
         'allowed_features': getattr(current_user, 'allowed_features', []),
         'roles': current_user.roles
     }
-
-# Teile-Preisvergleich API
-from api.teile_api import teile_api
-app.register_blueprint(teile_api)
-
