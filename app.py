@@ -271,3 +271,7 @@ def debug_user():
         'allowed_features': getattr(current_user, 'allowed_features', []),
         'roles': current_user.roles
     }
+
+# Teile-Preisvergleich API
+from api.teile_api import teile_api
+app.register_blueprint(teile_api)

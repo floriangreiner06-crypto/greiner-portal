@@ -112,8 +112,8 @@ def get_bestellungen():
             params.append(f"%{teilenummer}%")
             
         if suche:
-            where_conditions.append("(b.bestellnummer LIKE ? OR b.lokale_nr LIKE ? OR EXISTS (SELECT 1 FROM stellantis_positionen p WHERE p.bestellung_id = b.id AND p.teilenummer LIKE ?))")
-            params.extend([f"%{suche}%", f"%{suche}%", f"%{suche}%"])
+            where_conditions.append("(b.bestellnummer LIKE ? OR b.lokale_nr LIKE ? OR b.parsed_kundennummer LIKE ? OR b.match_kunde_name LIKE ? OR EXISTS (SELECT 1 FROM stellantis_positionen p WHERE p.bestellung_id = b.id AND p.teilenummer LIKE ?))")
+            params.extend([f"%{suche}%", f"%{suche}%", f"%{suche}%", f"%{suche}%", f"%{suche}%"])
         
         where_clause = " AND ".join(where_conditions)
         
@@ -128,6 +128,11 @@ def get_bestellungen():
                 b.empfaenger_code,
                 b.lokale_nr,
                 b.url,
+                b.parsed_kundennummer,
+                b.parsed_vin,
+                b.match_typ,
+                b.match_kunde_name,
+                b.match_confidence,
                 (SELECT COUNT(*) FROM stellantis_positionen WHERE bestellung_id = b.id) as anzahl_positionen,
                 (SELECT COALESCE(ROUND(SUM(summe_inkl_mwst), 2), 0) FROM stellantis_positionen WHERE bestellung_id = b.id) as gesamtwert,
                 b.import_timestamp
@@ -278,6 +283,103 @@ def get_absender():
         return jsonify({
             'absender': absender,
             'anzahl': len(absender)
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'error': str(e)
+        }), 500
+
+
+@stellantis_api.route('/api/stellantis/sync-status', methods=['GET'])
+def get_sync_status():
+    """
+    Liefert den aktuellen Sync-Status für ServiceBox
+    Zeigt wann zuletzt synchronisiert wurde und wie viele Matches
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Sync-Status
+        cursor.execute("""
+            SELECT 
+                last_run,
+                status,
+                records_processed,
+                records_matched,
+                error_message
+            FROM sync_status
+            WHERE sync_name = 'servicebox'
+        """)
+        sync_row = cursor.fetchone()
+        
+        # Statistiken aus DB
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN match_typ IS NOT NULL THEN 1 ELSE 0 END) as matched,
+                MAX(bestelldatum) as letzte_bestellung,
+                MIN(bestelldatum) as erste_bestellung
+            FROM stellantis_bestellungen
+        """)
+        stats_row = cursor.fetchone()
+        
+        # Heute
+        cursor.execute("""
+            SELECT COUNT(*) as heute
+            FROM stellantis_bestellungen
+            WHERE DATE(bestelldatum) = DATE('now')
+        """)
+        heute_row = cursor.fetchone()
+        
+        conn.close()
+        
+        # Response bauen
+        if sync_row:
+            last_run = sync_row['last_run']
+            # Berechne "vor X Minuten/Stunden"
+            if last_run:
+                from datetime import datetime
+                try:
+                    last_dt = datetime.strptime(last_run, '%Y-%m-%d %H:%M:%S')
+                    diff = datetime.now() - last_dt
+                    minutes = int(diff.total_seconds() / 60)
+                    if minutes < 60:
+                        ago_text = f"vor {minutes} Min."
+                    elif minutes < 1440:
+                        ago_text = f"vor {minutes // 60} Std."
+                    else:
+                        ago_text = f"vor {minutes // 1440} Tagen"
+                except:
+                    ago_text = None
+            else:
+                ago_text = None
+                
+            sync_status = {
+                'last_run': last_run,
+                'last_run_ago': ago_text,
+                'status': sync_row['status'],
+                'records_processed': sync_row['records_processed'],
+                'records_matched': sync_row['records_matched'],
+                'error_message': sync_row['error_message']
+            }
+        else:
+            sync_status = {
+                'last_run': None,
+                'status': 'never_run'
+            }
+        
+        return jsonify({
+            'sync': sync_status,
+            'stats': {
+                'total': stats_row['total'] if stats_row else 0,
+                'matched': stats_row['matched'] if stats_row else 0,
+                'match_rate': round((stats_row['matched'] or 0) / max(stats_row['total'] or 1, 1) * 100, 1),
+                'heute': heute_row['heute'] if heute_row else 0,
+                'letzte_bestellung': stats_row['letzte_bestellung'] if stats_row else None
+            },
+            'cron_schedule': '09:00, 12:00, 16:00, 19:00'
         })
         
     except Exception as e:

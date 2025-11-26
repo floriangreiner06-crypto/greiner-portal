@@ -51,6 +51,24 @@
         </div>
     </div>
 
+    <!-- Sync-Status Banner -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div id="syncStatusBanner" class="alert alert-info d-flex align-items-center justify-content-between" style="display:none !important;">
+                <div>
+                    <i class="bi bi-cloud-check"></i>
+                    <span id="syncStatusText">Lade Status...</span>
+                </div>
+                <div>
+                    <small class="text-muted">Nächster Sync: <span id="nextSyncTime">-</span></small>
+                    <button class="btn btn-sm btn-outline-primary ms-2" onclick="loadSyncStatus()">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Statistik Cards -->
     <div class="row mb-4" id="statsCards">
         <div class="col-md-4">
@@ -91,8 +109,8 @@
                 </select>
             </div>
             <div class="col-md-3">
-                <label>Suche (Bestellnr, Lokale Nr):</label>
-                <input type="text" class="form-control" id="filterSuche" placeholder="Suche...">
+                <label>Suche (Bestellnr, Kunde, Teilenr):</label>
+                <input type="text" class="form-control" id="filterSuche" placeholder="z.B. Müller, 1001234, A38553...">
             </div>
         </div>
         <div class="row mt-3">
@@ -137,6 +155,7 @@
                             <th>Datum</th>
                             <th>Bestellnummer</th>
                             <th>Absender</th>
+                            <th>Kunde</th>
                             <th>Lokale Nr</th>
                             <th>Positionen</th>
                             <th>Aktionen</th>
@@ -144,7 +163,7 @@
                     </thead>
                     <tbody id="bestellungenBody">
                         <tr>
-                            <td colspan="6" class="text-center">Keine Daten geladen</td>
+                            <td colspan="7" class="text-center">Keine Daten geladen</td>
                         </tr>
                     </tbody>
                 </table>
@@ -161,6 +180,7 @@ let bestellungenData = [];
 
 // Beim Laden der Seite
 $(document).ready(function() {
+    loadSyncStatus();
     loadBestellungen();
     loadAbsenderFilter();
     
@@ -172,10 +192,64 @@ $(document).ready(function() {
     });
 });
 
+// Sync-Status laden
+function loadSyncStatus() {
+    $.ajax({
+        url: '/api/stellantis/sync-status',
+        method: 'GET',
+        success: function(data) {
+            const banner = $('#syncStatusBanner');
+            banner.css('display', 'flex').removeClass('d-none');
+            banner.attr('style', '');
+            
+            if (data.sync && data.sync.status === 'success') {
+                banner.removeClass('alert-warning alert-danger').addClass('alert-success');
+                const matchRate = data.stats.match_rate || 0;
+                $('#syncStatusText').html(
+                    `<strong>Letzter Sync:</strong> ${data.sync.last_run_ago || data.sync.last_run} ` +
+                    `| <strong>${data.stats.total}</strong> Bestellungen ` +
+                    `| <strong>${data.stats.matched}</strong> gematcht (${matchRate}%) ` +
+                    `| <strong>${data.stats.heute}</strong> heute`
+                );
+            } else if (data.sync && data.sync.status === 'error') {
+                banner.removeClass('alert-success alert-info').addClass('alert-danger');
+                $('#syncStatusText').html(
+                    `<strong>Fehler beim letzten Sync:</strong> ${data.sync.error_message || 'Unbekannt'}`
+                );
+            } else {
+                banner.removeClass('alert-success alert-danger').addClass('alert-warning');
+                $('#syncStatusText').html('<strong>Noch kein Sync ausgeführt</strong>');
+            }
+            
+            // Nächsten Sync berechnen
+            $('#nextSyncTime').text(getNextSyncTime());
+        },
+        error: function() {
+            $('#syncStatusBanner').css('display', 'flex').attr('style', '');
+            $('#syncStatusBanner').removeClass('alert-success alert-info').addClass('alert-warning');
+            $('#syncStatusText').html('Status konnte nicht geladen werden');
+        }
+    });
+}
+
+// Nächsten Sync-Zeitpunkt berechnen
+function getNextSyncTime() {
+    const now = new Date();
+    const hours = now.getHours();
+    const syncTimes = [9, 12, 16, 19];
+    
+    for (let t of syncTimes) {
+        if (hours < t) {
+            return `${t}:00 Uhr`;
+        }
+    }
+    return 'morgen 9:00 Uhr';
+}
+
 // Bestellungen laden
 function loadBestellungen() {
     $('#loadingSpinner').show();
-    $('#bestellungenBody').html('<tr><td colspan="6" class="text-center">Lade...</td></tr>');
+    $('#bestellungenBody').html('<tr><td colspan="7" class="text-center">Lade...</td></tr>');
     
     // Filter-Parameter sammeln
     const params = new URLSearchParams();
@@ -202,7 +276,7 @@ function loadBestellungen() {
         },
         error: function(xhr, status, error) {
             console.error('Fehler beim Laden:', error);
-            $('#bestellungenBody').html('<tr><td colspan="6" class="text-center text-danger">Fehler beim Laden der Daten</td></tr>');
+            $('#bestellungenBody').html('<tr><td colspan="7" class="text-center text-danger">Fehler beim Laden der Daten</td></tr>');
             $('#loadingSpinner').hide();
             alert('Fehler beim Laden der Bestellungen: ' + error);
         }
@@ -215,7 +289,7 @@ function renderBestellungen(bestellungen) {
     tbody.empty();
     
     if (bestellungen.length === 0) {
-        tbody.html('<tr><td colspan="6" class="text-center">Keine Bestellungen gefunden</td></tr>');
+        tbody.html('<tr><td colspan="7" class="text-center">Keine Bestellungen gefunden</td></tr>');
         $('#tableCount').text('0');
         return;
     }
@@ -223,6 +297,14 @@ function renderBestellungen(bestellungen) {
     $('#tableCount').text(bestellungen.length);
     
     bestellungen.forEach(function(b) {
+        // Kunde anzeigen (gematcht oder Kundennummer)
+        let kundeDisplay = '-';
+        if (b.match_kunde_name) {
+            kundeDisplay = `<span class="text-success"><i class="bi bi-check-circle"></i> ${b.match_kunde_name}</span>`;
+        } else if (b.parsed_kundennummer) {
+            kundeDisplay = `<span class="text-muted">${b.parsed_kundennummer}</span>`;
+        }
+        
         const row = `
             <tr onclick="openDetail('${b.bestellnummer}')">
                 <td>${formatDate(b.bestelldatum)}</td>
@@ -231,6 +313,7 @@ function renderBestellungen(bestellungen) {
                     <span class="badge badge-info">${b.absender_code || '-'}</span><br>
                     <small>${b.absender_name || '-'}</small>
                 </td>
+                <td>${kundeDisplay}</td>
                 <td>${b.lokale_nr || '-'}</td>
                 <td>
                     <span class="badge badge-primary">${b.anzahl_positionen || 0}</span>
