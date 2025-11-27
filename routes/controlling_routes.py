@@ -287,3 +287,244 @@ def api_tek():
             'error': str(e),
             'traceback': traceback.format_exc()
         }), 500
+
+
+# =============================================================================
+# BWA - Betriebswirtschaftliche Auswertung (GlobalCube F.03)
+# =============================================================================
+
+@controlling_bp.route('/bwa')
+@login_required
+def bwa_dashboard():
+    """BWA Dashboard - Vollkostenrechnung (GlobalCube F.03 Ersatz)"""
+    return render_template('controlling/bwa_dashboard.html',
+                         page_title='BWA - Betriebswirtschaftliche Auswertung',
+                         active_page='controlling')
+
+
+@controlling_bp.route('/api/bwa')
+@login_required
+def api_bwa():
+    """API: BWA-Daten (DB1→DB2→DB3→Betriebsergebnis)"""
+    from flask import request
+    
+    try:
+        firma = request.args.get('firma', '0')
+        von = request.args.get('von', '2025-10-01')
+        bis = request.args.get('bis', '2025-10-31')
+        
+        db = get_db()
+        
+        firma_filter = ""
+        if firma != '0':
+            firma_filter = f"AND subsidiary_to_company_ref = {firma}"
+        
+        # =================================================================
+        # UMSATZ (8xxxxx)
+        # =================================================================
+        umsatz = db.execute(f"""
+            SELECT COALESCE(SUM(CASE WHEN debit_or_credit = 'H' THEN posted_value/100.0 
+                                     ELSE -posted_value/100.0 END), 0)
+            FROM loco_journal_accountings
+            WHERE accounting_date BETWEEN ? AND ?
+              AND nominal_account_number BETWEEN 800000 AND 899999
+              {firma_filter}
+        """, (von, bis)).fetchone()[0] or 0
+        
+        # =================================================================
+        # EINSATZ (7xxxxx)
+        # =================================================================
+        einsatz = db.execute(f"""
+            SELECT COALESCE(SUM(CASE WHEN debit_or_credit = 'S' THEN posted_value/100.0 
+                                     ELSE -posted_value/100.0 END), 0)
+            FROM loco_journal_accountings
+            WHERE accounting_date BETWEEN ? AND ?
+              AND nominal_account_number BETWEEN 700000 AND 799999
+              {firma_filter}
+        """, (von, bis)).fetchone()[0] or 0
+        
+        db1 = umsatz - einsatz
+        
+        # =================================================================
+        # VARIABLE KOSTEN (lt. GlobalCube Mapping)
+        # =================================================================
+        variable_kosten_sql = f"""
+            SELECT 
+                CASE 
+                    WHEN nominal_account_number BETWEEN 491000 AND 491999 THEN 'fertigmachen'
+                    WHEN nominal_account_number BETWEEN 492000 AND 494999 THEN 'fixum_prov'
+                    WHEN nominal_account_number BETWEEN 497000 AND 497999 THEN 'kulanz'
+                    WHEN nominal_account_number BETWEEN 435000 AND 435999 THEN 'training'
+                    WHEN nominal_account_number BETWEEN 455000 AND 457999 THEN 'fahrzeugkosten'
+                    WHEN nominal_account_number BETWEEN 487000 AND 488999 THEN 'werbekosten'
+                    ELSE NULL
+                END as kategorie,
+                SUM(CASE WHEN debit_or_credit = 'S' THEN posted_value/100.0 
+                         ELSE -posted_value/100.0 END) as betrag
+            FROM loco_journal_accountings
+            WHERE accounting_date BETWEEN ? AND ?
+              AND (nominal_account_number BETWEEN 435000 AND 435999
+                   OR nominal_account_number BETWEEN 455000 AND 457999
+                   OR nominal_account_number BETWEEN 487000 AND 488999
+                   OR nominal_account_number BETWEEN 491000 AND 497999)
+              AND nominal_account_number NOT BETWEEN 498000 AND 498999
+              {firma_filter}
+            GROUP BY kategorie
+            HAVING kategorie IS NOT NULL
+        """
+        
+        var_kosten_rows = db.execute(variable_kosten_sql, (von, bis)).fetchall()
+        
+        variable_kosten = {
+            'fertigmachen': 0, 'fixum_prov': 0, 'kulanz': 0,
+            'training': 0, 'fahrzeugkosten': 0, 'werbekosten': 0
+        }
+        for row in var_kosten_rows:
+            if row['kategorie'] in variable_kosten:
+                variable_kosten[row['kategorie']] = round(row['betrag'] or 0, 2)
+        
+        variable_kosten_summe = sum(variable_kosten.values())
+        db2 = db1 - variable_kosten_summe
+        
+        # =================================================================
+        # DIREKTE KOSTEN (Produktivlöhne - 415xxx Lohnkonten)
+        # =================================================================
+        direkte_kosten = db.execute(f"""
+            SELECT COALESCE(SUM(CASE WHEN debit_or_credit = 'S' THEN posted_value/100.0 
+                                     ELSE -posted_value/100.0 END), 0)
+            FROM loco_journal_accountings
+            WHERE accounting_date BETWEEN ? AND ?
+              AND nominal_account_number BETWEEN 415000 AND 415999
+              {firma_filter}
+        """, (von, bis)).fetchone()[0] or 0
+        
+        db3 = db2 - direkte_kosten
+        
+        # =================================================================
+        # INDIREKTE KOSTEN (Rest der 4xxxxx ohne variable/direkte)
+        # =================================================================
+        indirekte_kosten = db.execute(f"""
+            SELECT COALESCE(SUM(CASE WHEN debit_or_credit = 'S' THEN posted_value/100.0 
+                                     ELSE -posted_value/100.0 END), 0)
+            FROM loco_journal_accountings
+            WHERE accounting_date BETWEEN ? AND ?
+              AND nominal_account_number BETWEEN 400000 AND 499999
+              AND nominal_account_number NOT BETWEEN 415000 AND 415999  -- direkte
+              AND nominal_account_number NOT BETWEEN 435000 AND 435999  -- training
+              AND nominal_account_number NOT BETWEEN 455000 AND 457999  -- fahrzeug
+              AND nominal_account_number NOT BETWEEN 487000 AND 497999  -- werbe+var
+              {firma_filter}
+        """, (von, bis)).fetchone()[0] or 0
+        
+        betriebsergebnis = db3 - indirekte_kosten
+        
+        # =================================================================
+        # NEUTRALES ERGEBNIS (Sonstige Erträge/Aufwendungen - 5xxxxx, 6xxxxx)
+        # =================================================================
+        neutrales_ergebnis = db.execute(f"""
+            SELECT COALESCE(SUM(CASE WHEN debit_or_credit = 'H' THEN posted_value/100.0 
+                                     ELSE -posted_value/100.0 END), 0)
+            FROM loco_journal_accountings
+            WHERE accounting_date BETWEEN ? AND ?
+              AND (nominal_account_number BETWEEN 500000 AND 599999
+                   OR nominal_account_number BETWEEN 600000 AND 699999)
+              {firma_filter}
+        """, (von, bis)).fetchone()[0] or 0
+        
+        unternehmensergebnis = betriebsergebnis + neutrales_ergebnis
+        
+        # =================================================================
+        # BEREICHE (für DB1 Aufschlüsselung)
+        # =================================================================
+        bereiche_sql = f"""
+            SELECT 
+                CASE 
+                    WHEN nominal_account_number BETWEEN 810000 AND 819999 THEN '1-NW'
+                    WHEN nominal_account_number BETWEEN 820000 AND 829999 THEN '2-GW'
+                    WHEN nominal_account_number BETWEEN 830000 AND 839999 THEN '3-Teile'
+                    WHEN nominal_account_number BETWEEN 840000 AND 849999 THEN '4-Lohn'
+                    WHEN nominal_account_number BETWEEN 860000 AND 869999 THEN '5-Sonstige'
+                END as bereich,
+                SUM(CASE WHEN debit_or_credit = 'H' THEN posted_value/100.0 ELSE -posted_value/100.0 END) as umsatz
+            FROM loco_journal_accountings
+            WHERE accounting_date BETWEEN ? AND ?
+              AND (nominal_account_number BETWEEN 810000 AND 849999 
+                   OR nominal_account_number BETWEEN 860000 AND 869999)
+              {firma_filter}
+            GROUP BY bereich
+        """
+        
+        einsatz_bereiche_sql = f"""
+            SELECT 
+                CASE 
+                    WHEN nominal_account_number BETWEEN 710000 AND 719999 THEN '1-NW'
+                    WHEN nominal_account_number BETWEEN 720000 AND 729999 THEN '2-GW'
+                    WHEN nominal_account_number BETWEEN 730000 AND 739999 THEN '3-Teile'
+                    WHEN nominal_account_number BETWEEN 740000 AND 749999 THEN '4-Lohn'
+                    WHEN nominal_account_number BETWEEN 760000 AND 769999 THEN '5-Sonstige'
+                END as bereich,
+                SUM(CASE WHEN debit_or_credit = 'S' THEN posted_value/100.0 ELSE -posted_value/100.0 END) as einsatz
+            FROM loco_journal_accountings
+            WHERE accounting_date BETWEEN ? AND ?
+              AND (nominal_account_number BETWEEN 710000 AND 749999 
+                   OR nominal_account_number BETWEEN 760000 AND 769999)
+              {firma_filter}
+            GROUP BY bereich
+        """
+        
+        umsatz_rows = db.execute(bereiche_sql, (von, bis)).fetchall()
+        einsatz_rows = db.execute(einsatz_bereiche_sql, (von, bis)).fetchall()
+        
+        umsatz_dict = {row['bereich']: row['umsatz'] for row in umsatz_rows if row['bereich']}
+        einsatz_dict = {row['bereich']: row['einsatz'] for row in einsatz_rows if row['bereich']}
+        
+        bereiche = {}
+        for b in ['1-NW', '2-GW', '3-Teile', '4-Lohn', '5-Sonstige']:
+            u = umsatz_dict.get(b, 0) or 0
+            e = einsatz_dict.get(b, 0) or 0
+            bereiche[b] = {
+                'umsatz': round(u, 2),
+                'einsatz': round(e, 2),
+                'db1': round(u - e, 2)
+            }
+        
+        # Margen berechnen
+        marge_db1 = (db1 / umsatz * 100) if umsatz > 0 else 0
+        marge_db2 = (db2 / umsatz * 100) if umsatz > 0 else 0
+        marge_db3 = (db3 / umsatz * 100) if umsatz > 0 else 0
+        marge_betriebserg = (betriebsergebnis / umsatz * 100) if umsatz > 0 else 0
+        marge_unternergebnis = (unternehmensergebnis / umsatz * 100) if umsatz > 0 else 0
+        
+        db.close()
+        
+        return jsonify({
+            'success': True,
+            'filter': {'firma': firma, 'von': von, 'bis': bis},
+            'umsatz': round(umsatz, 2),
+            'einsatz': round(einsatz, 2),
+            'db1': round(db1, 2),
+            'marge_db1': round(marge_db1, 1),
+            'variable_kosten': variable_kosten,
+            'variable_kosten_summe': round(variable_kosten_summe, 2),
+            'db2': round(db2, 2),
+            'marge_db2': round(marge_db2, 1),
+            'direkte_kosten_summe': round(direkte_kosten, 2),
+            'db3': round(db3, 2),
+            'marge_db3': round(marge_db3, 1),
+            'indirekte_kosten_summe': round(indirekte_kosten, 2),
+            'betriebsergebnis': round(betriebsergebnis, 2),
+            'marge_betriebserg': round(marge_betriebserg, 1),
+            'neutrales_ergebnis': round(neutrales_ergebnis, 2),
+            'unternehmensergebnis': round(unternehmensergebnis, 2),
+            'marge_unternergebnis': round(marge_unternergebnis, 1),
+            'bereiche': bereiche,
+            'timestamp': datetime.now().isoformat()
+        }), 200
+        
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500

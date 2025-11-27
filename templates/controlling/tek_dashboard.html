@@ -1,0 +1,654 @@
+{% extends "base.html" %}
+
+{% block title %}Tägliche Erfolgskontrolle (TEK){% endblock %}
+
+{% block extra_css %}
+<style>
+    .kpi-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .kpi-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.15) !important;
+    }
+    .bereich-row:hover {
+        background-color: #f8f9fa;
+    }
+    .trend-up { color: #198754; }
+    .trend-down { color: #dc3545; }
+    .trend-neutral { color: #6c757d; }
+    .firma-badge {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+    }
+    .progress-bar-striped-animated {
+        animation: progress-bar-stripes 1s linear infinite;
+    }
+    .db-positiv { background-color: rgba(25, 135, 84, 0.1); }
+    .db-negativ { background-color: rgba(220, 53, 69, 0.1); }
+    .filter-card {
+        background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
+    }
+    .stat-mini {
+        font-size: 0.75rem;
+        color: #6c757d;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    
+    <!-- Header mit Filter -->
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h2 mb-1">
+                <i class="bi bi-graph-up-arrow me-2"></i>Tägliche Erfolgskontrolle
+            </h1>
+            <p class="text-muted mb-0">
+                Umsatz, Einsatz und Deckungsbeitrag nach Bereichen
+                <span class="badge bg-secondary ms-2">DRIVE TEK</span>
+            </p>
+        </div>
+        <div class="col-auto d-flex align-items-center gap-2">
+            <span class="text-muted small me-2">Stand:</span>
+            <span class="badge bg-success" id="lastUpdate">
+                <i class="bi bi-clock me-1"></i>Lädt...
+            </span>
+            <button class="btn btn-outline-primary btn-sm" onclick="loadData()">
+                <i class="bi bi-arrow-clockwise me-1"></i>Aktualisieren
+            </button>
+        </div>
+    </div>
+
+    <!-- Filter-Bereich -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body py-3">
+            <div class="row g-3 align-items-end">
+                <!-- Firma -->
+                <div class="col-md-3">
+                    <label class="form-label small text-muted mb-1">
+                        <i class="bi bi-building me-1"></i>Firma
+                    </label>
+                    <select class="form-select" id="filterFirma" onchange="loadData()">
+                        <option value="0">Alle Firmen (Gesamt)</option>
+                        <option value="1">Autohaus Greiner (Opel/Stellantis)</option>
+                        <option value="2">Auto Greiner (Hyundai)</option>
+                    </select>
+                </div>
+                
+                <!-- Zeitraum Schnellauswahl -->
+                <div class="col-md-3">
+                    <label class="form-label small text-muted mb-1">
+                        <i class="bi bi-calendar3 me-1"></i>Zeitraum
+                    </label>
+                    <select class="form-select" id="filterZeitraum" onchange="updateDates(); loadData();">
+                        <option value="aktueller_monat" selected>Aktueller Monat</option>
+                        <option value="letzter_monat">Letzter Monat</option>
+                        <option value="aktuelles_quartal">Aktuelles Quartal</option>
+                        <option value="wirtschaftsjahr">Wirtschaftsjahr 24/25</option>
+                        <option value="custom">Benutzerdefiniert...</option>
+                    </select>
+                </div>
+                
+                <!-- Datum Von -->
+                <div class="col-md-2">
+                    <label class="form-label small text-muted mb-1">Von</label>
+                    <input type="date" class="form-control" id="filterVon" value="2024-09-01" onchange="loadData()">
+                </div>
+                
+                <!-- Datum Bis -->
+                <div class="col-md-2">
+                    <label class="form-label small text-muted mb-1">Bis</label>
+                    <input type="date" class="form-control" id="filterBis" value="2025-10-31" onchange="loadData()">
+                </div>
+                
+                <!-- Export -->
+                <div class="col-md-2">
+                    <div class="btn-group w-100">
+                        <button class="btn btn-outline-secondary" onclick="exportPDF()" title="PDF Export">
+                            <i class="bi bi-file-pdf"></i>
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="exportExcel()" title="Excel Export">
+                            <i class="bi bi-file-excel"></i>
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="printReport()" title="Drucken">
+                            <i class="bi bi-printer"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="row g-3 mb-4">
+        <!-- Umsatz -->
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 kpi-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <p class="text-muted mb-1 small">Umsatz (Erlöse)</p>
+                            <h3 class="mb-0" id="kpiUmsatz">
+                                <span class="spinner-border spinner-border-sm"></span>
+                            </h3>
+                        </div>
+                        <div class="bg-success bg-opacity-10 rounded p-2">
+                            <i class="bi bi-currency-euro text-success fs-4"></i>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-success bg-opacity-10 text-success me-2" id="kpiUmsatzTrend">
+                            <i class="bi bi-arrow-up"></i> +0%
+                        </span>
+                        <small class="text-muted">vs. Vorjahr</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Einsatz -->
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 kpi-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <p class="text-muted mb-1 small">Einsatz (Wareneinsatz)</p>
+                            <h3 class="mb-0" id="kpiEinsatz">
+                                <span class="spinner-border spinner-border-sm"></span>
+                            </h3>
+                        </div>
+                        <div class="bg-danger bg-opacity-10 rounded p-2">
+                            <i class="bi bi-cart text-danger fs-4"></i>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-danger bg-opacity-10 text-danger me-2" id="kpiEinsatzTrend">
+                            <i class="bi bi-arrow-down"></i> -0%
+                        </span>
+                        <small class="text-muted">vs. Vorjahr</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- DB1 -->
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 kpi-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <p class="text-muted mb-1 small">Deckungsbeitrag I</p>
+                            <h3 class="mb-0" id="kpiDB1">
+                                <span class="spinner-border spinner-border-sm"></span>
+                            </h3>
+                        </div>
+                        <div class="bg-primary bg-opacity-10 rounded p-2">
+                            <i class="bi bi-graph-up text-primary fs-4"></i>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-primary bg-opacity-10 text-primary me-2" id="kpiDB1Trend">
+                            <i class="bi bi-arrow-up"></i> +0%
+                        </span>
+                        <small class="text-muted">vs. Vorjahr</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Marge -->
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 kpi-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <p class="text-muted mb-1 small">Marge (DB1 %)</p>
+                            <h3 class="mb-0" id="kpiMarge">
+                                <span class="spinner-border spinner-border-sm"></span>
+                            </h3>
+                        </div>
+                        <div class="bg-info bg-opacity-10 rounded p-2">
+                            <i class="bi bi-percent text-info fs-4"></i>
+                        </div>
+                    </div>
+                    <div class="progress mt-2" style="height: 6px;">
+                        <div class="progress-bar bg-info" id="kpiMargeBar" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hauptbereich: Tabelle + Chart -->
+    <div class="row g-4">
+        
+        <!-- Bereichs-Tabelle -->
+        <div class="col-lg-7">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0 pt-3 pb-0">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="bi bi-table me-2"></i>Bereiche im Detail
+                        </h5>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-secondary active" onclick="showView('table')">
+                                <i class="bi bi-table"></i>
+                            </button>
+                            <button class="btn btn-outline-secondary" onclick="showView('cards')">
+                                <i class="bi bi-grid"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Bereich</th>
+                                    <th class="text-end">Umsatz</th>
+                                    <th class="text-end">Einsatz</th>
+                                    <th class="text-end">DB1</th>
+                                    <th class="text-end">Marge</th>
+                                    <th class="text-center" style="width: 120px;">Trend</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bereicheTable">
+                                <tr>
+                                    <td colspan="6" class="text-center py-4">
+                                        <div class="spinner-border text-primary" role="status"></div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                            <tfoot class="table-light fw-bold" id="bereicheFooter">
+                                <tr>
+                                    <td>GESAMT</td>
+                                    <td class="text-end" id="footerUmsatz">-</td>
+                                    <td class="text-end" id="footerEinsatz">-</td>
+                                    <td class="text-end" id="footerDB1">-</td>
+                                    <td class="text-end" id="footerMarge">-</td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Chart -->
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white border-0 pt-3 pb-0">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="bi bi-bar-chart me-2"></i>Visualisierung
+                        </h5>
+                        <select class="form-select form-select-sm w-auto" id="chartType" onchange="updateChart()">
+                            <option value="bar">Balkendiagramm</option>
+                            <option value="pie">Tortendiagramm (DB1)</option>
+                            <option value="line">Monatsverlauf</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <canvas id="tekChart" height="280"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firmen-Vergleich (wenn Gesamt gewählt) -->
+    <div class="row mt-4" id="firmenVergleich">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0 pt-3 pb-0">
+                    <h5 class="mb-0">
+                        <i class="bi bi-building me-2"></i>Vergleich nach Firma
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-4">
+                        <!-- Autohaus Greiner (Opel) -->
+                        <div class="col-md-6">
+                            <div class="card bg-light border-0">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <h6 class="mb-0">
+                                            <span class="badge bg-warning text-dark me-2">OPEL</span>
+                                            Autohaus Greiner
+                                        </h6>
+                                        <span class="text-muted small">Deggendorf + Landau</span>
+                                    </div>
+                                    <div class="row g-2 text-center">
+                                        <div class="col-4">
+                                            <div class="small text-muted">Umsatz</div>
+                                            <div class="h5 mb-0" id="opelUmsatz">-</div>
+                                        </div>
+                                        <div class="col-4">
+                                            <div class="small text-muted">DB1</div>
+                                            <div class="h5 mb-0" id="opelDB1">-</div>
+                                        </div>
+                                        <div class="col-4">
+                                            <div class="small text-muted">Marge</div>
+                                            <div class="h5 mb-0" id="opelMarge">-</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Auto Greiner (Hyundai) -->
+                        <div class="col-md-6">
+                            <div class="card bg-light border-0">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <h6 class="mb-0">
+                                            <span class="badge bg-primary me-2">HYUNDAI</span>
+                                            Auto Greiner
+                                        </h6>
+                                        <span class="text-muted small">Deggendorf</span>
+                                    </div>
+                                    <div class="row g-2 text-center">
+                                        <div class="col-4">
+                                            <div class="small text-muted">Umsatz</div>
+                                            <div class="h5 mb-0" id="hyundaiUmsatz">-</div>
+                                        </div>
+                                        <div class="col-4">
+                                            <div class="small text-muted">DB1</div>
+                                            <div class="h5 mb-0" id="hyundaiDB1">-</div>
+                                        </div>
+                                        <div class="col-4">
+                                            <div class="small text-muted">Marge</div>
+                                            <div class="h5 mb-0" id="hyundaiMarge">-</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Bereichs-Konfiguration
+const BEREICHE = {
+    '1-NW': { name: 'Neuwagen', icon: 'bi-car-front', color: '#0d6efd' },
+    '2-GW': { name: 'Gebrauchtwagen', icon: 'bi-car-front-fill', color: '#198754' },
+    '3-Teile': { name: 'Teile & Zubehör', icon: 'bi-gear', color: '#ffc107' },
+    '4-Lohn': { name: 'Werkstatt/Lohn', icon: 'bi-wrench', color: '#dc3545' },
+    '5-Sonstige': { name: 'Sonstige', icon: 'bi-three-dots', color: '#6c757d' }
+};
+
+let tekChart = null;
+let currentData = null;
+
+// Formatierung
+function formatEuro(value) {
+    return new Intl.NumberFormat('de-DE', { 
+        style: 'currency', 
+        currency: 'EUR',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(value);
+}
+
+function formatPercent(value) {
+    return new Intl.NumberFormat('de-DE', { 
+        style: 'percent', 
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1
+    }).format(value / 100);
+}
+
+// Datum-Helfer
+function updateDates() {
+    const zeitraum = document.getElementById('filterZeitraum').value;
+    const now = new Date();
+    let von, bis;
+    
+    switch(zeitraum) {
+        case 'aktueller_monat':
+            von = new Date(now.getFullYear(), now.getMonth(), 1);
+            bis = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            break;
+        case 'letzter_monat':
+            von = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            bis = new Date(now.getFullYear(), now.getMonth(), 0);
+            break;
+        case 'aktuelles_quartal':
+            const q = Math.floor(now.getMonth() / 3);
+            von = new Date(now.getFullYear(), q * 3, 1);
+            bis = new Date(now.getFullYear(), (q + 1) * 3, 0);
+            break;
+        case 'wirtschaftsjahr':
+            // WJ läuft von 01.09. bis 31.08.
+            if (now.getMonth() >= 8) { // Sep-Dez
+                von = new Date(now.getFullYear(), 8, 1);
+                bis = new Date(now.getFullYear() + 1, 7, 31);
+            } else { // Jan-Aug
+                von = new Date(now.getFullYear() - 1, 8, 1);
+                bis = new Date(now.getFullYear(), 7, 31);
+            }
+            break;
+        case 'custom':
+            return; // Nicht ändern bei Custom
+    }
+    
+    document.getElementById('filterVon').value = von.getFullYear() + '-' + String(von.getMonth() + 1).padStart(2, '0') + '-' + String(von.getDate()).padStart(2, '0');
+    document.getElementById('filterBis').value = bis.getFullYear() + '-' + String(bis.getMonth() + 1).padStart(2, '0') + '-' + String(bis.getDate()).padStart(2, '0');
+}
+
+// Daten laden
+async function loadData() {
+    const firma = document.getElementById('filterFirma').value;
+    const von = document.getElementById('filterVon').value;
+    const bis = document.getElementById('filterBis').value;
+    
+    // Firmenvergleich nur bei "Alle" anzeigen
+    document.getElementById('firmenVergleich').style.display = firma === '0' ? 'block' : 'none';
+    
+    // Loading-Status
+    document.getElementById('lastUpdate').innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Lädt...';
+    document.getElementById('lastUpdate').className = 'badge bg-warning';
+    
+    try {
+        const url = '/controlling/api/tek?firma=' + firma + '&von=' + von + '&bis=' + bis;
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (data.success) {
+            currentData = data;
+            updateKPIs(data);
+            updateTable(data.bereiche);
+            updateChart();
+            
+            if (firma === '0' && data.firmen) {
+                updateFirmenVergleich(data.firmen);
+            }
+            
+            document.getElementById('lastUpdate').innerHTML = '<i class="bi bi-check-circle me-1"></i>' + new Date().toLocaleTimeString('de-DE');
+            document.getElementById('lastUpdate').className = 'badge bg-success';
+        } else {
+            throw new Error(data.error || 'Unbekannter Fehler');
+        }
+    } catch (error) {
+        console.error('Fehler beim Laden:', error);
+        document.getElementById('lastUpdate').innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>Fehler';
+        document.getElementById('lastUpdate').className = 'badge bg-danger';
+    }
+}
+
+function updateKPIs(data) {
+    document.getElementById('kpiUmsatz').textContent = formatEuro(data.umsatz);
+    document.getElementById('kpiEinsatz').textContent = formatEuro(data.einsatz);
+    document.getElementById('kpiDB1').textContent = formatEuro(data.db1);
+    document.getElementById('kpiMarge').textContent = formatPercent(data.marge);
+    
+    // Marge-Balken (max 50%)
+    const margeWidth = Math.min(data.marge * 2, 100);
+    document.getElementById('kpiMargeBar').style.width = margeWidth + '%';
+}
+
+function updateTable(bereiche) {
+    const tbody = document.getElementById('bereicheTable');
+    let html = '';
+    
+    let totalUmsatz = 0, totalEinsatz = 0, totalDB1 = 0;
+    
+    for (const [key, bereich] of Object.entries(bereiche)) {
+        const config = BEREICHE[key] || { name: key, icon: 'bi-circle', color: '#6c757d' };
+        const marge = bereich.umsatz > 0 ? (bereich.db1 / bereich.umsatz * 100) : 0;
+        const isPositiv = bereich.db1 >= 0;
+        
+        totalUmsatz += bereich.umsatz;
+        totalEinsatz += bereich.einsatz;
+        totalDB1 += bereich.db1;
+        
+        html += '<tr class="bereich-row ' + (isPositiv ? '' : 'db-negativ') + '">' +
+            '<td><i class="bi ' + config.icon + ' me-2" style="color: ' + config.color + '"></i><strong>' + config.name + '</strong></td>' +
+            '<td class="text-end">' + formatEuro(bereich.umsatz) + '</td>' +
+            '<td class="text-end">' + formatEuro(bereich.einsatz) + '</td>' +
+            '<td class="text-end ' + (isPositiv ? 'text-success' : 'text-danger') + '"><strong>' + formatEuro(bereich.db1) + '</strong></td>' +
+            '<td class="text-end">' + formatPercent(marge) + '</td>' +
+            '<td class="text-center"><div class="progress" style="height: 8px; width: 100px;">' +
+            '<div class="progress-bar ' + (isPositiv ? 'bg-success' : 'bg-danger') + '" style="width: ' + Math.min(Math.abs(marge) * 2, 100) + '%"></div>' +
+            '</div></td></tr>';
+    }
+    
+    tbody.innerHTML = html;
+    
+    // Footer
+    const totalMarge = totalUmsatz > 0 ? (totalDB1 / totalUmsatz * 100) : 0;
+    document.getElementById('footerUmsatz').textContent = formatEuro(totalUmsatz);
+    document.getElementById('footerEinsatz').textContent = formatEuro(totalEinsatz);
+    document.getElementById('footerDB1').textContent = formatEuro(totalDB1);
+    document.getElementById('footerMarge').textContent = formatPercent(totalMarge);
+}
+
+function updateFirmenVergleich(firmen) {
+    // Opel (Firma 1)
+    if (firmen['1']) {
+        document.getElementById('opelUmsatz').textContent = formatEuro(firmen['1'].umsatz);
+        document.getElementById('opelDB1').textContent = formatEuro(firmen['1'].db1);
+        document.getElementById('opelMarge').textContent = formatPercent(firmen['1'].marge);
+    }
+    
+    // Hyundai (Firma 2)
+    if (firmen['2']) {
+        document.getElementById('hyundaiUmsatz').textContent = formatEuro(firmen['2'].umsatz);
+        document.getElementById('hyundaiDB1').textContent = formatEuro(firmen['2'].db1);
+        document.getElementById('hyundaiMarge').textContent = formatPercent(firmen['2'].marge);
+    }
+}
+
+function updateChart() {
+    const ctx = document.getElementById('tekChart').getContext('2d');
+    const chartType = document.getElementById('chartType').value;
+    
+    if (tekChart) {
+        tekChart.destroy();
+    }
+    
+    const labels = Object.values(BEREICHE).map(function(b) { return b.name; });
+    const colors = Object.values(BEREICHE).map(function(b) { return b.color; });
+    
+    // Daten aus currentData nehmen falls vorhanden
+    let umsatzData = [2600000, 1871000, 829000, 464000];
+    let einsatzData = [2339000, 1967000, 550000, 227000];
+    let db1Data = [260000, -96000, 279000, 237000];
+    
+    if (currentData && currentData.bereiche) {
+        umsatzData = Object.values(currentData.bereiche).map(function(b) { return b.umsatz; });
+        einsatzData = Object.values(currentData.bereiche).map(function(b) { return b.einsatz; });
+        db1Data = Object.values(currentData.bereiche).map(function(b) { return b.db1; });
+    }
+    
+    var config;
+    if (chartType === 'pie') {
+        config = {
+            type: 'pie',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: db1Data.map(function(v) { return Math.abs(v); }),
+                    backgroundColor: colors
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
+            }
+        };
+    } else {
+        config = {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Umsatz',
+                    data: umsatzData,
+                    backgroundColor: 'rgba(25, 135, 84, 0.7)'
+                }, {
+                    label: 'Einsatz',
+                    data: einsatzData,
+                    backgroundColor: 'rgba(220, 53, 69, 0.7)'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) { return formatEuro(value); }
+                        }
+                    }
+                }
+            }
+        };
+    }
+    
+    tekChart = new Chart(ctx, config);
+}
+
+// Export-Funktionen
+function exportPDF() {
+    alert('PDF-Export wird implementiert...');
+}
+
+function exportExcel() {
+    alert('Excel-Export wird implementiert...');
+}
+
+function printReport() {
+    window.print();
+}
+
+function showView(type) {
+    // Placeholder für Tabelle/Card Toggle
+    console.log('View:', type);
+}
+
+// Initialisierung
+document.addEventListener('DOMContentLoaded', function() {
+    updateDates();
+    loadData();
+});
+</script>
+{% endblock %}
