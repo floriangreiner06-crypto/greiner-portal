@@ -193,9 +193,11 @@ from api.verkauf_api import verkauf_api
 from api.parts_api import parts_api
 from api.admin_api import admin_api
 from api.zins_optimierung_api import zins_api
+from api.teile_api import teile_api
 app.register_blueprint(verkauf_api)
 app.register_blueprint(parts_api)
 app.register_blueprint(admin_api)
+app.register_blueprint(teile_api)
 app.register_blueprint(zins_api)
 print("✅ Verkauf API registriert: /api/verkauf/")
 print("✅ Parts API registriert: /api/stellantis/")

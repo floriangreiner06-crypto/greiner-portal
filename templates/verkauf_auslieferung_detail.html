@@ -58,34 +58,13 @@
     font-weight: 600;
     background-color: #e9ecef;
 }
-/* WA-Badge Styles */
-.wa-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    cursor: help;
-    white-space: nowrap;
-    min-width: 45px;
-    justify-content: center;
-}
-.wa-badge.has-wa {
-    background-color: #dc3545;
-    color: white;
-}
-.wa-badge.no-wa {
-    background-color: transparent;
-    color: transparent;
-}
 </style>
 
 <div class="container-fluid mt-4">
     <div class="row mb-4">
         <div class="col-12">
             <h2><i class="bi bi-truck"></i> Auslieferungen</h2>
-            <p class="text-muted">Ausgelieferte Fahrzeuge nach Verkäufer mit Deckungsbeitrag (Rechnungsdatum) - mit offenen Werkstattaufträgen</p>
+            <p class="text-muted">Ausgelieferte Fahrzeuge nach Verkäufer und Modellen (Rechnungsdatum)</p>
         </div>
     </div>
 
@@ -199,7 +178,6 @@ let currentPeriod = 'month';
 let currentLocation = '';
 let currentVerkaufer = '';
 let currentVin = '';
-let waData = {}; // Cache für WA-Daten
 
 // Helper
 function formatCurrency(value) {
@@ -231,33 +209,9 @@ function getTypBadge(typ) {
     }
 }
 
-function getWaBadge(vin) {
-    const wa = waData[vin];
-    if (!wa || wa.anzahl_offen === 0) {
-        return '<span class="wa-badge no-wa">-</span>';
-    }
-    
-    // Tooltip-Content erstellen
-    let tooltipContent = `${formatCurrency(wa.gesamt_wert)}`;
-    if (wa.auftraege && wa.auftraege.length > 0) {
-        wa.auftraege.forEach(a => {
-            if (a.positionen && a.positionen.length > 0) {
-                tooltipContent += `&#10;• ${a.positionen[0]}`;
-            }
-        });
-    }
-    
-    return `<span class="wa-badge has-wa" 
-                  data-bs-toggle="tooltip" 
-                  data-bs-html="true"
-                  data-bs-placement="left"
-                  title="${tooltipContent}">
-                <i class="bi bi-wrench"></i> ${wa.anzahl_offen}
-            </span>`;
-}
-
 function copyVin(vin, btn) {
     navigator.clipboard.writeText(vin).then(() => {
+        // Toast anzeigen
         const toast = new bootstrap.Toast(document.getElementById('copyToast'));
         toast.show();
     });
@@ -345,26 +299,6 @@ async function loadVerkauferListe() {
     }
 }
 
-// WA-Daten für VINs laden
-async function loadWaData(vins) {
-    if (!vins || vins.length === 0) return;
-    
-    try {
-        const response = await fetch('/api/verkauf/interne-auftraege/bulk', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ vins: vins })
-        });
-        const data = await response.json();
-        
-        if (data.success && data.ergebnis) {
-            waData = data.ergebnis;
-        }
-    } catch (error) {
-        console.error('Fehler beim Laden der WA-Daten:', error);
-    }
-}
-
 async function loadDetails() {
     const container = document.getElementById('verkauferContainer');
     container.innerHTML = '<div class="text-center p-4"><div class="spinner-border"></div></div>';
@@ -397,37 +331,15 @@ async function loadDetails() {
             return;
         }
 
-        // Alle VINs sammeln für WA-Abfrage
-        const allVins = [];
-        data.verkaufer.forEach(vk => {
-            vk.fahrzeuge.forEach(fzg => {
-                if (fzg.vin) allVins.push(fzg.vin);
-            });
-        });
-
-        // WA-Daten laden
-        await loadWaData(allVins);
-
         let html = '<div class="accordion" id="verkauferAccordion">';
         
         // Gesamt-Summen
         let totalFzg = 0, totalNeu = 0, totalTV = 0, totalGW = 0;
         let totalUmsatz = 0, totalDB = 0;
-        let totalWaAnzahl = 0, totalWaWert = 0;
 
         data.verkaufer.forEach((vk, idx) => {
             const dbColor = getDBColor(vk.db_prozent_gesamt);
             const collapseId = `collapse-${idx}`;
-            
-            // WA-Summen für Verkäufer berechnen
-            let vkWaAnzahl = 0, vkWaWert = 0;
-            vk.fahrzeuge.forEach(fzg => {
-                const wa = waData[fzg.vin];
-                if (wa && wa.anzahl_offen > 0) {
-                    vkWaAnzahl += wa.anzahl_offen;
-                    vkWaWert += wa.gesamt_wert;
-                }
-            });
             
             // Header-Zeile (klappbar)
             html += `
@@ -447,7 +359,6 @@ async function loadDetails() {
                             <span class="text-muted" style="min-width: 100px; text-align: right;">${formatCurrency(vk.umsatz_gesamt)}</span>
                             <span class="badge bg-${dbColor}" style="min-width: 90px;">${formatCurrency(vk.db_gesamt)}</span>
                             <span class="badge bg-${dbColor}" style="min-width: 60px;">${formatPercent(vk.db_prozent_gesamt)}</span>
-                            ${vkWaAnzahl > 0 ? `<span class="wa-badge has-wa" data-bs-toggle="tooltip" title="${formatCurrency(vkWaWert)}"><i class="bi bi-wrench"></i> ${vkWaAnzahl}</span>` : '<span class="wa-badge no-wa">-</span>'}
                         </div>
                     </div>
                     
@@ -462,7 +373,6 @@ async function loadDetails() {
                                         <th style="width: 100px;" class="text-end">Umsatz</th>
                                         <th style="width: 100px;" class="text-end">DB €</th>
                                         <th style="width: 70px;" class="text-center">DB %</th>
-                                        <th style="width: 140px;" class="text-center">Offene WA</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -485,7 +395,6 @@ async function loadDetails() {
                         <td class="text-center">
                             <span class="badge bg-${fzgDbColor}">${formatPercent(fzg.db_prozent)}</span>
                         </td>
-                        <td class="text-center">${getWaBadge(fzg.vin)}</td>
                     </tr>
                 `;
             });
@@ -504,8 +413,6 @@ async function loadDetails() {
             totalGW += vk.summe_gebraucht;
             totalUmsatz += vk.umsatz_gesamt;
             totalDB += vk.db_gesamt;
-            totalWaAnzahl += vkWaAnzahl;
-            totalWaWert += vkWaWert;
         });
 
         html += '</div>';
@@ -527,16 +434,11 @@ async function loadDetails() {
                     <span style="min-width: 100px; text-align: right;">${formatCurrency(totalUmsatz)}</span>
                     <span class="badge bg-${totalColor}" style="min-width: 90px;">${formatCurrency(totalDB)}</span>
                     <span class="badge bg-${totalColor}" style="min-width: 60px;">${formatPercent(totalDBProzent)}</span>
-                    ${totalWaAnzahl > 0 ? `<span class="wa-badge has-wa" data-bs-toggle="tooltip" title="${formatCurrency(totalWaWert)}"><i class="bi bi-wrench"></i> ${totalWaAnzahl}</span>` : '<span class="wa-badge no-wa">-</span>'}
                 </div>
             </div>
         `;
 
         container.innerHTML = html;
-        
-        // Tooltips aktivieren
-        const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
-        tooltipTriggerList.forEach(el => new bootstrap.Tooltip(el));
     } catch (error) {
         container.innerHTML = `<div class="alert alert-danger m-3">Fehler: ${error.message}</div>`;
     }
@@ -550,7 +452,6 @@ document.addEventListener('DOMContentLoaded', () => {
     currentYear = now.getFullYear();
     document.getElementById('monthSelect').value = currentMonth;
     document.getElementById('yearSelect').value = currentYear;
-    document.getElementById('daySelect').value = now.toISOString().split('T')[0];
     
     loadVerkauferListe();
     loadDetails();
