@@ -320,14 +320,14 @@ def api_bwa():
             firma_filter = f"AND subsidiary_to_company_ref = {firma}"
         
         # =================================================================
-        # UMSATZ (8xxxxx)
+        # UMSATZ (81-84, 86, 88 - OHNE 89xxxxx da nicht operativ)
         # =================================================================
         umsatz = db.execute(f"""
             SELECT COALESCE(SUM(CASE WHEN debit_or_credit = 'H' THEN posted_value/100.0 
                                      ELSE -posted_value/100.0 END), 0)
             FROM loco_journal_accountings
             WHERE accounting_date BETWEEN ? AND ?
-              AND nominal_account_number BETWEEN 800000 AND 899999
+              AND nominal_account_number BETWEEN 800000 AND 889999
               {firma_filter}
         """, (von, bis)).fetchone()[0] or 0
         
@@ -347,10 +347,13 @@ def api_bwa():
         
         # =================================================================
         # VARIABLE KOSTEN (lt. GlobalCube Mapping)
+        # WICHTIG: Nur Stelle5 != '0' (Kostenstelle variabel, nicht indirekt)
+        # + 4151xx = Provisionen
         # =================================================================
         variable_kosten_sql = f"""
             SELECT 
                 CASE 
+                    WHEN nominal_account_number BETWEEN 415100 AND 415199 THEN 'provisionen'
                     WHEN nominal_account_number BETWEEN 491000 AND 491999 THEN 'fertigmachen'
                     WHEN nominal_account_number BETWEEN 492000 AND 494999 THEN 'fixum_prov'
                     WHEN nominal_account_number BETWEEN 497000 AND 497999 THEN 'kulanz'
@@ -363,7 +366,9 @@ def api_bwa():
                          ELSE -posted_value/100.0 END) as betrag
             FROM loco_journal_accountings
             WHERE accounting_date BETWEEN ? AND ?
-              AND (nominal_account_number BETWEEN 435000 AND 435999
+              AND substr(nominal_account_number, 5, 1) != '0'
+              AND (nominal_account_number BETWEEN 415100 AND 415199
+                   OR nominal_account_number BETWEEN 435000 AND 435999
                    OR nominal_account_number BETWEEN 455000 AND 457999
                    OR nominal_account_number BETWEEN 487000 AND 488999
                    OR nominal_account_number BETWEEN 491000 AND 497999)
@@ -376,7 +381,7 @@ def api_bwa():
         var_kosten_rows = db.execute(variable_kosten_sql, (von, bis)).fetchall()
         
         variable_kosten = {
-            'fertigmachen': 0, 'fixum_prov': 0, 'kulanz': 0,
+            'provisionen': 0, 'fertigmachen': 0, 'fixum_prov': 0, 'kulanz': 0,
             'training': 0, 'fahrzeugkosten': 0, 'werbekosten': 0
         }
         for row in var_kosten_rows:
@@ -387,7 +392,8 @@ def api_bwa():
         db2 = db1 - variable_kosten_summe
         
         # =================================================================
-        # DIREKTE KOSTEN (Produktivlöhne - 415xxx Lohnkonten)
+        # DIREKTE KOSTEN (Produktivlöhne - 4150xx und 4152xx-4159xx)
+        # OHNE 4151xx da diese Provisionen sind (bereits in Variable Kosten)
         # =================================================================
         direkte_kosten = db.execute(f"""
             SELECT COALESCE(SUM(CASE WHEN debit_or_credit = 'S' THEN posted_value/100.0 
@@ -395,13 +401,19 @@ def api_bwa():
             FROM loco_journal_accountings
             WHERE accounting_date BETWEEN ? AND ?
               AND nominal_account_number BETWEEN 415000 AND 415999
+              AND nominal_account_number NOT BETWEEN 415100 AND 415199
               {firma_filter}
         """, (von, bis)).fetchone()[0] or 0
         
         db3 = db2 - direkte_kosten
         
         # =================================================================
-        # INDIREKTE KOSTEN (Rest der 4xxxxx ohne variable/direkte)
+        # INDIREKTE KOSTEN
+        # = Alle 4xxxxx MINUS:
+        #   - Variable Kosten (bereits abgezogen, nur Stelle5 != 0)
+        #   - Direkte Kosten (415xxx ohne 4151xx)
+        # Einfacher: Alle 4xxxxx mit Stelle5 = '0' (indirekte Kostenstelle)
+        #            PLUS Rest der Konten die nicht variabel/direkt sind
         # =================================================================
         indirekte_kosten = db.execute(f"""
             SELECT COALESCE(SUM(CASE WHEN debit_or_credit = 'S' THEN posted_value/100.0 
@@ -409,10 +421,13 @@ def api_bwa():
             FROM loco_journal_accountings
             WHERE accounting_date BETWEEN ? AND ?
               AND nominal_account_number BETWEEN 400000 AND 499999
-              AND nominal_account_number NOT BETWEEN 415000 AND 415999  -- direkte
-              AND nominal_account_number NOT BETWEEN 435000 AND 435999  -- training
-              AND nominal_account_number NOT BETWEEN 455000 AND 457999  -- fahrzeug
-              AND nominal_account_number NOT BETWEEN 487000 AND 497999  -- werbe+var
+              AND nominal_account_number NOT BETWEEN 415000 AND 415999  -- direkte Löhne
+              AND NOT (substr(nominal_account_number, 5, 1) != '0' 
+                       AND (nominal_account_number BETWEEN 435000 AND 435999
+                            OR nominal_account_number BETWEEN 455000 AND 457999
+                            OR nominal_account_number BETWEEN 487000 AND 488999
+                            OR nominal_account_number BETWEEN 491000 AND 497999)
+                       AND nominal_account_number NOT BETWEEN 498000 AND 498999)
               {firma_filter}
         """, (von, bis)).fetchone()[0] or 0
         
