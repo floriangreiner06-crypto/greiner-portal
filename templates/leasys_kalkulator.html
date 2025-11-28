@@ -1,0 +1,386 @@
+{% extends "base.html" %}
+{% block title %}Leasys Kalkulator - DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .filter-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 12px;
+        padding: 25px;
+        color: white;
+        margin-bottom: 25px;
+    }
+    .filter-card label {
+        color: rgba(255,255,255,0.9);
+        font-weight: 500;
+        margin-bottom: 5px;
+    }
+    .filter-card select {
+        border: none;
+        border-radius: 8px;
+        padding: 10px 15px;
+        font-size: 1rem;
+    }
+    .btn-search {
+        background: white;
+        color: #667eea;
+        border: none;
+        padding: 12px 30px;
+        border-radius: 8px;
+        font-weight: 600;
+        transition: all 0.2s;
+    }
+    .btn-search:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    .vehicle-card {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 15px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        transition: all 0.2s;
+        border-left: 4px solid #667eea;
+    }
+    .vehicle-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.12);
+    }
+    .vehicle-model {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 8px;
+    }
+    .vehicle-details {
+        font-size: 0.9rem;
+        color: #666;
+    }
+    .vehicle-price {
+        font-size: 1.4rem;
+        font-weight: 700;
+        color: #667eea;
+    }
+    .vehicle-price-netto {
+        font-size: 0.85rem;
+        color: #999;
+    }
+    .badge-fuel {
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .badge-benzin { background: #fff3e0; color: #e65100; }
+    .badge-diesel { background: #e3f2fd; color: #1565c0; }
+    .badge-elektro { background: #e8f5e9; color: #2e7d32; }
+    .badge-hybrid { background: #f3e5f5; color: #7b1fa2; }
+    .stats-box {
+        background: white;
+        border-radius: 10px;
+        padding: 15px 20px;
+        text-align: center;
+    }
+    .stats-number {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #667eea;
+    }
+    .stats-label {
+        font-size: 0.85rem;
+        color: #666;
+    }
+    .loading-spinner {
+        display: none;
+        text-align: center;
+        padding: 50px;
+    }
+    .loading-spinner.active {
+        display: block;
+    }
+    #vehicleResults {
+        min-height: 200px;
+    }
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #999;
+    }
+    .empty-state i {
+        font-size: 4rem;
+        margin-bottom: 20px;
+        opacity: 0.5;
+    }
+    .deep-link {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 15px;
+        margin-top: 20px;
+    }
+    .deep-link a {
+        color: #667eea;
+        font-weight: 500;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1">
+                <i class="fas fa-calculator text-primary"></i>
+                Leasys Kalkulator
+            </h2>
+            <p class="text-muted mb-0">Fahrzeugsuche mit aktuellen Listenpreisen</p>
+        </div>
+        <div>
+            <a href="/verkauf/leasys-programmfinder" class="btn btn-outline-secondary">
+                <i class="fas fa-search"></i> Programmfinder
+            </a>
+            <a href="https://e-touch.leasys.com/e-saml2/index.html?sap-client=100#/quotation/BusinessPartnership/1186289565" 
+               target="_blank" class="btn btn-outline-primary ml-2">
+                <i class="fas fa-external-link-alt"></i> Leasys Portal
+            </a>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="filter-card">
+        <div class="row align-items-end">
+            <div class="col-md-3">
+                <label><i class="fas fa-car"></i> Marke</label>
+                <select id="filterBrand" class="form-control">
+                    <option value="OPEL" selected>Opel</option>
+                    <option value="FIAT">Fiat</option>
+                    <option value="JEEP">Jeep</option>
+                    <option value="PEUGEOT">Peugeot</option>
+                    <option value="CITROEN">Citroën</option>
+                    <option value="LEAPMOTOR">Leapmotor</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label><i class="fas fa-gas-pump"></i> Kraftstoff</label>
+                <select id="filterFuel" class="form-control">
+                    <option value="">Alle</option>
+                    <option value="Benzin">Benzin</option>
+                    <option value="Diesel">Diesel</option>
+                    <option value="Elektro">Elektro</option>
+                    <option value="Hybrid">Hybrid</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label><i class="fas fa-file-contract"></i> Master Agreement</label>
+                <select id="filterMA" class="form-control">
+                    <option value="1000026115" selected>KM LEASING Opel 36-60</option>
+                    <option value="1000026114">KM LEASING Opel 24-35</option>
+                    <option value="1000026398">BLACK WEEKS 36-60</option>
+                    <option value="1000026397">BLACK WEEKS 24-35</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <button id="btnSearch" class="btn btn-search btn-block">
+                    <i class="fas fa-search"></i> Fahrzeuge suchen
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="row mb-4" id="statsRow" style="display: none;">
+        <div class="col-md-3">
+            <div class="stats-box">
+                <div class="stats-number" id="statCount">0</div>
+                <div class="stats-label">Fahrzeuge gefunden</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-box">
+                <div class="stats-number" id="statMinPrice">-</div>
+                <div class="stats-label">Günstigstes (brutto)</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-box">
+                <div class="stats-number" id="statMaxPrice">-</div>
+                <div class="stats-label">Teuerstes (brutto)</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-box">
+                <div class="stats-number" id="statSource">-</div>
+                <div class="stats-label">Datenquelle</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading -->
+    <div class="loading-spinner" id="loadingSpinner">
+        <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;"></div>
+        <p class="mt-3 text-muted">Lade Fahrzeuge von Leasys...</p>
+        <p class="small text-muted">Erstmalige Authentifizierung kann bis zu 15 Sekunden dauern</p>
+    </div>
+
+    <!-- Results -->
+    <div id="vehicleResults">
+        <div class="empty-state">
+            <i class="fas fa-car-side"></i>
+            <h5>Fahrzeugsuche starten</h5>
+            <p>Wähle Marke und Kraftstoff, dann klicke auf "Fahrzeuge suchen"</p>
+        </div>
+    </div>
+
+    <!-- Deep Link Info -->
+    <div class="deep-link">
+        <i class="fas fa-info-circle text-primary"></i>
+        <strong>Tipp:</strong> Für die vollständige Ratenberechnung öffne das 
+        <a href="https://e-touch.leasys.com/e-saml2/index.html?sap-client=100#/quotation/BusinessPartnership/1186289565" target="_blank">
+            Leasys Portal <i class="fas fa-external-link-alt"></i>
+        </a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const btnSearch = document.getElementById('btnSearch');
+    const filterBrand = document.getElementById('filterBrand');
+    const filterFuel = document.getElementById('filterFuel');
+    const filterMA = document.getElementById('filterMA');
+    const resultsDiv = document.getElementById('vehicleResults');
+    const loadingSpinner = document.getElementById('loadingSpinner');
+    const statsRow = document.getElementById('statsRow');
+
+    // Fuel Badge Helper
+    function getFuelBadge(fuelCode) {
+        const map = {
+            'B': { class: 'badge-benzin', text: 'Benzin' },
+            'D': { class: 'badge-diesel', text: 'Diesel' },
+            'E': { class: 'badge-elektro', text: 'Elektro' },
+            'H': { class: 'badge-hybrid', text: 'Hybrid' },
+            'P': { class: 'badge-hybrid', text: 'PHEV' }
+        };
+        const fuel = map[fuelCode] || { class: 'badge-secondary', text: fuelCode };
+        return `<span class="badge ${fuel.class}">${fuel.text}</span>`;
+    }
+
+    // Format Price
+    function formatPrice(price) {
+        return new Intl.NumberFormat('de-DE', {
+            style: 'currency',
+            currency: 'EUR',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0
+        }).format(price);
+    }
+
+    // Search Vehicles
+    async function searchVehicles() {
+        const brand = filterBrand.value;
+        const fuel = filterFuel.value;
+        const maId = filterMA.value;
+
+        // UI Update
+        loadingSpinner.classList.add('active');
+        resultsDiv.innerHTML = '';
+        statsRow.style.display = 'none';
+        btnSearch.disabled = true;
+
+        try {
+            const params = new URLSearchParams({ brand, ma_id: maId });
+            if (fuel) params.append('fuel', fuel);
+
+            const response = await fetch(`/api/leasys/kalkulator/vehicles-cached?${params}`);
+            const data = await response.json();
+
+            if (!data.success) {
+                throw new Error(data.error || 'Fehler beim Laden');
+            }
+
+            const vehicles = data.vehicles || [];
+
+            // Stats
+            if (vehicles.length > 0) {
+                const prices = vehicles.map(v => v.list_price_brutto).filter(p => p > 0);
+                document.getElementById('statCount').textContent = vehicles.length;
+                document.getElementById('statMinPrice').textContent = formatPrice(Math.min(...prices));
+                document.getElementById('statMaxPrice').textContent = formatPrice(Math.max(...prices));
+                document.getElementById('statSource').textContent = data.source === 'live' ? '🟢 Live' : '📦 Cache';
+                statsRow.style.display = 'flex';
+            }
+
+            // Render Vehicles
+            if (vehicles.length === 0) {
+                resultsDiv.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-search"></i>
+                        <h5>Keine Fahrzeuge gefunden</h5>
+                        <p>Versuche andere Filtereinstellungen</p>
+                    </div>
+                `;
+            } else {
+                // Sort by model name
+                vehicles.sort((a, b) => (a.model || '').localeCompare(b.model || ''));
+
+                resultsDiv.innerHTML = vehicles.map(v => `
+                    <div class="vehicle-card">
+                        <div class="row align-items-center">
+                            <div class="col-md-6">
+                                <div class="vehicle-model">
+                                    ${v.model || 'Unbekannt'}
+                                    ${getFuelBadge(v.fuel)}
+                                </div>
+                                <div class="vehicle-details">
+                                    <span class="mr-3"><i class="fas fa-tag"></i> ${v.gamma || '-'}</span>
+                                    <span class="mr-3"><i class="fas fa-cog"></i> ${v.allestimento || '-'}</span>
+                                    ${v.co2 ? `<span><i class="fas fa-leaf"></i> ${v.co2} g/km</span>` : ''}
+                                </div>
+                                <div class="mt-2 small text-muted">
+                                    Product ID: ${v.product_id || '-'}
+                                </div>
+                            </div>
+                            <div class="col-md-3 text-right">
+                                <div class="vehicle-price">${formatPrice(v.list_price_brutto)}</div>
+                                <div class="vehicle-price-netto">Netto: ${formatPrice(v.list_price_netto)}</div>
+                            </div>
+                            <div class="col-md-3 text-right">
+                                <a href="https://e-touch.leasys.com/e-saml2/index.html?sap-client=100#/quotation/BusinessPartnership/1186289565" 
+                                   target="_blank" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-calculator"></i> Rate berechnen
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+        } catch (error) {
+            console.error('Search error:', error);
+            resultsDiv.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>Fehler:</strong> ${error.message}
+                    <br><small>Die Leasys API ist möglicherweise nicht erreichbar. Bitte versuche es später erneut.</small>
+                </div>
+            `;
+        } finally {
+            loadingSpinner.classList.remove('active');
+            btnSearch.disabled = false;
+        }
+    }
+
+    // Event Listeners
+    btnSearch.addEventListener('click', searchVehicles);
+
+    // Enter Key
+    [filterBrand, filterFuel, filterMA].forEach(el => {
+        el.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') searchVehicles();
+        });
+    });
+});
+</script>
+{% endblock %}

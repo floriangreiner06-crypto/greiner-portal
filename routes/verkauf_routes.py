@@ -31,3 +31,9 @@ def auslieferung_detail():
     Basiert auf Rechnungsdatum
     """
     return render_template('verkauf_auslieferung_detail.html', now=datetime.now())
+
+
+@verkauf_bp.route('/leasys-kalkulator')
+def leasys_kalkulator():
+    """Leasys Kalkulator - Fahrzeugsuche mit Preisen"""
+    return render_template('leasys_kalkulator.html', now=datetime.now())

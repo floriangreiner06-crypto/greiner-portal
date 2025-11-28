@@ -6,137 +6,127 @@ Berechnet Leasingraten über die OData API
 
 import requests
 import json
+import uuid
+import time
 from datetime import datetime
+
 
 class LeasysRateCalculator:
     """Berechnet Leasingraten direkt über die Leasys OData API."""
-    
+
     BASE_URL = "https://e-touch.leasys.com/sap/opu/odata/sap/ZNFC_P23_SRV"
-    
-    # Standard-Parameter (aus HAR-Analyse)
+
     DEFAULT_PARAMS = {
         "salesAreaCode": "O 50020901",
         "quotTypeCode": "ZEV7",
         "distrChannelCode": "I2",
-        "bpId": "1186289565",  # Autohaus Greiner
+        "bpId": "1186289565",
         "salesMngId": "1185834152",
-        "brandCode": "000020",  # OPEL
+        "brandCode": "000020",
     }
-    
+
     def __init__(self, session_cookies=None):
-        """
-        Initialisiert den Calculator.
-        
-        Args:
-            session_cookies: Cookies von einer authentifizierten Session
-        """
         self.session = requests.Session()
         self.session.headers.update({
             "Accept": "application/json",
             "Content-Type": "application/json",
         })
-        
         if session_cookies:
             for cookie in session_cookies:
                 self.session.cookies.set(cookie['name'], cookie['value'])
-    
-    def get_vehicles(self, brand_code="000020", gamma="CORSA", fuel_code="B"):
+
+    def calculate_full_rate(self, product_id, mast_ag_id="1000026115",
+                            duration=48, mileage=40000, dealer_discount=17.0):
         """
-        Holt Fahrzeugliste.
-        
-        Args:
-            brand_code: Marken-Code (000020 = OPEL)
-            gamma: Modell (CORSA, ASTRA, etc.)
-            fuel_code: Kraftstoff (B=Benzin, D=Diesel, E=Elektro)
-        
-        Returns:
-            Liste der Fahrzeuge mit Preisen
+        Berechnet die vollständige Leasingrate über EVALUATION.
         """
-        url = f"{self.BASE_URL}/VEHICLE"
-        params = {
-            "$skip": 0,
-            "$top": 100,
-            "$filter": f"brandCode eq '{brand_code}' and Gamma eq '{gamma}' and engineCode eq '{fuel_code}'",
-            "$inlinecount": "allpages"
+        quote_id = f"drv{int(time.time())}p{uuid.uuid4().hex[:12]}"
+        
+        eval_payload = {
+            "bpId": self.DEFAULT_PARAMS["bpId"],
+            "distrChannelCode": self.DEFAULT_PARAMS["distrChannelCode"],
+            "quotTypeCode": self.DEFAULT_PARAMS["quotTypeCode"],
+            "salesAreaCode": self.DEFAULT_PARAMS["salesAreaCode"],
+            "salesAreaRespCode": "O 50020904",
+            "salesMngId": self.DEFAULT_PARAMS["salesMngId"],
+            "EVALUATION_ITEM": [{
+                "bpId": self.DEFAULT_PARAMS["bpId"],
+                "Vtc": False,
+                "quotTypeCode": self.DEFAULT_PARAMS["quotTypeCode"],
+                "salesAreaCode": self.DEFAULT_PARAMS["salesAreaCode"],
+                "salesAreaRespCode": "O 50020904",
+                "distrChannelCode": self.DEFAULT_PARAMS["distrChannelCode"],
+                "agreementId": mast_ag_id,
+                "redeemerBpId": "",
+                "bbAgreementId": "",
+                "buagId": "",
+                "productId": product_id,
+                "classRateCode": "ZIT029",
+                "mileage": str(mileage),
+                "duration": str(duration),
+                "canalizationCode": "Z002",
+                "extradealerDisc": f"{dealer_discount:.3f}",
+                "extConfigCode": "",
+                "GrilleFluidite": False,
+                "StartMonth": "0",
+                "EndMonth": "0",
+                "IntMonth": "0",
+                "StartKm": "0",
+                "EndKm": "0",
+                "IntKm": "0",
+                "BbFlag": False,
+                "CreateMode": "S",
+                "ZzHomclFlag": False,
+                "FcQuoteId": quote_id,
+                "SERVICE": [],
+                "ACCESSORY": []
+            }]
         }
         
-        response = self.session.get(url, params=params)
-        
-        if response.status_code == 200:
-            data = response.json()
-            return data.get('d', {}).get('results', [])
-        
-        return []
-    
-    def calculate_rate(self, product_id, mast_ag_id="1000026115", 
-                       duration=48, mileage=40000):
-        """
-        Berechnet die Leasingrate für ein Fahrzeug.
-        
-        Args:
-            product_id: Fahrzeug Product-ID
-            mast_ag_id: Master Agreement ID
-            duration: Laufzeit in Monaten
-            mileage: km/Jahr
-        
-        Returns:
-            Dict mit Raten-Details
-        """
-        # 1. FIN_CALC aufrufen für Basis-Kalkulation
-        url = f"{self.BASE_URL}/FIN_CALC"
-        params = {
-            "$filter": (
-                f"SoldId eq '{self.DEFAULT_PARAMS['bpId']}' and "
-                f"MastAgId eq '{mast_ag_id}' and "
-                f"ProcessType eq '{self.DEFAULT_PARAMS['quotTypeCode']}' and "
-                f"ProductId eq '{product_id}'"
+        try:
+            resp = self.session.post(
+                f"{self.BASE_URL}/EVALUATION",
+                json=eval_payload,
+                timeout=60
             )
-        }
-        
-        response = self.session.get(url, params=params)
-        
-        if response.status_code == 200:
-            data = response.json()
-            results = data.get('d', {}).get('results', [])
             
-            if results:
-                calc = results[0]
+            print(f"EVALUATION Status: {resp.status_code}")
+            
+            if resp.status_code not in [200, 201]:
+                print(f"Response: {resp.text[:500]}")
+                return None
+            
+            data = resp.json()
+            d = data.get('d', {})
+            items = d.get('EVALUATION_ITEM', {}).get('results', [])
+            
+            if items:
+                item = items[0]
                 return {
                     "product_id": product_id,
-                    "list_price": calc.get("ListPrice", "0.00"),
                     "duration": duration,
                     "mileage": mileage,
-                    "mast_ag_id": mast_ag_id,
-                    # Rate muss über FC_WIDGET berechnet werden
+                    "dealer_discount": dealer_discount,
+                    "list_price": float(item.get("ListPrice", 0) or 0),
+                    "fin_rate": float(item.get("FinrentInstalment", 0) or 0),
+                    "srv_rate": float(item.get("SrvrentInstalment", 0) or 0),
+                    "total_rate": float(item.get("TotrentInstalment", 0) or 0),
+                    "residual_value": float(item.get("Zi55", 0) or 0),
+                    "loan_amount": float(item.get("LoanAmount", 0) or 0),
+                    "tan": float(item.get("Tan", 0) or 0),
                 }
-        
-        return None
-    
-    def get_master_agreements(self):
-        """Holt verfügbare Master Agreements."""
-        url = f"{self.BASE_URL}/QUOT_TYPE('ZEV7')/MAST_AG"
-        params = {
-            "$skip": 0,
-            "$top": 75,
-            "$filter": (
-                f"salesAreaCode eq '{self.DEFAULT_PARAMS['salesAreaCode']}' and "
-                f"distrChannelCode eq '{self.DEFAULT_PARAMS['distrChannelCode']}' and "
-                f"bpId eq '{self.DEFAULT_PARAMS['bpId']}'"
-            )
-        }
-        
-        response = self.session.get(url, params=params)
-        
-        if response.status_code == 200:
-            data = response.json()
-            return data.get('d', {}).get('results', [])
-        
-        return []
+            else:
+                print("Keine EVALUATION_ITEM results")
+                print(f"Response keys: {d.keys()}")
+            
+            return None
+            
+        except Exception as e:
+            print(f"Rate calculation error: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
 
 
-# Test
 if __name__ == "__main__":
-    print("🚗 Leasys Rate Calculator")
-    print("="*50)
-    print("Hinweis: Benötigt authentifizierte Session-Cookies")
-    print("Verwende leasys_api_client.py für Login")
+    print("Leasys Rate Calculator - benötigt Session-Cookies")

@@ -752,3 +752,425 @@ def cache_status():
             "cache_duration_minutes": CACHE_DURATION.seconds // 60
         }
     })
+
+
+# =============================================================================
+# KALKULATOR ENDPOINTS (NEU - TAG86)
+# Nutzt leasys_full_api.py für Fahrzeugsuche mit Preisen
+# =============================================================================
+
+# Cache für Kalkulator-Daten
+_kalkulator_cache = {
+    'client': None,
+    'client_authenticated': False,
+    'vehicles': {},  # {brand_fuel: [vehicles]}
+    'models': {},    # {brand: [models]}
+    'last_update': None
+}
+KALKULATOR_CACHE_DURATION = timedelta(minutes=15)
+
+
+def get_kalkulator_client():
+    """Holt oder erstellt einen LeasysAPI Client - NUR mit Cookie-Cache, KEIN Selenium."""
+    global _kalkulator_cache
+    
+    now = datetime.now()
+    
+    # Prüfe ob Client im Memory-Cache noch gültig
+    if _kalkulator_cache['client'] and _kalkulator_cache['client_authenticated']:
+        if _kalkulator_cache['last_update'] and (now - _kalkulator_cache['last_update']) < KALKULATOR_CACHE_DURATION:
+            return _kalkulator_cache['client']
+    
+    try:
+        import sys
+        import pickle
+        sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+        from tools.scrapers.leasys_full_api import LeasysAPI
+        
+        COOKIE_FILE = "/tmp/leasys_session.pkl"
+        
+        # Prüfe ob Cookie-Datei existiert
+        if not os.path.exists(COOKIE_FILE):
+            print("❌ Keine Cookie-Datei - bitte manuell authentifizieren")
+            return None
+        
+        # Cookie-Alter prüfen (max 25 Minuten)
+        import time
+        cookie_age = time.time() - os.path.getmtime(COOKIE_FILE)
+        if cookie_age > 1500:  # 25 Minuten
+            print(f"⚠️ Cookies zu alt ({cookie_age/60:.0f} min) - bitte erneuern")
+            return None
+        
+        # Client erstellen und Cookies DIREKT laden (ohne Selenium)
+        client = LeasysAPI()
+        
+        with open(COOKIE_FILE, 'rb') as f:
+            cookies = pickle.load(f)
+        
+        for c in cookies:
+            client.session.cookies.set(c['name'], c['value'])
+        
+        # Kurzer Test ob Session gültig
+        if client._test_session():
+            _kalkulator_cache['client'] = client
+            _kalkulator_cache['client_authenticated'] = True
+            _kalkulator_cache['last_update'] = now
+            print(f"✅ Kalkulator Client aus Cookie-Cache ({cookie_age/60:.1f} min alt)")
+            return client
+        else:
+            print("❌ Cookie-Session ungültig - bitte erneuern")
+            return None
+            
+    except Exception as e:
+        print(f"❌ Kalkulator Client Fehler: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+@leasys_api.route('/kalkulator/vehicles', methods=['GET'])
+def kalkulator_vehicles():
+    """
+    Holt Fahrzeuge mit Preisen für den Kalkulator.
+    
+    Query-Parameter:
+    - brand: OPEL, FIAT, etc. (default: OPEL)
+    - fuel: Benzin, Diesel, Elektro, Hybrid (optional)
+    - ma_id: Master Agreement ID (default: 1000026115 = KM LEASING Opel 36-60)
+    - refresh: true = Cache ignorieren
+    """
+    brand = request.args.get('brand', 'OPEL').upper()
+    fuel = request.args.get('fuel')
+    ma_id = request.args.get('ma_id', '1000026115')
+    refresh = request.args.get('refresh', 'false').lower() == 'true'
+    
+    cache_key = f"{brand}_{fuel or 'ALL'}_{ma_id}"
+    
+    # Cache prüfen
+    if not refresh and cache_key in _kalkulator_cache['vehicles']:
+        cache_entry = _kalkulator_cache['vehicles'][cache_key]
+        if cache_entry.get('timestamp') and (datetime.now() - cache_entry['timestamp']) < KALKULATOR_CACHE_DURATION:
+            return jsonify({
+                "success": True,
+                "source": "cache",
+                "brand": brand,
+                "fuel": fuel,
+                "ma_id": ma_id,
+                "count": len(cache_entry['data']),
+                "cache_age_seconds": (datetime.now() - cache_entry['timestamp']).seconds,
+                "vehicles": cache_entry['data']
+            })
+    
+    # Live-Daten holen
+    client = get_kalkulator_client()
+    if not client:
+        return jsonify({
+            "success": False,
+            "error": "Leasys API nicht verfügbar",
+            "hint": "Authentifizierung fehlgeschlagen"
+        }), 503
+    
+    try:
+        vehicles = client.get_vehicles(brand=brand, fuel=fuel, mast_ag_id=ma_id)
+        
+        # In Cache speichern
+        _kalkulator_cache['vehicles'][cache_key] = {
+            'data': vehicles,
+            'timestamp': datetime.now()
+        }
+        
+        return jsonify({
+            "success": True,
+            "source": "live",
+            "brand": brand,
+            "fuel": fuel,
+            "ma_id": ma_id,
+            "count": len(vehicles),
+            "vehicles": vehicles
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@leasys_api.route('/kalkulator/models', methods=['GET'])
+def kalkulator_models():
+    """
+    Holt verfügbare Modelle für eine Marke.
+    
+    Query-Parameter:
+    - brand: OPEL, FIAT, etc. (default: OPEL)
+    """
+    brand = request.args.get('brand', 'OPEL').upper()
+    
+    # Cache prüfen
+    if brand in _kalkulator_cache['models']:
+        cache_entry = _kalkulator_cache['models'][brand]
+        if cache_entry.get('timestamp') and (datetime.now() - cache_entry['timestamp']) < KALKULATOR_CACHE_DURATION:
+            return jsonify({
+                "success": True,
+                "source": "cache",
+                "brand": brand,
+                "count": len(cache_entry['data']),
+                "models": cache_entry['data']
+            })
+    
+    client = get_kalkulator_client()
+    if not client:
+        return jsonify({
+            "success": False,
+            "error": "Leasys API nicht verfügbar"
+        }), 503
+    
+    try:
+        models = client.get_models(brand=brand)
+        
+        _kalkulator_cache['models'][brand] = {
+            'data': models,
+            'timestamp': datetime.now()
+        }
+        
+        return jsonify({
+            "success": True,
+            "source": "live",
+            "brand": brand,
+            "count": len(models),
+            "models": models
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@leasys_api.route('/kalkulator/brands', methods=['GET'])
+def kalkulator_brands():
+    """Gibt verfügbare Marken und deren Codes zurück."""
+    try:
+        import sys
+        sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+        from tools.scrapers.leasys_full_api import LeasysAPI
+        
+        return jsonify({
+            "success": True,
+            "brands": [
+                {"code": code, "name": name}
+                for name, code in LeasysAPI.BRANDS.items()
+            ],
+            "fuel_types": [
+                {"code": code, "name": name}
+                for name, code in LeasysAPI.FUEL_CODES.items()
+            ],
+            "master_agreements": [
+                {"id": ma_id, "name": name}
+                for name, ma_id in LeasysAPI.MASTER_AGREEMENTS.items()
+            ]
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@leasys_api.route('/kalkulator/health', methods=['GET'])
+def kalkulator_health():
+    """Health-Check für Kalkulator API."""
+    client = get_kalkulator_client()
+    
+    return jsonify({
+        "success": True,
+        "status": "connected" if client else "disconnected",
+        "authenticated": _kalkulator_cache.get('client_authenticated', False),
+        "cache": {
+            "vehicles_cached": len(_kalkulator_cache.get('vehicles', {})),
+            "models_cached": len(_kalkulator_cache.get('models', {})),
+            "last_update": _kalkulator_cache['last_update'].isoformat() if _kalkulator_cache.get('last_update') else None
+        }
+    })
+
+
+# PATCH TAG86: Health ohne Auto-Auth
+@leasys_api.route('/kalkulator/status', methods=['GET'])
+def kalkulator_status():
+    """Schneller Status-Check OHNE Authentifizierung."""
+    import os
+    
+    cookie_exists = os.path.exists('/tmp/leasys_session.pkl')
+    cookie_age = None
+    
+    if cookie_exists:
+        import time
+        mtime = os.path.getmtime('/tmp/leasys_session.pkl')
+        cookie_age = int(time.time() - mtime)
+    
+    return jsonify({
+        "success": True,
+        "status": "ready" if cookie_exists else "needs_auth",
+        "cookie_cached": cookie_exists,
+        "cookie_age_seconds": cookie_age,
+        "cache": {
+            "vehicles_cached": len(_kalkulator_cache.get('vehicles', {})),
+            "models_cached": len(_kalkulator_cache.get('models', {}))
+        }
+    })
+
+
+# =============================================================================
+# CACHING FUNKTIONEN (TAG86)
+# =============================================================================
+
+import sqlite3
+
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'greiner_controlling.db')
+
+def get_cached_vehicles(brand, fuel, ma_id, max_age_minutes=30):
+    """Holt Fahrzeuge aus dem SQLite-Cache."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # NULL-Handling für fuel
+        if fuel:
+            cursor.execute('''
+                SELECT data, vehicle_count, created_at,
+                       ROUND((julianday('now') - julianday(created_at)) * 24 * 60, 1) as age_minutes
+                FROM leasys_vehicle_cache
+                WHERE brand = ? AND fuel = ? AND ma_id = ?
+                AND (julianday('now') - julianday(created_at)) * 24 * 60 < ?
+            ''', (brand, fuel, ma_id, max_age_minutes))
+        else:
+            cursor.execute('''
+                SELECT data, vehicle_count, created_at,
+                       ROUND((julianday('now') - julianday(created_at)) * 24 * 60, 1) as age_minutes
+                FROM leasys_vehicle_cache
+                WHERE brand = ? AND fuel IS NULL AND ma_id = ?
+                AND (julianday('now') - julianday(created_at)) * 24 * 60 < ?
+            ''', (brand, ma_id, max_age_minutes))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            import json
+            return {
+                'vehicles': json.loads(row[0]),
+                'count': row[1],
+                'cached_at': row[2],
+                'age_minutes': row[3]
+            }
+        return None
+    except Exception as e:
+        print(f"Cache read error: {e}")
+        return None
+
+
+def save_vehicles_to_cache(brand, fuel, ma_id, vehicles):
+    """Speichert Fahrzeuge im SQLite-Cache."""
+    try:
+        import json
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT OR REPLACE INTO leasys_vehicle_cache (brand, fuel, ma_id, data, vehicle_count, created_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'))
+        ''', (brand, fuel, ma_id, json.dumps(vehicles), len(vehicles)))
+        
+        conn.commit()
+        conn.close()
+        print(f"✅ Cache: {len(vehicles)} {brand} {fuel or 'ALL'} Fahrzeuge gespeichert")
+        return True
+    except Exception as e:
+        print(f"Cache write error: {e}")
+        return False
+
+
+@leasys_api.route('/kalkulator/vehicles-cached', methods=['GET'])
+def kalkulator_vehicles_cached():
+    """
+    Holt Fahrzeuge - erst aus Cache, dann Live falls nötig.
+    Viel schneller als /vehicles weil Cache-First.
+    """
+    brand = request.args.get('brand', 'OPEL').upper()
+    fuel = request.args.get('fuel')
+    ma_id = request.args.get('ma_id', '1000026115')
+    max_age = request.args.get('max_age', 30, type=int)
+    
+    # 1. Versuche Cache
+    cached = get_cached_vehicles(brand, fuel, ma_id, max_age)
+    if cached:
+        return jsonify({
+            "success": True,
+            "source": "cache",
+            "brand": brand,
+            "fuel": fuel,
+            "ma_id": ma_id,
+            "count": cached['count'],
+            "cache_age_minutes": cached['age_minutes'],
+            "cached_at": cached['cached_at'],
+            "vehicles": cached['vehicles']
+        })
+    
+    # 2. Kein Cache - Live laden
+    client = get_kalkulator_client()
+    if not client:
+        return jsonify({
+            "success": False,
+            "error": "Leasys API nicht verfügbar - kein Cache vorhanden",
+            "hint": "Bitte Session erneuern"
+        }), 503
+    
+    try:
+        vehicles = client.get_vehicles(brand=brand, fuel=fuel, mast_ag_id=ma_id)
+        
+        # In Cache speichern
+        save_vehicles_to_cache(brand, fuel, ma_id, vehicles)
+        
+        return jsonify({
+            "success": True,
+            "source": "live",
+            "brand": brand,
+            "fuel": fuel,
+            "ma_id": ma_id,
+            "count": len(vehicles),
+            "vehicles": vehicles
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@leasys_api.route('/kalkulator/cache/refresh', methods=['POST'])
+def refresh_cache():
+    """Manuelles Cache-Refresh für alle gängigen Kombinationen."""
+    client = get_kalkulator_client()
+    if not client:
+        return jsonify({"success": False, "error": "Keine gültige Session"}), 503
+    
+    results = []
+    combinations = [
+        ('OPEL', 'Benzin', '1000026115'),
+        ('OPEL', 'Diesel', '1000026115'),
+        ('OPEL', 'Elektro', '1000026115'),
+        ('OPEL', None, '1000026115'),  # Alle
+    ]
+    
+    for brand, fuel, ma_id in combinations:
+        try:
+            vehicles = client.get_vehicles(brand=brand, fuel=fuel, mast_ag_id=ma_id)
+            save_vehicles_to_cache(brand, fuel, ma_id, vehicles)
+            results.append({"brand": brand, "fuel": fuel, "count": len(vehicles), "status": "ok"})
+        except Exception as e:
+            results.append({"brand": brand, "fuel": fuel, "error": str(e), "status": "error"})
+    
+    return jsonify({
+        "success": True,
+        "message": "Cache aktualisiert",
+        "results": results
+    })
