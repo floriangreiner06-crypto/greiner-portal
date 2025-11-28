@@ -211,14 +211,6 @@ try:
 except Exception as e:
     print(f"⚠️  Mail API nicht geladen: {e}")
 
-# Leasys Programmfinder API
-try:
-    from api.leasys_api import leasys_api
-    app.register_blueprint(leasys_api)
-    print("✅ Leasys API registriert: /api/leasys/")
-except Exception as e:
-    print(f"⚠️  Leasys API nicht geladen: {e}")
-
 # Verkauf Frontend Routes
 from routes.verkauf_routes import verkauf_bp
 from routes.controlling_routes import controlling_bp
@@ -289,13 +281,3 @@ def debug_user():
         'allowed_features': getattr(current_user, 'allowed_features', []),
         'roles': current_user.roles
     }
-
-# ========================================
-# LEASYS PROGRAMMFINDER
-# ========================================
-
-@app.route('/verkauf/leasys-programmfinder')
-@login_required
-def leasys_programmfinder():
-    """Leasys Programmfinder - Hilft Verkäufern das richtige Master Agreement zu finden"""
-    return render_template('leasys_programmfinder.html')

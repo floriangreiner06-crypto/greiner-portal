@@ -125,11 +125,6 @@
                             <li><a class="dropdown-item" href="/verkauf/auslieferung/detail">
                                 <i class="bi bi-truck"></i> Auslieferungen
                             </a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><h6 class="dropdown-header text-muted">Tools</h6></li>
-                            <li><a class="dropdown-item" href="/verkauf/leasys-programmfinder">
-                                <i class="bi bi-search-heart"></i> Leasys Programmfinder
-                            </a></li>
                         </ul>
                     </li>
                     {% endif %}
