@@ -4,22 +4,143 @@ Leasys Programmfinder API
 API für den Leasys Leasing-Programmfinder.
 Hilft Verkäufern, das richtige Master Agreement zu finden.
 
+NEU: Live-Daten von Leasys API mit Caching und Fallback auf statische JSON.
+
 Erstellt: 2025-11-28
+Update: 2025-11-28 - Live API Integration
 """
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, current_app
 import json
 import os
-from datetime import datetime
+import threading
+import time
+from datetime import datetime, timedelta
+from functools import lru_cache
 
 leasys_api = Blueprint('leasys_api', __name__, url_prefix='/api/leasys')
 
-# Pfad zur Konfigurationsdatei
+# Pfad zur Konfigurationsdatei (Fallback)
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'leasys_programme.json')
+CREDENTIALS_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'credentials.json')
+
+# Cache für Live-Daten
+_live_cache = {
+    'master_agreements': None,
+    'vehicles_opel': None,
+    'vehicles_leapmotor': None,
+    'brands': None,
+    'last_update': None,
+    'client': None,
+    'client_valid_until': None
+}
+_cache_lock = threading.Lock()
+CACHE_DURATION = timedelta(minutes=30)
+
+
+def get_leasys_client():
+    """Holt oder erstellt einen Leasys API Client mit gültiger Session."""
+    global _live_cache
+    
+    now = datetime.now()
+    
+    # Prüfe ob Client noch gültig
+    if _live_cache['client'] and _live_cache['client_valid_until']:
+        if now < _live_cache['client_valid_until']:
+            return _live_cache['client']
+    
+    # Neuen Client erstellen
+    try:
+        # Import hier um zirkuläre Imports zu vermeiden
+        import sys
+        sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+        from tools.scrapers.leasys_api_client import LeasysAPIClient
+        
+        # Credentials laden
+        with open(CREDENTIALS_PATH, 'r') as f:
+            creds = json.load(f)
+        
+        leasys_creds = creds.get('external_systems', {}).get('leasys', {})
+        if not leasys_creds:
+            print("⚠️ Leasys Credentials nicht gefunden")
+            return None
+        
+        client = LeasysAPIClient(
+            username=leasys_creds['username'],
+            password=leasys_creds['password']
+        )
+        
+        # Login
+        if client.login(headless=True):
+            _live_cache['client'] = client
+            _live_cache['client_valid_until'] = now + timedelta(minutes=25)  # Session ~30min gültig
+            print("✅ Leasys Client erstellt und eingeloggt")
+            return client
+        else:
+            print("❌ Leasys Login fehlgeschlagen")
+            return None
+            
+    except Exception as e:
+        print(f"❌ Leasys Client Fehler: {e}")
+        return None
+
+
+def fetch_live_master_agreements():
+    """Holt Master Agreements von der Leasys API."""
+    client = get_leasys_client()
+    if not client:
+        return None
+    
+    try:
+        agreements = client.get_master_agreements()
+        return agreements
+    except Exception as e:
+        print(f"❌ Fehler beim Abrufen der Master Agreements: {e}")
+        return None
+
+
+def fetch_live_vehicles(brand_code):
+    """Holt Fahrzeuge für eine Marke von der Leasys API."""
+    client = get_leasys_client()
+    if not client:
+        return None
+    
+    try:
+        base = "https://e-touch.leasys.com/sap/opu/odata/sap/ZNFC_P23_SRV"
+        r = client.session.get(f"{base}/BRAND('{brand_code}')/VHL_SET?$top=100")
+        if r.status_code == 200:
+            return r.json().get('d', {}).get('results', [])
+        return None
+    except Exception as e:
+        print(f"❌ Fehler beim Abrufen der Fahrzeuge: {e}")
+        return None
+
+
+def get_cached_data(key, fetch_func, *args):
+    """Holt Daten aus Cache oder lädt neu."""
+    global _live_cache
+    
+    with _cache_lock:
+        now = datetime.now()
+        
+        # Cache prüfen
+        if _live_cache[key] and _live_cache['last_update']:
+            if now - _live_cache['last_update'] < CACHE_DURATION:
+                return _live_cache[key]
+        
+        # Neu laden
+        data = fetch_func(*args) if args else fetch_func()
+        if data:
+            _live_cache[key] = data
+            _live_cache['last_update'] = now
+            return data
+        
+        # Fallback auf gecachte Daten
+        return _live_cache.get(key)
 
 
 def load_programme():
-    """Lädt die Leasys-Programme aus der JSON-Datei."""
+    """Lädt die Leasys-Programme aus der JSON-Datei (Fallback)."""
     try:
         with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
             return json.load(f)
@@ -29,34 +150,228 @@ def load_programme():
         return {"error": "Fehler beim Lesen der Konfiguration", "programme": [], "sonderaktionen": []}
 
 
+def map_live_to_local(live_agreements):
+    """
+    Mappt Live Master Agreements auf unser lokales Format.
+    Ergänzt fehlende Infos aus der statischen Konfiguration.
+    """
+    local_data = load_programme()
+    local_programme = {p['ma_id']: p for p in local_data.get('programme', []) if p.get('ma_id')}
+    
+    mapped = []
+    for ma in live_agreements:
+        ma_id = ma.get('mastAgId', '')
+        ma_desc = ma.get('mastAgDescription', '')
+        favorite = ma.get('Favorite') == 'X'
+        
+        # Versuche lokale Daten zu finden
+        local = local_programme.get(ma_id, {})
+        
+        # Automatische Erkennung aus Beschreibung
+        marke = 'Opel'  # Default
+        if 'leapmotor' in ma_desc.lower():
+            marke = 'Leapmotor'
+        
+        fahrzeugtyp = 'NW'  # Default
+        if 'vfw' in ma_desc.lower() or 'tz' in ma_desc.lower() or 'as new' in ma_desc.lower():
+            fahrzeugtyp = 'TZ/VFW'
+        
+        buyback = 'Handel'  # Default (BB = Buyback)
+        if 'leasys' in ma_desc.lower() and 'bb' not in ma_desc.lower():
+            buyback = 'Leasys'
+        
+        # Laufzeit aus Beschreibung extrahieren
+        laufzeit_min = 24
+        laufzeit_max = 60
+        if '36-60' in ma_desc:
+            laufzeit_min = 36
+            laufzeit_max = 60
+        elif '24-35' in ma_desc:
+            laufzeit_min = 24
+            laufzeit_max = 35
+        
+        # Kombiniere Live + Local
+        mapped.append({
+            'id': ma_id,
+            'ma_id': ma_id,
+            'name': ma_desc,
+            'marke': local.get('marke', marke),
+            'fahrzeugtyp': local.get('fahrzeugtyp', fahrzeugtyp),
+            'buyback': local.get('buyback', buyback),
+            'laufzeit_min': local.get('laufzeit_min', laufzeit_min),
+            'laufzeit_max': local.get('laufzeit_max', laufzeit_max),
+            'subventioniert': local.get('subventioniert', True),
+            'sonderfall': local.get('sonderfall'),
+            'erklaerung': local.get('erklaerung', ma_desc),
+            'hinweise': local.get('hinweise', []),
+            'aktiv': True,
+            'sonderaktion': False,
+            'favorite': favorite,
+            'live': True  # Markierung dass aus Live-API
+        })
+    
+    return mapped
+
+
 @leasys_api.route('/health', methods=['GET'])
 def health():
     """Health-Check Endpoint."""
     data = load_programme()
+    
+    # Live-Status prüfen
+    live_status = "nicht verbunden"
+    live_count = 0
+    
+    if _live_cache['master_agreements']:
+        live_status = "verbunden (cached)"
+        live_count = len(_live_cache['master_agreements'])
+    
     return jsonify({
         "status": "ok",
         "timestamp": datetime.now().isoformat(),
         "programme_count": len(data.get('programme', [])),
         "sonderaktionen_count": len(data.get('sonderaktionen', [])),
+        "live_status": live_status,
+        "live_count": live_count,
+        "cache_age": str(datetime.now() - _live_cache['last_update']) if _live_cache['last_update'] else None,
         "meta": data.get('meta', {})
     })
+
+
+@leasys_api.route('/live/master-agreements', methods=['GET'])
+def get_live_master_agreements():
+    """
+    Holt Master Agreements direkt von der Leasys API.
+    Mit Caching (30 Minuten).
+    """
+    force_refresh = request.args.get('refresh', 'false').lower() == 'true'
+    
+    if force_refresh:
+        with _cache_lock:
+            _live_cache['master_agreements'] = None
+            _live_cache['last_update'] = None
+    
+    # Live-Daten holen
+    live_data = get_cached_data('master_agreements', fetch_live_master_agreements)
+    
+    if live_data:
+        # Auf unser Format mappen
+        mapped = map_live_to_local(live_data)
+        
+        return jsonify({
+            "success": True,
+            "source": "live",
+            "count": len(mapped),
+            "cache_age_seconds": (datetime.now() - _live_cache['last_update']).seconds if _live_cache['last_update'] else 0,
+            "programme": mapped
+        })
+    else:
+        # Fallback auf statische Daten
+        data = load_programme()
+        return jsonify({
+            "success": True,
+            "source": "fallback",
+            "count": len(data.get('programme', [])),
+            "warning": "Live-API nicht erreichbar, nutze lokale Daten",
+            "programme": data.get('programme', [])
+        })
+
+
+@leasys_api.route('/live/vehicles', methods=['GET'])
+def get_live_vehicles():
+    """
+    Holt Fahrzeuge von der Leasys API.
+    
+    Query-Parameter:
+    - marke: Opel oder Leapmotor (default: Opel)
+    """
+    marke = request.args.get('marke', 'Opel').lower()
+    
+    # Brand Code mapping
+    brand_codes = {
+        'opel': '000020',
+        'leapmotor': 'B00151'
+    }
+    
+    brand_code = brand_codes.get(marke, '000020')
+    cache_key = f'vehicles_{marke}'
+    
+    # Live-Daten holen
+    if cache_key not in _live_cache:
+        _live_cache[cache_key] = None
+    
+    def fetch():
+        return fetch_live_vehicles(brand_code)
+    
+    live_data = get_cached_data(cache_key, fetch)
+    
+    if live_data:
+        # Vereinfachtes Format
+        vehicles = [
+            {
+                'code': v.get('vhlSetCode'),
+                'name': v.get('vhlSet'),
+                'brand': marke.capitalize()
+            }
+            for v in live_data
+        ]
+        
+        return jsonify({
+            "success": True,
+            "source": "live",
+            "marke": marke.capitalize(),
+            "count": len(vehicles),
+            "vehicles": vehicles
+        })
+    else:
+        # Fallback auf statische Liste
+        static_vehicles = {
+            'opel': ['Corsa', 'Astra', 'Mokka', 'Grandland', 'Frontera', 'Combo', 'Vivaro', 'Movano', 'Zafira'],
+            'leapmotor': ['T03', 'C10', 'C16', 'B10']
+        }
+        
+        return jsonify({
+            "success": True,
+            "source": "fallback",
+            "marke": marke.capitalize(),
+            "count": len(static_vehicles.get(marke, [])),
+            "warning": "Live-API nicht erreichbar",
+            "vehicles": [{'name': v, 'brand': marke.capitalize()} for v in static_vehicles.get(marke, [])]
+        })
 
 
 @leasys_api.route('/programme', methods=['GET'])
 def get_programme():
     """
     Gibt alle verfügbaren Leasing-Programme zurück.
+    Versucht zuerst Live-Daten, dann Fallback auf statische JSON.
     
     Query-Parameter:
     - marke: Filter nach Marke (Opel, Leapmotor)
     - fahrzeugtyp: Filter nach Fahrzeugtyp (NW, TZ/VFW)
     - buyback: Filter nach Rücknahme (Leasys, Handel)
     - laufzeit: Filter nach Laufzeit in Monaten
-    - sonderfall: Filter nach Sonderfall (individuelle_kondition, haendlereigen, net_price)
+    - sonderfall: Filter nach Sonderfall
     - nur_aktive: Nur aktive Programme (default: true)
+    - live: Nutze Live-API (default: true)
     """
-    data = load_programme()
-    programme = data.get('programme', [])
+    use_live = request.args.get('live', 'true').lower() == 'true'
+    
+    # Versuche Live-Daten
+    programme = []
+    source = "fallback"
+    
+    if use_live:
+        live_data = get_cached_data('master_agreements', fetch_live_master_agreements)
+        if live_data:
+            programme = map_live_to_local(live_data)
+            source = "live"
+    
+    # Fallback
+    if not programme:
+        data = load_programme()
+        programme = data.get('programme', [])
+        source = "fallback"
     
     # Filter anwenden
     marke = request.args.get('marke')
@@ -106,6 +421,7 @@ def get_programme():
     
     return jsonify({
         "success": True,
+        "source": source,
         "count": len(gefiltert),
         "filter": {
             "marke": marke,
@@ -122,6 +438,7 @@ def get_programme():
 def get_sonderaktionen():
     """
     Gibt alle aktiven Sonderaktionen zurück.
+    (Sonderaktionen kommen aus der statischen JSON, nicht von der Live-API)
     
     Query-Parameter:
     - marke: Filter nach Marke
@@ -182,6 +499,7 @@ def get_sonderaktionen():
 def programmfinder():
     """
     Intelligenter Programmfinder.
+    Nutzt Live-API wenn verfügbar, sonst Fallback auf statische Daten.
     
     Findet das passende Leasing-Programm basierend auf:
     - marke: Opel oder Leapmotor (required)
@@ -224,13 +542,24 @@ def programmfinder():
         except ValueError:
             return jsonify({"success": False, "error": "Laufzeit muss eine Zahl sein"}), 400
     
+    # Versuche Live-Daten
+    live_data = get_cached_data('master_agreements', fetch_live_master_agreements)
+    if live_data:
+        programme = map_live_to_local(live_data)
+        source = "live"
+    else:
+        data = load_programme()
+        programme = data.get('programme', [])
+        source = "fallback"
+    
+    # Sonderaktionen immer aus lokaler Datei
     data = load_programme()
-    programme = data.get('programme', [])
     sonderaktionen = data.get('sonderaktionen', [])
     heute = datetime.now().date()
     
     ergebnis = {
         "success": True,
+        "source": source,
         "eingabe": {
             "marke": marke,
             "fahrzeugtyp": fahrzeugtyp,
@@ -315,6 +644,8 @@ def programmfinder():
             score += 50  # Standard-Programme bevorzugen wenn kein Sonderfall gewünscht
         if prog.get('subventioniert', False):
             score += 20  # Subventionierte Programme bevorzugen
+        if prog.get('favorite', False):
+            score += 30  # Favoriten aus Leasys bevorzugen
         
         beste_treffer.append((score, prog))
     
@@ -381,5 +712,43 @@ def get_optionen():
                 {"value": "haendlereigen", "label": "Händlereigenes Fahrzeug", "beschreibung": "Gewerbliche Untervermietung, z.B. Werkstattersatz"},
                 {"value": "net_price", "label": "Net Price (nur TZ/VFW)", "beschreibung": "Ohne B2B Standard Konditionen"}
             ]
+        }
+    })
+
+
+@leasys_api.route('/cache/clear', methods=['POST'])
+def clear_cache():
+    """Leert den Live-Daten Cache."""
+    global _live_cache
+    
+    with _cache_lock:
+        _live_cache = {
+            'master_agreements': None,
+            'vehicles_opel': None,
+            'vehicles_leapmotor': None,
+            'brands': None,
+            'last_update': None,
+            'client': None,
+            'client_valid_until': None
+        }
+    
+    return jsonify({
+        "success": True,
+        "message": "Cache geleert"
+    })
+
+
+@leasys_api.route('/cache/status', methods=['GET'])
+def cache_status():
+    """Zeigt den aktuellen Cache-Status."""
+    return jsonify({
+        "success": True,
+        "cache": {
+            "master_agreements": len(_live_cache['master_agreements']) if _live_cache['master_agreements'] else 0,
+            "vehicles_opel": len(_live_cache.get('vehicles_opel', [])) if _live_cache.get('vehicles_opel') else 0,
+            "vehicles_leapmotor": len(_live_cache.get('vehicles_leapmotor', [])) if _live_cache.get('vehicles_leapmotor') else 0,
+            "last_update": _live_cache['last_update'].isoformat() if _live_cache['last_update'] else None,
+            "client_valid_until": _live_cache['client_valid_until'].isoformat() if _live_cache['client_valid_until'] else None,
+            "cache_duration_minutes": CACHE_DURATION.seconds // 60
         }
     })
