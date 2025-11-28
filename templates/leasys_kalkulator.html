@@ -216,6 +216,34 @@
         </div>
     </div>
 
+    <!-- Client-Side Filter -->
+    <div class="card mb-3" id="filterCard" style="display: none;">
+        <div class="card-body py-2">
+            <div class="row align-items-center">
+                <div class="col-md-3">
+                    <input type="text" class="form-control form-control-sm" id="filterModel" placeholder="🔍 Modell filtern (z.B. ASTRA)">
+                </div>
+                <div class="col-md-2">
+                    <select class="form-control form-control-sm" id="filterBaureihe">
+                        <option value="">Alle Baureihen</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <input type="number" class="form-control form-control-sm" id="filterPriceMin" placeholder="Preis ab €">
+                </div>
+                <div class="col-md-2">
+                    <input type="number" class="form-control form-control-sm" id="filterPriceMax" placeholder="Preis bis €">
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-sm btn-outline-secondary w-100" id="btnClearFilter">Zurücksetzen</button>
+                </div>
+                <div class="col-md-1 text-end">
+                    <span id="filteredCount" class="badge bg-primary">0</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Loading -->
     <div class="loading-spinner" id="loadingSpinner">
         <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;"></div>
@@ -301,13 +329,30 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             const vehicles = data.vehicles || [];
+            
+            // Speichere für Filter
+            window.allVehicles = vehicles;
+            
+            // Extrahiere Baureihen und fülle Dropdown
+            const baureihen = [...new Set(vehicles.map(v => v.model ? v.model.split(" ")[0] : "").filter(b => b))].sort();
+            const baureiheSelect = document.getElementById("filterBaureihe");
+            if (baureiheSelect) {
+                baureiheSelect.innerHTML = '<option value="">Alle Baureihen</option>' + 
+                    baureihen.map(b => `<option value="${b}">${b}</option>`).join("");
+            }
+            
+            // Zeige Filter-Card
+            const filterCard = document.getElementById("filterCard");
+            if (filterCard) filterCard.style.display = "block";
+            document.getElementById("filteredCount").textContent = vehicles.length;
+            
 
             // Stats
             if (vehicles.length > 0) {
                 const prices = vehicles.map(v => v.list_price_brutto).filter(p => p > 0);
                 document.getElementById('statCount').textContent = vehicles.length;
-                document.getElementById('statMinPrice').textContent = formatPrice(Math.min(...prices));
-                document.getElementById('statMaxPrice').textContent = formatPrice(Math.max(...prices));
+                document.getElementById('statMinPrice').textContent = formatPriceFilter(Math.min(...prices));
+                document.getElementById('statMaxPrice').textContent = formatPriceFilter(Math.max(...prices));
                 document.getElementById('statSource').textContent = data.source === 'live' ? '🟢 Live' : '📦 Cache';
                 statsRow.style.display = 'flex';
             }
@@ -343,8 +388,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                 </div>
                             </div>
                             <div class="col-md-3 text-right">
-                                <div class="vehicle-price">${formatPrice(v.list_price_brutto)}</div>
-                                <div class="vehicle-price-netto">Netto: ${formatPrice(v.list_price_netto)}</div>
+                                <div class="vehicle-price">${formatPriceFilter(v.list_price_brutto)}</div>
+                                <div class="vehicle-price-netto">Netto: ${formatPriceFilter(v.list_price_netto)}</div>
                             </div>
                             <div class="col-md-3 text-right">
                                 <a href="https://e-touch.leasys.com/e-saml2/index.html?sap-client=100#/quotation/BusinessPartnership/1186289565" 
@@ -382,5 +427,116 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 });
-</script>
+
+        // ========== CLIENT-SIDE FILTER ==========
+        let filterTimeout;
+        
+        function formatPriceFilter(num) {
+            if (!num) return '-';
+            return new Intl.NumberFormat('de-DE').format(Math.round(num));
+        }
+        
+        function applyFilters() {
+            console.log('applyFilters called');
+            const vehicles = window.allVehicles || [];
+            console.log('vehicles count:', vehicles.length);
+            const modelFilter = document.getElementById('filterModel').value.toLowerCase();
+            const baureiheFilter = document.getElementById('filterBaureihe').value;
+            const priceMin = parseFloat(document.getElementById('filterPriceMin').value) || 0;
+            const priceMax = parseFloat(document.getElementById('filterPriceMax').value) || Infinity;
+            
+            const filtered = vehicles.filter(v => {
+                const model = (v.model || '').toLowerCase();
+                const baureihe = v.model ? v.model.split(' ')[0] : '';
+                const price = v.list_price_brutto || 0;
+                
+                if (modelFilter && !model.includes(modelFilter)) return false;
+                if (baureiheFilter && baureihe !== baureiheFilter) return false;
+                if (price < priceMin || price > priceMax) return false;
+                
+                return true;
+            });
+            
+            // Update Anzeige
+            renderVehicles(filtered);
+            document.getElementById('filteredCount').textContent = filtered.length;
+            
+            // Update Stats
+            if (filtered.length > 0) {
+                const prices = filtered.map(v => v.list_price_brutto || 0).filter(p => p > 0);
+                document.getElementById('statCount').textContent = filtered.length;
+                document.getElementById('statMinPrice').textContent = formatPriceFilter(Math.min(...prices)) + ' €';
+                document.getElementById('statMaxPrice').textContent = formatPriceFilter(Math.max(...prices)) + ' €';
+            }
+        }
+        
+        function renderVehicles(vehicles) {
+            const container = document.getElementById('vehicleResults');
+            if (vehicles.length === 0) {
+                container.innerHTML = '<div class="alert alert-info">Keine Fahrzeuge gefunden</div>';
+                return;
+            }
+            
+            container.innerHTML = vehicles.map(v => `
+                <div class="card mb-2 vehicle-card">
+                    <div class="card-body py-2">
+                        <div class="row align-items-center">
+                            <div class="col-md-5">
+                                <strong>${v.model || 'Unbekannt'}</strong>
+                                <span class="badge ${getFuelBadgeClass(v.fuel)} ms-2">${getFuelName(v.fuel)}</span>
+                                <br><small class="text-muted">${v.gamma || ''} ${v.allestimento || ''}</small>
+                                <br><small class="text-muted">Product ID: ${v.product_id}</small>
+                            </div>
+                            <div class="col-md-3 text-end">
+                                <span class="h5 text-primary">${formatPriceFilter(v.list_price_brutto)} €</span>
+                                <br><small class="text-muted">Netto: ${formatPriceFilter(v.list_price_netto)} €</small>
+                            </div>
+                            <div class="col-md-2 text-end">
+                                ${v.co2 ? '<small>CO₂: ' + v.co2 + ' g/km</small>' : ''}
+                            </div>
+                            <div class="col-md-2 text-end">
+                                <a href="https://e-touch.leasys.com" target="_blank" class="btn btn-sm btn-outline-primary">Rate berechnen</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function getFuelName(code) {
+            const names = {'B': 'Benzin', 'D': 'Diesel', 'E': 'Elektro', 'H': 'Hybrid', 'P': 'Plug-in'};
+            return names[code] || code || 'Unbekannt';
+        }
+        
+        function getFuelBadgeClass(code) {
+            const classes = {'B': 'bg-success', 'D': 'bg-secondary', 'E': 'bg-info', 'H': 'bg-warning', 'P': 'bg-primary'};
+            return classes[code] || 'bg-secondary';
+        }
+        
+        // Event Listener für Filter
+        document.addEventListener('DOMContentLoaded', function() {
+            ['filterModel', 'filterBaureihe', 'filterPriceMin', 'filterPriceMax'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.addEventListener('input', () => {
+                        clearTimeout(filterTimeout);
+                        filterTimeout = setTimeout(applyFilters, 300);
+                    });
+                    el.addEventListener('change', applyFilters);
+                }
+            });
+            
+            const btnClear = document.getElementById('btnClearFilter');
+            if (btnClear) {
+                btnClear.addEventListener('click', () => {
+                    document.getElementById('filterModel').value = '';
+                    document.getElementById('filterBaureihe').value = '';
+                    document.getElementById('filterPriceMin').value = '';
+                    document.getElementById('filterPriceMax').value = '';
+                    applyFilters();
+                });
+            }
+        });
+
+    </script>
 {% endblock %}

@@ -1027,7 +1027,7 @@ import sqlite3
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'greiner_controlling.db')
 
-def get_cached_vehicles(brand, fuel, ma_id, max_age_minutes=30):
+def get_cached_vehicles(brand, fuel, ma_id, max_age_minutes=180):
     """Holt Fahrzeuge aus dem SQLite-Cache."""
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -1098,7 +1098,7 @@ def kalkulator_vehicles_cached():
     brand = request.args.get('brand', 'OPEL').upper()
     fuel = request.args.get('fuel')
     ma_id = request.args.get('ma_id', '1000026115')
-    max_age = request.args.get('max_age', 30, type=int)
+    max_age = request.args.get("max_age", 180, type=int)
     
     # 1. Versuche Cache
     cached = get_cached_vehicles(brand, fuel, ma_id, max_age)
