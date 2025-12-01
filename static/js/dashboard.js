@@ -27,7 +27,7 @@ function loadKPIs() {
         loadBankenspiegelKPIs(),
         loadFahrzeugKPIs(),
         loadUrlaubKPIs(),
-        loadUmsatzKPIs()
+        loadAuftragseingangsKPIs()
     ]).then(() => {
         console.log('✅ Alle KPIs geladen');
     }).catch(error => {
@@ -44,7 +44,7 @@ async function loadBankenspiegelKPIs() {
         const response = await fetch('/api/bankenspiegel/dashboard');
         const data = await response.json();
         
-        if (data.status === 'success') {
+        if (data.success === true) {
             const dashboard = data.dashboard;
             
             // Gesamtsaldo
@@ -71,11 +71,11 @@ async function loadBankenspiegelKPIs() {
 
 async function loadFahrzeugKPIs() {
     try {
-        const response = await fetch('/api/bankenspiegel/fahrzeugfinanzierungen');
+        const response = await fetch('/api/bankenspiegel/fahrzeuge-mit-zinsen');
         const data = await response.json();
         
-        if (data.status === 'success') {
-            const count = data.fahrzeuge?.length || 0;
+        if (data.success === true) {
+            const count = data.statistik?.anzahl_fahrzeuge || 0;
             document.getElementById('kpi-fahrzeuge').textContent = count;
             console.log('✅ Fahrzeug KPIs geladen');
         }
@@ -111,23 +111,23 @@ async function loadUrlaubKPIs() {
 // UMSATZ KPIs (30 Tage)
 // ========================================
 
-async function loadUmsatzKPIs() {
+async function loadAuftragseingangsKPIs() {
     try {
-        const response = await fetch('/api/bankenspiegel/umsaetze_monatlich');
+        const response = await fetch('/api/verkauf/auftragseingang/summary');
         const data = await response.json();
         
-        if (data.status === 'success' && data.umsaetze?.length > 0) {
-            // Letzter Monat (neueste Daten)
-            const letzterMonat = data.umsaetze[data.umsaetze.length - 1];
-            const einnahmen = letzterMonat.einnahmen || 0;
+        if (data.success === true && data.summary?.length > 0) {
+            // Summe aller Aufträge im aktuellen Monat
+            const gesamt = data.summary.reduce((sum, item) => sum + (item.gesamt || 0), 0);
+            
             
             document.getElementById('kpi-umsatz').textContent = 
-                formatCurrency(einnahmen);
+                gesamt;
             
-            console.log('✅ Umsatz KPIs geladen');
+            console.log('✅ Auftragseingang KPIs geladen');
         }
     } catch (error) {
-        console.error('Fehler bei Umsatz KPIs:', error);
+        console.error('Fehler bei Auftragseingang KPIs:', error);
         document.getElementById('kpi-umsatz').textContent = 'Fehler';
     }
 }
