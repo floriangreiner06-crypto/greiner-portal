@@ -152,6 +152,19 @@ def import_santander_bestand(csv_file=None, dry_run=False):
                 lieferdatum = parse_german_date(row.get('Lieferdatum', ''))
 
                 produkt = row.get('Produkt', '').strip()
+                
+                # Produkt-Kategorie aus Produkt-Pfad ableiten
+                # z.B. "PartPlus/Fahrzeuge/Mobil/Vermieter" → "Mobil/Vermieter"
+                if '/Neu' in produkt:
+                    produkt_kategorie = 'Neuwagen'
+                elif '/Gebraucht' in produkt:
+                    produkt_kategorie = 'Gebraucht'
+                elif 'Mobil/Vermieter' in produkt:
+                    produkt_kategorie = 'Mobil/Vermieter'
+                elif 'Mobil/Vorführer' in produkt:
+                    produkt_kategorie = 'Vorführer'
+                else:
+                    produkt_kategorie = produkt
                 herstellername = row.get('Herstellername', '').strip().strip('"')
                 modellname = row.get('Modellname', '').strip().strip('"')
                 farbe = row.get('Farbe', '').strip()
@@ -195,8 +208,9 @@ def import_santander_bestand(csv_file=None, dry_run=False):
                             finanzierungsnummer,
                             finanzierungsstatus,
                             dokumentstatus,
-                            rrdi,
+                            hersteller,
                             produktfamilie,
+                            produkt_kategorie,
                             vin,
                             modell,
                             alter_tage,
@@ -214,14 +228,15 @@ def import_santander_bestand(csv_file=None, dry_run=False):
                             endfaelligkeit,
                             import_datum,
                             datei_quelle
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
                     """, (
                         FINANZINSTITUT,
                         finanzierungsnr,
                         status,
                         dokumentstatus,
-                        herstellername,  # RRDI = Herstellername
+                        herstellername,  # Hersteller (korrekt!)
                         produkt,         # Produktfamilie
+                        produkt_kategorie,  # Kategorie
                         vin,
                         modellname,
                         alter_tage,
