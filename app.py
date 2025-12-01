@@ -227,6 +227,17 @@ print("✅ Verkauf Frontend registriert: /verkauf/")
 app.register_blueprint(controlling_bp)
 print("✅ Controlling registriert: /controlling/")
 
+# Jahresprämie API & Routes
+try:
+    from api.jahrespraemie_api import jahrespraemie_api
+    from routes.jahrespraemie_routes import jahrespraemie_bp
+    app.register_blueprint(jahrespraemie_api)
+    app.register_blueprint(jahrespraemie_bp)
+    print("✅ Jahresprämie API registriert: /api/jahrespraemie/")
+    print("✅ Jahresprämie Frontend registriert: /jahrespraemie/")
+except Exception as e:
+    print(f"⚠️  Jahresprämie nicht geladen: {e}")
+
 # ============================================================================
 # ERROR HANDLERS
 # ============================================================================

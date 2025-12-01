@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+
+{% block title %}Mitarbeiter - Jahresprämie{% endblock %}
+
+{% block extra_css %}
+<style>
+.badge-vollzeit { background-color: #28a745; }
+.badge-teilzeit { background-color: #17a2b8; }
+.badge-minijob { background-color: #6c757d; }
+.badge-azubi { background-color: #fd7e14; }
+.filter-section {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+tr.nicht-berechtigt {
+    opacity: 0.6;
+}
+tr.kulanz {
+    background-color: #fff3cd !important;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/jahrespraemie/">Jahresprämie</a></li>
+            <li class="breadcrumb-item"><a href="/jahrespraemie/{{ berechnung_id }}" id="bcWJ">Berechnung</a></li>
+            <li class="breadcrumb-item active">Mitarbeiter</li>
+        </ol>
+    </nav>
+
+    <div class="row mb-4">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <h1><i class="bi bi-people"></i> Mitarbeiter</h1>
+            <a href="/jahrespraemie/{{ berechnung_id }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Zurück
+            </a>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="filter-section">
+        <div class="row">
+            <div class="col-md-3">
+                <label class="form-label">Kategorie</label>
+                <select class="form-select" id="filterKategorie">
+                    <option value="">Alle</option>
+                    <option value="Vollzeit">Vollzeit</option>
+                    <option value="Teilzeit">Teilzeit</option>
+                    <option value="Minijob">Minijob</option>
+                    <option value="Azubi">Azubi</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Berechtigung</label>
+                <select class="form-select" id="filterBerechtigt">
+                    <option value="">Alle</option>
+                    <option value="1">Berechtigt</option>
+                    <option value="0">Nicht berechtigt</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Suche</label>
+                <input type="text" class="form-control" id="filterSuche" placeholder="Name...">
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button class="btn btn-primary w-100" onclick="loadMitarbeiter()">
+                    <i class="bi bi-search"></i> Filtern
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabelle -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="bi bi-table"></i> Mitarbeiter (<span id="maCount">0</span>)</h5>
+            <button class="btn btn-sm btn-success" onclick="exportCSV()">
+                <i class="bi bi-download"></i> CSV Export
+            </button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Name</th>
+                            <th>Kategorie</th>
+                            <th class="text-center">Std/W</th>
+                            <th class="text-end">Jahresbrutto</th>
+                            <th class="text-center">Berechtigt</th>
+                            <th class="text-end">Prämie I</th>
+                            <th class="text-end">Prämie II</th>
+                            <th class="text-end">Gesamt</th>
+                        </tr>
+                    </thead>
+                    <tbody id="maBody">
+                        <tr><td colspan="8" class="text-center py-4">Lade...</td></tr>
+                    </tbody>
+                    <tfoot class="table-light">
+                        <tr>
+                            <th colspan="5" class="text-end">Summe:</th>
+                            <th class="text-end" id="sumP1">-</th>
+                            <th class="text-end" id="sumP2">-</th>
+                            <th class="text-end" id="sumGesamt">-</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const BERECHNUNG_ID = {{ berechnung_id }};
+let alleMitarbeiter = [];
+
+$(document).ready(function() {
+    loadMitarbeiter();
+    
+    // Enter in Suche
+    $('#filterSuche').on('keypress', function(e) {
+        if (e.which === 13) loadMitarbeiter();
+    });
+});
+
+function loadMitarbeiter() {
+    $.get('/api/jahrespraemie/berechnung/' + BERECHNUNG_ID, function(data) {
+        $('#bcWJ').text(data.berechnung.wirtschaftsjahr);
+        alleMitarbeiter = data.mitarbeiter || [];
+        renderMitarbeiter();
+    });
+}
+
+function renderMitarbeiter() {
+    const tbody = $('#maBody');
+    tbody.empty();
+    
+    // Filter anwenden
+    const katFilter = $('#filterKategorie').val();
+    const berFilter = $('#filterBerechtigt').val();
+    const suchFilter = $('#filterSuche').val().toLowerCase();
+    
+    let filtered = alleMitarbeiter.filter(m => {
+        if (katFilter && !m.kategorie.startsWith(katFilter)) return false;
+        if (berFilter !== '' && m.ist_berechtigt != berFilter) return false;
+        if (suchFilter && !(m.vorname + ' ' + m.nachname).toLowerCase().includes(suchFilter)) return false;
+        return true;
+    });
+    
+    $('#maCount').text(filtered.length);
+    
+    if (filtered.length === 0) {
+        tbody.html('<tr><td colspan="8" class="text-center text-muted py-4">Keine Mitarbeiter gefunden</td></tr>');
+        return;
+    }
+    
+    let sumP1 = 0, sumP2 = 0, sumGesamt = 0;
+    
+    filtered.forEach(m => {
+        const katBadge = getKategorieBadge(m.kategorie);
+        const berIcon = m.ist_berechtigt ? '<i class="bi bi-check-circle text-success"></i>' : '<i class="bi bi-x-circle text-danger"></i>';
+        const rowClass = !m.ist_berechtigt ? 'nicht-berechtigt' : (m.ist_kulanz ? 'kulanz' : '');
+        const kulanzBadge = m.ist_kulanz ? '<span class="badge bg-warning text-dark ms-1">Kulanz</span>' : '';
+        
+        sumP1 += m.praemie_I || 0;
+        sumP2 += m.praemie_II || 0;
+        sumGesamt += m.praemie_gerundet || 0;
+        
+        tbody.append(`
+            <tr class="${rowClass}">
+                <td>${m.nachname}, ${m.vorname} ${kulanzBadge}</td>
+                <td>${katBadge}</td>
+                <td class="text-center">${m.std_woche || '-'}</td>
+                <td class="text-end">${formatCurrency(m.jahresbrutto)}</td>
+                <td class="text-center">${berIcon}<br><small class="text-muted">${m.berechtigung_grund || ''}</small></td>
+                <td class="text-end">${formatCurrency(m.praemie_I)}</td>
+                <td class="text-end">${formatCurrency(m.praemie_II)}</td>
+                <td class="text-end"><strong>${formatCurrency(m.praemie_gerundet)}</strong></td>
+            </tr>
+        `);
+    });
+    
+    $('#sumP1').text(formatCurrency(sumP1));
+    $('#sumP2').text(formatCurrency(sumP2));
+    $('#sumGesamt').text(formatCurrency(sumGesamt));
+}
+
+function getKategorieBadge(kat) {
+    if (!kat) return '-';
+    if (kat === 'Vollzeit') return '<span class="badge badge-vollzeit">VZ</span>';
+    if (kat === 'Teilzeit') return '<span class="badge badge-teilzeit">TZ</span>';
+    if (kat === 'Minijob') return '<span class="badge badge-minijob">MJ</span>';
+    if (kat.startsWith('Azubi')) return '<span class="badge badge-azubi">' + kat.replace('_', ' ') + '</span>';
+    return '<span class="badge bg-secondary">' + kat + '</span>';
+}
+
+function exportCSV() {
+    let csv = 'Name;Kategorie;Std/Woche;Jahresbrutto;Berechtigt;Prämie I;Prämie II;Gesamt\n';
+    
+    alleMitarbeiter.forEach(m => {
+        csv += `${m.nachname}, ${m.vorname};${m.kategorie};${m.std_woche};${m.jahresbrutto};${m.ist_berechtigt ? 'Ja' : 'Nein'};${m.praemie_I || 0};${m.praemie_II || 0};${m.praemie_gerundet || 0}\n`;
+    });
+    
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'mitarbeiter_praemien.csv';
+    link.click();
+}
+
+function formatCurrency(value) {
+    return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value || 0);
+}
+</script>
+{% endblock %}

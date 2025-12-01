@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block title %}Neue Berechnung - Jahresprämie{% endblock %}
+
+{% block extra_css %}
+<style>
+.form-card {
+    max-width: 600px;
+    margin: 0 auto;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/jahrespraemie/">Jahresprämie</a></li>
+                    <li class="breadcrumb-item active">Neue Berechnung</li>
+                </ol>
+            </nav>
+            <h1>
+                <i class="bi bi-plus-circle"></i> 
+                Neue Berechnung anlegen
+            </h1>
+        </div>
+    </div>
+
+    <div class="card form-card">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="bi bi-gear"></i> Parameter festlegen</h5>
+        </div>
+        <div class="card-body">
+            <form id="neueBerechnung">
+                <!-- Wirtschaftsjahr -->
+                <div class="mb-3">
+                    <label for="wirtschaftsjahr" class="form-label">Wirtschaftsjahr *</label>
+                    <select class="form-select" id="wirtschaftsjahr" required>
+                        <option value="">-- Bitte wählen --</option>
+                        <option value="2024/2025" data-start="2024-09-01" data-ende="2025-08-31" selected>2024/2025 (Sept 24 - Aug 25)</option>
+                        <option value="2025/2026" data-start="2025-09-01" data-ende="2026-08-31">2025/2026 (Sept 25 - Aug 26)</option>
+                        <option value="2023/2024" data-start="2023-09-01" data-ende="2024-08-31">2023/2024 (Sept 23 - Aug 24)</option>
+                    </select>
+                </div>
+
+                <!-- Prämientopf -->
+                <div class="mb-3">
+                    <label for="praemientopf" class="form-label">Prämientopf (EUR) *</label>
+                    <div class="input-group">
+                        <input type="number" class="form-control" id="praemientopf" 
+                               placeholder="z.B. 30000" step="100" min="0" required>
+                        <span class="input-group-text">€</span>
+                    </div>
+                    <div class="form-text">Gesamtbetrag für die Prämienausschüttung</div>
+                </div>
+
+                <!-- WJ-Start (automatisch) -->
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="wj_start" class="form-label">WJ-Start</label>
+                        <input type="date" class="form-control" id="wj_start" readonly>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="wj_ende" class="form-label">WJ-Ende</label>
+                        <input type="date" class="form-control" id="wj_ende" readonly>
+                    </div>
+                </div>
+
+                <!-- VZ/TZ-Grenze -->
+                <div class="mb-3">
+                    <label for="vz_tz_grenze" class="form-label">VZ/TZ-Grenze (Std/Woche)</label>
+                    <input type="number" class="form-control" id="vz_tz_grenze" value="30" min="20" max="40" step="1">
+                    <div class="form-text">Ab dieser Stundenzahl gilt ein MA als Vollzeit (Standard: 30)</div>
+                </div>
+
+                <hr>
+
+                <!-- Azubi-Festbeträge (Info) -->
+                <div class="mb-3">
+                    <label class="form-label">Azubi-Festbeträge (Pro-Kopf)</label>
+                    <div class="row text-center">
+                        <div class="col-4">
+                            <div class="border rounded p-2">
+                                <strong>1. Jahr</strong><br>
+                                <span class="text-success">100 €</span>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="border rounded p-2">
+                                <strong>2. Jahr</strong><br>
+                                <span class="text-success">125 €</span>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="border rounded p-2">
+                                <strong>3. Jahr</strong><br>
+                                <span class="text-success">150 €</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-success btn-lg" id="submitBtn">
+                        <i class="bi bi-check-circle"></i> Berechnung anlegen
+                    </button>
+                    <a href="/jahrespraemie/" class="btn btn-outline-secondary">
+                        <i class="bi bi-x-circle"></i> Abbrechen
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    // WJ-Daten automatisch setzen
+    $('#wirtschaftsjahr').on('change', function() {
+        const selected = $(this).find('option:selected');
+        $('#wj_start').val(selected.data('start') || '');
+        $('#wj_ende').val(selected.data('ende') || '');
+    }).trigger('change');
+
+    // Form Submit
+    $('#neueBerechnung').on('submit', function(e) {
+        e.preventDefault();
+        
+        const btn = $('#submitBtn');
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Wird angelegt...');
+        
+        const data = {
+            wirtschaftsjahr: $('#wirtschaftsjahr').val(),
+            praemientopf: parseFloat($('#praemientopf').val()),
+            wj_start: $('#wj_start').val(),
+            wj_ende: $('#wj_ende').val(),
+            vz_tz_grenze: parseFloat($('#vz_tz_grenze').val())
+        };
+        
+        $.ajax({
+            url: '/api/jahrespraemie/berechnung/neu',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(data),
+            success: function(response) {
+                if (response.success) {
+                    window.location.href = '/jahrespraemie/' + response.berechnung_id;
+                } else {
+                    alert('Fehler: ' + (response.error || 'Unbekannter Fehler'));
+                    btn.prop('disabled', false).html('<i class="bi bi-check-circle"></i> Berechnung anlegen');
+                }
+            },
+            error: function(xhr) {
+                const error = xhr.responseJSON?.error || 'Serverfehler';
+                alert('Fehler: ' + error);
+                btn.prop('disabled', false).html('<i class="bi bi-check-circle"></i> Berechnung anlegen');
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

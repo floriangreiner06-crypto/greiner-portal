@@ -84,6 +84,13 @@
                             </a></li>
                             {% endif %}
                             
+                            <!-- Jahresprämie (für Buchhaltung/Admin) -->
+                            {% if current_user.can_access_feature('bankenspiegel') %}
+                            <li><a class="dropdown-item" href="/jahrespraemie/">
+                                <i class="bi bi-gift"></i> Jahresprämie
+                            </a></li>
+                            {% endif %}
+                            
                             <!-- Bankenspiegel Bereich (nur für Bankenspiegel-Berechtigte) -->
                             {% if current_user.can_access_feature('bankenspiegel') %}
                             <li><hr class="dropdown-divider"></li>

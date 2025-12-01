@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}Jahresprämie - Übersicht{% endblock %}
+
+{% block extra_css %}
+<style>
+.stats-card {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    color: white;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+.stats-card h3 {
+    font-size: 2rem;
+    margin: 0;
+    font-weight: 700;
+}
+.stats-card p {
+    margin: 5px 0 0 0;
+    opacity: 0.9;
+}
+.table-hover tbody tr:hover {
+    background-color: #f8f9fa;
+    cursor: pointer;
+}
+.badge-entwurf { background-color: #6c757d; }
+.badge-berechnet { background-color: #17a2b8; }
+.badge-freigegeben { background-color: #28a745; }
+.badge-exportiert { background-color: #007bff; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <div>
+                <h1>
+                    <i class="bi bi-gift"></i> 
+                    Jahresprämie
+                </h1>
+                <p class="text-muted">Übersicht aller Prämienberechnungen</p>
+            </div>
+            <div>
+                <a href="/jahrespraemie/neu" class="btn btn-success btn-lg">
+                    <i class="bi bi-plus-circle"></i> Neue Berechnung
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading -->
+    <div id="loadingSpinner" class="text-center py-5">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="mt-2">Lade Berechnungen...</p>
+    </div>
+
+    <!-- Berechnungen-Tabelle -->
+    <div class="card" id="berechnungenCard" style="display: none;">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="bi bi-list-ul"></i> Berechnungen
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" id="berechnungenTable">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Wirtschaftsjahr</th>
+                            <th class="text-end">Prämientopf</th>
+                            <th class="text-center">Mitarbeiter</th>
+                            <th class="text-end">Summe Prämien</th>
+                            <th class="text-center">Status</th>
+                            <th>Erstellt</th>
+                            <th>Aktionen</th>
+                        </tr>
+                    </thead>
+                    <tbody id="berechnungenBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Empty State -->
+    <div id="emptyState" class="text-center py-5" style="display: none;">
+        <i class="bi bi-inbox display-1 text-muted"></i>
+        <h4 class="mt-3 text-muted">Noch keine Berechnungen vorhanden</h4>
+        <p class="text-muted">Legen Sie Ihre erste Prämienberechnung an.</p>
+        <a href="/jahrespraemie/neu" class="btn btn-success mt-2">
+            <i class="bi bi-plus-circle"></i> Jetzt erste Berechnung anlegen
+        </a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    loadBerechnungen();
+});
+
+function loadBerechnungen() {
+    $.get('/api/jahrespraemie/berechnungen', function(data) {
+        $('#loadingSpinner').hide();
+        
+        if (!data.berechnungen || data.berechnungen.length === 0) {
+            $('#emptyState').show();
+            return;
+        }
+        
+        $('#berechnungenCard').show();
+        const tbody = $('#berechnungenBody');
+        tbody.empty();
+        
+        data.berechnungen.forEach(b => {
+            const statusBadge = getStatusBadge(b.status);
+            const erstellt = b.erstellt_am ? new Date(b.erstellt_am).toLocaleDateString('de-DE') : '-';
+            const summe = b.bereinigter_topf ? formatCurrency(b.praemientopf) : '-';
+            
+            tbody.append(`
+                <tr onclick="window.location='/jahrespraemie/${b.id}'" style="cursor: pointer;">
+                    <td><strong>${b.wirtschaftsjahr}</strong></td>
+                    <td class="text-end">${formatCurrency(b.praemientopf)}</td>
+                    <td class="text-center">${b.anzahl_gesamt || '-'}</td>
+                    <td class="text-end">${summe}</td>
+                    <td class="text-center">${statusBadge}</td>
+                    <td>${erstellt}</td>
+                    <td>
+                        <a href="/jahrespraemie/${b.id}" class="btn btn-sm btn-primary" onclick="event.stopPropagation()">
+                            <i class="bi bi-pencil"></i> Bearbeiten
+                        </a>
+                    </td>
+                </tr>
+            `);
+        });
+    }).fail(function() {
+        $('#loadingSpinner').hide();
+        $('#berechnungenCard').show();
+        $('#berechnungenBody').html(`
+            <tr>
+                <td colspan="7" class="text-center text-danger py-4">
+                    <i class="bi bi-exclamation-triangle"></i> Fehler beim Laden der Daten
+                </td>
+            </tr>
+        `);
+    });
+}
+
+function getStatusBadge(status) {
+    const badges = {
+        'entwurf': '<span class="badge badge-entwurf">Entwurf</span>',
+        'berechnet': '<span class="badge badge-berechnet">Berechnet</span>',
+        'freigegeben': '<span class="badge badge-freigegeben">Freigegeben</span>',
+        'exportiert': '<span class="badge badge-exportiert">Exportiert</span>'
+    };
+    return badges[status] || `<span class="badge bg-secondary">${status}</span>`;
+}
+
+function formatCurrency(value) {
+    return new Intl.NumberFormat('de-DE', { 
+        style: 'currency', 
+        currency: 'EUR' 
+    }).format(value || 0);
+}
+</script>
+{% endblock %}

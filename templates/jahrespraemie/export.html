@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+
+{% block title %}Export - Jahresprämie{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/jahrespraemie/">Jahresprämie</a></li>
+            <li class="breadcrumb-item"><a href="/jahrespraemie/{{ berechnung_id }}" id="bcWJ">Berechnung</a></li>
+            <li class="breadcrumb-item active">Export</li>
+        </ol>
+    </nav>
+
+    <div class="row mb-4">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <h1><i class="bi bi-download"></i> Export</h1>
+            <a href="/jahrespraemie/{{ berechnung_id }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Zurück
+            </a>
+        </div>
+    </div>
+
+    <!-- Status-Warnung -->
+    <div class="alert alert-warning" id="statusWarning" style="display: none;">
+        <i class="bi bi-exclamation-triangle"></i>
+        <strong>Hinweis:</strong> Die Berechnung ist noch nicht freigegeben. Export nur als Entwurf möglich.
+    </div>
+
+    <div class="row">
+        <!-- Export-Optionen -->
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-file-earmark"></i> Export-Formate</h5>
+                </div>
+                <div class="card-body">
+                    <!-- CSV -->
+                    <div class="d-grid gap-2 mb-3">
+                        <button class="btn btn-success btn-lg" onclick="exportCSV()">
+                            <i class="bi bi-filetype-csv"></i> CSV Export
+                        </button>
+                        <small class="text-muted text-center">Für Excel-Import oder weitere Verarbeitung</small>
+                    </div>
+                    
+                    <hr>
+                    
+                    <!-- Excel (TODO) -->
+                    <div class="d-grid gap-2 mb-3">
+                        <button class="btn btn-outline-secondary btn-lg" disabled>
+                            <i class="bi bi-file-earmark-excel"></i> Excel Export
+                        </button>
+                        <small class="text-muted text-center">Coming Soon</small>
+                    </div>
+                    
+                    <hr>
+                    
+                    <!-- PDF (TODO) -->
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-outline-secondary btn-lg" disabled>
+                            <i class="bi bi-file-earmark-pdf"></i> PDF Belege
+                        </button>
+                        <small class="text-muted text-center">Coming Soon</small>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Zusammenfassung -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-info-circle"></i> Zusammenfassung</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm mb-0">
+                        <tr><td>Wirtschaftsjahr</td><td class="text-end" id="sumWJ">-</td></tr>
+                        <tr><td>Prämientopf</td><td class="text-end" id="sumTopf">-</td></tr>
+                        <tr><td>Berechtigte MA</td><td class="text-end" id="sumMA">-</td></tr>
+                        <tr class="table-success"><td><strong>Summe Prämien</strong></td><td class="text-end"><strong id="sumTotal">-</strong></td></tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Vorschau-Tabelle -->
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-table"></i> Vorschau (<span id="maCount">0</span> Mitarbeiter)</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                        <table class="table table-hover table-striped mb-0">
+                            <thead class="table-dark sticky-top">
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Kategorie</th>
+                                    <th class="text-end">Jahresbrutto</th>
+                                    <th class="text-end">Prämie I</th>
+                                    <th class="text-end">Prämie II</th>
+                                    <th class="text-end">Gesamt</th>
+                                </tr>
+                            </thead>
+                            <tbody id="maBody">
+                                <tr><td colspan="6" class="text-center py-4">Lade...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const BERECHNUNG_ID = {{ berechnung_id }};
+let berechnung = null;
+let mitarbeiter = [];
+
+$(document).ready(function() {
+    loadData();
+});
+
+function loadData() {
+    $.get('/api/jahrespraemie/berechnung/' + BERECHNUNG_ID, function(data) {
+        berechnung = data.berechnung;
+        mitarbeiter = (data.mitarbeiter || []).filter(m => m.ist_berechtigt || m.ist_kulanz);
+        
+        $('#bcWJ').text(berechnung.wirtschaftsjahr);
+        
+        // Status-Warnung
+        if (berechnung.status !== 'freigegeben' && berechnung.status !== 'exportiert') {
+            $('#statusWarning').show();
+        }
+        
+        // Zusammenfassung
+        $('#sumWJ').text(berechnung.wirtschaftsjahr);
+        $('#sumTopf').text(formatCurrency(berechnung.praemientopf));
+        $('#sumMA').text(mitarbeiter.length);
+        
+        let summe = mitarbeiter.reduce((sum, m) => sum + (m.praemie_gerundet || 0), 0);
+        $('#sumTotal').text(formatCurrency(summe));
+        
+        // Tabelle
+        renderTable();
+    });
+}
+
+function renderTable() {
+    const tbody = $('#maBody');
+    tbody.empty();
+    
+    $('#maCount').text(mitarbeiter.length);
+    
+    if (mitarbeiter.length === 0) {
+        tbody.html('<tr><td colspan="6" class="text-center text-muted py-4">Keine berechtigten Mitarbeiter</td></tr>');
+        return;
+    }
+    
+    mitarbeiter.sort((a, b) => (a.nachname + a.vorname).localeCompare(b.nachname + b.vorname));
+    
+    mitarbeiter.forEach(m => {
+        tbody.append(`
+            <tr>
+                <td>${m.nachname}, ${m.vorname}</td>
+                <td><span class="badge bg-secondary">${m.kategorie}</span></td>
+                <td class="text-end">${formatCurrency(m.jahresbrutto)}</td>
+                <td class="text-end">${formatCurrency(m.praemie_I)}</td>
+                <td class="text-end">${formatCurrency(m.praemie_II)}</td>
+                <td class="text-end"><strong>${formatCurrency(m.praemie_gerundet)}</strong></td>
+            </tr>
+        `);
+    });
+}
+
+function exportCSV() {
+    if (mitarbeiter.length === 0) {
+        alert('Keine Daten zum Exportieren.');
+        return;
+    }
+    
+    // CSV mit BOM für Excel-Kompatibilität
+    let csv = '\uFEFF'; // BOM
+    csv += 'Personalnummer;Nachname;Vorname;Kategorie;Std/Woche;Jahresbrutto;Prämie I;Prämie II;Prämie Gesamt\n';
+    
+    mitarbeiter.forEach(m => {
+        csv += `${m.personalnummer || ''};${m.nachname};${m.vorname};${m.kategorie};${m.std_woche || ''};${(m.jahresbrutto || 0).toFixed(2).replace('.', ',')};${(m.praemie_I || 0).toFixed(2).replace('.', ',')};${(m.praemie_II || 0).toFixed(2).replace('.', ',')};${m.praemie_gerundet || 0}\n`;
+    });
+    
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `jahrespraemie_${berechnung.wirtschaftsjahr.replace('/', '-')}.csv`;
+    link.click();
+}
+
+function formatCurrency(value) {
+    return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value || 0);
+}
+</script>
+{% endblock %}

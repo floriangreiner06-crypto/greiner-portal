@@ -1,0 +1,326 @@
+{% extends "base.html" %}
+
+{% block title %}Kulanz - Jahresprämie{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/jahrespraemie/">Jahresprämie</a></li>
+            <li class="breadcrumb-item"><a href="/jahrespraemie/{{ berechnung_id }}" id="bcWJ">Berechnung</a></li>
+            <li class="breadcrumb-item active">Kulanz</li>
+        </ol>
+    </nav>
+
+    <div class="row mb-4">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <h1><i class="bi bi-heart"></i> Kulanz verwalten</h1>
+            <a href="/jahrespraemie/{{ berechnung_id }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Zurück
+            </a>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Linke Spalte: Kategorie-Kulanz -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-tag"></i> Kategorie-Pauschalen</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">Pauschale Beträge für bestimmte Kategorien (anstatt berechneter Pro-Kopf-Betrag).</p>
+                    
+                    <!-- Minijob -->
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="kulanzMinijob">
+                        <label class="form-check-label" for="kulanzMinijob">
+                            <strong>Minijob-Pauschale</strong>
+                        </label>
+                        <div class="input-group mt-2" style="max-width: 200px;">
+                            <input type="number" class="form-control" id="kulanzMinijobBetrag" value="150" min="0" step="10">
+                            <span class="input-group-text">€</span>
+                        </div>
+                        <div class="form-text">Standard Pro-Kopf für Minijobs wäre ca. 1/3 vom VZ-Betrag</div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <!-- Teilzeit -->
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="kulanzTeilzeit">
+                        <label class="form-check-label" for="kulanzTeilzeit">
+                            <strong>Teilzeit-Mindestbetrag</strong>
+                        </label>
+                        <div class="input-group mt-2" style="max-width: 200px;">
+                            <input type="number" class="form-control" id="kulanzTeilzeitBetrag" value="100" min="0" step="10">
+                            <span class="input-group-text">€</span>
+                        </div>
+                        <div class="form-text">Mindestbetrag für Teilzeit-MA (falls berechnet niedriger)</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Rechte Spalte: Individuelle Kulanz -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-person-plus"></i> Individuelle Kulanz</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">Einzelne nicht-berechtigte Mitarbeiter können per Kulanz eine Prämie erhalten.</p>
+                    
+                    <!-- Liste der Kulanz-Empfänger -->
+                    <div id="kulanzListe" class="mb-3">
+                        <p class="text-muted" id="keineKulanz">Keine individuellen Kulanz-Regelungen.</p>
+                    </div>
+                    
+                    <hr>
+                    
+                    <!-- Neue Kulanz hinzufügen -->
+                    <h6>Kulanz hinzufügen</h6>
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <select class="form-select" id="kulanzMA">
+                                <option value="">-- MA wählen --</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="kulanzBetrag" placeholder="Betrag" min="0" step="10">
+                                <span class="input-group-text">€</span>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <button class="btn btn-success w-100" onclick="addKulanz()">
+                                <i class="bi bi-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vorschau & Speichern -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="bi bi-calculator"></i> Kulanz-Vorschau</h5>
+        </div>
+        <div class="card-body">
+            <div class="row text-center">
+                <div class="col-md-4">
+                    <div class="border rounded p-3">
+                        <small class="text-muted">Kategorie-Kulanz</small><br>
+                        <strong class="fs-4" id="vorschauKategorie">0 €</strong>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="border rounded p-3">
+                        <small class="text-muted">Individuelle Kulanz</small><br>
+                        <strong class="fs-4" id="vorschauIndividuell">0 €</strong>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="border rounded p-3 bg-warning bg-opacity-25">
+                        <small class="text-muted">Gesamt Kulanz-Volumen</small><br>
+                        <strong class="fs-4 text-warning" id="vorschauGesamt">0 €</strong>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="text-center mt-4">
+                <button class="btn btn-primary btn-lg" onclick="speichernKulanz()">
+                    <i class="bi bi-save"></i> Kulanz-Regeln speichern
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const BERECHNUNG_ID = {{ berechnung_id }};
+let nichtBerechtigte = [];
+let individuelleKulanz = [];
+
+$(document).ready(function() {
+    loadData();
+    
+    // Checkbox Change Events
+    $('#kulanzMinijob, #kulanzTeilzeit').on('change', updateVorschau);
+    $('#kulanzMinijobBetrag, #kulanzTeilzeitBetrag').on('input', updateVorschau);
+});
+
+function loadData() {
+    $.get('/api/jahrespraemie/berechnung/' + BERECHNUNG_ID, function(data) {
+        $('#bcWJ').text(data.berechnung.wirtschaftsjahr);
+        
+        // Nicht-berechtigte MA für Dropdown
+        nichtBerechtigte = (data.mitarbeiter || []).filter(m => !m.ist_berechtigt);
+        const select = $('#kulanzMA');
+        select.empty().append('<option value="">-- MA wählen --</option>');
+        nichtBerechtigte.forEach(m => {
+            select.append(`<option value="${m.id}">${m.nachname}, ${m.vorname} (${m.kategorie})</option>`);
+        });
+        
+        // Bestehende Kulanz-Regeln laden
+        if (data.kulanz_regeln) {
+            data.kulanz_regeln.forEach(r => {
+                if (r.regel_typ === 'kategorie') {
+                    if (r.kategorie === 'Minijob') {
+                        $('#kulanzMinijob').prop('checked', true);
+                        $('#kulanzMinijobBetrag').val(r.pauschal_betrag);
+                    }
+                    if (r.kategorie === 'Teilzeit') {
+                        $('#kulanzTeilzeit').prop('checked', true);
+                        $('#kulanzTeilzeitBetrag').val(r.pauschal_betrag);
+                    }
+                } else if (r.regel_typ === 'individuell') {
+                    individuelleKulanz.push({
+                        mitarbeiter_id: r.mitarbeiter_id,
+                        betrag: r.pauschal_betrag,
+                        name: r.beschreibung || 'MA ' + r.mitarbeiter_id
+                    });
+                }
+            });
+            renderKulanzListe();
+            updateVorschau();
+        }
+    });
+}
+
+function addKulanz() {
+    const maId = $('#kulanzMA').val();
+    const betrag = parseFloat($('#kulanzBetrag').val()) || 0;
+    
+    if (!maId || betrag <= 0) {
+        alert('Bitte MA auswählen und Betrag eingeben.');
+        return;
+    }
+    
+    const ma = nichtBerechtigte.find(m => m.id == maId);
+    if (!ma) return;
+    
+    // Prüfen ob schon vorhanden
+    if (individuelleKulanz.find(k => k.mitarbeiter_id == maId)) {
+        alert('Dieser MA hat bereits eine Kulanz-Regelung.');
+        return;
+    }
+    
+    individuelleKulanz.push({
+        mitarbeiter_id: maId,
+        betrag: betrag,
+        name: ma.nachname + ', ' + ma.vorname
+    });
+    
+    $('#kulanzMA').val('');
+    $('#kulanzBetrag').val('');
+    
+    renderKulanzListe();
+    updateVorschau();
+}
+
+function removeKulanz(maId) {
+    individuelleKulanz = individuelleKulanz.filter(k => k.mitarbeiter_id != maId);
+    renderKulanzListe();
+    updateVorschau();
+}
+
+function renderKulanzListe() {
+    const container = $('#kulanzListe');
+    container.empty();
+    
+    if (individuelleKulanz.length === 0) {
+        container.html('<p class="text-muted" id="keineKulanz">Keine individuellen Kulanz-Regelungen.</p>');
+        return;
+    }
+    
+    individuelleKulanz.forEach(k => {
+        container.append(`
+            <div class="d-flex justify-content-between align-items-center border rounded p-2 mb-2">
+                <span>${k.name}: <strong>${k.betrag} €</strong></span>
+                <button class="btn btn-sm btn-outline-danger" onclick="removeKulanz(${k.mitarbeiter_id})">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+        `);
+    });
+}
+
+function updateVorschau() {
+    let katSum = 0;
+    let indSum = 0;
+    
+    // Kategorie-Kulanz (vereinfacht - echte Berechnung in API)
+    if ($('#kulanzMinijob').is(':checked')) {
+        katSum += parseFloat($('#kulanzMinijobBetrag').val()) || 0;
+    }
+    if ($('#kulanzTeilzeit').is(':checked')) {
+        katSum += parseFloat($('#kulanzTeilzeitBetrag').val()) || 0;
+    }
+    
+    // Individuelle Kulanz
+    indSum = individuelleKulanz.reduce((sum, k) => sum + k.betrag, 0);
+    
+    $('#vorschauKategorie').text(formatCurrency(katSum));
+    $('#vorschauIndividuell').text(formatCurrency(indSum));
+    $('#vorschauGesamt').text(formatCurrency(katSum + indSum));
+}
+
+function speichernKulanz() {
+    const regeln = [];
+    
+    // Kategorie-Regeln
+    if ($('#kulanzMinijob').is(':checked')) {
+        regeln.push({
+            regel_typ: 'kategorie',
+            kategorie: 'Minijob',
+            pauschal_betrag: parseFloat($('#kulanzMinijobBetrag').val()) || 150
+        });
+    }
+    if ($('#kulanzTeilzeit').is(':checked')) {
+        regeln.push({
+            regel_typ: 'kategorie',
+            kategorie: 'Teilzeit',
+            pauschal_betrag: parseFloat($('#kulanzTeilzeitBetrag').val()) || 100
+        });
+    }
+    
+    // Individuelle Regeln
+    individuelleKulanz.forEach(k => {
+        regeln.push({
+            regel_typ: 'individuell',
+            mitarbeiter_id: k.mitarbeiter_id,
+            pauschal_betrag: k.betrag,
+            beschreibung: k.name
+        });
+    });
+    
+    $.ajax({
+        url: '/api/jahrespraemie/kulanz/' + BERECHNUNG_ID,
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ regeln: regeln }),
+        success: function(response) {
+            if (response.success) {
+                alert('Kulanz-Regeln gespeichert!');
+                window.location.href = '/jahrespraemie/' + BERECHNUNG_ID;
+            } else {
+                alert('Fehler: ' + response.error);
+            }
+        },
+        error: function(xhr) {
+            alert('Fehler: ' + (xhr.responseJSON?.error || 'Serverfehler'));
+        }
+    });
+}
+
+function formatCurrency(value) {
+    return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value || 0);
+}
+</script>
+{% endblock %}
