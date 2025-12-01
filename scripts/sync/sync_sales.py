@@ -1,28 +1,12 @@
 #!/usr/bin/env python3
 """
 ============================================================================
-SALES-SYNC V5: Mit korrigierter Deckungsbeitrag-Berechnung (Differenzmethode)
+SALES-SYNC V4: Mit korrigierter Deckungsbeitrag-Berechnung
 ============================================================================
 Erstellt: 11.11.2025
-Aktualisiert: 28.11.2025 (TAG84)
-
-FIX TAG84: Deckungsbeitrag-Berechnung korrigiert!
--------------------------------------------------
-PROBLEM: Wir haben VK_brutto/1.19 gerechnet, aber Locosoft verwendet die
-         Differenzmethode (§25a UStG für Gebrauchtwagen).
-
-LOCOSOFT-FORMEL:
-  Rohertrag_brutto = VK_brutto - Einsatzwert
-  MwSt_auf_Rohertrag = Rohertrag_brutto / 1.19 * 0.19
-  DB = Rohertrag_brutto - MwSt_auf_Rohertrag - var_kosten + VKU
-  
-  Vereinfacht: DB = (VK_brutto - Einsatzwert) / 1.19 - var_kosten + VKU
-
-VORHER (FALSCH):
-  DB = VK_brutto/1.19 - Einsatzwert - var_kosten + VKU  → NEGATIV
-  
-JETZT (KORREKT):
-  DB = (VK_brutto - Einsatzwert) / 1.19 - var_kosten + VKU  → POSITIV ✓
+Aktualisiert: 25.11.2025 (TAG83)
+Fix: calc_usage_value_encr_internal zum Einsatzwert addiert
+Formel: (VK-Preis/1.19) - Einsatzwert - Var.Kosten + VKU
 ============================================================================
 """
 
@@ -50,8 +34,8 @@ def load_env():
 def sync_sales():
     """Synchronisiert Sales von Locosoft nach SQLite mit DB-Berechnung"""
 
-    log("=== SALES SYNC V5 MIT KORRIGIERTEM DECKUNGSBEITRAG (DIFFERENZMETHODE) ===")
-    log("FIX TAG84: DB = (VK_brutto - Einsatz) / 1.19 - var_kosten + VKU")
+    log("=== SALES SYNC V4 MIT DECKUNGSBEITRAG GESTARTET ===")
+    log("Fix TAG83: calc_usage_value_encr_internal zum Einsatzwert addiert")
 
     # 1. Credentials laden
     log("Lade Credentials...")
@@ -96,15 +80,14 @@ def sync_sales():
             dv.buyer_customer_no::TEXT,
             m.description as model_description,
             
-            -- Deckungsbeitrag-Komponenten (alle NETTO!)
+            -- Deckungsbeitrag-Komponenten
             COALESCE(dv.calc_basic_charge, 0) as fahrzeuggrundpreis,
             COALESCE(dv.calc_accessory, 0) as zubehoer,
             COALESCE(dv.calc_extra_expenses, 0) as fracht_brief_neben,
             COALESCE(dv.calc_cost_internal_invoices, 0) as kosten_intern_rg,
-            COALESCE(dv.calc_usage_value_encr_internal, 0) as einsatz_erhoehung_intern,
             
-            -- Variable Verkaufskosten
-            COALESCE(dv.calc_var_selling_costs, 0) as variable_verkaufskosten,
+            -- NEU TAG83: Einsatzerhöhung interne Rechnungen
+            COALESCE(dv.calc_usage_value_encr_internal, 0) as einsatz_erhoehung_intern,
             
             -- Verkaufsunterstützung (claimed = gefordert)
             COALESCE(
@@ -145,8 +128,7 @@ def sync_sales():
              out_subsidiary, out_sales_contract_date, make_number, mileage_km,
              salesman_number, buyer_customer_no, model_description,
              fahrzeuggrundpreis, zubehoer, fracht_brief_neben, 
-             kosten_intern_rg, einsatz_erhoehung_intern, 
-             variable_verkaufskosten, verkaufsunterstuetzung) = row
+             kosten_intern_rg, einsatz_erhoehung_intern, verkaufsunterstuetzung) = row
 
             # Decimal-Werte zu float/int konvertieren
             out_sale_price = float(out_sale_price) if out_sale_price else None
@@ -162,47 +144,29 @@ def sync_sales():
             fracht_brief_neben = float(fracht_brief_neben) if fracht_brief_neben else 0.0
             kosten_intern_rg = float(kosten_intern_rg) if kosten_intern_rg else 0.0
             einsatz_erhoehung_intern = float(einsatz_erhoehung_intern) if einsatz_erhoehung_intern else 0.0
-            variable_verkaufskosten = float(variable_verkaufskosten) if variable_verkaufskosten else 0.0
             verkaufsunterstuetzung = float(verkaufsunterstuetzung) if verkaufsunterstuetzung else 0.0
 
-            # ================================================================
-            # DECKUNGSBEITRAG BERECHNEN - DIFFERENZMETHODE (wie Locosoft)
-            # ================================================================
+            # DECKUNGSBEITRAG BERECHNEN
             if out_sale_price and out_sale_price > 0:
-                # Einsatzwert (NETTO - ohne Steuer, wie im Locosoft-Screenshot)
-                einsatzwert = (fahrzeuggrundpreis + zubehoer + fracht_brief_neben + 
-                               einsatz_erhoehung_intern)
+                # Netto-VK-Preis (MwSt rausrechnen)
+                netto_vk_preis = out_sale_price / 1.19
                 
-                # Rohertrag BRUTTO = VK_brutto - Einsatzwert_netto
-                rohertrag_brutto = out_sale_price - einsatzwert
+                # Einsatzwert (FIX TAG83: + einsatz_erhoehung_intern)
+                einsatzwert = fahrzeuggrundpreis + zubehoer + fracht_brief_neben + einsatz_erhoehung_intern
                 
-                # MwSt nur auf den Rohertrag (Differenzmethode §25a UStG)
-                # rohertrag_brutto enthält 19% MwSt → Netto = brutto / 1.19
-                rohertrag_netto = rohertrag_brutto / 1.19
+                # Deckungsbeitrag
+                deckungsbeitrag = netto_vk_preis - einsatzwert - kosten_intern_rg + verkaufsunterstuetzung
                 
-                # Variable Kosten (Kosten interne RG + variable VK-Kosten)
-                variable_kosten = kosten_intern_rg + variable_verkaufskosten
-                
-                # DECKUNGSBEITRAG I (wie in Locosoft)
-                # = Rohertrag_netto - variable_kosten + Verkaufsunterstützung
-                deckungsbeitrag = rohertrag_netto - variable_kosten + verkaufsunterstuetzung
-                
-                # DB% bezogen auf Netto-VK-Preis
-                # Locosoft zeigt DB% = DB / (VK_brutto - MwSt_auf_Rohertrag)
-                # Vereinfacht: DB% = DB / (Einsatz + Rohertrag_netto)
-                netto_vk_preis = einsatzwert + rohertrag_netto
+                # DB%
                 db_prozent = (deckungsbeitrag / netto_vk_preis * 100) if netto_vk_preis > 0 else 0.0
                 
-                # Netto-Preis (für Kompatibilität)
-                netto_price = out_sale_price / 1.19  # klassische Berechnung
+                # Netto-Preis (für alte Kompatibilität)
+                netto_price = netto_vk_preis
             else:
-                einsatzwert = None
-                rohertrag_brutto = None
-                rohertrag_netto = None
+                netto_vk_preis = None
                 deckungsbeitrag = None
                 db_prozent = None
                 netto_price = None
-                netto_vk_preis = None
 
             # Prüfen ob existiert
             sqlite_cursor.execute("""
@@ -309,33 +273,20 @@ def sync_sales():
     mit_db = sqlite_cursor.fetchone()[0]
     log(f"Mit Deckungsbeitrag: {mit_db}")
     
-    # 10. Test: Q5 Fahrzeug 215638 prüfen (sollte jetzt ~504.20 zeigen)
+    # 10. Test: Fahrzeug 111186 prüfen (sollte jetzt 2231.34 zeigen)
     sqlite_cursor.execute("""
-        SELECT vin, out_sale_price, deckungsbeitrag, db_prozent 
-        FROM sales
-        WHERE dealer_vehicle_number = 215638
+        SELECT deckungsbeitrag, db_prozent FROM sales
+        WHERE dealer_vehicle_number = 111186
     """)
     test_row = sqlite_cursor.fetchone()
     if test_row:
-        log(f"")
-        log(f"=== VALIDIERUNG Q5 (215638) ===")
-        log(f"VIN: {test_row[0]}")
-        log(f"VK brutto: {test_row[1]:.2f}€")
-        log(f"DB berechnet: {test_row[2]:.2f}€ | DB%: {test_row[3]:.2f}%")
-        log(f"Erwartet (Locosoft): 504.20€ | 7.7%")
-        
-        # Check ob es passt
-        if test_row[2] and abs(test_row[2] - 504.20) < 1:
-            log(f"✅ VALIDIERUNG ERFOLGREICH!")
-        else:
-            log(f"⚠️ ABWEICHUNG - bitte prüfen!", "WARN")
+        log(f"Test Fzg 111186: DB={test_row[0]:.2f}€ | DB%={test_row[1]:.2f}%")
 
     # 11. Aufräumen
     pg_conn.close()
     sqlite_conn.close()
 
-    log("")
-    log("✅ Sync V5 mit korrigiertem Deckungsbeitrag (Differenzmethode) beendet!")
+    log("✅ Sync V4 mit korrigiertem Deckungsbeitrag erfolgreich beendet!")
     return inserted, updated, errors
 
 if __name__ == '__main__':

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Greiner Portal{% endblock %}</title>
+    <title>{% block title %}Greiner DRIVE{% endblock %}</title>
 
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -27,7 +27,7 @@
 
             <!-- Logo & Brand -->
             <a class="navbar-brand d-flex align-items-center" href="/">
-                <img src="{{ url_for('static', filename='images/greiner-logo.png') }}?v={{ STATIC_VERSION }}"
+                <img src="{{ url_for('static', filename='images/greiner-logo.svg') }}?v={{ STATIC_VERSION }}"
                      alt="Greiner Logo"
                      height="40"
                      class="me-2"
@@ -35,7 +35,7 @@
                 <span class="logo-fallback" style="display:none;">
                     <i class="bi bi-building"></i>
                 </span>
-                <span class="fw-bold">Greiner Portal</span>
+                <span class="fw-bold">DRIVE</span>
             </a>
 
             <!-- Mobile Toggle -->

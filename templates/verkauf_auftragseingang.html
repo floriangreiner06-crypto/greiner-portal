@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Auftragseingang - Greiner Portal{% endblock %}
+{% block title %}Auftragseingang - Greiner DRIVE{% endblock %}
 {% block content %}
 <div class="container-fluid mt-4">
     <div class="row mb-4">
@@ -222,7 +222,7 @@ async function loadSummary() {
                     <div class="card-body">
                         <h6><strong>Neuwagen</strong></h6>
                         <h3 class="text-success"><strong>${neuwagen.gesamt}</strong></h3>
-                        <p class="text-muted small">${formatCurrency(neuwagen.umsatz)}</p>
+                        
                     </div>
                 </div>
             </div>
@@ -235,7 +235,7 @@ async function loadSummary() {
                     <div class="card-body">
                         <h6><strong>Test/Vorführ</strong></h6>
                         <h3 class="text-warning"><strong>${testvorfuehr.gesamt}</strong></h3>
-                        <p class="text-muted small">${formatCurrency(testvorfuehr.umsatz)}</p>
+                        
                     </div>
                 </div>
             </div>
@@ -248,7 +248,7 @@ async function loadSummary() {
                     <div class="card-body">
                         <h6><strong>Gebrauchtwagen</strong></h6>
                         <h3 class="text-secondary"><strong>${gebrauchtwagen.gesamt}</strong></h3>
-                        <p class="text-muted small">${formatCurrency(gebrauchtwagen.umsatz)}</p>
+                        
                     </div>
                 </div>
             </div>
@@ -264,7 +264,7 @@ async function loadSummary() {
                     <div class="card-body">
                         <h6><strong>GESAMT</strong></h6>
                         <h3 class="text-dark"><strong>${gesamt}</strong></h3>
-                        <p class="text-muted small"><strong>${formatCurrency(gesamt_umsatz)}</strong></p>
+                        
                     </div>
                 </div>
             </div>
