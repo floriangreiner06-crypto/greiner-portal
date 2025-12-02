@@ -16,6 +16,7 @@ from functools import wraps
 import sqlite3
 import json
 import traceback
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
@@ -30,6 +31,24 @@ logger = logging.getLogger('job_scheduler')
 BASE_DIR = '/opt/greiner-portal'
 JOBS_DB = os.path.join(BASE_DIR, 'data', 'scheduler_jobs.db')
 LOGS_DB = os.path.join(BASE_DIR, 'data', 'scheduler_logs.db')
+
+# Timezone
+LOCAL_TZ = ZoneInfo('Europe/Berlin')
+UTC_TZ = ZoneInfo('UTC')
+
+
+def utc_to_local(utc_str):
+    """Konvertiert UTC-Zeitstring zu lokaler Zeit."""
+    if not utc_str:
+        return None
+    try:
+        # SQLite CURRENT_TIMESTAMP format: 'YYYY-MM-DD HH:MM:SS'
+        utc_dt = datetime.strptime(utc_str, '%Y-%m-%d %H:%M:%S')
+        utc_dt = utc_dt.replace(tzinfo=UTC_TZ)
+        local_dt = utc_dt.astimezone(LOCAL_TZ)
+        return local_dt.strftime('%Y-%m-%d %H:%M:%S')
+    except Exception:
+        return utc_str  # Bei Fehler Original zurückgeben
 
 
 def init_logs_db():
@@ -345,8 +364,12 @@ class JobSchedulerManager:
         jobs = [dict(row) for row in cursor.fetchall()]
         conn.close()
         
-        # Nächste Ausführung hinzufügen
+        # Zeiten konvertieren und nächste Ausführung hinzufügen
         for job in jobs:
+            # UTC zu lokaler Zeit konvertieren
+            if job.get('last_run'):
+                job['last_run'] = utc_to_local(job['last_run'])
+            
             try:
                 scheduler_job = self._scheduler.get_job(job['job_id'])
                 if scheduler_job:
@@ -354,6 +377,7 @@ class JobSchedulerManager:
                     next_run = getattr(scheduler_job, 'next_run_time', None) or \
                                getattr(scheduler_job, 'next_fire_time', None)
                     if next_run:
+                        # APScheduler gibt bereits timezone-aware datetime zurück
                         job['next_run'] = next_run.strftime('%Y-%m-%d %H:%M:%S')
                     else:
                         job['next_run'] = None
@@ -384,6 +408,14 @@ class JobSchedulerManager:
         
         history = [dict(row) for row in cursor.fetchall()]
         conn.close()
+        
+        # UTC zu lokaler Zeit konvertieren
+        for entry in history:
+            if entry.get('started_at'):
+                entry['started_at'] = utc_to_local(entry['started_at'])
+            if entry.get('finished_at'):
+                entry['finished_at'] = utc_to_local(entry['finished_at'])
+        
         return history
     
     def pause_job(self, job_id):

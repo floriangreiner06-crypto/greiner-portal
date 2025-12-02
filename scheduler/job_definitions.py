@@ -52,7 +52,7 @@ def job_scrape_hyundai():
     return run_script('tools/scrapers/hyundai_bestandsliste_scraper.py', 'scrape_hyundai', 'Hyundai Scraper', timeout=180)
 
 def job_leasys_cache_refresh():
-    return run_script('scripts/update_leasys_cache.py', 'leasys_cache_refresh', 'Leasys Cache Refresh', timeout=300)
+    return run_script('scripts/update_leasys_cache.py', 'leasys_cache_refresh', 'Leasys Cache Refresh', timeout=600)
 
 # HR & Mitarbeiter
 def job_sync_employees():
@@ -108,6 +108,10 @@ def job_sync_stammdaten():
 
 def job_locosoft_mirror():
     return run_shell('venv/bin/python3 scripts/sync/locosoft_mirror.py --min-rows 100', 'locosoft_mirror', 'Locosoft Mirror', timeout=600)
+
+def job_bwa_berechnung():
+    """BWA-Berechnung aus gespiegelten Locosoft-Daten (nach locosoft_mirror)"""
+    return run_script('scripts/sync/bwa_berechnung.py', 'bwa_berechnung', 'BWA Berechnung', timeout=120)
 
 
 # ============================================================================
@@ -457,10 +461,20 @@ def register_all_jobs():
         job_id='locosoft_mirror',
         func=job_locosoft_mirror,
         name='Locosoft Mirror',
-        description='Spiegelt Locosoft-Fahrzeugdaten für lokale Abfragen',
+        description='Spiegelt Locosoft-Daten für lokale Abfragen',
         category='verkauf',
-        hour='20',
+        hour='19',
         minute='0'
+    )
+    
+    job_manager.add_cron_job(
+        job_id='bwa_berechnung',
+        func=job_bwa_berechnung,
+        name='BWA Berechnung',
+        description='Berechnet BWA aus gespiegelten Locosoft-Daten (nach Mirror)',
+        category='controlling',
+        hour='19',
+        minute='30'
     )
     
     # =========================================================================
@@ -470,7 +484,7 @@ def register_all_jobs():
     try:
         job_count = len(job_manager.get_jobs())
         print(f"📋 {job_count} Jobs registriert")
-        print(f"   - Controlling & Verwaltung: 12 Jobs")
+        print(f"   - Controlling & Verwaltung: 13 Jobs")
         print(f"   - Aftersales: 12 Jobs")
         print(f"   - Verkauf: 4 Jobs")
     except Exception as e:
