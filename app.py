@@ -27,7 +27,7 @@ else:
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 Jahr in Produktion
 
 # Globale Static-Version (ändert sich bei jedem Flask-Neustart)
-STATIC_VERSION = '20251124094758'
+STATIC_VERSION = '20251202083000'
 print(f"📦 Static Version: {STATIC_VERSION}")
 
 # Template-Kontext: Macht STATIC_VERSION in allen Templates verfügbar
@@ -239,6 +239,51 @@ except Exception as e:
     print(f"⚠️  Jahresprämie nicht geladen: {e}")
 
 # ============================================================================
+# JOB-SCHEDULER (APScheduler) - Ersetzt Cron-Jobs
+# ============================================================================
+try:
+    from scheduler import job_manager, scheduler_bp, init_scheduler_routes, register_all_jobs
+    import fcntl
+    
+    # Blueprint registrieren (für alle Worker)
+    app.register_blueprint(scheduler_bp)
+    init_scheduler_routes(job_manager)
+    
+    # Scheduler nur EINMAL starten (nicht in jedem Gunicorn-Worker!)
+    # Verwendet Lock-File um Race-Conditions zu vermeiden
+    SCHEDULER_LOCK_FILE = '/tmp/greiner_scheduler.lock'
+    scheduler_started = False
+    
+    def try_start_scheduler():
+        """Versucht den Scheduler zu starten, nur wenn Lock verfügbar"""
+        global scheduler_started
+        try:
+            lock_fd = open(SCHEDULER_LOCK_FILE, 'w')
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            # Lock erhalten - dieser Worker startet den Scheduler
+            register_all_jobs()
+            job_manager.start()
+            scheduler_started = True
+            print("✅ Job-Scheduler gestartet: /admin/jobs/")
+            # Lock-File offen halten (wird bei Prozess-Ende automatisch freigegeben)
+            return lock_fd
+        except (IOError, OSError):
+            # Lock nicht verfügbar - anderer Worker hat den Scheduler
+            print("ℹ️  Job-Scheduler läuft in anderem Worker")
+            return None
+    
+    # Starten wenn nicht im Debug-Reloader
+    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not app.debug:
+        _scheduler_lock = try_start_scheduler()
+    else:
+        print("⏸️  Job-Scheduler: Warte auf Reloader...")
+        
+except Exception as e:
+    print(f"⚠️  Job-Scheduler nicht geladen: {e}")
+    import traceback
+    traceback.print_exc()
+
+# ============================================================================
 # ERROR HANDLERS
 # ============================================================================
 
@@ -253,6 +298,24 @@ def forbidden(e):
     """Handler für 403 Forbidden"""
     flash('Sie haben keine Berechtigung für diesen Bereich.', 'danger')
     return redirect(url_for('dashboard'))
+
+# ============================================================================
+# SCHEDULER SHUTDOWN
+# ============================================================================
+
+import atexit
+
+def shutdown_scheduler():
+    """Stoppt den Scheduler beim App-Shutdown"""
+    try:
+        from scheduler import job_manager
+        if job_manager and job_manager.get_scheduler().running:
+            job_manager.shutdown()
+            print("🛑 Job-Scheduler gestoppt")
+    except:
+        pass
+
+atexit.register(shutdown_scheduler)
 
 # ============================================================================
 # MAIN

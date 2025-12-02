@@ -1,0 +1,101 @@
+# ============================================================================
+# GREINER PORTAL - CRON JOBS (TAG 65 - FINAL)
+# ============================================================================
+
+# Verkauf Sync - stündlich von 7-18 Uhr
+0 7-18 * * * cd /opt/greiner-portal && venv/bin/python3 scripts/sync/sync_sales.py >> logs/sync_sales.log 2>&1
+
+# Stellantis Import - stündlich von 7-18 Uhr
+0 7-18 * * * cd /opt/greiner-portal && venv/bin/python3 scripts/sync/import_stellantis.py >> logs/stellantis_import.log 2>&1
+
+# Employee Sync - täglich 6 Uhr
+0 6 * * * cd /opt/greiner-portal && venv/bin/python3 scripts/sync/sync_employees.py --real >> logs/employee_sync.log 2>&1
+
+# Santander Import - täglich 8 Uhr
+0 8 * * * cd /opt/greiner-portal && venv/bin/python3 scripts/imports/import_santander_bestand.py >> logs/santander_import.log 2>&1
+
+# Hyundai Finance Import - täglich 9 Uhr
+0 9 * * * cd /opt/greiner-portal && venv/bin/python3 scripts/imports/import_hyundai_finance.py >> logs/hyundai_import.log 2>&1
+
+# ServiceBox Scraper + Import - täglich 6:00 + 6:30 Uhr
+
+# DB Backup - täglich 3 Uhr
+0 3 * * * cd /opt/greiner-portal && cp data/greiner_controlling.db data/greiner_controlling.db.backup_$(date +\%Y\%m\%d_\%H\%M\%S) 2>/dev/null
+
+# Alte Backups löschen - behalte nur letzte 7
+30 3 * * * cd /opt/greiner-portal/data && ls -t greiner_controlling.db.backup_* 2>/dev/null | tail -n +8 | xargs rm -f 2>/dev/null
+
+# ========================================
+# GREINER PORTAL - Umsatz-Bereinigung
+# ========================================
+
+# Täglich 9:30 Uhr - Aktueller Monat (nach Bank-Import!)
+30 9 * * * cd /opt/greiner-portal && venv/bin/python3 scripts/analysis/umsatz_bereinigung_production.py $(date +\%Y-\%m) >> logs/umsatz_bereinigung_$(date +\%Y-\%m).log 2>&1
+
+# Am 1. des Monats, 10:00 Uhr - Vormonat finalisieren
+0 10 1 * * cd /opt/greiner-portal && venv/bin/python3 scripts/analysis/umsatz_bereinigung_production.py $(date -d "last month" +\%Y-\%m) >> logs/umsatz_bereinigung_$(date -d "last month" +\%Y-\%m).log 2>&1
+# Locosoft Stammdaten-Sync - täglich 9:30 Uhr
+30 9 * * * cd /opt/greiner-portal && venv/bin/python3 scripts/sync/sync_fahrzeug_stammdaten.py >> logs/stammdaten_sync.log 2>&1
+
+# ============================================================================
+# BANK IMPORT - 3x täglich (TAG 82)
+# ============================================================================
+
+# MT940/CAMT Import - 08:00, 12:00, 17:00 Uhr
+0 8 * * * cd /opt/greiner-portal && venv/bin/python3 /mnt/greiner-portal-sync/scripts/imports/import_mt940.py /mnt/buchhaltung/Buchhaltung/Kontoauszüge/mt940/ >> logs/mt940_import.log 2>&1
+0 12 * * * cd /opt/greiner-portal && venv/bin/python3 /mnt/greiner-portal-sync/scripts/imports/import_mt940.py /mnt/buchhaltung/Buchhaltung/Kontoauszüge/mt940/ >> logs/mt940_import.log 2>&1
+0 17 * * * cd /opt/greiner-portal && venv/bin/python3 /mnt/greiner-portal-sync/scripts/imports/import_mt940.py /mnt/buchhaltung/Buchhaltung/Kontoauszüge/mt940/ >> logs/mt940_import.log 2>&1
+
+# Bank PDFs Import (alle Banken) - 08:05, 12:05, 17:05 Uhr
+5 8 * * * cd /opt/greiner-portal && venv/bin/python3 /mnt/greiner-portal-sync/scripts/imports/import_all_bank_pdfs.py --today >> logs/bank_pdf_import.log 2>&1
+5 12 * * * cd /opt/greiner-portal && venv/bin/python3 /mnt/greiner-portal-sync/scripts/imports/import_all_bank_pdfs.py --today >> logs/bank_pdf_import.log 2>&1
+5 17 * * * cd /opt/greiner-portal && venv/bin/python3 /mnt/greiner-portal-sync/scripts/imports/import_all_bank_pdfs.py --today >> logs/bank_pdf_import.log 2>&1
+
+# ============================================================
+# ServiceBox Scraper V3.1
+# ============================================================
+# Quick-Updates tagsüber (9:30, 12:30, 16:30) - 200 Bestellungen
+
+# Master-Update abends (20:00) - ALLE ~1300 Bestellungen
+
+# ============================================
+# ServiceBox Scraper V3.1 - TIMING KORRIGIERT
+# ============================================
+# Quick-Update: 3x täglich (Scraper braucht ~25 Min!)
+# Scraper startet, dann 30 Min später Matcher + Import
+
+# 09:30 Scraper -> 10:00 Matcher -> 10:05 Import
+30 9 * * * cd /opt/greiner-portal && venv/bin/python3 tools/scrapers/servicebox_detail_scraper_v3_kommentar.py >> logs/servicebox_scraper.log 2>&1
+0 10 * * * cd /opt/greiner-portal && venv/bin/python3 tools/scrapers/servicebox_locosoft_matcher.py >> logs/servicebox_matcher.log 2>&1
+5 10 * * * cd /opt/greiner-portal && venv/bin/python3 scripts/imports/import_servicebox_to_db.py >> logs/servicebox_db_import.log 2>&1
+
+# 12:30 Scraper -> 13:00 Matcher -> 13:05 Import
+30 12 * * * cd /opt/greiner-portal && venv/bin/python3 tools/scrapers/servicebox_detail_scraper_v3_kommentar.py >> logs/servicebox_scraper.log 2>&1
+0 13 * * * cd /opt/greiner-portal && venv/bin/python3 tools/scrapers/servicebox_locosoft_matcher.py >> logs/servicebox_matcher.log 2>&1
+5 13 * * * cd /opt/greiner-portal && venv/bin/python3 scripts/imports/import_servicebox_to_db.py >> logs/servicebox_db_import.log 2>&1
+
+# 16:30 Scraper -> 17:00 Matcher -> 17:05 Import
+30 16 * * * cd /opt/greiner-portal && venv/bin/python3 tools/scrapers/servicebox_detail_scraper_v3_kommentar.py >> logs/servicebox_scraper.log 2>&1
+0 17 * * * cd /opt/greiner-portal && venv/bin/python3 tools/scrapers/servicebox_locosoft_matcher.py >> logs/servicebox_matcher.log 2>&1
+5 17 * * * cd /opt/greiner-portal && venv/bin/python3 scripts/imports/import_servicebox_to_db.py >> logs/servicebox_db_import.log 2>&1
+
+# Master-Update: 20:00 (alle 200 Bestellungen neu laden)
+0 20 * * * cd /opt/greiner-portal && venv/bin/python3 tools/scrapers/servicebox_detail_scraper_v3_master.py >> logs/servicebox_scraper_master.log 2>&1
+30 20 * * * cd /opt/greiner-portal && venv/bin/python3 tools/scrapers/servicebox_locosoft_matcher.py >> logs/servicebox_matcher.log 2>&1
+35 20 * * * cd /opt/greiner-portal && venv/bin/python3 scripts/imports/import_servicebox_to_db.py --input logs/servicebox_bestellungen_v3_master.json >> logs/servicebox_db_import.log 2>&1
+
+# Teile-Lieferscheine Import (alle 2 Stunden)
+0 */2 * * * cd /opt/greiner-portal && venv/bin/python3 scripts/imports/import_teile_lieferscheine.py >> logs/teile_lieferschein_import.log 2>&1
+
+# Locosoft Sync (alle 30 Minuten)
+*/30 * * * * cd /opt/greiner-portal && venv/bin/python3 scripts/imports/sync_teile_locosoft.py >> logs/teile_locosoft_sync.log 2>&1
+
+# Locosoft Mirror - taeglich 20:00 Uhr (nach Locosoft 18-Uhr-Sync)
+0 20 * * * cd /opt/greiner-portal && venv/bin/python3 scripts/sync/locosoft_mirror.py --min-rows 100 >> logs/locosoft_mirror.log 2>&1
+
+# ============================================================================
+# E-MAIL REPORTS
+# ============================================================================
+
+# Auftragseingang Daily Report (Mo-Fr 17:15 Uhr)
+15 17 * * 1-5 cd /opt/greiner-portal && venv/bin/python3 scripts/send_daily_auftragseingang.py >> logs/auftragseingang_mail.log 2>&1

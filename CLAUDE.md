@@ -1,6 +1,6 @@
 # CLAUDE.md - Greiner Portal DRIVE Projekt-Kontext
 
-**Letzte Aktualisierung:** 2025-12-01 (TAG 87)
+**Letzte Aktualisierung:** 2025-12-02 (TAG 88)
 
 ---
 
@@ -11,6 +11,7 @@
 - **Hostname:** srvlinux01.auto-greiner.de
 - **User:** ag-admin
 - **Projekt-Pfad:** `/opt/greiner-portal/`
+- **Web-URL:** https://auto-greiner.de/
 
 ### Sync-Verzeichnis (Windows ↔ Server)
 ```
@@ -22,62 +23,47 @@ Server:   /mnt/greiner-portal-sync/
 
 ---
 
-## 🔄 SYNC-WORKFLOW
+## 🔄 ARBEITSWEISE MIT SYNC
 
-### ⚠️ KRITISCH: Server = Single Source of Truth
+### ⚠️ KRITISCH: Zwei Arbeitsweisen verstehen
 
-**Änderungen werden IMMER auf dem Server gemacht!** Das Sync-Verzeichnis ist nur für Claude-Zugriff.
+**Claude hat zwei Zugänge:**
+1. **Filesystem-Tools** → Zugriff auf `\\Srvrdb01\...` (= `/mnt/greiner-portal-sync/` auf Server)
+2. **Bash via Putty** → User kopiert Befehle, führt sie auf Server aus
 
-### Vor dem Sync - Git sauber machen (Putty):
+### Typischer Workflow:
+
+1. **Claude liest/editiert Dateien** über Filesystem-Tools im Sync-Verzeichnis
+2. **User synct Änderungen zum Server:**
+   ```bash
+   rsync -av /mnt/greiner-portal-sync/pfad/datei.py /opt/greiner-portal/pfad/
+   ```
+3. **User startet Service neu (bei Python-Änderungen):**
+   ```bash
+   sudo systemctl restart greiner-portal
+   ```
+
+### ⚠️ WICHTIG für Claude:
+- **Filesystem-Tools** arbeiten auf dem **Sync-Verzeichnis**, NICHT direkt auf `/opt/greiner-portal/`
+- Nach Änderungen: Immer rsync-Befehl für den User bereitstellen!
+- Bash-Befehle für Server-Tests über User ausführen lassen
+
+### Einzelne Datei syncen:
 ```bash
-cd /opt/greiner-portal
-
-# Status prüfen
-git status
-
-# Falls uncommitted changes:
-git add .
-git commit -m "feat/fix: Beschreibung"
-git push origin feature/tag82-onwards
+rsync -av /mnt/greiner-portal-sync/api/beispiel.py /opt/greiner-portal/api/
 ```
 
-### Sync Server → Windows (Putty):
+### Mehrere Dateien/Ordner syncen:
 ```bash
-# Variante 1: rsync (kann bei CIFS Probleme machen)
-rsync -av --progress \
-  --exclude='venv' \
-  --exclude='__pycache__' \
-  --exclude='*.pyc' \
-  --exclude='logs/*.log' \
-  --exclude='data/*.db' \
-  --exclude='.git' \
-  /opt/greiner-portal/ /mnt/greiner-portal-sync/
-
-# Variante 2: tar (wenn rsync Berechtigungsprobleme hat)
-cd /opt/greiner-portal
-tar --exclude='venv' \
-    --exclude='__pycache__' \
-    --exclude='*.pyc' \
-    --exclude='logs/*.log' \
-    --exclude='data/*.db' \
-    --exclude='.git' \
-    -cvzf /tmp/greiner-portal-backup.tar.gz .
-
-cp /tmp/greiner-portal-backup.tar.gz /mnt/greiner-portal-sync/
-cd /mnt/greiner-portal-sync/
-tar --exclude='./data' -xvzf greiner-portal-backup.tar.gz
-rm greiner-portal-backup.tar.gz
+rsync -av /mnt/greiner-portal-sync/api/ /opt/greiner-portal/api/
+rsync -av /mnt/greiner-portal-sync/templates/ /opt/greiner-portal/templates/
 ```
 
-### Nach Claude-Änderungen - Sync Windows → Server (Putty):
+### Komplettes Projekt syncen (selten nötig):
 ```bash
-rsync -av --progress \
-  --exclude='.git' \
-  --exclude='*.tar.gz' \
+rsync -av --exclude='venv' --exclude='__pycache__' --exclude='*.pyc' \
+  --exclude='logs/*.log' --exclude='data/*.db' --exclude='.git' \
   /mnt/greiner-portal-sync/ /opt/greiner-portal/
-
-# Service neu starten (bei Python-Änderungen)
-sudo systemctl restart greiner-portal
 ```
 
 ---
@@ -91,6 +77,8 @@ sudo systemctl restart greiner-portal
 | Routes | `/opt/greiner-portal/routes/` |
 | Templates | `/opt/greiner-portal/templates/` |
 | SQLite DB | `/opt/greiner-portal/data/greiner_controlling.db` |
+| Scheduler | `/opt/greiner-portal/scheduler/` |
+| Job-Definitionen | `/opt/greiner-portal/scheduler/job_definitions.py` |
 | Credentials | `/opt/greiner-portal/config/.env` |
 | Logs | `/opt/greiner-portal/logs/` |
 | Scripts | `/opt/greiner-portal/scripts/` |
@@ -99,9 +87,56 @@ sudo systemctl restart greiner-portal
 | Mount | Pfad |
 |-------|------|
 | **Sync-Verzeichnis** | `/mnt/greiner-portal-sync/` |
-| Buchhaltung | `/mnt/buchhaltung/` |
+| Buchhaltung/Kontoauszüge | `/mnt/buchhaltung/Buchhaltung/Kontoauszüge/` |
 | GlobalCube | `/mnt/globalcube/` |
 | Loco Teilelieferscheine | `/mnt/loco-teilelieferscheine/` |
+
+---
+
+## ⏰ JOB-SCHEDULER (APScheduler)
+
+### Architektur
+- **Framework:** APScheduler mit SQLAlchemy JobStore
+- **UI:** `/admin/jobs/` (Job-Übersicht, History, manueller Trigger)
+- **Lock-File:** `/tmp/greiner_scheduler.lock` (verhindert Multi-Worker-Start!)
+- **Logs-DB:** `/opt/greiner-portal/data/scheduler_logs.db`
+
+⚠️ **KRITISCH:** Gunicorn läuft mit ~10 Workern. Lock-File in `app.py` stellt sicher, dass nur EIN Worker den Scheduler startet!
+
+### Kostenstellen-Übersicht
+| Kostenstelle | Jobs | Beispiele |
+|--------------|------|-----------|
+| **controlling** | 12 | MT940/PDF Import, Santander, Hyundai, Leasys, HR, Backup |
+| **aftersales** | 12 | ServiceBox (Scraper/Matcher/Import), Teile-Sync |
+| **verkauf** | 4 | Sales Sync, Stellantis, Stammdaten, Locosoft Mirror |
+
+### Job-Definitionen ändern:
+1. Datei editieren: `scheduler/job_definitions.py`
+2. Syncen: `rsync -av /mnt/greiner-portal-sync/scheduler/job_definitions.py /opt/greiner-portal/scheduler/`
+3. Scheduler-DB löschen: `rm -f /opt/greiner-portal/data/scheduler_jobs.db`
+4. Restart: `sudo systemctl restart greiner-portal`
+
+---
+
+## 🏦 BANK-IMPORT ÜBERSICHT
+
+### Quellen
+| Bank | Format | Import |
+|------|--------|--------|
+| Genobank (57908, 22225, 1501500) | MT940 (.mta) | `import_mt940.py` |
+| Sparkasse (760036467) | MT940 (.TXT) | `import_mt940.py` |
+| VR Bank Landau (303585) | MT940 (.mta) | `import_mt940.py` |
+| **HypoVereinsbank** | **PDF** | `import_all_bank_pdfs.py --bank hvb` |
+
+### Dateipfade
+```
+MT940: /mnt/buchhaltung/Buchhaltung/Kontoauszüge/mt940/
+PDF:   /mnt/buchhaltung/Buchhaltung/Kontoauszüge/Hypovereinsbank/
+```
+
+### Jobs
+- MT940 Import: 08:00, 12:00, 17:00 (Mo-Fr)
+- HypoVereinsbank PDF: 08:30 (Mo-Fr)
 
 ---
 
@@ -109,6 +144,7 @@ sudo systemctl restart greiner-portal
 
 ### SQLite (lokal)
 - **Pfad:** `/opt/greiner-portal/data/greiner_controlling.db`
+- **WAL-Mode:** Aktiviert (bessere Concurrency)
 - **Inhalt:** Controlling, Verkauf, Urlaub, Auth, Stellantis
 
 ### PostgreSQL (Locosoft - extern)
@@ -129,6 +165,9 @@ sudo systemctl restart greiner-portal
 # Logs live
 journalctl -u greiner-portal -f
 
+# Scheduler-Logs prüfen
+journalctl -u greiner-portal --since "10 min ago" | grep -i scheduler
+
 # Git-Status prüfen
 cd /opt/greiner-portal
 git status
@@ -141,12 +180,13 @@ git log --oneline -5
 
 ### Bei Session-Start:
 1. `CLAUDE.md` lesen (diese Datei!)
-2. `TODO_FOR_CLAUDE_SESSION_START_TAG[X].md` lesen
-3. `SESSION_WRAP_UP_TAG[X-1].md` lesen
+2. `docs/SESSION_WRAP_UP_TAG[X-1].md` lesen
+3. `docs/TODO_FOR_CLAUDE_SESSION_START_TAG[X].md` lesen (falls vorhanden)
 
 ### Bei Session-Ende:
-1. `SESSION_WRAP_UP_TAG[X].md` erstellen
-2. `TODO_FOR_CLAUDE_SESSION_START_TAG[X+1].md` erstellen
+1. `docs/SESSION_WRAP_UP_TAG[X].md` erstellen
+2. Git commit (User macht das auf Server)
+3. Optional: `TODO_FOR_CLAUDE_SESSION_START_TAG[X+1].md` erstellen
 
 ---
 
@@ -160,6 +200,7 @@ git log --oneline -5
 | Controlling | - | `routes/controlling_routes.py` | `templates/controlling/` |
 | After Sales/Teile | `api/teile_api.py`, `api/parts_api.py` | `routes/aftersales/teile_routes.py` | `templates/aftersales/` |
 | Admin | `api/admin_api.py` | `routes/admin_routes.py` | `templates/admin/` |
+| Scheduler | `scheduler/job_manager.py` | `scheduler/__init__.py` | `templates/admin/jobs.html` |
 | Leasys | `api/leasys_api.py` | in `app.py` | `templates/leasys_*.html` |
 | Zins-Optimierung | `api/zins_optimierung_api.py` | - | - |
 | Mail (Graph) | `api/mail_api.py` | - | - |
@@ -168,13 +209,12 @@ git log --oneline -5
 
 ## ⚠️ WICHTIGE HINWEISE
 
-1. **Server = Source of Truth** - Niemals nur im Sync-Verzeichnis arbeiten ohne zurück zu synchen!
-2. **Git vor Sync** - Immer erst `git status` prüfen und committen
-3. **Mount-Pfad:** `/mnt/greiner-portal-sync/` (NICHT `/mnt/greiner-sync/`)
-4. **Templates brauchen keinen Restart** - nur Browser-Refresh (Strg+F5)
-5. **Python-Änderungen brauchen Restart:** `sudo systemctl restart greiner-portal`
-6. **Bei DB-Schema-Änderungen:** Migration in `migrations/` dokumentieren!
-7. **Backup vor großen Änderungen:** `cp datei.py datei.py.bak_tagXX`
+1. **Sync-Verzeichnis ≠ Live-Server** - Nach Änderungen immer rsync!
+2. **Templates brauchen keinen Restart** - nur Browser-Refresh (Strg+F5)
+3. **Python-Änderungen brauchen Restart:** `sudo systemctl restart greiner-portal`
+4. **Scheduler-Änderungen:** Auch `scheduler_jobs.db` löschen!
+5. **Bei DB-Schema-Änderungen:** Migration in `migrations/` dokumentieren!
+6. **Backup vor großen Änderungen:** `cp datei.py datei.py.bak_tagXX`
 
 ---
 
@@ -191,7 +231,6 @@ git log --oneline -5
 ## 📊 AKTUELLER GIT-STATUS
 
 - **Branch:** `feature/tag82-onwards`
-- **Letzter Commit:** `31bf01b` (01.12.2025)
 - **Remote:** `github.com:floriangreiner06-crypto/greiner-portal.git`
 
 ---
@@ -200,7 +239,8 @@ git log --oneline -5
 
 | TAG | Datum | Highlights |
 |-----|-------|------------|
-| 87 | 01.12.2025 | Sync-Workflow bereinigt, CLAUDE.md aktualisiert |
+| 88 | 02.12.2025 | APScheduler Lock-File Fix, Bank-Import vereinfacht, Kostenstellen |
+| 87 | 01.12.2025 | APScheduler Migration, Job-Scheduler UI |
 | 86 | 30.11.2025 | Leasys Kalkulator |
 | 85 | 29.11.2025 | Dashboard KPIs, Rebranding zu DRIVE |
 | 84 | 28.11.2025 | BWA Dashboard, GlobalCube Mapping |

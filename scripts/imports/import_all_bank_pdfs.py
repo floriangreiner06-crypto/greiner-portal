@@ -24,8 +24,8 @@ import re
 from pathlib import Path
 from datetime import datetime, timedelta
 
-# Parser-Pfad hinzufügen
-sys.path.insert(0, '/opt/greiner-portal/parsers')
+# Parser-Pfad hinzufügen (Projekt-Root, nicht parsers-Ordner!)
+sys.path.insert(0, '/opt/greiner-portal')
 
 # ============================================================================
 # KONFIGURATION
@@ -38,35 +38,35 @@ BASE_PATH = '/mnt/buchhaltung/Buchhaltung/Kontoauszüge'
 BANK_CONFIGS = {
     'hvb': {
         'folder': 'Hypovereinsbank',
-        'parser_module': 'hypovereinsbank_parser_v2',
+        'parser_module': 'parsers.hypovereinsbank_parser_v2',
         'parser_class': 'HypoVereinsbankParser',
         'file_pattern': r'HV.*Kontoauszug.*(\d{2}\.\d{2}\.\d{2})\.pdf',
         'iban': 'DE22741200710006407420'
     },
     'sparkasse': {
         'folder': 'Sparkasse',
-        'parser_module': 'sparkasse_parser',
+        'parser_module': 'parsers.sparkasse_parser',
         'parser_class': 'SparkasseParser',
         'file_pattern': r'SPK.*Auszug.*(\d{2}\.\d{2}\.\d{2})\.pdf',
         'iban': 'DE63741500000760036467'
     },
     'vrbank': {
         'folder': 'VR Bank Landau',
-        'parser_module': 'vrbank_landau_parser',
+        'parser_module': 'parsers.vrbank_landau_parser',
         'parser_class': 'VRBankLandauParser',
         'file_pattern': r'VR.*Bank.*Auszug.*(\d{2}\.\d{2}\.\d{2})\.pdf',
         'iban': 'DE76741910000000303585'
     },
     'genobank_auto': {
         'folder': 'Genobank Auto Greiner',
-        'parser_module': 'genobank_universal_parser',
+        'parser_module': 'parsers.genobank_universal_parser',
         'parser_class': 'GenobankUniversalParser',
         'file_pattern': r'Genobank.*Auto.*Greiner.*(\d{2}\.\d{2}\.\d{2})\.pdf',
         'iban': 'DE68741900000001501500'
     },
     'genobank_autohaus': {
         'folder': 'Genobank Autohaus Greiner',
-        'parser_module': 'genobank_universal_parser',
+        'parser_module': 'parsers.genobank_universal_parser',
         'parser_class': 'GenobankUniversalParser',
         'file_pattern': r'Genobank.*Autohaus.*Greiner.*(\d{2}\.\d{2}\.\d{2})\.pdf',
         'iban': 'DE27741900000000057908'
@@ -135,7 +135,8 @@ def parse_date_from_filename(filename, pattern):
 
 def get_parser(bank_config):
     """Parser-Instanz für eine Bank erstellen"""
-    module = __import__(bank_config['parser_module'])
+    module_name = bank_config['parser_module']
+    module = __import__(module_name, fromlist=[bank_config['parser_class']])
     parser_class = getattr(module, bank_config['parser_class'])
     return parser_class
 
@@ -155,7 +156,7 @@ def import_single_pdf(pdf_path, bank_key, bank_config):
         result = parser.parse()
         
         # IBAN aus Config verwenden falls Parser keine liefert
-        iban = result.get('iban') or bank_config['iban']
+        iban = (result.get('iban') if isinstance(result, dict) else None) or bank_config['iban']
         
         if not iban:
             print(f"     ❌ Keine IBAN gefunden")
@@ -177,13 +178,22 @@ def import_single_pdf(pdf_path, bank_key, bank_config):
         tx_imported = 0
         tx_skipped = 0
         
-        transactions = result.get('transactions', [])
+        transactions = result.get('transactions', []) if isinstance(result, dict) else result
         
         for tx in transactions:
-            buchungsdatum = tx.get('buchungsdatum') or tx.get('datum')
-            betrag = tx.get('betrag', 0)
-            verwendungszweck = tx.get('verwendungszweck', '')
-            valutadatum = tx.get('valutadatum') or buchungsdatum
+            # Unterstütze sowohl dicts als auch Transaction-Objekte
+            if hasattr(tx, 'buchungsdatum'):
+                # Transaction-Objekt
+                buchungsdatum = tx.buchungsdatum
+                betrag = tx.betrag
+                verwendungszweck = tx.verwendungszweck or ''
+                valutadatum = tx.valutadatum or buchungsdatum
+            else:
+                # Dict
+                buchungsdatum = tx.get('buchungsdatum') or tx.get('datum')
+                betrag = tx.get('betrag', 0)
+                verwendungszweck = tx.get('verwendungszweck', '')
+                valutadatum = tx.get('valutadatum') or buchungsdatum
             
             if not buchungsdatum:
                 continue
@@ -207,8 +217,13 @@ def import_single_pdf(pdf_path, bank_key, bank_config):
         
         # Saldo importieren
         saldo_imported = False
-        endsaldo = result.get('endsaldo')
-        saldo_datum = result.get('saldo_datum')
+        endsaldo = result.get('endsaldo') if isinstance(result, dict) else (parser.endsaldo if hasattr(parser, 'endsaldo') else None)
+        saldo_datum = result.get('saldo_datum') if isinstance(result, dict) else None
+        
+        # Falls kein saldo_datum, letztes Buchungsdatum verwenden
+        if endsaldo is not None and not saldo_datum and transactions:
+            last_tx = transactions[-1]
+            saldo_datum = last_tx.buchungsdatum if hasattr(last_tx, 'buchungsdatum') else last_tx.get('buchungsdatum')
         
         if endsaldo is not None and saldo_datum:
             if not saldo_exists(conn, konto_id, saldo_datum):
