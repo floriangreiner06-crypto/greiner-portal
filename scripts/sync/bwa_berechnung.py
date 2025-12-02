@@ -2,11 +2,11 @@
 """
 BWA-BERECHNUNG aus Locosoft-Mirror (SKR51)
 ==========================================
-Version: 1.0
+Version: 1.2
 Datum: 2025-12-02
 
 Berechnet BWA-Werte aus der gespiegelten loco_journal_accountings Tabelle.
-100% validiert gegen GlobalCube Oktober + November 2025.
+100% validiert gegen GlobalCube September + Oktober + November 2025.
 
 WICHTIG - SKR51 LOGIK:
 - 7xxxxx = EINSATZWERTE (nicht Umsatz!)
@@ -80,13 +80,13 @@ def init_bwa_tables(conn):
     conn.commit()
 
 # =============================================================================
-# BWA-BERECHNUNG (100% VALIDIERT GEGEN GLOBALCUBE OKT+NOV 2025)
+# BWA-BERECHNUNG (100% VALIDIERT GEGEN GLOBALCUBE SEP+OKT+NOV 2025)
 # =============================================================================
 
 def berechne_bwa_monat(conn, jahr: int, monat: int) -> dict:
     """
     Berechnet die BWA-Werte für einen Monat.
-    Formel validiert gegen GlobalCube Oktober + November 2025.
+    Formel validiert gegen GlobalCube September + Oktober + November 2025.
     """
     cursor = conn.cursor()
     
@@ -173,7 +173,7 @@ def berechne_bwa_monat(conn, jahr: int, monat: int) -> dict:
     direkte = cursor.fetchone()[0] or 0
     
     # === 5. INDIREKTE KOSTEN ===
-    # KST 0 + 424xx/438xx mit KST 1-7 + 498xx + 89xxxx
+    # KST 0 + 424xx/438xx mit KST 1-7 + 498xx + 89xxxx (OHNE 8932xx - das ist Umsatz!)
     cursor.execute("""
         SELECT COALESCE(SUM(
             CASE WHEN debit_or_credit='S' THEN posted_value 
@@ -189,13 +189,15 @@ def berechne_bwa_monat(conn, jahr: int, monat: int) -> dict:
             OR (nominal_account_number BETWEEN 438000 AND 438999 
                 AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
             OR nominal_account_number BETWEEN 498000 AND 499999
-            OR nominal_account_number BETWEEN 891000 AND 896999
+            OR (nominal_account_number BETWEEN 891000 AND 896999
+                AND NOT (nominal_account_number BETWEEN 893200 AND 893299))
           )
     """, (datum_von, datum_bis))
     indirekte = cursor.fetchone()[0] or 0
     
     # === 6. NEUTRALES ERGEBNIS ===
-    # Konten 20-28: Außerordentlich, Zinsen, Sonstiges
+    # Konten 20-29: Außerordentlich, Zinsen, kalk. Kosten, Rückstellungen
+    # WICHTIG: 29xxxx (kalk. Kosten, Rückstellungen, Wertberichtigungen) gehört dazu!
     # Berechnung: HABEN - SOLL (Erträge - Aufwendungen)
     cursor.execute("""
         SELECT COALESCE(SUM(
@@ -204,7 +206,7 @@ def berechne_bwa_monat(conn, jahr: int, monat: int) -> dict:
         )/100.0, 0)
         FROM loco_journal_accountings
         WHERE accounting_date >= ? AND accounting_date < ?
-          AND nominal_account_number BETWEEN 200000 AND 289999
+          AND nominal_account_number BETWEEN 200000 AND 299999
     """, (datum_von, datum_bis))
     neutral = cursor.fetchone()[0] or 0
     

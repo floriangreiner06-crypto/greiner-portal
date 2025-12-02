@@ -19,6 +19,14 @@ def dashboard():
                          page_title='Controlling Dashboard',
                          active_page='controlling')
 
+@controlling_bp.route('/bwa')
+@login_required
+def bwa():
+    """BWA - Betriebswirtschaftliche Auswertung (validiert gegen GlobalCube)"""
+    return render_template('controlling/bwa.html',
+                         page_title='BWA',
+                         active_page='controlling')
+
 @controlling_bp.route('/api/overview', methods=['GET'])
 @login_required
 def api_overview():

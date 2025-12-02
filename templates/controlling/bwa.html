@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+
+{% block title %}BWA - Betriebswirtschaftliche Auswertung{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2><i class="bi bi-graph-up me-2"></i>BWA - Betriebswirtschaftliche Auswertung</h2>
+            <p class="text-muted">Validiert gegen GlobalCube (SKR51)</p>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <form id="bwaFilterForm" class="row g-3 align-items-end">
+                        <div class="col-auto">
+                            <label for="monat" class="form-label">Monat</label>
+                            <select id="monat" class="form-select" style="width: 120px;">
+                                <option value="1">Januar</option>
+                                <option value="2">Februar</option>
+                                <option value="3">März</option>
+                                <option value="4">April</option>
+                                <option value="5">Mai</option>
+                                <option value="6">Juni</option>
+                                <option value="7">Juli</option>
+                                <option value="8">August</option>
+                                <option value="9">September</option>
+                                <option value="10">Oktober</option>
+                                <option value="11">November</option>
+                                <option value="12">Dezember</option>
+                            </select>
+                        </div>
+                        <div class="col-auto">
+                            <label for="jahr" class="form-label">Jahr</label>
+                            <select id="jahr" class="form-select" style="width: 100px;">
+                                <option value="2025">2025</option>
+                                <option value="2024">2024</option>
+                                <option value="2023">2023</option>
+                            </select>
+                        </div>
+                        <div class="col-auto">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-search me-1"></i>Anzeigen
+                            </button>
+                        </div>
+                        <div class="col-auto">
+                            <button type="button" id="btnVergleich" class="btn btn-outline-secondary">
+                                <i class="bi bi-arrow-left-right me-1"></i>Vormonat vergleichen
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 text-end">
+            <small class="text-muted">
+                <i class="bi bi-info-circle me-1"></i>
+                Datenquelle: Locosoft (Mirror 19:00, Berechnung 19:30)
+            </small>
+        </div>
+    </div>
+
+    <!-- BWA Anzeige -->
+    <div class="row">
+        <!-- Hauptmonat -->
+        <div class="col-md-6" id="bwaHaupt">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0" id="bwaTitelHaupt">
+                        <i class="bi bi-calculator me-2"></i>BWA <span id="labelMonatHaupt">-</span>
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm mb-0" id="bwaTableHaupt">
+                        <tbody>
+                            <!-- Wird per JS gefüllt -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Vergleichsmonat (optional) -->
+        <div class="col-md-6 d-none" id="bwaVergleich">
+            <div class="card">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0" id="bwaTitelVergleich">
+                        <i class="bi bi-calculator me-2"></i>BWA <span id="labelMonatVergleich">-</span>
+                        <button type="button" class="btn-close btn-close-white float-end" id="btnCloseVergleich"></button>
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm mb-0" id="bwaTableVergleich">
+                        <tbody>
+                            <!-- Wird per JS gefüllt -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Legende -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-info-circle me-2"></i>Legende
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <strong>DB1</strong> = Umsatz - Einsatz (Bruttoertrag)
+                        </div>
+                        <div class="col-md-4">
+                            <strong>DB2</strong> = DB1 - Variable Kosten
+                        </div>
+                        <div class="col-md-4">
+                            <strong>DB3</strong> = DB2 - Direkte Kosten (Deckungsbeitrag)
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-md-4">
+                            <strong>BE</strong> = DB3 - Indirekte Kosten
+                        </div>
+                        <div class="col-md-4">
+                            <strong>Neutral</strong> = Zinsen, ao. Aufwand/Ertrag (2xxxxx)
+                        </div>
+                        <div class="col-md-4">
+                            <strong>UE</strong> = BE + Neutrales Ergebnis
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.bwa-row-header {
+    background-color: #f8f9fa;
+    font-weight: 600;
+}
+.bwa-row-sum {
+    background-color: #e9ecef;
+    font-weight: 700;
+    border-top: 2px solid #dee2e6;
+}
+.bwa-row-result {
+    background-color: #d4edda;
+    font-weight: 700;
+    font-size: 1.1em;
+}
+.bwa-value {
+    text-align: right;
+    font-family: 'Consolas', monospace;
+}
+.bwa-value-negative {
+    color: #dc3545;
+}
+.bwa-value-positive {
+    color: #28a745;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Aktuellen Monat vorauswählen
+    const heute = new Date();
+    document.getElementById('monat').value = heute.getMonth() + 1;
+    document.getElementById('jahr').value = heute.getFullYear();
+
+    // Initial laden
+    loadBWA();
+
+    // Form Submit
+    document.getElementById('bwaFilterForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        loadBWA();
+    });
+
+    // Vormonat vergleichen
+    document.getElementById('btnVergleich').addEventListener('click', function() {
+        const monat = parseInt(document.getElementById('monat').value);
+        const jahr = parseInt(document.getElementById('jahr').value);
+        
+        let vMonat = monat - 1;
+        let vJahr = jahr;
+        if (vMonat === 0) {
+            vMonat = 12;
+            vJahr = jahr - 1;
+        }
+        
+        loadBWAVergleich(vMonat, vJahr);
+    });
+
+    // Vergleich schließen
+    document.getElementById('btnCloseVergleich').addEventListener('click', function() {
+        document.getElementById('bwaVergleich').classList.add('d-none');
+        document.getElementById('bwaHaupt').classList.remove('col-md-6');
+        document.getElementById('bwaHaupt').classList.add('col-md-8');
+    });
+});
+
+function loadBWA() {
+    const monat = document.getElementById('monat').value;
+    const jahr = document.getElementById('jahr').value;
+    
+    fetch(`/api/controlling/bwa?monat=${monat}&jahr=${jahr}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                renderBWA(data.data, 'Haupt');
+                document.getElementById('labelMonatHaupt').textContent = 
+                    `${data.data.monat_name} ${data.data.jahr}`;
+            } else {
+                showError('Haupt', data.message || 'Keine Daten gefunden');
+            }
+        })
+        .catch(err => {
+            showError('Haupt', 'Fehler beim Laden: ' + err);
+        });
+}
+
+function loadBWAVergleich(monat, jahr) {
+    fetch(`/api/controlling/bwa?monat=${monat}&jahr=${jahr}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                document.getElementById('bwaVergleich').classList.remove('d-none');
+                document.getElementById('bwaHaupt').classList.remove('col-md-8');
+                document.getElementById('bwaHaupt').classList.add('col-md-6');
+                renderBWA(data.data, 'Vergleich');
+                document.getElementById('labelMonatVergleich').textContent = 
+                    `${data.data.monat_name} ${data.data.jahr}`;
+            } else {
+                alert('Keine Vergleichsdaten für ' + monat + '/' + jahr);
+            }
+        })
+        .catch(err => {
+            alert('Fehler: ' + err);
+        });
+}
+
+function renderBWA(data, suffix) {
+    const tbody = document.getElementById('bwaTable' + suffix).querySelector('tbody');
+    tbody.innerHTML = '';
+
+    const rows = [
+        { label: 'Umsatzerlöse', key: 'umsatz', class: '' },
+        { label: 'Einsatzwerte', key: 'einsatz', class: '' },
+        { label: 'Bruttoertrag (DB1)', key: 'db1', class: 'bwa-row-sum' },
+        { label: 'Variable Kosten', key: 'variable', class: '' },
+        { label: 'Bruttoertrag II (DB2)', key: 'db2', class: 'bwa-row-sum' },
+        { label: 'Direkte Kosten', key: 'direkte', class: '' },
+        { label: 'Deckungsbeitrag (DB3)', key: 'db3', class: 'bwa-row-sum' },
+        { label: 'Indirekte Kosten', key: 'indirekte', class: '' },
+        { label: 'Betriebsergebnis', key: 'betriebsergebnis', class: 'bwa-row-sum' },
+        { label: 'Neutrales Ergebnis', key: 'neutral', class: '' },
+        { label: 'Unternehmensergebnis', key: 'unternehmensergebnis', class: 'bwa-row-result' }
+    ];
+
+    rows.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.className = row.class;
+        
+        const value = data[row.key] || 0;
+        const valueClass = value < 0 ? 'bwa-value-negative' : (value > 0 ? 'bwa-value-positive' : '');
+        
+        tr.innerHTML = `
+            <td style="padding-left: 15px;">${row.label}</td>
+            <td class="bwa-value ${valueClass}">${formatCurrency(value)}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function showError(suffix, message) {
+    const tbody = document.getElementById('bwaTable' + suffix).querySelector('tbody');
+    tbody.innerHTML = `
+        <tr>
+            <td colspan="2" class="text-center text-danger py-4">
+                <i class="bi bi-exclamation-triangle me-2"></i>${message}
+            </td>
+        </tr>
+    `;
+}
+
+function formatCurrency(value) {
+    return new Intl.NumberFormat('de-DE', {
+        style: 'currency',
+        currency: 'EUR'
+    }).format(value);
+}
+</script>
+{% endblock %}

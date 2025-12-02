@@ -227,6 +227,14 @@ print("✅ Verkauf Frontend registriert: /verkauf/")
 app.register_blueprint(controlling_bp)
 print("✅ Controlling registriert: /controlling/")
 
+# Controlling API (BWA)
+try:
+    from api.controlling_api import controlling_api
+    app.register_blueprint(controlling_api)
+    print("✅ Controlling API registriert: /api/controlling/")
+except Exception as e:
+    print(f"⚠️  Controlling API nicht geladen: {e}")
+
 # Jahresprämie API & Routes
 try:
     from api.jahrespraemie_api import jahrespraemie_api
