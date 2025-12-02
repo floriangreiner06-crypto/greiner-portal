@@ -391,6 +391,104 @@
         </div>
     </div>
 
+    <!-- BREAKEVEN-PROGNOSE -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm" id="prognoseCard">
+                <div class="card-header bg-white border-0 pt-3 pb-0">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="bi bi-bullseye me-2"></i>Breakeven-Prognose
+                            <span class="badge ms-2" id="prognoseAmpel">-</span>
+                        </h5>
+                        <small class="text-muted">
+                            <i class="bi bi-info-circle me-1"></i>Basis: Ø Kosten der letzten 12 Monate
+                        </small>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- Umlage-Hinweis (nur am Monatsanfang) -->
+                    <div class="alert alert-info py-2 mb-3" id="umlageHinweis" style="display: none;">
+                        <i class="bi bi-exclamation-circle me-2"></i>
+                        <strong>Hinweis:</strong> Am Monatsanfang enthalten die Zahlen Umlage-Buchungen, 
+                        die erst zum Monatsende neutral werden. Die "operative" Prognose klammert diese aus.
+                    </div>
+                    
+                    <div class="row">
+                        <!-- Breakeven-Schwelle -->
+                        <div class="col-md-3">
+                            <div class="card bg-light border-0 h-100">
+                                <div class="card-body text-center">
+                                    <div class="small text-muted mb-1">Breakeven-Schwelle</div>
+                                    <div class="h4 mb-1" id="breakEvenSchwelle">-</div>
+                                    <div class="small text-muted">DB1 benötigt für BE = 0</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Aktueller Stand -->
+                        <div class="col-md-3">
+                            <div class="card bg-light border-0 h-100">
+                                <div class="card-body text-center">
+                                    <div class="small text-muted mb-1">Aktueller DB1</div>
+                                    <div class="h4 mb-1" id="prognoseAktuellerDB1">-</div>
+                                    <div class="small" id="prognoseOperativ">-</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Hochrechnung -->
+                        <div class="col-md-3">
+                            <div class="card bg-light border-0 h-100">
+                                <div class="card-body text-center">
+                                    <div class="small text-muted mb-1">Hochrechnung Monat</div>
+                                    <div class="h4 mb-1" id="prognoseHochrechnung">-</div>
+                                    <div class="small text-muted" id="prognoseTage">-</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Gap / Ergebnis -->
+                        <div class="col-md-3">
+                            <div class="card border-0 h-100" id="prognoseGapCard">
+                                <div class="card-body text-center">
+                                    <div class="small text-muted mb-1">Prognose Betriebsergebnis</div>
+                                    <div class="h4 mb-1" id="prognoseGap">-</div>
+                                    <div class="small" id="prognoseGapProzent">-</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Kosten-Aufschlüsselung -->
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <div class="small text-muted mb-2">Ø Monatskosten (letzte 12 Monate):</div>
+                            <div class="d-flex justify-content-start gap-4 flex-wrap">
+                                <div>
+                                    <span class="text-muted">Variable:</span>
+                                    <strong id="kostenVariable">-</strong>
+                                </div>
+                                <div>
+                                    <span class="text-muted">Direkte:</span>
+                                    <strong id="kostenDirekte">-</strong>
+                                </div>
+                                <div>
+                                    <span class="text-muted">Indirekte:</span>
+                                    <strong id="kostenIndirekte">-</strong>
+                                </div>
+                                <div>
+                                    <span class="text-muted">= Gesamt:</span>
+                                    <strong id="kostenGesamt">-</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div>
 {% endblock %}
 
@@ -485,6 +583,11 @@ async function loadData() {
             
             if (firma === '0' && data.firmen) {
                 updateFirmenVergleich(data.firmen);
+            }
+            
+            // Prognose
+            if (data.prognose) {
+                updatePrognose(data.prognose);
             }
             
             // Zeitraum-Badge
@@ -591,6 +694,83 @@ function updateVormonatVergleich(data) {
         `<span class="${v.db1 >= 0 ? 'text-success' : 'text-danger'}">${v.db1 >= 0 ? '+' : ''}${formatEuro(v.db1)}</span>`;
     document.getElementById('veraenderungProzent').innerHTML = 
         `<span class="${v.db1_prozent >= 0 ? 'text-success' : 'text-danger'}">${v.db1_prozent >= 0 ? '+' : ''}${v.db1_prozent.toFixed(1)}%</span>`;
+}
+
+function updatePrognose(prognose) {
+    if (!prognose) return;
+    
+    const p = prognose;
+    
+    // Breakeven-Schwelle
+    document.getElementById('breakEvenSchwelle').textContent = formatEuro(p.breakeven_schwelle);
+    
+    // Aktueller DB1
+    document.getElementById('prognoseAktuellerDB1').textContent = formatEuro(p.aktueller_db1);
+    
+    // Operativer DB1 (ohne Umlagen)
+    if (p.hinweis_umlage) {
+        document.getElementById('prognoseOperativ').innerHTML = 
+            `<span class="text-info">Operativ: ${formatEuro(p.operativer_db1)}</span>`;
+        document.getElementById('umlageHinweis').style.display = 'block';
+    } else {
+        document.getElementById('prognoseOperativ').textContent = '';
+        document.getElementById('umlageHinweis').style.display = 'none';
+    }
+    
+    // Hochrechnung
+    if (p.hochrechnung_db1) {
+        document.getElementById('prognoseHochrechnung').textContent = formatEuro(p.hochrechnung_db1);
+        document.getElementById('prognoseTage').textContent = 
+            `${p.tage_mit_daten} von ${p.tage_im_monat} Tagen`;
+    } else {
+        document.getElementById('prognoseHochrechnung').textContent = '-';
+        document.getElementById('prognoseTage').textContent = 'Zu wenig Daten';
+    }
+    
+    // Gap / Prognose BE
+    const gapCard = document.getElementById('prognoseGapCard');
+    if (p.hochrechnung_be !== null) {
+        document.getElementById('prognoseGap').innerHTML = 
+            `<span class="${p.hochrechnung_be >= 0 ? 'text-success' : 'text-danger'}">${p.hochrechnung_be >= 0 ? '+' : ''}${formatEuro(p.hochrechnung_be)}</span>`;
+        document.getElementById('prognoseGapProzent').innerHTML = 
+            `<span class="${p.gap_prozent >= 0 ? 'text-success' : 'text-danger'}">${p.gap_prozent >= 0 ? '+' : ''}${p.gap_prozent.toFixed(1)}% vs. Schwelle</span>`;
+        
+        // Hintergrundfarbe
+        gapCard.className = p.hochrechnung_be >= 0 
+            ? 'card border-0 h-100 bg-success bg-opacity-10' 
+            : 'card border-0 h-100 bg-danger bg-opacity-10';
+    } else {
+        document.getElementById('prognoseGap').textContent = '-';
+        document.getElementById('prognoseGapProzent').textContent = '';
+        gapCard.className = 'card border-0 h-100 bg-light';
+    }
+    
+    // Ampel
+    const ampelBadge = document.getElementById('prognoseAmpel');
+    switch(p.ampel) {
+        case 'gruen':
+            ampelBadge.className = 'badge ms-2 bg-success';
+            ampelBadge.textContent = '✓ Breakeven erreicht';
+            break;
+        case 'gelb':
+            ampelBadge.className = 'badge ms-2 bg-warning text-dark';
+            ampelBadge.textContent = '→ Auf Kurs';
+            break;
+        case 'rot':
+            ampelBadge.className = 'badge ms-2 bg-danger';
+            ampelBadge.textContent = '✗ Kritisch';
+            break;
+        default:
+            ampelBadge.className = 'badge ms-2 bg-secondary';
+            ampelBadge.textContent = '-';
+    }
+    
+    // Kosten-Aufschlüsselung
+    const k = p.kosten_12m_schnitt;
+    document.getElementById('kostenVariable').textContent = formatEuro(k.variable);
+    document.getElementById('kostenDirekte').textContent = formatEuro(k.direkte);
+    document.getElementById('kostenIndirekte').textContent = formatEuro(k.indirekte);
+    document.getElementById('kostenGesamt').textContent = formatEuro(k.gesamt);
 }
 
 function updateChart(bereiche) {

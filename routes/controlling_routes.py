@@ -1,7 +1,8 @@
 from flask import Blueprint, render_template, jsonify
 from decorators.auth_decorators import login_required
 import sqlite3
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
+import calendar
 
 def get_db():
     """SQLite-Verbindung herstellen"""
@@ -43,7 +44,7 @@ def api_overview():
             FROM v_aktuelle_kontostaende
             WHERE anzeige_gruppe = 'autohaus'
               AND ist_operativ = 1
-        """).fetchone()[0]
+        """).fetchone()[0] or 0
         
         # KPI 1b: Kreditlinien
         kreditlinien = db.execute("""
@@ -52,13 +53,15 @@ def api_overview():
             WHERE anzeige_gruppe = 'autohaus'
               AND ist_operativ = 1
               AND kreditlinie IS NOT NULL
-        """).fetchone()[0]
+        """).fetchone()[0] or 0
+        
         # Verfügbare Fahrzeug-Linien
         fahrzeug_linien = db.execute("""
             SELECT COALESCE(SUM(original_betrag - aktueller_saldo), 0)
             FROM fahrzeugfinanzierungen
             WHERE aktiv = 1
-        """).fetchone()[0]
+        """).fetchone()[0] or 0
+        
         verfuegbare_liq = operative_liq + kreditlinien + fahrzeug_linien
         
         # KPI 2: Zinsen (12 Monate)
@@ -68,7 +71,7 @@ def api_overview():
             WHERE buchungstyp = 'zinsen'
               AND debit_credit = 'S'
               AND accounting_date >= date('now', '-12 months')
-        """).fetchone()[0]
+        """).fetchone()[0] or 0
         
         # KPI 3: Einkauf
         einkauf = db.execute("""
@@ -86,7 +89,7 @@ def api_overview():
             WHERE nominal_account BETWEEN 800000 AND 899999
               AND debit_credit = 'H'
               AND accounting_date >= date('now', '-12 months')
-        """).fetchone()[0]
+        """).fetchone()[0] or 0
         
         # Optional: Gesellschafter
         gesellschafter_saldo = None
@@ -106,8 +109,8 @@ def api_overview():
             },
             'zinsen': float(zinsen),
             'einkauf': {
-                'anzahl_fahrzeuge': einkauf[0],
-                'finanzierungssumme': float(einsatz[1])
+                'anzahl_fahrzeuge': einkauf[0] if einkauf else 0,
+                'finanzierungssumme': float(einkauf[1]) if einkauf else 0
             },
             'umsatz': float(umsatz),
             'gesellschafter': {
@@ -147,23 +150,12 @@ def tek_dashboard():
 @login_required
 def api_tek():
     """
-    API: TEK-Daten (Umsatz, Einsatz, DB1 nach Bereichen)
+    API: TEK-Daten (Umsatz, Einsatz, DB1 nach Bereichen) + Breakeven-Prognose
     
     100% validiert gegen BWA November 2025:
     - Umsatz: 2.603.946,04 € ✓
     - Einsatz: 2.233.979,84 € ✓
     - DB1: 369.966,20 € ✓
-    
-    Konten-Mapping (SKR51):
-    - Umsatz: 80-88xxxx + 8932xx (H-S)
-    - Einsatz: 70-79xxxx (S-H)
-    
-    Bereiche:
-    - 1-NW: 81xxxx/71xxxx (Neuwagen)
-    - 2-GW: 82xxxx/72xxxx (Gebrauchtwagen)
-    - 3-Teile: 83xxxx/73xxxx (Teile/Service)
-    - 4-Lohn: 84xxxx/74xxxx (Werkstattlohn)
-    - 5-Sonst: 86xxxx/76xxxx (Sonstige)
     """
     from flask import request
     
@@ -195,7 +187,6 @@ def api_tek():
         
         # =====================================================================
         # UMSATZ NACH BEREICHEN (80-88xxxx + 8932xx)
-        # Formel: HABEN - SOLL (wie in BWA validiert)
         # =====================================================================
         umsatz_sql = f"""
             SELECT 
@@ -221,7 +212,6 @@ def api_tek():
         
         # =====================================================================
         # EINSATZ NACH BEREICHEN (70-79xxxx)
-        # Formel: SOLL - HABEN (wie in BWA validiert)
         # =====================================================================
         einsatz_sql = f"""
             SELECT 
@@ -365,6 +355,11 @@ def api_tek():
         vm_db1 = vm_umsatz - vm_einsatz
         vm_marge = (vm_db1 / vm_umsatz * 100) if vm_umsatz > 0 else 0
         
+        # =====================================================================
+        # BREAKEVEN-PROGNOSE (12-Monats-Durchschnitt Kosten)
+        # =====================================================================
+        prognose = berechne_breakeven_prognose(db, monat, jahr, total_db1, firma_filter)
+        
         db.close()
         
         # Monatsnamen
@@ -405,6 +400,7 @@ def api_tek():
                 'db1': round(total_db1 - vm_db1, 2),
                 'db1_prozent': round((total_db1 - vm_db1) / abs(vm_db1) * 100, 1) if vm_db1 != 0 else 0
             },
+            'prognose': prognose,
             'timestamp': datetime.now().isoformat()
         }
         
@@ -417,3 +413,168 @@ def api_tek():
             'error': str(e),
             'traceback': traceback.format_exc()
         }), 500
+
+
+def berechne_breakeven_prognose(db, monat: int, jahr: int, aktueller_db1: float, firma_filter: str) -> dict:
+    """
+    Berechnet Breakeven-Prognose basierend auf:
+    - 12-Monats-Durchschnitt der Kosten (Variable + Direkte + Indirekte)
+    - Hochrechnung des aktuellen Monats (operativ, ohne Umlagen)
+    """
+    heute = date.today()
+    
+    # =========================================================================
+    # 12-MONATS-DURCHSCHNITT KOSTEN (aus BWA-Logik)
+    # =========================================================================
+    kosten_12m = db.execute(f"""
+        SELECT 
+            -- Variable Kosten
+            COALESCE(SUM(CASE 
+                WHEN (nominal_account_number BETWEEN 415100 AND 415199
+                      OR nominal_account_number BETWEEN 435500 AND 435599
+                      OR (nominal_account_number BETWEEN 455000 AND 456999 
+                          AND substr(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
+                      OR (nominal_account_number BETWEEN 487000 AND 487099 
+                          AND substr(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
+                      OR nominal_account_number BETWEEN 491000 AND 497899)
+                THEN CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
+                ELSE 0 END) / 100.0, 0) as variable,
+            
+            -- Direkte Kosten
+            COALESCE(SUM(CASE 
+                WHEN (nominal_account_number BETWEEN 400000 AND 489999
+                      AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','4','5','6','7')
+                      AND NOT (nominal_account_number BETWEEN 415100 AND 415199
+                               OR nominal_account_number BETWEEN 424000 AND 424999
+                               OR nominal_account_number BETWEEN 435500 AND 435599
+                               OR nominal_account_number BETWEEN 438000 AND 438999
+                               OR nominal_account_number BETWEEN 455000 AND 456999
+                               OR nominal_account_number BETWEEN 487000 AND 487099
+                               OR nominal_account_number BETWEEN 491000 AND 497999))
+                THEN CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
+                ELSE 0 END) / 100.0, 0) as direkte,
+            
+            -- Indirekte Kosten (OHNE 8932xx!)
+            COALESCE(SUM(CASE 
+                WHEN ((nominal_account_number BETWEEN 400000 AND 499999 
+                       AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0')
+                      OR (nominal_account_number BETWEEN 424000 AND 424999 
+                          AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
+                      OR (nominal_account_number BETWEEN 438000 AND 438999 
+                          AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
+                      OR nominal_account_number BETWEEN 498000 AND 499999
+                      OR (nominal_account_number BETWEEN 891000 AND 896999
+                          AND NOT (nominal_account_number BETWEEN 893200 AND 893299)))
+                THEN CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
+                ELSE 0 END) / 100.0, 0) as indirekte
+        FROM loco_journal_accountings
+        WHERE accounting_date >= date('now', '-12 months')
+          AND accounting_date < date('now')
+          {firma_filter}
+    """).fetchone()
+    
+    variable_12m = kosten_12m['variable'] or 0
+    direkte_12m = kosten_12m['direkte'] or 0
+    indirekte_12m = kosten_12m['indirekte'] or 0
+    
+    # Durchschnitt pro Monat
+    kosten_pro_monat = (variable_12m + direkte_12m + indirekte_12m) / 12
+    
+    # =========================================================================
+    # OPERATIVER DB1 (ohne Umlage-Konten 498xxx)
+    # Für faire Hochrechnung am Monatsanfang
+    # =========================================================================
+    von = f"{jahr}-{monat:02d}-01"
+    if monat == 12:
+        bis = f"{jahr+1}-01-01"
+    else:
+        bis = f"{jahr}-{monat+1:02d}-01"
+    
+    # Operativer Umsatz (ohne 498xxx)
+    operativ_result = db.execute(f"""
+        SELECT 
+            COALESCE(SUM(CASE WHEN debit_or_credit = 'H' THEN posted_value ELSE -posted_value END) / 100.0, 0) as umsatz
+        FROM loco_journal_accountings
+        WHERE accounting_date >= ? AND accounting_date < ?
+          AND ((nominal_account_number BETWEEN 800000 AND 889999)
+               OR (nominal_account_number BETWEEN 893200 AND 893299))
+          AND nominal_account_number NOT BETWEEN 498000 AND 498999
+          {firma_filter}
+    """, (von, bis)).fetchone()
+    operativ_umsatz = operativ_result['umsatz'] or 0
+    
+    # Operativer Einsatz
+    operativ_einsatz_result = db.execute(f"""
+        SELECT 
+            COALESCE(SUM(CASE WHEN debit_or_credit = 'S' THEN posted_value ELSE -posted_value END) / 100.0, 0) as einsatz
+        FROM loco_journal_accountings
+        WHERE accounting_date >= ? AND accounting_date < ?
+          AND nominal_account_number BETWEEN 700000 AND 799999
+          {firma_filter}
+    """, (von, bis)).fetchone()
+    operativ_einsatz = operativ_einsatz_result['einsatz'] or 0
+    
+    operativ_db1 = operativ_umsatz - operativ_einsatz
+    
+    # =========================================================================
+    # HOCHRECHNUNG AKTUELLER MONAT
+    # =========================================================================
+    # Anzahl Tage mit Buchungen im aktuellen Monat
+    tage_mit_daten = db.execute(f"""
+        SELECT COUNT(DISTINCT accounting_date) as tage
+        FROM loco_journal_accountings
+        WHERE accounting_date >= ? AND accounting_date < ?
+          AND nominal_account_number BETWEEN 700000 AND 899999
+          {firma_filter}
+    """, (von, bis)).fetchone()['tage'] or 0
+    
+    # Tage im Monat
+    tage_im_monat = calendar.monthrange(jahr, monat)[1]
+    
+    # Hochrechnung nur wenn min. 3 Tage Daten
+    if tage_mit_daten >= 3:
+        db1_pro_tag = operativ_db1 / tage_mit_daten
+        hochrechnung_db1 = db1_pro_tag * tage_im_monat
+    else:
+        hochrechnung_db1 = None  # Nicht aussagekräftig
+    
+    # =========================================================================
+    # BREAKEVEN-STATUS
+    # =========================================================================
+    # Aktueller Monat: Vergleich DB1 vs. Ø-Kosten
+    if aktueller_db1 >= kosten_pro_monat:
+        status = 'positiv'
+        ampel = 'gruen'
+    elif hochrechnung_db1 and hochrechnung_db1 >= kosten_pro_monat:
+        status = 'auf_kurs'
+        ampel = 'gelb'
+    else:
+        status = 'kritisch'
+        ampel = 'rot'
+    
+    # Benötigter DB1 für Breakeven
+    db1_fuer_breakeven = kosten_pro_monat
+    
+    # Gap zum Breakeven
+    gap = aktueller_db1 - kosten_pro_monat
+    
+    return {
+        'kosten_12m_schnitt': {
+            'variable': round(variable_12m / 12, 2),
+            'direkte': round(direkte_12m / 12, 2),
+            'indirekte': round(indirekte_12m / 12, 2),
+            'gesamt': round(kosten_pro_monat, 2)
+        },
+        'breakeven_schwelle': round(db1_fuer_breakeven, 2),
+        'aktueller_db1': round(aktueller_db1, 2),
+        'operativer_db1': round(operativ_db1, 2),
+        'tage_mit_daten': tage_mit_daten,
+        'tage_im_monat': tage_im_monat,
+        'hochrechnung_db1': round(hochrechnung_db1, 2) if hochrechnung_db1 else None,
+        'hochrechnung_be': round(hochrechnung_db1 - kosten_pro_monat, 2) if hochrechnung_db1 else None,
+        'gap': round(gap, 2),
+        'gap_prozent': round(gap / kosten_pro_monat * 100, 1) if kosten_pro_monat > 0 else 0,
+        'status': status,
+        'ampel': ampel,
+        'hinweis_umlage': tage_mit_daten < 5
+    }
