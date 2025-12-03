@@ -170,8 +170,19 @@
                         <i class="bi bi-sliders me-1"></i>Ansicht
                     </label>
                     <select class="form-select" id="filterModus" onchange="loadData()">
-                        <option value="teil" selected>Teilkosten (DB1)</option>
-                        <option value="voll">Vollkosten (BE)</option>
+                        <option value="teil">Teilkosten (DB1)</option>
+                        <option value="voll" selected>Vollkosten (BE)</option>
+                    </select>
+                </div>
+                
+                <!-- Umlage-Toggle -->
+                <div class="col-md-2">
+                    <label class="form-label small text-muted mb-1">
+                        <i class="bi bi-arrow-left-right me-1"></i>Umlage
+                    </label>
+                    <select class="form-select" id="filterUmlage" onchange="loadData()" title="Interne Umlage zwischen Firmen">
+                        <option value="mit">Mit Umlage</option>
+                        <option value="ohne" selected>Ohne Umlage (bereinigt)</option>
                     </select>
                 </div>
                 
@@ -432,78 +443,6 @@
         </div>
     </div>
 
-    <!-- Firmen-Vergleich (wenn Gesamt gewählt) -->
-    <div class="row mt-4" id="firmenVergleich" style="display: none;">
-        <div class="col-12">
-            <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white border-0 pt-3 pb-0">
-                    <h5 class="mb-0">
-                        <i class="bi bi-building me-2"></i>Vergleich nach Firma
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <div class="row g-4">
-                        <!-- Stellantis -->
-                        <div class="col-md-6">
-                            <div class="card bg-light border-0">
-                                <div class="card-body">
-                                    <div class="d-flex justify-content-between align-items-center mb-3">
-                                        <h6 class="mb-0">
-                                            <span class="badge bg-warning text-dark me-2">STELLANTIS</span>
-                                            Autohaus Greiner GmbH & Co. KG
-                                        </h6>
-                                    </div>
-                                    <div class="row g-2 text-center">
-                                        <div class="col-4">
-                                            <div class="small text-muted">Umsatz</div>
-                                            <div class="h5 mb-0" id="stellantisUmsatz">-</div>
-                                        </div>
-                                        <div class="col-4">
-                                            <div class="small text-muted">DB1</div>
-                                            <div class="h5 mb-0" id="stellantisDB1">-</div>
-                                        </div>
-                                        <div class="col-4">
-                                            <div class="small text-muted">Marge</div>
-                                            <div class="h5 mb-0" id="stellantisMarge">-</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Hyundai -->
-                        <div class="col-md-6">
-                            <div class="card bg-light border-0">
-                                <div class="card-body">
-                                    <div class="d-flex justify-content-between align-items-center mb-3">
-                                        <h6 class="mb-0">
-                                            <span class="badge bg-primary me-2">HYUNDAI</span>
-                                            Auto Greiner GmbH & Co. KG
-                                        </h6>
-                                    </div>
-                                    <div class="row g-2 text-center">
-                                        <div class="col-4">
-                                            <div class="small text-muted">Umsatz</div>
-                                            <div class="h5 mb-0" id="hyundaiUmsatz">-</div>
-                                        </div>
-                                        <div class="col-4">
-                                            <div class="small text-muted">DB1</div>
-                                            <div class="h5 mb-0" id="hyundaiDB1">-</div>
-                                        </div>
-                                        <div class="col-4">
-                                            <div class="small text-muted">Marge</div>
-                                            <div class="h5 mb-0" id="hyundaiMarge">-</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Vormonats-Info -->
     <div class="row mt-4">
         <div class="col-12">
@@ -630,12 +569,10 @@ async function loadData() {
     const monat = document.getElementById('filterMonat').value;
     const jahr = document.getElementById('filterJahr').value;
     const modus = document.getElementById('filterModus').value;
+    const umlage = document.getElementById('filterUmlage').value;
     
     // Cache leeren bei Filter-Änderung
     clearDetailCache();
-    
-    // Firmenvergleich nur bei "Alle" anzeigen
-    document.getElementById('firmenVergleich').style.display = firma === '0' ? 'block' : 'none';
     
     // Tabellen-Header für Vollkosten anpassen
     updateTableHeader(modus);
@@ -645,7 +582,7 @@ async function loadData() {
     document.getElementById('lastUpdate').className = 'badge bg-warning';
     
     try {
-        const url = `/controlling/api/tek?firma=${firma}&standort=${standort}&monat=${monat}&jahr=${jahr}&modus=${modus}`;
+        const url = `/controlling/api/tek?firma=${firma}&standort=${standort}&monat=${monat}&jahr=${jahr}&modus=${modus}&umlage=${umlage}`;
         const response = await fetch(url);
         const data = await response.json();
         
@@ -655,10 +592,6 @@ async function loadData() {
             updateTable(data.bereiche, modus);
             updateVormonatVergleich(data);
             
-            if (firma === '0' && data.firmen) {
-                updateFirmenVergleich(data.firmen);
-            }
-            
             // Prognose
             if (data.prognose) {
                 updatePrognose(data.prognose);
@@ -666,6 +599,9 @@ async function loadData() {
             
             // Zeitraum-Badge
             document.getElementById('zeitraumBadge').textContent = data.filter.monat_name + ' ' + data.filter.jahr;
+            
+            // Umlage-Hinweis (wenn bereinigt)
+            updateUmlageHinweis(data.filter);
             
             document.getElementById('lastUpdate').innerHTML = '<i class="bi bi-check-circle me-1"></i>' + new Date().toLocaleTimeString('de-DE');
             document.getElementById('lastUpdate').className = 'badge bg-success';
@@ -676,6 +612,46 @@ async function loadData() {
         console.error('Fehler beim Laden:', error);
         document.getElementById('lastUpdate').innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>Fehler';
         document.getElementById('lastUpdate').className = 'badge bg-danger';
+    }
+}
+
+function updateUmlageHinweis(filter) {
+    // Hinweis-Container suchen oder erstellen
+    let hinweis = document.getElementById('umlageFilterHinweis');
+    
+    if (!hinweis) {
+        // Container nach den KPI-Cards einfügen
+        const kpiRow = document.querySelector('.row.g-3.mb-4');
+        if (kpiRow) {
+            hinweis = document.createElement('div');
+            hinweis.id = 'umlageFilterHinweis';
+            hinweis.className = 'alert alert-warning py-2 mb-4';
+            hinweis.style.display = 'none';
+            kpiRow.parentNode.insertBefore(hinweis, kpiRow.nextSibling);
+        }
+    }
+    
+    if (hinweis && filter.umlage_bereinigt) {
+        // Beträge formatieren
+        const erloesBetrag = filter.umlage_betrag_erloese ? formatEuro(filter.umlage_betrag_erloese) : '50.000 €';
+        const kostenBetrag = filter.umlage_betrag_kosten ? formatEuro(filter.umlage_betrag_kosten) : '';
+        
+        let kostenInfo = '';
+        if (kostenBetrag && filter.umlage_betrag_kosten > 0) {
+            kostenInfo = ` Umlage-Kosten (${kostenBetrag}) wurden ebenfalls bereinigt.`;
+        }
+        
+        hinweis.innerHTML = `
+            <i class="bi bi-info-circle me-2"></i>
+            <strong>Umlage-Bereinigung aktiv:</strong> 
+            Die internen Umlage-Erlöse (${erloesBetrag}) wurden aus dem Umsatz entfernt.${kostenInfo}
+            Dies zeigt die operative Performance ohne Konzern-interne Verrechnungen.
+            <br><small class="text-muted"><i class="bi bi-eye me-1"></i>Im Drill-Down bleiben alle Konten sichtbar (inkl. Umlage-Konten) für volle Transparenz.</small>
+            <span class="text-muted small ms-2">(Konten: 817051, 827051, 837051, 847051)</span>
+        `;
+        hinweis.style.display = 'block';
+    } else if (hinweis) {
+        hinweis.style.display = 'none';
     }
 }
 
@@ -824,22 +800,6 @@ function updateTable(bereiche, modus) {
     } else {
         const totalMarge = totals.umsatz > 0 ? (totals.db1 / totals.umsatz * 100) : 0;
         document.getElementById('footerMarge').textContent = formatPercent(totalMarge);
-    }
-}
-
-function updateFirmenVergleich(firmen) {
-    // Stellantis (Firma 1)
-    if (firmen['1']) {
-        document.getElementById('stellantisUmsatz').textContent = formatEuro(firmen['1'].umsatz);
-        document.getElementById('stellantisDB1').textContent = formatEuro(firmen['1'].db1);
-        document.getElementById('stellantisMarge').textContent = formatPercent(firmen['1'].marge);
-    }
-    
-    // Hyundai (Firma 2)
-    if (firmen['2']) {
-        document.getElementById('hyundaiUmsatz').textContent = formatEuro(firmen['2'].umsatz);
-        document.getElementById('hyundaiDB1').textContent = formatEuro(firmen['2'].db1);
-        document.getElementById('hyundaiMarge').textContent = formatPercent(firmen['2'].marge);
     }
 }
 

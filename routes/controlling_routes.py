@@ -23,6 +23,38 @@ DEFAULT_MA_VERTEILUNG = {
     '6': 11    # Teile
 }
 
+# =============================================================================
+# UMLAGE-KONTEN (interne Verrechnung zwischen Stellantis und Hyundai)
+# =============================================================================
+# Diese Konten sind "linke Tasche, rechte Tasche" - heben sich auf Konzernebene auf
+# Bei Einzelbetrachtung verzerren sie die echte Performance
+#
+# ERLÖSE bei Stellantis (Autohaus Greiner bekommt):
+#   817051 = Kostenumlage NW        ~12.500 €/Monat
+#   827051 = Kostenumlage GW        ~12.500 €/Monat  
+#   837051 = Kostenumlage Werkstatt ~12.500 €/Monat
+#   847051 = Kostenumlage Teile     ~12.500 €/Monat
+#   SUMME:                          ~50.000 €/Monat
+#
+# KOSTEN bei Hyundai (Auto Greiner zahlt) - als HABEN gebucht!
+#   498001 = Kostenumlage Haupt     ~50.000 €/Monat
+#   415001 = Kostenumlage Personal  ~ 5.000 €/Monat (+ echte Personalkosten SOLL)
+#   440001 = Kostenumlage Miete     ~ 2.500 €/Monat (+ echte Mietkosten SOLL)
+#   461001 = Kostenumlage Versich.  ~   500 €/Monat (+ echte Versicherungen SOLL)
+#   462001 = Kostenumlage Beiträge  ~   500 €/Monat (+ echte Beiträge SOLL)
+#   SUMME:                          ~58.500 €/Monat
+#
+# WICHTIG: Die Konten 415001, 440001, 461001, 462001 haben DOPPELTE Verwendung:
+#   - Echte Kosten (SOLL-Buchungen): Miete Fischer, Lohn/Gehalt, etc.
+#   - Interne Umlage (HABEN-Buchungen): "Kostenumlage AH Greiner"
+# Daher filtern wir nach BUCHUNGSTEXT, nicht nur nach Kontonummer!
+#
+UMLAGE_ERLOESE_KONTEN = [817051, 827051, 837051, 847051]
+UMLAGE_KOSTEN_KONTEN = [498001]  # Haupt-Umlage-Konto (nur HABEN-Buchungen)
+
+# Buchungstexte die als Umlage identifiziert werden (für HABEN-Buchungen auf Kostenkonten)
+UMLAGE_BUCHUNGSTEXTE = ['Kostenumlage AH Greiner', 'Kostenumlage Auto Greiner', 'Kostenumlage']
+
 def get_ma_verteilung(db, standort: str = '0') -> dict:
     """
     Holt aktuelle MA-Verteilung aus der employees-Tabelle
@@ -94,6 +126,12 @@ def api_tek():
     - firma: 0=Alle, 1=Stellantis(DEG+LAN), 2=Hyundai
     - standort: 0=Alle, 1=Deggendorf, 3=Landau (nur bei Firma 1)
     - monat, jahr: Zeitraum
+    - umlage: 'mit' (Standard) oder 'ohne' - Interne Umlage neutralisieren
+    
+    Umlage-Bereinigung:
+    - Bei 'ohne' werden die internen Umlage-Konten herausgerechnet
+    - Betrifft: 817051, 827051, 837051, 847051 (Erlöse) und 498001 (Kosten)
+    - Zeigt die "echte" operative Performance ohne Konzern-interne Verrechnungen
     
     Firmenstruktur:
     - subsidiary=1, branch=1: Autohaus Greiner Deggendorf (DEGO)
@@ -106,6 +144,7 @@ def api_tek():
         monat = request.args.get('monat', type=int)
         jahr = request.args.get('jahr', type=int)
         modus = request.args.get('modus', 'teil')  # 'teil' oder 'voll'
+        umlage = request.args.get('umlage', 'mit')  # 'mit' oder 'ohne'
         
         heute = date.today()
         if not monat:
@@ -157,6 +196,57 @@ def api_tek():
             standort_name = "Hyundai"
         
         # =====================================================================
+        # UMLAGE-FILTER: Bei 'ohne' werden Umlage-Konten ausgeschlossen
+        # =====================================================================
+        umlage_erloese_filter = ""
+        umlage_kosten_filter = ""
+        umlage_betrag = 0
+        umlage_kosten_betrag = 0
+        
+        if umlage == 'ohne':
+            # Umlage-Erlöse aus Umsatz ausschließen (die 4 Umlage-Konten)
+            umlage_konten_str = ','.join(map(str, UMLAGE_ERLOESE_KONTEN))
+            umlage_erloese_filter = f"AND nominal_account_number NOT IN ({umlage_konten_str})"
+            
+            # Umlage-Kosten ausschließen: OPTION C = Buchungstext-basiert + KST 0
+            # Filtert nur HABEN-Buchungen mit "Kostenumlage" im Text auf KST 0 (Verwaltung)
+            # Dies schließt 498001 (50k), 415001, 440001, 461001, 462001 aus
+            # ABER behält 415011, 415021, 415031, 415061 (echte Kosten auf KST 1-6)!
+            umlage_kosten_filter = """AND NOT (
+                debit_or_credit = 'H' 
+                AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0'
+                AND (posting_text LIKE '%Kostenumlage%' 
+                     OR posting_text LIKE '%kostenumlage%')
+            )"""
+            
+            # Berechne Umlage-Betrag für Info-Anzeige (Erlös-Seite)
+            umlage_result = db.execute(f"""
+                SELECT COALESCE(SUM(
+                    CASE WHEN debit_or_credit='H' THEN posted_value ELSE -posted_value END
+                )/100.0, 0) as betrag
+                FROM loco_journal_accountings
+                WHERE accounting_date >= ? AND accounting_date < ?
+                  AND nominal_account_number IN ({umlage_konten_str})
+                  {firma_filter_umsatz}
+            """, (von, bis)).fetchone()
+            umlage_betrag = umlage_result['betrag'] if umlage_result else 0
+            
+            # Berechne auch den Kosten-Filter-Betrag für Info (nur KST 0)
+            umlage_kosten_result = db.execute(f"""
+                SELECT COALESCE(SUM(
+                    CASE WHEN debit_or_credit='H' THEN posted_value ELSE -posted_value END
+                )/100.0, 0) as betrag
+                FROM loco_journal_accountings
+                WHERE accounting_date >= ? AND accounting_date < ?
+                  AND debit_or_credit = 'H'
+                  AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0'
+                  AND (posting_text LIKE '%Kostenumlage%' OR posting_text LIKE '%kostenumlage%')
+                  AND nominal_account_number BETWEEN 400000 AND 499999
+                  {firma_filter_kosten}
+            """, (von, bis)).fetchone()
+            umlage_kosten_betrag = abs(umlage_kosten_result['betrag']) if umlage_kosten_result else 0
+        
+        # =====================================================================
         # UMSATZ NACH BEREICHEN (branch_number für Standort-Filter)
         # =====================================================================
         umsatz_rows = db.execute(f"""
@@ -176,6 +266,7 @@ def api_tek():
               AND ((nominal_account_number BETWEEN 800000 AND 889999)
                    OR (nominal_account_number BETWEEN 893200 AND 893299))
               {firma_filter_umsatz}
+              {umlage_erloese_filter}
             GROUP BY bereich
         """, (von, bis)).fetchall()
         
@@ -209,7 +300,7 @@ def api_tek():
         # =====================================================================
         kosten_data = None
         if modus == 'voll':
-            kosten_data = berechne_vollkosten(db, von, bis, firma_filter_kosten, standort_code)
+            kosten_data = berechne_vollkosten(db, von, bis, firma_filter_kosten, standort_code, umlage_kosten_filter)
         
         # =====================================================================
         # BEREICHE ZUSAMMENFÜHREN
@@ -381,7 +472,11 @@ def api_tek():
                 'monat_name': monat_namen[monat],
                 'jahr': jahr,
                 'von': von,
-                'bis': bis
+                'bis': bis,
+                'umlage': umlage,
+                'umlage_bereinigt': umlage == 'ohne',
+                'umlage_betrag_erloese': round(umlage_betrag, 2) if umlage == 'ohne' else None,
+                'umlage_betrag_kosten': round(umlage_kosten_betrag, 2) if umlage == 'ohne' else None
             },
             'gesamt': gesamt,
             'bereiche': bereiche,
@@ -795,7 +890,7 @@ def api_tek_detail():
 # VOLLKOSTEN-BERECHNUNG
 # =============================================================================
 
-def berechne_vollkosten(db, von: str, bis: str, firma_filter: str, standort: str = '0') -> dict:
+def berechne_vollkosten(db, von: str, bis: str, firma_filter: str, standort: str = '0', umlage_kosten_filter: str = '') -> dict:
     """
     Berechnet Vollkosten nach Kostenstellen (5. Stelle der Kontonummer)
     
@@ -808,6 +903,9 @@ def berechne_vollkosten(db, von: str, bis: str, firma_filter: str, standort: str
     - 7 = Mietwagen/Sonstige
     
     Umlage nach MA-Schlüssel aus employees-Tabelle (gefiltert nach Standort)
+    
+    Parameter:
+    - umlage_kosten_filter: Optionaler Filter um Umlage-Kosten auszuschließen (498001)
     """
     
     # MA-Verteilung holen (mit Standort-Filter)
@@ -826,6 +924,7 @@ def berechne_vollkosten(db, von: str, bis: str, firma_filter: str, standort: str
     # =========================================================================
     # VARIABLE KOSTEN nach KST (5. Stelle)
     # Konten: 4151xx, 4355xx, 455-456xx, 487xx, 491-497xx
+    # HINWEIS: umlage_kosten_filter auch hier anwenden für Konsistenz
     # =========================================================================
     variable_sql = f"""
         SELECT 
@@ -839,6 +938,7 @@ def berechne_vollkosten(db, von: str, bis: str, firma_filter: str, standort: str
                OR (nominal_account_number BETWEEN 487000 AND 487099 AND substr(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
                OR nominal_account_number BETWEEN 491000 AND 497899)
           {firma_filter}
+          {umlage_kosten_filter}
         GROUP BY kst
     """
     
@@ -848,6 +948,8 @@ def berechne_vollkosten(db, von: str, bis: str, firma_filter: str, standort: str
     # =========================================================================
     # DIREKTE KOSTEN nach KST (nur KST 1-7, ohne Variable)
     # Konten: 40-48xxxx mit KST != 0
+    # WICHTIG: umlage_kosten_filter filtert HABEN-Buchungen mit "Kostenumlage" Text
+    #          (z.B. auf 440001, 415001, etc.) - diese haben negative Werte!
     # =========================================================================
     direkte_sql = f"""
         SELECT 
@@ -865,6 +967,7 @@ def berechne_vollkosten(db, von: str, bis: str, firma_filter: str, standort: str
                    OR nominal_account_number BETWEEN 487000 AND 487099
                    OR nominal_account_number BETWEEN 491000 AND 497999)
           {firma_filter}
+          {umlage_kosten_filter}
         GROUP BY kst
     """
     
@@ -873,6 +976,9 @@ def berechne_vollkosten(db, von: str, bis: str, firma_filter: str, standort: str
     
     # =========================================================================
     # INDIREKTE KOSTEN (KST 0 = Verwaltung)
+    # WICHTIG: umlage_kosten_filter wird hier angewendet um Konto 498001 auszuschließen
+    #          wenn "ohne Umlage" gewählt ist. Sonst werden die internen Umlagen
+    #          (50.000 €/Monat als HABEN gebucht) die Kosten negativ machen!
     # =========================================================================
     indirekte_sql = f"""
         SELECT SUM(CASE WHEN debit_or_credit = 'S' THEN posted_value ELSE -posted_value END) / 100.0 as summe
@@ -888,6 +994,7 @@ def berechne_vollkosten(db, von: str, bis: str, firma_filter: str, standort: str
                OR (nominal_account_number BETWEEN 891000 AND 896999
                    AND NOT (nominal_account_number BETWEEN 893200 AND 893299)))
           {firma_filter}
+          {umlage_kosten_filter}
     """
     
     indirekte_gesamt = db.execute(indirekte_sql, (von, bis)).fetchone()['summe'] or 0
