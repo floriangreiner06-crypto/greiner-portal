@@ -1,72 +1,76 @@
 # TODO FOR CLAUDE SESSION START TAG91
 
 **Datum:** 2025-12-04  
-**Vorgänger:** TAG90 (Workflow-Optimierung + Cleanup)
+**Vorgänger:** TAG90 (Workflow-Optimierung + Script-Umbenennung)
 
 ---
 
-## 🎯 KONTEXT
+## 🎯 KONTEXT TAG 90
 
-TAG90 hat den **Workflow optimiert**:
-- `WORKFLOW.md` mit verbindlichen Regeln
-- Auto-generierte DB-Schemas (`DB_SCHEMA_SQLITE.md`, `DB_SCHEMA_LOCOSOFT.md`)
-- 62 alte Backup-Dateien aufgeräumt
+TAG90 war ein **großer Cleanup-Tag**:
+
+### 1. Workflow-Optimierung
+- `WORKFLOW.md` mit verbindlichen Regeln erstellt
 - Session-Docs nach `docs/` konsolidiert
+- DB-Schema Generator (`scripts/utils/export_db_schema.py`)
+- 62 alte Backup-Dateien aufgeräumt
+
+### 2. Script-Umbenennung
+- Neue Struktur `scripts/scrapers/` für Web-Scraper
+- 13 Scripts logisch umbenannt
+- `job_definitions.py` aktualisiert
+- Scheduler läuft mit 30 Jobs
 
 ---
 
-## 📋 OFFENE PUNKTE (aus TAG90)
+## 📁 NEUE SCRIPT-STRUKTUR (TAG 90)
 
-### Prio 1: Monitoring & Stabilität
-
-1. **ServiceBox Scraper Lock-File testen**
-   - Mechanismus aus TAG88 prüfen
-   - Sollte nur 1x pro Zeitplan laufen
-   - Log: `journalctl -u greiner-scheduler | grep -i servicebox`
-
-2. **Leasys Cache Timeout erhöhen**
-   - Aktuell: 300s (5min)
-   - Problem: Große Requests dauern länger
-   - Fix: Timeout auf 600-900s erhöhen
-   - Datei: `api/leasys_api.py`
-
-### Prio 2: UI/UX
-
-3. **Login-Seite deployen**
-   - Mockup B wurde ausgewählt
-   - Template: `templates/login_mockup_b.html` → `login.html`
-   - CSS anpassen
-
-4. **Admin-Navigation nur für Admins**
-   - In `base.html` einbauen
-   - `{% if current_user.portal_role == 'admin' %}`
-   - URL: `/admin/system-status`
+```
+scripts/
+├── imports/          ← Daten importieren
+│   ├── import_mt940.py
+│   ├── import_hvb_pdf.py
+│   ├── import_santander.py
+│   ├── import_hyundai.py
+│   ├── import_stellantis.py
+│   ├── import_servicebox.py
+│   └── import_teile.py
+│
+├── sync/             ← Locosoft synchronisieren
+│   ├── sync_sales.py
+│   ├── sync_employees.py
+│   ├── sync_stammdaten.py
+│   ├── sync_teile.py
+│   ├── locosoft_mirror.py
+│   └── bwa_berechnung.py
+│
+├── scrapers/         ← Web-Scraper (NEU!)
+│   ├── scrape_hyundai.py
+│   ├── scrape_servicebox.py
+│   ├── scrape_servicebox_full.py
+│   └── match_servicebox.py
+│
+└── analysis/
+    └── umsatz_bereinigung.py
+```
 
 ---
 
-## 🗂️ WICHTIGE DATEIEN
+## 📋 OFFENE PUNKTE / IDEEN
 
-```
-# Workflow (NEU - LESEN!)
-WORKFLOW.md                              ← Verbindliche Regeln
+### Technisch
+- [ ] `tools/scrapers/` aufräumen (viele alte Test-Dateien noch vorhanden)
+- [ ] `scripts/sync/` aufräumen (alte sync_fibu_v2.x Versionen)
+- [ ] Alte Dateien im Projekt-Root aufräumen (test_*.py, etc.)
 
-# DB-Schemas (NEU)
-docs/DB_SCHEMA_SQLITE.md                 ← 99 Tabellen
-docs/DB_SCHEMA_LOCOSOFT.md               ← 102 Tabellen
+### Features (aus Backlog)
+- [ ] BWA Global Cube Bericht nachbauen (mehrfach versucht)
+- [ ] Werkstattplanung.net GraphQL Integration
+- [ ] Dashboard KPIs erweitern
 
-# Schema-Generator
-scripts/utils/export_db_schema.py        ← Bei DB-Änderungen ausführen
-
-# Leasys (Timeout)
-api/leasys_api.py                        ← Cache-Timeout erhöhen
-
-# Login
-templates/login.html                     ← Aktuell
-templates/login_mockup_b.html            ← Neues Design
-
-# Navigation
-templates/base.html                      ← Admin-Link einbauen
-```
+### Nice-to-have
+- [ ] Git Hook für pre-commit aktivieren
+- [ ] Automatische Schema-Generierung nach Migrationen
 
 ---
 
@@ -80,26 +84,12 @@ source venv/bin/activate
 sudo systemctl status greiner-portal
 sudo systemctl status greiner-scheduler
 
-# ServiceBox Lock-File prüfen
-ls -la /tmp/greiner_*.lock
+# Job-Übersicht im Browser
+# https://auto-greiner.de/admin/jobs/
 
-# Scheduler Logs
-journalctl -u greiner-scheduler -f
+# DB-Schema aktualisieren (bei DB-Arbeit)
+python3 scripts/utils/export_db_schema.py --all
 ```
-
----
-
-## 📊 AKTUELLER STAND
-
-| Modul | Status | Info |
-|-------|--------|------|
-| Workflow | ✅ | WORKFLOW.md erstellt |
-| DB-Schemas | ✅ | Auto-generiert |
-| Cleanup | ✅ | 62 Dateien aufgeräumt |
-| ServiceBox Lock | ⏳ | Testen |
-| Leasys Timeout | ⏳ | Erhöhen |
-| Login-Seite | ⏳ | Mockup B deployen |
-| Admin-Nav | ⏳ | Einbauen |
 
 ---
 
@@ -109,6 +99,19 @@ journalctl -u greiner-scheduler -f
 1. Session-Docs IMMER aus Sync-Verzeichnis lesen: `\\Srvrdb01\...\Server\docs\`
 2. NIEMALS `project_knowledge_search` für Session-Docs
 3. Bei DB-Arbeit: `docs/DB_SCHEMA_*.md` lesen
+4. Scripts jetzt in neuer Struktur (`scripts/scrapers/`, etc.)
+
+---
+
+## 📊 AKTUELLER STAND
+
+| Bereich | Status |
+|---------|--------|
+| Workflow | ✅ WORKFLOW.md |
+| DB-Schemas | ✅ Auto-generiert |
+| Scripts | ✅ Logisch strukturiert |
+| Job-Scheduler | ✅ 30 Jobs aktiv |
+| Cleanup | ✅ 75+ Dateien aufgeräumt |
 
 ---
 

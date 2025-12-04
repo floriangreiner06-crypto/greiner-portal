@@ -1,8 +1,8 @@
 # SESSION WRAP-UP TAG 90
 
 **Datum:** 2025-12-04  
-**Dauer:** ~2 Stunden  
-**Commit:** `2096e7d`  
+**Dauer:** ~3 Stunden  
+**Commits:** `2096e7d`, `33fd6f1`, `4ed84b5`  
 **Branch:** `feature/tag82-onwards`
 
 ---
@@ -13,83 +13,81 @@
 
 Neue Datei `WORKFLOW.md` definiert:
 - **Datei-Struktur:** Alle Session-Docs nach `docs/`
-- **Session-Start:** Claude liest direkt aus Sync-Verzeichnis (nicht Project Knowledge!)
+- **Session-Start:** Claude liest direkt aus Sync-Verzeichnis
 - **Session-Ende:** Wrap-Up + TODO erstellen
 - **DB-Dokumentation:** Auto-generiertes Schema bei Bedarf
-- **Checklisten** für User und Claude
 
-### 2. ✅ Session-Docs konsolidiert
-
-Verstreute Dateien nach `docs/` verschoben:
-- `SESSION_WRAP_UP_TAG68.md`
-- `SESSION_WRAP_UP_TAG82.md`
-- `TODO_FOR_CLAUDE_SESSION_START_TAG69.md`
-- `TODO_FOR_CLAUDE_SESSION_START_TAG83.md`
-- `TODO_FOR_CLAUDE_SESSION_START_TAG84.md`
-
-### 3. ✅ DB-Schema Auto-Generator
+### 2. ✅ DB-Schema Auto-Generator
 
 Neues Script: `scripts/utils/export_db_schema.py`
+- SQLite: 99 Tabellen dokumentiert
+- Locosoft: 102 Tabellen dokumentiert
+- Generiert `docs/DB_SCHEMA_SQLITE.md` und `docs/DB_SCHEMA_LOCOSOFT.md`
 
-```bash
-# SQLite (99 Tabellen)
-python3 scripts/utils/export_db_schema.py > docs/DB_SCHEMA_SQLITE.md
+### 3. ✅ Cleanup - 62 alte Backup-Dateien
 
-# Locosoft PostgreSQL (102 Tabellen)
-python3 scripts/utils/export_db_schema.py --locosoft > docs/DB_SCHEMA_LOCOSOFT.md
-
-# Beide
-python3 scripts/utils/export_db_schema.py --all
-```
-
-**Generierte Dateien:**
-- `docs/DB_SCHEMA_SQLITE.md` - 99 Tabellen mit Spalten, Typen, Indizes
-- `docs/DB_SCHEMA_LOCOSOFT.md` - 102 Tabellen aus PostgreSQL
-
-### 4. ✅ Cleanup - 62 Dateien aufgeräumt
-
-**Gelöscht (49 Dateien):**
-- Alle `.backup_*` Dateien in `parsers/`
-- Alle `.backup_*` Dateien in `scripts/imports/`
+Gelöscht:
+- Alle `.backup_*` in `parsers/`
+- Alle `.backup_*` in `scripts/imports/`
 - `.broken` und `.uncommitted_backup` Dateien
 
-**Archiviert (13 Dateien) → `backups/deprecated_scripts_tag90/`:**
-- `import_november_*.py` (alte November-Scripts)
-- `import_2025_*.py` (ersetzt durch import_mt940.py)
-- `fix_*.py` (einmalig verwendete Fix-Scripts)
+### 4. ✅ Script-Umbenennung - 13 Scripts
+
+Neue logische Struktur:
+
+| Alt | Neu |
+|-----|-----|
+| `import_all_bank_pdfs.py` | `import_hvb_pdf.py` |
+| `import_santander_bestand.py` | `import_santander.py` |
+| `import_hyundai_finance.py` | `import_hyundai.py` |
+| `import_servicebox_to_db.py` | `import_servicebox.py` |
+| `import_teile_lieferscheine.py` | `import_teile.py` |
+| `sync_teile_locosoft.py` | `sync/sync_teile.py` |
+| `sync_fahrzeug_stammdaten.py` | `sync_stammdaten.py` |
+| `umsatz_bereinigung_production.py` | `umsatz_bereinigung.py` |
+| `servicebox_detail_scraper_v3_kommentar.py` | `scrapers/scrape_servicebox.py` |
+| `servicebox_detail_scraper_v3_master.py` | `scrapers/scrape_servicebox_full.py` |
+| `servicebox_locosoft_matcher.py` | `scrapers/match_servicebox.py` |
+| `hyundai_bestandsliste_scraper.py` | `scrapers/scrape_hyundai.py` |
+
+### 5. ✅ Neue Verzeichnisstruktur
+
+```
+scripts/
+├── imports/    ← Daten importieren
+├── sync/       ← Locosoft synchronisieren  
+├── scrapers/   ← NEU! Web-Scraper
+├── analysis/   ← Analysen
+└── utils/      ← Hilfsfunktionen
+```
 
 ---
 
-## 📁 NEUE/GEÄNDERTE DATEIEN
+## 📁 GEÄNDERTE/NEUE DATEIEN
 
 ```
 NEU:
-├── WORKFLOW.md                           ← Verbindliche Regeln
-├── docs/DB_SCHEMA_SQLITE.md              ← Auto-generiert
-├── docs/DB_SCHEMA_LOCOSOFT.md            ← Auto-generiert
-├── scripts/utils/export_db_schema.py     ← Schema-Generator
-└── scripts/cleanup_tag90.sh              ← Cleanup-Script
+├── WORKFLOW.md
+├── docs/DB_SCHEMA_SQLITE.md
+├── docs/DB_SCHEMA_LOCOSOFT.md
+├── scripts/utils/export_db_schema.py
+├── scripts/scrapers/           (neues Verzeichnis)
+│   ├── __init__.py
+│   ├── scrape_hyundai.py
+│   ├── scrape_servicebox.py
+│   ├── scrape_servicebox_full.py
+│   └── match_servicebox.py
+├── scripts/cleanup_tag90.sh
+└── scripts/rename_scripts_tag90.sh
+
+UMBENANNT: 13 Scripts (siehe oben)
+
+GELÖSCHT: 62 Backup-Dateien
 
 GEÄNDERT:
-├── CLAUDE.md                             ← Verweis auf WORKFLOW.md
-
-GELÖSCHT/ARCHIVIERT:
-└── 62 Dateien (siehe Cleanup)
+├── CLAUDE.md (Verweis auf WORKFLOW.md)
+└── scheduler/job_definitions.py (neue Pfade)
 ```
-
----
-
-## 🔧 NEUE WORKFLOWS
-
-### Session-Start (ab jetzt):
-1. User: `python3 scripts/utils/export_db_schema.py --all` (bei DB-Arbeit)
-2. User: `TAG XX: [Aufgabe]. Lies docs/TODO_FOR_CLAUDE_SESSION_START_TAG[XX].md`
-3. Claude: Liest aus Sync-Verzeichnis `\\Srvrdb01\...\Server\docs\`
-
-### Session-Ende (ab jetzt):
-1. Claude: `docs/SESSION_WRAP_UP_TAG[XX].md` erstellen
-2. Claude: `docs/TODO_FOR_CLAUDE_SESSION_START_TAG[XX+1].md` erstellen
-3. User: Git commit + push
 
 ---
 
@@ -97,30 +95,41 @@ GELÖSCHT/ARCHIVIERT:
 
 | Metrik | Wert |
 |--------|------|
-| Neue Dateien | 5 |
-| Gelöschte Dateien | 49 |
-| Archivierte Dateien | 13 |
+| Neue Dateien | 8 |
+| Umbenannte Scripts | 13 |
+| Gelöschte Backup-Dateien | 62 |
+| Archivierte alte Scripts | 13 |
 | SQLite Tabellen dokumentiert | 99 |
 | Locosoft Tabellen dokumentiert | 102 |
-| Git Commit | `2096e7d` |
+| Jobs im Scheduler | 30 |
+| Git Commits | 3 |
 
 ---
 
-## 🎓 LESSONS LEARNED
+## 🔧 GIT COMMITS
 
-1. **Project Knowledge ist oft veraltet** → Sync-Verzeichnis direkt nutzen
-2. **DB-Schema manuell pflegen funktioniert nicht** → Auto-Generator!
-3. **Backup-Dateien sammeln sich an** → Regelmäßig aufräumen
+| Commit | Beschreibung |
+|--------|--------------|
+| `2096e7d` | Workflow-Optimierung + Cleanup (62 Dateien) |
+| `33fd6f1` | Session-Dokumentation |
+| `4ed84b5` | Scripts logisch umbenannt |
 
 ---
 
-## 🚀 OFFENE PUNKTE (für TAG 91+)
+## ✅ TESTS
 
-Aus TODO_TAG90 noch offen:
-- [ ] ServiceBox Scraper Lock-File testen
-- [ ] Leasys Cache Timeout erhöhen (300s → 600s)
-- [ ] Login-Seite Mockup B deployen
-- [ ] Admin-Navigation nur für Admins
+- [x] Scheduler läuft mit 30 Jobs
+- [x] `import_santander.py` funktioniert
+- [x] Keine Fehler beim Restart
+
+---
+
+## 🚀 NÄCHSTE SESSION
+
+Offene Punkte:
+- `tools/scrapers/` weiter aufräumen (alte Test-Dateien)
+- `scripts/sync/` aufräumen (alte sync_fibu_v2.x Versionen)
+- Feature-Arbeit (BWA, Werkstattplanung, etc.)
 
 ---
 
