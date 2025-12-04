@@ -247,49 +247,19 @@ except Exception as e:
     print(f"⚠️  Jahresprämie nicht geladen: {e}")
 
 # ============================================================================
-# JOB-SCHEDULER (APScheduler) - Ersetzt Cron-Jobs
+# JOB-SCHEDULER UI (Scheduler läuft als separater Service!)
 # ============================================================================
 try:
-    from scheduler import job_manager, scheduler_bp, init_scheduler_routes, register_all_jobs
-    import fcntl
+    from scheduler import job_manager, scheduler_bp, init_scheduler_routes
     
-    # Blueprint registrieren (für alle Worker)
+    # Blueprint registrieren (für Web-UI unter /admin/jobs/)
     app.register_blueprint(scheduler_bp)
     init_scheduler_routes(job_manager)
-    
-    # Scheduler nur EINMAL starten (nicht in jedem Gunicorn-Worker!)
-    # Verwendet Lock-File um Race-Conditions zu vermeiden
-    SCHEDULER_LOCK_FILE = '/tmp/greiner_scheduler.lock'
-    scheduler_started = False
-    
-    def try_start_scheduler():
-        """Versucht den Scheduler zu starten, nur wenn Lock verfügbar"""
-        global scheduler_started
-        try:
-            lock_fd = open(SCHEDULER_LOCK_FILE, 'w')
-            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            # Lock erhalten - dieser Worker startet den Scheduler
-            register_all_jobs()
-            job_manager.start()
-            scheduler_started = True
-            print("✅ Job-Scheduler gestartet: /admin/jobs/")
-            # Lock-File offen halten (wird bei Prozess-Ende automatisch freigegeben)
-            return lock_fd
-        except (IOError, OSError):
-            # Lock nicht verfügbar - anderer Worker hat den Scheduler
-            print("ℹ️  Job-Scheduler läuft in anderem Worker")
-            return None
-    
-    # Starten wenn nicht im Debug-Reloader
-    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not app.debug:
-        _scheduler_lock = try_start_scheduler()
-    else:
-        print("⏸️  Job-Scheduler: Warte auf Reloader...")
+    print("✅ Job-Scheduler UI registriert: /admin/jobs/")
+    print("ℹ️  Scheduler läuft als separater Service: greiner-scheduler")
         
 except Exception as e:
-    print(f"⚠️  Job-Scheduler nicht geladen: {e}")
-    import traceback
-    traceback.print_exc()
+    print(f"⚠️  Job-Scheduler UI nicht geladen: {e}")
 
 # ============================================================================
 # ERROR HANDLERS
@@ -306,24 +276,6 @@ def forbidden(e):
     """Handler für 403 Forbidden"""
     flash('Sie haben keine Berechtigung für diesen Bereich.', 'danger')
     return redirect(url_for('dashboard'))
-
-# ============================================================================
-# SCHEDULER SHUTDOWN
-# ============================================================================
-
-import atexit
-
-def shutdown_scheduler():
-    """Stoppt den Scheduler beim App-Shutdown"""
-    try:
-        from scheduler import job_manager
-        if job_manager and job_manager.get_scheduler().running:
-            job_manager.shutdown()
-            print("🛑 Job-Scheduler gestoppt")
-    except:
-        pass
-
-atexit.register(shutdown_scheduler)
 
 # ============================================================================
 # MAIN
@@ -354,9 +306,20 @@ def dashboard():
 
 # After Sales Routes
 from routes.aftersales import teile_routes
+from routes.aftersales import serviceberater_routes
 from routes.admin_routes import admin_routes
 app.register_blueprint(teile_routes.bp)
+app.register_blueprint(serviceberater_routes.bp)
 app.register_blueprint(admin_routes)
+print("✅ Serviceberater Routes registriert: /aftersales/serviceberater/")
+
+# Serviceberater API
+try:
+    from api.serviceberater_api import serviceberater_api
+    app.register_blueprint(serviceberater_api)
+    print("✅ Serviceberater API registriert: /api/serviceberater/")
+except Exception as e:
+    print(f"⚠️  Serviceberater API nicht geladen: {e}")
 
 # DEBUG Route für TAG76 - später entfernen!
 @app.route('/debug/user')

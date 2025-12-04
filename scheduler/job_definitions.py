@@ -33,11 +33,14 @@ from scheduler.job_manager import job_manager, run_script, run_shell
 # Bank & Finanzen
 def job_import_mt940():
     """MT940 Import für alle Banken AUSSER HypoVereinsbank"""
-    return run_script('scripts/imports/import_mt940.py', 'import_mt940', 'MT940 Import', timeout=120)
+    # MT940 Verzeichnis als Argument
+    mt940_dir = '/mnt/buchhaltung/Buchhaltung/Kontoauszüge/mt940/'
+    return run_script('scripts/imports/import_mt940.py', 'import_mt940', 'MT940 Import', timeout=120, args=[mt940_dir])
 
 def job_import_hvb_pdf():
     """PDF Import NUR für HypoVereinsbank (einzige Bank ohne MT940)"""
-    return run_script('scripts/imports/import_all_bank_pdfs.py --bank hvb --today', 'import_hvb_pdf', 'HypoVereinsbank PDF Import', timeout=120)
+    # Nur HVB, letzte 3 Tage (fängt auch verpasste ab)
+    return run_script('scripts/imports/import_all_bank_pdfs.py', 'import_hvb_pdf', 'HypoVereinsbank PDF Import', timeout=120, args=['--bank', 'hvb', '--days', '3'])
 
 def job_umsatz_bereinigung():
     return run_script('scripts/analysis/umsatz_bereinigung_production.py', 'umsatz_bereinigung', 'Umsatz-Bereinigung', timeout=300)

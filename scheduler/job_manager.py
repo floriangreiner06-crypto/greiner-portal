@@ -143,9 +143,25 @@ def update_job_status(job_id, status, last_run=None):
     conn.close()
 
 
-def run_script(script_path, job_id, job_name, timeout=300):
-    """Führt ein Python-Script aus mit Logging."""
-    full_path = os.path.join(BASE_DIR, script_path) if not script_path.startswith('/') else script_path
+def run_script(script_path, job_id, job_name, timeout=300, args=None):
+    """Führt ein Python-Script aus mit Logging.
+    
+    Args:
+        script_path: Pfad zum Script (relativ zu BASE_DIR oder absolut)
+        job_id: Eindeutige Job-ID
+        job_name: Anzeigename des Jobs
+        timeout: Timeout in Sekunden
+        args: Liste von Argumenten für das Script
+    """
+    # Script-Pfad und Argumente trennen (falls im Pfad enthalten)
+    parts = script_path.split()
+    actual_script = parts[0]
+    inline_args = parts[1:] if len(parts) > 1 else []
+    
+    full_path = os.path.join(BASE_DIR, actual_script) if not actual_script.startswith('/') else actual_script
+    
+    # Argumente zusammenführen
+    all_args = inline_args + (args if args else [])
     
     logger.info(f"[{job_id}] Starting: {job_name}")
     run_id = log_job_start(job_id, job_name)
@@ -154,8 +170,12 @@ def run_script(script_path, job_id, job_name, timeout=300):
         # Python aus venv verwenden
         python_path = os.path.join(BASE_DIR, 'venv', 'bin', 'python3')
         
+        # Command zusammenbauen
+        cmd = [python_path, full_path] + all_args
+        logger.debug(f"[{job_id}] Command: {' '.join(cmd)}")
+        
         result = subprocess.run(
-            [python_path, full_path],
+            cmd,
             cwd=BASE_DIR,
             capture_output=True,
             text=True,
@@ -192,6 +212,10 @@ def run_shell(command, job_id, job_name, timeout=300):
     logger.info(f"[{job_id}] Starting: {job_name}")
     run_id = log_job_start(job_id, job_name)
     
+    # Vollständige PATH-Umgebung für Shell-Befehle
+    env = os.environ.copy()
+    env['PATH'] = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:' + env.get('PATH', '')
+    
     try:
         result = subprocess.run(
             command,
@@ -199,7 +223,8 @@ def run_shell(command, job_id, job_name, timeout=300):
             cwd=BASE_DIR,
             capture_output=True,
             text=True,
-            timeout=timeout
+            timeout=timeout,
+            env=env
         )
         
         if result.returncode == 0:
