@@ -321,6 +321,22 @@ try:
 except Exception as e:
     print(f"⚠️  Serviceberater API nicht geladen: {e}")
 
+# Werkstatt API (Leistungsübersicht)
+try:
+    from api.werkstatt_api import werkstatt_api
+    app.register_blueprint(werkstatt_api)
+    print("✅ Werkstatt API registriert: /api/werkstatt/")
+except Exception as e:
+    print(f"⚠️  Werkstatt API nicht geladen: {e}")
+
+# Werkstatt LIVE API (Echtzeit-Daten aus Locosoft)
+try:
+    from api.werkstatt_live_api import werkstatt_live_bp
+    app.register_blueprint(werkstatt_live_bp)
+    print("✅ Werkstatt LIVE API registriert: /api/werkstatt/live/")
+except Exception as e:
+    print(f"⚠️  Werkstatt LIVE API nicht geladen: {e}")
+
 # DEBUG Route für TAG76 - später entfernen!
 @app.route('/debug/user')
 @login_required
@@ -344,3 +360,56 @@ def debug_user():
 def leasys_programmfinder():
     """Leasys Programmfinder - Hilft Verkäufern das richtige Master Agreement zu finden"""
     return render_template('leasys_programmfinder.html')
+
+
+# ========================================
+# WERKSTATT ÜBERSICHT
+# ========================================
+
+@app.route('/werkstatt')
+@app.route('/werkstatt/uebersicht')
+@login_required
+def werkstatt_uebersicht():
+    """Werkstatt-Übersicht - Mechaniker-Leistungsgrade"""
+    return render_template('aftersales/werkstatt_uebersicht.html')
+
+
+@app.route('/werkstatt/live')
+@login_required
+def werkstatt_live():
+    """Werkstatt LIVE-Monitoring - Echtzeit-Auftragsübersicht"""
+    return render_template('aftersales/werkstatt_live.html')
+
+
+@app.route('/werkstatt/stempeluhr')
+@login_required
+def werkstatt_stempeluhr():
+    """Werkstatt Stempeluhr - LIVE Mechaniker-Übersicht"""
+    return render_template('aftersales/werkstatt_stempeluhr.html')
+
+
+@app.route('/monitor/stempeluhr')
+def werkstatt_stempeluhr_monitor():
+    """
+    Werkstatt Stempeluhr - MONITOR VERSION (ohne Login)
+    Zugriff über Token-Parameter oder interne IP.
+    """
+    # Monitor-Token (geheim halten!)
+    MONITOR_TOKEN = 'Greiner2024Werkstatt!'
+    
+    # Token aus URL prüfen
+    token = request.args.get('token', '')
+    
+    # IP prüfen
+    client_ip = request.remote_addr
+    if request.headers.get('X-Forwarded-For'):
+        client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    
+    # Zugriff erlauben wenn: korrekter Token ODER interne IP
+    is_internal = client_ip.startswith('10.80.80.') or client_ip == '127.0.0.1'
+    is_valid_token = token == MONITOR_TOKEN
+    
+    if not (is_internal or is_valid_token):
+        return "Zugriff verweigert. Token erforderlich.", 403
+    
+    return render_template('aftersales/werkstatt_stempeluhr_monitor.html')

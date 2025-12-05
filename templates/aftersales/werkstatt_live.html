@@ -1,0 +1,735 @@
+{% extends "base.html" %}
+
+{% block title %}Werkstatt LIVE - {{ app_name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Auto-Refresh Indicator */
+    .refresh-indicator {
+        position: fixed;
+        top: 70px;
+        right: 20px;
+        z-index: 1000;
+        background: white;
+        padding: 8px 15px;
+        border-radius: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        font-size: 0.85rem;
+    }
+    .refresh-indicator.refreshing {
+        background: #17a2b8;
+        color: white;
+    }
+    .pulse {
+        animation: pulse 1s infinite;
+    }
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+    
+    /* Status Cards */
+    .status-card {
+        border-radius: 10px;
+        transition: transform 0.2s;
+    }
+    .status-card:hover {
+        transform: translateY(-2px);
+    }
+    .status-card .big-number {
+        font-size: 2.5rem;
+        font-weight: 700;
+        line-height: 1;
+    }
+    
+    /* Auftrags-Karten */
+    .auftrag-card {
+        border-left: 4px solid #6c757d;
+        transition: all 0.3s;
+        cursor: pointer;
+    }
+    .auftrag-card.offen {
+        border-left-color: #dc3545;
+    }
+    .auftrag-card.teilweise {
+        border-left-color: #ffc107;
+    }
+    .auftrag-card.fertig {
+        border-left-color: #28a745;
+    }
+    .auftrag-card:hover {
+        box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    }
+    
+    /* Dringlichkeit */
+    .dringlichkeit-1 { color: #6c757d; }
+    .dringlichkeit-2 { color: #17a2b8; }
+    .dringlichkeit-3 { color: #ffc107; }
+    .dringlichkeit-4 { color: #fd7e14; }
+    .dringlichkeit-5 { color: #dc3545; font-weight: bold; }
+    
+    /* Mechaniker Liste */
+    .mechaniker-item {
+        display: flex;
+        align-items: center;
+        padding: 10px 15px;
+        border-bottom: 1px solid #eee;
+    }
+    .mechaniker-item:last-child {
+        border-bottom: none;
+    }
+    .mechaniker-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: #0d6efd;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        margin-right: 12px;
+        flex-shrink: 0;
+    }
+    
+    /* Betrieb Badges */
+    .betrieb-badge {
+        font-size: 0.75rem;
+        padding: 3px 8px;
+        border-radius: 12px;
+    }
+    .betrieb-1 { background: #e3f2fd; color: #1565c0; }
+    .betrieb-2 { background: #fff3e0; color: #e65100; }
+    .betrieb-3 { background: #e8f5e9; color: #2e7d32; }
+    
+    /* Tabelle */
+    .table-live th {
+        background: #f8f9fa;
+        font-weight: 600;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .table-live td {
+        vertical-align: middle;
+    }
+    
+    /* Filter Bar */
+    .filter-bar {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    
+    <!-- Refresh Indicator -->
+    <div class="refresh-indicator" id="refreshIndicator">
+        <i class="bi bi-arrow-repeat" id="refreshIcon"></i>
+        <span id="refreshText">Auto-Refresh: 30s</span>
+    </div>
+
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1">
+                <i class="bi bi-broadcast text-danger pulse"></i>
+                Werkstatt LIVE
+            </h2>
+            <p class="text-muted mb-0">Echtzeit-Übersicht der Werkstatt-Aufträge</p>
+        </div>
+        <div>
+            <button class="btn btn-outline-primary" onclick="refreshAll()">
+                <i class="bi bi-arrow-repeat"></i> Jetzt aktualisieren
+            </button>
+            <a href="/werkstatt/uebersicht" class="btn btn-outline-secondary">
+                <i class="bi bi-speedometer2"></i> Leistungs-Übersicht
+            </a>
+        </div>
+    </div>
+    
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+        <div class="row align-items-center">
+            <div class="col-auto">
+                <label class="mb-0 me-2"><strong>Betrieb:</strong></label>
+            </div>
+            <div class="col-auto">
+                <select class="form-select form-select-sm" id="filterBetrieb" onchange="refreshAll()" style="width: auto;">
+                    <option value="">Alle Betriebe</option>
+                    <option value="1">Deggendorf (Stellantis)</option>
+                    <option value="2">Deggendorf (Hyundai)</option>
+                    <option value="3">Landau</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="mb-0 me-2"><strong>Zeitraum:</strong></label>
+            </div>
+            <div class="col-auto">
+                <select class="form-select form-select-sm" id="filterTage" onchange="refreshAll()" style="width: auto;">
+                    <option value="1">Heute</option>
+                    <option value="3" selected>Letzte 3 Tage</option>
+                    <option value="7">Letzte 7 Tage</option>
+                </select>
+            </div>
+            <div class="col">
+                <span class="text-muted float-end" id="lastUpdate">-</span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Dashboard Cards -->
+    <div class="row mb-4" id="dashboardCards">
+        <div class="col-12 text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Lädt...</span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Hauptbereich: Aufträge + Mechaniker -->
+    <div class="row">
+        <!-- Offene Aufträge -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-clipboard-data text-danger"></i>
+                        Offene Aufträge
+                        <span class="badge bg-danger" id="countOffen">-</span>
+                    </h5>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-secondary active" id="btnCards" onclick="setView('cards')">
+                            <i class="bi bi-grid-3x2-gap"></i>
+                        </button>
+                        <button class="btn btn-outline-secondary" id="btnTable" onclick="setView('table')">
+                            <i class="bi bi-list-ul"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body" id="auftraegeContainer">
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Sidebar: Aktive Mechaniker & Serviceberater -->
+        <div class="col-lg-4">
+            <!-- Aktive Mechaniker -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-person-gear text-primary"></i>
+                        Aktive Mechaniker
+                    </h5>
+                </div>
+                <div class="card-body p-0" id="mechanikerContainer">
+                    <div class="text-center py-4">
+                        <div class="spinner-border spinner-border-sm text-primary"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Serviceberater -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-person-badge text-success"></i>
+                        Serviceberater
+                    </h5>
+                </div>
+                <div class="card-body p-0" id="serviceberaterContainer">
+                    <div class="text-center py-4">
+                        <div class="spinner-border spinner-border-sm text-primary"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Auftrag Detail Modal -->
+<div class="modal fade" id="auftragModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-file-earmark-text"></i>
+                    Auftrag <span id="modalAuftragNr"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ============================================================================
+// VANILLA JS - Kein jQuery benötigt!
+// ============================================================================
+
+let currentView = 'cards';
+let refreshInterval = null;
+let refreshSeconds = 30;
+let auftragModal = null;
+
+// ============================================================================
+// INITIALISIERUNG
+// ============================================================================
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM loaded - initializing Werkstatt LIVE');
+    
+    // Modal initialisieren (mit Fehlerbehandlung)
+    try {
+        const modalEl = document.getElementById('auftragModal');
+        if (modalEl) {
+            auftragModal = new bootstrap.Modal(modalEl);
+            console.log('Modal initialized');
+        }
+    } catch(e) {
+        console.error('Modal init error:', e);
+    }
+    
+    // Daten laden
+    console.log('Starting refreshAll...');
+    refreshAll();
+    startAutoRefresh();
+});
+
+function startAutoRefresh() {
+    if (refreshInterval) clearInterval(refreshInterval);
+    
+    let countdown = refreshSeconds;
+    refreshInterval = setInterval(() => {
+        countdown--;
+        document.getElementById('refreshText').textContent = `Auto-Refresh: ${countdown}s`;
+        
+        if (countdown <= 0) {
+            refreshAll();
+            countdown = refreshSeconds;
+        }
+    }, 1000);
+}
+
+// ============================================================================
+// DATEN LADEN
+// ============================================================================
+
+function refreshAll() {
+    showRefreshing(true);
+    
+    Promise.all([
+        loadDashboard(),
+        loadAuftraege(),
+    ]).then(() => {
+        showRefreshing(false);
+        document.getElementById('lastUpdate').textContent = 'Aktualisiert: ' + new Date().toLocaleTimeString('de-DE');
+    }).catch(err => {
+        console.error('Refresh Error:', err);
+        showRefreshing(false);
+    });
+}
+
+function showRefreshing(isRefreshing) {
+    const indicator = document.getElementById('refreshIndicator');
+    const icon = document.getElementById('refreshIcon');
+    
+    if (isRefreshing) {
+        indicator.classList.add('refreshing');
+        icon.classList.add('bi-arrow-repeat');
+        icon.style.animation = 'spin 1s linear infinite';
+    } else {
+        indicator.classList.remove('refreshing');
+        icon.style.animation = '';
+    }
+}
+
+function getFilters() {
+    return {
+        subsidiary: document.getElementById('filterBetrieb').value,
+        tage: document.getElementById('filterTage').value
+    };
+}
+
+// ============================================================================
+// DASHBOARD
+// ============================================================================
+
+function loadDashboard() {
+    return fetch('/api/werkstatt/live/dashboard')
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success) throw new Error(data.error);
+            renderDashboard(data.dashboard);
+        });
+}
+
+function renderDashboard(dashboard) {
+    // Berechne Gesamtzahlen
+    let totalOffen = 0, totalDringend = 0;
+    dashboard.auftraege_pro_betrieb.forEach(b => {
+        totalOffen += b.anzahl_offen;
+        totalDringend += b.anzahl_dringend;
+    });
+    
+    const heute = dashboard.heute;
+    
+    let html = `
+        <div class="col-md-3">
+            <div class="card status-card bg-danger text-white">
+                <div class="card-body text-center">
+                    <div class="big-number">${totalOffen}</div>
+                    <div>Offene Aufträge</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card status-card bg-warning text-dark">
+                <div class="card-body text-center">
+                    <div class="big-number">${totalDringend}</div>
+                    <div>Dringend</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card status-card bg-success text-white">
+                <div class="card-body text-center">
+                    <div class="big-number">${heute.fertig}</div>
+                    <div>Heute fertig</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card status-card bg-info text-white">
+                <div class="card-body text-center">
+                    <div class="big-number">${dashboard.aktive_mechaniker.length}</div>
+                    <div>Aktive Mechaniker</div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('dashboardCards').innerHTML = html;
+    
+    // Mechaniker rendern
+    renderMechaniker(dashboard.aktive_mechaniker);
+    
+    // Serviceberater rendern
+    renderServiceberater(dashboard.serviceberater);
+}
+
+function renderMechaniker(mechaniker) {
+    const container = document.getElementById('mechanikerContainer');
+    
+    if (!mechaniker.length) {
+        container.innerHTML = '<div class="p-3 text-muted text-center">Keine aktiven Mechaniker</div>';
+        return;
+    }
+    
+    let html = '';
+    mechaniker.slice(0, 10).forEach(m => {
+        const initials = m.name ? m.name.split(',')[0].substring(0, 2).toUpperCase() : '??';
+        html += `
+            <div class="mechaniker-item">
+                <div class="mechaniker-avatar">${initials}</div>
+                <div class="flex-grow-1">
+                    <div class="fw-bold">${m.name || 'Unbekannt'}</div>
+                    <small class="text-muted">
+                        ${m.anzahl_auftraege} Aufträge | ${m.summe_aw.toFixed(1)} AW
+                    </small>
+                </div>
+                <span class="betrieb-badge betrieb-${m.betrieb || 0}">${m.betrieb || '-'}</span>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+function renderServiceberater(serviceberater) {
+    const container = document.getElementById('serviceberaterContainer');
+    
+    if (!serviceberater.length) {
+        container.innerHTML = '<div class="p-3 text-muted text-center">Keine Daten</div>';
+        return;
+    }
+    
+    let html = '';
+    serviceberater.forEach(sb => {
+        html += `
+            <div class="mechaniker-item">
+                <div class="mechaniker-avatar" style="background: #198754;">
+                    <i class="bi bi-person"></i>
+                </div>
+                <div class="flex-grow-1">
+                    <div class="fw-bold">${sb.name || 'Unbekannt'}</div>
+                </div>
+                <span class="badge bg-primary">${sb.anzahl_offen} offen</span>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+// ============================================================================
+// AUFTRÄGE
+// ============================================================================
+
+function loadAuftraege() {
+    const filters = getFilters();
+    let url = `/api/werkstatt/live/auftraege?nur_offen=true&tage=${filters.tage}`;
+    if (filters.subsidiary) url += `&subsidiary=${filters.subsidiary}`;
+    
+    return fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success) throw new Error(data.error);
+            document.getElementById('countOffen').textContent = data.anzahl;
+            
+            if (currentView === 'cards') {
+                renderAuftraegeCards(data.auftraege);
+            } else {
+                renderAuftraegeTable(data.auftraege);
+            }
+        });
+}
+
+function renderAuftraegeCards(auftraege) {
+    const container = document.getElementById('auftraegeContainer');
+    
+    if (!auftraege.length) {
+        container.innerHTML = '<div class="text-center text-muted py-5"><i class="bi bi-check-circle fs-1 text-success mb-3 d-block"></i>Keine offenen Aufträge!</div>';
+        return;
+    }
+    
+    let html = '<div class="row">';
+    auftraege.forEach(a => {
+        const statusClass = a.hat_abgeschlossene ? 'teilweise' : 'offen';
+        const dringlichkeit = a.dringlichkeit || 3;
+        
+        html += `
+            <div class="col-md-6 mb-3">
+                <div class="card auftrag-card ${statusClass}" onclick="showAuftragDetail(${a.auftrag_nr})">
+                    <div class="card-body py-3">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <h6 class="mb-1">
+                                    <span class="dringlichkeit-${dringlichkeit}">
+                                        <i class="bi bi-exclamation-circle"></i>
+                                    </span>
+                                    Auftrag ${a.auftrag_nr}
+                                </h6>
+                                <div class="text-muted small">
+                                    ${a.kennzeichen || '-'} | ${a.marke || '-'}
+                                </div>
+                            </div>
+                            <span class="betrieb-badge betrieb-${a.betrieb}">${a.betrieb_name}</span>
+                        </div>
+                        <hr class="my-2">
+                        <div class="row small">
+                            <div class="col-6">
+                                <i class="bi bi-person-badge text-muted"></i> ${a.serviceberater || '-'}
+                            </div>
+                            <div class="col-6 text-end">
+                                <i class="bi bi-clock text-muted"></i> ${a.uhrzeit || '-'}
+                            </div>
+                        </div>
+                        <div class="row small mt-1">
+                            <div class="col-6">
+                                <i class="bi bi-person text-muted"></i> ${a.kunde || '-'}
+                            </div>
+                            <div class="col-6 text-end">
+                                <strong>${a.vorgabe_aw.toFixed(1)} AW</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+function renderAuftraegeTable(auftraege) {
+    const container = document.getElementById('auftraegeContainer');
+    
+    if (!auftraege.length) {
+        container.innerHTML = '<div class="text-center text-muted py-5">Keine offenen Aufträge</div>';
+        return;
+    }
+    
+    let html = `
+        <div class="table-responsive">
+        <table class="table table-hover table-live mb-0">
+            <thead>
+                <tr>
+                    <th>Auftrag</th>
+                    <th>Betrieb</th>
+                    <th>Kennzeichen</th>
+                    <th>Kunde</th>
+                    <th>Serviceberater</th>
+                    <th>AW</th>
+                    <th>Zeit</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+    
+    auftraege.forEach(a => {
+        html += `
+            <tr onclick="showAuftragDetail(${a.auftrag_nr})" style="cursor: pointer;">
+                <td><strong>${a.auftrag_nr}</strong></td>
+                <td><span class="betrieb-badge betrieb-${a.betrieb}">${a.betrieb_name}</span></td>
+                <td>${a.kennzeichen || '-'}</td>
+                <td>${a.kunde || '-'}</td>
+                <td>${a.serviceberater || '-'}</td>
+                <td><strong>${a.vorgabe_aw.toFixed(1)}</strong></td>
+                <td>${a.uhrzeit || '-'}</td>
+            </tr>
+        `;
+    });
+    
+    html += '</tbody></table></div>';
+    container.innerHTML = html;
+}
+
+function setView(view) {
+    currentView = view;
+    
+    // Button-Zustand updaten
+    document.getElementById('btnCards').classList.toggle('active', view === 'cards');
+    document.getElementById('btnTable').classList.toggle('active', view === 'table');
+    
+    loadAuftraege();
+}
+
+// ============================================================================
+// AUFTRAG DETAIL
+// ============================================================================
+
+function showAuftragDetail(auftragNr) {
+    document.getElementById('modalAuftragNr').textContent = auftragNr;
+    document.getElementById('modalBody').innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>';
+    auftragModal.show();
+    
+    fetch(`/api/werkstatt/live/auftrag/${auftragNr}`)
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success) {
+                document.getElementById('modalBody').innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                return;
+            }
+            renderAuftragDetail(data);
+        })
+        .catch(err => {
+            document.getElementById('modalBody').innerHTML = `<div class="alert alert-danger">Fehler beim Laden: ${err}</div>`;
+        });
+}
+
+function renderAuftragDetail(data) {
+    const a = data.auftrag;
+    const f = a.fahrzeug;
+    
+    let html = `
+        <div class="row">
+            <div class="col-md-6">
+                <h6 class="text-muted">Fahrzeug</h6>
+                <p class="mb-1"><strong>${f.kennzeichen || '-'}</strong></p>
+                <p class="mb-1">${f.marke || ''} ${f.modell || ''}</p>
+                <p class="mb-3 small text-muted">VIN: ${f.vin || '-'} | ${(f.km_stand || 0).toLocaleString()} km</p>
+                
+                <h6 class="text-muted">Kunde</h6>
+                <p>${a.kunde || '-'}</p>
+            </div>
+            <div class="col-md-6">
+                <h6 class="text-muted">Auftrag</h6>
+                <p class="mb-1">
+                    <span class="betrieb-badge betrieb-${a.betrieb}">${a.betrieb_name}</span>
+                    <strong class="ms-2">Serviceberater:</strong> ${a.serviceberater || '-'}
+                </p>
+                <p class="mb-1"><strong>Datum:</strong> ${a.datum ? new Date(a.datum).toLocaleString('de-DE') : '-'}</p>
+                <p class="mb-3"><strong>Summe:</strong> ${a.summen.total_aw.toFixed(1)} AW | ${a.summen.anzahl_positionen} Positionen</p>
+                
+                <h6 class="text-muted">Status</h6>
+                <p>
+                    ${a.status.ist_offen ? '<span class="badge bg-danger">Offen</span>' : ''}
+                    ${a.status.hat_abgeschlossene ? '<span class="badge bg-warning text-dark">Teilweise fertig</span>' : ''}
+                </p>
+            </div>
+        </div>
+        
+        <hr>
+        
+        <h6>Arbeitspositionen</h6>
+        <div class="table-responsive">
+        <table class="table table-sm">
+            <thead>
+                <tr>
+                    <th>Pos</th>
+                    <th>Beschreibung</th>
+                    <th>Mechaniker</th>
+                    <th>AW</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+    
+    data.positionen.forEach(p => {
+        const beschreibung = p.beschreibung || '-';
+        html += `
+            <tr>
+                <td>${p.position}</td>
+                <td>${beschreibung.substring(0, 50)}${beschreibung.length > 50 ? '...' : ''}</td>
+                <td>${p.mechaniker}</td>
+                <td>${p.vorgabe_aw.toFixed(1)}</td>
+                <td>${p.abgerechnet ? '<span class="badge bg-success">Fertig</span>' : '<span class="badge bg-warning text-dark">Offen</span>'}</td>
+            </tr>
+        `;
+    });
+    
+    html += '</tbody></table></div>';
+    
+    if (data.teile && data.teile.length > 0) {
+        html += `
+            <h6 class="mt-4">Teile (${data.teile.length})</h6>
+            <div class="table-responsive">
+            <table class="table table-sm">
+                <thead><tr><th>Teilenummer</th><th>Bezeichnung</th><th>Menge</th></tr></thead>
+                <tbody>
+        `;
+        data.teile.slice(0, 10).forEach(t => {
+            html += `<tr><td>${t.teilenummer || '-'}</td><td>${t.bezeichnung || '-'}</td><td>${t.menge}</td></tr>`;
+        });
+        html += '</tbody></table></div>';
+        if (data.teile.length > 10) {
+            html += `<p class="text-muted small">... und ${data.teile.length - 10} weitere Teile</p>`;
+        }
+    }
+    
+    document.getElementById('modalBody').innerHTML = html;
+}
+
+// CSS für Spin-Animation
+const style = document.createElement('style');
+style.textContent = '@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }';
+document.head.appendChild(style);
+</script>
+{% endblock %}
