@@ -388,6 +388,13 @@ def werkstatt_stempeluhr():
     return render_template('aftersales/werkstatt_stempeluhr.html')
 
 
+@app.route('/werkstatt/tagesbericht')
+@login_required
+def werkstatt_tagesbericht():
+    """Werkstatt Tagesbericht - Kontrolle Stempelungen/Zuweisungen"""
+    return render_template('aftersales/werkstatt_tagesbericht.html')
+
+
 @app.route('/monitor/stempeluhr')
 def werkstatt_stempeluhr_monitor():
     """

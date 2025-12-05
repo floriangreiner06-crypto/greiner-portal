@@ -600,7 +600,7 @@ function loadData() {
         </div>
     `;
     
-    fetch(`/api/werkstatt/leistung?${params}`)
+    fetch(`/api/werkstatt/live/leistung?${params}`)
         .then(response => response.json())
         .then(data => {
             if (data.success) {

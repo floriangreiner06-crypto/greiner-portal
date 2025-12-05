@@ -26,26 +26,42 @@ DB_PATH = '/opt/greiner-portal/data/greiner_controlling.db'
 
 
 def ensure_view_exists(cursor):
-    """Stellt sicher, dass die bereinigte View existiert (ohne Duplikate)"""
+    """Stellt sicher, dass die bereinigte View existiert (ohne Duplikate)
+    
+    WICHTIG: DISTINCT ON Simulation für SQLite!
+    Gleicher Mechaniker + gleiche Start/Endzeit = 1 Stempelung
+    (Locosoft erzeugt Duplikate wenn mehrere Positionen gestempelt werden)
+    """
+    # View immer neu erstellen um sicherzustellen dass sie aktuell ist
+    cursor.execute("DROP VIEW IF EXISTS v_times_clean")
+    logger.info("Erstelle View v_times_clean (dedupliziert)...")
     cursor.execute("""
-        SELECT name FROM sqlite_master 
-        WHERE type='view' AND name='v_times_clean'
-    """)
-    if not cursor.fetchone():
-        logger.info("Erstelle View v_times_clean...")
-        cursor.execute("""
-            CREATE VIEW v_times_clean AS
-            SELECT DISTINCT 
-                employee_number, 
-                order_number, 
-                start_time, 
-                end_time, 
-                duration_minutes
+        CREATE VIEW v_times_clean AS
+        SELECT 
+            employee_number,
+            order_number,
+            start_time,
+            end_time,
+            duration_minutes
+        FROM (
+            SELECT 
+                employee_number,
+                order_number,
+                start_time,
+                end_time,
+                duration_minutes,
+                ROW_NUMBER() OVER (
+                    PARTITION BY employee_number, start_time, end_time
+                    ORDER BY order_number
+                ) as rn
             FROM loco_times
             WHERE end_time IS NOT NULL
             AND duration_minutes > 0
             AND order_number >= 1000
-        """)
+            AND type = 2
+        )
+        WHERE rn = 1
+    """)
 
 
 def sync_werkstatt_zeiten():

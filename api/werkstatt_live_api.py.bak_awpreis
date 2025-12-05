@@ -1135,23 +1135,16 @@ def get_nachkalkulation():
                   AND i.job_amount_net > 0
                   AND i.is_canceled = false
             ),
-            -- Labours: Vorgabe + Mechaniker + AW-Preis aus charge_types
+            -- Labours: Vorgabe + Mechaniker
             labour_summen AS (
                 SELECT 
                     l.order_number,
                     SUM(l.time_units) as vorgabe_aw,
                     SUM(l.net_price_in_order) as vorgabe_eur,
-                    STRING_AGG(DISTINCT eh.name, ', ') as mechaniker_namen,
-                    -- Gewichteter AW-Preis aus charge_types (Verrechnungssatz)
-                    CASE 
-                        WHEN SUM(l.time_units) > 0 THEN
-                            ROUND((SUM(l.time_units * COALESCE(ct.timeunit_rate, 0)) / SUM(l.time_units))::numeric, 2)
-                        ELSE 0
-                    END as aw_preis_db
+                    STRING_AGG(DISTINCT eh.name, ', ') as mechaniker_namen
                 FROM labours l
                 LEFT JOIN employees_history eh ON l.mechanic_no = eh.employee_number 
                     AND eh.is_latest_record = true
-                LEFT JOIN charge_types ct ON l.charge_type = ct.type AND ct.subsidiary = 1
                 WHERE l.order_number IN (SELECT order_number FROM heute_rechnungen)
                   AND l.mechanic_no IS NOT NULL
                 GROUP BY l.order_number
@@ -1205,7 +1198,6 @@ def get_nachkalkulation():
                 ROUND(r.job_amount_net::numeric, 2) as rechnung_eur,
                 ROUND(COALESCE(l.vorgabe_aw, 0)::numeric, 1) as vorgabe_aw,
                 ROUND(COALESCE(l.vorgabe_eur, 0)::numeric, 2) as vorgabe_eur,
-                ROUND(COALESCE(l.aw_preis_db, 0)::numeric, 2) as aw_preis_db,
                 ROUND(COALESCE(s.gestempelt_min, 0)::numeric / 6, 1) as gestempelt_aw,
                 ROUND(COALESCE(s.gestempelt_min, 0)::numeric, 0) as gestempelt_min,
                 l.mechaniker_namen,
@@ -1258,15 +1250,8 @@ def get_nachkalkulation():
             # Differenz berechnen
             diff_aw = gestempelt_aw - vorgabe_aw
             
-            # AW-Preis aus charge_types (DB-Verrechnungssatz) verwenden
-            aw_preis_db = float(r.get('aw_preis_db') or 0)
-            
-            if aw_preis_db > 0:
-                # Verrechnungssatz aus Datenbank
-                aw_preis = aw_preis_db
-                verlust_eur = diff_aw * aw_preis
-            elif vorgabe_aw > 0:
-                # Fallback: AW-Preis aus Rechnung ableiten
+            # AW-Preis aus Rechnung ableiten (wenn Vorgabe vorhanden)
+            if vorgabe_aw > 0:
                 aw_preis = rechnung_eur / vorgabe_aw
                 verlust_eur = diff_aw * aw_preis
             else:
