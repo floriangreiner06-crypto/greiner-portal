@@ -116,6 +116,48 @@ git push
 
 ---
 
+## 🚨 RSYNC & GIT - KRITISCHE WARNUNG!
+
+### ⚠️ TAG 91 LESSON LEARNED:
+
+Ein `rsync` OHNE `--exclude '.git'` hat:
+- Git-Historie komplett zerstört
+- 200+ Dateien als "deleted" markiert
+- Stunden Arbeit für Recovery gekostet
+
+### REGELN FÜR RSYNC:
+
+```bash
+# ❌ NIEMALS SO:
+rsync -av /mnt/greiner-portal-sync/ /opt/greiner-portal/
+
+# ✅ IMMER SO (mit --exclude '.git'):
+rsync -av --exclude '.git' /mnt/greiner-portal-sync/ /opt/greiner-portal/
+
+# ✅ ODER: Nur spezifische Dateien kopieren:
+cp /mnt/greiner-portal-sync/scheduler/job_definitions.py /opt/greiner-portal/scheduler/
+```
+
+### BEI GIT-CHAOS - RECOVERY:
+
+```bash
+# GitHub ist unser Backup! Reset auf sauberen Stand:
+cd /opt/greiner-portal
+git fetch origin
+git reset --hard origin/feature/tag82-onwards
+
+# Danach untracked files prüfen (echte neue Dateien behalten):
+git status
+```
+
+### CLAUDE MUSS BEI RSYNC-BEFEHLEN:
+1. **IMMER** `--exclude '.git'` hinzufügen
+2. **IMMER** den User warnen wenn rsync ohne exclude gegeben wird
+3. **VOR** rsync: `git status` empfehlen
+4. **NACH** rsync: `git status` empfehlen
+
+---
+
 ## ❓ CLAUDE PROJECT KNOWLEDGE
 
 **Status:** Wird NICHT mehr als primäre Quelle genutzt!
