@@ -4,6 +4,177 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}?v={{ STATIC_VERSION }}">
+<style>
+/* ============================================================
+   WERKSTATT KAPAZITÄTS-WIDGET - DRIVE TAG 94
+   ============================================================ */
+
+/* Kapazitäts-Widget Card */
+#kapazitaet-widget {
+    border-radius: 12px;
+    overflow: hidden;
+    border: none;
+}
+
+#kapazitaet-widget .card-header {
+    background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%) !important;
+}
+
+/* Forecast Bars */
+.forecast-bar-container {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    height: 180px;
+    padding: 10px 0;
+    gap: 8px;
+    position: relative;
+}
+
+.forecast-day {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+    min-width: 0;
+}
+
+.forecast-bar-wrapper {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    position: relative;
+}
+
+.forecast-bar {
+    width: 100%;
+    border-radius: 4px 4px 0 0;
+    transition: height 0.5s ease-out;
+    position: relative;
+    min-height: 4px;
+}
+
+.forecast-bar-label {
+    position: absolute;
+    top: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.forecast-day-label {
+    font-size: 11px;
+    font-weight: 500;
+    margin-top: 8px;
+    color: #6c757d;
+}
+
+.forecast-day-date {
+    font-size: 10px;
+    color: #adb5bd;
+}
+
+.forecast-day.today {
+    background: rgba(52, 152, 219, 0.1);
+    border-radius: 8px;
+    padding: 4px;
+    margin: -4px;
+}
+
+.forecast-day.today .forecast-day-label {
+    color: #3498db;
+    font-weight: 700;
+}
+
+/* Status Colors */
+.status-niedrig { background: linear-gradient(180deg, #74b9ff 0%, #0984e3 100%); }
+.status-normal { background: linear-gradient(180deg, #55efc4 0%, #00b894 100%); }
+.status-hoch { background: linear-gradient(180deg, #ffeaa7 0%, #fdcb6e 100%); }
+.status-kritisch { background: linear-gradient(180deg, #fab1a0 0%, #e17055 100%); }
+.status-ueberbucht { background: linear-gradient(180deg, #ff7675 0%, #d63031 100%); }
+
+/* 110% Ziel-Linie */
+.target-line {
+    position: absolute;
+    width: 100%;
+    height: 2px;
+    background: #27ae60;
+    left: 0;
+    z-index: 10;
+}
+
+.target-line-label {
+    position: absolute;
+    right: 5px;
+    top: -18px;
+    font-size: 10px;
+    color: #27ae60;
+    font-weight: 600;
+    background: white;
+    padding: 0 4px;
+}
+
+/* Warnungen */
+.warnung-item {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    border-radius: 20px;
+    margin: 4px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.warnung-info { background: #d1ecf1; color: #0c5460; }
+.warnung-warning { background: #fff3cd; color: #856404; }
+.warnung-danger { background: #f8d7da; color: #721c24; }
+.warnung-critical { background: #721c24; color: #fff; }
+
+/* KPI-Card für Werkstatt (ersetzt Bankensaldo) */
+.kpi-card.werkstatt {
+    border-left: 4px solid #3498db;
+}
+
+.kpi-card.werkstatt .kpi-icon {
+    background: linear-gradient(135deg, #2c3e50, #3498db) !important;
+}
+
+/* Accordion Tweaks */
+#kapaDetails .btn-link:focus {
+    text-decoration: none;
+    box-shadow: none;
+}
+
+#kapaDetails .btn-link .fa-chevron-down,
+#kapaDetails .btn-link .bi-chevron-down {
+    transition: transform 0.2s;
+}
+
+#kapaDetails .btn-link:not(.collapsed) .fa-chevron-down,
+#kapaDetails .btn-link:not(.collapsed) .bi-chevron-down {
+    transform: rotate(180deg);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .forecast-bar-container {
+        height: 140px;
+    }
+    
+    .forecast-bar-label {
+        font-size: 9px;
+    }
+    
+    .forecast-day-label {
+        font-size: 9px;
+    }
+}
+</style>
 {% endblock %}
 
 {% block content %}
@@ -32,16 +203,17 @@
         </div>
     </div>
 
-    <!-- Live-KPIs Übersicht -->
+    <!-- Live-KPIs Übersicht - WERKSTATT statt BANKENSALDO! -->
     <div class="row mb-4">
+        <!-- WERKSTATT-KAPAZITÄT (NEU - ersetzt Bankensaldo) -->
         <div class="col-md-3">
-            <div class="kpi-card">
-                <div class="kpi-icon bg-primary">
-                    <i class="bi bi-bank2"></i>
+            <div class="kpi-card werkstatt" onclick="window.location.href='/werkstatt/uebersicht'" style="cursor: pointer;">
+                <div class="kpi-icon">
+                    <i class="bi bi-wrench-adjustable"></i>
                 </div>
                 <div class="kpi-content">
-                    <h3 id="kpi-saldo">Lädt...</h3>
-                    <p>Gesamtsaldo Bankkonten</p>
+                    <h3 id="kpi-werkstatt">Lädt...</h3>
+                    <p>Werkstatt heute</p>
                 </div>
             </div>
         </div>
@@ -80,6 +252,186 @@
         </div>
     </div>
 
+    <!-- ============================================================
+         🔮 WERKSTATT KAPAZITÄTS-WIDGET - DRIVE TAG 94
+         ============================================================ -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm" id="kapazitaet-widget">
+                <div class="card-header text-white d-flex justify-content-between align-items-center py-3">
+                    <div>
+                        <h5 class="mb-0">
+                            <i class="bi bi-speedometer2"></i> 
+                            Werkstatt-Kapazität
+                            <small class="badge bg-light text-dark ms-2" id="kapa-update-time">Lädt...</small>
+                        </h5>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <select id="kapa-betrieb-filter" class="form-select form-select-sm me-2" style="width: auto;">
+                            <option value="">Alle Betriebe</option>
+                            <option value="1">Deggendorf</option>
+                            <option value="3">Landau</option>
+                        </select>
+                        <button class="btn btn-light btn-sm" onclick="loadKapazitaetForecast()" title="Aktualisieren">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="card-body p-0">
+                    <!-- WARNUNGEN - Prominent oben -->
+                    <div id="kapa-warnungen" class="p-3 bg-light border-bottom" style="display: none;">
+                        <!-- Wird per JS gefüllt -->
+                    </div>
+                    
+                    <!-- HAUPT-KPIs: HEUTE LIVE vs FORECAST -->
+                    <div class="row g-0 text-center border-bottom">
+                        <!-- HEUTE LIVE - Echte Arbeit -->
+                        <div class="col-md-3 p-3 border-end" style="background: linear-gradient(135deg, rgba(46,204,113,0.1), rgba(39,174,96,0.1));">
+                            <div class="text-muted small">
+                                <span class="badge bg-success me-1" style="font-size: 8px;">LIVE</span> HEUTE
+                            </div>
+                            <h2 id="kapa-heute-live-prozent" class="mb-0 fw-bold">-</h2>
+                            <small id="kapa-heute-live-detail" class="text-muted">- AW gestempelt</small>
+                            <div id="kapa-heute-umsatz" class="text-success small fw-bold mt-1">-</div>
+                        </div>
+                        <!-- FORECAST WOCHE -->
+                        <div class="col-md-3 p-3 border-end">
+                            <div class="text-muted small">
+                                <span class="badge bg-secondary me-1" style="font-size: 8px;">PLAN</span> WOCHE
+                            </div>
+                            <h2 id="kapa-woche-prozent" class="mb-0 fw-bold">-</h2>
+                            <small id="kapa-woche-aw" class="text-muted">- von - AW</small>
+                        </div>
+                        <!-- UNVERPLANT -->
+                        <div class="col-md-3 p-3 border-end">
+                            <div class="text-muted small">UNVERPLANT</div>
+                            <h2 id="kapa-unverplant" class="mb-0 fw-bold text-warning">-</h2>
+                            <small class="text-muted">Aufträge ohne Termin</small>
+                        </div>
+                        <!-- TEILE FEHLEN -->
+                        <div class="col-md-3 p-3">
+                            <div class="text-muted small">TEILE FEHLEN</div>
+                            <h2 id="kapa-teile" class="mb-0 fw-bold text-danger">-</h2>
+                            <small class="text-muted">warten auf Teile</small>
+                        </div>
+                    </div>
+                    
+                    <!-- FORECAST-BALKEN -->
+                    <div class="p-3">
+                        <h6 class="text-muted mb-3">
+                            <i class="bi bi-calendar3"></i> 10-Tage Vorschau
+                            <small class="text-success ms-2">Ziel: 110%</small>
+                        </h6>
+                        <div id="kapa-forecast-bars">
+                            <!-- Wird per JS gefüllt -->
+                            <div class="text-center text-muted py-4">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Lädt...</span>
+                                </div>
+                                <p class="mt-2">Lade Kapazitätsdaten...</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- DETAIL-ACCORDION -->
+                    <div class="accordion" id="kapaDetails">
+                        <!-- Unverplante Aufträge -->
+                        <div class="accordion-item border-0 border-top">
+                            <h2 class="accordion-header" id="headingUnverplant">
+                                <button class="accordion-button collapsed py-2" type="button" 
+                                        data-bs-toggle="collapse" data-bs-target="#collapseUnverplant">
+                                    <i class="bi bi-clipboard-data me-2"></i>
+                                    <span id="detail-unverplant-title">Unverplante Aufträge</span>
+                                </button>
+                            </h2>
+                            <div id="collapseUnverplant" class="accordion-collapse collapse" data-bs-parent="#kapaDetails">
+                                <div class="accordion-body p-0">
+                                    <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                                        <table class="table table-sm table-hover mb-0">
+                                            <thead class="table-light sticky-top">
+                                                <tr>
+                                                    <th>Auftrag</th>
+                                                    <th>Kennzeichen</th>
+                                                    <th>AW</th>
+                                                    <th>Alter</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="table-unverplant">
+                                                <tr><td colspan="4" class="text-center text-muted">Keine Daten</td></tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Überfällige Aufträge -->
+                        <div class="accordion-item border-0 border-top">
+                            <h2 class="accordion-header" id="headingUeberfaellig">
+                                <button class="accordion-button collapsed py-2" type="button" 
+                                        data-bs-toggle="collapse" data-bs-target="#collapseUeberfaellig">
+                                    <i class="bi bi-exclamation-triangle text-danger me-2"></i>
+                                    <span id="detail-ueberfaellig-title">Überfällige Aufträge</span>
+                                </button>
+                            </h2>
+                            <div id="collapseUeberfaellig" class="accordion-collapse collapse" data-bs-parent="#kapaDetails">
+                                <div class="accordion-body p-0">
+                                    <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                                        <table class="table table-sm table-hover mb-0">
+                                            <thead class="table-light sticky-top">
+                                                <tr>
+                                                    <th>Auftrag</th>
+                                                    <th>Kennzeichen</th>
+                                                    <th>Termin</th>
+                                                    <th>Überfällig</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="table-ueberfaellig">
+                                                <tr><td colspan="4" class="text-center text-muted">Keine Daten</td></tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Warten auf Teile -->
+                        <div class="accordion-item border-0 border-top">
+                            <h2 class="accordion-header" id="headingTeile">
+                                <button class="accordion-button collapsed py-2" type="button" 
+                                        data-bs-toggle="collapse" data-bs-target="#collapseTeile">
+                                    <i class="bi bi-gear text-warning me-2"></i>
+                                    <span id="detail-teile-title">Warten auf Teile</span>
+                                </button>
+                            </h2>
+                            <div id="collapseTeile" class="accordion-collapse collapse" data-bs-parent="#kapaDetails">
+                                <div class="accordion-body p-0">
+                                    <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                                        <table class="table table-sm table-hover mb-0">
+                                            <thead class="table-light sticky-top">
+                                                <tr>
+                                                    <th>Auftrag</th>
+                                                    <th>Kennzeichen</th>
+                                                    <th>Teile</th>
+                                                    <th>Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="table-teile">
+                                                <tr><td colspan="4" class="text-center text-muted">Keine Daten</td></tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Ende Kapazitäts-Widget -->
+
     <!-- Modul-Kacheln -->
     <div class="row mb-4">
         <div class="col-12">
@@ -115,7 +467,7 @@
 
         <!-- Urlaubsplaner -->
         <div class="col-lg-4 col-md-6">
-            <div class="module-card" onclick="alert('Urlaubsplaner-Frontend folgt in Kürze! API verfügbar unter /api/vacation/'); return false;">
+            <div class="module-card" onclick="window.location.href='/urlaubsplaner'">
                 <div class="module-icon bg-warning">
                     <i class="bi bi-calendar-check"></i>
                 </div>
@@ -135,7 +487,7 @@
             </div>
         </div>
 
-        <!-- Verkauf (geplant) -->
+        <!-- Verkauf -->
         <div class="col-lg-4 col-md-6">
             <div class="module-card" onclick="window.location.href='/verkauf/auftragseingang'">
                 <div class="module-icon bg-success">
@@ -145,9 +497,9 @@
                     <h3>Verkauf & Aufträge</h3>
                     <p>Auftragseingang, Pipeline und Verkaufsstatistiken</p>
                     <ul class="feature-list">
-                        <li><i class="bi bi-clock"></i> Auftragseingang</li>
-                        <li><i class="bi bi-clock"></i> Pipeline</li>
-                        <li><i class="bi bi-clock"></i> Verkäufer-Ranking</li>
+                        <li><i class="bi bi-check-circle"></i> Auftragseingang</li>
+                        <li><i class="bi bi-check-circle"></i> Pipeline</li>
+                        <li><i class="bi bi-check-circle"></i> Verkäufer-Ranking</li>
                     </ul>
                 </div>
                 <div class="module-footer">
@@ -157,51 +509,51 @@
             </div>
         </div>
 
-        <!-- Aftersales (geplant) -->
+        <!-- Werkstatt / Aftersales - JETZT AKTIV! -->
         <div class="col-lg-4 col-md-6">
-            <div class="module-card module-disabled">
-                <div class="module-icon bg-secondary">
-                    <i class="bi bi-wrench"></i>
+            <div class="module-card" onclick="window.location.href='/werkstatt/uebersicht'">
+                <div class="module-icon" style="background: linear-gradient(135deg, #2c3e50, #3498db);">
+                    <i class="bi bi-wrench-adjustable"></i>
                 </div>
                 <div class="module-content">
-                    <h3>Aftersales</h3>
-                    <p>Werkstatt, Service und Kundendienst-Auswertungen</p>
+                    <h3>Werkstatt</h3>
+                    <p>Kapazitätsplanung, Aufträge und Service-Controlling</p>
                     <ul class="feature-list">
-                        <li><i class="bi bi-clock"></i> Werkstatt-Auslastung</li>
-                        <li><i class="bi bi-clock"></i> Service-Termine</li>
-                        <li><i class="bi bi-clock"></i> Ersatzteile</li>
+                        <li><i class="bi bi-check-circle"></i> Kapazitäts-Forecast</li>
+                        <li><i class="bi bi-check-circle"></i> Offene Aufträge</li>
+                        <li><i class="bi bi-check-circle"></i> Teile-Status</li>
                     </ul>
                 </div>
                 <div class="module-footer">
-                    <span class="badge bg-secondary">In Planung</span>
-                    <span class="live-count">Demnächst</span>
+                    <span class="badge bg-success">Aktiv</span>
+                    <span class="live-count" id="werkstatt-count">Live-Daten</span>
                 </div>
             </div>
         </div>
 
-        <!-- Controlling (geplant) -->
+        <!-- Controlling -->
         <div class="col-lg-4 col-md-6">
-            <div class="module-card module-disabled">
-                <div class="module-icon bg-secondary">
+            <div class="module-card" onclick="window.location.href='/controlling'">
+                <div class="module-icon bg-info">
                     <i class="bi bi-graph-up-arrow"></i>
                 </div>
                 <div class="module-content">
                     <h3>Controlling</h3>
                     <p>Kennzahlen, Reports und Unternehmenssteuerung</p>
                     <ul class="feature-list">
-                        <li><i class="bi bi-clock"></i> KPI-Dashboards</li>
-                        <li><i class="bi bi-clock"></i> Monatsberichte</li>
+                        <li><i class="bi bi-check-circle"></i> Einkaufsfinanzierung</li>
+                        <li><i class="bi bi-check-circle"></i> Zinsen-Tracking</li>
                         <li><i class="bi bi-clock"></i> Forecasts</li>
                     </ul>
                 </div>
                 <div class="module-footer">
-                    <span class="badge bg-secondary">In Planung</span>
-                    <span class="live-count">Demnächst</span>
+                    <span class="badge bg-success">Aktiv</span>
+                    <span class="live-count">KPIs</span>
                 </div>
             </div>
         </div>
 
-        <!-- HR & Personal (geplant) -->
+        <!-- HR & Personal -->
         <div class="col-lg-4 col-md-6">
             <div class="module-card module-disabled">
                 <div class="module-icon bg-secondary">
@@ -236,9 +588,15 @@
 
     <div class="row g-3">
         <div class="col-lg-3 col-md-6">
-            <a href="/bankenspiegel/transaktionen" class="quick-action-card">
-                <i class="bi bi-receipt"></i>
-                <span>Letzte Transaktionen</span>
+            <a href="/werkstatt/uebersicht" class="quick-action-card">
+                <i class="bi bi-speedometer2"></i>
+                <span>Werkstatt-Kapazität</span>
+            </a>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <a href="/verkauf/auftragseingang" class="quick-action-card">
+                <i class="bi bi-cart-plus"></i>
+                <span>Auftragseingang</span>
             </a>
         </div>
         <div class="col-lg-3 col-md-6">
@@ -248,15 +606,9 @@
             </a>
         </div>
         <div class="col-lg-3 col-md-6">
-            <a href="/vacation/dashboard" class="quick-action-card">
-                <i class="bi bi-calendar-plus"></i>
-                <span>Urlaub beantragen</span>
-            </a>
-        </div>
-        <div class="col-lg-3 col-md-6">
-            <a href="#" class="quick-action-card" onclick="alert('Export-Funktion in Entwicklung'); return false;">
-                <i class="bi bi-download"></i>
-                <span>Reports exportieren</span>
+            <a href="/controlling/einkaufsfinanzierung" class="quick-action-card">
+                <i class="bi bi-percent"></i>
+                <span>Zinsen-Übersicht</span>
             </a>
         </div>
     </div>
@@ -288,4 +640,387 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/dashboard.js') }}?v={{ STATIC_VERSION }}"></script>
+<script>
+// ============================================================
+// KAPAZITÄTS-WIDGET - DRIVE TAG 94
+// 110% ist das Ziel! 💪
+// ============================================================
+
+const KAPA_CONFIG = {
+    ZIEL_AUSLASTUNG: 110,
+    STATUS_GRENZEN: {
+        niedrig: 50,
+        normal: 90,
+        hoch: 110,
+        kritisch: 130
+    },
+    REFRESH_INTERVAL: 5 * 60 * 1000,
+    API_URL: '/api/werkstatt/live/forecast'
+};
+
+// Forecast laden
+function loadKapazitaetForecast() {
+    const betrieb = document.getElementById('kapa-betrieb-filter')?.value || '';
+    let url = KAPA_CONFIG.API_URL + '?tage=10';
+    if (betrieb) {
+        url += '&subsidiary=' + betrieb;
+    }
+    
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            // API gibt "success": true zurück (nicht "status")
+            if (data.success === true) {
+                renderKapazitaetWidget(data);
+                document.getElementById('kapa-update-time').textContent = 
+                    'Stand: ' + new Date().toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'});
+                
+                // KPI oben aktualisieren
+                updateWerkstattKPI(data);
+            } else {
+                console.error('Kapazität-Fehler:', data.error);
+                showKapaError(data.error || 'API-Fehler');
+            }
+        })
+        .catch(error => {
+            console.error('API-Fehler:', error);
+            showKapaError('Verbindungsfehler');
+        });
+}
+
+// Werkstatt-KPI oben aktualisieren (ersetzt Bankensaldo)
+function updateWerkstattKPI(data) {
+    const forecast = data.forecast || [];
+    const heute = forecast.find(f => f.ist_heute) || forecast[0] || {};
+    const prozent = Math.round(heute.auslastung_prozent || 0);
+    
+    const kpiEl = document.getElementById('kpi-werkstatt');
+    if (kpiEl) {
+        kpiEl.textContent = prozent + '% Auslastung';
+        kpiEl.className = getStatusTextClass(prozent);
+    }
+}
+
+// Widget rendern
+function renderKapazitaetWidget(data) {
+    renderWarnungen(data.warnungen || []);
+    renderKPIs(data);
+    renderForecastBars(data.forecast || []);
+    renderDetailTables(data);
+}
+
+// Warnungen anzeigen
+function renderWarnungen(warnungen) {
+    const container = document.getElementById('kapa-warnungen');
+    if (!container) return;
+    
+    if (!warnungen || warnungen.length === 0) {
+        container.style.display = 'none';
+        return;
+    }
+    
+    container.style.display = 'block';
+    
+    const severityClass = {
+        'info': 'warnung-info',
+        'warning': 'warnung-warning',
+        'danger': 'warnung-danger',
+        'critical': 'warnung-critical'
+    };
+    
+    container.innerHTML = warnungen.map(w => `
+        <span class="warnung-item ${severityClass[w.severity] || 'warnung-info'}">
+            ${w.icon || '⚠️'} ${w.text}
+        </span>
+    `).join('');
+}
+
+// KPIs rendern
+function renderKPIs(data) {
+    const forecast = data.forecast || [];
+    const heute = forecast.find(f => f.ist_heute) || forecast[0] || {};
+    const woche = data.woche || {};
+    const unverplant = data.unverplant || {};
+    const teile = data.teile || {};
+    
+    // Heute
+    const heuteProzent = heute.auslastung_prozent || 0;
+    const heuteEl = document.getElementById('kapa-heute-prozent');
+    if (heuteEl) {
+        heuteEl.textContent = Math.round(heuteProzent) + '%';
+        heuteEl.className = 'mb-0 fw-bold ' + getStatusTextClass(heuteProzent);
+    }
+    
+    const heuteAwEl = document.getElementById('kapa-heute-aw');
+    if (heuteAwEl) {
+        heuteAwEl.textContent = (heute.geplant_aw || 0) + ' von ' + (heute.kapazitaet_aw || 0) + ' AW';
+    }
+    
+    // Woche
+    const wocheProzent = woche.auslastung_prozent || 0;
+    const wocheEl = document.getElementById('kapa-woche-prozent');
+    if (wocheEl) {
+        wocheEl.textContent = Math.round(wocheProzent) + '%';
+        wocheEl.className = 'mb-0 fw-bold ' + getStatusTextClass(wocheProzent);
+    }
+    
+    const wocheAwEl = document.getElementById('kapa-woche-aw');
+    if (wocheAwEl) {
+        wocheAwEl.textContent = (woche.geplant_aw || 0) + ' von ' + (woche.kapazitaet_aw || 0) + ' AW';
+    }
+    
+    // Unverplant
+    const unverplantEl = document.getElementById('kapa-unverplant');
+    if (unverplantEl) {
+        unverplantEl.textContent = unverplant.anzahl || 0;
+    }
+    
+    // Teile
+    const teileEl = document.getElementById('kapa-teile');
+    if (teileEl) {
+        teileEl.textContent = teile.auftraege_warten_auf_teile || 0;
+    }
+}
+
+// Forecast-Bars rendern
+function renderForecastBars(forecast) {
+    const container = document.getElementById('kapa-forecast-bars');
+    if (!container) return;
+    
+    if (!forecast || forecast.length === 0) {
+        container.innerHTML = '<div class="text-center text-muted py-4">Keine Daten verfügbar</div>';
+        return;
+    }
+    
+    const maxProzent = Math.max(130, ...forecast.map(f => f.auslastung_prozent || 0));
+    const zielPosition = (KAPA_CONFIG.ZIEL_AUSLASTUNG / maxProzent) * 100;
+    
+    let html = '<div class="forecast-bar-container">';
+    
+    // 110% Ziel-Linie
+    html += `<div class="target-line" style="bottom: ${zielPosition}%;">
+        <span class="target-line-label">🎯 110%</span>
+    </div>`;
+    
+    forecast.forEach((tag) => {
+        const prozent = tag.auslastung_prozent || 0;
+        const hoehe = (prozent / maxProzent) * 100;
+        const status = getStatusClass(prozent);
+        const isToday = tag.ist_heute;
+        
+        html += `
+            <div class="forecast-day ${isToday ? 'today' : ''}">
+                <div class="forecast-bar-wrapper">
+                    <div class="forecast-bar ${status}" 
+                         style="height: ${Math.max(hoehe, 3)}%;"
+                         title="${tag.datum_formatiert || ''}: ${Math.round(prozent)}% (${tag.geplant_aw || 0} AW)">
+                        <span class="forecast-bar-label">${Math.round(prozent)}%</span>
+                    </div>
+                </div>
+                <div class="forecast-day-label">${isToday ? '→ Heute' : (tag.wochentag_kurz || getDayName(tag.datum))}</div>
+                <div class="forecast-day-date">${formatDateShort(tag.datum)}</div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+// Detail-Tabellen rendern
+function renderDetailTables(data) {
+    const unverplant = data.unverplant || {};
+    const titleUnv = document.getElementById('detail-unverplant-title');
+    if (titleUnv) titleUnv.textContent = `Unverplante Aufträge (${unverplant.anzahl || 0})`;
+    renderAuftraegeTable('table-unverplant', unverplant.auftraege || [], 'unverplant');
+    
+    const ueberfaellig = data.ueberfaellig || {};
+    const titleUeb = document.getElementById('detail-ueberfaellig-title');
+    if (titleUeb) titleUeb.textContent = `Überfällige Aufträge (${ueberfaellig.anzahl || 0})`;
+    renderAuftraegeTable('table-ueberfaellig', ueberfaellig.auftraege || [], 'ueberfaellig');
+    
+    const teile = data.teile || {};
+    const titleTeile = document.getElementById('detail-teile-title');
+    if (titleTeile) titleTeile.textContent = `Warten auf Teile (${teile.auftraege_warten_auf_teile || 0})`;
+    renderAuftraegeTable('table-teile', teile.auftraege || [], 'teile');
+}
+
+function renderAuftraegeTable(tableId, auftraege, type) {
+    const tbody = document.getElementById(tableId);
+    if (!tbody) return;
+    
+    if (!auftraege || auftraege.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Keine Daten</td></tr>';
+        return;
+    }
+    
+    const slice = auftraege.slice(0, 50);
+    
+    tbody.innerHTML = slice.map(a => {
+        if (type === 'unverplant') {
+            return `<tr>
+                <td><strong>${a.auftragsnummer || '-'}</strong></td>
+                <td>${a.kennzeichen || '-'}</td>
+                <td>${a.vorgabe_aw || 0} AW</td>
+                <td><span class="badge bg-secondary">${a.alter_tage || 0} Tage</span></td>
+            </tr>`;
+        } else if (type === 'ueberfaellig') {
+            return `<tr>
+                <td><strong>${a.auftragsnummer || '-'}</strong></td>
+                <td>${a.kennzeichen || '-'}</td>
+                <td>${formatDateShort(a.termin)}</td>
+                <td><span class="badge bg-danger">${a.ueberfaellig_tage || 0} Tage</span></td>
+            </tr>`;
+        } else if (type === 'teile') {
+            return `<tr>
+                <td><strong>${a.auftragsnummer || '-'}</strong></td>
+                <td>${a.kennzeichen || '-'}</td>
+                <td>${a.teile_auf_lager || 0}/${a.teile_gesamt || 0}</td>
+                <td><span class="badge bg-warning text-dark">${a.teile_fehlen || 0} fehlt</span></td>
+            </tr>`;
+        }
+    }).join('');
+    
+    if (auftraege.length > 50) {
+        tbody.innerHTML += `<tr class="table-light">
+            <td colspan="4" class="text-center"><em>... und ${auftraege.length - 50} weitere</em></td>
+        </tr>`;
+    }
+}
+
+// Hilfsfunktionen
+function getStatusClass(prozent) {
+    if (prozent > KAPA_CONFIG.STATUS_GRENZEN.kritisch) return 'status-ueberbucht';
+    if (prozent > KAPA_CONFIG.STATUS_GRENZEN.hoch) return 'status-kritisch';
+    if (prozent > KAPA_CONFIG.STATUS_GRENZEN.normal) return 'status-hoch';
+    if (prozent > KAPA_CONFIG.STATUS_GRENZEN.niedrig) return 'status-normal';
+    return 'status-niedrig';
+}
+
+function getStatusTextClass(prozent) {
+    if (prozent > KAPA_CONFIG.STATUS_GRENZEN.kritisch) return 'text-danger';
+    if (prozent > KAPA_CONFIG.STATUS_GRENZEN.hoch) return 'text-warning';
+    if (prozent > KAPA_CONFIG.STATUS_GRENZEN.normal) return 'text-success';
+    return 'text-info';
+}
+
+function formatDateShort(dateStr) {
+    if (!dateStr) return '-';
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit'});
+}
+
+function getDayName(dateStr) {
+    if (!dateStr) return '-';
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('de-DE', {weekday: 'short'});
+}
+
+function showKapaError(msg) {
+    const container = document.getElementById('kapa-forecast-bars');
+    if (container) {
+        container.innerHTML = `
+            <div class="alert alert-danger m-3">
+                <i class="bi bi-exclamation-circle"></i> Fehler: ${msg}
+            </div>
+        `;
+    }
+}
+
+// ============================================================
+// HEUTE LIVE - Echte Zahlen (Stempelungen + Umsatz)
+// ============================================================
+
+function loadHeuteLive() {
+    const betrieb = document.getElementById('kapa-betrieb-filter')?.value || '';
+    let url = '/api/werkstatt/live/heute';
+    if (betrieb) {
+        url += '?subsidiary=' + betrieb;
+    }
+    
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success === true) {
+                renderHeuteLive(data);
+            } else {
+                console.error('HEUTE LIVE Fehler:', data.error);
+            }
+        })
+        .catch(error => {
+            console.error('HEUTE LIVE API-Fehler:', error);
+        });
+}
+
+function renderHeuteLive(data) {
+    const produktivitaet = data.produktivitaet || {};
+    const anwesenheit = data.anwesenheit || {};
+    const produktiv = data.produktiv || {};
+    const verrechnet = data.verrechnet || {};
+    const kapazitaet = data.kapazitaet || {};
+    
+    // Prozent (Anwesenheit vs Soll)
+    const prozent = Math.round(produktivitaet.prozent || 0);
+    const prozentEl = document.getElementById('kapa-heute-live-prozent');
+    if (prozentEl) {
+        prozentEl.textContent = prozent + '%';
+        prozentEl.className = 'mb-0 fw-bold ' + getStatusTextClass(prozent);
+    }
+    
+    // Detail: Anwesenheit
+    const detailEl = document.getElementById('kapa-heute-live-detail');
+    if (detailEl) {
+        const anwesendStd = Math.round(anwesenheit.stunden || 0);
+        const sollStd = Math.round(kapazitaet.stunden_soll || 0);
+        detailEl.textContent = anwesendStd + 'h von ' + sollStd + 'h Soll';
+    }
+    
+    // Umsatz
+    const umsatzEl = document.getElementById('kapa-heute-umsatz');
+    if (umsatzEl) {
+        const umsatz = verrechnet.gesamt_netto || 0;
+        umsatzEl.textContent = formatCurrency(umsatz) + ' Umsatz';
+    }
+    
+    // KPI oben links aktualisieren
+    const kpiEl = document.getElementById('kpi-werkstatt');
+    if (kpiEl) {
+        kpiEl.textContent = prozent + '% ' + (produktivitaet.status_icon || '');
+        kpiEl.className = getStatusTextClass(prozent);
+    }
+}
+
+function formatCurrency(value) {
+    return new Intl.NumberFormat('de-DE', {
+        style: 'currency',
+        currency: 'EUR',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(value);
+}
+
+// Event-Listener
+document.addEventListener('DOMContentLoaded', function() {
+    // HEUTE LIVE laden (echte Stempelungen)
+    loadHeuteLive();
+    
+    // FORECAST laden (geplante Termine)
+    loadKapazitaetForecast();
+    
+    // Filter-Event
+    const filterEl = document.getElementById('kapa-betrieb-filter');
+    if (filterEl) {
+        filterEl.addEventListener('change', function() {
+            loadHeuteLive();
+            loadKapazitaetForecast();
+        });
+    }
+    
+    // Auto-Refresh alle 5 Minuten
+    setInterval(function() {
+        loadHeuteLive();
+        loadKapazitaetForecast();
+    }, KAPA_CONFIG.REFRESH_INTERVAL);
+});
+</script>
 {% endblock %}
