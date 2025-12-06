@@ -52,6 +52,8 @@ def get_gudat_client() -> GudatClient:
             username = gudat_config.get('username')
             password = gudat_config.get('password')
             
+            logger.info(f"Gudat-Config geladen: URL={gudat_config.get('portal_url')}, User={username}")
+            
             if not username or not password:
                 raise ValueError("Gudat Credentials nicht in config/credentials.json gefunden")
             

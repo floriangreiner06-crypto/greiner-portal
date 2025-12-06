@@ -83,6 +83,10 @@ PAUSE_START = time(12, 0)   # 12:00 Uhr
 PAUSE_ENDE = time(13, 0)    # 13:00 Uhr
 PAUSE_DAUER_MIN = 60        # 60 Minuten
 
+# Arbeitszeiten - Außerhalb = keine Leerlauf-Warnung
+ARBEITSZEIT_START = time(6, 30)   # 06:30 Uhr
+ARBEITSZEIT_ENDE = time(18, 0)    # 18:00 Uhr
+
 
 def berechne_netto_laufzeit(start_time):
     """
@@ -784,6 +788,15 @@ def get_stempeluhr_live():
         
         # Azubis und nicht-produktive MA aus Leerlauf entfernen
         leerlauf = [r for r in leerlauf if r['employee_number'] not in LEERLAUF_AUSNAHMEN]
+        
+        # TAG 100: Außerhalb der Arbeitszeit = kein Leerlauf!
+        # Um 23:00 Uhr ist niemand "im Leerlauf" - sie sind einfach nicht da
+        jetzt_zeit = datetime.now().time()
+        ist_arbeitszeit = ARBEITSZEIT_START <= jetzt_zeit <= ARBEITSZEIT_ENDE
+        
+        if not ist_arbeitszeit:
+            # Außerhalb Arbeitszeit: Alle "Leerlauf"-Mechaniker werden ignoriert
+            leerlauf = []
         
         # Abwesende Mechaniker heute
         abwesend_query = """
@@ -2649,6 +2662,468 @@ def get_heute_live():
         
     except Exception as e:
         logger.exception("Fehler bei HEUTE LIVE")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+# ============================================================================
+# AUFTRÄGE ENRICHED - Kombiniert Locosoft + ML + Gudat (TAG 98)
+# ============================================================================
+
+@werkstatt_live_bp.route('/auftraege-enriched', methods=['GET'])
+def get_auftraege_enriched():
+    """
+    MEGA-Endpoint: Offene Aufträge mit ML-Vorhersage und Gudat-Terminen
+    
+    Kombiniert:
+    - Locosoft: Aufträge, Vorgabe-AW, Stempelungen, Mechaniker
+    - ML: Vorhersage der tatsächlichen Dauer
+    - Gudat: Geplante Termine (falls vorhanden)
+    
+    Query-Parameter:
+    - subsidiary: Filter nach Betrieb (1, 2, 3)
+    - tage: Wie viele Tage zurück (default: 7)
+    - nur_offen: true/false (default: true)
+    - mit_ml: ML-Vorhersage einbeziehen (default: true)
+    - mit_gudat: Gudat-Termine matchen (default: true)
+    
+    Response pro Auftrag:
+    {
+        "auftrag_nr": 219379,
+        "kennzeichen": "DEG-X 212",
+        "kunde": "Stadler, Werner",
+        "vorgabe_aw": 3.5,
+        "gestempelt_aw": 2.1,
+        "mechaniker_nr": 5008,
+        "mechaniker_name": "Patrick Ebner",
+        "ml_vorhersage_aw": 4.2,
+        "ml_potenzial_aw": 0.7,
+        "ml_status": "unterbewertet",
+        "gudat_termin": "2025-12-09T07:00:00",
+        "gudat_team": "Allgemeine Reparatur"
+    }
+    """
+    try:
+        subsidiary = request.args.get('subsidiary', type=int)
+        tage = request.args.get('tage', 7, type=int)
+        nur_offen = request.args.get('nur_offen', 'true').lower() == 'true'
+        mit_ml = request.args.get('mit_ml', 'true').lower() == 'true'
+        mit_gudat = request.args.get('mit_gudat', 'true').lower() == 'true'
+        
+        conn = get_locosoft_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # =====================================================================
+        # 1. OFFENE AUFTRÄGE AUS LOCOSOFT
+        # =====================================================================
+        query = """
+            WITH aktive_stempelungen AS (
+                SELECT DISTINCT ON (order_number)
+                    order_number,
+                    employee_number as aktiv_mechaniker_nr,
+                    start_time as stempel_start,
+                    EXTRACT(EPOCH FROM (NOW() - start_time))/60 as laufzeit_min
+                FROM times
+                WHERE end_time IS NULL
+                  AND type = 2
+                  AND DATE(start_time) = CURRENT_DATE
+                ORDER BY order_number, start_time DESC
+            ),
+            stempel_summen AS (
+                SELECT 
+                    order_number,
+                    SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, NOW()) - start_time))/60) as gestempelt_min,
+                    COUNT(DISTINCT employee_number) as anzahl_mechaniker
+                FROM times
+                WHERE type = 2
+                  AND start_time >= CURRENT_DATE - INTERVAL '%s days'
+                GROUP BY order_number
+            )
+            SELECT 
+                o.number as auftrag_nr,
+                o.subsidiary as betrieb,
+                o.order_date as auftrag_datum,
+                o.order_taking_employee_no as serviceberater_nr,
+                sb.name as serviceberater_name,
+                o.vehicle_number,
+                v.license_plate as kennzeichen,
+                m.description as marke,
+                mo.description as modell,
+                v.mileage_km as km_stand,
+                COALESCE(
+                    EXTRACT(YEAR FROM AGE(NOW(), v.first_registration_date)),
+                    EXTRACT(YEAR FROM NOW()) - v.production_year,
+                    3
+                ) as fahrzeug_alter,
+                COALESCE(cs.family_name || ', ' || cs.first_name, cs.family_name) as kunde,
+                o.urgency as dringlichkeit,
+                o.has_open_positions as ist_offen,
+                o.has_closed_positions as hat_abgeschlossene,
+                o.estimated_inbound_time as geplant_eingang,
+                o.estimated_outbound_time as geplant_fertig,
+                COALESCE(l.total_aw, 0) as vorgabe_aw,
+                l.mechaniker_nr,
+                mech.name as mechaniker_name,
+                ast.aktiv_mechaniker_nr,
+                ast.stempel_start,
+                ast.laufzeit_min as aktiv_laufzeit_min,
+                COALESCE(ss.gestempelt_min, 0) / 6.0 as gestempelt_aw,
+                COALESCE(ss.gestempelt_min, 0) as gestempelt_min
+            FROM orders o
+            LEFT JOIN employees_history sb ON o.order_taking_employee_no = sb.employee_number 
+                AND sb.is_latest_record = true
+            LEFT JOIN vehicles v ON o.vehicle_number = v.internal_number
+            LEFT JOIN makes m ON v.make_number = m.make_number
+            LEFT JOIN models mo ON v.make_number = mo.make_number AND v.model_code = mo.model_code
+            LEFT JOIN customers_suppliers cs ON o.order_customer = cs.customer_number
+            LEFT JOIN LATERAL (
+                SELECT 
+                    SUM(time_units) as total_aw,
+                    MAX(mechanic_no) as mechaniker_nr
+                FROM labours 
+                WHERE order_number = o.number AND time_units > 0
+            ) l ON true
+            LEFT JOIN employees_history mech ON l.mechaniker_nr = mech.employee_number 
+                AND mech.is_latest_record = true
+            LEFT JOIN aktive_stempelungen ast ON o.number = ast.order_number
+            LEFT JOIN stempel_summen ss ON o.number = ss.order_number
+            WHERE o.order_date >= CURRENT_DATE - INTERVAL '%s days'
+        """
+        
+        params = [tage, tage]
+        
+        if nur_offen:
+            query += " AND o.has_open_positions = true"
+        
+        if subsidiary:
+            query += " AND o.subsidiary = %s"
+            params.append(subsidiary)
+        
+        query += " ORDER BY o.order_date DESC LIMIT 200"
+        
+        cur.execute(query, params)
+        auftraege_raw = cur.fetchall()
+        
+        cur.close()
+        conn.close()
+        
+        # =====================================================================
+        # 2. ML-VORHERSAGEN HINZUFÜGEN
+        # =====================================================================
+        ml_predictions = {}
+        mechaniker_effizienz = {}
+        
+        if mit_ml:
+            try:
+                import pickle
+                import pandas as pd
+                import numpy as np
+                
+                MODEL_DIR = "/opt/greiner-portal/data/ml/models"
+                
+                # Modell laden - V2 mit bereinigten Trainingsdaten (TAG 98)
+                model_path = f"{MODEL_DIR}/auftragsdauer_model_v2.pkl"
+                encoder_path = f"{MODEL_DIR}/label_encoders_v2.pkl"
+                
+                # Fallback auf V1 falls V2 nicht existiert
+                if not os.path.exists(model_path):
+                    model_path = f"{MODEL_DIR}/auftragsdauer_model.pkl"
+                    encoder_path = f"{MODEL_DIR}/label_encoders.pkl"
+                
+                if os.path.exists(model_path) and os.path.exists(encoder_path):
+                    with open(model_path, 'rb') as f:
+                        model = pickle.load(f)
+                    with open(encoder_path, 'rb') as f:
+                        encoders = pickle.load(f)
+                    
+                    # Vorhersage für jeden Auftrag
+                    for auftrag in auftraege_raw:
+                        if auftrag['vorgabe_aw'] and auftrag['vorgabe_aw'] > 0:
+                            try:
+                                # Feature-Vektor erstellen
+                                vorgabe_aw = float(auftrag['vorgabe_aw'])
+                                mechaniker_nr = auftrag['mechaniker_nr'] or auftrag['aktiv_mechaniker_nr'] or 5008
+                                betrieb = auftrag['betrieb'] or 1
+                                marke = auftrag['marke'] or 'Opel'
+                                km_stand = float(auftrag['km_stand'] or 50000)
+                                fahrzeug_alter = float(auftrag['fahrzeug_alter'] or 3)
+                                
+                                # Datum-Features
+                                auftrag_datum = auftrag['auftrag_datum']
+                                if auftrag_datum:
+                                    wochentag = auftrag_datum.weekday()
+                                    monat = auftrag_datum.month
+                                    start_stunde = auftrag_datum.hour if auftrag_datum.hour > 0 else 8
+                                else:
+                                    wochentag, monat, start_stunde = 1, 6, 8
+                                
+                                # Encodieren
+                                try:
+                                    marke_encoded = encoders['marke'].transform([marke])[0]
+                                except:
+                                    marke_encoded = 0
+                                
+                                try:
+                                    mechaniker_encoded = encoders['mechaniker'].transform([str(mechaniker_nr)])[0]
+                                except:
+                                    mechaniker_encoded = 0
+                                
+                                # Feature-Vektor
+                                features = pd.DataFrame([[
+                                    vorgabe_aw,
+                                    mechaniker_encoded,
+                                    betrieb,
+                                    wochentag,
+                                    monat,
+                                    start_stunde,
+                                    marke_encoded,
+                                    fahrzeug_alter,
+                                    km_stand
+                                ]], columns=[
+                                    'vorgabe_aw', 'mechaniker_encoded', 'betrieb', 'wochentag', 'monat',
+                                    'start_stunde', 'marke_encoded', 'fahrzeug_alter_jahre', 'km_stand'
+                                ])
+                                
+                                # Vorhersage
+                                vorhersage_min = model.predict(features)[0]
+                                vorhersage_aw = vorhersage_min / 10.0  # 1 AW = 10 min
+                                
+                                ml_predictions[auftrag['auftrag_nr']] = {
+                                    'vorhersage_aw': round(vorhersage_aw, 1),
+                                    'vorhersage_min': round(vorhersage_min, 0),
+                                    'potenzial_aw': round(vorhersage_aw - vorgabe_aw, 1),
+                                    'potenzial_prozent': round((vorhersage_aw - vorgabe_aw) / vorgabe_aw * 100, 1) if vorgabe_aw > 0 else 0
+                                }
+                                
+                            except Exception as ml_err:
+                                logger.debug(f"ML-Fehler für Auftrag {auftrag['auftrag_nr']}: {ml_err}")
+                    
+                    # Mechaniker-Effizienz aus Trainingsdaten
+                    data_path = "/opt/greiner-portal/data/ml/auftraege_mit_zeiten_v2.csv"
+                    if os.path.exists(data_path):
+                        df = pd.read_csv(data_path)
+                        eff = df.groupby('mechaniker_nr').agg({
+                            'ist_dauer_min': 'mean',
+                            'vorgabe_aw': 'mean'
+                        }).reset_index()
+                        eff['effizienz'] = (eff['vorgabe_aw'] * 10) / eff['ist_dauer_min'] * 100
+                        for _, row in eff.iterrows():
+                            mechaniker_effizienz[int(row['mechaniker_nr'])] = round(row['effizienz'], 1)
+                    
+            except Exception as e:
+                logger.warning(f"ML-Integration fehlgeschlagen: {e}")
+        
+        # =====================================================================
+        # 3. GUDAT-TERMINE MATCHEN
+        # =====================================================================
+        gudat_termine = {}
+        
+        if mit_gudat:
+            try:
+                # Gudat-Client importieren
+                sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'tools'))
+                from gudat_client import GudatClient
+                import json
+                
+                # Credentials laden
+                config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'credentials.json')
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                
+                gudat_config = config.get('external_systems', {}).get('gudat', {})
+                username = gudat_config.get('username')
+                password = gudat_config.get('password')
+                
+                if username and password:
+                    client = GudatClient(username, password)
+                    if client.login():
+                        # GraphQL-Query für Termine der nächsten 7 Tage
+                        graphql_query = """
+                        {
+                            appointments(first: 100, where: {
+                                column: START_DATE_TIME,
+                                operator: GTE,
+                                value: "%s"
+                            }) {
+                                data {
+                                    id
+                                    start_date_time
+                                    end_date_time
+                                    type
+                                    dossier {
+                                        id
+                                        orders {
+                                            id
+                                            number
+                                        }
+                                        vehicle {
+                                            license_plate
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        """ % datetime.now().strftime('%Y-%m-%d')
+                        
+                        response = client._api_request('POST', '/graphql', json={'query': graphql_query})
+                        
+                        if response.status_code == 200:
+                            data = response.json()
+                            appointments = data.get('data', {}).get('appointments', {}).get('data', [])
+                            
+                            for apt in appointments:
+                                dossier = apt.get('dossier') or {}
+                                orders = dossier.get('orders') or []
+                                for order in orders:
+                                    order_nr = order.get('number')
+                                    if order_nr:
+                                        gudat_termine[int(order_nr)] = {
+                                            'termin_start': apt.get('start_date_time'),
+                                            'termin_ende': apt.get('end_date_time'),
+                                            'typ': apt.get('type'),
+                                            'kennzeichen': (dossier.get('vehicle') or {}).get('license_plate')
+                                        }
+                        
+            except Exception as e:
+                logger.warning(f"Gudat-Integration fehlgeschlagen: {e}")
+        
+        # =====================================================================
+        # 4. ERGEBNISSE ZUSAMMENFÜHREN
+        # =====================================================================
+        result = []
+        
+        for a in auftraege_raw:
+            auftrag_nr = a['auftrag_nr']
+            vorgabe_aw = float(a['vorgabe_aw'] or 0)
+            gestempelt_aw = float(a['gestempelt_aw'] or 0)
+            
+            # ML-Daten
+            ml = ml_predictions.get(auftrag_nr, {})
+            ml_vorhersage = ml.get('vorhersage_aw')
+            ml_potenzial = ml.get('potenzial_aw', 0)
+            
+            # ML-Status bestimmen
+            if ml_vorhersage:
+                if ml_potenzial > 1.0:
+                    ml_status = 'unterbewertet'  # ML sagt: dauert deutlich länger
+                    ml_status_icon = '🔴'
+                elif ml_potenzial > 0.3:
+                    ml_status = 'leicht_unterbewertet'
+                    ml_status_icon = '🟡'
+                elif ml_potenzial < -0.5:
+                    ml_status = 'überbewertet'  # ML sagt: geht schneller
+                    ml_status_icon = '🟢'
+                else:
+                    ml_status = 'ok'
+                    ml_status_icon = '⚪'
+            else:
+                ml_status = None
+                ml_status_icon = None
+            
+            # Gudat-Daten
+            gudat = gudat_termine.get(auftrag_nr, {})
+            
+            # Mechaniker-Effizienz
+            mech_nr = a['mechaniker_nr'] or a['aktiv_mechaniker_nr']
+            mech_eff = mechaniker_effizienz.get(mech_nr) if mech_nr else None
+            
+            # Live-Status
+            ist_aktiv = a['aktiv_mechaniker_nr'] is not None
+            
+            # Fortschritt berechnen
+            if ist_aktiv and vorgabe_aw > 0:
+                fortschritt_prozent = round(gestempelt_aw / vorgabe_aw * 100, 0)
+            else:
+                fortschritt_prozent = 0
+            
+            result.append({
+                # Basis-Daten
+                'auftrag_nr': auftrag_nr,
+                'betrieb': a['betrieb'],
+                'betrieb_name': BETRIEB_NAMEN.get(a['betrieb'], '?'),
+                'datum': format_datetime(a['auftrag_datum']),
+                'kennzeichen': a['kennzeichen'],
+                'marke': a['marke'],
+                'modell': a['modell'],
+                'kunde': a['kunde'],
+                'serviceberater': a['serviceberater_name'],
+                'dringlichkeit': a['dringlichkeit'],
+                
+                # Status
+                'ist_offen': a['ist_offen'],
+                'ist_aktiv': ist_aktiv,
+                'fortschritt_prozent': fortschritt_prozent,
+                
+                # Vorgabe & Stempelung
+                'vorgabe_aw': vorgabe_aw,
+                'gestempelt_aw': round(gestempelt_aw, 1),
+                'gestempelt_min': int(a['gestempelt_min'] or 0),
+                'rest_aw': round(max(0, vorgabe_aw - gestempelt_aw), 1),
+                
+                # Mechaniker
+                'mechaniker_nr': mech_nr,
+                'mechaniker_name': a['mechaniker_name'] or (f"MA {mech_nr}" if mech_nr else None),
+                'mechaniker_effizienz': mech_eff,
+                
+                # ML-Vorhersage
+                'ml_vorhersage_aw': ml_vorhersage,
+                'ml_potenzial_aw': ml_potenzial if ml_vorhersage else None,
+                'ml_potenzial_prozent': ml.get('potenzial_prozent'),
+                'ml_status': ml_status,
+                'ml_status_icon': ml_status_icon,
+                
+                # Gudat-Termin
+                'gudat_termin': gudat.get('termin_start'),
+                'gudat_termin_ende': gudat.get('termin_ende'),
+                'gudat_typ': gudat.get('typ'),
+                'hat_gudat_termin': len(gudat) > 0,
+                
+                # Geplante Zeiten aus Locosoft
+                'geplant_eingang': format_datetime(a['geplant_eingang']),
+                'geplant_fertig': format_datetime(a['geplant_fertig'])
+            })
+        
+        # =====================================================================
+        # 5. STATISTIKEN
+        # =====================================================================
+        total_vorgabe = sum(a['vorgabe_aw'] for a in result)
+        total_gestempelt = sum(a['gestempelt_aw'] for a in result)
+        aktive_auftraege = sum(1 for a in result if a['ist_aktiv'])
+        unterbewertet = sum(1 for a in result if a['ml_status'] == 'unterbewertet')
+        mit_gudat = sum(1 for a in result if a['hat_gudat_termin'])
+        
+        # Potenzial berechnen (Summe aller unterbewerteten Aufträge)
+        ml_potenzial_summe = sum(
+            a['ml_potenzial_aw'] for a in result 
+            if a['ml_potenzial_aw'] and a['ml_potenzial_aw'] > 0
+        )
+        
+        return jsonify({
+            'success': True,
+            'timestamp': datetime.now().isoformat(),
+            'filter': {
+                'subsidiary': subsidiary,
+                'tage': tage,
+                'nur_offen': nur_offen,
+                'mit_ml': mit_ml,
+                'mit_gudat': mit_gudat
+            },
+            'statistik': {
+                'anzahl_auftraege': len(result),
+                'aktive_auftraege': aktive_auftraege,
+                'total_vorgabe_aw': round(total_vorgabe, 1),
+                'total_gestempelt_aw': round(total_gestempelt, 1),
+                'ml_unterbewertet': unterbewertet,
+                'ml_potenzial_aw': round(ml_potenzial_summe, 1),
+                'mit_gudat_termin': mit_gudat
+            },
+            'auftraege': result
+        })
+        
+    except Exception as e:
+        logger.exception("Fehler bei auftraege-enriched")
         return jsonify({
             'success': False,
             'error': str(e)

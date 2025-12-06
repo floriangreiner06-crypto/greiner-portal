@@ -1,0 +1,558 @@
+{% extends "base.html" %}
+
+{% block title %}Teile-Status - Werkstatt{% endblock %}
+
+{% block extra_css %}
+<style>
+    .status-cards {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    @media (max-width: 992px) {
+        .status-cards { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 576px) {
+        .status-cards { grid-template-columns: 1fr; }
+    }
+    
+    .status-card {
+        border-radius: 12px;
+        padding: 1.5rem;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .status-kritisch {
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        color: white;
+    }
+    .status-warnung {
+        background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
+        color: #212529;
+    }
+    .status-normal {
+        background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+        color: white;
+    }
+    .status-total {
+        background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+        color: white;
+    }
+    .status-card .big-number {
+        font-size: 2.5rem;
+        font-weight: bold;
+        line-height: 1.2;
+    }
+    .status-card .label {
+        font-size: 0.85rem;
+        opacity: 0.9;
+        margin-top: 0.5rem;
+    }
+    
+    .auftrag-card {
+        border-left: 4px solid #dee2e6;
+        padding: 1rem;
+        margin-bottom: 0.75rem;
+        background: #fff;
+        border-radius: 0 8px 8px 0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .auftrag-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        transform: translateX(3px);
+    }
+    .auftrag-card.kritisch {
+        border-left-color: #dc3545;
+        background: linear-gradient(to right, #fff5f5, #fff);
+    }
+    .auftrag-card.warnung {
+        border-left-color: #ffc107;
+        background: linear-gradient(to right, #fffdf5, #fff);
+    }
+    .auftrag-card.normal {
+        border-left-color: #28a745;
+    }
+    
+    .auftrag-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.75rem;
+    }
+    .auftrag-nr {
+        font-weight: bold;
+        font-size: 1.1rem;
+        color: #333;
+    }
+    .tage-badge {
+        padding: 0.3rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: bold;
+    }
+    .tage-badge.kritisch {
+        background: #dc3545;
+        color: white;
+    }
+    .tage-badge.warnung {
+        background: #ffc107;
+        color: #212529;
+    }
+    .tage-badge.normal {
+        background: #28a745;
+        color: white;
+    }
+    
+    .auftrag-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr 1fr;
+        gap: 0.5rem;
+        font-size: 0.9rem;
+    }
+    @media (max-width: 768px) {
+        .auftrag-grid { grid-template-columns: 1fr 1fr; }
+    }
+    .auftrag-grid .label {
+        color: #999;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+    }
+    .auftrag-grid .value {
+        color: #333;
+        font-weight: 500;
+    }
+    .teile-wert {
+        font-size: 1.1rem;
+        font-weight: bold;
+        color: #dc3545;
+    }
+    
+    .section-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin: 2rem 0 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #eee;
+    }
+    .section-header h5 {
+        margin: 0;
+        font-weight: 600;
+    }
+    
+    .filter-bar {
+        background: #f8f9fa;
+        padding: 1rem 1.5rem;
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+        border: 1px solid #e9ecef;
+    }
+    .filter-bar .row {
+        align-items: flex-end;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 2rem;
+        color: #999;
+        background: #f8f9fa;
+        border-radius: 8px;
+    }
+    .empty-state .icon {
+        font-size: 3rem;
+        color: #28a745;
+        margin-bottom: 0.5rem;
+    }
+    
+    .loading-container {
+        display: flex;
+        justify-content: center;
+        padding: 3rem;
+    }
+    
+    .sb-info {
+        margin-top: 0.5rem;
+        font-size: 0.85rem;
+        color: #666;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1">🔧 Teile-Status</h2>
+            <p class="text-muted mb-0">Aufträge die auf Teile warten</p>
+        </div>
+        <div class="text-end">
+            <span class="text-muted me-3" id="lastUpdate">Stand: --:--</span>
+            <button class="btn btn-outline-primary btn-sm" onclick="loadData()">
+                <i class="bi bi-arrow-clockwise"></i> Aktualisieren
+            </button>
+        </div>
+    </div>
+    
+    <!-- Filter -->
+    <div class="filter-bar">
+        <div class="row g-3">
+            <div class="col-md-2">
+                <label class="form-label small text-muted">Betrieb</label>
+                <select class="form-select form-select-sm" id="filterBetrieb">
+                    <option value="">Alle Betriebe</option>
+                    <option value="1">Deggendorf</option>
+                    <option value="2">Hyundai DEG</option>
+                    <option value="3">Landau</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">Min. Teilewert</label>
+                <select class="form-select form-select-sm" id="filterMinWert">
+                    <option value="20">ab 20€</option>
+                    <option value="50">ab 50€</option>
+                    <option value="100">ab 100€</option>
+                    <option value="500">ab 500€</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">Wartezeit</label>
+                <select class="form-select form-select-sm" id="filterMinTage">
+                    <option value="0">Alle</option>
+                    <option value="7">ab 7 Tage</option>
+                    <option value="14">ab 14 Tage</option>
+                    <option value="30">ab 30 Tage</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">Sortierung</label>
+                <select class="form-select form-select-sm" id="filterSort">
+                    <option value="tage_desc">Längste Wartezeit</option>
+                    <option value="wert_desc">Höchster Wert</option>
+                    <option value="teile_desc">Meiste Teile</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">&nbsp;</label>
+                <button class="btn btn-primary btn-sm w-100" onclick="loadData()">
+                    <i class="bi bi-funnel"></i> Filtern
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Status Cards -->
+    <div class="status-cards">
+        <div class="status-card status-kritisch">
+            <div class="big-number" id="countKritisch">-</div>
+            <div class="label">🔴 Kritisch (&gt;30 Tage oder &gt;1000€)</div>
+        </div>
+        <div class="status-card status-warnung">
+            <div class="big-number" id="countWarnung">-</div>
+            <div class="label">🟡 Warnung (&gt;14 Tage oder &gt;500€)</div>
+        </div>
+        <div class="status-card status-normal">
+            <div class="big-number" id="countNormal">-</div>
+            <div class="label">🟢 Normal</div>
+        </div>
+        <div class="status-card status-total">
+            <div class="big-number" id="totalWert">-</div>
+            <div class="label">💰 Gesamt Teilewert</div>
+        </div>
+    </div>
+    
+    <!-- Loading -->
+    <div class="loading-container" id="loadingSpinner">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Lädt...</span>
+        </div>
+    </div>
+    
+    <!-- Content -->
+    <div id="content" style="display: none;">
+        <!-- Kritische Aufträge -->
+        <div class="section-header">
+            <span style="font-size: 1.5rem;">🔴</span>
+            <h5>Kritische Aufträge</h5>
+            <span class="badge bg-danger" id="badgeKritisch">0</span>
+        </div>
+        <div id="listKritisch"></div>
+        
+        <!-- Warnungen -->
+        <div class="section-header">
+            <span style="font-size: 1.5rem;">🟡</span>
+            <h5>Warnungen</h5>
+            <span class="badge bg-warning text-dark" id="badgeWarnung">0</span>
+        </div>
+        <div id="listWarnung"></div>
+        
+        <!-- Normal (nur Top 20) -->
+        <div class="section-header">
+            <span style="font-size: 1.5rem;">🟢</span>
+            <h5>Normale Aufträge</h5>
+            <span class="badge bg-success" id="badgeNormal">0</span>
+            <span class="text-muted small ms-2">(Top 20)</span>
+        </div>
+        <div id="listNormal"></div>
+    </div>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal fade" id="detailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Auftrag <span id="modalAuftragNr"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const API_BASE = '/api/teile';
+
+async function loadData() {
+    document.getElementById('loadingSpinner').style.display = 'flex';
+    document.getElementById('content').style.display = 'none';
+    
+    const params = new URLSearchParams();
+    
+    const betrieb = document.getElementById('filterBetrieb').value;
+    if (betrieb) params.append('subsidiary', betrieb);
+    
+    params.append('min_wert', document.getElementById('filterMinWert').value);
+    params.append('min_tage', document.getElementById('filterMinTage').value);
+    params.append('sort', document.getElementById('filterSort').value);
+    params.append('limit', '100');
+    
+    try {
+        const response = await fetch(`${API_BASE}/status?${params}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            renderData(data);
+        } else {
+            console.error('API Error:', data.error);
+            alert('Fehler: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Fetch Error:', error);
+        alert('Verbindungsfehler: ' + error.message);
+    } finally {
+        document.getElementById('loadingSpinner').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+    }
+}
+
+function renderData(data) {
+    const summary = data.summary;
+    
+    // Status Cards
+    document.getElementById('countKritisch').textContent = summary.kritisch;
+    document.getElementById('countWarnung').textContent = summary.warnung;
+    document.getElementById('countNormal').textContent = summary.normal;
+    document.getElementById('totalWert').textContent = formatCurrency(summary.wert_gesamt);
+    
+    // Badges
+    document.getElementById('badgeKritisch').textContent = summary.kritisch;
+    document.getElementById('badgeWarnung').textContent = summary.warnung;
+    document.getElementById('badgeNormal').textContent = summary.normal;
+    
+    // Listen rendern
+    renderList('listKritisch', data.auftraege.kritisch, 'kritisch');
+    renderList('listWarnung', data.auftraege.warnung, 'warnung');
+    renderList('listNormal', data.auftraege.normal, 'normal');
+    
+    // Update Zeit
+    document.getElementById('lastUpdate').textContent = 
+        'Stand: ' + new Date().toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'});
+}
+
+function renderList(containerId, auftraege, status) {
+    const container = document.getElementById(containerId);
+    
+    if (!auftraege || auftraege.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="icon">✓</div>
+                <p class="mb-0">Keine Aufträge in dieser Kategorie</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = auftraege.map(a => `
+        <div class="auftrag-card ${status}" onclick="showDetail(${a.auftrag_nr})">
+            <div class="auftrag-header">
+                <span class="auftrag-nr">
+                    #${a.auftrag_nr} 
+                    <span class="text-muted" style="font-weight: normal; font-size: 0.9rem;">${a.betrieb_name}</span>
+                    <span class="text-muted" style="font-weight: normal; font-size: 0.85rem; margin-left: 0.5rem;">📅 ${a.auftragsdatum || '-'}</span>
+                </span>
+                <span class="tage-badge ${status}">
+                    ${a.tage_offen} Tage
+                </span>
+            </div>
+            <div class="auftrag-grid">
+                <div>
+                    <div class="label">Kennzeichen</div>
+                    <div class="value">${a.kennzeichen || '-'}</div>
+                </div>
+                <div>
+                    <div class="label">Kunde</div>
+                    <div class="value">${truncate(a.kunde, 25) || '-'}</div>
+                </div>
+                <div>
+                    <div class="label">Fehlende Teile</div>
+                    <div class="value"><strong>${a.anzahl_fehlende_teile}</strong> Teile</div>
+                </div>
+                <div>
+                    <div class="label">Teilewert</div>
+                    <div class="value teile-wert">${formatCurrency(a.teile_wert)}</div>
+                </div>
+            </div>
+            ${a.serviceberater ? `<div class="sb-info">SB: ${a.serviceberater}</div>` : ''}
+        </div>
+    `).join('');
+}
+
+async function showDetail(auftragNr) {
+    document.getElementById('modalAuftragNr').textContent = auftragNr;
+    document.getElementById('modalBody').innerHTML = `
+        <div class="text-center py-4">
+            <div class="spinner-border text-primary"></div>
+        </div>
+    `;
+    
+    const modal = new bootstrap.Modal(document.getElementById('detailModal'));
+    modal.show();
+    
+    try {
+        const response = await fetch(`${API_BASE}/auftrag/${auftragNr}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            renderDetail(data);
+        } else {
+            document.getElementById('modalBody').innerHTML = `
+                <div class="alert alert-danger">${data.error}</div>
+            `;
+        }
+    } catch (error) {
+        document.getElementById('modalBody').innerHTML = `
+            <div class="alert alert-danger">Verbindungsfehler: ${error.message}</div>
+        `;
+    }
+}
+
+function renderDetail(data) {
+    const a = data.auftrag;
+    const teile = data.fehlende_teile;
+    
+    let html = `
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <h6 class="text-muted mb-2">Fahrzeug</h6>
+                <p class="mb-1"><strong>${a.kennzeichen || '-'}</strong></p>
+                <p class="mb-0 text-muted">${a.marke || ''} ${a.modell || ''}</p>
+            </div>
+            <div class="col-md-6">
+                <h6 class="text-muted mb-2">Kunde</h6>
+                <p class="mb-1"><strong>${a.kunde || '-'}</strong></p>
+                <p class="mb-0 text-muted">SB: ${a.serviceberater || '-'}</p>
+            </div>
+        </div>
+        
+        <div class="alert alert-info d-flex align-items-center">
+            <i class="bi bi-calendar-check me-2" style="font-size: 1.5rem;"></i>
+            <div>
+                <strong>Früheste Fertigstellung:</strong> 
+                ${data.frueheste_fertigstellung.datum || 'Unbekannt'}
+                <span class="text-muted">(in ca. ${data.frueheste_fertigstellung.tage || '?'} Tagen)</span>
+            </div>
+        </div>
+        
+        <h6 class="mt-4 mb-3">Fehlende Teile (${teile.length})</h6>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>Teilenummer</th>
+                        <th>Bezeichnung</th>
+                        <th class="text-end">Menge</th>
+                        <th class="text-end">Wert</th>
+                        <th>Lieferant</th>
+                        <th>Ø Lieferzeit</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    for (const t of teile) {
+        const lieferzeitClass = !t.lieferzeit_tage ? '' : 
+                                t.lieferzeit_tage <= 8 ? 'text-success' : 
+                                t.lieferzeit_tage <= 12 ? 'text-warning' : 'text-danger';
+        html += `
+            <tr>
+                <td><code class="text-primary">${t.part_number}</code></td>
+                <td>${t.bezeichnung || '-'}</td>
+                <td class="text-end">${t.menge}</td>
+                <td class="text-end">${formatCurrency(t.wert)}</td>
+                <td>
+                    <small>${t.lieferant_name || 'Unbekannt'}</small>
+                </td>
+                <td class="${lieferzeitClass}">
+                    ${t.lieferzeit_tage ? `~${t.lieferzeit_tage} Tage` : '-'}
+                    ${t.lieferzeit_prognose ? `<br><small class="text-muted">(${t.lieferzeit_prognose})</small>` : ''}
+                </td>
+            </tr>
+        `;
+    }
+    
+    html += `
+                </tbody>
+                <tfoot>
+                    <tr class="table-secondary">
+                        <th colspan="3">Gesamt</th>
+                        <th class="text-end">${formatCurrency(data.wert_gesamt)}</th>
+                        <th colspan="2"></th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    `;
+    
+    document.getElementById('modalBody').innerHTML = html;
+}
+
+function formatCurrency(value) {
+    if (value === null || value === undefined) return '-';
+    return new Intl.NumberFormat('de-DE', {
+        style: 'currency',
+        currency: 'EUR'
+    }).format(value);
+}
+
+function truncate(str, len) {
+    if (!str) return str;
+    return str.length > len ? str.substring(0, len) + '...' : str;
+}
+
+// Initial laden
+document.addEventListener('DOMContentLoaded', loadData);
+
+// Auto-Refresh alle 5 Minuten
+setInterval(loadData, 5 * 60 * 1000);
+</script>
+{% endblock %}

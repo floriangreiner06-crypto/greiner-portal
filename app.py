@@ -27,7 +27,7 @@ else:
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 Jahr in Produktion
 
 # Globale Static-Version (ändert sich bei jedem Flask-Neustart)
-STATIC_VERSION = '20251202083000'
+STATIC_VERSION = '20251207020000'  # TAG 100 - Teile-Status Dashboard
 print(f"📦 Static Version: {STATIC_VERSION}")
 
 # Template-Kontext: Macht STATIC_VERSION in allen Templates verfügbar
@@ -345,6 +345,22 @@ try:
 except Exception as e:
     print(f"⚠️  ML API nicht geladen: {e}")
 
+# Teile-Status API (TAG 100 - Fehlende Teile auf Aufträgen)
+try:
+    from api.teile_status_api import teile_status_bp
+    app.register_blueprint(teile_status_bp)
+    print("✅ Teile-Status API registriert: /api/teile/")
+except Exception as e:
+    print(f"⚠️  Teile-Status API nicht geladen: {e}")
+
+# Gudat Werkstattplanung API (TAG98)
+try:
+    from api.gudat_api import register_gudat_api
+    register_gudat_api(app)
+    print("✅ Gudat API registriert: /api/gudat/")
+except Exception as e:
+    print(f"⚠️  Gudat API nicht geladen: {e}")
+
 # DEBUG Route für TAG76 - später entfernen!
 @app.route('/debug/user')
 @login_required
@@ -375,10 +391,24 @@ def leasys_programmfinder():
 # ========================================
 
 @app.route('/werkstatt')
+@app.route('/werkstatt/cockpit')
+@login_required
+def werkstatt_cockpit():
+    """Werkstatt Cockpit - Minimalistisch: Ampel + Probleme (TAG 99)"""
+    return render_template('aftersales/werkstatt_cockpit.html')
+
+
+@app.route('/werkstatt/dashboard')
+@login_required
+def werkstatt_dashboard():
+    """Werkstatt Dashboard - Konsolidierte Übersicht (TAG 99)"""
+    return render_template('aftersales/werkstatt_dashboard.html')
+
+
 @app.route('/werkstatt/uebersicht')
 @login_required
 def werkstatt_uebersicht():
-    """Werkstatt-Übersicht - Mechaniker-Leistungsgrade"""
+    """Werkstatt-Übersicht - Mechaniker-Leistungsgrade (Legacy)"""
     return render_template('aftersales/werkstatt_uebersicht.html')
 
 
@@ -410,7 +440,22 @@ def werkstatt_tagesbericht():
     return render_template('aftersales/werkstatt_tagesbericht.html')
 
 
+@app.route('/werkstatt/auftraege')
+@login_required
+def werkstatt_auftraege():
+    """Werkstatt Aufträge - ML-Analyse (TAG 98)"""
+    return render_template('aftersales/werkstatt_auftraege.html')
+
+
+@app.route('/werkstatt/teile-status')
+@login_required
+def werkstatt_teile_status():
+    """Werkstatt Teile-Status - Fehlende Teile Übersicht (TAG 100)"""
+    return render_template('aftersales/werkstatt_teile_status.html')
+
+
 @app.route('/monitor/stempeluhr')
+@app.route('/werkstatt/stempeluhr/monitor')
 def werkstatt_stempeluhr_monitor():
     """
     Werkstatt Stempeluhr - MONITOR VERSION (ohne Login)

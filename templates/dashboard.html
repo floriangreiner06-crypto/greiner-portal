@@ -174,6 +174,104 @@
         font-size: 9px;
     }
 }
+
+/* ============================================================
+   GUDAT WIDGET STYLES - TAG 98
+   ============================================================ */
+
+#gudat-widget {
+    border-radius: 12px;
+    overflow: hidden;
+    border: none;
+}
+
+.gudat-team-card {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 12px;
+    border-left: 4px solid #6c757d;
+    transition: all 0.2s ease;
+}
+
+.gudat-team-card:hover {
+    transform: translateX(4px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.gudat-team-card.status-ok {
+    border-left-color: #27ae60;
+}
+
+.gudat-team-card.status-warning {
+    border-left-color: #f39c12;
+    background: rgba(243, 156, 18, 0.1);
+}
+
+.gudat-team-card.status-overloaded {
+    border-left-color: #e74c3c;
+    background: rgba(231, 76, 60, 0.1);
+}
+
+.gudat-team-card .team-name {
+    font-weight: 600;
+    font-size: 14px;
+    color: #2c3e50;
+}
+
+.gudat-team-card .team-stats {
+    font-size: 12px;
+    color: #7f8c8d;
+}
+
+.gudat-team-card .team-utilization {
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.gudat-progress {
+    height: 8px;
+    border-radius: 4px;
+    background: #e9ecef;
+    overflow: hidden;
+    margin-top: 8px;
+}
+
+.gudat-progress-bar {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.5s ease;
+}
+
+.gudat-week-day {
+    flex: 1;
+    min-width: 80px;
+    max-width: 120px;
+    text-align: center;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.gudat-week-day.today {
+    background: linear-gradient(135deg, rgba(52,152,219,0.15), rgba(41,128,185,0.15));
+    border: 2px solid #3498db;
+}
+
+.gudat-week-day .day-label {
+    font-size: 11px;
+    color: #7f8c8d;
+    text-transform: uppercase;
+}
+
+.gudat-week-day .day-value {
+    font-size: 20px;
+    font-weight: 700;
+}
+
+.gudat-week-day .day-free {
+    font-size: 11px;
+    color: #95a5a6;
+}
 </style>
 {% endblock %}
 
@@ -431,6 +529,186 @@
         </div>
     </div>
     <!-- Ende Kapazitäts-Widget -->
+
+    <!-- ============================================================
+         🔧 GUDAT TEAM-KAPAZITÄT WIDGET - TAG 98
+         Daten direkt von werkstattplanung.net
+         ============================================================ -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm" id="gudat-widget">
+                <div class="card-header text-white d-flex justify-content-between align-items-center py-3" 
+                     style="background: linear-gradient(135deg, #1a5276 0%, #2e86c1 100%);">
+                    <div>
+                        <h5 class="mb-0">
+                            <i class="bi bi-people-fill"></i> 
+                            Gudat Team-Kapazität
+                            <small class="badge bg-light text-dark ms-2" id="gudat-update-time">Lädt...</small>
+                        </h5>
+                        <small class="opacity-75">werkstattplanung.net</small>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <button class="btn btn-light btn-sm" onclick="loadGudatKapazitaet()" title="Aktualisieren">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="card-body">
+                    <!-- Summary Row -->
+                    <div class="row text-center mb-4">
+                        <div class="col-md-3">
+                            <div class="p-3 rounded" style="background: linear-gradient(135deg, rgba(39,174,96,0.1), rgba(46,204,113,0.1));">
+                                <div class="text-muted small">GESAMT-KAPAZITÄT</div>
+                                <h2 id="gudat-total-capacity" class="mb-0 fw-bold text-success">-</h2>
+                                <small class="text-muted">Arbeitseinheiten</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="p-3 rounded" style="background: rgba(52,152,219,0.1);">
+                                <div class="text-muted small">GEPLANT</div>
+                                <h2 id="gudat-planned" class="mb-0 fw-bold text-primary">-</h2>
+                                <small class="text-muted">verplant</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="p-3 rounded" style="background: rgba(241,196,15,0.1);">
+                                <div class="text-muted small">VERFÜGBAR</div>
+                                <h2 id="gudat-free" class="mb-0 fw-bold text-warning">-</h2>
+                                <small class="text-muted">noch frei</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="p-3 rounded" id="gudat-status-box">
+                                <div class="text-muted small">AUSLASTUNG</div>
+                                <h2 id="gudat-utilization" class="mb-0 fw-bold">-</h2>
+                                <small id="gudat-status-text" class="text-muted">-</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Team-Liste -->
+                    <h6 class="text-muted mb-3">
+                        <i class="bi bi-diagram-3"></i> Teams nach Auslastung
+                        <span class="badge bg-secondary ms-2" id="gudat-teams-count">-</span>
+                    </h6>
+                    
+                    <div id="gudat-teams-container" class="row g-2">
+                        <div class="col-12 text-center text-muted py-4">
+                            <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                            <span class="ms-2">Lade Gudat-Daten...</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Wochen-Übersicht -->
+                    <div class="mt-4 pt-3 border-top">
+                        <h6 class="text-muted mb-3">
+                            <i class="bi bi-calendar-week"></i> Wochen-Vorschau
+                        </h6>
+                        <div id="gudat-week-container" class="d-flex justify-content-between flex-wrap gap-2">
+                            <div class="text-center text-muted py-2">
+                                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Ende Gudat Widget -->
+
+    <!-- ============================================================
+         🧠 ML POTENZIAL-WIDGET - TAG 98 Part 2
+         Zeigt unterbewertete Aufträge und Optimierungspotenzial
+         ============================================================ -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm" id="ml-potenzial-widget">
+                <div class="card-header text-white d-flex justify-content-between align-items-center py-3" 
+                     style="background: linear-gradient(135deg, #8e44ad 0%, #9b59b6 100%);">
+                    <div>
+                        <h5 class="mb-0">
+                            <i class="bi bi-robot"></i> 
+                            ML Auftrags-Analyse
+                            <small class="badge bg-light text-dark ms-2" id="ml-update-time">Lädt...</small>
+                        </h5>
+                        <small class="opacity-75">KI-basierte Vorgabe-Prüfung</small>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <button class="btn btn-light btn-sm" onclick="loadMLPotenzial()" title="Aktualisieren">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="card-body">
+                    <!-- Summary Row -->
+                    <div class="row text-center mb-4">
+                        <div class="col-md-3">
+                            <div class="p-3 rounded" style="background: rgba(231,76,60,0.1);">
+                                <div class="text-muted small">🔴 UNTERBEWERTET</div>
+                                <h2 id="ml-unterbewertet" class="mb-0 fw-bold text-danger">-</h2>
+                                <small class="text-muted">Aufträge mit zu niedriger Vorgabe</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="p-3 rounded" style="background: rgba(241,196,15,0.1);">
+                                <div class="text-muted small">🟡 POTENZIAL</div>
+                                <h2 id="ml-potenzial-aw" class="mb-0 fw-bold text-warning">-</h2>
+                                <small class="text-muted">zusätzliche AW erwartet</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="p-3 rounded" style="background: rgba(39,174,96,0.1);">
+                                <div class="text-muted small">🟢 ÜBERBEWERTET</div>
+                                <h2 id="ml-ueberbewertet" class="mb-0 fw-bold text-success">-</h2>
+                                <small class="text-muted">könnten schneller gehen</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="p-3 rounded" style="background: rgba(52,152,219,0.1);">
+                                <div class="text-muted small">💰 WERT</div>
+                                <h2 id="ml-potenzial-euro" class="mb-0 fw-bold text-primary">-</h2>
+                                <small class="text-muted">geschätzter Mehraufwand</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Kritische Aufträge Liste -->
+                    <h6 class="text-muted mb-3">
+                        <i class="bi bi-exclamation-triangle text-danger"></i> Kritische Aufträge (ML sagt: dauert länger!)
+                    </h6>
+                    
+                    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                        <table class="table table-sm table-hover mb-0" id="ml-auftraege-table">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th style="width: 50px;">ML</th>
+                                    <th>Auftrag</th>
+                                    <th>Kennzeichen</th>
+                                    <th>Kunde</th>
+                                    <th class="text-end">Vorgabe</th>
+                                    <th class="text-end">ML-Prognose</th>
+                                    <th class="text-end">Potenzial</th>
+                                    <th>Mechaniker</th>
+                                    <th>Termin</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ml-auftraege-body">
+                                <tr>
+                                    <td colspan="9" class="text-center text-muted py-4">
+                                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                                        <span class="ms-2">Lade ML-Analyse...</span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Ende ML Potenzial Widget -->
 
     <!-- Modul-Kacheln -->
     <div class="row mb-4">
@@ -999,6 +1277,202 @@ function formatCurrency(value) {
     }).format(value);
 }
 
+// ============================================================
+// GUDAT WIDGET - Werkstattplanung.net API (TAG 98)
+// ============================================================
+
+function loadGudatKapazitaet() {
+    // Tages-Daten laden
+    fetch('/api/gudat/workload')
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                showGudatError(data.error);
+                return;
+            }
+            renderGudatSummary(data);
+            renderGudatTeams(data.teams || []);
+            document.getElementById('gudat-update-time').textContent = 
+                'Stand: ' + new Date().toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'});
+        })
+        .catch(error => {
+            console.error('Gudat API-Fehler:', error);
+            showGudatError('Verbindungsfehler');
+        });
+    
+    // Wochen-Daten laden
+    fetch('/api/gudat/workload/week')
+        .then(response => response.json())
+        .then(data => {
+            if (!data.error) {
+                renderGudatWeek(data.days || []);
+            }
+        })
+        .catch(error => {
+            console.error('Gudat Week-Fehler:', error);
+        });
+}
+
+function renderGudatSummary(data) {
+    // Kapazität
+    const capEl = document.getElementById('gudat-total-capacity');
+    if (capEl) capEl.textContent = data.total_capacity + ' AW';
+    
+    // Geplant
+    const plannedEl = document.getElementById('gudat-planned');
+    if (plannedEl) plannedEl.textContent = data.planned + ' AW';
+    
+    // Verfügbar
+    const freeEl = document.getElementById('gudat-free');
+    if (freeEl) {
+        freeEl.textContent = data.free + ' AW';
+        freeEl.className = 'mb-0 fw-bold ' + (data.free < 0 ? 'text-danger' : (data.free < 50 ? 'text-warning' : 'text-success'));
+    }
+    
+    // Auslastung
+    const utilEl = document.getElementById('gudat-utilization');
+    const statusBox = document.getElementById('gudat-status-box');
+    const statusText = document.getElementById('gudat-status-text');
+    
+    if (utilEl) {
+        const util = data.utilization_percent || 0;
+        utilEl.textContent = util.toFixed(1) + '%';
+        
+        let bgColor, textClass, statusLabel;
+        if (util > 110) {
+            bgColor = 'rgba(231, 76, 60, 0.15)';
+            textClass = 'text-danger';
+            statusLabel = '⚠️ Überbucht!';
+        } else if (util > 90) {
+            bgColor = 'rgba(39, 174, 96, 0.15)';
+            textClass = 'text-success';
+            statusLabel = '✅ Optimal';
+        } else if (util > 50) {
+            bgColor = 'rgba(52, 152, 219, 0.15)';
+            textClass = 'text-primary';
+            statusLabel = 'Normal';
+        } else {
+            bgColor = 'rgba(241, 196, 15, 0.15)';
+            textClass = 'text-warning';
+            statusLabel = '⚠️ Unterausgelastet';
+        }
+        
+        utilEl.className = 'mb-0 fw-bold ' + textClass;
+        if (statusBox) statusBox.style.background = bgColor;
+        if (statusText) statusText.textContent = statusLabel;
+    }
+    
+    // Teams-Count
+    const teamsCount = document.getElementById('gudat-teams-count');
+    if (teamsCount) teamsCount.textContent = data.teams_count + ' Teams';
+}
+
+function renderGudatTeams(teams) {
+    const container = document.getElementById('gudat-teams-container');
+    if (!container) return;
+    
+    if (!teams || teams.length === 0) {
+        container.innerHTML = '<div class="col-12 text-center text-muted py-3">Keine Team-Daten verfügbar</div>';
+        return;
+    }
+    
+    // Sortiere nach Status (kritischste zuerst)
+    const sortedTeams = teams.sort((a, b) => {
+        const statusOrder = {overloaded: 0, warning: 1, ok: 2};
+        return (statusOrder[a.status] || 2) - (statusOrder[b.status] || 2);
+    });
+    
+    container.innerHTML = sortedTeams.slice(0, 12).map(team => {
+        const statusClass = 'status-' + (team.status || 'ok');
+        const utilPct = Math.min(team.utilization || 0, 130);
+        const barWidth = (utilPct / 130) * 100;
+        
+        let barColor = '#27ae60'; // grün
+        if (team.status === 'overloaded') barColor = '#e74c3c';
+        else if (team.status === 'warning') barColor = '#f39c12';
+        
+        const icon = team.status === 'overloaded' ? '🔴' : 
+                     (team.status === 'warning' ? '🟡' : '🟢');
+        
+        return `
+            <div class="col-md-4 col-sm-6">
+                <div class="gudat-team-card ${statusClass}">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="team-name">${icon} ${team.name}</div>
+                            <div class="team-stats">
+                                ${team.capacity} AW Kapazität • ${team.free} AW frei
+                            </div>
+                        </div>
+                        <div class="team-utilization ${team.status === 'overloaded' ? 'text-danger' : (team.status === 'warning' ? 'text-warning' : 'text-success')}">
+                            ${Math.round(team.utilization)}%
+                        </div>
+                    </div>
+                    <div class="gudat-progress">
+                        <div class="gudat-progress-bar" 
+                             style="width: ${barWidth}%; background: ${barColor};"></div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    if (teams.length > 12) {
+        container.innerHTML += `
+            <div class="col-12 text-center text-muted small">
+                ... und ${teams.length - 12} weitere Teams
+            </div>
+        `;
+    }
+}
+
+function renderGudatWeek(days) {
+    const container = document.getElementById('gudat-week-container');
+    if (!container || !days || days.length === 0) return;
+    
+    const today = new Date().toISOString().split('T')[0];
+    
+    container.innerHTML = days.slice(0, 7).map(day => {
+        const isToday = day.date === today;
+        let valueClass = 'text-success';
+        if (day.status === 'overloaded') valueClass = 'text-danger';
+        else if (day.status === 'warning') valueClass = 'text-warning';
+        
+        const weekday = day.weekday ? day.weekday.substring(0, 2) : getDayName(day.date);
+        
+        return `
+            <div class="gudat-week-day ${isToday ? 'today' : ''}">
+                <div class="day-label">${isToday ? '▶ HEUTE' : weekday}</div>
+                <div class="day-value ${valueClass}">${Math.round(day.utilization || 0)}%</div>
+                <div class="day-free">${day.free || 0} AW frei</div>
+            </div>
+        `;
+    }).join('');
+}
+
+function showGudatError(msg) {
+    const container = document.getElementById('gudat-teams-container');
+    if (container) {
+        container.innerHTML = `
+            <div class="col-12">
+                <div class="alert alert-warning d-flex align-items-center">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    <div>
+                        <strong>Gudat API nicht verfügbar:</strong> ${msg}<br>
+                        <small class="text-muted">Werkstattplanung.net ist möglicherweise nicht erreichbar.</small>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Fallback-Werte setzen
+    ['gudat-total-capacity', 'gudat-planned', 'gudat-free', 'gudat-utilization'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = '-';
+    });
+}
+
 // Event-Listener
 document.addEventListener('DOMContentLoaded', function() {
     // HEUTE LIVE laden (echte Stempelungen)
@@ -1007,12 +1481,19 @@ document.addEventListener('DOMContentLoaded', function() {
     // FORECAST laden (geplante Termine)
     loadKapazitaetForecast();
     
+    // GUDAT laden (werkstattplanung.net) - TAG 98
+    loadGudatKapazitaet();
+    
+    // ML POTENZIAL laden - TAG 98 Part 2
+    loadMLPotenzial();
+    
     // Filter-Event
     const filterEl = document.getElementById('kapa-betrieb-filter');
     if (filterEl) {
         filterEl.addEventListener('change', function() {
             loadHeuteLive();
             loadKapazitaetForecast();
+            loadMLPotenzial();
         });
     }
     
@@ -1020,7 +1501,178 @@ document.addEventListener('DOMContentLoaded', function() {
     setInterval(function() {
         loadHeuteLive();
         loadKapazitaetForecast();
+        loadGudatKapazitaet();
+        loadMLPotenzial();
     }, KAPA_CONFIG.REFRESH_INTERVAL);
 });
+
+// ============================================================
+// ML POTENZIAL-WIDGET - TAG 98 Part 2
+// Zeigt unterbewertete Aufträge und Optimierungspotenzial
+// ============================================================
+
+const ML_CONFIG = {
+    AW_PREIS: 100,  // 100€ pro AW (Stundensatz)
+    API_URL: '/api/werkstatt/live/auftraege-enriched'
+};
+
+function loadMLPotenzial() {
+    const betrieb = document.getElementById('kapa-betrieb-filter')?.value || '';
+    let url = ML_CONFIG.API_URL + '?tage=14&mit_ml=true&mit_gudat=true';
+    if (betrieb) {
+        url += '&subsidiary=' + betrieb;
+    }
+    
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success === true) {
+                renderMLWidget(data);
+                document.getElementById('ml-update-time').textContent = 
+                    'Stand: ' + new Date().toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'});
+            } else {
+                console.error('ML-Fehler:', data.error);
+                showMLError(data.error || 'API-Fehler');
+            }
+        })
+        .catch(error => {
+            console.error('ML API-Fehler:', error);
+            showMLError('Verbindungsfehler');
+        });
+}
+
+function renderMLWidget(data) {
+    const stats = data.statistik || {};
+    const auftraege = data.auftraege || [];
+    
+    // Statistiken berechnen
+    const unterbewertet = auftraege.filter(a => a.ml_status === 'unterbewertet');
+    const leichtUnterbewertet = auftraege.filter(a => a.ml_status === 'leicht_unterbewertet');
+    const ueberbewertet = auftraege.filter(a => a.ml_status === 'überbewertet');
+    
+    // Potenzial-AW (nur positive - wo ML mehr erwartet als Vorgabe)
+    const potenzialAW = auftraege
+        .filter(a => a.ml_potenzial_aw && a.ml_potenzial_aw > 0)
+        .reduce((sum, a) => sum + a.ml_potenzial_aw, 0);
+    
+    // In Euro umrechnen (AW-Preis)
+    const potenzialEuro = potenzialAW * ML_CONFIG.AW_PREIS;
+    
+    // KPIs setzen
+    document.getElementById('ml-unterbewertet').textContent = 
+        (unterbewertet.length + leichtUnterbewertet.length) + ' Aufträge';
+    document.getElementById('ml-potenzial-aw').textContent = 
+        Math.round(potenzialAW) + ' AW';
+    document.getElementById('ml-ueberbewertet').textContent = 
+        ueberbewertet.length + ' Aufträge';
+    document.getElementById('ml-potenzial-euro').textContent = 
+        formatCurrency(potenzialEuro);
+    
+    // Tabelle rendern - nur kritische Aufträge (unterbewertet)
+    const kritisch = [...unterbewertet, ...leichtUnterbewertet]
+        .sort((a, b) => (b.ml_potenzial_aw || 0) - (a.ml_potenzial_aw || 0))
+        .slice(0, 25);  // Max 25
+    
+    const tbody = document.getElementById('ml-auftraege-body');
+    if (!tbody) return;
+    
+    if (kritisch.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="9" class="text-center text-success py-4">
+                    <i class="bi bi-check-circle fs-4"></i><br>
+                    <strong>✅ Keine kritischen Aufträge!</strong><br>
+                    <small>Alle Vorgaben scheinen realistisch zu sein.</small>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = kritisch.map(a => {
+        // Status-Icon
+        const statusIcon = a.ml_status_icon || '⚪';
+        const statusClass = a.ml_status === 'unterbewertet' ? 'table-danger' : 'table-warning';
+        
+        // Potenzial formatieren
+        const potenzial = a.ml_potenzial_aw ? `+${a.ml_potenzial_aw.toFixed(1)} AW` : '-';
+        const potenzialPct = a.ml_potenzial_prozent ? `(+${Math.round(a.ml_potenzial_prozent)}%)` : '';
+        
+        // Termin
+        let terminInfo = '-';
+        if (a.gudat_termin) {
+            const d = new Date(a.gudat_termin);
+            terminInfo = `<span class="badge bg-info">📅 ${d.toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit'})}</span>`;
+        } else if (a.geplant_eingang) {
+            const d = new Date(a.geplant_eingang);
+            terminInfo = d.toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit'});
+        }
+        
+        // Mechaniker mit Effizienz
+        let mechInfo = a.mechaniker_name || '-';
+        if (a.mechaniker_effizienz) {
+            const effClass = a.mechaniker_effizienz >= 100 ? 'text-success' : 'text-warning';
+            mechInfo += ` <small class="${effClass}">(${Math.round(a.mechaniker_effizienz)}%)</small>`;
+        }
+        
+        return `
+            <tr class="${statusClass}">
+                <td class="text-center fs-5">${statusIcon}</td>
+                <td>
+                    <strong>${a.auftrag_nr}</strong>
+                    <small class="text-muted d-block">${a.betrieb_name || ''}</small>
+                </td>
+                <td>${a.kennzeichen || '-'}</td>
+                <td>
+                    <small>${(a.kunde || '-').substring(0, 25)}</small>
+                    ${a.marke ? `<span class="badge bg-secondary ms-1">${a.marke}</span>` : ''}
+                </td>
+                <td class="text-end"><strong>${a.vorgabe_aw}</strong> AW</td>
+                <td class="text-end text-danger"><strong>${a.ml_vorhersage_aw}</strong> AW</td>
+                <td class="text-end">
+                    <span class="text-danger fw-bold">${potenzial}</span>
+                    <small class="text-muted">${potenzialPct}</small>
+                </td>
+                <td><small>${mechInfo}</small></td>
+                <td>${terminInfo}</td>
+            </tr>
+        `;
+    }).join('');
+    
+    // Hinweis wenn mehr Aufträge
+    if (unterbewertet.length + leichtUnterbewertet.length > 25) {
+        tbody.innerHTML += `
+            <tr class="table-light">
+                <td colspan="9" class="text-center">
+                    <em>... und ${(unterbewertet.length + leichtUnterbewertet.length) - 25} weitere Aufträge</em>
+                    <a href="/werkstatt/auftraege" class="btn btn-sm btn-outline-primary ms-2">
+                        Alle anzeigen <i class="bi bi-arrow-right"></i>
+                    </a>
+                </td>
+            </tr>
+        `;
+    }
+}
+
+function showMLError(msg) {
+    const tbody = document.getElementById('ml-auftraege-body');
+    if (tbody) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="9" class="text-center py-4">
+                    <div class="alert alert-warning mb-0">
+                        <i class="bi bi-exclamation-triangle"></i> ${msg}
+                    </div>
+                </td>
+            </tr>
+        `;
+    }
+    
+    // Fallback-Werte
+    ['ml-unterbewertet', 'ml-potenzial-aw', 'ml-ueberbewertet', 'ml-potenzial-euro'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = '-';
+    });
+}
 </script>
 {% endblock %}

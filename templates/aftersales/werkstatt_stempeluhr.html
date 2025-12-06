@@ -282,16 +282,45 @@
 let refreshInterval = null;
 const REFRESH_SECONDS = 5;
 
+let mlPredictions = {};  // Cache für ML-Vorhersagen
+
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Stempeluhr LIVE initialized');
+    loadMLPredictions();  // ML-Daten vorladen
     refreshData();
     startAutoRefresh();
 });
+
+// ML-Vorhersagen laden (für alle offenen Aufträge)
+function loadMLPredictions() {
+    fetch('/api/werkstatt/live/auftraege-enriched?tage=7&mit_ml=true')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                // Cache nach Auftragsnummer
+                mlPredictions = {};
+                (data.auftraege || []).forEach(a => {
+                    mlPredictions[a.auftrag_nr] = {
+                        ml_vorhersage_aw: a.ml_vorhersage_aw,
+                        ml_potenzial_aw: a.ml_potenzial_aw,
+                        ml_status: a.ml_status,
+                        ml_status_icon: a.ml_status_icon,
+                        mechaniker_effizienz: a.mechaniker_effizienz
+                    };
+                });
+                console.log('ML-Predictions geladen:', Object.keys(mlPredictions).length);
+            }
+        })
+        .catch(err => console.log('ML-Predictions nicht verfügbar:', err));
+}
 
 function startAutoRefresh() {
     let countdown = REFRESH_SECONDS;
     
     if (refreshInterval) clearInterval(refreshInterval);
+    
+    // Auto-Refresh alle 5 Minuten für ML-Predictions
+    setInterval(loadMLPredictions, 5 * 60 * 1000);
     
     refreshInterval = setInterval(() => {
         countdown--;
@@ -390,6 +419,31 @@ function renderAktive(mechaniker) {
             : 'Keine Vorgabe';
         const sbText = m.serviceberater ? `<i class="bi bi-person-badge"></i> ${m.serviceberater}` : '';
         
+        // ML-Prognose aus Cache holen
+        const ml = mlPredictions[m.order_number] || {};
+        let mlHtml = '';
+        
+        if (ml.ml_vorhersage_aw) {
+            const mlIcon = ml.ml_status_icon || '⚪';
+            const mlClass = ml.ml_status === 'unterbewertet' ? 'text-danger' : 
+                           (ml.ml_status === 'leicht_unterbewertet' ? 'text-warning' : 
+                           (ml.ml_status === 'überbewertet' ? 'text-success' : 'text-muted'));
+            
+            const potenzialText = ml.ml_potenzial_aw > 0 
+                ? `+${ml.ml_potenzial_aw.toFixed(1)} AW` 
+                : (ml.ml_potenzial_aw < 0 ? `${ml.ml_potenzial_aw.toFixed(1)} AW` : '');
+            
+            mlHtml = `
+                <div class="small mt-2 p-2 rounded" style="background: rgba(142,68,173,0.1);">
+                    <span class="${mlClass} fw-bold">
+                        ${mlIcon} ML: ${ml.ml_vorhersage_aw} AW
+                    </span>
+                    ${potenzialText ? `<span class="${mlClass} ms-2">(${potenzialText})</span>` : ''}
+                    ${ml.mechaniker_effizienz ? `<span class="badge bg-${ml.mechaniker_effizienz >= 100 ? 'success' : 'warning'} ms-2" title="Mechaniker-Effizienz">${Math.round(ml.mechaniker_effizienz)}%</span>` : ''}
+                </div>
+            `;
+        }
+        
         html += `
             <div class="col-lg-6 col-xl-4 mb-3">
                 <div class="card mechaniker-card ${statusClass}" onclick="showAuftragDetail(${m.order_number})">
@@ -432,6 +486,8 @@ function renderAktive(mechaniker) {
                             </div>
                         </div>
                         ${fortschritt > 100 ? `<div class="text-danger small mt-1 text-end"><i class="bi bi-exclamation-triangle"></i> ${fortschritt - 100}% über Vorgabe!</div>` : ''}
+                        
+                        ${mlHtml}
                     </div>
                 </div>
             </div>
