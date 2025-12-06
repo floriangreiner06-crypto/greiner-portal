@@ -337,6 +337,14 @@ try:
 except Exception as e:
     print(f"⚠️  Werkstatt LIVE API nicht geladen: {e}")
 
+# ML API (Machine Learning - Auftragsdauer-Vorhersage)
+try:
+    from api.ml_api import ml_api
+    app.register_blueprint(ml_api)
+    print("✅ ML API registriert: /api/ml/")
+except Exception as e:
+    print(f"⚠️  ML API nicht geladen: {e}")
+
 # DEBUG Route für TAG76 - später entfernen!
 @app.route('/debug/user')
 @login_required
@@ -386,6 +394,13 @@ def werkstatt_live():
 def werkstatt_stempeluhr():
     """Werkstatt Stempeluhr - LIVE Mechaniker-Übersicht"""
     return render_template('aftersales/werkstatt_stempeluhr.html')
+
+
+@app.route('/werkstatt/intelligence')
+@login_required
+def werkstatt_intelligence():
+    """Werkstatt Intelligence - ML Dashboard"""
+    return render_template('werkstatt_intelligence.html')
 
 
 @app.route('/werkstatt/tagesbericht')

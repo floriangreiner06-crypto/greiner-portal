@@ -1,0 +1,446 @@
+{% extends "base.html" %}
+
+{% block title %}Werkstatt Intelligence - ML Dashboard{% endblock %}
+
+{% block extra_css %}
+<style>
+    .ml-card {
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        transition: transform 0.2s;
+    }
+    .ml-card:hover {
+        transform: translateY(-2px);
+    }
+    .stat-big {
+        font-size: 2.5rem;
+        font-weight: 700;
+        line-height: 1;
+    }
+    .stat-label {
+        font-size: 0.85rem;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .efficiency-bar {
+        height: 8px;
+        border-radius: 4px;
+        background: #e9ecef;
+        overflow: hidden;
+    }
+    .efficiency-fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.5s ease;
+    }
+    .badge-schnell { background: #28a745; }
+    .badge-normal { background: #ffc107; color: #333; }
+    .badge-langsam { background: #dc3545; }
+    
+    .prediction-result {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 16px;
+        padding: 2rem;
+    }
+    .prediction-value {
+        font-size: 3.5rem;
+        font-weight: 800;
+    }
+    .vs-badge {
+        background: rgba(255,255,255,0.2);
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.9rem;
+    }
+    
+    .mechaniker-row {
+        padding: 1rem;
+        border-bottom: 1px solid #eee;
+        transition: background 0.2s;
+    }
+    .mechaniker-row:hover {
+        background: #f8f9fa;
+    }
+    .rank-badge {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        color: white;
+    }
+    .rank-1 { background: linear-gradient(135deg, #f5af19, #f12711); }
+    .rank-2 { background: linear-gradient(135deg, #bdc3c7, #2c3e50); }
+    .rank-3 { background: linear-gradient(135deg, #c9920e, #a0640e); }
+    .rank-other { background: #6c757d; }
+    
+    .filter-card {
+        background: #f8f9fa;
+        border: 2px dashed #dee2e6;
+        border-radius: 12px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1">
+                <i class="fas fa-brain text-primary me-2"></i>
+                Werkstatt Intelligence
+            </h2>
+            <p class="text-muted mb-0">ML-gestützte Auftragsanalyse & Mechaniker-Effizienz</p>
+        </div>
+        <div>
+            <span class="badge bg-success p-2">
+                <i class="fas fa-check-circle me-1"></i>
+                Modell aktiv
+            </span>
+            <span class="badge bg-secondary p-2 ms-2">
+                143.510 Trainingsdaten
+            </span>
+        </div>
+    </div>
+
+    <div class="row">
+        
+        <!-- LINKE SPALTE: Vorhersage-Tool -->
+        <div class="col-lg-5 mb-4">
+            
+            <!-- Vorhersage-Formular -->
+            <div class="card ml-card mb-4">
+                <div class="card-header bg-white border-0 pt-4 pb-0">
+                    <h5 class="mb-0">
+                        <i class="fas fa-magic text-primary me-2"></i>
+                        Auftragsdauer vorhersagen
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form id="prediction-form">
+                        <div class="row g-3">
+                            <div class="col-6">
+                                <label class="form-label small text-muted">Vorgabe (AW)</label>
+                                <input type="number" class="form-control form-control-lg" 
+                                       id="vorgabe_aw" value="5" min="0.5" max="100" step="0.5">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small text-muted">Marke</label>
+                                <select class="form-select form-select-lg" id="marke">
+                                    <option value="Opel" selected>Opel</option>
+                                    <option value="Hyundai">Hyundai</option>
+                                    <option value="Leapmotor">Leapmotor</option>
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small text-muted">Mechaniker</label>
+                                <select class="form-select" id="mechaniker_nr">
+                                    <option value="5004">5004 - Schnell</option>
+                                    <option value="5008" selected>5008 - Durchschnitt</option>
+                                    <option value="5014">5014 - Langsam</option>
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small text-muted">km-Stand</label>
+                                <input type="number" class="form-control" 
+                                       id="km_stand" value="50000" step="1000">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small text-muted">Fahrzeugalter (Jahre)</label>
+                                <input type="number" class="form-control" 
+                                       id="fahrzeug_alter" value="3" min="0" max="30">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small text-muted">Betrieb</label>
+                                <select class="form-select" id="betrieb">
+                                    <option value="1" selected>Deggendorf</option>
+                                    <option value="3">Plattling</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-lg w-100 mt-4">
+                            <i class="fas fa-calculator me-2"></i>
+                            Vorhersage berechnen
+                        </button>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- Vorhersage-Ergebnis -->
+            <div class="prediction-result" id="prediction-result" style="display: none;">
+                <div class="text-center">
+                    <div class="stat-label text-white-50 mb-2">Voraussichtliche Dauer</div>
+                    <div class="prediction-value" id="result-minuten">--</div>
+                    <div class="text-white-50 mb-3">Minuten</div>
+                    
+                    <div class="d-flex justify-content-center gap-3 mb-3">
+                        <span class="vs-badge">
+                            <i class="fas fa-clock me-1"></i>
+                            Vorgabe: <strong id="result-vorgabe">--</strong> min
+                        </span>
+                        <span class="vs-badge" id="result-abweichung-badge">
+                            <i class="fas fa-arrow-up me-1"></i>
+                            <span id="result-abweichung">--</span>
+                        </span>
+                    </div>
+                    
+                    <div class="small text-white-50">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Konfidenz: <span id="result-konfidenz">--</span>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+        
+        <!-- RECHTE SPALTE: Mechaniker-Ranking -->
+        <div class="col-lg-7 mb-4">
+            
+            <!-- KPI-Übersicht -->
+            <div class="row g-3 mb-4">
+                <div class="col-4">
+                    <div class="card ml-card h-100">
+                        <div class="card-body text-center">
+                            <div class="stat-big text-success" id="kpi-genauigkeit">75%</div>
+                            <div class="stat-label">Modell-Genauigkeit</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-4">
+                    <div class="card ml-card h-100">
+                        <div class="card-body text-center">
+                            <div class="stat-big text-primary" id="kpi-mae">22</div>
+                            <div class="stat-label">Ø Fehler (min)</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-4">
+                    <div class="card ml-card h-100">
+                        <div class="card-body text-center">
+                            <div class="stat-big text-info" id="kpi-mechaniker">11</div>
+                            <div class="stat-label">Mechaniker</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Mechaniker-Ranking -->
+            <div class="card ml-card">
+                <div class="card-header bg-white border-0 pt-4 pb-2 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-trophy text-warning me-2"></i>
+                        Mechaniker-Effizienz Ranking
+                    </h5>
+                    <select class="form-select form-select-sm w-auto" id="ranking-filter">
+                        <option value="">Alle Marken</option>
+                        <option value="Opel">Opel</option>
+                        <option value="Hyundai">Hyundai</option>
+                    </select>
+                </div>
+                <div class="card-body p-0" id="ranking-container">
+                    <!-- Wird per JS gefüllt -->
+                    <div class="text-center py-5 text-muted">
+                        <i class="fas fa-spinner fa-spin fa-2x mb-3"></i>
+                        <p>Lade Ranking...</p>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+        
+    </div>
+    
+    <!-- BOTTOM: Feature Importance -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card ml-card">
+                <div class="card-header bg-white border-0 pt-4 pb-2">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-bar text-info me-2"></i>
+                        Was beeinflusst die Dauer am meisten?
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span>Vorgabe-AW</span>
+                                    <strong>41.1%</strong>
+                                </div>
+                                <div class="efficiency-bar">
+                                    <div class="efficiency-fill bg-primary" style="width: 41.1%"></div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span>km-Stand</span>
+                                    <strong>17.2%</strong>
+                                </div>
+                                <div class="efficiency-bar">
+                                    <div class="efficiency-fill bg-success" style="width: 17.2%"></div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span>Startuhrzeit</span>
+                                    <strong>14.1%</strong>
+                                </div>
+                                <div class="efficiency-bar">
+                                    <div class="efficiency-fill bg-info" style="width: 14.1%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span>Mechaniker</span>
+                                    <strong>7.5%</strong>
+                                </div>
+                                <div class="efficiency-bar">
+                                    <div class="efficiency-fill bg-warning" style="width: 7.5%"></div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span>Fahrzeugalter</span>
+                                    <strong>6.6%</strong>
+                                </div>
+                                <div class="efficiency-bar">
+                                    <div class="efficiency-fill bg-secondary" style="width: 6.6%"></div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span>Monat / Wochentag / Marke</span>
+                                    <strong>13.5%</strong>
+                                </div>
+                                <div class="efficiency-bar">
+                                    <div class="efficiency-fill bg-dark" style="width: 13.5%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    
+    // Mechaniker-Ranking laden
+    function loadRanking(marke = '') {
+        let url = '/api/ml/mechaniker-ranking?limit=15';
+        if (marke) url += '&marke=' + marke;
+        
+        $.get(url, function(data) {
+            if (data.success) {
+                renderRanking(data.ranking);
+            }
+        });
+    }
+    
+    function renderRanking(ranking) {
+        let html = '';
+        ranking.forEach((m, idx) => {
+            const rank = idx + 1;
+            const rankClass = rank <= 3 ? 'rank-' + rank : 'rank-other';
+            const badgeClass = m.bewertung === 'schnell' ? 'badge-schnell' : 
+                              (m.bewertung === 'normal' ? 'badge-normal' : 'badge-langsam');
+            
+            // Effizienz-Balken (100% = Durchschnitt bei 100%)
+            const barWidth = Math.min(m.effizienz_prozent, 150);
+            const barColor = m.effizienz_prozent >= 100 ? '#28a745' : 
+                            (m.effizienz_prozent >= 80 ? '#ffc107' : '#dc3545');
+            
+            html += `
+                <div class="mechaniker-row d-flex align-items-center">
+                    <div class="rank-badge ${rankClass} me-3">${rank}</div>
+                    <div class="flex-grow-1">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <strong>Mechaniker ${m.mechaniker_nr}</strong>
+                            <span class="badge ${badgeClass}">${m.effizienz_prozent}%</span>
+                        </div>
+                        <div class="efficiency-bar">
+                            <div class="efficiency-fill" style="width: ${barWidth * 0.67}%; background: ${barColor}"></div>
+                        </div>
+                        <div class="small text-muted mt-1">
+                            ${m.anzahl_auftraege.toLocaleString()} Aufträge · 
+                            Ø ${m.avg_ist_minuten} min (Vorgabe: ${m.avg_vorgabe_aw} AW)
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        $('#ranking-container').html(html);
+    }
+    
+    // Filter-Änderung
+    $('#ranking-filter').change(function() {
+        loadRanking($(this).val());
+    });
+    
+    // Vorhersage-Formular
+    $('#prediction-form').submit(function(e) {
+        e.preventDefault();
+        
+        const data = {
+            vorgabe_aw: parseFloat($('#vorgabe_aw').val()),
+            marke: $('#marke').val(),
+            mechaniker_nr: parseInt($('#mechaniker_nr').val()),
+            km_stand: parseInt($('#km_stand').val()),
+            fahrzeug_alter_jahre: parseInt($('#fahrzeug_alter').val()),
+            betrieb: parseInt($('#betrieb').val())
+        };
+        
+        $.ajax({
+            url: '/api/ml/auftragsdauer',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(data),
+            success: function(result) {
+                if (result.success) {
+                    $('#result-minuten').text(Math.round(result.vorhersage_minuten));
+                    $('#result-vorgabe').text(Math.round(result.vorgabe_minuten));
+                    
+                    const abw = result.abweichung_minuten;
+                    const abwText = (abw >= 0 ? '+' : '') + Math.round(abw) + ' min (' + 
+                                   (abw >= 0 ? '+' : '') + Math.round(result.abweichung_prozent) + '%)';
+                    $('#result-abweichung').text(abwText);
+                    
+                    const icon = abw >= 0 ? 'fa-arrow-up' : 'fa-arrow-down';
+                    $('#result-abweichung-badge i').removeClass().addClass('fas ' + icon + ' me-1');
+                    
+                    $('#result-konfidenz').text(result.konfidenz);
+                    $('#prediction-result').slideDown();
+                }
+            }
+        });
+    });
+    
+    // Initial laden
+    loadRanking();
+    
+    // Statistik laden
+    $.get('/api/ml/statistik', function(data) {
+        if (data.success) {
+            $('#kpi-genauigkeit').text(Math.round(data.modell_performance.r2_score * 100) + '%');
+            $('#kpi-mae').text(Math.round(data.modell_performance.mae_minuten));
+            $('#kpi-mechaniker').text(data.mechaniker_anzahl);
+        }
+    });
+    
+});
+</script>
+{% endblock %}
