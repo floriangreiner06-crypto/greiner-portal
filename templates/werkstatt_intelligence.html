@@ -83,6 +83,25 @@
         border: 2px dashed #dee2e6;
         border-radius: 12px;
     }
+    
+    .mechaniker-name {
+        font-weight: 600;
+        color: #333;
+    }
+    .mechaniker-nr {
+        font-size: 0.8rem;
+        color: #888;
+    }
+    .location-badge {
+        font-size: 0.7rem;
+        padding: 2px 6px;
+        border-radius: 4px;
+        background: #e9ecef;
+        color: #666;
+        margin-left: 5px;
+    }
+    .location-deg { background: #d4edda; color: #155724; }
+    .location-lau { background: #cce5ff; color: #004085; }
 </style>
 {% endblock %}
 
@@ -103,8 +122,8 @@
                 <i class="fas fa-check-circle me-1"></i>
                 Modell aktiv
             </span>
-            <span class="badge bg-secondary p-2 ms-2">
-                143.510 Trainingsdaten
+            <span class="badge bg-secondary p-2 ms-2" id="badge-datensaetze">
+                Lade...
             </span>
         </div>
     </div>
@@ -138,12 +157,10 @@
                                     <option value="Leapmotor">Leapmotor</option>
                                 </select>
                             </div>
-                            <div class="col-6">
+                            <div class="col-12">
                                 <label class="form-label small text-muted">Mechaniker</label>
                                 <select class="form-select" id="mechaniker_nr">
-                                    <option value="5004">5004 - Schnell</option>
-                                    <option value="5008" selected>5008 - Durchschnitt</option>
-                                    <option value="5014">5014 - Langsam</option>
+                                    <option value="">Lade Mechaniker...</option>
                                 </select>
                             </div>
                             <div class="col-6">
@@ -157,10 +174,28 @@
                                        id="fahrzeug_alter" value="3" min="0" max="30">
                             </div>
                             <div class="col-6">
-                                <label class="form-label small text-muted">Betrieb</label>
-                                <select class="form-select" id="betrieb">
-                                    <option value="1" selected>Deggendorf</option>
-                                    <option value="3">Plattling</option>
+                                <label class="form-label small text-muted">Startuhrzeit</label>
+                                <select class="form-select" id="start_stunde">
+                                    <option value="7">07:00</option>
+                                    <option value="8" selected>08:00</option>
+                                    <option value="9">09:00</option>
+                                    <option value="10">10:00</option>
+                                    <option value="11">11:00</option>
+                                    <option value="12">12:00</option>
+                                    <option value="13">13:00</option>
+                                    <option value="14">14:00</option>
+                                    <option value="15">15:00</option>
+                                    <option value="16">16:00</option>
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small text-muted">Wochentag</label>
+                                <select class="form-select" id="wochentag">
+                                    <option value="1" selected>Montag</option>
+                                    <option value="2">Dienstag</option>
+                                    <option value="3">Mittwoch</option>
+                                    <option value="4">Donnerstag</option>
+                                    <option value="5">Freitag</option>
                                 </select>
                             </div>
                         </div>
@@ -190,6 +225,10 @@
                         </span>
                     </div>
                     
+                    <div class="small text-white-50 mb-2">
+                        <i class="fas fa-user me-1"></i>
+                        <span id="result-mechaniker">--</span>
+                    </div>
                     <div class="small text-white-50">
                         <i class="fas fa-info-circle me-1"></i>
                         Konfidenz: <span id="result-konfidenz">--</span>
@@ -207,7 +246,7 @@
                 <div class="col-4">
                     <div class="card ml-card h-100">
                         <div class="card-body text-center">
-                            <div class="stat-big text-success" id="kpi-genauigkeit">75%</div>
+                            <div class="stat-big text-success" id="kpi-genauigkeit">--</div>
                             <div class="stat-label">Modell-Genauigkeit</div>
                         </div>
                     </div>
@@ -215,7 +254,7 @@
                 <div class="col-4">
                     <div class="card ml-card h-100">
                         <div class="card-body text-center">
-                            <div class="stat-big text-primary" id="kpi-mae">22</div>
+                            <div class="stat-big text-primary" id="kpi-mae">--</div>
                             <div class="stat-label">Ø Fehler (min)</div>
                         </div>
                     </div>
@@ -223,7 +262,7 @@
                 <div class="col-4">
                     <div class="card ml-card h-100">
                         <div class="card-body text-center">
-                            <div class="stat-big text-info" id="kpi-mechaniker">11</div>
+                            <div class="stat-big text-info" id="kpi-mechaniker">--</div>
                             <div class="stat-label">Mechaniker</div>
                         </div>
                     </div>
@@ -339,19 +378,73 @@
 <script>
 $(document).ready(function() {
     
-    // Mechaniker-Ranking laden
+    // =========================================================================
+    // MECHANIKER-LISTE LADEN (für Dropdown, gruppiert nach Standort)
+    // =========================================================================
+    function loadMechanikerListe() {
+        $.get('/api/ml/mechaniker-liste', function(data) {
+            if (data.success && data.mechaniker.length > 0) {
+                // Gruppieren nach Standort
+                const grouped = {};
+                data.mechaniker.forEach(m => {
+                    if (!grouped[m.location]) {
+                        grouped[m.location] = [];
+                    }
+                    grouped[m.location].push(m);
+                });
+                
+                // HTML mit optgroups erstellen
+                let html = '';
+                Object.keys(grouped).sort().forEach(location => {
+                    html += `<optgroup label="${location}">`;
+                    grouped[location].forEach(m => {
+                        html += `<option value="${m.nr}">${m.name} (${m.location_short})</option>`;
+                    });
+                    html += '</optgroup>';
+                });
+                
+                $('#mechaniker_nr').html(html);
+            } else {
+                $('#mechaniker_nr').html('<option value="5008">Patrick Ebner (DEG)</option>');
+            }
+        }).fail(function() {
+            // Fallback
+            $('#mechaniker_nr').html('<option value="5008">Patrick Ebner (DEG)</option>');
+        });
+    }
+    
+    // =========================================================================
+    // MECHANIKER-RANKING LADEN
+    // =========================================================================
     function loadRanking(marke = '') {
-        let url = '/api/ml/mechaniker-ranking?limit=15';
+        let url = '/api/ml/mechaniker-ranking?limit=20&nur_werkstatt=true';
         if (marke) url += '&marke=' + marke;
         
         $.get(url, function(data) {
             if (data.success) {
                 renderRanking(data.ranking);
             }
+        }).fail(function() {
+            $('#ranking-container').html(`
+                <div class="text-center py-5 text-danger">
+                    <i class="fas fa-exclamation-triangle fa-2x mb-3"></i>
+                    <p>Fehler beim Laden des Rankings</p>
+                </div>
+            `);
         });
     }
     
     function renderRanking(ranking) {
+        if (ranking.length === 0) {
+            $('#ranking-container').html(`
+                <div class="text-center py-5 text-muted">
+                    <i class="fas fa-info-circle fa-2x mb-3"></i>
+                    <p>Keine Daten für diese Filter</p>
+                </div>
+            `);
+            return;
+        }
+        
         let html = '';
         ranking.forEach((m, idx) => {
             const rank = idx + 1;
@@ -364,12 +457,21 @@ $(document).ready(function() {
             const barColor = m.effizienz_prozent >= 100 ? '#28a745' : 
                             (m.effizienz_prozent >= 80 ? '#ffc107' : '#dc3545');
             
+            // Standort-Badge Farbe
+            const locClass = m.location && m.location.includes('Deggendorf') ? 'location-deg' : 
+                            (m.location && m.location.includes('Landau') ? 'location-lau' : '');
+            const locShort = m.location ? (m.location.includes('Deggendorf') ? 'DEG' : 
+                            (m.location.includes('Landau') ? 'LAU' : m.location.substring(0,3))) : '';
+            
             html += `
                 <div class="mechaniker-row d-flex align-items-center">
                     <div class="rank-badge ${rankClass} me-3">${rank}</div>
                     <div class="flex-grow-1">
                         <div class="d-flex justify-content-between align-items-center mb-1">
-                            <strong>Mechaniker ${m.mechaniker_nr}</strong>
+                            <div>
+                                <span class="mechaniker-name">${m.mechaniker_name}</span>
+                                <span class="location-badge ${locClass}">${locShort}</span>
+                            </div>
                             <span class="badge ${badgeClass}">${m.effizienz_prozent}%</span>
                         </div>
                         <div class="efficiency-bar">
@@ -391,7 +493,9 @@ $(document).ready(function() {
         loadRanking($(this).val());
     });
     
-    // Vorhersage-Formular
+    // =========================================================================
+    // VORHERSAGE-FORMULAR
+    // =========================================================================
     $('#prediction-form').submit(function(e) {
         e.preventDefault();
         
@@ -401,7 +505,8 @@ $(document).ready(function() {
             mechaniker_nr: parseInt($('#mechaniker_nr').val()),
             km_stand: parseInt($('#km_stand').val()),
             fahrzeug_alter_jahre: parseInt($('#fahrzeug_alter').val()),
-            betrieb: parseInt($('#betrieb').val())
+            start_stunde: parseInt($('#start_stunde').val()),
+            wochentag: parseInt($('#wochentag').val())
         };
         
         $.ajax({
@@ -422,24 +527,40 @@ $(document).ready(function() {
                     const icon = abw >= 0 ? 'fa-arrow-up' : 'fa-arrow-down';
                     $('#result-abweichung-badge i').removeClass().addClass('fas ' + icon + ' me-1');
                     
+                    // Mechaniker-Name anzeigen
+                    const mechName = result.input.mechaniker_name || 'Mechaniker ' + result.input.mechaniker_nr;
+                    $('#result-mechaniker').text(mechName);
+                    
                     $('#result-konfidenz').text(result.konfidenz);
                     $('#prediction-result').slideDown();
                 }
+            },
+            error: function() {
+                alert('Fehler bei der Vorhersage');
             }
         });
     });
     
-    // Initial laden
-    loadRanking();
+    // =========================================================================
+    // STATISTIK LADEN
+    // =========================================================================
+    function loadStatistik() {
+        $.get('/api/ml/statistik', function(data) {
+            if (data.success) {
+                $('#kpi-genauigkeit').text(Math.round(data.modell_performance.r2_score * 100) + '%');
+                $('#kpi-mae').text(Math.round(data.modell_performance.mae_minuten));
+                $('#kpi-mechaniker').text(data.mechaniker_anzahl);
+                $('#badge-datensaetze').text(data.training_datensaetze.toLocaleString() + ' Trainingsdaten');
+            }
+        });
+    }
     
-    // Statistik laden
-    $.get('/api/ml/statistik', function(data) {
-        if (data.success) {
-            $('#kpi-genauigkeit').text(Math.round(data.modell_performance.r2_score * 100) + '%');
-            $('#kpi-mae').text(Math.round(data.modell_performance.mae_minuten));
-            $('#kpi-mechaniker').text(data.mechaniker_anzahl);
-        }
-    });
+    // =========================================================================
+    // INITIALISIERUNG
+    // =========================================================================
+    loadMechanikerListe();
+    loadRanking();
+    loadStatistik();
     
 });
 </script>
