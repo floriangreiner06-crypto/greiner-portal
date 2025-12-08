@@ -1,12 +1,9 @@
 {% extends 'base.html' %}
 
-{% block title %}Urlaubsplaner V2 - Greiner DRIVE{% endblock %}
+{% block title %}Urlaubsplaner - Greiner DRIVE{% endblock %}
 
 {% block extra_css %}
-<!-- Font Awesome Icons -->
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-<!-- Custom CSS -->
-<link href="{{ url_for('static', filename='css/vacation_v2.css') }}?v={{ STATIC_VERSION }}" rel="stylesheet">
 <style>
     .vacation-header {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -14,6 +11,279 @@
         padding: 20px;
         border-radius: 10px;
         margin-bottom: 20px;
+    }
+    .vacation-header .approver-badge {
+        background: rgba(255,255,255,0.2);
+        padding: 5px 12px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        margin-top: 5px;
+        display: inline-block;
+    }
+    .stat-card {
+        border: none;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        transition: transform 0.2s;
+    }
+    .stat-card:hover {
+        transform: translateY(-2px);
+    }
+    .stat-card .stat-value {
+        font-size: 2rem;
+        font-weight: bold;
+    }
+    .stat-card .stat-label {
+        color: #6c757d;
+        font-size: 0.9rem;
+    }
+    .team-member-card {
+        border-left: 4px solid #667eea;
+        margin-bottom: 10px;
+        padding: 10px 15px;
+        background: #f8f9fa;
+        border-radius: 0 5px 5px 0;
+    }
+    .team-member-card.pending {
+        border-left-color: #ffc107;
+        background: #fff8e1;
+    }
+    .approval-card {
+        border: 1px solid #dee2e6;
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 15px;
+        background: white;
+    }
+    .approval-card:hover {
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .approval-card .employee-name {
+        font-weight: 600;
+        font-size: 1.1rem;
+    }
+    .approval-card .grp-badge {
+        background: #e9ecef;
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 0.75rem;
+        color: #495057;
+    }
+    .approval-card .date-range {
+        color: #667eea;
+        font-weight: 500;
+    }
+    .btn-approve {
+        background: #28a745;
+        border: none;
+        color: white;
+    }
+    .btn-approve:hover {
+        background: #218838;
+        color: white;
+    }
+    .btn-reject {
+        background: #dc3545;
+        border: none;
+        color: white;
+    }
+    .btn-reject:hover {
+        background: #c82333;
+        color: white;
+    }
+    .no-approver-notice {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 30px;
+        text-align: center;
+        color: #6c757d;
+    }
+    .balance-progress {
+        height: 10px;
+        border-radius: 5px;
+        margin-top: 10px;
+    }
+    .my-approvers-list {
+        background: #e8f4fd;
+        border-radius: 8px;
+        padding: 10px 15px;
+        margin-top: 10px;
+    }
+    .my-approvers-list .approver-item {
+        display: inline-block;
+        background: white;
+        padding: 3px 10px;
+        border-radius: 15px;
+        margin: 2px;
+        font-size: 0.85rem;
+    }
+    /* Status-Farben TAG 103 */
+    .status-pending { background: #ffc107 !important; color: #000; }      /* Gelb - Beantragt */
+    .status-approved { background: #90EE90 !important; color: #000; }     /* Hellgrün - Genehmigt */
+    .status-in-locosoft { background: #28a745 !important; color: #fff; }  /* Dunkelgrün - In Locosoft */
+    .status-rejected { background: #dc3545 !important; color: #fff; }     /* Rot - Abgelehnt */
+    .status-info { background: #17a2b8 !important; color: #fff; }         /* Info - Zur Kenntnis */
+    
+    .absence-type-icon {
+        width: 24px;
+        text-align: center;
+        display: inline-block;
+    }
+    
+    /* Outlook-Style Kalender */
+    .outlook-calendar {
+        width: 100%;
+    }
+    .calendar-header {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        background: #f8f9fa;
+        border-bottom: 1px solid #dee2e6;
+    }
+    .calendar-day-header {
+        padding: 8px;
+        text-align: center;
+        font-weight: 600;
+        font-size: 0.85rem;
+        color: #495057;
+    }
+    .calendar-day-header.weekend {
+        color: #adb5bd;
+    }
+    .calendar-body {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+    }
+    .calendar-day {
+        min-height: 70px;
+        border: 1px solid #e9ecef;
+        border-top: none;
+        border-left: none;
+        padding: 4px;
+        position: relative;
+        background: white;
+        cursor: pointer;
+        user-select: none;
+        transition: background 0.1s;
+    }
+    .calendar-day:nth-child(7n) {
+        border-right: none;
+    }
+    .calendar-day.weekend {
+        background: #f8f9fa;
+    }
+    .calendar-day.other-month {
+        background: #f1f3f4;
+    }
+    .calendar-day.other-month .day-number {
+        color: #adb5bd;
+    }
+    .calendar-day.today {
+        background: #e3f2fd;
+    }
+    .calendar-day.today .day-number {
+        background: #0d6efd;
+        color: white;
+        border-radius: 50%;
+        width: 24px;
+        height: 24px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .calendar-day:hover:not(.other-month) {
+        background: #e8f4fd;
+    }
+    .calendar-day.selected {
+        background: #bbdefb !important;
+        box-shadow: inset 0 0 0 2px #1976d2;
+    }
+    .calendar-day.selecting {
+        background: #c8e6c9 !important;
+    }
+    .day-number {
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: #495057;
+    }
+    .day-events {
+        margin-top: 2px;
+        max-height: 40px;
+        overflow: hidden;
+    }
+    .day-event {
+        font-size: 0.65rem;
+        padding: 1px 3px;
+        margin-bottom: 1px;
+        border-radius: 2px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .day-event.mine { font-weight: 600; }
+    .day-event.urlaub { background: #c8e6c9; color: #2e7d32; }
+    .day-event.urlaub.pending { background: #fff9c4; color: #f57f17; }
+    .day-event.urlaub.in-locosoft { background: #28a745; color: white; }
+    .day-event.za { background: #bbdefb; color: #1565c0; }
+    .day-event.krank { background: #ffcdd2; color: #c62828; }
+    .day-event.schulung { background: #e1bee7; color: #7b1fa2; }
+    .day-event.sonstige { background: #cfd8dc; color: #455a64; }
+    .day-event.team { opacity: 0.7; font-size: 0.6rem; }
+    
+    /* Quick-Request Panel */
+    .quick-request-panel {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 15px;
+        display: none;
+    }
+    .quick-request-panel.show {
+        display: block;
+    }
+    .quick-request-panel .selected-dates {
+        background: rgba(255,255,255,0.2);
+        border-radius: 5px;
+        padding: 8px 12px;
+        margin-bottom: 10px;
+    }
+    .quick-request-panel .btn-type {
+        background: rgba(255,255,255,0.15);
+        border: 1px solid rgba(255,255,255,0.3);
+        color: white;
+        margin: 2px;
+        padding: 5px 10px;
+        font-size: 0.85rem;
+    }
+    .quick-request-panel .btn-type:hover,
+    .quick-request-panel .btn-type.active {
+        background: rgba(255,255,255,0.3);
+    }
+    
+    /* Sidebar */
+    .sidebar-section {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 10px;
+    }
+    .sidebar-section h6 {
+        font-size: 0.85rem;
+        margin-bottom: 8px;
+        color: #495057;
+    }
+    .legend-item {
+        display: flex;
+        align-items: center;
+        font-size: 0.75rem;
+        margin-bottom: 4px;
+    }
+    .legend-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 2px;
+        margin-right: 6px;
     }
 </style>
 {% endblock %}
@@ -25,16 +295,21 @@
         <div class="row align-items-center">
             <div class="col">
                 <h1 class="mb-0">
-                    <i class="fas fa-umbrella-beach"></i> Urlaubsplaner V2
+                    <i class="fas fa-umbrella-beach"></i> Urlaubsplaner
                 </h1>
-                <small>Moderne Urlaubsverwaltung</small>
+                <small>Urlaub beantragen & genehmigen</small>
+                <div id="approverBadge" style="display: none;">
+                    <span class="approver-badge">
+                        <i class="fas fa-user-shield"></i> Genehmiger für <span id="approverGroups">-</span>
+                    </span>
+                </div>
             </div>
             <div class="col-auto text-end">
                 <div id="currentUser" class="mb-1">
                     <i class="fas fa-user"></i> <span id="userName">Wird geladen...</span>
                 </div>
                 <div id="userBalance" class="small">
-                    <i class="fas fa-calendar-check"></i> Resturlaub: <span id="remainingDays">-</span> Tage
+                    <i class="fas fa-calendar-check"></i> Resturlaub: <strong><span id="remainingDays">-</span></strong> Tage
                 </div>
             </div>
         </div>
@@ -44,23 +319,29 @@
     <ul class="nav nav-tabs mb-4" id="mainTabs" role="tablist">
         <li class="nav-item" role="presentation">
             <button class="nav-link active" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard" type="button" role="tab">
-                <i class="fas fa-chart-line"></i> Dashboard
+                <i class="fas fa-home"></i> Übersicht
             </button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="request-tab" data-bs-toggle="tab" data-bs-target="#request" type="button" role="tab">
-                <i class="fas fa-plus-circle"></i> Urlaub beantragen
+                <i class="fas fa-plus-circle"></i> Beantragen
             </button>
         </li>
-        <li class="nav-item" role="presentation">
+        <li class="nav-item" role="presentation" id="teamTabItem" style="display: none;">
+            <button class="nav-link" id="team-tab" data-bs-toggle="tab" data-bs-target="#team" type="button" role="tab">
+                <i class="fas fa-users"></i> Mein Team
+                <span id="teamSizeBadge" class="badge bg-secondary ms-1">0</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation" id="chefTabItem" style="display: none;">
+            <a class="nav-link" href="/urlaubsplaner/chef">
+                <i class="fas fa-sitemap"></i> Chef-Übersicht
+            </a>
+        </li>
+        <li class="nav-item" role="presentation" id="approvalTabItem" style="display: none;">
             <button class="nav-link" id="approval-tab" data-bs-toggle="tab" data-bs-target="#approval" type="button" role="tab">
                 <i class="fas fa-check-circle"></i> Genehmigungen
-                <span id="pendingBadge" class="badge bg-danger ms-2" style="display: none;">0</span>
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="calendar-tab" data-bs-toggle="tab" data-bs-target="#calendar" type="button" role="tab">
-                <i class="fas fa-calendar-alt"></i> Team-Kalender
+                <span id="pendingBadge" class="badge bg-danger ms-1" style="display: none;">0</span>
             </button>
         </li>
     </ul>
@@ -68,60 +349,147 @@
     <!-- Tab Content -->
     <div class="tab-content" id="mainTabContent">
 
-        <!-- DASHBOARD TAB -->
+        <!-- DASHBOARD TAB - ALL-IN-ONE -->
         <div class="tab-pane fade show active" id="dashboard" role="tabpanel">
+            <!-- Quick Request Panel (erscheint bei Auswahl) -->
+            <div class="quick-request-panel" id="quickRequestPanel">
+                <div class="row align-items-center">
+                    <div class="col-md-4">
+                        <div class="selected-dates">
+                            <i class="fas fa-calendar-check"></i>
+                            <span id="selectedDatesText">Keine Tage ausgewählt</span>
+                            <strong id="selectedDaysCount" class="ms-2">0 Tage</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-5">
+                        <button class="btn btn-type" data-type="1">🏖️ Urlaub</button>
+                        <button class="btn btn-type" data-type="6">⏰ ZA</button>
+                        <button class="btn btn-type" data-type="3">🤒 Krank</button>
+                        <button class="btn btn-type" data-type="5">📚 Schulung</button>
+                        <button class="btn btn-type" data-type="2">👶 Sonderurl.</button>
+                    </div>
+                    <div class="col-md-3 text-end">
+                        <button class="btn btn-light btn-sm" id="cancelSelectionBtn">
+                            <i class="fas fa-times"></i> Abbrechen
+                        </button>
+                        <button class="btn btn-success" id="submitQuickRequestBtn">
+                            <i class="fas fa-paper-plane"></i> Einreichen
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
             <div class="row">
-                <!-- Mein Urlaubssaldo -->
-                <div class="col-md-4 mb-3">
-                    <div class="card">
-                        <div class="card-header bg-primary text-white">
-                            <i class="fas fa-user"></i> Mein Urlaubssaldo
-                        </div>
-                        <div class="card-body">
-                            <div id="myBalanceDetails">
-                                <div class="text-center">
-                                    <div class="spinner-border" role="status">
-                                        <span class="visually-hidden">Lädt...</span>
-                                    </div>
+                <!-- Linke Spalte: Kalender -->
+                <div class="col-lg-9 mb-4">
+                    <!-- Kompakte Statistik-Leiste -->
+                    <div class="card stat-card mb-3">
+                        <div class="card-body py-2">
+                            <div class="row align-items-center">
+                                <div class="col-auto">
+                                    <span class="fw-bold text-primary" id="statAnspruch">27</span>
+                                    <small class="text-muted">Anspruch</small>
+                                </div>
+                                <div class="col-auto border-start">
+                                    <span class="fw-bold text-danger" id="statUrlaub">0</span>
+                                    <small class="text-muted">🏖️ Urlaub</small>
+                                </div>
+                                <div class="col-auto border-start">
+                                    <span class="fw-bold text-info" id="statZA">0</span>
+                                    <small class="text-muted">⏰ ZA</small>
+                                </div>
+                                <div class="col-auto border-start">
+                                    <span class="fw-bold text-warning" id="statKrank">0</span>
+                                    <small class="text-muted">🤒 Krank</small>
+                                </div>
+                                <div class="col-auto border-start">
+                                    <span class="fw-bold" id="statVerfuegbar">0</span>
+                                    <small class="text-muted">✅ Verfügbar</small>
+                                </div>
+                                <div class="col-auto ms-auto">
+                                    <small class="text-muted">Genehmiger: <span id="statApprover">-</span></small>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
-
-                <!-- Meine Anträge -->
-                <div class="col-md-4 mb-3">
-                    <div class="card">
-                        <div class="card-header bg-info text-white">
-                            <i class="fas fa-list"></i> Meine Anträge
-                        </div>
-                        <div class="card-body">
-                            <div id="myRequestsList">
-                                <div class="text-center">
-                                    <div class="spinner-border" role="status">
-                                        <span class="visually-hidden">Lädt...</span>
-                                    </div>
+                    
+                    <!-- Kalender -->
+                    <div class="card stat-card">
+                        <div class="card-header bg-white d-flex justify-content-between align-items-center py-2">
+                            <div>
+                                <button class="btn btn-sm btn-outline-secondary" id="prevMonth"><i class="fas fa-chevron-left"></i></button>
+                                <button class="btn btn-sm btn-outline-secondary" id="nextMonth"><i class="fas fa-chevron-right"></i></button>
+                                <span class="fw-bold ms-2" id="currentMonthYear">Dezember 2025</span>
+                            </div>
+                            <div>
+                                <button class="btn btn-sm btn-outline-primary" id="todayBtn">Heute</button>
+                                <div class="form-check form-switch d-inline-block ms-3">
+                                    <input class="form-check-input" type="checkbox" id="showTeamToggle" checked>
+                                    <label class="form-check-label small" for="showTeamToggle">Team anzeigen</label>
                                 </div>
                             </div>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="outlook-calendar" id="calendarGrid">
+                                <div class="calendar-header">
+                                    <div class="calendar-day-header">Mo</div>
+                                    <div class="calendar-day-header">Di</div>
+                                    <div class="calendar-day-header">Mi</div>
+                                    <div class="calendar-day-header">Do</div>
+                                    <div class="calendar-day-header">Fr</div>
+                                    <div class="calendar-day-header weekend">Sa</div>
+                                    <div class="calendar-day-header weekend">So</div>
+                                </div>
+                                <div class="calendar-body" id="calendarBody">
+                                    <!-- Wird per JS generiert -->
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-footer bg-white small text-muted py-2">
+                            <i class="fas fa-mouse-pointer"></i> Tage anklicken oder ziehen zum Auswählen
                         </div>
                     </div>
                 </div>
+                
+                <!-- Rechte Spalte: Info & Legende -->
+                <div class="col-lg-3 mb-4">
+                    <!-- Meine Anträge -->
+                    <div class="sidebar-section">
+                        <h6><i class="fas fa-list"></i> Meine Anträge</h6>
+                        <div id="myRequestsList" style="max-height: 200px; overflow-y: auto;">
+                            <small class="text-muted">Wird geladen...</small>
+                        </div>
+                    </div>
+                    
+                    <!-- Legende -->
+                    <div class="sidebar-section">
+                        <h6><i class="fas fa-info-circle"></i> Legende</h6>
+                        <div class="legend-item"><span class="legend-dot" style="background:#fff9c4;border:1px solid #f57f17"></span> Beantragt</div>
+                        <div class="legend-item"><span class="legend-dot" style="background:#90EE90"></span> Genehmigt</div>
+                        <div class="legend-item"><span class="legend-dot" style="background:#28a745"></span> In Locosoft</div>
+                        <div class="legend-item"><span class="legend-dot" style="background:#bbdefb"></span> Zeitausgleich</div>
+                        <div class="legend-item"><span class="legend-dot" style="background:#ffcdd2"></span> Krank</div>
+                        <div class="legend-item"><span class="legend-dot" style="background:#e1bee7"></span> Schulung</div>
+                    </div>
+                    
+                    <!-- Team-Info (für Genehmiger) -->
+                    <div class="sidebar-section" id="teamInfoSection" style="display:none;">
+                        <h6><i class="fas fa-users"></i> Team (<span id="teamCount">0</span>)</h6>
+                        <div id="teamQuickList" style="max-height: 150px; overflow-y: auto;">
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-                <!-- Team-Abwesenheiten -->
-                <div class="col-md-4 mb-3">
-                    <div class="card">
-                        <div class="card-header bg-warning text-dark">
-                            <i class="fas fa-users"></i> Team heute abwesend
-                        </div>
-                        <div class="card-body">
-                            <div id="teamAbsenceToday">
-                                <div class="text-center">
-                                    <div class="spinner-border" role="status">
-                                        <span class="visually-hidden">Lädt...</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+            <!-- Schnell-Info für Genehmiger -->
+            <div class="row" id="approverQuickInfo" style="display: none;">
+                <div class="col-12">
+                    <div class="alert alert-warning d-flex align-items-center mb-0">
+                        <i class="fas fa-bell me-2"></i>
+                        <span><strong id="quickPendingCount">0</strong> Anträge warten auf Genehmigung</span>
+                        <button class="btn btn-sm btn-warning ms-auto" onclick="document.getElementById('approval-tab').click()">
+                            Jetzt prüfen <i class="fas fa-arrow-right"></i>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -130,148 +498,116 @@
         <!-- URLAUB BEANTRAGEN TAB -->
         <div class="tab-pane fade" id="request" role="tabpanel">
             <div class="row justify-content-center">
-                <div class="col-md-8">
-                    <div class="card">
+                <div class="col-lg-8">
+                    <div class="card stat-card">
                         <div class="card-header bg-success text-white">
                             <h5 class="mb-0"><i class="fas fa-plus-circle"></i> Neuer Urlaubsantrag</h5>
                         </div>
                         <div class="card-body">
-                            <div id="vacationRequestForm">
-                                <!-- Mitarbeiter-Auswahl -->
-                                <div class="mb-3">
-                                    <label for="employeeSelect" class="form-label">Mitarbeiter *</label>
-                                    <select class="form-select" id="employeeSelect" required>
-                                        <option value="">Bitte wählen...</option>
-                                    </select>
-                                </div>
+                            <!-- Abwesenheitsart -->
+                            <div class="mb-3">
+                                <label for="vacationTypeSelect" class="form-label">Abwesenheitsart *</label>
+                                <select class="form-select" id="vacationTypeSelect" required>
+                                    <option value="1" data-needs-approval="true">🏖️ Urlaub</option>
+                                    <option value="2" data-needs-approval="true">👶 Sonderurlaub</option>
+                                    <option value="3" data-needs-approval="false">🤒 Krankheit</option>
+                                    <option value="4" data-needs-approval="true">💰 Unbezahlter Urlaub</option>
+                                    <option value="5" data-needs-approval="true">📚 Schulung / Seminar</option>
+                                    <option value="6" data-needs-approval="true">⏰ Zeitausgleich (ZA)</option>
+                                    <option value="7" data-needs-approval="false">🏥 Arzttermin</option>
+                                    <option value="8" data-needs-approval="false">📋 Sonstiges</option>
+                                </select>
+                                <small class="text-muted" id="approvalHint">Wird zur Genehmigung eingereicht</small>
+                            </div>
 
-                                <!-- Urlaubsart -->
-                                <div class="mb-3">
-                                    <label for="vacationTypeSelect" class="form-label">Urlaubsart *</label>
-                                    <select class="form-select" id="vacationTypeSelect" required>
-                                        <option value="">Bitte wählen...</option>
-                                    </select>
+                            <!-- Start- und Enddatum -->
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="startDate" class="form-label">Von *</label>
+                                    <input type="date" class="form-control" id="startDate" required>
                                 </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="endDate" class="form-label">Bis *</label>
+                                    <input type="date" class="form-control" id="endDate" required>
+                                </div>
+                            </div>
 
-                                <!-- Start- und Enddatum -->
+                            <!-- Berechnung -->
+                            <div class="alert alert-info" id="calculationResult" style="display: none;">
                                 <div class="row">
-                                    <div class="col-md-6 mb-3">
-                                        <label for="startDate" class="form-label">Startdatum *</label>
-                                        <input type="date" class="form-control" id="startDate" required>
+                                    <div class="col">
+                                        <i class="fas fa-calculator"></i> <strong id="calculatedDays">0</strong> Arbeitstage
                                     </div>
-                                    <div class="col-md-6 mb-3">
-                                        <label for="endDate" class="form-label">Enddatum *</label>
-                                        <input type="date" class="form-control" id="endDate" required>
+                                    <div class="col-auto">
+                                        Verbleibend: <strong id="remainingAfter">0</strong> Tage
                                     </div>
-                                </div>
-
-                                <!-- Live-Berechnung -->
-                                <div class="alert alert-info" id="calculationResult" style="display: none;">
-                                    <h6><i class="fas fa-calculator"></i> Berechnung:</h6>
-                                    <div id="calculationDetails"></div>
-                                </div>
-
-                                <!-- Warnung bei Überschneidung -->
-                                <div class="alert alert-warning" id="overlapWarning" style="display: none;">
-                                    <i class="fas fa-exclamation-triangle"></i> <span id="overlapMessage"></span>
-                                </div>
-
-                                <!-- Kommentar -->
-                                <div class="mb-3">
-                                    <label for="requestComment" class="form-label">Kommentar (optional)</label>
-                                    <textarea class="form-control" id="requestComment" rows="3"></textarea>
-                                </div>
-
-                                <!-- Buttons -->
-                                <div class="d-grid gap-2">
-                                    <button type="button" class="btn btn-success btn-lg" id="submitRequestBtn">
-                                        <i class="fas fa-paper-plane"></i> Antrag einreichen
-                                    </button>
-                                    <button type="button" class="btn btn-secondary" id="resetRequestBtn">
-                                        <i class="fas fa-redo"></i> Zurücksetzen
-                                    </button>
                                 </div>
                             </div>
+
+                            <!-- Genehmiger-Info / Workflow-Info -->
+                            <div class="alert alert-secondary" id="approverInfo">
+                                <i class="fas fa-info-circle"></i> <span id="workflowText">Wird genehmigt von:</span> <strong id="approverNames">-</strong>
+                            </div>
+                            
+                            <!-- Status-Legende -->
+                            <div class="alert alert-light border small">
+                                <strong>Status-Übersicht:</strong><br>
+                                <span class="badge status-pending me-2">🟡 Beantragt</span>
+                                <span class="badge status-approved me-2">🟢 Genehmigt</span>
+                                <span class="badge status-in-locosoft me-2">✅ In Locosoft</span>
+                                <span class="badge status-rejected">❌ Abgelehnt</span>
+                            </div>
+
+                            <!-- Kommentar -->
+                            <div class="mb-3">
+                                <label for="requestComment" class="form-label">Kommentar (optional)</label>
+                                <textarea class="form-control" id="requestComment" rows="2" placeholder="z.B. Grund für Sonderurlaub"></textarea>
+                            </div>
+
+                            <!-- Submit -->
+                            <button type="button" class="btn btn-success btn-lg w-100" id="submitRequestBtn">
+                                <i class="fas fa-paper-plane"></i> Antrag einreichen
+                            </button>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- GENEHMIGUNGEN TAB -->
+        <!-- MEIN TEAM TAB (nur für Genehmiger) -->
+        <div class="tab-pane fade" id="team" role="tabpanel">
+            <div class="card stat-card">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-users"></i> Mein Team</h5>
+                    <button class="btn btn-light btn-sm" id="refreshTeamBtn">
+                        <i class="fas fa-sync"></i> Aktualisieren
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div id="teamList">
+                        <div class="text-center py-4">
+                            <div class="spinner-border text-primary" role="status"></div>
+                            <p class="mt-2 text-muted">Team wird geladen...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- GENEHMIGUNGEN TAB (nur für Genehmiger) -->
         <div class="tab-pane fade" id="approval" role="tabpanel">
-            <div class="card">
-                <div class="card-header bg-warning text-dark">
-                    <h5 class="mb-0">
-                        <i class="fas fa-check-circle"></i> Offene Genehmigungen
-                        <button class="btn btn-sm btn-dark float-end" id="refreshApprovalsBtn">
-                            <i class="fas fa-sync"></i> Aktualisieren
-                        </button>
-                    </h5>
+            <div class="card stat-card">
+                <div class="card-header bg-warning d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-check-circle"></i> Offene Anträge</h5>
+                    <button class="btn btn-dark btn-sm" id="refreshApprovalsBtn">
+                        <i class="fas fa-sync"></i> Aktualisieren
+                    </button>
                 </div>
                 <div class="card-body">
-                    <!-- Filter -->
-                    <div class="row mb-3">
-                        <div class="col-md-4">
-                            <label for="filterDepartment" class="form-label">Filter Abteilung:</label>
-                            <select class="form-select" id="filterDepartment">
-                                <option value="">Alle Abteilungen</option>
-                            </select>
-                        </div>
-                        <div class="col-md-8 text-end">
-                            <button class="btn btn-success" id="batchApproveBtn" disabled>
-                                <i class="fas fa-check"></i> Ausgewählte genehmigen
-                            </button>
-                            <button class="btn btn-danger" id="batchRejectBtn" disabled>
-                                <i class="fas fa-times"></i> Ausgewählte ablehnen
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Antrags-Liste -->
-                    <div id="approvalsList">
-                        <div class="text-center">
-                            <div class="spinner-border" role="status">
-                                <span class="visually-hidden">Lädt...</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- KALENDER TAB -->
-        <div class="tab-pane fade" id="calendar" role="tabpanel">
-            <div class="card">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">
-                        <i class="fas fa-calendar-alt"></i> Team-Kalender
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <!-- Filter -->
-                    <div class="row mb-3">
-                        <div class="col-md-3">
-                            <label for="calendarDepartment" class="form-label">Abteilung:</label>
-                            <select class="form-select" id="calendarDepartment">
-                                <option value="">Alle Abteilungen</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label for="calendarVacationType" class="form-label">Urlaubsart:</label>
-                            <select class="form-select" id="calendarVacationType">
-                                <option value="">Alle Arten</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- Kalender-Container -->
-                    <div id="teamCalendar">
-                        <div class="text-center py-5">
-                            <div class="spinner-border" role="status">
-                                <span class="visually-hidden">Lädt...</span>
-                            </div>
-                            <p class="mt-3">Kalender wird geladen...</p>
+                    <div id="pendingApprovalsList">
+                        <div class="text-center py-4">
+                            <div class="spinner-border text-warning" role="status"></div>
+                            <p class="mt-2 text-muted">Anträge werden geladen...</p>
                         </div>
                     </div>
                 </div>
@@ -280,12 +616,770 @@
 
     </div>
 </div>
+
+<!-- Toast Container -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1100">
+    <div id="toastContainer"></div>
+</div>
+
+<!-- Ablehnen Modal -->
+<div class="modal fade" id="rejectModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title"><i class="fas fa-times-circle"></i> Antrag ablehnen</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Antrag von <strong id="rejectEmployeeName">-</strong> für <strong id="rejectDate">-</strong></p>
+                <div class="mb-3">
+                    <label for="rejectReason" class="form-label">Grund für Ablehnung *</label>
+                    <textarea class="form-control" id="rejectReason" rows="3" placeholder="Bitte geben Sie einen Grund an..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-danger" id="confirmRejectBtn">
+                    <i class="fas fa-times"></i> Ablehnen
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
-<!-- Custom JavaScript -->
-<script src="{{ url_for('static', filename='js/vacation_manager.js') }}?v={{ STATIC_VERSION }}"></script>
-<script src="{{ url_for('static', filename='js/vacation_request.js') }}?v={{ STATIC_VERSION }}"></script>
-<script src="{{ url_for('static', filename='js/vacation_approval.js') }}?v={{ STATIC_VERSION }}"></script>
-<script src="{{ url_for('static', filename='js/vacation_calendar.js') }}?v={{ STATIC_VERSION }}"></script>
+<script>
+/**
+ * URLAUBSPLANER V5 - TAG 103
+ * All-in-One Kalender mit Drag-Select
+ */
+
+const API_BASE = '/api/vacation';
+let currentUser = null;
+let isApprover = false;
+let approverSummary = null;
+let myBookings = [];
+let teamBookings = [];
+let currentMonth = new Date().getMonth();
+let currentYear = new Date().getFullYear();
+
+// Drag-Select State
+let isSelecting = false;
+let selectedDates = new Set();
+let selectedType = 1; // Default: Urlaub
+
+// ============================================================================
+// INIT
+// ============================================================================
+document.addEventListener('DOMContentLoaded', async function() {
+    console.log('🏖️ Urlaubsplaner V5 wird geladen...');
+    
+    try {
+        await loadCurrentUser();
+        await loadMyBookings();
+        if (isApprover) {
+            await loadTeamBookings();
+        }
+        renderCalendar();
+        renderMyRequests();
+        
+        if (isApprover) {
+            await loadPendingApprovals();
+        }
+        
+        setupEventListeners();
+        console.log('✅ Urlaubsplaner geladen!');
+        
+    } catch (error) {
+        console.error('❌ Fehler:', error);
+        showToast('Fehler beim Laden', 'danger');
+    }
+});
+
+// ============================================================================
+// API CALLS
+// ============================================================================
+async function apiCall(endpoint, method = 'GET', data = null) {
+    const options = {
+        method,
+        headers: { 'Content-Type': 'application/json' }
+    };
+    if (data) options.body = JSON.stringify(data);
+    
+    const response = await fetch(`${API_BASE}${endpoint}`, options);
+    return await response.json();
+}
+
+// ============================================================================
+// USER & BALANCE
+// ============================================================================
+async function loadCurrentUser() {
+    const response = await apiCall('/my-balance');
+    
+    if (response.success) {
+        currentUser = response.employee;
+        const balance = response.balance;
+        approverSummary = response.approver_info;
+        
+        // Header aktualisieren
+        document.getElementById('userName').textContent = balance.name || currentUser.first_name + ' ' + currentUser.last_name;
+        document.getElementById('remainingDays').textContent = balance.resturlaub || 0;
+        
+        // Kompakte Statistik-Leiste aktualisieren
+        const urlaub = balance.urlaub_locosoft ?? balance.verbraucht ?? 0;
+        const zeitausgleich = balance.zeitausgleich ?? 0;
+        const krank = balance.krank ?? 0;
+        const verfuegbar = balance.resturlaub_korrigiert ?? balance.resturlaub ?? 0;
+        
+        document.getElementById('statAnspruch').textContent = balance.anspruch || 27;
+        document.getElementById('statUrlaub').textContent = urlaub;
+        document.getElementById('statZA').textContent = zeitausgleich;
+        document.getElementById('statKrank').textContent = krank;
+        document.getElementById('statVerfuegbar').textContent = verfuegbar;
+        document.getElementById('statVerfuegbar').className = verfuegbar < 0 ? 'fw-bold text-danger' : 'fw-bold text-success';
+        
+        // Genehmiger-Features aktivieren
+        if (approverSummary && approverSummary.is_approver) {
+            isApprover = true;
+            document.getElementById('teamTabItem').style.display = 'block';
+            document.getElementById('approvalTabItem').style.display = 'block';
+            document.getElementById('approverBadge').style.display = 'block';
+            document.getElementById('approverGroups').textContent = approverSummary.groups.join(', ');
+            document.getElementById('teamSizeBadge').textContent = approverSummary.team_size;
+            
+            if (approverSummary.pending_requests > 0) {
+                document.getElementById('pendingBadge').style.display = 'inline';
+                document.getElementById('pendingBadge').textContent = approverSummary.pending_requests;
+                document.getElementById('approverQuickInfo').style.display = 'block';
+                document.getElementById('quickPendingCount').textContent = approverSummary.pending_requests;
+            }
+        }
+    }
+    
+    // Genehmiger laden
+    const approverResponse = await apiCall('/my-approvers');
+    if (approverResponse.success && approverResponse.approvers.length > 0) {
+        const primaryApprovers = approverResponse.approvers.filter(a => a.priority === 1);
+        document.getElementById('statApprover').textContent = primaryApprovers.map(a => a.approver_name.split(' ')[0]).join(', ');
+        document.getElementById('approverNames').textContent = primaryApprovers.map(a => a.approver_name).join(', ');
+    }
+}
+
+// ============================================================================
+// BOOKINGS LADEN
+// ============================================================================
+async function loadMyBookings() {
+    const response = await apiCall('/my-bookings');
+    if (response.success) {
+        myBookings = response.bookings;
+    }
+}
+
+async function loadTeamBookings() {
+    if (!isApprover) return;
+    const response = await apiCall('/my-team');
+    if (response.success && response.team) {
+        // Team-Buchungen sammeln (aus Team-Daten)
+        teamBookings = [];
+        document.getElementById('teamInfoSection').style.display = 'block';
+        document.getElementById('teamCount').textContent = response.team.length;
+        
+        // Team-Liste rendern
+        let teamHtml = '';
+        response.team.forEach(m => {
+            teamHtml += `<div class="small"><strong>${m.name.split(' ')[0]}</strong>: ${m.urlaub || 0}/${m.anspruch}</div>`;
+        });
+        document.getElementById('teamQuickList').innerHTML = teamHtml;
+    }
+}
+
+// ============================================================================
+// KALENDER RENDERN MIT TEAM & DRAG-SELECT
+// ============================================================================
+function renderCalendar() {
+    const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 
+                        'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+    
+    document.getElementById('currentMonthYear').textContent = `${monthNames[currentMonth]} ${currentYear}`;
+    
+    const firstDay = new Date(currentYear, currentMonth, 1);
+    const startDate = new Date(firstDay);
+    
+    // Gehe zurück zum Montag
+    const dayOfWeek = firstDay.getDay();
+    const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    startDate.setDate(startDate.getDate() - diff);
+    
+    let html = '';
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const showTeam = document.getElementById('showTeamToggle')?.checked ?? true;
+    
+    // 6 Wochen
+    for (let week = 0; week < 6; week++) {
+        for (let day = 0; day < 7; day++) {
+            const currentDate = new Date(startDate);
+            currentDate.setDate(startDate.getDate() + (week * 7 + day));
+            
+            const isToday = currentDate.getTime() === today.getTime();
+            const isWeekend = day >= 5;
+            const isOtherMonth = currentDate.getMonth() !== currentMonth;
+            const dateStr = currentDate.toISOString().split('T')[0];
+            const isSelected = selectedDates.has(dateStr);
+            
+            let classes = ['calendar-day'];
+            if (isWeekend) classes.push('weekend');
+            if (isOtherMonth) classes.push('other-month');
+            if (isToday) classes.push('today');
+            if (isSelected) classes.push('selected');
+            
+            // Meine Events
+            const dayBookings = myBookings.filter(b => b.date === dateStr);
+            let eventsHtml = '';
+            
+            dayBookings.forEach(b => {
+                const typeClass = getTypeClass(b.type_id);
+                const statusClass = b.in_locosoft ? 'in-locosoft' : (b.status === 'pending' ? 'pending' : '');
+                const icon = getTypeIcon(b.type_id);
+                eventsHtml += `<div class="day-event mine ${typeClass} ${statusClass}" title="${getStatusText(b)}">${icon} Ich</div>`;
+            });
+            
+            // Team-Events (TODO: Aus Team-API laden wenn verfügbar)
+            // Für jetzt Platzhalter - später erweitern
+            
+            html += `
+                <div class="${classes.join(' ')}" data-date="${dateStr}" data-weekend="${isWeekend}" data-other="${isOtherMonth}">
+                    <div class="day-number">${currentDate.getDate()}</div>
+                    <div class="day-events">${eventsHtml}</div>
+                </div>
+            `;
+        }
+    }
+    
+    document.getElementById('calendarBody').innerHTML = html;
+    setupCalendarDragSelect();
+}
+
+function setupCalendarDragSelect() {
+    const days = document.querySelectorAll('.calendar-day:not(.other-month):not(.weekend)');
+    
+    days.forEach(day => {
+        day.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            isSelecting = true;
+            const date = day.dataset.date;
+            if (selectedDates.has(date)) {
+                selectedDates.delete(date);
+                day.classList.remove('selected');
+            } else {
+                selectedDates.add(date);
+                day.classList.add('selected');
+            }
+            updateSelectionPanel();
+        });
+        
+        day.addEventListener('mouseenter', () => {
+            if (isSelecting) {
+                const date = day.dataset.date;
+                selectedDates.add(date);
+                day.classList.add('selected');
+                updateSelectionPanel();
+            }
+        });
+    });
+    
+    document.addEventListener('mouseup', () => {
+        isSelecting = false;
+    });
+}
+
+function updateSelectionPanel() {
+    const panel = document.getElementById('quickRequestPanel');
+    const count = selectedDates.size;
+    
+    if (count > 0) {
+        panel.classList.add('show');
+        document.getElementById('selectedDaysCount').textContent = `${count} Tag${count > 1 ? 'e' : ''}`;
+        
+        // Sortiere und zeige Datumsbereich
+        const sorted = Array.from(selectedDates).sort();
+        if (sorted.length === 1) {
+            document.getElementById('selectedDatesText').textContent = formatDate(sorted[0]);
+        } else {
+            document.getElementById('selectedDatesText').textContent = 
+                `${formatDate(sorted[0])} - ${formatDate(sorted[sorted.length - 1])}`;
+        }
+    } else {
+        panel.classList.remove('show');
+    }
+}
+
+function clearSelection() {
+    selectedDates.clear();
+    document.querySelectorAll('.calendar-day.selected').forEach(d => d.classList.remove('selected'));
+    document.getElementById('quickRequestPanel').classList.remove('show');
+}
+
+async function submitQuickRequest() {
+    if (selectedDates.size === 0) {
+        showToast('Bitte Tage auswählen', 'warning');
+        return;
+    }
+    
+    const dates = Array.from(selectedDates).sort();
+    let successCount = 0;
+    let errorCount = 0;
+    
+    for (const dateStr of dates) {
+        const response = await apiCall('/book', 'POST', {
+            date: dateStr,
+            vacation_type_id: selectedType,
+            day_part: 'full',
+            comment: ''
+        });
+        
+        if (response.success) {
+            successCount++;
+        } else {
+            errorCount++;
+        }
+    }
+    
+    if (successCount > 0) {
+        showToast(`${successCount} Tag(e) beantragt!`, 'success');
+        clearSelection();
+        await loadMyBookings();
+        await loadCurrentUser();
+        renderCalendar();
+        renderMyRequests();
+    }
+    
+    if (errorCount > 0) {
+        showToast(`${errorCount} Tag(e) fehlgeschlagen`, 'warning');
+    }
+}
+
+// ============================================================================
+// MEINE ANTRÄGE SIDEBAR
+// ============================================================================
+function renderMyRequests() {
+    const container = document.getElementById('myRequestsList');
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Sortiere: Erst pending, dann nach Datum
+    const sorted = [...myBookings]
+        .sort((a, b) => {
+            if (a.status === 'pending' && b.status !== 'pending') return -1;
+            if (b.status === 'pending' && a.status !== 'pending') return 1;
+            return b.date.localeCompare(a.date);
+        })
+        .slice(0, 10);
+    
+    if (sorted.length === 0) {
+        container.innerHTML = '<small class="text-muted">Keine Anträge</small>';
+        return;
+    }
+    
+    let html = '';
+    sorted.forEach(b => {
+        const icon = getTypeIcon(b.type_id);
+        const statusDot = b.in_locosoft ? '✅' : (b.status === 'approved' ? '🟢' : (b.status === 'pending' ? '🟡' : '❌'));
+        
+        html += `
+            <div class="small py-1 border-bottom">
+                <span>${icon}</span>
+                <span>${formatDate(b.date)}</span>
+                <span class="float-end">${statusDot}</span>
+            </div>
+        `;
+    });
+    
+    if (myBookings.length > 10) {
+        html += `<small class="text-muted">+${myBookings.length - 10} weitere</small>`;
+    }
+    
+    container.innerHTML = html;
+}
+
+function getTypeClass(typeId) {
+    const classes = { 1: 'urlaub', 2: 'urlaub', 3: 'krank', 4: 'urlaub', 5: 'schulung', 6: 'za', 7: 'krank', 8: 'sonstige' };
+    return classes[typeId] || 'urlaub';
+}
+
+function getTypeIcon(typeId) {
+    const icons = { 1: '🏖️', 2: '👶', 3: '🤒', 4: '💰', 5: '📚', 6: '⏰', 7: '🏥', 8: '📋' };
+    return icons[typeId] || '📅';
+}
+
+function getStatusText(booking) {
+    if (booking.in_locosoft) return 'In Locosoft eingetragen';
+    if (booking.status === 'pending') return 'Beantragt';
+    if (booking.status === 'approved') return 'Genehmigt';
+    if (booking.status === 'rejected') return 'Abgelehnt';
+    return booking.status;
+}
+
+// ============================================================================
+// MEINE GENEHMIGER (wird jetzt in loadCurrentUser geladen)
+// ============================================================================
+async function loadMyApprovers() {
+    // Bleibt für Kompatibilität, wird aber nicht mehr für UI verwendet
+}
+
+// ============================================================================
+// MEINE ANTRÄGE (wird jetzt über Kalender angezeigt)
+// ============================================================================
+async function loadMyRequests() {
+    // Wird nicht mehr separat aufgerufen - renderUpcoming() übernimmt das
+}
+
+// ============================================================================
+// TEAM (nur für Genehmiger)
+// ============================================================================
+async function loadTeam() {
+    if (!isApprover) return;
+    
+    const response = await apiCall('/my-team');
+    const container = document.getElementById('teamList');
+    
+    if (response.success && response.team.length > 0) {
+        let html = `
+            <div class="row mb-3">
+                <div class="col">
+                    <span class="badge bg-primary">${response.team_count} Mitarbeiter</span>
+                    ${response.locosoft_available ? '<span class="badge bg-success ms-2">Locosoft-Daten</span>' : ''}
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Name</th>
+                            <th>Gruppe</th>
+                            <th>Standort</th>
+                            <th class="text-center">Anspruch</th>
+                            <th class="text-center">🏖️ Urlaub</th>
+                            <th class="text-center">⏰ ZA</th>
+                            <th class="text-center">🤒 Krank</th>
+                            <th class="text-center">✅ Verfügb.</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        response.team.forEach(m => {
+            // NEU: Locosoft-Daten verwenden
+            const urlaub = m.urlaub ?? m.verbraucht ?? 0;
+            const zeitausgleich = m.zeitausgleich ?? 0;
+            const krank = m.krank ?? 0;
+            const verfuegbar = m.verfuegbar ?? m.resturlaub ?? 0;
+            const verfuegbarClass = verfuegbar < 0 ? 'text-danger fw-bold' : verfuegbar < 5 ? 'text-warning' : 'text-success';
+            
+            html += `
+                <tr>
+                    <td><strong>${m.name}</strong></td>
+                    <td><span class="badge bg-secondary">${m.grp_code || '-'}</span></td>
+                    <td>${m.standort || m.location || '-'}</td>
+                    <td class="text-center">${m.anspruch || 27}</td>
+                    <td class="text-center">${urlaub}</td>
+                    <td class="text-center text-info">${zeitausgleich}</td>
+                    <td class="text-center text-warning">${krank}</td>
+                    <td class="text-center ${verfuegbarClass}"><strong>${verfuegbar}</strong></td>
+                </tr>
+            `;
+        });
+        
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+    } else {
+        container.innerHTML = '<div class="no-approver-notice"><i class="fas fa-users fa-3x mb-3"></i><p>Kein Team zugeordnet</p></div>';
+    }
+}
+
+// ============================================================================
+// GENEHMIGUNGEN (nur für Genehmiger)
+// ============================================================================
+async function loadPendingApprovals() {
+    if (!isApprover) return;
+    
+    const response = await apiCall('/pending-approvals');
+    const container = document.getElementById('pendingApprovalsList');
+    
+    if (response.success && response.pending.length > 0) {
+        let html = '';
+        
+        response.pending.forEach(p => {
+            html += `
+                <div class="approval-card" data-booking-id="${p.booking_id}">
+                    <div class="row align-items-center">
+                        <div class="col-md-4">
+                            <div class="employee-name">${p.employee_name}</div>
+                            <span class="grp-badge">${p.grp_code || '-'}</span>
+                            <span class="grp-badge">${p.standort || '-'}</span>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="date-range">
+                                <i class="fas fa-calendar"></i> ${formatDate(p.date)}
+                            </div>
+                            <small class="text-muted">${p.type_name || 'Urlaub'} (${p.day_part === 'full' ? 'Ganztags' : 'Halbtags'})</small>
+                        </div>
+                        <div class="col-md-3">
+                            ${p.comment ? `<small class="text-muted"><i class="fas fa-comment"></i> ${p.comment}</small>` : ''}
+                        </div>
+                        <div class="col-md-2 text-end">
+                            <button class="btn btn-approve btn-sm me-1" onclick="approveRequest(${p.booking_id})">
+                                <i class="fas fa-check"></i>
+                            </button>
+                            <button class="btn btn-reject btn-sm" onclick="showRejectModal(${p.booking_id}, '${p.employee_name}', '${p.date}')">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        container.innerHTML = html;
+    } else {
+        container.innerHTML = `
+            <div class="no-approver-notice">
+                <i class="fas fa-check-circle fa-3x mb-3 text-success"></i>
+                <p>Keine offenen Anträge</p>
+                <small class="text-muted">Alle Urlaubsanträge wurden bearbeitet</small>
+            </div>
+        `;
+    }
+}
+
+// ============================================================================
+// GENEHMIGEN / ABLEHNEN
+// ============================================================================
+async function approveRequest(bookingId) {
+    if (!confirm('Antrag genehmigen?')) return;
+    
+    const response = await apiCall('/approve', 'POST', { booking_id: bookingId });
+    
+    if (response.success) {
+        showToast('Antrag genehmigt!', 'success');
+        await loadPendingApprovals();
+        await loadCurrentUser(); // Badge aktualisieren
+    } else {
+        showToast('Fehler: ' + response.error, 'danger');
+    }
+}
+
+let currentRejectBookingId = null;
+
+function showRejectModal(bookingId, employeeName, date) {
+    currentRejectBookingId = bookingId;
+    document.getElementById('rejectEmployeeName').textContent = employeeName;
+    document.getElementById('rejectDate').textContent = formatDate(date);
+    document.getElementById('rejectReason').value = '';
+    new bootstrap.Modal(document.getElementById('rejectModal')).show();
+}
+
+async function confirmReject() {
+    const reason = document.getElementById('rejectReason').value.trim();
+    
+    if (!reason) {
+        alert('Bitte geben Sie einen Grund an!');
+        return;
+    }
+    
+    const response = await apiCall('/reject', 'POST', { 
+        booking_id: currentRejectBookingId,
+        reason: reason
+    });
+    
+    if (response.success) {
+        bootstrap.Modal.getInstance(document.getElementById('rejectModal')).hide();
+        showToast('Antrag abgelehnt', 'warning');
+        await loadPendingApprovals();
+        await loadCurrentUser();
+    } else {
+        showToast('Fehler: ' + response.error, 'danger');
+    }
+}
+
+// ============================================================================
+// NEUEN ANTRAG EINREICHEN
+// ============================================================================
+async function submitRequest() {
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+    const vacationType = document.getElementById('vacationTypeSelect').value;
+    const comment = document.getElementById('requestComment').value;
+    
+    if (!startDate || !endDate) {
+        showToast('Bitte Datum auswählen!', 'warning');
+        return;
+    }
+    
+    // Für jeden Tag im Bereich einen Antrag erstellen
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    let successCount = 0;
+    let errorCount = 0;
+    
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        // Wochenende überspringen
+        if (d.getDay() === 0 || d.getDay() === 6) continue;
+        
+        const dateStr = d.toISOString().split('T')[0];
+        const response = await apiCall('/book', 'POST', {
+            date: dateStr,
+            vacation_type_id: parseInt(vacationType),
+            day_part: 'full',
+            comment: comment
+        });
+        
+        if (response.success) {
+            successCount++;
+        } else {
+            errorCount++;
+        }
+    }
+    
+    if (successCount > 0) {
+        showToast(`${successCount} Tag(e) beantragt!`, 'success');
+        document.getElementById('startDate').value = '';
+        document.getElementById('endDate').value = '';
+        document.getElementById('requestComment').value = '';
+        await loadMyRequests();
+        await loadCurrentUser();
+    }
+    
+    if (errorCount > 0) {
+        showToast(`${errorCount} Tag(e) konnten nicht gebucht werden`, 'warning');
+    }
+}
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    const [y, m, d] = dateStr.split('-');
+    return `${d}.${m}.${y}`;
+}
+
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toastContainer');
+    const id = 'toast-' + Date.now();
+    
+    const html = `
+        <div id="${id}" class="toast align-items-center text-white bg-${type}" role="alert">
+            <div class="d-flex">
+                <div class="toast-body">${message}</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        </div>
+    `;
+    
+    container.insertAdjacentHTML('beforeend', html);
+    const toast = new bootstrap.Toast(document.getElementById(id));
+    toast.show();
+    
+    setTimeout(() => document.getElementById(id)?.remove(), 5000);
+}
+
+function setupEventListeners() {
+    // Alte Formular-Listener (Beantragen-Tab)
+    document.getElementById('submitRequestBtn')?.addEventListener('click', submitRequest);
+    document.getElementById('refreshTeamBtn')?.addEventListener('click', loadTeam);
+    document.getElementById('refreshApprovalsBtn')?.addEventListener('click', loadPendingApprovals);
+    document.getElementById('confirmRejectBtn')?.addEventListener('click', confirmReject);
+    document.getElementById('startDate')?.addEventListener('change', calculateDays);
+    document.getElementById('endDate')?.addEventListener('change', calculateDays);
+    document.getElementById('vacationTypeSelect')?.addEventListener('change', updateWorkflowHint);
+    
+    // Kalender-Navigation
+    document.getElementById('prevMonth')?.addEventListener('click', () => {
+        currentMonth--;
+        if (currentMonth < 0) { currentMonth = 11; currentYear--; }
+        renderCalendar();
+    });
+    document.getElementById('nextMonth')?.addEventListener('click', () => {
+        currentMonth++;
+        if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+        renderCalendar();
+    });
+    document.getElementById('todayBtn')?.addEventListener('click', () => {
+        currentMonth = new Date().getMonth();
+        currentYear = new Date().getFullYear();
+        renderCalendar();
+    });
+    
+    // Team Toggle
+    document.getElementById('showTeamToggle')?.addEventListener('change', renderCalendar);
+    
+    // Quick Request Panel
+    document.getElementById('cancelSelectionBtn')?.addEventListener('click', clearSelection);
+    document.getElementById('submitQuickRequestBtn')?.addEventListener('click', submitQuickRequest);
+    
+    // Type Buttons
+    document.querySelectorAll('.btn-type').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.btn-type').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            selectedType = parseInt(btn.dataset.type);
+        });
+    });
+    
+    // Erstes Type-Button aktiv setzen
+    document.querySelector('.btn-type')?.classList.add('active');
+}
+
+// NEU: Workflow-Hinweis basierend auf Abwesenheitsart
+function updateWorkflowHint() {
+    const select = document.getElementById('vacationTypeSelect');
+    const selectedOption = select.options[select.selectedIndex];
+    const needsApproval = selectedOption.dataset.needsApproval === 'true';
+    const hintEl = document.getElementById('approvalHint');
+    const workflowTextEl = document.getElementById('workflowText');
+    const approverInfoEl = document.getElementById('approverInfo');
+    const typeId = parseInt(select.value);
+    
+    // Abwesenheitstypen ohne Genehmigung
+    const infoTypes = [3, 7, 8]; // Krank, Arzttermin, Sonstiges
+    
+    if (infoTypes.includes(typeId)) {
+        hintEl.textContent = 'Wird als Information an Teamleiter & HR gemeldet';
+        hintEl.className = 'text-info';
+        workflowTextEl.textContent = 'Info an:';
+        approverInfoEl.className = 'alert alert-info';
+    } else {
+        hintEl.textContent = 'Wird zur Genehmigung eingereicht';
+        hintEl.className = 'text-muted';
+        workflowTextEl.textContent = 'Wird genehmigt von:';
+        approverInfoEl.className = 'alert alert-secondary';
+    }
+}
+
+function calculateDays() {
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+    
+    if (!startDate || !endDate) {
+        document.getElementById('calculationResult').style.display = 'none';
+        return;
+    }
+    
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    let days = 0;
+    
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        if (d.getDay() !== 0 && d.getDay() !== 6) days++;
+    }
+    
+    document.getElementById('calculatedDays').textContent = days;
+    const remaining = parseFloat(document.getElementById('remainingDays').textContent) || 0;
+    document.getElementById('remainingAfter').textContent = (remaining - days).toFixed(1);
+    document.getElementById('calculationResult').style.display = 'block';
+}
+
+console.log('📦 Urlaubsplaner V3 geladen');
+</script>
 {% endblock %}
