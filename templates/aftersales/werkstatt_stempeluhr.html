@@ -3,6 +3,7 @@
 {% block title %}Stempeluhr LIVE - {{ app_name }}{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/stempeluhr_cross_betrieb.css') }}">
 <style>
     /* Refresh Indicator */
     .refresh-badge {
@@ -368,7 +369,7 @@ function refreshData() {
 
 function renderData(data) {
     // Summary
-    document.getElementById('countAktiv').textContent = data.summary.aktiv;
+    document.getElementById('countAktiv').textContent = data.summary.produktiv || data.summary.aktiv;
     document.getElementById('countLeerlauf').textContent = data.summary.leerlauf;
     document.getElementById('countAbwesend').textContent = data.summary.abwesend;
     document.getElementById('countGesamt').textContent = data.summary.gesamt;
@@ -377,6 +378,11 @@ function renderData(data) {
     
     // Aktive Mechaniker
     renderAktive(data.aktive_mechaniker);
+    
+    // Filter-Hinweis bei Hyundai
+    if (data.filter && data.filter.hinweis) {
+        console.log('Filter-Hinweis:', data.filter.hinweis);
+    }
     
     // Leerlauf direkt im Badge anzeigen
     renderLeerlaufBadge(data.leerlauf_mechaniker);
@@ -414,6 +420,16 @@ function renderAktive(mechaniker) {
         }
         
         const initials = m.name.split(',')[0].substring(0, 2).toUpperCase();
+        
+        // Cross-Betrieb Styling (TAG 101)
+        const crossBetriebClass = m.cross_betrieb ? 'cross-betrieb' : '';
+        const crossBetriebBadge = m.cross_betrieb 
+            ? `<span class="cross-betrieb-badge ${m.auftrag_betrieb === 2 ? 'hyundai' : ''}" 
+                     title="MA von ${m.betrieb_name}, arbeitet an ${m.auftrag_betrieb_name}-Auftrag">
+                 ${m.auftrag_betrieb_name}
+               </span>` 
+            : '';
+        
         const vorgabeText = m.vorgabe_aw > 0 
             ? `${m.vorgabe_aw} AW (${m.vorgabe_min} min)` 
             : 'Keine Vorgabe';
@@ -446,12 +462,12 @@ function renderAktive(mechaniker) {
         
         html += `
             <div class="col-lg-6 col-xl-4 mb-3">
-                <div class="card mechaniker-card ${statusClass}" onclick="showAuftragDetail(${m.order_number})">
+                <div class="card mechaniker-card ${statusClass} ${crossBetriebClass}" onclick="showAuftragDetail(${m.order_number})">
                     <div class="card-body">
                         <div class="d-flex align-items-center mb-3">
                             <div class="mechaniker-avatar ${avatarClass} me-3">${initials}</div>
                             <div class="flex-grow-1">
-                                <h6 class="mb-0 fw-bold">${m.name}</h6>
+                                <h6 class="mb-0 fw-bold">${m.name}${crossBetriebBadge}</h6>
                                 <small class="text-muted">
                                     <span class="betrieb-badge betrieb-${m.betrieb}">${m.betrieb_name}</span>
                                     MA ${m.employee_number}

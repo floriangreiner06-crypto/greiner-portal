@@ -656,8 +656,16 @@ def get_live_dashboard():
 @werkstatt_live_bp.route('/stempeluhr', methods=['GET'])
 def get_stempeluhr_live():
     """
-    LIVE Stempeluhr-Übersicht für Mechaniker
-    Zeigt wer gerade an welchem Auftrag arbeitet mit Fortschritt.
+    LIVE Stempeluhr-Übersicht für Mechaniker (TAG 101 v2)
+    
+    DUAL-FILTER für Cross-Betrieb Arbeit:
+    - Bei subsidiary=1 oder 3: Filter nach MITARBEITER-Betrieb
+    - Bei subsidiary=2 (Hyundai): Filter nach AUFTRAGS-Betrieb
+      (weil Hyundai keine eigenen Mechaniker hat - die Stellantis-MA machen das!)
+    
+    Neues Feature:
+    - cross_betrieb Flag wenn MA aus anderem Betrieb an Auftrag arbeitet
+    - auftrag_betrieb + auftrag_betrieb_name im Response
     
     Query-Parameter:
     - subsidiary: Filter nach Betrieb (1, 2, 3)
@@ -668,9 +676,11 @@ def get_stempeluhr_live():
         conn = get_locosoft_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Aktive Stempelungen (dedupliziert pro Mechaniker)
-        # INKL. Serviceberater des Auftrags
-        query = """
+        # =====================================================================
+        # 1. PRODUKTIVE STEMPELUNGEN (Auftrag > 31)
+        # =====================================================================
+        # NEU: Auch o.subsidiary (Auftrags-Betrieb) mit abfragen!
+        produktiv_query = """
             WITH aktuelle_stempelungen AS (
                 SELECT DISTINCT ON (t.employee_number)
                     t.employee_number,
@@ -680,23 +690,20 @@ def get_stempeluhr_live():
                 FROM times t
                 WHERE t.end_time IS NULL
                   AND t.type = 2
+                  AND t.order_number > 31
                   AND DATE(t.start_time) = CURRENT_DATE
                 ORDER BY t.employee_number, t.start_time DESC
             )
             SELECT 
                 a.employee_number,
                 eh.name as mechaniker,
-                eh.subsidiary as betrieb,
+                eh.subsidiary as ma_betrieb,
+                o.subsidiary as auftrag_betrieb,
                 a.order_number,
                 a.start_time,
                 ROUND(a.laufzeit_min::numeric, 0) as laufzeit_min,
                 COALESCE(l.vorgabe_aw, 0) as vorgabe_aw,
                 COALESCE(l.vorgabe_aw * 6, 0) as vorgabe_min,
-                CASE 
-                    WHEN COALESCE(l.vorgabe_aw, 0) = 0 THEN 0
-                    ELSE ROUND((a.laufzeit_min / (l.vorgabe_aw * 6) * 100)::numeric, 0)
-                END as fortschritt_prozent,
-                o.order_date,
                 o.order_taking_employee_no as sb_nr,
                 sb.name as sb_name,
                 v.license_plate as kennzeichen,
@@ -715,90 +722,81 @@ def get_stempeluhr_live():
                 WHERE order_number = a.order_number 
                   AND mechanic_no = a.employee_number
             ) l ON true
+            WHERE 1=1
         """
         
+        # DUAL-FILTER LOGIK
         if subsidiary:
-            query += " WHERE eh.subsidiary = %s"
-            query += " ORDER BY a.start_time"
-            cur.execute(query, [subsidiary])
+            if subsidiary == 2:
+                # Hyundai: Filter nach AUFTRAGS-Betrieb (weil keine eigenen MA!)
+                produktiv_query += " AND o.subsidiary = %s"
+            else:
+                # Stellantis/Landau: Filter nach MITARBEITER-Betrieb
+                produktiv_query += " AND eh.subsidiary = %s"
+            produktiv_query += " ORDER BY a.start_time"
+            cur.execute(produktiv_query, [subsidiary])
         else:
-            query += " ORDER BY a.start_time"
-            cur.execute(query)
+            produktiv_query += " ORDER BY a.start_time"
+            cur.execute(produktiv_query)
         
-        aktive = cur.fetchall()
+        produktiv = cur.fetchall()
         
-        # Mechaniker ohne aktive Stempelung (Leerlauf)
-        # NUR aktive Mitarbeiter (leave_date IS NULL) UND subsidiary > 0 (echte Mechaniker)
-        # MIT Leerlauf-Dauer (seit letzter Abstempelung)
+        # =====================================================================
+        # 2. LEERLAUF-STEMPELUNGEN (Auftrag 31 = echter Leerlauf!)
+        # =====================================================================
         leerlauf_query = """
-            WITH aktive_stempelungen AS (
-                SELECT DISTINCT employee_number
-                FROM times
-                WHERE end_time IS NULL
-                  AND type = 2
-                  AND DATE(start_time) = CURRENT_DATE
-            ),
-            heutige_abwesenheiten AS (
-                SELECT DISTINCT employee_number
-                FROM absence_calendar
-                WHERE date = CURRENT_DATE
-            ),
-            aktive_mechaniker AS (
-                SELECT DISTINCT employee_number, name, subsidiary
-                FROM employees_history
-                WHERE is_latest_record = true
-                  AND employee_number BETWEEN 5000 AND 5999
-                  AND leave_date IS NULL
-                  AND subsidiary > 0
-            ),
-            letzte_abstempelung AS (
-                SELECT DISTINCT ON (employee_number)
-                    employee_number,
-                    end_time,
-                    EXTRACT(EPOCH FROM (NOW() - end_time))/60 as leerlauf_minuten
-                FROM times
-                WHERE type = 2
-                  AND DATE(start_time) = CURRENT_DATE
-                  AND end_time IS NOT NULL
-                ORDER BY employee_number, end_time DESC
+            WITH leerlauf_stempelungen AS (
+                SELECT DISTINCT ON (t.employee_number)
+                    t.employee_number,
+                    t.start_time,
+                    EXTRACT(EPOCH FROM (NOW() - t.start_time))/60 as leerlauf_minuten
+                FROM times t
+                WHERE t.end_time IS NULL
+                  AND t.type = 2
+                  AND t.order_number = 31
+                  AND DATE(t.start_time) = CURRENT_DATE
+                ORDER BY t.employee_number, t.start_time DESC
             )
             SELECT 
-                am.employee_number, 
-                am.name, 
-                am.subsidiary,
-                la.end_time as letzte_abstempelung,
-                COALESCE(ROUND(la.leerlauf_minuten::numeric, 0), -1) as leerlauf_minuten
-            FROM aktive_mechaniker am
-            LEFT JOIN aktive_stempelungen ast ON am.employee_number = ast.employee_number
-            LEFT JOIN heutige_abwesenheiten ha ON am.employee_number = ha.employee_number
-            LEFT JOIN letzte_abstempelung la ON am.employee_number = la.employee_number
-            WHERE ast.employee_number IS NULL
-              AND ha.employee_number IS NULL
+                ls.employee_number,
+                eh.name,
+                eh.subsidiary,
+                ls.start_time as leerlauf_seit,
+                ROUND(ls.leerlauf_minuten::numeric, 0) as leerlauf_minuten
+            FROM leerlauf_stempelungen ls
+            JOIN employees_history eh ON ls.employee_number = eh.employee_number
+                AND eh.is_latest_record = true
+            WHERE eh.leave_date IS NULL
+              AND eh.subsidiary > 0
         """
         
-        if subsidiary:
-            leerlauf_query += " AND am.subsidiary = %s"
-            leerlauf_query += " ORDER BY am.name"
+        # Leerlauf: Immer nach MA-Betrieb filtern
+        # Bei Hyundai-Filter: Leerlauf nicht relevant (die haben keine MA)
+        if subsidiary and subsidiary != 2:
+            leerlauf_query += " AND eh.subsidiary = %s"
+            leerlauf_query += " ORDER BY ls.leerlauf_minuten DESC"
             cur.execute(leerlauf_query, [subsidiary])
+        elif subsidiary == 2:
+            # Hyundai: Keine Leerlauf-Anzeige (haben keine eigenen MA)
+            cur.execute("SELECT 1 WHERE false")
         else:
-            leerlauf_query += " ORDER BY am.subsidiary, am.name"
+            leerlauf_query += " ORDER BY eh.subsidiary, ls.leerlauf_minuten DESC"
             cur.execute(leerlauf_query)
         
-        leerlauf = cur.fetchall()
+        leerlauf_raw = cur.fetchall()
         
-        # Azubis und nicht-produktive MA aus Leerlauf entfernen
-        leerlauf = [r for r in leerlauf if r['employee_number'] not in LEERLAUF_AUSNAHMEN]
+        # Ausnahmen filtern
+        leerlauf = [r for r in leerlauf_raw if r['employee_number'] not in LEERLAUF_AUSNAHMEN]
         
-        # TAG 100: Außerhalb der Arbeitszeit = kein Leerlauf!
-        # Um 23:00 Uhr ist niemand "im Leerlauf" - sie sind einfach nicht da
+        # Außerhalb Arbeitszeit = kein Leerlauf
         jetzt_zeit = datetime.now().time()
         ist_arbeitszeit = ARBEITSZEIT_START <= jetzt_zeit <= ARBEITSZEIT_ENDE
-        
         if not ist_arbeitszeit:
-            # Außerhalb Arbeitszeit: Alle "Leerlauf"-Mechaniker werden ignoriert
             leerlauf = []
         
-        # Abwesende Mechaniker heute
+        # =====================================================================
+        # 3. ABWESENDE MECHANIKER
+        # =====================================================================
         abwesend_query = """
             SELECT 
                 ac.employee_number,
@@ -814,10 +812,13 @@ def get_stempeluhr_live():
               AND eh.subsidiary > 0
         """
         
-        if subsidiary:
+        # Abwesend: Bei Hyundai leer (keine eigenen MA)
+        if subsidiary and subsidiary != 2:
             abwesend_query += " AND eh.subsidiary = %s"
             abwesend_query += " ORDER BY eh.name"
             cur.execute(abwesend_query, [subsidiary])
+        elif subsidiary == 2:
+            cur.execute("SELECT 1 WHERE false")
         else:
             abwesend_query += " ORDER BY eh.subsidiary, eh.name"
             cur.execute(abwesend_query)
@@ -827,16 +828,28 @@ def get_stempeluhr_live():
         cur.close()
         conn.close()
         
+        # =====================================================================
+        # 4. RESPONSE MIT CROSS-BETRIEB INFO
+        # =====================================================================
         return jsonify({
             'success': True,
             'timestamp': datetime.now().isoformat(),
-            'filter': {'subsidiary': subsidiary},
+            'ist_arbeitszeit': ist_arbeitszeit,
+            'filter': {
+                'subsidiary': subsidiary,
+                'filter_modus': 'auftrags_betrieb' if subsidiary == 2 else 'mitarbeiter_betrieb',
+                'hinweis': 'Hyundai hat keine eigenen Mechaniker - zeigt MA die an Hyundai-Aufträgen arbeiten' if subsidiary == 2 else None
+            },
             'aktive_mechaniker': [
                 {
                     'employee_number': r['employee_number'],
                     'name': r['mechaniker'] or f"MA {r['employee_number']}",
-                    'betrieb': r['betrieb'],
-                    'betrieb_name': BETRIEB_NAMEN.get(r['betrieb'], '?'),
+                    'betrieb': r['ma_betrieb'],
+                    'betrieb_name': BETRIEB_NAMEN.get(r['ma_betrieb'], '?'),
+                    'auftrag_betrieb': r['auftrag_betrieb'],
+                    'auftrag_betrieb_name': BETRIEB_NAMEN.get(r['auftrag_betrieb'], '?'),
+                    # NEU: Flag wenn MA aus anderem Betrieb arbeitet
+                    'cross_betrieb': r['ma_betrieb'] != r['auftrag_betrieb'],
                     'order_number': r['order_number'],
                     'serviceberater': r['sb_name'] or f"MA {r['sb_nr']}" if r['sb_nr'] else None,
                     'serviceberater_nr': r['sb_nr'],
@@ -844,17 +857,16 @@ def get_stempeluhr_live():
                     'marke': r['marke'],
                     'start_time': format_datetime(r['start_time']),
                     'start_uhrzeit': r['start_time'].strftime('%H:%M') if r['start_time'] else None,
-                    # Netto-Laufzeit (Pause abgezogen)
                     'laufzeit_min': berechne_netto_laufzeit(r['start_time']) if r['start_time'] else 0,
                     'vorgabe_aw': float(r['vorgabe_aw'] or 0),
                     'vorgabe_min': int(r['vorgabe_min'] or 0),
-                    # Fortschritt mit Netto-Laufzeit berechnen
                     'fortschritt_prozent': int(
                         (berechne_netto_laufzeit(r['start_time']) / (r['vorgabe_aw'] * 6) * 100)
                         if r['start_time'] and r['vorgabe_aw'] and r['vorgabe_aw'] > 0 
                         else 0
-                    )
-                } for r in aktive
+                    ),
+                    'status': 'produktiv'
+                } for r in produktiv
             ],
             'leerlauf_mechaniker': [
                 {
@@ -862,9 +874,10 @@ def get_stempeluhr_live():
                     'name': r['name'] or f"MA {r['employee_number']}",
                     'betrieb': r['subsidiary'],
                     'betrieb_name': BETRIEB_NAMEN.get(r['subsidiary'], '?'),
-                    'leerlauf_minuten': int(r['leerlauf_minuten']) if r['leerlauf_minuten'] else -1,
-                    'letzte_abstempelung': r['letzte_abstempelung'].strftime('%H:%M') if r.get('letzte_abstempelung') else None,
-                    'nie_gestempelt': r['leerlauf_minuten'] == -1 or r['leerlauf_minuten'] is None
+                    'leerlauf_minuten': int(r['leerlauf_minuten']) if r['leerlauf_minuten'] else 0,
+                    'leerlauf_seit': r['leerlauf_seit'].strftime('%H:%M') if r.get('leerlauf_seit') else None,
+                    'status': 'leerlauf',
+                    'ist_echt': True
                 } for r in leerlauf
             ],
             'abwesend_mechaniker': [
@@ -873,14 +886,15 @@ def get_stempeluhr_live():
                     'name': r['name'] or f"MA {r['employee_number']}",
                     'betrieb': r['subsidiary'],
                     'betrieb_name': BETRIEB_NAMEN.get(r['subsidiary'], '?'),
-                    'grund': r['grund']
+                    'grund': r['grund'],
+                    'status': 'abwesend'
                 } for r in abwesend
             ],
             'summary': {
-                'aktiv': len(aktive),
+                'produktiv': len(produktiv),
                 'leerlauf': len(leerlauf),
                 'abwesend': len(abwesend),
-                'gesamt': len(aktive) + len(leerlauf) + len(abwesend)
+                'gesamt': len(produktiv) + len(leerlauf) + len(abwesend)
             }
         })
         
