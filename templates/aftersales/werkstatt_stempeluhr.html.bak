@@ -189,11 +189,11 @@
             <p class="text-muted mb-0">Echtzeit-Übersicht der Mechaniker-Stempelungen</p>
         </div>
         <div>
-            <!-- TAG 109: Default nach LDAP-Standort (current_user.standort_subsidiaries) -->
             <select class="form-select form-select-sm d-inline-block me-2" id="filterBetrieb" style="width: auto;" onchange="refreshData()">
                 <option value="">Alle Betriebe</option>
-                <option value="1,2" {% if current_user.is_authenticated and current_user.standort_subsidiaries == '1,2' %}selected{% endif %}>Deggendorf</option>
-                <option value="3" {% if current_user.is_authenticated and current_user.standort_subsidiaries == '3' %}selected{% endif %}>Landau</option>
+                <option value="1">Deggendorf (Stellantis)</option>
+                <option value="2">Deggendorf (Hyundai)</option>
+                <option value="3">Landau</option>
             </select>
             <button class="btn btn-outline-primary btn-sm" onclick="refreshData()">
                 <i class="bi bi-arrow-repeat"></i> Aktualisieren

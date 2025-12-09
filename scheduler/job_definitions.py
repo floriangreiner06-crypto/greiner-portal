@@ -76,6 +76,11 @@ def job_db_backup():
 def job_cleanup_backups():
     return run_shell('cd data && ls -t greiner_controlling.db.backup_* 2>/dev/null | tail -n +8 | xargs rm -f 2>/dev/null', 'cleanup_backups', 'Backup Cleanup')
 
+# ML Training
+def job_ml_retrain():
+    """Trainiert ML-Modell für Auftragsdauer-Vorhersage neu (TAG 109)"""
+    return run_script('scripts/ml/train_auftragsdauer_model.py', 'ml_retrain', 'ML Modell Retrain', timeout=600)
+
 # ---------------------------------------------------------------------------
 # AFTERSALES
 # ---------------------------------------------------------------------------
@@ -299,6 +304,17 @@ def register_all_jobs():
         category='controlling',
         hour='3',
         minute='30'
+    )
+    
+    # ML Retrain - täglich 3:15 Uhr (TAG 109)
+    job_manager.add_cron_job(
+        job_id='ml_retrain',
+        func=job_ml_retrain,
+        name='ML Modell Retrain',
+        description='Trainiert Auftragsdauer-Vorhersage-Modell neu mit aktuellen Daten',
+        category='aftersales',
+        hour='3',
+        minute='15'
     )
     
     # =========================================================================

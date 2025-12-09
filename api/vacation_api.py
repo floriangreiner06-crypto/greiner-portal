@@ -507,6 +507,93 @@ def send_cancellation_email_to_hr(booking_details: dict, employee_name: str, rea
         return False
 
 
+def send_sickness_notification(booking_details: dict, approvers: list):
+    """
+    Sendet E-Mail an HR, Teamleitung und GL wenn Krankheitstag eingetragen wurde.
+    Krankheit braucht keine Genehmigung - nur Benachrichtigung.
+    """
+    if not GRAPH_AVAILABLE:
+        return False
+    
+    try:
+        graph = GraphMailConnector()
+        
+        booking_date = booking_details.get('date', '')
+        try:
+            date_obj = datetime.strptime(booking_date, '%Y-%m-%d')
+            date_formatted = date_obj.strftime('%d.%m.%Y')
+            weekday = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'][date_obj.weekday()]
+        except:
+            date_formatted = booking_date
+            weekday = ''
+        
+        employee_name = booking_details.get('employee_name', 'Unbekannt')
+        department = booking_details.get('department', '')
+        
+        subject = f"🤒 Krankheitstag eingetragen: {employee_name} - {date_formatted}"
+        
+        body_html = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px;">
+            <h2 style="color: #F48FB1;">🤒 Krankheitstag eingetragen</h2>
+            
+            <table style="border-collapse: collapse; width: 100%; margin: 20px 0;">
+                <tr style="background: #f8f9fa;">
+                    <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Mitarbeiter</td>
+                    <td style="padding: 10px; border: 1px solid #dee2e6;">{employee_name}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Abteilung</td>
+                    <td style="padding: 10px; border: 1px solid #dee2e6;">{department}</td>
+                </tr>
+                <tr style="background: #f8f9fa;">
+                    <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Datum</td>
+                    <td style="padding: 10px; border: 1px solid #dee2e6;">{weekday}, {date_formatted}</td>
+                </tr>
+            </table>
+            
+            <p style="background: #FCE4EC; padding: 15px; border-radius: 5px; border-left: 4px solid #F48FB1;">
+                <strong>📋 Aktion für HR:</strong><br>
+                Bitte diesen Krankheitstag in <strong>Locosoft</strong> eintragen.
+            </p>
+            
+            <hr style="border: none; border-top: 1px solid #dee2e6; margin: 20px 0;">
+            <p style="color: #6c757d; font-size: 12px;">
+                Diese E-Mail wurde automatisch vom Greiner DRIVE Portal gesendet.
+            </p>
+        </div>
+        """
+        
+        # E-Mail-Empfänger: HR + Teamleitung (Prio 1 Genehmiger) + GL
+        recipients = [HR_EMAIL]
+        
+        # Teamleitung hinzufügen
+        if approvers:
+            for a in approvers:
+                if a.get('approver_email') and a.get('priority') == 1:
+                    if a['approver_email'] not in recipients:
+                        recipients.append(a['approver_email'])
+        
+        # GL hinzufügen (florian.greiner@auto-greiner.de)
+        gl_email = 'florian.greiner@auto-greiner.de'
+        if gl_email not in recipients:
+            recipients.append(gl_email)
+        
+        result = graph.send_mail(
+            sender_email=DRIVE_EMAIL,
+            to_emails=recipients,
+            subject=subject,
+            body_html=body_html
+        )
+        
+        if result:
+            print(f"✅ Krankheits-E-Mail gesendet an {recipients}")
+        return result
+        
+    except Exception as e:
+        print(f"❌ Fehler beim Senden der Krankheits-E-Mail: {e}")
+        return False
+
+
 def send_new_request_notification_to_approvers(booking_details: dict, approvers: list):
     """Sendet E-Mail an Genehmiger wenn ein neuer Urlaubsantrag eingegangen ist."""
     if not GRAPH_AVAILABLE:
@@ -1514,7 +1601,7 @@ def book_vacation():
         
         cursor.execute("""
             SELECT id FROM vacation_bookings
-            WHERE employee_id = ? AND booking_date = ?
+            WHERE employee_id = ? AND booking_date = ? AND status != 'cancelled'
         """, (employee_id, booking_date))
         
         if cursor.fetchone():
@@ -1524,12 +1611,16 @@ def book_vacation():
                 'error': f'Für {booking_date} existiert bereits eine Buchung'
             }), 400
         
+        # Krankheit (type_id=3) braucht keine Genehmigung - direkt approved
+        is_sickness = vacation_type_id == 3
+        initial_status = 'approved' if is_sickness else 'pending'
+        
         cursor.execute("""
             INSERT INTO vacation_bookings (
                 employee_id, booking_date, vacation_type_id,
                 day_part, status, comment, created_at
-            ) VALUES (?, ?, ?, ?, 'pending', ?, ?)
-        """, (employee_id, booking_date, vacation_type_id, day_part, comment, datetime.now().isoformat()))
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (employee_id, booking_date, vacation_type_id, day_part, initial_status, comment, datetime.now().isoformat()))
         
         booking_id = cursor.lastrowid
         conn.commit()
@@ -1554,7 +1645,28 @@ def book_vacation():
             'department': employee_data.get('department', ''),
             'comment': comment
         }
-        approver_email_sent = send_new_request_notification_to_approvers(booking_details_for_email, approvers)
+        
+        # Unterschiedliche E-Mails je nach Typ
+        if is_sickness:
+            # Krankheit: E-Mail an HR + Teamleitung + GL
+            sickness_email_sent = send_sickness_notification(booking_details_for_email, approvers)
+            return jsonify({
+                'success': True,
+                'booking_id': booking_id,
+                'message': 'Krankheitstag eingetragen (Status: approved)',
+                'booking': {
+                    'id': booking_id,
+                    'date': booking_date,
+                    'day_part': day_part,
+                    'status': 'approved'
+                },
+                'notifications': {
+                    'sickness_email': sickness_email_sent
+                }
+            }), 201
+        else:
+            # Normaler Urlaub/ZA/Schulung: E-Mail an Genehmiger
+            approver_email_sent = send_new_request_notification_to_approvers(booking_details_for_email, approvers)
         
         return jsonify({
             'success': True,

@@ -671,7 +671,15 @@ def get_stempeluhr_live():
     - subsidiary: Filter nach Betrieb (1, 2, 3)
     """
     try:
-        subsidiary = request.args.get('subsidiary', type=int)
+        # TAG 109: Unterstütze komma-separierte subsidiary-Werte (z.B. "1,2" für Deggendorf)
+        subsidiary_param = request.args.get('subsidiary', '')
+        subsidiaries = []
+        if subsidiary_param:
+            for s in subsidiary_param.split(','):
+                if s.strip().isdigit():
+                    subsidiaries.append(int(s.strip()))
+        # Einzelwert für Rückwärtskompatibilität, None bei mehreren
+        subsidiary = subsidiaries[0] if len(subsidiaries) == 1 else None
         
         conn = get_locosoft_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -725,16 +733,24 @@ def get_stempeluhr_live():
             WHERE 1=1
         """
         
-        # DUAL-FILTER LOGIK
-        if subsidiary:
-            if subsidiary == 2:
-                # Hyundai: Filter nach AUFTRAGS-Betrieb (weil keine eigenen MA!)
+        # DUAL-FILTER LOGIK (TAG 109: subsidiaries als Liste)
+        if subsidiaries:
+            if len(subsidiaries) == 1 and subsidiaries[0] == 2:
+                # Nur Hyundai: Filter nach AUFTRAGS-Betrieb
                 produktiv_query += " AND o.subsidiary = %s"
-            else:
-                # Stellantis/Landau: Filter nach MITARBEITER-Betrieb
+                produktiv_query += " ORDER BY a.start_time"
+                cur.execute(produktiv_query, [subsidiaries[0]])
+            elif len(subsidiaries) == 1:
+                # Einzelner Betrieb (1 oder 3): Filter nach MITARBEITER-Betrieb
                 produktiv_query += " AND eh.subsidiary = %s"
-            produktiv_query += " ORDER BY a.start_time"
-            cur.execute(produktiv_query, [subsidiary])
+                produktiv_query += " ORDER BY a.start_time"
+                cur.execute(produktiv_query, [subsidiaries[0]])
+            else:
+                # Mehrere Betriebe (z.B. 1,2 = Deggendorf): Filter nach MITARBEITER-Betrieb
+                placeholders = ','.join(['%s'] * len(subsidiaries))
+                produktiv_query += f" AND eh.subsidiary IN ({placeholders})"
+                produktiv_query += " ORDER BY a.start_time"
+                cur.execute(produktiv_query, subsidiaries)
         else:
             produktiv_query += " ORDER BY a.start_time"
             cur.execute(produktiv_query)
@@ -770,15 +786,22 @@ def get_stempeluhr_live():
               AND eh.subsidiary > 0
         """
         
-        # Leerlauf: Immer nach MA-Betrieb filtern
-        # Bei Hyundai-Filter: Leerlauf nicht relevant (die haben keine MA)
-        if subsidiary and subsidiary != 2:
-            leerlauf_query += " AND eh.subsidiary = %s"
-            leerlauf_query += " ORDER BY ls.leerlauf_minuten DESC"
-            cur.execute(leerlauf_query, [subsidiary])
-        elif subsidiary == 2:
-            # Hyundai: Keine Leerlauf-Anzeige (haben keine eigenen MA)
-            cur.execute("SELECT 1 WHERE false")
+        # Leerlauf: Immer nach MA-Betrieb filtern (TAG 109: subsidiaries als Liste)
+        if subsidiaries:
+            if len(subsidiaries) == 1 and subsidiaries[0] == 2:
+                # Nur Hyundai: Keine Leerlauf-Anzeige (haben keine eigenen MA)
+                cur.execute("SELECT 1 WHERE false")
+            elif len(subsidiaries) == 1:
+                # Einzelner Betrieb (1 oder 3)
+                leerlauf_query += " AND eh.subsidiary = %s"
+                leerlauf_query += " ORDER BY ls.leerlauf_minuten DESC"
+                cur.execute(leerlauf_query, [subsidiaries[0]])
+            else:
+                # Mehrere Betriebe (z.B. 1,2 = Deggendorf)
+                placeholders = ','.join(['%s'] * len(subsidiaries))
+                leerlauf_query += f" AND eh.subsidiary IN ({placeholders})"
+                leerlauf_query += " ORDER BY ls.leerlauf_minuten DESC"
+                cur.execute(leerlauf_query, subsidiaries)
         else:
             leerlauf_query += " ORDER BY eh.subsidiary, ls.leerlauf_minuten DESC"
             cur.execute(leerlauf_query)
@@ -812,13 +835,22 @@ def get_stempeluhr_live():
               AND eh.subsidiary > 0
         """
         
-        # Abwesend: Bei Hyundai leer (keine eigenen MA)
-        if subsidiary and subsidiary != 2:
-            abwesend_query += " AND eh.subsidiary = %s"
-            abwesend_query += " ORDER BY eh.name"
-            cur.execute(abwesend_query, [subsidiary])
-        elif subsidiary == 2:
-            cur.execute("SELECT 1 WHERE false")
+        # Abwesend: Bei Hyundai leer (TAG 109: subsidiaries als Liste)
+        if subsidiaries:
+            if len(subsidiaries) == 1 and subsidiaries[0] == 2:
+                # Nur Hyundai: Keine Abwesend-Anzeige
+                cur.execute("SELECT 1 WHERE false")
+            elif len(subsidiaries) == 1:
+                # Einzelner Betrieb
+                abwesend_query += " AND eh.subsidiary = %s"
+                abwesend_query += " ORDER BY eh.name"
+                cur.execute(abwesend_query, [subsidiaries[0]])
+            else:
+                # Mehrere Betriebe (z.B. 1,2 = Deggendorf)
+                placeholders = ','.join(['%s'] * len(subsidiaries))
+                abwesend_query += f" AND eh.subsidiary IN ({placeholders})"
+                abwesend_query += " ORDER BY eh.name"
+                cur.execute(abwesend_query, subsidiaries)
         else:
             abwesend_query += " ORDER BY eh.subsidiary, eh.name"
             cur.execute(abwesend_query)
@@ -836,9 +868,10 @@ def get_stempeluhr_live():
             'timestamp': datetime.now().isoformat(),
             'ist_arbeitszeit': ist_arbeitszeit,
             'filter': {
-                'subsidiary': subsidiary,
-                'filter_modus': 'auftrags_betrieb' if subsidiary == 2 else 'mitarbeiter_betrieb',
-                'hinweis': 'Hyundai hat keine eigenen Mechaniker - zeigt MA die an Hyundai-Aufträgen arbeiten' if subsidiary == 2 else None
+                'subsidiary': subsidiary_param,  # Original-Parameter (z.B. "1,2")
+                'subsidiaries': subsidiaries,    # Als Liste [1, 2]
+                'filter_modus': 'deggendorf_gesamt' if set(subsidiaries) == {1, 2} else ('auftrags_betrieb' if subsidiaries == [2] else 'mitarbeiter_betrieb'),
+                'hinweis': 'Deggendorf (Stellantis + Hyundai)' if set(subsidiaries) == {1, 2} else ('Hyundai hat keine eigenen Mechaniker' if subsidiaries == [2] else None)
             },
             'aktive_mechaniker': [
                 {

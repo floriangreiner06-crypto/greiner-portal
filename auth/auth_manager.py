@@ -121,7 +121,8 @@ class User(UserMixin):
     
     def __init__(self, user_id: int, username: str, display_name: str, 
                  email: str, ou: str, roles: List[str], permissions: Dict[str, Any],
-                 title: str = None, portal_role: str = None, allowed_features: List[str] = None):
+                 title: str = None, portal_role: str = None, allowed_features: List[str] = None,
+                 company: str = None):
         self.id = user_id
         self.username = username
         self.display_name = display_name
@@ -132,6 +133,14 @@ class User(UserMixin):
         self.title = title
         self.portal_role = portal_role or 'mitarbeiter'
         self.allowed_features = allowed_features or []
+        self.company = company  # TAG 109: AD company Attribut
+        # TAG 109: Standort aus company ableiten für Stempeluhr-Default
+        if company and 'Landau' in company:
+            self.standort = 'landau'
+            self.standort_subsidiaries = '3'
+        else:
+            self.standort = 'deggendorf'
+            self.standort_subsidiaries = '1,2'
     
     def get_id(self):
         """Flask-Login benötigt diese Methode"""
@@ -241,7 +250,7 @@ class AuthManager:
                 title=ldap_title
             )
             
-            # User-Objekt erstellen
+            # User-Objekt erstellen (TAG 109: company für Standort)
             user = User(
                 user_id=user_id,
                 username=username,
@@ -252,7 +261,8 @@ class AuthManager:
                 permissions=permissions,
                 title=ldap_title,
                 portal_role=portal_role,
-                allowed_features=allowed_features
+                allowed_features=allowed_features,
+                company=user_details.get('company')  # TAG 109: Für Standort-Default
             )
             
             # Erfolgreichen Login loggen
@@ -418,6 +428,15 @@ class AuthManager:
             portal_role = get_role_from_title(user_title)
             allowed_features = get_allowed_features(portal_role)
             
+            # TAG 109: Company aus LDAP holen für Standort-Default
+            company = None
+            try:
+                user_details = self.ldap.get_user_details(user_row['username'])
+                if user_details:
+                    company = user_details.get('company')
+            except:
+                pass  # Falls LDAP nicht erreichbar, company bleibt None
+            
             # User-Objekt erstellen
             user = User(
                 user_id=user_row['id'],
@@ -429,7 +448,8 @@ class AuthManager:
                 permissions=permissions,
                 title=user_title,
                 portal_role=portal_role,
-                allowed_features=allowed_features
+                allowed_features=allowed_features,
+                company=company  # TAG 109: Für Standort-Default
             )
             
             return user

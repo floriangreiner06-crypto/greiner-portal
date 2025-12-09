@@ -187,7 +187,7 @@ class LDAPConnector:
                 search_base=self.config['LDAP_BASE_DN'],
                 search_filter=search_filter,
                 attributes=['cn', 'displayName', 'mail', 'sAMAccountName', 
-                           'memberOf', 'distinguishedName', 'userPrincipalName', 'title', 'department']
+                           'memberOf', 'distinguishedName', 'userPrincipalName', 'title', 'department', 'company']
             )
             
             if not conn.entries:
@@ -212,7 +212,8 @@ class LDAPConnector:
                 'dn': str(entry.distinguishedName),
                 'groups': groups,
                 'title': str(entry.title.value) if hasattr(entry, 'title') and entry.title.value else None,
-                'department': str(entry.department.value) if hasattr(entry, 'department') and entry.department.value else None
+                'department': str(entry.department.value) if hasattr(entry, 'department') and entry.department.value else None,
+                'company': str(entry.company.value) if hasattr(entry, 'company') and entry.company.value else None  # TAG 109: Standort
             }
             
             conn.unbind()
