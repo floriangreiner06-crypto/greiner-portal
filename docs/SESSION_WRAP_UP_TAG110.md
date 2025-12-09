@@ -303,48 +303,5 @@ sudo systemctl restart greiner-portal
 
 ---
 
-## 📊 GIT COMMITS
-
-```bash
-# Commit 1: Locosoft Mirror VIEWs
-git add scripts/sync/locosoft_mirror.py
-git commit -m "fix(mirror): VIEWs (times, employees) zu locosoft_mirror hinzugefügt
-
-- times VIEW für Werkstatt-Dashboard kritisch
-- employees VIEW für Urlaubsplaner kritisch  
-- INCLUDE_VIEWS Konstante für explizite VIEW-Liste
-- Behebt 5-Tage-Datenausfall im Werkstatt-Dashboard"
-
-# Commit 2: Celery Migration
-git add celery_app/ config/systemd/celery-*.service
-git commit -m "feat(scheduler): APScheduler durch Celery + RedBeat ersetzt
-
-- Celery Worker mit 3 Queues (controlling, aftersales, verkauf)
-- Celery Beat mit RedBeat für editierbare Schedules in Redis
-- Flower Dashboard auf Port 5555
-- 35+ Jobs migriert mit Retry-Logik und Timeouts
-- Systemd Services für Worker, Beat, Flower"
-
-# Commit 3: Task Manager UI
-git add celery_app/routes.py templates/admin/celery_tasks.html
-git commit -m "feat(ui): Task Manager UI für Celery
-
-- Manueller Task-Start mit Live-Status
-- Zeitpläne-Tab mit allen 36 Schedules
-- Edit-Modal für Schedule-Änderungen
-- RedBeat-Integration für persistente Schedules
-- Lesbare Zeitangaben statt Cron"
-
-# Commit 4: Integration
-git add app.py templates/base.html
-git commit -m "feat(nav): Celery Task Manager in Navigation integriert
-
-- /admin/celery/ Route registriert
-- Menü: Task Manager + Flower Dashboard Links
-- Alter Job-Scheduler Link entfernt"
-```
-
----
-
-**Session beendet: 2025-12-09 23:05**
+**Session beendet: 2025-12-09 23:15**
 **Nächste Session: Monitoring der Nacht-Jobs prüfen**
