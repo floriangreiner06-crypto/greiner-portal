@@ -5,6 +5,7 @@ Flask Routes für Werkstatt-Modul
 
 Erstellt: 2025-12-04 (TAG 90)
 Aktualisiert: 2025-12-06 (TAG 98) - ML-Integration
+Aktualisiert: 2025-12-09 - Cockpit Route hinzugefügt
 """
 
 from flask import Blueprint, render_template
@@ -19,6 +20,13 @@ werkstatt_routes = Blueprint('werkstatt', __name__)
 def werkstatt_uebersicht():
     """Werkstatt Leistungsübersicht"""
     return render_template('aftersales/werkstatt_uebersicht.html')
+
+
+@werkstatt_routes.route('/werkstatt/cockpit')
+@login_required
+def werkstatt_cockpit():
+    """Werkstatt Cockpit - Ampel-System mit Live-Status"""
+    return render_template('aftersales/werkstatt_cockpit.html')
 
 
 @werkstatt_routes.route('/werkstatt/live')
@@ -52,8 +60,22 @@ def werkstatt_stempeluhr_monitor():
 @werkstatt_routes.route('/werkstatt/tagesbericht')
 @login_required
 def werkstatt_tagesbericht():
-    """Werkstatt Tagesbericht"""
+    """Werkstatt Tagesbericht (Legacy)"""
     return render_template('aftersales/werkstatt_tagesbericht.html')
+
+
+@werkstatt_routes.route('/werkstatt/kompakt')
+@login_required
+def werkstatt_kompakt():
+    """Werkstatt Kompakt - Performance + Tagesbericht kombiniert (TAG 110)"""
+    return render_template('aftersales/werkstatt_kompakt.html')
+
+
+@werkstatt_routes.route('/werkstatt/teile-status')
+@login_required
+def werkstatt_teile_status():
+    """Teile-Status - Kritische Teile für Werkstattaufträge"""
+    return render_template('aftersales/werkstatt_teile_status.html')
 
 
 @werkstatt_routes.route('/werkstatt/serviceberater')

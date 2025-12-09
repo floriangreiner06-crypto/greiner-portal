@@ -171,11 +171,48 @@ from api.vacation_api import vacation_api
 app.register_blueprint(vacation_api)
 print("✅ Vacation API registriert: /api/vacation/")
 
+# Vacation Chef API (TAG 103 - Chef-Übersicht)
+try:
+    from api.vacation_chef_api import chef_api
+    app.register_blueprint(chef_api)
+    print("✅ Vacation Chef API registriert: /api/vacation/chef-overview")
+except Exception as e:
+    print(f"⚠️  Vacation Chef API nicht geladen: {e}")
+
+# Vacation Admin API (TAG 103 - HR Administration)
+try:
+    from api.vacation_admin_api import vacation_admin_api
+    app.register_blueprint(vacation_admin_api)
+    print("✅ Vacation Admin API registriert: /api/vacation/admin/")
+except Exception as e:
+    print(f"⚠️  Vacation Chef API nicht geladen: {e}")
+
 # Urlaubsplaner V2 Route
 @app.route('/urlaubsplaner/v2')
 @login_required
 def urlaubsplaner_v2():
     """Moderne Urlaubsplaner Oberfläche (V2)"""
+    return render_template('urlaubsplaner_v2.html')
+
+# Urlaubsplaner Chef-Übersicht (TAG 103)
+@app.route('/urlaubsplaner/chef')
+@login_required
+def urlaubsplaner_chef():
+    """Chef-Übersicht: Alle Teams und Genehmiger"""
+    return render_template('urlaubsplaner_chef.html')
+
+# Urlaubsplaner Admin (TAG 103 - HR Administration)
+@app.route('/urlaubsplaner/admin')
+@login_required
+def urlaubsplaner_admin():
+    """HR-Admin: Urlaubsansprüche verwalten"""
+    return render_template('urlaubsplaner_admin.html')
+
+# Urlaubsplaner Kurzroute
+@app.route('/urlaubsplaner')
+@login_required
+def urlaubsplaner():
+    """Urlaubsplaner - Redirect zu V2"""
     return render_template('urlaubsplaner_v2.html')
 
 # Bankenspiegel API
@@ -247,7 +284,7 @@ except Exception as e:
     print(f"⚠️  Jahresprämie nicht geladen: {e}")
 
 # ============================================================================
-# JOB-SCHEDULER UI (Scheduler läuft als separater Service!)
+# JOB-SCHEDULER UI (Legacy - wird durch Celery ersetzt)
 # ============================================================================
 try:
     from scheduler import job_manager, scheduler_bp, init_scheduler_routes
@@ -255,11 +292,21 @@ try:
     # Blueprint registrieren (für Web-UI unter /admin/jobs/)
     app.register_blueprint(scheduler_bp)
     init_scheduler_routes(job_manager)
-    print("✅ Job-Scheduler UI registriert: /admin/jobs/")
-    print("ℹ️  Scheduler läuft als separater Service: greiner-scheduler")
+    print("✅ Job-Scheduler UI registriert: /admin/jobs/ (Legacy)")
         
 except Exception as e:
     print(f"⚠️  Job-Scheduler UI nicht geladen: {e}")
+
+# ============================================================================
+# CELERY TASK MANAGEMENT (TAG 110 - Ersetzt APScheduler)
+# ============================================================================
+try:
+    from celery_app.routes import celery_bp
+    app.register_blueprint(celery_bp)
+    print("✅ Celery Task UI registriert: /admin/celery/")
+    print("ℹ️  Flower Dashboard: http://localhost:5555")
+except Exception as e:
+    print(f"⚠️  Celery Task UI nicht geladen: {e}")
 
 # ============================================================================
 # ERROR HANDLERS

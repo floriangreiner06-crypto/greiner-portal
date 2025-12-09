@@ -35,8 +35,9 @@ def get_date_range(zeitraum, von=None, bis=None):
     if zeitraum == 'heute':
         return heute.isoformat(), heute.isoformat()
     elif zeitraum == 'woche':
-        start = heute - timedelta(days=heute.weekday())
-        return start.isoformat(), heute.isoformat()
+        # Montag dieser Woche (weekday() = 0 für Montag)
+        montag = heute - timedelta(days=heute.weekday())
+        return montag.isoformat(), heute.isoformat()
     elif zeitraum == 'monat':
         start = heute.replace(day=1)
         return start.isoformat(), heute.isoformat()
@@ -119,9 +120,17 @@ def get_leistung():
         params = [datum_von, datum_bis]
         
         # Betrieb-Filter
+        # Locosoft: 1=Deggendorf (Stellantis), 3=Landau
+        # Hinweis: Betrieb 2 (Hyundai) hat keine eigenen Werkstatt-Mitarbeiter!
+        # NULL/0 Betriebe gehören meist zu Deggendorf
         if betrieb and betrieb != 'alle':
-            query += " AND betrieb_nr = ?"
-            params.append(int(betrieb))
+            betrieb_nr = int(betrieb)
+            if betrieb_nr == 1:
+                # Deggendorf: betrieb_nr = 1 ODER NULL/0 (nicht zugeordnet)
+                query += " AND (betrieb_nr = 1 OR betrieb_nr IS NULL OR betrieb_nr = 0)"
+            else:
+                query += " AND betrieb_nr = ?"
+                params.append(betrieb_nr)
         
         # Nur aktive Mitarbeiter (außer inkl_ehemalige ist gesetzt)
         if not inkl_ehemalige:
@@ -162,8 +171,12 @@ def get_leistung():
         """
         tage_params = [datum_von, datum_bis]
         if betrieb and betrieb != 'alle':
-            tage_query += " AND betrieb_nr = ?"
-            tage_params.append(int(betrieb))
+            betrieb_nr = int(betrieb)
+            if betrieb_nr == 1:
+                tage_query += " AND (betrieb_nr = 1 OR betrieb_nr IS NULL OR betrieb_nr = 0)"
+            else:
+                tage_query += " AND betrieb_nr = ?"
+                tage_params.append(betrieb_nr)
         
         cursor.execute(tage_query, tage_params)
         anzahl_tage = cursor.fetchone()[0] or 0
@@ -178,12 +191,37 @@ def get_leistung():
         """
         trend_params = []
         if betrieb and betrieb != 'alle':
-            trend_query += " AND betrieb_nr = ?"
-            trend_params.append(int(betrieb))
+            betrieb_nr = int(betrieb)
+            if betrieb_nr == 1:
+                trend_query += " AND (betrieb_nr = 1 OR betrieb_nr IS NULL OR betrieb_nr = 0)"
+            else:
+                trend_query += " AND betrieb_nr = ?"
+                trend_params.append(betrieb_nr)
         trend_query += " GROUP BY datum ORDER BY datum"
         
         cursor.execute(trend_query, trend_params)
         trend = [dict(row) for row in cursor.fetchall()]
+        
+        # SVS aus charge_types_sync holen (TAG 110)
+        svs = 119.0  # Default
+        try:
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='charge_types_sync'")
+            if cursor.fetchone():
+                betrieb_nr = 1 if betrieb == 'alle' or betrieb == '1,2' else int(betrieb)
+                cursor.execute("SELECT stundensatz FROM charge_types_sync WHERE type = 10 AND subsidiary = ?", [betrieb_nr])
+                row = cursor.fetchone()
+                if row and row[0]:
+                    svs = float(row[0])
+        except:
+            pass
+        
+        # Neue KPIs berechnen (TAG 110)
+        gesamt_effizienz = round(gesamt_leistungsgrad * gesamt_produktivitaet / 100, 1) if gesamt_leistungsgrad and gesamt_produktivitaet else 0
+        gesamt_stempelzeit_std = gesamt_stempelzeit / 60 if gesamt_stempelzeit else 0
+        verlorene_std = gesamt_stempelzeit_std * (1 - gesamt_leistungsgrad / 100) if gesamt_leistungsgrad else 0
+        entgangener_umsatz = verlorene_std * svs
+        realisierter_svs = round(gesamt_umsatz / gesamt_stempelzeit_std, 2) if gesamt_stempelzeit_std > 0 and gesamt_umsatz else svs
+        std_pro_durchgang = round(gesamt_stempelzeit_std / gesamt_auftraege, 2) if gesamt_auftraege > 0 else 0
         
         conn.close()
         
@@ -198,6 +236,7 @@ def get_leistung():
             'mechaniker': mechaniker,
             'anzahl_mechaniker': len(mechaniker),
             'anzahl_tage': anzahl_tage,
+            # Alte Felder (Kompatibilität)
             'gesamt_auftraege': gesamt_auftraege,
             'gesamt_stempelzeit': gesamt_stempelzeit,
             'gesamt_anwesenheit': gesamt_anwesenheit,
@@ -207,6 +246,23 @@ def get_leistung():
             'gesamt_produktivitaet': gesamt_produktivitaet,
             'avg_std_pro_tag': round(gesamt_stempelzeit / anzahl_tage / 60, 1) if anzahl_tage > 0 else 0,
             'avg_auftraege_pro_tag': round(gesamt_auftraege / anzahl_tage, 1) if anzahl_tage > 0 else 0,
+            # Neue KPIs (TAG 110)
+            'gesamt': {
+                'leistungsgrad': gesamt_leistungsgrad,
+                'produktivitaet': gesamt_produktivitaet,
+                'effizienz': gesamt_effizienz,
+                'stempelzeit': gesamt_stempelzeit,
+                'anwesenheit': gesamt_anwesenheit,
+                'auftraege': gesamt_auftraege,
+                'aw': gesamt_aw,
+                'umsatz': round(gesamt_umsatz, 2),
+                'svs': svs,
+                'realisierter_svs': realisierter_svs,
+                'verlorene_std': round(verlorene_std, 1),
+                'entgangener_umsatz': round(entgangener_umsatz, 2),
+                'std_pro_durchgang': std_pro_durchgang,
+                'tage': anzahl_tage
+            },
             'trend': trend
         })
         
@@ -450,8 +506,12 @@ def get_trend():
         params = [f'-{tage} days']
         
         if betrieb and betrieb != 'alle':
-            query += " AND betrieb_nr = ?"
-            params.append(int(betrieb))
+            betrieb_nr = int(betrieb)
+            if betrieb_nr == 1:
+                query += " AND (betrieb_nr = 1 OR betrieb_nr IS NULL OR betrieb_nr = 0)"
+            else:
+                query += " AND betrieb_nr = ?"
+                params.append(betrieb_nr)
         
         query += " GROUP BY datum ORDER BY datum"
         

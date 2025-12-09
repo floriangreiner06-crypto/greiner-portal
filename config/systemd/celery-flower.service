@@ -1,0 +1,22 @@
+[Unit]
+Description=GREINER DRIVE Flower (Celery Monitoring)
+After=network.target redis.service celery-worker.service
+
+[Service]
+Type=simple
+User=ag-admin
+Group=ag-admin
+WorkingDirectory=/opt/greiner-portal
+Environment="PATH=/opt/greiner-portal/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONPATH=/opt/greiner-portal"
+ExecStart=/opt/greiner-portal/venv/bin/celery -A celery_app flower --port=5555 --basic_auth=admin:greiner2025
+Restart=always
+RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=celery-flower
+
+[Install]
+WantedBy=multi-user.target

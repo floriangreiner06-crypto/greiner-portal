@@ -50,6 +50,13 @@ SKIP_TABLES = [
     'parts_to_vehicles',       # Sehr gross
 ]
 
+# VIEWs die ZUSÄTZLICH gespiegelt werden sollen
+# (werden standardmäßig nicht erfasst, da nur BASE TABLE)
+INCLUDE_VIEWS = [
+    'times',                   # Stempelzeiten - KRITISCH für Werkstatt-Dashboard!
+    'employees',               # Mitarbeiter-View
+]
+
 # PostgreSQL -> SQLite Typ-Mapping
 TYPE_MAP = {
     'bigint': 'INTEGER',
@@ -161,7 +168,16 @@ def get_all_tables(pg_conn) -> List[Dict]:
         AND t.table_type = 'BASE TABLE'
         ORDER BY COALESCE(s.n_live_tup, 0) DESC
     """)
-    return [{'name': row[0], 'rows': row[1]} for row in cursor.fetchall()]
+    tables = [{'name': row[0], 'rows': row[1]} for row in cursor.fetchall()]
+    
+    # VIEWs hinzufügen (aus INCLUDE_VIEWS Liste)
+    for view_name in INCLUDE_VIEWS:
+        cursor.execute(f"SELECT COUNT(*) FROM {view_name}")
+        row_count = cursor.fetchone()[0]
+        tables.append({'name': view_name, 'rows': row_count, 'is_view': True})
+        log(f"VIEW '{view_name}' hinzugefügt: {row_count:,} Zeilen")
+    
+    return tables
 
 def get_table_columns(pg_conn, table_name: str) -> List[Dict]:
     """Spalten einer Tabelle mit Typen holen"""

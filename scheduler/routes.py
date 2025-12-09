@@ -110,12 +110,12 @@ JOB_FUNCTIONS = {
     'cleanup_backups': lambda: run_shell('cd data && ls -t greiner_controlling.db.backup_* 2>/dev/null | tail -n +8 | xargs rm -f 2>/dev/null', 
                                          'cleanup_backups', 'Backup Cleanup'),
     
-    # ServiceBox
-    'servicebox_scraper_09': lambda: run_script('tools/scrapers/servicebox_detail_scraper_v3_kommentar.py', 
+    # ServiceBox (TAG 110 - Pfade korrigiert)
+    'servicebox_scraper_09': lambda: run_script('tools/scrapers/servicebox_detail_scraper_final.py', 
                                                 'servicebox_scraper', 'ServiceBox Scraper', 1800),
-    'servicebox_scraper_12': lambda: run_script('tools/scrapers/servicebox_detail_scraper_v3_kommentar.py', 
+    'servicebox_scraper_12': lambda: run_script('tools/scrapers/servicebox_detail_scraper_final.py', 
                                                 'servicebox_scraper', 'ServiceBox Scraper', 1800),
-    'servicebox_scraper_16': lambda: run_script('tools/scrapers/servicebox_detail_scraper_v3_kommentar.py', 
+    'servicebox_scraper_16': lambda: run_script('tools/scrapers/servicebox_detail_scraper_final.py', 
                                                 'servicebox_scraper', 'ServiceBox Scraper', 1800),
     'servicebox_matcher_10': lambda: run_script('tools/scrapers/servicebox_locosoft_matcher.py', 
                                                 'servicebox_matcher', 'ServiceBox Matcher', 300),
@@ -129,7 +129,7 @@ JOB_FUNCTIONS = {
                                                'servicebox_import', 'ServiceBox Import', 120),
     'servicebox_import_17': lambda: run_script('scripts/imports/import_servicebox_to_db.py', 
                                                'servicebox_import', 'ServiceBox Import', 120),
-    'servicebox_master': lambda: run_script('tools/scrapers/servicebox_detail_scraper_v3_master.py', 
+    'servicebox_master': lambda: run_script('tools/scrapers/servicebox_scraper_complete.py', 
                                             'servicebox_master', 'ServiceBox Master', 3600),
     
     # Teile
