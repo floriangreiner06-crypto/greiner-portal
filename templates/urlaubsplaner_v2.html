@@ -1,291 +1,1051 @@
 {% extends 'base.html' %}
 
-{% block title %}Urlaubsplaner V2 - Greiner Portal{% endblock %}
+{% block title %}Urlaubsplaner - Greiner DRIVE{% endblock %}
 
 {% block extra_css %}
-<!-- Font Awesome Icons -->
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-<!-- Custom CSS -->
-<link href="{{ url_for('static', filename='css/vacation_v2.css') }}?v={{ STATIC_VERSION }}" rel="stylesheet">
 <style>
-    .vacation-header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    :root {
+        --urlaub: #4CAF50;
+        --pending: #FFF59D;
+        --za: #2196F3;
+        --krank: #F48FB1;
+        --schulung: #CE93D8;
+        --feiertag: #FFCDD2;
+        --weekend: #ECEFF1;
+        --today-bg: #1976D2;
+    }
+
+    .full-container { padding: 0 15px; max-width: 100%; }
+
+    /* Header */
+    .top-bar {
+        background: linear-gradient(135deg, #5C6BC0 0%, #7E57C2 100%);
         color: white;
-        padding: 20px;
+        padding: 12px 20px;
+        border-radius: 8px;
+        margin-bottom: 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+    }
+    .top-bar h1 { font-size: 1.3rem; margin: 0; font-weight: 700; }
+    .top-bar .stats { display: flex; gap: 20px; font-size: 0.9rem; }
+    .top-bar .stat { text-align: center; }
+    .top-bar .stat .v { font-weight: 800; font-size: 1.3rem; }
+    .top-bar .stat .l { opacity: 0.9; font-size: 0.7rem; font-weight: 500; }
+    .user-info { text-align: right; font-size: 0.9rem; font-weight: 600; }
+    .user-badge { background: rgba(255,255,255,0.25); padding: 4px 12px; border-radius: 15px; font-weight: 700; }
+
+    /* Main Layout */
+    .main-row { display: flex; gap: 15px; }
+    .gantt-col { flex: 2; min-width: 0; }
+    .side-col { flex: 1; max-width: 380px; min-width: 280px; }
+
+    /* Toolbar */
+    .toolbar {
+        background: white;
+        padding: 10px 15px;
+        border-radius: 8px 8px 0 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 2px solid #5C6BC0;
+    }
+    .toolbar .month-title { font-weight: 800; font-size: 1.2rem; color: #333; margin: 0 15px; }
+    .toolbar .nav-btn {
+        background: #5C6BC0;
+        color: white;
+        border: none;
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        font-size: 1.2rem;
+        font-weight: 700;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .toolbar .nav-btn:hover { background: #7E57C2; }
+
+    /* Gantt */
+    .gantt-wrap {
+        background: white;
+        border-radius: 0 0 8px 8px;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+        overflow: hidden;
+    }
+    .gantt-scroll {
+        overflow: auto;
+        max-height: calc(100vh - 200px);
+    }
+    .gantt {
+        border-collapse: collapse;
+        font-size: 11px;
+        user-select: none;
+        width: 100%;
+    }
+    .gantt th, .gantt td {
+        border: 1px solid #D0D0D0;
+        text-align: center;
+        vertical-align: middle;
+    }
+    .gantt thead { position: sticky; top: 0; z-index: 20; }
+    .gantt .emp-col { position: sticky; left: 0; z-index: 10; background: white; }
+    .gantt thead .emp-col { z-index: 30; background: #5C6BC0; }
+
+    .gantt .month-row { background: #5C6BC0; color: white; font-weight: 700; padding: 8px; }
+    .gantt .kw-row { background: #7986CB; color: white; font-size: 10px; padding: 4px; font-weight: 600; }
+    .gantt .day-row { background: #E8EAF6; padding: 5px 0; min-width: 30px; font-weight: 700; font-size: 11px; }
+    .gantt .day-row.we { background: var(--weekend); color: #9E9E9E; }
+    .gantt .day-row.today { background: var(--today-bg); color: white; }
+    .gantt .day-row.ft { background: var(--feiertag); color: #C62828; }
+
+    .gantt .dept { background: linear-gradient(90deg, #5C6BC0, #7986CB); color: white; font-weight: 700; text-align: left !important; padding: 6px 10px !important; }
+    .gantt .emp { text-align: left !important; padding: 4px 8px !important; min-width: 140px; background: #FAFAFA; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .gantt .emp.me { background: #BBDEFB; font-weight: 800; }
+    .gantt .emp small { color: #888; font-weight: 500; }
+
+    .gantt .cell {
+        min-width: 30px;
+        height: 26px;
+        padding: 0;
+        cursor: pointer;
+        transition: all 0.15s;
+        font-size: 10px;
+        position: relative;
+    }
+    .gantt .cell:hover:not(.we):not(.ft) { 
+        transform: scale(1.1); 
+        z-index: 5;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    .gantt .cell.we { background: var(--weekend); cursor: default; }
+    .gantt .cell.ft { background: var(--feiertag); cursor: default; }
+    .gantt .cell.sel { box-shadow: inset 0 0 0 3px #1565C0; background: #90CAF9 !important; }
+    
+    .gantt .cell.urlaub { background: var(--urlaub); }
+    .gantt .cell.pending { background: var(--pending); }
+    .gantt .cell.za { background: var(--za); }
+    .gantt .cell.krank { background: var(--krank); }
+    .gantt .cell.schulung { background: var(--schulung); }
+
+    /* Einheitliches Popup-Design für alle Aktionen */
+    .popup-menu {
+        position: fixed;
+        background: white;
         border-radius: 10px;
-        margin-bottom: 20px;
+        box-shadow: 0 5px 25px rgba(0,0,0,0.3);
+        z-index: 1000;
+        min-width: 220px;
+        display: none;
+        overflow: hidden;
+        border: 2px solid #5C6BC0;
+    }
+    .popup-menu.show { display: block; }
+    .popup-menu.green { border-color: #43A047; }
+    .popup-menu-header {
+        background: linear-gradient(135deg, #5C6BC0 0%, #7E57C2 100%);
+        color: white;
+        padding: 12px 15px;
+        font-weight: 700;
+        font-size: 13px;
+    }
+    .popup-menu.green .popup-menu-header {
+        background: linear-gradient(135deg, #43A047 0%, #66BB6A 100%);
+    }
+    .popup-menu-body { padding: 10px 0; }
+    .popup-menu-item {
+        padding: 10px 15px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 13px;
+        font-weight: 500;
+        transition: background 0.15s;
+    }
+    .popup-menu-item:hover { background: #E8EAF6; }
+    .popup-menu-item.active { background: #C5CAE9; }
+    .popup-menu-item.danger { color: #C62828; }
+    .popup-menu-item.danger:hover { background: #FFEBEE; }
+    .popup-menu-divider { height: 2px; background: #E0E0E0; margin: 5px 10px; }
+    
+    /* Footer mit Buttons */
+    .popup-menu-footer {
+        padding: 10px 15px;
+        background: #F5F5F5;
+        border-top: 1px solid #E0E0E0;
+        display: flex;
+        gap: 8px;
+    }
+    .popup-menu-footer button {
+        flex: 1;
+        padding: 8px 12px;
+        border-radius: 5px;
+        font-weight: 700;
+        font-size: 12px;
+        cursor: pointer;
+        border: none;
+    }
+    .popup-menu-footer .btn-cancel {
+        background: #E0E0E0;
+        color: #333;
+    }
+    .popup-menu-footer .btn-submit {
+        background: #43A047;
+        color: white;
+    }
+    .popup-menu-footer .btn-cancel:hover { background: #BDBDBD; }
+    .popup-menu-footer .btn-submit:hover { background: #388E3C; }
+    
+    /* Lösch-Bestätigung */
+    .popup-confirm {
+        display: none;
+        padding: 15px;
+        background: #FFEBEE;
+        border-top: 2px solid #EF5350;
+    }
+    .popup-confirm.show { display: block; }
+    .popup-confirm p {
+        margin: 0 0 12px 0;
+        font-size: 13px;
+        color: #C62828;
+        font-weight: 600;
+    }
+    .popup-confirm-btns {
+        display: flex;
+        gap: 8px;
+    }
+    .popup-confirm-btns button {
+        flex: 1;
+        padding: 8px;
+        border-radius: 5px;
+        font-weight: 700;
+        font-size: 12px;
+        cursor: pointer;
+        border: none;
+    }
+    .popup-confirm-btns .btn-back { background: #E0E0E0; color: #333; }
+    .popup-confirm-btns .btn-delete { background: #EF5350; color: white; }
+    .popup-confirm-btns .btn-back:hover { background: #BDBDBD; }
+    .popup-confirm-btns .btn-delete:hover { background: #C62828; }
+
+    /* Legende */
+    .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        padding: 8px 12px;
+        background: #F5F5F5;
+        font-size: 10px;
+        font-weight: 600;
+    }
+    .legend span { display: flex; align-items: center; gap: 4px; }
+    .legend i { width: 14px; height: 14px; border-radius: 3px; }
+
+    /* Sidebar */
+    .sidebar {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+        padding: 15px;
+        margin-bottom: 15px;
+    }
+    .sidebar h6 { font-size: 1rem; font-weight: 700; margin-bottom: 15px; border-bottom: 3px solid #5C6BC0; padding-bottom: 10px; }
+    .my-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 12px;
+        margin-bottom: 8px;
+        background: #F8F9FA;
+        border-radius: 6px;
+        border-left: 4px solid #5C6BC0;
+        font-size: 13px;
+    }
+    .my-item .del-btn {
+        background: #FFEBEE;
+        border: 2px solid #EF5350;
+        color: #C62828;
+        border-radius: 5px;
+        padding: 5px 12px;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+    }
+    .my-item .del-btn:hover { background: #FFCDD2; }
+
+    .approver-box {
+        background: #FFF8E1;
+        border: 2px solid #FFB300;
+        border-radius: 8px;
+        padding: 15px;
+    }
+    .approver-box h6 { color: #F57F17; font-size: 1rem; font-weight: 700; margin-bottom: 12px; border: none; padding: 0; }
+    .appr-item {
+        background: white;
+        border-radius: 6px;
+        padding: 12px;
+        margin-bottom: 10px;
+        border: 1px solid #FFE082;
+    }
+    .appr-item .btns { display: flex; gap: 8px; margin-top: 10px; }
+    .appr-item .btns button { padding: 6px 16px; font-size: 12px; font-weight: 700; border-radius: 5px; flex: 1; }
+
+    .toast-container { position: fixed; bottom: 15px; right: 15px; z-index: 9999; }
+    .no-data { text-align: center; padding: 20px; color: #888; font-style: italic; }
+    
+    .hint {
+        background: #E3F2FD;
+        border: 1px solid #90CAF9;
+        border-radius: 6px;
+        padding: 10px;
+        margin-bottom: 15px;
+        font-size: 12px;
+        color: #1565C0;
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-    <!-- Header -->
-    <div class="vacation-header">
-        <div class="row align-items-center">
-            <div class="col">
-                <h1 class="mb-0">
-                    <i class="fas fa-umbrella-beach"></i> Urlaubsplaner V2
-                </h1>
-                <small>Moderne Urlaubsverwaltung</small>
+<div class="full-container">
+    <!-- Top Bar -->
+    <div class="top-bar">
+        <div style="display:flex;align-items:center;gap:20px;">
+            <h1><i class="fas fa-calendar-alt"></i> Urlaubsplaner</h1>
+            <div class="stats">
+                <div class="stat"><div class="v" id="sAnspruch">27</div><div class="l">Anspruch</div></div>
+                <div class="stat"><div class="v" style="color:#4CAF50" id="sUrlaub">0</div><div class="l">🏖️ Urlaub</div></div>
+                <div class="stat"><div class="v" style="color:#2196F3" id="sZA">0</div><div class="l">⏰ ZA</div></div>
+                <div class="stat"><div class="v" style="color:#F48FB1" id="sKrank">0</div><div class="l">🤒 Krank</div></div>
+                <div class="stat"><div class="v" style="color:#4CAF50" id="sRest">27</div><div class="l">✅ Rest</div></div>
             </div>
-            <div class="col-auto text-end">
-                <div id="currentUser" class="mb-1">
-                    <i class="fas fa-user"></i> <span id="userName">Wird geladen...</span>
-                </div>
-                <div id="userBalance" class="small">
-                    <i class="fas fa-calendar-check"></i> Resturlaub: <span id="remainingDays">-</span> Tage
-                </div>
-            </div>
+        </div>
+        <div class="user-info">
+            <span id="userName">...</span>
+            <span class="user-badge ms-2"><span id="userRest">0</span> Tage</span>
         </div>
     </div>
 
-    <!-- Tab Navigation -->
-    <ul class="nav nav-tabs mb-4" id="mainTabs" role="tablist">
-        <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard" type="button" role="tab">
-                <i class="fas fa-chart-line"></i> Dashboard
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="request-tab" data-bs-toggle="tab" data-bs-target="#request" type="button" role="tab">
-                <i class="fas fa-plus-circle"></i> Urlaub beantragen
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="approval-tab" data-bs-toggle="tab" data-bs-target="#approval" type="button" role="tab">
-                <i class="fas fa-check-circle"></i> Genehmigungen
-                <span id="pendingBadge" class="badge bg-danger ms-2" style="display: none;">0</span>
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="calendar-tab" data-bs-toggle="tab" data-bs-target="#calendar" type="button" role="tab">
-                <i class="fas fa-calendar-alt"></i> Team-Kalender
-            </button>
-        </li>
-    </ul>
-
-    <!-- Tab Content -->
-    <div class="tab-content" id="mainTabContent">
-
-        <!-- DASHBOARD TAB -->
-        <div class="tab-pane fade show active" id="dashboard" role="tabpanel">
-            <div class="row">
-                <!-- Mein Urlaubssaldo -->
-                <div class="col-md-4 mb-3">
-                    <div class="card">
-                        <div class="card-header bg-primary text-white">
-                            <i class="fas fa-user"></i> Mein Urlaubssaldo
-                        </div>
-                        <div class="card-body">
-                            <div id="myBalanceDetails">
-                                <div class="text-center">
-                                    <div class="spinner-border" role="status">
-                                        <span class="visually-hidden">Lädt...</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+    <!-- Main Layout -->
+    <div class="main-row">
+        <div class="gantt-col">
+            <div class="toolbar">
+                <div style="display:flex;align-items:center;">
+                    <button class="nav-btn" id="btnPrev" title="Vorheriger Monat">◀</button>
+                    <span class="month-title" id="titleMonth">Dezember 2025</span>
+                    <button class="nav-btn" id="btnNext" title="Nächster Monat">▶</button>
                 </div>
-
-                <!-- Meine Anträge -->
-                <div class="col-md-4 mb-3">
-                    <div class="card">
-                        <div class="card-header bg-info text-white">
-                            <i class="fas fa-list"></i> Meine Anträge
-                        </div>
-                        <div class="card-body">
-                            <div id="myRequestsList">
-                                <div class="text-center">
-                                    <div class="spinner-border" role="status">
-                                        <span class="visually-hidden">Lädt...</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <button class="btn btn-primary btn-sm" id="btnToday"><i class="fas fa-calendar-day"></i> Heute</button>
+                    <select class="form-select form-select-sm" id="filterDept" style="width:auto;font-weight:600;">
+                        <option value="">Alle Abteilungen</option>
+                    </select>
                 </div>
-
-                <!-- Team-Abwesenheiten -->
-                <div class="col-md-4 mb-3">
-                    <div class="card">
-                        <div class="card-header bg-warning text-dark">
-                            <i class="fas fa-users"></i> Team heute abwesend
-                        </div>
-                        <div class="card-body">
-                            <div id="teamAbsenceToday">
-                                <div class="text-center">
-                                    <div class="spinner-border" role="status">
-                                        <span class="visually-hidden">Lädt...</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+            </div>
+            <div class="gantt-wrap">
+                <div class="gantt-scroll" id="ganttScroll">
+                    <table class="gantt" id="gantt">
+                        <thead id="gHead"></thead>
+                        <tbody id="gBody"></tbody>
+                    </table>
+                </div>
+                <div class="legend">
+                    <span><i style="background:var(--urlaub)"></i>Urlaub</span>
+                    <span><i style="background:var(--pending)"></i>Beantragt</span>
+                    <span><i style="background:var(--za)"></i>ZA</span>
+                    <span><i style="background:var(--krank)"></i>Krank</span>
+                    <span><i style="background:var(--schulung)"></i>Schulung</span>
+                    <span><i style="background:var(--feiertag)"></i>Feiertag</span>
+                    <span><i style="background:var(--weekend)"></i>WE</span>
                 </div>
             </div>
         </div>
 
-        <!-- URLAUB BEANTRAGEN TAB -->
-        <div class="tab-pane fade" id="request" role="tabpanel">
-            <div class="row justify-content-center">
-                <div class="col-md-8">
-                    <div class="card">
-                        <div class="card-header bg-success text-white">
-                            <h5 class="mb-0"><i class="fas fa-plus-circle"></i> Neuer Urlaubsantrag</h5>
-                        </div>
-                        <div class="card-body">
-                            <div id="vacationRequestForm">
-                                <!-- Mitarbeiter-Auswahl -->
-                                <div class="mb-3">
-                                    <label for="employeeSelect" class="form-label">Mitarbeiter *</label>
-                                    <select class="form-select" id="employeeSelect" required>
-                                        <option value="">Bitte wählen...</option>
-                                    </select>
-                                </div>
-
-                                <!-- Urlaubsart -->
-                                <div class="mb-3">
-                                    <label for="vacationTypeSelect" class="form-label">Urlaubsart *</label>
-                                    <select class="form-select" id="vacationTypeSelect" required>
-                                        <option value="">Bitte wählen...</option>
-                                    </select>
-                                </div>
-
-                                <!-- Start- und Enddatum -->
-                                <div class="row">
-                                    <div class="col-md-6 mb-3">
-                                        <label for="startDate" class="form-label">Startdatum *</label>
-                                        <input type="date" class="form-control" id="startDate" required>
-                                    </div>
-                                    <div class="col-md-6 mb-3">
-                                        <label for="endDate" class="form-label">Enddatum *</label>
-                                        <input type="date" class="form-control" id="endDate" required>
-                                    </div>
-                                </div>
-
-                                <!-- Live-Berechnung -->
-                                <div class="alert alert-info" id="calculationResult" style="display: none;">
-                                    <h6><i class="fas fa-calculator"></i> Berechnung:</h6>
-                                    <div id="calculationDetails"></div>
-                                </div>
-
-                                <!-- Warnung bei Überschneidung -->
-                                <div class="alert alert-warning" id="overlapWarning" style="display: none;">
-                                    <i class="fas fa-exclamation-triangle"></i> <span id="overlapMessage"></span>
-                                </div>
-
-                                <!-- Kommentar -->
-                                <div class="mb-3">
-                                    <label for="requestComment" class="form-label">Kommentar (optional)</label>
-                                    <textarea class="form-control" id="requestComment" rows="3"></textarea>
-                                </div>
-
-                                <!-- Buttons -->
-                                <div class="d-grid gap-2">
-                                    <button type="button" class="btn btn-success btn-lg" id="submitRequestBtn">
-                                        <i class="fas fa-paper-plane"></i> Antrag einreichen
-                                    </button>
-                                    <button type="button" class="btn btn-secondary" id="resetRequestBtn">
-                                        <i class="fas fa-redo"></i> Zurücksetzen
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+        <div class="side-col">
+            <div class="hint">
+                <i class="fas fa-mouse-pointer"></i> <strong>Bedienung:</strong> Tage anklicken/ziehen zum Buchen, gebuchte Tage anklicken zum Bearbeiten
+            </div>
+            <div class="sidebar">
+                <h6><i class="fas fa-clipboard-list"></i> Meine Anträge</h6>
+                <div id="myList"><div class="no-data">Lade...</div></div>
+            </div>
+            <div class="approver-box" id="apprBox" style="display:none;">
+                <h6><i class="fas fa-user-check"></i> Zu genehmigen (<span id="apprCnt">0</span>)</h6>
+                <div id="apprList"></div>
             </div>
         </div>
+    </div>
+</div>
 
-        <!-- GENEHMIGUNGEN TAB -->
-        <div class="tab-pane fade" id="approval" role="tabpanel">
-            <div class="card">
-                <div class="card-header bg-warning text-dark">
-                    <h5 class="mb-0">
-                        <i class="fas fa-check-circle"></i> Offene Genehmigungen
-                        <button class="btn btn-sm btn-dark float-end" id="refreshApprovalsBtn">
-                            <i class="fas fa-sync"></i> Aktualisieren
-                        </button>
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <!-- Filter -->
-                    <div class="row mb-3">
-                        <div class="col-md-4">
-                            <label for="filterDepartment" class="form-label">Filter Abteilung:</label>
-                            <select class="form-select" id="filterDepartment">
-                                <option value="">Alle Abteilungen</option>
-                            </select>
-                        </div>
-                        <div class="col-md-8 text-end">
-                            <button class="btn btn-success" id="batchApproveBtn" disabled>
-                                <i class="fas fa-check"></i> Ausgewählte genehmigen
-                            </button>
-                            <button class="btn btn-danger" id="batchRejectBtn" disabled>
-                                <i class="fas fa-times"></i> Ausgewählte ablehnen
-                            </button>
-                        </div>
-                    </div>
+<!-- POPUP: Neue Buchung erstellen (grün) -->
+<div class="popup-menu green" id="bookPopup">
+    <div class="popup-menu-header" id="bookHeader">📅 Neuer Antrag</div>
+    <div class="popup-menu-body">
+        <div class="popup-menu-item active" data-t="1" onclick="selectBookType(1)">🏖️ Urlaub</div>
+        <div class="popup-menu-item" data-t="6" onclick="selectBookType(6)">⏰ Zeitausgleich</div>
+        <div class="popup-menu-item" data-t="3" onclick="selectBookType(3)">🤒 Krank</div>
+        <div class="popup-menu-item" data-t="5" onclick="selectBookType(5)">📚 Schulung</div>
+    </div>
+    <div class="popup-menu-footer">
+        <button class="btn-cancel" onclick="hideBookPopup()">Abbrechen</button>
+        <button class="btn-submit" onclick="submitBooking()">✓ Einreichen</button>
+    </div>
+</div>
 
-                    <!-- Antrags-Liste -->
-                    <div id="approvalsList">
-                        <div class="text-center">
-                            <div class="spinner-border" role="status">
-                                <span class="visually-hidden">Lädt...</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+<!-- POPUP: Gebuchten Tag bearbeiten (lila) -->
+<div class="popup-menu" id="editPopup">
+    <div class="popup-menu-header" id="editHeader">📅 01.12. - Urlaub</div>
+    <div class="popup-menu-body" id="editBody">
+        <div class="popup-menu-item" onclick="changeType(1)">🏖️ Ändern zu Urlaub</div>
+        <div class="popup-menu-item" onclick="changeType(6)">⏰ Ändern zu ZA</div>
+        <div class="popup-menu-item" onclick="changeType(3)">🤒 Ändern zu Krank</div>
+        <div class="popup-menu-item" onclick="changeType(5)">📚 Ändern zu Schulung</div>
+        <div class="popup-menu-divider"></div>
+        <div class="popup-menu-item danger" onclick="showDeleteConfirm()">🗑️ Löschen</div>
+    </div>
+    <div class="popup-confirm" id="editConfirm">
+        <p>🗑️ <span id="deleteInfo">01.12.</span> wirklich löschen?</p>
+        <div class="popup-confirm-btns">
+            <button class="btn-back" onclick="hideDeleteConfirm()">Zurück</button>
+            <button class="btn-delete" onclick="doDelete()">Löschen</button>
+        </div>
+    </div>
+</div>
+
+<div class="toast-container" id="toasts"></div>
+
+<!-- Sidebar Delete Modal (für Liste) -->
+<div class="modal fade" id="cancelModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white py-2">
+                <h6 class="modal-title"><i class="fas fa-trash"></i> Stornieren</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body"><p><strong id="cancelInfo">-</strong> wirklich stornieren?</p></div>
+            <div class="modal-footer py-2">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Nein</button>
+                <button class="btn btn-danger" id="btnDoCancel"><i class="fas fa-trash"></i> Ja</button>
             </div>
         </div>
+    </div>
+</div>
 
-        <!-- KALENDER TAB -->
-        <div class="tab-pane fade" id="calendar" role="tabpanel">
-            <div class="card">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">
-                        <i class="fas fa-calendar-alt"></i> Team-Kalender
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <!-- Filter -->
-                    <div class="row mb-3">
-                        <div class="col-md-3">
-                            <label for="calendarDepartment" class="form-label">Abteilung:</label>
-                            <select class="form-select" id="calendarDepartment">
-                                <option value="">Alle Abteilungen</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label for="calendarVacationType" class="form-label">Urlaubsart:</label>
-                            <select class="form-select" id="calendarVacationType">
-                                <option value="">Alle Arten</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- Kalender-Container -->
-                    <div id="teamCalendar">
-                        <div class="text-center py-5">
-                            <div class="spinner-border" role="status">
-                                <span class="visually-hidden">Lädt...</span>
-                            </div>
-                            <p class="mt-3">Kalender wird geladen...</p>
-                        </div>
-                    </div>
-                </div>
+<!-- Reject Modal -->
+<div class="modal fade" id="rejectModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white py-2">
+                <h6 class="modal-title">Ablehnen</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p id="rejectInfo">-</p>
+                <textarea class="form-control" id="rejectReason" rows="2" placeholder="Grund (optional)..."></textarea>
+            </div>
+            <div class="modal-footer py-2">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button class="btn btn-danger" id="btnDoReject">Ablehnen</button>
             </div>
         </div>
+    </div>
+</div>
 
+<!-- Approve Modal -->
+<div class="modal fade" id="approveModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white py-2">
+                <h6 class="modal-title"><i class="fas fa-check"></i> Genehmigen</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p><strong id="approveInfo">-</strong></p>
+                <p class="text-muted small">Urlaubsantrag genehmigen?</p>
+            </div>
+            <div class="modal-footer py-2">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button class="btn btn-success" id="btnDoApprove"><i class="fas fa-check"></i> Genehmigen</button>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
-<!-- Custom JavaScript -->
-<script src="{{ url_for('static', filename='js/vacation_manager.js') }}?v={{ STATIC_VERSION }}"></script>
-<script src="{{ url_for('static', filename='js/vacation_request.js') }}?v={{ STATIC_VERSION }}"></script>
-<script src="{{ url_for('static', filename='js/vacation_approval.js') }}?v={{ STATIC_VERSION }}"></script>
-<script src="{{ url_for('static', filename='js/vacation_calendar.js') }}?v={{ STATIC_VERSION }}"></script>
+<script>
+const API = '/api/vacation';
+const MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+
+const FT = {
+    '2025-01-01':'Neujahr','2025-01-06':'Hl. Drei Könige','2025-04-18':'Karfreitag','2025-04-21':'Ostermontag',
+    '2025-05-01':'Tag der Arbeit','2025-05-29':'Chr. Himmelfahrt','2025-06-09':'Pfingstmontag','2025-06-19':'Fronleichnam',
+    '2025-08-15':'Mariä Himmelfahrt','2025-10-03':'Tag d. Dt. Einheit','2025-11-01':'Allerheiligen',
+    '2025-12-25':'1. Weihnachtstag','2025-12-26':'2. Weihnachtstag',
+    '2026-01-01':'Neujahr','2026-01-06':'Hl. Drei Könige','2026-04-03':'Karfreitag','2026-04-06':'Ostermontag',
+    '2026-05-01':'Tag der Arbeit','2026-05-14':'Chr. Himmelfahrt','2026-05-25':'Pfingstmontag','2026-06-04':'Fronleichnam',
+    '2026-08-15':'Mariä Himmelfahrt','2026-10-03':'Tag d. Dt. Einheit','2026-11-01':'Allerheiligen',
+    '2026-12-25':'1. Weihnachtstag','2026-12-26':'2. Weihnachtstag'
+};
+
+const ICON = {1:'🏖️',2:'👶',3:'🤒',5:'📚',6:'⏰'};
+const CLS = {1:'urlaub',2:'urlaub',3:'krank',5:'schulung',6:'za'};
+const TYPE_NAME = {1:'Urlaub',2:'Sonderurlaub',3:'Krank',5:'Schulung',6:'Zeitausgleich'};
+
+let me = null, meId = null, isAppr = false;
+let allEmployees = [], myBook = [];
+let mon = new Date().getMonth(), yr = new Date().getFullYear();
+let sel = new Set(), selType = 1;
+let dragging = false, dragStart = null;
+let editBooking = null;
+let cancelId = null, rejectId = null, approveId = null;
+let lastClickPos = {x: 0, y: 0};
+let justOpenedPopup = false;
+
+document.addEventListener('DOMContentLoaded', async () => {
+    console.log('📅 Urlaubsplaner V19 init...');
+    await loadMe();
+    await loadAllEmployees();
+    await loadMyBook();
+    render();
+    renderMy();
+    // Immer prüfen ob Genehmiger (isAppr wird in loadMe gesetzt)
+    await loadAppr();
+    events();
+    console.log('📅 Urlaubsplaner V19 ready!');
+});
+
+async function api(ep, m='GET', d=null) {
+    try {
+        const o = {method:m, headers:{'Content-Type':'application/json'}};
+        if (d) o.body = JSON.stringify(d);
+        return await (await fetch(API+ep, o)).json();
+    } catch(e) {
+        console.error('API Error:', e);
+        return {success: false, error: e.message};
+    }
+}
+
+async function loadMe() {
+    const r = await api('/my-balance');
+    if (!r.success) return;
+    me = r.employee;
+    meId = me?.employee_id;
+    const b = r.balance;
+    document.getElementById('userName').textContent = b.name || `${me.first_name} ${me.last_name}`;
+    document.getElementById('userRest').textContent = b.resturlaub_korrigiert ?? b.resturlaub ?? 0;
+    document.getElementById('sAnspruch').textContent = b.anspruch || 27;
+    document.getElementById('sUrlaub').textContent = b.urlaub_locosoft ?? b.verbraucht ?? 0;
+    document.getElementById('sZA').textContent = b.zeitausgleich ?? 0;
+    document.getElementById('sKrank').textContent = b.krank ?? 0;
+    document.getElementById('sRest').textContent = b.resturlaub_korrigiert ?? b.resturlaub ?? 0;
+    if (r.approver_info?.is_approver) isAppr = true;
+}
+
+async function loadAllEmployees() {
+    const r = await api('/balance?year=2025');
+    if (r.success && r.balances) {
+        allEmployees = r.balances.map(e => ({
+            employee_id: e.employee_id,
+            name: e.name,
+            grp_code: e.department_name || 'Sonstige',
+            resturlaub: e.resturlaub
+        }));
+        const depts = [...new Set(allEmployees.map(e => e.grp_code))].filter(d => d).sort();
+        depts.forEach(d => {
+            const opt = document.createElement('option');
+            opt.value = d; opt.textContent = d;
+            document.getElementById('filterDept').appendChild(opt);
+        });
+    }
+}
+
+async function loadMyBook() {
+    const r = await api('/my-bookings');
+    if (r.success) myBook = r.bookings || [];
+}
+
+async function loadAppr() {
+    const r = await api('/pending-approvals');
+    if (r.success && r.pending?.length) {
+        document.getElementById('apprBox').style.display = 'block';
+        document.getElementById('apprCnt').textContent = r.pending.length;
+        let h = '';
+        r.pending.forEach(p => {
+            h += `<div class="appr-item">
+                <div><strong>${p.employee_name}</strong> - ${fmtD(p.date)}</div>
+                <div class="btns">
+                    <button class="btn btn-success" onclick="showApprove(${p.booking_id},'${p.employee_name}','${p.date}')"><i class="fas fa-check"></i> OK</button>
+                    <button class="btn btn-danger" onclick="showRej(${p.booking_id},'${p.employee_name}')"><i class="fas fa-times"></i></button>
+                </div>
+            </div>`;
+        });
+        document.getElementById('apprList').innerHTML = h;
+    } else {
+        document.getElementById('apprBox').style.display = 'none';
+    }
+}
+
+function render() {
+    document.getElementById('titleMonth').textContent = `${MONTHS[mon]} ${yr}`;
+    const days = new Date(yr, mon+1, 0).getDate();
+    const today = new Date().toISOString().split('T')[0];
+    const filter = document.getElementById('filterDept').value;
+
+    let emps = allEmployees.slice();
+    if (filter) emps = emps.filter(e => e.grp_code === filter);
+
+    const byD = {};
+    emps.forEach(e => {
+        const d = e.grp_code || 'Sonstige';
+        if (!byD[d]) byD[d] = [];
+        byD[d].push(e);
+    });
+
+    function kw(dt) {
+        const d = new Date(Date.UTC(dt.getFullYear(), dt.getMonth(), dt.getDate()));
+        const day = d.getUTCDay() || 7;
+        d.setUTCDate(d.getUTCDate() + 4 - day);
+        const y1 = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+        return Math.ceil((((d - y1) / 86400000) + 1) / 7);
+    }
+
+    let hd = `<tr><th class="month-row emp-col">${MONTHS[mon].substring(0,3)} ${yr}</th><th class="month-row" colspan="${days}"></th></tr>`;
+    hd += '<tr><th class="kw-row emp-col">KW</th>';
+    let lastKW = -1, kwStart = 1;
+    for (let d = 1; d <= days; d++) {
+        const k = kw(new Date(yr, mon, d));
+        if (k !== lastKW) {
+            if (lastKW > 0) hd += `<th class="kw-row" colspan="${d - kwStart}">${lastKW}</th>`;
+            lastKW = k; kwStart = d;
+        }
+    }
+    hd += `<th class="kw-row" colspan="${days - kwStart + 1}">${lastKW}</th></tr>`;
+
+    hd += '<tr><th class="day-row emp-col">Mitarbeiter</th>';
+    for (let d = 1; d <= days; d++) {
+        const ds = `${yr}-${String(mon+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const dt = new Date(yr, mon, d);
+        const dow = dt.getDay();
+        let c = 'day-row';
+        if (FT[ds]) c += ' ft'; else if (dow === 0 || dow === 6) c += ' we';
+        if (ds === today) c += ' today';
+        hd += `<th class="${c}" title="${FT[ds]||''}">${d}</th>`;
+    }
+    hd += '</tr>';
+    document.getElementById('gHead').innerHTML = hd;
+
+    let bd = '';
+    Object.keys(byD).sort().forEach(dept => {
+        bd += `<tr><td class="dept emp-col" colspan="${days+1}">${dept}</td></tr>`;
+        byD[dept].sort((a,b) => a.name.localeCompare(b.name)).forEach(emp => {
+            const isMe = emp.employee_id === meId;
+            bd += '<tr>';
+            bd += `<td class="emp emp-col ${isMe?'me':''}">${emp.name} <small>(${emp.resturlaub ?? '?'})</small></td>`;
+            for (let d = 1; d <= days; d++) {
+                const ds = `${yr}-${String(mon+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                const dt = new Date(yr, mon, d);
+                const dow = dt.getDay();
+                const isWE = dow === 0 || dow === 6;
+                const isFT = FT[ds];
+                let c = 'cell', icon = '', bookingId = '';
+                
+                if (isFT) c += ' ft';
+                else if (isWE) c += ' we';
+                else if (isMe) {
+                    const bk = myBook.find(b => b.date === ds && b.status !== 'cancelled');
+                    if (bk) {
+                        c += ' booked ' + (bk.status === 'pending' ? 'pending' : (CLS[bk.type_id]||'urlaub'));
+                        icon = ICON[bk.type_id] || '';
+                        bookingId = bk.id;
+                    }
+                }
+                
+                const canClick = isMe && !isWE && !isFT;
+                bd += `<td class="${c}" data-d="${ds}" data-e="${emp.employee_id}" data-bid="${bookingId}" ${canClick?'data-ok="1"':''}>${icon}</td>`;
+            }
+            bd += '</tr>';
+        });
+    });
+    document.getElementById('gBody').innerHTML = bd;
+    setupInteraction();
+}
+
+function setupInteraction() {
+    document.querySelectorAll('.cell[data-ok="1"]').forEach(c => {
+        const hasBooking = c.classList.contains('booked');
+        
+        c.addEventListener('click', e => {
+            lastClickPos = {x: e.clientX + 10, y: e.clientY};
+            console.log('📅 cell click - hasBooking:', hasBooking, 'pos:', lastClickPos);
+            if (hasBooking) {
+                e.preventDefault();
+                e.stopPropagation();
+                showEditPopup(c);
+            }
+        });
+        
+        if (!hasBooking) {
+            c.addEventListener('mousedown', e => {
+                e.preventDefault();
+                hideAllPopups();
+                lastClickPos = {x: e.clientX + 10, y: e.clientY};
+                dragging = true;
+                dragStart = c.dataset.d;
+                sel.clear();
+                document.querySelectorAll('.cell.sel').forEach(x => x.classList.remove('sel'));
+                sel.add(c.dataset.d);
+                c.classList.add('sel');
+            });
+            
+            c.addEventListener('mouseenter', () => {
+                if (!dragging) return;
+                document.querySelectorAll('.cell.sel').forEach(x => x.classList.remove('sel'));
+                sel.clear();
+                const start = new Date(dragStart), end = new Date(c.dataset.d);
+                const [from, to] = start <= end ? [start, end] : [end, start];
+                for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+                    const ds = d.toISOString().split('T')[0];
+                    if (d.getDay() === 0 || d.getDay() === 6 || FT[ds]) continue;
+                    const cell = document.querySelector(`.cell[data-d="${ds}"][data-ok="1"]:not(.booked)`);
+                    if (cell) { sel.add(ds); cell.classList.add('sel'); }
+                }
+            });
+        }
+    });
+    
+    document.addEventListener('mouseup', e => {
+        if (dragging && sel.size > 0) {
+            // Position bei Mauszeiger
+            lastClickPos = {x: e.clientX + 10, y: e.clientY};
+            console.log('📅 mouseup - sel.size:', sel.size, 'pos:', lastClickPos);
+            justOpenedPopup = true;
+            showBookPopup();
+            // Reset nach kurzem Delay
+            setTimeout(() => { justOpenedPopup = false; }, 100);
+        }
+        dragging = false;
+    });
+    
+    // Click außerhalb schließt Popups
+    document.addEventListener('click', e => {
+        // Ignoriere wenn Popup gerade geöffnet wurde (Race Condition mit mouseup)
+        if (justOpenedPopup) return;
+        // Ignoriere Klicks auf Popup selbst
+        if (e.target.closest('.popup-menu')) return;
+        // Ignoriere Klicks auf Zellen
+        if (e.target.closest('.cell[data-ok="1"]')) return;
+        
+        hideAllPopups();
+        clearSelection();
+    });
+}
+
+// ========== BOOK POPUP (Grün) ==========
+function showBookPopup() {
+    if (sel.size === 0) return;
+    
+    const arr = Array.from(sel).sort();
+    const headerText = arr.length === 1 
+        ? `📅 ${fmtD(arr[0])} buchen`
+        : `📅 ${fmtD(arr[0])} - ${fmtD(arr[arr.length-1])} (${arr.length} Tage)`;
+    
+    document.getElementById('bookHeader').textContent = headerText;
+    
+    // Reset type selection
+    document.querySelectorAll('#bookPopup .popup-menu-item').forEach(item => {
+        item.classList.remove('active');
+        if (item.dataset.t === '1') item.classList.add('active');
+    });
+    selType = 1;
+    
+    positionPopup('bookPopup');
+}
+
+function hideBookPopup() {
+    document.getElementById('bookPopup').classList.remove('show');
+    clearSelection();
+}
+
+function selectBookType(typeId) {
+    document.querySelectorAll('#bookPopup .popup-menu-item').forEach(item => {
+        item.classList.remove('active');
+        if (parseInt(item.dataset.t) === typeId) item.classList.add('active');
+    });
+    selType = typeId;
+}
+
+async function submitBooking() {
+    if (sel.size === 0) return;
+    
+    let ok = 0;
+    let errors = [];
+    
+    for (const d of Array.from(sel).sort()) {
+        const r = await api('/book', 'POST', {date: d, vacation_type_id: selType, day_part: 'full'});
+        if (r.success) {
+            ok++;
+        } else {
+            errors.push(r.error || 'Unbekannter Fehler');
+        }
+    }
+    
+    hideBookPopup();
+    
+    if (ok > 0) {
+        toast(`${ok} Tag(e) beantragt!`, 'success');
+    }
+    
+    if (errors.length > 0) {
+        // Zeige nur ersten Fehler um nicht zu spammen
+        toast(errors[0], 'danger');
+    }
+    
+    // Immer neu laden um aktuellen Stand zu zeigen
+    await loadMyBook();
+    await loadMe();
+    render();
+    renderMy();
+}
+
+// ========== EDIT POPUP (Lila) ==========
+function showEditPopup(cell) {
+    const bid = cell.dataset.bid;
+    const ds = cell.dataset.d;
+    const booking = myBook.find(b => b.id == bid);
+    
+    if (!booking) return;
+    
+    editBooking = booking;
+    
+    document.getElementById('editHeader').textContent = `${ICON[booking.type_id]||'📅'} ${fmtD(ds)} - ${TYPE_NAME[booking.type_id]||'Buchung'}`;
+    document.getElementById('deleteInfo').textContent = fmtD(ds);
+    
+    // Reset state
+    document.getElementById('editBody').style.display = 'block';
+    document.getElementById('editConfirm').classList.remove('show');
+    
+    positionPopup('editPopup');
+}
+
+function hideEditPopup() {
+    document.getElementById('editPopup').classList.remove('show');
+    editBooking = null;
+}
+
+async function changeType(newTypeId) {
+    if (!editBooking) return;
+    if (editBooking.type_id === newTypeId) {
+        hideEditPopup();
+        return;
+    }
+    
+    const delResult = await api('/cancel', 'POST', {booking_id: editBooking.id, reason: 'Typ geändert'});
+    if (!delResult.success) {
+        toast('Fehler: ' + (delResult.error || ''), 'danger');
+        hideEditPopup();
+        return;
+    }
+    
+    const bookResult = await api('/book', 'POST', {date: editBooking.date, vacation_type_id: newTypeId, day_part: 'full'});
+    
+    hideEditPopup();
+    
+    if (bookResult.success) {
+        toast(`Geändert zu ${TYPE_NAME[newTypeId]}!`, 'success');
+    } else {
+        toast('Fehler: ' + (bookResult.error || ''), 'danger');
+    }
+    
+    await loadMyBook();
+    await loadMe();
+    render();
+    renderMy();
+}
+
+function showDeleteConfirm() {
+    document.getElementById('editBody').style.display = 'none';
+    document.getElementById('editConfirm').classList.add('show');
+}
+
+function hideDeleteConfirm() {
+    document.getElementById('editBody').style.display = 'block';
+    document.getElementById('editConfirm').classList.remove('show');
+}
+
+async function doDelete() {
+    if (!editBooking) return;
+    
+    const r = await api('/cancel', 'POST', {booking_id: editBooking.id, reason: 'Gelöscht'});
+    
+    hideEditPopup();
+    
+    if (r.success) {
+        toast('Gelöscht!', 'success');
+    } else {
+        toast('Fehler: ' + (r.error || ''), 'danger');
+    }
+    
+    await loadMyBook();
+    await loadMe();
+    render();
+    renderMy();
+}
+
+// ========== HELPERS ==========
+function positionPopup(popupId) {
+    const popup = document.getElementById(popupId);
+    
+    // Erst sichtbar machen um Größe zu messen
+    popup.style.visibility = 'hidden';
+    popup.style.left = '0';
+    popup.style.top = '0';
+    popup.classList.add('show');
+    
+    const rect = popup.getBoundingClientRect();
+    let x = lastClickPos.x;
+    let y = lastClickPos.y;
+    
+    console.log('📌 positionPopup:', popupId, 'click:', x, y, 'popup size:', rect.width, rect.height);
+    
+    // Viewport-Grenzen beachten
+    if (x + rect.width > window.innerWidth) {
+        x = window.innerWidth - rect.width - 15;
+    }
+    if (y + rect.height > window.innerHeight) {
+        y = window.innerHeight - rect.height - 15;
+    }
+    if (x < 10) x = 10;
+    if (y < 10) y = 10;
+    
+    popup.style.left = x + 'px';
+    popup.style.top = y + 'px';
+    popup.style.visibility = 'visible';
+    
+    console.log('📌 Popup final position:', x, y);
+}
+
+function hideAllPopups() {
+    document.getElementById('bookPopup').classList.remove('show');
+    document.getElementById('editPopup').classList.remove('show');
+    editBooking = null;
+}
+
+function clearSelection() {
+    sel.clear();
+    document.querySelectorAll('.cell.sel').forEach(c => c.classList.remove('sel'));
+}
+
+function renderMy() {
+    // Zeige nur aktuelle und zukünftige Buchungen (nicht vergangene)
+    const today = new Date().toISOString().split('T')[0];
+    const list = myBook.filter(b => b.status !== 'cancelled' && b.date >= today).sort((a,b) => a.date.localeCompare(b.date)).slice(0, 15);
+    
+    const container = document.getElementById('myList');
+    if (!list.length) { 
+        container.innerHTML = '<div class="no-data">Keine Anträge</div>'; 
+        return; 
+    }
+    
+    let h = '';
+    list.forEach(b => {
+        const ico = ICON[b.type_id] || '🏖️';
+        const st = b.status === 'pending' ? '<span class="badge bg-warning text-dark">⏳</span>' : '<span class="badge bg-success">✓</span>';
+        h += `<div class="my-item">
+            <div><span style="font-size:16px">${ico}</span> <strong>${fmtD(b.date)}</strong> ${st}</div>
+            <button class="del-btn" onclick="showCancel(${b.id},'${b.date}')"><i class="fas fa-trash"></i></button>
+        </div>`;
+    });
+    container.innerHTML = h;
+}
+
+function showCancel(id, d) {
+    cancelId = id;
+    document.getElementById('cancelInfo').textContent = fmtD(d);
+    new bootstrap.Modal(document.getElementById('cancelModal')).show();
+}
+
+async function doCancel() {
+    const r = await api('/cancel', 'POST', {booking_id: cancelId, reason: 'Storniert'});
+    if (r.success) {
+        bootstrap.Modal.getInstance(document.getElementById('cancelModal')).hide();
+        toast('Storniert!', 'success');
+        await loadMyBook(); await loadMe(); render(); renderMy();
+    } else {
+        toast('Fehler: ' + (r.error || ''), 'danger');
+    }
+}
+
+function showApprove(id, name, date) {
+    approveId = id;
+    document.getElementById('approveInfo').textContent = `${name} - ${fmtD(date)}`;
+    new bootstrap.Modal(document.getElementById('approveModal')).show();
+}
+
+async function doApprove() {
+    const r = await api('/approve', 'POST', {booking_id: approveId});
+    if (r.success) {
+        bootstrap.Modal.getInstance(document.getElementById('approveModal')).hide();
+        toast('Genehmigt!', 'success');
+        await loadAppr();
+        await loadMyBook();
+        render();
+    } else {
+        toast('Fehler: ' + (r.error || ''), 'danger');
+    }
+}
+
+function showRej(id, name) {
+    rejectId = id;
+    document.getElementById('rejectInfo').textContent = `${name} ablehnen:`;
+    document.getElementById('rejectReason').value = '';
+    new bootstrap.Modal(document.getElementById('rejectModal')).show();
+}
+
+async function doReject() {
+    const reasonField = document.getElementById('rejectReason');
+    const reason = reasonField.value.trim() || 'Ohne Angabe von Gründen';
+    const r = await api('/reject', 'POST', {booking_id: rejectId, reason});
+    if (r.success) {
+        bootstrap.Modal.getInstance(document.getElementById('rejectModal')).hide();
+        toast('Abgelehnt', 'warning');
+        await loadAppr();
+    } else {
+        toast('Fehler: ' + (r.error || ''), 'danger');
+    }
+}
+
+function fmtD(s) { if (!s) return '-'; const p = s.split('-'); return `${p[2]}.${p[1]}.`; }
+function toast(msg, type='info') {
+    const id = 't'+Date.now();
+    document.getElementById('toasts').insertAdjacentHTML('beforeend', 
+        `<div id="${id}" class="toast align-items-center text-white bg-${type}"><div class="d-flex"><div class="toast-body fw-bold">${msg}</div><button class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div>`);
+    new bootstrap.Toast(document.getElementById(id)).show();
+}
+
+function events() {
+    document.getElementById('btnPrev').addEventListener('click', () => { mon--; if (mon < 0) { mon = 11; yr--; } render(); });
+    document.getElementById('btnNext').addEventListener('click', () => { mon++; if (mon > 11) { mon = 0; yr++; } render(); });
+    document.getElementById('btnToday').addEventListener('click', () => { mon = new Date().getMonth(); yr = new Date().getFullYear(); render(); });
+    document.getElementById('filterDept').addEventListener('change', () => render());
+    document.getElementById('btnDoCancel').addEventListener('click', doCancel);
+    document.getElementById('btnDoReject').addEventListener('click', doReject);
+    document.getElementById('btnDoApprove').addEventListener('click', doApprove);
+}
+
+// Global functions
+window.showCancel = showCancel;
+window.showApprove = showApprove;
+window.showRej = showRej;
+window.selectBookType = selectBookType;
+window.submitBooking = submitBooking;
+window.hideBookPopup = hideBookPopup;
+window.changeType = changeType;
+window.showDeleteConfirm = showDeleteConfirm;
+window.hideDeleteConfirm = hideDeleteConfirm;
+window.doDelete = doDelete;
+</script>
 {% endblock %}

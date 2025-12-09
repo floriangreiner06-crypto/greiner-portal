@@ -1,0 +1,1302 @@
+{% extends "base.html" %}
+
+{% block title %}Tägliche Erfolgskontrolle (TEK){% endblock %}
+
+{% block extra_css %}
+<style>
+    .kpi-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .kpi-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.15) !important;
+    }
+    .bereich-row:hover {
+        background-color: #f8f9fa;
+        cursor: pointer;
+    }
+    .bereich-row td:first-child::before {
+        content: '▶';
+        display: inline-block;
+        margin-right: 8px;
+        font-size: 0.7rem;
+        color: #6c757d;
+        transition: transform 0.2s;
+    }
+    .bereich-row.expanded td:first-child::before {
+        transform: rotate(90deg);
+    }
+    .detail-row {
+        background-color: #f8f9fa;
+    }
+    .detail-row td {
+        padding: 0 !important;
+        border-top: none !important;
+    }
+    .detail-content {
+        padding: 1rem;
+        border-left: 3px solid #0d6efd;
+        margin-left: 1rem;
+    }
+    .konto-row:hover {
+        background-color: #e9ecef;
+        cursor: pointer;
+    }
+    .konto-row td:first-child {
+        padding-left: 2rem;
+    }
+    .gruppe-row {
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    .gruppe-row:hover {
+        background-color: #fff3cd;
+    }
+    .gruppe-row td:first-child::before {
+        content: '▶';
+        display: inline-block;
+        margin-right: 5px;
+        font-size: 0.6rem;
+        color: #ffc107;
+    }
+    .buchungen-container {
+        max-height: 300px;
+        overflow-y: auto;
+        font-size: 0.85rem;
+    }
+    .trend-up { color: #198754; }
+    .trend-down { color: #dc3545; }
+    .trend-neutral { color: #6c757d; }
+    .db-positiv { background-color: rgba(25, 135, 84, 0.1); }
+    .db-negativ { background-color: rgba(220, 53, 69, 0.1); }
+    .stat-mini {
+        font-size: 0.75rem;
+        color: #6c757d;
+    }
+    .vormonat-vergleich {
+        font-size: 0.8rem;
+    }
+    .vormonat-vergleich .trend-positiv { color: #198754; }
+    .vormonat-vergleich .trend-negativ { color: #dc3545; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    
+    <!-- Header mit Filter -->
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h2 mb-1">
+                <i class="bi bi-graph-up-arrow me-2"></i>Tägliche Erfolgskontrolle
+            </h1>
+            <p class="text-muted mb-0">
+                Umsatz, Einsatz und Deckungsbeitrag nach Bereichen
+                <span class="badge bg-success ms-2">100% BWA-validiert</span>
+            </p>
+        </div>
+        <div class="col-auto d-flex align-items-center gap-2">
+            <span class="text-muted small me-2">Stand:</span>
+            <span class="badge bg-success" id="lastUpdate">
+                <i class="bi bi-clock me-1"></i>Lädt...
+            </span>
+            <button class="btn btn-outline-primary btn-sm" onclick="loadData()">
+                <i class="bi bi-arrow-clockwise me-1"></i>Aktualisieren
+            </button>
+        </div>
+    </div>
+
+    <!-- Filter-Bereich -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body py-3">
+            <div class="row g-3 align-items-end">
+                <!-- Firma -->
+                <div class="col-md-2">
+                    <label class="form-label small text-muted mb-1">
+                        <i class="bi bi-building me-1"></i>Firma
+                    </label>
+                    <select class="form-select" id="filterFirma" onchange="onFirmaChange()">
+                        <option value="0">Alle Firmen</option>
+                        <option value="1">Stellantis (Opel)</option>
+                        <option value="2">Hyundai</option>
+                    </select>
+                </div>
+                
+                <!-- Standort (nur bei Stellantis sichtbar) -->
+                <div class="col-md-2" id="standortWrapper" style="display: none;">
+                    <label class="form-label small text-muted mb-1">
+                        <i class="bi bi-geo-alt me-1"></i>Standort
+                    </label>
+                    <select class="form-select" id="filterStandort" onchange="loadData()">
+                        <option value="0">Beide Standorte</option>
+                        <option value="1">Deggendorf</option>
+                        <option value="2">Landau</option>
+                    </select>
+                </div>
+                
+                <!-- Monat -->
+                <div class="col-md-2">
+                    <label class="form-label small text-muted mb-1">
+                        <i class="bi bi-calendar3 me-1"></i>Monat
+                    </label>
+                    <select class="form-select" id="filterMonat" onchange="loadData()">
+                        <option value="1">Januar</option>
+                        <option value="2">Februar</option>
+                        <option value="3">März</option>
+                        <option value="4">April</option>
+                        <option value="5">Mai</option>
+                        <option value="6">Juni</option>
+                        <option value="7">Juli</option>
+                        <option value="8">August</option>
+                        <option value="9">September</option>
+                        <option value="10">Oktober</option>
+                        <option value="11">November</option>
+                        <option value="12">Dezember</option>
+                    </select>
+                </div>
+                
+                <!-- Jahr -->
+                <div class="col-md-2">
+                    <label class="form-label small text-muted mb-1">Jahr</label>
+                    <select class="form-select" id="filterJahr" onchange="loadData()">
+                        <option value="2024">2024</option>
+                        <option value="2025" selected>2025</option>
+                    </select>
+                </div>
+                
+                <!-- Modus-Toggle -->
+                <div class="col-md-2">
+                    <label class="form-label small text-muted mb-1">
+                        <i class="bi bi-sliders me-1"></i>Ansicht
+                    </label>
+                    <select class="form-select" id="filterModus" onchange="loadData()">
+                        <option value="teil">Teilkosten (DB1)</option>
+                        <option value="voll" selected>Vollkosten (BE)</option>
+                    </select>
+                </div>
+                
+                <!-- Umlage-Toggle -->
+                <div class="col-md-2">
+                    <label class="form-label small text-muted mb-1">
+                        <i class="bi bi-arrow-left-right me-1"></i>Umlage
+                    </label>
+                    <select class="form-select" id="filterUmlage" onchange="loadData()" title="Interne Umlage zwischen Firmen">
+                        <option value="mit">Mit Umlage</option>
+                        <option value="ohne" selected>Ohne Umlage (bereinigt)</option>
+                    </select>
+                </div>
+                
+                <!-- Schnellauswahl -->
+                <div class="col-md-2">
+                    <label class="form-label small text-muted mb-1">Schnellauswahl</label>
+                    <div class="btn-group w-100">
+                        <button class="btn btn-outline-secondary btn-sm" onclick="setMonth(-1)" title="Vormonat">
+                            <i class="bi bi-chevron-left"></i>
+                        </button>
+                        <button class="btn btn-outline-primary btn-sm" onclick="setCurrentMonth()">
+                            Aktuell
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="setMonth(1)" title="Nachmonat">
+                            <i class="bi bi-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Export -->
+                <div class="col-md-2">
+                    <div class="btn-group w-100">
+                        <button class="btn btn-outline-secondary" onclick="exportExcel()" title="Excel Export">
+                            <i class="bi bi-file-excel"></i> Export
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="printReport()" title="Drucken">
+                            <i class="bi bi-printer"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="row g-3 mb-4">
+        <!-- Umsatz -->
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 kpi-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <p class="text-muted mb-1 small">Umsatzerlöse</p>
+                            <h3 class="mb-0" id="kpiUmsatz">
+                                <span class="spinner-border spinner-border-sm"></span>
+                            </h3>
+                        </div>
+                        <div class="bg-success bg-opacity-10 rounded p-2">
+                            <i class="bi bi-currency-euro text-success fs-4"></i>
+                        </div>
+                    </div>
+                    <div class="vormonat-vergleich" id="umsatzVergleich">-</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Einsatz -->
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 kpi-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <p class="text-muted mb-1 small">Einsatzwerte</p>
+                            <h3 class="mb-0" id="kpiEinsatz">
+                                <span class="spinner-border spinner-border-sm"></span>
+                            </h3>
+                        </div>
+                        <div class="bg-danger bg-opacity-10 rounded p-2">
+                            <i class="bi bi-cart text-danger fs-4"></i>
+                        </div>
+                    </div>
+                    <div class="vormonat-vergleich" id="einsatzVergleich">-</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- DB1 -->
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 kpi-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <p class="text-muted mb-1 small">Bruttoertrag (DB1)</p>
+                            <h3 class="mb-0" id="kpiDB1">
+                                <span class="spinner-border spinner-border-sm"></span>
+                            </h3>
+                        </div>
+                        <div class="bg-primary bg-opacity-10 rounded p-2">
+                            <i class="bi bi-graph-up text-primary fs-4"></i>
+                        </div>
+                    </div>
+                    <div class="vormonat-vergleich" id="db1Vergleich">-</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Marge -->
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 kpi-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <p class="text-muted mb-1 small">Marge (DB1 %)</p>
+                            <h3 class="mb-0" id="kpiMarge">
+                                <span class="spinner-border spinner-border-sm"></span>
+                            </h3>
+                        </div>
+                        <div class="bg-info bg-opacity-10 rounded p-2">
+                            <i class="bi bi-percent text-info fs-4"></i>
+                        </div>
+                    </div>
+                    <div class="progress mt-2" style="height: 8px;">
+                        <div class="progress-bar bg-info" id="kpiMargeBar" style="width: 0%"></div>
+                    </div>
+                    <div class="vormonat-vergleich mt-1" id="margeVergleich">-</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hauptbereich: Tabelle + Chart -->
+    <div class="row g-4">
+        
+        <!-- Bereichs-Tabelle -->
+        <div class="col-lg-7">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0 pt-3 pb-0">
+                    <h5 class="mb-0">
+                        <i class="bi bi-table me-2"></i>Bereiche im Detail
+                        <span class="badge bg-secondary ms-2" id="zeitraumBadge">-</span>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Bereich</th>
+                                    <th class="text-end">Umsatz</th>
+                                    <th class="text-end">Einsatz</th>
+                                    <th class="text-end">DB1</th>
+                                    <th class="text-end">Marge</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bereicheTable">
+                                <tr>
+                                    <td colspan="5" class="text-center py-4">
+                                        <div class="spinner-border text-primary" role="status"></div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                            <tfoot class="table-light fw-bold">
+                                <tr>
+                                    <td>GESAMT</td>
+                                    <td class="text-end" id="footerUmsatz">-</td>
+                                    <td class="text-end" id="footerEinsatz">-</td>
+                                    <td class="text-end" id="footerDB1">-</td>
+                                    <td class="text-end" id="footerMarge">-</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- BREAKEVEN-PROGNOSE (rechts neben Tabelle) -->
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm h-100" id="prognoseCard">
+                <div class="card-header bg-white border-0 pt-3 pb-0">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="bi bi-bullseye me-2"></i>Breakeven-Prognose
+                            <span class="badge ms-2" id="prognoseAmpel">-</span>
+                        </h5>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- Umlage-Hinweis (nur am Monatsanfang) -->
+                    <div class="alert alert-info py-2 mb-3" id="umlageHinweis" style="display: none;">
+                        <i class="bi bi-exclamation-circle me-2"></i>
+                        <small><strong>Hinweis:</strong> Am Monatsanfang enthalten die Zahlen Umlage-Buchungen, 
+                        die erst zum Monatsende neutral werden.</small>
+                    </div>
+                    
+                    <div class="row g-3">
+                        <!-- Breakeven-Schwelle -->
+                        <div class="col-6">
+                            <div class="card bg-light border-0">
+                                <div class="card-body text-center py-3">
+                                    <div class="small text-muted mb-1">Breakeven-Schwelle</div>
+                                    <div class="h5 mb-0" id="breakEvenSchwelle">-</div>
+                                    <div class="small text-muted">DB1 benötigt</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Aktueller Stand -->
+                        <div class="col-6">
+                            <div class="card bg-light border-0">
+                                <div class="card-body text-center py-3">
+                                    <div class="small text-muted mb-1">Aktueller DB1</div>
+                                    <div class="h5 mb-0" id="prognoseAktuellerDB1">-</div>
+                                    <div class="small" id="prognoseOperativ">-</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Hochrechnung -->
+                        <div class="col-6">
+                            <div class="card bg-light border-0">
+                                <div class="card-body text-center py-3">
+                                    <div class="small text-muted mb-1">Hochrechnung Monat</div>
+                                    <div class="h5 mb-0" id="prognoseHochrechnung">-</div>
+                                    <div class="small text-muted" id="prognoseTage">-</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Gap / Ergebnis -->
+                        <div class="col-6">
+                            <div class="card border-0" id="prognoseGapCard">
+                                <div class="card-body text-center py-3">
+                                    <div class="small text-muted mb-1">Prognose BE</div>
+                                    <div class="h5 mb-0" id="prognoseGap">-</div>
+                                    <div class="small" id="prognoseGapProzent">-</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Kosten-Aufschlüsselung -->
+                    <div class="mt-3 pt-3 border-top">
+                        <div class="small text-muted mb-2">
+                            <i class="bi bi-info-circle me-1"></i>Ø Monatskosten (12 Monate):
+                        </div>
+                        <div class="row text-center small">
+                            <div class="col-3">
+                                <div class="text-muted">Variable</div>
+                                <strong id="kostenVariable">-</strong>
+                            </div>
+                            <div class="col-3">
+                                <div class="text-muted">Direkte</div>
+                                <strong id="kostenDirekte">-</strong>
+                            </div>
+                            <div class="col-3">
+                                <div class="text-muted">Indirekte</div>
+                                <strong id="kostenIndirekte">-</strong>
+                            </div>
+                            <div class="col-3">
+                                <div class="text-muted">Gesamt</div>
+                                <strong id="kostenGesamt">-</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vormonats-Info -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0 pt-3 pb-0">
+                    <h5 class="mb-0">
+                        <i class="bi bi-arrow-left-right me-2"></i>Vergleich zum Vormonat
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-3">
+                            <div class="small text-muted" id="vormonatLabel">Vormonat</div>
+                            <div class="h5 mb-0" id="vormonatDB1">-</div>
+                            <div class="small text-muted">DB1</div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="small text-muted">Aktueller Monat</div>
+                            <div class="h5 mb-0" id="aktuellerDB1">-</div>
+                            <div class="small text-muted">DB1</div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="small text-muted">Veränderung</div>
+                            <div class="h5 mb-0" id="veraenderungDB1">-</div>
+                            <div class="small text-muted">absolut</div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="small text-muted">Veränderung</div>
+                            <div class="h5 mb-0" id="veraenderungProzent">-</div>
+                            <div class="small text-muted">prozentual</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Bereichs-Konfiguration
+const BEREICHE = {
+    '1-NW': { name: 'Neuwagen', icon: 'bi-car-front', color: '#0d6efd' },
+    '2-GW': { name: 'Gebrauchtwagen', icon: 'bi-car-front-fill', color: '#6c757d' },
+    '3-Teile': { name: 'Teile/Service', icon: 'bi-gear', color: '#ffc107' },
+    '4-Lohn': { name: 'Werkstattlohn', icon: 'bi-wrench', color: '#198754' },
+    '5-Sonst': { name: 'Sonstige', icon: 'bi-three-dots', color: '#17a2b8' }
+};
+
+let currentData = null;
+
+// Firma-Wechsel Handler
+function onFirmaChange() {
+    const firma = document.getElementById('filterFirma').value;
+    const standortWrapper = document.getElementById('standortWrapper');
+    const standortSelect = document.getElementById('filterStandort');
+    
+    // Standort-Filter nur bei Stellantis (Firma 1) anzeigen
+    if (firma === '1') {
+        standortWrapper.style.display = 'block';
+    } else {
+        standortWrapper.style.display = 'none';
+        standortSelect.value = '0'; // Reset auf "Alle"
+    }
+    
+    loadData();
+}
+
+// Formatierung
+function formatEuro(value) {
+    return new Intl.NumberFormat('de-DE', { 
+        style: 'currency', 
+        currency: 'EUR',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(value);
+}
+
+function formatEuroDetail(value) {
+    return new Intl.NumberFormat('de-DE', { 
+        style: 'currency', 
+        currency: 'EUR',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(value);
+}
+
+function formatPercent(value) {
+    return value.toFixed(1) + ' %';
+}
+
+// Monat-Navigation
+function setCurrentMonth() {
+    const now = new Date();
+    document.getElementById('filterMonat').value = now.getMonth() + 1;
+    document.getElementById('filterJahr').value = now.getFullYear();
+    loadData();
+}
+
+function setMonth(delta) {
+    let monat = parseInt(document.getElementById('filterMonat').value);
+    let jahr = parseInt(document.getElementById('filterJahr').value);
+    
+    monat += delta;
+    if (monat < 1) {
+        monat = 12;
+        jahr--;
+    } else if (monat > 12) {
+        monat = 1;
+        jahr++;
+    }
+    
+    document.getElementById('filterMonat').value = monat;
+    document.getElementById('filterJahr').value = jahr;
+    loadData();
+}
+
+// Daten laden
+async function loadData() {
+    const firma = document.getElementById('filterFirma').value;
+    const standort = document.getElementById('filterStandort').value;
+    const monat = document.getElementById('filterMonat').value;
+    const jahr = document.getElementById('filterJahr').value;
+    const modus = document.getElementById('filterModus').value;
+    const umlage = document.getElementById('filterUmlage').value;
+    
+    // Cache leeren bei Filter-Änderung
+    clearDetailCache();
+    
+    // Tabellen-Header für Vollkosten anpassen
+    updateTableHeader(modus);
+    
+    // Loading-Status
+    document.getElementById('lastUpdate').innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Lädt...';
+    document.getElementById('lastUpdate').className = 'badge bg-warning';
+    
+    try {
+        const url = `/controlling/api/tek?firma=${firma}&standort=${standort}&monat=${monat}&jahr=${jahr}&modus=${modus}&umlage=${umlage}`;
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (data.success) {
+            currentData = data;
+            updateKPIs(data);
+            updateTable(data.bereiche, modus);
+            updateVormonatVergleich(data);
+            
+            // Prognose
+            if (data.prognose) {
+                updatePrognose(data.prognose);
+            }
+            
+            // Zeitraum-Badge
+            document.getElementById('zeitraumBadge').textContent = data.filter.monat_name + ' ' + data.filter.jahr;
+            
+            // Umlage-Hinweis (wenn bereinigt)
+            updateUmlageHinweis(data.filter);
+            
+            document.getElementById('lastUpdate').innerHTML = '<i class="bi bi-check-circle me-1"></i>' + new Date().toLocaleTimeString('de-DE');
+            document.getElementById('lastUpdate').className = 'badge bg-success';
+        } else {
+            throw new Error(data.error || 'Unbekannter Fehler');
+        }
+    } catch (error) {
+        console.error('Fehler beim Laden:', error);
+        document.getElementById('lastUpdate').innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>Fehler';
+        document.getElementById('lastUpdate').className = 'badge bg-danger';
+    }
+}
+
+function updateUmlageHinweis(filter) {
+    // Hinweis-Container suchen oder erstellen
+    let hinweis = document.getElementById('umlageFilterHinweis');
+    
+    if (!hinweis) {
+        // Container nach den KPI-Cards einfügen
+        const kpiRow = document.querySelector('.row.g-3.mb-4');
+        if (kpiRow) {
+            hinweis = document.createElement('div');
+            hinweis.id = 'umlageFilterHinweis';
+            hinweis.className = 'alert alert-warning py-2 mb-4';
+            hinweis.style.display = 'none';
+            kpiRow.parentNode.insertBefore(hinweis, kpiRow.nextSibling);
+        }
+    }
+    
+    if (hinweis && filter.umlage_bereinigt) {
+        // Beträge formatieren
+        const erloesBetrag = filter.umlage_betrag_erloese ? formatEuro(filter.umlage_betrag_erloese) : '50.000 €';
+        const kostenBetrag = filter.umlage_betrag_kosten ? formatEuro(filter.umlage_betrag_kosten) : '';
+        
+        let kostenInfo = '';
+        if (kostenBetrag && filter.umlage_betrag_kosten > 0) {
+            kostenInfo = ` Umlage-Kosten (${kostenBetrag}) wurden ebenfalls bereinigt.`;
+        }
+        
+        hinweis.innerHTML = `
+            <i class="bi bi-info-circle me-2"></i>
+            <strong>Umlage-Bereinigung aktiv:</strong> 
+            Die internen Umlage-Erlöse (${erloesBetrag}) wurden aus dem Umsatz entfernt.${kostenInfo}
+            Dies zeigt die operative Performance ohne Konzern-interne Verrechnungen.
+            <br><small class="text-muted"><i class="bi bi-eye me-1"></i>Im Drill-Down bleiben alle Konten sichtbar (inkl. Umlage-Konten) für volle Transparenz.</small>
+            <span class="text-muted small ms-2">(Konten: 817051, 827051, 837051, 847051)</span>
+        `;
+        hinweis.style.display = 'block';
+    } else if (hinweis) {
+        hinweis.style.display = 'none';
+    }
+}
+
+function updateKPIs(data) {
+    const g = data.gesamt;
+    const vm = data.vormonat;
+    const v = data.veraenderung;
+    
+    document.getElementById('kpiUmsatz').textContent = formatEuro(g.umsatz);
+    document.getElementById('kpiEinsatz').textContent = formatEuro(g.einsatz);
+    document.getElementById('kpiDB1').textContent = formatEuro(g.db1);
+    document.getElementById('kpiMarge').textContent = formatPercent(g.marge);
+    
+    // Marge-Balken (max 50% = 100% Breite)
+    const margeWidth = Math.min(g.marge * 2, 100);
+    document.getElementById('kpiMargeBar').style.width = margeWidth + '%';
+    
+    // Vormonats-Vergleich
+    const trendClass = v.umsatz_prozent >= 0 ? 'trend-positiv' : 'trend-negativ';
+    const trendIcon = v.umsatz_prozent >= 0 ? '↑' : '↓';
+    
+    document.getElementById('umsatzVergleich').innerHTML = 
+        `<span class="${v.umsatz_prozent >= 0 ? 'trend-positiv' : 'trend-negativ'}">${trendIcon} ${Math.abs(v.umsatz_prozent).toFixed(1)}%</span> vs. ${vm.monat_name}`;
+    
+    document.getElementById('db1Vergleich').innerHTML = 
+        `<span class="${v.db1 >= 0 ? 'trend-positiv' : 'trend-negativ'}">${v.db1 >= 0 ? '↑' : '↓'} ${formatEuro(Math.abs(v.db1))}</span> vs. ${vm.monat_name}`;
+    
+    document.getElementById('margeVergleich').innerHTML = 
+        `Vormonat: ${formatPercent(vm.marge)}`;
+}
+
+function updateTableHeader(modus) {
+    const thead = document.querySelector('#bereicheTable').closest('table').querySelector('thead tr');
+    const tfoot = document.querySelector('#bereicheTable').closest('table').querySelector('tfoot tr');
+    
+    if (modus === 'voll') {
+        thead.innerHTML = `
+            <th>Bereich</th>
+            <th class="text-end">Umsatz</th>
+            <th class="text-end">Einsatz</th>
+            <th class="text-end">DB1</th>
+            <th class="text-end">Var.Kost</th>
+            <th class="text-end">Dir.Kost</th>
+            <th class="text-end">Umlage</th>
+            <th class="text-end">BE</th>
+        `;
+        tfoot.innerHTML = `
+            <td>GESAMT</td>
+            <td class="text-end" id="footerUmsatz">-</td>
+            <td class="text-end" id="footerEinsatz">-</td>
+            <td class="text-end" id="footerDB1">-</td>
+            <td class="text-end" id="footerVarKost">-</td>
+            <td class="text-end" id="footerDirKost">-</td>
+            <td class="text-end" id="footerUmlage">-</td>
+            <td class="text-end" id="footerBE">-</td>
+        `;
+    } else {
+        thead.innerHTML = `
+            <th>Bereich</th>
+            <th class="text-end">Umsatz</th>
+            <th class="text-end">Einsatz</th>
+            <th class="text-end">DB1</th>
+            <th class="text-end">Marge</th>
+        `;
+        tfoot.innerHTML = `
+            <td>GESAMT</td>
+            <td class="text-end" id="footerUmsatz">-</td>
+            <td class="text-end" id="footerEinsatz">-</td>
+            <td class="text-end" id="footerDB1">-</td>
+            <td class="text-end" id="footerMarge">-</td>
+        `;
+    }
+}
+
+function updateTable(bereiche, modus) {
+    const tbody = document.getElementById('bereicheTable');
+    const isVoll = modus === 'voll';
+    const colSpan = isVoll ? 8 : 5;
+    let html = '';
+    
+    let totals = { umsatz: 0, einsatz: 0, db1: 0, varKost: 0, dirKost: 0, umlage: 0, be: 0 };
+    
+    for (const [key, bereich] of Object.entries(bereiche)) {
+        const config = BEREICHE[key] || { name: bereich.name || key, icon: 'bi-circle', color: '#6c757d' };
+        const resultValue = isVoll ? (bereich.be || 0) : bereich.db1;
+        const isPositiv = resultValue >= 0;
+        
+        totals.umsatz += bereich.umsatz;
+        totals.einsatz += bereich.einsatz;
+        totals.db1 += bereich.db1;
+        
+        if (isVoll) {
+            totals.varKost += bereich.variable_kosten || 0;
+            totals.dirKost += bereich.direkte_kosten || 0;
+            totals.umlage += bereich.umlage || 0;
+            totals.be += bereich.be || 0;
+            
+            html += `<tr class="bereich-row ${isPositiv ? '' : 'db-negativ'}" data-bereich="${key}" onclick="toggleBereichDetail('${key}', this)">
+                <td><i class="bi ${config.icon} me-2" style="color: ${config.color}"></i><strong>${config.name}</strong></td>
+                <td class="text-end">${formatEuro(bereich.umsatz)}</td>
+                <td class="text-end">${formatEuro(bereich.einsatz)}</td>
+                <td class="text-end">${formatEuro(bereich.db1)}</td>
+                <td class="text-end text-muted">${formatEuro(bereich.variable_kosten || 0)}</td>
+                <td class="text-end text-muted">${formatEuro(bereich.direkte_kosten || 0)}</td>
+                <td class="text-end text-muted">${formatEuro(bereich.umlage || 0)}</td>
+                <td class="text-end ${isPositiv ? 'text-success' : 'text-danger'}"><strong>${formatEuro(bereich.be || 0)}</strong></td>
+            </tr>
+            <tr class="detail-row" id="detail-${key}" style="display: none;">
+                <td colspan="${colSpan}">
+                    <div class="detail-content" id="detail-content-${key}">
+                        <div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div> Lädt Details...</div>
+                    </div>
+                </td>
+            </tr>`;
+        } else {
+            html += `<tr class="bereich-row ${isPositiv ? '' : 'db-negativ'}" data-bereich="${key}" onclick="toggleBereichDetail('${key}', this)">
+                <td><i class="bi ${config.icon} me-2" style="color: ${config.color}"></i><strong>${config.name}</strong></td>
+                <td class="text-end">${formatEuroDetail(bereich.umsatz)}</td>
+                <td class="text-end">${formatEuroDetail(bereich.einsatz)}</td>
+                <td class="text-end ${isPositiv ? 'text-success' : 'text-danger'}"><strong>${formatEuroDetail(bereich.db1)}</strong></td>
+                <td class="text-end">${formatPercent(bereich.marge)}</td>
+            </tr>
+            <tr class="detail-row" id="detail-${key}" style="display: none;">
+                <td colspan="${colSpan}">
+                    <div class="detail-content" id="detail-content-${key}">
+                        <div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div> Lädt Details...</div>
+                    </div>
+                </td>
+            </tr>`;
+        }
+    }
+    
+    tbody.innerHTML = html;
+    
+    // Footer
+    document.getElementById('footerUmsatz').textContent = isVoll ? formatEuro(totals.umsatz) : formatEuroDetail(totals.umsatz);
+    document.getElementById('footerEinsatz').textContent = isVoll ? formatEuro(totals.einsatz) : formatEuroDetail(totals.einsatz);
+    document.getElementById('footerDB1').textContent = isVoll ? formatEuro(totals.db1) : formatEuroDetail(totals.db1);
+    
+    if (isVoll) {
+        document.getElementById('footerVarKost').textContent = formatEuro(totals.varKost);
+        document.getElementById('footerDirKost').textContent = formatEuro(totals.dirKost);
+        document.getElementById('footerUmlage').textContent = formatEuro(totals.umlage);
+        document.getElementById('footerBE').textContent = formatEuro(totals.be);
+        document.getElementById('footerBE').className = totals.be >= 0 ? 'text-end text-success' : 'text-end text-danger';
+    } else {
+        const totalMarge = totals.umsatz > 0 ? (totals.db1 / totals.umsatz * 100) : 0;
+        document.getElementById('footerMarge').textContent = formatPercent(totalMarge);
+    }
+}
+
+function updateVormonatVergleich(data) {
+    const vm = data.vormonat;
+    const g = data.gesamt;
+    const v = data.veraenderung;
+    
+    document.getElementById('vormonatLabel').textContent = vm.monat_name + ' ' + vm.jahr;
+    document.getElementById('vormonatDB1').textContent = formatEuro(vm.db1);
+    document.getElementById('aktuellerDB1').textContent = formatEuro(g.db1);
+    document.getElementById('veraenderungDB1').innerHTML = 
+        `<span class="${v.db1 >= 0 ? 'text-success' : 'text-danger'}">${v.db1 >= 0 ? '+' : ''}${formatEuro(v.db1)}</span>`;
+    document.getElementById('veraenderungProzent').innerHTML = 
+        `<span class="${v.db1_prozent >= 0 ? 'text-success' : 'text-danger'}">${v.db1_prozent >= 0 ? '+' : ''}${v.db1_prozent.toFixed(1)}%</span>`;
+}
+
+function updatePrognose(prognose) {
+    if (!prognose) return;
+    
+    const p = prognose;
+    
+    // Breakeven-Schwelle
+    document.getElementById('breakEvenSchwelle').textContent = formatEuro(p.breakeven_schwelle);
+    
+    // Aktueller DB1
+    document.getElementById('prognoseAktuellerDB1').textContent = formatEuro(p.aktueller_db1);
+    
+    // Operativer DB1 (ohne Umlagen)
+    if (p.hinweis_umlage) {
+        document.getElementById('prognoseOperativ').innerHTML = 
+            `<span class="text-info">Operativ: ${formatEuro(p.operativer_db1)}</span>`;
+        document.getElementById('umlageHinweis').style.display = 'block';
+    } else {
+        document.getElementById('prognoseOperativ').textContent = '';
+        document.getElementById('umlageHinweis').style.display = 'none';
+    }
+    
+    // Hochrechnung - mit Methoden-Anzeige
+    if (p.hochrechnung_db1) {
+        document.getElementById('prognoseHochrechnung').textContent = formatEuro(p.hochrechnung_db1);
+        
+        // Methode anzeigen
+        if (p.prognose_methode === 'gleitend_3m') {
+            document.getElementById('prognoseTage').innerHTML = 
+                `<span class="text-info"><i class="bi bi-graph-up-arrow"></i> Ø 3-Monats-Schnitt</span>`;
+        } else {
+            document.getElementById('prognoseTage').textContent = 
+                `${p.tage_mit_daten} von ${p.tage_im_monat} Tagen`;
+        }
+    } else {
+        document.getElementById('prognoseHochrechnung').textContent = '-';
+        document.getElementById('prognoseTage').textContent = 'Zu wenig Daten';
+    }
+    
+    // Gap / Prognose BE
+    const gapCard = document.getElementById('prognoseGapCard');
+    if (p.hochrechnung_be !== null) {
+        document.getElementById('prognoseGap').innerHTML = 
+            `<span class="${p.hochrechnung_be >= 0 ? 'text-success' : 'text-danger'}">${p.hochrechnung_be >= 0 ? '+' : ''}${formatEuro(p.hochrechnung_be)}</span>`;
+        document.getElementById('prognoseGapProzent').innerHTML = 
+            `<span class="${p.gap_prozent >= 0 ? 'text-success' : 'text-danger'}">${p.gap_prozent >= 0 ? '+' : ''}${p.gap_prozent.toFixed(1)}% vs. Schwelle</span>`;
+        
+        // Hintergrundfarbe
+        gapCard.className = p.hochrechnung_be >= 0 
+            ? 'card border-0 h-100 bg-success bg-opacity-10' 
+            : 'card border-0 h-100 bg-danger bg-opacity-10';
+    } else {
+        document.getElementById('prognoseGap').textContent = '-';
+        document.getElementById('prognoseGapProzent').textContent = '';
+        gapCard.className = 'card border-0 h-100 bg-light';
+    }
+    
+    // Ampel
+    const ampelBadge = document.getElementById('prognoseAmpel');
+    switch(p.ampel) {
+        case 'gruen':
+            ampelBadge.className = 'badge ms-2 bg-success';
+            ampelBadge.textContent = '✓ Breakeven erreicht';
+            break;
+        case 'gelb':
+            ampelBadge.className = 'badge ms-2 bg-warning text-dark';
+            ampelBadge.textContent = '→ Auf Kurs';
+            break;
+        case 'rot':
+            ampelBadge.className = 'badge ms-2 bg-danger';
+            ampelBadge.textContent = '✗ Kritisch';
+            break;
+        default:
+            ampelBadge.className = 'badge ms-2 bg-secondary';
+            ampelBadge.textContent = '-';
+    }
+    
+    // Kosten-Aufschlüsselung
+    const k = p.kosten_12m_schnitt;
+    document.getElementById('kostenVariable').textContent = formatEuro(k.variable);
+    document.getElementById('kostenDirekte').textContent = formatEuro(k.direkte);
+    document.getElementById('kostenIndirekte').textContent = formatEuro(k.indirekte);
+    document.getElementById('kostenGesamt').textContent = formatEuro(k.gesamt);
+}
+
+// Export-Funktionen
+function exportExcel() {
+    if (!currentData) return;
+    
+    // CSV erstellen
+    let csv = 'Bereich;Umsatz;Einsatz;DB1;Marge\n';
+    for (const [key, b] of Object.entries(currentData.bereiche)) {
+        const name = BEREICHE[key]?.name || key;
+        csv += `${name};${b.umsatz};${b.einsatz};${b.db1};${b.marge}\n`;
+    }
+    csv += `GESAMT;${currentData.gesamt.umsatz};${currentData.gesamt.einsatz};${currentData.gesamt.db1};${currentData.gesamt.marge}\n`;
+    
+    // Download
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `TEK_${currentData.filter.monat_name}_${currentData.filter.jahr}.csv`;
+    link.click();
+}
+
+function printReport() {
+    window.print();
+}
+
+// =============================================================================
+// DRILL-DOWN FUNKTIONEN
+// =============================================================================
+
+let loadedDetails = {};  // Cache für geladene Details
+
+async function toggleBereichDetail(bereichKey, rowElement) {
+    const detailRow = document.getElementById(`detail-${bereichKey}`);
+    const contentDiv = document.getElementById(`detail-content-${bereichKey}`);
+    const isExpanded = rowElement.classList.contains('expanded');
+    
+    // Alle anderen schließen
+    document.querySelectorAll('.bereich-row.expanded').forEach(row => {
+        if (row !== rowElement) {
+            row.classList.remove('expanded');
+            const key = row.dataset.bereich;
+            document.getElementById(`detail-${key}`).style.display = 'none';
+        }
+    });
+    
+    if (isExpanded) {
+        // Schließen
+        rowElement.classList.remove('expanded');
+        detailRow.style.display = 'none';
+    } else {
+        // Öffnen
+        rowElement.classList.add('expanded');
+        detailRow.style.display = 'table-row';
+        
+        // Daten laden falls noch nicht im Cache
+        const cacheKey = `${bereichKey}-${currentData.filter.monat}-${currentData.filter.jahr}-${currentData.filter.firma}-${currentData.filter.standort}`;
+        
+        if (!loadedDetails[cacheKey]) {
+            try {
+                const url = `/controlling/api/tek/detail?bereich=${bereichKey}&firma=${currentData.filter.firma}&standort=${currentData.filter.standort}&monat=${currentData.filter.monat}&jahr=${currentData.filter.jahr}`;
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (data.success) {
+                    loadedDetails[cacheKey] = data;
+                    renderBereichDetail(bereichKey, data);
+                } else {
+                    contentDiv.innerHTML = `<div class="alert alert-danger">Fehler: ${data.error}</div>`;
+                }
+            } catch (error) {
+                contentDiv.innerHTML = `<div class="alert alert-danger">Fehler beim Laden: ${error.message}</div>`;
+            }
+        } else {
+            renderBereichDetail(bereichKey, loadedDetails[cacheKey]);
+        }
+    }
+}
+
+function renderBereichDetail(bereichKey, data) {
+    const contentDiv = document.getElementById(`detail-content-${bereichKey}`);
+    const config = BEREICHE[bereichKey] || { name: bereichKey };
+    
+    // Prüfen ob wir Gruppen oder Konten haben (abwärtskompatibel)
+    const hatGruppen = data.umsatz.gruppen && data.umsatz.gruppen.length > 0;
+    
+    let html = `<div class="row">`;
+    
+    // =========================================================================
+    // UMSATZ-SEITE
+    // =========================================================================
+    html += `
+            <div class="col-md-6">
+                <h6 class="text-success mb-2">
+                    <i class="bi bi-arrow-up-circle me-1"></i>Umsatz-Konten
+                    <span class="badge bg-success ms-2">${formatEuro(data.umsatz.summe)}</span>
+                </h6>
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>${hatGruppen ? 'Gruppe' : 'Konto'}</th>
+                            <th class="text-end">Betrag</th>
+                            <th class="text-end">${hatGruppen ? '# Konten' : '#'}</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+    
+    if (hatGruppen) {
+        // Gruppen anzeigen (hierarchisch)
+        for (const gruppe of data.umsatz.gruppen) {
+            html += `
+                        <tr class="gruppe-row" onclick="loadGruppeKonten('${gruppe.gruppe}', '${bereichKey}', 'umsatz')" title="Klicken für Konten-Details">
+                            <td>
+                                <i class="bi bi-folder me-1 text-warning"></i>
+                                <code>${gruppe.gruppe}xxxx</code><br>
+                                <span class="small text-muted">${gruppe.name}</span>
+                            </td>
+                            <td class="text-end text-success"><strong>${formatEuroDetail(gruppe.betrag)}</strong></td>
+                            <td class="text-end text-muted small">${gruppe.anzahl_konten}</td>
+                        </tr>`;
+        }
+    } else if (data.umsatz.konten) {
+        // Konten direkt anzeigen (alter Modus)
+        for (const konto of data.umsatz.konten) {
+            html += `
+                        <tr class="konto-row" onclick="loadKontoBuchungen(${konto.konto}, '${bereichKey}')" title="Klicken für Buchungsdetails">
+                            <td>
+                                <small class="text-muted">${konto.konto}</small><br>
+                                <span class="small">${konto.bezeichnung}</span>
+                            </td>
+                            <td class="text-end text-success">${formatEuroDetail(konto.betrag)}</td>
+                            <td class="text-end text-muted small">${konto.buchungen_anzahl}</td>
+                        </tr>`;
+        }
+    }
+    
+    if ((hatGruppen && data.umsatz.gruppen.length === 0) || (!hatGruppen && (!data.umsatz.konten || data.umsatz.konten.length === 0))) {
+        html += `<tr><td colspan="3" class="text-center text-muted small">Keine Buchungen</td></tr>`;
+    }
+    
+    html += `
+                    </tbody>
+                </table>
+                <!-- Konten-Container für Umsatz -->
+                <div id="konten-container-${bereichKey}-umsatz" style="display: none;" class="mt-2"></div>
+            </div>`;
+    
+    // =========================================================================
+    // EINSATZ-SEITE
+    // =========================================================================
+    const hatEinsatzGruppen = data.einsatz.gruppen && data.einsatz.gruppen.length > 0;
+    
+    html += `
+            <div class="col-md-6">
+                <h6 class="text-danger mb-2">
+                    <i class="bi bi-arrow-down-circle me-1"></i>Einsatz-Konten
+                    <span class="badge bg-danger ms-2">${formatEuro(data.einsatz.summe)}</span>
+                </h6>
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>${hatEinsatzGruppen ? 'Gruppe' : 'Konto'}</th>
+                            <th class="text-end">Betrag</th>
+                            <th class="text-end">${hatEinsatzGruppen ? '# Konten' : '#'}</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+    
+    if (hatEinsatzGruppen) {
+        for (const gruppe of data.einsatz.gruppen) {
+            html += `
+                        <tr class="gruppe-row" onclick="loadGruppeKonten('${gruppe.gruppe}', '${bereichKey}', 'einsatz')" title="Klicken für Konten-Details">
+                            <td>
+                                <i class="bi bi-folder me-1 text-warning"></i>
+                                <code>${gruppe.gruppe}xxxx</code><br>
+                                <span class="small text-muted">${gruppe.name}</span>
+                            </td>
+                            <td class="text-end text-danger"><strong>${formatEuroDetail(gruppe.betrag)}</strong></td>
+                            <td class="text-end text-muted small">${gruppe.anzahl_konten}</td>
+                        </tr>`;
+        }
+    } else if (data.einsatz.konten) {
+        for (const konto of data.einsatz.konten) {
+            html += `
+                        <tr class="konto-row" onclick="loadKontoBuchungen(${konto.konto}, '${bereichKey}')" title="Klicken für Buchungsdetails">
+                            <td>
+                                <small class="text-muted">${konto.konto}</small><br>
+                                <span class="small">${konto.bezeichnung}</span>
+                            </td>
+                            <td class="text-end text-danger">${formatEuroDetail(konto.betrag)}</td>
+                            <td class="text-end text-muted small">${konto.buchungen_anzahl}</td>
+                        </tr>`;
+        }
+    }
+    
+    if ((hatEinsatzGruppen && data.einsatz.gruppen.length === 0) || (!hatEinsatzGruppen && (!data.einsatz.konten || data.einsatz.konten.length === 0))) {
+        html += `<tr><td colspan="3" class="text-center text-muted small">Keine Buchungen</td></tr>`;
+    }
+    
+    html += `
+                    </tbody>
+                </table>
+                <!-- Konten-Container für Einsatz -->
+                <div id="konten-container-${bereichKey}-einsatz" style="display: none;" class="mt-2"></div>
+            </div>
+        </div>`;
+    
+    // DB1 Summe
+    html += `
+        <div class="row mt-3">
+            <div class="col-12">
+                <div class="alert ${data.db1 >= 0 ? 'alert-success' : 'alert-danger'} py-2 mb-0 text-center">
+                    <strong>DB1 ${config.name}:</strong> ${formatEuroDetail(data.db1)}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Buchungen-Container (für Konto-Detail) -->
+        <div id="buchungen-container-${bereichKey}" style="display: none;" class="mt-3"></div>
+    `;
+    
+    contentDiv.innerHTML = html;
+}
+
+// Neue Funktion: Konten für eine Gruppe laden
+async function loadGruppeKonten(gruppe, bereichKey, typ) {
+    const container = document.getElementById(`konten-container-${bereichKey}-${typ}`);
+    
+    // Toggle: Wenn bereits für diese Gruppe geöffnet, schließen
+    if (container.dataset.gruppe === gruppe && container.style.display !== 'none') {
+        container.style.display = 'none';
+        return;
+    }
+    
+    container.style.display = 'block';
+    container.dataset.gruppe = gruppe;
+    container.innerHTML = '<div class="text-center py-2"><div class="spinner-border spinner-border-sm"></div> Lädt Konten...</div>';
+    
+    try {
+        const url = `/controlling/api/tek/detail?bereich=${bereichKey}&firma=${currentData.filter.firma}&standort=${currentData.filter.standort}&monat=${currentData.filter.monat}&jahr=${currentData.filter.jahr}&ebene=konten&gruppe=${gruppe}&typ=${typ}`;
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (data.success) {
+            const isUmsatz = typ === 'umsatz';
+            const colorClass = isUmsatz ? 'success' : 'danger';
+            
+            let html = `
+                <div class="card border-${colorClass}">
+                    <div class="card-header bg-${colorClass} text-white py-2 d-flex justify-content-between">
+                        <span>
+                            <i class="bi bi-folder2-open me-2"></i>${data.gruppe_name} (${gruppe}xxxx)
+                            <span class="badge bg-light text-dark ms-2">${data.anzahl_konten} Konten</span>
+                        </span>
+                        <button class="btn btn-sm btn-light" onclick="document.getElementById('konten-container-${bereichKey}-${typ}').style.display='none'">
+                            <i class="bi bi-x"></i>
+                        </button>
+                    </div>
+                    <div class="card-body p-0">
+                        <div style="max-height: 300px; overflow-y: auto;">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th>Konto</th>
+                                        <th>Bezeichnung</th>
+                                        <th class="text-end">Betrag</th>
+                                        <th class="text-end">#</th>
+                                    </tr>
+                                </thead>
+                                <tbody>`;
+            
+            for (const konto of data.konten) {
+                html += `
+                                    <tr class="konto-row" onclick="loadKontoBuchungen(${konto.konto}, '${bereichKey}')" title="Klicken für Buchungen">
+                                        <td><code>${konto.konto}</code></td>
+                                        <td class="small">${konto.bezeichnung}</td>
+                                        <td class="text-end text-${colorClass}">${formatEuroDetail(konto.betrag)}</td>
+                                        <td class="text-end text-muted small">${konto.buchungen_anzahl}</td>
+                                    </tr>`;
+            }
+            
+            if (data.konten.length === 0) {
+                html += `<tr><td colspan="4" class="text-center text-muted">Keine Buchungen</td></tr>`;
+            }
+            
+            html += `
+                                </tbody>
+                                <tfoot class="table-light">
+                                    <tr>
+                                        <th colspan="2">Summe</th>
+                                        <th class="text-end">${formatEuroDetail(data.summe)}</th>
+                                        <th></th>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </div>`;
+            
+            container.innerHTML = html;
+        } else {
+            container.innerHTML = `<div class="alert alert-danger">Fehler: ${data.error}</div>`;
+        }
+    } catch (error) {
+        container.innerHTML = `<div class="alert alert-danger">Fehler: ${error.message}</div>`;
+    }
+}
+
+async function loadKontoBuchungen(konto, bereichKey) {
+    const container = document.getElementById(`buchungen-container-${bereichKey}`);
+    
+    // Toggle: Wenn bereits für dieses Konto geöffnet, schließen
+    if (container.dataset.konto === String(konto) && container.style.display !== 'none') {
+        container.style.display = 'none';
+        return;
+    }
+    
+    container.style.display = 'block';
+    container.dataset.konto = konto;
+    container.innerHTML = '<div class="text-center py-2"><div class="spinner-border spinner-border-sm"></div> Lädt Buchungen...</div>';
+    
+    try {
+        const url = `/controlling/api/tek/detail?bereich=${bereichKey}&firma=${currentData.filter.firma}&standort=${currentData.filter.standort}&monat=${currentData.filter.monat}&jahr=${currentData.filter.jahr}&ebene=buchungen&konto=${konto}`;
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (data.success) {
+            let html = `
+                <div class="card border-primary">
+                    <div class="card-header bg-primary text-white py-2 d-flex justify-content-between">
+                        <span><i class="bi bi-list-ul me-2"></i>Buchungen Konto ${konto}</span>
+                        <button class="btn btn-sm btn-light" onclick="document.getElementById('buchungen-container-${bereichKey}').style.display='none'">
+                            <i class="bi bi-x"></i>
+                        </button>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="buchungen-container">
+                            <table class="table table-sm table-striped mb-0">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th>Datum</th>
+                                        <th>Beleg</th>
+                                        <th>Fahrzeug</th>
+                                        <th>Text/Kunde</th>
+                                        <th class="text-end">Betrag</th>
+                                    </tr>
+                                </thead>
+                                <tbody>`;
+            
+            for (const b of data.buchungen) {
+                const isPositiv = b.betrag >= 0;
+                const fahrzeugInfo = b.fahrzeug ? `<span class="badge bg-secondary">${b.fahrzeug}</span>` : '-';
+                const textInfo = b.buchungstext !== '-' ? b.buchungstext : (b.kunden_nr ? `Kunde ${b.kunden_nr}` : '-');
+                html += `
+                                    <tr>
+                                        <td class="small">${b.datum}</td>
+                                        <td class="small text-muted">${b.beleg_nr || '-'}</td>
+                                        <td class="small">${fahrzeugInfo}</td>
+                                        <td class="small">${textInfo}</td>
+                                        <td class="text-end ${isPositiv ? 'text-success' : 'text-danger'}">${formatEuroDetail(Math.abs(b.betrag))}</td>
+                                    </tr>`;
+            }
+            
+            if (data.buchungen.length === 0) {
+                html += `<tr><td colspan="5" class="text-center text-muted">Keine Buchungen</td></tr>`;
+            }
+            
+            html += `
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="card-footer py-2 small text-muted">
+                            ${data.anzahl} Buchungen
+                        </div>
+                    </div>
+                </div>`;
+            
+            container.innerHTML = html;
+        } else {
+            container.innerHTML = `<div class="alert alert-danger">Fehler: ${data.error}</div>`;
+        }
+    } catch (error) {
+        container.innerHTML = `<div class="alert alert-danger">Fehler: ${error.message}</div>`;
+    }
+}
+
+// Cache leeren bei Filter-Änderung
+function clearDetailCache() {
+    loadedDetails = {};
+}
+
+// Initialisierung
+document.addEventListener('DOMContentLoaded', function() {
+    // Aktuellen Monat setzen
+    const now = new Date();
+    document.getElementById('filterMonat').value = now.getMonth() + 1;
+    document.getElementById('filterJahr').value = now.getFullYear();
+    loadData();
+});
+</script>
+{% endblock %}

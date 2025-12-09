@@ -1,0 +1,522 @@
+"""
+Job-Definitionen für DRIVE - VEREINFACHT
+========================================
+Alle geplanten Jobs werden hier zentral definiert.
+Ersetzt die alte crontab.
+
+WICHTIG: Keine Lambdas verwenden - APScheduler kann sie nicht serialisieren!
+
+Kostenstellen-Zuordnung:
+- controlling: Controlling & Verwaltung (Bank, HR, Wartung)
+- aftersales:  Aftersales (ServiceBox, Teile)
+- verkauf:     Verkauf (Sync, Stellantis, Fahrzeuge)
+
+Bank-Import Konzept (vereinfacht):
+- MT940: Genobank, Sparkasse, VR Bank Landau → import_mt940.py
+- PDF: NUR HypoVereinsbank → import_all_bank_pdfs.py (nur --bank hvb)
+
+Erstellt: 2025-12-02 (TAG 88)
+Aktualisiert: 2025-12-02 - Nach Kostenstellen gruppiert
+"""
+
+from scheduler.job_manager import job_manager, run_script, run_shell
+
+
+# ============================================================================
+# JOB-FUNKTIONEN (müssen als Module-Level Funktionen definiert sein!)
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# CONTROLLING & VERWALTUNG
+# ---------------------------------------------------------------------------
+
+# Bank & Finanzen
+def job_import_mt940():
+    """MT940 Import für alle Banken AUSSER HypoVereinsbank"""
+    # MT940 Verzeichnis als Argument
+    mt940_dir = '/mnt/buchhaltung/Buchhaltung/Kontoauszüge/mt940/'
+    return run_script('scripts/imports/import_mt940.py', 'import_mt940', 'MT940 Import', timeout=120, args=[mt940_dir])
+
+def job_import_hvb_pdf():
+    """PDF Import NUR für HypoVereinsbank (einzige Bank ohne MT940)"""
+    # Nur HVB, letzte 3 Tage (fängt auch verpasste ab)
+    return run_script('scripts/imports/import_all_bank_pdfs.py', 'import_hvb_pdf', 'HypoVereinsbank PDF Import', timeout=120, args=['--bank', 'hvb', '--days', '3'])
+
+def job_umsatz_bereinigung():
+    return run_script('scripts/analysis/umsatz_bereinigung_production.py', 'umsatz_bereinigung', 'Umsatz-Bereinigung', timeout=300)
+
+def job_import_santander():
+    return run_script('scripts/imports/import_santander_bestand.py', 'import_santander', 'Santander Import')
+
+def job_import_hyundai():
+    return run_script('scripts/imports/import_hyundai_finance.py', 'import_hyundai', 'Hyundai Finance Import')
+
+def job_scrape_hyundai():
+    return run_script('tools/scrapers/hyundai_bestandsliste_scraper.py', 'scrape_hyundai', 'Hyundai Scraper', timeout=180)
+
+def job_leasys_cache_refresh():
+    return run_script('scripts/update_leasys_cache.py', 'leasys_cache_refresh', 'Leasys Cache Refresh', timeout=600)
+
+# HR & Mitarbeiter
+def job_sync_employees():
+    return run_shell('venv/bin/python3 scripts/sync/sync_employees.py --real', 'sync_employees', 'Mitarbeiter Sync')
+
+def job_sync_locosoft_employees():
+    """Synchronisiert Portal-Mitarbeiter mit Locosoft employee_numbers für Urlaubsplaner"""
+    return run_script('scripts/sync_locosoft_employees.py', 'sync_locosoft_employees', 'Locosoft Employee Mapping', timeout=120)
+
+# E-Mail Reports
+def job_email_auftragseingang():
+    return run_script('scripts/send_daily_auftragseingang.py', 'email_auftragseingang', 'Auftragseingang E-Mail')
+
+# Wartung
+def job_db_backup():
+    return run_shell('cp data/greiner_controlling.db data/greiner_controlling.db.backup_$(date +%Y%m%d_%H%M%S)', 'db_backup', 'DB Backup')
+
+def job_cleanup_backups():
+    return run_shell('cd data && ls -t greiner_controlling.db.backup_* 2>/dev/null | tail -n +8 | xargs rm -f 2>/dev/null', 'cleanup_backups', 'Backup Cleanup')
+
+# ---------------------------------------------------------------------------
+# AFTERSALES
+# ---------------------------------------------------------------------------
+
+# ServiceBox
+def job_servicebox_scraper():
+    return run_script('tools/scrapers/servicebox_detail_scraper_v3_kommentar.py', 'servicebox_scraper', 'ServiceBox Scraper', timeout=1800)
+
+def job_servicebox_matcher():
+    return run_script('tools/scrapers/servicebox_locosoft_matcher.py', 'servicebox_matcher', 'ServiceBox Matcher', timeout=300)
+
+def job_servicebox_import():
+    return run_script('scripts/imports/import_servicebox_to_db.py', 'servicebox_import', 'ServiceBox Import', timeout=120)
+
+def job_servicebox_master():
+    return run_script('tools/scrapers/servicebox_detail_scraper_v3_master.py', 'servicebox_master', 'ServiceBox Master', timeout=3600)
+
+# Teile
+def job_sync_teile_locosoft():
+    return run_script('scripts/imports/sync_teile_locosoft.py', 'sync_teile_locosoft', 'Teile-Locosoft Sync')
+
+def job_import_teile_lieferscheine():
+    return run_script('scripts/imports/import_teile_lieferscheine.py', 'import_teile_lieferscheine', 'Teile-Lieferscheine Import')
+
+# ---------------------------------------------------------------------------
+# VERKAUF
+# ---------------------------------------------------------------------------
+
+def job_sync_sales():
+    return run_script('scripts/sync/sync_sales.py', 'sync_sales', 'Verkauf Sync')
+
+def job_import_stellantis():
+    return run_script('scripts/sync/import_stellantis.py', 'import_stellantis', 'Stellantis Import')
+
+def job_sync_stammdaten():
+    return run_script('scripts/sync/sync_fahrzeug_stammdaten.py', 'sync_stammdaten', 'Stammdaten Sync')
+
+def job_locosoft_mirror():
+    return run_shell('venv/bin/python3 scripts/sync/locosoft_mirror.py --min-rows 100', 'locosoft_mirror', 'Locosoft Mirror', timeout=600)
+
+def job_bwa_berechnung():
+    """BWA-Berechnung aus gespiegelten Locosoft-Daten (nach locosoft_mirror)"""
+    return run_script('scripts/sync/bwa_berechnung.py', 'bwa_berechnung', 'BWA Berechnung', timeout=120)
+
+def job_werkstatt_leistung():
+    """Werkstatt-Leistungsberechnung aus Locosoft-Daten (nach locosoft_mirror)"""
+    return run_script('scripts/sync/sync_werkstatt_zeiten.py', 'werkstatt_leistung', 'Werkstatt Leistungsberechnung', timeout=300)
+
+
+# ============================================================================
+# REGISTRIERUNG
+# ============================================================================
+
+def register_all_jobs():
+    """Registriert alle Jobs im Scheduler."""
+    
+    # =========================================================================
+    # KOSTENSTELLE: CONTROLLING & VERWALTUNG
+    # =========================================================================
+    
+    # --- Bank & Finanzen ---
+    
+    # MT940 Import - 08:00, 12:00, 17:00
+    # Für: Genobank, Sparkasse, VR Bank Landau
+    job_manager.add_cron_job(
+        job_id='import_mt940_08',
+        func=job_import_mt940,
+        name='MT940 Import (08:00)',
+        description='Importiert MT940 Kontoauszüge (Genobank, Sparkasse, VR Bank Landau)',
+        category='controlling',
+        hour='8',
+        minute='0',
+        day_of_week='mon-fri'
+    )
+    
+    job_manager.add_cron_job(
+        job_id='import_mt940_12',
+        func=job_import_mt940,
+        name='MT940 Import (12:00)',
+        description='Importiert MT940 Kontoauszüge (Genobank, Sparkasse, VR Bank Landau)',
+        category='controlling',
+        hour='12',
+        minute='0',
+        day_of_week='mon-fri'
+    )
+    
+    job_manager.add_cron_job(
+        job_id='import_mt940_17',
+        func=job_import_mt940,
+        name='MT940 Import (17:00)',
+        description='Importiert MT940 Kontoauszüge (Genobank, Sparkasse, VR Bank Landau)',
+        category='controlling',
+        hour='17',
+        minute='0',
+        day_of_week='mon-fri'
+    )
+    
+    # HypoVereinsbank PDF Import - 08:30 (einzige Bank mit PDF)
+    job_manager.add_cron_job(
+        job_id='import_hvb_pdf',
+        func=job_import_hvb_pdf,
+        name='HypoVereinsbank PDF Import',
+        description='Importiert HypoVereinsbank PDF (einzige Bank ohne MT940)',
+        category='controlling',
+        hour='8',
+        minute='30',
+        day_of_week='mon-fri'
+    )
+    
+    # Umsatz-Bereinigung
+    job_manager.add_cron_job(
+        job_id='umsatz_bereinigung',
+        func=job_umsatz_bereinigung,
+        name='Umsatz-Bereinigung',
+        description='Bereinigt Umsatzdaten für aktuellen Monat',
+        category='controlling',
+        hour='9',
+        minute='30',
+        day_of_week='mon-fri'
+    )
+    
+    # Santander Import
+    job_manager.add_cron_job(
+        job_id='import_santander',
+        func=job_import_santander,
+        name='Santander Bestand Import',
+        description='Importiert Santander Finanzierungsbestand',
+        category='controlling',
+        hour='8',
+        minute='15',
+        day_of_week='mon-fri'
+    )
+    
+    # Hyundai Finance
+    job_manager.add_cron_job(
+        job_id='scrape_hyundai',
+        func=job_scrape_hyundai,
+        name='Hyundai Scraper',
+        description='Scrapt Hyundai Finance Portal',
+        category='controlling',
+        hour='8',
+        minute='45',
+        day_of_week='mon-fri'
+    )
+    
+    job_manager.add_cron_job(
+        job_id='import_hyundai',
+        func=job_import_hyundai,
+        name='Hyundai Finance Import',
+        description='Importiert Hyundai Finance CSV',
+        category='controlling',
+        hour='9',
+        minute='0',
+        day_of_week='mon-fri'
+    )
+    
+    # Leasys Cache
+    job_manager.add_cron_job(
+        job_id='leasys_cache_refresh',
+        func=job_leasys_cache_refresh,
+        name='Leasys Cache Refresh',
+        description='Aktualisiert Leasys Fahrzeug-Cache für Kalkulator',
+        category='controlling',
+        hour='7-18',
+        minute='*/30',
+        day_of_week='mon-fri'
+    )
+    
+    # --- HR & Mitarbeiter ---
+    
+    job_manager.add_cron_job(
+        job_id='sync_employees',
+        func=job_sync_employees,
+        name='Mitarbeiter Sync',
+        description='Synchronisiert Mitarbeiter aus Locosoft',
+        category='controlling',
+        hour='6',
+        minute='0'
+    )
+    
+    job_manager.add_cron_job(
+        job_id='sync_locosoft_employees',
+        func=job_sync_locosoft_employees,
+        name='Locosoft Employee Mapping',
+        description='Synchronisiert Portal-Mitarbeiter mit Locosoft employee_numbers (für Urlaubsplaner)',
+        category='controlling',
+        hour='6',
+        minute='15'
+    )
+    
+    # --- E-Mail Reports ---
+    
+    job_manager.add_cron_job(
+        job_id='email_auftragseingang',
+        func=job_email_auftragseingang,
+        name='Auftragseingang Daily Report',
+        description='Sendet täglichen Auftragseingang-Report per E-Mail',
+        category='controlling',
+        hour='17',
+        minute='15',
+        day_of_week='mon-fri'
+    )
+    
+    # --- Wartung ---
+    
+    job_manager.add_cron_job(
+        job_id='db_backup',
+        func=job_db_backup,
+        name='Datenbank Backup',
+        description='Erstellt tägliches Backup der SQLite-Datenbank',
+        category='controlling',
+        hour='3',
+        minute='0'
+    )
+    
+    job_manager.add_cron_job(
+        job_id='cleanup_backups',
+        func=job_cleanup_backups,
+        name='Backup Cleanup',
+        description='Löscht alte Backups (behalte letzte 7)',
+        category='controlling',
+        hour='3',
+        minute='30'
+    )
+    
+    # =========================================================================
+    # KOSTENSTELLE: AFTERSALES
+    # =========================================================================
+    
+    # --- ServiceBox ---
+    
+    # Scraper: 9:30, 12:30, 16:30
+    job_manager.add_cron_job(
+        job_id='servicebox_scraper_09',
+        func=job_servicebox_scraper,
+        name='ServiceBox Scraper (09:30)',
+        description='Scrapt ServiceBox Bestellungen',
+        category='aftersales',
+        hour='9',
+        minute='30',
+        day_of_week='mon-fri'
+    )
+    
+    job_manager.add_cron_job(
+        job_id='servicebox_scraper_12',
+        func=job_servicebox_scraper,
+        name='ServiceBox Scraper (12:30)',
+        description='Scrapt ServiceBox Bestellungen',
+        category='aftersales',
+        hour='12',
+        minute='30',
+        day_of_week='mon-fri'
+    )
+    
+    job_manager.add_cron_job(
+        job_id='servicebox_scraper_16',
+        func=job_servicebox_scraper,
+        name='ServiceBox Scraper (16:30)',
+        description='Scrapt ServiceBox Bestellungen',
+        category='aftersales',
+        hour='16',
+        minute='30',
+        day_of_week='mon-fri'
+    )
+    
+    # Matcher: 10:00, 13:00, 17:00
+    job_manager.add_cron_job(
+        job_id='servicebox_matcher_10',
+        func=job_servicebox_matcher,
+        name='ServiceBox Matcher (10:00)',
+        description='Matched ServiceBox mit Locosoft',
+        category='aftersales',
+        hour='10',
+        minute='0',
+        day_of_week='mon-fri'
+    )
+    
+    job_manager.add_cron_job(
+        job_id='servicebox_matcher_13',
+        func=job_servicebox_matcher,
+        name='ServiceBox Matcher (13:00)',
+        description='Matched ServiceBox mit Locosoft',
+        category='aftersales',
+        hour='13',
+        minute='0',
+        day_of_week='mon-fri'
+    )
+    
+    job_manager.add_cron_job(
+        job_id='servicebox_matcher_17',
+        func=job_servicebox_matcher,
+        name='ServiceBox Matcher (17:00)',
+        description='Matched ServiceBox mit Locosoft',
+        category='aftersales',
+        hour='17',
+        minute='0',
+        day_of_week='mon-fri'
+    )
+    
+    # Import: 10:05, 13:05, 17:05
+    job_manager.add_cron_job(
+        job_id='servicebox_import_10',
+        func=job_servicebox_import,
+        name='ServiceBox Import (10:05)',
+        description='Importiert ServiceBox Daten in DB',
+        category='aftersales',
+        hour='10',
+        minute='5',
+        day_of_week='mon-fri'
+    )
+    
+    job_manager.add_cron_job(
+        job_id='servicebox_import_13',
+        func=job_servicebox_import,
+        name='ServiceBox Import (13:05)',
+        description='Importiert ServiceBox Daten in DB',
+        category='aftersales',
+        hour='13',
+        minute='5',
+        day_of_week='mon-fri'
+    )
+    
+    job_manager.add_cron_job(
+        job_id='servicebox_import_17',
+        func=job_servicebox_import,
+        name='ServiceBox Import (17:05)',
+        description='Importiert ServiceBox Daten in DB',
+        category='aftersales',
+        hour='17',
+        minute='5',
+        day_of_week='mon-fri'
+    )
+    
+    # Master-Update: 20:00
+    job_manager.add_cron_job(
+        job_id='servicebox_master',
+        func=job_servicebox_master,
+        name='ServiceBox Master (20:00)',
+        description='Lädt alle ServiceBox Bestellungen komplett neu',
+        category='aftersales',
+        hour='20',
+        minute='0',
+        day_of_week='mon-fri'
+    )
+    
+    # --- Teile ---
+    
+    job_manager.add_interval_job(
+        job_id='sync_teile_locosoft',
+        func=job_sync_teile_locosoft,
+        name='Teile-Locosoft Sync',
+        description='Synchronisiert Teile mit Locosoft',
+        category='aftersales',
+        minutes=30
+    )
+    
+    job_manager.add_cron_job(
+        job_id='import_teile_lieferscheine',
+        func=job_import_teile_lieferscheine,
+        name='Teile-Lieferscheine Import',
+        description='Importiert Teile-Lieferscheine aus Locosoft',
+        category='aftersales',
+        hour='*/2',
+        minute='0'
+    )
+    
+    # =========================================================================
+    # KOSTENSTELLE: VERKAUF
+    # =========================================================================
+    
+    job_manager.add_cron_job(
+        job_id='sync_sales',
+        func=job_sync_sales,
+        name='Verkauf Sync',
+        description='Synchronisiert Verkaufsdaten aus Locosoft',
+        category='verkauf',
+        hour='7-18',
+        minute='0',
+        day_of_week='mon-fri'
+    )
+    
+    job_manager.add_cron_job(
+        job_id='import_stellantis',
+        func=job_import_stellantis,
+        name='Stellantis Import',
+        description='Importiert Stellantis-Fahrzeugdaten (Peugeot, Opel, Fiat)',
+        category='verkauf',
+        hour='7',
+        minute='30',
+        day_of_week='mon-fri'
+    )
+    
+    job_manager.add_cron_job(
+        job_id='sync_stammdaten',
+        func=job_sync_stammdaten,
+        name='Fahrzeug-Stammdaten Sync',
+        description='Synchronisiert Fahrzeug-Stammdaten aus Locosoft',
+        category='verkauf',
+        hour='9',
+        minute='30'
+    )
+    
+    job_manager.add_cron_job(
+        job_id='locosoft_mirror',
+        func=job_locosoft_mirror,
+        name='Locosoft Mirror',
+        description='Spiegelt Locosoft-Daten für lokale Abfragen',
+        category='verkauf',
+        hour='19',
+        minute='0'
+    )
+    
+    job_manager.add_cron_job(
+        job_id='bwa_berechnung',
+        func=job_bwa_berechnung,
+        name='BWA Berechnung',
+        description='Berechnet BWA aus gespiegelten Locosoft-Daten (nach Mirror)',
+        category='controlling',
+        hour='19',
+        minute='30'
+    )
+    
+    job_manager.add_cron_job(
+        job_id='werkstatt_leistung',
+        func=job_werkstatt_leistung,
+        name='Werkstatt Leistungsberechnung',
+        description='Berechnet Mechaniker-Leistungsgrade aus Stempelzeiten (nach Mirror)',
+        category='aftersales',
+        hour='19',
+        minute='15'
+    )
+    
+    # =========================================================================
+    # JOB-ÜBERSICHT
+    # =========================================================================
+    
+    try:
+        job_count = len(job_manager.get_jobs())
+        print(f"📋 {job_count} Jobs registriert")
+        print(f"   - Controlling & Verwaltung: 14 Jobs")
+        print(f"   - Aftersales: 13 Jobs")
+        print(f"   - Verkauf: 4 Jobs")
+    except Exception as e:
+        print(f"📋 Jobs registriert (Zählung fehlgeschlagen: {e})")

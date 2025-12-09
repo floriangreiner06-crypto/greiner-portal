@@ -1,0 +1,431 @@
+{% extends 'base.html' %}
+
+{% block title %}Urlaubsplaner - Chef-Übersicht - Greiner DRIVE{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<style>
+    .chef-header {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        color: white;
+        padding: 25px;
+        border-radius: 10px;
+        margin-bottom: 25px;
+    }
+    .team-card {
+        border: none;
+        border-radius: 12px;
+        box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+        overflow: hidden;
+    }
+    .team-card .card-header {
+        border: none;
+        padding: 15px 20px;
+    }
+    .team-card .approver-name {
+        font-size: 1.1rem;
+        font-weight: 600;
+    }
+    .team-card .team-size {
+        font-size: 2rem;
+        font-weight: bold;
+    }
+    .grp-badge {
+        background: rgba(255,255,255,0.2);
+        padding: 3px 10px;
+        border-radius: 15px;
+        font-size: 0.8rem;
+        margin-right: 5px;
+        display: inline-block;
+        margin-bottom: 3px;
+    }
+    .member-row {
+        padding: 8px 15px;
+        border-bottom: 1px solid #eee;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .member-row:last-child {
+        border-bottom: none;
+    }
+    .member-row:hover {
+        background: #f8f9fa;
+    }
+    .member-name {
+        font-weight: 500;
+    }
+    .member-info {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+    .balance-indicator {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+    .balance-ok { background: #d4edda; color: #155724; }
+    .balance-warning { background: #fff3cd; color: #856404; }
+    .balance-danger { background: #f8d7da; color: #721c24; }
+    .pending-badge {
+        background: #ffc107;
+        color: #000;
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .summary-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+    }
+    .summary-card .big-number {
+        font-size: 3rem;
+        font-weight: bold;
+    }
+    .filter-bar {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+    }
+    .standort-deg { border-left: 4px solid #28a745; }
+    .standort-lau { border-left: 4px solid #17a2b8; }
+    .standort-all { border-left: 4px solid #6c757d; }
+    
+    /* Collapsible */
+    .team-members {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease-out;
+    }
+    .team-members.show {
+        max-height: 2000px;
+    }
+    .toggle-btn {
+        cursor: pointer;
+        transition: transform 0.3s;
+    }
+    .toggle-btn.rotated {
+        transform: rotate(180deg);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="chef-header">
+        <div class="row align-items-center">
+            <div class="col">
+                <h1 class="mb-0">
+                    <i class="fas fa-sitemap"></i> Urlaubsplaner - Chef-Übersicht
+                </h1>
+                <small>Alle Teams und Genehmiger auf einen Blick</small>
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-light" onclick="location.reload()">
+                    <i class="fas fa-sync"></i> Aktualisieren
+                </button>
+                <a href="/urlaubsplaner" class="btn btn-outline-light ms-2">
+                    <i class="fas fa-arrow-left"></i> Zurück
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="row mb-4" id="summaryCards">
+        <div class="col-md-3">
+            <div class="summary-card">
+                <div class="big-number" id="totalApprovers">-</div>
+                <div>Genehmiger</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="summary-card" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
+                <div class="big-number" id="totalEmployees">-</div>
+                <div>Mitarbeiter</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="summary-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                <div class="big-number" id="totalPending">-</div>
+                <div>Offene Anträge</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="summary-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                <div class="big-number" id="totalGroups">-</div>
+                <div>Abteilungen</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="filter-bar">
+        <div class="row align-items-center">
+            <div class="col-md-3">
+                <label class="form-label mb-0">Standort:</label>
+                <select class="form-select form-select-sm" id="filterStandort">
+                    <option value="">Alle Standorte</option>
+                    <option value="Deggendorf">Deggendorf</option>
+                    <option value="Landau">Landau</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label mb-0">Gruppe:</label>
+                <select class="form-select form-select-sm" id="filterGruppe">
+                    <option value="">Alle Gruppen</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label mb-0">Suche:</label>
+                <input type="text" class="form-control form-control-sm" id="searchInput" placeholder="Name suchen...">
+            </div>
+            <div class="col-md-3 text-end">
+                <button class="btn btn-sm btn-outline-secondary" onclick="expandAll()">
+                    <i class="fas fa-expand-alt"></i> Alle öffnen
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="collapseAll()">
+                    <i class="fas fa-compress-alt"></i> Alle schließen
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Teams Container -->
+    <div id="teamsContainer">
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-3 text-muted">Daten werden geladen...</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/**
+ * CHEF-ÜBERSICHT - Alle Teams und Genehmiger
+ * TAG 103
+ */
+
+const API_BASE = '/api/vacation';
+let allTeamsData = [];
+
+document.addEventListener('DOMContentLoaded', async function() {
+    console.log('👔 Chef-Übersicht wird geladen...');
+    await loadAllTeams();
+    setupFilters();
+});
+
+async function loadAllTeams() {
+    try {
+        // Alle Genehmiger-Regeln laden
+        const response = await fetch('/api/vacation/chef-overview');
+        const data = await response.json();
+        
+        if (data.success) {
+            allTeamsData = data.teams;
+            renderTeams(allTeamsData);
+            updateSummary(data.summary);
+            populateFilters(data.groups);
+        } else {
+            document.getElementById('teamsContainer').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle"></i> Fehler: ${data.error}
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        document.getElementById('teamsContainer').innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle"></i> Verbindungsfehler
+            </div>
+        `;
+    }
+}
+
+function renderTeams(teams) {
+    const container = document.getElementById('teamsContainer');
+    
+    if (!teams || teams.length === 0) {
+        container.innerHTML = '<div class="alert alert-info">Keine Teams gefunden</div>';
+        return;
+    }
+    
+    let html = '<div class="row">';
+    
+    teams.forEach((team, index) => {
+        const standortClass = team.standort === 'Deggendorf' ? 'standort-deg' : 
+                              team.standort === 'Landau' ? 'standort-lau' : 'standort-all';
+        
+        const headerBg = getHeaderColor(index);
+        
+        html += `
+            <div class="col-lg-6 col-xl-4 team-item" 
+                 data-standort="${team.standort}" 
+                 data-gruppe="${team.grp_codes.join(',')}"
+                 data-approver="${team.approver_name.toLowerCase()}">
+                <div class="card team-card ${standortClass}">
+                    <div class="card-header text-white" style="background: ${headerBg};">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <div class="approver-name">
+                                    <i class="fas fa-user-tie"></i> ${team.approver_name}
+                                </div>
+                                <div class="mt-1">
+                                    ${team.grp_codes.map(g => `<span class="grp-badge">${g}</span>`).join('')}
+                                </div>
+                            </div>
+                            <div class="text-end">
+                                <div class="team-size">${team.team_size}</div>
+                                <small>Mitarbeiter</small>
+                            </div>
+                        </div>
+                        ${team.pending_count > 0 ? `<span class="pending-badge mt-2"><i class="fas fa-clock"></i> ${team.pending_count} offen</span>` : ''}
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="p-3 d-flex justify-content-between align-items-center" 
+                             style="cursor: pointer;" 
+                             onclick="toggleTeam(${index})">
+                            <span><i class="fas fa-users"></i> Team anzeigen</span>
+                            <i class="fas fa-chevron-down toggle-btn" id="toggle-${index}"></i>
+                        </div>
+                        <div class="team-members" id="members-${index}">
+                            ${renderMembers(team.members)}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function renderMembers(members) {
+    if (!members || members.length === 0) {
+        return '<div class="p-3 text-muted">Keine Mitglieder</div>';
+    }
+    
+    let html = '';
+    members.forEach(m => {
+        const balanceClass = m.resturlaub >= 10 ? 'balance-ok' : 
+                             m.resturlaub >= 5 ? 'balance-warning' : 'balance-danger';
+        
+        html += `
+            <div class="member-row">
+                <div>
+                    <div class="member-name">${m.name}</div>
+                    <div class="member-info">
+                        <span class="badge bg-secondary me-1">${m.grp_code}</span>
+                        ${m.standort}
+                    </div>
+                </div>
+                <div class="text-end">
+                    <span class="balance-indicator ${balanceClass}">
+                        ${m.resturlaub} Tage
+                    </span>
+                    <div class="member-info">${m.verbraucht}/${m.anspruch}</div>
+                </div>
+            </div>
+        `;
+    });
+    
+    return html;
+}
+
+function toggleTeam(index) {
+    const members = document.getElementById(`members-${index}`);
+    const toggle = document.getElementById(`toggle-${index}`);
+    
+    members.classList.toggle('show');
+    toggle.classList.toggle('rotated');
+}
+
+function expandAll() {
+    document.querySelectorAll('.team-members').forEach(el => el.classList.add('show'));
+    document.querySelectorAll('.toggle-btn').forEach(el => el.classList.add('rotated'));
+}
+
+function collapseAll() {
+    document.querySelectorAll('.team-members').forEach(el => el.classList.remove('show'));
+    document.querySelectorAll('.toggle-btn').forEach(el => el.classList.remove('rotated'));
+}
+
+function updateSummary(summary) {
+    document.getElementById('totalApprovers').textContent = summary.approver_count;
+    document.getElementById('totalEmployees').textContent = summary.employee_count;
+    document.getElementById('totalPending').textContent = summary.pending_count;
+    document.getElementById('totalGroups').textContent = summary.group_count;
+}
+
+function populateFilters(groups) {
+    const select = document.getElementById('filterGruppe');
+    groups.forEach(g => {
+        select.innerHTML += `<option value="${g}">${g}</option>`;
+    });
+}
+
+function setupFilters() {
+    document.getElementById('filterStandort').addEventListener('change', applyFilters);
+    document.getElementById('filterGruppe').addEventListener('change', applyFilters);
+    document.getElementById('searchInput').addEventListener('input', applyFilters);
+}
+
+function applyFilters() {
+    const standort = document.getElementById('filterStandort').value;
+    const gruppe = document.getElementById('filterGruppe').value;
+    const search = document.getElementById('searchInput').value.toLowerCase();
+    
+    document.querySelectorAll('.team-item').forEach(item => {
+        const itemStandort = item.dataset.standort;
+        const itemGruppen = item.dataset.gruppe;
+        const itemApprover = item.dataset.approver;
+        
+        let show = true;
+        
+        if (standort && itemStandort !== standort && itemStandort !== 'Alle') {
+            show = false;
+        }
+        
+        if (gruppe && !itemGruppen.includes(gruppe)) {
+            show = false;
+        }
+        
+        if (search && !itemApprover.includes(search)) {
+            show = false;
+        }
+        
+        item.style.display = show ? 'block' : 'none';
+    });
+}
+
+function getHeaderColor(index) {
+    const colors = [
+        'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
+        'linear-gradient(135deg, #fc4a1a 0%, #f7b733 100%)',
+        'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+        'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+        'linear-gradient(135deg, #5f2c82 0%, #49a09d 100%)',
+        'linear-gradient(135deg, #c33764 0%, #1d2671 100%)',
+        'linear-gradient(135deg, #00b4db 0%, #0083b0 100%)',
+        'linear-gradient(135deg, #f857a6 0%, #ff5858 100%)'
+    ];
+    return colors[index % colors.length];
+}
+
+console.log('📦 Chef-Übersicht geladen');
+</script>
+{% endblock %}

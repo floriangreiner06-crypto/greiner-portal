@@ -1,0 +1,585 @@
+{% extends "base.html" %}
+
+{% block title %}Werkstatt-Übersicht | Greiner Portal{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    
+    <!-- Header mit Datum-Auswahl -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <h2><i class="fas fa-wrench text-primary"></i> Werkstatt-Übersicht</h2>
+            <p class="text-muted mb-0">Abgerechnete Aufträge & Leistungsgrad</p>
+        </div>
+        <div class="col-md-6">
+            <div class="d-flex justify-content-end gap-2">
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-outline-secondary" id="btn-heute" onclick="setDatum('heute')">
+                        <i class="fas fa-calendar-day"></i> Heute
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" id="btn-monat" onclick="setDatum('monat')">
+                        <i class="fas fa-calendar"></i> Monat
+                    </button>
+                </div>
+                <input type="date" id="datum-picker" class="form-control" style="width: 160px;" onchange="loadData()">
+                <select id="betrieb-filter" class="form-select" style="width: 140px;" onchange="loadData()">
+                    <option value="">Alle Standorte</option>
+                    <option value="1">Deggendorf</option>
+                    <option value="3">Landau</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    
+    <!-- KPI-Karten -->
+    <div class="row mb-4" id="kpi-cards">
+        <div class="col-md-2">
+            <div class="card bg-primary text-white">
+                <div class="card-body text-center">
+                    <h3 class="mb-0" id="kpi-auftraege">-</h3>
+                    <small>Aufträge</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card bg-success text-white">
+                <div class="card-body text-center">
+                    <h3 class="mb-0" id="kpi-umsatz">-</h3>
+                    <small>Umsatz (netto)</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card bg-info text-white">
+                <div class="card-body text-center">
+                    <h3 class="mb-0" id="kpi-lohn">-</h3>
+                    <small>Lohn</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card bg-warning text-dark">
+                <div class="card-body text-center">
+                    <h3 class="mb-0" id="kpi-teile">-</h3>
+                    <small>Teile</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card bg-secondary text-white">
+                <div class="card-body text-center">
+                    <h3 class="mb-0" id="kpi-aw">-</h3>
+                    <small>Verkaufte AW</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card bg-dark text-white">
+                <div class="card-body text-center">
+                    <h3 class="mb-0" id="kpi-avg">-</h3>
+                    <small>Ø Auftrag</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Tabs -->
+    <ul class="nav nav-tabs mb-3" id="werkstattTabs" role="tablist">
+        <li class="nav-item">
+            <a class="nav-link active" id="serviceberater-tab" data-bs-toggle="tab" href="#serviceberater" role="tab">
+                <i class="fas fa-user-tie"></i> Serviceberater
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="mechaniker-tab" data-bs-toggle="tab" href="#mechaniker" role="tab">
+                <i class="fas fa-hard-hat"></i> Mechaniker-Leistung
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="auftraege-tab" data-bs-toggle="tab" href="#auftraege" role="tab">
+                <i class="fas fa-file-invoice"></i> Aufträge
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="trend-tab" data-bs-toggle="tab" href="#trend" role="tab">
+                <i class="fas fa-chart-line"></i> Trend
+            </a>
+        </li>
+    </ul>
+    
+    <!-- Tab-Inhalte -->
+    <div class="tab-content" id="werkstattTabContent">
+        
+        <!-- Serviceberater -->
+        <div class="tab-pane fade show active" id="serviceberater" role="tabpanel">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-user-tie"></i> Leistung nach Serviceberater</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover" id="tbl-serviceberater">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Serviceberater</th>
+                                    <th>Betrieb</th>
+                                    <th class="text-end">Aufträge</th>
+                                    <th class="text-end">Kunden</th>
+                                    <th class="text-end">Lohn</th>
+                                    <th class="text-end">Teile</th>
+                                    <th class="text-end">Gesamt</th>
+                                    <th class="text-end">AW</th>
+                                    <th class="text-end">Ø Auftrag</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-serviceberater">
+                                <tr><td colspan="9" class="text-center text-muted">Lade Daten...</td></tr>
+                            </tbody>
+                            <tfoot class="table-secondary fw-bold" id="tfoot-serviceberater">
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Mechaniker-Leistung -->
+        <div class="tab-pane fade" id="mechaniker" role="tabpanel">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-hard-hat"></i> Mechaniker-Leistungsgrad</h5>
+                    <small class="text-muted" id="leistung-hinweis"></small>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info mb-3" id="leistung-info" style="display: none;">
+                        <i class="fas fa-info-circle"></i> <span id="leistung-info-text"></span>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover" id="tbl-mechaniker">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Mechaniker</th>
+                                    <th class="text-end">Aufträge</th>
+                                    <th class="text-end">Verkaufte AW</th>
+                                    <th class="text-end">Vorgabezeit</th>
+                                    <th class="text-end">Stempelzeit</th>
+                                    <th class="text-end">Leistungsgrad</th>
+                                    <th class="text-end">Umsatz</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-mechaniker">
+                                <tr><td colspan="7" class="text-center text-muted">Lade Daten...</td></tr>
+                            </tbody>
+                            <tfoot class="table-secondary fw-bold" id="tfoot-mechaniker">
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Aufträge -->
+        <div class="tab-pane fade" id="auftraege" role="tabpanel">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-file-invoice"></i> Detaillierte Auftragsübersicht</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped table-hover" id="tbl-auftraege">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Datum</th>
+                                    <th>Rechnung</th>
+                                    <th>Auftrag</th>
+                                    <th>Kennzeichen</th>
+                                    <th>Serviceberater</th>
+                                    <th class="text-end">Lohn</th>
+                                    <th class="text-end">Teile</th>
+                                    <th class="text-end">Gesamt</th>
+                                    <th class="text-end">AW</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-auftraege">
+                                <tr><td colspan="9" class="text-center text-muted">Lade Daten...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Trend -->
+        <div class="tab-pane fade" id="trend" role="tabpanel">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-chart-line"></i> Werkstatt-Trend</h5>
+                    <select id="trend-tage" class="form-select" style="width: 120px;" onchange="loadTrend()">
+                        <option value="7">7 Tage</option>
+                        <option value="14">14 Tage</option>
+                        <option value="30" selected>30 Tage</option>
+                        <option value="60">60 Tage</option>
+                        <option value="90">90 Tage</option>
+                    </select>
+                </div>
+                <div class="card-body">
+                    <canvas id="chart-trend" height="100"></canvas>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+    
+</div>
+
+<!-- Letzter Sync -->
+<div class="fixed-bottom mb-2 me-3 text-end">
+    <small class="text-muted">
+        <i class="fas fa-sync-alt"></i> Letzter Sync: <span id="last-sync">-</span>
+    </small>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<script>
+// Globale Variablen
+let currentMode = 'heute';  // 'heute' oder 'monat'
+let trendChart = null;
+
+// Formatierung
+function formatCurrency(value) {
+    if (value === null || value === undefined) return '-';
+    return new Intl.NumberFormat('de-DE', { 
+        style: 'currency', 
+        currency: 'EUR',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(value);
+}
+
+function formatNumber(value, decimals = 1) {
+    if (value === null || value === undefined) return '-';
+    return new Intl.NumberFormat('de-DE', { 
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+    }).format(value);
+}
+
+function formatPercent(value) {
+    if (value === null || value === undefined) return '-';
+    const badge = value >= 100 ? 'bg-success' : value >= 80 ? 'bg-warning' : 'bg-danger';
+    return `<span class="badge ${badge}">${formatNumber(value)}%</span>`;
+}
+
+function getBetriebName(nr) {
+    if (nr === 1) return 'Deggendorf';
+    if (nr === 3) return 'Landau';
+    return `Betrieb ${nr}`;
+}
+
+// Datum-Logik
+function setDatum(mode) {
+    currentMode = mode;
+    document.getElementById('btn-heute').classList.toggle('active', mode === 'heute');
+    document.getElementById('btn-monat').classList.toggle('active', mode === 'monat');
+    
+    const today = new Date();
+    if (mode === 'heute') {
+        document.getElementById('datum-picker').value = today.toISOString().split('T')[0];
+    } else {
+        document.getElementById('datum-picker').value = today.toISOString().split('T')[0];
+    }
+    
+    loadData();
+}
+
+function getDatumParam() {
+    const picker = document.getElementById('datum-picker').value;
+    if (currentMode === 'monat') {
+        return `monat=${picker.substring(0, 7)}`;
+    }
+    return `datum=${picker}`;
+}
+
+function getBetriebParam() {
+    const betrieb = document.getElementById('betrieb-filter').value;
+    return betrieb ? `&betrieb=${betrieb}` : '';
+}
+
+// Daten laden
+async function loadData() {
+    await Promise.all([
+        loadDashboard(),
+        loadServiceberater(),
+        loadMechanikerLeistung(),
+        loadAuftraege()
+    ]);
+}
+
+async function loadDashboard() {
+    try {
+        const resp = await fetch(`/api/werkstatt/dashboard?${getDatumParam()}${getBetriebParam()}`);
+        const data = await resp.json();
+        
+        if (data.success) {
+            const k = data.kpis;
+            document.getElementById('kpi-auftraege').textContent = k.anzahl_auftraege;
+            document.getElementById('kpi-umsatz').textContent = formatCurrency(k.summe_gesamt);
+            document.getElementById('kpi-lohn').textContent = formatCurrency(k.summe_lohn);
+            document.getElementById('kpi-teile').textContent = formatCurrency(k.summe_teile);
+            document.getElementById('kpi-aw').textContent = formatNumber(k.summe_aw);
+            document.getElementById('kpi-avg').textContent = formatCurrency(k.avg_auftragswert);
+        }
+    } catch (e) {
+        console.error('Fehler beim Laden des Dashboards:', e);
+    }
+}
+
+async function loadServiceberater() {
+    const tbody = document.getElementById('tbody-serviceberater');
+    const tfoot = document.getElementById('tfoot-serviceberater');
+    
+    try {
+        const resp = await fetch(`/api/werkstatt/serviceberater?${getDatumParam()}${getBetriebParam()}`);
+        const data = await resp.json();
+        
+        if (data.success && data.serviceberater.length > 0) {
+            tbody.innerHTML = data.serviceberater.map(s => `
+                <tr>
+                    <td><strong>${s.serviceberater_name || '-'}</strong></td>
+                    <td>${getBetriebName(s.betrieb)}</td>
+                    <td class="text-end">${s.anzahl_auftraege}</td>
+                    <td class="text-end">${s.anzahl_kunden}</td>
+                    <td class="text-end">${formatCurrency(s.summe_lohn)}</td>
+                    <td class="text-end">${formatCurrency(s.summe_teile)}</td>
+                    <td class="text-end fw-bold">${formatCurrency(s.summe_gesamt)}</td>
+                    <td class="text-end">${formatNumber(s.summe_aw)}</td>
+                    <td class="text-end">${formatCurrency(s.avg_auftragswert)}</td>
+                </tr>
+            `).join('');
+            
+            const sum = data.summen;
+            tfoot.innerHTML = `
+                <tr>
+                    <td colspan="2">GESAMT</td>
+                    <td class="text-end">${sum.anzahl_auftraege}</td>
+                    <td></td>
+                    <td class="text-end">${formatCurrency(sum.summe_lohn)}</td>
+                    <td class="text-end">${formatCurrency(sum.summe_teile)}</td>
+                    <td class="text-end">${formatCurrency(sum.summe_gesamt)}</td>
+                    <td class="text-end">${formatNumber(sum.summe_aw)}</td>
+                    <td></td>
+                </tr>
+            `;
+        } else {
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">Keine Daten verfügbar</td></tr>';
+            tfoot.innerHTML = '';
+        }
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="9" class="text-center text-danger">Fehler: ${e.message}</td></tr>`;
+    }
+}
+
+async function loadMechanikerLeistung() {
+    const tbody = document.getElementById('tbody-mechaniker');
+    const tfoot = document.getElementById('tfoot-mechaniker');
+    const info = document.getElementById('leistung-info');
+    const infoText = document.getElementById('leistung-info-text');
+    
+    try {
+        const resp = await fetch(`/api/werkstatt/leistung?${getDatumParam()}`);
+        const data = await resp.json();
+        
+        if (data.hinweis) {
+            info.style.display = 'block';
+            infoText.textContent = data.hinweis;
+        } else {
+            info.style.display = 'none';
+        }
+        
+        if (data.success && data.mechaniker.length > 0) {
+            const isMonat = !!data.monat;
+            tbody.innerHTML = data.mechaniker.map(m => `
+                <tr>
+                    <td><strong>${m.mechaniker_name}</strong></td>
+                    <td class="text-end">${m.anzahl_auftraege}</td>
+                    <td class="text-end">${formatNumber(m.summe_aw)}</td>
+                    <td class="text-end">${isMonat ? formatNumber(m.vorgabezeit_std) + ' h' : formatNumber(m.vorgabezeit_min) + ' min'}</td>
+                    <td class="text-end">${isMonat ? (m.stempelzeit_std ? formatNumber(m.stempelzeit_std) + ' h' : '-') : (m.stempelzeit_min ? formatNumber(m.stempelzeit_min) + ' min' : '-')}</td>
+                    <td class="text-end">${formatPercent(m.leistungsgrad)}</td>
+                    <td class="text-end">${formatCurrency(m.summe_umsatz)}</td>
+                </tr>
+            `).join('');
+            
+            const sum = data.summen;
+            tfoot.innerHTML = `
+                <tr>
+                    <td>GESAMT (${sum.anzahl_mechaniker} Mechaniker)</td>
+                    <td></td>
+                    <td class="text-end">${formatNumber(sum.summe_aw)}</td>
+                    <td class="text-end">${formatNumber(sum.summe_vorgabe_min / 60)} h</td>
+                    <td class="text-end">${sum.summe_stempel_min ? formatNumber(sum.summe_stempel_min / 60) + ' h' : '-'}</td>
+                    <td class="text-end">${formatPercent(sum.gesamt_leistungsgrad)}</td>
+                    <td></td>
+                </tr>
+            `;
+        } else {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Keine Daten verfügbar</td></tr>';
+            tfoot.innerHTML = '';
+        }
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">Fehler: ${e.message}</td></tr>`;
+    }
+}
+
+async function loadAuftraege() {
+    const tbody = document.getElementById('tbody-auftraege');
+    
+    try {
+        const resp = await fetch(`/api/werkstatt/auftraege?${getDatumParam()}${getBetriebParam()}&limit=100`);
+        const data = await resp.json();
+        
+        if (data.success && data.auftraege.length > 0) {
+            tbody.innerHTML = data.auftraege.map(a => `
+                <tr>
+                    <td>${a.rechnungs_datum}</td>
+                    <td>${a.rechnungs_nr}</td>
+                    <td>${a.auftrags_nr || '-'}</td>
+                    <td>${a.kennzeichen || '-'}</td>
+                    <td>${a.serviceberater_name || '-'}</td>
+                    <td class="text-end">${formatCurrency(a.lohn_netto)}</td>
+                    <td class="text-end">${formatCurrency(a.teile_netto)}</td>
+                    <td class="text-end fw-bold">${formatCurrency(a.gesamt_netto)}</td>
+                    <td class="text-end">${formatNumber(a.summe_aw)}</td>
+                </tr>
+            `).join('');
+        } else {
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">Keine Aufträge</td></tr>';
+        }
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="9" class="text-center text-danger">Fehler: ${e.message}</td></tr>`;
+    }
+}
+
+async function loadTrend() {
+    const tage = document.getElementById('trend-tage').value;
+    const betrieb = document.getElementById('betrieb-filter').value;
+    
+    try {
+        const resp = await fetch(`/api/werkstatt/trend?tage=${tage}${betrieb ? '&betrieb=' + betrieb : ''}`);
+        const data = await resp.json();
+        
+        if (data.success && data.trend.length > 0) {
+            const labels = data.trend.map(t => t.datum);
+            const umsatz = data.trend.map(t => t.umsatz);
+            const auftraege = data.trend.map(t => t.anzahl);
+            
+            if (trendChart) {
+                trendChart.destroy();
+            }
+            
+            const ctx = document.getElementById('chart-trend').getContext('2d');
+            trendChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Umsatz (€)',
+                            data: umsatz,
+                            backgroundColor: 'rgba(40, 167, 69, 0.6)',
+                            borderColor: 'rgba(40, 167, 69, 1)',
+                            borderWidth: 1,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Aufträge',
+                            data: auftraege,
+                            type: 'line',
+                            borderColor: 'rgba(0, 123, 255, 1)',
+                            backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 3,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            position: 'left',
+                            title: { display: true, text: 'Umsatz (€)' },
+                            ticks: {
+                                callback: v => formatCurrency(v)
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            position: 'right',
+                            title: { display: true, text: 'Aufträge' },
+                            grid: { drawOnChartArea: false }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    if (context.datasetIndex === 0) {
+                                        return `Umsatz: ${formatCurrency(context.raw)}`;
+                                    }
+                                    return `Aufträge: ${context.raw}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    } catch (e) {
+        console.error('Fehler beim Laden des Trends:', e);
+    }
+}
+
+// Health Check für letzten Sync
+async function checkHealth() {
+    try {
+        const resp = await fetch('/api/werkstatt/health');
+        const data = await resp.json();
+        
+        if (data.last_sync) {
+            document.getElementById('last-sync').textContent = new Date(data.last_sync).toLocaleString('de-DE');
+        }
+    } catch (e) {
+        console.error('Health Check fehlgeschlagen:', e);
+    }
+}
+
+// Tab-Wechsel
+document.querySelectorAll('#werkstattTabs a[data-bs-toggle="tab"]').forEach(tab => {
+    tab.addEventListener('shown.bs.tab', function(e) {
+        if (e.target.id === 'trend-tab') {
+            loadTrend();
+        }
+    });
+});
+
+// Initialisierung
+document.addEventListener('DOMContentLoaded', function() {
+    // Datum auf heute setzen
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('datum-picker').value = today;
+    document.getElementById('btn-heute').classList.add('active');
+    
+    // Daten laden
+    loadData();
+    checkHealth();
+});
+</script>
+{% endblock %}

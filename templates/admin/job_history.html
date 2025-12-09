@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+
+{% block title %}Job-History - Greiner DRIVE{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-1"><i class="bi bi-clock-history me-2"></i>Job-History</h1>
+            <p class="text-muted mb-0">Ausführungsprotokoll aller Jobs</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('scheduler.job_overview') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left me-1"></i> Zurück
+            </a>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="GET" class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label">Job filtern</label>
+                    <select name="job_id" class="form-select">
+                        <option value="">Alle Jobs</option>
+                        {% for job in jobs %}
+                        <option value="{{ job.job_id }}" {{ 'selected' if selected_job == job.job_id else '' }}>
+                            {{ job.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Limit</label>
+                    <select name="limit" class="form-select">
+                        <option value="50">50</option>
+                        <option value="100" selected>100</option>
+                        <option value="200">200</option>
+                        <option value="500">500</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-filter me-1"></i> Filtern
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- History Table -->
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Status</th>
+                            <th>Job</th>
+                            <th>Gestartet</th>
+                            <th>Beendet</th>
+                            <th>Dauer</th>
+                            <th>Ausgelöst von</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for run in history %}
+                        <tr>
+                            <td>
+                                {% if run.status == 'success' %}
+                                <span class="badge bg-success"><i class="bi bi-check-circle"></i> Erfolg</span>
+                                {% elif run.status == 'error' %}
+                                <span class="badge bg-danger"><i class="bi bi-x-circle"></i> Fehler</span>
+                                {% elif run.status == 'timeout' %}
+                                <span class="badge bg-warning text-dark"><i class="bi bi-hourglass"></i> Timeout</span>
+                                {% elif run.status == 'running' %}
+                                <span class="badge bg-info"><i class="bi bi-arrow-repeat spin"></i> Läuft</span>
+                                {% else %}
+                                <span class="badge bg-secondary">{{ run.status }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <strong>{{ run.job_name or run.job_id }}</strong>
+                                <br><small class="text-muted">{{ run.job_id }}</small>
+                            </td>
+                            <td><small>{{ run.started_at }}</small></td>
+                            <td><small>{{ run.finished_at or '-' }}</small></td>
+                            <td>
+                                {% if run.duration_seconds %}
+                                <span class="badge bg-light text-dark">{{ "%.1f"|format(run.duration_seconds) }}s</span>
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if run.triggered_by == 'scheduler' %}
+                                <span class="text-muted"><i class="bi bi-clock"></i> Automatisch</span>
+                                {% elif run.triggered_by and run.triggered_by.startswith('manual:') %}
+                                <span class="text-primary"><i class="bi bi-person"></i> {{ run.triggered_by.replace('manual:', '') }}</span>
+                                {% else %}
+                                {{ run.triggered_by or '-' }}
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if run.error_message %}
+                                <button class="btn btn-sm btn-outline-danger" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#errorModal{{ run.id }}">
+                                    <i class="bi bi-exclamation-triangle"></i> Fehler
+                                </button>
+                                
+                                <!-- Error Modal -->
+                                <div class="modal fade" id="errorModal{{ run.id }}" tabindex="-1">
+                                    <div class="modal-dialog modal-lg">
+                                        <div class="modal-content">
+                                            <div class="modal-header bg-danger text-white">
+                                                <h5 class="modal-title">
+                                                    <i class="bi bi-exclamation-triangle me-2"></i>
+                                                    Fehler: {{ run.job_name }}
+                                                </h5>
+                                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <div class="modal-body">
+                                                <p><strong>Zeit:</strong> {{ run.started_at }}</p>
+                                                <p><strong>Fehlermeldung:</strong></p>
+                                                <pre class="bg-light p-3 rounded" style="max-height: 300px; overflow-y: auto;">{{ run.error_message }}</pre>
+                                                {% if run.result %}
+                                                <p><strong>Output:</strong></p>
+                                                <pre class="bg-light p-3 rounded" style="max-height: 200px; overflow-y: auto;">{{ run.result }}</pre>
+                                                {% endif %}
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% elif run.result %}
+                                <button class="btn btn-sm btn-outline-secondary" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#resultModal{{ run.id }}">
+                                    <i class="bi bi-file-text"></i> Output
+                                </button>
+                                
+                                <!-- Result Modal -->
+                                <div class="modal fade" id="resultModal{{ run.id }}" tabindex="-1">
+                                    <div class="modal-dialog modal-lg">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title">
+                                                    <i class="bi bi-file-text me-2"></i>
+                                                    Output: {{ run.job_name }}
+                                                </h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <div class="modal-body">
+                                                <pre class="bg-light p-3 rounded" style="max-height: 400px; overflow-y: auto;">{{ run.result }}</pre>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-4">
+                                Keine Einträge gefunden
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.spin {
+    animation: spin 1s linear infinite;
+}
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+</style>
+{% endblock %}

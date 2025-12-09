@@ -174,8 +174,63 @@ document.addEventListener('DOMContentLoaded', function() {
     // Konten laden
     loadKonten();
     
+    // Datenstand laden
+    loadDatenstand();
+    
     // Filter Event Listener
     document.getElementById('bankFilter').addEventListener('change', updateKontenTable);
     document.getElementById('statusFilter').addEventListener('change', updateKontenTable);
     document.getElementById('searchKonten').addEventListener('input', updateKontenTable);
 });
+
+// Datenstand laden und anzeigen
+async function loadDatenstand() {
+    try {
+        const response = await fetch('/api/bankenspiegel/datenstand');
+        if (!response.ok) throw new Error('API Fehler');
+        
+        const data = await response.json();
+        
+        if (data.success && data.datenstand) {
+            const ds = data.datenstand;
+            const badge = document.getElementById('datenstandBadge');
+            const label = document.getElementById('datenstandLabel');
+            const text = document.getElementById('datenstandText');
+            
+            // Datum formatieren
+            let standText = 'Unbekannt';
+            if (ds.neuester_kontostand) {
+                const datum = new Date(ds.neuester_kontostand);
+                standText = datum.toLocaleDateString('de-DE', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            }
+            
+            text.textContent = 'Stand: ' + standText;
+            
+            // Farbe basierend auf Aktualität
+            label.classList.remove('bg-secondary', 'bg-success', 'bg-warning', 'bg-danger');
+            
+            if (ds.status === 'aktuell') {
+                label.classList.add('bg-success');
+                label.title = 'Daten sind aktuell (heute oder gestern)';
+            } else if (ds.status === 'veraltet') {
+                label.classList.add('bg-danger');
+                label.title = `Daten sind ${ds.tage_alt} Tage alt - bitte Import prüfen!`;
+            } else {
+                label.classList.add('bg-warning');
+                label.title = `Daten sind ${ds.tage_alt || '?'} Tage alt`;
+            }
+            
+            badge.classList.remove('d-none');
+        }
+        
+    } catch (error) {
+        console.error('Fehler beim Laden des Datenstands:', error);
+        // Badge nicht anzeigen bei Fehler
+    }
+}

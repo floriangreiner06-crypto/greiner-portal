@@ -1,0 +1,541 @@
+{% extends "base.html" %}
+
+{% block title %}Berechnung - Jahresprämie{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Workflow Steps */
+.workflow-steps {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 30px;
+    position: relative;
+}
+.workflow-steps::before {
+    content: '';
+    position: absolute;
+    top: 20px;
+    left: 10%;
+    right: 10%;
+    height: 3px;
+    background: #dee2e6;
+    z-index: 0;
+}
+.workflow-step {
+    text-align: center;
+    z-index: 1;
+    flex: 1;
+}
+.step-circle {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #dee2e6;
+    color: #6c757d;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 10px;
+    font-weight: bold;
+    transition: all 0.3s;
+}
+.workflow-step.active .step-circle {
+    background: #007bff;
+    color: white;
+}
+.workflow-step.completed .step-circle {
+    background: #28a745;
+    color: white;
+}
+.step-label {
+    font-size: 0.85rem;
+    color: #6c757d;
+}
+.workflow-step.active .step-label {
+    color: #007bff;
+    font-weight: 600;
+}
+.workflow-step.completed .step-label {
+    color: #28a745;
+}
+
+/* Stats Cards */
+.stat-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 10px;
+    padding: 15px;
+    text-align: center;
+    margin-bottom: 15px;
+}
+.stat-card h4 {
+    font-size: 1.5rem;
+    margin: 0;
+    font-weight: 700;
+}
+.stat-card p {
+    margin: 5px 0 0 0;
+    opacity: 0.9;
+    font-size: 0.9rem;
+}
+.stat-card.green { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); }
+.stat-card.orange { background: linear-gradient(135deg, #fd7e14 0%, #ffc107 100%); }
+.stat-card.blue { background: linear-gradient(135deg, #007bff 0%, #17a2b8 100%); }
+
+/* Upload Zone */
+.upload-zone {
+    border: 2px dashed #dee2e6;
+    border-radius: 10px;
+    padding: 40px;
+    text-align: center;
+    transition: all 0.3s;
+    cursor: pointer;
+}
+.upload-zone:hover, .upload-zone.dragover {
+    border-color: #007bff;
+    background: #f8f9ff;
+}
+.upload-zone i {
+    font-size: 3rem;
+    color: #6c757d;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Breadcrumb & Title -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/jahrespraemie/">Jahresprämie</a></li>
+                    <li class="breadcrumb-item active" id="breadcrumbWJ">Berechnung</li>
+                </ol>
+            </nav>
+        </div>
+    </div>
+
+    <!-- Loading -->
+    <div id="loadingSpinner" class="text-center py-5">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="mt-2">Lade Berechnung...</p>
+    </div>
+
+    <!-- Main Content -->
+    <div id="mainContent" style="display: none;">
+        <!-- Header -->
+        <div class="row mb-4">
+            <div class="col-md-8">
+                <h1>
+                    <i class="bi bi-gift"></i> 
+                    <span id="titleWJ">Berechnung</span>
+                    <span class="badge bg-secondary" id="statusBadge">Entwurf</span>
+                </h1>
+            </div>
+            <div class="col-md-4 text-end">
+                <div class="btn-group">
+                    <a href="/jahrespraemie/{{ berechnung_id }}/mitarbeiter" class="btn btn-outline-primary">
+                        <i class="bi bi-people"></i> Mitarbeiter
+                    </a>
+                    <a href="/jahrespraemie/{{ berechnung_id }}/kulanz" class="btn btn-outline-primary">
+                        <i class="bi bi-heart"></i> Kulanz
+                    </a>
+                    <a href="/jahrespraemie/{{ berechnung_id }}/export" class="btn btn-outline-primary">
+                        <i class="bi bi-download"></i> Export
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Workflow Steps -->
+        <div class="workflow-steps" id="workflowSteps">
+            <div class="workflow-step" data-step="1">
+                <div class="step-circle">1</div>
+                <div class="step-label">Upload</div>
+            </div>
+            <div class="workflow-step" data-step="2">
+                <div class="step-circle">2</div>
+                <div class="step-label">Prüfen</div>
+            </div>
+            <div class="workflow-step" data-step="3">
+                <div class="step-circle">3</div>
+                <div class="step-label">Kulanz</div>
+            </div>
+            <div class="workflow-step" data-step="4">
+                <div class="step-circle">4</div>
+                <div class="step-label">Berechnen</div>
+            </div>
+            <div class="workflow-step" data-step="5">
+                <div class="step-circle">5</div>
+                <div class="step-label">Freigabe</div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Left Column: Workflow Steps -->
+            <div class="col-md-8">
+                
+                <!-- Step 1: Upload -->
+                <div class="card mb-4" id="step1Card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="bi bi-upload"></i> 1. Lohnjournal hochladen</h5>
+                        <span class="badge bg-secondary" id="uploadStatus">Ausstehend</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="upload-zone" id="uploadZone">
+                            <i class="bi bi-file-earmark-excel"></i>
+                            <h5 class="mt-3">Excel-Datei hier ablegen</h5>
+                            <p class="text-muted">oder klicken zum Auswählen</p>
+                            <input type="file" id="fileInput" accept=".xlsx,.xls" style="display: none;">
+                        </div>
+                        <div id="uploadProgress" style="display: none;" class="mt-3">
+                            <div class="progress">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%"></div>
+                            </div>
+                            <p class="text-center mt-2">Datei wird verarbeitet...</p>
+                        </div>
+                        <div id="uploadSuccess" style="display: none;" class="mt-3 alert alert-success">
+                            <i class="bi bi-check-circle"></i> <span id="uploadMessage"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2: Mitarbeiter-Stats -->
+                <div class="card mb-4" id="step2Card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="bi bi-people"></i> 2. Mitarbeiter prüfen</h5>
+                        <a href="/jahrespraemie/{{ berechnung_id }}/mitarbeiter" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-eye"></i> Details
+                        </a>
+                    </div>
+                    <div class="card-body">
+                        <div class="row text-center" id="maStats">
+                            <div class="col"><div class="border rounded p-2"><strong id="statGesamt">-</strong><br><small>Gesamt</small></div></div>
+                            <div class="col"><div class="border rounded p-2"><strong id="statBerechtigt">-</strong><br><small>Berechtigt</small></div></div>
+                            <div class="col"><div class="border rounded p-2"><strong id="statVZ">-</strong><br><small>VZ</small></div></div>
+                            <div class="col"><div class="border rounded p-2"><strong id="statTZ">-</strong><br><small>TZ</small></div></div>
+                            <div class="col"><div class="border rounded p-2"><strong id="statAzubi">-</strong><br><small>Azubi</small></div></div>
+                            <div class="col"><div class="border rounded p-2"><strong id="statMJ">-</strong><br><small>Minijob</small></div></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3: Kulanz -->
+                <div class="card mb-4" id="step3Card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="bi bi-heart"></i> 3. Kulanz festlegen</h5>
+                        <a href="/jahrespraemie/{{ berechnung_id }}/kulanz" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-pencil"></i> Bearbeiten
+                        </a>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted mb-0" id="kulanzInfo">Keine Kulanz-Regeln definiert.</p>
+                    </div>
+                </div>
+
+                <!-- Step 4: Berechnung -->
+                <div class="card mb-4" id="step4Card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-calculator"></i> 4. Berechnung durchführen</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <div class="border rounded p-3 text-center">
+                                    <small class="text-muted">Prämientopf</small><br>
+                                    <strong id="calcTopf" class="fs-5">-</strong>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="border rounded p-3 text-center">
+                                    <small class="text-muted">- Kulanz</small><br>
+                                    <strong id="calcKulanz" class="fs-5 text-warning">-</strong>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="border rounded p-3 text-center bg-light">
+                                    <small class="text-muted">= Bereinigt</small><br>
+                                    <strong id="calcBereinigt" class="fs-5 text-success">-</strong>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="border rounded p-3 text-center">
+                                    <small class="text-muted">Prämie I (Lohnanteil, 50%)</small><br>
+                                    <strong id="calcP1" class="fs-5">-</strong>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="border rounded p-3 text-center">
+                                    <small class="text-muted">Prämie II (Pro-Kopf, 50%)</small><br>
+                                    <strong id="calcP2" class="fs-5">-</strong>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="text-center">
+                            <button class="btn btn-primary btn-lg" id="btnBerechnen">
+                                <i class="bi bi-calculator"></i> Jetzt berechnen
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 5: Freigabe -->
+                <div class="card mb-4" id="step5Card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-check-circle"></i> 5. Freigabe & Export</h5>
+                    </div>
+                    <div class="card-body text-center">
+                        <p class="text-muted" id="freigebenInfo">Berechnung muss erst durchgeführt werden.</p>
+                        <button class="btn btn-success btn-lg" id="btnFreigeben" disabled>
+                            <i class="bi bi-check-circle"></i> Berechnung freigeben
+                        </button>
+                        <a href="/jahrespraemie/{{ berechnung_id }}/export" class="btn btn-outline-primary btn-lg ms-2" id="btnExport" style="display: none;">
+                            <i class="bi bi-download"></i> Exportieren
+                        </a>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Right Column: Summary -->
+            <div class="col-md-4">
+                <div class="card sticky-top" style="top: 80px;">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-info-circle"></i> Zusammenfassung</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-sm">
+                            <tr><td>Wirtschaftsjahr</td><td class="text-end" id="sumWJ">-</td></tr>
+                            <tr><td>Prämientopf</td><td class="text-end" id="sumTopf">-</td></tr>
+                            <tr><td>VZ/TZ-Grenze</td><td class="text-end" id="sumGrenze">-</td></tr>
+                            <tr><td colspan="2"><hr class="my-1"></td></tr>
+                            <tr><td>Berechtigte MA</td><td class="text-end" id="sumMA">-</td></tr>
+                            <tr><td>Höchstes Festgehalt</td><td class="text-end" id="sumHoechst">-</td></tr>
+                            <tr><td colspan="2"><hr class="my-1"></td></tr>
+                            <tr><td>Pro-Kopf VZ</td><td class="text-end" id="sumPKVZ">-</td></tr>
+                            <tr><td>Pro-Kopf TZ</td><td class="text-end" id="sumPKTZ">-</td></tr>
+                            <tr><td>Pro-Kopf MJ</td><td class="text-end" id="sumPKMJ">-</td></tr>
+                            <tr><td colspan="2"><hr class="my-1"></td></tr>
+                            <tr class="table-success"><td><strong>Summe Prämien</strong></td><td class="text-end"><strong id="sumTotal">-</strong></td></tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const BERECHNUNG_ID = {{ berechnung_id }};
+let berechnung = null;
+
+$(document).ready(function() {
+    loadBerechnung();
+    
+    // Upload Zone Events
+    const zone = $('#uploadZone');
+    const input = $('#fileInput');
+    
+    zone.on('click', () => input.click());
+    zone.on('dragover', (e) => { e.preventDefault(); zone.addClass('dragover'); });
+    zone.on('dragleave', () => zone.removeClass('dragover'));
+    zone.on('drop', (e) => {
+        e.preventDefault();
+        zone.removeClass('dragover');
+        const files = e.originalEvent.dataTransfer.files;
+        if (files.length) uploadFile(files[0]);
+    });
+    input.on('change', (e) => {
+        if (e.target.files.length) uploadFile(e.target.files[0]);
+    });
+    
+    // Berechnen Button
+    $('#btnBerechnen').on('click', berechnen);
+    
+    // Freigeben Button
+    $('#btnFreigeben').on('click', freigeben);
+});
+
+function loadBerechnung() {
+    $.get('/api/jahrespraemie/berechnung/' + BERECHNUNG_ID, function(data) {
+        $('#loadingSpinner').hide();
+        $('#mainContent').show();
+        
+        berechnung = data.berechnung;
+        updateUI();
+    }).fail(function() {
+        $('#loadingSpinner').html('<div class="alert alert-danger">Fehler beim Laden</div>');
+    });
+}
+
+function updateUI() {
+    const b = berechnung;
+    
+    // Title & Breadcrumb
+    $('#titleWJ').text(b.wirtschaftsjahr);
+    $('#breadcrumbWJ').text(b.wirtschaftsjahr);
+    
+    // Status Badge
+    const statusColors = {
+        'entwurf': 'bg-secondary',
+        'berechnet': 'bg-info',
+        'freigegeben': 'bg-success',
+        'exportiert': 'bg-primary'
+    };
+    $('#statusBadge').removeClass().addClass('badge ' + (statusColors[b.status] || 'bg-secondary')).text(b.status);
+    
+    // Summary
+    $('#sumWJ').text(b.wirtschaftsjahr);
+    $('#sumTopf').text(formatCurrency(b.praemientopf));
+    $('#sumGrenze').text((b.vz_tz_grenze || 30) + ' Std/Woche');
+    
+    // Upload Status
+    if (b.lohnjournal_datei) {
+        $('#uploadStatus').removeClass('bg-secondary').addClass('bg-success').text('Hochgeladen');
+        $('#uploadZone').hide();
+        $('#uploadSuccess').show();
+        $('#uploadMessage').text(b.lohnjournal_datei + ' importiert');
+        setWorkflowStep(2);
+    }
+    
+    // MA Stats
+    if (b.anzahl_gesamt > 0) {
+        $('#statGesamt').text(b.anzahl_gesamt);
+        $('#statBerechtigt').text(b.anzahl_gesamt); // TODO: echte berechtigt-Zahl
+        $('#statVZ').text(b.anzahl_vollzeit || 0);
+        $('#statTZ').text(b.anzahl_teilzeit || 0);
+        $('#statAzubi').text((b.anzahl_azubi_1 || 0) + (b.anzahl_azubi_2 || 0) + (b.anzahl_azubi_3 || 0));
+        $('#statMJ').text(b.anzahl_minijob || 0);
+        $('#sumMA').text(b.anzahl_gesamt);
+        setWorkflowStep(3);
+    }
+    
+    // Berechnung
+    $('#calcTopf').text(formatCurrency(b.praemientopf));
+    
+    if (b.status === 'berechnet' || b.status === 'freigegeben' || b.status === 'exportiert') {
+        $('#calcKulanz').text(formatCurrency(b.kulanz_volumen || 0));
+        $('#calcBereinigt').text(formatCurrency(b.bereinigter_topf));
+        $('#calcP1').text(formatCurrency(b.praemie_I_topf));
+        $('#calcP2').text(formatCurrency(b.praemie_II_topf));
+        
+        $('#sumHoechst').text(formatCurrency(b.hoechstes_festgehalt));
+        $('#sumPKVZ').text(formatCurrency(b.prokopf_vollzeit));
+        $('#sumPKTZ').text(formatCurrency(b.prokopf_teilzeit));
+        $('#sumPKMJ').text(formatCurrency(b.prokopf_minijob));
+        
+        // TODO: Summe aus Mitarbeitern
+        $('#sumTotal').text(formatCurrency(b.bereinigter_topf));
+        
+        $('#btnBerechnen').html('<i class="bi bi-arrow-clockwise"></i> Neu berechnen');
+        setWorkflowStep(5);
+        
+        $('#btnFreigeben').prop('disabled', false);
+        $('#freigebenInfo').text('Berechnung abgeschlossen. Bereit zur Freigabe.');
+    }
+    
+    if (b.status === 'freigegeben' || b.status === 'exportiert') {
+        $('#btnFreigeben').prop('disabled', true).html('<i class="bi bi-check-circle"></i> Freigegeben');
+        $('#btnExport').show();
+        setWorkflowStep(5, true);
+    }
+}
+
+function setWorkflowStep(step, completed = false) {
+    $('.workflow-step').each(function() {
+        const s = $(this).data('step');
+        $(this).removeClass('active completed');
+        if (s < step) $(this).addClass('completed');
+        if (s === step && !completed) $(this).addClass('active');
+        if (s === step && completed) $(this).addClass('completed');
+    });
+}
+
+function uploadFile(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    $('#uploadZone').hide();
+    $('#uploadProgress').show();
+    
+    $.ajax({
+        url: '/api/jahrespraemie/upload/' + BERECHNUNG_ID,
+        method: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: function(response) {
+            $('#uploadProgress').hide();
+            if (response.success) {
+                $('#uploadSuccess').show();
+                $('#uploadMessage').text(response.message);
+                loadBerechnung(); // Reload
+            } else {
+                alert('Fehler: ' + response.error);
+                $('#uploadZone').show();
+            }
+        },
+        error: function(xhr) {
+            $('#uploadProgress').hide();
+            $('#uploadZone').show();
+            alert('Upload fehlgeschlagen: ' + (xhr.responseJSON?.error || 'Serverfehler'));
+        }
+    });
+}
+
+function berechnen() {
+    const btn = $('#btnBerechnen');
+    btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Berechne...');
+    
+    $.ajax({
+        url: '/api/jahrespraemie/berechnen/' + BERECHNUNG_ID,
+        method: 'POST',
+        success: function(response) {
+            if (response.success) {
+                loadBerechnung();
+            } else {
+                alert('Fehler: ' + response.error);
+            }
+            btn.prop('disabled', false).html('<i class="bi bi-calculator"></i> Jetzt berechnen');
+        },
+        error: function(xhr) {
+            alert('Fehler: ' + (xhr.responseJSON?.error || 'Serverfehler'));
+            btn.prop('disabled', false).html('<i class="bi bi-calculator"></i> Jetzt berechnen');
+        }
+    });
+}
+
+function freigeben() {
+    if (!confirm('Berechnung wirklich freigeben? Danach können keine Änderungen mehr vorgenommen werden.')) return;
+    
+    const btn = $('#btnFreigeben');
+    btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> ...');
+    
+    $.ajax({
+        url: '/api/jahrespraemie/freigeben/' + BERECHNUNG_ID,
+        method: 'POST',
+        success: function(response) {
+            if (response.success) {
+                loadBerechnung();
+            } else {
+                alert('Fehler: ' + response.error);
+                btn.prop('disabled', false);
+            }
+        },
+        error: function(xhr) {
+            alert('Fehler: ' + (xhr.responseJSON?.error || 'Serverfehler'));
+            btn.prop('disabled', false);
+        }
+    });
+}
+
+function formatCurrency(value) {
+    return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value || 0);
+}
+</script>
+{% endblock %}

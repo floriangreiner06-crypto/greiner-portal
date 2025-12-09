@@ -1,0 +1,20 @@
+[
+  {
+    "type": "link",
+    "text": "Impressum",
+    "href": "https://www.digitalesautohaus.de/impressum"
+  },
+  {
+    "type": "link",
+    "text": "Datenschutz",
+    "href": "https://www.digitalesautohaus.de/datenschutzerklaerung/"
+  },
+  {
+    "type": "button",
+    "text": "PASSWORT VERGESSEN"
+  },
+  {
+    "type": "button",
+    "text": "ANMELDEN"
+  }
+]

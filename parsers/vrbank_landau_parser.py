@@ -41,7 +41,7 @@ class VRBankLandauParser(BaseParser):
     def bank_name(self) -> str:
         return "VR Bank Landau-Mengkofen"
 
-    def parse(self) -> List[Transaction]:
+    def parse(self) -> dict:
         """Parst VR Bank Landau PDF und extrahiert Transaktionen"""
         logger.info(f"📄 Parse {self.bank_name}: {self.pdf_path.name}")
 
@@ -72,12 +72,19 @@ class VRBankLandauParser(BaseParser):
                     tx.iban = self.iban
 
                 self.log_summary()
-                return self.transactions
+                
+                # Rückgabe als Dict (kompatibel mit import_all_bank_pdfs.py)
+                return {
+                    'iban': self.iban,
+                    'transactions': self.transactions,
+                    'endsaldo': self.endsaldo,
+                    'saldo_datum': self.transactions[-1].buchungsdatum.strftime('%Y-%m-%d') if self.transactions else None
+                }
 
         except Exception as e:
             logger.error(f"❌ Fehler beim Parsen: {e}")
             self.errors.append(str(e))
-            return []
+            return {'iban': None, 'transactions': [], 'endsaldo': None, 'saldo_datum': None}
 
     def _extract_full_text(self, pdf) -> str:
         """Extrahiert Text von allen Seiten"""

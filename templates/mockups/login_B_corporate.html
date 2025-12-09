@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login Mockup B - Clean Corporate</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            background: #f8fafc;
+        }
+
+        /* Left Side - Branding */
+        .brand-side {
+            flex: 1;
+            background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 60px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .brand-side::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
+        }
+
+        .brand-content {
+            position: relative;
+            z-index: 1;
+            text-align: center;
+            color: white;
+        }
+
+        .brand-logo {
+            background: white;
+            border-radius: 20px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 40px;
+            padding: 20px 35px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .brand-logo img {
+            height: 60px;
+            width: auto;
+        }
+
+        .brand-title {
+            font-size: 48px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            letter-spacing: -1px;
+        }
+
+        .brand-title span {
+            color: #3b82f6;
+        }
+
+        .brand-tagline {
+            font-size: 18px;
+            opacity: 0.8;
+            margin-bottom: 50px;
+        }
+
+        .brand-features {
+            text-align: left;
+            max-width: 300px;
+        }
+
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            opacity: 0.9;
+        }
+
+        .feature-item i {
+            width: 40px;
+            height: 40px;
+            background: rgba(59, 130, 246, 0.2);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #60a5fa;
+        }
+
+        .feature-item span {
+            font-size: 15px;
+        }
+
+        /* Right Side - Login Form */
+        .login-side {
+            width: 500px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 60px;
+            background: white;
+        }
+
+        .login-header {
+            margin-bottom: 40px;
+        }
+
+        .login-header h2 {
+            font-size: 28px;
+            color: #1e293b;
+            margin-bottom: 10px;
+        }
+
+        .login-header p {
+            color: #64748b;
+            font-size: 15px;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 8px;
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        .input-wrapper i {
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #9ca3af;
+            font-size: 18px;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 16px 16px 16px 50px;
+            background: #f8fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 15px;
+            transition: all 0.3s;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #3b82f6;
+            background: white;
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+        }
+
+        .form-options {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .checkbox-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .checkbox-wrapper input {
+            width: 18px;
+            height: 18px;
+            accent-color: #3b82f6;
+        }
+
+        .checkbox-wrapper label {
+            color: #64748b;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .btn-login {
+            width: 100%;
+            padding: 16px;
+            background: #1e3a5f;
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .btn-login:hover {
+            background: #2563eb;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(37, 99, 235, 0.3);
+        }
+
+        .login-footer {
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 1px solid #e2e8f0;
+            text-align: center;
+        }
+
+        .ad-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: #f0fdf4;
+            border-radius: 25px;
+            color: #15803d;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .design-label {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #1e3a5f;
+            color: white;
+            padding: 15px 25px;
+            border-radius: 12px;
+            z-index: 100;
+        }
+        .design-label h3 { margin-bottom: 5px; color: #60a5fa; }
+        .design-label p { font-size: 12px; opacity: 0.8; margin: 0; }
+
+        @media (max-width: 900px) {
+            body { flex-direction: column; }
+            .brand-side { display: none; }
+            .login-side { width: 100%; min-height: 100vh; }
+        }
+    </style>
+</head>
+<body>
+    <div class="design-label">
+        <h3>Option B: Clean Corporate</h3>
+        <p>Professionell, Split-Screen, Feature-Liste</p>
+    </div>
+
+    <!-- Left Side - Branding -->
+    <div class="brand-side">
+        <div class="brand-content">
+            <div class="brand-logo">
+                <img src="../../static/images/greiner-logo.svg" alt="Greiner Logo" onerror="this.src='../../static/images/greiner-logo.png'">
+            </div>
+            <h1 class="brand-title"><span>DRIVE</span></h1>
+            <p class="brand-tagline">Ihr digitales Autohaus-Management</p>
+
+            <div class="brand-features">
+                <div class="feature-item">
+                    <i class="bi bi-cart3"></i>
+                    <span>Verkauf & Auftragseingang</span>
+                </div>
+                <div class="feature-item">
+                    <i class="bi bi-truck"></i>
+                    <span>Auslieferungen & Bestand</span>
+                </div>
+                <div class="feature-item">
+                    <i class="bi bi-tools"></i>
+                    <span>After Sales & Werkstatt</span>
+                </div>
+                <div class="feature-item">
+                    <i class="bi bi-calendar-check"></i>
+                    <span>Urlaubsplaner</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Side - Login Form -->
+    <div class="login-side">
+        <div class="login-header">
+            <h2>Willkommen zurück</h2>
+            <p>Melden Sie sich mit Ihrem AD-Konto an</p>
+        </div>
+
+        <form>
+            <div class="form-group">
+                <label class="form-label">Benutzername</label>
+                <div class="input-wrapper">
+                    <i class="bi bi-person"></i>
+                    <input type="text" class="form-control" placeholder="ihr.name@auto-greiner.de">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Passwort</label>
+                <div class="input-wrapper">
+                    <i class="bi bi-lock"></i>
+                    <input type="password" class="form-control" placeholder="••••••••">
+                </div>
+            </div>
+
+            <div class="form-options">
+                <div class="checkbox-wrapper">
+                    <input type="checkbox" id="remember">
+                    <label for="remember">Angemeldet bleiben</label>
+                </div>
+            </div>
+
+            <button type="submit" class="btn-login">
+                <i class="bi bi-box-arrow-in-right"></i>
+                Anmelden
+            </button>
+        </form>
+
+        <div class="login-footer">
+            <div class="ad-badge">
+                <i class="bi bi-shield-check"></i>
+                Gesichert mit Active Directory
+            </div>
+        </div>
+    </div>
+</body>
+</html>

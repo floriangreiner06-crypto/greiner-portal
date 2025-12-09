@@ -201,14 +201,24 @@ try:
             aktueller_saldo = float(row['aktueller_saldo']) if pd.notna(row['aktueller_saldo']) else 0
             original_betrag = float(row['original_betrag']) if pd.notna(row['original_betrag']) else 0
 
+            # Hersteller aus Modell ableiten (T03, C10, B10 = Leapmotor)
+            if modell and any(x in modell for x in ['T03', 'C10', 'B10']):
+                hersteller = 'Leapmotor'
+            else:
+                hersteller = 'Opel'
+            
+            # produkt_kategorie = produktfamilie
+            produkt_kategorie = produktfamilie
+
             c.execute("""
                 INSERT OR REPLACE INTO fahrzeugfinanzierungen
-                (finanzinstitut, rrdi, produktfamilie, vin, modell, alter_tage, zinsfreiheit_tage,
-                 vertragsbeginn, aktueller_saldo, original_betrag, import_datum, aktiv)
-                VALUES ('Stellantis', ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 1)
+                (finanzinstitut, rrdi, produktfamilie, vin, modell, hersteller, produkt_kategorie,
+                 alter_tage, zinsfreiheit_tage, vertragsbeginn, aktueller_saldo, original_betrag, 
+                 import_datum, aktiv)
+                VALUES ('Stellantis', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 1)
             """, (
-                rrdi, produktfamilie, vin, modell, alter_tage, zinsfreiheit_tage,
-                vertragsbeginn, aktueller_saldo, original_betrag
+                rrdi, produktfamilie, vin, modell, hersteller, produkt_kategorie,
+                alter_tage, zinsfreiheit_tage, vertragsbeginn, aktueller_saldo, original_betrag
             ))
             stats['neu'] += 1
 
@@ -228,7 +238,7 @@ try:
         SET 
             zinsen_gesamt = ROUND(aktueller_saldo * ? / 100 * (alter_tage - zinsfreiheit_tage) / 365.0, 2),
             zinsen_letzte_periode = ROUND(aktueller_saldo * ? / 100 * 30 / 365.0, 2),
-            zins_startdatum = date(vertragsbeginn, '+' || zinsfreiheit_tage || ' days')
+            zins_startdatum = date('now', '-' || (alter_tage - zinsfreiheit_tage) || ' days')
         WHERE finanzinstitut = 'Stellantis'
           AND alter_tage > zinsfreiheit_tage
     """, (STELLANTIS_ZINSSATZ, STELLANTIS_ZINSSATZ))

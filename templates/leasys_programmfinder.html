@@ -1,0 +1,659 @@
+{% extends "base.html" %}
+
+{% block title %}Leasys Programmfinder - DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .wizard-container {
+        max-width: 900px;
+        margin: 0 auto;
+    }
+    
+    .wizard-step {
+        display: none;
+        animation: fadeIn 0.3s ease-in-out;
+    }
+    
+    .wizard-step.active {
+        display: block;
+    }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .option-card {
+        border: 2px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 15px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        background: white;
+    }
+    
+    .option-card:hover {
+        border-color: #2196F3;
+        box-shadow: 0 4px 12px rgba(33, 150, 243, 0.2);
+        transform: translateY(-2px);
+    }
+    
+    .option-card.selected {
+        border-color: #2196F3;
+        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+    }
+    
+    .option-card .card-icon {
+        font-size: 2.5rem;
+        margin-bottom: 10px;
+    }
+    
+    .option-card .card-title {
+        font-size: 1.2rem;
+        font-weight: 600;
+        color: #333;
+    }
+    
+    .option-card .card-desc {
+        font-size: 0.9rem;
+        color: #666;
+        margin-top: 5px;
+    }
+    
+    .progress-bar-wizard {
+        height: 8px;
+        background: #e0e0e0;
+        border-radius: 4px;
+        margin-bottom: 30px;
+        overflow: hidden;
+    }
+    
+    .progress-bar-wizard .progress {
+        height: 100%;
+        background: linear-gradient(90deg, #2196F3, #21CBF3);
+        border-radius: 4px;
+        transition: width 0.3s ease;
+    }
+    
+    .step-indicator {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 10px;
+    }
+    
+    .step-indicator .step {
+        flex: 1;
+        text-align: center;
+        font-size: 0.85rem;
+        color: #999;
+        position: relative;
+    }
+    
+    .step-indicator .step.active {
+        color: #2196F3;
+        font-weight: 600;
+    }
+    
+    .step-indicator .step.completed {
+        color: #4CAF50;
+    }
+    
+    .result-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 16px;
+        padding: 30px;
+        margin-bottom: 20px;
+    }
+    
+    .result-card .ma-id {
+        font-size: 2rem;
+        font-weight: bold;
+        margin-bottom: 10px;
+    }
+    
+    .result-card .ma-name {
+        font-size: 1.3rem;
+        opacity: 0.95;
+    }
+    
+    .copy-btn {
+        background: rgba(255,255,255,0.2);
+        border: none;
+        color: white;
+        padding: 8px 20px;
+        border-radius: 20px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .copy-btn:hover {
+        background: rgba(255,255,255,0.3);
+    }
+    
+    .alternative-card {
+        background: #f8f9fa;
+        border-radius: 12px;
+        padding: 15px 20px;
+        margin-bottom: 10px;
+        border-left: 4px solid #6c757d;
+    }
+    
+    .sonderaktion-badge {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        color: white;
+        padding: 5px 15px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        display: inline-block;
+        margin-bottom: 10px;
+    }
+    
+    .hint-box {
+        background: #fff3cd;
+        border-left: 4px solid #ffc107;
+        padding: 15px;
+        border-radius: 0 8px 8px 0;
+        margin-top: 10px;
+    }
+    
+    .hint-box.info {
+        background: #d1ecf1;
+        border-left-color: #17a2b8;
+    }
+    
+    .hint-box.success {
+        background: #d4edda;
+        border-left-color: #28a745;
+    }
+    
+    .btn-wizard {
+        padding: 12px 30px;
+        border-radius: 25px;
+        font-weight: 600;
+        transition: all 0.2s;
+    }
+    
+    .btn-wizard-primary {
+        background: linear-gradient(135deg, #2196F3, #21CBF3);
+        color: white;
+        border: none;
+    }
+    
+    .btn-wizard-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(33, 150, 243, 0.4);
+        color: white;
+    }
+    
+    .btn-wizard-secondary {
+        background: #f8f9fa;
+        color: #333;
+        border: 2px solid #e0e0e0;
+    }
+    
+    .laufzeit-slider {
+        width: 100%;
+        margin: 20px 0;
+    }
+    
+    .laufzeit-display {
+        font-size: 3rem;
+        font-weight: bold;
+        color: #2196F3;
+        text-align: center;
+    }
+    
+    .laufzeit-label {
+        text-align: center;
+        color: #666;
+        font-size: 1rem;
+    }
+    
+    .laufzeit-quick-select {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 20px;
+    }
+    
+    .laufzeit-quick-select .btn {
+        min-width: 80px;
+    }
+    
+    .live-badge {
+        background: #28a745;
+        color: white;
+        font-size: 0.7rem;
+        padding: 2px 8px;
+        border-radius: 10px;
+        margin-left: 8px;
+        vertical-align: middle;
+    }
+    
+    .loading-spinner {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid #f3f3f3;
+        border-top: 2px solid #2196F3;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-right: 8px;
+    }
+    
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="wizard-container">
+        <div class="text-center mb-4">
+            <h2><i class="bi bi-search-heart me-2"></i>Leasys Programmfinder</h2>
+            <p class="text-muted">Finde das richtige Master Agreement in wenigen Schritten</p>
+        </div>
+        
+        <div class="step-indicator">
+            <div class="step active" data-step="1">1. Marke</div>
+            <div class="step" data-step="2">2. Fahrzeugtyp</div>
+            <div class="step" data-step="3">3. Rücknahme</div>
+            <div class="step" data-step="4">4. Laufzeit</div>
+            <div class="step" data-step="5">5. Sonderfall</div>
+            <div class="step" data-step="6">Ergebnis</div>
+        </div>
+        <div class="progress-bar-wizard">
+            <div class="progress" style="width: 16.66%"></div>
+        </div>
+        
+        <div class="wizard-step active" data-step="1">
+            <h4 class="mb-4">Welche Marke?</h4>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="option-card" data-value="Opel" data-field="marke">
+                        <div class="card-icon">⚡</div>
+                        <div class="card-title">Opel</div>
+                        <div class="card-desc">Corsa, Astra, Grandland, Mokka, etc.</div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="option-card" data-value="Leapmotor" data-field="marke">
+                        <div class="card-icon">🔋</div>
+                        <div class="card-title">Leapmotor</div>
+                        <div class="card-desc">T03, C10, B10</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="wizard-step" data-step="2">
+            <h4 class="mb-4">Welcher Fahrzeugtyp?</h4>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="option-card" data-value="NW" data-field="fahrzeugtyp">
+                        <div class="card-icon">🚗</div>
+                        <div class="card-title">Neuwagen</div>
+                        <div class="card-desc">Fabrikneues Fahrzeug vom Hersteller</div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="option-card" data-value="TZ/VFW" data-field="fahrzeugtyp">
+                        <div class="card-icon">🏷️</div>
+                        <div class="card-title">Tageszulassung / VFW</div>
+                        <div class="card-desc">Bis 360 Tage seit EZ, max. 10.000 km</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="wizard-step" data-step="3">
+            <h4 class="mb-4">Wer nimmt das Fahrzeug zurück?</h4>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="option-card" data-value="Leasys" data-field="buyback">
+                        <div class="card-icon">🏦</div>
+                        <div class="card-title">Rücknahme Leasys</div>
+                        <div class="card-desc">Leasys übernimmt das Fahrzeug am Ende</div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="option-card" data-value="Handel" data-field="buyback">
+                        <div class="card-icon">🏪</div>
+                        <div class="card-title">Rückkauf Händler</div>
+                        <div class="card-desc">Händler kauft das Fahrzeug zurück</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="wizard-step" data-step="4">
+            <h4 class="mb-4">Gewünschte Laufzeit?</h4>
+            <div class="text-center">
+                <div class="laufzeit-display" id="laufzeitDisplay">36</div>
+                <div class="laufzeit-label">Monate</div>
+                <input type="range" class="form-range laufzeit-slider" id="laufzeitSlider" min="24" max="60" step="6" value="36">
+                <div class="laufzeit-quick-select">
+                    <button type="button" class="btn btn-outline-primary" data-laufzeit="24">24</button>
+                    <button type="button" class="btn btn-outline-primary" data-laufzeit="30">30</button>
+                    <button type="button" class="btn btn-primary" data-laufzeit="36">36</button>
+                    <button type="button" class="btn btn-outline-primary" data-laufzeit="42">42</button>
+                    <button type="button" class="btn btn-outline-primary" data-laufzeit="48">48</button>
+                    <button type="button" class="btn btn-outline-primary" data-laufzeit="54">54</button>
+                    <button type="button" class="btn btn-outline-primary" data-laufzeit="60">60</button>
+                </div>
+            </div>
+            <div class="text-center mt-4">
+                <button type="button" class="btn btn-wizard btn-wizard-primary" id="btnLaufzeitWeiter">Weiter <i class="bi bi-arrow-right ms-2"></i></button>
+            </div>
+        </div>
+        
+        <div class="wizard-step" data-step="5">
+            <h4 class="mb-4">Besondere Konditionen?</h4>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="option-card" data-value="standard" data-field="sonderfall">
+                        <div class="card-icon">✅</div>
+                        <div class="card-title">Standard B2B</div>
+                        <div class="card-desc">Normales subventioniertes Leasing</div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="option-card" data-value="individuelle_kondition" data-field="sonderfall">
+                        <div class="card-icon">📋</div>
+                        <div class="card-title">Individuelle Kondition</div>
+                        <div class="card-desc">A0-Protokoll, Gesamtmargen, Net Price</div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="option-card" data-value="haendlereigen" data-field="sonderfall">
+                        <div class="card-icon">🔧</div>
+                        <div class="card-title">Händlereigenes Fahrzeug</div>
+                        <div class="card-desc">Werkstattersatz, Untervermietung</div>
+                    </div>
+                </div>
+                <div class="col-md-6" id="netPriceOption" style="display: none;">
+                    <div class="option-card" data-value="net_price" data-field="sonderfall">
+                        <div class="card-icon">💰</div>
+                        <div class="card-title">Net Price</div>
+                        <div class="card-desc">Nur für TZ/VFW - ohne B2B Standard</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="wizard-step" data-step="6">
+            <div id="resultContent"></div>
+            <div class="text-center mt-4">
+                <button type="button" class="btn btn-wizard btn-wizard-secondary" id="btnNeustart"><i class="bi bi-arrow-repeat me-2"></i>Neue Suche</button>
+            </div>
+        </div>
+        
+        <div class="d-flex justify-content-between mt-4" id="wizardNav">
+            <button type="button" class="btn btn-wizard btn-wizard-secondary" id="btnZurueck" style="display: none;"><i class="bi bi-arrow-left me-2"></i>Zurück</button>
+            <div></div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modellModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Modell angeben (optional) <span class="live-badge" id="liveBadge" style="display: none;">LIVE</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted">Für manche Modelle gibt es Sonderaktionen mit besseren Konditionen.</p>
+                <div id="modellLoadingIndicator" style="display: none;"><span class="loading-spinner"></span>Lade Fahrzeuge von Leasys...</div>
+                <select class="form-select" id="modellInput"><option value="">-- Kein bestimmtes Modell --</option></select>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Überspringen</button>
+                <button type="button" class="btn btn-primary" id="btnModellOk">OK</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const wizard = {
+    currentStep: 1,
+    totalSteps: 6,
+    modellModal: null,
+    vehiclesCache: {},
+    data: { marke: null, fahrzeugtyp: null, buyback: null, laufzeit: 36, sonderfall: null, modell: null },
+    
+    init() {
+        const modalEl = document.getElementById('modellModal');
+        if (modalEl) this.modellModal = new bootstrap.Modal(modalEl);
+        this.bindEvents();
+        this.updateProgress();
+    },
+    
+    bindEvents() {
+        document.querySelectorAll('.option-card').forEach(card => {
+            card.addEventListener('click', (e) => {
+                const field = card.dataset.field;
+                const value = card.dataset.value;
+                const step = card.closest('.wizard-step');
+                step.querySelectorAll('.option-card').forEach(c => c.classList.remove('selected'));
+                card.classList.add('selected');
+                this.data[field] = value;
+                
+                if (field === 'fahrzeugtyp') {
+                    const netPriceOption = document.getElementById('netPriceOption');
+                    netPriceOption.style.display = value === 'TZ/VFW' ? 'block' : 'none';
+                    if (value !== 'TZ/VFW' && this.data.sonderfall === 'net_price') this.data.sonderfall = null;
+                }
+                if (field === 'marke') this.preloadVehicles(value);
+                if (field !== 'laufzeit') setTimeout(() => this.nextStep(), 300);
+            });
+        });
+        
+        document.getElementById('laufzeitSlider').addEventListener('input', (e) => {
+            document.getElementById('laufzeitDisplay').textContent = e.target.value;
+            this.data.laufzeit = parseInt(e.target.value);
+            this.updateLaufzeitButtons(e.target.value);
+        });
+        
+        document.querySelectorAll('.laufzeit-quick-select .btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const value = e.target.dataset.laufzeit;
+                document.getElementById('laufzeitSlider').value = value;
+                document.getElementById('laufzeitDisplay').textContent = value;
+                this.data.laufzeit = parseInt(value);
+                this.updateLaufzeitButtons(value);
+            });
+        });
+        
+        document.getElementById('btnLaufzeitWeiter').addEventListener('click', () => this.nextStep());
+        document.getElementById('btnZurueck').addEventListener('click', () => this.prevStep());
+        document.getElementById('btnNeustart').addEventListener('click', () => this.reset());
+        document.getElementById('btnModellOk').addEventListener('click', () => {
+            this.data.modell = document.getElementById('modellInput').value;
+            this.modellModal.hide();
+            this.showResult();
+        });
+        document.getElementById('modellModal').addEventListener('hidden.bs.modal', () => {
+            if (this.currentStep === 5 && !this.data.modell) this.showResult();
+        });
+        document.getElementById('modellModal').addEventListener('show.bs.modal', () => this.loadVehiclesForModal());
+    },
+    
+    async preloadVehicles(marke) {
+        if (this.vehiclesCache[marke]) return;
+        try {
+            const response = await fetch(`/api/leasys/live/vehicles?marke=${marke}`);
+            const data = await response.json();
+            if (data.success && data.vehicles) this.vehiclesCache[marke] = { vehicles: data.vehicles, source: data.source };
+        } catch (error) { console.log('Preload failed:', error); }
+    },
+    
+    async loadVehiclesForModal() {
+        const marke = this.data.marke;
+        const select = document.getElementById('modellInput');
+        const loadingIndicator = document.getElementById('modellLoadingIndicator');
+        const liveBadge = document.getElementById('liveBadge');
+        
+        select.innerHTML = '<option value="">-- Kein bestimmtes Modell --</option>';
+        liveBadge.style.display = 'none';
+        
+        if (this.vehiclesCache[marke]) { this.populateVehicleDropdown(this.vehiclesCache[marke]); return; }
+        
+        loadingIndicator.style.display = 'block';
+        select.disabled = true;
+        
+        try {
+            const response = await fetch(`/api/leasys/live/vehicles?marke=${marke}`);
+            const data = await response.json();
+            if (data.success && data.vehicles) {
+                this.vehiclesCache[marke] = { vehicles: data.vehicles, source: data.source };
+                this.populateVehicleDropdown(this.vehiclesCache[marke]);
+            } else { this.populateFallbackDropdown(marke); }
+        } catch (error) { this.populateFallbackDropdown(marke); }
+        finally { loadingIndicator.style.display = 'none'; select.disabled = false; }
+    },
+    
+    populateVehicleDropdown(data) {
+        const select = document.getElementById('modellInput');
+        const liveBadge = document.getElementById('liveBadge');
+        select.innerHTML = '<option value="">-- Kein bestimmtes Modell --</option>';
+        
+        const pkw = [], nutzfahrzeuge = [], electric = [];
+        data.vehicles.forEach(v => {
+            const name = v.name || v;
+            const nameLower = name.toLowerCase();
+            if (nameLower.includes('combo') || nameLower.includes('vivaro') || nameLower.includes('movano') || nameLower.includes('zafira')) nutzfahrzeuge.push(name);
+            else if (nameLower.includes('electric') || nameLower.includes('-e ') || nameLower.includes('-e-')) electric.push(name);
+            else pkw.push(name);
+        });
+        
+        [['🚗 PKW', pkw], ['⚡ Elektro', electric], ['🚐 Nutzfahrzeuge', nutzfahrzeuge]].forEach(([label, arr]) => {
+            if (arr.length > 0) {
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = label;
+                arr.sort().forEach(name => {
+                    const option = document.createElement('option');
+                    option.value = name.split(' ')[0];
+                    option.textContent = name;
+                    optgroup.appendChild(option);
+                });
+                select.appendChild(optgroup);
+            }
+        });
+        if (data.source === 'live') liveBadge.style.display = 'inline';
+    },
+    
+    populateFallbackDropdown(marke) {
+        const select = document.getElementById('modellInput');
+        const fallback = {
+            'Opel': { '🚗 PKW': ['Corsa', 'Astra', 'Mokka', 'Grandland', 'Frontera'], '🚐 Nutzfahrzeuge': ['Combo', 'Vivaro', 'Movano', 'Zafira'] },
+            'Leapmotor': { '⚡ Modelle': ['T03', 'C10', 'C10 REEV', 'B10'] }
+        };
+        for (const [group, models] of Object.entries(fallback[marke] || {})) {
+            const optgroup = document.createElement('optgroup');
+            optgroup.label = group;
+            models.forEach(name => { const o = document.createElement('option'); o.value = name; o.textContent = name; optgroup.appendChild(o); });
+            select.appendChild(optgroup);
+        }
+    },
+    
+    updateLaufzeitButtons(value) {
+        document.querySelectorAll('.laufzeit-quick-select .btn').forEach(btn => {
+            btn.classList.toggle('btn-primary', btn.dataset.laufzeit === String(value));
+            btn.classList.toggle('btn-outline-primary', btn.dataset.laufzeit !== String(value));
+        });
+    },
+    
+    nextStep() {
+        if (this.currentStep < this.totalSteps) {
+            if (this.currentStep === 5) { this.modellModal.show(); return; }
+            this.goToStep(this.currentStep + 1);
+        }
+    },
+    
+    prevStep() { if (this.currentStep > 1) this.goToStep(this.currentStep - 1); },
+    
+    goToStep(step) {
+        document.querySelector(`.wizard-step[data-step="${this.currentStep}"]`).classList.remove('active');
+        this.currentStep = step;
+        document.querySelector(`.wizard-step[data-step="${this.currentStep}"]`).classList.add('active');
+        this.updateProgress();
+        document.getElementById('btnZurueck').style.display = (this.currentStep > 1 && this.currentStep < 6) ? 'block' : 'none';
+        document.getElementById('wizardNav').style.display = this.currentStep < 6 ? 'flex' : 'none';
+    },
+    
+    updateProgress() {
+        document.querySelector('.progress-bar-wizard .progress').style.width = `${(this.currentStep / this.totalSteps) * 100}%`;
+        document.querySelectorAll('.step-indicator .step').forEach(el => {
+            const stepNum = parseInt(el.dataset.step);
+            el.classList.remove('active', 'completed');
+            if (stepNum < this.currentStep) el.classList.add('completed');
+            else if (stepNum === this.currentStep) el.classList.add('active');
+        });
+    },
+    
+    async showResult() {
+        this.goToStep(6);
+        document.getElementById('resultContent').innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-3">Suche passendes Programm...</p></div>';
+        try {
+            const response = await fetch('/api/leasys/finder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.data) });
+            this.renderResult(await response.json());
+        } catch (error) { document.getElementById('resultContent').innerHTML = `<div class="alert alert-danger">Fehler: ${error.message}</div>`; }
+    },
+    
+    renderResult(result) {
+        let html = '';
+        if (result.success && result.empfehlung) {
+            const emp = result.empfehlung;
+            const srcBadge = result.source === 'live' ? '<span class="live-badge">LIVE</span>' : '';
+            
+            if (result.sonderaktionen?.length > 0) result.sonderaktionen.forEach(a => {
+                html += `<div class="mb-4"><span class="sonderaktion-badge">🎯 Sonderaktion!</span><div class="result-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);"><div class="d-flex justify-content-between"><div><div class="ma-id">${a.ma_id}</div><div class="ma-name">${a.name}</div><p class="mt-2 mb-0" style="opacity: 0.9">${a.erklaerung}</p></div><button class="copy-btn" onclick="navigator.clipboard.writeText('${a.ma_id}'); this.innerHTML='Kopiert!';"><i class="bi bi-clipboard"></i> Kopieren</button></div></div></div>`;
+            });
+            
+            html += `<div class="result-card"><div class="d-flex justify-content-between"><div><small style="opacity: 0.8">Empfohlenes Master Agreement ${srcBadge}</small><div class="ma-id">${emp.ma_id}</div><div class="ma-name">${emp.name}</div><p class="mt-2 mb-0" style="opacity: 0.9">${emp.erklaerung}</p></div><button class="copy-btn" onclick="navigator.clipboard.writeText('${emp.ma_id}'); this.innerHTML='Kopiert!';"><i class="bi bi-clipboard"></i> Kopieren</button></div></div>`;
+            
+            if (result.hinweise?.length > 0) { html += `<div class="hint-box info"><strong>Hinweise:</strong><ul class="mb-0 mt-2">${result.hinweise.map(h => `<li>${h}</li>`).join('')}</ul></div>`; }
+            
+            if (result.alternativen?.length > 0) {
+                html += `<h5 class="mt-4 mb-3">Alternativen</h5>`;
+                result.alternativen.forEach(alt => { html += `<div class="alternative-card"><div class="d-flex justify-content-between"><div><strong>${alt.ma_id}</strong> - ${alt.name}<br><small class="text-muted">${alt.erklaerung}</small></div><button class="btn btn-sm btn-outline-secondary" onclick="navigator.clipboard.writeText('${alt.ma_id}')"><i class="bi bi-clipboard"></i></button></div></div>`; });
+            }
+            
+            html += `<div class="card mt-4"><div class="card-body"><h6 class="card-title">Ihre Auswahl</h6><div class="row"><div class="col-6 col-md-3"><small class="text-muted">Marke</small><br><strong>${this.data.marke}</strong></div><div class="col-6 col-md-3"><small class="text-muted">Typ</small><br><strong>${this.data.fahrzeugtyp}</strong></div><div class="col-6 col-md-3"><small class="text-muted">Rücknahme</small><br><strong>${this.data.buyback}</strong></div><div class="col-6 col-md-3"><small class="text-muted">Laufzeit</small><br><strong>${this.data.laufzeit} Monate</strong></div></div>${this.data.modell ? `<div class="mt-2"><small class="text-muted">Modell</small><br><strong>${this.data.modell}</strong></div>` : ''}</div></div>`;
+            
+            // Button: Weiter zum Kalkulator
+            html += `<div class="text-center mt-4">
+                <a href="/verkauf/leasys-kalkulator?brand=${this.data.marke.toUpperCase()}&ma_id=${emp.ma_id}&auto=1" class="btn btn-lg btn-wizard btn-wizard-primary">
+                    <i class="bi bi-calculator me-2"></i>Fahrzeuge im Kalkulator anzeigen
+                </a>
+            </div>`;
+        } else {
+            html = `<div class="alert alert-warning"><h5><i class="bi bi-exclamation-triangle me-2"></i>Kein passendes Programm gefunden</h5><p>Bitte prüfen Sie Ihre Eingaben oder kontaktieren Sie Leasys direkt.</p></div>`;
+        }
+        document.getElementById('resultContent').innerHTML = html;
+    },
+    
+    reset() {
+        this.data = { marke: null, fahrzeugtyp: null, buyback: null, laufzeit: 36, sonderfall: null, modell: null };
+        document.querySelectorAll('.option-card').forEach(c => c.classList.remove('selected'));
+        document.getElementById('laufzeitSlider').value = 36;
+        document.getElementById('laufzeitDisplay').textContent = '36';
+        this.updateLaufzeitButtons(36);
+        document.getElementById('modellInput').value = '';
+        document.getElementById('netPriceOption').style.display = 'none';
+        this.goToStep(1);
+    }
+};
+document.addEventListener('DOMContentLoaded', () => wizard.init());
+</script>
+{% endblock %}

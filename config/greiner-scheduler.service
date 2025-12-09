@@ -1,0 +1,22 @@
+[Unit]
+Description=Greiner Portal Job Scheduler
+After=network.target greiner-portal.service
+Wants=greiner-portal.service
+
+[Service]
+Type=simple
+User=ag-admin
+Group=ag-admin
+WorkingDirectory=/opt/greiner-portal
+Environment="PATH=/opt/greiner-portal/venv/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/opt/greiner-portal/venv/bin/python3 /opt/greiner-portal/scheduler_standalone.py
+Restart=always
+RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=greiner-scheduler
+
+[Install]
+WantedBy=multi-user.target

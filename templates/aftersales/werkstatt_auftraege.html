@@ -1,0 +1,438 @@
+{% extends "base.html" %}
+
+{% block title %}Werkstatt Aufträge - ML-Analyse - {{ app_name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* ML-Status Ampel */
+    .ml-status-unterbewertet { background: rgba(231, 76, 60, 0.15); }
+    .ml-status-leicht_unterbewertet { background: rgba(243, 156, 18, 0.15); }
+    .ml-status-ok { background: rgba(236, 240, 241, 0.5); }
+    .ml-status-ueberbewertet { background: rgba(39, 174, 96, 0.15); }
+    
+    /* KPI Cards */
+    .kpi-card {
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+        transition: all 0.3s;
+    }
+    .kpi-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    .kpi-value {
+        font-size: 2.5rem;
+        font-weight: 700;
+        line-height: 1;
+    }
+    
+    /* Tabelle */
+    .table-auftraege th {
+        background: #f8f9fa;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+    .table-auftraege td {
+        vertical-align: middle;
+    }
+    .ml-icon {
+        font-size: 1.5rem;
+    }
+    
+    /* Filter */
+    .filter-section {
+        background: #f8f9fa;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    
+    /* Sortierung */
+    th.sortable {
+        cursor: pointer;
+        user-select: none;
+    }
+    th.sortable:hover {
+        background: #e9ecef;
+    }
+    th.sorted-asc::after { content: ' ▲'; }
+    th.sorted-desc::after { content: ' ▼'; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1">
+                <i class="bi bi-robot text-purple"></i>
+                Werkstatt Aufträge - ML-Analyse
+            </h2>
+            <p class="text-muted mb-0">KI-basierte Vorgabe-Prüfung für offene Aufträge</p>
+        </div>
+        <div>
+            <button class="btn btn-outline-primary" onclick="loadAuftraege()">
+                <i class="bi bi-arrow-clockwise"></i> Aktualisieren
+            </button>
+            <a href="/werkstatt/stempeluhr" class="btn btn-outline-secondary">
+                <i class="bi bi-stopwatch"></i> Stempeluhr
+            </a>
+        </div>
+    </div>
+    
+    <!-- KPI Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="kpi-card" style="background: rgba(231,76,60,0.1);">
+                <div class="text-muted small">🔴 RISIKO</div>
+                <div class="kpi-value text-danger" id="kpi-unterbewertet">-</div>
+                <small class="text-muted">Aufträge könnten länger dauern</small>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-card" style="background: rgba(241,196,15,0.1);">
+                <div class="text-muted small">⚠️ MEHRAUFWAND</div>
+                <div class="kpi-value text-warning" id="kpi-potenzial">-</div>
+                <small class="text-muted">erwartete Mehr-AW</small>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-card" style="background: rgba(39,174,96,0.1);">
+                <div class="text-muted small">🟢 SCHNELLER</div>
+                <div class="kpi-value text-success" id="kpi-ueberbewertet">-</div>
+                <small class="text-muted">könnten schneller gehen</small>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-card" style="background: rgba(52,152,219,0.1);">
+                <div class="text-muted small">💰 RISIKO-WERT</div>
+                <div class="kpi-value text-primary" id="kpi-wert">-</div>
+                <small class="text-muted">geschätzter Mehraufwand</small>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Filter -->
+    <div class="filter-section">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label small">Betrieb</label>
+                <select class="form-select" id="filter-betrieb">
+                    <option value="">Alle Betriebe</option>
+                    <option value="1">Deggendorf (Stellantis)</option>
+                    <option value="2">Deggendorf (Hyundai)</option>
+                    <option value="3">Landau</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Zeitraum</label>
+                <select class="form-select" id="filter-tage">
+                    <option value="7">Letzte 7 Tage</option>
+                    <option value="14" selected>Letzte 14 Tage</option>
+                    <option value="30">Letzte 30 Tage</option>
+                    <option value="60">Letzte 60 Tage</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">ML-Status</label>
+                <select class="form-select" id="filter-status">
+                    <option value="">Alle</option>
+                    <option value="unterbewertet">🔴 Nur Unterbewertet</option>
+                    <option value="leicht_unterbewertet">🟡 Leicht Unterbewertet</option>
+                    <option value="ok">⚪ OK</option>
+                    <option value="ueberbewertet">🟢 Überbewertet</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Nur offen</label>
+                <select class="form-select" id="filter-offen">
+                    <option value="true" selected>Ja</option>
+                    <option value="false">Nein</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Mit Gudat-Termin</label>
+                <select class="form-select" id="filter-gudat">
+                    <option value="">Alle</option>
+                    <option value="true">Nur mit Termin</option>
+                    <option value="false">Ohne Termin</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-primary w-100" onclick="loadAuftraege()">
+                    <i class="bi bi-funnel"></i> Filtern
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Tabelle -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="bi bi-table"></i> Aufträge
+                <span class="badge bg-secondary ms-2" id="count-auftraege">-</span>
+            </h5>
+            <small class="text-muted" id="last-update">-</small>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive" style="max-height: 70vh; overflow-y: auto;">
+                <table class="table table-hover table-auftraege mb-0">
+                    <thead>
+                        <tr>
+                            <th style="width: 50px;">ML</th>
+                            <th class="sortable" data-sort="auftrag_nr">Auftrag</th>
+                            <th>Kennzeichen</th>
+                            <th>Kunde</th>
+                            <th>Marke</th>
+                            <th class="text-end sortable" data-sort="vorgabe_aw">Vorgabe</th>
+                            <th class="text-end sortable" data-sort="ml_vorhersage_aw">ML-Prognose</th>
+                            <th class="text-end sortable" data-sort="ml_potenzial_aw">Risiko Δ</th>
+                            <th>Mechaniker</th>
+                            <th class="text-end">Fortschritt</th>
+                            <th>Termin</th>
+                        </tr>
+                    </thead>
+                    <tbody id="auftraege-body">
+                        <tr>
+                            <td colspan="11" class="text-center py-5">
+                                <div class="spinner-border text-primary"></div>
+                                <div class="mt-2">Lade Aufträge...</div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ML_AW_PREIS = 100;  // €/AW
+
+let auftraegeData = [];
+let currentSort = { field: 'ml_potenzial_aw', desc: true };
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadAuftraege();
+    
+    // Sortierung aktivieren
+    document.querySelectorAll('th.sortable').forEach(th => {
+        th.addEventListener('click', () => sortTable(th.dataset.sort));
+    });
+});
+
+function loadAuftraege() {
+    const betrieb = document.getElementById('filter-betrieb').value;
+    const tage = document.getElementById('filter-tage').value;
+    const status = document.getElementById('filter-status').value;
+    const offen = document.getElementById('filter-offen').value;
+    const gudat = document.getElementById('filter-gudat').value;
+    
+    let url = `/api/werkstatt/live/auftraege-enriched?tage=${tage}&mit_ml=true&mit_gudat=true`;
+    if (betrieb) url += `&subsidiary=${betrieb}`;
+    if (offen) url += `&nur_offen=${offen}`;
+    
+    document.getElementById('auftraege-body').innerHTML = `
+        <tr><td colspan="11" class="text-center py-5">
+            <div class="spinner-border text-primary"></div>
+            <div class="mt-2">Lade Aufträge...</div>
+        </td></tr>
+    `;
+    
+    fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) {
+                showError(data.error || 'API-Fehler');
+                return;
+            }
+            
+            auftraegeData = data.auftraege || [];
+            
+            // Client-seitig filtern
+            if (status) {
+                auftraegeData = auftraegeData.filter(a => a.ml_status === status);
+            }
+            if (gudat === 'true') {
+                auftraegeData = auftraegeData.filter(a => a.hat_gudat_termin);
+            } else if (gudat === 'false') {
+                auftraegeData = auftraegeData.filter(a => !a.hat_gudat_termin);
+            }
+            
+            updateKPIs(auftraegeData);
+            sortTable(currentSort.field, false);
+            
+            document.getElementById('last-update').textContent = 
+                'Aktualisiert: ' + new Date().toLocaleTimeString('de-DE');
+        })
+        .catch(err => {
+            console.error(err);
+            showError('Verbindungsfehler');
+        });
+}
+
+function updateKPIs(auftraege) {
+    const unterbewertet = auftraege.filter(a => 
+        a.ml_status === 'unterbewertet' || a.ml_status === 'leicht_unterbewertet'
+    );
+    const ueberbewertet = auftraege.filter(a => a.ml_status === 'überbewertet');
+    
+    const potenzialAW = auftraege
+        .filter(a => a.ml_potenzial_aw && a.ml_potenzial_aw > 0)
+        .reduce((sum, a) => sum + a.ml_potenzial_aw, 0);
+    
+    document.getElementById('kpi-unterbewertet').textContent = unterbewertet.length + ' Aufträge';
+    document.getElementById('kpi-potenzial').textContent = Math.round(potenzialAW) + ' AW';
+    document.getElementById('kpi-ueberbewertet').textContent = ueberbewertet.length + ' Aufträge';
+    document.getElementById('kpi-wert').textContent = formatCurrency(potenzialAW * ML_AW_PREIS);
+    
+    document.getElementById('count-auftraege').textContent = auftraege.length;
+}
+
+function sortTable(field, toggle = true) {
+    if (toggle && currentSort.field === field) {
+        currentSort.desc = !currentSort.desc;
+    } else if (toggle) {
+        currentSort.field = field;
+        currentSort.desc = true;
+    }
+    
+    // Header-Klassen aktualisieren
+    document.querySelectorAll('th.sortable').forEach(th => {
+        th.classList.remove('sorted-asc', 'sorted-desc');
+        if (th.dataset.sort === currentSort.field) {
+            th.classList.add(currentSort.desc ? 'sorted-desc' : 'sorted-asc');
+        }
+    });
+    
+    // Sortieren
+    auftraegeData.sort((a, b) => {
+        let valA = a[field] || 0;
+        let valB = b[field] || 0;
+        
+        if (typeof valA === 'string') {
+            valA = valA.toLowerCase();
+            valB = (valB || '').toLowerCase();
+            return currentSort.desc ? valB.localeCompare(valA) : valA.localeCompare(valB);
+        }
+        
+        return currentSort.desc ? valB - valA : valA - valB;
+    });
+    
+    renderTable();
+}
+
+function renderTable() {
+    const tbody = document.getElementById('auftraege-body');
+    
+    if (!auftraegeData.length) {
+        tbody.innerHTML = `
+            <tr><td colspan="11" class="text-center py-5 text-muted">
+                <i class="bi bi-inbox fs-1"></i><br>
+                Keine Aufträge gefunden
+            </td></tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = auftraegeData.map(a => {
+        const statusIcon = a.ml_status_icon || '⚪';
+        const statusClass = a.ml_status === 'unterbewertet' ? 'ml-status-unterbewertet' :
+                           (a.ml_status === 'leicht_unterbewertet' ? 'ml-status-leicht_unterbewertet' :
+                           (a.ml_status === 'überbewertet' ? 'ml-status-ueberbewertet' : 'ml-status-ok'));
+        
+        // Potenzial formatieren
+        let potenzialText = '-';
+        let potenzialClass = 'text-muted';
+        if (a.ml_potenzial_aw) {
+            if (a.ml_potenzial_aw > 0) {
+                potenzialText = `+${a.ml_potenzial_aw.toFixed(1)} AW`;
+                potenzialClass = 'text-danger fw-bold';
+            } else {
+                potenzialText = `${a.ml_potenzial_aw.toFixed(1)} AW`;
+                potenzialClass = 'text-success';
+            }
+            if (a.ml_potenzial_prozent) {
+                potenzialText += ` <small>(${Math.round(a.ml_potenzial_prozent)}%)</small>`;
+            }
+        }
+        
+        // Mechaniker
+        let mechInfo = a.mechaniker_name || '-';
+        if (a.mechaniker_effizienz) {
+            const effClass = a.mechaniker_effizienz >= 100 ? 'bg-success' : 'bg-warning';
+            mechInfo += ` <span class="badge ${effClass}">${Math.round(a.mechaniker_effizienz)}%</span>`;
+        }
+        
+        // Fortschritt
+        let fortschrittHtml = '-';
+        if (a.vorgabe_aw > 0) {
+            const pct = Math.round((a.gestempelt_aw / a.vorgabe_aw) * 100);
+            const barClass = pct >= 100 ? 'bg-danger' : (pct >= 80 ? 'bg-warning' : 'bg-success');
+            fortschrittHtml = `
+                <div class="progress" style="height: 20px; min-width: 80px;">
+                    <div class="progress-bar ${barClass}" style="width: ${Math.min(pct, 100)}%">${pct}%</div>
+                </div>
+            `;
+        }
+        
+        // Termin
+        let terminHtml = '-';
+        if (a.gudat_termin) {
+            const d = new Date(a.gudat_termin);
+            terminHtml = `<span class="badge bg-info">📅 ${d.toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit'})}</span>`;
+        } else if (a.geplant_eingang) {
+            const d = new Date(a.geplant_eingang);
+            terminHtml = d.toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit'});
+        }
+        
+        return `
+            <tr class="${statusClass}">
+                <td class="text-center ml-icon">${statusIcon}</td>
+                <td>
+                    <strong>${a.auftrag_nr}</strong>
+                    <small class="text-muted d-block">${a.betrieb_name || ''}</small>
+                </td>
+                <td>${a.kennzeichen || '-'}</td>
+                <td><small>${(a.kunde || '-').substring(0, 30)}</small></td>
+                <td>${a.marke ? `<span class="badge bg-secondary">${a.marke}</span>` : '-'}</td>
+                <td class="text-end"><strong>${a.vorgabe_aw || 0}</strong> AW</td>
+                <td class="text-end ${a.ml_status === 'unterbewertet' ? 'text-danger' : ''}">
+                    <strong>${a.ml_vorhersage_aw || '-'}</strong> AW
+                </td>
+                <td class="text-end ${potenzialClass}">${potenzialText}</td>
+                <td><small>${mechInfo}</small></td>
+                <td>${fortschrittHtml}</td>
+                <td>${terminHtml}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function showError(msg) {
+    document.getElementById('auftraege-body').innerHTML = `
+        <tr><td colspan="11" class="text-center py-5">
+            <div class="alert alert-danger mb-0">
+                <i class="bi bi-exclamation-triangle"></i> ${msg}
+            </div>
+        </td></tr>
+    `;
+}
+
+function formatCurrency(value) {
+    return new Intl.NumberFormat('de-DE', {
+        style: 'currency',
+        currency: 'EUR',
+        minimumFractionDigits: 0
+    }).format(value);
+}
+</script>
+{% endblock %}

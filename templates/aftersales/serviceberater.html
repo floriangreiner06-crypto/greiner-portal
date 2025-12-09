@@ -1,0 +1,683 @@
+{% extends "base.html" %}
+
+{% block title %}Serviceberater Controlling - Greiner DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .kpi-card {
+        border-radius: 12px;
+        border: none;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        transition: transform 0.2s;
+    }
+    .kpi-card:hover {
+        transform: translateY(-2px);
+    }
+    .kpi-value {
+        font-size: 2rem;
+        font-weight: 700;
+    }
+    .kpi-label {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+    .progress-thick {
+        height: 12px;
+        border-radius: 6px;
+    }
+    .sb-row {
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    .sb-row:hover {
+        background-color: #f8f9fa;
+    }
+    .badge-rang {
+        width: 28px;
+        height: 28px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        font-weight: bold;
+    }
+    .rang-1 { background: linear-gradient(135deg, #ffd700, #ffb300); color: #000; }
+    .rang-2 { background: linear-gradient(135deg, #c0c0c0, #a0a0a0); color: #000; }
+    .rang-3 { background: linear-gradient(135deg, #cd7f32, #b06020); color: #fff; }
+    .chart-container {
+        position: relative;
+        height: 300px;
+    }
+    .filter-bar {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1">
+                <i class="bi bi-person-badge text-primary"></i>
+                Serviceberater Controlling
+            </h2>
+            <p class="text-muted mb-0">TEK-basierte Leistungsübersicht After Sales</p>
+        </div>
+        <div>
+            <button class="btn btn-outline-primary" onclick="exportData()">
+                <i class="bi bi-download"></i> Export
+            </button>
+            <button class="btn btn-primary ms-2" onclick="loadData()">
+                <i class="bi bi-arrow-clockwise"></i> Aktualisieren
+            </button>
+        </div>
+    </div>
+    
+    <!-- Filter -->
+    <div class="filter-bar">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">Monat</label>
+                <input type="month" id="filterMonat" class="form-control" 
+                       value="{{ now.strftime('%Y-%m') if now else '' }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Filiale</label>
+                <select id="filterFiliale" class="form-select">
+                    <option value="alle">Alle Filialen</option>
+                    <option value="1">Filiale 1 - Deggendorf</option>
+                    <option value="2">Filiale 2 - Hyundai</option>
+                    <option value="3">Filiale 3 - Landau</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Ansicht</label>
+                <select id="filterAnsicht" class="form-select">
+                    <option value="alle">Alle Mitarbeiter</option>
+                    <option value="sb">Nur Serviceberater</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-primary w-100" onclick="loadData()">
+                    <i class="bi bi-search"></i> Anzeigen
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- KPI Cards -->
+    <div class="row g-4 mb-4">
+        <div class="col-md-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body text-center">
+                    <i class="bi bi-currency-euro text-success fs-2"></i>
+                    <div class="kpi-value text-success" id="kpiUmsatzGesamt">-</div>
+                    <div class="kpi-label">Umsatz Gesamt</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body text-center">
+                    <i class="bi bi-bullseye text-primary fs-2"></i>
+                    <div class="kpi-value text-primary" id="kpiBreakEven">-</div>
+                    <div class="kpi-label">Break-Even pro SB</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body text-center">
+                    <i class="bi bi-people text-info fs-2"></i>
+                    <div class="kpi-value text-info" id="kpiAnzahlSB">-</div>
+                    <div class="kpi-label">Serviceberater</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body text-center">
+                    <i class="bi bi-graph-up text-warning fs-2"></i>
+                    <div class="kpi-value" id="kpiErreichung">-</div>
+                    <div class="kpi-label">Ø Zielerreichung</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Tabs -->
+    <ul class="nav nav-tabs mb-4" id="mainTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="ranking-tab" data-bs-toggle="tab" 
+                    data-bs-target="#ranking" type="button" role="tab">
+                <i class="bi bi-trophy"></i> Ranking
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="chart-tab" data-bs-toggle="tab" 
+                    data-bs-target="#chart" type="button" role="tab">
+                <i class="bi bi-bar-chart"></i> Diagramm
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="wettbewerb-tab" data-bs-toggle="tab" 
+                    data-bs-target="#wettbewerb" type="button" role="tab">
+                <i class="bi bi-award"></i> Wettbewerb
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="tek-tab" data-bs-toggle="tab" 
+                    data-bs-target="#tek" type="button" role="tab">
+                <i class="bi bi-calculator"></i> TEK-Basis
+            </button>
+        </li>
+    </ul>
+    
+    <!-- Tab Content -->
+    <div class="tab-content" id="mainTabContent">
+        
+        <!-- Tab: Ranking -->
+        <div class="tab-pane fade show active" id="ranking" role="tabpanel">
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0" id="sbTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th width="60">#</th>
+                                    <th>Mitarbeiter</th>
+                                    <th class="text-end">Rechnungen</th>
+                                    <th class="text-end">Umsatz</th>
+                                    <th class="text-end">Arbeit</th>
+                                    <th class="text-end">Teile</th>
+                                    <th class="text-end">Ø Rechnung</th>
+                                    <th width="200">Zielerreichung</th>
+                                    <th width="80">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sbTableBody">
+                                <tr>
+                                    <td colspan="9" class="text-center py-5">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Lade...</span>
+                                        </div>
+                                        <p class="mt-2 mb-0 text-muted">Daten werden geladen...</p>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab: Diagramm -->
+        <div class="tab-pane fade" id="chart" role="tabpanel">
+            <div class="card">
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="sbChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab: Wettbewerb -->
+        <div class="tab-pane fade" id="wettbewerb" role="tabpanel">
+            <div class="row">
+                <div class="col-lg-8">
+                    <div class="card">
+                        <div class="card-header bg-warning text-dark">
+                            <h5 class="mb-0">
+                                <i class="bi bi-trophy"></i>
+                                <span id="wettbewerbName">Contrasept Dezember 2025</span>
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table" id="wettbewerbTable">
+                                    <thead>
+                                        <tr>
+                                            <th width="60">Rang</th>
+                                            <th>Mitarbeiter</th>
+                                            <th class="text-end">Anzahl</th>
+                                            <th class="text-end">Umsatz</th>
+                                            <th class="text-end">Prämie</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="wettbewerbTableBody">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-4">
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <h6><i class="bi bi-people"></i> Team-Fortschritt</h6>
+                            <div class="progress progress-thick mb-2">
+                                <div class="progress-bar bg-success" id="teamProgress" 
+                                     role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <p class="mb-0">
+                                <span id="teamGesamt">0</span> / <span id="teamZiel">150</span> Stück
+                                (<span id="teamProzent">0</span>%)
+                            </p>
+                        </div>
+                    </div>
+                    <div class="card mt-3">
+                        <div class="card-body">
+                            <h6><i class="bi bi-gift"></i> Prämien</h6>
+                            <ul class="list-unstyled mb-0">
+                                <li class="mb-2">🥇 1. Platz: <strong id="praemie1">100 €</strong></li>
+                                <li class="mb-2">🥈 2. Platz: <strong id="praemie2">50 €</strong></li>
+                                <li>🥉 3. Platz: <strong id="praemie3">25 €</strong></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab: TEK-Basis -->
+        <div class="tab-pane fade" id="tek" role="tabpanel">
+            <div class="row">
+                <div class="col-lg-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="bi bi-calculator"></i> TEK-Vollkosten After Sales</h5>
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-sm">
+                                <tbody id="tekTable">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="bi bi-bullseye"></i> Break-Even Berechnung</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-info">
+                                <h6>Formel:</h6>
+                                <code>Break-Even = Vollkosten pro SB ÷ Ø Marge</code>
+                            </div>
+                            <table class="table table-sm" id="breakEvenTable">
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+    
+</div>
+
+<!-- Detail Modal -->
+<div class="modal fade" id="detailModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="detailModalTitle">Serviceberater Detail</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="detailModalBody">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Globale Variablen
+let sbData = null;
+let sbChart = null;
+
+// Initialisierung
+document.addEventListener('DOMContentLoaded', function() {
+    // Aktuellen Monat setzen
+    const heute = new Date();
+    const monat = heute.toISOString().slice(0, 7);
+    document.getElementById('filterMonat').value = monat;
+    
+    // Daten laden
+    loadData();
+    loadWettbewerb();
+    loadTekConfig();
+});
+
+// Hauptdaten laden
+async function loadData() {
+    const monat = document.getElementById('filterMonat').value;
+    const filiale = document.getElementById('filterFiliale').value;
+    const ansicht = document.getElementById('filterAnsicht').value;
+    
+    try {
+        const response = await fetch(`/api/serviceberater/uebersicht?monat=${monat}&filiale=${filiale}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            sbData = data;
+            renderKPIs(data);
+            renderTable(data, ansicht);
+            renderChart(data, ansicht);
+        } else {
+            showError(data.error);
+        }
+    } catch (error) {
+        showError(error.message);
+    }
+}
+
+// KPIs rendern
+function renderKPIs(data) {
+    const sb = data.serviceberater;
+    const config = data.config;
+    
+    // Umsatz Gesamt
+    const umsatzGesamt = sb.reduce((sum, s) => sum + s.umsatz_gesamt, 0);
+    document.getElementById('kpiUmsatzGesamt').textContent = formatCurrency(umsatzGesamt);
+    
+    // Break-Even
+    document.getElementById('kpiBreakEven').textContent = formatCurrency(config.break_even);
+    
+    // Anzahl SB
+    const echteServiceberater = sb.filter(s => s.ist_serviceberater);
+    document.getElementById('kpiAnzahlSB').textContent = echteServiceberater.length;
+    
+    // Ø Zielerreichung
+    const avgErreichung = echteServiceberater.length > 0 
+        ? echteServiceberater.reduce((sum, s) => sum + s.erreichung, 0) / echteServiceberater.length 
+        : 0;
+    const kpiErreichung = document.getElementById('kpiErreichung');
+    kpiErreichung.textContent = avgErreichung.toFixed(1) + '%';
+    kpiErreichung.className = `kpi-value text-${avgErreichung >= 100 ? 'success' : avgErreichung >= 80 ? 'warning' : 'danger'}`;
+}
+
+// Tabelle rendern
+function renderTable(data, ansicht) {
+    const tbody = document.getElementById('sbTableBody');
+    let sb = data.serviceberater;
+    
+    // Filter
+    if (ansicht === 'sb') {
+        sb = sb.filter(s => s.ist_serviceberater);
+    }
+    
+    if (sb.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" class="text-center py-4 text-muted">
+            Keine Daten für diesen Zeitraum
+        </td></tr>`;
+        return;
+    }
+    
+    tbody.innerHTML = sb.map((s, i) => `
+        <tr class="sb-row" onclick="showDetail(${s.ma_id})">
+            <td>
+                ${i < 3 ? `<span class="badge-rang rang-${i+1}">${i+1}</span>` : `<span class="text-muted">${i+1}</span>`}
+            </td>
+            <td>
+                <strong>${s.name}</strong>
+                ${s.ist_serviceberater ? '<span class="badge bg-primary ms-2">SB</span>' : ''}
+                <br><small class="text-muted">${s.title || 'MA ' + s.ma_id}</small>
+            </td>
+            <td class="text-end">${s.anzahl_rechnungen}</td>
+            <td class="text-end"><strong>${formatCurrency(s.umsatz_gesamt)}</strong></td>
+            <td class="text-end">${formatCurrency(s.umsatz_arbeit)}</td>
+            <td class="text-end">${formatCurrency(s.umsatz_teile)}</td>
+            <td class="text-end">${formatCurrency(s.avg_rechnung)}</td>
+            <td>
+                <div class="d-flex align-items-center">
+                    <div class="progress progress-thick flex-grow-1 me-2">
+                        <div class="progress-bar bg-${s.status}" role="progressbar" 
+                             style="width: ${Math.min(s.erreichung, 100)}%"></div>
+                    </div>
+                    <span class="text-${s.status}" style="width: 50px; text-align: right;">
+                        ${s.erreichung.toFixed(0)}%
+                    </span>
+                </div>
+            </td>
+            <td class="text-center">
+                <span class="badge bg-${s.status}">
+                    ${s.status === 'success' ? '✓' : s.status === 'warning' ? '!' : '✗'}
+                </span>
+            </td>
+        </tr>
+    `).join('');
+}
+
+// Chart rendern
+function renderChart(data, ansicht) {
+    const ctx = document.getElementById('sbChart').getContext('2d');
+    let sb = data.serviceberater;
+    
+    if (ansicht === 'sb') {
+        sb = sb.filter(s => s.ist_serviceberater);
+    }
+    
+    // Top 10
+    sb = sb.slice(0, 10);
+    
+    if (sbChart) {
+        sbChart.destroy();
+    }
+    
+    sbChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: sb.map(s => s.name.split(' ')[0]),
+            datasets: [
+                {
+                    label: 'Arbeit',
+                    data: sb.map(s => s.umsatz_arbeit),
+                    backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                },
+                {
+                    label: 'Teile',
+                    data: sb.map(s => s.umsatz_teile),
+                    backgroundColor: 'rgba(255, 206, 86, 0.7)',
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                }
+            },
+            scales: {
+                x: {
+                    stacked: true,
+                },
+                y: {
+                    stacked: true,
+                    beginAtZero: true,
+                    ticks: {
+                        callback: value => formatCurrency(value)
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Wettbewerb laden
+async function loadWettbewerb() {
+    try {
+        const response = await fetch('/api/serviceberater/wettbewerb');
+        const data = await response.json();
+        
+        if (data.success) {
+            document.getElementById('wettbewerbName').textContent = data.wettbewerb.name;
+            document.getElementById('praemie1').textContent = data.wettbewerb.praemien.platz_1 + ' €';
+            document.getElementById('praemie2').textContent = data.wettbewerb.praemien.platz_2 + ' €';
+            document.getElementById('praemie3').textContent = data.wettbewerb.praemien.platz_3 + ' €';
+            
+            // Team Progress
+            document.getElementById('teamGesamt').textContent = data.team.gesamt;
+            document.getElementById('teamZiel').textContent = data.team.ziel;
+            document.getElementById('teamProzent').textContent = data.team.erreichung.toFixed(1);
+            document.getElementById('teamProgress').style.width = Math.min(data.team.erreichung, 100) + '%';
+            
+            // Ranking
+            const tbody = document.getElementById('wettbewerbTableBody');
+            tbody.innerHTML = data.ranking.map((r, i) => `
+                <tr>
+                    <td>
+                        ${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : r.rang}
+                    </td>
+                    <td>${r.name}</td>
+                    <td class="text-end"><strong>${r.anzahl}</strong></td>
+                    <td class="text-end">${formatCurrency(r.umsatz)}</td>
+                    <td class="text-end">
+                        ${i < 3 ? `<span class="badge bg-success">${data.wettbewerb.praemien['platz_' + (i+1)]} €</span>` : '-'}
+                    </td>
+                </tr>
+            `).join('');
+        }
+    } catch (error) {
+        console.error('Fehler beim Laden des Wettbewerbs:', error);
+    }
+}
+
+// TEK-Konfiguration laden
+async function loadTekConfig() {
+    try {
+        const response = await fetch('/api/serviceberater/tek-config');
+        const data = await response.json();
+        
+        if (data.success) {
+            const tek = data.tek;
+            const sb = data.serviceberater;
+            
+            // TEK Tabelle
+            document.getElementById('tekTable').innerHTML = `
+                <tr><td>Teile/Service - Direkt</td><td class="text-end">${formatCurrency(tek.teile_service.direkt)}</td></tr>
+                <tr><td>Teile/Service - Umlage</td><td class="text-end">${formatCurrency(tek.teile_service.umlage)}</td></tr>
+                <tr><td>Werkstattlohn - Direkt</td><td class="text-end">${formatCurrency(tek.werkstattlohn.direkt)}</td></tr>
+                <tr><td>Werkstattlohn - Umlage</td><td class="text-end">${formatCurrency(tek.werkstattlohn.umlage)}</td></tr>
+                <tr class="table-primary"><td><strong>Vollkosten After Sales</strong></td>
+                    <td class="text-end"><strong>${formatCurrency(tek.vollkosten_after_sales)}</strong></td></tr>
+            `;
+            
+            // Break-Even Tabelle
+            document.getElementById('breakEvenTable').innerHTML = `
+                <tr><td>Anzahl Serviceberater</td><td class="text-end">${sb.anzahl}</td></tr>
+                <tr><td>Vollkosten pro SB</td><td class="text-end">${formatCurrency(sb.vollkosten_pro_sb)}</td></tr>
+                <tr><td>Ø Marge (gewichtet)</td><td class="text-end">${(tek.margen.gewichtet * 100).toFixed(1)}%</td></tr>
+                <tr class="table-success"><td><strong>Break-Even pro SB</strong></td>
+                    <td class="text-end"><strong>${formatCurrency(sb.break_even)}</strong></td></tr>
+            `;
+        }
+    } catch (error) {
+        console.error('Fehler beim Laden der TEK-Config:', error);
+    }
+}
+
+// Detail anzeigen
+async function showDetail(maId) {
+    const modal = new bootstrap.Modal(document.getElementById('detailModal'));
+    const monat = document.getElementById('filterMonat').value;
+    
+    document.getElementById('detailModalBody').innerHTML = `
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary"></div>
+            <p class="mt-2">Lade Details...</p>
+        </div>
+    `;
+    modal.show();
+    
+    try {
+        const response = await fetch(`/api/serviceberater/detail/${maId}?monat=${monat}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            document.getElementById('detailModalTitle').textContent = data.name;
+            document.getElementById('detailModalBody').innerHTML = `
+                <div class="row mb-4">
+                    <div class="col-md-3 text-center">
+                        <h4 class="text-primary">${formatCurrency(data.zusammenfassung.umsatz_gesamt)}</h4>
+                        <small class="text-muted">Umsatz Gesamt</small>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <h4>${data.zusammenfassung.anzahl_rechnungen}</h4>
+                        <small class="text-muted">Rechnungen</small>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <h4>${formatCurrency(data.zusammenfassung.avg_rechnung)}</h4>
+                        <small class="text-muted">Ø Rechnung</small>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <h4 class="${data.zusammenfassung.erreichung >= 100 ? 'text-success' : 'text-warning'}">${data.zusammenfassung.erreichung.toFixed(1)}%</h4>
+                        <small class="text-muted">Zielerreichung</small>
+                    </div>
+                </div>
+                
+                <h6>Letzte Rechnungen</h6>
+                <table class="table table-sm">
+                    <thead>
+                        <tr><th>Typ</th><th>Nummer</th><th>Datum</th><th class="text-end">Gesamt</th><th class="text-end">Arbeit</th><th class="text-end">Teile</th></tr>
+                    </thead>
+                    <tbody>
+                        ${data.rechnungen.map(r => `
+                            <tr>
+                                <td><span class="badge bg-secondary">${r.typ}</span></td>
+                                <td>${r.nummer}</td>
+                                <td>${r.datum}</td>
+                                <td class="text-end">${formatCurrency(r.gesamt)}</td>
+                                <td class="text-end">${formatCurrency(r.arbeit)}</td>
+                                <td class="text-end">${formatCurrency(r.teile)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+    } catch (error) {
+        document.getElementById('detailModalBody').innerHTML = `
+            <div class="alert alert-danger">Fehler: ${error.message}</div>
+        `;
+    }
+}
+
+// Hilfsfunktionen
+function formatCurrency(value) {
+    return new Intl.NumberFormat('de-DE', { 
+        style: 'currency', 
+        currency: 'EUR',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(value);
+}
+
+function showError(message) {
+    document.getElementById('sbTableBody').innerHTML = `
+        <tr><td colspan="9" class="text-center py-4 text-danger">
+            <i class="bi bi-exclamation-triangle"></i> ${message}
+        </td></tr>
+    `;
+}
+
+function exportData() {
+    alert('Export-Funktion kommt bald!');
+}
+</script>
+{% endblock %}

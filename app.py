@@ -27,7 +27,7 @@ else:
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 Jahr in Produktion
 
 # Globale Static-Version (ändert sich bei jedem Flask-Neustart)
-STATIC_VERSION = '20251124094758'
+STATIC_VERSION = '20251207020000'  # TAG 100 - Teile-Status Dashboard
 print(f"📦 Static Version: {STATIC_VERSION}")
 
 # Template-Kontext: Macht STATIC_VERSION in allen Templates verfügbar
@@ -190,16 +190,34 @@ print("✅ Bankenspiegel Frontend registriert: /bankenspiegel/")
 
 # Verkauf API
 from api.verkauf_api import verkauf_api
-from api.stellantis_api import stellantis_api
+from api.parts_api import parts_api
 from api.admin_api import admin_api
 from api.zins_optimierung_api import zins_api
+from api.teile_api import teile_api
 app.register_blueprint(verkauf_api)
-app.register_blueprint(stellantis_api)
+app.register_blueprint(parts_api)
 app.register_blueprint(admin_api)
+app.register_blueprint(teile_api)
 app.register_blueprint(zins_api)
 print("✅ Verkauf API registriert: /api/verkauf/")
-print("✅ Stellantis API registriert: /api/stellantis/")
+print("✅ Parts API registriert: /api/stellantis/")
 print("✅ Admin API registriert: /api/admin/")
+
+# Mail API (Graph/Office 365)
+try:
+    from api.mail_api import mail_api
+    app.register_blueprint(mail_api)
+    print("✅ Mail API registriert: /api/mail/")
+except Exception as e:
+    print(f"⚠️  Mail API nicht geladen: {e}")
+
+# Leasys Programmfinder API
+try:
+    from api.leasys_api import leasys_api
+    app.register_blueprint(leasys_api)
+    print("✅ Leasys API registriert: /api/leasys/")
+except Exception as e:
+    print(f"⚠️  Leasys API nicht geladen: {e}")
 
 # Verkauf Frontend Routes
 from routes.verkauf_routes import verkauf_bp
@@ -208,6 +226,40 @@ app.register_blueprint(verkauf_bp)
 print("✅ Verkauf Frontend registriert: /verkauf/")
 app.register_blueprint(controlling_bp)
 print("✅ Controlling registriert: /controlling/")
+
+# Controlling API (BWA)
+try:
+    from api.controlling_api import controlling_api
+    app.register_blueprint(controlling_api)
+    print("✅ Controlling API registriert: /api/controlling/")
+except Exception as e:
+    print(f"⚠️  Controlling API nicht geladen: {e}")
+
+# Jahresprämie API & Routes
+try:
+    from api.jahrespraemie_api import jahrespraemie_api
+    from routes.jahrespraemie_routes import jahrespraemie_bp
+    app.register_blueprint(jahrespraemie_api)
+    app.register_blueprint(jahrespraemie_bp)
+    print("✅ Jahresprämie API registriert: /api/jahrespraemie/")
+    print("✅ Jahresprämie Frontend registriert: /jahrespraemie/")
+except Exception as e:
+    print(f"⚠️  Jahresprämie nicht geladen: {e}")
+
+# ============================================================================
+# JOB-SCHEDULER UI (Scheduler läuft als separater Service!)
+# ============================================================================
+try:
+    from scheduler import job_manager, scheduler_bp, init_scheduler_routes
+    
+    # Blueprint registrieren (für Web-UI unter /admin/jobs/)
+    app.register_blueprint(scheduler_bp)
+    init_scheduler_routes(job_manager)
+    print("✅ Job-Scheduler UI registriert: /admin/jobs/")
+    print("ℹ️  Scheduler läuft als separater Service: greiner-scheduler")
+        
+except Exception as e:
+    print(f"⚠️  Job-Scheduler UI nicht geladen: {e}")
 
 # ============================================================================
 # ERROR HANDLERS
@@ -254,9 +306,60 @@ def dashboard():
 
 # After Sales Routes
 from routes.aftersales import teile_routes
+from routes.aftersales import serviceberater_routes
 from routes.admin_routes import admin_routes
 app.register_blueprint(teile_routes.bp)
+app.register_blueprint(serviceberater_routes.bp)
 app.register_blueprint(admin_routes)
+print("✅ Serviceberater Routes registriert: /aftersales/serviceberater/")
+
+# Serviceberater API
+try:
+    from api.serviceberater_api import serviceberater_api
+    app.register_blueprint(serviceberater_api)
+    print("✅ Serviceberater API registriert: /api/serviceberater/")
+except Exception as e:
+    print(f"⚠️  Serviceberater API nicht geladen: {e}")
+
+# Werkstatt API (Leistungsübersicht)
+try:
+    from api.werkstatt_api import werkstatt_api
+    app.register_blueprint(werkstatt_api)
+    print("✅ Werkstatt API registriert: /api/werkstatt/")
+except Exception as e:
+    print(f"⚠️  Werkstatt API nicht geladen: {e}")
+
+# Werkstatt LIVE API (Echtzeit-Daten aus Locosoft)
+try:
+    from api.werkstatt_live_api import werkstatt_live_bp
+    app.register_blueprint(werkstatt_live_bp)
+    print("✅ Werkstatt LIVE API registriert: /api/werkstatt/live/")
+except Exception as e:
+    print(f"⚠️  Werkstatt LIVE API nicht geladen: {e}")
+
+# ML API (Machine Learning - Auftragsdauer-Vorhersage)
+try:
+    from api.ml_api import ml_api
+    app.register_blueprint(ml_api)
+    print("✅ ML API registriert: /api/ml/")
+except Exception as e:
+    print(f"⚠️  ML API nicht geladen: {e}")
+
+# Teile-Status API (TAG 100 - Fehlende Teile auf Aufträgen)
+try:
+    from api.teile_status_api import teile_status_bp
+    app.register_blueprint(teile_status_bp)
+    print("✅ Teile-Status API registriert: /api/teile/")
+except Exception as e:
+    print(f"⚠️  Teile-Status API nicht geladen: {e}")
+
+# Gudat Werkstattplanung API (TAG98)
+try:
+    from api.gudat_api import register_gudat_api
+    register_gudat_api(app)
+    print("✅ Gudat API registriert: /api/gudat/")
+except Exception as e:
+    print(f"⚠️  Gudat API nicht geladen: {e}")
 
 # DEBUG Route für TAG76 - später entfernen!
 @app.route('/debug/user')
@@ -271,3 +374,109 @@ def debug_user():
         'allowed_features': getattr(current_user, 'allowed_features', []),
         'roles': current_user.roles
     }
+
+# ========================================
+# LEASYS PROGRAMMFINDER
+# ========================================
+
+@app.route('/verkauf/leasys-programmfinder')
+@login_required
+def leasys_programmfinder():
+    """Leasys Programmfinder - Hilft Verkäufern das richtige Master Agreement zu finden"""
+    return render_template('leasys_programmfinder.html')
+
+
+# ========================================
+# WERKSTATT ÜBERSICHT
+# ========================================
+
+@app.route('/werkstatt')
+@app.route('/werkstatt/cockpit')
+@login_required
+def werkstatt_cockpit():
+    """Werkstatt Cockpit - Minimalistisch: Ampel + Probleme (TAG 99)"""
+    return render_template('aftersales/werkstatt_cockpit.html')
+
+
+@app.route('/werkstatt/dashboard')
+@login_required
+def werkstatt_dashboard():
+    """Werkstatt Dashboard - Konsolidierte Übersicht (TAG 99)"""
+    return render_template('aftersales/werkstatt_dashboard.html')
+
+
+@app.route('/werkstatt/uebersicht')
+@login_required
+def werkstatt_uebersicht():
+    """Werkstatt-Übersicht - Mechaniker-Leistungsgrade (Legacy)"""
+    return render_template('aftersales/werkstatt_uebersicht.html')
+
+
+@app.route('/werkstatt/live')
+@login_required
+def werkstatt_live():
+    """Werkstatt LIVE-Monitoring - Echtzeit-Auftragsübersicht"""
+    return render_template('aftersales/werkstatt_live.html')
+
+
+@app.route('/werkstatt/stempeluhr')
+@login_required
+def werkstatt_stempeluhr():
+    """Werkstatt Stempeluhr - LIVE Mechaniker-Übersicht"""
+    return render_template('aftersales/werkstatt_stempeluhr.html')
+
+
+@app.route('/werkstatt/intelligence')
+@login_required
+def werkstatt_intelligence():
+    """Werkstatt Intelligence - ML Dashboard"""
+    return render_template('werkstatt_intelligence.html')
+
+
+@app.route('/werkstatt/tagesbericht')
+@login_required
+def werkstatt_tagesbericht():
+    """Werkstatt Tagesbericht - Kontrolle Stempelungen/Zuweisungen"""
+    return render_template('aftersales/werkstatt_tagesbericht.html')
+
+
+@app.route('/werkstatt/auftraege')
+@login_required
+def werkstatt_auftraege():
+    """Werkstatt Aufträge - ML-Analyse (TAG 98)"""
+    return render_template('aftersales/werkstatt_auftraege.html')
+
+
+@app.route('/werkstatt/teile-status')
+@login_required
+def werkstatt_teile_status():
+    """Werkstatt Teile-Status - Fehlende Teile Übersicht (TAG 100)"""
+    return render_template('aftersales/werkstatt_teile_status.html')
+
+
+@app.route('/monitor/stempeluhr')
+@app.route('/werkstatt/stempeluhr/monitor')
+def werkstatt_stempeluhr_monitor():
+    """
+    Werkstatt Stempeluhr - MONITOR VERSION (ohne Login)
+    Zugriff über Token-Parameter oder interne IP.
+    """
+    # Monitor-Token (geheim halten!)
+    MONITOR_TOKEN = 'Greiner2024Werkstatt!'
+    
+    # Token aus URL prüfen
+    token = request.args.get('token', '')
+    
+    # IP prüfen
+    client_ip = request.remote_addr
+    if request.headers.get('X-Forwarded-For'):
+        client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    
+    # Zugriff erlauben wenn: korrekter Token ODER interne IP
+    is_internal = client_ip.startswith('10.80.80.') or client_ip == '127.0.0.1'
+    is_valid_token = token == MONITOR_TOKEN
+    
+    if not (is_internal or is_valid_token):
+        return "Zugriff verweigert. Token erforderlich.", 403
+    
+    return render_template('aftersales/werkstatt_stempeluhr_monitor.html')

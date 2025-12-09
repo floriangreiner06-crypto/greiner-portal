@@ -12,8 +12,15 @@
             </h1>
             <p class="text-muted mb-0">Alle Bankkonten im Überblick</p>
         </div>
-        <div class="col-auto">
-            <a href="/bankenspiegel/dashboard" class="btn btn-outline-secondary me-2">
+        <div class="col-auto d-flex align-items-center gap-2">
+            <!-- Datenstand Badge -->
+            <div id="datenstandBadge" class="d-none">
+                <span class="badge bg-secondary" id="datenstandLabel">
+                    <i class="bi bi-clock-history me-1"></i>
+                    <span id="datenstandText">Lade...</span>
+                </span>
+            </div>
+            <a href="/bankenspiegel/dashboard" class="btn btn-outline-secondary">
                 <i class="bi bi-arrow-left me-1"></i>Zurück
             </a>
             <button class="btn btn-outline-primary" onclick="loadKonten()">

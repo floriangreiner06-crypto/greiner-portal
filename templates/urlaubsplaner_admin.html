@@ -1,0 +1,592 @@
+{% extends 'base.html' %}
+
+{% block title %}Urlaubsplaner - Administration - Greiner DRIVE{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<style>
+    .admin-header {
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        color: white;
+        padding: 25px;
+        border-radius: 10px;
+        margin-bottom: 25px;
+    }
+    .stat-card {
+        border: none;
+        border-radius: 12px;
+        box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+        text-align: center;
+        padding: 20px;
+    }
+    .stat-card .big-number {
+        font-size: 2.5rem;
+        font-weight: bold;
+    }
+    .table-container {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+        padding: 20px;
+    }
+    .editable-cell {
+        cursor: pointer;
+        padding: 5px 10px;
+        border-radius: 5px;
+        transition: background 0.2s;
+    }
+    .editable-cell:hover {
+        background: #e9ecef;
+    }
+    .editable-cell input {
+        width: 60px;
+        text-align: center;
+        border: 2px solid #007bff;
+        border-radius: 5px;
+        padding: 3px;
+    }
+    .balance-ok { color: #28a745; }
+    .balance-warning { color: #ffc107; }
+    .balance-danger { color: #dc3545; }
+    .filter-bar {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+    }
+    .btn-save-all {
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        padding: 15px 30px;
+        font-size: 1.1rem;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        z-index: 1000;
+        display: none;
+    }
+    .changed-row {
+        background: #fff3cd !important;
+    }
+    .saved-row {
+        animation: flash-green 1s;
+    }
+    @keyframes flash-green {
+        0% { background: #d4edda; }
+        100% { background: transparent; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="admin-header">
+        <div class="row align-items-center">
+            <div class="col">
+                <h1 class="mb-0">
+                    <i class="fas fa-user-cog"></i> Urlaubsplaner - Administration
+                </h1>
+                <small>Urlaubsansprüche verwalten und bearbeiten</small>
+            </div>
+            <div class="col-auto">
+                <a href="/urlaubsplaner/v2" class="btn btn-light">
+                    <i class="fas fa-arrow-left"></i> Zurück
+                </a>
+                <a href="/urlaubsplaner/chef" class="btn btn-outline-light ms-2">
+                    <i class="fas fa-sitemap"></i> Chef-Übersicht
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistik-Karten -->
+    <div class="row mb-4">
+        <div class="col-md-2">
+            <div class="stat-card">
+                <div class="big-number text-primary" id="totalEmployees">-</div>
+                <div class="text-muted">Mitarbeiter</div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="stat-card">
+                <div class="big-number text-success" id="totalUrlaub">-</div>
+                <div class="text-muted">Σ Urlaub</div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="stat-card">
+                <div class="big-number text-info" id="totalZA">-</div>
+                <div class="text-muted">Σ Zeitausgl.</div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="stat-card">
+                <div class="big-number text-warning" id="totalKrank">-</div>
+                <div class="text-muted">Σ Krank</div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="stat-card">
+                <div class="big-number text-secondary" id="avgAnspruch">-</div>
+                <div class="text-muted">Ø Anspruch</div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="stat-card">
+                <div class="big-number" id="avgVerfuegbar">-</div>
+                <div class="text-muted">Ø Verfügbar</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="filter-bar">
+        <div class="row align-items-center">
+            <div class="col-md-2">
+                <label class="form-label mb-0">Jahr:</label>
+                <select class="form-select form-select-sm" id="filterYear">
+                    <option value="2025" selected>2025</option>
+                    <option value="2024">2024</option>
+                    <option value="2026">2026</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-0">Standort:</label>
+                <select class="form-select form-select-sm" id="filterStandort">
+                    <option value="">Alle</option>
+                    <option value="Deggendorf">Deggendorf</option>
+                    <option value="Landau">Landau</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label mb-0">Suche:</label>
+                <input type="text" class="form-control form-control-sm" id="searchInput" placeholder="Name suchen...">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-0">Filter:</label>
+                <select class="form-select form-select-sm" id="filterStatus">
+                    <option value="">Alle</option>
+                    <option value="overused">Überzogen</option>
+                    <option value="critical">Kritisch (&lt;5 Tage)</option>
+                    <option value="unused">Nicht verwendet</option>
+                </select>
+            </div>
+            <div class="col-md-3 text-end">
+                <button class="btn btn-sm btn-outline-primary" onclick="loadData()">
+                    <i class="fas fa-sync"></i> Aktualisieren
+                </button>
+                <button class="btn btn-sm btn-outline-success ms-2" onclick="exportExcel()">
+                    <i class="fas fa-file-excel"></i> Export
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabelle -->
+    <div class="table-container">
+        <table class="table table-hover" id="employeeTable">
+            <thead class="table-dark">
+                <tr>
+                    <th style="width: 18%;">Name</th>
+                    <th style="width: 10%;">Standort</th>
+                    <th style="width: 6%;">Gruppe</th>
+                    <th style="width: 8%;" class="text-center">Anspruch</th>
+                    <th style="width: 8%;" class="text-center" title="Urlaub (bezahlt)">🏖️ Urlaub</th>
+                    <th style="width: 8%;" class="text-center" title="Zeitausgleich (Überstunden)">⏰ ZA</th>
+                    <th style="width: 8%;" class="text-center" title="Krankheitstage">🤒 Krank</th>
+                    <th style="width: 7%;" class="text-center" title="Sonstige (Seminar, Schule, etc.)">📋 Sonst.</th>
+                    <th style="width: 8%;" class="text-center" title="Anspruch - Urlaub">✅ Verfügb.</th>
+                    <th style="width: 6%;" class="text-center">Aktion</th>
+                </tr>
+            </thead>
+            <tbody id="employeeTableBody">
+                <tr>
+                    <td colspan="8" class="text-center py-5">
+                        <div class="spinner-border text-primary"></div>
+                        <p class="mt-2 text-muted">Daten werden geladen...</p>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Speichern Button (fest) -->
+<button class="btn btn-success btn-lg btn-save-all" id="saveAllBtn" onclick="saveAllChanges()">
+    <i class="fas fa-save"></i> Änderungen speichern (<span id="changeCount">0</span>)
+</button>
+
+<!-- Toast Container -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1100">
+    <div id="toastContainer"></div>
+</div>
+
+<!-- Bearbeiten Modal -->
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="fas fa-edit"></i> Urlaubsanspruch bearbeiten</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h5 id="editEmployeeName" class="mb-4">-</h5>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Anspruch (Tage)</label>
+                        <input type="number" class="form-control" id="editAnspruch" step="0.5" min="0" max="50">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Übertrag Vorjahr</label>
+                        <input type="number" class="form-control" id="editUebertrag" step="0.5" min="0" max="30">
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Manuelle Korrektur (+/-)</label>
+                    <input type="number" class="form-control" id="editKorrektur" step="0.5">
+                    <small class="text-muted">Positiv = Gutschrift, Negativ = Abzug</small>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Kommentar</label>
+                    <input type="text" class="form-control" id="editKommentar" placeholder="z.B. Korrektur wegen...">
+                </div>
+                
+                <div class="alert alert-info">
+                    <strong>Berechnung:</strong><br>
+                    <span id="editBerechnung">-</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-primary" onclick="saveEmployeeChanges()">
+                    <i class="fas fa-save"></i> Speichern
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/**
+ * URLAUBSPLANER ADMIN - TAG 103
+ * HR-Administration für Urlaubsansprüche
+ */
+
+const API_BASE = '/api/vacation/admin';
+let allEmployees = [];
+let pendingChanges = {};
+let currentEditEmployee = null;
+
+// ============================================================================
+// INIT
+// ============================================================================
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🔧 Urlaubsplaner Admin wird geladen...');
+    loadData();
+    setupEventListeners();
+});
+
+// ============================================================================
+// DATEN LADEN
+// ============================================================================
+async function loadData() {
+    const year = document.getElementById('filterYear').value;
+    
+    try {
+        const response = await fetch(`${API_BASE}/employees?year=${year}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            allEmployees = data.employees;
+            renderTable(allEmployees);
+            updateStats(data.stats);
+        } else {
+            showToast('Fehler: ' + data.error, 'danger');
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        showToast('Verbindungsfehler', 'danger');
+    }
+}
+
+// ============================================================================
+// TABELLE RENDERN
+// ============================================================================
+function renderTable(employees) {
+    const tbody = document.getElementById('employeeTableBody');
+    const search = document.getElementById('searchInput').value.toLowerCase();
+    const standort = document.getElementById('filterStandort').value;
+    const status = document.getElementById('filterStatus').value;
+    
+    // Filtern
+    let filtered = employees.filter(e => {
+        if (search && !e.name.toLowerCase().includes(search)) return false;
+        if (standort && e.standort !== standort) return false;
+        if (status === 'overused' && e.verfuegbar >= 0) return false;
+        if (status === 'critical' && (e.verfuegbar < 0 || e.verfuegbar >= 5)) return false;
+        if (status === 'unused' && e.urlaub > 0) return false;
+        return true;
+    });
+    
+    if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-muted">Keine Mitarbeiter gefunden</td></tr>';
+        return;
+    }
+    
+    let html = '';
+    filtered.forEach(emp => {
+        const restClass = emp.resturlaub < 0 ? 'balance-danger' : 
+                          emp.resturlaub < 5 ? 'balance-warning' : 'balance-ok';
+        const changedClass = pendingChanges[emp.employee_id] ? 'changed-row' : '';
+        
+        const verfuegbarClass = emp.verfuegbar < 0 ? 'text-danger fw-bold' : 
+                              emp.verfuegbar < 5 ? 'text-warning' : 'text-success';
+        
+        html += `
+            <tr data-id="${emp.employee_id}" class="${changedClass}">
+                <td>
+                    <strong>${emp.name}</strong>
+                    ${emp.aktiv ? '' : '<span class="badge bg-secondary ms-1">Inaktiv</span>'}
+                </td>
+                <td>${emp.standort || '-'}</td>
+                <td><span class="badge bg-secondary">${emp.grp_code || '-'}</span></td>
+                <td class="text-center">
+                    <span class="editable-cell" onclick="quickEdit(${emp.employee_id}, 'anspruch', this)">
+                        ${emp.anspruch}
+                    </span>
+                </td>
+                <td class="text-center">${emp.urlaub || 0}</td>
+                <td class="text-center text-info">${emp.zeitausgleich || 0}</td>
+                <td class="text-center text-warning">${emp.krank || 0}</td>
+                <td class="text-center text-muted">${emp.sonstige || 0}</td>
+                <td class="text-center ${verfuegbarClass}">${emp.verfuegbar}</td>
+                <td class="text-center">
+                    <button class="btn btn-sm btn-outline-primary" onclick="openEditModal(${emp.employee_id})">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    tbody.innerHTML = html;
+}
+
+// ============================================================================
+// STATISTIKEN
+// ============================================================================
+function updateStats(stats) {
+    document.getElementById('totalEmployees').textContent = stats.count;
+    document.getElementById('totalUrlaub').textContent = stats.total_urlaub || 0;
+    document.getElementById('totalZA').textContent = stats.total_za || 0;
+    document.getElementById('totalKrank').textContent = stats.total_krank || 0;
+    document.getElementById('avgAnspruch').textContent = (stats.avg_anspruch || 0).toFixed(1);
+    
+    // Durchschnitt Verfügbar berechnen
+    const avgVerfuegbar = (stats.avg_anspruch || 27) - (stats.avg_urlaub || 0);
+    const verfuegbarEl = document.getElementById('avgVerfuegbar');
+    verfuegbarEl.textContent = avgVerfuegbar.toFixed(1);
+    verfuegbarEl.className = avgVerfuegbar < 0 ? 'big-number text-danger' : 
+                              avgVerfuegbar < 5 ? 'big-number text-warning' : 'big-number text-success';
+}
+
+// ============================================================================
+// QUICK EDIT (Inline)
+// ============================================================================
+function quickEdit(employeeId, field, cell) {
+    const currentValue = parseFloat(cell.textContent) || 0;
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.value = currentValue;
+    input.step = '0.5';
+    input.min = '0';
+    
+    cell.innerHTML = '';
+    cell.appendChild(input);
+    input.focus();
+    input.select();
+    
+    input.addEventListener('blur', () => saveQuickEdit(employeeId, field, input, cell, currentValue));
+    input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') input.blur();
+        if (e.key === 'Escape') {
+            cell.innerHTML = currentValue;
+        }
+    });
+}
+
+function saveQuickEdit(employeeId, field, input, cell, oldValue) {
+    const newValue = parseFloat(input.value) || 0;
+    cell.innerHTML = newValue;
+    
+    if (newValue !== oldValue) {
+        // Änderung merken
+        if (!pendingChanges[employeeId]) {
+            pendingChanges[employeeId] = {};
+        }
+        pendingChanges[employeeId][field] = newValue;
+        
+        // Row markieren
+        const row = cell.closest('tr');
+        row.classList.add('changed-row');
+        
+        // Button zeigen
+        updateSaveButton();
+    }
+}
+
+// ============================================================================
+// MODAL BEARBEITUNG
+// ============================================================================
+function openEditModal(employeeId) {
+    const emp = allEmployees.find(e => e.employee_id === employeeId);
+    if (!emp) return;
+    
+    currentEditEmployee = emp;
+    
+    document.getElementById('editEmployeeName').textContent = emp.name;
+    document.getElementById('editAnspruch').value = emp.anspruch;
+    document.getElementById('editUebertrag').value = emp.uebertrag || 0;
+    document.getElementById('editKorrektur').value = 0;
+    document.getElementById('editKommentar').value = '';
+    
+    updateBerechnung();
+    
+    new bootstrap.Modal(document.getElementById('editModal')).show();
+}
+
+function updateBerechnung() {
+    const anspruch = parseFloat(document.getElementById('editAnspruch').value) || 0;
+    const uebertrag = parseFloat(document.getElementById('editUebertrag').value) || 0;
+    const korrektur = parseFloat(document.getElementById('editKorrektur').value) || 0;
+    const verbraucht = currentEditEmployee ? currentEditEmployee.verbraucht : 0;
+    
+    const gesamt = anspruch + uebertrag + korrektur;
+    const rest = gesamt - verbraucht;
+    
+    document.getElementById('editBerechnung').innerHTML = `
+        ${anspruch} (Anspruch) + ${uebertrag} (Übertrag) + ${korrektur} (Korrektur) = <strong>${gesamt} Tage</strong><br>
+        Abzgl. ${verbraucht} genommen = <strong class="${rest < 0 ? 'text-danger' : 'text-success'}">${rest} verfügbar</strong>
+    `;
+}
+
+async function saveEmployeeChanges() {
+    if (!currentEditEmployee) return;
+    
+    const data = {
+        employee_id: currentEditEmployee.employee_id,
+        year: document.getElementById('filterYear').value,
+        anspruch: parseFloat(document.getElementById('editAnspruch').value) || 0,
+        uebertrag: parseFloat(document.getElementById('editUebertrag').value) || 0,
+        korrektur: parseFloat(document.getElementById('editKorrektur').value) || 0,
+        kommentar: document.getElementById('editKommentar').value
+    };
+    
+    try {
+        const response = await fetch(`${API_BASE}/update-entitlement`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+            showToast('Änderungen gespeichert!', 'success');
+            loadData();
+        } else {
+            showToast('Fehler: ' + result.error, 'danger');
+        }
+    } catch (error) {
+        showToast('Speichern fehlgeschlagen', 'danger');
+    }
+}
+
+// ============================================================================
+// ALLE ÄNDERUNGEN SPEICHERN
+// ============================================================================
+function updateSaveButton() {
+    const count = Object.keys(pendingChanges).length;
+    document.getElementById('changeCount').textContent = count;
+    document.getElementById('saveAllBtn').style.display = count > 0 ? 'block' : 'none';
+}
+
+async function saveAllChanges() {
+    const year = document.getElementById('filterYear').value;
+    const changes = Object.entries(pendingChanges).map(([empId, fields]) => ({
+        employee_id: parseInt(empId),
+        year: parseInt(year),
+        ...fields
+    }));
+    
+    try {
+        const response = await fetch(`${API_BASE}/bulk-update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ changes })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            pendingChanges = {};
+            updateSaveButton();
+            showToast(`${result.updated} Mitarbeiter aktualisiert!`, 'success');
+            loadData();
+        } else {
+            showToast('Fehler: ' + result.error, 'danger');
+        }
+    } catch (error) {
+        showToast('Speichern fehlgeschlagen', 'danger');
+    }
+}
+
+// ============================================================================
+// EXPORT
+// ============================================================================
+function exportExcel() {
+    const year = document.getElementById('filterYear').value;
+    window.location.href = `${API_BASE}/export?year=${year}&format=xlsx`;
+}
+
+// ============================================================================
+// HELPER
+// ============================================================================
+function setupEventListeners() {
+    document.getElementById('filterYear').addEventListener('change', loadData);
+    document.getElementById('filterStandort').addEventListener('change', () => renderTable(allEmployees));
+    document.getElementById('filterStatus').addEventListener('change', () => renderTable(allEmployees));
+    document.getElementById('searchInput').addEventListener('input', () => renderTable(allEmployees));
+    
+    // Modal Berechnung live
+    ['editAnspruch', 'editUebertrag', 'editKorrektur'].forEach(id => {
+        document.getElementById(id)?.addEventListener('input', updateBerechnung);
+    });
+}
+
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toastContainer');
+    const id = 'toast-' + Date.now();
+    
+    container.insertAdjacentHTML('beforeend', `
+        <div id="${id}" class="toast align-items-center text-white bg-${type}" role="alert">
+            <div class="d-flex">
+                <div class="toast-body">${message}</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        </div>
+    `);
+    
+    new bootstrap.Toast(document.getElementById(id)).show();
+    setTimeout(() => document.getElementById(id)?.remove(), 5000);
+}
+
+console.log('📦 Urlaubsplaner Admin geladen');
+</script>
+{% endblock %}

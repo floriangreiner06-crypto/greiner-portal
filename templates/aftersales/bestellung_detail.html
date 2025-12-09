@@ -105,7 +105,7 @@
 </div>
 {% endblock %}
 
-{% block extra_js %}
+{% block scripts %}
 <script>
 const bestellnummer = '{{ bestellnummer }}';
 
@@ -119,7 +119,7 @@ function loadBestellungDetail() {
     $('#positionenSection').hide();
     
     $.ajax({
-        url: '/api/stellantis/bestellung/' + bestellnummer,
+        url: '/api/parts/bestellung/' + bestellnummer,
         method: 'GET',
         success: function(data) {
             // WICHTIG: data enthält die Bestellung direkt, nicht als data.bestellung

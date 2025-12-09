@@ -777,3 +777,96 @@ def health_check():
             'status': 'unhealthy',
             'error': str(e)
         }), 500
+
+
+# ============================================================================
+# ENDPOINT: DATENSTAND
+# ============================================================================
+
+@bankenspiegel_api.route('/datenstand', methods=['GET'])
+def get_datenstand():
+    """
+    GET /api/bankenspiegel/datenstand
+    Zeigt den Datenstand der Kontoauszüge und letzten Imports.
+    Wichtig für User-Validierung ob DRIVE aktuell ist.
+    """
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # 1. Neueste Transaktion (letzter Buchungstag)
+        cursor.execute("""
+            SELECT 
+                MAX(buchungsdatum) as letzte_buchung
+            FROM transaktionen
+        """)
+        trans_data = row_to_dict(cursor.fetchone())
+        
+        # 2. Konten mit Stand aus View
+        cursor.execute("""
+            SELECT 
+                kontoname,
+                bank_name,
+                letztes_update,
+                saldo
+            FROM v_aktuelle_kontostaende
+            ORDER BY letztes_update DESC
+            LIMIT 10
+        """)
+        konten_stand = rows_to_list(cursor.fetchall())
+        
+        # 3. Import-Statistik (letzte 7 Tage) - basierend auf Buchungsdatum
+        cursor.execute("""
+            SELECT 
+                buchungsdatum as datum,
+                COUNT(*) as anzahl_transaktionen
+            FROM transaktionen
+            WHERE buchungsdatum >= DATE('now', '-7 days')
+            GROUP BY buchungsdatum
+            ORDER BY datum DESC
+        """)
+        import_historie = rows_to_list(cursor.fetchall())
+        
+        # 4. Ältester und neuester Stand (aus View)
+        cursor.execute("""
+            SELECT 
+                MIN(letztes_update) as aeltester_stand,
+                MAX(letztes_update) as neuester_stand,
+                COUNT(*) as anzahl_konten
+            FROM v_aktuelle_kontostaende
+        """)
+        stand_range = row_to_dict(cursor.fetchone())
+        
+        conn.close()
+        
+        # Berechne wie aktuell die Daten sind
+        neuester_stand = stand_range.get('neuester_stand')
+        if neuester_stand:
+            try:
+                stand_date = datetime.strptime(neuester_stand[:10], '%Y-%m-%d').date()
+                tage_alt = (date.today() - stand_date).days
+            except:
+                tage_alt = None
+        else:
+            tage_alt = None
+        
+        return jsonify({
+            'success': True,
+            'timestamp': datetime.now().isoformat(),
+            'datenstand': {
+                'letzte_buchung': trans_data.get('letzte_buchung'),
+                'neuester_kontostand': stand_range.get('neuester_stand'),
+                'aeltester_kontostand': stand_range.get('aeltester_stand'),
+                'tage_alt': tage_alt,
+                'anzahl_aktive_konten': stand_range.get('anzahl_konten', 0),
+                'status': 'aktuell' if tage_alt is not None and tage_alt <= 1 else 'veraltet' if tage_alt and tage_alt > 3 else 'ok'
+            },
+            'konten_detail': konten_stand,
+            'import_historie': import_historie
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500

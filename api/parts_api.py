@@ -1,0 +1,460 @@
+"""
+Stellantis ServiceBox API
+Endpoints für Bestellungen aus dem ServiceBox-Scraper
+"""
+from flask import Blueprint, jsonify, request
+import sqlite3
+from datetime import datetime, timedelta
+import os
+
+# Blueprint erstellen
+parts_api = Blueprint('parts_api', __name__)
+
+# Datenbank-Pfad (wird in app.py konfiguriert)
+DB_PATH = '/opt/greiner-portal/data/greiner_controlling.db'
+
+def get_db_connection():
+    """Erstelle Datenbankverbindung"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+# =============================================================================
+# HELPER FUNCTIONS
+# =============================================================================
+
+def row_to_dict(row):
+    """Konvertiere sqlite3.Row zu Dictionary"""
+    return dict(zip(row.keys(), row)) if row else None
+
+def rows_to_list(rows):
+    """Konvertiere Liste von sqlite3.Row zu Liste von Dictionaries"""
+    return [row_to_dict(row) for row in rows]
+
+
+# =============================================================================
+# LIEFERSCHEIN-STATUS HELPER
+# =============================================================================
+
+def get_lieferschein_status_for_bestellungen(cursor, bestellnummern):
+    """
+    Hole Lieferschein-Status für eine Liste von Bestellnummern
+    Status: bestellt → geliefert → in_locosoft → zugebucht
+    """
+    if not bestellnummern:
+        return {}
+    
+    placeholders = ','.join('?' * len(bestellnummern))
+    
+    cursor.execute(f"""
+        SELECT 
+            servicebox_bestellnr,
+            COUNT(*) as pos_total,
+            SUM(CASE WHEN locosoft_zugebucht = 1 THEN 1 ELSE 0 END) as zugebucht,
+            SUM(CASE WHEN locosoft_gefunden = 1 AND locosoft_zugebucht = 0 THEN 1 ELSE 0 END) as in_locosoft,
+            SUM(CASE WHEN locosoft_gefunden = 0 THEN 1 ELSE 0 END) as geliefert,
+            MAX(lieferdatum) as letztes_lieferdatum
+        FROM teile_lieferscheine
+        WHERE servicebox_bestellnr IN ({placeholders})
+          AND servicebox_bestellnr != ''
+        GROUP BY servicebox_bestellnr
+    """, bestellnummern)
+    
+    result = {}
+    for row in cursor.fetchall():
+        bestellnr = row[0]
+        total = row[1] or 0
+        zugebucht = row[2] or 0
+        in_loco = row[3] or 0
+        gelief = row[4] or 0
+        
+        if total == 0:
+            status = 'bestellt'
+        elif zugebucht == total:
+            status = 'zugebucht'
+        elif zugebucht > 0 or in_loco > 0:
+            status = 'in_locosoft'
+        else:
+            status = 'geliefert'
+        
+        result[bestellnr] = {
+            'status': status,
+            'lieferschein_positionen': total,
+            'zugebucht': zugebucht,
+            'in_locosoft': in_loco,
+            'geliefert': gelief,
+            'letztes_lieferdatum': row[5]
+        }
+    
+    return result
+
+
+# =============================================================================
+# ENDPOINTS
+# =============================================================================
+
+@parts_api.route('/api/parts/health', methods=['GET'])
+def health_check():
+    """Health Check"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT COUNT(*) as count FROM stellantis_bestellungen")
+        bestellungen_count = cursor.fetchone()['count']
+        
+        cursor.execute("SELECT COUNT(*) as count FROM stellantis_positionen")
+        positionen_count = cursor.fetchone()['count']
+        
+        cursor.execute("SELECT MAX(bestelldatum) as letzte_bestellung FROM stellantis_bestellungen")
+        letzte_bestellung = cursor.fetchone()['letzte_bestellung']
+        
+        conn.close()
+        
+        return jsonify({
+            'status': 'healthy',
+            'database': 'connected',
+            'bestellungen': bestellungen_count,
+            'positionen': positionen_count,
+            'letzte_bestellung': letzte_bestellung,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@parts_api.route('/api/parts/bestellungen', methods=['GET'])
+def get_bestellungen():
+    """
+    Hole alle Bestellungen mit optionalen Filtern
+    Query Parameters:
+    - datum_von: YYYY-MM-DD (Default: heute - 30 Tage)
+    - datum_bis: YYYY-MM-DD (Default: heute)
+    - lokale_nr: Filtern nach lokale_nr
+    - absender_code: Filtern nach Absender-Code
+    - teilenummer: Filtern nach Teilenummer
+    - suche: Volltextsuche (Bestellnummer, Lokale Nr, Teilenummer)
+    - limit: Max. Anzahl (Default: 100)
+    - offset: Offset für Pagination (Default: 0)
+    """
+    try:
+        # Query-Parameter
+        datum_von = request.args.get('datum_von', (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'))
+        datum_bis = request.args.get('datum_bis', datetime.now().strftime('%Y-%m-%d'))
+        lokale_nr = request.args.get('lokale_nr')
+        absender_code = request.args.get('absender_code')
+        teilenummer = request.args.get('teilenummer')
+        suche = request.args.get('suche')
+        limit = int(request.args.get('limit', 100))
+        offset = int(request.args.get('offset', 0))
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Base Filter
+        where_conditions = ["DATE(b.bestelldatum) >= ?", "DATE(b.bestelldatum) <= ?"]
+        params = [datum_von, datum_bis]
+        
+        if lokale_nr:
+            where_conditions.append("b.lokale_nr = ?")
+            params.append(lokale_nr)
+            
+        if absender_code:
+            where_conditions.append("b.absender_code = ?")
+            params.append(absender_code)
+            
+        if teilenummer:
+            where_conditions.append("EXISTS (SELECT 1 FROM stellantis_positionen p WHERE p.bestellung_id = b.id AND p.teilenummer LIKE ?)")
+            params.append(f"%{teilenummer}%")
+            
+        if suche:
+            where_conditions.append("(b.bestellnummer LIKE ? OR b.lokale_nr LIKE ? OR b.parsed_kundennummer LIKE ? OR b.match_kunde_name LIKE ? OR EXISTS (SELECT 1 FROM stellantis_positionen p WHERE p.bestellung_id = b.id AND p.teilenummer LIKE ?))")
+            params.extend([f"%{suche}%", f"%{suche}%", f"%{suche}%", f"%{suche}%", f"%{suche}%"])
+        
+        where_clause = " AND ".join(where_conditions)
+        
+        # 1. BESTELLUNGEN mit Pagination
+        query = f"""
+            SELECT
+                b.id,
+                b.bestellnummer,
+                b.bestelldatum,
+                b.absender_code,
+                b.absender_name,
+                b.empfaenger_code,
+                b.lokale_nr,
+                b.url,
+                b.parsed_kundennummer,
+                b.parsed_vin,
+                b.match_typ,
+                b.match_kunde_name,
+                b.match_confidence,
+                (SELECT COUNT(*) FROM stellantis_positionen WHERE bestellung_id = b.id) as anzahl_positionen,
+                (SELECT COALESCE(ROUND(SUM(summe_inkl_mwst), 2), 0) FROM stellantis_positionen WHERE bestellung_id = b.id) as gesamtwert,
+                b.import_timestamp
+            FROM stellantis_bestellungen b
+            WHERE {where_clause}
+            ORDER BY b.bestelldatum DESC 
+            LIMIT ? OFFSET ?
+        """
+        cursor.execute(query, params + [limit, offset])
+        bestellungen = rows_to_list(cursor.fetchall())
+        
+        # Lieferschein-Status für alle Bestellungen holen
+        if bestellungen:
+            bestellnummern = [b['bestellnummer'] for b in bestellungen if b.get('bestellnummer')]
+            lieferschein_status = get_lieferschein_status_for_bestellungen(cursor, bestellnummern)
+            
+            for b in bestellungen:
+                ls_info = lieferschein_status.get(b['bestellnummer'], {})
+                b['lieferschein_status'] = ls_info.get('status', 'bestellt')
+                b['lieferschein_info'] = ls_info
+        
+        # 2. GESAMT-ANZAHL
+        count_query = f"""
+            SELECT COUNT(*) as total
+            FROM stellantis_bestellungen b
+            WHERE {where_clause}
+        """
+        cursor.execute(count_query, params)
+        total = cursor.fetchone()['total']
+        
+        # 3. STATISTIKEN
+        if total > 0:
+            # Hole alle IDs die dem Filter entsprechen
+            ids_query = f"""
+                SELECT b.id
+                FROM stellantis_bestellungen b
+                WHERE {where_clause}
+            """
+            cursor.execute(ids_query, params)
+            bestellung_ids = [row['id'] for row in cursor.fetchall()]
+            
+            # Stats über diese IDs
+            if bestellung_ids:
+                placeholders = ','.join('?' * len(bestellung_ids))
+                stats_query = f"""
+                    SELECT
+                        COUNT(*) as total_positionen,
+                        COALESCE(SUM(summe_inkl_mwst), 0) as gesamtwert
+                    FROM stellantis_positionen
+                    WHERE bestellung_id IN ({placeholders})
+                """
+                cursor.execute(stats_query, bestellung_ids)
+                stats_row = cursor.fetchone()
+                
+                stats = {
+                    'total_bestellungen': total,
+                    'total_positionen': int(stats_row['total_positionen'] or 0),
+                    'durchschnitt_positionen': round((stats_row['total_positionen'] or 0) / total, 1),
+                    'gesamtwert': round(float(stats_row['gesamtwert'] or 0), 2)
+                }
+            else:
+                stats = {
+                    'total_bestellungen': total,
+                    'total_positionen': 0,
+                    'durchschnitt_positionen': 0,
+                    'gesamtwert': 0
+                }
+        else:
+            stats = {
+                'total_bestellungen': 0,
+                'total_positionen': 0,
+                'durchschnitt_positionen': 0,
+                'gesamtwert': 0
+            }
+        
+        conn.close()
+        
+        return jsonify({
+            'bestellungen': bestellungen,
+            'total': total,
+            'limit': limit,
+            'offset': offset,
+            'has_more': (offset + limit) < total,
+            'stats': stats
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'error': str(e)
+        }), 500
+
+@parts_api.route('/api/parts/bestellung/<bestellnummer>', methods=['GET'])
+@parts_api.route('/api/parts/bestellungen/<bestellnummer>', methods=['GET'])
+def get_bestellung_detail(bestellnummer):
+    """
+    Hole Details einer einzelnen Bestellung inkl. aller Positionen
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Bestellung
+        cursor.execute("""
+            SELECT * FROM stellantis_bestellungen
+            WHERE bestellnummer = ?
+        """, (bestellnummer,))
+        
+        bestellung = row_to_dict(cursor.fetchone())
+        
+        if not bestellung:
+            conn.close()
+            return jsonify({'error': 'Bestellung nicht gefunden'}), 404
+        
+        # Positionen
+        cursor.execute("""
+            SELECT * FROM stellantis_positionen
+            WHERE bestellung_id = ?
+            ORDER BY id
+        """, (bestellung['id'],))
+        
+        positionen = rows_to_list(cursor.fetchall())
+        
+        # Berechne Gesamtwerte
+        bestellung['anzahl_positionen'] = len(positionen)
+        bestellung['gesamtwert'] = round(sum(p.get('summe_inkl_mwst', 0) or 0 for p in positionen), 2)
+        bestellung['positionen'] = positionen
+        
+        conn.close()
+        
+        return jsonify(bestellung)
+        
+    except Exception as e:
+        return jsonify({
+            'error': str(e)
+        }), 500
+
+@parts_api.route('/api/parts/absender', methods=['GET'])
+def get_absender():
+    """Hole Liste aller eindeutigen Absender"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT DISTINCT
+                absender_code as code,
+                absender_name as name,
+                COUNT(*) as anzahl_bestellungen
+            FROM stellantis_bestellungen
+            WHERE absender_code IS NOT NULL
+            GROUP BY absender_code, absender_name
+            ORDER BY anzahl_bestellungen DESC
+        """)
+        
+        absender = rows_to_list(cursor.fetchall())
+        conn.close()
+        
+        return jsonify({
+            'absender': absender,
+            'anzahl': len(absender)
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'error': str(e)
+        }), 500
+
+
+@parts_api.route('/api/parts/sync-status', methods=['GET'])
+def get_sync_status():
+    """
+    Liefert den aktuellen Sync-Status für ServiceBox
+    Zeigt wann zuletzt synchronisiert wurde und wie viele Matches
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Sync-Status
+        cursor.execute("""
+            SELECT 
+                last_run,
+                status,
+                records_processed,
+                records_matched,
+                error_message
+            FROM sync_status
+            WHERE sync_name = 'servicebox'
+        """)
+        sync_row = cursor.fetchone()
+        
+        # Statistiken aus DB
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN match_typ IS NOT NULL THEN 1 ELSE 0 END) as matched,
+                MAX(bestelldatum) as letzte_bestellung,
+                MIN(bestelldatum) as erste_bestellung
+            FROM stellantis_bestellungen
+        """)
+        stats_row = cursor.fetchone()
+        
+        # Heute
+        cursor.execute("""
+            SELECT COUNT(*) as heute
+            FROM stellantis_bestellungen
+            WHERE DATE(bestelldatum) = DATE('now')
+        """)
+        heute_row = cursor.fetchone()
+        
+        conn.close()
+        
+        # Response bauen
+        if sync_row:
+            last_run = sync_row['last_run']
+            # Berechne "vor X Minuten/Stunden"
+            if last_run:
+                from datetime import datetime
+                try:
+                    last_dt = datetime.strptime(last_run, '%Y-%m-%d %H:%M:%S')
+                    diff = datetime.now() - last_dt
+                    minutes = int(diff.total_seconds() / 60)
+                    if minutes < 60:
+                        ago_text = f"vor {minutes} Min."
+                    elif minutes < 1440:
+                        ago_text = f"vor {minutes // 60} Std."
+                    else:
+                        ago_text = f"vor {minutes // 1440} Tagen"
+                except:
+                    ago_text = None
+            else:
+                ago_text = None
+                
+            sync_status = {
+                'last_run': last_run,
+                'last_run_ago': ago_text,
+                'status': sync_row['status'],
+                'records_processed': sync_row['records_processed'],
+                'records_matched': sync_row['records_matched'],
+                'error_message': sync_row['error_message']
+            }
+        else:
+            sync_status = {
+                'last_run': None,
+                'status': 'never_run'
+            }
+        
+        return jsonify({
+            'sync': sync_status,
+            'stats': {
+                'total': stats_row['total'] if stats_row else 0,
+                'matched': stats_row['matched'] if stats_row else 0,
+                'match_rate': round((stats_row['matched'] or 0) / max(stats_row['total'] or 1, 1) * 100, 1),
+                'heute': heute_row['heute'] if heute_row else 0,
+                'letzte_bestellung': stats_row['letzte_bestellung'] if stats_row else None
+            },
+            'cron_schedule': '09:00, 12:00, 16:00, 19:00'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'error': str(e)
+        }), 500
+
+if __name__ == '__main__':
+    print("Stellantis API - Standalone-Test nicht möglich")
+    print("Verwende: python app.py")

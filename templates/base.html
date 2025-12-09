@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Greiner Portal{% endblock %}</title>
+    <title>{% block title %}Greiner DRIVE{% endblock %}</title>
 
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -27,7 +27,7 @@
 
             <!-- Logo & Brand -->
             <a class="navbar-brand d-flex align-items-center" href="/">
-                <img src="{{ url_for('static', filename='images/greiner-logo.png') }}?v={{ STATIC_VERSION }}"
+                <img src="{{ url_for('static', filename='images/greiner-logo.svg') }}?v={{ STATIC_VERSION }}"
                      alt="Greiner Logo"
                      height="40"
                      class="me-2"
@@ -35,7 +35,7 @@
                 <span class="logo-fallback" style="display:none;">
                     <i class="bi bi-building"></i>
                 </span>
-                <span class="fw-bold">Greiner Portal</span>
+                <span class="fw-bold">DRIVE</span>
             </a>
 
             <!-- Mobile Toggle -->
@@ -55,31 +55,51 @@
                     </li>
 
                     <!-- Controlling Dropdown (inkl. Bankenspiegel) -->
-                    {% if current_user.is_authenticated and current_user.can_access_feature('bankenspiegel') %}
+                    {% if current_user.is_authenticated and (current_user.can_access_feature('bankenspiegel') or current_user.can_access_feature('zinsen') or current_user.can_access_feature('einkaufsfinanzierung')) %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="controllingDropdown" role="button" data-bs-toggle="dropdown">
                             <i class="bi bi-graph-up-arrow"></i> Controlling
                         </a>
                         <ul class="dropdown-menu">
-                            <!-- Dashboard -->
+                            <!-- Dashboard (nur für Bankenspiegel-Berechtigte) -->
+                            {% if current_user.can_access_feature('bankenspiegel') %}
                             <li><a class="dropdown-item" href="/controlling/dashboard">
                                 <i class="bi bi-speedometer2"></i> Dashboard
                             </a></li>
-                            
-                            <li><hr class="dropdown-divider"></li>
-                            
-                            <!-- Liquidität & Analysen -->
-                            <li><h6 class="dropdown-header text-muted">Analysen</h6></li>
-                            <li><a class="dropdown-item disabled text-muted" href="#" title="Bereits im Dashboard integriert">
-                                <i class="bi bi-droplet"></i> Liquidität
+                            <li><a class="dropdown-item" href="/controlling/bwa">
+                                <i class="bi bi-graph-up"></i> BWA
                             </a></li>
+                            <li><a class="dropdown-item" href="/controlling/tek">
+                                <i class="bi bi-bar-chart-line"></i> TEK (Tägliche Erfolgskontrolle)
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            {% endif %}
+                            
+                            <!-- Zinsen-Analyse (für alle mit zinsen-Berechtigung) -->
+                            {% if current_user.can_access_feature('zinsen') %}
+                            <li><h6 class="dropdown-header text-muted">Analysen</h6></li>
                             <li><a class="dropdown-item" href="/bankenspiegel/zinsen-analyse">
                                 <i class="bi bi-percent"></i> Zinsen-Analyse
                             </a></li>
+                            {% endif %}
                             
+                            <!-- Einkaufsfinanzierung (für Disposition) -->
+                            {% if current_user.can_access_feature('einkaufsfinanzierung') %}
+                            <li><a class="dropdown-item" href="/bankenspiegel/einkaufsfinanzierung">
+                                <i class="bi bi-truck"></i> Einkaufsfinanzierung
+                            </a></li>
+                            {% endif %}
+                            
+                            <!-- Jahresprämie (für Buchhaltung/Admin) -->
+                            {% if current_user.can_access_feature('bankenspiegel') %}
+                            <li><a class="dropdown-item" href="/jahrespraemie/">
+                                <i class="bi bi-gift"></i> Jahresprämie
+                            </a></li>
+                            {% endif %}
+                            
+                            <!-- Bankenspiegel Bereich (nur für Bankenspiegel-Berechtigte) -->
+                            {% if current_user.can_access_feature('bankenspiegel') %}
                             <li><hr class="dropdown-divider"></li>
-                            
-                            <!-- Bankenspiegel Bereich -->
                             <li><h6 class="dropdown-header text-muted">Bankenspiegel</h6></li>
                             <li><a class="dropdown-item" href="/bankenspiegel/dashboard">
                                 <i class="bi bi-bank2"></i> Bankenspiegel Dashboard
@@ -93,9 +113,6 @@
                             <li><a class="dropdown-item" href="/bankenspiegel/fahrzeugfinanzierungen">
                                 <i class="bi bi-car-front"></i> Fahrzeugfinanzierungen
                             </a></li>
-                            <li><a class="dropdown-item" href="/bankenspiegel/einkaufsfinanzierung">
-                                <i class="bi bi-truck"></i> Einkaufsfinanzierung
-                            </a></li>
                             
                             <li><hr class="dropdown-divider"></li>
                             
@@ -103,6 +120,7 @@
                             <li><a class="dropdown-item disabled text-muted" href="#" title="Coming Soon">
                                 <i class="bi bi-file-earmark-bar-graph"></i> Reports
                             </a></li>
+                            {% endif %}
                         </ul>
                     </li>
                     {% endif %}
@@ -119,6 +137,14 @@
                             </a></li>
                             <li><a class="dropdown-item" href="/verkauf/auslieferung/detail">
                                 <i class="bi bi-truck"></i> Auslieferungen
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><h6 class="dropdown-header text-muted">Tools</h6></li>
+                            <li><a class="dropdown-item" href="/verkauf/leasys-programmfinder">
+                                <i class="bi bi-search-heart"></i> Leasys Programmfinder
+                            </a></li>
+                            <li><a class="dropdown-item" href="/verkauf/leasys-kalkulator">
+                                <i class="bi bi-calculator"></i> Leasys Kalkulator
                             </a></li>
                         </ul>
                     </li>
@@ -138,18 +164,46 @@
                             <i class="bi bi-tools"></i> After Sales
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="/aftersales/teile/bestellungen">
-                                <i class="bi bi-box-seam"></i> Teilebestellungen
+                            <li><h6 class="dropdown-header text-muted">Controlling</h6></li>
+                            <li><a class="dropdown-item" href="/aftersales/serviceberater/">
+                                <i class="bi bi-person-badge"></i> Serviceberater Controlling
                             </a></li>
                             
                             <li><hr class="dropdown-divider"></li>
                             
-                            <li><h6 class="dropdown-header text-muted">Coming Soon</h6></li>
-                            <li><a class="dropdown-item disabled" href="#">
-                                <i class="bi bi-wrench"></i> Werkstatt
+                            <li><h6 class="dropdown-header text-muted">Teile</h6></li>
+                            <li><a class="dropdown-item" href="/werkstatt/teile-status">
+                                <i class="bi bi-exclamation-triangle text-warning"></i> <strong>Teile-Status</strong>
                             </a></li>
-                            <li><a class="dropdown-item disabled" href="#">
-                                <i class="bi bi-clipboard-check"></i> Service
+                            <li><a class="dropdown-item" href="/aftersales/teile/bestellungen">
+                                <i class="bi bi-box-seam"></i> Teilebestellungen
+                            </a></li>
+                            <li><a class="dropdown-item" href="/aftersales/teile/preisradar">
+                                <i class="bi bi-radar"></i> Preisradar
+                            </a></li>
+                            
+                            <li><hr class="dropdown-divider"></li>
+                            
+                            <li><h6 class="dropdown-header text-muted">Werkstatt</h6></li>
+                            <li><a class="dropdown-item" href="/werkstatt/cockpit">
+                                <i class="bi bi-speedometer2 text-primary"></i> <strong>Cockpit</strong>
+                            </a></li>
+                            <li><a class="dropdown-item" href="/werkstatt/auftraege">
+                                <i class="bi bi-list-check"></i> Aufträge & Prognose
+                            </a></li>
+                            <li><a class="dropdown-item" href="/werkstatt/stempeluhr/monitor" target="_blank">
+                                <i class="bi bi-tv"></i> Monitor (TV)
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><h6 class="dropdown-header text-muted">Details</h6></li>
+                            <li><a class="dropdown-item" href="/werkstatt/uebersicht">
+                                <i class="bi bi-bar-chart-line"></i> Leistungsübersicht
+                            </a></li>
+                            <li><a class="dropdown-item" href="/werkstatt/stempeluhr">
+                                <i class="bi bi-stopwatch"></i> Stempeluhr
+                            </a></li>
+                            <li><a class="dropdown-item" href="/werkstatt/tagesbericht">
+                                <i class="bi bi-clipboard-check"></i> Tagesbericht
                             </a></li>
                         </ul>
                     </li>
@@ -199,6 +253,19 @@
                                 <li><a class="dropdown-item" href="#">
                                     <i class="bi bi-gear"></i> Einstellungen
                                 </a></li>
+                                {% if current_user.portal_role == 'admin' %}
+                                <li><hr class="dropdown-divider"></li>
+                                <li><h6 class="dropdown-header text-muted">Administration</h6></li>
+                                <li><a class="dropdown-item" href="/admin/jobs/">
+                                    <i class="bi bi-clock-history"></i> Job-Scheduler
+                                </a></li>
+                                <li><a class="dropdown-item" href="/admin/system-status">
+                                    <i class="bi bi-activity"></i> System Status
+                                </a></li>
+                                <li><a class="dropdown-item" href="/debug/user">
+                                    <i class="bi bi-bug"></i> Debug User
+                                </a></li>
+                                {% endif %}
                                 <li><hr class="dropdown-divider"></li>
                                 <li><a class="dropdown-item text-danger" href="/logout">
                                     <i class="bi bi-box-arrow-right"></i> Logout

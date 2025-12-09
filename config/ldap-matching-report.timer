@@ -1,0 +1,9 @@
+[Unit]
+Description=LDAP-Locosoft Matching Report Timer (jeden Montag 7:00)
+
+[Timer]
+OnCalendar=Mon *-*-* 07:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

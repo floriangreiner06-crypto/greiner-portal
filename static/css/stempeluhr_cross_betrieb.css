@@ -1,0 +1,45 @@
+/* ============================================================================
+ * CSS PATCH für werkstatt_stempeluhr.html - TAG 101 v2
+ * ============================================================================
+ * Cross-Betrieb Styling: Wenn Mechaniker an Auftrag aus anderem Betrieb arbeitet
+ * 
+ * Beispiel: Raith (Stellantis MA) arbeitet an Hyundai-Auftrag
+ * 
+ * EINBINDEN in werkstatt_stempeluhr.html im {% block extra_css %} Bereich:
+ * <link rel="stylesheet" href="{{ url_for('static', filename='css/stempeluhr_cross_betrieb.css') }}">
+ * ============================================================================
+ */
+
+/* Cross-Betrieb Badge - dezent aber erkennbar */
+.cross-betrieb-badge {
+    font-size: 0.65rem;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #ff9800, #f57c00);
+    color: white;
+    margin-left: 8px;
+    font-weight: 500;
+    box-shadow: 0 1px 3px rgba(255, 152, 0, 0.3);
+}
+
+/* Karte mit Cross-Betrieb: Dezenter orangener Rand rechts */
+.mechaniker-card.cross-betrieb {
+    border-right: 4px solid #ff9800 !important;
+    background: linear-gradient(to right, white 95%, #fff8e1 100%);
+}
+
+/* Für Hyundai speziell - blauer Badge */
+.cross-betrieb-badge.hyundai {
+    background: linear-gradient(135deg, #1976d2, #0d47a1);
+}
+
+/* Tooltip-Style für mehr Info */
+.cross-betrieb-badge[title] {
+    cursor: help;
+}
+
+/* Subtile Animation bei Hover */
+.mechaniker-card.cross-betrieb:hover .cross-betrieb-badge {
+    transform: scale(1.05);
+    transition: transform 0.2s ease;
+}
