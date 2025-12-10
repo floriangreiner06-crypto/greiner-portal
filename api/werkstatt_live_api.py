@@ -694,7 +694,18 @@ def get_stempeluhr_live():
                     t.employee_number,
                     t.order_number,
                     t.start_time,
-                    EXTRACT(EPOCH FROM (NOW() - t.start_time))/60 as laufzeit_min
+                    -- TAG 112: Aktuelle Session + bereits abgeschlossene Zeit auf diesem Auftrag (Saldo)
+                    EXTRACT(EPOCH FROM (NOW() - t.start_time))/60 
+                    + COALESCE((
+                        SELECT SUM(dur) FROM (
+                            SELECT DISTINCT ON (start_time, end_time) duration_minutes as dur
+                            FROM times t2 
+                            WHERE t2.order_number = t.order_number 
+                              AND t2.employee_number = t.employee_number
+                              AND t2.end_time IS NOT NULL
+                              AND t2.type = 2
+                        ) dedup
+                    ), 0) as laufzeit_min
                 FROM times t
                 WHERE t.end_time IS NULL
                   AND t.type = 2
@@ -712,6 +723,7 @@ def get_stempeluhr_live():
                 ROUND(a.laufzeit_min::numeric, 0) as laufzeit_min,
                 COALESCE(l.vorgabe_aw, 0) as vorgabe_aw,
                 COALESCE(l.vorgabe_aw * 6, 0) as vorgabe_min,
+                l.auftrags_art,
                 o.order_taking_employee_no as sb_nr,
                 sb.name as sb_name,
                 v.license_plate as kennzeichen,
@@ -725,7 +737,8 @@ def get_stempeluhr_live():
             LEFT JOIN vehicles v ON o.vehicle_number = v.internal_number
             LEFT JOIN makes m ON v.make_number = m.make_number
             LEFT JOIN LATERAL (
-                SELECT SUM(time_units) as vorgabe_aw
+                SELECT SUM(time_units) as vorgabe_aw,
+                       MAX(labour_type) as auftrags_art  -- TAG 112: W=Werkstatt, etc.
                 FROM labours 
                 WHERE order_number = a.order_number 
                   AND mechanic_no = a.employee_number
@@ -814,6 +827,7 @@ def get_stempeluhr_live():
         # Außerhalb Arbeitszeit = kein Leerlauf
         jetzt_zeit = datetime.now().time()
         ist_arbeitszeit = ARBEITSZEIT_START <= jetzt_zeit <= ARBEITSZEIT_ENDE
+        ist_pausenzeit = PAUSE_START <= jetzt_zeit <= PAUSE_ENDE  # TAG 112: Mittagspause 12:00-13:00
         if not ist_arbeitszeit:
             leerlauf = []
         
@@ -857,6 +871,100 @@ def get_stempeluhr_live():
         
         abwesend = cur.fetchall()
         
+        # =====================================================================
+        # 4. PAUSIERT / WARTET - TAG 112
+        # Mechaniker die heute produktiv waren aber gerade keine offene Stempelung haben
+        # =====================================================================
+        pausiert_query = """
+            WITH 
+            -- MA die heute type=2 gestempelt haben (produktiv)
+            heute_gearbeitet AS (
+                SELECT DISTINCT employee_number
+                FROM times
+                WHERE type = 2
+                  AND DATE(start_time) = CURRENT_DATE
+                  AND order_number > 31
+            ),
+            -- MA die gerade eine offene Stempelung haben
+            aktuell_aktiv AS (
+                SELECT DISTINCT employee_number
+                FROM times
+                WHERE end_time IS NULL
+                  AND DATE(start_time) = CURRENT_DATE
+            ),
+            -- MA die abwesend sind
+            abwesend_heute AS (
+                SELECT DISTINCT employee_number
+                FROM absence_calendar
+                WHERE date = CURRENT_DATE
+            ),
+            -- Letzte abgeschlossene Stempelung pro MA
+            letzte_stempelung AS (
+                SELECT DISTINCT ON (employee_number)
+                    employee_number,
+                    order_number as letzter_auftrag,
+                    end_time as pausiert_seit
+                FROM times
+                WHERE type = 2
+                  AND DATE(start_time) = CURRENT_DATE
+                  AND end_time IS NOT NULL
+                  AND order_number > 31
+                ORDER BY employee_number, end_time DESC
+            ),
+            -- Tagesarbeit pro MA (dedupliziert)
+            tagesarbeit AS (
+                SELECT 
+                    employee_number,
+                    SUM(dur) as heute_min,
+                    COUNT(DISTINCT auftrag) as heute_auftraege
+                FROM (
+                    SELECT DISTINCT ON (employee_number, start_time, end_time)
+                        employee_number,
+                        order_number as auftrag,
+                        duration_minutes as dur
+                    FROM times
+                    WHERE type = 2
+                      AND DATE(start_time) = CURRENT_DATE
+                      AND end_time IS NOT NULL
+                      AND order_number > 31
+                ) dedup
+                GROUP BY employee_number
+            )
+            SELECT 
+                hg.employee_number,
+                eh.name,
+                eh.subsidiary,
+                ls.letzter_auftrag,
+                ls.pausiert_seit,
+                COALESCE(ta.heute_min, 0) as heute_min,
+                COALESCE(ta.heute_auftraege, 0) as heute_auftraege
+            FROM heute_gearbeitet hg
+            JOIN employees_history eh ON hg.employee_number = eh.employee_number AND eh.is_latest_record = true
+            LEFT JOIN letzte_stempelung ls ON hg.employee_number = ls.employee_number
+            LEFT JOIN tagesarbeit ta ON hg.employee_number = ta.employee_number
+            WHERE hg.employee_number NOT IN (SELECT employee_number FROM aktuell_aktiv)
+              AND hg.employee_number NOT IN (SELECT employee_number FROM abwesend_heute)
+              AND eh.leave_date IS NULL
+              AND eh.subsidiary > 0
+        """
+        
+        # Filter nach Betrieb
+        if subsidiaries:
+            if len(subsidiaries) == 1 and subsidiaries[0] == 2:
+                cur.execute("SELECT 1 WHERE false")
+            elif len(subsidiaries) == 1:
+                pausiert_query += " AND eh.subsidiary = %s ORDER BY ls.pausiert_seit DESC"
+                cur.execute(pausiert_query, [subsidiaries[0]])
+            else:
+                placeholders = ','.join(['%s'] * len(subsidiaries))
+                pausiert_query += f" AND eh.subsidiary IN ({placeholders}) ORDER BY ls.pausiert_seit DESC"
+                cur.execute(pausiert_query, subsidiaries)
+        else:
+            pausiert_query += " ORDER BY eh.subsidiary, ls.pausiert_seit DESC"
+            cur.execute(pausiert_query)
+        
+        pausiert = cur.fetchall()
+        
         cur.close()
         conn.close()
         
@@ -867,6 +975,7 @@ def get_stempeluhr_live():
             'success': True,
             'timestamp': datetime.now().isoformat(),
             'ist_arbeitszeit': ist_arbeitszeit,
+            'ist_pausenzeit': ist_pausenzeit,  # TAG 112
             'filter': {
                 'subsidiary': subsidiary_param,  # Original-Parameter (z.B. "1,2")
                 'subsidiaries': subsidiaries,    # Als Liste [1, 2]
@@ -890,12 +999,13 @@ def get_stempeluhr_live():
                     'marke': r['marke'],
                     'start_time': format_datetime(r['start_time']),
                     'start_uhrzeit': r['start_time'].strftime('%H:%M') if r['start_time'] else None,
-                    'laufzeit_min': berechne_netto_laufzeit(r['start_time']) if r['start_time'] else 0,
+                    'laufzeit_min': int(r['laufzeit_min'] or 0),  # TAG 112: SQL-Saldo verwenden
                     'vorgabe_aw': float(r['vorgabe_aw'] or 0),
                     'vorgabe_min': int(r['vorgabe_min'] or 0),
+                    'auftrags_art': r.get('auftrags_art') or '-',  # TAG 112: W=Werkstatt, T=Teile, etc.
                     'fortschritt_prozent': int(
-                        (berechne_netto_laufzeit(r['start_time']) / (r['vorgabe_aw'] * 6) * 100)
-                        if r['start_time'] and r['vorgabe_aw'] and r['vorgabe_aw'] > 0 
+                        (r['laufzeit_min'] / (r['vorgabe_aw'] * 6) * 100)
+                        if r['laufzeit_min'] and r['vorgabe_aw'] and r['vorgabe_aw'] > 0 
                         else 0
                     ),
                     'status': 'produktiv'
@@ -923,11 +1033,26 @@ def get_stempeluhr_live():
                     'status': 'abwesend'
                 } for r in abwesend
             ],
+            # TAG 112: Neue Kategorie für Mechaniker die pausieren/warten
+            'pausiert_mechaniker': [
+                {
+                    'employee_number': r['employee_number'],
+                    'name': r['name'] or f"MA {r['employee_number']}",
+                    'betrieb': r['subsidiary'],
+                    'betrieb_name': BETRIEB_NAMEN.get(r['subsidiary'], '?'),
+                    'letzter_auftrag': r['letzter_auftrag'],
+                    'pausiert_seit': r['pausiert_seit'].strftime('%H:%M') if r.get('pausiert_seit') else None,
+                    'heute_min': int(r['heute_min'] or 0),
+                    'heute_auftraege': int(r['heute_auftraege'] or 0),
+                    'status': 'pausiert'
+                } for r in pausiert
+            ],
             'summary': {
                 'produktiv': len(produktiv),
                 'leerlauf': len(leerlauf),
+                'pausiert': len(pausiert),
                 'abwesend': len(abwesend),
-                'gesamt': len(produktiv) + len(leerlauf) + len(abwesend)
+                'gesamt': len(produktiv) + len(leerlauf) + len(pausiert) + len(abwesend)
             }
         })
         
@@ -965,9 +1090,19 @@ def get_tagesbericht():
             WITH stempelungen AS (
                 SELECT DISTINCT ON (employee_number)
                     employee_number, order_number, start_time,
-                    EXTRACT(EPOCH FROM (NOW() - start_time))/60 as laufzeit_min
+                    -- TAG 112: Saldo = aktuelle Session + abgeschlossene Zeiten
+                    EXTRACT(EPOCH FROM (NOW() - start_time))/60 
+                    + COALESCE((
+                        SELECT SUM(duration_minutes) 
+                        FROM times t2 
+                        WHERE t2.order_number = times.order_number 
+                          AND t2.employee_number = times.employee_number
+                          AND t2.end_time IS NOT NULL
+                          AND t2.type = 2
+                    ), 0) as laufzeit_min
                 FROM times
                 WHERE type = 2 AND DATE(start_time) = %s
+                  AND end_time IS NULL
                 ORDER BY employee_number, start_time DESC
             ),
             mechaniker_aw AS (
@@ -2771,7 +2906,16 @@ def get_auftraege_enriched():
                     order_number,
                     employee_number as aktiv_mechaniker_nr,
                     start_time as stempel_start,
-                    EXTRACT(EPOCH FROM (NOW() - start_time))/60 as laufzeit_min
+                    -- TAG 112: Saldo = aktuelle Session + abgeschlossene Zeiten des MA auf diesem Auftrag
+                    EXTRACT(EPOCH FROM (NOW() - start_time))/60 
+                    + COALESCE((
+                        SELECT SUM(duration_minutes) 
+                        FROM times t2 
+                        WHERE t2.order_number = times.order_number 
+                          AND t2.employee_number = times.employee_number
+                          AND t2.end_time IS NOT NULL
+                          AND t2.type = 2
+                    ), 0) as laufzeit_min
                 FROM times
                 WHERE end_time IS NULL
                   AND type = 2

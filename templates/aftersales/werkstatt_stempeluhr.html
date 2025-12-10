@@ -241,6 +241,11 @@
         </div>
     </div>
 
+    <!-- Pausen-Banner TAG 112 -->
+    <div id="pausenBanner" class="alert alert-warning text-center py-2 mb-3" style="display: none; background: linear-gradient(135deg, #f5af19, #f12711); border: none; color: white; font-weight: bold;">
+        🍽️ MITTAGSPAUSE (12:00 - 13:00) - Stempelzeiten werden fortgesetzt
+    </div>
+    
     <!-- Aktive Mechaniker -->
     <div class="card mb-4">
         <div class="card-header bg-success text-white">
@@ -372,6 +377,12 @@ function renderData(data) {
     document.getElementById('countAktiv').textContent = data.summary.produktiv || data.summary.aktiv;
     document.getElementById('countLeerlauf').textContent = data.summary.leerlauf;
     document.getElementById('countAbwesend').textContent = data.summary.abwesend;
+                
+                // TAG 112: Pausen-Banner anzeigen
+                const pausenBanner = document.getElementById('pausenBanner');
+                if (pausenBanner) {
+                    pausenBanner.style.display = data.ist_pausenzeit ? 'block' : 'none';
+                }
     document.getElementById('countGesamt').textContent = data.summary.gesamt;
     document.getElementById('badgeAktiv').textContent = data.summary.aktiv;
     document.getElementById('badgeAbwesend').textContent = data.summary.abwesend;
@@ -482,7 +493,7 @@ function renderAktive(mechaniker) {
                         
                         <div class="mb-2">
                             <div class="d-flex justify-content-between small mb-1">
-                                <span><i class="bi bi-file-earmark-text"></i> Auftrag ${m.order_number}</span>
+                                <span><i class="bi bi-file-earmark-text"></i> <strong>${m.auftrags_art || "-"}</strong> ${m.order_number}</span>
                                 <span>${m.kennzeichen || '-'} ${m.marke || ''}</span>
                             </div>
                             <div class="d-flex justify-content-between small text-muted">

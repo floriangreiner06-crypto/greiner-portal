@@ -155,6 +155,10 @@
     </div>
     
     <!-- Mechaniker Grid -->
+    <!-- Pausen-Banner TAG 112 -->
+    <div id="pausenBanner" class="alert alert-warning text-center py-2 mx-2 mb-2" style="display: none; background: linear-gradient(135deg, #f5af19, #f12711); border: none; color: white; font-weight: bold;">
+        🍽️ MITTAGSPAUSE (12:00 - 13:00) - Stempelzeiten werden fortgesetzt
+    </div>
     <div class="mechaniker-grid" id="mechanikerGrid">
         <div class="text-center py-5">
             <div class="spinner-border text-light"></div>
@@ -199,6 +203,12 @@
             document.getElementById('countLeerlauf').textContent = data.summary.leerlauf;
             document.getElementById('countAbwesend').textContent = data.summary.abwesend;
             
+            // TAG 112: Pausen-Banner anzeigen
+            const pausenBanner = document.getElementById('pausenBanner');
+            if (pausenBanner) {
+                pausenBanner.style.display = data.ist_pausenzeit ? 'block' : 'none';
+            }
+            
             // Leerlauf Alarm
             const leerlaufCard = document.getElementById('leerlaufCard');
             const leerlaufNamen = document.getElementById('leerlaufNamen');
@@ -242,7 +252,7 @@
                             <span class="mech-time ${statusClass}">${m.laufzeit_min} min</span>
                         </div>
                         <div class="mech-info">
-                            <div>📋 ${m.order_number} | ${m.kennzeichen || '-'}</div>
+                            <div>📋 <strong>${m.auftrags_art || '-'}</strong> ${m.order_number} | ${m.kennzeichen || '-'}</div>
                             <div>⏱️ Seit ${m.start_uhrzeit} | Vorgabe: ${m.vorgabe_aw} AW</div>
                             ${m.serviceberater ? `<div>👤 ${m.serviceberater}</div>` : ''}
                         </div>
