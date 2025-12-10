@@ -148,6 +148,12 @@
             <div class="stat-label">Leerlauf</div>
             <div class="leerlauf-namen" id="leerlaufNamen"></div>
         </div>
+        <!-- TAG 112: Pausiert/Wartet -->
+        <div class="stat-card" id="pausiertCard" style="background: linear-gradient(135deg, #667eea, #764ba2);">
+            <div class="stat-number" id="countPausiert">-</div>
+            <div class="stat-label">Pausiert</div>
+            <div class="leerlauf-namen" id="pausiertNamen"></div>
+        </div>
         <div class="stat-card abwesend">
             <div class="stat-number" id="countAbwesend">-</div>
             <div class="stat-label">Abwesend</div>
@@ -199,14 +205,27 @@
         
         function renderData(data) {
             // Stats
-            document.getElementById('countAktiv').textContent = data.summary.aktiv;
+            document.getElementById('countAktiv').textContent = data.summary.produktiv || data.summary.aktiv;
             document.getElementById('countLeerlauf').textContent = data.summary.leerlauf;
+            document.getElementById('countPausiert').textContent = data.summary.pausiert || 0;  // TAG 112
             document.getElementById('countAbwesend').textContent = data.summary.abwesend;
             
             // TAG 112: Pausen-Banner anzeigen
             const pausenBanner = document.getElementById('pausenBanner');
             if (pausenBanner) {
                 pausenBanner.style.display = data.ist_pausenzeit ? 'block' : 'none';
+            }
+            
+            // TAG 112: Pausiert-Namen anzeigen
+            const pausiertNamen = document.getElementById('pausiertNamen');
+            if (data.pausiert_mechaniker && data.pausiert_mechaniker.length > 0) {
+                pausiertNamen.innerHTML = data.pausiert_mechaniker.map(m => {
+                    const heuteStd = Math.floor(m.heute_min / 60);
+                    const zeit = heuteStd > 0 ? `${heuteStd}h` : `${m.heute_min}m`;
+                    return `<span class="badge bg-light text-dark me-1">⏸️ ${m.name.split(',')[0]} (${zeit})</span>`;
+                }).join('');
+            } else {
+                pausiertNamen.innerHTML = '';
             }
             
             // Leerlauf Alarm

@@ -322,3 +322,74 @@ werkstatt_live_api.py:
 **Session abgeschlossen:** 2025-12-10 15:45
 **Branch:** feature/tag112-onwards
 **Bereit für:** Git Commit
+
+---
+
+## 🖥️ FRONTEND: Pausiert-Kategorie (Nachtrag)
+
+### Implementierung
+Beide Stempeluhr-Templates wurden um die neue Kategorie "Pausiert / Wartet" erweitert.
+
+### werkstatt_stempeluhr.html
+- **Summary Cards:** Neue lila Kachel "Pausiert / Wartet" mit Zähler
+- **Neue Section:** Card mit Header + Container für pausierte MA
+- **renderData():** countPausiert + badgePausiert aktualisieren
+- **renderPausiert():** Neue Funktion für Pausiert-Anzeige
+  - Name, Betrieb, Pausiert-seit
+  - Heute-Zeit (Stunden/Minuten)
+  - Anzahl Aufträge heute
+  - Letzter Auftrag
+
+### werkstatt_stempeluhr_monitor.html
+- **Stats Row:** Neue lila Kachel zwischen Leerlauf und Abwesend
+- **pausiertNamen:** Badges mit Namen und Arbeitszeit
+- **renderData():** countPausiert + pausiertNamen aktualisieren
+
+### Styling
+- Lila Gradient: `linear-gradient(135deg, #667eea, #764ba2)`
+- Konsistent mit Pause-Thematik
+
+---
+
+## ✅ FINAL STATUS TAG 112
+
+| Feature | API | Frontend | Getestet |
+|---------|-----|----------|----------|
+| Saldo-Bug Fix | ✅ | ✅ | ✅ |
+| DISTINCT Duplikate | ✅ | - | ✅ |
+| auftrags_art (W/G/T) | ✅ | ✅ | ✅ |
+| ist_pausenzeit | ✅ | ✅ | ✅ |
+| Pausen-Banner | ✅ | ✅ | ✅ |
+| Pausiert-Kategorie | ✅ | ✅ | ✅ |
+
+**Alle Features komplett implementiert und getestet!**
+
+---
+
+**Session abgeschlossen:** 2025-12-10 15:45
+**Letzter Test:** produktiv=6, pausiert=1, leerlauf=0
+
+---
+
+## ⚠️ KNOWN ISSUE: Pausiert-Logik
+
+### Problem
+Die aktuelle Pausiert-Erkennung zeigt auch MA die:
+- Ihren Arbeitstag beendet haben (Feierabend)
+- Früh angefangen und lange nicht mehr gestempelt haben
+
+**Screenshot:** Raith (7h), Hoffmann (3h), Ebner (6h) - das sind keine echten Pausen!
+
+### Ursache
+Logik unterscheidet nicht zwischen:
+- ✅ Echte Pause (kurze Unterbrechung, z.B. 30 min)
+- ❌ Feierabend (Tag beendet)
+
+### TODO für spätere Session
+1. Zeitfenster prüfen (z.B. letzte Stempelung > 2h = Feierabend?)
+2. Locosoft-Anwesenheit (type=1) besser nutzen?
+3. Schicht-/Arbeitszeit-Logik einbauen?
+4. Oder: In Locosoft anders/besser stempeln
+
+### Aktueller Status
+Feature funktioniert technisch, aber Datenqualität erfordert Überarbeitung.

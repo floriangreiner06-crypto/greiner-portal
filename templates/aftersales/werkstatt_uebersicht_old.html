@@ -1,0 +1,1183 @@
+{% extends "base.html" %}
+
+{% block title %}Werkstatt Leistungsübersicht - Greiner DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Gauge Styles */
+    .gauge-container {
+        position: relative;
+        width: 180px;
+        height: 100px;
+        margin: 0 auto;
+    }
+    .gauge-bg {
+        position: absolute;
+        width: 180px;
+        height: 90px;
+        background: linear-gradient(to right, 
+            #dc3545 0%, 
+            #dc3545 25%, 
+            #ffc107 25%, 
+            #ffc107 50%, 
+            #28a745 50%, 
+            #28a745 75%,
+            #0d6efd 75%,
+            #0d6efd 100%);
+        border-radius: 90px 90px 0 0;
+        overflow: hidden;
+    }
+    .gauge-center {
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 120px;
+        height: 60px;
+        background: white;
+        border-radius: 60px 60px 0 0;
+    }
+    .gauge-needle {
+        position: absolute;
+        bottom: 5px;
+        left: 50%;
+        width: 4px;
+        height: 70px;
+        background: linear-gradient(to top, #333 0%, #333 85%, #dc3545 85%, #dc3545 100%);
+        transform-origin: bottom center;
+        transform: translateX(-50%) rotate(-90deg);
+        transition: transform 1s ease-out;
+        border-radius: 2px;
+        z-index: 10;
+    }
+    .gauge-value {
+        position: absolute;
+        bottom: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 1.5rem;
+        font-weight: 700;
+        z-index: 20;
+    }
+    .gauge-labels {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.7rem;
+        color: #6c757d;
+        margin-top: 5px;
+    }
+    
+    /* KPI Cards */
+    .kpi-card {
+        border-radius: 12px;
+        border: none;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        transition: transform 0.2s;
+    }
+    .kpi-card:hover {
+        transform: translateY(-2px);
+    }
+    .kpi-value {
+        font-size: 2rem;
+        font-weight: 700;
+    }
+    .kpi-label {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+    .kpi-trend {
+        font-size: 0.8rem;
+    }
+    
+    /* Mechaniker Karten */
+    .mechaniker-card {
+        border-radius: 12px;
+        border: 1px solid #e9ecef;
+        transition: all 0.2s;
+        cursor: pointer;
+    }
+    .mechaniker-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        transform: translateY(-2px);
+    }
+    .mechaniker-card.selected {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 3px rgba(13,110,253,0.25);
+    }
+    .mechaniker-avatar {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: bold;
+        font-size: 1.2rem;
+    }
+    .leistungsgrad-badge {
+        font-size: 1.2rem;
+        font-weight: 700;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+    }
+    .lg-excellent { background: #d4edda; color: #155724; }
+    .lg-good { background: #cce5ff; color: #004085; }
+    .lg-warning { background: #fff3cd; color: #856404; }
+    .lg-danger { background: #f8d7da; color: #721c24; }
+    
+    /* Progress Bars */
+    .progress-thick {
+        height: 10px;
+        border-radius: 5px;
+    }
+    
+    /* Filter */
+    .filter-bar {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    /* Chart Container */
+    .chart-container {
+        position: relative;
+        height: 350px;
+    }
+    
+    /* Tabelle */
+    .table-sortable th {
+        cursor: pointer;
+        user-select: none;
+    }
+    .table-sortable th:hover {
+        background: #e9ecef;
+    }
+    .table-sortable th.sorted-asc::after {
+        content: " ↑";
+    }
+    .table-sortable th.sorted-desc::after {
+        content: " ↓";
+    }
+    
+    /* Rang Badges */
+    .badge-rang {
+        width: 28px;
+        height: 28px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        font-weight: bold;
+    }
+    .rang-1 { background: linear-gradient(135deg, #ffd700, #ffb300); color: #000; }
+    .rang-2 { background: linear-gradient(135deg, #c0c0c0, #a0a0a0); color: #000; }
+    .rang-3 { background: linear-gradient(135deg, #cd7f32, #b06020); color: #fff; }
+    
+    /* Mini Sparkline */
+    .mini-chart {
+        width: 80px;
+        height: 30px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1">
+                <i class="bi bi-speedometer2 text-primary"></i>
+                Werkstatt Leistungsübersicht
+            </h2>
+            <p class="text-muted mb-0">Mechaniker-Performance & Produktivität</p>
+        </div>
+        <div>
+            <button class="btn btn-outline-secondary" onclick="exportData()">
+                <i class="bi bi-download"></i> Export
+            </button>
+            <button class="btn btn-primary ms-2" onclick="loadData()">
+                <i class="bi bi-arrow-clockwise"></i> Aktualisieren
+            </button>
+        </div>
+    </div>
+    
+    <!-- Filter -->
+    <div class="filter-bar">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">Zeitraum</label>
+                <select id="filterZeitraum" class="form-select">
+                    <option value="heute">Heute</option>
+                    <option value="woche">Diese Woche</option>
+                    <option value="monat" selected>Dieser Monat</option>
+                    <option value="vormonat">Vormonat</option>
+                    <option value="quartal">Quartal</option>
+                    <option value="jahr">Jahr</option>
+                    <option value="custom">Benutzerdefiniert</option>
+                </select>
+            </div>
+            <div class="col-md-2" id="customDatumVon" style="display:none;">
+                <label class="form-label">Von</label>
+                <input type="date" id="filterDatumVon" class="form-control">
+            </div>
+            <div class="col-md-2" id="customDatumBis" style="display:none;">
+                <label class="form-label">Bis</label>
+                <input type="date" id="filterDatumBis" class="form-control">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Betrieb</label>
+                <select id="filterBetrieb" class="form-select">
+                    <option value="alle">Alle Betriebe</option>
+                    <option value="1">Deggendorf</option>
+                    <option value="3">Landau</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Sortierung</label>
+                <select id="filterSort" class="form-select">
+                    <option value="leistungsgrad">Leistungsgrad</option>
+                    <option value="stempelzeit">Stempelzeit</option>
+                    <option value="aw">Arbeitswerte</option>
+                    <option value="auftraege">Aufträge</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label d-block">&nbsp;</label>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="filterEhemalige">
+                    <label class="form-check-label" for="filterEhemalige">
+                        <small>Inkl. Ehemalige</small>
+                    </label>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-primary w-100" onclick="loadData()">
+                    <i class="bi bi-search"></i> Anzeigen
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Haupt-KPIs mit Tacho -->
+    <div class="row g-4 mb-4">
+        <!-- Gesamt-Leistungsgrad Tacho -->
+        <div class="col-lg-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body text-center">
+                    <h6 class="text-muted mb-3">
+                        <i class="bi bi-speedometer"></i> Leistungsgrad
+                    </h6>
+                    <div class="gauge-container" id="gaugeGesamt">
+                        <div class="gauge-bg"></div>
+                        <div class="gauge-center"></div>
+                        <div class="gauge-needle" id="needleGesamt"></div>
+                        <div class="gauge-value" id="gaugeValueGesamt">-%</div>
+                    </div>
+                    <div class="gauge-labels">
+                        <span>0%</span>
+                        <span>50%</span>
+                        <span>100%</span>
+                        <span>150%</span>
+                    </div>
+                    <div class="mt-2 small text-muted">
+                        AW×6 / Stempelzeit
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Produktivität Tacho -->
+        <div class="col-lg-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body text-center">
+                    <h6 class="text-muted mb-3">
+                        <i class="bi bi-activity"></i> Produktivität
+                    </h6>
+                    <div class="gauge-container" id="gaugeProduktiv">
+                        <div class="gauge-bg gauge-bg-prod"></div>
+                        <div class="gauge-center"></div>
+                        <div class="gauge-needle" id="needleProduktiv"></div>
+                        <div class="gauge-value" id="gaugeValueProduktiv">-%</div>
+                    </div>
+                    <div class="gauge-labels">
+                        <span>0%</span>
+                        <span>50%</span>
+                        <span>100%</span>
+                        <span>150%</span>
+                    </div>
+                    <div class="mt-2 small text-muted">
+                        Stempelzeit / Anwesenheit
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- KPI Karten -->
+        <div class="col-lg-6">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <div class="card kpi-card h-100">
+                        <div class="card-body text-center py-3">
+                            <i class="bi bi-people text-primary fs-3"></i>
+                            <div class="kpi-value text-primary" id="kpiMechaniker">-</div>
+                            <div class="kpi-label">Mechaniker</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card kpi-card h-100">
+                        <div class="card-body text-center py-3">
+                            <i class="bi bi-clipboard-check text-success fs-3"></i>
+                            <div class="kpi-value text-success" id="kpiAuftraege">-</div>
+                            <div class="kpi-label">Aufträge</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card kpi-card h-100">
+                        <div class="card-body text-center py-3">
+                            <i class="bi bi-clock-history text-info fs-3"></i>
+                            <div class="kpi-value text-info" id="kpiStempelzeit">-</div>
+                            <div class="kpi-label">Stempelzeit (Std)</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card kpi-card h-100">
+                        <div class="card-body text-center py-3">
+                            <i class="bi bi-clock text-secondary fs-3"></i>
+                            <div class="kpi-value text-secondary" id="kpiAnwesenheit">-</div>
+                            <div class="kpi-label">Anwesenheit (Std)</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card kpi-card h-100">
+                        <div class="card-body text-center py-3">
+                            <i class="bi bi-lightning text-warning fs-3"></i>
+                            <div class="kpi-value text-warning" id="kpiAW">-</div>
+                            <div class="kpi-label">Arbeitswerte</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card kpi-card h-100">
+                        <div class="card-body text-center py-3">
+                            <i class="bi bi-calendar-check text-danger fs-3"></i>
+                            <div class="kpi-value text-danger" id="kpiTage">-</div>
+                            <div class="kpi-label">Arbeitstage</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Tabs -->
+    <ul class="nav nav-tabs mb-4" id="mainTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="ranking-tab" data-bs-toggle="tab" 
+                    data-bs-target="#ranking" type="button" role="tab">
+                <i class="bi bi-trophy"></i> Mechaniker-Ranking
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="trend-tab" data-bs-toggle="tab" 
+                    data-bs-target="#trend" type="button" role="tab">
+                <i class="bi bi-graph-up"></i> Trend
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="detail-tab" data-bs-toggle="tab" 
+                    data-bs-target="#detail" type="button" role="tab">
+                <i class="bi bi-table"></i> Detailtabelle
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="vergleich-tab" data-bs-toggle="tab" 
+                    data-bs-target="#vergleich" type="button" role="tab">
+                <i class="bi bi-bar-chart"></i> Vergleich
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="problemfaelle-tab" data-bs-toggle="tab" 
+                    data-bs-target="#problemfaelle" type="button" role="tab" onclick="loadSchlechtesteAuftraege()">
+                <i class="bi bi-exclamation-triangle text-warning"></i> Problemfälle
+            </button>
+        </li>
+    </ul>
+    
+    <!-- Tab Content -->
+    <div class="tab-content" id="mainTabContent">
+        
+        <!-- Tab: Mechaniker-Ranking -->
+        <div class="tab-pane fade show active" id="ranking" role="tabpanel">
+            <div class="row g-3" id="mechanikerCards">
+                <!-- Wird dynamisch gefüllt -->
+                <div class="col-12 text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Laden...</span>
+                    </div>
+                    <p class="mt-2 text-muted">Daten werden geladen...</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab: Trend -->
+        <div class="tab-pane fade" id="trend" role="tabpanel">
+            <div class="card">
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="trendChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab: Detailtabelle -->
+        <div class="tab-pane fade" id="detail" role="tabpanel">
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sortable mb-0" id="detailTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th width="50">#</th>
+                                    <th>Mechaniker</th>
+                                    <th class="text-end">Tage</th>
+                                    <th class="text-end">Aufträge</th>
+                                    <th class="text-end">Stempelzeit</th>
+                                    <th class="text-end">AW</th>
+                                    <th class="text-end">Vorgabe</th>
+                                    <th class="text-center" width="150">Leistungsgrad</th>
+                                    <th class="text-end">Ø/Tag</th>
+                                </tr>
+                            </thead>
+                            <tbody id="detailTableBody">
+                                <!-- Wird dynamisch gefüllt -->
+                            </tbody>
+                            <tfoot class="table-light fw-bold">
+                                <tr id="detailTableFooter">
+                                    <td colspan="2">GESAMT</td>
+                                    <td class="text-end" id="sumTage">-</td>
+                                    <td class="text-end" id="sumAuftraege">-</td>
+                                    <td class="text-end" id="sumStempel">-</td>
+                                    <td class="text-end" id="sumAW">-</td>
+                                    <td class="text-end" id="sumVorgabe">-</td>
+                                    <td class="text-center" id="sumLG">-</td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab: Vergleich -->
+        <div class="tab-pane fade" id="vergleich" role="tabpanel">
+            <div class="row">
+                <div class="col-lg-6">
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <i class="bi bi-bar-chart"></i> Leistungsgrad nach Mechaniker
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container">
+                                <canvas id="vergleichChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <i class="bi bi-pie-chart"></i> Stempelzeit-Verteilung
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container">
+                                <canvas id="pieChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab: Problemfälle -->
+        <div class="tab-pane fade" id="problemfaelle" role="tabpanel">
+            <div class="alert alert-info mb-4">
+                <i class="bi bi-info-circle"></i>
+                <strong>Schlechteste Aufträge pro Mechaniker</strong> - 
+                Zeigt die 3 Aufträge mit dem niedrigsten Leistungsgrad je Mechaniker.
+                <small class="text-muted">(Nur Aufträge mit mind. 30 Min. Stempelzeit)</small>
+            </div>
+            <div id="problemfaelleContent">
+                <div class="text-center py-5">
+                    <i class="bi bi-arrow-up-circle fs-1 text-muted"></i>
+                    <p class="mt-2 text-muted">Klicken Sie auf den Tab um die Daten zu laden</p>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+    
+</div>
+
+<!-- Detail Modal -->
+<div class="modal fade" id="detailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">Mechaniker Detail</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- Wird dynamisch gefüllt -->
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Globale Variablen
+let mechanikerData = [];
+let trendChart = null;
+let vergleichChart = null;
+let pieChart = null;
+
+// Initialisierung
+document.addEventListener('DOMContentLoaded', function() {
+    // Filter-Events
+    document.getElementById('filterZeitraum').addEventListener('change', handleZeitraumChange);
+    
+    // Initial laden
+    loadData();
+});
+
+function handleZeitraumChange() {
+    const zeitraum = document.getElementById('filterZeitraum').value;
+    const customVon = document.getElementById('customDatumVon');
+    const customBis = document.getElementById('customDatumBis');
+    
+    if (zeitraum === 'custom') {
+        customVon.style.display = 'block';
+        customBis.style.display = 'block';
+    } else {
+        customVon.style.display = 'none';
+        customBis.style.display = 'none';
+    }
+}
+
+function loadData() {
+    const zeitraum = document.getElementById('filterZeitraum').value;
+    const betrieb = document.getElementById('filterBetrieb').value;
+    const sort = document.getElementById('filterSort').value;
+    const inklEhemalige = document.getElementById('filterEhemalige').checked ? '1' : '0';
+    
+    let params = `zeitraum=${zeitraum}&betrieb=${betrieb}&sort=${sort}&inkl_ehemalige=${inklEhemalige}`;
+    
+    if (zeitraum === 'custom') {
+        params += `&von=${document.getElementById('filterDatumVon').value}`;
+        params += `&bis=${document.getElementById('filterDatumBis').value}`;
+    }
+    
+    // Loading State
+    document.getElementById('mechanikerCards').innerHTML = `
+        <div class="col-12 text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Laden...</span>
+            </div>
+            <p class="mt-2 text-muted">Daten werden geladen...</p>
+        </div>
+    `;
+    
+    fetch(`/api/werkstatt/live/leistung?${params}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                mechanikerData = data.mechaniker;
+                updateKPIs(data);
+                updateMechanikerCards(data.mechaniker);
+                updateDetailTable(data.mechaniker);
+                updateCharts(data);
+                updateGauge('needleGesamt', 'gaugeValueGesamt', data.gesamt_leistungsgrad || 0);
+                updateGauge('needleProduktiv', 'gaugeValueProduktiv', data.gesamt_produktivitaet || 0);
+            } else {
+                showError(data.error || 'Fehler beim Laden');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showError('Verbindungsfehler');
+        });
+}
+
+function updateKPIs(data) {
+    document.getElementById('kpiMechaniker').textContent = data.anzahl_mechaniker || '-';
+    document.getElementById('kpiAuftraege').textContent = formatNumber(data.gesamt_auftraege || 0);
+    document.getElementById('kpiStempelzeit').textContent = formatNumber((data.gesamt_stempelzeit || 0) / 60, 1);
+    document.getElementById('kpiAnwesenheit').textContent = formatNumber((data.gesamt_anwesenheit || 0) / 60, 1);
+    document.getElementById('kpiAW').textContent = formatNumber(data.gesamt_aw || 0, 0);
+    document.getElementById('kpiTage').textContent = data.anzahl_tage || '-';
+}
+
+function updateGauge(needleId, valueId, wert) {
+    // Berechne Nadelwinkel: 0% = -90deg, 150% = +90deg
+    // Also: LG 0-150 → -90 bis +90 Grad
+    const maxVal = 150;
+    const clampedVal = Math.min(Math.max(wert, 0), maxVal);
+    const rotation = (clampedVal / maxVal) * 180 - 90;
+    
+    document.getElementById(needleId).style.transform = 
+        `translateX(-50%) rotate(${rotation}deg)`;
+    document.getElementById(valueId).textContent = 
+        formatNumber(wert, 1) + '%';
+    
+    // Farbe je nach Wert
+    const valueEl = document.getElementById(valueId);
+    valueEl.className = 'gauge-value';
+    if (wert >= 100) {
+        valueEl.classList.add('text-success');
+    } else if (wert >= 80) {
+        valueEl.classList.add('text-primary');
+    } else if (wert >= 60) {
+        valueEl.classList.add('text-warning');
+    } else {
+        valueEl.classList.add('text-danger');
+    }
+}
+
+function updateMechanikerCards(mechaniker) {
+    const container = document.getElementById('mechanikerCards');
+    
+    if (!mechaniker || mechaniker.length === 0) {
+        container.innerHTML = `
+            <div class="col-12 text-center py-5">
+                <i class="bi bi-inbox fs-1 text-muted"></i>
+                <p class="mt-2 text-muted">Keine Daten für den gewählten Zeitraum</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '';
+    mechaniker.forEach((m, index) => {
+        const initials = getInitials(m.name);
+        const lgClass = getLGClass(m.leistungsgrad);
+        const rang = index + 1;
+        const rangClass = rang <= 3 ? `rang-${rang}` : 'bg-secondary text-white';
+        
+        html += `
+            <div class="col-lg-3 col-md-4 col-sm-6">
+                <div class="card mechaniker-card h-100" onclick="showMechanikerDetail(${m.mechaniker_nr})">
+                    <div class="card-body">
+                        <div class="d-flex align-items-start mb-3">
+                            <div class="mechaniker-avatar me-3">${initials}</div>
+                            <div class="flex-grow-1">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <h6 class="mb-0">${m.name || 'Unbekannt'}</h6>
+                                    <span class="badge-rang ${rangClass}">${rang}</span>
+                                </div>
+                                <small class="text-muted">Nr. ${m.mechaniker_nr}</small>
+                            </div>
+                        </div>
+                        
+                        <div class="text-center mb-3">
+                            <span class="leistungsgrad-badge ${lgClass}">
+                                ${formatNumber(m.leistungsgrad, 1)}%
+                            </span>
+                            <div class="small text-muted mt-1">Leistungsgrad</div>
+                        </div>
+                        
+                        <div class="row g-2 text-center small">
+                            <div class="col-4">
+                                <div class="fw-bold">${m.tage || 0}</div>
+                                <div class="text-muted">Tage</div>
+                            </div>
+                            <div class="col-4">
+                                <div class="fw-bold">${m.auftraege || 0}</div>
+                                <div class="text-muted">Auftr.</div>
+                            </div>
+                            <div class="col-4">
+                                <div class="fw-bold">${formatNumber((m.stempelzeit || 0) / 60, 1)}</div>
+                                <div class="text-muted">Std.</div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-3">
+                            <div class="d-flex justify-content-between small text-muted mb-1">
+                                <span>Vorgabe: ${formatNumber(m.aw || 0)} AW</span>
+                                <span>${formatNumber(m.leistungsgrad, 0)}%</span>
+                            </div>
+                            <div class="progress progress-thick">
+                                <div class="progress-bar ${getProgressClass(m.leistungsgrad)}" 
+                                     style="width: ${Math.min(m.leistungsgrad, 150) / 1.5}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+function updateDetailTable(mechaniker) {
+    const tbody = document.getElementById('detailTableBody');
+    
+    if (!mechaniker || mechaniker.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center">Keine Daten</td></tr>';
+        return;
+    }
+    
+    let html = '';
+    let sumTage = 0, sumAuftraege = 0, sumStempel = 0, sumAW = 0, sumVorgabe = 0;
+    
+    mechaniker.forEach((m, index) => {
+        const vorgabe = (m.aw || 0) * 6;
+        sumTage += m.tage || 0;
+        sumAuftraege += m.auftraege || 0;
+        sumStempel += m.stempelzeit || 0;
+        sumAW += m.aw || 0;
+        sumVorgabe += vorgabe;
+        
+        const lgClass = getLGClass(m.leistungsgrad);
+        const rang = index + 1;
+        
+        html += `
+            <tr onclick="showMechanikerDetail(${m.mechaniker_nr})" style="cursor:pointer;">
+                <td>
+                    ${rang <= 3 ? `<span class="badge-rang rang-${rang}">${rang}</span>` : rang}
+                </td>
+                <td><strong>${m.name || 'Unbekannt'}</strong></td>
+                <td class="text-end">${m.tage || 0}</td>
+                <td class="text-end">${m.auftraege || 0}</td>
+                <td class="text-end">${formatNumber((m.stempelzeit || 0) / 60, 1)} h</td>
+                <td class="text-end">${formatNumber(m.aw || 0, 1)}</td>
+                <td class="text-end">${formatNumber(vorgabe / 60, 1)} h</td>
+                <td class="text-center">
+                    <span class="badge ${lgClass} px-3">${formatNumber(m.leistungsgrad, 1)}%</span>
+                </td>
+                <td class="text-end">${formatNumber((m.stempelzeit || 0) / (m.tage || 1) / 60, 1)} h</td>
+            </tr>
+        `;
+    });
+    
+    tbody.innerHTML = html;
+    
+    // Footer aktualisieren
+    const gesamtLG = sumStempel > 0 ? (sumVorgabe / sumStempel * 100) : 0;
+    document.getElementById('sumTage').textContent = sumTage;
+    document.getElementById('sumAuftraege').textContent = sumAuftraege;
+    document.getElementById('sumStempel').textContent = formatNumber(sumStempel / 60, 1) + ' h';
+    document.getElementById('sumAW').textContent = formatNumber(sumAW, 1);
+    document.getElementById('sumVorgabe').textContent = formatNumber(sumVorgabe / 60, 1) + ' h';
+    document.getElementById('sumLG').innerHTML = `<span class="badge ${getLGClass(gesamtLG)}">${formatNumber(gesamtLG, 1)}%</span>`;
+}
+
+function updateCharts(data) {
+    // Trend Chart
+    if (data.trend) {
+        updateTrendChart(data.trend);
+    }
+    
+    // Vergleich Chart
+    if (data.mechaniker) {
+        updateVergleichChart(data.mechaniker);
+        updatePieChart(data.mechaniker);
+    }
+}
+
+function updateTrendChart(trend) {
+    const ctx = document.getElementById('trendChart').getContext('2d');
+    
+    if (trendChart) {
+        trendChart.destroy();
+    }
+    
+    trendChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: trend.map(t => t.datum),
+            datasets: [{
+                label: 'Leistungsgrad %',
+                data: trend.map(t => t.leistungsgrad),
+                borderColor: '#0d6efd',
+                backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                fill: true,
+                tension: 0.3
+            }, {
+                label: 'Ziel (100%)',
+                data: trend.map(() => 100),
+                borderColor: '#28a745',
+                borderDash: [5, 5],
+                fill: false,
+                pointRadius: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top'
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 150,
+                    ticks: {
+                        callback: value => value + '%'
+                    }
+                }
+            }
+        }
+    });
+}
+
+function updateVergleichChart(mechaniker) {
+    const ctx = document.getElementById('vergleichChart').getContext('2d');
+    
+    if (vergleichChart) {
+        vergleichChart.destroy();
+    }
+    
+    const colors = mechaniker.map(m => {
+        if (m.leistungsgrad >= 100) return '#28a745';
+        if (m.leistungsgrad >= 80) return '#0d6efd';
+        if (m.leistungsgrad >= 60) return '#ffc107';
+        return '#dc3545';
+    });
+    
+    vergleichChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: mechaniker.map(m => m.name ? m.name.split(',')[0] : 'N/A'),
+            datasets: [{
+                label: 'Leistungsgrad %',
+                data: mechaniker.map(m => m.leistungsgrad),
+                backgroundColor: colors
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    max: 150,
+                    ticks: {
+                        callback: value => value + '%'
+                    }
+                }
+            }
+        }
+    });
+}
+
+function updatePieChart(mechaniker) {
+    const ctx = document.getElementById('pieChart').getContext('2d');
+    
+    if (pieChart) {
+        pieChart.destroy();
+    }
+    
+    pieChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: mechaniker.map(m => m.name ? m.name.split(',')[0] : 'N/A'),
+            datasets: [{
+                data: mechaniker.map(m => m.stempelzeit || 0),
+                backgroundColor: [
+                    '#0d6efd', '#28a745', '#ffc107', '#dc3545', '#17a2b8',
+                    '#6f42c1', '#fd7e14', '#20c997', '#e83e8c', '#6c757d'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'right'
+                }
+            }
+        }
+    });
+}
+
+function showMechanikerDetail(mechanikerNr) {
+    const m = mechanikerData.find(x => x.mechaniker_nr === mechanikerNr);
+    if (!m) return;
+    
+    const modal = new bootstrap.Modal(document.getElementById('detailModal'));
+    document.getElementById('modalTitle').textContent = m.name || 'Mechaniker ' + mechanikerNr;
+    
+    const vorgabe = (m.aw || 0) * 6;
+    const lgClass = getLGClass(m.leistungsgrad);
+    
+    document.getElementById('modalBody').innerHTML = `
+        <div class="row g-4">
+            <div class="col-md-4 text-center">
+                <div class="mechaniker-avatar mx-auto mb-2" style="width:80px;height:80px;font-size:2rem;">
+                    ${getInitials(m.name)}
+                </div>
+                <h5>${m.name || 'Unbekannt'}</h5>
+                <p class="text-muted">Nr. ${m.mechaniker_nr}</p>
+                <span class="leistungsgrad-badge ${lgClass} fs-4">
+                    ${formatNumber(m.leistungsgrad, 1)}%
+                </span>
+            </div>
+            <div class="col-md-8">
+                <table class="table table-sm">
+                    <tr>
+                        <td class="text-muted">Arbeitstage:</td>
+                        <td class="fw-bold">${m.tage || 0}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Aufträge:</td>
+                        <td class="fw-bold">${m.auftraege || 0}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Stempelzeit:</td>
+                        <td class="fw-bold">${formatNumber((m.stempelzeit || 0) / 60, 1)} Stunden</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Arbeitswerte (AW):</td>
+                        <td class="fw-bold">${formatNumber(m.aw || 0, 1)}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Vorgabezeit:</td>
+                        <td class="fw-bold">${formatNumber(vorgabe / 60, 1)} Stunden</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Leistungsgrad:</td>
+                        <td class="fw-bold ${m.leistungsgrad >= 100 ? 'text-success' : 'text-warning'}">
+                            ${formatNumber(m.leistungsgrad, 1)}%
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Ø Stunden/Tag:</td>
+                        <td class="fw-bold">${formatNumber((m.stempelzeit || 0) / (m.tage || 1) / 60, 1)} h</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Ø Aufträge/Tag:</td>
+                        <td class="fw-bold">${formatNumber((m.auftraege || 0) / (m.tage || 1), 1)}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    `;
+    
+    modal.show();
+}
+
+// Hilfsfunktionen
+function getInitials(name) {
+    if (!name) return '?';
+    const parts = name.split(',');
+    if (parts.length >= 2) {
+        return (parts[0][0] + parts[1].trim()[0]).toUpperCase();
+    }
+    return name.substring(0, 2).toUpperCase();
+}
+
+function getLGClass(lg) {
+    if (lg >= 100) return 'lg-excellent';
+    if (lg >= 80) return 'lg-good';
+    if (lg >= 60) return 'lg-warning';
+    return 'lg-danger';
+}
+
+function getProgressClass(lg) {
+    if (lg >= 100) return 'bg-success';
+    if (lg >= 80) return 'bg-primary';
+    if (lg >= 60) return 'bg-warning';
+    return 'bg-danger';
+}
+
+function formatNumber(num, decimals = 0) {
+    if (num === null || num === undefined) return '-';
+    return num.toLocaleString('de-DE', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+    });
+}
+
+function formatCurrency(num) {
+    if (num === null || num === undefined) return '-';
+    return num.toLocaleString('de-DE', {
+        style: 'currency',
+        currency: 'EUR',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    });
+}
+
+function showError(message) {
+    document.getElementById('mechanikerCards').innerHTML = `
+        <div class="col-12">
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle"></i> ${message}
+            </div>
+        </div>
+    `;
+}
+
+function exportData() {
+    // CSV Export
+    let csv = 'Mechaniker;Tage;Aufträge;Stempelzeit (min);AW;Vorgabe (min);Leistungsgrad\n';
+    mechanikerData.forEach(m => {
+        csv += `"${m.name}";${m.tage};${m.auftraege};${m.stempelzeit};${m.aw};${(m.aw || 0) * 6};${m.leistungsgrad}\n`;
+    });
+    
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `werkstatt_leistung_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+}
+
+// Schlechteste Aufträge laden
+let problemfaelleLoaded = false;
+
+function loadSchlechtesteAuftraege() {
+    if (problemfaelleLoaded) return;
+    
+    const zeitraum = document.getElementById('filterZeitraum').value;
+    const betrieb = document.getElementById('filterBetrieb').value;
+    
+    let params = `zeitraum=${zeitraum}&betrieb=${betrieb}&limit=3&min_stempelzeit=30`;
+    
+    if (zeitraum === 'custom') {
+        params += `&von=${document.getElementById('filterDatumVon').value}`;
+        params += `&bis=${document.getElementById('filterDatumBis').value}`;
+    }
+    
+    document.getElementById('problemfaelleContent').innerHTML = `
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-2 text-muted">Lade Problemfälle...</p>
+        </div>
+    `;
+    
+    fetch(`/api/werkstatt/schlechteste-auftraege?${params}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                renderProblemfaelle(data.mechaniker);
+                problemfaelleLoaded = true;
+            } else {
+                document.getElementById('problemfaelleContent').innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle"></i> ${data.error}
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            document.getElementById('problemfaelleContent').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle"></i> Verbindungsfehler
+                </div>
+            `;
+        });
+}
+
+function renderProblemfaelle(mechaniker) {
+    if (!mechaniker || mechaniker.length === 0) {
+        document.getElementById('problemfaelleContent').innerHTML = `
+            <div class="text-center py-5">
+                <i class="bi bi-check-circle fs-1 text-success"></i>
+                <p class="mt-2 text-muted">Keine Problemfälle gefunden!</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '<div class="row g-4">';
+    
+    mechaniker.forEach(m => {
+        const initials = getInitials(m.mechaniker_name);
+        
+        html += `
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header d-flex align-items-center">
+                        <div class="mechaniker-avatar me-3" style="width:40px;height:40px;font-size:1rem;">
+                            ${initials}
+                        </div>
+                        <div>
+                            <strong>${m.mechaniker_name || 'Unbekannt'}</strong>
+                            <small class="text-muted d-block">Nr. ${m.mechaniker_nr}</small>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th width="30">#</th>
+                                    <th>Datum</th>
+                                    <th>Auftrag</th>
+                                    <th>Kennz.</th>
+                                    <th class="text-end">Stempel</th>
+                                    <th class="text-end">AW</th>
+                                    <th class="text-center">LG</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+        `;
+        
+        m.auftraege.forEach(a => {
+            const lgClass = getLGClass(a.leistungsgrad);
+            html += `
+                <tr>
+                    <td><span class="badge bg-danger">${a.rang}</span></td>
+                    <td>${a.datum}</td>
+                    <td><small class="text-muted">${a.auftrags_nr || '-'}</small></td>
+                    <td><small>${a.kennzeichen || '-'}</small></td>
+                    <td class="text-end">${formatNumber(a.stempelzeit, 0)} min</td>
+                    <td class="text-end">${formatNumber(a.aw, 1)}</td>
+                    <td class="text-center">
+                        <span class="badge ${lgClass}">${formatNumber(a.leistungsgrad, 1)}%</span>
+                    </td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    document.getElementById('problemfaelleContent').innerHTML = html;
+}
+
+// Bei Filter-Änderung Problemfälle zurücksetzen
+document.getElementById('filterZeitraum').addEventListener('change', () => problemfaelleLoaded = false);
+document.getElementById('filterBetrieb').addEventListener('change', () => problemfaelleLoaded = false);
+</script>
+{% endblock %}
