@@ -284,7 +284,7 @@ except Exception as e:
     print(f"⚠️  Jahresprämie nicht geladen: {e}")
 
 # ============================================================================
-# JOB-SCHEDULER UI (Scheduler läuft als separater Service!)
+# JOB-SCHEDULER UI (Legacy - wird durch Celery ersetzt)
 # ============================================================================
 try:
     from scheduler import job_manager, scheduler_bp, init_scheduler_routes
@@ -292,11 +292,21 @@ try:
     # Blueprint registrieren (für Web-UI unter /admin/jobs/)
     app.register_blueprint(scheduler_bp)
     init_scheduler_routes(job_manager)
-    print("✅ Job-Scheduler UI registriert: /admin/jobs/")
-    print("ℹ️  Scheduler läuft als separater Service: greiner-scheduler")
+    print("✅ Job-Scheduler UI registriert: /admin/jobs/ (Legacy)")
         
 except Exception as e:
     print(f"⚠️  Job-Scheduler UI nicht geladen: {e}")
+
+# ============================================================================
+# CELERY TASK MANAGEMENT (TAG 110 - Ersetzt APScheduler)
+# ============================================================================
+try:
+    from celery_app.routes import celery_bp
+    app.register_blueprint(celery_bp)
+    print("✅ Celery Task UI registriert: /admin/celery/")
+    print("ℹ️  Flower Dashboard: http://localhost:5555")
+except Exception as e:
+    print(f"⚠️  Celery Task UI nicht geladen: {e}")
 
 # ============================================================================
 # ERROR HANDLERS

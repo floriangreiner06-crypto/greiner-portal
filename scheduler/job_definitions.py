@@ -69,6 +69,10 @@ def job_sync_locosoft_employees():
 def job_email_auftragseingang():
     return run_script('scripts/send_daily_auftragseingang.py', 'email_auftragseingang', 'Auftragseingang E-Mail')
 
+def job_email_werkstatt_tagesbericht():
+    """Werkstatt Tagesbericht per E-Mail (TAG 110)"""
+    return run_script('scripts/reports/werkstatt_tagesbericht_email.py', 'email_werkstatt_tagesbericht', 'Werkstatt Tagesbericht E-Mail', timeout=120)
+
 # Wartung
 def job_db_backup():
     return run_shell('cp data/greiner_controlling.db data/greiner_controlling.db.backup_$(date +%Y%m%d_%H%M%S)', 'db_backup', 'DB Backup')
@@ -81,13 +85,18 @@ def job_ml_retrain():
     """Trainiert ML-Modell für Auftragsdauer-Vorhersage neu (TAG 109)"""
     return run_script('scripts/ml/train_auftragsdauer_model.py', 'ml_retrain', 'ML Modell Retrain', timeout=600)
 
+# Locosoft Sync (charge_types für SVS)
+def job_sync_charge_types():
+    """Synchronisiert charge_types (AW-Preise) von Locosoft nach SQLite (TAG 110)"""
+    return run_script('scripts/imports/sync_charge_types.py', 'sync_charge_types', 'Charge Types Sync', timeout=120)
+
 # ---------------------------------------------------------------------------
 # AFTERSALES
 # ---------------------------------------------------------------------------
 
 # ServiceBox
 def job_servicebox_scraper():
-    return run_script('tools/scrapers/servicebox_detail_scraper_v3_kommentar.py', 'servicebox_scraper', 'ServiceBox Scraper', timeout=1800)
+    return run_script('tools/scrapers/servicebox_detail_scraper_final.py', 'servicebox_scraper', 'ServiceBox Scraper', timeout=1800)
 
 def job_servicebox_matcher():
     return run_script('tools/scrapers/servicebox_locosoft_matcher.py', 'servicebox_matcher', 'ServiceBox Matcher', timeout=300)
@@ -96,7 +105,7 @@ def job_servicebox_import():
     return run_script('scripts/imports/import_servicebox_to_db.py', 'servicebox_import', 'ServiceBox Import', timeout=120)
 
 def job_servicebox_master():
-    return run_script('tools/scrapers/servicebox_detail_scraper_v3_master.py', 'servicebox_master', 'ServiceBox Master', timeout=3600)
+    return run_script('tools/scrapers/servicebox_scraper_complete.py', 'servicebox_master', 'ServiceBox Master', timeout=3600)
 
 # Teile
 def job_sync_teile_locosoft():
@@ -284,6 +293,18 @@ def register_all_jobs():
         day_of_week='mon-fri'
     )
     
+    # Werkstatt Tagesbericht E-Mail - 17:30 (TAG 110)
+    job_manager.add_cron_job(
+        job_id='email_werkstatt_tagesbericht',
+        func=job_email_werkstatt_tagesbericht,
+        name='Werkstatt Tagesbericht E-Mail',
+        description='Sendet täglichen Werkstatt-Tagesbericht per E-Mail (Leistungsgrad, Verluste, Ranking)',
+        category='aftersales',
+        hour='17',
+        minute='30',
+        day_of_week='mon-fri'
+    )
+    
     # --- Wartung ---
     
     job_manager.add_cron_job(
@@ -315,6 +336,18 @@ def register_all_jobs():
         category='aftersales',
         hour='3',
         minute='15'
+    )
+    
+    # Charge Types Sync - täglich 6:05 Uhr (TAG 110)
+    # Synchronisiert AW-Preise/SVS von Locosoft nach SQLite
+    job_manager.add_cron_job(
+        job_id='sync_charge_types',
+        func=job_sync_charge_types,
+        name='Charge Types Sync',
+        description='Synchronisiert AW-Preise (charge_types) von Locosoft nach SQLite für SVS-Berechnung',
+        category='aftersales',
+        hour='6',
+        minute='5'
     )
     
     # =========================================================================
@@ -532,7 +565,10 @@ def register_all_jobs():
         job_count = len(job_manager.get_jobs())
         print(f"📋 {job_count} Jobs registriert")
         print(f"   - Controlling & Verwaltung: 14 Jobs")
-        print(f"   - Aftersales: 13 Jobs")
+        print(f"   - Aftersales: 14 Jobs")  # +1 sync_charge_types (TAG 110)
         print(f"   - Verkauf: 4 Jobs")
     except Exception as e:
         print(f"📋 Jobs registriert (Zählung fehlgeschlagen: {e})")
+
+
+# Aktualisiert: TAG 110 - sync_charge_types Job hinzugefügt

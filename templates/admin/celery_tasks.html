@@ -1,0 +1,412 @@
+{% extends "base.html" %}
+
+{% block title %}Task Manager - DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .task-card {
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        transition: box-shadow 0.2s;
+    }
+    .task-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .task-card .card-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        font-weight: 600;
+        border-radius: 8px 8px 0 0;
+    }
+    .task-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    .task-item:last-child { border-bottom: none; }
+    .task-item:hover { background: #f8f9fa; }
+    .task-info { flex: 1; }
+    .task-name { font-weight: 600; color: #333; }
+    .task-desc { font-size: 0.85rem; color: #666; }
+    .btn-start { min-width: 80px; }
+    .btn-start.running { pointer-events: none; }
+    .category-icon { font-size: 1.5rem; margin-right: 0.5rem; }
+    .flower-link { background: #ff7043; color: white; }
+    .flower-link:hover { background: #f4511e; color: white; }
+    
+    /* Schedule-Tabelle */
+    .schedule-table th { font-weight: 600; font-size: 0.9rem; }
+    .schedule-readable { 
+        font-weight: 600; 
+        color: #2196F3;
+    }
+    .schedule-cron { 
+        font-family: monospace; 
+        font-size: 0.8rem; 
+        color: #666;
+        background: #f5f5f5;
+        padding: 2px 6px;
+        border-radius: 3px;
+    }
+    .badge-queue {
+        font-size: 0.75rem;
+    }
+    .btn-edit-schedule {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.8rem;
+    }
+    
+    /* Status-Badge */
+    .status-config { background: #9e9e9e; }
+    .status-redbeat { background: #4caf50; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="bi bi-list-task me-2"></i> Task Manager</h2>
+        <div>
+            <a href="http://{{ request.host.split(':')[0] }}:5555" target="_blank" class="btn flower-link">
+                <i class="bi bi-flower1 me-1"></i> Flower Dashboard
+            </a>
+        </div>
+    </div>
+    
+    <div class="alert alert-info d-flex align-items-center">
+        <i class="bi bi-info-circle me-2 fs-5"></i>
+        <div>
+            <strong>Celery Task Queue</strong> - Tasks werden automatisch nach Zeitplan ausgeführt. 
+            Hier können Sie Tasks manuell starten und Zeitpläne verwalten.
+        </div>
+    </div>
+
+    <!-- Tab Navigation -->
+    <ul class="nav nav-tabs mb-4" id="taskTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="manual-tab" data-bs-toggle="tab" data-bs-target="#manual" type="button">
+                <i class="bi bi-play-fill"></i> Manuell starten
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="schedule-tab" data-bs-toggle="tab" data-bs-target="#schedule" type="button">
+                <i class="bi bi-calendar-week"></i> Zeitpläne <span class="badge bg-primary">{{ schedules|length }}</span>
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="taskTabContent">
+        <!-- Tab: Manuell starten -->
+        <div class="tab-pane fade show active" id="manual" role="tabpanel">
+            <div class="row">
+                {% for cat_id, category in categories.items() %}
+                <div class="col-lg-4 col-md-6">
+                    <div class="task-card card">
+                        <div class="card-header">
+                            <span class="category-icon">{{ category.icon }}</span>
+                            {{ category.name }}
+                        </div>
+                        <div class="card-body p-0">
+                            {% for task_id, task_name, task_desc in category.tasks %}
+                            <div class="task-item" id="task-{{ task_id }}">
+                                <div class="task-info">
+                                    <div class="task-name">{{ task_name }}</div>
+                                    <div class="task-desc">{{ task_desc }}</div>
+                                </div>
+                                <button class="btn btn-sm btn-primary btn-start" 
+                                        onclick="startTask('{{ task_id }}', this)"
+                                        data-task="{{ task_id }}">
+                                    <i class="bi bi-play-fill"></i> Start
+                                </button>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <!-- Tab: Zeitpläne -->
+        <div class="tab-pane fade" id="schedule" role="tabpanel">
+            <div class="card">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-calendar-week me-2"></i> Automatische Ausführungen</span>
+                    <div>
+                        <button class="btn btn-sm btn-outline-light me-2" onclick="initSchedules()" title="Schedules aus Config neu laden">
+                            <i class="bi bi-arrow-repeat"></i> Reset
+                        </button>
+                        <button class="btn btn-sm btn-success" onclick="showAddScheduleModal()">
+                            <i class="bi bi-plus-lg"></i> Neu
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-hover mb-0 schedule-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 25%">Job-Name</th>
+                                <th style="width: 20%">Task</th>
+                                <th style="width: 25%">Ausführung</th>
+                                <th style="width: 15%">Cron</th>
+                                <th style="width: 15%">Aktionen</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for sched in schedules %}
+                            <tr data-schedule="{{ sched.name }}">
+                                <td>
+                                    <strong>{{ sched.name }}</strong>
+                                    {% if sched.source == 'redbeat' %}
+                                    <span class="badge status-redbeat ms-1" title="In Redis gespeichert">Redis</span>
+                                    {% else %}
+                                    <span class="badge status-config ms-1" title="Aus Config">Config</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="text-muted">{{ sched.task }}</span>
+                                </td>
+                                <td>
+                                    <span class="schedule-readable">
+                                        <i class="bi bi-clock me-1"></i>{{ sched.schedule_readable }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <code class="schedule-cron">{{ sched.schedule_cron }}</code>
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary btn-edit-schedule" 
+                                            onclick="editSchedule('{{ sched.name }}', '{{ sched.task_full }}', '{{ sched.schedule_cron }}')"
+                                            title="Bearbeiten">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-success btn-edit-schedule" 
+                                            onclick="runScheduleNow('{{ sched.task }}')"
+                                            title="Jetzt ausführen">
+                                        <i class="bi bi-play-fill"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="mt-3">
+                <div class="card bg-light">
+                    <div class="card-body py-2">
+                        <small class="text-muted">
+                            <i class="bi bi-info-circle me-1"></i>
+                            <strong>Cron-Format:</strong> 
+                            <code>Minute Stunde * * Wochentag</code> — 
+                            Beispiele: <code>0 8 * * mon-fri</code> = Mo-Fr um 08:00, 
+                            <code>*/30 7-18 * * *</code> = Alle 30 Min von 7-18 Uhr täglich
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Schedule Modal -->
+<div class="modal fade" id="scheduleModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="scheduleModalTitle">Schedule bearbeiten</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="scheduleForm">
+                    <div class="mb-3">
+                        <label class="form-label">Job-Name</label>
+                        <input type="text" class="form-control" id="scheduleName" required>
+                        <small class="text-muted">Eindeutiger Name für diesen Job</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Task</label>
+                        <select class="form-select" id="scheduleTask" required>
+                            {% for task_id, task_info in all_tasks.items() %}
+                            <option value="{{ task_info.full_name }}">{{ task_info.name }} ({{ task_id }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Zeitplan (Cron)</label>
+                        <input type="text" class="form-control font-monospace" id="scheduleCron" 
+                               placeholder="0 8 * * mon-fri" required>
+                        <small class="text-muted">Format: Minute Stunde * * Wochentag</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Schnellauswahl</label>
+                        <div class="btn-group w-100" role="group">
+                            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setCron('0 8 * * mon-fri')">Mo-Fr 8:00</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setCron('0 6 * * *')">Tägl. 6:00</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setCron('*/30 * * * *')">Alle 30m</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setCron('0 */2 * * mon-fri')">Alle 2h Mo-Fr</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-primary" onclick="saveSchedule()">
+                    <i class="bi bi-check-lg"></i> Speichern
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Task manuell starten
+function startTask(taskId, button) {
+    const originalHtml = button.innerHTML;
+    button.innerHTML = '<i class="bi bi-hourglass-split"></i> Läuft...';
+    button.classList.add('running', 'btn-warning');
+    button.classList.remove('btn-primary');
+    button.disabled = true;
+    
+    fetch(`/admin/celery/start/${taskId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'started') {
+            pollTaskStatus(data.task_id, button, originalHtml);
+        } else {
+            showError(button, originalHtml, data.error || 'Fehler beim Starten');
+        }
+    })
+    .catch(error => showError(button, originalHtml, error.message));
+}
+
+function pollTaskStatus(taskId, button, originalHtml) {
+    const checkStatus = () => {
+        fetch(`/admin/celery/status/${taskId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.ready) {
+                if (data.status === 'SUCCESS') {
+                    button.innerHTML = '<i class="bi bi-check-lg"></i> Fertig!';
+                    button.classList.remove('btn-warning');
+                    button.classList.add('btn-success');
+                    setTimeout(() => resetButton(button, originalHtml), 3000);
+                } else {
+                    showError(button, originalHtml, data.error || 'Task fehlgeschlagen');
+                }
+            } else {
+                setTimeout(checkStatus, 2000);
+            }
+        });
+    };
+    checkStatus();
+}
+
+function showError(button, originalHtml, message) {
+    button.innerHTML = '<i class="bi bi-x-lg"></i> Fehler';
+    button.classList.remove('btn-warning');
+    button.classList.add('btn-danger');
+    button.title = message;
+    setTimeout(() => resetButton(button, originalHtml), 5000);
+}
+
+function resetButton(button, originalHtml) {
+    button.innerHTML = originalHtml;
+    button.classList.remove('btn-danger', 'btn-success', 'btn-warning', 'running');
+    button.classList.add('btn-primary');
+    button.disabled = false;
+    button.title = '';
+}
+
+// Schedule Modal
+let scheduleModal;
+document.addEventListener('DOMContentLoaded', () => {
+    scheduleModal = new bootstrap.Modal(document.getElementById('scheduleModal'));
+});
+
+function showAddScheduleModal() {
+    document.getElementById('scheduleModalTitle').textContent = 'Neuer Schedule';
+    document.getElementById('scheduleName').value = '';
+    document.getElementById('scheduleTask').value = '';
+    document.getElementById('scheduleCron').value = '0 8 * * mon-fri';
+    document.getElementById('scheduleName').disabled = false;
+    scheduleModal.show();
+}
+
+function editSchedule(name, taskFull, cron) {
+    document.getElementById('scheduleModalTitle').textContent = 'Schedule bearbeiten';
+    document.getElementById('scheduleName').value = name;
+    document.getElementById('scheduleTask').value = taskFull;
+    document.getElementById('scheduleCron').value = cron;
+    document.getElementById('scheduleName').disabled = true;  // Name nicht änderbar beim Edit
+    scheduleModal.show();
+}
+
+function setCron(cron) {
+    document.getElementById('scheduleCron').value = cron;
+}
+
+function saveSchedule() {
+    const name = document.getElementById('scheduleName').value;
+    const taskFull = document.getElementById('scheduleTask').value;
+    const cron = document.getElementById('scheduleCron').value;
+    
+    if (!name || !taskFull || !cron) {
+        alert('Bitte alle Felder ausfüllen');
+        return;
+    }
+    
+    fetch('/admin/celery/schedule/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, task_full: taskFull, cron })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            scheduleModal.hide();
+            location.reload();
+        } else {
+            alert('Fehler: ' + (data.error || 'Unbekannt'));
+        }
+    });
+}
+
+function runScheduleNow(taskName) {
+    // Finde den Start-Button für diesen Task
+    const button = document.querySelector(`[data-task="${taskName}"]`);
+    if (button) {
+        startTask(taskName, button);
+    } else {
+        // Fallback: Direkter Aufruf
+        fetch(`/admin/celery/start/${taskName}`, { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'started') {
+                alert(`Task "${taskName}" gestartet! ID: ${data.task_id}`);
+            }
+        });
+    }
+}
+
+function initSchedules() {
+    if (!confirm('Alle Schedules aus der Config neu in Redis laden?')) return;
+    
+    fetch('/admin/celery/schedule/init', { method: 'POST' })
+    .then(response => response.json())
+    .then(data => {
+        alert(data.message);
+        location.reload();
+    });
+}
+</script>
+{% endblock %}
