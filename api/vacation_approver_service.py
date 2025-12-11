@@ -460,12 +460,42 @@ def is_approver(ldap_username: str) -> bool:
         conn.close()
 
 
+def is_admin(ldap_username: str) -> bool:
+    """Prüft ob ein User Admin-Rechte hat (GRP_Urlaub_Admin)."""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+            SELECT ad_groups FROM users 
+            WHERE username = ? OR username = ?
+        """, (ldap_username, f"{ldap_username}@auto-greiner.de"))
+        
+        row = cursor.fetchone()
+        if not row or not row['ad_groups']:
+            return False
+        
+        ad_groups = json.loads(row['ad_groups'])
+        return 'GRP_Urlaub_Admin' in ad_groups
+        
+    except Exception as e:
+        logger.error(f"Fehler bei is_admin: {e}")
+        return False
+    finally:
+        conn.close()
+
+
 def get_approver_summary(ldap_username: str) -> Dict:
     """Gibt eine Zusammenfassung für einen Genehmiger zurück."""
     try:
-        if not is_approver(ldap_username):
+        # Prüfe Admin zuerst (Admin ist auch immer Genehmiger)
+        user_is_admin = is_admin(ldap_username)
+        user_is_approver = is_approver(ldap_username)
+        
+        if not user_is_approver and not user_is_admin:
             return {
                 'is_approver': False,
+                'is_admin': False,
                 'team_size': 0,
                 'groups': [],
                 'pending_requests': 0
@@ -502,7 +532,8 @@ def get_approver_summary(ldap_username: str) -> Dict:
         conn.close()
         
         return {
-            'is_approver': True,
+            'is_approver': user_is_approver or user_is_admin,
+            'is_admin': user_is_admin,
             'team_size': team_size,
             'groups': approver_groups,
             'pending_requests': pending_count
@@ -512,6 +543,7 @@ def get_approver_summary(ldap_username: str) -> Dict:
         logger.error(f"Fehler bei get_approver_summary: {e}")
         return {
             'is_approver': False,
+            'is_admin': False,
             'team_size': 0,
             'groups': [],
             'pending_requests': 0,

@@ -208,6 +208,13 @@ def urlaubsplaner_admin():
     """HR-Admin: Urlaubsansprüche verwalten"""
     return render_template('urlaubsplaner_admin.html')
 
+# Organigramm (TAG 113 - Organisation & Vertretungsregeln)
+@app.route('/admin/organigramm')
+@login_required
+def admin_organigramm():
+    """Organigramm mit Vertretungsregeln-Editor"""
+    return render_template('organigramm.html')
+
 # Urlaubsplaner Kurzroute
 @app.route('/urlaubsplaner')
 @login_required
@@ -284,7 +291,7 @@ except Exception as e:
     print(f"⚠️  Jahresprämie nicht geladen: {e}")
 
 # ============================================================================
-# JOB-SCHEDULER UI (Legacy - wird durch Celery ersetzt)
+# JOB-SCHEDULER UI (Scheduler läuft als separater Service!)
 # ============================================================================
 try:
     from scheduler import job_manager, scheduler_bp, init_scheduler_routes
@@ -292,21 +299,11 @@ try:
     # Blueprint registrieren (für Web-UI unter /admin/jobs/)
     app.register_blueprint(scheduler_bp)
     init_scheduler_routes(job_manager)
-    print("✅ Job-Scheduler UI registriert: /admin/jobs/ (Legacy)")
+    print("✅ Job-Scheduler UI registriert: /admin/jobs/")
+    print("ℹ️  Scheduler läuft als separater Service: greiner-scheduler")
         
 except Exception as e:
     print(f"⚠️  Job-Scheduler UI nicht geladen: {e}")
-
-# ============================================================================
-# CELERY TASK MANAGEMENT (TAG 110 - Ersetzt APScheduler)
-# ============================================================================
-try:
-    from celery_app.routes import celery_bp
-    app.register_blueprint(celery_bp)
-    print("✅ Celery Task UI registriert: /admin/celery/")
-    print("ℹ️  Flower Dashboard: http://localhost:5555")
-except Exception as e:
-    print(f"⚠️  Celery Task UI nicht geladen: {e}")
 
 # ============================================================================
 # ERROR HANDLERS
@@ -399,6 +396,14 @@ try:
     print("✅ Teile-Status API registriert: /api/teile/")
 except Exception as e:
     print(f"⚠️  Teile-Status API nicht geladen: {e}")
+
+# Organization API (TAG 113 - Organigramm & Vertretungsregeln)
+try:
+    from api.organization_api import organization_api
+    app.register_blueprint(organization_api)
+    print("✅ Organization API registriert: /api/organization/")
+except Exception as e:
+    print(f"⚠️  Organization API nicht geladen: {e}")
 
 # Gudat Werkstattplanung API (TAG98)
 try:

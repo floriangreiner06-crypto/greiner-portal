@@ -206,7 +206,7 @@
 
     <!-- Summary Cards -->
     <div class="row mb-4">
-        <div class="col-md-5">
+        <div class="col-md-4">
             <div class="card bg-success text-white">
                 <div class="card-body text-center">
                     <div class="big-stat" id="countAktiv">-</div>
@@ -214,12 +214,21 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             <div class="card bg-warning text-dark" id="leerlaufCard">
                 <div class="card-body text-center">
                     <div class="big-stat" id="countLeerlauf">-</div>
                     <div>Leerlauf / ohne Auftrag</div>
                     <div id="leerlaufNamen" class="small mt-2"></div>
+                </div>
+            </div>
+        </div>
+        <!-- TAG 112: Pausiert/Wartet -->
+        <div class="col-md-2">
+            <div class="card" id="pausiertCard" style="background: linear-gradient(135deg, #667eea, #764ba2); color: white;">
+                <div class="card-body text-center py-2">
+                    <div class="fs-2 fw-bold" id="countPausiert">-</div>
+                    <div class="small">Pausiert / Wartet</div>
                 </div>
             </div>
         </div>
@@ -241,6 +250,11 @@
         </div>
     </div>
 
+    <!-- Pausen-Banner TAG 112 -->
+    <div id="pausenBanner" class="alert alert-warning text-center py-2 mb-3" style="display: none; background: linear-gradient(135deg, #f5af19, #f12711); border: none; color: white; font-weight: bold;">
+        🍽️ MITTAGSPAUSE (12:00 - 13:00) - Stempelzeiten werden fortgesetzt
+    </div>
+    
     <!-- Aktive Mechaniker -->
     <div class="card mb-4">
         <div class="card-header bg-success text-white">
@@ -253,6 +267,22 @@
         <div class="card-body" id="aktivContainer">
             <div class="text-center py-5">
                 <div class="spinner-border text-success"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAG 112: Pausiert/Wartet Mechaniker -->
+    <div class="card mb-4" id="pausiertSection" style="display: none;">
+        <div class="card-header text-white" style="background: linear-gradient(135deg, #667eea, #764ba2);">
+            <h5 class="mb-0">
+                <i class="bi bi-pause-circle"></i>
+                Pausiert / Wartet
+                <span class="badge bg-light text-dark ms-2" id="badgePausiert">0</span>
+            </h5>
+        </div>
+        <div class="card-body" id="pausiertContainer">
+            <div class="text-center py-3">
+                <div class="spinner-border spinner-border-sm"></div>
             </div>
         </div>
     </div>
@@ -371,13 +401,24 @@ function renderData(data) {
     // Summary
     document.getElementById('countAktiv').textContent = data.summary.produktiv || data.summary.aktiv;
     document.getElementById('countLeerlauf').textContent = data.summary.leerlauf;
+    document.getElementById('countPausiert').textContent = data.summary.pausiert || 0;  // TAG 112
     document.getElementById('countAbwesend').textContent = data.summary.abwesend;
+                
+    // TAG 112: Pausen-Banner anzeigen
+    const pausenBanner = document.getElementById('pausenBanner');
+    if (pausenBanner) {
+        pausenBanner.style.display = data.ist_pausenzeit ? 'block' : 'none';
+    }
     document.getElementById('countGesamt').textContent = data.summary.gesamt;
-    document.getElementById('badgeAktiv').textContent = data.summary.aktiv;
+    document.getElementById('badgeAktiv').textContent = data.summary.produktiv || data.summary.aktiv;
+    document.getElementById('badgePausiert').textContent = data.summary.pausiert || 0;  // TAG 112
     document.getElementById('badgeAbwesend').textContent = data.summary.abwesend;
     
     // Aktive Mechaniker
     renderAktive(data.aktive_mechaniker);
+    
+    // TAG 112: Pausiert/Wartet Mechaniker
+    renderPausiert(data.pausiert_mechaniker || []);
     
     // Filter-Hinweis bei Hyundai
     if (data.filter && data.filter.hinweis) {
@@ -475,14 +516,15 @@ function renderAktive(mechaniker) {
                             </div>
                             <div class="text-end">
                                 <div class="zeit-display text-${fortschritt >= 100 ? 'danger' : fortschritt >= 80 ? 'warning' : 'success'}">
-                                    ${m.laufzeit_min} min
+                                    ${m.heute_gesamt_min || m.laufzeit_min} min
                                 </div>
+                                ${m.laufzeit_min > (m.heute_gesamt_min || m.laufzeit_min) ? `<div class="small text-muted" style="font-size: 0.75rem;">Ges: ${m.laufzeit_min} min</div>` : ''}
                             </div>
                         </div>
                         
                         <div class="mb-2">
                             <div class="d-flex justify-content-between small mb-1">
-                                <span><i class="bi bi-file-earmark-text"></i> Auftrag ${m.order_number}</span>
+                                <span><i class="bi bi-file-earmark-text"></i> <strong>${m.auftrags_art || "-"}</strong> ${m.order_number}</span>
                                 <span>${m.kennzeichen || '-'} ${m.marke || ''}</span>
                             </div>
                             <div class="d-flex justify-content-between small text-muted">
@@ -607,6 +649,48 @@ function playAlarmSound() {
     } catch(e) {
         console.log('Audio nicht verfügbar');
     }
+}
+
+// TAG 112: Pausiert/Wartet Mechaniker rendern
+function renderPausiert(mechaniker) {
+    const section = document.getElementById('pausiertSection');
+    const container = document.getElementById('pausiertContainer');
+    
+    if (!mechaniker || !mechaniker.length) {
+        section.style.display = 'none';
+        return;
+    }
+    
+    section.style.display = 'block';
+    
+    let html = '<div class="d-flex flex-wrap">';
+    
+    mechaniker.forEach(m => {
+        const nachname = m.name.split(',')[0];
+        const heuteStd = Math.floor(m.heute_min / 60);
+        const heuteMinRest = m.heute_min % 60;
+        const heuteText = heuteStd > 0 ? `${heuteStd}h ${heuteMinRest}min` : `${m.heute_min} min`;
+        
+        html += `
+            <div class="p-2 m-1 rounded" style="background: rgba(102, 126, 234, 0.1); border: 1px solid rgba(102, 126, 234, 0.3);">
+                <div class="fw-bold">
+                    <span class="betrieb-badge betrieb-${m.betrieb} me-1">${m.betrieb}</span>
+                    ${nachname}
+                </div>
+                <div class="small text-muted">
+                    <i class="bi bi-pause-circle"></i> Seit ${m.pausiert_seit || '?'}
+                </div>
+                <div class="small">
+                    <span class="text-success"><i class="bi bi-clock-history"></i> ${heuteText} heute</span>
+                    <span class="ms-2 text-muted">${m.heute_auftraege} Aufträge</span>
+                </div>
+                ${m.letzter_auftrag ? `<div class="small text-muted">Letzter: #${m.letzter_auftrag}</div>` : ''}
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    container.innerHTML = html;
 }
 
 function renderAbwesend(mechaniker) {

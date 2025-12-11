@@ -4,8 +4,16 @@
 ========================================
 VACATION API - MIT LDAP-INTEGRATION
 ========================================
-Version: 2.4 - TAG 104
-Datum: 08.12.2025
+Version: 2.5 - TAG 113
+Datum: 11.12.2025
+
+CHANGES TAG 113:
+- Krankheit nur für Admins (GRP_Urlaub_Admin)
+- E-Mail-Storno mit klarerem Text (wer hat storniert)
+- Admins können fremde Buchungen stornieren
+- /book-batch: Batch-Buchung mit einer E-Mail
+- /cancel-batch: Batch-Stornierung mit einer E-Mail
+- Mitarbeiter-Benachrichtigung bei Admin-Storno
 
 Features:
 - /my-balance: Persönlicher Urlaubsstand (aus LDAP-Session)
@@ -39,11 +47,13 @@ from api.vacation_approver_service import (
     get_approver_summary
 )
 
-# Locosoft Abwesenheits-Service (TAG 103)
+# Locosoft Abwesenheits-Service (TAG 103 + TAG 113)
 try:
     from api.vacation_locosoft_service import (
         get_absences_for_employee,
-        get_absences_for_employees
+        get_absences_for_employees,
+        get_absence_days_for_employee,      # TAG 113: Einzelne Tage mit day_contingent
+        get_absence_days_for_employees      # TAG 113: Bulk für Kalender
     )
     LOCOSOFT_AVAILABLE = True
 except ImportError:
@@ -181,7 +191,19 @@ def send_approval_email_to_hr(booking_details: dict, approver_name: str):
         
         employee_name = booking_details.get('employee_name', 'Unbekannt')
         vacation_type = booking_details.get('vacation_type', 'Urlaub')
-        day_part = 'Ganzer Tag' if booking_details.get('day_part') == 'full' else 'Halber Tag'
+        
+        # TAG 113: Halber Tag mit VM/NM Angabe
+        if booking_details.get('day_part') == 'full':
+            day_part = 'Ganzer Tag'
+        else:
+            half_time = booking_details.get('half_day_time', '')
+            if half_time == 'am':
+                day_part = 'Halber Tag (Vormittag)'
+            elif half_time == 'pm':
+                day_part = 'Halber Tag (Nachmittag)'
+            else:
+                day_part = 'Halber Tag'
+        
         department = booking_details.get('department', '')
         
         subject = f"✅ Urlaub genehmigt: {employee_name} - {date_formatted}"
@@ -371,9 +393,10 @@ def add_to_team_calendar(booking_details: dict):
         return False
 
 
-def send_cancellation_notification_to_approvers(booking_details: dict, approvers: list, reason: str, was_approved: bool):
+def send_cancellation_notification_to_approvers(booking_details: dict, approvers: list, reason: str, was_approved: bool, cancelled_by: str = None):
     """
     Sendet E-Mail an Genehmiger wenn ein Urlaubsantrag storniert wurde.
+    TAG 113: cancelled_by Parameter hinzugefügt für klarere E-Mail-Texte
     """
     if not GRAPH_AVAILABLE:
         return False
@@ -393,15 +416,41 @@ def send_cancellation_notification_to_approvers(booking_details: dict, approvers
         
         employee_name = booking_details.get('employee_name', 'Unbekannt')
         vacation_type = booking_details.get('vacation_type', 'Urlaub')
+        department = booking_details.get('department', '')
         
         status_text = "genehmigten" if was_approved else "beantragten"
         subject = f"🚫 {vacation_type} storniert: {employee_name} - {date_formatted}"
+        
+        # TAG 113: Klarerer E-Mail-Text - wer hat storniert?
+        if cancelled_by and cancelled_by != employee_name:
+            action_text = f"<strong>{cancelled_by}</strong> hat den {status_text} {vacation_type} von <strong>{employee_name}</strong> ({department}) für <strong>{date_formatted}</strong> storniert."
+        else:
+            action_text = f"<strong>{employee_name}</strong> ({department}) hat den {status_text} {vacation_type} für <strong>{date_formatted}</strong> storniert."
         
         body_html = f"""
         <div style="font-family: Arial, sans-serif; max-width: 600px;">
             <h2 style="color: #dc3545;">🚫 {vacation_type} storniert</h2>
             
-            <p><strong>{employee_name}</strong> hat den {status_text} {vacation_type} für <strong>{date_formatted}</strong> storniert.</p>
+            <p>{action_text}</p>
+            
+            <table style="border-collapse: collapse; width: 100%; margin: 20px 0;">
+                <tr style="background: #f8f9fa;">
+                    <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Mitarbeiter</td>
+                    <td style="padding: 10px; border: 1px solid #dee2e6;">{employee_name}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Abteilung</td>
+                    <td style="padding: 10px; border: 1px solid #dee2e6;">{department}</td>
+                </tr>
+                <tr style="background: #f8f9fa;">
+                    <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Datum</td>
+                    <td style="padding: 10px; border: 1px solid #dee2e6;">{date_formatted}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Status war</td>
+                    <td style="padding: 10px; border: 1px solid #dee2e6;">{status_text}</td>
+                </tr>
+            </table>
             
             <p style="background: #f8d7da; padding: 15px; border-radius: 5px;">
                 <strong>Grund:</strong> {reason}
@@ -615,7 +664,19 @@ def send_new_request_notification_to_approvers(booking_details: dict, approvers:
         
         employee_name = booking_details.get('employee_name', 'Unbekannt')
         vacation_type = booking_details.get('vacation_type', 'Urlaub')
-        day_part = 'Ganzer Tag' if booking_details.get('day_part') == 'full' else 'Halber Tag'
+        
+        # TAG 113: Halber Tag mit VM/NM Angabe
+        if booking_details.get('day_part') == 'full':
+            day_part = 'Ganzer Tag'
+        else:
+            half_time = booking_details.get('half_day_time', '')
+            if half_time == 'am':
+                day_part = 'Halber Tag (Vormittag)'
+            elif half_time == 'pm':
+                day_part = 'Halber Tag (Nachmittag)'
+            else:
+                day_part = 'Halber Tag'
+        
         department = booking_details.get('department', '')
         comment = booking_details.get('comment', '')
         
@@ -638,7 +699,7 @@ def send_new_request_notification_to_approvers(booking_details: dict, approvers:
             </table>
             <p style="background: #cce5ff; padding: 15px; border-radius: 5px; border-left: 4px solid #007bff;">
                 <strong>📋 Aktion erforderlich:</strong><br>
-                Bitte im <a href="https://drive.auto-greiner.de/urlaubsplaner">Greiner DRIVE Portal</a> genehmigen oder ablehnen.
+                Bitte im <a href="http://drive.auto-greiner.de/urlaubsplaner">Greiner DRIVE Portal</a> genehmigen oder ablehnen.
             </p>
             <hr style="border: none; border-top: 1px solid #dee2e6; margin: 20px 0;">
             <p style="color: #6c757d; font-size: 12px;">Diese E-Mail wurde automatisch vom Greiner DRIVE Portal gesendet.</p>
@@ -1358,6 +1419,64 @@ def get_all_balances():
         }), 500
 
 
+@vacation_api.route('/all-bookings', methods=['GET'])
+def get_all_bookings():
+    """
+    GET /api/vacation/all-bookings
+    
+    Gibt alle Urlaubsbuchungen aller Mitarbeiter zurück (für Kalenderanzeige).
+    Nur approved und pending Buchungen werden zurückgegeben.
+    TAG 113: Für Kollegen-Urlaub-Anzeige im Kalender.
+    """
+    try:
+        year = request.args.get('year', 2025, type=int)
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT
+                vb.id,
+                vb.employee_id,
+                vb.booking_date,
+                vb.day_part,
+                vb.status,
+                vb.vacation_type_id
+            FROM vacation_bookings vb
+            WHERE strftime('%Y', vb.booking_date) = ?
+              AND vb.status IN ('approved', 'pending')
+            ORDER BY vb.booking_date
+        """, (str(year),))
+        
+        bookings = []
+        for row in cursor.fetchall():
+            bookings.append({
+                'id': row[0],
+                'employee_id': row[1],
+                'date': row[2],
+                'day_part': row[3],
+                'status': row[4],
+                'type_id': row[5]
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'year': year,
+            'count': len(bookings),
+            'bookings': bookings
+        })
+        
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+
 @vacation_api.route('/my-bookings', methods=['GET'])
 def get_my_bookings():
     """
@@ -1611,8 +1730,117 @@ def book_vacation():
                 'error': f'Für {booking_date} existiert bereits eine Buchung'
             }), 400
         
-        # Krankheit (type_id=3) braucht keine Genehmigung - direkt approved
+        # ====================================================================
+        # RESTURLAUB-VALIDIERUNG (TAG 113)
+        # Nur für Urlaub (type_id=1) - ZA/Schulung/Krank nicht prüfen
+        # ====================================================================
+        resturlaub_info = None
+        
+        if vacation_type_id == 1:  # Nur bei echtem Urlaub
+            requested_days = 1.0 if day_part == 'full' else 0.5
+            booking_year = int(booking_date[:4])
+            
+            # Hole aktuellen Resturlaub aus Locosoft (genaueste Quelle)
+            available_days = None
+            
+            if LOCOSOFT_AVAILABLE and employee_data and employee_data.get('locosoft_id'):
+                try:
+                    locosoft_absences = get_absences_for_employee(
+                        employee_data['locosoft_id'], 
+                        booking_year
+                    )
+                    if locosoft_absences:
+                        # Anspruch aus vacation_entitlements holen
+                        cursor.execute("""
+                            SELECT total_days FROM vacation_entitlements
+                            WHERE employee_id = ? AND year = ?
+                        """, (employee_id, booking_year))
+                        ent_row = cursor.fetchone()
+                        anspruch = ent_row[0] if ent_row else 27
+                        
+                        # Bereits in Locosoft gebuchter Urlaub
+                        urlaub_locosoft = locosoft_absences.get('urlaub', 0)
+                        
+                        # Bereits im Portal pending/approved gebuchter Urlaub (noch nicht in Locosoft)
+                        cursor.execute("""
+                            SELECT COALESCE(SUM(CASE WHEN day_part = 'full' THEN 1.0 ELSE 0.5 END), 0)
+                            FROM vacation_bookings
+                            WHERE employee_id = ?
+                              AND strftime('%Y', booking_date) = ?
+                              AND vacation_type_id = 1
+                              AND status IN ('pending', 'approved')
+                        """, (employee_id, str(booking_year)))
+                        portal_pending = cursor.fetchone()[0] or 0
+                        
+                        # Verfügbar = Anspruch - Locosoft - Portal-Pending
+                        # (Portal-Pending sollte eigentlich in Locosoft sein wenn approved,
+                        #  aber wir rechnen sicherheitshalber beide)
+                        available_days = round(anspruch - urlaub_locosoft - portal_pending, 1)
+                        resturlaub_info = {
+                            'anspruch': anspruch,
+                            'locosoft': urlaub_locosoft,
+                            'portal_pending': portal_pending,
+                            'verfuegbar': available_days
+                        }
+                except Exception as e:
+                    print(f"⚠️ Locosoft-Abfrage für Resturlaub fehlgeschlagen: {e}")
+            
+            # Fallback: Nur Portal-Daten wenn Locosoft nicht verfügbar
+            if available_days is None:
+                cursor.execute(f"""
+                    SELECT anspruch, verbraucht, geplant, resturlaub
+                    FROM v_vacation_balance_{booking_year}
+                    WHERE employee_id = ?
+                """, (employee_id,))
+                bal_row = cursor.fetchone()
+                if bal_row:
+                    available_days = bal_row[3] or 0  # resturlaub
+                    resturlaub_info = {
+                        'anspruch': bal_row[0],
+                        'verbraucht': bal_row[1],
+                        'geplant': bal_row[2],
+                        'verfuegbar': available_days
+                    }
+                else:
+                    available_days = 27  # Default Anspruch
+            
+            # Prüfung: Genug Resturlaub?
+            if available_days is not None and requested_days > available_days:
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'error': f'Nicht genug Resturlaub! Verfügbar: {available_days} Tage, angefragt: {requested_days} Tag(e)',
+                    'resturlaub_info': resturlaub_info
+                }), 400
+        
+        # Krankheit (type_id=3) - nur Admins dürfen Krankheit eintragen (TAG 113)
         is_sickness = vacation_type_id == 3
+        if is_sickness:
+            # Prüfe ob User Admin ist (GRP_Urlaub_Admin)
+            conn_check = get_db()
+            cursor_check = conn_check.cursor()
+            cursor_check.execute("""
+                SELECT ad_groups FROM users 
+                WHERE username LIKE ? OR username = ?
+            """, (f"%{ldap_username}%", ldap_username))
+            user_row = cursor_check.fetchone()
+            conn_check.close()
+            
+            is_admin = False
+            if user_row and user_row[0]:
+                try:
+                    groups = json.loads(user_row[0]) if isinstance(user_row[0], str) else user_row[0]
+                    is_admin = 'GRP_Urlaub_Admin' in groups
+                except:
+                    pass
+            
+            if not is_admin:
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'error': 'Krankheitstage können nur von Admins eingetragen werden'
+                }), 403
+        
         initial_status = 'approved' if is_sickness else 'pending'
         
         cursor.execute("""
@@ -1742,10 +1970,27 @@ def cancel_vacation():
             conn.close()
             return jsonify({'success': False, 'error': 'Buchung nicht gefunden'}), 404
         
-        # Nur eigene Buchungen stornieren
-        if booking[0] != employee_id:
+        # TAG 113: Admins dürfen auch fremde Buchungen stornieren
+        booking_owner_id = booking[0]
+        is_own_booking = booking_owner_id == employee_id
+        
+        # Prüfe ob User Admin ist (GRP_Urlaub_Admin)
+        is_admin = False
+        cursor.execute("""
+            SELECT ad_groups FROM users 
+            WHERE username LIKE ? OR username = ?
+        """, (f"%{ldap_username}%", ldap_username))
+        user_row = cursor.fetchone()
+        if user_row and user_row[0]:
+            try:
+                groups = json.loads(user_row[0]) if isinstance(user_row[0], str) else user_row[0]
+                is_admin = 'GRP_Urlaub_Admin' in groups
+            except:
+                pass
+        
+        if not is_own_booking and not is_admin:
             conn.close()
-            return jsonify({'success': False, 'error': 'Nur eigene Buchungen können storniert werden'}), 403
+            return jsonify({'success': False, 'error': 'Nur eigene Buchungen können storniert werden (oder Admin-Berechtigung erforderlich)'}), 403
         
         # Bereits genehmigte Buchungen können auch storniert werden (mit Benachrichtigung)
         was_approved = booking[1] == 'approved'
@@ -1770,20 +2015,63 @@ def cancel_vacation():
         }
         
         # E-Mail an Genehmiger senden (zur Info)
-        approvers = get_approvers_for_employee(employee_id)
+        # TAG 113: cancelled_by = wer hat storniert (kann Admin sein)
+        cancelled_by_name = f"{employee_data.get('first_name', '')} {employee_data.get('last_name', '')}".strip()
+        
+        # TAG 113: Bei Admin-Storno: Approvers des Buchungs-Eigentümers holen, nicht des Admins
+        approvers = get_approvers_for_employee(booking_owner_id)
+        
         cancellation_email_sent = send_cancellation_notification_to_approvers(
             booking_details, 
             approvers, 
             reason,
-            was_approved
+            was_approved,
+            cancelled_by=cancelled_by_name
         )
+        
+        # TAG 113: Bei Admin-Storno auch den Mitarbeiter informieren
+        employee_email_sent = False
+        if not is_own_booking and is_admin:
+            # Hole E-Mail des Buchungs-Eigentümers
+            cursor2 = get_db().cursor()
+            cursor2.execute("SELECT email FROM employees WHERE id = ?", (booking_owner_id,))
+            owner_row = cursor2.fetchone()
+            if owner_row and owner_row[0]:
+                try:
+                    graph = GraphMailConnector()
+                    date_formatted = booking_details['date']
+                    try:
+                        date_obj = datetime.strptime(date_formatted, '%Y-%m-%d')
+                        date_formatted = date_obj.strftime('%d.%m.%Y')
+                    except:
+                        pass
+                    
+                    subject = f"🚫 Dein {booking_details['vacation_type']} wurde storniert - {date_formatted}"
+                    body_html = f"""
+                    <div style="font-family: Arial, sans-serif; max-width: 600px;">
+                        <h2 style="color: #dc3545;">🚫 {booking_details['vacation_type']} storniert</h2>
+                        <p>Dein {'genehmigter' if was_approved else 'beantragter'} {booking_details['vacation_type']} für <strong>{date_formatted}</strong> wurde von <strong>{cancelled_by_name}</strong> storniert.</p>
+                        <p style="background: #f8d7da; padding: 15px; border-radius: 5px;"><strong>Grund:</strong> {reason}</p>
+                        <p>Bei Fragen wende dich bitte an die Personalabteilung.</p>
+                        <hr style="border: none; border-top: 1px solid #dee2e6; margin: 20px 0;">
+                        <p style="color: #6c757d; font-size: 12px;">Greiner DRIVE Portal</p>
+                    </div>
+                    """
+                    employee_email_sent = graph.send_mail(
+                        sender_email=DRIVE_EMAIL,
+                        to_emails=[owner_row[0]],
+                        subject=subject,
+                        body_html=body_html
+                    )
+                except Exception as e:
+                    print(f"⚠️ Mitarbeiter-E-Mail bei Admin-Storno fehlgeschlagen: {e}")
         
         # Wenn bereits genehmigt war: auch HR informieren (muss in Locosoft storniert werden)
         hr_email_sent = False
         if was_approved:
             hr_email_sent = send_cancellation_email_to_hr(
                 booking_details,
-                f"{employee_data.get('first_name', '')} {employee_data.get('last_name', '')}".strip(),
+                booking_details['employee_name'],  # Name des Buchungs-Eigentümers
                 reason
             )
         
@@ -1801,8 +2089,10 @@ def cancel_vacation():
             'message': 'Urlaubsantrag storniert',
             'booking_id': booking_id,
             'was_approved': was_approved,
+            'cancelled_by_admin': not is_own_booking and is_admin,
             'notifications': {
                 'approver_email': cancellation_email_sent,
+                'employee_email': employee_email_sent,
                 'hr_email': hr_email_sent,
                 'calendar_deleted': calendar_deleted
             }
@@ -1815,6 +2105,442 @@ def cancel_vacation():
             'error': str(e),
             'traceback': traceback.format_exc()
         }), 500
+
+
+@vacation_api.route('/book-batch', methods=['POST'])
+def book_vacation_batch():
+    """
+    POST /api/vacation/book-batch
+    
+    TAG 113: Bucht mehrere Tage auf einmal (E-Mail-Batching).
+    Sendet EINE E-Mail an Genehmiger für alle Tage.
+    
+    Body:
+    {
+        "dates": ["2025-12-10", "2025-12-11", "2025-12-12"],
+        "vacation_type_id": 1,
+        "day_part": "full",
+        "comment": "optional"
+    }
+    """
+    try:
+        employee_id, ldap_username, employee_data = get_employee_from_session()
+        
+        if not employee_id:
+            return jsonify({'success': False, 'error': 'Nicht angemeldet'}), 401
+        
+        data = request.get_json()
+        
+        if not data or 'dates' not in data or not data['dates']:
+            return jsonify({'success': False, 'error': 'Fehlende Daten: dates erforderlich'}), 400
+        
+        dates = sorted(data['dates'])
+        day_part = data.get('day_part', 'full')
+        half_day_time = data.get('half_day_time', None)  # TAG 113: VM/NM für halbe Tage
+        vacation_type_id = data.get('vacation_type_id', 1)
+        comment = data.get('comment', None)
+        
+        # Validierung
+        for d in dates:
+            try:
+                datetime.strptime(d, '%Y-%m-%d')
+            except ValueError:
+                return jsonify({'success': False, 'error': f'Ungültiges Datum: {d}'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Krankheit nur für Admins (TAG 113)
+        is_sickness = vacation_type_id == 3
+        if is_sickness:
+            cursor.execute("""
+                SELECT ad_groups FROM users WHERE username LIKE ? OR username = ?
+            """, (f"%{ldap_username}%", ldap_username))
+            user_row = cursor.fetchone()
+            is_admin = False
+            if user_row and user_row[0]:
+                try:
+                    groups = json.loads(user_row[0]) if isinstance(user_row[0], str) else user_row[0]
+                    is_admin = 'GRP_Urlaub_Admin' in groups
+                except:
+                    pass
+            if not is_admin:
+                conn.close()
+                return jsonify({'success': False, 'error': 'Krankheitstage können nur von Admins eingetragen werden'}), 403
+        
+        # Resturlaub-Validierung für Urlaub (type_id=1)
+        if vacation_type_id == 1:
+            requested_days = len(dates) * (1.0 if day_part == 'full' else 0.5)
+            booking_year = int(dates[0][:4])
+            available_days = None
+            
+            if LOCOSOFT_AVAILABLE and employee_data and employee_data.get('locosoft_id'):
+                try:
+                    locosoft_absences = get_absences_for_employee(employee_data['locosoft_id'], booking_year)
+                    if locosoft_absences:
+                        cursor.execute("SELECT total_days FROM vacation_entitlements WHERE employee_id = ? AND year = ?", (employee_id, booking_year))
+                        ent_row = cursor.fetchone()
+                        anspruch = ent_row[0] if ent_row else 27
+                        urlaub_locosoft = locosoft_absences.get('urlaub', 0)
+                        cursor.execute("""
+                            SELECT COALESCE(SUM(CASE WHEN day_part = 'full' THEN 1.0 ELSE 0.5 END), 0)
+                            FROM vacation_bookings WHERE employee_id = ? AND strftime('%Y', booking_date) = ?
+                            AND vacation_type_id = 1 AND status IN ('pending', 'approved')
+                        """, (employee_id, str(booking_year)))
+                        portal_pending = cursor.fetchone()[0] or 0
+                        available_days = round(anspruch - urlaub_locosoft - portal_pending, 1)
+                except Exception as e:
+                    print(f"⚠️ Locosoft-Abfrage fehlgeschlagen: {e}")
+            
+            if available_days is not None and requested_days > available_days:
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'error': f'Nicht genug Resturlaub! Verfügbar: {available_days} Tage, angefragt: {requested_days} Tag(e)'
+                }), 400
+        
+        # Prüfe ob bereits Buchungen existieren
+        existing = []
+        for d in dates:
+            cursor.execute("""
+                SELECT id FROM vacation_bookings WHERE employee_id = ? AND booking_date = ? AND status != 'cancelled'
+            """, (employee_id, d))
+            if cursor.fetchone():
+                existing.append(d)
+        
+        if existing:
+            conn.close()
+            return jsonify({'success': False, 'error': f'Bereits gebucht: {existing[0]}'}), 400
+        
+        # Alle Buchungen einfügen
+        initial_status = 'approved' if is_sickness else 'pending'
+        booking_ids = []
+        for d in dates:
+            cursor.execute("""
+                INSERT INTO vacation_bookings (employee_id, booking_date, vacation_type_id, day_part, status, comment, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (employee_id, d, vacation_type_id, day_part, initial_status, comment, datetime.now().isoformat()))
+            booking_ids.append(cursor.lastrowid)
+        
+        conn.commit()
+        conn.close()
+        
+        # Vacation Type Name holen
+        conn2 = get_db()
+        cursor2 = conn2.cursor()
+        cursor2.execute("SELECT name FROM vacation_types WHERE id = ?", (vacation_type_id,))
+        vt_row = cursor2.fetchone()
+        vacation_type_name = vt_row[0] if vt_row else 'Urlaub'
+        conn2.close()
+        
+        # EINE E-Mail für alle Tage (E-Mail-Batching)
+        approvers = get_approvers_for_employee(employee_id)
+        employee_name = f"{employee_data.get('first_name', '')} {employee_data.get('last_name', '')}".strip()
+        department = employee_data.get('department', '')
+        
+        email_sent = False
+        if GRAPH_AVAILABLE and approvers:
+            try:
+                graph = GraphMailConnector()
+                
+                # Datums-Formatierung
+                dates_formatted = []
+                for d in dates:
+                    try:
+                        date_obj = datetime.strptime(d, '%Y-%m-%d')
+                        dates_formatted.append(date_obj.strftime('%d.%m.%Y'))
+                    except:
+                        dates_formatted.append(d)
+                
+                if len(dates) == 1:
+                    date_display = dates_formatted[0]
+                    subject = f"📋 Neuer Urlaubsantrag: {employee_name} - {date_display}"
+                else:
+                    date_display = f"{dates_formatted[0]} - {dates_formatted[-1]} ({len(dates)} Tage)"
+                    subject = f"📋 Neuer Urlaubsantrag: {employee_name} - {len(dates)} Tage"
+                
+                type_icons = {'Urlaub': '🏖️', 'Zeitausgleich': '⏰', 'Krankheit': '🤒', 'Schulung': '📚'}
+                icon = type_icons.get(vacation_type_name, '📅')
+                
+                # TAG 113: Umfang mit VM/NM
+                if day_part == 'full':
+                    umfang = 'Ganzer Tag'
+                else:
+                    if half_day_time == 'am':
+                        umfang = 'Halber Tag (Vormittag)'
+                    elif half_day_time == 'pm':
+                        umfang = 'Halber Tag (Nachmittag)'
+                    else:
+                        umfang = 'Halber Tag'
+                
+                # Tage-Liste für E-Mail
+                dates_list_html = '<ul style="margin: 10px 0; padding-left: 20px;">'
+                for df in dates_formatted:
+                    dates_list_html += f'<li>{df}</li>'
+                dates_list_html += '</ul>'
+                
+                body_html = f"""
+                <div style="font-family: Arial, sans-serif; max-width: 600px;">
+                    <h2 style="color: #007bff;">{icon} Neuer Urlaubsantrag</h2>
+                    <table style="border-collapse: collapse; width: 100%; margin: 20px 0;">
+                        <tr style="background: #f8f9fa;"><td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Mitarbeiter</td><td style="padding: 10px; border: 1px solid #dee2e6;">{employee_name}</td></tr>
+                        <tr><td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Abteilung</td><td style="padding: 10px; border: 1px solid #dee2e6;">{department}</td></tr>
+                        <tr style="background: #f8f9fa;"><td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Zeitraum</td><td style="padding: 10px; border: 1px solid #dee2e6;">{date_display}</td></tr>
+                        <tr><td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Art</td><td style="padding: 10px; border: 1px solid #dee2e6;">{vacation_type_name}</td></tr>
+                        <tr style="background: #f8f9fa;"><td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Umfang</td><td style="padding: 10px; border: 1px solid #dee2e6;">{umfang}</td></tr>
+                        <tr><td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Tage</td><td style="padding: 10px; border: 1px solid #dee2e6;">{dates_list_html}</td></tr>
+                    </table>
+                    <p style="background: #cce5ff; padding: 15px; border-radius: 5px; border-left: 4px solid #007bff;">
+                        <strong>📋 Aktion erforderlich:</strong><br>
+                        Bitte im <a href="http://drive.auto-greiner.de/urlaubsplaner">Greiner DRIVE Portal</a> genehmigen oder ablehnen.
+                    </p>
+                    <hr style="border: none; border-top: 1px solid #dee2e6; margin: 20px 0;">
+                    <p style="color: #6c757d; font-size: 12px;">Diese E-Mail wurde automatisch vom Greiner DRIVE Portal gesendet.</p>
+                </div>
+                """
+                
+                approver_emails = [a.get('approver_email') for a in approvers if a.get('approver_email') and a.get('priority') == 1]
+                if not approver_emails:
+                    approver_emails = [a.get('approver_email') for a in approvers if a.get('approver_email')]
+                
+                if approver_emails:
+                    email_sent = graph.send_mail(sender_email=DRIVE_EMAIL, to_emails=approver_emails, subject=subject, body_html=body_html)
+                    if email_sent:
+                        print(f"✅ Batch-E-Mail gesendet für {len(dates)} Tage an {approver_emails}")
+            except Exception as e:
+                print(f"❌ Batch-E-Mail Fehler: {e}")
+        
+        return jsonify({
+            'success': True,
+            'booking_ids': booking_ids,
+            'message': f'{len(dates)} Tag(e) beantragt',
+            'email_sent': email_sent
+        }), 201
+        
+    except Exception as e:
+        import traceback
+        return jsonify({'success': False, 'error': str(e), 'traceback': traceback.format_exc()}), 500
+
+
+@vacation_api.route('/cancel-batch', methods=['POST'])
+def cancel_vacation_batch():
+    """
+    POST /api/vacation/cancel-batch
+    
+    TAG 113: Storniert mehrere Buchungen auf einmal.
+    
+    Body:
+    {
+        "booking_ids": [123, 124, 125],
+        "reason": "optional"
+    }
+    """
+    try:
+        employee_id, ldap_username, employee_data = get_employee_from_session()
+        
+        if not employee_id:
+            return jsonify({'success': False, 'error': 'Nicht angemeldet'}), 401
+        
+        data = request.get_json()
+        booking_ids = data.get('booking_ids', [])
+        reason = data.get('reason', 'Batch-Stornierung')
+        
+        if not booking_ids:
+            return jsonify({'success': False, 'error': 'booking_ids erforderlich'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Prüfe Admin-Status
+        is_admin = False
+        cursor.execute("SELECT ad_groups FROM users WHERE username LIKE ? OR username = ?", (f"%{ldap_username}%", ldap_username))
+        user_row = cursor.fetchone()
+        if user_row and user_row[0]:
+            try:
+                groups = json.loads(user_row[0]) if isinstance(user_row[0], str) else user_row[0]
+                is_admin = 'GRP_Urlaub_Admin' in groups
+            except:
+                pass
+        
+        cancelled = []
+        errors = []
+        was_approved_any = False
+        cancelled_dates = []
+        booking_owner_name = None
+        
+        for bid in booking_ids:
+            cursor.execute("""
+                SELECT vb.employee_id, vb.status, vb.booking_date, e.first_name || ' ' || e.last_name
+                FROM vacation_bookings vb
+                JOIN employees e ON vb.employee_id = e.id
+                WHERE vb.id = ?
+            """, (bid,))
+            row = cursor.fetchone()
+            
+            if not row:
+                errors.append(f"Buchung {bid} nicht gefunden")
+                continue
+            
+            is_own = row[0] == employee_id
+            if not is_own and not is_admin:
+                errors.append(f"Keine Berechtigung für Buchung {bid}")
+                continue
+            
+            if row[1] == 'approved':
+                was_approved_any = True
+            
+            cursor.execute("""
+                UPDATE vacation_bookings SET status = 'cancelled',
+                comment = CASE WHEN comment IS NULL OR comment = '' THEN ? ELSE comment || ' | Storniert: ' || ? END
+                WHERE id = ?
+            """, (reason, reason, bid))
+            
+            cancelled.append(bid)
+            cancelled_dates.append(row[2])
+            if not booking_owner_name:
+                booking_owner_name = row[3]
+        
+        conn.commit()
+        conn.close()
+        
+        # E-Mail-Benachrichtigung (eine für alle Tage)
+        if cancelled and GRAPH_AVAILABLE:
+            try:
+                graph = GraphMailConnector()
+                cancelled_by_name = f"{employee_data.get('first_name', '')} {employee_data.get('last_name', '')}".strip()
+                
+                dates_formatted = []
+                for d in sorted(cancelled_dates):
+                    try:
+                        date_obj = datetime.strptime(d, '%Y-%m-%d')
+                        dates_formatted.append(date_obj.strftime('%d.%m.%Y'))
+                    except:
+                        dates_formatted.append(d)
+                
+                if len(dates_formatted) == 1:
+                    date_display = dates_formatted[0]
+                else:
+                    date_display = f"{dates_formatted[0]} - {dates_formatted[-1]} ({len(dates_formatted)} Tage)"
+                
+                subject = f"🚫 Urlaub storniert: {booking_owner_name} - {len(cancelled)} Tage"
+                
+                body_html = f"""
+                <div style="font-family: Arial, sans-serif; max-width: 600px;">
+                    <h2 style="color: #dc3545;">🚫 Urlaub storniert</h2>
+                    <p><strong>{cancelled_by_name}</strong> hat {'genehmigten' if was_approved_any else 'beantragten'} Urlaub von <strong>{booking_owner_name}</strong> storniert.</p>
+                    <table style="border-collapse: collapse; width: 100%; margin: 20px 0;">
+                        <tr style="background: #f8f9fa;"><td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Mitarbeiter</td><td style="padding: 10px; border: 1px solid #dee2e6;">{booking_owner_name}</td></tr>
+                        <tr><td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Zeitraum</td><td style="padding: 10px; border: 1px solid #dee2e6;">{date_display}</td></tr>
+                        <tr style="background: #f8f9fa;"><td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Grund</td><td style="padding: 10px; border: 1px solid #dee2e6;">{reason}</td></tr>
+                    </table>
+                </div>
+                """
+                
+                # E-Mail an HR wenn genehmigt war
+                if was_approved_any:
+                    graph.send_mail(sender_email=DRIVE_EMAIL, to_emails=[HR_EMAIL], subject=subject, body_html=body_html)
+            except Exception as e:
+                print(f"⚠️ Batch-Cancel E-Mail Fehler: {e}")
+        
+        return jsonify({
+            'success': True,
+            'cancelled': cancelled,
+            'errors': errors,
+            'message': f'{len(cancelled)} Buchung(en) storniert'
+        })
+        
+    except Exception as e:
+        import traceback
+        return jsonify({'success': False, 'error': str(e), 'traceback': traceback.format_exc()}), 500
+
+
+@vacation_api.route('/locosoft-days', methods=['GET'])
+def get_locosoft_days():
+    """
+    GET /api/vacation/locosoft-days?employee_id=X&year=2025
+    GET /api/vacation/locosoft-days?locosoft_id=1001&year=2025
+    
+    TAG 113: Holt einzelne Abwesenheitstage aus Locosoft mit day_contingent.
+    Wichtig für Kalenderanzeige von halben Tagen (24./31.12).
+    
+    Returns:
+        [
+            {'date': '2025-12-24', 'day_contingent': 0.5, 'reason': 'Url', 'is_half_day': True},
+            {'date': '2025-12-25', 'day_contingent': 1.0, 'reason': 'Url', 'is_half_day': False},
+            ...
+        ]
+    """
+    if not LOCOSOFT_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Locosoft nicht verfügbar'}), 503
+    
+    year = request.args.get('year', datetime.now().year, type=int)
+    locosoft_id = request.args.get('locosoft_id', type=int)
+    employee_id = request.args.get('employee_id', type=int)
+    
+    # Wenn employee_id statt locosoft_id gegeben, umwandeln
+    if employee_id and not locosoft_id:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT locosoft_id FROM employees WHERE id = ?", (employee_id,))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            locosoft_id = row[0]
+    
+    if not locosoft_id:
+        return jsonify({'success': False, 'error': 'Kein locosoft_id oder employee_id angegeben'}), 400
+    
+    try:
+        days = get_absence_days_for_employee(locosoft_id, year)
+        return jsonify({
+            'success': True,
+            'locosoft_id': locosoft_id,
+            'year': year,
+            'days': days,
+            'count': len(days),
+            'half_days': [d for d in days if d.get('is_half_day')]
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@vacation_api.route('/locosoft-days-bulk', methods=['POST'])
+def get_locosoft_days_bulk():
+    """
+    POST /api/vacation/locosoft-days-bulk
+    Body: {"locosoft_ids": [1001, 1002, 1003], "year": 2025}
+    
+    TAG 113: Bulk-Abfrage für Kalenderübersicht aller Mitarbeiter.
+    
+    Returns:
+        {
+            '1001': [{'date': '2025-12-24', 'day_contingent': 0.5, ...}, ...],
+            '1002': [...],
+            ...
+        }
+    """
+    if not LOCOSOFT_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Locosoft nicht verfügbar'}), 503
+    
+    data = request.get_json() or {}
+    locosoft_ids = data.get('locosoft_ids', [])
+    year = data.get('year', datetime.now().year)
+    
+    if not locosoft_ids:
+        return jsonify({'success': False, 'error': 'Keine locosoft_ids angegeben'}), 400
+    
+    try:
+        result = get_absence_days_for_employees(locosoft_ids, year)
+        # Keys zu Strings für JSON
+        result_str_keys = {str(k): v for k, v in result.items()}
+        return jsonify({
+            'success': True,
+            'year': year,
+            'data': result_str_keys,
+            'count': len(result)
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @vacation_api.route('/debug/session', methods=['GET'])

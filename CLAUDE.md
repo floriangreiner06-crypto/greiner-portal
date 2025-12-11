@@ -1,6 +1,6 @@
 # CLAUDE.md - Greiner Portal DRIVE Projekt-Kontext
 
-**Letzte Aktualisierung:** 2025-12-04 (TAG 89)
+**Letzte Aktualisierung:** 2025-12-11 (TAG 112)
 
 ---
 
@@ -204,34 +204,15 @@ journalctl -u greiner-scheduler -f
 
 ## 📋 SESSION-DOKUMENTATION
 
-**⚠️ WICHTIG: Lies `WORKFLOW.md` für die verbindlichen Regeln!**
-
-### Datei-Struktur (VERBINDLICH)
-```
-Server/
-├── CLAUDE.md                    ← Diese Datei
-├── WORKFLOW.md                  ← Verbindliche Regeln
-└── docs/
-    ├── SESSION_WRAP_UP_TAG[XX].md
-    └── TODO_FOR_CLAUDE_SESSION_START_TAG[XX].md
-```
-
 ### Bei Session-Start:
-1. `docs/TODO_FOR_CLAUDE_SESSION_START_TAG[XX].md` lesen (Sync-Verzeichnis!)
-2. Diese Datei (`CLAUDE.md`) bei Bedarf
-3. `docs/SESSION_WRAP_UP_TAG[XX-1].md` für mehr Kontext
+1. Diese Datei (`CLAUDE.md`) lesen
+2. `SESSION_WRAP_UP_TAG[X-1].md` lesen
+3. `TODO_FOR_CLAUDE_SESSION_START_TAG[X].md` (falls vorhanden)
 
 ### Bei Session-Ende:
-1. `docs/SESSION_WRAP_UP_TAG[XX].md` erstellen
-2. `docs/TODO_FOR_CLAUDE_SESSION_START_TAG[XX+1].md` erstellen
+1. `SESSION_WRAP_UP_TAG[X].md` erstellen
+2. `docs/JOURNAL.md` aktualisieren (kurze Zusammenfassung)
 3. Git commit auf Server
-
-### NIEMALS:
-- ❌ In `/mnt/project/` suchen (veraltet!)
-- ❌ `project_knowledge_search` für Session-Docs
-
-### IMMER:
-- ✅ Direkt aus Sync-Verzeichnis lesen: `\\Srvrdb01\...\Server\docs\`
 
 ---
 
@@ -251,20 +232,6 @@ Server/
 
 ## ⚠️ WICHTIGE HINWEISE
 
-### 🎨 TEMPLATE BLOCK-NAMEN (KRITISCH!)
-
-Die `base.html` definiert folgende Blocks:
-
-| Block | Name | Verwendung |
-|-------|------|------------|
-| CSS | `{% block extra_css %}` | Custom Styles |
-| Content | `{% block content %}` | Hauptinhalt |
-| JavaScript | `{% block extra_js %}` **ODER** `{% block scripts %}` | Custom JS |
-
-**⚠️ BEIDE JS-Block-Namen funktionieren!** Verwende bevorzugt `extra_js` (konsistent mit `extra_css`).
-
----
-
 1. **Sync-Verzeichnis ≠ Live-Server** - Nach Änderungen immer `cp` oder `rsync`!
 2. **Templates:** Kein Restart nötig - nur Browser-Refresh (Strg+F5)
 3. **Python-Änderungen:** `sudo systemctl restart greiner-portal`
@@ -277,8 +244,8 @@ Die `base.html` definiert folgende Blocks:
 
 | TAG | Datum | Highlights |
 |-----|-------|------------|
-| **90** | **04.12.2025** | **WORKFLOW.md erstellt, Session-Docs konsolidiert in docs/** |
-| 89 | 03.12.2025 | Job-Scheduler Fix: Separater Service, run_script args, PATH für Shell |
+| **112** | **11.12.2025** | **Stempeluhr: Saldo-Fix, Pausiert-Kategorie, auftrags_art, Journal.md** |
+| 89 | 04.12.2025 | Job-Scheduler Fix: Separater Service, run_script args, PATH für Shell |
 | 88 | 02.12.2025 | APScheduler Migration, Job-Scheduler UI |
 | 87 | 01.12.2025 | Cron → APScheduler Umstellung |
 | 86 | 30.11.2025 | Leasys Kalkulator |

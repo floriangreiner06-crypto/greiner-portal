@@ -1,140 +1,835 @@
 {% extends "base.html" %}
 
-{% block page_title %}Organigramm{% endblock %}
+{% block title %}Organigramm - DRIVE{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+/* ========== LAYOUT ========== */
+.org-container {
+    display: flex;
+    gap: 15px;
+    padding: 15px;
+    min-height: calc(100vh - 120px);
+    background: #f5f7fa;
+}
+
+.org-sidebar {
+    width: 260px;
+    flex-shrink: 0;
+}
+
+.org-main {
+    flex: 1;
+    overflow: auto;
+}
+
+/* ========== CARDS ========== */
+.org-card {
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    margin-bottom: 15px;
+}
+
+.org-card-header {
+    padding: 12px 15px;
+    border-bottom: 1px solid #eee;
+    font-weight: 600;
+    font-size: 13px;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.org-card-body {
+    padding: 12px 15px;
+}
+
+/* ========== TABS ========== */
+.org-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 15px;
+    background: white;
+    padding: 6px;
+    border-radius: 10px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+
+.org-tab {
+    padding: 8px 16px;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 13px;
+    color: #666;
+    transition: all 0.2s;
+}
+
+.org-tab:hover { background: #f0f0f0; }
+.org-tab.active {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.org-tab-content { display: none; }
+.org-tab-content.active { display: block; }
+
+/* ========== HIERARCHISCHES ORGANIGRAMM ========== */
+.org-hierarchy {
+    padding: 20px;
+    overflow-x: auto;
+}
+
+.org-level {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    position: relative;
+}
+
+.org-level::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    width: 1px;
+    height: 10px;
+    background: #ccc;
+}
+
+.org-level:last-child::after { display: none; }
+
+/* Person Card - Kompakt */
+.person-card {
+    background: white;
+    border-radius: 8px;
+    padding: 8px 12px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    text-align: center;
+    min-width: 120px;
+    max-width: 150px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-left: 3px solid #667eea;
+}
+
+.person-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.person-card.ceo {
+    border-left-color: #dc2626;
+    background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+}
+
+.person-card.manager {
+    border-left-color: #f59e0b;
+    background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+}
+
+.person-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 11px;
+    margin: 0 auto 6px;
+}
+
+.person-card.ceo .person-avatar { background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); }
+.person-card.manager .person-avatar { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
+
+.person-name {
+    font-weight: 600;
+    font-size: 11px;
+    color: #333;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.person-dept {
+    font-size: 10px;
+    color: #888;
+    margin-top: 2px;
+}
+
+/* ========== ABTEILUNGS-ANSICHT ========== */
+.dept-tree {
+    padding: 15px;
+}
+
+.dept-group {
+    background: white;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    overflow: hidden;
+}
+
+.dept-header {
+    padding: 10px 15px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.dept-header:hover { opacity: 0.95; }
+
+.dept-header .toggle {
+    margin-left: auto;
+    transition: transform 0.2s;
+}
+
+.dept-header.collapsed .toggle { transform: rotate(-90deg); }
+
+.dept-count {
+    background: rgba(255,255,255,0.2);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+}
+
+.dept-members {
+    padding: 8px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 6px;
+}
+
+.dept-members.collapsed { display: none; }
+
+.member-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    transition: background 0.2s;
+}
+
+.member-row:hover { background: #f5f5f5; }
+.member-row.is-manager { background: #fef3c7; }
+
+.member-avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: #e0e0e0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 600;
+    color: #666;
+    flex-shrink: 0;
+}
+
+.member-row.is-manager .member-avatar {
+    background: #f59e0b;
+    color: white;
+}
+
+.member-name {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ========== SIDEBAR STATS ========== */
+.stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.stat-box {
+    text-align: center;
+    padding: 12px 8px;
+    border-radius: 8px;
+}
+
+.stat-box.blue { background: #e0f2fe; }
+.stat-box.yellow { background: #fef3c7; }
+.stat-box.green { background: #dcfce7; }
+.stat-box.purple { background: #f3e8ff; }
+
+.stat-value {
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.stat-box.blue .stat-value { color: #0284c7; }
+.stat-box.yellow .stat-value { color: #d97706; }
+.stat-box.green .stat-value { color: #16a34a; }
+.stat-box.purple .stat-value { color: #9333ea; }
+
+.stat-label {
+    font-size: 10px;
+    color: #666;
+    margin-top: 2px;
+}
+
+/* ========== SEARCH ========== */
+.search-box {
+    position: relative;
+}
+
+.search-box input {
+    width: 100%;
+    padding: 10px 12px 10px 35px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 13px;
+}
+
+.search-box i {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #999;
+}
+
+/* ========== CAPACITY BARS ========== */
+.cap-item {
+    margin-bottom: 10px;
+}
+
+.cap-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    margin-bottom: 3px;
+}
+
+.cap-bar {
+    height: 6px;
+    background: #e5e7eb;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.cap-fill {
+    height: 100%;
+    border-radius: 3px;
+}
+
+.cap-fill.ok { background: #22c55e; }
+.cap-fill.warning { background: #f59e0b; }
+.cap-fill.danger { background: #ef4444; }
+
+/* ========== VERTRETUNGEN & GENEHMIGER TABELLEN ========== */
+.rules-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.rules-table th {
+    text-align: left;
+    padding: 10px 12px;
+    background: #f8f9fa;
+    font-weight: 600;
+    color: #555;
+    border-bottom: 2px solid #dee2e6;
+}
+
+.rules-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #eee;
+}
+
+.rules-table tr:hover { background: #f8f9fa; }
+
+.btn-sm {
+    padding: 4px 10px;
+    font-size: 11px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.btn-danger {
+    background: #fee2e2;
+    color: #dc2626;
+}
+</style>
+{% endblock %}
 
 {% block content %}
-<style>
-    /* Organigramm-spezifisches Styling */
-    .organigramm-container {
-        background: white;
-        border-radius: 12px;
-        padding: 30px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-
-    .organigramm-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 30px;
-        padding-bottom: 20px;
-        border-bottom: 2px solid #e5e7eb;
-    }
-
-    .organigramm-title {
-        font-size: 24px;
-        font-weight: 700;
-        color: #1a2332;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-
-    .organigramm-stats {
-        display: flex;
-        gap: 20px;
-    }
-
-    .stat-badge {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 8px 16px;
-        border-radius: 8px;
-        font-size: 14px;
-        font-weight: 600;
-    }
-
-    .organigramm-content {
-        width: 100%;
-        height: calc(100vh - 300px);
-        min-height: 600px;
-        border: 2px solid #e5e7eb;
-        border-radius: 8px;
-        overflow: hidden;
-    }
-
-    .organigramm-iframe {
-        width: 100%;
-        height: 100%;
-        border: none;
-    }
-
-    .loading-spinner {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 400px;
-        font-size: 18px;
-        color: #667eea;
-    }
-
-    @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-    }
-
-    .spinner {
-        border: 4px solid #f3f4f6;
-        border-top: 4px solid #667eea;
-        border-radius: 50%;
-        width: 40px;
-        height: 40px;
-        animation: spin 1s linear infinite;
-        margin-right: 12px;
-    }
-</style>
-
-<div class="organigramm-container">
-    <div class="organigramm-header">
-        <div class="organigramm-title">
-            🏢 Auto Greiner Organigramm
+<div class="org-container">
+    <!-- Sidebar -->
+    <div class="org-sidebar">
+        <div class="org-card">
+            <div class="org-card-header">
+                <i class="fas fa-chart-pie"></i> Übersicht
+            </div>
+            <div class="org-card-body">
+                <div class="stat-grid">
+                    <div class="stat-box blue">
+                        <div class="stat-value" id="statTotal">-</div>
+                        <div class="stat-label">Mitarbeiter</div>
+                    </div>
+                    <div class="stat-box yellow">
+                        <div class="stat-value" id="statDepts">-</div>
+                        <div class="stat-label">Abteilungen</div>
+                    </div>
+                    <div class="stat-box green">
+                        <div class="stat-value" id="statManagers">-</div>
+                        <div class="stat-label">Manager</div>
+                    </div>
+                    <div class="stat-box purple">
+                        <div class="stat-value" id="statRules">-</div>
+                        <div class="stat-label">Regeln</div>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="organigramm-stats">
-            <div class="stat-badge">
-                <strong>71</strong> Mitarbeiter
+        
+        <div class="org-card">
+            <div class="org-card-header">
+                <i class="fas fa-search"></i> Suche
             </div>
-            <div class="stat-badge">
-                <strong>2</strong> Standorte
+            <div class="org-card-body">
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="searchInput" placeholder="Mitarbeiter suchen...">
+                </div>
+                <div id="searchResults" style="margin-top: 10px; max-height: 150px; overflow-y: auto;"></div>
             </div>
-            <div class="stat-badge">
-                <strong>4</strong> Hierarchie-Ebenen
+        </div>
+        
+        <div class="org-card">
+            <div class="org-card-header">
+                <i class="fas fa-users"></i> Kapazität Heute
+            </div>
+            <div class="org-card-body" id="capacityToday">
+                <div style="color: #888; font-size: 12px;">Lädt...</div>
             </div>
         </div>
     </div>
-
-    <div class="organigramm-content" id="organigramm-content">
-        <div class="loading-spinner">
-            <div class="spinner"></div>
-            Organigramm wird geladen...
+    
+    <!-- Main -->
+    <div class="org-main">
+        <div class="org-tabs">
+            <button class="org-tab active" data-tab="departments">
+                <i class="fas fa-building"></i> Abteilungen
+            </button>
+            <button class="org-tab" data-tab="hierarchy">
+                <i class="fas fa-sitemap"></i> Hierarchie
+            </button>
+            <button class="org-tab" data-tab="substitutes">
+                <i class="fas fa-exchange-alt"></i> Vertretungen
+            </button>
+            <button class="org-tab" data-tab="approvers">
+                <i class="fas fa-check-circle"></i> Genehmiger
+            </button>
+        </div>
+        
+        <!-- Standort-Filter -->
+        <div style="margin-bottom: 15px; display: flex; gap: 10px; align-items: center;">
+            <span style="font-size: 13px; color: #666;"><i class="fas fa-map-marker-alt"></i> Standort:</span>
+            <select id="locationFilter" onchange="filterByLocation()" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px;">
+                <option value="">Alle Standorte</option>
+                <option value="Deggendorf">Deggendorf</option>
+                <option value="Landau a.d. Isar">Landau a.d. Isar</option>
+            </select>
+            <span id="locationStats" style="font-size: 12px; color: #888; margin-left: 10px;"></span>
+        </div>
+        
+        <!-- Tab: Abteilungen (Default) -->
+        <div class="org-tab-content active" id="tab-departments">
+            <div class="dept-tree" id="deptTree">
+                <div style="text-align: center; padding: 40px; color: #888;">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <div style="margin-top: 10px;">Lade Abteilungen...</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab: Hierarchie -->
+        <div class="org-tab-content" id="tab-hierarchy">
+            <div class="org-hierarchy" id="orgHierarchy">
+                <div style="text-align: center; padding: 40px; color: #888;">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <div style="margin-top: 10px;">Lade Hierarchie...</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab: Vertretungen -->
+        <div class="org-tab-content" id="tab-substitutes">
+            <div class="org-card">
+                <div class="org-card-header">
+                    <i class="fas fa-exchange-alt"></i> Vertretungsregeln
+                    <button class="btn-sm btn-primary" style="margin-left: auto;" onclick="showAddSubstituteModal()">
+                        <i class="fas fa-plus"></i> Neue Regel
+                    </button>
+                </div>
+                <div class="org-card-body">
+                    <table class="rules-table">
+                        <thead>
+                            <tr><th>Mitarbeiter</th><th>Abteilung</th><th>Vertreter</th><th>Prio</th><th></th></tr>
+                        </thead>
+                        <tbody id="substitutesBody">
+                            <tr><td colspan="5" style="text-align: center; color: #888;">Keine Regeln</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab: Genehmiger -->
+        <div class="org-tab-content" id="tab-approvers">
+            <div class="org-card">
+                <div class="org-card-header">
+                    <i class="fas fa-check-circle"></i> Genehmigungsregeln
+                    <button class="btn-sm btn-primary" style="margin-left: auto;" onclick="showAddApproverModal()">
+                        <i class="fas fa-plus"></i> Neue Regel
+                    </button>
+                </div>
+                <div class="org-card-body">
+                    <table class="rules-table">
+                        <thead>
+                            <tr><th>Gruppe</th><th>Standort</th><th>Genehmiger</th><th>Prio</th><th></th></tr>
+                        </thead>
+                        <tbody id="approversBody">
+                            <tr><td colspan="5" style="text-align: center; color: #888;">Lädt...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 </div>
+{% endblock %}
 
+{% block extra_js %}
 <script>
-    // Lade Organigramm in iframe
-    document.addEventListener('DOMContentLoaded', function() {
-        const container = document.getElementById('organigramm-content');
-        
-        // Erstelle iframe
-        const iframe = document.createElement('iframe');
-        iframe.className = 'organigramm-iframe';
-        iframe.src = '/static/organigramm/Auto_Greiner_Organigramm.html';
-        
-        // Ersetze Loading-Spinner mit iframe
-        container.innerHTML = '';
-        container.appendChild(iframe);
-        
-        // Fehlerbehandlung
-        iframe.onerror = function() {
-            container.innerHTML = `
-                <div style="padding: 40px; text-align: center; color: #dc2626;">
-                    <h3>⚠️ Organigramm konnte nicht geladen werden</h3>
-                    <p>Bitte stelle sicher, dass die Datei vorhanden ist:</p>
-                    <code>/static/organigramm/Auto_Greiner_Organigramm.html</code>
+let employees = [];
+let departments = [];
+let orgTree = [];
+
+async function api(endpoint, method = 'GET', body = null) {
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body) opts.body = JSON.stringify(body);
+    const r = await fetch('/api/organization' + endpoint, opts);
+    return r.json();
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    // Tab-Switching
+    document.querySelectorAll('.org-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.org-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.org-tab-content').forEach(c => c.classList.remove('active'));
+            tab.classList.add('active');
+            document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+        });
+    });
+    
+    document.getElementById('searchInput').addEventListener('input', debounce(handleSearch, 300));
+    
+    await loadEmployees();
+    await loadDepartments();
+    await loadOrgTree();
+    await loadApprovers();
+    loadCapacityToday();
+});
+
+async function loadEmployees() {
+    const r = await api('/employees');
+    if (r.success) {
+        employees = r.employees;
+        // Location aus departments holen falls nicht in employees
+        for (const emp of employees) {
+            if (!emp.location) {
+                const dept = departments.find(d => d.name === emp.department);
+                if (dept) emp.location = dept.location;
+            }
+        }
+    }
+}
+
+async function loadDepartments() {
+    const r = await api('/departments');
+    if (r.success) {
+        departments = r.departments;
+        renderDepartments();
+        updateStats();
+    }
+}
+
+function filterByLocation() {
+    renderDepartments();
+    renderHierarchy();
+    updateStats();
+}
+
+function updateStats() {
+    const loc = document.getElementById('locationFilter').value;
+    const filtered = loc ? employees.filter(e => e.location === loc) : employees;
+    
+    document.getElementById('statTotal').textContent = filtered.length;
+    document.getElementById('statManagers').textContent = filtered.filter(e => e.is_manager).length;
+    
+    // Zähle unique Abteilungen im Filter
+    const depts = new Set(filtered.map(e => e.department).filter(Boolean));
+    document.getElementById('statDepts').textContent = depts.size;
+    
+    // Stats-Text
+    const statsEl = document.getElementById('locationStats');
+    if (loc) {
+        statsEl.textContent = `${filtered.length} Mitarbeiter, ${depts.size} Abteilungen`;
+    } else {
+        statsEl.textContent = '';
+    }
+}
+
+async function loadOrgTree() {
+    const r = await api('/tree');
+    if (r.success) {
+        orgTree = r.tree;
+        renderHierarchy();
+    }
+}
+
+async function loadApprovers() {
+    const r = await api('/approval-rules');
+    if (r.success) {
+        document.getElementById('statRules').textContent = r.count;
+        renderApprovers(r.rules);
+    }
+}
+
+function loadCapacityToday() {
+    const container = document.getElementById('capacityToday');
+    container.innerHTML = '';
+    
+    const topDepts = departments.slice(0, 6);
+    topDepts.forEach(async (dept) => {
+        const r = await api(`/department-capacity?department=${encodeURIComponent(dept.name)}`);
+        if (r.success) {
+            const cls = r.absence_rate >= 35 ? 'danger' : r.absence_rate >= 25 ? 'warning' : 'ok';
+            container.innerHTML += `
+                <div class="cap-item">
+                    <div class="cap-header">
+                        <span>${dept.name}</span>
+                        <span>${r.present}/${r.total_employees}</span>
+                    </div>
+                    <div class="cap-bar">
+                        <div class="cap-fill ${cls}" style="width: ${Math.min(r.absence_rate, 100)}%;"></div>
+                    </div>
                 </div>
             `;
-        };
+        }
     });
-</script>
+}
 
+function renderDepartments() {
+    const container = document.getElementById('deptTree');
+    const loc = document.getElementById('locationFilter').value;
+    let html = '';
+    
+    // Filtere und sortiere
+    let filtered = departments;
+    if (loc) {
+        // Filtere Members nach Standort und berechne count neu
+        filtered = departments.map(d => {
+            const filteredMembers = d.members.filter(m => {
+                const emp = employees.find(e => e.id === m.id);
+                return emp && emp.location === loc;
+            });
+            return { ...d, members: filteredMembers, count: filteredMembers.length };
+        }).filter(d => d.count > 0);
+    }
+    
+    const sorted = [...filtered].sort((a, b) => b.count - a.count);
+    
+    if (sorted.length === 0) {
+        container.innerHTML = '<div style="text-align: center; padding: 40px; color: #888;">Keine Abteilungen an diesem Standort</div>';
+        return;
+    }
+    
+    for (const dept of sorted) {
+        const initials = (name) => name.split(' ').map(n => n[0]).join('').substring(0, 2);
+        
+        let membersHtml = '';
+        for (const m of dept.members) {
+            membersHtml += `
+                <div class="member-row ${m.is_manager ? 'is-manager' : ''}">
+                    <div class="member-avatar">${initials(m.name)}</div>
+                    <div class="member-name">${m.name}</div>
+                    ${m.is_manager ? '<i class="fas fa-star" style="color: #f59e0b; font-size: 10px;"></i>' : ''}
+                </div>
+            `;
+        }
+        
+        html += `
+            <div class="dept-group">
+                <div class="dept-header" onclick="toggleDept(this)">
+                    <i class="fas fa-building"></i>
+                    <span>${dept.name}</span>
+                    <span class="dept-count">${dept.count}</span>
+                    <i class="fas fa-chevron-down toggle"></i>
+                </div>
+                <div class="dept-members">${membersHtml}</div>
+            </div>
+        `;
+    }
+    
+    container.innerHTML = html;
+}
+
+function toggleDept(header) {
+    header.classList.toggle('collapsed');
+    header.nextElementSibling.classList.toggle('collapsed');
+}
+
+function renderHierarchy() {
+    const container = document.getElementById('orgHierarchy');
+    const loc = document.getElementById('locationFilter').value;
+    
+    // Filtere Tree nach Standort
+    function filterTree(nodes) {
+        if (!nodes) return [];
+        return nodes.map(n => {
+            const emp = employees.find(e => e.id === n.id);
+            const matchLoc = !loc || (emp && emp.location === loc);
+            const filteredChildren = filterTree(n.children);
+            
+            // Zeige Node wenn er matched ODER Kinder hat die matchen
+            if (matchLoc || filteredChildren.length > 0) {
+                return { ...n, children: filteredChildren, _dimmed: !matchLoc };
+            }
+            return null;
+        }).filter(Boolean);
+    }
+    
+    const filteredTree = loc ? filterTree(orgTree) : orgTree;
+    
+    // Finde CEO
+    const ceo = filteredTree.find(n => n.department === 'Geschäftsführung') || filteredTree[0];
+    if (!ceo) {
+        container.innerHTML = '<div style="text-align: center; color: #888; padding: 40px;">Keine Hierarchie-Daten</div>';
+        return;
+    }
+    
+    function renderLevel(nodes, level = 0) {
+        if (!nodes || nodes.length === 0) return '';
+        
+        let html = '<div class="org-level">';
+        for (const node of nodes) {
+            const initials = (node.first_name?.[0] || '') + (node.last_name?.[0] || '');
+            const isCeo = node.department === 'Geschäftsführung';
+            const isManager = node.is_manager;
+            
+            html += `
+                <div class="person-card ${isCeo ? 'ceo' : isManager ? 'manager' : ''}" onclick="showPerson(${node.id})">
+                    <div class="person-avatar">${initials}</div>
+                    <div class="person-name">${node.name}</div>
+                    <div class="person-dept">${node.department || ''}</div>
+                </div>
+            `;
+        }
+        html += '</div>';
+        
+        // Render children
+        for (const node of nodes) {
+            if (node.children && node.children.length > 0) {
+                html += renderLevel(node.children, level + 1);
+            }
+        }
+        
+        return html;
+    }
+    
+    // Baue Hierarchie ab CEO
+    container.innerHTML = renderLevel([ceo]);
+}
+
+function renderApprovers(rules) {
+    const tbody = document.getElementById('approversBody');
+    if (!rules.length) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #888;">Keine Regeln</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = rules.map(r => `
+        <tr>
+            <td><strong>${r.grp_code}</strong></td>
+            <td>${r.standort || 'Alle'}</td>
+            <td>${r.approver_name}</td>
+            <td>${r.priority}</td>
+            <td><button class="btn-sm btn-danger" onclick="deleteApprover(${r.id})"><i class="fas fa-trash"></i></button></td>
+        </tr>
+    `).join('');
+}
+
+function showPerson(id) {
+    const emp = employees.find(e => e.id === id);
+    if (emp) alert(`${emp.name}\n${emp.department || ''}\n${emp.email || ''}`);
+}
+
+function handleSearch(e) {
+    const term = e.target.value.toLowerCase();
+    const results = document.getElementById('searchResults');
+    
+    if (!term) { results.innerHTML = ''; return; }
+    
+    const matches = employees.filter(e => 
+        e.name.toLowerCase().includes(term) || 
+        e.department?.toLowerCase().includes(term)
+    ).slice(0, 8);
+    
+    results.innerHTML = matches.map(e => `
+        <div class="member-row" style="cursor: pointer;" onclick="showPerson(${e.id})">
+            <div class="member-avatar">${e.name.split(' ').map(n => n[0]).join('')}</div>
+            <div class="member-name">${e.name}<br><small style="color: #888;">${e.department || ''}</small></div>
+        </div>
+    `).join('');
+}
+
+function debounce(fn, ms) {
+    let t;
+    return function(...args) {
+        clearTimeout(t);
+        t = setTimeout(() => fn.apply(this, args), ms);
+    };
+}
+
+async function deleteApprover(id) {
+    if (!confirm('Regel löschen?')) return;
+    await api('/approval-rules/' + id, 'DELETE');
+    loadApprovers();
+}
+
+function showAddSubstituteModal() { alert('TODO: Modal für Vertretungsregel'); }
+function showAddApproverModal() { alert('TODO: Modal für Genehmiger'); }
+</script>
 {% endblock %}
