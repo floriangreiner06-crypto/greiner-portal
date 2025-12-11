@@ -29,7 +29,7 @@ if os.path.exists(LOCK_FILE):
     else:
         os.remove(LOCK_FILE)
 
-def find_new_files(directory, extensions, max_age_minutes=60):
+def find_new_files(directory, extensions, max_age_minutes=10):
     """Findet Dateien die in den letzten X Minuten geändert wurden."""
     new_files = []
     cutoff = time.time() - (max_age_minutes * 60)

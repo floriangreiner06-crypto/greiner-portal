@@ -60,15 +60,8 @@ def werkstatt_stempeluhr_monitor():
 @werkstatt_routes.route('/werkstatt/tagesbericht')
 @login_required
 def werkstatt_tagesbericht():
-    """Werkstatt Tagesbericht (Legacy)"""
+    """Werkstatt Tagesbericht"""
     return render_template('aftersales/werkstatt_tagesbericht.html')
-
-
-@werkstatt_routes.route('/werkstatt/kompakt')
-@login_required
-def werkstatt_kompakt():
-    """Werkstatt Kompakt - Performance + Tagesbericht kombiniert (TAG 110)"""
-    return render_template('aftersales/werkstatt_kompakt.html')
 
 
 @werkstatt_routes.route('/werkstatt/teile-status')

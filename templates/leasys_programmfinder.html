@@ -630,13 +630,6 @@ const wizard = {
             }
             
             html += `<div class="card mt-4"><div class="card-body"><h6 class="card-title">Ihre Auswahl</h6><div class="row"><div class="col-6 col-md-3"><small class="text-muted">Marke</small><br><strong>${this.data.marke}</strong></div><div class="col-6 col-md-3"><small class="text-muted">Typ</small><br><strong>${this.data.fahrzeugtyp}</strong></div><div class="col-6 col-md-3"><small class="text-muted">Rücknahme</small><br><strong>${this.data.buyback}</strong></div><div class="col-6 col-md-3"><small class="text-muted">Laufzeit</small><br><strong>${this.data.laufzeit} Monate</strong></div></div>${this.data.modell ? `<div class="mt-2"><small class="text-muted">Modell</small><br><strong>${this.data.modell}</strong></div>` : ''}</div></div>`;
-            
-            // Button: Weiter zum Kalkulator
-            html += `<div class="text-center mt-4">
-                <a href="/verkauf/leasys-kalkulator?brand=${this.data.marke.toUpperCase()}&ma_id=${emp.ma_id}&auto=1" class="btn btn-lg btn-wizard btn-wizard-primary">
-                    <i class="bi bi-calculator me-2"></i>Fahrzeuge im Kalkulator anzeigen
-                </a>
-            </div>`;
         } else {
             html = `<div class="alert alert-warning"><h5><i class="bi bi-exclamation-triangle me-2"></i>Kein passendes Programm gefunden</h5><p>Bitte prüfen Sie Ihre Eingaben oder kontaktieren Sie Leasys direkt.</p></div>`;
         }

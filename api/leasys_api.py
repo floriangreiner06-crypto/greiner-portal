@@ -1027,22 +1027,9 @@ import sqlite3
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'greiner_controlling.db')
 
-# Fuel-Mapping: Frontend sendet "Benzin", Cache hat "B"
-FUEL_MAP = {
-    'Benzin': 'B', 'benzin': 'B',
-    'Diesel': 'D', 'diesel': 'D',
-    'Elektro': 'E', 'elektro': 'E',
-    'Hybrid': 'H', 'hybrid': 'H',
-    'B': 'B', 'D': 'D', 'E': 'E', 'H': 'H'  # Falls schon Kurzform
-}
-
 def get_cached_vehicles(brand, fuel, ma_id, max_age_minutes=180):
     """Holt Fahrzeuge aus dem SQLite-Cache."""
     try:
-        # Fuel-Mapping anwenden (Frontend: "Benzin" -> Cache: "B")
-        if fuel:
-            fuel = FUEL_MAP.get(fuel, fuel)
-        
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         

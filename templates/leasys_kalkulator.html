@@ -15,15 +15,11 @@
         font-weight: 500;
         margin-bottom: 5px;
     }
-    .filter-card select, .filter-card select:disabled {
+    .filter-card select {
         border: none;
         border-radius: 8px;
         padding: 10px 15px;
         font-size: 1rem;
-    }
-    .filter-card select:disabled {
-        background-color: #e9ecef;
-        cursor: not-allowed;
     }
     .btn-search {
         background: white;
@@ -116,21 +112,15 @@
         margin-bottom: 20px;
         opacity: 0.5;
     }
-    .info-box {
-        background: #e3f2fd;
+    .deep-link {
+        background: #f8f9fa;
         border-radius: 8px;
         padding: 15px;
-        margin-bottom: 20px;
-        border-left: 4px solid #1976d2;
+        margin-top: 20px;
     }
-    .info-box a {
-        color: #1976d2;
+    .deep-link a {
+        color: #667eea;
         font-weight: 500;
-    }
-    .ma-info {
-        font-size: 0.85rem;
-        color: rgba(255,255,255,0.8);
-        margin-top: 5px;
     }
 </style>
 {% endblock %}
@@ -157,13 +147,6 @@
         </div>
     </div>
 
-    <!-- Info Box -->
-    <div class="info-box">
-        <i class="fas fa-lightbulb"></i>
-        <strong>Tipp:</strong> Nicht sicher welches Master Agreement? 
-        Nutze zuerst den <a href="/verkauf/leasys-programmfinder">Programmfinder</a> um das passende Programm zu finden.
-    </div>
-
     <!-- Filter -->
     <div class="filter-card">
         <div class="row align-items-end">
@@ -171,24 +154,31 @@
                 <label><i class="fas fa-car"></i> Marke</label>
                 <select id="filterBrand" class="form-control">
                     <option value="OPEL" selected>Opel</option>
+                    <option value="FIAT">Fiat</option>
+                    <option value="JEEP">Jeep</option>
+                    <option value="PEUGEOT">Peugeot</option>
+                    <option value="CITROEN">Citroën</option>
                     <option value="LEAPMOTOR">Leapmotor</option>
                 </select>
             </div>
-            <div class="col-md-2">
+            <div class="col-md-3">
                 <label><i class="fas fa-gas-pump"></i> Kraftstoff</label>
                 <select id="filterFuel" class="form-control">
                     <option value="">Alle</option>
                     <option value="Benzin">Benzin</option>
                     <option value="Diesel">Diesel</option>
                     <option value="Elektro">Elektro</option>
+                    <option value="Hybrid">Hybrid</option>
                 </select>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <label><i class="fas fa-file-contract"></i> Master Agreement</label>
                 <select id="filterMA" class="form-control">
-                    <option value="">Wird geladen...</option>
+                    <option value="1000026115" selected>KM LEASING Opel 36-60</option>
+                    <option value="1000026114">KM LEASING Opel 24-35</option>
+                    <option value="1000026398">BLACK WEEKS 36-60</option>
+                    <option value="1000026397">BLACK WEEKS 24-35</option>
                 </select>
-                <div class="ma-info" id="maInfo"></div>
             </div>
             <div class="col-md-3">
                 <button id="btnSearch" class="btn btn-search btn-block">
@@ -257,7 +247,8 @@
     <!-- Loading -->
     <div class="loading-spinner" id="loadingSpinner">
         <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;"></div>
-        <p class="mt-3 text-muted">Lade Fahrzeuge...</p>
+        <p class="mt-3 text-muted">Lade Fahrzeuge von Leasys...</p>
+        <p class="small text-muted">Erstmalige Authentifizierung kann bis zu 15 Sekunden dauern</p>
     </div>
 
     <!-- Results -->
@@ -265,8 +256,17 @@
         <div class="empty-state">
             <i class="fas fa-car-side"></i>
             <h5>Fahrzeugsuche starten</h5>
-            <p>Wähle Marke, Kraftstoff und Master Agreement, dann klicke auf "Fahrzeuge suchen"</p>
+            <p>Wähle Marke und Kraftstoff, dann klicke auf "Fahrzeuge suchen"</p>
         </div>
+    </div>
+
+    <!-- Deep Link Info -->
+    <div class="deep-link">
+        <i class="fas fa-info-circle text-primary"></i>
+        <strong>Tipp:</strong> Für die vollständige Ratenberechnung öffne das 
+        <a href="https://e-touch.leasys.com/e-saml2/index.html?sap-client=100#/quotation/BusinessPartnership/1186289565" target="_blank">
+            Leasys Portal <i class="fas fa-external-link-alt"></i>
+        </a>
     </div>
 </div>
 {% endblock %}
@@ -274,169 +274,42 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    const btnSearch = document.getElementById('btnSearch');
     const filterBrand = document.getElementById('filterBrand');
     const filterFuel = document.getElementById('filterFuel');
     const filterMA = document.getElementById('filterMA');
-    const maInfo = document.getElementById('maInfo');
-    const btnSearch = document.getElementById('btnSearch');
     const resultsDiv = document.getElementById('vehicleResults');
     const loadingSpinner = document.getElementById('loadingSpinner');
     const statsRow = document.getElementById('statsRow');
 
-    // Alle Programme aus API (wird beim Start geladen)
-    let allProgramme = [];
-
-    // =========================================================================
-    // MASTER AGREEMENTS AUS API LADEN
-    // =========================================================================
-    async function loadProgramme() {
-        try {
-            const response = await fetch('/api/leasys/programme?nur_aktive=true');
-            const data = await response.json();
-            
-            if (data.success) {
-                allProgramme = data.programme || [];
-                console.log(`${allProgramme.length} Programme geladen`);
-                updateMADropdown();
-            } else {
-                console.error('Fehler beim Laden der Programme:', data.error);
-                filterMA.innerHTML = '<option value="">Fehler beim Laden</option>';
-            }
-        } catch (error) {
-            console.error('API-Fehler:', error);
-            filterMA.innerHTML = '<option value="">API nicht erreichbar</option>';
-        }
+    // Fuel Badge Helper
+    function getFuelBadge(fuelCode) {
+        const map = {
+            'B': { class: 'badge-benzin', text: 'Benzin' },
+            'D': { class: 'badge-diesel', text: 'Diesel' },
+            'E': { class: 'badge-elektro', text: 'Elektro' },
+            'H': { class: 'badge-hybrid', text: 'Hybrid' },
+            'P': { class: 'badge-hybrid', text: 'PHEV' }
+        };
+        const fuel = map[fuelCode] || { class: 'badge-secondary', text: fuelCode };
+        return `<span class="badge ${fuel.class}">${fuel.text}</span>`;
     }
 
-    // MA Dropdown basierend auf ausgewählter Marke aktualisieren
-    function updateMADropdown() {
-        const brand = filterBrand.value.toUpperCase();
-        
-        // Filtere Programme nach Marke
-        const filtered = allProgramme.filter(p => 
-            p.marke && p.marke.toUpperCase() === brand
-        );
-        
-        if (filtered.length === 0) {
-            filterMA.innerHTML = '<option value="">Keine Programme gefunden</option>';
-            maInfo.textContent = '';
-            return;
-        }
-        
-        // Gruppiere nach Fahrzeugtyp (NW vs TZ/VFW)
-        const nw = filtered.filter(p => p.fahrzeugtyp === 'NW');
-        const tz = filtered.filter(p => p.fahrzeugtyp === 'TZ/VFW');
-        
-        let html = '';
-        
-        if (nw.length > 0) {
-            html += '<optgroup label="🚗 Neuwagen (NW)">';
-            nw.forEach((p, idx) => {
-                const selected = idx === 0 ? 'selected' : '';
-                html += `<option value="${p.ma_id}" ${selected} 
-                         data-buyback="${p.buyback}" 
-                         data-typ="${p.fahrzeugtyp}"
-                         data-erklaerung="${p.erklaerung || ''}">${p.name}</option>`;
-            });
-            html += '</optgroup>';
-        }
-        
-        if (tz.length > 0) {
-            html += '<optgroup label="📋 Tageszulassung/VFW (TZ)">';
-            tz.forEach(p => {
-                html += `<option value="${p.ma_id}" 
-                         data-buyback="${p.buyback}" 
-                         data-typ="${p.fahrzeugtyp}"
-                         data-erklaerung="${p.erklaerung || ''}">${p.name}</option>`;
-            });
-            html += '</optgroup>';
-        }
-        
-        filterMA.innerHTML = html;
-        updateMAInfo();
+    // Format Price
+    function formatPrice(price) {
+        return new Intl.NumberFormat('de-DE', {
+            style: 'currency',
+            currency: 'EUR',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0
+        }).format(price);
     }
 
-    // MA Info-Text aktualisieren
-    function updateMAInfo() {
-        const selected = filterMA.options[filterMA.selectedIndex];
-        if (selected && selected.dataset.buyback) {
-            const buyback = selected.dataset.buyback;
-            const typ = selected.dataset.typ;
-            maInfo.textContent = `${typ} | Rücknahme: ${buyback}`;
-        } else {
-            maInfo.textContent = '';
-        }
-    }
-
-    // Fuel-Dropdown für bestimmte Marken anpassen
-    function updateFuelForBrand() {
-        const brand = filterBrand.value;
-        
-        // Leapmotor: Cache hat fuel=NULL, daher immer "Alle" verwenden
-        if (brand === 'LEAPMOTOR') {
-            filterFuel.value = '';
-            filterFuel.disabled = true;
-            filterFuel.title = 'Leapmotor: Alle Kraftstoffe (Elektro + REEV)';
-        } else {
-            filterFuel.disabled = false;
-            filterFuel.title = '';
-        }
-    }
-
-    // =========================================================================
-    // EVENT LISTENERS
-    // =========================================================================
-    filterBrand.addEventListener('change', function() {
-        updateMADropdown();
-        updateFuelForBrand();
-    });
-
-    filterMA.addEventListener('change', updateMAInfo);
-
-    // URL-Parameter auswerten (z.B. von Programmfinder kommend)
-    function parseUrlParams() {
-        const params = new URLSearchParams(window.location.search);
-        
-        if (params.has('brand')) {
-            const brand = params.get('brand').toUpperCase();
-            if (filterBrand.querySelector(`option[value="${brand}"]`)) {
-                filterBrand.value = brand;
-            }
-        }
-        
-        if (params.has('ma_id')) {
-            // Warte bis Programme geladen sind, dann MA setzen
-            const maId = params.get('ma_id');
-            setTimeout(() => {
-                if (filterMA.querySelector(`option[value="${maId}"]`)) {
-                    filterMA.value = maId;
-                    updateMAInfo();
-                }
-            }, 500);
-        }
-        
-        if (params.has('fuel')) {
-            filterFuel.value = params.get('fuel');
-        }
-        
-        // Auto-Search wenn Parameter vorhanden
-        if (params.has('auto') && params.get('auto') === '1') {
-            setTimeout(() => searchVehicles(), 700);
-        }
-    }
-
-    // =========================================================================
-    // FAHRZEUG-SUCHE
-    // =========================================================================
+    // Search Vehicles
     async function searchVehicles() {
         const brand = filterBrand.value;
         const fuel = filterFuel.value;
         const maId = filterMA.value;
-
-        if (!maId) {
-            alert('Bitte ein Master Agreement auswählen');
-            return;
-        }
 
         // UI Update
         loadingSpinner.classList.add('active');
@@ -472,19 +345,62 @@ document.addEventListener('DOMContentLoaded', function() {
             const filterCard = document.getElementById("filterCard");
             if (filterCard) filterCard.style.display = "block";
             document.getElementById("filteredCount").textContent = vehicles.length;
+            
 
             // Stats
             if (vehicles.length > 0) {
                 const prices = vehicles.map(v => v.list_price_brutto).filter(p => p > 0);
                 document.getElementById('statCount').textContent = vehicles.length;
-                document.getElementById('statMinPrice').textContent = formatPrice(Math.min(...prices));
-                document.getElementById('statMaxPrice').textContent = formatPrice(Math.max(...prices));
+                document.getElementById('statMinPrice').textContent = formatPriceFilter(Math.min(...prices));
+                document.getElementById('statMaxPrice').textContent = formatPriceFilter(Math.max(...prices));
                 document.getElementById('statSource').textContent = data.source === 'live' ? '🟢 Live' : '📦 Cache';
                 statsRow.style.display = 'flex';
             }
 
             // Render Vehicles
-            renderVehicles(vehicles);
+            if (vehicles.length === 0) {
+                resultsDiv.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-search"></i>
+                        <h5>Keine Fahrzeuge gefunden</h5>
+                        <p>Versuche andere Filtereinstellungen</p>
+                    </div>
+                `;
+            } else {
+                // Sort by model name
+                vehicles.sort((a, b) => (a.model || '').localeCompare(b.model || ''));
+
+                resultsDiv.innerHTML = vehicles.map(v => `
+                    <div class="vehicle-card">
+                        <div class="row align-items-center">
+                            <div class="col-md-6">
+                                <div class="vehicle-model">
+                                    ${v.model || 'Unbekannt'}
+                                    ${getFuelBadge(v.fuel)}
+                                </div>
+                                <div class="vehicle-details">
+                                    <span class="mr-3"><i class="fas fa-tag"></i> ${v.gamma || '-'}</span>
+                                    <span class="mr-3"><i class="fas fa-cog"></i> ${v.allestimento || '-'}</span>
+                                    ${v.co2 ? `<span><i class="fas fa-leaf"></i> ${v.co2} g/km</span>` : ''}
+                                </div>
+                                <div class="mt-2 small text-muted">
+                                    Product ID: ${v.product_id || '-'}
+                                </div>
+                            </div>
+                            <div class="col-md-3 text-right">
+                                <div class="vehicle-price">${formatPriceFilter(v.list_price_brutto)}</div>
+                                <div class="vehicle-price-netto">Netto: ${formatPriceFilter(v.list_price_netto)}</div>
+                            </div>
+                            <div class="col-md-3 text-right">
+                                <a href="https://e-touch.leasys.com/e-saml2/index.html?sap-client=100#/quotation/BusinessPartnership/1186289565" 
+                                   target="_blank" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-calculator"></i> Rate berechnen
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            }
 
         } catch (error) {
             console.error('Search error:', error);
@@ -492,8 +408,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="alert alert-danger">
                     <i class="fas fa-exclamation-triangle"></i>
                     <strong>Fehler:</strong> ${error.message}
-                    <br><small>Der Cache für dieses Master Agreement ist möglicherweise nicht verfügbar.</small>
-                    <br><small class="text-muted">Tipp: Wähle ein anderes MA oder warte auf das nächste Cache-Update.</small>
+                    <br><small>Die Leasys API ist möglicherweise nicht erreichbar. Bitte versuche es später erneut.</small>
                 </div>
             `;
         } finally {
@@ -502,139 +417,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // =========================================================================
-    // RENDER FUNKTIONEN
-    // =========================================================================
-    function renderVehicles(vehicles) {
-        if (vehicles.length === 0) {
-            resultsDiv.innerHTML = `
-                <div class="empty-state">
-                    <i class="fas fa-search"></i>
-                    <h5>Keine Fahrzeuge gefunden</h5>
-                    <p>Für diese Kombination sind keine Fahrzeuge verfügbar.</p>
-                </div>
-            `;
-            return;
-        }
-
-        // Sort by model name
-        vehicles.sort((a, b) => (a.model || '').localeCompare(b.model || ''));
-
-        resultsDiv.innerHTML = vehicles.map(v => `
-            <div class="vehicle-card">
-                <div class="row align-items-center">
-                    <div class="col-md-5">
-                        <div class="vehicle-model">
-                            ${v.model || 'Unbekannt'}
-                            ${getFuelBadge(v.fuel)}
-                        </div>
-                        <div class="vehicle-details">
-                            <span class="mr-3">${v.gamma || '-'} | ${v.allestimento || '-'}</span>
-                            ${v.co2 ? `<br><small><i class="fas fa-leaf text-success"></i> ${v.co2} g/km CO₂</small>` : ''}
-                        </div>
-                        <div class="mt-1 small text-muted">
-                            Product ID: ${v.product_id || '-'}
-                        </div>
-                    </div>
-                    <div class="col-md-3 text-right">
-                        <div class="vehicle-price">${formatPrice(v.list_price_brutto)}</div>
-                        <div class="vehicle-price-netto">Netto: ${formatPrice(v.list_price_netto)}</div>
-                    </div>
-                    <div class="col-md-4 text-right">
-                        <a href="https://e-touch.leasys.com/e-saml2/index.html?sap-client=100#/quotation/BusinessPartnership/1186289565" 
-                           target="_blank" class="btn btn-sm btn-outline-primary">
-                            <i class="fas fa-calculator"></i> Rate berechnen
-                        </a>
-                    </div>
-                </div>
-            </div>
-        `).join('');
-    }
-
-    function getFuelBadge(fuelCode) {
-        const map = {
-            'B': { class: 'badge-benzin', text: 'Benzin' },
-            'D': { class: 'badge-diesel', text: 'Diesel' },
-            'E': { class: 'badge-elektro', text: 'Elektro' },
-            'H': { class: 'badge-hybrid', text: 'Hybrid' },
-            'P': { class: 'badge-hybrid', text: 'PHEV' }
-        };
-        const fuel = map[fuelCode] || { class: 'badge-secondary', text: fuelCode || '?' };
-        return `<span class="badge badge-fuel ${fuel.class}">${fuel.text}</span>`;
-    }
-
-    function formatPrice(price) {
-        if (!price) return '-';
-        return new Intl.NumberFormat('de-DE', {
-            style: 'currency',
-            currency: 'EUR',
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0
-        }).format(price);
-    }
-
-    // =========================================================================
-    // CLIENT-SIDE FILTER
-    // =========================================================================
-    let filterTimeout;
-
-    function applyFilters() {
-        const vehicles = window.allVehicles || [];
-        const modelFilter = document.getElementById('filterModel').value.toLowerCase();
-        const baureiheFilter = document.getElementById('filterBaureihe').value;
-        const priceMin = parseFloat(document.getElementById('filterPriceMin').value) || 0;
-        const priceMax = parseFloat(document.getElementById('filterPriceMax').value) || Infinity;
-        
-        const filtered = vehicles.filter(v => {
-            const model = (v.model || '').toLowerCase();
-            const baureihe = v.model ? v.model.split(' ')[0] : '';
-            const price = v.list_price_brutto || 0;
-            
-            if (modelFilter && !model.includes(modelFilter)) return false;
-            if (baureiheFilter && baureihe !== baureiheFilter) return false;
-            if (price < priceMin || price > priceMax) return false;
-            
-            return true;
-        });
-        
-        renderVehicles(filtered);
-        document.getElementById('filteredCount').textContent = filtered.length;
-        
-        // Update Stats
-        if (filtered.length > 0) {
-            const prices = filtered.map(v => v.list_price_brutto || 0).filter(p => p > 0);
-            document.getElementById('statCount').textContent = filtered.length;
-            document.getElementById('statMinPrice').textContent = formatPrice(Math.min(...prices));
-            document.getElementById('statMaxPrice').textContent = formatPrice(Math.max(...prices));
-        }
-    }
-
-    // Filter Event Listeners
-    ['filterModel', 'filterBaureihe', 'filterPriceMin', 'filterPriceMax'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-            el.addEventListener('input', () => {
-                clearTimeout(filterTimeout);
-                filterTimeout = setTimeout(applyFilters, 300);
-            });
-            el.addEventListener('change', applyFilters);
-        }
-    });
-
-    const btnClear = document.getElementById('btnClearFilter');
-    if (btnClear) {
-        btnClear.addEventListener('click', () => {
-            document.getElementById('filterModel').value = '';
-            document.getElementById('filterBaureihe').value = '';
-            document.getElementById('filterPriceMin').value = '';
-            document.getElementById('filterPriceMax').value = '';
-            applyFilters();
-        });
-    }
-
-    // =========================================================================
-    // INIT
-    // =========================================================================
+    // Event Listeners
     btnSearch.addEventListener('click', searchVehicles);
 
     // Enter Key
@@ -643,12 +426,117 @@ document.addEventListener('DOMContentLoaded', function() {
             if (e.key === 'Enter') searchVehicles();
         });
     });
-
-    // Programme laden und URL-Parameter auswerten
-    loadProgramme().then(() => {
-        updateFuelForBrand();
-        parseUrlParams();
-    });
 });
-</script>
+
+        // ========== CLIENT-SIDE FILTER ==========
+        let filterTimeout;
+        
+        function formatPriceFilter(num) {
+            if (!num) return '-';
+            return new Intl.NumberFormat('de-DE').format(Math.round(num));
+        }
+        
+        function applyFilters() {
+            console.log('applyFilters called');
+            const vehicles = window.allVehicles || [];
+            console.log('vehicles count:', vehicles.length);
+            const modelFilter = document.getElementById('filterModel').value.toLowerCase();
+            const baureiheFilter = document.getElementById('filterBaureihe').value;
+            const priceMin = parseFloat(document.getElementById('filterPriceMin').value) || 0;
+            const priceMax = parseFloat(document.getElementById('filterPriceMax').value) || Infinity;
+            
+            const filtered = vehicles.filter(v => {
+                const model = (v.model || '').toLowerCase();
+                const baureihe = v.model ? v.model.split(' ')[0] : '';
+                const price = v.list_price_brutto || 0;
+                
+                if (modelFilter && !model.includes(modelFilter)) return false;
+                if (baureiheFilter && baureihe !== baureiheFilter) return false;
+                if (price < priceMin || price > priceMax) return false;
+                
+                return true;
+            });
+            
+            // Update Anzeige
+            renderVehicles(filtered);
+            document.getElementById('filteredCount').textContent = filtered.length;
+            
+            // Update Stats
+            if (filtered.length > 0) {
+                const prices = filtered.map(v => v.list_price_brutto || 0).filter(p => p > 0);
+                document.getElementById('statCount').textContent = filtered.length;
+                document.getElementById('statMinPrice').textContent = formatPriceFilter(Math.min(...prices)) + ' €';
+                document.getElementById('statMaxPrice').textContent = formatPriceFilter(Math.max(...prices)) + ' €';
+            }
+        }
+        
+        function renderVehicles(vehicles) {
+            const container = document.getElementById('vehicleResults');
+            if (vehicles.length === 0) {
+                container.innerHTML = '<div class="alert alert-info">Keine Fahrzeuge gefunden</div>';
+                return;
+            }
+            
+            container.innerHTML = vehicles.map(v => `
+                <div class="card mb-2 vehicle-card">
+                    <div class="card-body py-2">
+                        <div class="row align-items-center">
+                            <div class="col-md-5">
+                                <strong>${v.model || 'Unbekannt'}</strong>
+                                <span class="badge ${getFuelBadgeClass(v.fuel)} ms-2">${getFuelName(v.fuel)}</span>
+                                <br><small class="text-muted">${v.gamma || ''} ${v.allestimento || ''}</small>
+                                <br><small class="text-muted">Product ID: ${v.product_id}</small>
+                            </div>
+                            <div class="col-md-3 text-end">
+                                <span class="h5 text-primary">${formatPriceFilter(v.list_price_brutto)} €</span>
+                                <br><small class="text-muted">Netto: ${formatPriceFilter(v.list_price_netto)} €</small>
+                            </div>
+                            <div class="col-md-2 text-end">
+                                ${v.co2 ? '<small>CO₂: ' + v.co2 + ' g/km</small>' : ''}
+                            </div>
+                            <div class="col-md-2 text-end">
+                                <a href="https://e-touch.leasys.com" target="_blank" class="btn btn-sm btn-outline-primary">Rate berechnen</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function getFuelName(code) {
+            const names = {'B': 'Benzin', 'D': 'Diesel', 'E': 'Elektro', 'H': 'Hybrid', 'P': 'Plug-in'};
+            return names[code] || code || 'Unbekannt';
+        }
+        
+        function getFuelBadgeClass(code) {
+            const classes = {'B': 'bg-success', 'D': 'bg-secondary', 'E': 'bg-info', 'H': 'bg-warning', 'P': 'bg-primary'};
+            return classes[code] || 'bg-secondary';
+        }
+        
+        // Event Listener für Filter
+        document.addEventListener('DOMContentLoaded', function() {
+            ['filterModel', 'filterBaureihe', 'filterPriceMin', 'filterPriceMax'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.addEventListener('input', () => {
+                        clearTimeout(filterTimeout);
+                        filterTimeout = setTimeout(applyFilters, 300);
+                    });
+                    el.addEventListener('change', applyFilters);
+                }
+            });
+            
+            const btnClear = document.getElementById('btnClearFilter');
+            if (btnClear) {
+                btnClear.addEventListener('click', () => {
+                    document.getElementById('filterModel').value = '';
+                    document.getElementById('filterBaureihe').value = '';
+                    document.getElementById('filterPriceMin').value = '';
+                    document.getElementById('filterPriceMax').value = '';
+                    applyFilters();
+                });
+            }
+        });
+
+    </script>
 {% endblock %}

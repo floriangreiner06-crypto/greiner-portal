@@ -35,7 +35,7 @@ print("=" * 60)
 # =============================================================================
 print("\n[1/5] Lade Trainingsdaten...")
 
-df = pd.read_csv("/opt/greiner-portal/data/ml/auftraege_mit_zeiten.csv")
+df = pd.read_csv("/opt/greiner-portal/data/ml/auftraege_mit_zeiten_v2.csv")
 print(f"   Datensätze: {len(df):,}")
 
 # =============================================================================

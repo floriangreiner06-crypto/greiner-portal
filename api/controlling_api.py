@@ -194,26 +194,6 @@ def get_db():
     return conn
 
 
-# =============================================================================
-# UMLAGE-KONTEN (interne Verrechnung zwischen Stellantis und Hyundai)
-# =============================================================================
-# Diese Konten sind "linke Tasche, rechte Tasche" - heben sich auf Konzernebene auf
-# Bei Einzelbetrachtung verzerren sie die echte Performance
-#
-# ERLÖSE bei Stellantis (Autohaus Greiner bekommt):
-#   817051 = Kostenumlage NW        ~12.500 €/Monat
-#   827051 = Kostenumlage GW        ~12.500 €/Monat
-#   837051 = Kostenumlage Werkstatt ~12.500 €/Monat
-#   847051 = Kostenumlage Teile     ~12.500 €/Monat
-#   SUMME:                          ~50.000 €/Monat
-#
-# KOSTEN bei Hyundai (Auto Greiner zahlt):
-#   498001 = Kostenumlage           ~50.000 €/Monat (SOLL)
-#
-UMLAGE_ERLOESE_KONTEN = [817051, 827051, 837051, 847051]
-UMLAGE_KOSTEN_KONTEN = [498001]
-
-
 def build_firma_standort_filter(firma: str, standort: str):
     """
     Baut Firma/Standort-Filter für BWA-Queries.
@@ -265,7 +245,6 @@ def get_bwa():
         jahr: int (z.B. 2025)
         firma: 0=Alle, 1=Stellantis, 2=Hyundai
         standort: 0=Alle, 1=Deggendorf, 2=Landau (nur bei Firma 1)
-        umlage: 'mit' (Standard) oder 'ohne' - Interne Umlage neutralisieren
     
     Returns:
         JSON mit allen BWA-Positionen
@@ -275,16 +254,15 @@ def get_bwa():
         jahr = request.args.get('jahr', type=int)
         firma = request.args.get('firma', '0')
         standort = request.args.get('standort', '0')
-        umlage = request.args.get('umlage', 'mit')  # 'mit' oder 'ohne'
         
         if not monat or not jahr:
             heute = datetime.now()
             monat = monat or heute.month
             jahr = jahr or heute.year
         
-        # Bei Filter oder Umlage-Bereinigung immer live berechnen
-        if firma != '0' or standort != '0' or umlage == 'ohne':
-            return berechne_bwa_live(monat, jahr, firma, standort, umlage)
+        # Bei Filter immer live berechnen
+        if firma != '0' or standort != '0':
+            return berechne_bwa_live(monat, jahr, firma, standort)
         
         conn = get_db()
         cursor = conn.cursor()
@@ -301,7 +279,7 @@ def get_bwa():
         
         if not rows:
             # Keine gespeicherten Daten - live berechnen
-            return berechne_bwa_live(monat, jahr, firma, standort, umlage)
+            return berechne_bwa_live(monat, jahr, firma, standort)
         
         # Daten aus DB
         data = {
@@ -326,7 +304,7 @@ def get_bwa():
         }), 500
 
 
-def berechne_bwa_live(monat: int, jahr: int, firma: str = '0', standort: str = '0', umlage: str = 'mit'):
+def berechne_bwa_live(monat: int, jahr: int, firma: str = '0', standort: str = '0'):
     """
     BWA live aus loco_journal_accountings berechnen.
     
@@ -334,7 +312,6 @@ def berechne_bwa_live(monat: int, jahr: int, firma: str = '0', standort: str = '
         monat, jahr: Zeitraum
         firma: 0=Alle, 1=Stellantis, 2=Hyundai
         standort: 0=Alle, 1=Deggendorf, 2=Landau
-        umlage: 'mit' (Standard) oder 'ohne' (Umlage neutralisieren)
     """
     try:
         conn = get_db()
@@ -349,33 +326,7 @@ def berechne_bwa_live(monat: int, jahr: int, firma: str = '0', standort: str = '
         # Filter bauen
         firma_filter_umsatz, firma_filter_kosten, standort_name = build_firma_standort_filter(firma, standort)
         
-        # Umlage-Filter: Bei 'ohne' werden Umlage-Konten ausgeschlossen
-        umlage_erloese_filter = ""
-        umlage_kosten_filter = ""
-        umlage_betrag = 0
-        
-        if umlage == 'ohne':
-            # Umlage-Erlöse aus Umsatz ausschließen
-            umlage_konten_str = ','.join(map(str, UMLAGE_ERLOESE_KONTEN))
-            umlage_erloese_filter = f"AND nominal_account_number NOT IN ({umlage_konten_str})"
-            
-            # Umlage-Kosten aus indirekten Kosten ausschließen
-            umlage_kosten_str = ','.join(map(str, UMLAGE_KOSTEN_KONTEN))
-            umlage_kosten_filter = f"AND nominal_account_number NOT IN ({umlage_kosten_str})"
-            
-            # Berechne Umlage-Betrag für Info-Anzeige
-            cursor.execute(f"""
-                SELECT COALESCE(SUM(
-                    CASE WHEN debit_or_credit='H' THEN posted_value ELSE -posted_value END
-                )/100.0, 0)
-                FROM loco_journal_accountings
-                WHERE accounting_date >= ? AND accounting_date < ?
-                  AND nominal_account_number IN ({umlage_konten_str})
-                  {firma_filter_umsatz}
-            """, (datum_von, datum_bis))
-            umlage_betrag = cursor.fetchone()[0] or 0
-        
-        # Umsatz (verwendet firma_filter_umsatz + umlage_erloese_filter)
+        # Umsatz (verwendet firma_filter_umsatz)
         cursor.execute(f"""
             SELECT COALESCE(SUM(
                 CASE WHEN debit_or_credit='H' THEN posted_value ELSE -posted_value END
@@ -385,7 +336,6 @@ def berechne_bwa_live(monat: int, jahr: int, firma: str = '0', standort: str = '
               AND ((nominal_account_number BETWEEN 800000 AND 889999)
                    OR (nominal_account_number BETWEEN 893200 AND 893299))
               {firma_filter_umsatz}
-              {umlage_erloese_filter}
         """, (datum_von, datum_bis))
         umsatz = cursor.fetchone()[0] or 0
         
@@ -443,7 +393,7 @@ def berechne_bwa_live(monat: int, jahr: int, firma: str = '0', standort: str = '
         """, (datum_von, datum_bis))
         direkte = cursor.fetchone()[0] or 0
         
-        # Indirekte Kosten (verwendet firma_filter_kosten + umlage_kosten_filter, OHNE 8932xx - das ist Umsatz!)
+        # Indirekte Kosten (verwendet firma_filter_kosten, OHNE 8932xx - das ist Umsatz!)
         cursor.execute(f"""
             SELECT COALESCE(SUM(
                 CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
@@ -462,7 +412,6 @@ def berechne_bwa_live(monat: int, jahr: int, firma: str = '0', standort: str = '
                     AND NOT (nominal_account_number BETWEEN 893200 AND 893299))
               )
               {firma_filter_kosten}
-              {umlage_kosten_filter}
         """, (datum_von, datum_bis))
         indirekte = cursor.fetchone()[0] or 0
         
@@ -514,10 +463,7 @@ def berechne_bwa_live(monat: int, jahr: int, firma: str = '0', standort: str = '
             'filter': {
                 'firma': firma,
                 'standort': standort,
-                'standort_name': standort_name,
-                'umlage': umlage,
-                'umlage_bereinigt': umlage == 'ohne',
-                'umlage_betrag': round(umlage_betrag, 2) if umlage == 'ohne' else None
+                'standort_name': standort_name
             }
         })
         
