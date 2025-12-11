@@ -1,6 +1,6 @@
 # CLAUDE.md - Greiner Portal DRIVE Projekt-Kontext
 
-**Letzte Aktualisierung:** 2025-12-04 (TAG 89)
+**Letzte Aktualisierung:** 2025-12-11 (TAG 112)
 
 ---
 
@@ -211,7 +211,8 @@ journalctl -u greiner-scheduler -f
 
 ### Bei Session-Ende:
 1. `SESSION_WRAP_UP_TAG[X].md` erstellen
-2. Git commit auf Server
+2. `docs/JOURNAL.md` aktualisieren (kurze Zusammenfassung)
+3. Git commit auf Server
 
 ---
 
@@ -243,7 +244,8 @@ journalctl -u greiner-scheduler -f
 
 | TAG | Datum | Highlights |
 |-----|-------|------------|
-| **89** | **04.12.2025** | **Job-Scheduler Fix: Separater Service, run_script args, PATH für Shell** |
+| **112** | **11.12.2025** | **Stempeluhr: Saldo-Fix, Pausiert-Kategorie, auftrags_art, Journal.md** |
+| 89 | 04.12.2025 | Job-Scheduler Fix: Separater Service, run_script args, PATH für Shell |
 | 88 | 02.12.2025 | APScheduler Migration, Job-Scheduler UI |
 | 87 | 01.12.2025 | Cron → APScheduler Umstellung |
 | 86 | 30.11.2025 | Leasys Kalkulator |

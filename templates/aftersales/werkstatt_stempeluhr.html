@@ -516,8 +516,9 @@ function renderAktive(mechaniker) {
                             </div>
                             <div class="text-end">
                                 <div class="zeit-display text-${fortschritt >= 100 ? 'danger' : fortschritt >= 80 ? 'warning' : 'success'}">
-                                    ${m.laufzeit_min} min
+                                    ${m.heute_gesamt_min || m.laufzeit_min} min
                                 </div>
+                                ${m.laufzeit_min > (m.heute_gesamt_min || m.laufzeit_min) ? `<div class="small text-muted" style="font-size: 0.75rem;">Ges: ${m.laufzeit_min} min</div>` : ''}
                             </div>
                         </div>
                         

@@ -694,7 +694,21 @@ def get_stempeluhr_live():
                     t.employee_number,
                     t.order_number,
                     t.start_time,
-                    -- TAG 112: Aktuelle Session + bereits abgeschlossene Zeit auf diesem Auftrag (Saldo)
+                    -- TAG 112: Aktuelle Session (nur heute)
+                    EXTRACT(EPOCH FROM (NOW() - t.start_time))/60 as heute_session_min,
+                    -- TAG 112: Abgeschlossene Sessions HEUTE auf diesem Auftrag
+                    COALESCE((
+                        SELECT SUM(dur) FROM (
+                            SELECT DISTINCT ON (start_time, end_time) duration_minutes as dur
+                            FROM times t2 
+                            WHERE t2.order_number = t.order_number 
+                              AND t2.employee_number = t.employee_number
+                              AND t2.end_time IS NOT NULL
+                              AND t2.type = 2
+                              AND DATE(t2.start_time) = CURRENT_DATE
+                        ) dedup
+                    ), 0) as heute_abgeschlossen_min,
+                    -- TAG 112: GESAMT auf Auftrag (alle Tage) für Vorgabe-Vergleich
                     EXTRACT(EPOCH FROM (NOW() - t.start_time))/60 
                     + COALESCE((
                         SELECT SUM(dur) FROM (
@@ -721,6 +735,10 @@ def get_stempeluhr_live():
                 a.order_number,
                 a.start_time,
                 ROUND(a.laufzeit_min::numeric, 0) as laufzeit_min,
+                -- TAG 112: Heute-Aufschlüsselung
+                ROUND(a.heute_session_min::numeric, 0) as heute_session_min,
+                ROUND(a.heute_abgeschlossen_min::numeric, 0) as heute_abgeschlossen_min,
+                ROUND((a.heute_session_min + a.heute_abgeschlossen_min)::numeric, 0) as heute_gesamt_min,
                 COALESCE(l.vorgabe_aw, 0) as vorgabe_aw,
                 COALESCE(l.vorgabe_aw * 6, 0) as vorgabe_min,
                 l.auftrags_art,
@@ -999,7 +1017,11 @@ def get_stempeluhr_live():
                     'marke': r['marke'],
                     'start_time': format_datetime(r['start_time']),
                     'start_uhrzeit': r['start_time'].strftime('%H:%M') if r['start_time'] else None,
-                    'laufzeit_min': int(r['laufzeit_min'] or 0),  # TAG 112: SQL-Saldo verwenden
+                    'laufzeit_min': int(r['laufzeit_min'] or 0),  # TAG 112: Gesamt auf Auftrag
+                    # TAG 112: Heute-Aufschlüsselung für bessere UX
+                    'heute_session_min': int(r['heute_session_min'] or 0),
+                    'heute_abgeschlossen_min': int(r['heute_abgeschlossen_min'] or 0),
+                    'heute_gesamt_min': int(r['heute_gesamt_min'] or 0),
                     'vorgabe_aw': float(r['vorgabe_aw'] or 0),
                     'vorgabe_min': int(r['vorgabe_min'] or 0),
                     'auftrags_art': r.get('auftrags_art') or '-',  # TAG 112: W=Werkstatt, T=Teile, etc.

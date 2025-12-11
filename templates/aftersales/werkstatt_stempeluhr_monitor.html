@@ -264,20 +264,29 @@
                 
                 const cardClass = fortschritt >= 100 ? 'kritisch' : (fortschritt >= 80 ? 'warnung' : '');
                 
+                // TAG 112: Klare Trennung Heute vs Gesamt
+                const heuteGesamt = m.heute_gesamt_min || m.laufzeit_min;
+                const gesamtAuftrag = m.laufzeit_min;
+                const hatVortage = gesamtAuftrag > heuteGesamt;
+                
                 return `
                     <div class="mechaniker-card ${cardClass}">
                         <div class="mech-header">
                             <span class="mech-name">${m.name}</span>
-                            <span class="mech-time ${statusClass}">${m.laufzeit_min} min</span>
+                            <div class="text-end">
+                                <div class="mech-time ${statusClass}">${heuteGesamt} min</div>
+                                ${hatVortage ? `<div style="font-size: 0.7rem; color: #888;">Ges: ${gesamtAuftrag} min</div>` : ''}
+                            </div>
                         </div>
                         <div class="mech-info">
                             <div>📋 <strong>${m.auftrags_art || '-'}</strong> ${m.order_number} | ${m.kennzeichen || '-'}</div>
-                            <div>⏱️ Seit ${m.start_uhrzeit} | Vorgabe: ${m.vorgabe_aw} AW</div>
+                            <div>⏱️ Seit ${m.start_uhrzeit} | Vorgabe: ${m.vorgabe_aw} AW (${m.vorgabe_min} min)</div>
                             ${m.serviceberater ? `<div>👤 ${m.serviceberater}</div>` : ''}
                         </div>
                         <div class="progress-bar-custom">
                             <div class="progress-fill ${statusClass}" style="width: ${Math.min(fortschritt, 100)}%"></div>
                         </div>
+                        ${fortschritt > 0 ? `<div style="font-size: 0.7rem; text-align: right; margin-top: 2px; color: ${statusClass === 'kritisch' ? '#ef473a' : statusClass === 'warnung' ? '#ffd200' : '#38ef7d'};">${fortschritt}% ${fortschritt > 100 ? '⚠️' : ''}</div>` : ''}
                     </div>
                 `;
             }).join('');
