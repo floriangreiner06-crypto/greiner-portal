@@ -1,0 +1,22 @@
+[Unit]
+Description=GREINER DRIVE Celery Worker
+After=network.target redis.service
+
+[Service]
+Type=simple
+User=ag-admin
+Group=ag-admin
+WorkingDirectory=/opt/greiner-portal
+Environment="PATH=/opt/greiner-portal/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONPATH=/opt/greiner-portal"
+ExecStart=/opt/greiner-portal/venv/bin/celery -A celery_app worker --loglevel=info -E --concurrency=2 -Q celery,controlling,aftersales,verkauf
+Restart=always
+RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=celery-worker
+
+[Install]
+WantedBy=multi-user.target
