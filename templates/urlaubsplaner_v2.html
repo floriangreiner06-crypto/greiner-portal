@@ -130,6 +130,17 @@
     .gantt .cell.za { background: var(--za); }
     .gantt .cell.krank { background: var(--krank); }
     .gantt .cell.schulung { background: var(--schulung); }
+    
+    /* TAG 114: Halbe Tage - halb gefüllt */
+    .gantt .cell.half-day { background: linear-gradient(to bottom, var(--urlaub) 50%, white 50%) !important; }
+    .gantt .cell.half-am { background: linear-gradient(to bottom, var(--urlaub) 50%, white 50%) !important; }
+    .gantt .cell.half-pm { background: linear-gradient(to bottom, white 50%, var(--urlaub) 50%) !important; }
+    .gantt .cell.pending.half-day { background: linear-gradient(to bottom, var(--pending) 50%, white 50%) !important; }
+    .gantt .cell.pending.half-am { background: linear-gradient(to bottom, var(--pending) 50%, white 50%) !important; }
+    .gantt .cell.pending.half-pm { background: linear-gradient(to bottom, white 50%, var(--pending) 50%) !important; }
+    .gantt .cell.za.half-day { background: linear-gradient(to bottom, var(--za) 50%, white 50%) !important; }
+    .gantt .cell.za.half-am { background: linear-gradient(to bottom, var(--za) 50%, white 50%) !important; }
+    .gantt .cell.za.half-pm { background: linear-gradient(to bottom, white 50%, var(--za) 50%) !important; }
 
     /* Einheitliches Popup-Design für alle Aktionen */
     .popup-menu {
@@ -748,6 +759,11 @@ function render() {
                             const bk = myBook.find(b => b.date === ds && b.status !== 'cancelled');
                             if (bk) {
                                 c += ' booked ' + (bk.status === 'pending' ? 'pending' : (CLS[bk.type_id]||'urlaub'));
+                                // TAG 114: Halber Tag Klasse
+                                if (bk.day_part === 'am') c += ' half-am';
+                                else if (bk.day_part === 'pm') c += ' half-pm';
+                                else if (bk.day_part === 'half') c += ' half-day';
+                                else if (bk.day_part === 'half') c += ' half-day';
                                 icon = ICON[bk.type_id] || '';
                                 bookingId = bk.id;
                             }
@@ -756,6 +772,11 @@ function render() {
                             const bk = allBookings.find(b => b.employee_id === emp.employee_id && b.date === ds);
                             if (bk) {
                                 c += ' ' + (bk.status === 'pending' ? 'pending' : (CLS[bk.type_id]||'urlaub'));
+                                // TAG 114: Halber Tag Klasse
+                                if (bk.day_part === 'am') c += ' half-am';
+                                else if (bk.day_part === 'pm') c += ' half-pm';
+                                else if (bk.day_part === 'half') c += ' half-day';
+                                else if (bk.day_part === 'half') c += ' half-day';
                                 icon = ICON[bk.type_id] || '';
                             }
                         }
