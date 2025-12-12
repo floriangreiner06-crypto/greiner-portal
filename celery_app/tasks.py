@@ -311,3 +311,13 @@ def bwa_berechnung():
 def werkstatt_leistung():
     """Werkstatt-Leistungsgrade berechnen"""
     return run_script('scripts/sync/sync_werkstatt_zeiten.py', timeout=300)
+
+
+# =============================================================================
+# HR / URLAUBSPLANER - TAG 113
+# =============================================================================
+
+@shared_task(soft_time_limit=300)
+def sync_ad_departments():
+    """AD Department Sync - Abteilungen aus Active Directory"""
+    return run_script('scripts/sync/sync_ad_departments.py', timeout=180)

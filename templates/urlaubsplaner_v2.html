@@ -130,6 +130,17 @@
     .gantt .cell.za { background: var(--za); }
     .gantt .cell.krank { background: var(--krank); }
     .gantt .cell.schulung { background: var(--schulung); }
+    
+    /* TAG 114: Halbe Tage - halb gefüllt */
+    .gantt .cell.half-day { background: linear-gradient(to bottom, var(--urlaub) 50%, white 50%) !important; }
+    .gantt .cell.half-am { background: linear-gradient(to bottom, var(--urlaub) 50%, white 50%) !important; }
+    .gantt .cell.half-pm { background: linear-gradient(to bottom, white 50%, var(--urlaub) 50%) !important; }
+    .gantt .cell.pending.half-day { background: linear-gradient(to bottom, var(--pending) 50%, white 50%) !important; }
+    .gantt .cell.pending.half-am { background: linear-gradient(to bottom, var(--pending) 50%, white 50%) !important; }
+    .gantt .cell.pending.half-pm { background: linear-gradient(to bottom, white 50%, var(--pending) 50%) !important; }
+    .gantt .cell.za.half-day { background: linear-gradient(to bottom, var(--za) 50%, white 50%) !important; }
+    .gantt .cell.za.half-am { background: linear-gradient(to bottom, var(--za) 50%, white 50%) !important; }
+    .gantt .cell.za.half-pm { background: linear-gradient(to bottom, white 50%, var(--za) 50%) !important; }
 
     /* Einheitliches Popup-Design für alle Aktionen */
     .popup-menu {
@@ -323,9 +334,15 @@
                 <div class="stat"><div class="v" style="color:#4CAF50" id="sRest">27</div><div class="l">✅ Rest</div></div>
             </div>
         </div>
-        <div class="user-info">
+        <div class="user-info" style="display:flex;align-items:center;gap:15px;">
+            <a href="/urlaubsplaner/admin" id="adminBtn" class="btn btn-sm btn-danger" style="display:none;">
+                <i class="fas fa-cog"></i> Admin
+            </a>
+            <a href="/urlaubsplaner/chef" id="chefBtn" class="btn btn-sm btn-warning" style="display:none;">
+                <i class="fas fa-users"></i> Team
+            </a>
             <span id="userName">...</span>
-            <span class="user-badge ms-2"><span id="userRest">0</span> Tage</span>
+            <span class="user-badge"><span id="userRest">0</span> Tage</span>
         </div>
     </div>
 
@@ -340,6 +357,9 @@
                 </div>
                 <div style="display:flex;align-items:center;gap:10px;">
                     <button class="btn btn-primary btn-sm" id="btnToday"><i class="fas fa-calendar-day"></i> Heute</button>
+                    <select class="form-select form-select-sm" id="filterLocation" style="width:auto;font-weight:600;">
+                        <option value="">Alle Standorte</option>
+                    </select>
                     <select class="form-select form-select-sm" id="filterDept" style="width:auto;font-weight:600;">
                         <option value="">Alle Abteilungen</option>
                     </select>
@@ -388,10 +408,34 @@
         <div class="popup-menu-item" data-t="6" onclick="selectBookType(6)">⏰ Zeitausgleich</div>
         <div class="popup-menu-item" data-t="3" onclick="selectBookType(3)">🤒 Krank</div>
         <div class="popup-menu-item" data-t="5" onclick="selectBookType(5)">📚 Schulung</div>
+        <div class="popup-menu-divider"></div>
+        <!-- TAG 113: Halber Tag Option -->
+        <div style="padding: 10px 15px;">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:600;font-size:13px;" id="halfDayLabel">
+                <input type="checkbox" id="halfDayCheck" style="width:18px;height:18px;cursor:pointer;">
+                <span>½ Halber Tag</span>
+                <select id="halfDayTime" style="margin-left:auto;padding:4px 8px;border-radius:4px;border:1px solid #ccc;font-size:12px;display:none;">
+                    <option value="am">Vormittag</option>
+                    <option value="pm">Nachmittag</option>
+                </select>
+            </label>
+        </div>
     </div>
     <div class="popup-menu-footer">
         <button class="btn-cancel" onclick="hideBookPopup()">Abbrechen</button>
         <button class="btn-submit" onclick="submitBooking()">✓ Einreichen</button>
+    </div>
+</div>
+
+<!-- POPUP: Batch-Delete für mehrere gebuchte Tage (TAG 113) -->
+<div class="popup-menu" id="batchDeletePopup" style="border-color: #dc3545;">
+    <div class="popup-menu-header" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);" id="batchDeleteHeader">🗑️ 3 Tage löschen?</div>
+    <div class="popup-menu-body" style="padding: 15px;">
+        <p style="margin: 0 0 10px 0; font-size: 13px;" id="batchDeleteInfo">Ausgewählte Buchungen werden storniert.</p>
+    </div>
+    <div class="popup-menu-footer">
+        <button class="btn-cancel" onclick="hideBatchDeletePopup()">Abbrechen</button>
+        <button class="btn-submit" style="background: #dc3545;" onclick="doBatchDelete()">🗑️ Löschen</button>
     </div>
 </div>
 
@@ -495,27 +539,31 @@ const ICON = {1:'🏖️',2:'👶',3:'🤒',5:'📚',6:'⏰'};
 const CLS = {1:'urlaub',2:'urlaub',3:'krank',5:'schulung',6:'za'};
 const TYPE_NAME = {1:'Urlaub',2:'Sonderurlaub',3:'Krank',5:'Schulung',6:'Zeitausgleich'};
 
-let me = null, meId = null, isAppr = false;
-let allEmployees = [], myBook = [];
+let me = null, meId = null, isAppr = false, isAdmin = false;
+let allEmployees = [], myBook = [], allBookings = [];
+let myDept = null;  // Eigene Abteilung für Drill-Status
+let deptOpen = {};  // Welche Abteilungen sind aufgeklappt?
 let mon = new Date().getMonth(), yr = new Date().getFullYear();
 let sel = new Set(), selType = 1;
 let dragging = false, dragStart = null;
 let editBooking = null;
 let cancelId = null, rejectId = null, approveId = null;
+let selBooked = new Set();  // TAG 113: Auswahl gebuchter Tage für Batch-Delete
 let lastClickPos = {x: 0, y: 0};
 let justOpenedPopup = false;
 
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('📅 Urlaubsplaner V19 init...');
+    console.log('📅 Urlaubsplaner V20 init...');
     await loadMe();
     await loadAllEmployees();
     await loadMyBook();
+    await loadAllBookings();  // NEU: Alle Buchungen laden
     render();
     renderMy();
     // Immer prüfen ob Genehmiger (isAppr wird in loadMe gesetzt)
     await loadAppr();
     events();
-    console.log('📅 Urlaubsplaner V19 ready!');
+    console.log('📅 Urlaubsplaner V20 ready!');
 });
 
 async function api(ep, m='GET', d=null) {
@@ -535,6 +583,7 @@ async function loadMe() {
     me = r.employee;
     meId = me?.employee_id;
     const b = r.balance;
+    myDept = b.department || me?.department || 'Sonstige';  // NEU: Eigene Abteilung merken
     document.getElementById('userName').textContent = b.name || `${me.first_name} ${me.last_name}`;
     document.getElementById('userRest').textContent = b.resturlaub_korrigiert ?? b.resturlaub ?? 0;
     document.getElementById('sAnspruch').textContent = b.anspruch || 27;
@@ -543,6 +592,14 @@ async function loadMe() {
     document.getElementById('sKrank').textContent = b.krank ?? 0;
     document.getElementById('sRest').textContent = b.resturlaub_korrigiert ?? b.resturlaub ?? 0;
     if (r.approver_info?.is_approver) isAppr = true;
+    if (r.approver_info?.is_admin) {
+        isAdmin = true;
+        document.getElementById('adminBtn').style.display = 'inline-block';
+    }
+    // Chef-Button für alle Genehmiger zeigen
+    if (isAppr || isAdmin) {
+        document.getElementById('chefBtn').style.display = 'inline-block';
+    }
 }
 
 async function loadAllEmployees() {
@@ -552,13 +609,24 @@ async function loadAllEmployees() {
             employee_id: e.employee_id,
             name: e.name,
             grp_code: e.department_name || 'Sonstige',
+            location: e.location || 'Deggendorf',  // NEU: Standort
             resturlaub: e.resturlaub
         }));
+        
+        // Abteilungen-Filter befüllen
         const depts = [...new Set(allEmployees.map(e => e.grp_code))].filter(d => d).sort();
         depts.forEach(d => {
             const opt = document.createElement('option');
             opt.value = d; opt.textContent = d;
             document.getElementById('filterDept').appendChild(opt);
+        });
+        
+        // NEU: Standort-Filter befüllen
+        const locs = [...new Set(allEmployees.map(e => e.location))].filter(l => l).sort();
+        locs.forEach(l => {
+            const opt = document.createElement('option');
+            opt.value = l; opt.textContent = l;
+            document.getElementById('filterLocation').appendChild(opt);
         });
     }
 }
@@ -566,6 +634,12 @@ async function loadAllEmployees() {
 async function loadMyBook() {
     const r = await api('/my-bookings');
     if (r.success) myBook = r.bookings || [];
+}
+
+async function loadAllBookings() {
+    // NEU TAG 113: Lade alle Buchungen für Kollegen-Anzeige
+    const r = await api('/all-bookings?year=' + yr);
+    if (r.success) allBookings = r.bookings || [];
 }
 
 async function loadAppr() {
@@ -593,16 +667,25 @@ function render() {
     document.getElementById('titleMonth').textContent = `${MONTHS[mon]} ${yr}`;
     const days = new Date(yr, mon+1, 0).getDate();
     const today = new Date().toISOString().split('T')[0];
-    const filter = document.getElementById('filterDept').value;
+    const filterDept = document.getElementById('filterDept').value;
+    const filterLoc = document.getElementById('filterLocation').value;  // NEU
 
     let emps = allEmployees.slice();
-    if (filter) emps = emps.filter(e => e.grp_code === filter);
+    if (filterDept) emps = emps.filter(e => e.grp_code === filterDept);
+    if (filterLoc) emps = emps.filter(e => e.location === filterLoc);  // NEU
 
     const byD = {};
     emps.forEach(e => {
         const d = e.grp_code || 'Sonstige';
         if (!byD[d]) byD[d] = [];
         byD[d].push(e);
+    });
+    
+    // NEU: Initialisiere deptOpen - eigene Abteilung offen, Rest zu
+    Object.keys(byD).forEach(dept => {
+        if (deptOpen[dept] === undefined) {
+            deptOpen[dept] = (dept === myDept);  // Eigene Abteilung aufgeklappt
+        }
     });
 
     function kw(dt) {
@@ -640,69 +723,115 @@ function render() {
 
     let bd = '';
     Object.keys(byD).sort().forEach(dept => {
-        bd += `<tr><td class="dept emp-col" colspan="${days+1}">${dept}</td></tr>`;
-        byD[dept].sort((a,b) => a.name.localeCompare(b.name)).forEach(emp => {
-            const isMe = emp.employee_id === meId;
-            bd += '<tr>';
-            bd += `<td class="emp emp-col ${isMe?'me':''}">${emp.name} <small>(${emp.resturlaub ?? '?'})</small></td>`;
-            for (let d = 1; d <= days; d++) {
-                const ds = `${yr}-${String(mon+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-                const dt = new Date(yr, mon, d);
-                const dow = dt.getDay();
-                const isWE = dow === 0 || dow === 6;
-                const isFT = FT[ds];
-                let c = 'cell', icon = '', bookingId = '';
+        const isOpen = deptOpen[dept] !== false;  // Default open wenn nicht definiert
+        const deptIcon = isOpen ? '▼' : '▶';
+        const deptCount = byD[dept].length;
+        bd += `<tr class="dept-row" data-dept="${dept}" onclick="toggleDept('${dept}')" style="cursor:pointer;">
+            <td class="dept emp-col" colspan="${days+1}">
+                <span style="margin-right:8px;">${deptIcon}</span>${dept} <small style="opacity:0.7">(${deptCount})</small>
+            </td>
+        </tr>`;
+        
+        if (isOpen) {
+            byD[dept].sort((a,b) => a.name.localeCompare(b.name)).forEach(emp => {
+                const isMe = emp.employee_id === meId;
+                bd += '<tr>';
                 
-                if (isFT) c += ' ft';
-                else if (isWE) c += ' we';
-                else if (isMe) {
-                    const bk = myBook.find(b => b.date === ds && b.status !== 'cancelled');
-                    if (bk) {
-                        c += ' booked ' + (bk.status === 'pending' ? 'pending' : (CLS[bk.type_id]||'urlaub'));
-                        icon = ICON[bk.type_id] || '';
-                        bookingId = bk.id;
+                // NEU: Resturlaub nur für eigenes Konto / Admin / Genehmiger
+                const showRest = isMe || isAdmin || isAppr;
+                const restDisplay = showRest ? `<small>(${emp.resturlaub ?? '?'})</small>` : '';
+                bd += `<td class="emp emp-col ${isMe?'me':''}">${emp.name} ${restDisplay}</td>`;
+                
+                for (let d = 1; d <= days; d++) {
+                    const ds = `${yr}-${String(mon+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                    const dt = new Date(yr, mon, d);
+                    const dow = dt.getDay();
+                    const isWE = dow === 0 || dow === 6;
+                    const isFT = FT[ds];
+                    let c = 'cell', icon = '', bookingId = '';
+                    
+                    if (isFT) c += ' ft';
+                    else if (isWE) c += ' we';
+                    else {
+                        // NEU: Prüfe ALLE Buchungen, nicht nur eigene
+                        if (isMe) {
+                            // Eigene Buchungen aus myBook (hat mehr Details)
+                            const bk = myBook.find(b => b.date === ds && b.status !== 'cancelled');
+                            if (bk) {
+                                c += ' booked ' + (bk.status === 'pending' ? 'pending' : (CLS[bk.type_id]||'urlaub'));
+                                // TAG 114: Halber Tag Klasse
+                                if (bk.day_part === 'am') c += ' half-am';
+                                else if (bk.day_part === 'pm') c += ' half-pm';
+                                else if (bk.day_part === 'half') c += ' half-day';
+                                else if (bk.day_part === 'half') c += ' half-day';
+                                icon = ICON[bk.type_id] || '';
+                                bookingId = bk.id;
+                            }
+                        } else {
+                            // Andere: aus allBookings
+                            const bk = allBookings.find(b => b.employee_id === emp.employee_id && b.date === ds);
+                            if (bk) {
+                                c += ' ' + (bk.status === 'pending' ? 'pending' : (CLS[bk.type_id]||'urlaub'));
+                                // TAG 114: Halber Tag Klasse
+                                if (bk.day_part === 'am') c += ' half-am';
+                                else if (bk.day_part === 'pm') c += ' half-pm';
+                                else if (bk.day_part === 'half') c += ' half-day';
+                                else if (bk.day_part === 'half') c += ' half-day';
+                                icon = ICON[bk.type_id] || '';
+                            }
+                        }
                     }
+                    
+                    const canClick = isMe && !isWE && !isFT;
+                    bd += `<td class="${c}" data-d="${ds}" data-e="${emp.employee_id}" data-bid="${bookingId}" ${canClick?'data-ok="1"':''}>${icon}</td>`;
                 }
-                
-                const canClick = isMe && !isWE && !isFT;
-                bd += `<td class="${c}" data-d="${ds}" data-e="${emp.employee_id}" data-bid="${bookingId}" ${canClick?'data-ok="1"':''}>${icon}</td>`;
-            }
-            bd += '</tr>';
-        });
+                bd += '</tr>';
+            });
+        }
     });
     document.getElementById('gBody').innerHTML = bd;
     setupInteraction();
 }
 
+let dragMode = null;  // 'book' oder 'delete' - TAG 113
+
 function setupInteraction() {
     document.querySelectorAll('.cell[data-ok="1"]').forEach(c => {
         const hasBooking = c.classList.contains('booked');
         
-        c.addEventListener('click', e => {
+        // TAG 113: Mousedown für ALLE Zellen (gebucht und ungebucht)
+        c.addEventListener('mousedown', e => {
+            e.preventDefault();
+            hideAllPopups();
             lastClickPos = {x: e.clientX + 10, y: e.clientY};
-            console.log('📅 cell click - hasBooking:', hasBooking, 'pos:', lastClickPos);
+            dragging = true;
+            dragStart = c.dataset.d;
+            
             if (hasBooking) {
-                e.preventDefault();
-                e.stopPropagation();
-                showEditPopup(c);
-            }
-        });
-        
-        if (!hasBooking) {
-            c.addEventListener('mousedown', e => {
-                e.preventDefault();
-                hideAllPopups();
-                lastClickPos = {x: e.clientX + 10, y: e.clientY};
-                dragging = true;
-                dragStart = c.dataset.d;
+                // Gebuchte Zelle: Lösch-Modus
+                dragMode = 'delete';
                 sel.clear();
+                selBooked.clear();
+                document.querySelectorAll('.cell.sel').forEach(x => x.classList.remove('sel'));
+                const bid = c.dataset.bid;
+                if (bid) selBooked.add(parseInt(bid));
+                c.classList.add('sel');
+            } else {
+                // Unbebuchte Zelle: Buch-Modus
+                dragMode = 'book';
+                sel.clear();
+                selBooked.clear();
                 document.querySelectorAll('.cell.sel').forEach(x => x.classList.remove('sel'));
                 sel.add(c.dataset.d);
                 c.classList.add('sel');
-            });
+            }
+        });
+        
+        c.addEventListener('mouseenter', () => {
+            if (!dragging) return;
             
-            c.addEventListener('mouseenter', () => {
-                if (!dragging) return;
+            if (dragMode === 'book') {
+                // Buch-Modus: nur unbebuchte Zellen
                 document.querySelectorAll('.cell.sel').forEach(x => x.classList.remove('sel'));
                 sel.clear();
                 const start = new Date(dragStart), end = new Date(c.dataset.d);
@@ -713,21 +842,43 @@ function setupInteraction() {
                     const cell = document.querySelector(`.cell[data-d="${ds}"][data-ok="1"]:not(.booked)`);
                     if (cell) { sel.add(ds); cell.classList.add('sel'); }
                 }
-            });
-        }
+            } else if (dragMode === 'delete') {
+                // Lösch-Modus: nur gebuchte Zellen
+                document.querySelectorAll('.cell.sel').forEach(x => x.classList.remove('sel'));
+                selBooked.clear();
+                const start = new Date(dragStart), end = new Date(c.dataset.d);
+                const [from, to] = start <= end ? [start, end] : [end, start];
+                for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+                    const ds = d.toISOString().split('T')[0];
+                    if (d.getDay() === 0 || d.getDay() === 6 || FT[ds]) continue;
+                    const cell = document.querySelector(`.cell[data-d="${ds}"][data-ok="1"].booked`);
+                    if (cell) {
+                        const bid = cell.dataset.bid;
+                        if (bid) selBooked.add(parseInt(bid));
+                        cell.classList.add('sel');
+                    }
+                }
+            }
+        });
     });
     
     document.addEventListener('mouseup', e => {
-        if (dragging && sel.size > 0) {
-            // Position bei Mauszeiger
+        if (dragging) {
             lastClickPos = {x: e.clientX + 10, y: e.clientY};
-            console.log('📅 mouseup - sel.size:', sel.size, 'pos:', lastClickPos);
             justOpenedPopup = true;
-            showBookPopup();
-            // Reset nach kurzem Delay
+            
+            if (dragMode === 'book' && sel.size > 0) {
+                // Neue Buchungen
+                showBookPopup();
+            } else if (dragMode === 'delete' && selBooked.size > 0) {
+                // TAG 113: Batch-Delete für gebuchte Tage
+                showBatchDeletePopup();
+            }
+            
             setTimeout(() => { justOpenedPopup = false; }, 100);
         }
         dragging = false;
+        dragMode = null;
     });
     
     // Click außerhalb schließt Popups
@@ -762,6 +913,33 @@ function showBookPopup() {
     });
     selType = 1;
     
+    // TAG 113: Halber-Tag Reset
+    const halfCheck = document.getElementById('halfDayCheck');
+    const halfTime = document.getElementById('halfDayTime');
+    halfCheck.checked = false;
+    halfTime.style.display = 'none';
+    
+    // TAG 113: Wenn nur 1 Tag und 24.12 oder 31.12 -> automatisch halben Tag vorschlagen
+    if (arr.length === 1) {
+        const d = arr[0];
+        if (d.endsWith('-12-24') || d.endsWith('-12-31')) {
+            halfCheck.checked = true;
+            halfTime.style.display = 'inline-block';
+        }
+    }
+    
+    // TAG 113: Halber Tag nur bei Einzeltag-Buchung aktivieren
+    const halfLabel = document.getElementById('halfDayLabel');
+    if (arr.length > 1) {
+        halfLabel.style.opacity = '0.5';
+        halfLabel.style.pointerEvents = 'none';
+        halfCheck.disabled = true;
+    } else {
+        halfLabel.style.opacity = '1';
+        halfLabel.style.pointerEvents = 'auto';
+        halfCheck.disabled = false;
+    }
+    
     positionPopup('bookPopup');
 }
 
@@ -781,31 +959,34 @@ function selectBookType(typeId) {
 async function submitBooking() {
     if (sel.size === 0) return;
     
-    let ok = 0;
-    let errors = [];
+    // TAG 113: Halber Tag prüfen
+    const halfCheck = document.getElementById('halfDayCheck');
+    const halfTime = document.getElementById('halfDayTime');
+    const isHalf = halfCheck.checked;
+    const dayPart = isHalf ? 'half' : 'full';
+    const halfInfo = isHalf ? (halfTime.value === 'am' ? ' (VM)' : ' (NM)') : '';
     
-    for (const d of Array.from(sel).sort()) {
-        const r = await api('/book', 'POST', {date: d, vacation_type_id: selType, day_part: 'full'});
-        if (r.success) {
-            ok++;
-        } else {
-            errors.push(r.error || 'Unbekannter Fehler');
-        }
-    }
+    // TAG 113: Batch-API für E-Mail-Batching verwenden
+    const dates = Array.from(sel).sort();
+    const r = await api('/book-batch', 'POST', {
+        dates: dates,
+        vacation_type_id: selType,
+        day_part: dayPart,
+        half_day_time: isHalf ? halfTime.value : null  // VM/NM Info für HR
+    });
     
     hideBookPopup();
     
-    if (ok > 0) {
-        toast(`${ok} Tag(e) beantragt!`, 'success');
-    }
-    
-    if (errors.length > 0) {
-        // Zeige nur ersten Fehler um nicht zu spammen
-        toast(errors[0], 'danger');
+    if (r.success) {
+        const tageText = isHalf ? `${dates.length * 0.5} Tag(e)` : `${dates.length} Tag(e)`;
+        toast(`${tageText}${halfInfo} beantragt!`, 'success');
+    } else {
+        toast(r.error || 'Fehler beim Buchen', 'danger');
     }
     
     // Immer neu laden um aktuellen Stand zu zeigen
     await loadMyBook();
+    await loadAllBookings();
     await loadMe();
     render();
     renderMy();
@@ -861,6 +1042,7 @@ async function changeType(newTypeId) {
     }
     
     await loadMyBook();
+    await loadAllBookings();
     await loadMe();
     render();
     renderMy();
@@ -890,6 +1072,7 @@ async function doDelete() {
     }
     
     await loadMyBook();
+    await loadAllBookings();
     await loadMe();
     render();
     renderMy();
@@ -931,13 +1114,67 @@ function positionPopup(popupId) {
 function hideAllPopups() {
     document.getElementById('bookPopup').classList.remove('show');
     document.getElementById('editPopup').classList.remove('show');
+    document.getElementById('batchDeletePopup').classList.remove('show');
     editBooking = null;
 }
 
+// TAG 113: Batch-Delete Funktionen
+function showBatchDeletePopup() {
+    if (selBooked.size === 0) return;
+    
+    const count = selBooked.size;
+    document.getElementById('batchDeleteHeader').textContent = `🗑️ ${count} Tag(e) löschen?`;
+    document.getElementById('batchDeleteInfo').textContent = `${count} ausgewählte Buchung(en) werden storniert.`;
+    
+    positionPopup('batchDeletePopup');
+}
+
+function hideBatchDeletePopup() {
+    document.getElementById('batchDeletePopup').classList.remove('show');
+    clearSelection();
+    selBooked.clear();
+}
+
+async function doBatchDelete() {
+    if (selBooked.size === 0) return;
+    
+    const bookingIds = Array.from(selBooked);
+    const r = await api('/cancel-batch', 'POST', {
+        booking_ids: bookingIds,
+        reason: 'Batch-Löschung'
+    });
+    
+    hideBatchDeletePopup();
+    
+    if (r.success) {
+        toast(`${r.cancelled?.length || bookingIds.length} Buchung(en) gelöscht!`, 'success');
+    } else {
+        toast(r.error || 'Fehler beim Löschen', 'danger');
+    }
+    
+    await loadMyBook();
+    await loadAllBookings();
+    await loadMe();
+    render();
+    renderMy();
+}
+
+window.showBatchDeletePopup = showBatchDeletePopup;
+window.hideBatchDeletePopup = hideBatchDeletePopup;
+window.doBatchDelete = doBatchDelete;
+
 function clearSelection() {
     sel.clear();
+    selBooked.clear();
     document.querySelectorAll('.cell.sel').forEach(c => c.classList.remove('sel'));
 }
+
+// NEU TAG 113: Abteilung auf-/zuklappen
+function toggleDept(dept) {
+    deptOpen[dept] = !deptOpen[dept];
+    render();
+}
+window.toggleDept = toggleDept;
 
 function renderMy() {
     // Zeige nur aktuelle und zukünftige Buchungen (nicht vergangene)
@@ -973,7 +1210,7 @@ async function doCancel() {
     if (r.success) {
         bootstrap.Modal.getInstance(document.getElementById('cancelModal')).hide();
         toast('Storniert!', 'success');
-        await loadMyBook(); await loadMe(); render(); renderMy();
+        await loadMyBook(); await loadAllBookings(); await loadMe(); render(); renderMy();
     } else {
         toast('Fehler: ' + (r.error || ''), 'danger');
     }
@@ -992,6 +1229,7 @@ async function doApprove() {
         toast('Genehmigt!', 'success');
         await loadAppr();
         await loadMyBook();
+        await loadAllBookings();
         render();
     } else {
         toast('Fehler: ' + (r.error || ''), 'danger');
@@ -1027,10 +1265,35 @@ function toast(msg, type='info') {
 }
 
 function events() {
-    document.getElementById('btnPrev').addEventListener('click', () => { mon--; if (mon < 0) { mon = 11; yr--; } render(); });
-    document.getElementById('btnNext').addEventListener('click', () => { mon++; if (mon > 11) { mon = 0; yr++; } render(); });
-    document.getElementById('btnToday').addEventListener('click', () => { mon = new Date().getMonth(); yr = new Date().getFullYear(); render(); });
+    // TAG 113: Halber-Tag Checkbox Toggle
+    document.getElementById('halfDayCheck').addEventListener('change', (e) => {
+        const halfTime = document.getElementById('halfDayTime');
+        halfTime.style.display = e.target.checked ? 'inline-block' : 'none';
+    });
+    
+    document.getElementById('btnPrev').addEventListener('click', async () => { 
+        const oldYr = yr;
+        mon--; 
+        if (mon < 0) { mon = 11; yr--; } 
+        if (yr !== oldYr) await loadAllBookings();  // Bei Jahreswechsel neu laden
+        render(); 
+    });
+    document.getElementById('btnNext').addEventListener('click', async () => { 
+        const oldYr = yr;
+        mon++; 
+        if (mon > 11) { mon = 0; yr++; }
+        if (yr !== oldYr) await loadAllBookings();  // Bei Jahreswechsel neu laden
+        render(); 
+    });
+    document.getElementById('btnToday').addEventListener('click', async () => { 
+        const oldYr = yr;
+        mon = new Date().getMonth(); 
+        yr = new Date().getFullYear(); 
+        if (yr !== oldYr) await loadAllBookings();  // Bei Jahreswechsel neu laden
+        render(); 
+    });
     document.getElementById('filterDept').addEventListener('change', () => render());
+    document.getElementById('filterLocation').addEventListener('change', () => render());  // NEU
     document.getElementById('btnDoCancel').addEventListener('click', doCancel);
     document.getElementById('btnDoReject').addEventListener('click', doReject);
     document.getElementById('btnDoApprove').addEventListener('click', doApprove);

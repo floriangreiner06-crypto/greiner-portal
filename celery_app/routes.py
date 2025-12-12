@@ -195,6 +195,7 @@ TASK_CATEGORIES = {
             ('bwa_berechnung', 'BWA Berechnung', 'BWA aus Locosoft berechnen'),
             ('sync_employees', 'Mitarbeiter Sync', 'Mitarbeiter synchronisieren'),
             ('sync_locosoft_employees', 'Locosoft Employees', 'Locosoft Employee Mapping'),
+            ('sync_ad_departments', 'AD Abteilungen Sync', 'Abteilungen aus Active Directory'),
             ('email_auftragseingang', 'E-Mail Auftragseingang', 'Täglichen Report senden'),
             ('db_backup', 'DB Backup', 'Datenbank-Backup erstellen'),
             ('cleanup_backups', 'Backup Cleanup', 'Alte Backups löschen'),
@@ -266,7 +267,7 @@ def start_task(task_name):
         db_backup, cleanup_backups, servicebox_scraper, servicebox_matcher,
         servicebox_import, servicebox_master, sync_teile, import_teile,
         werkstatt_leistung, email_werkstatt_tagesbericht, sync_charge_types,
-        ml_retrain, sync_sales, import_stellantis, sync_stammdaten, locosoft_mirror
+        ml_retrain, sync_sales, import_stellantis, sync_stammdaten, locosoft_mirror, sync_ad_departments
     )
     
     task_map = {
@@ -297,6 +298,7 @@ def start_task(task_name):
         'import_stellantis': import_stellantis,
         'sync_stammdaten': sync_stammdaten,
         'locosoft_mirror': locosoft_mirror,
+        'sync_ad_departments': sync_ad_departments,
     }
     
     if task_name not in task_map:

@@ -1,0 +1,561 @@
+<html lang=""><head><meta charset="utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="shortcut icon" type="image/png" href="favicon.png"><title>Digitales Autohaus</title><script defer="defer" src="js/chunk-vendors.af939038.js"></script><script defer="defer" src="js/chunk-common.27f8660a.js"></script><script defer="defer" src="js/auth.8fbf006f.js"></script><link href="css/chunk-vendors.bbe0a563.css" rel="stylesheet"><link href="css/chunk-common.81d3e628.css" rel="stylesheet"><style type="text/css" id="vuetify-theme-stylesheet" nonce="" data-vue-meta="true">.v-application a { color: #2196f3; }
+.v-application .primary {
+  background-color: #2196f3 !important;
+  border-color: #2196f3 !important;
+}
+.v-application .primary--text {
+  color: #2196f3 !important;
+  caret-color: #2196f3 !important;
+}
+.v-application .primary.lighten-5 {
+  background-color: #d4ffff !important;
+  border-color: #d4ffff !important;
+}
+.v-application .primary--text.text--lighten-5 {
+  color: #d4ffff !important;
+  caret-color: #d4ffff !important;
+}
+.v-application .primary.lighten-4 {
+  background-color: #b5ffff !important;
+  border-color: #b5ffff !important;
+}
+.v-application .primary--text.text--lighten-4 {
+  color: #b5ffff !important;
+  caret-color: #b5ffff !important;
+}
+.v-application .primary.lighten-3 {
+  background-color: #95e8ff !important;
+  border-color: #95e8ff !important;
+}
+.v-application .primary--text.text--lighten-3 {
+  color: #95e8ff !important;
+  caret-color: #95e8ff !important;
+}
+.v-application .primary.lighten-2 {
+  background-color: #75ccff !important;
+  border-color: #75ccff !important;
+}
+.v-application .primary--text.text--lighten-2 {
+  color: #75ccff !important;
+  caret-color: #75ccff !important;
+}
+.v-application .primary.lighten-1 {
+  background-color: #51b0ff !important;
+  border-color: #51b0ff !important;
+}
+.v-application .primary--text.text--lighten-1 {
+  color: #51b0ff !important;
+  caret-color: #51b0ff !important;
+}
+.v-application .primary.darken-1 {
+  background-color: #007cd6 !important;
+  border-color: #007cd6 !important;
+}
+.v-application .primary--text.text--darken-1 {
+  color: #007cd6 !important;
+  caret-color: #007cd6 !important;
+}
+.v-application .primary.darken-2 {
+  background-color: #0064ba !important;
+  border-color: #0064ba !important;
+}
+.v-application .primary--text.text--darken-2 {
+  color: #0064ba !important;
+  caret-color: #0064ba !important;
+}
+.v-application .primary.darken-3 {
+  background-color: #004d9f !important;
+  border-color: #004d9f !important;
+}
+.v-application .primary--text.text--darken-3 {
+  color: #004d9f !important;
+  caret-color: #004d9f !important;
+}
+.v-application .primary.darken-4 {
+  background-color: #003784 !important;
+  border-color: #003784 !important;
+}
+.v-application .primary--text.text--darken-4 {
+  color: #003784 !important;
+  caret-color: #003784 !important;
+}
+.v-application .secondary {
+  background-color: #ff9800 !important;
+  border-color: #ff9800 !important;
+}
+.v-application .secondary--text {
+  color: #ff9800 !important;
+  caret-color: #ff9800 !important;
+}
+.v-application .secondary.lighten-5 {
+  background-color: #ffffa2 !important;
+  border-color: #ffffa2 !important;
+}
+.v-application .secondary--text.text--lighten-5 {
+  color: #ffffa2 !important;
+  caret-color: #ffffa2 !important;
+}
+.v-application .secondary.lighten-4 {
+  background-color: #ffff85 !important;
+  border-color: #ffff85 !important;
+}
+.v-application .secondary--text.text--lighten-4 {
+  color: #ffff85 !important;
+  caret-color: #ffff85 !important;
+}
+.v-application .secondary.lighten-3 {
+  background-color: #ffeb69 !important;
+  border-color: #ffeb69 !important;
+}
+.v-application .secondary--text.text--lighten-3 {
+  color: #ffeb69 !important;
+  caret-color: #ffeb69 !important;
+}
+.v-application .secondary.lighten-2 {
+  background-color: #ffcf4d !important;
+  border-color: #ffcf4d !important;
+}
+.v-application .secondary--text.text--lighten-2 {
+  color: #ffcf4d !important;
+  caret-color: #ffcf4d !important;
+}
+.v-application .secondary.lighten-1 {
+  background-color: #ffb32f !important;
+  border-color: #ffb32f !important;
+}
+.v-application .secondary--text.text--lighten-1 {
+  color: #ffb32f !important;
+  caret-color: #ffb32f !important;
+}
+.v-application .secondary.darken-1 {
+  background-color: #df7e00 !important;
+  border-color: #df7e00 !important;
+}
+.v-application .secondary--text.text--darken-1 {
+  color: #df7e00 !important;
+  caret-color: #df7e00 !important;
+}
+.v-application .secondary.darken-2 {
+  background-color: #bf6400 !important;
+  border-color: #bf6400 !important;
+}
+.v-application .secondary--text.text--darken-2 {
+  color: #bf6400 !important;
+  caret-color: #bf6400 !important;
+}
+.v-application .secondary.darken-3 {
+  background-color: #a14c00 !important;
+  border-color: #a14c00 !important;
+}
+.v-application .secondary--text.text--darken-3 {
+  color: #a14c00 !important;
+  caret-color: #a14c00 !important;
+}
+.v-application .secondary.darken-4 {
+  background-color: #843300 !important;
+  border-color: #843300 !important;
+}
+.v-application .secondary--text.text--darken-4 {
+  color: #843300 !important;
+  caret-color: #843300 !important;
+}
+.v-application .accent {
+  background-color: #ff5722 !important;
+  border-color: #ff5722 !important;
+}
+.v-application .accent--text {
+  color: #ff5722 !important;
+  caret-color: #ff5722 !important;
+}
+.v-application .accent.lighten-5 {
+  background-color: #ffe7a5 !important;
+  border-color: #ffe7a5 !important;
+}
+.v-application .accent--text.text--lighten-5 {
+  color: #ffe7a5 !important;
+  caret-color: #ffe7a5 !important;
+}
+.v-application .accent.lighten-4 {
+  background-color: #ffc98a !important;
+  border-color: #ffc98a !important;
+}
+.v-application .accent--text.text--lighten-4 {
+  color: #ffc98a !important;
+  caret-color: #ffc98a !important;
+}
+.v-application .accent.lighten-3 {
+  background-color: #ffac6f !important;
+  border-color: #ffac6f !important;
+}
+.v-application .accent--text.text--lighten-3 {
+  color: #ffac6f !important;
+  caret-color: #ffac6f !important;
+}
+.v-application .accent.lighten-2 {
+  background-color: #ff9055 !important;
+  border-color: #ff9055 !important;
+}
+.v-application .accent--text.text--lighten-2 {
+  color: #ff9055 !important;
+  caret-color: #ff9055 !important;
+}
+.v-application .accent.lighten-1 {
+  background-color: #ff743c !important;
+  border-color: #ff743c !important;
+}
+.v-application .accent--text.text--lighten-1 {
+  color: #ff743c !important;
+  caret-color: #ff743c !important;
+}
+.v-application .accent.darken-1 {
+  background-color: #de3902 !important;
+  border-color: #de3902 !important;
+}
+.v-application .accent--text.text--darken-1 {
+  color: #de3902 !important;
+  caret-color: #de3902 !important;
+}
+.v-application .accent.darken-2 {
+  background-color: #bd1300 !important;
+  border-color: #bd1300 !important;
+}
+.v-application .accent--text.text--darken-2 {
+  color: #bd1300 !important;
+  caret-color: #bd1300 !important;
+}
+.v-application .accent.darken-3 {
+  background-color: #9e0000 !important;
+  border-color: #9e0000 !important;
+}
+.v-application .accent--text.text--darken-3 {
+  color: #9e0000 !important;
+  caret-color: #9e0000 !important;
+}
+.v-application .accent.darken-4 {
+  background-color: #800000 !important;
+  border-color: #800000 !important;
+}
+.v-application .accent--text.text--darken-4 {
+  color: #800000 !important;
+  caret-color: #800000 !important;
+}
+.v-application .error {
+  background-color: #f44336 !important;
+  border-color: #f44336 !important;
+}
+.v-application .error--text {
+  color: #f44336 !important;
+  caret-color: #f44336 !important;
+}
+.v-application .error.lighten-5 {
+  background-color: #ffd6b5 !important;
+  border-color: #ffd6b5 !important;
+}
+.v-application .error--text.text--lighten-5 {
+  color: #ffd6b5 !important;
+  caret-color: #ffd6b5 !important;
+}
+.v-application .error.lighten-4 {
+  background-color: #ffb89a !important;
+  border-color: #ffb89a !important;
+}
+.v-application .error--text.text--lighten-4 {
+  color: #ffb89a !important;
+  caret-color: #ffb89a !important;
+}
+.v-application .error.lighten-3 {
+  background-color: #ff9b80 !important;
+  border-color: #ff9b80 !important;
+}
+.v-application .error--text.text--lighten-3 {
+  color: #ff9b80 !important;
+  caret-color: #ff9b80 !important;
+}
+.v-application .error.lighten-2 {
+  background-color: #ff7e66 !important;
+  border-color: #ff7e66 !important;
+}
+.v-application .error--text.text--lighten-2 {
+  color: #ff7e66 !important;
+  caret-color: #ff7e66 !important;
+}
+.v-application .error.lighten-1 {
+  background-color: #ff614e !important;
+  border-color: #ff614e !important;
+}
+.v-application .error--text.text--lighten-1 {
+  color: #ff614e !important;
+  caret-color: #ff614e !important;
+}
+.v-application .error.darken-1 {
+  background-color: #d31f1f !important;
+  border-color: #d31f1f !important;
+}
+.v-application .error--text.text--darken-1 {
+  color: #d31f1f !important;
+  caret-color: #d31f1f !important;
+}
+.v-application .error.darken-2 {
+  background-color: #b30008 !important;
+  border-color: #b30008 !important;
+}
+.v-application .error--text.text--darken-2 {
+  color: #b30008 !important;
+  caret-color: #b30008 !important;
+}
+.v-application .error.darken-3 {
+  background-color: #940000 !important;
+  border-color: #940000 !important;
+}
+.v-application .error--text.text--darken-3 {
+  color: #940000 !important;
+  caret-color: #940000 !important;
+}
+.v-application .error.darken-4 {
+  background-color: #760000 !important;
+  border-color: #760000 !important;
+}
+.v-application .error--text.text--darken-4 {
+  color: #760000 !important;
+  caret-color: #760000 !important;
+}
+.v-application .info {
+  background-color: #2196f3 !important;
+  border-color: #2196f3 !important;
+}
+.v-application .info--text {
+  color: #2196f3 !important;
+  caret-color: #2196f3 !important;
+}
+.v-application .info.lighten-5 {
+  background-color: #d4ffff !important;
+  border-color: #d4ffff !important;
+}
+.v-application .info--text.text--lighten-5 {
+  color: #d4ffff !important;
+  caret-color: #d4ffff !important;
+}
+.v-application .info.lighten-4 {
+  background-color: #b5ffff !important;
+  border-color: #b5ffff !important;
+}
+.v-application .info--text.text--lighten-4 {
+  color: #b5ffff !important;
+  caret-color: #b5ffff !important;
+}
+.v-application .info.lighten-3 {
+  background-color: #95e8ff !important;
+  border-color: #95e8ff !important;
+}
+.v-application .info--text.text--lighten-3 {
+  color: #95e8ff !important;
+  caret-color: #95e8ff !important;
+}
+.v-application .info.lighten-2 {
+  background-color: #75ccff !important;
+  border-color: #75ccff !important;
+}
+.v-application .info--text.text--lighten-2 {
+  color: #75ccff !important;
+  caret-color: #75ccff !important;
+}
+.v-application .info.lighten-1 {
+  background-color: #51b0ff !important;
+  border-color: #51b0ff !important;
+}
+.v-application .info--text.text--lighten-1 {
+  color: #51b0ff !important;
+  caret-color: #51b0ff !important;
+}
+.v-application .info.darken-1 {
+  background-color: #007cd6 !important;
+  border-color: #007cd6 !important;
+}
+.v-application .info--text.text--darken-1 {
+  color: #007cd6 !important;
+  caret-color: #007cd6 !important;
+}
+.v-application .info.darken-2 {
+  background-color: #0064ba !important;
+  border-color: #0064ba !important;
+}
+.v-application .info--text.text--darken-2 {
+  color: #0064ba !important;
+  caret-color: #0064ba !important;
+}
+.v-application .info.darken-3 {
+  background-color: #004d9f !important;
+  border-color: #004d9f !important;
+}
+.v-application .info--text.text--darken-3 {
+  color: #004d9f !important;
+  caret-color: #004d9f !important;
+}
+.v-application .info.darken-4 {
+  background-color: #003784 !important;
+  border-color: #003784 !important;
+}
+.v-application .info--text.text--darken-4 {
+  color: #003784 !important;
+  caret-color: #003784 !important;
+}
+.v-application .success {
+  background-color: #4caf50 !important;
+  border-color: #4caf50 !important;
+}
+.v-application .success--text {
+  color: #4caf50 !important;
+  caret-color: #4caf50 !important;
+}
+.v-application .success.lighten-5 {
+  background-color: #dcffd6 !important;
+  border-color: #dcffd6 !important;
+}
+.v-application .success--text.text--lighten-5 {
+  color: #dcffd6 !important;
+  caret-color: #dcffd6 !important;
+}
+.v-application .success.lighten-4 {
+  background-color: #beffba !important;
+  border-color: #beffba !important;
+}
+.v-application .success--text.text--lighten-4 {
+  color: #beffba !important;
+  caret-color: #beffba !important;
+}
+.v-application .success.lighten-3 {
+  background-color: #a2ff9e !important;
+  border-color: #a2ff9e !important;
+}
+.v-application .success--text.text--lighten-3 {
+  color: #a2ff9e !important;
+  caret-color: #a2ff9e !important;
+}
+.v-application .success.lighten-2 {
+  background-color: #85e783 !important;
+  border-color: #85e783 !important;
+}
+.v-application .success--text.text--lighten-2 {
+  color: #85e783 !important;
+  caret-color: #85e783 !important;
+}
+.v-application .success.lighten-1 {
+  background-color: #69cb69 !important;
+  border-color: #69cb69 !important;
+}
+.v-application .success--text.text--lighten-1 {
+  color: #69cb69 !important;
+  caret-color: #69cb69 !important;
+}
+.v-application .success.darken-1 {
+  background-color: #2d9437 !important;
+  border-color: #2d9437 !important;
+}
+.v-application .success--text.text--darken-1 {
+  color: #2d9437 !important;
+  caret-color: #2d9437 !important;
+}
+.v-application .success.darken-2 {
+  background-color: #00791e !important;
+  border-color: #00791e !important;
+}
+.v-application .success--text.text--darken-2 {
+  color: #00791e !important;
+  caret-color: #00791e !important;
+}
+.v-application .success.darken-3 {
+  background-color: #006000 !important;
+  border-color: #006000 !important;
+}
+.v-application .success--text.text--darken-3 {
+  color: #006000 !important;
+  caret-color: #006000 !important;
+}
+.v-application .success.darken-4 {
+  background-color: #004700 !important;
+  border-color: #004700 !important;
+}
+.v-application .success--text.text--darken-4 {
+  color: #004700 !important;
+  caret-color: #004700 !important;
+}
+.v-application .warning {
+  background-color: #ffc107 !important;
+  border-color: #ffc107 !important;
+}
+.v-application .warning--text {
+  color: #ffc107 !important;
+  caret-color: #ffc107 !important;
+}
+.v-application .warning.lighten-5 {
+  background-color: #ffffae !important;
+  border-color: #ffffae !important;
+}
+.v-application .warning--text.text--lighten-5 {
+  color: #ffffae !important;
+  caret-color: #ffffae !important;
+}
+.v-application .warning.lighten-4 {
+  background-color: #ffff91 !important;
+  border-color: #ffff91 !important;
+}
+.v-application .warning--text.text--lighten-4 {
+  color: #ffff91 !important;
+  caret-color: #ffff91 !important;
+}
+.v-application .warning.lighten-3 {
+  background-color: #ffff74 !important;
+  border-color: #ffff74 !important;
+}
+.v-application .warning--text.text--lighten-3 {
+  color: #ffff74 !important;
+  caret-color: #ffff74 !important;
+}
+.v-application .warning.lighten-2 {
+  background-color: #fff956 !important;
+  border-color: #fff956 !important;
+}
+.v-application .warning--text.text--lighten-2 {
+  color: #fff956 !important;
+  caret-color: #fff956 !important;
+}
+.v-application .warning.lighten-1 {
+  background-color: #ffdd37 !important;
+  border-color: #ffdd37 !important;
+}
+.v-application .warning--text.text--lighten-1 {
+  color: #ffdd37 !important;
+  caret-color: #ffdd37 !important;
+}
+.v-application .warning.darken-1 {
+  background-color: #e0a600 !important;
+  border-color: #e0a600 !important;
+}
+.v-application .warning--text.text--darken-1 {
+  color: #e0a600 !important;
+  caret-color: #e0a600 !important;
+}
+.v-application .warning.darken-2 {
+  background-color: #c18c00 !important;
+  border-color: #c18c00 !important;
+}
+.v-application .warning--text.text--darken-2 {
+  color: #c18c00 !important;
+  caret-color: #c18c00 !important;
+}
+.v-application .warning.darken-3 {
+  background-color: #a27300 !important;
+  border-color: #a27300 !important;
+}
+.v-application .warning--text.text--darken-3 {
+  color: #a27300 !important;
+  caret-color: #a27300 !important;
+}
+.v-application .warning.darken-4 {
+  background-color: #855a00 !important;
+  border-color: #855a00 !important;
+}
+.v-application .warning--text.text--darken-4 {
+  color: #855a00 !important;
+  caret-color: #855a00 !important;
+}</style></head><body><noscript><strong>We're sorry but Digitales Autohaus - Login doesn't work properly without JavaScript enabled. Please enable it to continue.</strong></noscript><div data-app="true" class="v-application v-application--is-ltr theme--light" id="app"><div class="v-application--wrap"><div class="v-image v-responsive theme--light"><div class="v-image__image v-image__image--cover" style="background-image: url(&quot;https://werkstattplanung.net/greiner/deggendorf/kic/da/img/da_login_background.79d434ef.jpg&quot;); background-position: center center;"></div><div class="v-responsive__content"><div class="container fill-height"><div class="layout row align-center fill-height"><div class="flex sm12 md6 lg4 offset-md3 offset-lg4"><div class="v-card v-sheet theme--light"><div class="v-card__title"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALUAAAA4CAYAAAC7fbmvAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAyFpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDUuNS1jMDIxIDc5LjE1NDkxMSwgMjAxMy8xMC8yOS0xMTo0NzoxNiAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1sbnM6c3RSZWY9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZVJlZiMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIENDIChXaW5kb3dzKSIgeG1wTU06SW5zdGFuY2VJRD0ieG1wLmlpZDo1NkIwQTQyMDRCNTUxMUU3QTAwNTk3MDhCRUI1OTIwOSIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDo1NkIwQTQyMTRCNTUxMUU3QTAwNTk3MDhCRUI1OTIwOSI+IDx4bXBNTTpEZXJpdmVkRnJvbSBzdFJlZjppbnN0YW5jZUlEPSJ4bXAuaWlkOjU2QjBBNDFFNEI1NTExRTdBMDA1OTcwOEJFQjU5MjA5IiBzdFJlZjpkb2N1bWVudElEPSJ4bXAuZGlkOjU2QjBBNDFGNEI1NTExRTdBMDA1OTcwOEJFQjU5MjA5Ii8+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+RefXjgAADdRJREFUeNrsXQl0VsUV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"></div><form novalidate="novalidate" class="v-form"><div class="v-card__text"><div class="v-input v-input--is-label-active v-input--is-dirty theme--light v-text-field v-text-field--is-booted"><div class="v-input__control"><div class="v-input__slot"><div class="v-text-field__slot"><label for="input-13" class="v-label v-label--active theme--light" style="left: 0px; right: auto; position: absolute;">Benutzername</label><input data-testid="LoginView.username-text-field" name="username" id="input-13" type="text"></div></div><div class="v-text-field__details"><div class="v-messages theme--light"><div class="v-messages__wrapper"></div></div></div></div></div><div class="v-input v-input--is-label-active v-input--is-dirty v-input--is-focused theme--light v-text-field v-text-field--is-booted primary--text" name="password" validate-on-blur="true" rules="e=&gt;null!==e&amp;&amp;void 0!==e&amp;&amp;(&quot;string&quot;!==typeof e||0!==e.trim().length)||m.A.tc(&quot;validation.field-is-required&quot;)" label="Passwort"><div class="v-input__control"><div class="v-input__slot"><div class="v-text-field__slot"><label for="input-17" class="v-label v-label--active theme--light primary--text" style="left: 0px; right: auto; position: absolute;">Passwort</label><input data-testid="PasswordTextField.password-text-field" name="password" id="input-17" type="text"></div><div class="v-input__append-inner"><div class="v-input__icon v-input__icon--append"><button type="button" aria-label="$vuetify.input.appendAction" class="v-icon notranslate v-icon--link mdi mdi-eye-off theme--light primary--text"></button></div></div></div><div class="v-text-field__details"><div class="v-messages theme--light primary--text"><div class="v-messages__wrapper"></div></div></div></div></div><div class="v-input v-input--is-label-active v-input--is-dirty theme--light v-input--selection-controls v-input--checkbox primary--text"><div class="v-input__control"><div class="v-input__slot"><div class="v-input--selection-controls__input"><i aria-hidden="true" class="v-icon notranslate mdi mdi-checkbox-marked theme--light primary--text"></i><input aria-checked="true" id="input-21" role="checkbox" type="checkbox" name="remember" value=""><div class="v-input--selection-controls__ripple primary--text"></div></div><label for="input-21" class="v-label theme--light" style="left: 0px; right: auto; position: relative;">Angemeldet bleiben</label></div><div class="v-messages theme--light primary--text"><div class="v-messages__wrapper"></div></div></div></div></div><div class="v-card__actions justify-space-between"><button type="button" class="v-btn v-btn--text theme--light v-size--default blue--text"><span class="v-btn__content">Passwort vergessen</span></button><button type="button" class="v-btn v-btn--is-elevated v-btn--has-bg theme--light v-size--default primary" data-testid="LoginView.login-button"><span class="v-btn__content">Anmelden</span></button></div></form></div></div></div><div class="loginLinks white--text"><a href="https://www.digitalesautohaus.de/impressum" target="blank" class="white--text font-weight-bold">Impressum</a>&nbsp;|&nbsp;<a href="https://www.digitalesautohaus.de/datenschutzerklaerung/" target="blank" class="white--text font-weight-bold">Datenschutz</a></div></div></div></div></div></div></body></html>

@@ -1,174 +1,126 @@
 # SESSION WRAP-UP TAG 89
-**Datum:** 2025-12-03  
-**Fokus:** SKR51 Kontobezeichnungen für TEK & BWA Drill-Down
+
+**Datum:** 2025-12-04  
+**Fokus:** Job-Scheduler Reparatur - Separater Service
 
 ---
 
-## ✅ ERLEDIGT
+## 🎯 HAUPTERGEBNIS
 
-### Problem
-TEK und BWA Drill-Down zeigten generische Kontobezeichnungen:
-- "Konto 810831" statt "NW VE Gewerbekunde Leasing"
-- "Konto 813211" statt "NW Sonderprämien/Boni"
-- "Konto 410011" statt "Gehälter Verkauf NW"
-
-**Ursache:** API verwendete `MIN(posting_text)` aus `loco_journal_accountings`, aber `posting_text` enthält oft Buchungstext statt Kontobezeichnung.
-
-### Lösung: SKR51-Kontobezeichnungen-Mapping
-
-**Implementiert in beiden APIs:**
-
-| Datei | Modul | Änderung |
-|-------|-------|----------|
-| `routes/controlling_routes.py` | TEK | SKR51-Dictionary + `get_konto_bezeichnung()` |
-| `api/controlling_api.py` | BWA | SKR51-Dictionary + `get_konto_bezeichnung()` |
+Der APScheduler funktioniert jetzt stabil als **separater Systemd-Service**, nachdem er in der Gunicorn Multi-Worker-Umgebung nicht zuverlässig lief.
 
 ---
 
-## 🔧 TECHNISCHE DETAILS
+## 🔧 ÄNDERUNGEN
 
-### Mapping-Logik (Priorität 1→3)
+### 1. Neue Architektur: Separater Scheduler-Service
 
-```python
-def get_konto_bezeichnung(konto: int, posting_text: str = None) -> str:
-    # 1. SKR51 Dictionary (Priorität)
-    if konto in SKR51_KONTOBEZEICHNUNGEN:
-        return SKR51_KONTOBEZEICHNUNGEN[konto]
-    
-    # 2. posting_text falls sinnvoll
-    if posting_text and not posting_text.startswith('Konto '):
-        return posting_text[:50]
-    
-    # 3. Generische Bezeichnung
-    return f"Erlöse Neuwagen ({konto})"  # Basierend auf Präfix
+```
+┌─────────────────────────────────────────────────────────────┐
+│  greiner-portal.service     │  greiner-scheduler.service   │
+│  (Gunicorn, 9 Worker)       │  (Standalone Python)         │
+│  ─────────────────────────  │  ─────────────────────────   │
+│  • Web-UI & API             │  • APScheduler               │
+│  • /admin/jobs/ (Dashboard) │  • Führt geplante Jobs aus   │
+│  • Manueller Job-Start      │  • Läuft 24/7 im Hintergrund │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### SKR51-Dictionary (~120 Konten)
+### 2. Neue Dateien
 
-```python
-SKR51_KONTOBEZEICHNUNGEN = {
-    # Umsatz Neuwagen (81xxxx)
-    810111: 'NW VE Privatkunde bar/überw.',
-    810151: 'NW VE Privatkunde Leasing',
-    810311: 'NW VE Gewerbekunde bar/überw.',
-    810351: 'NW VE Gewerbekunde Leasing',
-    810831: 'NW VE Gewerbekunde Leasing',
-    813211: 'NW Sonderprämien/Boni',
-    817051: 'NW Kostenumlage intern',
-    
-    # Umsatz Gebrauchtwagen (82xxxx)
-    820111: 'GW VE Privatkunde bar/überw.',
-    820311: 'GW VE Gewerbekunde bar/überw.',
-    ...
-    
-    # Einsatz (71-76xxxx)
-    710111: 'NW EK Privatkunde',
-    720111: 'GW EK Privatkunde',
-    ...
-    
-    # Kosten (4xxxxx)
-    410001: 'Gehälter Verwaltung',
-    410011: 'Gehälter Verkauf NW',
-    420031: 'Sozialabgaben Service',
-    440021: 'AfA Fahrzeuge',
-    ...
-}
-```
+| Datei | Beschreibung |
+|-------|--------------|
+| `scheduler_standalone.py` | Standalone-Scheduler-Prozess |
+| `config/greiner-scheduler.service` | Systemd Service-Definition |
 
-### Abgedeckte Kontenbereiche
+### 3. Geänderte Dateien
 
-| Bereich | Konten | Beschreibung |
-|---------|--------|--------------|
-| 81xxxx | NW Erlöse | Neuwagen Verkaufserlöse |
-| 82xxxx | GW Erlöse | Gebrauchtwagen Erlöse |
-| 83xxxx | Teile Erlöse | Teile/Zubehör |
-| 84xxxx | Lohn Erlöse | Werkstatt-Lohn |
-| 86xxxx | Sonstige | Provisionen, Mietwagen |
-| 71xxxx | NW Einsatz | Neuwagen Wareneinsatz |
-| 72xxxx | GW Einsatz | Gebrauchtwagen Einsatz |
-| 73xxxx | Teile Einsatz | Teile Wareneinsatz |
-| 74xxxx | Lohn Einsatz | Werkstatt-Einsatz |
-| 41xxxx | Personal | Gehälter |
-| 42xxxx | Sozial | Sozialabgaben |
-| 44xxxx | AfA | Abschreibungen |
-| 45xxxx | Kfz | Fahrzeugkosten |
-| 48xxxx | Sonstige | Miete, Versicherung |
-| 49xxxx | Provisionen | Verkaufsprovisionen |
+| Datei | Änderung |
+|-------|----------|
+| `scheduler/job_manager.py` | `run_script()` mit `args` Parameter, `run_shell()` mit PATH |
+| `scheduler/job_definitions.py` | MT940 mit Pfad-Argument, HVB mit korrekten Args |
+| `scheduler/routes.py` | Direkte Job-Ausführung + pause/resume Routes |
+| `app.py` | Scheduler-Start-Code entfernt (nur UI-Blueprint) |
+| `CLAUDE.md` | Aktualisiert auf TAG 89 mit neuer Scheduler-Doku |
+
+### 4. Behobene Probleme
+
+| Problem | Lösung |
+|---------|--------|
+| Scheduler startet/stoppt sofort in Gunicorn | Separater Service |
+| Jobs nicht gefunden bei manuellem Start | `JOB_FUNCTIONS` Dict in routes.py |
+| Shell-Befehle (`date`, `cp`) nicht gefunden | PATH in `run_shell()` |
+| MT940 "directory argument required" | `args=[mt940_dir]` Parameter |
+| HVB "can't open file" | Args getrennt vom Script-Pfad |
+| pause/resume Routes fehlen | Neu implementiert in routes.py |
 
 ---
 
-## 📁 GEÄNDERTE DATEIEN
+## 📊 AKTUELLER STATUS
 
-```
-/opt/greiner-portal/
-├── routes/controlling_routes.py   ← TEK Drill-Down (SKR51 + get_konto_bezeichnung)
-└── api/controlling_api.py         ← BWA Drill-Down (SKR51 + get_konto_bezeichnung)
-```
+### Job-Scheduler
+- **30 Jobs** registriert und aktiv
+- **Kostenstellen:** controlling (13), aftersales (12), verkauf (5)
+- **Web-UI:** `/admin/jobs/` funktioniert
+- **Manueller Start:** Sicher, keine Doppelausführung
+
+### Heutige Imports (alle erfolgreich)
+| Import | Zeit | Datensätze |
+|--------|------|------------|
+| Stellantis (EKF) | 08:22:02 | 99 Fahrzeuge, 2,76 Mio € |
+| Hyundai Finance | 09:00:00 | 46 Fahrzeuge |
+| Santander | 08:11:30 | 51 Fahrzeuge |
+| MT940 | 08:10:28 | - |
+| HVB PDF | 08:09:29 | - |
 
 ---
 
-## 🚀 DEPLOYMENT
+## 🛠️ SERVICE-BEFEHLE
 
 ```bash
-# Bereits ausgeführt:
-sudo cp "/mnt/greiner-portal-sync/routes/controlling_routes.py" /opt/greiner-portal/routes/
-sudo cp "/mnt/greiner-portal-sync/api/controlling_api.py" /opt/greiner-portal/api/
+# Scheduler-Status
+sudo systemctl status greiner-scheduler
+
+# Scheduler-Logs
+journalctl -u greiner-scheduler -f
+
+# Scheduler neu starten
+sudo systemctl restart greiner-scheduler
+
+# Portal neu starten
 sudo systemctl restart greiner-portal
 ```
 
-**Hinweis:** Browser-Cache mit `Strg+Shift+R` leeren!
+---
+
+## 📝 OFFENE PUNKTE FÜR TAG 90
+
+1. **Script-Umbenennung nach Funktion** (siehe Vorschlag)
+   - `import_stellantis.py` → `import_einkaufsfinanzierung_stellantis.py`
+   - Strukturierte Ordner: `banktransaktionen/`, `einkaufsfinanzierung/`, `teile/`
+
+2. **fstab Parse-Errors** (Zeile 14-15) - optional prüfen
+
+3. **ServiceBox Scraper** - Chrome/ChromeDriver Architektur-Problem
 
 ---
 
-## 💡 ERWEITERUNG
+## 📁 SYNC-BEFEHLE (falls nötig)
 
-Falls weitere Konten fehlen, einfach ins Dictionary ergänzen:
+```bash
+# Alle Scheduler-Dateien syncen
+cp /mnt/greiner-portal-sync/scheduler_standalone.py /opt/greiner-portal/
+cp /mnt/greiner-portal-sync/scheduler/job_manager.py /opt/greiner-portal/scheduler/
+cp /mnt/greiner-portal-sync/scheduler/job_definitions.py /opt/greiner-portal/scheduler/
+cp /mnt/greiner-portal-sync/scheduler/routes.py /opt/greiner-portal/scheduler/
+cp /mnt/greiner-portal-sync/app.py /opt/greiner-portal/
+cp /mnt/greiner-portal-sync/CLAUDE.md /opt/greiner-portal/
 
-```python
-SKR51_KONTOBEZEICHNUNGEN = {
-    ...
-    NEUE_KONTONUMMER: 'Neue Bezeichnung',
-}
+# Services neu starten
+sudo systemctl restart greiner-scheduler
+sudo systemctl restart greiner-portal
 ```
 
 ---
 
-## 🎯 NÄCHSTE SESSION (TAG 90)
-
-1. **ServiceBox Scraper beobachten** - Sollte nur 1x laufen (Lock-File)
-2. **Leasys Cache Timeout erhöhen** - Aktuell 300s
-3. **Login-Seite deployen** (Mockup B)
-4. **Alte PDF-Parser entfernen** (optional, siehe TAG88)
-
----
-
-## ⏰ ZEITAUFWAND TAG 89
-
-| Aufgabe | Zeit |
-|---------|------|
-| Problem-Analyse (Cache vs. Code) | 15min |
-| SKR51-Mapping erstellen | 20min |
-| TEK Integration (controlling_routes.py) | 15min |
-| BWA Integration (controlling_api.py) | 15min |
-| Deployment & Test | 10min |
-| Dokumentation | 10min |
-| **Gesamt** | **~1.5h** |
-
----
-
-## 📝 KONTEXT FÜR CLAUDE
-
-**Kontobezeichnungen-Logik:**
-- SKR51 = Autohaus-Kontenrahmen (Branchenstandard)
-- VE = Verkaufserlöse
-- EK = Einkauf/Wareneinsatz
-- Letzte 2 Ziffern = Standort/Kostenstelle (z.B. 11=DEG, 21=Landau)
-
-**Wo wird's verwendet:**
-- TEK Dashboard → Drill-Down → Konten-Ebene
-- BWA → Drill-Down → Konten-Ebene
-- Beide nutzen jetzt `get_konto_bezeichnung()`
-
-**Kein Sync von nominal_accounts nötig:**
-- Dictionary-Lösung ist schneller und zuverlässiger
-- Locosoft nominal_accounts hat teils unvollständige Daten
+*Session beendet: 2025-12-04 ~09:30*

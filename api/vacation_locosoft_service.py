@@ -260,9 +260,133 @@ def get_all_absences(year: int = 2025) -> Dict[int, Dict]:
         return {}
 
 
+def get_absence_days_for_employee(locosoft_id: int, year: int = 2025) -> List[Dict]:
+    """
+    Holt einzelne Abwesenheitstage für einen Mitarbeiter aus Locosoft.
+    Wichtig für Kalenderanzeige mit halben Tagen (24./31.12).
+    
+    TAG 113: Neu für halbe Tage Darstellung
+    
+    Args:
+        locosoft_id: employee_number aus Locosoft
+        year: Jahr
+        
+    Returns:
+        [
+            {'date': '2025-12-24', 'day_contingent': 0.5, 'reason': 'Url', 'is_half_day': True},
+            {'date': '2025-12-25', 'day_contingent': 1.0, 'reason': 'Url', 'is_half_day': False},
+            ...
+        ]
+    """
+    if not locosoft_id:
+        return []
+    
+    try:
+        conn = get_locosoft_connection()
+        cur = conn.cursor()
+        
+        cur.execute("""
+            SELECT 
+                date::text,
+                day_contingent,
+                reason,
+                time_from,
+                time_to
+            FROM absence_calendar
+            WHERE employee_number = %s
+              AND date >= %s AND date <= %s
+            ORDER BY date
+        """, (locosoft_id, f'{year}-01-01', f'{year}-12-31'))
+        
+        days = []
+        for row in cur.fetchall():
+            day_contingent = float(row[1] or 1.0)
+            days.append({
+                'date': row[0],
+                'day_contingent': day_contingent,
+                'reason': row[2],
+                'time_from': row[3].strftime('%H:%M') if row[3] else None,
+                'time_to': row[4].strftime('%H:%M') if row[4] else None,
+                'is_half_day': day_contingent < 1.0
+            })
+        
+        conn.close()
+        return days
+        
+    except Exception as e:
+        print(f"Locosoft-Fehler für {locosoft_id} (Tage): {e}")
+        return []
+
+
+def get_absence_days_for_employees(locosoft_ids: List[int], year: int = 2025) -> Dict[int, List[Dict]]:
+    """
+    Holt einzelne Abwesenheitstage für mehrere Mitarbeiter (Bulk).
+    
+    TAG 113: Neu für Kalenderanzeige aller Mitarbeiter
+    
+    Args:
+        locosoft_ids: Liste von employee_numbers
+        year: Jahr
+        
+    Returns:
+        {
+            1001: [{'date': '2025-12-24', 'day_contingent': 0.5, ...}, ...],
+            1002: [...],
+            ...
+        }
+    """
+    if not locosoft_ids:
+        return {}
+    
+    try:
+        conn = get_locosoft_connection()
+        cur = conn.cursor()
+        
+        placeholders = ','.join(['%s'] * len(locosoft_ids))
+        
+        cur.execute(f"""
+            SELECT 
+                employee_number,
+                date::text,
+                day_contingent,
+                reason,
+                time_from,
+                time_to
+            FROM absence_calendar
+            WHERE employee_number IN ({placeholders})
+              AND date >= %s AND date <= %s
+            ORDER BY employee_number, date
+        """, (*locosoft_ids, f'{year}-01-01', f'{year}-12-31'))
+        
+        result = {emp_id: [] for emp_id in locosoft_ids}
+        
+        for row in cur.fetchall():
+            emp_num = row[0]
+            day_contingent = float(row[2] or 1.0)
+            
+            if emp_num in result:
+                result[emp_num].append({
+                    'date': row[1],
+                    'day_contingent': day_contingent,
+                    'reason': row[3],
+                    'time_from': row[4].strftime('%H:%M') if row[4] else None,
+                    'time_to': row[5].strftime('%H:%M') if row[5] else None,
+                    'is_half_day': day_contingent < 1.0
+                })
+        
+        conn.close()
+        return result
+        
+    except Exception as e:
+        print(f"Locosoft Bulk-Days Fehler: {e}")
+        return {emp_id: [] for emp_id in locosoft_ids}
+
+
 # Export
 __all__ = [
     'get_absences_for_employee',
     'get_absences_for_employees',
-    'get_all_absences'
+    'get_all_absences',
+    'get_absence_days_for_employee',
+    'get_absence_days_for_employees'
 ]

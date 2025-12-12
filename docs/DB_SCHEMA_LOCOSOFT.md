@@ -1,6 +1,6 @@
 # 🐘 LOCOSOFT POSTGRESQL-SCHEMA (AUTO-GENERIERT)
 
-**Generiert:** 2025-12-04 09:47:22
+**Generiert:** 2025-12-12 09:05:02
 
 ⚠️ **Diese Datei wird automatisch generiert - nicht manuell editieren!**
 
@@ -12,7 +12,7 @@
 
 | Tabelle | Spalten | Zeilen (ca.) |
 |---------|---------|--------------|
-| `absence_calendar` | 11 | 15,077 |
+| `absence_calendar` | 11 | 15,307 |
 | `absence_reasons` | 3 | -1 |
 | `absence_types` | 2 | -1 |
 | `accounts_characteristics` | 11 | -1 |
@@ -23,10 +23,10 @@
 | `clearing_delay_types` | 2 | -1 |
 | `codes_customer_def` | 6 | -1 |
 | `codes_customer_list` | 6 | 44,722 |
-| `codes_vehicle_date` | 3 | 6,157 |
+| `codes_vehicle_date` | 3 | 6,197 |
 | `codes_vehicle_date_def` | 6 | -1 |
 | `codes_vehicle_def` | 6 | -1 |
-| `codes_vehicle_list` | 6 | 27,533 |
+| `codes_vehicle_list` | 6 | 27,702 |
 | `codes_vehicle_mileage` | 3 | -1 |
 | `codes_vehicle_mileage_def` | 5 | -1 |
 | `com_number_types` | 3 | -1 |
@@ -34,19 +34,19 @@
 | `configuration_numeric` | 4 | 1,433 |
 | `countries` | 3 | -1 |
 | `customer_codes` | 2 | -1 |
-| `customer_com_numbers` | 14 | 76,321 |
+| `customer_com_numbers` | 14 | 76,415 |
 | `customer_contact_log_pemissions` | 3 | -1 |
 | `customer_profession_codes` | 2 | 90 |
-| `customer_supplier_bank_information` | 5 | 991 |
-| `customer_to_customercodes` | 2 | 3,253 |
+| `customer_supplier_bank_information` | 5 | 993 |
+| `customer_to_customercodes` | 2 | 3,260 |
 | `customer_to_professioncodes` | 2 | -1 |
-| `customers_suppliers` | 55 | 53,493 |
-| `dealer_sales_aid` | 8 | 3,584 |
+| `customers_suppliers` | 55 | 53,524 |
+| `dealer_sales_aid` | 8 | 3,599 |
 | `dealer_sales_aid_bonus` | 8 | -1 |
-| `dealer_vehicles` | 115 | 5,281 |
+| `dealer_vehicles` | 115 | 5,310 |
 | `document_types` | 2 | -1 |
-| `employees_breaktimes` | 6 | 391 |
-| `employees_group_mapping` | 3 | 123 |
+| `employees_breaktimes` | 6 | 392 |
+| `employees_group_mapping` | 3 | 126 |
 | `employees_history` | 22 | 124 |
 | `employees_worktimes` | 7 | 487 |
 | `external_customer_references` | 7 | -1 |
@@ -54,64 +54,64 @@
 | `financing_examples` | 21 | 140 |
 | `fuels` | 2 | -1 |
 | `invoice_types` | 2 | -1 |
-| `invoices` | 39 | 53,675 |
-| `journal_accountings` | 45 | 593,222 |
+| `invoices` | 39 | 54,219 |
+| `journal_accountings` | 45 | 599,210 |
 | `labour_types` | 2 | -1 |
-| `labours` | 20 | 278,593 |
+| `labours` | 20 | 281,117 |
 | `labours_groups` | 4 | -1 |
-| `labours_master` | 6 | 211,778 |
+| `labours_master` | 6 | 211,786 |
 | `leasing_examples` | 15 | 355 |
 | `makes` | 16 | 48 |
-| `model_options_code` | 8 | 1,728,386 |
+| `model_options_code` | 8 | 1,730,267 |
 | `model_options_inside` | 6 | 182,837 |
-| `model_options_outside` | 7 | 1,412,858 |
-| `model_options_trim` | 6 | 59,939 |
-| `model_to_fuels` | 3 | 54,686 |
-| `models` | 52 | 112,659 |
+| `model_options_outside` | 7 | 1,409,011 |
+| `model_options_trim` | 6 | 59,989 |
+| `model_to_fuels` | 3 | 54,797 |
+| `models` | 52 | 112,807 |
 | `nominal_accounts` | 8 | 8,423 |
 | `order_classifications_def` | 11 | -1 |
-| `orders` | 33 | 40,704 |
+| `orders` | 33 | 41,048 |
 | `part_types` | 2 | -1 |
-| `parts` | 19 | 140,859 |
-| `parts_additional_descriptions` | 4 | 123,766 |
-| `parts_inbound_delivery_notes` | 25 | 65,760 |
-| `parts_master` | 34 | 1,898,549 |
-| `parts_rebate_codes_buy` | 7 | 193 |
-| `parts_rebate_codes_sell` | 7 | 304 |
+| `parts` | 19 | 142,151 |
+| `parts_additional_descriptions` | 4 | 123,831 |
+| `parts_inbound_delivery_notes` | 25 | 66,429 |
+| `parts_master` | 34 | 1,899,386 |
+| `parts_rebate_codes_buy` | 7 | 194 |
+| `parts_rebate_codes_sell` | 7 | 309 |
 | `parts_rebate_groups_buy` | 2 | -1 |
 | `parts_rebate_groups_sell` | 2 | -1 |
 | `parts_special_offer_prices` | 6 | -1 |
-| `parts_special_prices` | 5 | 114 |
-| `parts_stock` | 31 | 41,988 |
+| `parts_special_prices` | 5 | 128 |
+| `parts_stock` | 31 | 42,185 |
 | `parts_supplier_numbers` | 2 | 35,394 |
 | `parts_to_vehicles` | 8 | -1 |
 | `privacy_channels` | 3 | -1 |
-| `privacy_details` | 4 | 65,237 |
-| `privacy_protection_consent` | 18 | 6,616 |
+| `privacy_details` | 4 | 108,945 |
+| `privacy_protection_consent` | 18 | 13,084 |
 | `privacy_scopes` | 2 | -1 |
 | `salutations` | 8 | -1 |
 | `subsidiaries` | 3 | -1 |
 | `time_types` | 2 | -1 |
-| `tire_storage` | 16 | 4,790 |
+| `tire_storage` | 16 | 4,788 |
 | `tire_storage_accessories` | 19 | -1 |
-| `tire_storage_wheels` | 25 | 19,186 |
+| `tire_storage_wheels` | 25 | 19,178 |
 | `transit_customers` | 12 | -1 |
-| `transit_vehicles` | 12 | 2,447 |
+| `transit_vehicles` | 12 | 2,477 |
 | `vat_keys` | 9 | 52 |
-| `vehicle_accessories_customer` | 9 | 217,293 |
-| `vehicle_accessories_dealer` | 10 | 63,872 |
+| `vehicle_accessories_customer` | 9 | 217,172 |
+| `vehicle_accessories_dealer` | 10 | 63,836 |
 | `vehicle_bodys` | 2 | -1 |
 | `vehicle_buy_types` | 2 | -1 |
 | `vehicle_contact_log_pemissions` | 3 | -1 |
 | `vehicle_pre_owned_codes` | 2 | -1 |
 | `vehicle_sale_types` | 2 | -1 |
 | `vehicle_types` | 3 | -1 |
-| `vehicles` | 79 | 58,515 |
+| `vehicles` | 79 | 58,561 |
 | `wtp_pickup_bring_type` | 2 | -1 |
 | `wtp_progress_status` | 2 | -1 |
 | `wtp_urgency` | 2 | -1 |
 | `wtp_vehicle_status` | 2 | -1 |
-| `year_calendar` | 6 | 392 |
+| `year_calendar` | 6 | 505 |
 | `year_calendar_day_off_codes` | 2 | -1 |
 | `year_calendar_subsidiary_mapping` | 3 | -1 |
 
@@ -119,7 +119,7 @@
 
 ## 📊 TABELLEN-DETAILS
 
-### `absence_calendar` (~15,077 Zeilen)
+### `absence_calendar` (~15,307 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -279,7 +279,7 @@
 | `value_numeric` | numeric |  |  |
 | `value_date` | date |  |  |
 
-### `codes_vehicle_date` (~6,157 Zeilen)
+### `codes_vehicle_date` (~6,197 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -309,7 +309,7 @@
 | `decimal` | integer |  |  |
 | `description` | character varying |  |  |
 
-### `codes_vehicle_list` (~27,533 Zeilen)
+### `codes_vehicle_list` (~27,702 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -352,7 +352,7 @@
 |--------|-----|----------|---------|
 | `type` | character varying | NOT NULL |  |
 | `value_numeric` | bigint | NOT NULL |  |
-| `value_text` | character varying | NOT NULL |  |
+| `value_text` | text | NOT NULL |  |
 | `description` | text |  |  |
 
 ### `configuration_numeric` (~1,433 Zeilen)
@@ -379,7 +379,7 @@
 | `code` | integer | NOT NULL |  |
 | `description` | character varying |  |  |
 
-### `customer_com_numbers` (~76,321 Zeilen)
+### `customer_com_numbers` (~76,415 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -413,7 +413,7 @@
 | `code` | integer | NOT NULL |  |
 | `description` | character varying |  |  |
 
-### `customer_supplier_bank_information` (~991 Zeilen)
+### `customer_supplier_bank_information` (~993 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -423,7 +423,7 @@
 | `sepa_mandate_start_date` | date |  |  |
 | `note` | character varying |  |  |
 
-### `customer_to_customercodes` (~3,253 Zeilen)
+### `customer_to_customercodes` (~3,260 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -437,7 +437,7 @@
 | `customer_number` | integer | NOT NULL |  |
 | `profession_code` | integer | NOT NULL |  |
 
-### `customers_suppliers` (~53,493 Zeilen)
+### `customers_suppliers` (~53,524 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -497,7 +497,7 @@
 | `access_limit` | integer |  |  |
 | `fullname_vector` | tsvector |  |  |
 
-### `dealer_sales_aid` (~3,584 Zeilen)
+### `dealer_sales_aid` (~3,599 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -523,7 +523,7 @@
 | `was_paid_on` | date |  |  |
 | `note` | character varying | NOT NULL |  |
 
-### `dealer_vehicles` (~5,281 Zeilen)
+### `dealer_vehicles` (~5,310 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -650,7 +650,7 @@
 | `document_type_in_journal` | text | NOT NULL |  |
 | `document_type_description` | text |  |  |
 
-### `employees_breaktimes` (~391 Zeilen)
+### `employees_breaktimes` (~392 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -661,7 +661,7 @@
 | `break_start` | numeric | NOT NULL |  |
 | `break_end` | numeric |  |  |
 
-### `employees_group_mapping` (~123 Zeilen)
+### `employees_group_mapping` (~126 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -769,7 +769,7 @@
 | `type` | integer | NOT NULL |  |
 | `description` | character varying |  |  |
 
-### `invoices` (~53,675 Zeilen)
+### `invoices` (~54,219 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -813,7 +813,7 @@
 | `internal_canceled_time` | timestamp without time zone |  |  |
 | `order_classification_flag` | character |  |  |
 
-### `journal_accountings` (~593,222 Zeilen)
+### `journal_accountings` (~599,210 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -870,7 +870,7 @@
 | `code` | character varying | NOT NULL |  |
 | `description` | character varying |  |  |
 
-### `labours` (~278,593 Zeilen)
+### `labours` (~281,117 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -904,7 +904,7 @@
 | `description` | text |  |  |
 | `source` | character varying |  |  |
 
-### `labours_master` (~211,778 Zeilen)
+### `labours_master` (~211,786 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -956,7 +956,7 @@
 | `special_service_2_interval` | numeric |  |  |
 | `special_service_3_interval` | numeric |  |  |
 
-### `model_options_code` (~1,728,386 Zeilen)
+### `model_options_code` (~1,730,267 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -980,7 +980,7 @@
 | `price` | numeric |  |  |
 | `option_reference` | character varying |  |  |
 
-### `model_options_outside` (~1,412,858 Zeilen)
+### `model_options_outside` (~1,409,011 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -992,7 +992,7 @@
 | `metallic` | boolean |  |  |
 | `option_reference` | character varying |  |  |
 
-### `model_options_trim` (~59,939 Zeilen)
+### `model_options_trim` (~59,989 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -1003,7 +1003,7 @@
 | `price` | numeric |  |  |
 | `option_reference` | character varying |  |  |
 
-### `model_to_fuels` (~54,686 Zeilen)
+### `model_to_fuels` (~54,797 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -1011,7 +1011,7 @@
 | `model_code` | character varying | NOT NULL |  |
 | `code` | character varying | NOT NULL |  |
 
-### `models` (~112,659 Zeilen)
+### `models` (~112,807 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -1097,7 +1097,7 @@
 | `user_group` | character |  |  |
 | `with_disposal_cost` | boolean |  |  |
 
-### `orders` (~40,704 Zeilen)
+### `orders` (~41,048 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -1142,7 +1142,7 @@
 | `type` | integer | NOT NULL |  |
 | `description` | character varying |  |  |
 
-### `parts` (~140,859 Zeilen)
+### `parts` (~142,151 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -1166,7 +1166,7 @@
 | `text_line` | character varying |  |  |
 | `usage_value` | numeric |  |  |
 
-### `parts_additional_descriptions` (~123,766 Zeilen)
+### `parts_additional_descriptions` (~123,831 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -1175,7 +1175,7 @@
 | `search_description` | character varying |  |  |
 | `description_vector` | tsvector |  |  |
 
-### `parts_inbound_delivery_notes` (~65,760 Zeilen)
+### `parts_inbound_delivery_notes` (~66,429 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -1205,7 +1205,7 @@
 | `employee_number_imported` | integer |  |  |
 | `employee_number_last` | integer |  |  |
 
-### `parts_master` (~1,898,549 Zeilen)
+### `parts_master` (~1,899,386 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -1244,7 +1244,7 @@
 | `search_description` | character varying |  |  |
 | `description_vector` | tsvector |  |  |
 
-### `parts_rebate_codes_buy` (~193 Zeilen)
+### `parts_rebate_codes_buy` (~194 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -1256,7 +1256,7 @@
 | `rebate_percent` | numeric |  |  |
 | `description` | character varying |  |  |
 
-### `parts_rebate_codes_sell` (~304 Zeilen)
+### `parts_rebate_codes_sell` (~309 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -1293,7 +1293,7 @@
 | `price` | numeric |  |  |
 | `addition_percent` | numeric |  |  |
 
-### `parts_special_prices` (~114 Zeilen)
+### `parts_special_prices` (~128 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -1303,7 +1303,7 @@
 | `price` | numeric |  |  |
 | `addition_percent` | numeric |  |  |
 
-### `parts_stock` (~41,988 Zeilen)
+### `parts_stock` (~42,185 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -1367,7 +1367,7 @@
 | `is_business` | boolean |  |  |
 | `description` | character varying |  |  |
 
-### `privacy_details` (~65,237 Zeilen)
+### `privacy_details` (~108,945 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -1376,7 +1376,7 @@
 | `scope_code` | character | NOT NULL |  |
 | `channel_code` | character | NOT NULL |  |
 
-### `privacy_protection_consent` (~6,616 Zeilen)
+### `privacy_protection_consent` (~13,084 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -1434,7 +1434,7 @@
 | `type` | integer | NOT NULL |  |
 | `description` | character varying |  |  |
 
-### `tire_storage` (~4,790 Zeilen)
+### `tire_storage` (~4,788 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -1479,7 +1479,7 @@
 | `renewal_employee` | integer |  |  |
 | `removal_state` | character varying |  |  |
 
-### `tire_storage_wheels` (~19,186 Zeilen)
+### `tire_storage_wheels` (~19,178 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -1526,7 +1526,7 @@
 | `phone_number` | character varying |  |  |
 | `fullname_vector` | tsvector |  |  |
 
-### `transit_vehicles` (~2,447 Zeilen)
+### `transit_vehicles` (~2,477 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -1557,7 +1557,7 @@
 | `vat_account` | bigint |  |  |
 | `advanced_turnover_tax_pos` | bigint |  |  |
 
-### `vehicle_accessories_customer` (~217,293 Zeilen)
+### `vehicle_accessories_customer` (~217,172 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -1571,7 +1571,7 @@
 | `discountable` | boolean |  |  |
 | `purchase_price` | numeric |  |  |
 
-### `vehicle_accessories_dealer` (~63,872 Zeilen)
+### `vehicle_accessories_dealer` (~63,836 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -1630,7 +1630,7 @@
 | `is_new_or_similar` | boolean |  |  |
 | `description` | character varying |  |  |
 
-### `vehicles` (~58,515 Zeilen)
+### `vehicles` (~58,561 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|
@@ -1742,7 +1742,7 @@
 | `code` | integer | NOT NULL |  |
 | `description` | character varying |  |  |
 
-### `year_calendar` (~392 Zeilen)
+### `year_calendar` (~505 Zeilen)
 
 | Spalte | Typ | Nullable | Default |
 |--------|-----|----------|---------|

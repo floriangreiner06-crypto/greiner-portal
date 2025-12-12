@@ -1,102 +1,113 @@
-# TODO FOR CLAUDE SESSION START TAG90
+# TODO FÜR CLAUDE - SESSION START TAG 90
 
-**Datum:** 2025-12-03  
-**Vorgänger:** TAG89 (SKR51 Kontobezeichnungen)
-
----
-
-## 🎯 KONTEXT
-
-TAG89 hat **SKR51-Kontobezeichnungen** für TEK und BWA Drill-Down implementiert.
-Konten zeigen jetzt aussagekräftige Namen wie "NW VE Gewerbekunde Leasing" statt "Konto 810831".
+**Erstellt:** 2025-12-04 nach TAG 89  
+**Priorität:** Script-Refactoring
 
 ---
 
-## 📋 OFFENE PUNKTE
+## 🎯 HAUPTAUFGABE: Script-Umbenennung nach Funktion
 
-### Prio 1: Monitoring & Stabilität
+### Warum?
+- Scripts sind nach Lieferant/Bank benannt, nicht nach Funktion
+- Schwer zu erkennen was ein Script macht
+- Inkonsistente Namensgebung
 
-1. **ServiceBox Scraper beobachten**
-   - Lock-File Mechanismus aus TAG88 testen
-   - Sollte nur 1x pro Zeitplan laufen (nicht 4-10x)
-   - Log prüfen: `journalctl -u greiner-portal | grep -i servicebox`
-
-2. **Leasys Cache Timeout erhöhen**
-   - Aktuell: 300s (5min)
-   - Problem: Große Requests dauern länger
-   - Fix: Timeout auf 600-900s erhöhen
-
-### Prio 2: UI/UX
-
-3. **Login-Seite deployen**
-   - Mockup B wurde ausgewählt
-   - Template: `templates/login_mockup_b.html` → `login.html`
-   - CSS anpassen
-
-4. **Admin-Bereich Navigation**
-   - Nur für Admins sichtbar in `base.html`
-   - URL: `/admin/system-status`
-
-### Prio 3: Aufräumen
-
-5. **Alte PDF-Parser entfernen** (optional)
-   - Nicht mehr benötigt (MT940 ist Standard):
-     - `parsers/sparkasse_parser.py`
-     - `parsers/vrbank_landau_parser.py`
-     - `parsers/genobank_universal_parser.py`
-   - Behalten:
-     - `parsers/hypovereinsbank_parser_v2.py` (einziger PDF-Import)
-     - `parsers/mt940_parser.py` (Haupt-Import)
-
----
-
-## 🗂️ RELEVANTE DATEIEN
+### Vorgeschlagene Struktur:
 
 ```
-# SKR51-Mapping (TAG89)
-routes/controlling_routes.py    ← TEK mit SKR51
-api/controlling_api.py          ← BWA mit SKR51
-
-# Scheduler (TAG88)
-app.py                          ← Lock-File Mechanismus
-scheduler/job_definitions.py    ← Job-Übersicht
-
-# Login
-templates/login.html            ← Aktuell
-templates/login_mockup_b.html   ← Neues Design
+scripts/imports/
+├── banktransaktionen/
+│   ├── import_mt940.py              # MT940 Format (Genobank, Sparkasse, VR)
+│   └── import_pdf.py                # PDF Format (HypoVereinsbank)
+│
+├── einkaufsfinanzierung/
+│   ├── import_stellantis.py         # Stellantis Bank (ZIP)
+│   ├── import_hyundai.py            # Hyundai Finance
+│   └── import_santander.py          # Santander
+│
+├── teile/
+│   ├── import_lieferscheine.py      # Teile-Lieferscheine
+│   └── import_bestellungen.py       # ServiceBox Bestellungen
+│
+└── stammdaten/
+    ├── sync_employees.py            # Mitarbeiter aus LDAP
+    ├── sync_fahrzeuge.py            # Fahrzeug-Stammdaten
+    └── sync_sales.py                # Verkaufsdaten
 ```
+
+### Mapping Alt → Neu:
+
+| Aktuell | Neu |
+|---------|-----|
+| `import_stellantis.py` | `einkaufsfinanzierung/import_stellantis.py` |
+| `import_hyundai_finance.py` | `einkaufsfinanzierung/import_hyundai.py` |
+| `import_santander_bestand.py` | `einkaufsfinanzierung/import_santander.py` |
+| `import_mt940.py` | `banktransaktionen/import_mt940.py` |
+| `import_all_bank_pdfs.py` | `banktransaktionen/import_pdf.py` |
+
+### Betroffene Dateien:
+1. Scripts selbst (umbenennen/verschieben)
+2. `scheduler/job_definitions.py` (Pfade anpassen)
+3. `scheduler/routes.py` (JOB_FUNCTIONS Dict)
+4. Symlinks in `scripts/sync/`
+5. Dokumentation (CLAUDE.md)
+
+### Vorgehensweise:
+1. Backup der aktuellen Scripts
+2. Neue Ordnerstruktur erstellen
+3. Scripts kopieren (nicht verschieben!)
+4. Job-Definitionen anpassen
+5. Testen
+6. Alte Scripts entfernen
 
 ---
 
-## 🔧 SCHNELLSTART
+## 📋 WEITERE OFFENE PUNKTE
 
+### ServiceBox Scraper (Chrome-Problem)
+```
+Fehler: "Unsupported architecture:"
+```
+- Chrome/ChromeDriver funktioniert nicht auf dem Server
+- Möglicherweise ARM vs x86 Problem?
+- Prüfen: `uname -m` und Chrome-Version
+
+### fstab Parse-Errors
 ```bash
-cd /opt/greiner-portal
-source venv/bin/activate
+cat -n /etc/fstab | tail -5
+```
+- Zeile 14-15 haben Syntax-Fehler
+- Nicht kritisch, aber sollte gefixt werden
 
-# Server Status
-sudo systemctl status greiner-portal
+---
 
-# Logs prüfen
-journalctl -u greiner-portal -f
+## 🔧 AKTUELLER STAND (nach TAG 89)
 
-# Lock-File prüfen (Scheduler)
-ls -la /tmp/greiner_scheduler.lock
+### Job-Scheduler
+- ✅ Läuft als separater Service `greiner-scheduler`
+- ✅ 30 Jobs aktiv
+- ✅ Web-UI unter `/admin/jobs/`
+- ✅ Manueller Job-Start funktioniert
+
+### Services
+```bash
+sudo systemctl status greiner-portal      # Web-App
+sudo systemctl status greiner-scheduler   # Job-Scheduler
 ```
 
----
-
-## 📊 AKTUELLER STAND
-
-| Modul | Status | Info |
-|-------|--------|------|
-| TEK Drill-Down | ✅ | SKR51-Bezeichnungen |
-| BWA Drill-Down | ✅ | SKR51-Bezeichnungen |
-| Job-Scheduler | ✅ | Lock-File aktiv |
-| Bank-Import | ✅ | MT940 + 1x PDF (HVB) |
-| Login-Seite | ⏳ | Mockup B ready |
+### Wichtige Dateien
+- `scheduler_standalone.py` - Scheduler-Prozess
+- `config/greiner-scheduler.service` - Systemd-Service
+- `scheduler/job_definitions.py` - Job-Definitionen
+- `scheduler/routes.py` - Web-UI Routes
 
 ---
 
-**Erstellt:** 2025-12-03  
-**Von:** Claude (TAG89)
+## 📖 KONTEXT LESEN
+
+1. `CLAUDE.md` - Aktualisiert auf TAG 89
+2. `SESSION_WRAP_UP_TAG89.md` - Diese Session
+
+---
+
+*Erstellt am Ende von TAG 89*

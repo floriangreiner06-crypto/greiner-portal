@@ -137,6 +137,11 @@ app.conf.update(
             'schedule': crontab(minute=15, hour=6),
             'options': {'queue': 'controlling'}
         },
+        'sync-ad-departments': {
+            'task': 'celery_app.tasks.sync_ad_departments',
+            'schedule': crontab(minute=20, hour=6),
+            'options': {'queue': 'controlling'}
+        },
         
         # E-Mail Reports
         'email-auftragseingang': {

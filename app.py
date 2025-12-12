@@ -208,6 +208,14 @@ def urlaubsplaner_admin():
     """HR-Admin: Urlaubsansprüche verwalten"""
     return render_template('urlaubsplaner_admin.html')
 
+# Organigramm (TAG 113 - Organisation & Vertretungsregeln)
+@app.route('/admin/organigramm')
+@login_required
+def admin_organigramm():
+    """Organigramm mit Vertretungsregeln-Editor"""
+    return render_template('organigramm.html')
+
+
 # Urlaubsplaner Kurzroute
 @app.route('/urlaubsplaner')
 @login_required
@@ -307,6 +315,14 @@ try:
     print("ℹ️  Flower Dashboard: http://localhost:5555")
 except Exception as e:
     print(f"⚠️  Celery Task UI nicht geladen: {e}")
+# Organization API (TAG 113 - Organigramm & Vertretungsregeln)
+try:
+    from api.organization_api import organization_api
+    app.register_blueprint(organization_api)
+    print("✅ Organization API registriert: /api/organization/")
+except Exception as e:
+    print(f"⚠️  Organization API nicht geladen: {e}")
+
 
 # ============================================================================
 # ERROR HANDLERS

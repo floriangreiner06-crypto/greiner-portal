@@ -1,6 +1,6 @@
 # 🗄️ SQLITE DATENBANK-SCHEMA (AUTO-GENERIERT)
 
-**Generiert:** 2025-12-04 09:47:21
+**Generiert:** 2025-12-12 09:05:01
 **Datenbank:** `/opt/greiner-portal/data/greiner_controlling.db`
 
 ⚠️ **Diese Datei wird automatisch generiert - nicht manuell editieren!**
@@ -9,7 +9,7 @@
 
 ## 📋 TABELLEN-ÜBERSICHT
 
-**Anzahl Tabellen:** 99
+**Anzahl Tabellen:** 155
 
 | Tabelle | Spalten | Zeilen |
 |---------|---------|--------|
@@ -19,13 +19,15 @@
 | `bank_accounts_old_backup` | 6 | 3 |
 | `banken` | 9 | 7 |
 | `bwa_monatswerte` | 8 | 11 |
+| `charge_type_descriptions_sync` | 3 | 100 |
+| `charge_types_sync` | 9 | 400 |
 | `customers_suppliers` | 5 | 53,293 |
 | `daily_balances_old_backup` | 10 | 90 |
 | `dealer_vehicles` | 13 | 1,226 |
 | `departments` | 3 | 19 |
 | `ek_finanzierung_konditionen` | 9 | 3 |
 | `employees` | 23 | 76 |
-| `fahrzeugfinanzierungen` | 55 | 196 |
+| `fahrzeugfinanzierungen` | 55 | 192 |
 | `fahrzeugfinanzierungen_new` | 49 | 0 |
 | `fibu_buchungen` | 14 | 549,224 |
 | `finanzierung_snapshots` | 9 | 0 |
@@ -36,82 +38,136 @@
 | `konto_snapshots` | 11 | 1 |
 | `kreditlinien` | 32 | 0 |
 | `kreditlinien_snapshots` | 7 | 0 |
-| `ldap_employee_mapping` | 7 | 61 |
-| `leasys_vehicle_cache` | 7 | 51 |
-| `loco_absence_calendar` | 11 | 15,077 |
+| `ldap_employee_mapping` | 7 | 62 |
+| `leasys_vehicle_cache` | 7 | 168 |
+| `loco_absence_calendar` | 11 | 15,307 |
+| `loco_absence_reasons` | 3 | 23 |
+| `loco_absence_types` | 2 | 2 |
+| `loco_accounts_characteristics` | 11 | 2 |
+| `loco_appointments` | 47 | 1 |
+| `loco_appointments_text` | 11 | 0 |
 | `loco_charge_type_descriptions` | 2 | 100 |
 | `loco_charge_types` | 4 | 400 |
+| `loco_clearing_delay_types` | 2 | 10 |
+| `loco_codes_customer_def` | 6 | 12 |
 | `loco_codes_customer_list` | 6 | 44,722 |
-| `loco_codes_vehicle_date` | 3 | 6,157 |
-| `loco_codes_vehicle_list` | 6 | 27,533 |
+| `loco_codes_vehicle_date` | 3 | 6,197 |
+| `loco_codes_vehicle_date_def` | 6 | 15 |
+| `loco_codes_vehicle_def` | 6 | 47 |
+| `loco_codes_vehicle_list` | 6 | 27,702 |
+| `loco_codes_vehicle_mileage` | 3 | 1 |
+| `loco_codes_vehicle_mileage_def` | 5 | 2 |
+| `loco_com_number_types` | 3 | 18 |
+| `loco_configuration` | 4 | 38 |
 | `loco_configuration_numeric` | 4 | 1,433 |
-| `loco_customer_com_numbers` | 14 | 76,321 |
-| `loco_customer_supplier_bank_information` | 5 | 991 |
-| `loco_customer_to_customercodes` | 2 | 3,253 |
-| `loco_customers_suppliers` | 55 | 53,493 |
-| `loco_dealer_sales_aid` | 8 | 3,584 |
-| `loco_dealer_vehicles` | 115 | 5,281 |
+| `loco_countries` | 3 | 43 |
+| `loco_customer_codes` | 2 | 21 |
+| `loco_customer_com_numbers` | 14 | 76,415 |
+| `loco_customer_contact_log_pemissions` | 3 | 0 |
+| `loco_customer_profession_codes` | 2 | 90 |
+| `loco_customer_supplier_bank_information` | 5 | 993 |
+| `loco_customer_to_customercodes` | 2 | 3,260 |
+| `loco_customer_to_professioncodes` | 2 | 1 |
+| `loco_customers_suppliers` | 55 | 53,524 |
+| `loco_dealer_sales_aid` | 8 | 3,599 |
+| `loco_dealer_sales_aid_bonus` | 8 | 0 |
+| `loco_dealer_vehicles` | 115 | 5,310 |
+| `loco_document_types` | 2 | 13 |
 | `loco_employees` | 22 | 114 |
-| `loco_employees_breaktimes` | 6 | 391 |
-| `loco_employees_group_mapping` | 3 | 123 |
+| `loco_employees_breaktimes` | 6 | 392 |
+| `loco_employees_group_mapping` | 3 | 126 |
 | `loco_employees_history` | 22 | 124 |
 | `loco_employees_worktimes` | 7 | 487 |
+| `loco_external_customer_references` | 7 | 0 |
+| `loco_external_reference_parties` | 4 | 0 |
 | `loco_financing_examples` | 21 | 140 |
-| `loco_invoices` | 39 | 53,675 |
-| `loco_journal_accountings` | 45 | 593,222 |
-| `loco_labours` | 20 | 278,593 |
-| `loco_labours_master` | 6 | 211,778 |
+| `loco_fuels` | 2 | 18 |
+| `loco_invoice_types` | 2 | 7 |
+| `loco_invoices` | 39 | 54,219 |
+| `loco_journal_accountings` | 45 | 599,210 |
+| `loco_labour_types` | 2 | 30 |
+| `loco_labours` | 20 | 281,117 |
+| `loco_labours_groups` | 4 | 0 |
+| `loco_labours_master` | 6 | 211,786 |
 | `loco_leasing_examples` | 15 | 355 |
-| `loco_nominal_accounts` | 8 | 1,237 |
-| `loco_orders` | 33 | 40,704 |
-| `loco_parts` | 19 | 140,859 |
-| `loco_parts_additional_descriptions` | 4 | 123,766 |
-| `loco_parts_inbound_delivery_notes` | 25 | 65,760 |
-| `loco_parts_master` | 34 | 1,898,549 |
-| `loco_parts_rebate_codes_buy` | 7 | 193 |
-| `loco_parts_rebate_codes_sell` | 7 | 304 |
+| `loco_makes` | 16 | 48 |
+| `loco_nominal_accounts` | 8 | 1,239 |
+| `loco_order_classifications_def` | 11 | 12 |
+| `loco_orders` | 33 | 41,048 |
+| `loco_part_types` | 2 | 19 |
+| `loco_parts` | 19 | 142,151 |
+| `loco_parts_additional_descriptions` | 4 | 123,831 |
+| `loco_parts_inbound_delivery_notes` | 25 | 66,429 |
+| `loco_parts_master` | 34 | 1,899,386 |
+| `loco_parts_rebate_codes_buy` | 7 | 194 |
+| `loco_parts_rebate_codes_sell` | 7 | 309 |
+| `loco_parts_rebate_groups_buy` | 2 | 6 |
+| `loco_parts_rebate_groups_sell` | 2 | 8 |
+| `loco_parts_special_offer_prices` | 6 | 27 |
 | `loco_parts_special_prices` | 5 | 128 |
-| `loco_parts_stock` | 31 | 41,988 |
+| `loco_parts_stock` | 31 | 42,185 |
 | `loco_parts_supplier_numbers` | 2 | 35,394 |
-| `loco_privacy_details` | 4 | 65,237 |
-| `loco_privacy_protection_consent` | 18 | 6,633 |
+| `loco_privacy_channels` | 3 | 12 |
+| `loco_privacy_details` | 4 | 117,852 |
+| `loco_privacy_protection_consent` | 18 | 13,838 |
+| `loco_privacy_scopes` | 2 | 3 |
+| `loco_salutations` | 8 | 10 |
 | `loco_subsidiaries` | 3 | 4 |
-| `loco_times` | 12 | 0 |
-| `loco_tire_storage` | 16 | 4,790 |
-| `loco_tire_storage_wheels` | 25 | 19,186 |
-| `loco_transit_vehicles` | 12 | 2,447 |
-| `loco_vehicle_accessories_customer` | 9 | 217,293 |
-| `loco_vehicle_accessories_dealer` | 10 | 63,872 |
-| `loco_vehicles` | 79 | 58,515 |
-| `loco_year_calendar` | 6 | 392 |
+| `loco_time_types` | 2 | 4 |
+| `loco_times` | 12 | 188,877 |
+| `loco_tire_storage` | 16 | 4,788 |
+| `loco_tire_storage_accessories` | 19 | 0 |
+| `loco_tire_storage_wheels` | 25 | 19,178 |
+| `loco_transit_customers` | 12 | 0 |
+| `loco_transit_vehicles` | 12 | 2,477 |
+| `loco_vat_keys` | 9 | 52 |
+| `loco_vehicle_accessories_customer` | 9 | 217,172 |
+| `loco_vehicle_accessories_dealer` | 10 | 63,836 |
+| `loco_vehicle_bodys` | 2 | 47 |
+| `loco_vehicle_buy_types` | 2 | 6 |
+| `loco_vehicle_contact_log_pemissions` | 3 | 0 |
+| `loco_vehicle_pre_owned_codes` | 2 | 5 |
+| `loco_vehicle_sale_types` | 2 | 5 |
+| `loco_vehicle_types` | 3 | 6 |
+| `loco_vehicles` | 79 | 58,561 |
+| `loco_wtp_pickup_bring_type` | 2 | 4 |
+| `loco_wtp_progress_status` | 2 | 6 |
+| `loco_wtp_urgency` | 2 | 7 |
+| `loco_wtp_vehicle_status` | 2 | 6 |
+| `loco_year_calendar` | 6 | 505 |
+| `loco_year_calendar_day_off_codes` | 2 | 5 |
+| `loco_year_calendar_subsidiary_mapping` | 3 | 12 |
 | `manager_assignments` | 7 | 0 |
 | `praemien_berechnungen` | 33 | 1 |
 | `praemien_exporte` | 7 | 0 |
 | `praemien_kulanz_regeln` | 9 | 5 |
 | `praemien_mitarbeiter` | 24 | 79 |
 | `roles` | 9 | 6 |
-| `salden` | 8 | 1,217 |
-| `sales` | 27 | 4,951 |
+| `salden` | 8 | 1,260 |
+| `sales` | 27 | 4,983 |
 | `santander_zins_staffel` | 7 | 5 |
 | `sessions` | 8 | 0 |
-| `stellantis_bestellungen` | 17 | 302 |
-| `stellantis_positionen` | 14 | 713 |
+| `stellantis_bestellungen` | 17 | 379 |
+| `stellantis_positionen` | 14 | 886 |
 | `sync_log` | 8 | 9 |
 | `sync_status` | 7 | 1 |
 | `system_job_history` | 9 | 6 |
 | `system_jobs` | 13 | 14 |
-| `teile_lieferscheine` | 18 | 910 |
+| `teile_lieferscheine` | 18 | 1,489 |
 | `tilgungen` | 15 | 158 |
-| `transaktionen` | 22 | 15,168 |
-| `user_roles` | 6 | 15 |
-| `users` | 17 | 13 |
+| `transaktionen` | 22 | 15,853 |
+| `user_roles` | 6 | 17 |
+| `users` | 17 | 16 |
 | `users_old_backup` | 5 | 3 |
 | `vacation_adjustments` | 7 | 0 |
+| `vacation_approval_rules` | 11 | 16 |
 | `vacation_audit_log` | 10 | 0 |
-| `vacation_bookings` | 11 | 1,292 |
+| `vacation_bookings` | 11 | 1,358 |
 | `vacation_entitlements` | 8 | 75 |
-| `vacation_types` | 8 | 11 |
+| `vacation_types` | 10 | 11 |
 | `vehicles` | 13 | 1,023 |
+| `werkstatt_auftraege_abgerechnet` | 17 | 15,936 |
+| `werkstatt_leistung_daily` | 14 | 10,452 |
 
 ---
 
@@ -223,6 +279,33 @@
 **Indizes:**
 - `idx_bwa_jahr_monat`: jahr, monat
 - `sqlite_autoindex_bwa_monatswerte_1`: jahr, monat, position
+
+### `charge_type_descriptions_sync` (100 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `type` | INTEGER |  |  | 🔑 |
+| `description` | TEXT |  |  |  |
+| `synced_at` | TEXT | ✓ |  |  |
+
+### `charge_types_sync` (400 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `id` | INTEGER |  |  | 🔑 |
+| `type` | INTEGER | ✓ |  |  |
+| `subsidiary` | INTEGER | ✓ |  |  |
+| `timeunit_rate` | REAL |  |  |  |
+| `department` | INTEGER |  |  |  |
+| `stundensatz` | REAL |  |  |  |
+| `kategorie` | TEXT |  |  |  |
+| `abteilung_name` | TEXT |  |  |  |
+| `synced_at` | TEXT | ✓ |  |  |
+
+**Indizes:**
+- `idx_charge_types_department`: department
+- `idx_charge_types_subsidiary`: subsidiary
+- `sqlite_autoindex_charge_types_sync_1`: type, subsidiary
 
 ### `customers_suppliers` (53,293 Zeilen)
 
@@ -342,7 +425,7 @@
 - `idx_employees_exit`: exit_date
 - `sqlite_autoindex_employees_1`: email
 
-### `fahrzeugfinanzierungen` (196 Zeilen)
+### `fahrzeugfinanzierungen` (192 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -693,7 +776,7 @@
 - `idx_kl_snapshots_kreditlinie`: kreditlinie_id
 - `sqlite_autoindex_kreditlinien_snapshots_1`: kreditlinie_id, snapshot_datum
 
-### `ldap_employee_mapping` (61 Zeilen)
+### `ldap_employee_mapping` (62 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -708,7 +791,7 @@
 **Indizes:**
 - `sqlite_autoindex_ldap_employee_mapping_1`: ldap_username
 
-### `leasys_vehicle_cache` (51 Zeilen)
+### `leasys_vehicle_cache` (168 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -724,7 +807,7 @@
 - `idx_leasys_cache_lookup`: brand, fuel, ma_id
 - `sqlite_autoindex_leasys_vehicle_cache_1`: brand, fuel, ma_id
 
-### `loco_absence_calendar` (15,077 Zeilen)
+### `loco_absence_calendar` (15,307 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -743,6 +826,115 @@
 **Indizes:**
 - `idx_loco_absence_calendar_employee_number`: employee_number
 
+### `loco_absence_reasons` (23 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `id` | TEXT |  |  |  |
+| `description` | TEXT |  |  |  |
+| `is_annual_vacation` | INTEGER |  |  |  |
+
+**Indizes:**
+- `idx_loco_absence_reasons_id`: id
+
+### `loco_absence_types` (2 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `type` | TEXT |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_accounts_characteristics` (2 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `subsidiary_to_company_ref` | INTEGER |  |  |  |
+| `skr51_branch` | INTEGER |  |  |  |
+| `skr51_make` | INTEGER |  |  |  |
+| `skr51_cost_center` | INTEGER |  |  |  |
+| `skr51_sales_channel` | INTEGER |  |  |  |
+| `skr51_cost_unit` | INTEGER |  |  |  |
+| `skr51_branch_name` | TEXT |  |  |  |
+| `skr51_make_description` | TEXT |  |  |  |
+| `skr51_cost_center_name` | TEXT |  |  |  |
+| `skr51_sales_channel_name` | TEXT |  |  |  |
+| `skr51_cost_unit_name` | TEXT |  |  |  |
+
+**Indizes:**
+- `idx_loco_accounts_characteristics_subsidiary_to_company_ref`: subsidiary_to_company_ref
+
+### `loco_appointments` (1 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `id` | INTEGER |  |  |  |
+| `subsidiary` | INTEGER |  |  |  |
+| `appointment_type` | INTEGER |  |  |  |
+| `customer_number` | INTEGER |  |  |  |
+| `vehicle_number` | INTEGER |  |  |  |
+| `comment` | TEXT |  |  |  |
+| `created_by_employee` | INTEGER |  |  |  |
+| `created_timestamp` | TEXT |  |  |  |
+| `modified_by_employee` | INTEGER |  |  |  |
+| `modified_timestamp` | TEXT |  |  |  |
+| `locked_by_employee` | INTEGER |  |  |  |
+| `blocked_timestamp` | TEXT |  |  |  |
+| `bring_timestamp` | TEXT |  |  |  |
+| `return_timestamp` | TEXT |  |  |  |
+| `pseudo_customer_name` | TEXT |  |  |  |
+| `pseudo_customer_country` | TEXT |  |  |  |
+| `pseudo_customer_zip_code` | TEXT |  |  |  |
+| `pseudo_customer_home_city` | TEXT |  |  |  |
+| `pseudo_customer_home_street` | TEXT |  |  |  |
+| `pseudo_vehicle_make_number` | INTEGER |  |  |  |
+| `pseudo_vehicle_make_text` | TEXT |  |  |  |
+| `pseudo_model_code` | TEXT |  |  |  |
+| `pseudo_model_text` | TEXT |  |  |  |
+| `pseudo_license_plate` | TEXT |  |  |  |
+| `pseudo_vin` | TEXT |  |  |  |
+| `order_number` | INTEGER |  |  |  |
+| `is_customer_reminder_allowed` | INTEGER |  |  |  |
+| `customer_reminder_type` | TEXT |  |  |  |
+| `customer_reminder_timestamp` | TEXT |  |  |  |
+| `bring_duration` | INTEGER |  |  |  |
+| `bring_employee_no` | INTEGER |  |  |  |
+| `return_duration` | INTEGER |  |  |  |
+| `return_employee_no` | INTEGER |  |  |  |
+| `customer_pickup_bring` | INTEGER |  |  |  |
+| `is_general_inspection_service` | INTEGER |  |  |  |
+| `urgency` | INTEGER |  |  |  |
+| `vehicle_status` | INTEGER |  |  |  |
+| `progress_status` | INTEGER |  |  |  |
+| `lock_by_workstation` | INTEGER |  |  |  |
+| `lock_time` | TEXT |  |  |  |
+| `lock_trace` | TEXT |  |  |  |
+| `lock_trigger` | TEXT |  |  |  |
+| `lock_by_employee` | INTEGER |  |  |  |
+| `lock_sourcecode` | TEXT |  |  |  |
+| `lock_machine` | TEXT |  |  |  |
+| `lock_task` | INTEGER |  |  |  |
+| `lock_service_name` | TEXT |  |  |  |
+
+**Indizes:**
+- `idx_loco_appointments_customer_number`: customer_number
+- `idx_loco_appointments_id`: id
+
+### `loco_appointments_text` (0 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `appointment_id` | INTEGER |  |  |  |
+| `description` | TEXT |  |  |  |
+| `lock_by_workstation` | INTEGER |  |  |  |
+| `lock_time` | TEXT |  |  |  |
+| `lock_trace` | TEXT |  |  |  |
+| `lock_trigger` | TEXT |  |  |  |
+| `lock_by_employee` | INTEGER |  |  |  |
+| `lock_sourcecode` | TEXT |  |  |  |
+| `lock_machine` | TEXT |  |  |  |
+| `lock_task` | INTEGER |  |  |  |
+| `lock_service_name` | TEXT |  |  |  |
+
 ### `loco_charge_type_descriptions` (100 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
@@ -759,6 +951,24 @@
 | `timeunit_rate` | REAL |  |  |  |
 | `department` | INTEGER |  |  |  |
 
+### `loco_clearing_delay_types` (10 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `type` | TEXT |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_codes_customer_def` (12 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `code` | TEXT |  |  |  |
+| `is_defined_by_dms` | INTEGER |  |  |  |
+| `format` | TEXT |  |  |  |
+| `length` | INTEGER |  |  |  |
+| `decimal` | INTEGER |  |  |  |
+| `description` | TEXT |  |  |  |
+
 ### `loco_codes_customer_list` (44,722 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
@@ -773,7 +983,7 @@
 **Indizes:**
 - `idx_loco_codes_customer_list_customer_number`: customer_number
 
-### `loco_codes_vehicle_date` (6,157 Zeilen)
+### `loco_codes_vehicle_date` (6,197 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -781,7 +991,29 @@
 | `code` | TEXT |  |  |  |
 | `date` | TEXT |  |  |  |
 
-### `loco_codes_vehicle_list` (27,533 Zeilen)
+### `loco_codes_vehicle_date_def` (15 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `code` | TEXT |  |  |  |
+| `is_defined_by_dms` | INTEGER |  |  |  |
+| `month_increase_factor` | INTEGER |  |  |  |
+| `show_in_211_from_or_to` | TEXT |  |  |  |
+| `is_backdate_on_exceeding` | INTEGER |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_codes_vehicle_def` (47 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `code` | TEXT |  |  |  |
+| `is_defined_by_dms` | INTEGER |  |  |  |
+| `format` | TEXT |  |  |  |
+| `length` | INTEGER |  |  |  |
+| `decimal` | INTEGER |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_codes_vehicle_list` (27,702 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -792,6 +1024,41 @@
 | `value_numeric` | REAL |  |  |  |
 | `value_date` | TEXT |  |  |  |
 
+### `loco_codes_vehicle_mileage` (1 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `vehicle_number` | INTEGER |  |  |  |
+| `code` | TEXT |  |  |  |
+| `kilometer` | INTEGER |  |  |  |
+
+### `loco_codes_vehicle_mileage_def` (2 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `code` | TEXT |  |  |  |
+| `is_defined_by_dms` | INTEGER |  |  |  |
+| `mileage_increase_factor` | INTEGER |  |  |  |
+| `show_in_211_from_or_to` | TEXT |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_com_number_types` (18 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `typ` | TEXT |  |  |  |
+| `description` | TEXT |  |  |  |
+| `is_office_number` | INTEGER |  |  |  |
+
+### `loco_configuration` (38 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `type` | TEXT |  |  |  |
+| `value_numeric` | INTEGER |  |  |  |
+| `value_text` | TEXT |  |  |  |
+| `description` | TEXT |  |  |  |
+
 ### `loco_configuration_numeric` (1,433 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
@@ -801,7 +1068,22 @@
 | `text_value` | TEXT |  |  |  |
 | `description` | TEXT |  |  |  |
 
-### `loco_customer_com_numbers` (76,321 Zeilen)
+### `loco_countries` (43 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `code` | TEXT |  |  |  |
+| `description` | TEXT |  |  |  |
+| `iso3166_alpha2` | TEXT |  |  |  |
+
+### `loco_customer_codes` (21 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `code` | INTEGER |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_customer_com_numbers` (76,415 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -823,7 +1105,25 @@
 **Indizes:**
 - `idx_loco_customer_com_numbers_customer_number`: customer_number
 
-### `loco_customer_supplier_bank_information` (991 Zeilen)
+### `loco_customer_contact_log_pemissions` (0 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `customer_number` | INTEGER |  |  |  |
+| `case_number` | INTEGER |  |  |  |
+| `employee_no` | INTEGER |  |  |  |
+
+**Indizes:**
+- `idx_loco_customer_contact_log_pemissions_customer_number`: customer_number
+
+### `loco_customer_profession_codes` (90 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `code` | INTEGER |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_customer_supplier_bank_information` (993 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -836,7 +1136,7 @@
 **Indizes:**
 - `idx_loco_customer_supplier_bank_information_customer_number`: customer_number
 
-### `loco_customer_to_customercodes` (3,253 Zeilen)
+### `loco_customer_to_customercodes` (3,260 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -846,7 +1146,17 @@
 **Indizes:**
 - `idx_loco_customer_to_customercodes_customer_number`: customer_number
 
-### `loco_customers_suppliers` (53,493 Zeilen)
+### `loco_customer_to_professioncodes` (1 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `customer_number` | INTEGER |  |  |  |
+| `profession_code` | INTEGER |  |  |  |
+
+**Indizes:**
+- `idx_loco_customer_to_professioncodes_customer_number`: customer_number
+
+### `loco_customers_suppliers` (53,524 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -909,7 +1219,7 @@
 **Indizes:**
 - `idx_loco_customers_suppliers_customer_number`: customer_number
 
-### `loco_dealer_sales_aid` (3,584 Zeilen)
+### `loco_dealer_sales_aid` (3,599 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -922,7 +1232,20 @@
 | `was_paid_on` | TEXT |  |  |  |
 | `note` | TEXT |  |  |  |
 
-### `loco_dealer_vehicles` (5,281 Zeilen)
+### `loco_dealer_sales_aid_bonus` (0 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `dealer_vehicle_type` | TEXT |  |  |  |
+| `dealer_vehicle_number` | INTEGER |  |  |  |
+| `code` | TEXT |  |  |  |
+| `claimed_amount` | REAL |  |  |  |
+| `available_until` | TEXT |  |  |  |
+| `granted_amount` | REAL |  |  |  |
+| `was_paid_on` | TEXT |  |  |  |
+| `note` | TEXT |  |  |  |
+
+### `loco_dealer_vehicles` (5,310 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -1042,14 +1365,21 @@
 | `lock_task` | INTEGER |  |  |  |
 | `lock_service_name` | TEXT |  |  |  |
 
+### `loco_document_types` (13 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `document_type_in_journal` | TEXT |  |  |  |
+| `document_type_description` | TEXT |  |  |  |
+
 ### `loco_employees` (114 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
 | `is_latest_record` | INTEGER |  |  |  |
 | `employee_number` | INTEGER |  |  |  |
-| `validity_date` | DATE |  |  |  |
-| `next_validity_date` | DATE |  |  |  |
+| `validity_date` | TEXT |  |  |  |
+| `next_validity_date` | TEXT |  |  |  |
 | `subsidiary` | INTEGER |  |  |  |
 | `has_constant_salary` | INTEGER |  |  |  |
 | `name` | TEXT |  |  |  |
@@ -1061,9 +1391,9 @@
 | `is_business_executive` | INTEGER |  |  |  |
 | `is_master_craftsman` | INTEGER |  |  |  |
 | `is_customer_reception` | INTEGER |  |  |  |
-| `employment_date` | DATE |  |  |  |
-| `termination_date` | DATE |  |  |  |
-| `leave_date` | DATE |  |  |  |
+| `employment_date` | TEXT |  |  |  |
+| `termination_date` | TEXT |  |  |  |
+| `leave_date` | TEXT |  |  |  |
 | `is_flextime` | INTEGER |  |  |  |
 | `break_time_registration` | TEXT |  |  |  |
 | `productivity_factor` | REAL |  |  |  |
@@ -1073,7 +1403,7 @@
 - `idx_loco_employees_employee_number`: employee_number
 - `idx_loco_employees_customer_number`: customer_number
 
-### `loco_employees_breaktimes` (391 Zeilen)
+### `loco_employees_breaktimes` (392 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -1087,7 +1417,7 @@
 **Indizes:**
 - `idx_loco_employees_breaktimes_employee_number`: employee_number
 
-### `loco_employees_group_mapping` (123 Zeilen)
+### `loco_employees_group_mapping` (126 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -1144,6 +1474,30 @@
 **Indizes:**
 - `idx_loco_employees_worktimes_employee_number`: employee_number
 
+### `loco_external_customer_references` (0 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `api_type` | TEXT |  |  |  |
+| `api_id` | TEXT |  |  |  |
+| `customer_number` | INTEGER |  |  |  |
+| `subsidiary` | INTEGER |  |  |  |
+| `reference` | TEXT |  |  |  |
+| `last_received_time` | TEXT |  |  |  |
+| `version` | TEXT |  |  |  |
+
+**Indizes:**
+- `idx_loco_external_customer_references_customer_number`: customer_number
+
+### `loco_external_reference_parties` (0 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `api_type` | TEXT |  |  |  |
+| `api_id` | TEXT |  |  |  |
+| `make` | TEXT |  |  |  |
+| `description` | TEXT |  |  |  |
+
 ### `loco_financing_examples` (140 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
@@ -1173,7 +1527,21 @@
 **Indizes:**
 - `idx_loco_financing_examples_id`: id
 
-### `loco_invoices` (53,675 Zeilen)
+### `loco_fuels` (18 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `code` | TEXT |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_invoice_types` (7 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `type` | INTEGER |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_invoices` (54,219 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -1220,7 +1588,7 @@
 **Indizes:**
 - `idx_loco_invoices_invoice_date`: invoice_date
 
-### `loco_journal_accountings` (593,222 Zeilen)
+### `loco_journal_accountings` (599,210 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -1282,7 +1650,14 @@
 - `idx_loco_journal_accountings_customer_number`: customer_number
 - `idx_loco_journal_accountings_document_number`: document_number
 
-### `loco_labours` (278,593 Zeilen)
+### `loco_labour_types` (30 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `code` | TEXT |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_labours` (281,117 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -1307,7 +1682,16 @@
 | `negative_flag` | TEXT |  |  |  |
 | `labour_type` | TEXT |  |  |  |
 
-### `loco_labours_master` (211,778 Zeilen)
+### `loco_labours_groups` (0 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `source_number` | INTEGER |  |  |  |
+| `labour_number_range` | TEXT |  |  |  |
+| `description` | TEXT |  |  |  |
+| `source` | TEXT |  |  |  |
+
+### `loco_labours_master` (211,786 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -1341,7 +1725,28 @@
 **Indizes:**
 - `idx_loco_leasing_examples_id`: id
 
-### `loco_nominal_accounts` (1,237 Zeilen)
+### `loco_makes` (48 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `make_number` | INTEGER |  |  |  |
+| `is_actual_make` | INTEGER |  |  |  |
+| `description` | TEXT |  |  |  |
+| `group_name` | TEXT |  |  |  |
+| `make_id_in_group` | TEXT |  |  |  |
+| `internal_labour_group` | INTEGER |  |  |  |
+| `is_production_year_visible` | INTEGER |  |  |  |
+| `is_transmission_no_visible` | INTEGER |  |  |  |
+| `is_engine_no_visible` | INTEGER |  |  |  |
+| `is_ricambi_no_visible` | INTEGER |  |  |  |
+| `ricambi_label` | TEXT |  |  |  |
+| `is_preset_finance_stock_rate` | INTEGER |  |  |  |
+| `rate_free_days_new_vehicle` | INTEGER |  |  |  |
+| `rate_free_days_demo_vehicle` | INTEGER |  |  |  |
+| `special_service_2_interval` | REAL |  |  |  |
+| `special_service_3_interval` | REAL |  |  |  |
+
+### `loco_nominal_accounts` (1,239 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -1358,7 +1763,23 @@
 - `idx_loco_nominal_accounts_nominal_account_number`: nominal_account_number
 - `idx_loco_nominal_accounts_subsidiary_to_company_ref`: subsidiary_to_company_ref
 
-### `loco_orders` (40,704 Zeilen)
+### `loco_order_classifications_def` (12 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `code` | TEXT |  |  |  |
+| `description` | TEXT |  |  |  |
+| `surcharge_type` | TEXT |  |  |  |
+| `is_bulk_buyer` | INTEGER |  |  |  |
+| `is_special_sale` | INTEGER |  |  |  |
+| `target_group` | TEXT |  |  |  |
+| `same_calculation_as_other` | TEXT |  |  |  |
+| `special_price_rebate_type` | TEXT |  |  |  |
+| `skr51_sales_channel` | INTEGER |  |  |  |
+| `user_group` | TEXT |  |  |  |
+| `with_disposal_cost` | INTEGER |  |  |  |
+
+### `loco_orders` (41,048 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -1399,7 +1820,14 @@
 **Indizes:**
 - `idx_loco_orders_order_date`: order_date
 
-### `loco_parts` (140,859 Zeilen)
+### `loco_part_types` (19 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `type` | INTEGER |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_parts` (142,151 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -1423,7 +1851,7 @@
 | `text_line` | TEXT |  |  |  |
 | `usage_value` | REAL |  |  |  |
 
-### `loco_parts_additional_descriptions` (123,766 Zeilen)
+### `loco_parts_additional_descriptions` (123,831 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -1432,7 +1860,7 @@
 | `search_description` | TEXT |  |  |  |
 | `description_vector` | TEXT |  |  |  |
 
-### `loco_parts_inbound_delivery_notes` (65,760 Zeilen)
+### `loco_parts_inbound_delivery_notes` (66,429 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -1462,7 +1890,7 @@
 | `employee_number_imported` | INTEGER |  |  |  |
 | `employee_number_last` | INTEGER |  |  |  |
 
-### `loco_parts_master` (1,898,549 Zeilen)
+### `loco_parts_master` (1,899,386 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -1501,7 +1929,7 @@
 | `search_description` | TEXT |  |  |  |
 | `description_vector` | TEXT |  |  |  |
 
-### `loco_parts_rebate_codes_buy` (193 Zeilen)
+### `loco_parts_rebate_codes_buy` (194 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -1513,7 +1941,7 @@
 | `rebate_percent` | REAL |  |  |  |
 | `description` | TEXT |  |  |  |
 
-### `loco_parts_rebate_codes_sell` (304 Zeilen)
+### `loco_parts_rebate_codes_sell` (309 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -1524,6 +1952,31 @@
 | `parts_type_boundary_until` | INTEGER |  |  |  |
 | `rebate_percent` | REAL |  |  |  |
 | `description` | TEXT |  |  |  |
+
+### `loco_parts_rebate_groups_buy` (6 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `code` | INTEGER |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_parts_rebate_groups_sell` (8 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `code` | INTEGER |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_parts_special_offer_prices` (27 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `part_number` | TEXT |  |  |  |
+| `is_active` | INTEGER |  |  |  |
+| `valid_from_date` | TEXT |  |  |  |
+| `valid_until_date` | TEXT |  |  |  |
+| `price` | REAL |  |  |  |
+| `addition_percent` | REAL |  |  |  |
 
 ### `loco_parts_special_prices` (128 Zeilen)
 
@@ -1535,7 +1988,7 @@
 | `price` | REAL |  |  |  |
 | `addition_percent` | REAL |  |  |  |
 
-### `loco_parts_stock` (41,988 Zeilen)
+### `loco_parts_stock` (42,185 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -1578,7 +2031,15 @@
 | `part_number` | TEXT |  |  |  |
 | `external_number` | TEXT |  |  |  |
 
-### `loco_privacy_details` (65,237 Zeilen)
+### `loco_privacy_channels` (12 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `channel_code` | TEXT |  |  |  |
+| `is_business` | INTEGER |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_privacy_details` (117,852 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -1590,7 +2051,7 @@
 **Indizes:**
 - `idx_loco_privacy_details_subsidiary_to_company_ref`: subsidiary_to_company_ref
 
-### `loco_privacy_protection_consent` (6,633 Zeilen)
+### `loco_privacy_protection_consent` (13,838 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -1617,35 +2078,65 @@
 - `idx_loco_privacy_protection_consent_subsidiary_to_company_ref`: subsidiary_to_company_ref
 - `idx_loco_privacy_protection_consent_customer_number`: customer_number
 
+### `loco_privacy_scopes` (3 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `scope_code` | TEXT |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_salutations` (10 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `code` | TEXT |  |  |  |
+| `main_salutation` | TEXT |  |  |  |
+| `title` | TEXT |  |  |  |
+| `salutation_in_forms` | TEXT |  |  |  |
+| `receiver_salutation` | TEXT |  |  |  |
+| `full_salutation` | TEXT |  |  |  |
+| `multiline_line_1` | TEXT |  |  |  |
+| `multiline_line_2` | TEXT |  |  |  |
+
 ### `loco_subsidiaries` (4 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
-| `subsidiary` | INTEGER | ✓ |  |  |
+| `subsidiary` | INTEGER |  |  |  |
 | `description` | TEXT |  |  |  |
 | `subsidiary_to_company_ref` | INTEGER |  |  |  |
 
 **Indizes:**
 - `idx_loco_subsidiaries_subsidiary_to_company_ref`: subsidiary_to_company_ref
 
-### `loco_times` (0 Zeilen)
+### `loco_time_types` (4 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `type` | INTEGER |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_times` (188,877 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
 | `employee_number` | INTEGER |  |  |  |
 | `order_number` | INTEGER |  |  |  |
-| `start_time` | TIMESTAMP |  |  |  |
+| `start_time` | TEXT |  |  |  |
 | `type` | INTEGER |  |  |  |
 | `order_positions` | TEXT |  |  |  |
 | `order_position` | INTEGER |  |  |  |
 | `order_position_line` | INTEGER |  |  |  |
-| `end_time` | TIMESTAMP |  |  |  |
+| `end_time` | TEXT |  |  |  |
 | `duration_minutes` | INTEGER |  |  |  |
 | `exact_duration_seconds` | INTEGER |  |  |  |
 | `duration` | TEXT |  |  |  |
 | `is_historic` | INTEGER |  |  |  |
 
-### `loco_tire_storage` (4,790 Zeilen)
+**Indizes:**
+- `idx_loco_times_employee_number`: employee_number
+
+### `loco_tire_storage` (4,788 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -1669,7 +2160,31 @@
 **Indizes:**
 - `idx_loco_tire_storage_customer_number`: customer_number
 
-### `loco_tire_storage_wheels` (19,186 Zeilen)
+### `loco_tire_storage_accessories` (0 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `case_number` | INTEGER |  |  |  |
+| `internal_counter` | INTEGER |  |  |  |
+| `employee_no` | INTEGER |  |  |  |
+| `manufacturer` | TEXT |  |  |  |
+| `description_1` | TEXT |  |  |  |
+| `description_2` | TEXT |  |  |  |
+| `description_3` | TEXT |  |  |  |
+| `bin_location` | TEXT |  |  |  |
+| `product_type` | TEXT |  |  |  |
+| `manufacturer_code` | TEXT |  |  |  |
+| `main_position` | TEXT |  |  |  |
+| `sub_position` | TEXT |  |  |  |
+| `note` | TEXT |  |  |  |
+| `space_requirement` | INTEGER |  |  |  |
+| `malfunction_date` | TEXT |  |  |  |
+| `malfunction_employee` | INTEGER |  |  |  |
+| `renewal_date` | TEXT |  |  |  |
+| `renewal_employee` | INTEGER |  |  |  |
+| `removal_state` | TEXT |  |  |  |
+
+### `loco_tire_storage_wheels` (19,178 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -1699,7 +2214,24 @@
 | `renewal_employee` | INTEGER |  |  |  |
 | `removal_state` | TEXT |  |  |  |
 
-### `loco_transit_vehicles` (2,447 Zeilen)
+### `loco_transit_customers` (0 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `order_number` | INTEGER |  |  |  |
+| `order_position` | INTEGER |  |  |  |
+| `order_position_line` | INTEGER |  |  |  |
+| `first_name` | TEXT |  |  |  |
+| `family_name` | TEXT |  |  |  |
+| `salutation_code` | TEXT |  |  |  |
+| `country` | TEXT |  |  |  |
+| `zip_code` | TEXT |  |  |  |
+| `home_city` | TEXT |  |  |  |
+| `home_street` | TEXT |  |  |  |
+| `phone_number` | TEXT |  |  |  |
+| `fullname_vector` | TEXT |  |  |  |
+
+### `loco_transit_vehicles` (2,477 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -1720,7 +2252,24 @@
 - `idx_loco_transit_vehicles_license_plate`: license_plate
 - `idx_loco_transit_vehicles_vin`: vin
 
-### `loco_vehicle_accessories_customer` (217,293 Zeilen)
+### `loco_vat_keys` (52 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `subsidiary_to_company_ref` | INTEGER |  |  |  |
+| `vat_key` | TEXT |  |  |  |
+| `key_validity_date` | TEXT |  |  |  |
+| `branch` | INTEGER |  |  |  |
+| `description` | TEXT |  |  |  |
+| `vat_rate` | INTEGER |  |  |  |
+| `create_date` | TEXT |  |  |  |
+| `vat_account` | INTEGER |  |  |  |
+| `advanced_turnover_tax_pos` | INTEGER |  |  |  |
+
+**Indizes:**
+- `idx_loco_vat_keys_subsidiary_to_company_ref`: subsidiary_to_company_ref
+
+### `loco_vehicle_accessories_customer` (217,172 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -1734,7 +2283,7 @@
 | `discountable` | INTEGER |  |  |  |
 | `purchase_price` | REAL |  |  |  |
 
-### `loco_vehicle_accessories_dealer` (63,872 Zeilen)
+### `loco_vehicle_accessories_dealer` (63,836 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -1749,7 +2298,51 @@
 | `discountable` | INTEGER |  |  |  |
 | `purchase_price` | REAL |  |  |  |
 
-### `loco_vehicles` (58,515 Zeilen)
+### `loco_vehicle_bodys` (47 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `code` | TEXT |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_vehicle_buy_types` (6 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `code` | TEXT |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_vehicle_contact_log_pemissions` (0 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `vehicle_number` | INTEGER |  |  |  |
+| `case_number` | INTEGER |  |  |  |
+| `employee_no` | INTEGER |  |  |  |
+
+### `loco_vehicle_pre_owned_codes` (5 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `code` | TEXT |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_vehicle_sale_types` (5 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `code` | TEXT |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_vehicle_types` (6 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `code` | TEXT |  |  |  |
+| `is_new_or_similar` | INTEGER |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_vehicles` (58,561 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -1838,7 +2431,35 @@
 - `idx_loco_vehicles_vin`: vin
 - `idx_loco_vehicles_document_number`: document_number
 
-### `loco_year_calendar` (392 Zeilen)
+### `loco_wtp_pickup_bring_type` (4 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `type` | INTEGER |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_wtp_progress_status` (6 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `code` | INTEGER |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_wtp_urgency` (7 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `code` | INTEGER |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_wtp_vehicle_status` (6 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `code` | INTEGER |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_year_calendar` (505 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -1848,6 +2469,21 @@
 | `is_school_holid` | INTEGER |  |  |  |
 | `is_public_holid` | INTEGER |  |  |  |
 | `day_note` | TEXT |  |  |  |
+
+### `loco_year_calendar_day_off_codes` (5 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `code` | INTEGER |  |  |  |
+| `description` | TEXT |  |  |  |
+
+### `loco_year_calendar_subsidiary_mapping` (12 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `subsidiary` | INTEGER |  |  |  |
+| `year` | INTEGER |  |  |  |
+| `calendar_id` | INTEGER |  |  |  |
 
 ### `manager_assignments` (0 Zeilen)
 
@@ -1990,7 +2626,7 @@
 - `idx_roles_name`: name
 - `sqlite_autoindex_roles_1`: name
 
-### `salden` (1,217 Zeilen)
+### `salden` (1,260 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -2009,7 +2645,7 @@
 - `idx_salden_konto`: konto_id
 - `sqlite_autoindex_salden_1`: konto_id, datum
 
-### `sales` (4,951 Zeilen)
+### `sales` (4,983 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -2077,7 +2713,7 @@
 - `idx_sessions_session_id`: session_id
 - `sqlite_autoindex_sessions_1`: session_id
 
-### `stellantis_bestellungen` (302 Zeilen)
+### `stellantis_bestellungen` (379 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -2107,7 +2743,7 @@
 - `idx_stellantis_bestellungen_datum`: bestelldatum
 - `sqlite_autoindex_stellantis_bestellungen_1`: bestellnummer
 
-### `stellantis_positionen` (713 Zeilen)
+### `stellantis_positionen` (886 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -2198,7 +2834,7 @@
 **Indizes:**
 - `sqlite_autoindex_system_jobs_1`: job_name
 
-### `teile_lieferscheine` (910 Zeilen)
+### `teile_lieferscheine` (1,489 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -2255,7 +2891,7 @@
 - `idx_tilgungen_faellig_am`: faellig_am
 - `idx_tilgungen_vin`: vin
 
-### `transaktionen` (15,168 Zeilen)
+### `transaktionen` (15,853 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -2291,7 +2927,7 @@
 - `idx_trans_buchungsdatum`: buchungsdatum
 - `idx_trans_konto`: konto_id
 
-### `user_roles` (15 Zeilen)
+### `user_roles` (17 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -2307,7 +2943,7 @@
 - `idx_user_roles_user_id`: user_id
 - `sqlite_autoindex_user_roles_1`: user_id, role_id
 
-### `users` (13 Zeilen)
+### `users` (16 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -2358,6 +2994,27 @@
 | `reason` | TEXT |  |  |  |
 | `created_at` | TIMESTAMP |  | CURRENT_TIMESTAMP |  |
 
+### `vacation_approval_rules` (16 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `id` | INTEGER |  |  | 🔑 |
+| `loco_grp_code` | TEXT | ✓ |  |  |
+| `subsidiary` | INTEGER |  |  |  |
+| `approver_employee_id` | INTEGER | ✓ |  |  |
+| `approver_ldap_username` | TEXT | ✓ |  |  |
+| `priority` | INTEGER |  | 1 |  |
+| `active` | INTEGER |  | 1 |  |
+| `created_at` | TIMESTAMP |  | CURRENT_TIMESTAMP |  |
+| `updated_at` | TIMESTAMP |  | CURRENT_TIMESTAMP |  |
+| `created_by` | TEXT |  |  |  |
+| `notes` | TEXT |  |  |  |
+
+**Indizes:**
+- `idx_approval_rules_approver`: approver_ldap_username, active
+- `idx_approval_rules_lookup`: loco_grp_code, subsidiary, active
+- `sqlite_autoindex_vacation_approval_rules_1`: loco_grp_code, subsidiary, approver_employee_id
+
 ### `vacation_audit_log` (0 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
@@ -2378,7 +3035,7 @@
 - `idx_vacation_audit_log_changed_by`: changed_by
 - `idx_vacation_audit_log_table`: table_name, record_id
 
-### `vacation_bookings` (1,292 Zeilen)
+### `vacation_bookings` (1,358 Zeilen)
 
 | Spalte | Typ | NotNull | Default | PK |
 |--------|-----|---------|---------|-----|
@@ -2429,6 +3086,8 @@
 | `available_for_approver` | BOOLEAN |  | 0 |  |
 | `available_for_admin` | BOOLEAN |  | 1 |  |
 | `deduct_from_contingent` | INTEGER |  | 1 |  |
+| `needs_approval` | INTEGER |  | 1 |  |
+| `loco_reason` | TEXT |  |  |  |
 
 **Indizes:**
 - `sqlite_autoindex_vacation_types_1`: name
@@ -2456,6 +3115,58 @@
 - `idx_vehicles_salesman`: salesman_number
 - `idx_vehicles_sale_date`: sale_date
 - `sqlite_autoindex_vehicles_1`: dealer_vehicle_number, dealer_vehicle_type
+
+### `werkstatt_auftraege_abgerechnet` (15,936 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `id` | INTEGER |  |  | 🔑 |
+| `rechnungs_datum` | DATE |  |  |  |
+| `rechnungs_nr` | INTEGER |  |  |  |
+| `rechnungs_typ` | INTEGER |  |  |  |
+| `auftrags_nr` | INTEGER |  |  |  |
+| `betrieb` | INTEGER |  |  |  |
+| `kennzeichen` | TEXT |  |  |  |
+| `serviceberater_nr` | INTEGER |  |  |  |
+| `serviceberater_name` | TEXT |  |  |  |
+| `lohn_netto` | REAL |  | 0 |  |
+| `teile_netto` | REAL |  | 0 |  |
+| `gesamt_netto` | REAL |  | 0 |  |
+| `summe_aw` | REAL |  | 0 |  |
+| `summe_stempelzeit_min` | REAL |  | 0 |  |
+| `leistungsgrad` | REAL |  |  |  |
+| `storniert` | INTEGER |  | 0 |  |
+| `created_at` | TIMESTAMP |  | CURRENT_TIMESTAMP |  |
+
+**Indizes:**
+- `idx_waa_betrieb`: betrieb
+- `idx_waa_datum`: rechnungs_datum
+- `sqlite_autoindex_werkstatt_auftraege_abgerechnet_1`: rechnungs_nr, rechnungs_typ
+
+### `werkstatt_leistung_daily` (10,452 Zeilen)
+
+| Spalte | Typ | NotNull | Default | PK |
+|--------|-----|---------|---------|-----|
+| `id` | INTEGER |  |  | 🔑 |
+| `datum` | DATE |  |  |  |
+| `mechaniker_nr` | INTEGER |  |  |  |
+| `mechaniker_name` | TEXT |  |  |  |
+| `betrieb_nr` | INTEGER |  |  |  |
+| `ist_aktiv` | INTEGER |  | 1 |  |
+| `anzahl_auftraege` | INTEGER |  | 0 |  |
+| `vorgabezeit_aw` | REAL |  | 0 |  |
+| `stempelzeit_min` | REAL |  | 0 |  |
+| `anwesenheit_min` | REAL |  | 0 |  |
+| `leistungsgrad` | REAL |  |  |  |
+| `produktivitaet` | REAL |  |  |  |
+| `umsatz` | REAL |  | 0 |  |
+| `created_at` | TIMESTAMP |  | CURRENT_TIMESTAMP |  |
+
+**Indizes:**
+- `idx_wld_betrieb`: betrieb_nr
+- `idx_wld_mech`: mechaniker_nr
+- `idx_wld_datum`: datum
+- `sqlite_autoindex_werkstatt_leistung_daily_1`: datum, mechaniker_nr
 
 ---
 
@@ -2600,6 +3311,35 @@ WHERE k.aktiv = 1
 ORDER BY k.sort_order, k.kontoname
 ```
 
+### `v_approver_teams`
+
+```sql
+CREATE VIEW v_approver_teams AS
+SELECT 
+    ar.approver_ldap_username,
+    ae.first_name || ' ' || ae.last_name as approver_name,
+    ar.loco_grp_code,
+    ar.subsidiary,
+    CASE ar.subsidiary 
+        WHEN 1 THEN 'Deggendorf'
+        WHEN 3 THEN 'Landau'
+        ELSE 'Alle Standorte'
+    END as standort,
+    ar.priority,
+    COUNT(DISTINCT e.id) as team_size
+FROM vacation_approval_rules ar
+JOIN ldap_employee_mapping alem ON ar.approver_ldap_username = alem.ldap_username
+JOIN employees ae ON alem.employee_id = ae.id
+JOIN loco_employees_group_mapping gm ON ar.loco_grp_code = gm.grp_code
+JOIN loco_employees le ON gm.employee_number = le.employee_number
+    AND (ar.subsidiary IS NULL OR ar.subsidiary = le.subsidiary)
+JOIN ldap_employee_mapping lem ON le.employee_number = lem.locosoft_id
+JOIN employees e ON lem.employee_id = e.id AND e.aktiv = 1
+WHERE ar.active = 1
+GROUP BY ar.approver_ldap_username, ar.loco_grp_code, ar.subsidiary, ar.priority
+ORDER BY ar.approver_ldap_username, ar.priority
+```
+
 ### `v_cashflow_aktuell`
 
 ```sql
@@ -2674,6 +3414,39 @@ WHERE kategorie_erweitert IS NOT NULL
   AND kategorie_erweitert != 'bilanz'
 GROUP BY wirtschaftsjahr, monat, kategorie_erweitert
 ORDER BY wirtschaftsjahr DESC, monat DESC, kategorie_erweitert
+```
+
+### `v_employee_approvers`
+
+```sql
+CREATE VIEW v_employee_approvers AS
+SELECT 
+    e.id as employee_id,
+    e.first_name || ' ' || e.last_name as employee_name,
+    lem.ldap_username as employee_ldap,
+    gm.grp_code,
+    le.subsidiary,
+    CASE le.subsidiary 
+        WHEN 1 THEN 'Deggendorf'
+        WHEN 3 THEN 'Landau'
+        ELSE 'Unbekannt'
+    END as standort,
+    ar.approver_ldap_username,
+    ar.priority,
+    ae.first_name || ' ' || ae.last_name as approver_name
+FROM employees e
+JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
+JOIN loco_employees le ON lem.locosoft_id = le.employee_number
+JOIN loco_employees_group_mapping gm ON le.employee_number = gm.employee_number
+LEFT JOIN vacation_approval_rules ar ON (
+    ar.loco_grp_code = gm.grp_code 
+    AND (ar.subsidiary IS NULL OR ar.subsidiary = le.subsidiary)
+    AND ar.active = 1
+)
+LEFT JOIN ldap_employee_mapping alem ON ar.approver_ldap_username = alem.ldap_username
+LEFT JOIN employees ae ON alem.employee_id = ae.id
+WHERE e.aktiv = 1
+ORDER BY e.last_name, e.first_name, ar.priority
 ```
 
 ### `v_fahrzeugfinanzierungen_aktuell`
@@ -2902,42 +3675,68 @@ WHERE t.faellig_am BETWEEN date('now') AND date('now', '+30 days')
 ORDER BY t.faellig_am
 ```
 
+### `v_times_clean`
+
+```sql
+CREATE VIEW v_times_clean AS
+        SELECT 
+            employee_number,
+            order_number,
+            start_time,
+            end_time,
+            duration_minutes
+        FROM (
+            SELECT 
+                employee_number,
+                order_number,
+                start_time,
+                end_time,
+                duration_minutes,
+                ROW_NUMBER() OVER (
+                    PARTITION BY employee_number, start_time, end_time
+                    ORDER BY order_number
+                ) as rn
+            FROM loco_times
+            WHERE end_time IS NOT NULL
+            AND duration_minutes > 0
+            AND order_number >= 1000
+            AND type = 2
+        )
+        WHERE rn = 1
+```
+
 ### `v_vacation_balance_2025`
 
 ```sql
 CREATE VIEW v_vacation_balance_2025 AS
-SELECT 
+SELECT
     e.id as employee_id,
     e.first_name || ' ' || e.last_name as name,
     e.department_name,
-    CASE 
-        WHEN e.locosoft_id >= 1000 AND e.locosoft_id < 2000 THEN 'Deggendorf'
-        WHEN e.locosoft_id >= 3000 THEN 'Landau'
-        ELSE 'Unbekannt'
-    END as location,
+    e.location as location,
     ve.total_days + ve.carried_over + ve.added_manually as anspruch,
-    COALESCE(SUM(CASE 
+    COALESCE(SUM(CASE
         WHEN vb.day_part = 'full' AND vb.status = 'approved' THEN 1.0
         WHEN vb.day_part = 'half' AND vb.status = 'approved' THEN 0.5
         ELSE 0
     END), 0) as verbraucht,
-    COALESCE(SUM(CASE 
+    COALESCE(SUM(CASE
         WHEN vb.day_part = 'full' AND vb.status = 'pending' THEN 1.0
         WHEN vb.day_part = 'half' AND vb.status = 'pending' THEN 0.5
         ELSE 0
     END), 0) as geplant,
-    ve.total_days + ve.carried_over + ve.added_manually - 
-    COALESCE(SUM(CASE 
+    ve.total_days + ve.carried_over + ve.added_manually -
+    COALESCE(SUM(CASE
         WHEN vb.day_part = 'full' AND vb.status = 'approved' THEN 1.0
         WHEN vb.day_part = 'half' AND vb.status = 'approved' THEN 0.5
         ELSE 0
     END), 0) as resturlaub
 FROM employees e
 JOIN vacation_entitlements ve ON e.id = ve.employee_id AND ve.year = 2025
-LEFT JOIN vacation_bookings vb ON vb.employee_id = e.id 
+LEFT JOIN vacation_bookings vb ON vb.employee_id = e.id
     AND strftime('%Y', vb.booking_date) = '2025'
 WHERE e.aktiv = 1
-GROUP BY e.id, e.first_name, e.last_name, e.department_name, e.locosoft_id,
+GROUP BY e.id, e.first_name, e.last_name, e.department_name, e.location,
          ve.total_days, ve.carried_over, ve.added_manually
 ```
 
