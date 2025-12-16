@@ -4,21 +4,22 @@ Umbuchungs-Empfehlungen und EK-Finanzierung Analyse
 MIT HYUNDAI ZINSEN!
 """
 from flask import Blueprint, jsonify
-import sqlite3
 from datetime import datetime
 
-zins_api = Blueprint('zins_api', __name__)
+# Zentrale DB-Utilities (TAG117)
+from api.db_utils import db_session
 
-def get_db():
-    conn = sqlite3.connect('data/greiner_controlling.db')
-    conn.row_factory = sqlite3.Row
-    return conn
+zins_api = Blueprint('zins_api', __name__)
 
 @zins_api.route('/api/zinsen/report', methods=['GET'])
 def zins_report():
     """Kompletter Zins-Report mit Empfehlungen"""
-    conn = get_db()
-    c = conn.cursor()
+    with db_session() as conn:
+        c = conn.cursor()
+        return _zins_report_impl(c)
+
+def _zins_report_impl(c):
+    """Implementierung des Zins-Reports"""
 
     result = {
         'timestamp': datetime.now().isoformat(),
@@ -190,109 +191,109 @@ def zins_report():
         'potenzielle_ersparnis_monat': round(sum(e['ersparnis_monat'] for e in result['empfehlungen']), 2)
     }
 
-    conn.close()
     return jsonify(result)
 
 
 @zins_api.route('/api/zinsen/dashboard', methods=['GET'])
 def zins_dashboard():
     """Kompakte Dashboard-Daten - MIT HYUNDAI!"""
-    conn = get_db()
-    c = conn.cursor()
+    with db_session() as conn:
+        c = conn.cursor()
 
-    # Stellantis Zinssatz
-    c.execute("SELECT zinssatz FROM ek_finanzierung_konditionen WHERE finanzinstitut = 'Stellantis'")
-    row = c.fetchone()
-    stellantis_zins = row['zinssatz'] if row else 9.03
+        # Stellantis Zinssatz
+        c.execute("SELECT zinssatz FROM ek_finanzierung_konditionen WHERE finanzinstitut = 'Stellantis'")
+        row = c.fetchone()
+        stellantis_zins = row['zinssatz'] if row else 9.03
 
-    # Konten im Soll
-    c.execute("""
-        SELECT SUM(ABS(saldo) * k.sollzins / 100 / 12) as zinsen
-        FROM konten k
-        JOIN (SELECT konto_id, saldo FROM salden WHERE (konto_id, datum) IN
-              (SELECT konto_id, MAX(datum) FROM salden GROUP BY konto_id)) s ON s.konto_id = k.id
-        WHERE k.aktiv = 1 AND s.saldo < 0 AND k.sollzins IS NOT NULL
-    """)
-    konten_zinsen = c.fetchone()['zinsen'] or 0
+        # Konten im Soll
+        c.execute("""
+            SELECT SUM(ABS(saldo) * k.sollzins / 100 / 12) as zinsen
+            FROM konten k
+            JOIN (SELECT konto_id, saldo FROM salden WHERE (konto_id, datum) IN
+                  (SELECT konto_id, MAX(datum) FROM salden GROUP BY konto_id)) s ON s.konto_id = k.id
+            WHERE k.aktiv = 1 AND s.saldo < 0 AND k.sollzins IS NOT NULL
+        """)
+        konten_zinsen = c.fetchone()['zinsen'] or 0
 
-    # Stellantis über Zinsfreiheit
-    c.execute("""
-        SELECT COUNT(*) as anzahl, SUM(aktueller_saldo) as saldo, SUM(zinsen_letzte_periode) as zinsen_monat
-        FROM fahrzeugfinanzierungen
-        WHERE finanzinstitut = 'Stellantis'
-          AND zinsfreiheit_tage IS NOT NULL
-          AND alter_tage > zinsfreiheit_tage
-    """)
-    row = c.fetchone()
-    stellantis_ueber = {
-        'anzahl': row['anzahl'] or 0,
-        'saldo': row['saldo'] or 0,
-        'zinsen_monat': round(row['zinsen_monat'] or 0, 2)
-    }
+        # Stellantis über Zinsfreiheit
+        c.execute("""
+            SELECT COUNT(*) as anzahl, SUM(aktueller_saldo) as saldo, SUM(zinsen_letzte_periode) as zinsen_monat
+            FROM fahrzeugfinanzierungen
+            WHERE finanzinstitut = 'Stellantis'
+              AND zinsfreiheit_tage IS NOT NULL
+              AND alter_tage > zinsfreiheit_tage
+        """)
+        row = c.fetchone()
+        stellantis_ueber = {
+            'anzahl': row['anzahl'] or 0,
+            'saldo': row['saldo'] or 0,
+            'zinsen_monat': round(row['zinsen_monat'] or 0, 2)
+        }
 
-    # Stellantis bald ablaufend
-    c.execute("""
-        SELECT COUNT(*) as anzahl, SUM(aktueller_saldo) as saldo
-        FROM fahrzeugfinanzierungen
-        WHERE finanzinstitut = 'Stellantis'
-          AND zinsfreiheit_tage IS NOT NULL
-          AND (zinsfreiheit_tage - alter_tage) BETWEEN 0 AND 14
-    """)
-    row = c.fetchone()
-    stellantis_bald = {
-        'anzahl': row['anzahl'] or 0,
-        'saldo': row['saldo'] or 0
-    }
+        # Stellantis bald ablaufend
+        c.execute("""
+            SELECT COUNT(*) as anzahl, SUM(aktueller_saldo) as saldo
+            FROM fahrzeugfinanzierungen
+            WHERE finanzinstitut = 'Stellantis'
+              AND zinsfreiheit_tage IS NOT NULL
+              AND (zinsfreiheit_tage - alter_tage) BETWEEN 0 AND 14
+        """)
+        row = c.fetchone()
+        stellantis_bald = {
+            'anzahl': row['anzahl'] or 0,
+            'saldo': row['saldo'] or 0
+        }
 
-    # Santander
-    c.execute("""
-        SELECT COUNT(*) as anzahl, SUM(aktueller_saldo) as saldo, SUM(zinsen_letzte_periode) as zinsen
-        FROM fahrzeugfinanzierungen WHERE finanzinstitut = 'Santander'
-    """)
-    row = c.fetchone()
-    santander = {
-        'anzahl': row['anzahl'] or 0,
-        'saldo': row['saldo'] or 0,
-        'zinsen_monat': round(row['zinsen'] or 0, 2)
-    }
+        # Santander
+        c.execute("""
+            SELECT COUNT(*) as anzahl, SUM(aktueller_saldo) as saldo, SUM(zinsen_letzte_periode) as zinsen
+            FROM fahrzeugfinanzierungen WHERE finanzinstitut = 'Santander'
+        """)
+        row = c.fetchone()
+        santander = {
+            'anzahl': row['anzahl'] or 0,
+            'saldo': row['saldo'] or 0,
+            'zinsen_monat': round(row['zinsen'] or 0, 2)
+        }
 
-    # === NEU: HYUNDAI ===
-    c.execute("""
-        SELECT COUNT(*) as anzahl, SUM(aktueller_saldo) as saldo, 
-               SUM(zinsen_gesamt) as zinsen_gesamt, SUM(zinsen_letzte_periode) as zinsen_monat
-        FROM fahrzeugfinanzierungen WHERE finanzinstitut = 'Hyundai Finance'
-    """)
-    row = c.fetchone()
-    hyundai = {
-        'anzahl': row['anzahl'] or 0,
-        'saldo': row['saldo'] or 0,
-        'zinsen_gesamt': round(row['zinsen_gesamt'] or 0, 2),
-        'zinsen_monat': round(row['zinsen_monat'] or 0, 2)
-    }
+        # === NEU: HYUNDAI ===
+        c.execute("""
+            SELECT COUNT(*) as anzahl, SUM(aktueller_saldo) as saldo,
+                   SUM(zinsen_gesamt) as zinsen_gesamt, SUM(zinsen_letzte_periode) as zinsen_monat
+            FROM fahrzeugfinanzierungen WHERE finanzinstitut = 'Hyundai Finance'
+        """)
+        row = c.fetchone()
+        hyundai = {
+            'anzahl': row['anzahl'] or 0,
+            'saldo': row['saldo'] or 0,
+            'zinsen_gesamt': round(row['zinsen_gesamt'] or 0, 2),
+            'zinsen_monat': round(row['zinsen_monat'] or 0, 2)
+        }
 
-    # Gesamtzinsen INKL. Hyundai
-    total_zinsen = konten_zinsen + stellantis_ueber['zinsen_monat'] + santander['zinsen_monat'] + hyundai['zinsen_monat']
+        # Gesamtzinsen INKL. Hyundai
+        total_zinsen = konten_zinsen + stellantis_ueber['zinsen_monat'] + santander['zinsen_monat'] + hyundai['zinsen_monat']
 
-    conn.close()
-
-    return jsonify({
-        'zinskosten_monat': round(total_zinsen, 2),
-        'zinskosten_jahr': round(total_zinsen * 12, 2),
-        'konten_sollzinsen': round(konten_zinsen, 2),
-        'stellantis_ueber_zinsfreiheit': stellantis_ueber,
-        'stellantis_bald_ablaufend': stellantis_bald,
-        'santander_zinsen': santander['zinsen_monat'],
-        'hyundai': hyundai,
-        'handlungsbedarf': stellantis_ueber['anzahl'] + stellantis_bald['anzahl']
-    })
+        return jsonify({
+            'zinskosten_monat': round(total_zinsen, 2),
+            'zinskosten_jahr': round(total_zinsen * 12, 2),
+            'konten_sollzinsen': round(konten_zinsen, 2),
+            'stellantis_ueber_zinsfreiheit': stellantis_ueber,
+            'stellantis_bald_ablaufend': stellantis_bald,
+            'santander_zinsen': santander['zinsen_monat'],
+            'hyundai': hyundai,
+            'handlungsbedarf': stellantis_ueber['anzahl'] + stellantis_bald['anzahl']
+        })
 
 
 @zins_api.route('/api/zinsen/umbuchung-empfehlung', methods=['GET'])
 def umbuchung_empfehlung():
     """Umbuchungs-Empfehlungen mit Firmen-Beruecksichtigung"""
-    conn = get_db()
-    c = conn.cursor()
+    with db_session() as conn:
+        c = conn.cursor()
+        return _umbuchung_empfehlung_impl(c)
 
+def _umbuchung_empfehlung_impl(c):
+    """Implementierung der Umbuchungs-Empfehlungen"""
     empfehlungen = []
 
     # Konten im Soll finden
@@ -448,7 +449,6 @@ def umbuchung_empfehlung():
                 'prioritaet': 2
             })
 
-    conn.close()
     return jsonify({
         'empfehlungen': sorted(empfehlungen, key=lambda x: x['prioritaet']),
         'gesamt_ersparnis_monat': round(sum(e['ersparnis_monat'] for e in empfehlungen), 2),

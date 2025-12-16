@@ -636,10 +636,15 @@ function loadNachkalkulation() {
 
 function renderNachkalkulation(data) {
     const s = data.summary;
-    
+
     // Summary anzeigen
     document.getElementById('nachkalkSummary').style.display = 'flex';
-    document.getElementById('nkRechnungen').textContent = s.anzahl_rechnungen;
+    // TAG 120: Zeige unvollständig abgerechnete Aufträge
+    const unvollst = s.anzahl_unvollstaendig || 0;
+    const rechnungenText = unvollst > 0
+        ? `${s.anzahl_rechnungen} <small class="text-warning">(${unvollst} offen)</small>`
+        : s.anzahl_rechnungen;
+    document.getElementById('nkRechnungen').innerHTML = rechnungenText;
     document.getElementById('nkUmsatz').textContent = s.total_rechnung_eur.toLocaleString('de-DE', {style: 'currency', currency: 'EUR'});
     document.getElementById('nkVorgabe').textContent = s.total_vorgabe_aw.toFixed(1);
     document.getElementById('nkGestempelt').textContent = s.total_gestempelt_aw.toFixed(1);
@@ -678,6 +683,7 @@ function renderNachkalkulation(data) {
             <th class="text-end">Diff</th>
             <th class="text-center">LG</th>
             <th class="text-end">Verlust</th>
+            <th class="text-center">Status</th>
         </tr></thead><tbody>`;
     
     data.auftraege.forEach(a => {
@@ -700,10 +706,23 @@ function renderNachkalkulation(data) {
         else if (a.leistungsgrad >= 60) lgBadge = `<span class="badge bg-warning text-dark">${a.leistungsgrad}%</span>`;
         else lgBadge = `<span class="badge bg-danger">${a.leistungsgrad}%</span>`;
         
-        const verlustText = a.verlust_eur > 0 
+        const verlustText = a.verlust_eur > 0
             ? `<span class="text-danger fw-bold">-${a.verlust_eur.toFixed(0)}€</span>`
             : `<span class="text-success">+${Math.abs(a.verlust_eur).toFixed(0)}€</span>`;
-        
+
+        // TAG 120: Status für unvollständige Abrechnung
+        let statusBadge = '';
+        let vorgabeText = `${a.vorgabe_aw} AW`;
+        if (a.vollstaendig_abgerechnet === false) {
+            statusBadge = `<span class="badge bg-warning text-dark" title="Fakturiert: ${a.fakturiert_aw || 0} AW / Offen: ${a.offen_aw || 0} AW">
+                <i class="bi bi-exclamation-triangle"></i> Offen
+            </span>`;
+            // Zeige Aufschlüsselung bei offenen Aufträgen
+            vorgabeText = `<span title="Gesamt: ${a.vorgabe_aw} AW (${a.fakturiert_aw || 0} fakt. / ${a.offen_aw || 0} offen)">${a.vorgabe_aw} AW</span>`;
+        } else {
+            statusBadge = `<span class="badge bg-success"><i class="bi bi-check"></i></span>`;
+        }
+
         html += `<tr class="${rowClass}">
             <td><a href="#" onclick="showAuftrag(${a.order_number})">${a.order_number}</a></td>
             <td><small>${a.kunde || '-'}</small></td>
@@ -711,11 +730,12 @@ function renderNachkalkulation(data) {
             <td><small>${a.serviceberater || '-'}</small></td>
             <td><small>${a.mechaniker || '-'}</small></td>
             <td class="text-end">${a.rechnung_eur.toFixed(2)}€</td>
-            <td class="text-end">${a.vorgabe_aw} AW</td>
+            <td class="text-end">${vorgabeText}</td>
             <td class="text-end">${a.gestempelt_aw} AW</td>
             <td class="text-end">${diffBadge}</td>
             <td class="text-center">${lgBadge}</td>
             <td class="text-end">${verlustText}</td>
+            <td class="text-center">${statusBadge}</td>
         </tr>`;
     });
     

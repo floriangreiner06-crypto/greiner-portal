@@ -1,0 +1,567 @@
+{% extends "base.html" %}
+
+{% block title %}DRIVE Kulanz-Monitor - Greiner DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ============================================================
+   DRIVE KULANZ-MONITOR - TAG 119
+   Revenue Leakage Dashboard
+   ============================================================ */
+
+.kulanz-header {
+    background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+    color: white;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+}
+
+.kulanz-card {
+    border-radius: 12px;
+    border: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+
+.kpi-large {
+    text-align: center;
+    padding: 30px 20px;
+}
+
+.kpi-large .value { font-size: 3rem; font-weight: 700; }
+.kpi-large .label { font-size: 1rem; color: #6c757d; }
+.kpi-large .detail { font-size: 0.85rem; color: #adb5bd; margin-top: 8px; }
+
+.charge-type-card {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 12px;
+    border-left: 4px solid #6c757d;
+    transition: all 0.2s;
+}
+
+.charge-type-card:hover {
+    transform: translateX(4px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.charge-type-card.negative { border-left-color: #e74c3c; background: rgba(231, 76, 60, 0.05); }
+.charge-type-card.positive { border-left-color: #27ae60; background: rgba(39, 174, 96, 0.05); }
+
+.progress-bar-container {
+    height: 24px;
+    background: #e9ecef;
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+}
+
+.progress-bar-stamped {
+    height: 100%;
+    background: linear-gradient(90deg, #3498db 0%, #2980b9 100%);
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+.progress-bar-billed {
+    height: 100%;
+    background: linear-gradient(90deg, #27ae60 0%, #1e8449 100%);
+    position: absolute;
+    top: 0;
+    left: 0;
+    opacity: 0.8;
+}
+
+.trend-up { color: #e74c3c; }
+.trend-down { color: #27ae60; }
+
+.leakage-chart-container {
+    height: 300px;
+    position: relative;
+}
+
+.month-row {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin-bottom: 8px;
+}
+
+.month-row:hover {
+    background: #e9ecef;
+}
+
+.month-row .month-name { width: 80px; font-weight: 600; }
+.month-row .bar-container { flex: 1; margin: 0 16px; }
+.month-row .values { width: 200px; text-align: right; font-size: 0.9rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+    <!-- Header -->
+    <div class="kulanz-header">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h2 class="mb-1">
+                    <i class="bi bi-cash-coin"></i> DRIVE Kulanz-Monitor
+                </h2>
+                <p class="mb-0 opacity-75">Revenue Leakage: Gestempelte vs. Abgerechnete Zeiten</p>
+            </div>
+            <div class="col-md-4 text-md-end">
+                <select id="period-filter" class="form-select d-inline-block" style="width: auto;">
+                    <option value="30">Letzte 30 Tage</option>
+                    <option value="90">Letzte 90 Tage</option>
+                    <option value="365" selected>Letztes Jahr</option>
+                </select>
+                <button class="btn btn-light ms-2" onclick="loadData()">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lade-Indikator -->
+    <div id="loading-indicator" class="text-center py-5">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="mt-3 text-muted">Analysiere Kulanz-Daten...</p>
+    </div>
+
+    <!-- Hauptinhalt -->
+    <div id="main-content" style="display: none;">
+
+        <!-- KPI-Übersicht -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="kulanz-card">
+                    <div class="kpi-large">
+                        <div class="value text-primary" id="kpi-stamped">-</div>
+                        <div class="label">Gestempelt</div>
+                        <div class="detail">Echte Arbeitszeit</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="kulanz-card">
+                    <div class="kpi-large">
+                        <div class="value text-success" id="kpi-billed">-</div>
+                        <div class="label">Abgerechnet</div>
+                        <div class="detail">Fakturierte Zeit</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="kulanz-card">
+                    <div class="kpi-large">
+                        <div class="value text-danger" id="kpi-leakage">-</div>
+                        <div class="label">Differenz</div>
+                        <div class="detail" id="kpi-leakage-detail">Nicht abgerechnet</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="kulanz-card">
+                    <div class="kpi-large">
+                        <div class="value text-warning" id="kpi-euro">-</div>
+                        <div class="label">Potenzial</div>
+                        <div class="detail">bei 85 EUR/Std</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Zwei-Spalten-Layout -->
+        <div class="row">
+
+            <!-- Linke Spalte: Nach Kostenart -->
+            <div class="col-lg-6">
+                <div class="kulanz-card">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">
+                            <i class="bi bi-pie-chart text-primary"></i>
+                            Differenz nach Kostenart (Charge Type)
+                        </h5>
+                    </div>
+                    <div class="card-body" id="charge-types-body">
+                        <div class="text-muted text-center py-4">Lade...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Rechte Spalte: Nach Monat -->
+            <div class="col-lg-6">
+                <div class="kulanz-card">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">
+                            <i class="bi bi-calendar3 text-info"></i>
+                            Monatliche Entwicklung
+                        </h5>
+                    </div>
+                    <div class="card-body" id="monthly-body">
+                        <div class="text-muted text-center py-4">Lade...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Top-Verursacher -->
+        <div class="row">
+            <div class="col-12">
+                <div class="kulanz-card">
+                    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="bi bi-exclamation-triangle text-danger"></i>
+                            Top Revenue Leakage - Aufträge
+                        </h5>
+                        <span class="badge bg-danger" id="top-count">0</span>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Auftrag</th>
+                                        <th>Datum</th>
+                                        <th>Kennzeichen</th>
+                                        <th class="text-end">Gestempelt</th>
+                                        <th class="text-end">Abgerechnet</th>
+                                        <th class="text-end">Differenz</th>
+                                        <th class="text-end">Verlust</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="top-leakage-body">
+                                    <tr><td colspan="7" class="text-center py-4">Lade...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Erkenntnisse -->
+        <div class="row">
+            <div class="col-12">
+                <div class="kulanz-card">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">
+                            <i class="bi bi-lightbulb text-warning"></i>
+                            DRIVE-Erkenntnisse
+                        </h5>
+                    </div>
+                    <div class="card-body" id="insights-body">
+                        <div class="text-muted text-center py-4">Lade...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ============================================================
+// DRIVE KULANZ-MONITOR - JavaScript
+// ============================================================
+
+const HOURLY_RATE = 85; // EUR pro Stunde
+
+async function loadData() {
+    document.getElementById('loading-indicator').style.display = 'block';
+    document.getElementById('main-content').style.display = 'none';
+
+    const days = document.getElementById('period-filter').value;
+
+    try {
+        const response = await fetch(`/api/werkstatt/live/drive/kulanz-monitoring?days=${days}`);
+        const data = await response.json();
+
+        if (data.success) {
+            renderData(data);
+        } else {
+            showError(data.error || 'API-Fehler');
+        }
+    } catch (e) {
+        console.error('Kulanz Fehler:', e);
+        showError('Verbindungsfehler: ' + e.message);
+    }
+}
+
+function renderData(data) {
+    document.getElementById('loading-indicator').style.display = 'none';
+    document.getElementById('main-content').style.display = 'block';
+
+    // KPIs - API liefert "statistik" statt "summary"
+    const summary = data.statistik || data.summary || {};
+    document.getElementById('kpi-stamped').textContent = formatHours(summary.gestempelt_std || 0);
+    document.getElementById('kpi-billed').textContent = formatHours(summary.abgerechnet_std || 0);
+
+    const diff = summary.differenz_std || ((summary.gestempelt_std || 0) - (summary.abgerechnet_std || 0));
+    document.getElementById('kpi-leakage').textContent = (diff >= 0 ? '+' : '') + formatHours(diff);
+    document.getElementById('kpi-leakage').className = 'value ' + (diff > 0 ? 'text-danger' : 'text-success');
+    document.getElementById('kpi-leakage-detail').textContent = diff > 0 ? 'Nicht abgerechnet' : 'Mehr abgerechnet';
+
+    const potenzial = summary.verlust_eur || (diff * HOURLY_RATE);
+    document.getElementById('kpi-euro').textContent = formatCurrency(Math.abs(potenzial));
+    document.getElementById('kpi-euro').className = 'value ' + (potenzial > 0 ? 'text-danger' : 'text-success');
+
+    // Charge Types
+    renderChargeTypes(data.by_charge_type || []);
+
+    // Monthly - aktuell nicht in API
+    renderMonthly(data.by_month || []);
+
+    // Top Leakage - API liefert "top_verluste_kulanz"
+    renderTopLeakage(data.top_verluste_kulanz || data.top_leakage || []);
+
+    // Insights
+    renderInsights(data);
+}
+
+function renderChargeTypes(types) {
+    const body = document.getElementById('charge-types-body');
+
+    if (!types || types.length === 0) {
+        body.innerHTML = '<div class="text-muted text-center py-4">Keine Daten</div>';
+        return;
+    }
+
+    const chargeTypeNames = {
+        '10': 'Kunde',
+        '20': 'Garantie',
+        '30': 'Kulanz (Hersteller)',
+        '40': 'Kulanz (Haus)',
+        '50': 'Nacharbeit',
+        '60': 'Kulanz (Gesamt)',
+        '70': 'Service',
+        '80': 'Verschleiß',
+        '90': 'Intern',
+        '100': 'Sonstige'
+    };
+
+    // Sortiere nach Differenz (größte Verluste zuerst)
+    const sorted = types.sort((a, b) =>
+        Math.abs(b.differenz_std || 0) - Math.abs(a.differenz_std || 0)
+    );
+
+    body.innerHTML = sorted.map(ct => {
+        const diff = ct.differenz_std || 0;
+        const isNegative = diff > 0;
+        const name = chargeTypeNames[ct.charge_type] || `Typ ${ct.charge_type}`;
+
+        // Berechne Balkenbreiten (max als 100%)
+        const maxVal = Math.max(ct.gestempelt_std || 0, ct.abgerechnet_std || 0);
+        const stampedPct = maxVal > 0 ? ((ct.gestempelt_std || 0) / maxVal * 100) : 0;
+        const billedPct = maxVal > 0 ? ((ct.abgerechnet_std || 0) / maxVal * 100) : 0;
+
+        return `
+            <div class="charge-type-card ${isNegative ? 'negative' : 'positive'}">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div>
+                        <strong>${name}</strong>
+                        <small class="text-muted ms-2">(${ct.anzahl || 0} Aufträge)</small>
+                    </div>
+                    <div class="text-end">
+                        <span class="${isNegative ? 'text-danger' : 'text-success'} fw-bold">
+                            ${isNegative ? '+' : ''}${formatHours(diff)}
+                        </span>
+                        <small class="text-muted ms-1">(${formatCurrency(Math.abs(diff * HOURLY_RATE))})</small>
+                    </div>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar-stamped" style="width: ${stampedPct}%;" title="Gestempelt: ${formatHours(ct.gestempelt_std || 0)}"></div>
+                    <div class="progress-bar-billed" style="width: ${billedPct}%;" title="Abgerechnet: ${formatHours(ct.abgerechnet_std || 0)}"></div>
+                </div>
+                <div class="d-flex justify-content-between mt-1">
+                    <small class="text-primary">Gestempelt: ${formatHours(ct.gestempelt_std || 0)}</small>
+                    <small class="text-success">Abgerechnet: ${formatHours(ct.abgerechnet_std || 0)}</small>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderMonthly(months) {
+    const body = document.getElementById('monthly-body');
+
+    if (!months || months.length === 0) {
+        body.innerHTML = '<div class="text-muted text-center py-4">Keine Daten</div>';
+        return;
+    }
+
+    const maxVal = Math.max(...months.map(m => Math.max(m.gestempelt_std || 0, m.abgerechnet_std || 0)));
+
+    body.innerHTML = months.slice(-12).map(m => {
+        const stampedPct = maxVal > 0 ? ((m.gestempelt_std || 0) / maxVal * 100) : 0;
+        const billedPct = maxVal > 0 ? ((m.abgerechnet_std || 0) / maxVal * 100) : 0;
+        const diff = (m.gestempelt_std || 0) - (m.abgerechnet_std || 0);
+
+        return `
+            <div class="month-row">
+                <div class="month-name">${m.monat || '-'}</div>
+                <div class="bar-container">
+                    <div class="progress-bar-container" style="height: 16px;">
+                        <div class="progress-bar-stamped" style="width: ${stampedPct}%;"></div>
+                        <div class="progress-bar-billed" style="width: ${billedPct}%;"></div>
+                    </div>
+                </div>
+                <div class="values">
+                    <span class="text-primary">${formatHours(m.gestempelt_std || 0)}</span> /
+                    <span class="text-success">${formatHours(m.abgerechnet_std || 0)}</span>
+                    <span class="${diff > 0 ? 'text-danger' : 'text-success'} ms-2">
+                        (${diff > 0 ? '+' : ''}${formatHours(diff)})
+                    </span>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderTopLeakage(orders) {
+    const tbody = document.getElementById('top-leakage-body');
+    document.getElementById('top-count').textContent = orders.length;
+
+    if (!orders || orders.length === 0) {
+        tbody.innerHTML = `
+            <tr><td colspan="7" class="text-center py-4 text-success">
+                <i class="bi bi-check-circle"></i> Keine signifikanten Differenzen
+            </td></tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = orders.slice(0, 20).map(o => {
+        // API liefert Minuten, konvertiere zu Stunden
+        const gestempeltH = (o.gestempelt_min || 0) / 60;
+        const abgerechnetH = parseFloat(o.abgerechnet_min || 0) / 60;
+        const diffH = parseFloat(o.verlust_min || 0) / 60;
+        const loss = parseFloat(o.verlust_eur || 0);
+
+        // Datum formatieren
+        let datum = '-';
+        if (o.datum) {
+            const d = new Date(o.datum);
+            datum = d.toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit', year: '2-digit'});
+        }
+
+        return `
+            <tr class="${diffH > 2 ? 'table-danger' : (diffH > 0 ? 'table-warning' : '')}">
+                <td><strong>${o.auftrag_nr || o.order_number}</strong></td>
+                <td>${datum}</td>
+                <td>${o.kennzeichen || '-'}</td>
+                <td class="text-end">${gestempeltH.toFixed(1)}h</td>
+                <td class="text-end">${abgerechnetH.toFixed(1)}h</td>
+                <td class="text-end text-danger">
+                    <strong>+${diffH.toFixed(1)}h</strong>
+                </td>
+                <td class="text-end text-danger">
+                    ${formatCurrency(loss)}
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderInsights(data) {
+    const body = document.getElementById('insights-body');
+    const summary = data.statistik || data.summary || {};
+    const types = data.by_charge_type || [];
+
+    const insights = [];
+
+    // Gesamtdifferenz
+    const totalDiff = (summary.gestempelt_std || 0) - (summary.abgerechnet_std || 0);
+    if (totalDiff > 100) {
+        insights.push({
+            icon: '🔴',
+            title: 'Signifikante Revenue Leakage',
+            text: `${formatHours(totalDiff)} mehr gestempelt als abgerechnet = ${formatCurrency(totalDiff * HOURLY_RATE)} entgangener Umsatz.`,
+            type: 'danger'
+        });
+    }
+
+    // Kulanz-Anteil
+    const kulanz = types.find(t => t.charge_type === '60' || t.charge_type === 60);
+    if (kulanz && kulanz.differenz_std > 50) {
+        insights.push({
+            icon: '🟡',
+            title: 'Kulanz-Problematik',
+            text: `Kulanz-Aufträge haben ${formatHours(kulanz.differenz_std)} Differenz. Hier liegt großes Optimierungspotenzial.`,
+            type: 'warning'
+        });
+    }
+
+    // Garantie-Problematik
+    const garantie = types.find(t => t.charge_type === '20' || t.charge_type === 20);
+    if (garantie && garantie.differenz_std > 50) {
+        insights.push({
+            icon: '🟠',
+            title: 'Garantie-Zeiten prüfen',
+            text: `Garantie-Aufträge: ${formatHours(garantie.differenz_std)} mehr gearbeitet als fakturierbar. Herstellervorgaben ggf. zu knapp.`,
+            type: 'warning'
+        });
+    }
+
+    // Positives
+    if (totalDiff < 0) {
+        insights.push({
+            icon: '🟢',
+            title: 'Effizienz-Gewinn',
+            text: `${formatHours(Math.abs(totalDiff))} weniger gestempelt als abgerechnet. Gute Auftragsmischung!`,
+            type: 'success'
+        });
+    }
+
+    if (insights.length === 0) {
+        insights.push({
+            icon: '✅',
+            title: 'Alles im grünen Bereich',
+            text: 'Keine signifikanten Auffälligkeiten in den Kulanz-Daten.',
+            type: 'success'
+        });
+    }
+
+    body.innerHTML = insights.map(i => `
+        <div class="alert alert-${i.type} d-flex align-items-start mb-2">
+            <span class="fs-4 me-3">${i.icon}</span>
+            <div>
+                <strong>${i.title}</strong><br>
+                <small>${i.text}</small>
+            </div>
+        </div>
+    `).join('');
+}
+
+function formatHours(h) {
+    return h.toFixed(0) + 'h';
+}
+
+function formatCurrency(value) {
+    return new Intl.NumberFormat('de-DE', {style: 'currency', currency: 'EUR', maximumFractionDigits: 0}).format(value);
+}
+
+function showError(msg) {
+    document.getElementById('loading-indicator').innerHTML = `
+        <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            <strong>Fehler:</strong> ${msg}
+        </div>
+    `;
+}
+
+// Events
+document.getElementById('period-filter').addEventListener('change', loadData);
+
+// Init
+document.addEventListener('DOMContentLoaded', loadData);
+</script>
+{% endblock %}

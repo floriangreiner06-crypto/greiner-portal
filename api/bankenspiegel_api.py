@@ -10,33 +10,18 @@ Kompatibel mit ECHTEM DB-Schema (TAG 71 Fix)
 - Direkte Queries auf Tabellen
 
 Fixed: 21.11.2025 - TAG 72 - Einkaufsfinanzierung repariert
+Updated: TAG 117 - Migration auf db_session (Connection-Safety)
 """
 
 from flask import Blueprint, jsonify, request
-import sqlite3
 from datetime import datetime, date, timedelta
 from typing import Optional, Dict, List, Any
 
+# Zentrale DB-Utilities (TAG 117) - Nur db_session Context Manager
+from api.db_utils import db_session, row_to_dict, rows_to_list
+
 # Blueprint erstellen
 bankenspiegel_api = Blueprint('bankenspiegel_api', __name__, url_prefix='/api/bankenspiegel')
-
-# ============================================================================
-# HELPER FUNCTIONS
-# ============================================================================
-
-def get_db():
-    """Datenbank-Verbindung herstellen"""
-    conn = sqlite3.connect('data/greiner_controlling.db')
-    conn.row_factory = sqlite3.Row
-    return conn
-
-def row_to_dict(row: sqlite3.Row) -> Dict:
-    """Konvertiert sqlite3.Row zu Dictionary"""
-    return dict(row) if row else None
-
-def rows_to_list(rows: List[sqlite3.Row]) -> List[Dict]:
-    """Konvertiert Liste von sqlite3.Row zu Liste von Dicts"""
-    return [dict(row) for row in rows]
 
 # ============================================================================
 # ENDPOINT 1: DASHBOARD
@@ -49,91 +34,89 @@ def get_dashboard():
     Dashboard-KPIs
     """
     try:
-        conn = get_db()
-        cursor = conn.cursor()
+        with db_session() as conn:
+            cursor = conn.cursor()
 
-        # 1. Gesamtsaldo (aus v_aktuelle_kontostaende View)
-        cursor.execute("""
-            SELECT
-                COUNT(*) as anzahl_konten,
-                SUM(saldo) as gesamtsaldo,
-                MIN(letztes_update) as aeltester_stand,
-                MAX(letztes_update) as neuester_stand
-            FROM v_aktuelle_kontostaende
-        """)
-        saldo_data = row_to_dict(cursor.fetchone())
+            # 1. Gesamtsaldo (aus v_aktuelle_kontostaende View)
+            cursor.execute("""
+                SELECT
+                    COUNT(*) as anzahl_konten,
+                    SUM(saldo) as gesamtsaldo,
+                    MIN(letztes_update) as aeltester_stand,
+                    MAX(letztes_update) as neuester_stand
+                FROM v_aktuelle_kontostaende
+            """)
+            saldo_data = row_to_dict(cursor.fetchone())
 
-        # 2. Transaktionen letzte 30 Tage (OHNE INTERNE TRANSFERS)
-        cursor.execute("""
-            SELECT
-                COUNT(*) as anzahl,
-                SUM(CASE WHEN betrag > 0 THEN betrag ELSE 0 END) as einnahmen,
-                SUM(CASE WHEN betrag < 0 THEN ABS(betrag) ELSE 0 END) as ausgaben
-            FROM transaktionen
-            WHERE buchungsdatum >= DATE('now', '-30 days')
-              AND NOT (
-                verwendungszweck LIKE '%Autohaus Greiner%Autohaus Greiner%'
-                OR verwendungszweck LIKE '%Umbuchung%'
-                OR verwendungszweck LIKE '%Einlage%'
-                OR verwendungszweck LIKE '%Rückzahlung Einlage%'
-              )
-        """)
-        trans_30d = row_to_dict(cursor.fetchone())
+            # 2. Transaktionen letzte 30 Tage (OHNE INTERNE TRANSFERS)
+            cursor.execute("""
+                SELECT
+                    COUNT(*) as anzahl,
+                    SUM(CASE WHEN betrag > 0 THEN betrag ELSE 0 END) as einnahmen,
+                    SUM(CASE WHEN betrag < 0 THEN ABS(betrag) ELSE 0 END) as ausgaben
+                FROM transaktionen
+                WHERE buchungsdatum >= DATE('now', '-30 days')
+                  AND NOT (
+                    verwendungszweck LIKE '%Autohaus Greiner%Autohaus Greiner%'
+                    OR verwendungszweck LIKE '%Umbuchung%'
+                    OR verwendungszweck LIKE '%Einlage%'
+                    OR verwendungszweck LIKE '%Rückzahlung Einlage%'
+                  )
+            """)
+            trans_30d = row_to_dict(cursor.fetchone())
 
-        # 2b. Interne Transfers (SEPARAT)
-        cursor.execute("""
-            SELECT
-                COUNT(*) as anzahl,
-                SUM(ABS(betrag)) as volumen
-            FROM transaktionen
-            WHERE buchungsdatum >= DATE('now', '-30 days')
-              AND (
-                verwendungszweck LIKE '%Autohaus Greiner%Autohaus Greiner%'
-                OR verwendungszweck LIKE '%Umbuchung%'
-                OR verwendungszweck LIKE '%Einlage%'
-                OR verwendungszweck LIKE '%Rückzahlung Einlage%'
-              )
-        """)
-        interne_30d = row_to_dict(cursor.fetchone())
+            # 2b. Interne Transfers (SEPARAT)
+            cursor.execute("""
+                SELECT
+                    COUNT(*) as anzahl,
+                    SUM(ABS(betrag)) as volumen
+                FROM transaktionen
+                WHERE buchungsdatum >= DATE('now', '-30 days')
+                  AND (
+                    verwendungszweck LIKE '%Autohaus Greiner%Autohaus Greiner%'
+                    OR verwendungszweck LIKE '%Umbuchung%'
+                    OR verwendungszweck LIKE '%Einlage%'
+                    OR verwendungszweck LIKE '%Rückzahlung Einlage%'
+                  )
+            """)
+            interne_30d = row_to_dict(cursor.fetchone())
 
-        # 3. Aktueller Monat
-        aktueller_monat = date.today().strftime('%Y-%m')
-        cursor.execute("""
-            SELECT
-                SUM(CASE WHEN betrag > 0 THEN betrag ELSE 0 END) as einnahmen,
-                SUM(CASE WHEN betrag < 0 THEN ABS(betrag) ELSE 0 END) as ausgaben,
-                SUM(betrag) as saldo,
-                COUNT(*) as anzahl
-            FROM transaktionen
-            WHERE strftime('%Y-%m', buchungsdatum) = ?
-        """, (aktueller_monat,))
-        monat_data = row_to_dict(cursor.fetchone())
+            # 3. Aktueller Monat
+            aktueller_monat = date.today().strftime('%Y-%m')
+            cursor.execute("""
+                SELECT
+                    SUM(CASE WHEN betrag > 0 THEN betrag ELSE 0 END) as einnahmen,
+                    SUM(CASE WHEN betrag < 0 THEN ABS(betrag) ELSE 0 END) as ausgaben,
+                    SUM(betrag) as saldo,
+                    COUNT(*) as anzahl
+                FROM transaktionen
+                WHERE strftime('%Y-%m', buchungsdatum) = ?
+            """, (aktueller_monat,))
+            monat_data = row_to_dict(cursor.fetchone())
 
-        # 4. Top 5 Ausgaben-Kategorien (aktueller Monat)
-        cursor.execute("""
-            SELECT
-                kategorie,
-                COUNT(*) as anzahl,
-                SUM(ABS(betrag)) as summe
-            FROM transaktionen
-            WHERE buchungsdatum >= DATE('now', 'start of month')
-            AND betrag < 0
-            AND kategorie IS NOT NULL
-            AND NOT (
-                verwendungszweck LIKE '%Autohaus Greiner%Autohaus Greiner%'
-                OR verwendungszweck LIKE '%Umbuchung%'
-            )
-            GROUP BY kategorie
-            ORDER BY summe DESC
-            LIMIT 5
-        """)
-        top_kategorien = rows_to_list(cursor.fetchall())
+            # 4. Top 5 Ausgaben-Kategorien (aktueller Monat)
+            cursor.execute("""
+                SELECT
+                    kategorie,
+                    COUNT(*) as anzahl,
+                    SUM(ABS(betrag)) as summe
+                FROM transaktionen
+                WHERE buchungsdatum >= DATE('now', 'start of month')
+                AND betrag < 0
+                AND kategorie IS NOT NULL
+                AND NOT (
+                    verwendungszweck LIKE '%Autohaus Greiner%Autohaus Greiner%'
+                    OR verwendungszweck LIKE '%Umbuchung%'
+                )
+                GROUP BY kategorie
+                ORDER BY summe DESC
+                LIMIT 5
+            """)
+            top_kategorien = rows_to_list(cursor.fetchall())
 
-        # 5. Anzahl Banken
-        cursor.execute("SELECT COUNT(*) as anzahl FROM banken WHERE aktiv = 1")
-        anzahl_banken = cursor.fetchone()['anzahl']
-
-        conn.close()
+            # 5. Anzahl Banken
+            cursor.execute("SELECT COUNT(*) as anzahl FROM banken WHERE aktiv = 1")
+            anzahl_banken = cursor.fetchone()['anzahl']
 
         return jsonify({
             'success': True,
@@ -183,41 +166,39 @@ def get_konten():
     try:
         bank_id = request.args.get('bank_id', type=int)
 
-        conn = get_db()
-        cursor = conn.cursor()
+        with db_session() as conn:
+            cursor = conn.cursor()
 
-        # Query - verwendet v_aktuelle_kontostaende mit ECHTEN Spaltennamen
-        query = """
-            SELECT
-                id,
-                bank_name,
-                kontoname,
-                iban,
-                kontotyp,
-                'EUR' as waehrung,
-                saldo,
-                letztes_update as stand_datum,
-                1 as aktiv
-            FROM v_aktuelle_kontostaende
-            WHERE 1=1
-        """
+            # Query - verwendet v_aktuelle_kontostaende mit ECHTEN Spaltennamen
+            query = """
+                SELECT
+                    id,
+                    bank_name,
+                    kontoname,
+                    iban,
+                    kontotyp,
+                    'EUR' as waehrung,
+                    saldo,
+                    letztes_update as stand_datum,
+                    1 as aktiv
+                FROM v_aktuelle_kontostaende
+                WHERE 1=1
+            """
 
-        params = []
+            params = []
 
-        # Filter nach Bank
-        if bank_id:
-            query += " AND bank_id = ?"
-            params.append(bank_id)
+            # Filter nach Bank
+            if bank_id:
+                query += " AND bank_id = ?"
+                params.append(bank_id)
 
-        query += " ORDER BY sort_order, kontoname"
+            query += " ORDER BY sort_order, kontoname"
 
-        cursor.execute(query, params)
-        konten = rows_to_list(cursor.fetchall())
+            cursor.execute(query, params)
+            konten = rows_to_list(cursor.fetchall())
 
-        # Statistik
-        gesamtsaldo = sum(k['saldo'] or 0 for k in konten)
-
-        conn.close()
+            # Statistik
+            gesamtsaldo = sum(k['saldo'] or 0 for k in konten)
 
         return jsonify({
             'success': True,
@@ -256,154 +237,152 @@ def get_transaktionen():
         offset = request.args.get('offset', default=0, type=int)
         order = request.args.get('order', default='desc')
 
-        conn = get_db()
-        cursor = conn.cursor()
+        with db_session() as conn:
+            cursor = conn.cursor()
 
-        # Query aufbauen - direkt auf Tabellen
-        query = """
-            SELECT
-                t.id,
-                b.bank_name,
-                t.konto_id,
-                k.kontoname,
-                k.iban,
-                t.buchungsdatum,
-                t.valutadatum,
-                t.buchungstext,
-                t.verwendungszweck,
-                t.betrag,
-                t.waehrung,
-                t.kategorie,
-                t.steuerrelevant,
-                t.import_datei as pdf_quelle,
-                t.saldo_nach_buchung
-            FROM transaktionen t
-            JOIN konten k ON t.konto_id = k.id
-            JOIN banken b ON k.bank_id = b.id
-            WHERE 1=1
-        """
-        params = []
+            # Query aufbauen - direkt auf Tabellen
+            query = """
+                SELECT
+                    t.id,
+                    b.bank_name,
+                    t.konto_id,
+                    k.kontoname,
+                    k.iban,
+                    t.buchungsdatum,
+                    t.valutadatum,
+                    t.buchungstext,
+                    t.verwendungszweck,
+                    t.betrag,
+                    t.waehrung,
+                    t.kategorie,
+                    t.steuerrelevant,
+                    t.import_datei as pdf_quelle,
+                    t.saldo_nach_buchung
+                FROM transaktionen t
+                JOIN konten k ON t.konto_id = k.id
+                JOIN banken b ON k.bank_id = b.id
+                WHERE 1=1
+            """
+            params = []
 
-        # Filter anwenden
-        if konto_id:
-            query += " AND t.konto_id = ?"
-            params.append(konto_id)
+            # Filter anwenden
+            if konto_id:
+                query += " AND t.konto_id = ?"
+                params.append(konto_id)
 
-        if bank_id:
-            query += " AND k.bank_id = ?"
-            params.append(bank_id)
+            if bank_id:
+                query += " AND k.bank_id = ?"
+                params.append(bank_id)
 
-        if von:
-            query += " AND t.buchungsdatum >= ?"
-            params.append(von)
+            if von:
+                query += " AND t.buchungsdatum >= ?"
+                params.append(von)
 
-        if bis:
-            query += " AND t.buchungsdatum <= ?"
-            params.append(bis)
+            if bis:
+                query += " AND t.buchungsdatum <= ?"
+                params.append(bis)
 
-        if kategorie:
-            query += " AND t.kategorie = ?"
-            params.append(kategorie)
+            if kategorie:
+                query += " AND t.kategorie = ?"
+                params.append(kategorie)
 
-        if betrag_min is not None:
-            query += " AND t.betrag >= ?"
-            params.append(betrag_min)
+            if betrag_min is not None:
+                query += " AND t.betrag >= ?"
+                params.append(betrag_min)
 
-        if betrag_max is not None:
-            query += " AND t.betrag <= ?"
-            params.append(betrag_max)
+            if betrag_max is not None:
+                query += " AND t.betrag <= ?"
+                params.append(betrag_max)
 
-        if suche:
-            query += " AND (t.buchungstext LIKE ? OR t.verwendungszweck LIKE ?)"
-            search_term = f"%{suche}%"
-            params.extend([search_term, search_term])
+            if suche:
+                query += " AND (t.buchungstext LIKE ? OR t.verwendungszweck LIKE ?)"
+                search_term = f"%{suche}%"
+                params.extend([search_term, search_term])
 
-        # Sortierung
-        order_dir = 'DESC' if order.lower() == 'desc' else 'ASC'
-        query += f" ORDER BY t.buchungsdatum {order_dir}, t.id {order_dir}"
+            # Sortierung
+            order_dir = 'DESC' if order.lower() == 'desc' else 'ASC'
+            query += f" ORDER BY t.buchungsdatum {order_dir}, t.id {order_dir}"
 
-        # Limit & Offset
-        query += " LIMIT ? OFFSET ?"
-        params.extend([limit, offset])
+            # Limit & Offset
+            query += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
 
-        cursor.execute(query, params)
-        transaktionen = rows_to_list(cursor.fetchall())
+            cursor.execute(query, params)
+            transaktionen = rows_to_list(cursor.fetchall())
 
-        # Gesamt-Anzahl
-        count_query = "SELECT COUNT(*) as total FROM transaktionen t JOIN konten k ON t.konto_id = k.id WHERE 1=1"
-        count_params = []
+            # Gesamt-Anzahl
+            count_query = "SELECT COUNT(*) as total FROM transaktionen t JOIN konten k ON t.konto_id = k.id WHERE 1=1"
+            count_params = []
 
-        if konto_id:
-            count_query += " AND t.konto_id = ?"
-            count_params.append(konto_id)
-        if bank_id:
-            count_query += " AND k.bank_id = ?"
-            count_params.append(bank_id)
-        if von:
-            count_query += " AND t.buchungsdatum >= ?"
-            count_params.append(von)
-        if bis:
-            count_query += " AND t.buchungsdatum <= ?"
-            count_params.append(bis)
-        if kategorie:
-            count_query += " AND t.kategorie = ?"
-            count_params.append(kategorie)
-        if betrag_min is not None:
-            count_query += " AND t.betrag >= ?"
-            count_params.append(betrag_min)
-        if betrag_max is not None:
-            count_query += " AND t.betrag <= ?"
-            count_params.append(betrag_max)
-        if suche:
-            count_query += " AND (t.buchungstext LIKE ? OR t.verwendungszweck LIKE ?)"
-            search_term = f"%{suche}%"
-            count_params.extend([search_term, search_term])
+            if konto_id:
+                count_query += " AND t.konto_id = ?"
+                count_params.append(konto_id)
+            if bank_id:
+                count_query += " AND k.bank_id = ?"
+                count_params.append(bank_id)
+            if von:
+                count_query += " AND t.buchungsdatum >= ?"
+                count_params.append(von)
+            if bis:
+                count_query += " AND t.buchungsdatum <= ?"
+                count_params.append(bis)
+            if kategorie:
+                count_query += " AND t.kategorie = ?"
+                count_params.append(kategorie)
+            if betrag_min is not None:
+                count_query += " AND t.betrag >= ?"
+                count_params.append(betrag_min)
+            if betrag_max is not None:
+                count_query += " AND t.betrag <= ?"
+                count_params.append(betrag_max)
+            if suche:
+                count_query += " AND (t.buchungstext LIKE ? OR t.verwendungszweck LIKE ?)"
+                search_term = f"%{suche}%"
+                count_params.extend([search_term, search_term])
 
-        cursor.execute(count_query, count_params)
-        total = cursor.fetchone()['total']
+            cursor.execute(count_query, count_params)
+            total = cursor.fetchone()['total']
 
-        # Statistik
-        stats_query = """
-            SELECT
-                SUM(CASE WHEN betrag > 0 THEN betrag ELSE 0 END) as summe_einnahmen,
-                SUM(CASE WHEN betrag < 0 THEN ABS(betrag) ELSE 0 END) as summe_ausgaben,
-                SUM(betrag) as saldo
-            FROM transaktionen t
-            JOIN konten k ON t.konto_id = k.id
-            WHERE 1=1
-        """
-        stats_params = []
+            # Statistik
+            stats_query = """
+                SELECT
+                    SUM(CASE WHEN betrag > 0 THEN betrag ELSE 0 END) as summe_einnahmen,
+                    SUM(CASE WHEN betrag < 0 THEN ABS(betrag) ELSE 0 END) as summe_ausgaben,
+                    SUM(betrag) as saldo
+                FROM transaktionen t
+                JOIN konten k ON t.konto_id = k.id
+                WHERE 1=1
+            """
+            stats_params = []
 
-        if konto_id:
-            stats_query += " AND t.konto_id = ?"
-            stats_params.append(konto_id)
-        if bank_id:
-            stats_query += " AND k.bank_id = ?"
-            stats_params.append(bank_id)
-        if von:
-            stats_query += " AND t.buchungsdatum >= ?"
-            stats_params.append(von)
-        if bis:
-            stats_query += " AND t.buchungsdatum <= ?"
-            stats_params.append(bis)
-        if kategorie:
-            stats_query += " AND t.kategorie = ?"
-            stats_params.append(kategorie)
-        if betrag_min is not None:
-            stats_query += " AND t.betrag >= ?"
-            stats_params.append(betrag_min)
-        if betrag_max is not None:
-            stats_query += " AND t.betrag <= ?"
-            stats_params.append(betrag_max)
-        if suche:
-            stats_query += " AND (t.buchungstext LIKE ? OR t.verwendungszweck LIKE ?)"
-            search_term = f"%{suche}%"
-            stats_params.extend([search_term, search_term])
+            if konto_id:
+                stats_query += " AND t.konto_id = ?"
+                stats_params.append(konto_id)
+            if bank_id:
+                stats_query += " AND k.bank_id = ?"
+                stats_params.append(bank_id)
+            if von:
+                stats_query += " AND t.buchungsdatum >= ?"
+                stats_params.append(von)
+            if bis:
+                stats_query += " AND t.buchungsdatum <= ?"
+                stats_params.append(bis)
+            if kategorie:
+                stats_query += " AND t.kategorie = ?"
+                stats_params.append(kategorie)
+            if betrag_min is not None:
+                stats_query += " AND t.betrag >= ?"
+                stats_params.append(betrag_min)
+            if betrag_max is not None:
+                stats_query += " AND t.betrag <= ?"
+                stats_params.append(betrag_max)
+            if suche:
+                stats_query += " AND (t.buchungstext LIKE ? OR t.verwendungszweck LIKE ?)"
+                search_term = f"%{suche}%"
+                stats_params.extend([search_term, search_term])
 
-        cursor.execute(stats_query, stats_params)
-        stats = cursor.fetchone()
-
-        conn.close()
+            cursor.execute(stats_query, stats_params)
+            stats = cursor.fetchone()
 
         return jsonify({
             'success': True,
@@ -437,152 +416,143 @@ def get_einkaufsfinanzierung():
     """
     GET /api/bankenspiegel/einkaufsfinanzierung
     Einkaufsfinanzierung - Übersicht Stellantis & Santander
-
-    Returns:
-        JSON mit:
-        - gesamt: Gesamt-Statistik
-        - institute: Liste mit Daten pro Institut
-        - top_fahrzeuge: Teuerste Fahrzeuge
-        - warnungen: Zinsfreiheit-Warnungen
     """
     try:
-        conn = get_db()
-        cursor = conn.cursor()
+        with db_session() as conn:
+            cursor = conn.cursor()
 
-        # 1. GESAMT-ÜBERSICHT
-        cursor.execute("""
-            SELECT
-                COUNT(*) as anzahl_fahrzeuge,
-                SUM(aktueller_saldo) as gesamt_finanzierung,
-                SUM(original_betrag) as gesamt_original,
-                SUM(original_betrag - aktueller_saldo) as gesamt_abbezahlt
-            FROM fahrzeugfinanzierungen
-        """)
-        gesamt_row = cursor.fetchone()
-
-        # 2. DATEN PRO INSTITUT
-        cursor.execute("""
-            SELECT DISTINCT finanzinstitut
-            FROM fahrzeugfinanzierungen
-            ORDER BY finanzinstitut
-        """)
-        institute_liste = [row['finanzinstitut'] for row in cursor.fetchall()]
-
-        institute = []
-        for institut in institute_liste:
-            # Statistik pro Institut
+            # 1. GESAMT-ÜBERSICHT
             cursor.execute("""
                 SELECT
-                    COUNT(*) as anzahl,
-                    SUM(aktueller_saldo) as finanzierung,
-                    SUM(original_betrag) as original,
-                    AVG(aktueller_saldo) as durchschnitt,
-                    MAX(alter_tage) as aeltestes_fahrzeug,
-                    MIN(zinsfreiheit_tage) as min_zinsfreiheit,
-                    SUM(original_betrag - aktueller_saldo) as abbezahlt
+                    COUNT(*) as anzahl_fahrzeuge,
+                    SUM(aktueller_saldo) as gesamt_finanzierung,
+                    SUM(original_betrag) as gesamt_original,
+                    SUM(original_betrag - aktueller_saldo) as gesamt_abbezahlt
                 FROM fahrzeugfinanzierungen
-                WHERE finanzinstitut = ?
-            """, (institut,))
-            stats = cursor.fetchone()
+            """)
+            gesamt_row = cursor.fetchone()
 
-            # Marken-Verteilung
+            # 2. DATEN PRO INSTITUT
             cursor.execute("""
-                SELECT
-                    rrdi,
-                    COUNT(*) as anzahl,
-                    SUM(aktueller_saldo) as finanzierung
+                SELECT DISTINCT finanzinstitut
                 FROM fahrzeugfinanzierungen
-                WHERE finanzinstitut = ?
-                GROUP BY rrdi
-                ORDER BY anzahl DESC
-            """, (institut,))
-            marken = []
-            for row in cursor.fetchall():
-                marke_name = row['rrdi'] if row['rrdi'] else "Unbekannt"
-                # Vereinfachung für Stellantis
-                if institut == 'Stellantis':
-                    if "0154X" in str(marke_name):
-                        marke_name = "Leapmotor"
-                    else:
-                        marke_name = "Opel/Hyundai"
+                ORDER BY finanzinstitut
+            """)
+            institute_liste = [row['finanzinstitut'] for row in cursor.fetchall()]
 
-                marken.append({
-                    'name': marke_name,
-                    'anzahl': row['anzahl'],
-                    'finanzierung': float(row['finanzierung']) if row['finanzierung'] else 0
+            institute = []
+            for institut in institute_liste:
+                # Statistik pro Institut
+                cursor.execute("""
+                    SELECT
+                        COUNT(*) as anzahl,
+                        SUM(aktueller_saldo) as finanzierung,
+                        SUM(original_betrag) as original,
+                        AVG(aktueller_saldo) as durchschnitt,
+                        MAX(alter_tage) as aeltestes_fahrzeug,
+                        MIN(zinsfreiheit_tage) as min_zinsfreiheit,
+                        SUM(original_betrag - aktueller_saldo) as abbezahlt
+                    FROM fahrzeugfinanzierungen
+                    WHERE finanzinstitut = ?
+                """, (institut,))
+                stats = cursor.fetchone()
+
+                # Marken-Verteilung
+                cursor.execute("""
+                    SELECT
+                        rrdi,
+                        COUNT(*) as anzahl,
+                        SUM(aktueller_saldo) as finanzierung
+                    FROM fahrzeugfinanzierungen
+                    WHERE finanzinstitut = ?
+                    GROUP BY rrdi
+                    ORDER BY anzahl DESC
+                """, (institut,))
+                marken = []
+                for row in cursor.fetchall():
+                    marke_name = row['rrdi'] if row['rrdi'] else "Unbekannt"
+                    # Vereinfachung für Stellantis
+                    if institut == 'Stellantis':
+                        if "0154X" in str(marke_name):
+                            marke_name = "Leapmotor"
+                        else:
+                            marke_name = "Opel/Hyundai"
+
+                    marken.append({
+                        'name': marke_name,
+                        'anzahl': row['anzahl'],
+                        'finanzierung': float(row['finanzierung']) if row['finanzierung'] else 0
+                    })
+
+                institute.append({
+                    'name': institut,
+                    'anzahl': stats['anzahl'],
+                    'finanzierung': float(stats['finanzierung']) if stats['finanzierung'] else 0,
+                    'original': float(stats['original']) if stats['original'] else 0,
+                    'durchschnitt': float(stats['durchschnitt']) if stats['durchschnitt'] else 0,
+                    'aeltestes': stats['aeltestes_fahrzeug'],
+                    'min_zinsfreiheit': stats['min_zinsfreiheit'],
+                    'abbezahlt': float(stats['abbezahlt']) if stats['abbezahlt'] else 0,
+                    'marken': marken
                 })
 
-            institute.append({
-                'name': institut,
-                'anzahl': stats['anzahl'],
-                'finanzierung': float(stats['finanzierung']) if stats['finanzierung'] else 0,
-                'original': float(stats['original']) if stats['original'] else 0,
-                'durchschnitt': float(stats['durchschnitt']) if stats['durchschnitt'] else 0,
-                'aeltestes': stats['aeltestes_fahrzeug'],
-                'min_zinsfreiheit': stats['min_zinsfreiheit'],
-                'abbezahlt': float(stats['abbezahlt']) if stats['abbezahlt'] else 0,
-                'marken': marken
-            })
+            # 3. TOP 10 TEUERSTE FAHRZEUGE
+            cursor.execute("""
+                SELECT
+                    finanzinstitut,
+                    vin,
+                    modell,
+                    rrdi,
+                    aktueller_saldo,
+                    original_betrag,
+                    alter_tage,
+                    zinsfreiheit_tage
+                FROM fahrzeugfinanzierungen
+                ORDER BY aktueller_saldo DESC
+                LIMIT 10
+            """)
 
-        # 3. TOP 10 TEUERSTE FAHRZEUGE
-        cursor.execute("""
-            SELECT
-                finanzinstitut,
-                vin,
-                modell,
-                rrdi,
-                aktueller_saldo,
-                original_betrag,
-                alter_tage,
-                zinsfreiheit_tage
-            FROM fahrzeugfinanzierungen
-            ORDER BY aktueller_saldo DESC
-            LIMIT 10
-        """)
+            top_fahrzeuge = []
+            for row in cursor.fetchall():
+                top_fahrzeuge.append({
+                    'institut': row['finanzinstitut'],
+                    'vin': row['vin'][-8:] if row['vin'] else '???',
+                    'modell': row['modell'],
+                    'marke': row['rrdi'],
+                    'saldo': float(row['aktueller_saldo']) if row['aktueller_saldo'] else 0,
+                    'original': float(row['original_betrag']) if row['original_betrag'] else 0,
+                    'alter': row['alter_tage'],
+                    'zinsfreiheit': row['zinsfreiheit_tage']
+                })
 
-        top_fahrzeuge = []
-        for row in cursor.fetchall():
-            top_fahrzeuge.append({
-                'institut': row['finanzinstitut'],
-                'vin': row['vin'][-8:] if row['vin'] else '???',
-                'modell': row['modell'],
-                'marke': row['rrdi'],
-                'saldo': float(row['aktueller_saldo']) if row['aktueller_saldo'] else 0,
-                'original': float(row['original_betrag']) if row['original_betrag'] else 0,
-                'alter': row['alter_tage'],
-                'zinsfreiheit': row['zinsfreiheit_tage']
-            })
+            # 4. ZINSFREIHEIT-WARNUNGEN (< 30 Tage)
+            cursor.execute("""
+                SELECT
+                    finanzinstitut,
+                    vin,
+                    modell,
+                    rrdi,
+                    zinsfreiheit_tage,
+                    aktueller_saldo,
+                    alter_tage
+                FROM fahrzeugfinanzierungen
+                WHERE zinsfreiheit_tage IS NOT NULL
+                AND zinsfreiheit_tage < 30
+                ORDER BY zinsfreiheit_tage ASC
+            """)
 
-        # 4. ZINSFREIHEIT-WARNUNGEN (< 30 Tage)
-        cursor.execute("""
-            SELECT
-                finanzinstitut,
-                vin,
-                modell,
-                rrdi,
-                zinsfreiheit_tage,
-                aktueller_saldo,
-                alter_tage
-            FROM fahrzeugfinanzierungen
-            WHERE zinsfreiheit_tage IS NOT NULL
-            AND zinsfreiheit_tage < 30
-            ORDER BY zinsfreiheit_tage ASC
-        """)
-
-        warnungen = []
-        for row in cursor.fetchall():
-            warnungen.append({
-                'institut': row['finanzinstitut'],
-                'vin': row['vin'][-8:] if row['vin'] else '???',
-                'modell': row['modell'],
-                'marke': row['rrdi'],
-                'tage_uebrig': row['zinsfreiheit_tage'],
-                'saldo': float(row['aktueller_saldo']) if row['aktueller_saldo'] else 0,
-                'alter': row['alter_tage'],
-                'kritisch': row['zinsfreiheit_tage'] < 15 if row['zinsfreiheit_tage'] else False
-            })
-
-        conn.close()
+            warnungen = []
+            for row in cursor.fetchall():
+                warnungen.append({
+                    'institut': row['finanzinstitut'],
+                    'vin': row['vin'][-8:] if row['vin'] else '???',
+                    'modell': row['modell'],
+                    'marke': row['rrdi'],
+                    'tage_uebrig': row['zinsfreiheit_tage'],
+                    'saldo': float(row['aktueller_saldo']) if row['aktueller_saldo'] else 0,
+                    'alter': row['alter_tage'],
+                    'kritisch': row['zinsfreiheit_tage'] < 15 if row['zinsfreiheit_tage'] else False
+                })
 
         return jsonify({
             'success': True,
@@ -616,46 +586,43 @@ def get_fahrzeuge_mit_zinsen():
     Fahrzeuge mit Zinsen
     """
     try:
-        conn = get_db()
-        c = conn.cursor()
-
         status = request.args.get('status', 'zinsen_laufen')
         institut = request.args.get('institut', 'alle')
         limit = int(request.args.get('limit', 100))
 
-        query = "SELECT * FROM fahrzeuge_mit_zinsen WHERE 1=1"
-        params = []
+        with db_session() as conn:
+            c = conn.cursor()
 
-        if status == 'zinsen_laufen':
-            query += " AND zinsstatus = 'Zinsen laufen'"
-        elif status == 'warnung':
-            query += " AND zinsstatus LIKE '%Warnung%'"
+            query = "SELECT * FROM fahrzeuge_mit_zinsen WHERE 1=1"
+            params = []
 
-        if institut != 'alle':
-            query += " AND finanzinstitut = ?"
-            params.append(institut)
+            if status == 'zinsen_laufen':
+                query += " AND zinsstatus = 'Zinsen laufen'"
+            elif status == 'warnung':
+                query += " AND zinsstatus LIKE '%Warnung%'"
 
-        query += " ORDER BY zinsen_gesamt DESC LIMIT ?"
-        params.append(limit)
+            if institut != 'alle':
+                query += " AND finanzinstitut = ?"
+                params.append(institut)
 
-        c.execute(query, params)
-        columns = [description[0] for description in c.description]
-        rows = c.fetchall()
+            query += " ORDER BY zinsen_gesamt DESC LIMIT ?"
+            params.append(limit)
 
-        fahrzeuge = [dict(zip(columns, row)) for row in rows]
+            c.execute(query, params)
+            columns = [description[0] for description in c.description]
+            rows = c.fetchall()
 
-        # Statistik berechnen
-        gesamt_saldo = sum(f.get('aktueller_saldo') or 0 for f in fahrzeuge)
-        gesamt_zinsen = sum(f.get('zinsen_gesamt') or 0 for f in fahrzeuge)
-        
-        # Santander vs Stellantis Split
-        santander = [f for f in fahrzeuge if f.get('finanzinstitut') == 'Santander']
-        stellantis = [f for f in fahrzeuge if f.get('finanzinstitut') == 'Stellantis']
-        
-        santander_zinsen = sum(f.get('zinsen_gesamt') or 0 for f in santander)
-        santander_zinsen_monatlich = sum(f.get('zinsen_monatlich_geschaetzt') or 0 for f in santander) if santander else None
+            fahrzeuge = [dict(zip(columns, row)) for row in rows]
 
-        conn.close()
+            # Statistik berechnen
+            gesamt_saldo = sum(f.get('aktueller_saldo') or 0 for f in fahrzeuge)
+            gesamt_zinsen = sum(f.get('zinsen_gesamt') or 0 for f in fahrzeuge)
+
+            # Santander vs Stellantis Split
+            santander = [f for f in fahrzeuge if f.get('finanzinstitut') == 'Santander']
+            stellantis = [f for f in fahrzeuge if f.get('finanzinstitut') == 'Stellantis']
+
+            santander_zinsen_monatlich = sum(f.get('zinsen_monatlich_geschaetzt') or 0 for f in santander) if santander else None
 
         return jsonify({
             'success': True,
@@ -688,39 +655,36 @@ def get_fahrzeuge_mit_zinsen():
 def get_konto_snapshots(konto_id):
     """Historische Snapshots für ein Konto"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
+        with db_session() as conn:
+            cursor = conn.cursor()
 
-        cursor.execute('''
-            SELECT k.kontoname, k.iban, k.kreditlinie, b.bank_name
-            FROM konten k
-            JOIN banken b ON k.bank_id = b.id
-            WHERE k.id = ?
-        ''', (konto_id,))
+            cursor.execute('''
+                SELECT k.kontoname, k.iban, k.kreditlinie, b.bank_name
+                FROM konten k
+                JOIN banken b ON k.bank_id = b.id
+                WHERE k.id = ?
+            ''', (konto_id,))
 
-        konto_row = cursor.fetchone()
-        if not konto_row:
-            conn.close()
-            return jsonify({'error': 'Konto nicht gefunden'}), 404
+            konto_row = cursor.fetchone()
+            if not konto_row:
+                return jsonify({'error': 'Konto nicht gefunden'}), 404
 
-        konto_info = dict(konto_row)
+            konto_info = dict(konto_row)
 
-        cursor.execute('''
-            SELECT
-                stichtag,
-                kapitalsaldo,
-                kreditlinie,
-                zinssatz,
-                ausnutzung_prozent,
-                zinstyp
-            FROM konto_snapshots
-            WHERE konto_id = ?
-            ORDER BY stichtag ASC
-        ''', (konto_id,))
+            cursor.execute('''
+                SELECT
+                    stichtag,
+                    kapitalsaldo,
+                    kreditlinie,
+                    zinssatz,
+                    ausnutzung_prozent,
+                    zinstyp
+                FROM konto_snapshots
+                WHERE konto_id = ?
+                ORDER BY stichtag ASC
+            ''', (konto_id,))
 
-        snapshots = [dict(row) for row in cursor.fetchall()]
-
-        conn.close()
+            snapshots = [dict(row) for row in cursor.fetchall()]
 
         return jsonify({
             'konto': {
@@ -745,19 +709,17 @@ def get_konto_snapshots(konto_id):
 def health_check():
     """API Health Check"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
+        with db_session() as conn:
+            cursor = conn.cursor()
 
-        cursor.execute("SELECT COUNT(*) as count FROM banken")
-        banken_count = cursor.fetchone()['count']
+            cursor.execute("SELECT COUNT(*) as count FROM banken")
+            banken_count = cursor.fetchone()['count']
 
-        cursor.execute("SELECT COUNT(*) as count FROM konten")
-        konten_count = cursor.fetchone()['count']
+            cursor.execute("SELECT COUNT(*) as count FROM konten")
+            konten_count = cursor.fetchone()['count']
 
-        cursor.execute("SELECT COUNT(*) as count FROM transaktionen")
-        trans_count = cursor.fetchone()['count']
-
-        conn.close()
+            cursor.execute("SELECT COUNT(*) as count FROM transaktionen")
+            trans_count = cursor.fetchone()['count']
 
         return jsonify({
             'success': True,
@@ -791,54 +753,52 @@ def get_datenstand():
     Wichtig für User-Validierung ob DRIVE aktuell ist.
     """
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # 1. Neueste Transaktion (letzter Buchungstag)
-        cursor.execute("""
-            SELECT 
-                MAX(buchungsdatum) as letzte_buchung
-            FROM transaktionen
-        """)
-        trans_data = row_to_dict(cursor.fetchone())
-        
-        # 2. Konten mit Stand aus View
-        cursor.execute("""
-            SELECT 
-                kontoname,
-                bank_name,
-                letztes_update,
-                saldo
-            FROM v_aktuelle_kontostaende
-            ORDER BY letztes_update DESC
-            LIMIT 10
-        """)
-        konten_stand = rows_to_list(cursor.fetchall())
-        
-        # 3. Import-Statistik (letzte 7 Tage) - basierend auf Buchungsdatum
-        cursor.execute("""
-            SELECT 
-                buchungsdatum as datum,
-                COUNT(*) as anzahl_transaktionen
-            FROM transaktionen
-            WHERE buchungsdatum >= DATE('now', '-7 days')
-            GROUP BY buchungsdatum
-            ORDER BY datum DESC
-        """)
-        import_historie = rows_to_list(cursor.fetchall())
-        
-        # 4. Ältester und neuester Stand (aus View)
-        cursor.execute("""
-            SELECT 
-                MIN(letztes_update) as aeltester_stand,
-                MAX(letztes_update) as neuester_stand,
-                COUNT(*) as anzahl_konten
-            FROM v_aktuelle_kontostaende
-        """)
-        stand_range = row_to_dict(cursor.fetchone())
-        
-        conn.close()
-        
+        with db_session() as conn:
+            cursor = conn.cursor()
+
+            # 1. Neueste Transaktion (letzter Buchungstag)
+            cursor.execute("""
+                SELECT
+                    MAX(buchungsdatum) as letzte_buchung
+                FROM transaktionen
+            """)
+            trans_data = row_to_dict(cursor.fetchone())
+
+            # 2. Konten mit Stand aus View
+            cursor.execute("""
+                SELECT
+                    kontoname,
+                    bank_name,
+                    letztes_update,
+                    saldo
+                FROM v_aktuelle_kontostaende
+                ORDER BY letztes_update DESC
+                LIMIT 10
+            """)
+            konten_stand = rows_to_list(cursor.fetchall())
+
+            # 3. Import-Statistik (letzte 7 Tage) - basierend auf Buchungsdatum
+            cursor.execute("""
+                SELECT
+                    buchungsdatum as datum,
+                    COUNT(*) as anzahl_transaktionen
+                FROM transaktionen
+                WHERE buchungsdatum >= DATE('now', '-7 days')
+                GROUP BY buchungsdatum
+                ORDER BY datum DESC
+            """)
+            import_historie = rows_to_list(cursor.fetchall())
+
+            # 4. Ältester und neuester Stand (aus View)
+            cursor.execute("""
+                SELECT
+                    MIN(letztes_update) as aeltester_stand,
+                    MAX(letztes_update) as neuester_stand,
+                    COUNT(*) as anzahl_konten
+                FROM v_aktuelle_kontostaende
+            """)
+            stand_range = row_to_dict(cursor.fetchone())
+
         # Berechne wie aktuell die Daten sind
         neuester_stand = stand_range.get('neuester_stand')
         if neuester_stand:
@@ -849,7 +809,7 @@ def get_datenstand():
                 tage_alt = None
         else:
             tage_alt = None
-        
+
         return jsonify({
             'success': True,
             'timestamp': datetime.now().isoformat(),
@@ -864,7 +824,7 @@ def get_datenstand():
             'konten_detail': konten_stand,
             'import_historie': import_historie
         })
-        
+
     except Exception as e:
         return jsonify({
             'success': False,

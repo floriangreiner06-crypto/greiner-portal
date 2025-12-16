@@ -13,24 +13,12 @@ Holt echte Abwesenheitsdaten aus Locosoft PostgreSQL:
 - Sonstige (Sch, Sem, Snd, etc.)
 """
 
-import psycopg2
 from typing import Dict, List, Optional
 from functools import lru_cache
 from datetime import datetime
 
-
-# Locosoft PostgreSQL Verbindung
-LOCO_CONFIG = {
-    'host': '10.80.80.8',
-    'database': 'loco_auswertung_db',
-    'user': 'loco_auswertung_benutzer',
-    'password': 'loco'
-}
-
-
-def get_locosoft_connection():
-    """Erstellt PostgreSQL-Verbindung zu Locosoft"""
-    return psycopg2.connect(**LOCO_CONFIG)
+# Zentrale DB-Utilities (TAG117)
+from api.db_utils import get_locosoft_connection
 
 
 def get_absences_for_employee(locosoft_id: int, year: int = 2025) -> Dict:

@@ -4,13 +4,16 @@ GREINER DRIVE - Celery Tasks
 Alle Jobs als Celery Tasks mit Retry-Logik und Timeouts.
 
 Erstellt: 2025-12-09 (TAG 110)
+Aktualisiert: TAG 117 - Task-Locking gegen Race Conditions
 """
 
 import os
 import sys
 import subprocess
 import logging
+import fcntl
 from datetime import datetime
+from contextlib import contextmanager
 
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
@@ -21,6 +24,67 @@ logger = logging.getLogger('celery_tasks')
 # Basis-Pfad
 BASE_DIR = '/opt/greiner-portal'
 VENV_PYTHON = os.path.join(BASE_DIR, 'venv', 'bin', 'python3')
+LOCK_DIR = '/tmp/greiner_task_locks'
+
+# Lock-Verzeichnis erstellen
+os.makedirs(LOCK_DIR, exist_ok=True)
+
+
+# =============================================================================
+# TASK LOCKING - Verhindert parallele Ausführung desselben Tasks
+# =============================================================================
+
+@contextmanager
+def task_lock(task_name: str, blocking: bool = False):
+    """
+    File-basiertes Locking für Tasks.
+
+    Verhindert dass derselbe Task mehrfach parallel läuft.
+
+    Args:
+        task_name: Name des Tasks (wird zu Dateiname)
+        blocking: True = warten auf Lock, False = sofort abbrechen wenn gesperrt
+
+    Usage:
+        with task_lock('import_mt940') as acquired:
+            if not acquired:
+                return {'status': 'skipped', 'reason': 'already running'}
+            # Task ausführen...
+
+    Yields:
+        bool: True wenn Lock erhalten, False wenn bereits gesperrt (nur bei blocking=False)
+    """
+    lock_file = os.path.join(LOCK_DIR, f'{task_name}.lock')
+    lock_fd = None
+    acquired = False
+
+    try:
+        lock_fd = open(lock_file, 'w')
+
+        # Lock-Modus: LOCK_NB = non-blocking (sofort Fehler wenn gesperrt)
+        lock_mode = fcntl.LOCK_EX if blocking else (fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+        try:
+            fcntl.flock(lock_fd, lock_mode)
+            acquired = True
+            # PID in Lock-File schreiben für Debugging
+            lock_fd.write(f'{os.getpid()}\n{datetime.now().isoformat()}\n{task_name}')
+            lock_fd.flush()
+        except IOError:
+            # Lock nicht erhalten (Task läuft bereits)
+            acquired = False
+            logger.warning(f"Task {task_name} läuft bereits - überspringe")
+
+        yield acquired
+
+    finally:
+        if lock_fd:
+            if acquired:
+                try:
+                    fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                except:
+                    pass
+            lock_fd.close()
 
 
 def run_script(script_path: str, timeout: int = 300) -> dict:
@@ -124,23 +188,27 @@ def run_shell(command: str, timeout: int = 300) -> dict:
 @shared_task(bind=True, max_retries=3, default_retry_delay=120, soft_time_limit=300)
 def import_mt940(self):
     """MT940 Import für alle Banken außer HypoVereinsbank"""
-    try:
-        mt940_dir = '/mnt/buchhaltung/Buchhaltung/Kontoauszüge/mt940/'
-        result = subprocess.run(
-            [VENV_PYTHON, 'scripts/imports/import_mt940.py', mt940_dir],
-            cwd=BASE_DIR,
-            capture_output=True,
-            text=True,
-            timeout=120
-        )
-        if result.returncode != 0:
-            raise Exception(result.stderr[:500])
-        return {'status': 'success', 'output': result.stdout[-1000:]}
-    except Exception as exc:
-        if 'Host is down' in str(exc):
-            # Netzwerk-Fehler → Retry
-            raise self.retry(exc=exc)
-        raise
+    with task_lock('import_mt940') as acquired:
+        if not acquired:
+            return {'status': 'skipped', 'reason': 'Task läuft bereits'}
+
+        try:
+            mt940_dir = '/mnt/buchhaltung/Buchhaltung/Kontoauszüge/mt940/'
+            result = subprocess.run(
+                [VENV_PYTHON, 'scripts/imports/import_mt940.py', mt940_dir],
+                cwd=BASE_DIR,
+                capture_output=True,
+                text=True,
+                timeout=120
+            )
+            if result.returncode != 0:
+                raise Exception(result.stderr[:500])
+            return {'status': 'success', 'output': result.stdout[-1000:]}
+        except Exception as exc:
+            if 'Host is down' in str(exc):
+                # Netzwerk-Fehler → Retry
+                raise self.retry(exc=exc)
+            raise
 
 
 @shared_task(bind=True, max_retries=2, soft_time_limit=180)
@@ -240,7 +308,10 @@ def sync_charge_types():
 @shared_task(bind=True, max_retries=2, soft_time_limit=2100)
 def servicebox_scraper(self):
     """ServiceBox Bestellungen scrapen"""
-    return run_script('tools/scrapers/servicebox_detail_scraper_final.py', timeout=1800)
+    with task_lock('servicebox_scraper') as acquired:
+        if not acquired:
+            return {'status': 'skipped', 'reason': 'Task läuft bereits'}
+        return run_script('tools/scrapers/servicebox_detail_scraper_final.py', timeout=1800)
 
 
 @shared_task(soft_time_limit=600)
@@ -286,7 +357,7 @@ def sync_sales():
 @shared_task(bind=True, max_retries=2, soft_time_limit=600)
 def import_stellantis(self):
     """Stellantis Fahrzeugdaten importieren"""
-    return run_script('scripts/sync/import_stellantis.py', timeout=300)
+    return run_script('scripts/imports/import_stellantis.py', timeout=300)
 
 
 @shared_task(soft_time_limit=300)
@@ -298,7 +369,10 @@ def sync_stammdaten():
 @shared_task(bind=True, max_retries=1, soft_time_limit=900)
 def locosoft_mirror(self):
     """Locosoft Mirror (inkl. VIEWs times, employees)"""
-    return run_shell('venv/bin/python3 scripts/sync/locosoft_mirror.py --min-rows 100', timeout=600)
+    with task_lock('locosoft_mirror') as acquired:
+        if not acquired:
+            return {'status': 'skipped', 'reason': 'Task läuft bereits'}
+        return run_shell('venv/bin/python3 scripts/sync/locosoft_mirror.py --min-rows 100', timeout=600)
 
 
 @shared_task(soft_time_limit=300)

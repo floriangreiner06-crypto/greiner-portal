@@ -168,104 +168,34 @@ def zinsen_analyse():
 @bankenspiegel_bp.route('/einkaufsfinanzierung')
 def einkaufsfinanzierung():
     """
-    Einkaufsfinanzierung Dashboard
-    
-    Zeigt Finanzierungen von:
-    - ✅ Stellantis Bank (ZIP-Import, 104 Fahrzeuge, ~2,98 Mio EUR)
-    - ✅ Santander (CSV-Import, 41 Fahrzeuge, ~824k EUR)
-    - ⏳ Hyundai Bank (TODO - Tag 20+)
-    
-    Features:
-    - 3 KPI-Karten (eine pro Bank)
-    - Gesamtübersicht über alle Finanzierungen
-    - Alerts für auslaufende Zinsfreiheit
-    - Detail-Tabellen mit VIN, Modell, Betrag
-    
-    Template: einkaufsfinanzierung.html
-    JavaScript: einkaufsfinanzierung.js
-    CSS: einkaufsfinanzierung.css
-    
-    Datenbank-Tabelle: fahrzeugfinanzierungen
+    Redirect zu Fahrzeugfinanzierungen (konsolidiert TAG 116)
     """
-    return render_template(
-        'einkaufsfinanzierung.html',
-        now=datetime.now()
-    )
+    return redirect(url_for('bankenspiegel.fahrzeugfinanzierungen'))
 
 
 @bankenspiegel_bp.route('/fahrzeugfinanzierungen')
 def fahrzeugfinanzierungen():
     """
-    Fahrzeugfinanzierungen Dashboard
-    Zeigt Stellantis + Santander getrennt
-    Fixed: Tag 24 (10.11.2025) - Final Version
+    Fahrzeugfinanzierungen Dashboard (konsolidiert TAG 116)
+    
+    Zeigt alle Finanzierungen:
+    - Stellantis Bank
+    - Santander Bank  
+    - Hyundai Finance
+    
+    Features:
+    - KPI-Cards mit Gesamtübersicht
+    - Bank-Cards mit Details
+    - Marken-Badges
+    - Zinsen-Warnungen
+    - Charts (Pie + Bar)
+    
+    Template: einkaufsfinanzierung.html
+    API: /api/bankenspiegel/einkaufsfinanzierung
+    CSS: einkaufsfinanzierung.css
     """
-    conn = sqlite3.connect('/opt/greiner-portal/data/greiner_controlling.db')
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    
-    try:
-        # Gesamt-Stats
-        c.execute("""
-            SELECT 
-                COUNT(*) as anzahl,
-                SUM(aktueller_saldo) as gesamt_saldo,
-                SUM(original_betrag) as gesamt_original,
-                SUM(original_betrag - aktueller_saldo) as gesamt_abbezahlt
-            FROM fahrzeugfinanzierungen
-        """)
-        row = c.fetchone()
-        stats = {
-            'anzahl_fahrzeuge': row['anzahl'] or 0,
-            'gesamt_saldo': row['gesamt_saldo'] or 0,
-            'gesamt_original': row['gesamt_original'] or 0,
-            'gesamt_abbezahlt': row['gesamt_abbezahlt'] or 0
-        }
-        
-        # Stats nach Bank
-        c.execute("""
-            SELECT 
-                finanzinstitut,
-                COUNT(*) as anzahl,
-                SUM(aktueller_saldo) as saldo,
-                SUM(original_betrag) as original,
-                SUM(original_betrag - aktueller_saldo) as abbezahlt
-            FROM fahrzeugfinanzierungen 
-            GROUP BY finanzinstitut
-            ORDER BY finanzinstitut
-        """)
-        stats_by_bank = [dict(row) for row in c.fetchall()]
-        
-        # Nach RRDI gruppiert
-        c.execute("""
-            SELECT 
-                rrdi,
-                finanzinstitut,
-                COUNT(*) as anzahl,
-                SUM(aktueller_saldo) as saldo
-            FROM fahrzeugfinanzierungen 
-            GROUP BY rrdi, finanzinstitut
-            ORDER BY finanzinstitut, rrdi
-        """)
-        fahrzeuge_by_rrdi = [dict(row) for row in c.fetchall()]
-        
-        # Alle Fahrzeuge (Top 100)
-        c.execute("""
-            SELECT * FROM fahrzeugfinanzierungen 
-            ORDER BY finanzinstitut, vertragsbeginn DESC 
-            LIMIT 100
-        """)
-        fahrzeuge = [dict(row) for row in c.fetchall()]
-        
-    finally:
-        conn.close()
-    
     return render_template(
-        'fahrzeugfinanzierungen.html',
-        stats=stats,
-        stats_by_bank=stats_by_bank,
-        fahrzeuge_by_rrdi=fahrzeuge_by_rrdi,
-        fahrzeuge=fahrzeuge,
+        'einkaufsfinanzierung.html',
         now=datetime.now()
     )
 

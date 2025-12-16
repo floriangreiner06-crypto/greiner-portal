@@ -20,43 +20,16 @@ import sys
 from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request
 import logging
+from psycopg2.extras import RealDictCursor
+
+# Zentrale DB-Utilities (TAG117)
+from api.db_utils import get_locosoft_connection, get_db as get_sqlite_connection
 
 # Logging
 logger = logging.getLogger(__name__)
 
 # Blueprint
 teile_status_bp = Blueprint('teile_status', __name__, url_prefix='/api/teile')
-
-# Locosoft Connection
-import psycopg2
-from psycopg2.extras import RealDictCursor
-
-# SQLite für Lieferzeiten-Historie
-import sqlite3
-
-
-def get_locosoft_connection():
-    """Erstellt Verbindung zu Locosoft PostgreSQL"""
-    from dotenv import load_dotenv
-    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', '.env')
-    if os.path.exists(env_path):
-        load_dotenv(env_path)
-    
-    return psycopg2.connect(
-        host=os.getenv('LOCOSOFT_HOST'),
-        port=os.getenv('LOCOSOFT_PORT', 5432),
-        database=os.getenv('LOCOSOFT_DATABASE'),
-        user=os.getenv('LOCOSOFT_USER'),
-        password=os.getenv('LOCOSOFT_PASSWORD')
-    )
-
-
-def get_sqlite_connection():
-    """SQLite-Verbindung für historische Daten"""
-    db_path = '/opt/greiner-portal/data/greiner_controlling.db'
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    return conn
 
 
 # Lieferanten-Lieferzeiten (aus Analyse TAG 100)

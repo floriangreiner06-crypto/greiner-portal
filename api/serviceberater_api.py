@@ -16,11 +16,11 @@ Datenquellen:
 """
 
 from flask import Blueprint, request, jsonify
-import json
-import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
-import sqlite3
+
+# Zentrale DB-Utilities (TAG117)
+from api.db_utils import get_locosoft_connection, get_db
 
 serviceberater_api = Blueprint('serviceberater_api', __name__, url_prefix='/api/serviceberater')
 
@@ -58,20 +58,8 @@ AKTIVER_WETTBEWERB = {
 }
 
 
-def get_locosoft_connection():
-    """Locosoft PostgreSQL Verbindung"""
-    with open('/opt/greiner-portal/config/credentials.json') as f:
-        creds = json.load(f)['databases']['locosoft']
-    return psycopg2.connect(
-        host=creds['host'], port=creds['port'],
-        database=creds['database'], user=creds['user'],
-        password=creds['password']
-    )
-
-
-def get_sqlite_connection():
-    """SQLite Verbindung für MA-Namen"""
-    return sqlite3.connect('/opt/greiner-portal/data/greiner_controlling.db')
+# Aliase für Kompatibilität
+get_sqlite_connection = get_db
 
 
 def get_ma_namen():

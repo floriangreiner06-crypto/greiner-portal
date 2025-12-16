@@ -141,6 +141,20 @@
     .gantt .cell.za.half-day { background: linear-gradient(to bottom, var(--za) 50%, white 50%) !important; }
     .gantt .cell.za.half-am { background: linear-gradient(to bottom, var(--za) 50%, white 50%) !important; }
     .gantt .cell.za.half-pm { background: linear-gradient(to bottom, white 50%, var(--za) 50%) !important; }
+    
+    /* TAG 116: Locosoft-Indikator - kleiner Punkt rechts unten */
+    .gantt .cell.in-locosoft::after {
+        content: '';
+        position: absolute;
+        bottom: 2px;
+        right: 2px;
+        width: 8px;
+        height: 8px;
+        background: #1565C0;
+        border-radius: 50%;
+        border: 1px solid white;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    }
 
     /* Einheitliches Popup-Design für alle Aktionen */
     .popup-menu {
@@ -380,6 +394,7 @@
                     <span><i style="background:var(--schulung)"></i>Schulung</span>
                     <span><i style="background:var(--feiertag)"></i>Feiertag</span>
                     <span><i style="background:var(--weekend)"></i>WE</span>
+                    <span><i style="background:#1565C0;border-radius:50%"></i>In Locosoft</span>
                 </div>
             </div>
         </div>
@@ -632,7 +647,8 @@ async function loadAllEmployees() {
 }
 
 async function loadMyBook() {
-    const r = await api('/my-bookings');
+    // TAG 116 FIX: Jahr-Parameter mitgeben damit bei Jahreswechsel korrekte Daten geladen werden
+    const r = await api('/my-bookings?year=' + yr);
     if (r.success) myBook = r.bookings || [];
 }
 
@@ -763,7 +779,8 @@ function render() {
                                 if (bk.day_part === 'am') c += ' half-am';
                                 else if (bk.day_part === 'pm') c += ' half-pm';
                                 else if (bk.day_part === 'half') c += ' half-day';
-                                else if (bk.day_part === 'half') c += ' half-day';
+                                // TAG 116: Locosoft-Indikator
+                                if (bk.in_locosoft && bk.status === 'approved') c += ' in-locosoft';
                                 icon = ICON[bk.type_id] || '';
                                 bookingId = bk.id;
                             }
@@ -1190,7 +1207,16 @@ function renderMy() {
     let h = '';
     list.forEach(b => {
         const ico = ICON[b.type_id] || '🏖️';
-        const st = b.status === 'pending' ? '<span class="badge bg-warning text-dark">⏳</span>' : '<span class="badge bg-success">✓</span>';
+        // TAG 116: Status-Badges inkl. Locosoft-Anzeige
+        let st = '';
+        if (b.status === 'pending') {
+            st = '<span class="badge bg-warning text-dark" title="Beantragt - wartet auf Genehmigung">⏳</span>';
+        } else if (b.status === 'approved') {
+            st = '<span class="badge bg-success" title="Genehmigt">✓</span>';
+            if (b.in_locosoft) {
+                st += ' <span class="badge" style="background:#1565C0;width:12px;height:12px;padding:0;border-radius:50%;display:inline-block;vertical-align:middle;" title="In Locosoft eingetragen"></span>';
+            }
+        }
         h += `<div class="my-item">
             <div><span style="font-size:16px">${ico}</span> <strong>${fmtD(b.date)}</strong> ${st}</div>
             <button class="del-btn" onclick="showCancel(${b.id},'${b.date}')"><i class="fas fa-trash"></i></button>
@@ -1275,22 +1301,34 @@ function events() {
         const oldYr = yr;
         mon--; 
         if (mon < 0) { mon = 11; yr--; } 
-        if (yr !== oldYr) await loadAllBookings();  // Bei Jahreswechsel neu laden
+        if (yr !== oldYr) {
+            await loadAllBookings();  // Bei Jahreswechsel neu laden
+            await loadMyBook();       // TAG 116 FIX: Auch eigene Buchungen neu laden!
+        }
         render(); 
+        renderMy();  // TAG 116 FIX: Sidebar aktualisieren
     });
     document.getElementById('btnNext').addEventListener('click', async () => { 
         const oldYr = yr;
         mon++; 
         if (mon > 11) { mon = 0; yr++; }
-        if (yr !== oldYr) await loadAllBookings();  // Bei Jahreswechsel neu laden
+        if (yr !== oldYr) {
+            await loadAllBookings();  // Bei Jahreswechsel neu laden
+            await loadMyBook();       // TAG 116 FIX: Auch eigene Buchungen neu laden!
+        }
         render(); 
+        renderMy();  // TAG 116 FIX: Sidebar aktualisieren
     });
     document.getElementById('btnToday').addEventListener('click', async () => { 
         const oldYr = yr;
         mon = new Date().getMonth(); 
         yr = new Date().getFullYear(); 
-        if (yr !== oldYr) await loadAllBookings();  // Bei Jahreswechsel neu laden
+        if (yr !== oldYr) {
+            await loadAllBookings();  // Bei Jahreswechsel neu laden
+            await loadMyBook();       // TAG 116 FIX: Auch eigene Buchungen neu laden!
+        }
         render(); 
+        renderMy();  // TAG 116 FIX: Sidebar aktualisieren
     });
     document.getElementById('filterDept').addEventListener('change', () => render());
     document.getElementById('filterLocation').addEventListener('change', () => render());  // NEU

@@ -1,0 +1,636 @@
+{% extends "base.html" %}
+
+{% block title %}DRIVE Morgen-Briefing - Greiner DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ============================================================
+   DRIVE MORGEN-BRIEFING - TAG 119
+   Tages-Übersicht für Werkstattleiter
+   ============================================================ */
+
+.briefing-header {
+    background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+    color: white;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+}
+
+.briefing-card {
+    border-radius: 12px;
+    border: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+    transition: transform 0.2s;
+}
+
+.briefing-card:hover {
+    transform: translateY(-2px);
+}
+
+.kpi-box {
+    text-align: center;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 12px;
+    height: 100%;
+}
+
+.kpi-value { font-size: 2.5rem; font-weight: 700; }
+.kpi-label { font-size: 0.85rem; color: #6c757d; }
+.kpi-detail { font-size: 0.75rem; color: #adb5bd; margin-top: 4px; }
+
+.status-excellent { color: #27ae60; }
+.status-good { color: #3498db; }
+.status-warning { color: #f39c12; }
+.status-danger { color: #e74c3c; }
+
+.risk-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    margin: 4px;
+}
+
+.risk-high { background: #fee2e2; color: #991b1b; }
+.risk-medium { background: #fef3c7; color: #92400e; }
+.risk-low { background: #d1fae5; color: #065f46; }
+
+.auftrag-row {
+    border-left: 4px solid transparent;
+    transition: all 0.2s;
+}
+
+.auftrag-row:hover {
+    background: rgba(52, 152, 219, 0.05);
+}
+
+.auftrag-row.risk-high { border-left-color: #e74c3c; }
+.auftrag-row.risk-medium { border-left-color: #f39c12; }
+.auftrag-row.risk-low { border-left-color: #27ae60; }
+
+.employee-card {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.employee-card.busy { border-left: 4px solid #e74c3c; }
+.employee-card.moderate { border-left: 4px solid #f39c12; }
+.employee-card.available { border-left: 4px solid #27ae60; }
+
+.print-btn {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1000;
+}
+
+@media print {
+    .navbar, .footer, .print-btn, .btn { display: none !important; }
+    .briefing-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+    <!-- Header -->
+    <div class="briefing-header">
+        <div class="row align-items-center">
+            <div class="col-md-6">
+                <h2 class="mb-1">
+                    <i class="bi bi-sunrise"></i> DRIVE Morgen-Briefing
+                </h2>
+                <p class="mb-0 opacity-75" id="briefing-date">Lade...</p>
+            </div>
+            <div class="col-md-6 text-md-end">
+                <div class="d-inline-flex align-items-center">
+                    <button class="btn btn-light btn-sm" onclick="changeDate(-1)" title="Vortag">
+                        <i class="bi bi-chevron-left"></i>
+                    </button>
+                    <input type="date" id="datum-picker" class="form-control form-control-sm mx-2"
+                           style="width: 160px;" onchange="loadBriefing()">
+                    <button class="btn btn-light btn-sm" onclick="changeDate(1)" title="Nächster Tag">
+                        <i class="bi bi-chevron-right"></i>
+                    </button>
+                    <button class="btn btn-warning btn-sm ms-2" onclick="goToToday()" title="Heute">
+                        <i class="bi bi-calendar-check"></i> Heute
+                    </button>
+                </div>
+                <button class="btn btn-light btn-sm ms-3" onclick="loadBriefing()">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+                <button class="btn btn-light btn-sm ms-1 print-btn" onclick="window.print()">
+                    <i class="bi bi-printer"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lade-Indikator -->
+    <div id="loading-indicator" class="text-center py-5">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="mt-3 text-muted">Lade Briefing-Daten...</p>
+    </div>
+
+    <!-- Hauptinhalt (wird per JS gefüllt) -->
+    <div id="briefing-content" style="display: none;">
+
+        <!-- KPI-Übersicht -->
+        <div class="row mb-4" id="kpi-row">
+            <!-- Wird per JS gefüllt -->
+        </div>
+
+        <!-- Warnungen -->
+        <div class="card briefing-card" id="warnings-card" style="display: none;">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Aktive Warnungen</h5>
+            </div>
+            <div class="card-body" id="warnings-body">
+            </div>
+        </div>
+
+        <!-- Zwei-Spalten-Layout -->
+        <div class="row">
+
+            <!-- Linke Spalte: Kritische Aufträge -->
+            <div class="col-lg-8">
+                <div class="card briefing-card">
+                    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="bi bi-exclamation-circle text-danger"></i>
+                            Kritische Aufträge heute
+                        </h5>
+                        <span class="badge bg-danger" id="critical-count">0</span>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th width="40">Risk</th>
+                                        <th>Auftrag</th>
+                                        <th>Fahrzeug</th>
+                                        <th>Kunde</th>
+                                        <th class="text-end">Vorgabe</th>
+                                        <th class="text-end">ML sagt</th>
+                                        <th>Mechaniker</th>
+                                        <th>Problem</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="critical-orders-body">
+                                    <tr><td colspan="8" class="text-center py-4 text-success">
+                                        <i class="bi bi-check-circle fs-4"></i><br>
+                                        Keine kritischen Aufträge!
+                                    </td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Kulanz-Risiko -->
+                <div class="card briefing-card">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">
+                            <i class="bi bi-cash-coin text-warning"></i>
+                            Kulanz-Risiko heute
+                        </h5>
+                    </div>
+                    <div class="card-body" id="kulanz-body">
+                        <div class="text-muted text-center py-3">Lade...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Rechte Spalte: Mechaniker & Kapazität -->
+            <div class="col-lg-4">
+
+                <!-- Kapazität heute -->
+                <div class="card briefing-card">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">
+                            <i class="bi bi-speedometer2 text-primary"></i>
+                            Kapazität heute
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="text-center mb-3">
+                            <div class="kpi-value" id="today-utilization">-%</div>
+                            <div class="kpi-label">Auslastung</div>
+                        </div>
+                        <div class="row text-center">
+                            <div class="col-4">
+                                <strong id="today-planned">-</strong><br>
+                                <small class="text-muted">Geplant</small>
+                            </div>
+                            <div class="col-4">
+                                <strong id="today-capacity">-</strong><br>
+                                <small class="text-muted">Kapazität</small>
+                            </div>
+                            <div class="col-4">
+                                <strong id="today-free">-</strong><br>
+                                <small class="text-muted">Frei</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mechaniker-Auslastung -->
+                <div class="card briefing-card">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">
+                            <i class="bi bi-people text-success"></i>
+                            Mechaniker heute
+                        </h5>
+                    </div>
+                    <div class="card-body" id="mechanics-body">
+                        <div class="text-muted text-center py-3">Lade...</div>
+                    </div>
+                </div>
+
+                <!-- Quick-Actions -->
+                <div class="card briefing-card">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">
+                            <i class="bi bi-lightning-charge text-info"></i>
+                            Quick Actions
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <a href="/aftersales/kapazitaet" class="btn btn-outline-primary btn-sm w-100 mb-2">
+                            <i class="bi bi-calendar-range"></i> Kapazitätsplanung
+                        </a>
+                        <a href="/werkstatt/teile-status" class="btn btn-outline-warning btn-sm w-100 mb-2">
+                            <i class="bi bi-box-seam"></i> Teile-Status
+                        </a>
+                        <a href="/werkstatt/drive/kulanz" class="btn btn-outline-danger btn-sm w-100">
+                            <i class="bi bi-cash-coin"></i> Kulanz-Monitor
+                        </a>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ============================================================
+// DRIVE MORGEN-BRIEFING - JavaScript (TAG 120: Datum auswählbar)
+// ============================================================
+
+// Datum-Picker initialisieren
+function initDatePicker() {
+    const picker = document.getElementById('datum-picker');
+    const today = new Date().toISOString().split('T')[0];
+    picker.value = today;
+}
+
+function getSelectedDate() {
+    return document.getElementById('datum-picker').value;
+}
+
+function changeDate(days) {
+    const picker = document.getElementById('datum-picker');
+    const current = new Date(picker.value);
+    current.setDate(current.getDate() + days);
+    picker.value = current.toISOString().split('T')[0];
+    loadBriefing();
+}
+
+function goToToday() {
+    const picker = document.getElementById('datum-picker');
+    picker.value = new Date().toISOString().split('T')[0];
+    loadBriefing();
+}
+
+async function loadBriefing() {
+    try {
+        const datum = getSelectedDate();
+        const response = await fetch(`/api/werkstatt/live/drive/briefing?datum=${datum}`);
+        const data = await response.json();
+
+        if (data.success) {
+            renderBriefing(data);
+        } else {
+            showError(data.error || 'API-Fehler');
+        }
+    } catch (e) {
+        console.error('Briefing Fehler:', e);
+        showError('Verbindungsfehler: ' + e.message);
+    }
+}
+
+function renderBriefing(data) {
+    document.getElementById('loading-indicator').style.display = 'none';
+    document.getElementById('briefing-content').style.display = 'block';
+
+    // Datum aus API-Response
+    const selectedDate = new Date(data.datum);
+    const istHeute = data.ist_heute;
+    const heuteLabel = istHeute ? ' (Heute)' : '';
+
+    document.getElementById('briefing-date').textContent =
+        selectedDate.toLocaleDateString('de-DE', {weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'}) +
+        heuteLabel + ' - Stand: ' + data.uhrzeit;
+
+    // KPIs
+    renderKPIs(data);
+
+    // Warnungen (kritische + garantie aus API)
+    const warnungenArray = [];
+    if (data.warnungen?.kritisch?.length > 0) {
+        warnungenArray.push({level: 'critical', text: `${data.warnungen.kritisch.length} unterbewertete Aufträge`});
+    }
+    if (data.warnungen?.garantie?.length > 0) {
+        warnungenArray.push({level: 'warning', text: `${data.warnungen.garantie.length} Garantie-Aufträge (G-Faktor!)`});
+    }
+    renderWarnings(warnungenArray);
+
+    // Kritische Aufträge (aus warnungen.kritisch)
+    renderCriticalOrders(data.warnungen?.kritisch || []);
+
+    // Alle Aufträge anzeigen
+    renderAllOrders(data.alle_auftraege || []);
+
+    // Kapazität aus Zusammenfassung berechnen
+    const kapazitaet = {
+        geplant_aw: data.zusammenfassung?.ml_aw_gesamt || 0,
+        vorgabe_aw: data.zusammenfassung?.vorgabe_aw_gesamt || 0,
+        differenz_aw: data.zusammenfassung?.differenz_aw || 0
+    };
+    renderCapacity(kapazitaet);
+
+    // Empfehlung anzeigen
+    if (data.empfehlung) {
+        renderEmpfehlung(data.empfehlung);
+    }
+}
+
+function renderKPIs(data) {
+    const zf = data.zusammenfassung || {};
+    const kritischCount = data.warnungen?.kritisch?.length || 0;
+    const garantieCount = zf.garantie_auftraege || 0;
+
+    const kpis = [
+        {
+            value: zf.anzahl_auftraege || 0,
+            label: 'Aufträge',
+            detail: `${Math.round(zf.vorgabe_aw_gesamt || 0)} AW Vorgabe`,
+            icon: 'bi-clipboard-check',
+            color: 'text-primary'
+        },
+        {
+            value: Math.round(zf.ml_aw_gesamt || 0) + ' AW',
+            label: 'DRIVE-Prognose',
+            detail: `${zf.differenz_prozent > 0 ? '+' : ''}${Math.round(zf.differenz_prozent || 0)}% vs Vorgabe`,
+            icon: 'bi-robot',
+            color: zf.differenz_aw > 0 ? 'text-warning' : 'text-success'
+        },
+        {
+            value: kritischCount,
+            label: 'Unterbewertet',
+            detail: 'Mehr Zeit nötig',
+            icon: 'bi-exclamation-triangle',
+            color: kritischCount > 0 ? 'text-danger' : 'text-success'
+        },
+        {
+            value: garantieCount,
+            label: 'Garantie (G)',
+            detail: 'Faktor 1.24x',
+            icon: 'bi-shield-exclamation',
+            color: garantieCount > 3 ? 'text-danger' : (garantieCount > 0 ? 'text-warning' : 'text-success')
+        }
+    ];
+
+    document.getElementById('kpi-row').innerHTML = kpis.map(kpi => `
+        <div class="col-md-3 col-6">
+            <div class="kpi-box">
+                <div class="kpi-value ${kpi.color}">
+                    <i class="bi ${kpi.icon} me-2"></i>${kpi.value}
+                </div>
+                <div class="kpi-label">${kpi.label}</div>
+                <div class="kpi-detail">${kpi.detail}</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderWarnings(warnungen) {
+    const card = document.getElementById('warnings-card');
+    if (!warnungen || warnungen.length === 0) {
+        card.style.display = 'none';
+        return;
+    }
+
+    card.style.display = 'block';
+    document.getElementById('warnings-body').innerHTML = warnungen.map(w => {
+        const cls = w.level === 'critical' ? 'risk-high' :
+                    w.level === 'warning' ? 'risk-medium' : 'risk-low';
+        return `<span class="risk-badge ${cls}"><i class="bi bi-exclamation-circle me-1"></i>${w.text}</span>`;
+    }).join('');
+}
+
+function renderCriticalOrders(auftraege) {
+    document.getElementById('critical-count').textContent = auftraege.length;
+
+    const tbody = document.getElementById('critical-orders-body');
+    if (!auftraege || auftraege.length === 0) {
+        tbody.innerHTML = `
+            <tr><td colspan="8" class="text-center py-4 text-success">
+                <i class="bi bi-check-circle fs-4"></i><br>
+                <strong>Keine kritischen Aufträge!</strong>
+            </td></tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = auftraege.slice(0, 15).map(a => {
+        const riskClass = a.risk_level === 'high' ? 'risk-high' :
+                         a.risk_level === 'medium' ? 'risk-medium' : 'risk-low';
+        const riskIcon = a.risk_level === 'high' ? '🔴' :
+                        a.risk_level === 'medium' ? '🟡' : '🟢';
+
+        return `
+            <tr class="auftrag-row ${riskClass}">
+                <td class="text-center">${riskIcon}</td>
+                <td><strong>${a.auftrag_nr || a.order_number}</strong></td>
+                <td>${a.kennzeichen || '-'}</td>
+                <td><small>${(a.kunde || '-').substring(0, 20)}</small></td>
+                <td class="text-end">${a.vorgabe_aw || 0} AW</td>
+                <td class="text-end text-danger"><strong>${a.ml_aw || 0} AW</strong></td>
+                <td><small>${a.mechaniker || '-'}</small></td>
+                <td><span class="badge bg-danger">${a.problem || 'Unterbewertet'}</span></td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderKulanz(kulanz) {
+    const body = document.getElementById('kulanz-body');
+
+    if (!kulanz || !kulanz.auftraege || kulanz.auftraege === 0) {
+        body.innerHTML = `
+            <div class="text-center text-success py-3">
+                <i class="bi bi-check-circle fs-4"></i><br>
+                Kein akutes Kulanz-Risiko
+            </div>
+        `;
+        return;
+    }
+
+    body.innerHTML = `
+        <div class="row text-center mb-3">
+            <div class="col-6">
+                <h4 class="text-danger">${kulanz.auftraege || 0}</h4>
+                <small class="text-muted">Kulanz-Aufträge</small>
+            </div>
+            <div class="col-6">
+                <h4 class="text-danger">${formatCurrency(kulanz.potenzial_euro || 0)}</h4>
+                <small class="text-muted">Risiko-Potenzial</small>
+            </div>
+        </div>
+        <div class="alert alert-warning mb-0">
+            <i class="bi bi-info-circle"></i>
+            <small>Kulanz-Aufträge haben hohe Abweichung zwischen gestempelter und abgerechneter Zeit.</small>
+        </div>
+    `;
+}
+
+function renderCapacity(kapa) {
+    // Differenz als Prozent berechnen
+    const vorgabe = kapa.vorgabe_aw || 0;
+    const geplant = kapa.geplant_aw || 0;
+    const diff = kapa.differenz_aw || 0;
+    const diffPct = vorgabe > 0 ? Math.round((diff / vorgabe) * 100) : 0;
+
+    document.getElementById('today-utilization').textContent = (diff >= 0 ? '+' : '') + Math.round(diff) + ' AW';
+    document.getElementById('today-utilization').className = 'kpi-value ' + (diff > 0 ? 'text-danger' : 'text-success');
+
+    document.getElementById('today-planned').textContent = Math.round(geplant) + ' AW';
+    document.getElementById('today-capacity').textContent = Math.round(vorgabe) + ' AW';
+    document.getElementById('today-free').textContent = (diffPct >= 0 ? '+' : '') + diffPct + '%';
+}
+
+function renderAllOrders(auftraege) {
+    // Zeigt alle Aufträge in der Tabelle an (nicht nur kritische)
+    const tbody = document.getElementById('critical-orders-body');
+    document.getElementById('critical-count').textContent = auftraege.length;
+
+    if (!auftraege || auftraege.length === 0) {
+        tbody.innerHTML = `
+            <tr><td colspan="8" class="text-center py-4 text-muted">
+                <i class="bi bi-calendar-x fs-4"></i><br>
+                <strong>Keine Aufträge für diesen Tag</strong>
+            </td></tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = auftraege.slice(0, 25).map(a => {
+        const isKritisch = a.ist_unterbewertet && a.potenzial_aw > 2;
+        const isGarantie = a.ist_garantie;
+        const riskClass = isKritisch ? 'risk-high' : (isGarantie ? 'risk-medium' : 'risk-low');
+        const riskIcon = isKritisch ? '🔴' : (isGarantie ? '🟡' : '🟢');
+
+        return `
+            <tr class="auftrag-row ${riskClass}">
+                <td class="text-center">${riskIcon}</td>
+                <td><strong>${a.auftrag_nr}</strong></td>
+                <td>${a.kennzeichen || '-'}</td>
+                <td><small>${(a.kunde || '-').substring(0, 20)}</small></td>
+                <td class="text-end">${a.vorgabe_aw || 0} AW</td>
+                <td class="text-end ${a.potenzial_aw < 0 ? 'text-success' : 'text-danger'}">
+                    <strong>${a.ml_aw || 0} AW</strong>
+                </td>
+                <td><small>${a.termin || '-'}</small></td>
+                <td>
+                    ${isGarantie ? '<span class="badge bg-warning">Garantie</span>' : ''}
+                    ${isKritisch ? '<span class="badge bg-danger">Unterbewertet</span>' : ''}
+                    ${!isGarantie && !isKritisch ? '<span class="badge bg-success">OK</span>' : ''}
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderEmpfehlung(text) {
+    // Empfehlung in Kulanz-Body anzeigen
+    const body = document.getElementById('kulanz-body');
+    body.innerHTML = `
+        <div class="alert alert-info mb-0">
+            <i class="bi bi-lightbulb me-2"></i>
+            <strong>DRIVE Empfehlung:</strong><br>
+            ${text}
+        </div>
+    `;
+}
+
+function renderMechanics(mechaniker) {
+    const body = document.getElementById('mechanics-body');
+
+    if (!mechaniker || mechaniker.length === 0) {
+        body.innerHTML = '<div class="text-muted text-center py-3">Keine Daten</div>';
+        return;
+    }
+
+    body.innerHTML = mechaniker.slice(0, 8).map(m => {
+        const util = m.auslastung || 0;
+        const statusClass = util > 120 ? 'busy' : util > 80 ? 'moderate' : 'available';
+
+        return `
+            <div class="employee-card ${statusClass}">
+                <div>
+                    <strong>${m.name || m.kuerzel}</strong><br>
+                    <small class="text-muted">${m.auftraege || 0} Aufträge</small>
+                </div>
+                <div class="text-end">
+                    <span class="${getUtilizationColor(util)}">${Math.round(util)}%</span><br>
+                    <small class="text-muted">${m.aw || 0} AW</small>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function getUtilizationColor(util) {
+    if (util >= 110) return 'status-excellent';
+    if (util >= 90) return 'status-good';
+    if (util >= 70) return 'status-warning';
+    return 'status-danger';
+}
+
+function formatCurrency(value) {
+    return new Intl.NumberFormat('de-DE', {style: 'currency', currency: 'EUR', maximumFractionDigits: 0}).format(value);
+}
+
+function showError(msg) {
+    document.getElementById('loading-indicator').innerHTML = `
+        <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            <strong>Fehler beim Laden:</strong> ${msg}
+        </div>
+    `;
+}
+
+// Init
+document.addEventListener('DOMContentLoaded', function() {
+    initDatePicker();
+    loadBriefing();
+});
+</script>
+{% endblock %}

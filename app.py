@@ -215,7 +215,6 @@ def admin_organigramm():
     """Organigramm mit Vertretungsregeln-Editor"""
     return render_template('organigramm.html')
 
-
 # Urlaubsplaner Kurzroute
 @app.route('/urlaubsplaner')
 @login_required
@@ -272,6 +271,11 @@ print("✅ Verkauf Frontend registriert: /verkauf/")
 app.register_blueprint(controlling_bp)
 print("✅ Controlling registriert: /controlling/")
 
+# Werkstatt Frontend Routes (TAG 119)
+from routes.werkstatt_routes import werkstatt_routes
+app.register_blueprint(werkstatt_routes)
+print("✅ Werkstatt Frontend registriert: /werkstatt/")
+
 # Controlling API (BWA)
 try:
     from api.controlling_api import controlling_api
@@ -292,37 +296,15 @@ except Exception as e:
     print(f"⚠️  Jahresprämie nicht geladen: {e}")
 
 # ============================================================================
-# JOB-SCHEDULER UI (Legacy - wird durch Celery ersetzt)
-# ============================================================================
-try:
-    from scheduler import job_manager, scheduler_bp, init_scheduler_routes
-    
-    # Blueprint registrieren (für Web-UI unter /admin/jobs/)
-    app.register_blueprint(scheduler_bp)
-    init_scheduler_routes(job_manager)
-    print("✅ Job-Scheduler UI registriert: /admin/jobs/ (Legacy)")
-        
-except Exception as e:
-    print(f"⚠️  Job-Scheduler UI nicht geladen: {e}")
-
-# ============================================================================
-# CELERY TASK MANAGEMENT (TAG 110 - Ersetzt APScheduler)
+# CELERY TASK MANAGER (TAG110 - Celery + RedBeat + Flower)
+# APScheduler UI entfernt: TAG120 - Redundant, nur noch Celery
 # ============================================================================
 try:
     from celery_app.routes import celery_bp
     app.register_blueprint(celery_bp)
-    print("✅ Celery Task UI registriert: /admin/celery/")
-    print("ℹ️  Flower Dashboard: http://localhost:5555")
+    print("✅ Celery Task Manager registriert: /admin/celery/")
 except Exception as e:
-    print(f"⚠️  Celery Task UI nicht geladen: {e}")
-# Organization API (TAG 113 - Organigramm & Vertretungsregeln)
-try:
-    from api.organization_api import organization_api
-    app.register_blueprint(organization_api)
-    print("✅ Organization API registriert: /api/organization/")
-except Exception as e:
-    print(f"⚠️  Organization API nicht geladen: {e}")
-
+    print(f"⚠️  Celery Task Manager nicht geladen: {e}")
 
 # ============================================================================
 # ERROR HANDLERS
@@ -415,6 +397,14 @@ try:
     print("✅ Teile-Status API registriert: /api/teile/")
 except Exception as e:
     print(f"⚠️  Teile-Status API nicht geladen: {e}")
+
+# Organization API (TAG 113 - Organigramm & Vertretungsregeln)
+try:
+    from api.organization_api import organization_api
+    app.register_blueprint(organization_api)
+    print("✅ Organization API registriert: /api/organization/")
+except Exception as e:
+    print(f"⚠️  Organization API nicht geladen: {e}")
 
 # Gudat Werkstattplanung API (TAG98)
 try:
@@ -543,3 +533,22 @@ def werkstatt_stempeluhr_monitor():
         return "Zugriff verweigert. Token erforderlich.", 403
     
     return render_template('aftersales/werkstatt_stempeluhr_monitor.html')
+
+
+# ========================================
+# TAG 116: KAPAZITÄTSPLANUNG + ANWESENHEIT
+# ========================================
+
+@app.route('/aftersales/kapazitaet')
+@app.route('/aftersales/kapazitaetsplanung')
+@login_required
+def kapazitaetsplanung():
+    """Kapazitätsplanung - Forecast, Gudat, ML-Analyse (TAG 116)"""
+    return render_template('aftersales/kapazitaetsplanung.html')
+
+
+@app.route('/werkstatt/anwesenheit')
+@login_required
+def werkstatt_anwesenheit():
+    """Anwesenheits-Report - Wer hat (nicht) eingestempelt? (TAG 116)"""
+    return render_template('aftersales/werkstatt_anwesenheit.html')

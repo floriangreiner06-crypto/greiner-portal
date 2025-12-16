@@ -1307,7 +1307,7 @@ function loadProblemfaelle() {
     
     document.getElementById('problemfaelleContent').innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>';
     
-    fetch(`/api/werkstatt/problemfaelle?${params}`)
+    fetch(`/api/werkstatt/live/problemfaelle?${params}`)
         .then(response => response.json())
         .then(data => {
             if (data.success) {
@@ -1325,25 +1325,53 @@ function loadProblemfaelle() {
 function renderProblemfaelleTable(data) {
     const auftraege = data.auftraege;
     const stats = data.statistik;
-    
+
     document.getElementById('problemfaelleStats').style.display = 'flex';
     document.getElementById('problemAnzahl').textContent = data.anzahl;
     document.getElementById('problemAvgLG').textContent = formatNumber(stats.durchschnitt_lg, 1) + '%';
     document.getElementById('problemVerlust').textContent = formatNumber(stats.total_verlust_aw, 1) + ' AW';
-    
+
     if (!auftraege || auftraege.length === 0) {
-        document.getElementById('problemfaelleContent').innerHTML = '<div class="text-center py-5"><i class="bi bi-check-circle fs-1 text-success"></i><p class="mt-2">Keine Problemfälle! 🎉</p></div>';
+        document.getElementById('problemfaelleContent').innerHTML = '<div class="text-center py-5"><i class="bi bi-check-circle fs-1 text-success"></i><p class="mt-2">Keine Problemfaelle!</p></div>';
         return;
     }
-    
-    let html = '<div class="card"><div class="card-body p-0"><div class="table-responsive"><table class="table table-hover table-sm mb-0"><thead class="table-light"><tr><th>Datum</th><th>Auftrag</th><th>Kennzeichen</th><th>Mechaniker</th><th class="text-end">Vorgabe</th><th class="text-end">Gestempelt</th><th class="text-center">LG</th><th>Betrieb</th></tr></thead><tbody>';
-    
+
+    // TAG 120: Erweiterte Tabelle mit Status-Spalte
+    let html = '<div class="card"><div class="card-body p-0"><div class="table-responsive"><table class="table table-hover table-sm mb-0"><thead class="table-light"><tr><th>Datum</th><th>Auftrag</th><th>Kennzeichen</th><th>Mechaniker</th><th class="text-end">Vorgabe</th><th class="text-end">Gestempelt</th><th class="text-center">LG</th><th>Betrieb</th><th class="text-center">Status</th></tr></thead><tbody>';
+
     auftraege.forEach(a => {
         const lgClass = a.leistungsgrad < 50 ? 'lg-danger' : 'lg-warning';
         const rowClass = a.leistungsgrad < 40 ? 'problem-row-critical' : (a.leistungsgrad < 60 ? 'problem-row-warning' : '');
-        html += `<tr class="${rowClass}"><td>${a.datum}</td><td><a href="javascript:void(0)" onclick="showAuftragDetail(${a.auftrags_nr})" class="text-primary fw-bold">${a.auftrags_nr || '-'}</a></td><td><strong>${a.kennzeichen || '-'}</strong></td><td>${a.mechaniker_name || 'Unbekannt'}</td><td class="text-end">${formatNumber(a.vorgabe_aw, 1)} AW</td><td class="text-end">${formatNumber(a.gestempelt_min, 0)} min</td><td class="text-center"><span class="badge ${lgClass}">${formatNumber(a.leistungsgrad, 1)}%</span></td><td><small>${a.betrieb_name}</small></td></tr>`;
+
+        // TAG 120: Status-Badges für Fakturierung und Zuordnung
+        let statusBadges = [];
+        if (a.vollstaendig_fakturiert === false) {
+            statusBadges.push(`<span class="badge bg-warning text-dark" title="Offen: ${a.offen_aw || 0} AW noch nicht fakturiert"><i class="bi bi-exclamation-triangle"></i> Offen</span>`);
+        }
+        if (a.vollstaendig_zugeordnet === false) {
+            statusBadges.push(`<span class="badge bg-info" title="${a.nicht_zugeordnet_aw || 0} AW ohne Mechaniker-Zuordnung"><i class="bi bi-person-x"></i></span>`);
+        }
+        const statusHtml = statusBadges.length > 0 ? statusBadges.join(' ') : '<span class="badge bg-success"><i class="bi bi-check"></i></span>';
+
+        // Vorgabe-Text mit Aufschlüsselung bei offenen AW
+        let vorgabeText = `${formatNumber(a.vorgabe_aw, 1)} AW`;
+        if (a.offen_aw > 0) {
+            vorgabeText = `<span title="Gesamt: ${a.vorgabe_aw} AW (${a.fakturiert_aw} fakt. / ${a.offen_aw} offen)">${formatNumber(a.vorgabe_aw, 1)} AW</span>`;
+        }
+
+        html += `<tr class="${rowClass}">
+            <td>${a.datum}</td>
+            <td><a href="javascript:void(0)" onclick="showAuftragDetail(${a.auftrags_nr})" class="text-primary fw-bold">${a.auftrags_nr || '-'}</a></td>
+            <td><strong>${a.kennzeichen || '-'}</strong></td>
+            <td>${a.mechaniker_name || 'Unbekannt'}</td>
+            <td class="text-end">${vorgabeText}</td>
+            <td class="text-end">${formatNumber(a.gestempelt_min, 0)} min</td>
+            <td class="text-center"><span class="badge ${lgClass}">${formatNumber(a.leistungsgrad, 1)}%</span></td>
+            <td><small>${a.betrieb_name}</small></td>
+            <td class="text-center">${statusHtml}</td>
+        </tr>`;
     });
-    
+
     html += '</tbody></table></div></div></div>';
     document.getElementById('problemfaelleContent').innerHTML = html;
 }
@@ -1392,7 +1420,7 @@ function showAuftragDetail(auftragNr) {
     document.getElementById('modalAuftragNr').textContent = auftragNr;
     document.getElementById('auftragModalBody').innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>';
     modal.show();
-    
+
     fetch(`/api/werkstatt/live/auftrag/${auftragNr}`)
         .then(response => response.json())
         .then(data => {
@@ -1402,10 +1430,68 @@ function showAuftragDetail(auftragNr) {
             }
             const a = data.auftrag;
             const f = a.fahrzeug || {};
-            let html = `<div class="row"><div class="col-md-6"><h6><i class="bi bi-car-front"></i> Fahrzeug</h6><p><strong>${f.kennzeichen || '-'}</strong><br>${f.marke || ''} ${f.modell || ''}</p><h6><i class="bi bi-person"></i> Kunde</h6><p>${a.kunde || '-'}</p></div><div class="col-md-6"><h6><i class="bi bi-info-circle"></i> Auftrag</h6><p>SB: ${a.serviceberater || '-'}<br>Datum: ${a.datum || '-'}</p></div></div><hr><h6><i class="bi bi-list-check"></i> Positionen</h6><table class="table table-sm"><thead><tr><th>Pos</th><th>Beschreibung</th><th>Mechaniker</th><th class="text-end">AW</th></tr></thead><tbody>`;
+            const s = a.summen || {};
+
+            // TAG 120: Status-Badges für Auftrag
+            let statusBadges = '';
+            if (s.vollstaendig_abgerechnet === false) {
+                statusBadges += `<span class="badge bg-warning text-dark me-1"><i class="bi bi-exclamation-triangle"></i> ${s.offen_aw || 0} AW offen</span>`;
+            }
+            if (s.vollstaendig_zugeordnet === false) {
+                statusBadges += `<span class="badge bg-info me-1"><i class="bi bi-person-x"></i> ${s.nicht_zugeordnet_aw || 0} AW ohne Mech.</span>`;
+            }
+            if (s.vollstaendig_abgerechnet && s.vollstaendig_zugeordnet) {
+                statusBadges = '<span class="badge bg-success"><i class="bi bi-check"></i> Vollstaendig</span>';
+            }
+
+            let html = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6><i class="bi bi-car-front"></i> Fahrzeug</h6>
+                        <p><strong>${f.kennzeichen || '-'}</strong><br>${f.marke || ''} ${f.modell || ''}</p>
+                        <h6><i class="bi bi-person"></i> Kunde</h6>
+                        <p>${a.kunde || '-'}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <h6><i class="bi bi-info-circle"></i> Auftrag</h6>
+                        <p>SB: ${a.serviceberater || '-'}<br>Datum: ${a.datum || '-'}</p>
+                        <h6><i class="bi bi-calculator"></i> AW-Summen</h6>
+                        <p>
+                            <strong>Gesamt:</strong> ${s.total_aw || 0} AW<br>
+                            <small class="text-success">Fakturiert: ${s.fakturiert_aw || 0} AW</small> |
+                            <small class="text-warning">Offen: ${s.offen_aw || 0} AW</small><br>
+                            <small class="text-primary">Zugeordnet: ${s.zugeordnet_aw || 0} AW</small> |
+                            <small class="text-info">Ohne Mech.: ${s.nicht_zugeordnet_aw || 0} AW</small>
+                        </p>
+                        <p>${statusBadges}</p>
+                    </div>
+                </div>
+                <hr>
+                <h6><i class="bi bi-list-check"></i> Positionen (${s.anzahl_positionen || 0})</h6>
+                <table class="table table-sm">
+                    <thead><tr><th>Pos</th><th>Beschreibung</th><th>Mechaniker</th><th class="text-end">AW</th><th class="text-center">Status</th></tr></thead>
+                    <tbody>`;
+
             if (data.positionen) {
                 data.positionen.forEach(p => {
-                    html += `<tr><td>${p.position}</td><td>${(p.beschreibung || '-').substring(0, 50)}</td><td>${p.mechaniker || '-'}</td><td class="text-end">${p.vorgabe_aw ? p.vorgabe_aw.toFixed(1) : '-'}</td></tr>`;
+                    // Status-Badge pro Position
+                    let posStatus = '';
+                    if (p.abgerechnet) {
+                        posStatus = '<span class="badge bg-success"><i class="bi bi-check"></i></span>';
+                    } else {
+                        posStatus = '<span class="badge bg-warning text-dark">Offen</span>';
+                    }
+                    if (!p.mechaniker_nr) {
+                        posStatus += ' <span class="badge bg-info"><i class="bi bi-person-x"></i></span>';
+                    }
+
+                    html += `<tr>
+                        <td>${p.position}</td>
+                        <td>${(p.beschreibung || '-').substring(0, 50)}</td>
+                        <td>${p.mechaniker || '-'}</td>
+                        <td class="text-end">${p.vorgabe_aw ? p.vorgabe_aw.toFixed(1) : '-'}</td>
+                        <td class="text-center">${posStatus}</td>
+                    </tr>`;
                 });
             }
             html += '</tbody></table>';

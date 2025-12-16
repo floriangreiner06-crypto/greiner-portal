@@ -1,0 +1,704 @@
+{% extends "base.html" %}
+
+{% block title %}DRIVE ML-Kapazität - Greiner DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ============================================================
+   DRIVE ML-KAPAZITÄT - TAG 119
+   Kapazitätsplanung mit DRIVE-Korrekturfaktoren
+   ============================================================ */
+
+.drive-header {
+    background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+    color: white;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+}
+
+.drive-card {
+    border-radius: 12px;
+    border: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+
+.day-card {
+    background: #f8f9fa;
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+    transition: all 0.2s;
+    border: 2px solid transparent;
+}
+
+.day-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.day-card.today {
+    border-color: #9b59b6;
+    background: linear-gradient(135deg, rgba(155,89,182,0.1), rgba(142,68,173,0.1));
+}
+
+.day-card .day-name { font-size: 0.9rem; color: #6c757d; }
+.day-card .day-date { font-size: 0.8rem; color: #adb5bd; }
+.day-card .day-value { font-size: 2rem; font-weight: 700; margin: 8px 0; }
+.day-card .day-detail { font-size: 0.75rem; color: #6c757d; }
+
+.comparison-bar {
+    height: 40px;
+    display: flex;
+    align-items: center;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #e9ecef;
+    position: relative;
+    margin: 8px 0;
+}
+
+.comparison-bar .bar {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 8px;
+    color: white;
+    font-weight: 600;
+    font-size: 0.85rem;
+    min-width: 40px;
+}
+
+.bar-hersteller { background: linear-gradient(90deg, #95a5a6 0%, #7f8c8d 100%); }
+.bar-drive { background: linear-gradient(90deg, #9b59b6 0%, #8e44ad 100%); }
+
+.factor-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.factor-high { background: #fee2e2; color: #991b1b; }
+.factor-medium { background: #fef3c7; color: #92400e; }
+.factor-low { background: #d1fae5; color: #065f46; }
+
+.legend-item {
+    display: inline-flex;
+    align-items: center;
+    margin-right: 20px;
+    font-size: 0.9rem;
+}
+
+.legend-color {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    margin-right: 6px;
+}
+
+.summary-box {
+    background: linear-gradient(135deg, rgba(155,89,182,0.1), rgba(142,68,173,0.05));
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+}
+
+.summary-box .label { font-size: 0.85rem; color: #6c757d; }
+.summary-box .value { font-size: 1.8rem; font-weight: 700; }
+.summary-box .detail { font-size: 0.8rem; color: #adb5bd; }
+
+/* Klickbare Tageszeilen */
+.day-row {
+    border-radius: 8px;
+    padding: 12px;
+    margin: -12px;
+    margin-bottom: 16px;
+    transition: all 0.2s;
+}
+.day-row:hover {
+    background: rgba(155, 89, 182, 0.05);
+    transform: translateX(4px);
+}
+.text-purple { color: #9b59b6 !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+    <!-- Header -->
+    <div class="drive-header">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h2 class="mb-1">
+                    <i class="bi bi-robot"></i> DRIVE ML-Kapazität
+                </h2>
+                <p class="mb-0 opacity-75">
+                    Kapazitätsplanung mit DRIVE-Korrekturfaktoren (G=1.24x, W=0.94x)
+                </p>
+            </div>
+            <div class="col-md-4 text-md-end">
+                <select id="betrieb-filter" class="form-select d-inline-block" style="width: auto;">
+                    <option value="">Alle Betriebe</option>
+                    <option value="1">Deggendorf</option>
+                    <option value="3">Landau</option>
+                </select>
+                <button class="btn btn-light ms-2" onclick="loadData()">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lade-Indikator -->
+    <div id="loading-indicator" class="text-center py-5">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="mt-3 text-muted">Berechne DRIVE-Kapazitäten...</p>
+    </div>
+
+    <!-- Hauptinhalt -->
+    <div id="main-content" style="display: none;">
+
+        <!-- Legende -->
+        <div class="mb-4">
+            <span class="legend-item">
+                <span class="legend-color" style="background: #7f8c8d;"></span>
+                Herstellervorgabe
+            </span>
+            <span class="legend-item">
+                <span class="legend-color" style="background: #9b59b6;"></span>
+                DRIVE-Korrektur
+            </span>
+            <span class="legend-item">
+                <span class="factor-badge factor-high ms-2">G-Faktor 1.24x</span>
+            </span>
+            <span class="legend-item">
+                <span class="factor-badge factor-low ms-2">W-Faktor 0.94x</span>
+            </span>
+        </div>
+
+        <!-- Wochen-Übersicht -->
+        <div class="drive-card">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">
+                    <i class="bi bi-calendar-week text-primary"></i>
+                    Wochenübersicht (DRIVE vs Hersteller)
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3" id="week-overview">
+                    <!-- Wird per JS gefüllt -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Zusammenfassung -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="summary-box">
+                    <div class="label">Herstellervorgabe (Woche)</div>
+                    <div class="value text-secondary" id="sum-hersteller">- AW</div>
+                    <div class="detail">Original-Kalkulation</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="summary-box">
+                    <div class="label">DRIVE-Korrektur (Woche)</div>
+                    <div class="value text-purple" id="sum-drive">- AW</div>
+                    <div class="detail">Realistische Schätzung</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="summary-box">
+                    <div class="label">Differenz</div>
+                    <div class="value text-danger" id="sum-diff">- AW</div>
+                    <div class="detail">Mehr Zeit benötigt</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="summary-box">
+                    <div class="label">Kapazität</div>
+                    <div class="value" id="sum-capacity">- AW</div>
+                    <div class="detail">Verfügbar diese Woche</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tages-Details -->
+        <div class="drive-card">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-list-ul text-info"></i>
+                    Tages-Vergleich
+                </h5>
+            </div>
+            <div class="card-body" id="daily-details">
+                <!-- Wird per JS gefüllt -->
+            </div>
+        </div>
+
+        <!-- Auftrags-Tabelle mit Korrekturfaktoren -->
+        <div class="drive-card">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-table text-success"></i>
+                    Aufträge mit DRIVE-Korrektur
+                </h5>
+                <span class="badge bg-primary" id="orders-count">0</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th>Auftrag</th>
+                                <th>Datum</th>
+                                <th>Lohnart</th>
+                                <th class="text-end">Hersteller</th>
+                                <th class="text-end">DRIVE</th>
+                                <th class="text-end">Faktor</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="orders-body">
+                            <tr><td colspan="7" class="text-center py-4">Lade...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ============================================================
+// DRIVE ML-KAPAZITÄT - JavaScript (TAG 120)
+// ============================================================
+
+// Globale Daten für Modal-Zugriff
+let _driveData = null;
+
+async function loadData() {
+    document.getElementById('loading-indicator').style.display = 'block';
+    document.getElementById('main-content').style.display = 'none';
+
+    const betrieb = document.getElementById('betrieb-filter').value;
+    let url = '/api/werkstatt/live/drive/kapazitaet';
+    if (betrieb) url += '?subsidiary=' + betrieb;
+
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.success) {
+            renderData(data);
+        } else {
+            showError(data.error || 'API-Fehler');
+        }
+    } catch (e) {
+        console.error('Kapazität Fehler:', e);
+        showError('Verbindungsfehler: ' + e.message);
+    }
+}
+
+function renderData(data) {
+    // Global speichern für Modal-Zugriff
+    _driveData = data;
+
+    document.getElementById('loading-indicator').style.display = 'none';
+    document.getElementById('main-content').style.display = 'block';
+
+    // Wochen-Übersicht
+    renderWeekOverview(data.tage || []);
+
+    // Zusammenfassung
+    renderSummary(data);
+
+    // Tages-Details
+    renderDailyDetails(data.tage || []);
+
+    // Aufträge (falls vorhanden)
+    renderOrders(data.auftraege || []);
+}
+
+function renderWeekOverview(tage) {
+    const container = document.getElementById('week-overview');
+    const today = new Date().toISOString().split('T')[0];
+
+    if (!tage || tage.length === 0) {
+        container.innerHTML = '<div class="col-12 text-center text-muted py-4">Keine Daten</div>';
+        return;
+    }
+
+    // Tage nach Datum gruppieren (API liefert pro Betrieb)
+    const tageByDate = {};
+    tage.forEach(t => {
+        const datum = t.tag || t.datum;
+        if (!tageByDate[datum]) {
+            tageByDate[datum] = {
+                datum: datum,
+                drive_aw: 0,
+                hersteller_aw: 0,
+                kapazitaet_aw: 0,
+                garantie_aw: 0,
+                gesamt_aw: 0
+            };
+        }
+        tageByDate[datum].drive_aw += (t.drive?.gesamt_aw || t.drive_aw || 0);
+        tageByDate[datum].hersteller_aw += (t.hersteller?.gesamt_aw || t.hersteller_aw || 0);
+        tageByDate[datum].kapazitaet_aw += (t.kapazitaet_aw || 0);
+        tageByDate[datum].garantie_aw += (t.drive?.garantie_aw || 0);
+        tageByDate[datum].gesamt_aw += (t.hersteller?.gesamt_aw || 0);
+    });
+
+    const sortedDays = Object.values(tageByDate).sort((a, b) => a.datum.localeCompare(b.datum));
+
+    container.innerHTML = sortedDays.map(tag => {
+        const isToday = tag.datum === today;
+        const driveUtil = tag.kapazitaet_aw > 0 ? (tag.drive_aw / tag.kapazitaet_aw * 100) : 0;
+
+        let utilClass = 'text-success';
+        if (driveUtil > 120) utilClass = 'text-danger';
+        else if (driveUtil > 100) utilClass = 'text-warning';
+        else if (driveUtil < 70) utilClass = 'text-info';
+
+        const weekday = new Date(tag.datum).toLocaleDateString('de-DE', {weekday: 'short'});
+        const dateStr = new Date(tag.datum).toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit'});
+
+        // G-Anteil berechnen
+        const gAnteil = tag.gesamt_aw > 0 ? (tag.garantie_aw / tag.drive_aw) : 0;
+
+        return `
+            <div class="col-md col-6">
+                <div class="day-card ${isToday ? 'today' : ''}">
+                    <div class="day-name">${isToday ? '▶ HEUTE' : weekday}</div>
+                    <div class="day-date">${dateStr}</div>
+                    <div class="day-value ${utilClass}">${Math.round(driveUtil)}%</div>
+                    <div class="day-detail">
+                        <span class="text-secondary">${Math.round(tag.hersteller_aw)}</span> →
+                        <span class="text-purple">${Math.round(tag.drive_aw)}</span> AW
+                    </div>
+                    ${gAnteil > 0.3 ? '<span class="factor-badge factor-high mt-2">Viel G!</span>' : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderSummary(data) {
+    // API liefert drive/hersteller als Objekte
+    const sumHersteller = (data.tage || []).reduce((s, t) => s + (t.hersteller?.gesamt_aw || t.hersteller_aw || 0), 0);
+    const sumDrive = (data.tage || []).reduce((s, t) => s + (t.drive?.gesamt_aw || t.drive_aw || 0), 0);
+    const sumCapacity = (data.tage || []).reduce((s, t) => s + (t.kapazitaet_aw || 0), 0);
+    const diff = sumDrive - sumHersteller;
+
+    document.getElementById('sum-hersteller').textContent = Math.round(sumHersteller) + ' AW';
+    document.getElementById('sum-drive').textContent = Math.round(sumDrive) + ' AW';
+    document.getElementById('sum-diff').textContent = (diff >= 0 ? '+' : '') + Math.round(diff) + ' AW';
+    document.getElementById('sum-diff').className = 'value ' + (diff > 0 ? 'text-danger' : 'text-success');
+
+    const utilization = sumCapacity > 0 ? (sumDrive / sumCapacity * 100) : 0;
+    document.getElementById('sum-capacity').textContent = Math.round(sumCapacity) + ' AW';
+    document.getElementById('sum-capacity').className = 'value ' +
+        (utilization > 110 ? 'text-danger' : (utilization > 90 ? 'text-warning' : 'text-success'));
+}
+
+function renderDailyDetails(tage) {
+    const container = document.getElementById('daily-details');
+
+    if (!tage || tage.length === 0) {
+        container.innerHTML = '<div class="text-muted text-center py-4">Keine Daten</div>';
+        return;
+    }
+
+    // Tage nach Datum gruppieren (API liefert pro Betrieb)
+    const tageByDate = {};
+    tage.forEach(t => {
+        const datum = t.tag || t.datum;
+        if (!tageByDate[datum]) {
+            tageByDate[datum] = {
+                datum: datum,
+                drive_aw: 0,
+                hersteller_aw: 0,
+                kapazitaet_aw: 0,
+                garantie_aw: 0,
+                anzahl_auftraege: 0
+            };
+        }
+        tageByDate[datum].drive_aw += (t.drive?.gesamt_aw || t.drive_aw || 0);
+        tageByDate[datum].hersteller_aw += (t.hersteller?.gesamt_aw || t.hersteller_aw || 0);
+        tageByDate[datum].kapazitaet_aw += (t.kapazitaet_aw || 0);
+        tageByDate[datum].garantie_aw += (t.drive?.garantie_aw || 0);
+        tageByDate[datum].anzahl_auftraege += (t.anzahl_auftraege || 0);
+    });
+
+    const sortedDays = Object.values(tageByDate).sort((a, b) => a.datum.localeCompare(b.datum));
+    const maxVal = Math.max(...sortedDays.map(t => Math.max(t.hersteller_aw, t.drive_aw)));
+
+    container.innerHTML = sortedDays.map(tag => {
+        const herstellerPct = maxVal > 0 ? (tag.hersteller_aw / maxVal * 100) : 0;
+        const drivePct = maxVal > 0 ? (tag.drive_aw / maxVal * 100) : 0;
+        const diff = tag.drive_aw - tag.hersteller_aw;
+        const gAnteil = tag.drive_aw > 0 ? (tag.garantie_aw / tag.drive_aw) : 0;
+
+        const weekday = new Date(tag.datum).toLocaleDateString('de-DE', {weekday: 'long'});
+        const dateStr = new Date(tag.datum).toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit'});
+
+        return `
+            <div class="mb-4 day-row" onclick="showTagesDetail('${tag.datum}')" style="cursor: pointer;">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div>
+                        <strong>${weekday}</strong>
+                        <small class="text-muted ms-2">${dateStr}</small>
+                        ${tag.anzahl_auftraege ? `<span class="badge bg-secondary ms-2">${tag.anzahl_auftraege} Aufträge</span>` : ''}
+                        <i class="bi bi-chevron-right text-muted ms-2"></i>
+                    </div>
+                    <div class="text-end">
+                        <span class="${diff > 0 ? 'text-danger' : 'text-success'} fw-bold">
+                            ${diff > 0 ? '+' : ''}${Math.round(diff)} AW Differenz
+                        </span>
+                    </div>
+                </div>
+                <div class="comparison-bar">
+                    <div class="bar bar-hersteller" style="width: ${herstellerPct}%;">
+                        ${Math.round(tag.hersteller_aw)}
+                    </div>
+                </div>
+                <div class="comparison-bar">
+                    <div class="bar bar-drive" style="width: ${drivePct}%;">
+                        ${Math.round(tag.drive_aw)}
+                    </div>
+                </div>
+                <div class="d-flex justify-content-between mt-1">
+                    <small>
+                        G-Anteil: <span class="fw-bold ${gAnteil > 0.3 ? 'text-danger' : ''}">${Math.round(gAnteil * 100)}%</span>
+                    </small>
+                    <small>
+                        Kapazität: ${Math.round(tag.kapazitaet_aw)} AW
+                    </small>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderOrders(auftraege) {
+    const tbody = document.getElementById('orders-body');
+    document.getElementById('orders-count').textContent = auftraege.length;
+
+    if (!auftraege || auftraege.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-muted">Keine Aufträge</td></tr>';
+        return;
+    }
+
+    const labourTypeNames = {'G': 'Garantie', 'W': 'Werkstatt', 'I': 'Intern', 'V': 'Versicherung'};
+
+    tbody.innerHTML = auftraege.slice(0, 50).map(a => {
+        const factor = a.correction_factor || 1.0;
+        const factorClass = factor > 1.15 ? 'factor-high' : (factor > 1.0 ? 'factor-medium' : 'factor-low');
+
+        return `
+            <tr>
+                <td><strong>${a.auftrag_nr || a.order_number}</strong></td>
+                <td>${a.datum || '-'}</td>
+                <td>
+                    <span class="badge ${a.labour_type === 'G' ? 'bg-danger' : 'bg-secondary'}">
+                        ${labourTypeNames[a.labour_type] || a.labour_type || '-'}
+                    </span>
+                </td>
+                <td class="text-end">${Math.round(a.hersteller_aw || 0)} AW</td>
+                <td class="text-end text-purple fw-bold">${Math.round(a.drive_aw || 0)} AW</td>
+                <td class="text-end">
+                    <span class="factor-badge ${factorClass}">${factor.toFixed(2)}x</span>
+                </td>
+                <td>
+                    ${a.status === 'unterbewertet' ? '<span class="badge bg-danger">Unterbewertet</span>' :
+                      a.status === 'ok' ? '<span class="badge bg-success">OK</span>' :
+                      '<span class="badge bg-secondary">-</span>'}
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function showError(msg) {
+    document.getElementById('loading-indicator').innerHTML = `
+        <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            <strong>Fehler:</strong> ${msg}
+        </div>
+    `;
+}
+
+// ============================================================
+// TAGES-DETAIL MODAL (TAG 120)
+// ============================================================
+function showTagesDetail(datum) {
+    if (!_driveData || !_driveData.tage) return;
+
+    // Alle Einträge für dieses Datum sammeln (pro Betrieb)
+    const tageForDate = _driveData.tage.filter(t => (t.tag || t.datum) === datum);
+
+    if (tageForDate.length === 0) {
+        alert('Keine Daten für dieses Datum');
+        return;
+    }
+
+    const weekday = new Date(datum).toLocaleDateString('de-DE', {weekday: 'long'});
+    const dateStr = new Date(datum).toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit', year: 'numeric'});
+
+    // Faktoren aus den globalen Daten
+    const faktoren = _driveData.korrekturfaktoren || {G: 1.24, W: 0.94, I: 1.08};
+
+    // Betrieb-Details aufbauen
+    let betriebRows = '';
+    let totalHersteller = 0, totalDrive = 0, totalKapa = 0, totalAuftraege = 0;
+
+    tageForDate.forEach(t => {
+        const h = t.hersteller || {};
+        const d = t.drive || {};
+
+        totalHersteller += h.gesamt_aw || 0;
+        totalDrive += d.gesamt_aw || 0;
+        totalKapa += t.kapazitaet_aw || 0;
+        totalAuftraege += t.anzahl_auftraege || 0;
+
+        const auslastung = t.kapazitaet_aw > 0 ? (d.gesamt_aw / t.kapazitaet_aw * 100) : 0;
+        const auslastungClass = auslastung > 110 ? 'text-danger' : (auslastung > 90 ? 'text-warning' : 'text-success');
+
+        betriebRows += `
+            <tr>
+                <td><strong>${t.betrieb_name || 'Betrieb ' + t.betrieb}</strong></td>
+                <td class="text-end">${t.anzahl_auftraege || 0}</td>
+                <td class="text-end">${Math.round(h.gesamt_aw || 0)} AW</td>
+                <td class="text-end fw-bold text-purple">${Math.round(d.gesamt_aw || 0)} AW</td>
+                <td class="text-end">${t.kapazitaet_aw || 0} AW</td>
+                <td class="text-end ${auslastungClass} fw-bold">${Math.round(auslastung)}%</td>
+            </tr>
+            <tr class="table-light small">
+                <td colspan="6" class="ps-4">
+                    <span class="badge bg-danger me-2">G: ${Math.round(h.garantie_aw || 0)} → ${Math.round(d.garantie_aw || 0)} AW</span>
+                    <span class="badge bg-secondary me-2">W: ${Math.round(h.werkstatt_aw || 0)} → ${Math.round(d.werkstatt_aw || 0)} AW</span>
+                    <span class="badge bg-info">I: ${Math.round(h.intern_aw || 0)} → ${Math.round(d.intern_aw || 0)} AW</span>
+                </td>
+            </tr>
+        `;
+    });
+
+    const diff = totalDrive - totalHersteller;
+    const totalAuslastung = totalKapa > 0 ? (totalDrive / totalKapa * 100) : 0;
+
+    const modalHtml = `
+        <div class="modal fade" id="tagesDetailModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header" style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); color: white;">
+                        <h5 class="modal-title">
+                            <i class="bi bi-calendar-day me-2"></i>
+                            ${weekday}, ${dateStr}
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <!-- Zusammenfassung -->
+                        <div class="row mb-4 g-3">
+                            <div class="col-md-3">
+                                <div class="text-center p-3 bg-light rounded">
+                                    <div class="text-muted small">Aufträge</div>
+                                    <div class="fs-4 fw-bold">${totalAuftraege}</div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center p-3 bg-light rounded">
+                                    <div class="text-muted small">Hersteller</div>
+                                    <div class="fs-4 fw-bold text-secondary">${Math.round(totalHersteller)} AW</div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center p-3 bg-light rounded">
+                                    <div class="text-muted small">DRIVE</div>
+                                    <div class="fs-4 fw-bold text-purple">${Math.round(totalDrive)} AW</div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center p-3 bg-light rounded">
+                                    <div class="text-muted small">Differenz</div>
+                                    <div class="fs-4 fw-bold ${diff > 0 ? 'text-danger' : 'text-success'}">
+                                        ${diff > 0 ? '+' : ''}${Math.round(diff)} AW
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Korrekturfaktoren -->
+                        <div class="alert alert-light mb-4">
+                            <strong>Korrekturfaktoren:</strong>
+                            <span class="badge bg-danger ms-2">Garantie ×${faktoren.G?.toFixed(2) || '1.24'}</span>
+                            <span class="badge bg-secondary ms-2">Werkstatt ×${faktoren.W?.toFixed(2) || '0.94'}</span>
+                            <span class="badge bg-info ms-2">Intern ×${faktoren.I?.toFixed(2) || '1.08'}</span>
+                        </div>
+
+                        <!-- Betrieb-Details -->
+                        <h6><i class="bi bi-building me-2"></i>Nach Betrieb</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Betrieb</th>
+                                        <th class="text-end">Aufträge</th>
+                                        <th class="text-end">Hersteller</th>
+                                        <th class="text-end">DRIVE</th>
+                                        <th class="text-end">Kapazität</th>
+                                        <th class="text-end">Auslastung</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${betriebRows}
+                                </tbody>
+                                <tfoot class="table-light fw-bold">
+                                    <tr>
+                                        <td>Gesamt</td>
+                                        <td class="text-end">${totalAuftraege}</td>
+                                        <td class="text-end">${Math.round(totalHersteller)} AW</td>
+                                        <td class="text-end text-purple">${Math.round(totalDrive)} AW</td>
+                                        <td class="text-end">${totalKapa} AW</td>
+                                        <td class="text-end ${totalAuslastung > 100 ? 'text-danger' : 'text-success'}">${Math.round(totalAuslastung)}%</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Altes Modal entfernen
+    const existing = document.getElementById('tagesDetailModal');
+    if (existing) existing.remove();
+
+    // Neues Modal einfügen und öffnen
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    const modal = new bootstrap.Modal(document.getElementById('tagesDetailModal'));
+    modal.show();
+}
+
+// Events
+document.getElementById('betrieb-filter').addEventListener('change', loadData);
+
+// Init
+document.addEventListener('DOMContentLoaded', loadData);
+</script>
+{% endblock %}

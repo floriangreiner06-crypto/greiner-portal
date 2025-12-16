@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DRIVE - Team Präsentation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #1a1a2e;
+            color: white;
+            overflow: hidden;
+        }
+        .slide {
+            display: none;
+            width: 100vw;
+            height: 100vh;
+            padding: 60px 80px;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        .slide.active {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        h1 {
+            font-size: 4em;
+            margin-bottom: 30px;
+            color: #00d4ff;
+        }
+        h2 {
+            font-size: 2.5em;
+            margin-bottom: 40px;
+            color: #00d4ff;
+        }
+        p, li {
+            font-size: 1.8em;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+        ul {
+            list-style: none;
+            padding-left: 40px;
+        }
+        li::before {
+            content: "→ ";
+            color: #00d4ff;
+        }
+        .highlight {
+            color: #ff6b6b;
+            font-weight: bold;
+        }
+        .success {
+            color: #51cf66;
+            font-weight: bold;
+        }
+        .center {
+            text-align: center;
+            justify-content: center;
+            align-items: center;
+        }
+        .big-number {
+            font-size: 8em;
+            color: #ff6b6b;
+            font-weight: bold;
+        }
+        .subtitle {
+            font-size: 1.5em;
+            color: #888;
+            margin-top: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 30px 0;
+            font-size: 1.4em;
+        }
+        th, td {
+            padding: 20px 30px;
+            text-align: left;
+            border-bottom: 1px solid #333;
+        }
+        th {
+            color: #00d4ff;
+            font-size: 1.2em;
+        }
+        .comparison {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            margin-top: 40px;
+        }
+        .comparison-box {
+            text-align: center;
+            padding: 40px;
+            border-radius: 20px;
+            width: 40%;
+        }
+        .old {
+            background: rgba(255, 107, 107, 0.2);
+            border: 2px solid #ff6b6b;
+        }
+        .new {
+            background: rgba(81, 207, 102, 0.2);
+            border: 2px solid #51cf66;
+        }
+        .comparison-box h3 {
+            font-size: 1.8em;
+            margin-bottom: 20px;
+        }
+        .comparison-box .number {
+            font-size: 4em;
+            font-weight: bold;
+        }
+        .nav {
+            position: fixed;
+            bottom: 30px;
+            right: 40px;
+            display: flex;
+            gap: 15px;
+        }
+        .nav button {
+            background: #00d4ff;
+            border: none;
+            color: #1a1a2e;
+            padding: 15px 30px;
+            font-size: 1.2em;
+            cursor: pointer;
+            border-radius: 8px;
+            font-weight: bold;
+        }
+        .nav button:hover {
+            background: #00b8e6;
+        }
+        .slide-counter {
+            position: fixed;
+            bottom: 30px;
+            left: 40px;
+            font-size: 1.2em;
+            color: #666;
+        }
+        .logo {
+            position: fixed;
+            top: 30px;
+            right: 40px;
+            font-size: 1.2em;
+            color: #444;
+        }
+        .emoji {
+            font-size: 1.5em;
+        }
+        .quote {
+            font-style: italic;
+            font-size: 2em;
+            border-left: 5px solid #00d4ff;
+            padding-left: 30px;
+            margin: 40px 0;
+        }
+        .three-cols {
+            display: flex;
+            justify-content: space-between;
+            gap: 30px;
+            margin-top: 40px;
+        }
+        .col {
+            flex: 1;
+            background: rgba(0, 212, 255, 0.1);
+            padding: 30px;
+            border-radius: 15px;
+            border: 1px solid #00d4ff;
+        }
+        .col h3 {
+            color: #00d4ff;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+        .col p {
+            font-size: 1.2em;
+        }
+    </style>
+</head>
+<body>
+    <div class="logo">AUTOHAUS GREINER</div>
+
+    <!-- Slide 1: Titel -->
+    <div class="slide active center">
+        <h1>DRIVE</h1>
+        <p style="font-size: 2em; color: #888;">Data-driven Real-time Intelligence for Vehicle Excellence</p>
+        <p style="margin-top: 60px; font-size: 1.5em;">Team-Meeting | Dezember 2025</p>
+    </div>
+
+    <!-- Slide 2: Das Problem -->
+    <div class="slide">
+        <h2>Kennt ihr das?</h2>
+        <div class="quote">
+            "Der Hersteller sagt 1 Stunde, aber ich brauch 3..."
+        </div>
+        <p style="margin-top: 40px;">Und dann heißt es: <span class="highlight">"Warum bist du so langsam?"</span></p>
+        <p style="margin-top: 40px; font-size: 2.5em;">Das ist <span class="highlight">NICHT</span> euer Problem.</p>
+    </div>
+
+    <!-- Slide 3: Die Zahlen -->
+    <div class="slide center">
+        <h2>5.721 Aufträge analysiert (2023-2025)</h2>
+        <div class="comparison">
+            <div class="comparison-box old">
+                <h3>Hersteller sagt</h3>
+                <div class="number">11.077h</div>
+            </div>
+            <div style="font-size: 4em;">→</div>
+            <div class="comparison-box new">
+                <h3>Tatsächlich</h3>
+                <div class="number" style="color: #ff6b6b;">13.822h</div>
+            </div>
+        </div>
+        <p style="margin-top: 50px; font-size: 2em;">Das sind <span class="highlight">2.745 Stunden</span> mehr (+25%)!</p>
+    </div>
+
+    <!-- Slide 4: Die harte Wahrheit -->
+    <div class="slide center">
+        <div class="big-number">56%</div>
+        <p style="font-size: 2em;">aller Aufträge brauchen <span class="highlight">LÄNGER</span> als die Herstellervorgabe</p>
+        <p class="subtitle">Basierend auf 5.721 echten Stempeluhr-Daten | Durchschnitt: 35% länger</p>
+    </div>
+
+    <!-- Slide 5: Die Lösung -->
+    <div class="slide">
+        <h2>Die Lösung: DRIVE</h2>
+        <p>DRIVE lernt aus <span class="success">echten Stempeluhr-Daten</span>, wie lange Arbeiten <strong>wirklich</strong> dauern.</p>
+        <ul style="margin-top: 40px;">
+            <li>5.700+ qualitätsgeprüfte Aufträge analysiert</li>
+            <li>Machine Learning erkennt Muster (R² = 0.68)</li>
+            <li>Durchschnittlicher Fehler: <span class="success">45 Minuten</span></li>
+        </ul>
+    </div>
+
+    <!-- Slide 6: Beispiel -->
+    <div class="slide">
+        <h2>Echtes Beispiel: Auftrag 39423</h2>
+        <table>
+            <tr>
+                <th>Quelle</th>
+                <th>Vorhersage</th>
+                <th>Ergebnis</th>
+            </tr>
+            <tr>
+                <td>Hersteller</td>
+                <td class="highlight">72 min</td>
+                <td><span class="emoji">❌</span> Daneben!</td>
+            </tr>
+            <tr>
+                <td><strong>DRIVE</strong></td>
+                <td class="success">242 min</td>
+                <td><span class="emoji">✅</span> Fast perfekt!</td>
+            </tr>
+            <tr>
+                <td>Tatsächlich</td>
+                <td>245 min</td>
+                <td>—</td>
+            </tr>
+        </table>
+        <p style="margin-top: 30px;">DRIVE Fehler: <span class="success">3 min</span> | Hersteller Fehler: <span class="highlight">173 min</span></p>
+    </div>
+
+    <!-- Slide 7: Was bedeutet das für euch? -->
+    <div class="slide">
+        <h2>Was bedeutet das für EUCH?</h2>
+        <div class="three-cols">
+            <div class="col">
+                <h3><span class="emoji">🔧</span> Mechaniker</h3>
+                <p><strong>Faire Bewertung</strong></p>
+                <p>Deine Produktivität wird an der Realität gemessen, nicht an unrealistischen Vorgaben.</p>
+            </div>
+            <div class="col">
+                <h3><span class="emoji">📞</span> Serviceberater</h3>
+                <p><strong>Realistische Termine</strong></p>
+                <p>DRIVE warnt dich vor unterbewerteten Aufträgen. Weniger Kundenbeschwerden!</p>
+            </div>
+            <div class="col">
+                <h3><span class="emoji">📊</span> Werkstattleiter</h3>
+                <p><strong>Frühwarnsystem</strong></p>
+                <p>Morgens sehen, welche Aufträge kritisch werden. Proaktiv planen.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 8: Wichtige Botschaft -->
+    <div class="slide center">
+        <h2>DRIVE ist <span class="success">FÜR</span> euch</h2>
+        <h2 style="color: #ff6b6b;">Nicht gegen euch.</h2>
+        <p style="margin-top: 50px; font-size: 1.8em;">DRIVE <strong>beweist</strong>, dass Herstellervorgaben oft unrealistisch sind.</p>
+        <p style="font-size: 1.8em;">Ihr seid nicht langsam. <span class="success">Die Vorgaben sind falsch.</span></p>
+    </div>
+
+    <!-- Slide 9: Wo sehe ich es? -->
+    <div class="slide">
+        <h2>Wo sehe ich DRIVE?</h2>
+        <table>
+            <tr>
+                <th>Seite</th>
+                <th>Was zeigt DRIVE?</th>
+            </tr>
+            <tr>
+                <td>Kapazitätsplanung</td>
+                <td>ML-Prognose neben Herstellervorgabe</td>
+            </tr>
+            <tr>
+                <td>Werkstatt-Aufträge</td>
+                <td>Warnung bei unterbewerteten Jobs</td>
+            </tr>
+            <tr>
+                <td>Stempeluhr</td>
+                <td>ML-Indikator pro Auftrag</td>
+            </tr>
+        </table>
+        <p style="margin-top: 40px;"><span class="highlight">🔴 Rot</span> = Job braucht wahrscheinlich länger als Vorgabe</p>
+        <p><span class="success">🟢 Grün</span> = Vorgabe ist realistisch oder zu hoch</p>
+    </div>
+
+    <!-- Slide 10: Fragen -->
+    <div class="slide center">
+        <h1>Fragen?</h1>
+        <p style="margin-top: 60px; font-size: 1.5em; color: #888;">DRIVE - Weil echte Daten besser sind als Herstellervorgaben.</p>
+        <p style="margin-top: 100px;">Projektleitung: <strong>Florian Greiner</strong></p>
+    </div>
+
+    <div class="nav">
+        <button onclick="prevSlide()">← Zurück</button>
+        <button onclick="nextSlide()">Weiter →</button>
+    </div>
+    <div class="slide-counter">
+        <span id="current">1</span> / <span id="total">10</span>
+    </div>
+
+    <script>
+        let currentSlide = 0;
+        const slides = document.querySelectorAll('.slide');
+        const total = slides.length;
+        document.getElementById('total').textContent = total;
+
+        function showSlide(n) {
+            slides[currentSlide].classList.remove('active');
+            currentSlide = (n + total) % total;
+            slides[currentSlide].classList.add('active');
+            document.getElementById('current').textContent = currentSlide + 1;
+        }
+
+        function nextSlide() {
+            showSlide(currentSlide + 1);
+        }
+
+        function prevSlide() {
+            showSlide(currentSlide - 1);
+        }
+
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Enter') {
+                nextSlide();
+            } else if (e.key === 'ArrowLeft') {
+                prevSlide();
+            }
+        });
+
+        // Click navigation
+        document.addEventListener('click', (e) => {
+            if (e.target.tagName !== 'BUTTON') {
+                const x = e.clientX;
+                if (x > window.innerWidth / 2) {
+                    nextSlide();
+                } else {
+                    prevSlide();
+                }
+            }
+        });
+    </script>
+</body>
+</html>

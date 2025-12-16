@@ -7,23 +7,15 @@ API: Teile-Preisvergleich
 """
 
 from flask import Blueprint, request, jsonify
-import json
-import psycopg2
 from psycopg2.extras import RealDictCursor
 import re
 import sys
 sys.path.append('/opt/greiner-portal/tools/scrapers')
 
-teile_api = Blueprint('teile_api', __name__, url_prefix='/api/teile')
+# Zentrale DB-Utilities (TAG117)
+from api.db_utils import get_locosoft_connection
 
-def get_locosoft_connection():
-    with open('/opt/greiner-portal/config/credentials.json') as f:
-        creds = json.load(f)['databases']['locosoft']
-    return psycopg2.connect(
-        host=creds['host'], port=creds['port'],
-        database=creds['database'], user=creds['user'],
-        password=creds['password']
-    )
+teile_api = Blueprint('teile_api', __name__, url_prefix='/api/teile')
 
 PARTS_TYPE_NAMES = {
     0: 'Opel', 5: 'Hyundai', 6: 'Hyundai Zubehör',

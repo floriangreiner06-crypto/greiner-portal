@@ -6,1673 +6,527 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}?v={{ STATIC_VERSION }}">
 <style>
 /* ============================================================
-   WERKSTATT KAPAZITÄTS-WIDGET - DRIVE TAG 94
+   DASHBOARD NEU - TAG 116
+   Schlank mit Badges/Infoboxen statt Widgets
    ============================================================ */
 
-/* Kapazitäts-Widget Card */
-#kapazitaet-widget {
-    border-radius: 12px;
-    overflow: hidden;
-    border: none;
+.welcome-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 16px;
+    padding: 30px;
+    color: white;
+    margin-bottom: 30px;
 }
 
-#kapazitaet-widget .card-header {
-    background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%) !important;
+.welcome-header h1 {
+    font-size: 1.8rem;
+    margin-bottom: 8px;
 }
 
-/* Forecast Bars */
-.forecast-bar-container {
+.welcome-header .lead {
+    opacity: 0.9;
+    font-size: 1rem;
+}
+
+/* Info-Badges */
+.info-badge {
     display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    height: 180px;
-    padding: 10px 0;
-    gap: 8px;
-    position: relative;
-}
-
-.forecast-day {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
     align-items: center;
-    height: 100%;
-    min-width: 0;
-}
-
-.forecast-bar-wrapper {
-    flex: 1;
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    position: relative;
-}
-
-.forecast-bar {
-    width: 100%;
-    border-radius: 4px 4px 0 0;
-    transition: height 0.5s ease-out;
-    position: relative;
-    min-height: 4px;
-}
-
-.forecast-bar-label {
-    position: absolute;
-    top: -22px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 11px;
-    font-weight: 600;
-    white-space: nowrap;
-}
-
-.forecast-day-label {
-    font-size: 11px;
-    font-weight: 500;
-    margin-top: 8px;
-    color: #6c757d;
-}
-
-.forecast-day-date {
-    font-size: 10px;
-    color: #adb5bd;
-}
-
-.forecast-day.today {
-    background: rgba(52, 152, 219, 0.1);
-    border-radius: 8px;
-    padding: 4px;
-    margin: -4px;
-}
-
-.forecast-day.today .forecast-day-label {
-    color: #3498db;
-    font-weight: 700;
-}
-
-/* Status Colors */
-.status-niedrig { background: linear-gradient(180deg, #74b9ff 0%, #0984e3 100%); }
-.status-normal { background: linear-gradient(180deg, #55efc4 0%, #00b894 100%); }
-.status-hoch { background: linear-gradient(180deg, #ffeaa7 0%, #fdcb6e 100%); }
-.status-kritisch { background: linear-gradient(180deg, #fab1a0 0%, #e17055 100%); }
-.status-ueberbucht { background: linear-gradient(180deg, #ff7675 0%, #d63031 100%); }
-
-/* 110% Ziel-Linie */
-.target-line {
-    position: absolute;
-    width: 100%;
-    height: 2px;
-    background: #27ae60;
-    left: 0;
-    z-index: 10;
-}
-
-.target-line-label {
-    position: absolute;
-    right: 5px;
-    top: -18px;
-    font-size: 10px;
-    color: #27ae60;
-    font-weight: 600;
+    padding: 20px;
+    border-radius: 12px;
     background: white;
-    padding: 0 4px;
-}
-
-/* Warnungen */
-.warnung-item {
-    display: inline-flex;
-    align-items: center;
-    padding: 6px 12px;
-    border-radius: 20px;
-    margin: 4px;
-    font-size: 13px;
-    font-weight: 500;
-}
-
-.warnung-info { background: #d1ecf1; color: #0c5460; }
-.warnung-warning { background: #fff3cd; color: #856404; }
-.warnung-danger { background: #f8d7da; color: #721c24; }
-.warnung-critical { background: #721c24; color: #fff; }
-
-/* KPI-Card für Werkstatt (ersetzt Bankensaldo) */
-.kpi-card.werkstatt {
-    border-left: 4px solid #3498db;
-}
-
-.kpi-card.werkstatt .kpi-icon {
-    background: linear-gradient(135deg, #2c3e50, #3498db) !important;
-}
-
-/* Accordion Tweaks */
-#kapaDetails .btn-link:focus {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    transition: all 0.2s ease;
     text-decoration: none;
-    box-shadow: none;
+    color: inherit;
+    height: 100%;
 }
 
-#kapaDetails .btn-link .fa-chevron-down,
-#kapaDetails .btn-link .bi-chevron-down {
-    transition: transform 0.2s;
+.info-badge:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+    text-decoration: none;
+    color: inherit;
 }
 
-#kapaDetails .btn-link:not(.collapsed) .fa-chevron-down,
-#kapaDetails .btn-link:not(.collapsed) .bi-chevron-down {
-    transform: rotate(180deg);
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-    .forecast-bar-container {
-        height: 140px;
-    }
-    
-    .forecast-bar-label {
-        font-size: 9px;
-    }
-    
-    .forecast-day-label {
-        font-size: 9px;
-    }
-}
-
-/* ============================================================
-   GUDAT WIDGET STYLES - TAG 98
-   ============================================================ */
-
-#gudat-widget {
+.info-badge .badge-icon {
+    width: 60px;
+    height: 60px;
     border-radius: 12px;
-    overflow: hidden;
-    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    color: white;
+    flex-shrink: 0;
 }
 
-.gudat-team-card {
-    background: #f8f9fa;
-    border-radius: 8px;
-    padding: 12px;
-    border-left: 4px solid #6c757d;
+.info-badge .badge-content {
+    margin-left: 16px;
+    flex: 1;
+}
+
+.info-badge .badge-value {
+    font-size: 1.8rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.info-badge .badge-label {
+    font-size: 0.85rem;
+    color: #6c757d;
+    margin-top: 2px;
+}
+
+.info-badge .badge-arrow {
+    font-size: 1.5rem;
+    color: #dee2e6;
+    margin-left: 10px;
+}
+
+/* Badge Colors */
+.badge-werkstatt .badge-icon { background: linear-gradient(135deg, #2c3e50, #3498db); }
+.badge-kapazitaet .badge-icon { background: linear-gradient(135deg, #8e44ad, #9b59b6); }
+.badge-fahrzeuge .badge-icon { background: linear-gradient(135deg, #27ae60, #2ecc71); }
+.badge-urlaub .badge-icon { background: linear-gradient(135deg, #f39c12, #e67e22); }
+.badge-verkauf .badge-icon { background: linear-gradient(135deg, #3498db, #2980b9); }
+.badge-anwesenheit .badge-icon { background: linear-gradient(135deg, #1abc9c, #16a085); }
+
+/* Status-Farben für Werte */
+.value-ok { color: #27ae60; }
+.value-warning { color: #f39c12; }
+.value-danger { color: #e74c3c; }
+
+/* Modul-Karten */
+.modul-card {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    height: 100%;
     transition: all 0.2s ease;
 }
 
-.gudat-team-card:hover {
-    transform: translateX(4px);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+.modul-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
-.gudat-team-card.status-ok {
-    border-left-color: #27ae60;
+.modul-card .modul-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    color: white;
+    margin-bottom: 16px;
 }
 
-.gudat-team-card.status-warning {
-    border-left-color: #f39c12;
-    background: rgba(243, 156, 18, 0.1);
-}
-
-.gudat-team-card.status-overloaded {
-    border-left-color: #e74c3c;
-    background: rgba(231, 76, 60, 0.1);
-}
-
-.gudat-team-card .team-name {
+.modul-card h5 {
     font-weight: 600;
-    font-size: 14px;
-    color: #2c3e50;
+    margin-bottom: 8px;
 }
 
-.gudat-team-card .team-stats {
-    font-size: 12px;
-    color: #7f8c8d;
+.modul-card p {
+    color: #6c757d;
+    font-size: 0.9rem;
+    margin-bottom: 16px;
 }
 
-.gudat-team-card .team-utilization {
-    font-size: 18px;
-    font-weight: 700;
+.modul-card .modul-links a {
+    display: block;
+    padding: 8px 0;
+    color: #495057;
+    text-decoration: none;
+    border-bottom: 1px solid #f0f0f0;
+    transition: all 0.2s;
 }
 
-.gudat-progress {
-    height: 8px;
-    border-radius: 4px;
-    background: #e9ecef;
-    overflow: hidden;
-    margin-top: 8px;
+.modul-card .modul-links a:last-child {
+    border-bottom: none;
 }
 
-.gudat-progress-bar {
-    height: 100%;
-    border-radius: 4px;
-    transition: width 0.5s ease;
+.modul-card .modul-links a:hover {
+    color: #667eea;
+    padding-left: 5px;
 }
 
-.gudat-week-day {
-    flex: 1;
-    min-width: 80px;
-    max-width: 120px;
-    text-align: center;
-    padding: 10px;
-    background: #f8f9fa;
-    border-radius: 8px;
+/* Badge mit Warnung */
+.info-badge.has-warning {
+    background: linear-gradient(135deg, rgba(231,76,60,0.1), rgba(192,57,43,0.1)) !important;
+    border: 2px solid #e74c3c !important;
 }
 
-.gudat-week-day.today {
-    background: linear-gradient(135deg, rgba(52,152,219,0.15), rgba(41,128,185,0.15));
-    border: 2px solid #3498db;
+#badge-vergessen {
+    font-size: 0.9em;
+    animation: pulse-warning 2s infinite;
 }
 
-.gudat-week-day .day-label {
-    font-size: 11px;
-    color: #7f8c8d;
-    text-transform: uppercase;
-}
-
-.gudat-week-day .day-value {
-    font-size: 20px;
-    font-weight: 700;
-}
-
-.gudat-week-day .day-free {
-    font-size: 11px;
-    color: #95a5a6;
+@keyframes pulse-warning {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
 }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid dashboard-container">
+<div class="container-fluid py-4">
     
-    <!-- Header mit Begrüßung -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="welcome-header">
-                <div class="welcome-content">
-                    <h1 class="display-4">
-                        <i class="bi bi-house-door"></i> 
-                        Willkommen, <span class="user-name">{{ current_user.display_name }}</span>
-                    </h1>
-                    <p class="lead">
-                        <i class="bi bi-calendar-event"></i> {{ now.strftime('%A, %d. %B %Y') }}
-                        {% if current_user.last_login %}
-                        <span class="ms-3">
-                            <i class="bi bi-clock-history"></i> 
-                            Letzter Login: {{ current_user.last_login.strftime('%d.%m.%Y %H:%M') }} Uhr
-                        </span>
-                        {% endif %}
-                    </p>
-                </div>
+    <!-- Willkommens-Header -->
+    <div class="welcome-header">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h1>
+                    <i class="bi bi-house-door"></i> 
+                    Willkommen, <span>{{ current_user.display_name }}</span>
+                </h1>
+                <p class="lead mb-0">
+                    <i class="bi bi-calendar-event"></i> {{ now.strftime('%A, %d. %B %Y') }}
+                    {% if current_user.last_login %}
+                    <span class="ms-3 opacity-75">
+                        <i class="bi bi-clock-history"></i> 
+                        Letzter Login: {{ current_user.last_login.strftime('%d.%m.%Y %H:%M') }}
+                    </span>
+                    {% endif %}
+                </p>
+            </div>
+            <div class="col-md-4 text-end d-none d-md-block">
+                <span class="display-4 opacity-50">🚗</span>
             </div>
         </div>
     </div>
 
-    <!-- Live-KPIs Übersicht - WERKSTATT statt BANKENSALDO! -->
-    <div class="row mb-4">
-        <!-- WERKSTATT-KAPAZITÄT (NEU - ersetzt Bankensaldo) -->
-        <div class="col-md-3">
-            <div class="kpi-card werkstatt" onclick="window.location.href='/werkstatt/uebersicht'" style="cursor: pointer;">
-                <div class="kpi-icon">
+    <!-- Info-Badges -->
+    <div class="row g-4 mb-5">
+        
+        <!-- Werkstatt heute -->
+        <div class="col-lg-4 col-md-6">
+            <a href="/werkstatt/stempeluhr" class="info-badge badge-werkstatt">
+                <div class="badge-icon">
                     <i class="bi bi-wrench-adjustable"></i>
                 </div>
-                <div class="kpi-content">
-                    <h3 id="kpi-werkstatt">Lädt...</h3>
-                    <p>Werkstatt heute</p>
+                <div class="badge-content">
+                    <div class="badge-value" id="badge-werkstatt">-</div>
+                    <div class="badge-label">Werkstatt heute (Leistungsgrad)</div>
                 </div>
-            </div>
+                <i class="bi bi-chevron-right badge-arrow"></i>
+            </a>
         </div>
-        <div class="col-md-3">
-            <div class="kpi-card">
-                <div class="kpi-icon bg-success">
+        
+        <!-- Kapazität -->
+        <div class="col-lg-4 col-md-6">
+            <a href="/aftersales/kapazitaet" class="info-badge badge-kapazitaet">
+                <div class="badge-icon">
+                    <i class="bi bi-calendar-range"></i>
+                </div>
+                <div class="badge-content">
+                    <div class="badge-value" id="badge-kapazitaet">-</div>
+                    <div class="badge-label">Kapazität diese Woche</div>
+                </div>
+                <i class="bi bi-chevron-right badge-arrow"></i>
+            </a>
+        </div>
+        
+        <!-- Finanzierte Fahrzeuge -->
+        <div class="col-lg-4 col-md-6">
+            <a href="/bankenspiegel/fahrzeugfinanzierungen" class="info-badge badge-fahrzeuge">
+                <div class="badge-icon">
                     <i class="bi bi-car-front"></i>
                 </div>
-                <div class="kpi-content">
-                    <h3 id="kpi-fahrzeuge">Lädt...</h3>
-                    <p>Finanzierte Fahrzeuge</p>
+                <div class="badge-content">
+                    <div class="badge-value" id="badge-fahrzeuge">-</div>
+                    <div class="badge-label">Finanzierte Fahrzeuge</div>
+                    <div class="badge-sub text-muted small" id="badge-fahrzeuge-zinsen"></div>
                 </div>
-            </div>
+                <i class="bi bi-chevron-right badge-arrow"></i>
+            </a>
         </div>
-        <div class="col-md-3">
-            <div class="kpi-card">
-                <div class="kpi-icon bg-warning">
+        
+        <!-- Urlaub -->
+        <div class="col-lg-4 col-md-6">
+            <a href="/urlaubsplaner/v2" class="info-badge badge-urlaub">
+                <div class="badge-icon">
                     <i class="bi bi-calendar-check"></i>
                 </div>
-                <div class="kpi-content">
-                    <h3 id="kpi-urlaub">Lädt...</h3>
-                    <p>Offene Urlaubsanträge</p>
+                <div class="badge-content">
+                    <div class="badge-value" id="badge-urlaub">-</div>
+                    <div class="badge-label">Offene Urlaubsanträge</div>
                 </div>
-            </div>
+                <i class="bi bi-chevron-right badge-arrow"></i>
+            </a>
         </div>
-        <div class="col-md-3">
-            <div class="kpi-card">
-                <div class="kpi-icon bg-info">
+        
+        <!-- Auftragseingang / Auslieferungen -->
+        <div class="col-lg-4 col-md-6">
+            <a href="/verkauf/auftragseingang" class="info-badge badge-verkauf">
+                <div class="badge-icon">
                     <i class="bi bi-graph-up"></i>
                 </div>
-                <div class="kpi-content">
-                    <h3 id="kpi-umsatz">Lädt...</h3>
-                    <p>Auftragseingang</p>
+                <div class="badge-content">
+                    <div class="badge-value">
+                        <span id="badge-auftraege">-</span>
+                        <span class="text-muted mx-1">/</span>
+                        <span id="badge-auslieferungen" class="text-success">-</span>
+                    </div>
+                    <div class="badge-label">Aufträge / Auslieferungen (Monat)</div>
                 </div>
-            </div>
+                <i class="bi bi-chevron-right badge-arrow"></i>
+            </a>
         </div>
+        
+        <!-- Anwesenheit -->
+        <div class="col-lg-4 col-md-6">
+            <a href="/werkstatt/anwesenheit" class="info-badge badge-anwesenheit" id="badge-anwesenheit-card">
+                <div class="badge-icon">
+                    <i class="bi bi-person-check"></i>
+                </div>
+                <div class="badge-content">
+                    <div class="badge-value">
+                        <span id="badge-anwesenheit">-</span>
+                        <span id="badge-vergessen" class="ms-2 text-danger" style="display:none;">
+                            <i class="bi bi-exclamation-triangle-fill"></i>
+                            <span id="badge-vergessen-count">0</span>
+                            <i class="bi bi-stamp" title="Type 1 vergessen"></i>
+                        </span>
+                    </div>
+                    <div class="badge-label">Mechaniker eingestempelt</div>
+                </div>
+                <i class="bi bi-chevron-right badge-arrow"></i>
+            </a>
+        </div>
+        
     </div>
 
-    <!-- ============================================================
-         🔮 WERKSTATT KAPAZITÄTS-WIDGET - DRIVE TAG 94
-         ============================================================ -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card shadow-sm" id="kapazitaet-widget">
-                <div class="card-header text-white d-flex justify-content-between align-items-center py-3">
-                    <div>
-                        <h5 class="mb-0">
-                            <i class="bi bi-speedometer2"></i> 
-                            Werkstatt-Kapazität
-                            <small class="badge bg-light text-dark ms-2" id="kapa-update-time">Lädt...</small>
-                        </h5>
-                    </div>
-                    <div class="d-flex align-items-center">
-                        <select id="kapa-betrieb-filter" class="form-select form-select-sm me-2" style="width: auto;">
-                            <option value="">Alle Betriebe</option>
-                            <option value="1">Deggendorf</option>
-                            <option value="3">Landau</option>
-                        </select>
-                        <button class="btn btn-light btn-sm" onclick="loadKapazitaetForecast()" title="Aktualisieren">
-                            <i class="bi bi-arrow-clockwise"></i>
-                        </button>
-                    </div>
-                </div>
-                
-                <div class="card-body p-0">
-                    <!-- WARNUNGEN - Prominent oben -->
-                    <div id="kapa-warnungen" class="p-3 bg-light border-bottom" style="display: none;">
-                        <!-- Wird per JS gefüllt -->
-                    </div>
-                    
-                    <!-- HAUPT-KPIs: HEUTE LIVE vs FORECAST -->
-                    <div class="row g-0 text-center border-bottom">
-                        <!-- HEUTE LIVE - Echte Arbeit -->
-                        <div class="col-md-3 p-3 border-end" style="background: linear-gradient(135deg, rgba(46,204,113,0.1), rgba(39,174,96,0.1));">
-                            <div class="text-muted small">
-                                <span class="badge bg-success me-1" style="font-size: 8px;">LIVE</span> HEUTE
-                            </div>
-                            <h2 id="kapa-heute-live-prozent" class="mb-0 fw-bold">-</h2>
-                            <small id="kapa-heute-live-detail" class="text-muted">- AW gestempelt</small>
-                            <div id="kapa-heute-umsatz" class="text-success small fw-bold mt-1">-</div>
-                        </div>
-                        <!-- FORECAST WOCHE -->
-                        <div class="col-md-3 p-3 border-end">
-                            <div class="text-muted small">
-                                <span class="badge bg-secondary me-1" style="font-size: 8px;">PLAN</span> WOCHE
-                            </div>
-                            <h2 id="kapa-woche-prozent" class="mb-0 fw-bold">-</h2>
-                            <small id="kapa-woche-aw" class="text-muted">- von - AW</small>
-                        </div>
-                        <!-- UNVERPLANT -->
-                        <div class="col-md-3 p-3 border-end">
-                            <div class="text-muted small">UNVERPLANT</div>
-                            <h2 id="kapa-unverplant" class="mb-0 fw-bold text-warning">-</h2>
-                            <small class="text-muted">Aufträge ohne Termin</small>
-                        </div>
-                        <!-- TEILE FEHLEN -->
-                        <div class="col-md-3 p-3">
-                            <div class="text-muted small">TEILE FEHLEN</div>
-                            <h2 id="kapa-teile" class="mb-0 fw-bold text-danger">-</h2>
-                            <small class="text-muted">warten auf Teile</small>
-                        </div>
-                    </div>
-                    
-                    <!-- FORECAST-BALKEN -->
-                    <div class="p-3">
-                        <h6 class="text-muted mb-3">
-                            <i class="bi bi-calendar3"></i> 10-Tage Vorschau
-                            <small class="text-success ms-2">Ziel: 110%</small>
-                        </h6>
-                        <div id="kapa-forecast-bars">
-                            <!-- Wird per JS gefüllt -->
-                            <div class="text-center text-muted py-4">
-                                <div class="spinner-border text-primary" role="status">
-                                    <span class="visually-hidden">Lädt...</span>
-                                </div>
-                                <p class="mt-2">Lade Kapazitätsdaten...</p>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- DETAIL-ACCORDION -->
-                    <div class="accordion" id="kapaDetails">
-                        <!-- Unverplante Aufträge -->
-                        <div class="accordion-item border-0 border-top">
-                            <h2 class="accordion-header" id="headingUnverplant">
-                                <button class="accordion-button collapsed py-2" type="button" 
-                                        data-bs-toggle="collapse" data-bs-target="#collapseUnverplant">
-                                    <i class="bi bi-clipboard-data me-2"></i>
-                                    <span id="detail-unverplant-title">Unverplante Aufträge</span>
-                                </button>
-                            </h2>
-                            <div id="collapseUnverplant" class="accordion-collapse collapse" data-bs-parent="#kapaDetails">
-                                <div class="accordion-body p-0">
-                                    <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
-                                        <table class="table table-sm table-hover mb-0">
-                                            <thead class="table-light sticky-top">
-                                                <tr>
-                                                    <th>Auftrag</th>
-                                                    <th>Kennzeichen</th>
-                                                    <th>AW</th>
-                                                    <th>Alter</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody id="table-unverplant">
-                                                <tr><td colspan="4" class="text-center text-muted">Keine Daten</td></tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Überfällige Aufträge -->
-                        <div class="accordion-item border-0 border-top">
-                            <h2 class="accordion-header" id="headingUeberfaellig">
-                                <button class="accordion-button collapsed py-2" type="button" 
-                                        data-bs-toggle="collapse" data-bs-target="#collapseUeberfaellig">
-                                    <i class="bi bi-exclamation-triangle text-danger me-2"></i>
-                                    <span id="detail-ueberfaellig-title">Überfällige Aufträge</span>
-                                </button>
-                            </h2>
-                            <div id="collapseUeberfaellig" class="accordion-collapse collapse" data-bs-parent="#kapaDetails">
-                                <div class="accordion-body p-0">
-                                    <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
-                                        <table class="table table-sm table-hover mb-0">
-                                            <thead class="table-light sticky-top">
-                                                <tr>
-                                                    <th>Auftrag</th>
-                                                    <th>Kennzeichen</th>
-                                                    <th>Termin</th>
-                                                    <th>Überfällig</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody id="table-ueberfaellig">
-                                                <tr><td colspan="4" class="text-center text-muted">Keine Daten</td></tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Warten auf Teile -->
-                        <div class="accordion-item border-0 border-top">
-                            <h2 class="accordion-header" id="headingTeile">
-                                <button class="accordion-button collapsed py-2" type="button" 
-                                        data-bs-toggle="collapse" data-bs-target="#collapseTeile">
-                                    <i class="bi bi-gear text-warning me-2"></i>
-                                    <span id="detail-teile-title">Warten auf Teile</span>
-                                </button>
-                            </h2>
-                            <div id="collapseTeile" class="accordion-collapse collapse" data-bs-parent="#kapaDetails">
-                                <div class="accordion-body p-0">
-                                    <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
-                                        <table class="table table-sm table-hover mb-0">
-                                            <thead class="table-light sticky-top">
-                                                <tr>
-                                                    <th>Auftrag</th>
-                                                    <th>Kennzeichen</th>
-                                                    <th>Teile</th>
-                                                    <th>Status</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody id="table-teile">
-                                                <tr><td colspan="4" class="text-center text-muted">Keine Daten</td></tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <!-- Ende Kapazitäts-Widget -->
-
-    <!-- ============================================================
-         🔧 GUDAT TEAM-KAPAZITÄT WIDGET - TAG 98
-         Daten direkt von werkstattplanung.net
-         ============================================================ -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card shadow-sm" id="gudat-widget">
-                <div class="card-header text-white d-flex justify-content-between align-items-center py-3" 
-                     style="background: linear-gradient(135deg, #1a5276 0%, #2e86c1 100%);">
-                    <div>
-                        <h5 class="mb-0">
-                            <i class="bi bi-people-fill"></i> 
-                            Gudat Team-Kapazität
-                            <small class="badge bg-light text-dark ms-2" id="gudat-update-time">Lädt...</small>
-                        </h5>
-                        <small class="opacity-75">werkstattplanung.net</small>
-                    </div>
-                    <div class="d-flex align-items-center">
-                        <button class="btn btn-light btn-sm" onclick="loadGudatKapazitaet()" title="Aktualisieren">
-                            <i class="bi bi-arrow-clockwise"></i>
-                        </button>
-                    </div>
-                </div>
-                
-                <div class="card-body">
-                    <!-- Summary Row -->
-                    <div class="row text-center mb-4">
-                        <div class="col-md-3">
-                            <div class="p-3 rounded" style="background: linear-gradient(135deg, rgba(39,174,96,0.1), rgba(46,204,113,0.1));">
-                                <div class="text-muted small">GESAMT-KAPAZITÄT</div>
-                                <h2 id="gudat-total-capacity" class="mb-0 fw-bold text-success">-</h2>
-                                <small class="text-muted">Arbeitseinheiten</small>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="p-3 rounded" style="background: rgba(52,152,219,0.1);">
-                                <div class="text-muted small">GEPLANT</div>
-                                <h2 id="gudat-planned" class="mb-0 fw-bold text-primary">-</h2>
-                                <small class="text-muted">verplant</small>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="p-3 rounded" style="background: rgba(241,196,15,0.1);">
-                                <div class="text-muted small">VERFÜGBAR</div>
-                                <h2 id="gudat-free" class="mb-0 fw-bold text-warning">-</h2>
-                                <small class="text-muted">noch frei</small>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="p-3 rounded" id="gudat-status-box">
-                                <div class="text-muted small">AUSLASTUNG</div>
-                                <h2 id="gudat-utilization" class="mb-0 fw-bold">-</h2>
-                                <small id="gudat-status-text" class="text-muted">-</small>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Team-Liste -->
-                    <h6 class="text-muted mb-3">
-                        <i class="bi bi-diagram-3"></i> Teams nach Auslastung
-                        <span class="badge bg-secondary ms-2" id="gudat-teams-count">-</span>
-                    </h6>
-                    
-                    <div id="gudat-teams-container" class="row g-2">
-                        <div class="col-12 text-center text-muted py-4">
-                            <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-                            <span class="ms-2">Lade Gudat-Daten...</span>
-                        </div>
-                    </div>
-                    
-                    <!-- Wochen-Übersicht -->
-                    <div class="mt-4 pt-3 border-top">
-                        <h6 class="text-muted mb-3">
-                            <i class="bi bi-calendar-week"></i> Wochen-Vorschau
-                        </h6>
-                        <div id="gudat-week-container" class="d-flex justify-content-between flex-wrap gap-2">
-                            <div class="text-center text-muted py-2">
-                                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <!-- Ende Gudat Widget -->
-
-    <!-- ============================================================
-         🧠 ML POTENZIAL-WIDGET - TAG 98 Part 2
-         Zeigt unterbewertete Aufträge und Optimierungspotenzial
-         ============================================================ -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card shadow-sm" id="ml-potenzial-widget">
-                <div class="card-header text-white d-flex justify-content-between align-items-center py-3" 
-                     style="background: linear-gradient(135deg, #8e44ad 0%, #9b59b6 100%);">
-                    <div>
-                        <h5 class="mb-0">
-                            <i class="bi bi-robot"></i> 
-                            ML Auftrags-Analyse
-                            <small class="badge bg-light text-dark ms-2" id="ml-update-time">Lädt...</small>
-                        </h5>
-                        <small class="opacity-75">KI-basierte Vorgabe-Prüfung</small>
-                    </div>
-                    <div class="d-flex align-items-center">
-                        <button class="btn btn-light btn-sm" onclick="loadMLPotenzial()" title="Aktualisieren">
-                            <i class="bi bi-arrow-clockwise"></i>
-                        </button>
-                    </div>
-                </div>
-                
-                <div class="card-body">
-                    <!-- Summary Row -->
-                    <div class="row text-center mb-4">
-                        <div class="col-md-3">
-                            <div class="p-3 rounded" style="background: rgba(231,76,60,0.1);">
-                                <div class="text-muted small">🔴 UNTERBEWERTET</div>
-                                <h2 id="ml-unterbewertet" class="mb-0 fw-bold text-danger">-</h2>
-                                <small class="text-muted">Aufträge mit zu niedriger Vorgabe</small>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="p-3 rounded" style="background: rgba(241,196,15,0.1);">
-                                <div class="text-muted small">🟡 POTENZIAL</div>
-                                <h2 id="ml-potenzial-aw" class="mb-0 fw-bold text-warning">-</h2>
-                                <small class="text-muted">zusätzliche AW erwartet</small>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="p-3 rounded" style="background: rgba(39,174,96,0.1);">
-                                <div class="text-muted small">🟢 ÜBERBEWERTET</div>
-                                <h2 id="ml-ueberbewertet" class="mb-0 fw-bold text-success">-</h2>
-                                <small class="text-muted">könnten schneller gehen</small>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="p-3 rounded" style="background: rgba(52,152,219,0.1);">
-                                <div class="text-muted small">💰 WERT</div>
-                                <h2 id="ml-potenzial-euro" class="mb-0 fw-bold text-primary">-</h2>
-                                <small class="text-muted">geschätzter Mehraufwand</small>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Kritische Aufträge Liste -->
-                    <h6 class="text-muted mb-3">
-                        <i class="bi bi-exclamation-triangle text-danger"></i> Kritische Aufträge (ML sagt: dauert länger!)
-                    </h6>
-                    
-                    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
-                        <table class="table table-sm table-hover mb-0" id="ml-auftraege-table">
-                            <thead class="table-light sticky-top">
-                                <tr>
-                                    <th style="width: 50px;">ML</th>
-                                    <th>Auftrag</th>
-                                    <th>Kennzeichen</th>
-                                    <th>Kunde</th>
-                                    <th class="text-end">Vorgabe</th>
-                                    <th class="text-end">ML-Prognose</th>
-                                    <th class="text-end">Potenzial</th>
-                                    <th>Mechaniker</th>
-                                    <th>Termin</th>
-                                </tr>
-                            </thead>
-                            <tbody id="ml-auftraege-body">
-                                <tr>
-                                    <td colspan="9" class="text-center text-muted py-4">
-                                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-                                        <span class="ms-2">Lade ML-Analyse...</span>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <!-- Ende ML Potenzial Widget -->
-
-    <!-- Modul-Kacheln -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <h2 class="section-title">
-                <i class="bi bi-grid-3x3-gap"></i> Ihre Module
-            </h2>
-        </div>
-    </div>
-
+    <!-- Modul-Übersicht -->
+    <h4 class="mb-4"><i class="bi bi-grid-3x3-gap"></i> Ihre Module</h4>
     <div class="row g-4">
         
         <!-- Bankenspiegel -->
+        {% if current_user.can_access_feature('bankenspiegel') %}
         <div class="col-lg-4 col-md-6">
-            <div class="module-card" onclick="window.location.href='/bankenspiegel/dashboard'">
-                <div class="module-icon bg-primary">
+            <div class="modul-card">
+                <div class="modul-icon" style="background: linear-gradient(135deg, #3498db, #2980b9);">
                     <i class="bi bi-bank2"></i>
                 </div>
-                <div class="module-content">
-                    <h3>Bankenspiegel</h3>
-                    <p>Übersicht über alle Bankkonten, Transaktionen und Salden</p>
-                    <ul class="feature-list">
-                        <li><i class="bi bi-check-circle"></i> Kontenübersicht</li>
-                        <li><i class="bi bi-check-circle"></i> Transaktionen</li>
-                        <li><i class="bi bi-check-circle"></i> Monatsauswertungen</li>
-                    </ul>
-                </div>
-                <div class="module-footer">
-                    <span class="badge bg-success">Aktiv</span>
-                    <span class="live-count" id="banken-count">15 Konten</span>
+                <h5>Bankenspiegel</h5>
+                <p>Bankkonten, Salden, Transaktionen und mehr</p>
+                <div class="modul-links">
+                    <a href="/bankenspiegel/dashboard"><i class="bi bi-speedometer2 me-2"></i>Dashboard</a>
+                    <a href="/bankenspiegel/konten"><i class="bi bi-wallet2 me-2"></i>Kontenübersicht</a>
+                    <a href="/bankenspiegel/transaktionen"><i class="bi bi-receipt me-2"></i>Transaktionen</a>
                 </div>
             </div>
         </div>
-
+        {% endif %}
+        
         <!-- Urlaubsplaner -->
         <div class="col-lg-4 col-md-6">
-            <div class="module-card" onclick="window.location.href='/urlaubsplaner'">
-                <div class="module-icon bg-warning">
+            <div class="modul-card">
+                <div class="modul-icon" style="background: linear-gradient(135deg, #f39c12, #e67e22);">
                     <i class="bi bi-calendar-check"></i>
                 </div>
-                <div class="module-content">
-                    <h3>Urlaubsplaner</h3>
-                    <p>Verwaltung von Urlaubsanträgen und Abwesenheiten</p>
-                    <ul class="feature-list">
-                        <li><i class="bi bi-check-circle"></i> Anträge stellen</li>
-                        <li><i class="bi bi-check-circle"></i> Genehmigungen</li>
-                        <li><i class="bi bi-check-circle"></i> Team-Kalender</li>
-                    </ul>
-                </div>
-                <div class="module-footer">
-                    <span class="badge bg-success">Aktiv</span>
-                    <span class="live-count" id="vacation-count">0 offen</span>
+                <h5>Urlaubsplaner</h5>
+                <p>Urlaub beantragen, genehmigen und verwalten</p>
+                <div class="modul-links">
+                    <a href="/urlaubsplaner/v2"><i class="bi bi-calendar-plus me-2"></i>Mein Urlaub</a>
+                    {% if current_user.portal_role in ['admin', 'geschaeftsleitung'] %}
+                    <a href="/urlaubsplaner/chef"><i class="bi bi-diagram-3 me-2"></i>Chef-Übersicht</a>
+                    {% endif %}
                 </div>
             </div>
         </div>
-
-        <!-- Verkauf -->
+        
+        <!-- Verkauf & Aufträge -->
+        {% if current_user.can_access_feature('auftragseingang') %}
         <div class="col-lg-4 col-md-6">
-            <div class="module-card" onclick="window.location.href='/verkauf/auftragseingang'">
-                <div class="module-icon bg-success">
+            <div class="modul-card">
+                <div class="modul-icon" style="background: linear-gradient(135deg, #27ae60, #2ecc71);">
                     <i class="bi bi-cart3"></i>
                 </div>
-                <div class="module-content">
-                    <h3>Verkauf & Aufträge</h3>
-                    <p>Auftragseingang, Pipeline und Verkaufsstatistiken</p>
-                    <ul class="feature-list">
-                        <li><i class="bi bi-check-circle"></i> Auftragseingang</li>
-                        <li><i class="bi bi-check-circle"></i> Pipeline</li>
-                        <li><i class="bi bi-check-circle"></i> Verkäufer-Ranking</li>
-                    </ul>
-                </div>
-                <div class="module-footer">
-                    <span class="badge bg-success">Aktiv</span>
-                    <span class="live-count" id="verkauf-count">Auftragseingang</span>
+                <h5>Verkauf & Aufträge</h5>
+                <p>Auftragseingang, Auslieferungen und Deckungsbeiträge</p>
+                <div class="modul-links">
+                    <a href="/verkauf/auftragseingang"><i class="bi bi-clipboard-data me-2"></i>Auftragseingang</a>
+                    <a href="/verkauf/auslieferung/detail"><i class="bi bi-truck me-2"></i>Auslieferungen</a>
                 </div>
             </div>
         </div>
-
-        <!-- Werkstatt / Aftersales - JETZT AKTIV! -->
+        {% endif %}
+        
+        <!-- After Sales / Werkstatt -->
+        {% if current_user.can_access_feature('teilebestellungen') %}
         <div class="col-lg-4 col-md-6">
-            <div class="module-card" onclick="window.location.href='/werkstatt/uebersicht'">
-                <div class="module-icon" style="background: linear-gradient(135deg, #2c3e50, #3498db);">
-                    <i class="bi bi-wrench-adjustable"></i>
+            <div class="modul-card">
+                <div class="modul-icon" style="background: linear-gradient(135deg, #9b59b6, #8e44ad);">
+                    <i class="bi bi-tools"></i>
                 </div>
-                <div class="module-content">
-                    <h3>Werkstatt</h3>
-                    <p>Kapazitätsplanung, Aufträge und Service-Controlling</p>
-                    <ul class="feature-list">
-                        <li><i class="bi bi-check-circle"></i> Kapazitäts-Forecast</li>
-                        <li><i class="bi bi-check-circle"></i> Offene Aufträge</li>
-                        <li><i class="bi bi-check-circle"></i> Teile-Status</li>
-                    </ul>
-                </div>
-                <div class="module-footer">
-                    <span class="badge bg-success">Aktiv</span>
-                    <span class="live-count" id="werkstatt-count">Live-Daten</span>
+                <h5>After Sales</h5>
+                <p>Werkstatt, Stempeluhr, Kapazitätsplanung</p>
+                <div class="modul-links">
+                    <a href="/aftersales/kapazitaet"><i class="bi bi-calendar-range me-2"></i>Kapazitätsplanung</a>
+                    <a href="/werkstatt/stempeluhr"><i class="bi bi-stopwatch me-2"></i>Stempeluhr LIVE</a>
+                    <a href="/werkstatt/anwesenheit"><i class="bi bi-person-check me-2"></i>Anwesenheits-Report</a>
+                    <a href="/werkstatt/cockpit"><i class="bi bi-speedometer2 me-2"></i>Cockpit</a>
                 </div>
             </div>
         </div>
-
-        <!-- Controlling -->
-        <div class="col-lg-4 col-md-6">
-            <div class="module-card" onclick="window.location.href='/controlling'">
-                <div class="module-icon bg-info">
-                    <i class="bi bi-graph-up-arrow"></i>
-                </div>
-                <div class="module-content">
-                    <h3>Controlling</h3>
-                    <p>Kennzahlen, Reports und Unternehmenssteuerung</p>
-                    <ul class="feature-list">
-                        <li><i class="bi bi-check-circle"></i> Einkaufsfinanzierung</li>
-                        <li><i class="bi bi-check-circle"></i> Zinsen-Tracking</li>
-                        <li><i class="bi bi-clock"></i> Forecasts</li>
-                    </ul>
-                </div>
-                <div class="module-footer">
-                    <span class="badge bg-success">Aktiv</span>
-                    <span class="live-count">KPIs</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- HR & Personal -->
-        <div class="col-lg-4 col-md-6">
-            <div class="module-card module-disabled">
-                <div class="module-icon bg-secondary">
-                    <i class="bi bi-people"></i>
-                </div>
-                <div class="module-content">
-                    <h3>Personal & HR</h3>
-                    <p>Mitarbeiterverwaltung und Personalcontrolling</p>
-                    <ul class="feature-list">
-                        <li><i class="bi bi-clock"></i> Mitarbeiter-Stammdaten</li>
-                        <li><i class="bi bi-clock"></i> Personalkosten</li>
-                        <li><i class="bi bi-clock"></i> Auslastung</li>
-                    </ul>
-                </div>
-                <div class="module-footer">
-                    <span class="badge bg-secondary">In Planung</span>
-                    <span class="live-count">Demnächst</span>
-                </div>
-            </div>
-        </div>
-
-    </div>
-
-    <!-- Quick Actions -->
-    <div class="row mt-5 mb-4">
-        <div class="col-12">
-            <h2 class="section-title">
-                <i class="bi bi-lightning"></i> Quick Actions
-            </h2>
-        </div>
-    </div>
-
-    <div class="row g-3">
-        <div class="col-lg-3 col-md-6">
-            <a href="/werkstatt/uebersicht" class="quick-action-card">
-                <i class="bi bi-speedometer2"></i>
-                <span>Werkstatt-Kapazität</span>
-            </a>
-        </div>
-        <div class="col-lg-3 col-md-6">
-            <a href="/verkauf/auftragseingang" class="quick-action-card">
-                <i class="bi bi-cart-plus"></i>
-                <span>Auftragseingang</span>
-            </a>
-        </div>
-        <div class="col-lg-3 col-md-6">
-            <a href="/bankenspiegel/konten" class="quick-action-card">
-                <i class="bi bi-wallet2"></i>
-                <span>Kontenstände</span>
-            </a>
-        </div>
-        <div class="col-lg-3 col-md-6">
-            <a href="/controlling/einkaufsfinanzierung" class="quick-action-card">
-                <i class="bi bi-percent"></i>
-                <span>Zinsen-Übersicht</span>
-            </a>
-        </div>
-    </div>
-
-    <!-- System Status -->
-    <div class="row mt-5">
-        <div class="col-12">
-            <div class="system-status">
-                <div class="status-item">
-                    <span class="status-label">System Status:</span>
-                    <span class="badge bg-success">
-                        <i class="bi bi-check-circle"></i> Alle Systeme betriebsbereit
-                    </span>
-                </div>
-                <div class="status-item">
-                    <span class="status-label">Letzte Aktualisierung:</span>
-                    <span id="last-update">{{ now.strftime('%H:%M:%S') }} Uhr</span>
-                </div>
-                <div class="status-item">
-                    <span class="status-label">Server:</span>
-                    <span>srvlinux01.auto-greiner.de</span>
-                </div>
-            </div>
-        </div>
+        {% endif %}
+        
     </div>
 
 </div>
 {% endblock %}
 
-{% block scripts %}
-<script src="{{ url_for('static', filename='js/dashboard.js') }}?v={{ STATIC_VERSION }}"></script>
+{% block extra_js %}
 <script>
 // ============================================================
-// KAPAZITÄTS-WIDGET - DRIVE TAG 94
-// 110% ist das Ziel! 💪
+// DASHBOARD - JavaScript
+// TAG 116 - Schlank mit Badges
 // ============================================================
 
-const KAPA_CONFIG = {
-    ZIEL_AUSLASTUNG: 110,
-    STATUS_GRENZEN: {
-        niedrig: 50,
-        normal: 90,
-        hoch: 110,
-        kritisch: 130
-    },
-    REFRESH_INTERVAL: 5 * 60 * 1000,
-    API_URL: '/api/werkstatt/live/forecast'
-};
-
-// Forecast laden
-function loadKapazitaetForecast() {
-    const betrieb = document.getElementById('kapa-betrieb-filter')?.value || '';
-    let url = KAPA_CONFIG.API_URL + '?tage=10';
-    if (betrieb) {
-        url += '&subsidiary=' + betrieb;
-    }
-    
-    fetch(url)
-        .then(response => response.json())
-        .then(data => {
-            // API gibt "success": true zurück (nicht "status")
-            if (data.success === true) {
-                renderKapazitaetWidget(data);
-                document.getElementById('kapa-update-time').textContent = 
-                    'Stand: ' + new Date().toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'});
-                
-                // KPI oben aktualisieren
-                updateWerkstattKPI(data);
-            } else {
-                console.error('Kapazität-Fehler:', data.error);
-                showKapaError(data.error || 'API-Fehler');
-            }
-        })
-        .catch(error => {
-            console.error('API-Fehler:', error);
-            showKapaError('Verbindungsfehler');
-        });
-}
-
-// Werkstatt-KPI oben aktualisieren (ersetzt Bankensaldo)
-function updateWerkstattKPI(data) {
-    const forecast = data.forecast || [];
-    const heute = forecast.find(f => f.ist_heute) || forecast[0] || {};
-    const prozent = Math.round(heute.auslastung_prozent || 0);
-    
-    const kpiEl = document.getElementById('kpi-werkstatt');
-    if (kpiEl) {
-        kpiEl.textContent = prozent + '% Auslastung';
-        kpiEl.className = getStatusTextClass(prozent);
+// Hilfsfunktion für API-Calls
+async function fetchApi(url, defaultValue = '-') {
+    try {
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        return await resp.json();
+    } catch(e) {
+        console.warn(`API Fehler (${url}):`, e.message);
+        return null;
     }
 }
 
-// Widget rendern
-function renderKapazitaetWidget(data) {
-    renderWarnungen(data.warnungen || []);
-    renderKPIs(data);
-    renderForecastBars(data.forecast || []);
-    renderDetailTables(data);
-}
-
-// Warnungen anzeigen
-function renderWarnungen(warnungen) {
-    const container = document.getElementById('kapa-warnungen');
-    if (!container) return;
+async function loadDashboardData() {
+    console.log('Dashboard: Lade Daten...');
     
-    if (!warnungen || warnungen.length === 0) {
-        container.style.display = 'none';
-        return;
-    }
-    
-    container.style.display = 'block';
-    
-    const severityClass = {
-        'info': 'warnung-info',
-        'warning': 'warnung-warning',
-        'danger': 'warnung-danger',
-        'critical': 'warnung-critical'
-    };
-    
-    container.innerHTML = warnungen.map(w => `
-        <span class="warnung-item ${severityClass[w.severity] || 'warnung-info'}">
-            ${w.icon || '⚠️'} ${w.text}
-        </span>
-    `).join('');
-}
-
-// KPIs rendern
-function renderKPIs(data) {
-    const forecast = data.forecast || [];
-    const heute = forecast.find(f => f.ist_heute) || forecast[0] || {};
-    const woche = data.woche || {};
-    const unverplant = data.unverplant || {};
-    const teile = data.teile || {};
-    
-    // Heute
-    const heuteProzent = heute.auslastung_prozent || 0;
-    const heuteEl = document.getElementById('kapa-heute-prozent');
-    if (heuteEl) {
-        heuteEl.textContent = Math.round(heuteProzent) + '%';
-        heuteEl.className = 'mb-0 fw-bold ' + getStatusTextClass(heuteProzent);
-    }
-    
-    const heuteAwEl = document.getElementById('kapa-heute-aw');
-    if (heuteAwEl) {
-        heuteAwEl.textContent = (heute.geplant_aw || 0) + ' von ' + (heute.kapazitaet_aw || 0) + ' AW';
-    }
-    
-    // Woche
-    const wocheProzent = woche.auslastung_prozent || 0;
-    const wocheEl = document.getElementById('kapa-woche-prozent');
-    if (wocheEl) {
-        wocheEl.textContent = Math.round(wocheProzent) + '%';
-        wocheEl.className = 'mb-0 fw-bold ' + getStatusTextClass(wocheProzent);
-    }
-    
-    const wocheAwEl = document.getElementById('kapa-woche-aw');
-    if (wocheAwEl) {
-        wocheAwEl.textContent = (woche.geplant_aw || 0) + ' von ' + (woche.kapazitaet_aw || 0) + ' AW';
-    }
-    
-    // Unverplant
-    const unverplantEl = document.getElementById('kapa-unverplant');
-    if (unverplantEl) {
-        unverplantEl.textContent = unverplant.anzahl || 0;
-    }
-    
-    // Teile
-    const teileEl = document.getElementById('kapa-teile');
-    if (teileEl) {
-        teileEl.textContent = teile.auftraege_warten_auf_teile || 0;
-    }
-}
-
-// Forecast-Bars rendern
-function renderForecastBars(forecast) {
-    const container = document.getElementById('kapa-forecast-bars');
-    if (!container) return;
-    
-    if (!forecast || forecast.length === 0) {
-        container.innerHTML = '<div class="text-center text-muted py-4">Keine Daten verfügbar</div>';
-        return;
-    }
-    
-    const maxProzent = Math.max(130, ...forecast.map(f => f.auslastung_prozent || 0));
-    const zielPosition = (KAPA_CONFIG.ZIEL_AUSLASTUNG / maxProzent) * 100;
-    
-    let html = '<div class="forecast-bar-container">';
-    
-    // 110% Ziel-Linie
-    html += `<div class="target-line" style="bottom: ${zielPosition}%;">
-        <span class="target-line-label">🎯 110%</span>
-    </div>`;
-    
-    forecast.forEach((tag) => {
-        const prozent = tag.auslastung_prozent || 0;
-        const hoehe = (prozent / maxProzent) * 100;
-        const status = getStatusClass(prozent);
-        const isToday = tag.ist_heute;
-        
-        html += `
-            <div class="forecast-day ${isToday ? 'today' : ''}">
-                <div class="forecast-bar-wrapper">
-                    <div class="forecast-bar ${status}" 
-                         style="height: ${Math.max(hoehe, 3)}%;"
-                         title="${tag.datum_formatiert || ''}: ${Math.round(prozent)}% (${tag.geplant_aw || 0} AW)">
-                        <span class="forecast-bar-label">${Math.round(prozent)}%</span>
-                    </div>
-                </div>
-                <div class="forecast-day-label">${isToday ? '→ Heute' : (tag.wochentag_kurz || getDayName(tag.datum))}</div>
-                <div class="forecast-day-date">${formatDateShort(tag.datum)}</div>
-            </div>
-        `;
-    });
-    
-    html += '</div>';
-    container.innerHTML = html;
-}
-
-// Detail-Tabellen rendern
-function renderDetailTables(data) {
-    const unverplant = data.unverplant || {};
-    const titleUnv = document.getElementById('detail-unverplant-title');
-    if (titleUnv) titleUnv.textContent = `Unverplante Aufträge (${unverplant.anzahl || 0})`;
-    renderAuftraegeTable('table-unverplant', unverplant.auftraege || [], 'unverplant');
-    
-    const ueberfaellig = data.ueberfaellig || {};
-    const titleUeb = document.getElementById('detail-ueberfaellig-title');
-    if (titleUeb) titleUeb.textContent = `Überfällige Aufträge (${ueberfaellig.anzahl || 0})`;
-    renderAuftraegeTable('table-ueberfaellig', ueberfaellig.auftraege || [], 'ueberfaellig');
-    
-    const teile = data.teile || {};
-    const titleTeile = document.getElementById('detail-teile-title');
-    if (titleTeile) titleTeile.textContent = `Warten auf Teile (${teile.auftraege_warten_auf_teile || 0})`;
-    renderAuftraegeTable('table-teile', teile.auftraege || [], 'teile');
-}
-
-function renderAuftraegeTable(tableId, auftraege, type) {
-    const tbody = document.getElementById(tableId);
-    if (!tbody) return;
-    
-    if (!auftraege || auftraege.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Keine Daten</td></tr>';
-        return;
-    }
-    
-    const slice = auftraege.slice(0, 50);
-    
-    tbody.innerHTML = slice.map(a => {
-        if (type === 'unverplant') {
-            return `<tr>
-                <td><strong>${a.auftragsnummer || '-'}</strong></td>
-                <td>${a.kennzeichen || '-'}</td>
-                <td>${a.vorgabe_aw || 0} AW</td>
-                <td><span class="badge bg-secondary">${a.alter_tage || 0} Tage</span></td>
-            </tr>`;
-        } else if (type === 'ueberfaellig') {
-            return `<tr>
-                <td><strong>${a.auftragsnummer || '-'}</strong></td>
-                <td>${a.kennzeichen || '-'}</td>
-                <td>${formatDateShort(a.termin)}</td>
-                <td><span class="badge bg-danger">${a.ueberfaellig_tage || 0} Tage</span></td>
-            </tr>`;
-        } else if (type === 'teile') {
-            return `<tr>
-                <td><strong>${a.auftragsnummer || '-'}</strong></td>
-                <td>${a.kennzeichen || '-'}</td>
-                <td>${a.teile_auf_lager || 0}/${a.teile_gesamt || 0}</td>
-                <td><span class="badge bg-warning text-dark">${a.teile_fehlen || 0} fehlt</span></td>
-            </tr>`;
-        }
-    }).join('');
-    
-    if (auftraege.length > 50) {
-        tbody.innerHTML += `<tr class="table-light">
-            <td colspan="4" class="text-center"><em>... und ${auftraege.length - 50} weitere</em></td>
-        </tr>`;
-    }
-}
-
-// Hilfsfunktionen
-function getStatusClass(prozent) {
-    if (prozent > KAPA_CONFIG.STATUS_GRENZEN.kritisch) return 'status-ueberbucht';
-    if (prozent > KAPA_CONFIG.STATUS_GRENZEN.hoch) return 'status-kritisch';
-    if (prozent > KAPA_CONFIG.STATUS_GRENZEN.normal) return 'status-hoch';
-    if (prozent > KAPA_CONFIG.STATUS_GRENZEN.niedrig) return 'status-normal';
-    return 'status-niedrig';
-}
-
-function getStatusTextClass(prozent) {
-    if (prozent > KAPA_CONFIG.STATUS_GRENZEN.kritisch) return 'text-danger';
-    if (prozent > KAPA_CONFIG.STATUS_GRENZEN.hoch) return 'text-warning';
-    if (prozent > KAPA_CONFIG.STATUS_GRENZEN.normal) return 'text-success';
-    return 'text-info';
-}
-
-function formatDateShort(dateStr) {
-    if (!dateStr) return '-';
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit'});
-}
-
-function getDayName(dateStr) {
-    if (!dateStr) return '-';
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('de-DE', {weekday: 'short'});
-}
-
-function showKapaError(msg) {
-    const container = document.getElementById('kapa-forecast-bars');
-    if (container) {
-        container.innerHTML = `
-            <div class="alert alert-danger m-3">
-                <i class="bi bi-exclamation-circle"></i> Fehler: ${msg}
-            </div>
-        `;
-    }
-}
-
-// ============================================================
-// HEUTE LIVE - Echte Zahlen (Stempelungen + Umsatz)
-// ============================================================
-
-function loadHeuteLive() {
-    const betrieb = document.getElementById('kapa-betrieb-filter')?.value || '';
-    let url = '/api/werkstatt/live/heute';
-    if (betrieb) {
-        url += '?subsidiary=' + betrieb;
-    }
-    
-    fetch(url)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success === true) {
-                renderHeuteLive(data);
-            } else {
-                console.error('HEUTE LIVE Fehler:', data.error);
-            }
-        })
-        .catch(error => {
-            console.error('HEUTE LIVE API-Fehler:', error);
-        });
-}
-
-function renderHeuteLive(data) {
-    const produktivitaet = data.produktivitaet || {};
-    const anwesenheit = data.anwesenheit || {};
-    const produktiv = data.produktiv || {};
-    const verrechnet = data.verrechnet || {};
-    const kapazitaet = data.kapazitaet || {};
-    
-    // Prozent (Anwesenheit vs Soll)
-    const prozent = Math.round(produktivitaet.prozent || 0);
-    const prozentEl = document.getElementById('kapa-heute-live-prozent');
-    if (prozentEl) {
-        prozentEl.textContent = prozent + '%';
-        prozentEl.className = 'mb-0 fw-bold ' + getStatusTextClass(prozent);
-    }
-    
-    // Detail: Anwesenheit
-    const detailEl = document.getElementById('kapa-heute-live-detail');
-    if (detailEl) {
-        const anwesendStd = Math.round(anwesenheit.stunden || 0);
-        const sollStd = Math.round(kapazitaet.stunden_soll || 0);
-        detailEl.textContent = anwesendStd + 'h von ' + sollStd + 'h Soll';
-    }
-    
-    // Umsatz
-    const umsatzEl = document.getElementById('kapa-heute-umsatz');
-    if (umsatzEl) {
-        const umsatz = verrechnet.gesamt_netto || 0;
-        umsatzEl.textContent = formatCurrency(umsatz) + ' Umsatz';
-    }
-    
-    // KPI oben links aktualisieren
-    const kpiEl = document.getElementById('kpi-werkstatt');
-    if (kpiEl) {
-        kpiEl.textContent = prozent + '% ' + (produktivitaet.status_icon || '');
-        kpiEl.className = getStatusTextClass(prozent);
-    }
-}
-
-function formatCurrency(value) {
-    return new Intl.NumberFormat('de-DE', {
-        style: 'currency',
-        currency: 'EUR',
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0
-    }).format(value);
-}
-
-// ============================================================
-// GUDAT WIDGET - Werkstattplanung.net API (TAG 98)
-// ============================================================
-
-function loadGudatKapazitaet() {
-    // Tages-Daten laden
-    fetch('/api/gudat/workload')
-        .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                showGudatError(data.error);
-                return;
-            }
-            renderGudatSummary(data);
-            renderGudatTeams(data.teams || []);
-            document.getElementById('gudat-update-time').textContent = 
-                'Stand: ' + new Date().toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'});
-        })
-        .catch(error => {
-            console.error('Gudat API-Fehler:', error);
-            showGudatError('Verbindungsfehler');
-        });
-    
-    // Wochen-Daten laden
-    fetch('/api/gudat/workload/week')
-        .then(response => response.json())
-        .then(data => {
-            if (!data.error) {
-                renderGudatWeek(data.days || []);
-            }
-        })
-        .catch(error => {
-            console.error('Gudat Week-Fehler:', error);
-        });
-}
-
-function renderGudatSummary(data) {
-    // Kapazität
-    const capEl = document.getElementById('gudat-total-capacity');
-    if (capEl) capEl.textContent = data.total_capacity + ' AW';
-    
-    // Geplant
-    const plannedEl = document.getElementById('gudat-planned');
-    if (plannedEl) plannedEl.textContent = data.planned + ' AW';
-    
-    // Verfügbar
-    const freeEl = document.getElementById('gudat-free');
-    if (freeEl) {
-        freeEl.textContent = data.free + ' AW';
-        freeEl.className = 'mb-0 fw-bold ' + (data.free < 0 ? 'text-danger' : (data.free < 50 ? 'text-warning' : 'text-success'));
-    }
-    
-    // Auslastung
-    const utilEl = document.getElementById('gudat-utilization');
-    const statusBox = document.getElementById('gudat-status-box');
-    const statusText = document.getElementById('gudat-status-text');
-    
-    if (utilEl) {
-        const util = data.utilization_percent || 0;
-        utilEl.textContent = util.toFixed(1) + '%';
-        
-        let bgColor, textClass, statusLabel;
-        if (util > 110) {
-            bgColor = 'rgba(231, 76, 60, 0.15)';
-            textClass = 'text-danger';
-            statusLabel = '⚠️ Überbucht!';
-        } else if (util > 90) {
-            bgColor = 'rgba(39, 174, 96, 0.15)';
-            textClass = 'text-success';
-            statusLabel = '✅ Optimal';
-        } else if (util > 50) {
-            bgColor = 'rgba(52, 152, 219, 0.15)';
-            textClass = 'text-primary';
-            statusLabel = 'Normal';
+    // Werkstatt-Leistungsgrad
+    try {
+        const data = await fetchApi('/api/werkstatt/live/leistung?zeitraum=heute');
+        if (data?.success) {
+            const lg = Math.round(data.gesamt_leistungsgrad || 0);
+            const el = document.getElementById('badge-werkstatt');
+            el.textContent = lg + '%';
+            el.className = 'badge-value ' + (lg >= 100 ? 'value-ok' : lg >= 80 ? 'value-warning' : 'value-danger');
         } else {
-            bgColor = 'rgba(241, 196, 15, 0.15)';
-            textClass = 'text-warning';
-            statusLabel = '⚠️ Unterausgelastet';
+            document.getElementById('badge-werkstatt').textContent = 'N/A';
         }
-        
-        utilEl.className = 'mb-0 fw-bold ' + textClass;
-        if (statusBox) statusBox.style.background = bgColor;
-        if (statusText) statusText.textContent = statusLabel;
+    } catch(e) { 
+        document.getElementById('badge-werkstatt').textContent = 'N/A';
+        console.error('Werkstatt:', e); 
     }
     
-    // Teams-Count
-    const teamsCount = document.getElementById('gudat-teams-count');
-    if (teamsCount) teamsCount.textContent = data.teams_count + ' Teams';
-}
-
-function renderGudatTeams(teams) {
-    const container = document.getElementById('gudat-teams-container');
-    if (!container) return;
-    
-    if (!teams || teams.length === 0) {
-        container.innerHTML = '<div class="col-12 text-center text-muted py-3">Keine Team-Daten verfügbar</div>';
-        return;
+    // Kapazität
+    try {
+        const data = await fetchApi('/api/werkstatt/kapazitaet/forecast');
+        if (data?.success && data.woche) {
+            document.getElementById('badge-kapazitaet').textContent = Math.round(data.woche.auslastung || 0) + '%';
+        } else {
+            document.getElementById('badge-kapazitaet').textContent = 'N/A';
+        }
+    } catch(e) { 
+        document.getElementById('badge-kapazitaet').textContent = 'N/A';
+        console.error('Kapazität:', e); 
     }
     
-    // Sortiere nach Status (kritischste zuerst)
-    const sortedTeams = teams.sort((a, b) => {
-        const statusOrder = {overloaded: 0, warning: 1, ok: 2};
-        return (statusOrder[a.status] || 2) - (statusOrder[b.status] || 2);
-    });
-    
-    container.innerHTML = sortedTeams.slice(0, 12).map(team => {
-        const statusClass = 'status-' + (team.status || 'ok');
-        const utilPct = Math.min(team.utilization || 0, 130);
-        const barWidth = (utilPct / 130) * 100;
-        
-        let barColor = '#27ae60'; // grün
-        if (team.status === 'overloaded') barColor = '#e74c3c';
-        else if (team.status === 'warning') barColor = '#f39c12';
-        
-        const icon = team.status === 'overloaded' ? '🔴' : 
-                     (team.status === 'warning' ? '🟡' : '🟢');
-        
-        return `
-            <div class="col-md-4 col-sm-6">
-                <div class="gudat-team-card ${statusClass}">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <div class="team-name">${icon} ${team.name}</div>
-                            <div class="team-stats">
-                                ${team.capacity} AW Kapazität • ${team.free} AW frei
-                            </div>
-                        </div>
-                        <div class="team-utilization ${team.status === 'overloaded' ? 'text-danger' : (team.status === 'warning' ? 'text-warning' : 'text-success')}">
-                            ${Math.round(team.utilization)}%
-                        </div>
-                    </div>
-                    <div class="gudat-progress">
-                        <div class="gudat-progress-bar" 
-                             style="width: ${barWidth}%; background: ${barColor};"></div>
-                    </div>
-                </div>
-            </div>
-        `;
-    }).join('');
-    
-    if (teams.length > 12) {
-        container.innerHTML += `
-            <div class="col-12 text-center text-muted small">
-                ... und ${teams.length - 12} weitere Teams
-            </div>
-        `;
-    }
-}
-
-function renderGudatWeek(days) {
-    const container = document.getElementById('gudat-week-container');
-    if (!container || !days || days.length === 0) return;
-    
-    const today = new Date().toISOString().split('T')[0];
-    
-    container.innerHTML = days.slice(0, 7).map(day => {
-        const isToday = day.date === today;
-        let valueClass = 'text-success';
-        if (day.status === 'overloaded') valueClass = 'text-danger';
-        else if (day.status === 'warning') valueClass = 'text-warning';
-        
-        const weekday = day.weekday ? day.weekday.substring(0, 2) : getDayName(day.date);
-        
-        return `
-            <div class="gudat-week-day ${isToday ? 'today' : ''}">
-                <div class="day-label">${isToday ? '▶ HEUTE' : weekday}</div>
-                <div class="day-value ${valueClass}">${Math.round(day.utilization || 0)}%</div>
-                <div class="day-free">${day.free || 0} AW frei</div>
-            </div>
-        `;
-    }).join('');
-}
-
-function showGudatError(msg) {
-    const container = document.getElementById('gudat-teams-container');
-    if (container) {
-        container.innerHTML = `
-            <div class="col-12">
-                <div class="alert alert-warning d-flex align-items-center">
-                    <i class="bi bi-exclamation-triangle me-2"></i>
-                    <div>
-                        <strong>Gudat API nicht verfügbar:</strong> ${msg}<br>
-                        <small class="text-muted">Werkstattplanung.net ist möglicherweise nicht erreichbar.</small>
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-    
-    // Fallback-Werte setzen
-    ['gudat-total-capacity', 'gudat-planned', 'gudat-free', 'gudat-utilization'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = '-';
-    });
-}
-
-// Event-Listener
-document.addEventListener('DOMContentLoaded', function() {
-    // HEUTE LIVE laden (echte Stempelungen)
-    loadHeuteLive();
-    
-    // FORECAST laden (geplante Termine)
-    loadKapazitaetForecast();
-    
-    // GUDAT laden (werkstattplanung.net) - TAG 98
-    loadGudatKapazitaet();
-    
-    // ML POTENZIAL laden - TAG 98 Part 2
-    loadMLPotenzial();
-    
-    // Filter-Event
-    const filterEl = document.getElementById('kapa-betrieb-filter');
-    if (filterEl) {
-        filterEl.addEventListener('change', function() {
-            loadHeuteLive();
-            loadKapazitaetForecast();
-            loadMLPotenzial();
-        });
-    }
-    
-    // Auto-Refresh alle 5 Minuten
-    setInterval(function() {
-        loadHeuteLive();
-        loadKapazitaetForecast();
-        loadGudatKapazitaet();
-        loadMLPotenzial();
-    }, KAPA_CONFIG.REFRESH_INTERVAL);
-});
-
-// ============================================================
-// ML POTENZIAL-WIDGET - TAG 98 Part 2
-// Zeigt unterbewertete Aufträge und Optimierungspotenzial
-// ============================================================
-
-const ML_CONFIG = {
-    AW_PREIS: 100,  // 100€ pro AW (Stundensatz)
-    API_URL: '/api/werkstatt/live/auftraege-enriched'
-};
-
-function loadMLPotenzial() {
-    const betrieb = document.getElementById('kapa-betrieb-filter')?.value || '';
-    let url = ML_CONFIG.API_URL + '?tage=14&mit_ml=true&mit_gudat=true';
-    if (betrieb) {
-        url += '&subsidiary=' + betrieb;
-    }
-    
-    fetch(url)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success === true) {
-                renderMLWidget(data);
-                document.getElementById('ml-update-time').textContent = 
-                    'Stand: ' + new Date().toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'});
-            } else {
-                console.error('ML-Fehler:', data.error);
-                showMLError(data.error || 'API-Fehler');
+    // Finanzierte Fahrzeuge - Gesamtübersicht (TAG118)
+    try {
+        const data = await fetchApi('/api/bankenspiegel/einkaufsfinanzierung');
+        if (data?.success && data.gesamt) {
+            const count = data.gesamt.anzahl_fahrzeuge || 0;
+            const saldo = data.gesamt.finanzierung || 0;
+            document.getElementById('badge-fahrzeuge').textContent = count;
+            // Finanzierungssaldo als Subtext
+            if (saldo > 0) {
+                const saldoFormatted = (saldo / 1000000).toFixed(2) + ' Mio €';
+                document.getElementById('badge-fahrzeuge-zinsen').textContent = saldoFormatted + ' Saldo';
             }
-        })
-        .catch(error => {
-            console.error('ML API-Fehler:', error);
-            showMLError('Verbindungsfehler');
-        });
-}
-
-function renderMLWidget(data) {
-    const stats = data.statistik || {};
-    const auftraege = data.auftraege || [];
-    
-    // Statistiken berechnen
-    const unterbewertet = auftraege.filter(a => a.ml_status === 'unterbewertet');
-    const leichtUnterbewertet = auftraege.filter(a => a.ml_status === 'leicht_unterbewertet');
-    const ueberbewertet = auftraege.filter(a => a.ml_status === 'überbewertet');
-    
-    // Potenzial-AW (nur positive - wo ML mehr erwartet als Vorgabe)
-    const potenzialAW = auftraege
-        .filter(a => a.ml_potenzial_aw && a.ml_potenzial_aw > 0)
-        .reduce((sum, a) => sum + a.ml_potenzial_aw, 0);
-    
-    // In Euro umrechnen (AW-Preis)
-    const potenzialEuro = potenzialAW * ML_CONFIG.AW_PREIS;
-    
-    // KPIs setzen
-    document.getElementById('ml-unterbewertet').textContent = 
-        (unterbewertet.length + leichtUnterbewertet.length) + ' Aufträge';
-    document.getElementById('ml-potenzial-aw').textContent = 
-        Math.round(potenzialAW) + ' AW';
-    document.getElementById('ml-ueberbewertet').textContent = 
-        ueberbewertet.length + ' Aufträge';
-    document.getElementById('ml-potenzial-euro').textContent = 
-        formatCurrency(potenzialEuro);
-    
-    // Tabelle rendern - nur kritische Aufträge (unterbewertet)
-    const kritisch = [...unterbewertet, ...leichtUnterbewertet]
-        .sort((a, b) => (b.ml_potenzial_aw || 0) - (a.ml_potenzial_aw || 0))
-        .slice(0, 25);  // Max 25
-    
-    const tbody = document.getElementById('ml-auftraege-body');
-    if (!tbody) return;
-    
-    if (kritisch.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="9" class="text-center text-success py-4">
-                    <i class="bi bi-check-circle fs-4"></i><br>
-                    <strong>✅ Keine kritischen Aufträge!</strong><br>
-                    <small>Alle Vorgaben scheinen realistisch zu sein.</small>
-                </td>
-            </tr>
-        `;
-        return;
+        } else {
+            document.getElementById('badge-fahrzeuge').textContent = 'N/A';
+        }
+    } catch(e) {
+        document.getElementById('badge-fahrzeuge').textContent = 'N/A';
+        console.warn('Fahrzeuge:', e);
     }
     
-    tbody.innerHTML = kritisch.map(a => {
-        // Status-Icon
-        const statusIcon = a.ml_status_icon || '⚪';
-        const statusClass = a.ml_status === 'unterbewertet' ? 'table-danger' : 'table-warning';
-        
-        // Potenzial formatieren
-        const potenzial = a.ml_potenzial_aw ? `+${a.ml_potenzial_aw.toFixed(1)} AW` : '-';
-        const potenzialPct = a.ml_potenzial_prozent ? `(+${Math.round(a.ml_potenzial_prozent)}%)` : '';
-        
-        // Termin
-        let terminInfo = '-';
-        if (a.gudat_termin) {
-            const d = new Date(a.gudat_termin);
-            terminInfo = `<span class="badge bg-info">📅 ${d.toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit'})}</span>`;
-        } else if (a.geplant_eingang) {
-            const d = new Date(a.geplant_eingang);
-            terminInfo = d.toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit'});
+    // Urlaub
+    try {
+        const data = await fetchApi('/api/vacation/pending-count');
+        if (data?.success) {
+            const count = data.count || 0;
+            const el = document.getElementById('badge-urlaub');
+            el.textContent = count;
+            el.className = 'badge-value ' + (count > 5 ? 'value-warning' : 'value-ok');
+        } else {
+            document.getElementById('badge-urlaub').textContent = 'N/A';
+        }
+    } catch(e) { 
+        document.getElementById('badge-urlaub').textContent = 'N/A';
+    }
+    
+    // Auftragseingang + Auslieferungen
+    try {
+        // Auftragseingang
+        const auftraege = await fetchApi('/api/verkauf/auftragseingang/summary');
+        if (auftraege?.success && auftraege.summary) {
+            const total = auftraege.summary.reduce((sum, item) => sum + (item.gesamt || 0), 0);
+            document.getElementById('badge-auftraege').textContent = total;
+        } else {
+            document.getElementById('badge-auftraege').textContent = '-';
         }
         
-        // Mechaniker mit Effizienz
-        let mechInfo = a.mechaniker_name || '-';
-        if (a.mechaniker_effizienz) {
-            const effClass = a.mechaniker_effizienz >= 100 ? 'text-success' : 'text-warning';
-            mechInfo += ` <small class="${effClass}">(${Math.round(a.mechaniker_effizienz)}%)</small>`;
+        // Auslieferungen
+        const auslieferungen = await fetchApi('/api/verkauf/auslieferung/summary');
+        if (auslieferungen?.success && auslieferungen.summary) {
+            const total = auslieferungen.summary.reduce((sum, item) => sum + (item.gesamt || 0), 0);
+            document.getElementById('badge-auslieferungen').textContent = total;
+        } else {
+            document.getElementById('badge-auslieferungen').textContent = '-';
         }
-        
-        return `
-            <tr class="${statusClass}">
-                <td class="text-center fs-5">${statusIcon}</td>
-                <td>
-                    <strong>${a.auftrag_nr}</strong>
-                    <small class="text-muted d-block">${a.betrieb_name || ''}</small>
-                </td>
-                <td>${a.kennzeichen || '-'}</td>
-                <td>
-                    <small>${(a.kunde || '-').substring(0, 25)}</small>
-                    ${a.marke ? `<span class="badge bg-secondary ms-1">${a.marke}</span>` : ''}
-                </td>
-                <td class="text-end"><strong>${a.vorgabe_aw}</strong> AW</td>
-                <td class="text-end text-danger"><strong>${a.ml_vorhersage_aw}</strong> AW</td>
-                <td class="text-end">
-                    <span class="text-danger fw-bold">${potenzial}</span>
-                    <small class="text-muted">${potenzialPct}</small>
-                </td>
-                <td><small>${mechInfo}</small></td>
-                <td>${terminInfo}</td>
-            </tr>
-        `;
-    }).join('');
-    
-    // Hinweis wenn mehr Aufträge
-    if (unterbewertet.length + leichtUnterbewertet.length > 25) {
-        tbody.innerHTML += `
-            <tr class="table-light">
-                <td colspan="9" class="text-center">
-                    <em>... und ${(unterbewertet.length + leichtUnterbewertet.length) - 25} weitere Aufträge</em>
-                    <a href="/werkstatt/auftraege" class="btn btn-sm btn-outline-primary ms-2">
-                        Alle anzeigen <i class="bi bi-arrow-right"></i>
-                    </a>
-                </td>
-            </tr>
-        `;
+    } catch(e) { 
+        document.getElementById('badge-auftraege').textContent = '-';
+        document.getElementById('badge-auslieferungen').textContent = '-';
+        console.warn('Verkauf:', e);
     }
+    
+    // Anwesenheit - KORREKTER PFAD: /api/werkstatt/live/anwesenheit/report
+    try {
+        const data = await fetchApi('/api/werkstatt/live/anwesenheit/report');
+        if (data?.success) {
+            const korrekt = data.korrekt?.length || 0;
+            const vergessen = data.vergessen?.length || 0;
+            const total = korrekt + vergessen;
+            
+            if (total > 0) {
+                document.getElementById('badge-anwesenheit').textContent = korrekt + '/' + total;
+            } else {
+                document.getElementById('badge-anwesenheit').textContent = 'N/A';
+            }
+            
+            // Warnung im Badge anzeigen wenn Type 1 vergessen
+            if (vergessen > 0) {
+                document.getElementById('badge-vergessen').style.display = 'inline';
+                document.getElementById('badge-vergessen-count').textContent = vergessen;
+                // Badge-Card rot hervorheben
+                document.getElementById('badge-anwesenheit-card').style.background = 
+                    'linear-gradient(135deg, rgba(231,76,60,0.1), rgba(192,57,43,0.1))';
+                document.getElementById('badge-anwesenheit-card').style.border = '2px solid #e74c3c';
+            }
+        } else {
+            document.getElementById('badge-anwesenheit').textContent = 'N/A';
+        }
+    } catch(e) { 
+        document.getElementById('badge-anwesenheit').textContent = 'N/A';
+    }
+    
+    console.log('Dashboard: Daten geladen.');
 }
 
-function showMLError(msg) {
-    const tbody = document.getElementById('ml-auftraege-body');
-    if (tbody) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="9" class="text-center py-4">
-                    <div class="alert alert-warning mb-0">
-                        <i class="bi bi-exclamation-triangle"></i> ${msg}
-                    </div>
-                </td>
-            </tr>
-        `;
-    }
-    
-    // Fallback-Werte
-    ['ml-unterbewertet', 'ml-potenzial-aw', 'ml-ueberbewertet', 'ml-potenzial-euro'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = '-';
-    });
-}
+// Init
+document.addEventListener('DOMContentLoaded', loadDashboardData);
+
+// Auto-Refresh alle 2 Minuten
+setInterval(loadDashboardData, 120000);
 </script>
 {% endblock %}

@@ -69,10 +69,6 @@ def job_sync_locosoft_employees():
 def job_email_auftragseingang():
     return run_script('scripts/send_daily_auftragseingang.py', 'email_auftragseingang', 'Auftragseingang E-Mail')
 
-def job_email_werkstatt_tagesbericht():
-    """Werkstatt Tagesbericht per E-Mail (TAG 110)"""
-    return run_script('scripts/reports/werkstatt_tagesbericht_email.py', 'email_werkstatt_tagesbericht', 'Werkstatt Tagesbericht E-Mail', timeout=120)
-
 # Wartung
 def job_db_backup():
     return run_shell('cp data/greiner_controlling.db data/greiner_controlling.db.backup_$(date +%Y%m%d_%H%M%S)', 'db_backup', 'DB Backup')
@@ -80,15 +76,18 @@ def job_db_backup():
 def job_cleanup_backups():
     return run_shell('cd data && ls -t greiner_controlling.db.backup_* 2>/dev/null | tail -n +8 | xargs rm -f 2>/dev/null', 'cleanup_backups', 'Backup Cleanup')
 
-# ML Training
-def job_ml_retrain():
-    """Trainiert ML-Modell für Auftragsdauer-Vorhersage neu (TAG 109)"""
-    return run_script('scripts/ml/train_auftragsdauer_model.py', 'ml_retrain', 'ML Modell Retrain', timeout=600)
+# ML Training V5.1 (TAG 119 - QUALITÄTSGEPRÜFTE Stempeluhr-Daten + Labour Corrections!)
+def job_ml_extract_features():
+    """Extrahiert QUALITÄTSGEPRÜFTE Stempeluhr-Zeiten (min 2 Stempel, Ratio 0.3-8x)"""
+    return run_script('scripts/ml/extract_features_v5.py', 'ml_extract_features', 'ML Feature Extraktion V5', timeout=600, args=['2023-01-01'])
 
-# Locosoft Sync (charge_types für SVS)
-def job_sync_charge_types():
-    """Synchronisiert charge_types (AW-Preise) von Locosoft nach SQLite (TAG 110)"""
-    return run_script('scripts/imports/sync_charge_types.py', 'sync_charge_types', 'Charge Types Sync', timeout=120)
+def job_ml_retrain():
+    """Trainiert XGBoost-Modell mit qualitätsgeprüften Daten (TAG 119)"""
+    return run_script('scripts/ml/train_auftragsdauer_model_v2.py', 'ml_retrain', 'ML Modell Retrain V5', timeout=900)
+
+def job_ml_labour_corrections():
+    """Extrahiert Labour Correction Factors pro Operation+Lohnart (G=1.24x, W=0.94x)"""
+    return run_script('scripts/ml/extract_labour_corrections.py', 'ml_labour_corrections', 'Labour Corrections Update', timeout=300)
 
 # ---------------------------------------------------------------------------
 # AFTERSALES
@@ -96,7 +95,7 @@ def job_sync_charge_types():
 
 # ServiceBox
 def job_servicebox_scraper():
-    return run_script('tools/scrapers/servicebox_detail_scraper_final.py', 'servicebox_scraper', 'ServiceBox Scraper', timeout=1800)
+    return run_script('tools/scrapers/servicebox_detail_scraper_v3_kommentar.py', 'servicebox_scraper', 'ServiceBox Scraper', timeout=1800)
 
 def job_servicebox_matcher():
     return run_script('tools/scrapers/servicebox_locosoft_matcher.py', 'servicebox_matcher', 'ServiceBox Matcher', timeout=300)
@@ -105,7 +104,7 @@ def job_servicebox_import():
     return run_script('scripts/imports/import_servicebox_to_db.py', 'servicebox_import', 'ServiceBox Import', timeout=120)
 
 def job_servicebox_master():
-    return run_script('tools/scrapers/servicebox_scraper_complete.py', 'servicebox_master', 'ServiceBox Master', timeout=3600)
+    return run_script('tools/scrapers/servicebox_detail_scraper_v3_master.py', 'servicebox_master', 'ServiceBox Master', timeout=3600)
 
 # Teile
 def job_sync_teile_locosoft():
@@ -293,18 +292,6 @@ def register_all_jobs():
         day_of_week='mon-fri'
     )
     
-    # Werkstatt Tagesbericht E-Mail - 17:30 (TAG 110)
-    job_manager.add_cron_job(
-        job_id='email_werkstatt_tagesbericht',
-        func=job_email_werkstatt_tagesbericht,
-        name='Werkstatt Tagesbericht E-Mail',
-        description='Sendet täglichen Werkstatt-Tagesbericht per E-Mail (Leistungsgrad, Verluste, Ranking)',
-        category='aftersales',
-        hour='17',
-        minute='30',
-        day_of_week='mon-fri'
-    )
-    
     # --- Wartung ---
     
     job_manager.add_cron_job(
@@ -327,29 +314,39 @@ def register_all_jobs():
         minute='30'
     )
     
-    # ML Retrain - täglich 3:15 Uhr (TAG 109)
+    # ML Feature Extraktion V5 - täglich 3:00 Uhr (TAG 119 - QUALITÄTSGEPRÜFT!)
+    job_manager.add_cron_job(
+        job_id='ml_extract_features',
+        func=job_ml_extract_features,
+        name='ML Feature Extraktion V5',
+        description='Extrahiert QUALITÄTSGEPRÜFTE Stempeluhr-Zeiten (min 2 Stempel, Ratio 0.3-8x)',
+        category='aftersales',
+        hour='3',
+        minute='0'
+    )
+
+    # ML Retrain - täglich 3:15 Uhr (TAG 119 - XGBoost mit Qualitätsdaten)
     job_manager.add_cron_job(
         job_id='ml_retrain',
         func=job_ml_retrain,
-        name='ML Modell Retrain',
-        description='Trainiert Auftragsdauer-Vorhersage-Modell neu mit aktuellen Daten',
+        name='ML Modell Retrain V5',
+        description='Trainiert XGBoost mit qualitätsgeprüften Daten (R²=0.68, MAE=45min)',
         category='aftersales',
         hour='3',
         minute='15'
     )
-    
-    # Charge Types Sync - täglich 6:05 Uhr (TAG 110)
-    # Synchronisiert AW-Preise/SVS von Locosoft nach SQLite
+
+    # ML Labour Corrections - täglich 3:30 Uhr (TAG 119 - G=1.24x, W=0.94x)
     job_manager.add_cron_job(
-        job_id='sync_charge_types',
-        func=job_sync_charge_types,
-        name='Charge Types Sync',
-        description='Synchronisiert AW-Preise (charge_types) von Locosoft nach SQLite für SVS-Berechnung',
+        job_id='ml_labour_corrections',
+        func=job_ml_labour_corrections,
+        name='Labour Corrections Update',
+        description='Aktualisiert Korrekturfaktoren pro Operation+Lohnart (G=1.24x, W=0.94x)',
         category='aftersales',
-        hour='6',
-        minute='5'
+        hour='3',
+        minute='30'
     )
-    
+
     # =========================================================================
     # KOSTENSTELLE: AFTERSALES
     # =========================================================================
@@ -565,10 +562,7 @@ def register_all_jobs():
         job_count = len(job_manager.get_jobs())
         print(f"📋 {job_count} Jobs registriert")
         print(f"   - Controlling & Verwaltung: 14 Jobs")
-        print(f"   - Aftersales: 14 Jobs")  # +1 sync_charge_types (TAG 110)
+        print(f"   - Aftersales: 13 Jobs")
         print(f"   - Verkauf: 4 Jobs")
     except Exception as e:
         print(f"📋 Jobs registriert (Zählung fehlgeschlagen: {e})")
-
-
-# Aktualisiert: TAG 110 - sync_charge_types Job hinzugefügt

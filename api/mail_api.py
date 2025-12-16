@@ -9,7 +9,9 @@ Endpoints:
 
 from flask import Blueprint, jsonify, request
 from datetime import datetime
-import sqlite3
+
+# Zentrale DB-Utilities (TAG117)
+from api.db_utils import db_session
 
 # Lokale Imports
 from .graph_mail_connector import GraphMailConnector
@@ -18,20 +20,16 @@ from .pdf_generator import generate_auftragseingang_pdf
 mail_api = Blueprint('mail_api', __name__, url_prefix='/api/mail')
 
 
-def get_db():
-    """SQLite Datenbank-Verbindung"""
-    conn = sqlite3.connect('/opt/greiner-portal/data/greiner_controlling.db')
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
 def get_auftragseingang_data(day=None, month=None, year=None):
     """
     Holt Auftragseingang-Daten aus der Datenbank
     """
-    conn = get_db()
-    cursor = conn.cursor()
-    
+    with db_session() as conn:
+        cursor = conn.cursor()
+        return _get_auftragseingang_data_impl(cursor, day, month, year)
+
+def _get_auftragseingang_data_impl(cursor, day, month, year):
+    """Implementierung"""
     # Basis-Filter
     where_clauses = ["s.salesman_number IS NOT NULL"]
     params = []
@@ -80,8 +78,7 @@ def get_auftragseingang_data(day=None, month=None, year=None):
     """, params)
     
     rows = cursor.fetchall()
-    conn.close()
-    
+
     # Nach Verkäufer aggregieren
     verkaufer_dict = {}
     

@@ -4,8 +4,13 @@
 ========================================
 VACATION API - MIT LDAP-INTEGRATION
 ========================================
-Version: 2.5 - TAG 113
-Datum: 11.12.2025
+Version: 2.6 - TAG 117
+Datum: 12.12.2025
+
+CHANGES TAG 117:
+- Migration auf db_session() Context Manager (keine Connection Leaks mehr)
+- Alle manuellen conn.close() Aufrufe entfernt
+- Zentrale DB-Utilities aus api.db_utils
 
 CHANGES TAG 113:
 - Krankheit nur für Admins (GRP_Urlaub_Admin)
@@ -35,9 +40,11 @@ CHANGES TAG 104:
 """
 
 from flask import Blueprint, request, jsonify, session
-import sqlite3
 from datetime import datetime, date, timedelta
 import json
+
+# Zentrale DB-Utilities (TAG 117 - Migration abgeschlossen)
+from api.db_utils import db_session, row_to_dict, rows_to_list
 
 # Approver Service importieren
 from api.vacation_approver_service import (
@@ -78,17 +85,10 @@ except ImportError:
 
 vacation_api = Blueprint('vacation_api', __name__, url_prefix='/api/vacation')
 
-DB_PATH = '/opt/greiner-portal/data/greiner_controlling.db'
-
 # E-Mail-Konfiguration
 HR_EMAIL = 'hr@auto-greiner.de'  # HR-Mailbox für Locosoft-Einträge
 DRIVE_EMAIL = 'drive@auto-greiner.de'  # Absender
 
-def get_db():
-    """Erstellt DB-Verbindung"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
 
 def get_employee_from_session():
     """
@@ -96,71 +96,69 @@ def get_employee_from_session():
     """
     # 1. Hole user_id aus Flask-Login Session
     user_id = session.get('_user_id')
-    
+    ldap_username = None
+
     if not user_id:
         # Fallback: Versuche alte Session-Keys
         ldap_username = (
-            session.get('username') or 
-            session.get('user') or 
+            session.get('username') or
+            session.get('user') or
             session.get('ldap_user') or
             session.get('sAMAccountName')
         )
-        
+
         if not ldap_username:
             return None, None, None
-        
+
         ldap_username = ldap_username.split('@')[0] if '@' in ldap_username else ldap_username
     else:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        cursor.execute("SELECT username FROM users WHERE id = ?", (user_id,))
-        user_row = cursor.fetchone()
-        
-        if not user_row:
-            conn.close()
-            return None, None, None
-        
-        username = user_row[0]
-        ldap_username = username.split('@')[0] if '@' in username else username
-        conn.close()
-    
+        with db_session() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute("SELECT username FROM users WHERE id = ?", (user_id,))
+            user_row = cursor.fetchone()
+
+            if not user_row:
+                return None, None, None
+
+            username = user_row[0]
+            ldap_username = username.split('@')[0] if '@' in username else username
+
     # Lookup in ldap_employee_mapping
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-        SELECT 
-            lem.employee_id,
-            lem.ldap_username,
-            lem.locosoft_id,
-            e.first_name,
-            e.last_name,
-            e.email,
-            e.department_name,
-            e.is_manager
-        FROM ldap_employee_mapping lem
-        JOIN employees e ON lem.employee_id = e.id
-        WHERE lem.ldap_username = ? AND e.aktiv = 1
-    """, (ldap_username,))
-    
-    result = cursor.fetchone()
-    conn.close()
-    
-    if result:
-        employee_data = {
-            'employee_id': result[0],
-            'ldap_username': result[1],
-            'locosoft_id': result[2],
-            'first_name': result[3],
-            'last_name': result[4],
-            'email': result[5],
-            'department': result[6],
-            'is_manager': bool(result[7])
-        }
-        return result[0], ldap_username, employee_data
-    
-    return None, ldap_username, None
+    with db_session() as conn:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT
+                lem.employee_id,
+                lem.ldap_username,
+                lem.locosoft_id,
+                e.first_name,
+                e.last_name,
+                e.email,
+                e.department_name,
+                e.is_manager
+            FROM ldap_employee_mapping lem
+            JOIN employees e ON lem.employee_id = e.id
+            WHERE lem.ldap_username = ? AND e.aktiv = 1
+        """, (ldap_username,))
+
+        result = cursor.fetchone()
+
+        if result:
+            employee_data = {
+                'employee_id': result[0],
+                'ldap_username': result[1],
+                'locosoft_id': result[2],
+                'first_name': result[3],
+                'last_name': result[4],
+                'email': result[5],
+                'department': result[6],
+                'is_manager': bool(result[7])
+            }
+            return result[0], ldap_username, employee_data
+
+        return None, ldap_username, None
 
 
 # ============================================================================
@@ -762,27 +760,26 @@ def get_my_balance():
             }), 401
         
         year = request.args.get('year', 2025, type=int)
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        cursor.execute(f"""
-            SELECT
-                employee_id,
-                name,
-                department_name,
-                location,
-                anspruch,
-                verbraucht,
-                geplant,
-                resturlaub
-            FROM v_vacation_balance_{year}
-            WHERE employee_id = ?
-        """, (employee_id,))
-        
-        row = cursor.fetchone()
-        conn.close()
-        
+
+        with db_session() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute(f"""
+                SELECT
+                    employee_id,
+                    name,
+                    department_name,
+                    location,
+                    anspruch,
+                    verbraucht,
+                    geplant,
+                    resturlaub
+                FROM v_vacation_balance_{year}
+                WHERE employee_id = ?
+            """, (employee_id,))
+
+            row = cursor.fetchone()
+
         if not row:
             return jsonify({
                 'success': False,
@@ -909,66 +906,64 @@ def get_my_team():
                 'message': 'Kein Team zugeordnet'
             })
         
-        conn = get_db()
-        cursor = conn.cursor()
-        
         team_ids = [m['employee_id'] for m in team_members]
         placeholders = ','.join('?' * len(team_ids))
-        
-        cursor.execute(f"""
-            SELECT
-                employee_id,
-                name,
-                department_name,
-                location,
-                anspruch,
-                verbraucht,
-                geplant,
-                resturlaub
-            FROM v_vacation_balance_{year}
-            WHERE employee_id IN ({placeholders})
-            ORDER BY name
-        """, team_ids)
-        
-        locosoft_ids = [m.get('locosoft_id') for m in team_members if m.get('locosoft_id')]
-        locosoft_absences = {}
-        if LOCOSOFT_AVAILABLE and locosoft_ids:
-            locosoft_absences = get_absences_for_employees(locosoft_ids, year)
-        
-        team = []
-        for row in cursor.fetchall():
-            member_info = next((m for m in team_members if m['employee_id'] == row[0]), {})
-            locosoft_id = member_info.get('locosoft_id')
-            
-            loco = locosoft_absences.get(locosoft_id, {})
-            urlaub = loco.get('urlaub', 0)
-            zeitausgleich = loco.get('zeitausgleich', 0)
-            krank = loco.get('krank', 0)
-            sonstige = loco.get('sonstige', 0)
-            
-            anspruch = row[4] or 27
-            verfuegbar = round(anspruch - urlaub, 1)
-            
-            team.append({
-                'employee_id': row[0],
-                'name': row[1],
-                'department': row[2],
-                'location': row[3],
-                'anspruch': anspruch,
-                'urlaub': urlaub,
-                'zeitausgleich': zeitausgleich,
-                'krank': krank,
-                'sonstige': sonstige,
-                'verfuegbar': verfuegbar,
-                'verbraucht': row[5],
-                'geplant': row[6],
-                'resturlaub': row[7],
-                'grp_code': member_info.get('grp_code', ''),
-                'standort': member_info.get('standort', '')
-            })
-        
-        conn.close()
-        
+
+        with db_session() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute(f"""
+                SELECT
+                    employee_id,
+                    name,
+                    department_name,
+                    location,
+                    anspruch,
+                    verbraucht,
+                    geplant,
+                    resturlaub
+                FROM v_vacation_balance_{year}
+                WHERE employee_id IN ({placeholders})
+                ORDER BY name
+            """, team_ids)
+
+            locosoft_ids = [m.get('locosoft_id') for m in team_members if m.get('locosoft_id')]
+            locosoft_absences = {}
+            if LOCOSOFT_AVAILABLE and locosoft_ids:
+                locosoft_absences = get_absences_for_employees(locosoft_ids, year)
+
+            team = []
+            for row in cursor.fetchall():
+                member_info = next((m for m in team_members if m['employee_id'] == row[0]), {})
+                locosoft_id = member_info.get('locosoft_id')
+
+                loco = locosoft_absences.get(locosoft_id, {})
+                urlaub = loco.get('urlaub', 0)
+                zeitausgleich = loco.get('zeitausgleich', 0)
+                krank = loco.get('krank', 0)
+                sonstige = loco.get('sonstige', 0)
+
+                anspruch = row[4] or 27
+                verfuegbar = round(anspruch - urlaub, 1)
+
+                team.append({
+                    'employee_id': row[0],
+                    'name': row[1],
+                    'department': row[2],
+                    'location': row[3],
+                    'anspruch': anspruch,
+                    'urlaub': urlaub,
+                    'zeitausgleich': zeitausgleich,
+                    'krank': krank,
+                    'sonstige': sonstige,
+                    'verfuegbar': verfuegbar,
+                    'verbraucht': row[5],
+                    'geplant': row[6],
+                    'resturlaub': row[7],
+                    'grp_code': member_info.get('grp_code', ''),
+                    'standort': member_info.get('standort', '')
+                })
+
         return jsonify({
             'success': True,
             'year': year,
@@ -1051,49 +1046,47 @@ def get_pending_approvals():
         
         team_ids = [m['employee_id'] for m in team_members]
         placeholders = ','.join('?' * len(team_ids))
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        cursor.execute(f"""
-            SELECT 
-                vb.id,
-                vb.employee_id,
-                e.first_name || ' ' || e.last_name as employee_name,
-                vb.booking_date,
-                vb.day_part,
-                vb.vacation_type_id,
-                vt.name as vacation_type_name,
-                vb.comment,
-                vb.created_at
-            FROM vacation_bookings vb
-            JOIN employees e ON vb.employee_id = e.id
-            LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
-            WHERE vb.employee_id IN ({placeholders})
-              AND vb.status = 'pending'
-            ORDER BY vb.booking_date ASC
-        """, team_ids)
-        
-        pending = []
-        for row in cursor.fetchall():
-            member_info = next((m for m in team_members if m['employee_id'] == row[1]), {})
-            
-            pending.append({
-                'booking_id': row[0],
-                'employee_id': row[1],
-                'employee_name': row[2],
-                'date': row[3],
-                'day_part': row[4],
-                'type_id': row[5],
-                'type_name': row[6],
-                'comment': row[7],
-                'created_at': row[8],
-                'grp_code': member_info.get('grp_code', ''),
-                'standort': member_info.get('standort', '')
-            })
-        
-        conn.close()
-        
+
+        with db_session() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute(f"""
+                SELECT
+                    vb.id,
+                    vb.employee_id,
+                    e.first_name || ' ' || e.last_name as employee_name,
+                    vb.booking_date,
+                    vb.day_part,
+                    vb.vacation_type_id,
+                    vt.name as vacation_type_name,
+                    vb.comment,
+                    vb.created_at
+                FROM vacation_bookings vb
+                JOIN employees e ON vb.employee_id = e.id
+                LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
+                WHERE vb.employee_id IN ({placeholders})
+                  AND vb.status = 'pending'
+                ORDER BY vb.booking_date ASC
+            """, team_ids)
+
+            pending = []
+            for row in cursor.fetchall():
+                member_info = next((m for m in team_members if m['employee_id'] == row[1]), {})
+
+                pending.append({
+                    'booking_id': row[0],
+                    'employee_id': row[1],
+                    'employee_name': row[2],
+                    'date': row[3],
+                    'day_part': row[4],
+                    'type_id': row[5],
+                    'type_name': row[6],
+                    'comment': row[7],
+                    'created_at': row[8],
+                    'grp_code': member_info.get('grp_code', ''),
+                    'standort': member_info.get('standort', '')
+                })
+
         return jsonify({
             'success': True,
             'approver': employee_data,
@@ -1142,55 +1135,51 @@ def approve_vacation():
         
         team_members = get_team_for_approver(ldap_username)
         team_ids = [m['employee_id'] for m in team_members]
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Hole Booking-Details für E-Mail
-        cursor.execute("""
-            SELECT 
-                vb.employee_id, 
-                vb.status,
-                vb.booking_date,
-                vb.day_part,
-                vb.vacation_type_id,
-                vt.name as vacation_type,
-                e.first_name || ' ' || e.last_name as employee_name,
-                e.email as employee_email,
-                e.department_name
-            FROM vacation_bookings vb
-            JOIN employees e ON vb.employee_id = e.id
-            LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
-            WHERE vb.id = ?
-        """, (booking_id,))
-        
-        booking = cursor.fetchone()
-        
-        if not booking:
-            conn.close()
-            return jsonify({'success': False, 'error': 'Buchung nicht gefunden'}), 404
-        
-        if booking[0] not in team_ids:
-            conn.close()
-            return jsonify({'success': False, 'error': 'Keine Berechtigung für diese Buchung'}), 403
-        
-        if booking[1] != 'pending':
-            conn.close()
-            return jsonify({'success': False, 'error': f'Buchung hat bereits Status: {booking[1]}'}), 400
-        
-        # Genehmigen
-        cursor.execute("""
-            UPDATE vacation_bookings 
-            SET status = 'approved',
-                approved_by = ?,
-                approved_at = ?,
-                comment = CASE WHEN comment IS NULL OR comment = '' THEN ? ELSE comment || ' | Genehmigt: ' || ? END
-            WHERE id = ?
-        """, (employee_id, datetime.now().isoformat(), comment, comment, booking_id))
-        
-        conn.commit()
-        conn.close()
-        
+
+        with db_session() as conn:
+            cursor = conn.cursor()
+
+            # Hole Booking-Details für E-Mail
+            cursor.execute("""
+                SELECT
+                    vb.employee_id,
+                    vb.status,
+                    vb.booking_date,
+                    vb.day_part,
+                    vb.vacation_type_id,
+                    vt.name as vacation_type,
+                    e.first_name || ' ' || e.last_name as employee_name,
+                    e.email as employee_email,
+                    e.department_name
+                FROM vacation_bookings vb
+                JOIN employees e ON vb.employee_id = e.id
+                LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
+                WHERE vb.id = ?
+            """, (booking_id,))
+
+            booking = cursor.fetchone()
+
+            if not booking:
+                return jsonify({'success': False, 'error': 'Buchung nicht gefunden'}), 404
+
+            if booking[0] not in team_ids:
+                return jsonify({'success': False, 'error': 'Keine Berechtigung für diese Buchung'}), 403
+
+            if booking[1] != 'pending':
+                return jsonify({'success': False, 'error': f'Buchung hat bereits Status: {booking[1]}'}), 400
+
+            # Genehmigen
+            cursor.execute("""
+                UPDATE vacation_bookings
+                SET status = 'approved',
+                    approved_by = ?,
+                    approved_at = ?,
+                    comment = CASE WHEN comment IS NULL OR comment = '' THEN ? ELSE comment || ' | Genehmigt: ' || ? END
+                WHERE id = ?
+            """, (employee_id, datetime.now().isoformat(), comment, comment, booking_id))
+
+            conn.commit()
+
         # Booking-Details für E-Mails
         approver_name = f"{employee_data.get('first_name', '')} {employee_data.get('last_name', '')}".strip()
         
@@ -1262,53 +1251,49 @@ def reject_vacation():
         
         team_members = get_team_for_approver(ldap_username)
         team_ids = [m['employee_id'] for m in team_members]
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Hole Booking-Details für E-Mail
-        cursor.execute("""
-            SELECT 
-                vb.employee_id, 
-                vb.status,
-                vb.booking_date,
-                vb.day_part,
-                vt.name as vacation_type,
-                e.first_name || ' ' || e.last_name as employee_name,
-                e.email as employee_email
-            FROM vacation_bookings vb
-            JOIN employees e ON vb.employee_id = e.id
-            LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
-            WHERE vb.id = ?
-        """, (booking_id,))
-        
-        booking = cursor.fetchone()
-        
-        if not booking:
-            conn.close()
-            return jsonify({'success': False, 'error': 'Buchung nicht gefunden'}), 404
-        
-        if booking[0] not in team_ids:
-            conn.close()
-            return jsonify({'success': False, 'error': 'Keine Berechtigung für diese Buchung'}), 403
-        
-        if booking[1] != 'pending':
-            conn.close()
-            return jsonify({'success': False, 'error': f'Buchung hat bereits Status: {booking[1]}'}), 400
-        
-        # Ablehnen
-        cursor.execute("""
-            UPDATE vacation_bookings 
-            SET status = 'rejected',
-                approved_by = ?,
-                approved_at = ?,
-                comment = CASE WHEN comment IS NULL OR comment = '' THEN ? ELSE comment || ' | Abgelehnt: ' || ? END
-            WHERE id = ?
-        """, (employee_id, datetime.now().isoformat(), reason, reason, booking_id))
-        
-        conn.commit()
-        conn.close()
-        
+
+        with db_session() as conn:
+            cursor = conn.cursor()
+
+            # Hole Booking-Details für E-Mail
+            cursor.execute("""
+                SELECT
+                    vb.employee_id,
+                    vb.status,
+                    vb.booking_date,
+                    vb.day_part,
+                    vt.name as vacation_type,
+                    e.first_name || ' ' || e.last_name as employee_name,
+                    e.email as employee_email
+                FROM vacation_bookings vb
+                JOIN employees e ON vb.employee_id = e.id
+                LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
+                WHERE vb.id = ?
+            """, (booking_id,))
+
+            booking = cursor.fetchone()
+
+            if not booking:
+                return jsonify({'success': False, 'error': 'Buchung nicht gefunden'}), 404
+
+            if booking[0] not in team_ids:
+                return jsonify({'success': False, 'error': 'Keine Berechtigung für diese Buchung'}), 403
+
+            if booking[1] != 'pending':
+                return jsonify({'success': False, 'error': f'Buchung hat bereits Status: {booking[1]}'}), 400
+
+            # Ablehnen
+            cursor.execute("""
+                UPDATE vacation_bookings
+                SET status = 'rejected',
+                    approved_by = ?,
+                    approved_at = ?,
+                    comment = CASE WHEN comment IS NULL OR comment = '' THEN ? ELSE comment || ' | Abgelehnt: ' || ? END
+                WHERE id = ?
+            """, (employee_id, datetime.now().isoformat(), reason, reason, booking_id))
+
+            conn.commit()
+
         # E-Mail an Mitarbeiter senden (TAG 104)
         approver_name = f"{employee_data.get('first_name', '')} {employee_data.get('last_name', '')}".strip()
         
@@ -1352,10 +1337,7 @@ def get_all_balances():
         year = request.args.get('year', 2025, type=int)
         department = request.args.get('department', None)
         location = request.args.get('location', None)
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
+
         query = f"""
             SELECT
                 employee_id,
@@ -1369,36 +1351,36 @@ def get_all_balances():
             FROM v_vacation_balance_{year}
             WHERE 1=1
         """
-        
+
         params = []
-        
+
         if department:
             query += " AND department_name = ?"
             params.append(department)
-        
+
         if location:
             query += " AND location = ?"
             params.append(location)
-        
+
         query += " ORDER BY name"
-        
-        cursor.execute(query, params)
-        
-        balances = []
-        for row in cursor.fetchall():
-            balances.append({
-                'employee_id': row[0],
-                'name': row[1],
-                'department_name': row[2],
-                'location': row[3],
-                'anspruch': row[4],
-                'verbraucht': row[5],
-                'geplant': row[6],
-                'resturlaub': row[7]
-            })
-        
-        conn.close()
-        
+
+        with db_session() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+
+            balances = []
+            for row in cursor.fetchall():
+                balances.append({
+                    'employee_id': row[0],
+                    'name': row[1],
+                    'department_name': row[2],
+                    'location': row[3],
+                    'anspruch': row[4],
+                    'verbraucht': row[5],
+                    'geplant': row[6],
+                    'resturlaub': row[7]
+                })
+
         return jsonify({
             'success': True,
             'year': year,
@@ -1430,37 +1412,35 @@ def get_all_bookings():
     """
     try:
         year = request.args.get('year', 2025, type=int)
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT
-                vb.id,
-                vb.employee_id,
-                vb.booking_date,
-                vb.day_part,
-                vb.status,
-                vb.vacation_type_id
-            FROM vacation_bookings vb
-            WHERE strftime('%Y', vb.booking_date) = ?
-              AND vb.status IN ('approved', 'pending')
-            ORDER BY vb.booking_date
-        """, (str(year),))
-        
-        bookings = []
-        for row in cursor.fetchall():
-            bookings.append({
-                'id': row[0],
-                'employee_id': row[1],
-                'date': row[2],
-                'day_part': row[3],
-                'status': row[4],
-                'type_id': row[5]
-            })
-        
-        conn.close()
-        
+
+        with db_session() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT
+                    vb.id,
+                    vb.employee_id,
+                    vb.booking_date,
+                    vb.day_part,
+                    vb.status,
+                    vb.vacation_type_id
+                FROM vacation_bookings vb
+                WHERE strftime('%Y', vb.booking_date) = ?
+                  AND vb.status IN ('approved', 'pending')
+                ORDER BY vb.booking_date
+            """, (str(year),))
+
+            bookings = []
+            for row in cursor.fetchall():
+                bookings.append({
+                    'id': row[0],
+                    'employee_id': row[1],
+                    'date': row[2],
+                    'day_part': row[3],
+                    'status': row[4],
+                    'type_id': row[5]
+                })
+
         return jsonify({
             'success': True,
             'year': year,
@@ -1495,10 +1475,7 @@ def get_my_bookings():
         
         year = request.args.get('year', 2025, type=int)
         status_filter = request.args.get('status', None)
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
+
         query = """
             SELECT
                 vb.id,
@@ -1514,58 +1491,58 @@ def get_my_bookings():
             WHERE vb.employee_id = ?
               AND strftime('%Y', vb.booking_date) = ?
         """
-        
+
         params = [employee_id, str(year)]
-        
+
         if status_filter:
             query += " AND vb.status = ?"
             params.append(status_filter)
-        
+
         query += " ORDER BY vb.booking_date DESC"
-        
-        cursor.execute(query, params)
-        
-        # Locosoft-Daten für Abgleich holen
-        locosoft_dates = set()
-        if LOCOSOFT_AVAILABLE and employee_data and employee_data.get('locosoft_id'):
-            try:
-                import psycopg2
-                loco_conn = psycopg2.connect(
-                    host='10.80.80.8',
-                    database='loco_auswertung_db',
-                    user='loco_auswertung_benutzer',
-                    password='loco'
-                )
-                loco_cur = loco_conn.cursor()
-                loco_cur.execute("""
-                    SELECT date::text FROM absence_calendar
-                    WHERE employee_number = %s
-                    AND date >= %s AND date <= %s
-                """, (employee_data['locosoft_id'], f'{year}-01-01', f'{year}-12-31'))
-                locosoft_dates = set(row[0] for row in loco_cur.fetchall())
-                loco_conn.close()
-            except Exception as e:
-                print(f"Locosoft-Abgleich Fehler: {e}")
-        
-        bookings = []
-        for row in cursor.fetchall():
-            booking_date = row[1]
-            in_locosoft = booking_date in locosoft_dates
-            
-            bookings.append({
-                'id': row[0],
-                'date': booking_date,
-                'day_part': row[2],
-                'status': row[3],
-                'type_id': row[4],
-                'type_name': row[5],
-                'comment': row[6],
-                'created_at': row[7],
-                'in_locosoft': in_locosoft
-            })
-        
-        conn.close()
-        
+
+        with db_session() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+
+            # Locosoft-Daten für Abgleich holen
+            locosoft_dates = set()
+            if LOCOSOFT_AVAILABLE and employee_data and employee_data.get('locosoft_id'):
+                try:
+                    import psycopg2
+                    loco_conn = psycopg2.connect(
+                        host='10.80.80.8',
+                        database='loco_auswertung_db',
+                        user='loco_auswertung_benutzer',
+                        password='loco'
+                    )
+                    loco_cur = loco_conn.cursor()
+                    loco_cur.execute("""
+                        SELECT date::text FROM absence_calendar
+                        WHERE employee_number = %s
+                        AND date >= %s AND date <= %s
+                    """, (employee_data['locosoft_id'], f'{year}-01-01', f'{year}-12-31'))
+                    locosoft_dates = set(row[0] for row in loco_cur.fetchall())
+                    loco_conn.close()
+                except Exception as e:
+                    print(f"Locosoft-Abgleich Fehler: {e}")
+
+            bookings = []
+            for row in cursor.fetchall():
+                booking_date = row[1]
+                in_locosoft = booking_date in locosoft_dates
+
+                bookings.append({
+                    'id': row[0],
+                    'date': booking_date,
+                    'day_part': row[2],
+                    'status': row[3],
+                    'type_id': row[4],
+                    'type_name': row[5],
+                    'comment': row[6],
+                    'created_at': row[7],
+                    'in_locosoft': in_locosoft
+                })
+
         return jsonify({
             'success': True,
             'year': year,
@@ -1610,10 +1587,7 @@ def get_requests():
         
         year = request.args.get('year', 2025, type=int)
         status_filter = request.args.get('status', None)
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
+
         query = """
             SELECT
                 vb.id,
@@ -1629,32 +1603,32 @@ def get_requests():
             WHERE vb.employee_id = ?
               AND strftime('%Y', vb.booking_date) = ?
         """
-        
+
         params = [employee_id, str(year)]
-        
+
         if status_filter:
             query += " AND vb.status = ?"
             params.append(status_filter)
-        
+
         query += " ORDER BY vb.booking_date DESC"
-        
-        cursor.execute(query, params)
-        
-        requests_list = []
-        for row in cursor.fetchall():
-            requests_list.append({
-                'id': row[0],
-                'date': row[1],
-                'day_part': row[2],
-                'status': row[3],
-                'type_id': row[4],
-                'type_name': row[5],
-                'comment': row[6],
-                'created_at': row[7]
-            })
-        
-        conn.close()
-        
+
+        with db_session() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+
+            requests_list = []
+            for row in cursor.fetchall():
+                requests_list.append({
+                    'id': row[0],
+                    'date': row[1],
+                    'day_part': row[2],
+                    'status': row[3],
+                    'type_id': row[4],
+                    'type_name': row[5],
+                    'comment': row[6],
+                    'created_at': row[7]
+                })
+
         return jsonify({
             'success': True,
             'year': year,
@@ -1714,156 +1688,144 @@ def book_vacation():
                 'success': False,
                 'error': 'day_part muss "full" oder "half" sein'
             }), 400
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT id FROM vacation_bookings
-            WHERE employee_id = ? AND booking_date = ? AND status != 'cancelled'
-        """, (employee_id, booking_date))
-        
-        if cursor.fetchone():
-            conn.close()
-            return jsonify({
-                'success': False,
-                'error': f'Für {booking_date} existiert bereits eine Buchung'
-            }), 400
-        
-        # ====================================================================
-        # RESTURLAUB-VALIDIERUNG (TAG 113)
-        # Nur für Urlaub (type_id=1) - ZA/Schulung/Krank nicht prüfen
-        # ====================================================================
-        resturlaub_info = None
-        
-        if vacation_type_id == 1:  # Nur bei echtem Urlaub
-            requested_days = 1.0 if day_part == 'full' else 0.5
-            booking_year = int(booking_date[:4])
-            
-            # Hole aktuellen Resturlaub aus Locosoft (genaueste Quelle)
-            available_days = None
-            
-            if LOCOSOFT_AVAILABLE and employee_data and employee_data.get('locosoft_id'):
-                try:
-                    locosoft_absences = get_absences_for_employee(
-                        employee_data['locosoft_id'], 
-                        booking_year
-                    )
-                    if locosoft_absences:
-                        # Anspruch aus vacation_entitlements holen
-                        cursor.execute("""
-                            SELECT total_days FROM vacation_entitlements
-                            WHERE employee_id = ? AND year = ?
-                        """, (employee_id, booking_year))
-                        ent_row = cursor.fetchone()
-                        anspruch = ent_row[0] if ent_row else 27
-                        
-                        # Bereits in Locosoft gebuchter Urlaub
-                        urlaub_locosoft = locosoft_absences.get('urlaub', 0)
-                        
-                        # Bereits im Portal pending/approved gebuchter Urlaub (noch nicht in Locosoft)
-                        cursor.execute("""
-                            SELECT COALESCE(SUM(CASE WHEN day_part = 'full' THEN 1.0 ELSE 0.5 END), 0)
-                            FROM vacation_bookings
-                            WHERE employee_id = ?
-                              AND strftime('%Y', booking_date) = ?
-                              AND vacation_type_id = 1
-                              AND status IN ('pending', 'approved')
-                        """, (employee_id, str(booking_year)))
-                        portal_pending = cursor.fetchone()[0] or 0
-                        
-                        # Verfügbar = Anspruch - Locosoft - Portal-Pending
-                        # (Portal-Pending sollte eigentlich in Locosoft sein wenn approved,
-                        #  aber wir rechnen sicherheitshalber beide)
-                        available_days = round(anspruch - urlaub_locosoft - portal_pending, 1)
+
+        with db_session() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT id FROM vacation_bookings
+                WHERE employee_id = ? AND booking_date = ? AND status != 'cancelled'
+            """, (employee_id, booking_date))
+
+            if cursor.fetchone():
+                return jsonify({
+                    'success': False,
+                    'error': f'Für {booking_date} existiert bereits eine Buchung'
+                }), 400
+
+            # ====================================================================
+            # RESTURLAUB-VALIDIERUNG (TAG 113)
+            # Nur für Urlaub (type_id=1) - ZA/Schulung/Krank nicht prüfen
+            # ====================================================================
+            resturlaub_info = None
+
+            if vacation_type_id == 1:  # Nur bei echtem Urlaub
+                requested_days = 1.0 if day_part == 'full' else 0.5
+                booking_year = int(booking_date[:4])
+
+                # Hole aktuellen Resturlaub aus Locosoft (genaueste Quelle)
+                available_days = None
+
+                if LOCOSOFT_AVAILABLE and employee_data and employee_data.get('locosoft_id'):
+                    try:
+                        locosoft_absences = get_absences_for_employee(
+                            employee_data['locosoft_id'],
+                            booking_year
+                        )
+                        if locosoft_absences:
+                            # Anspruch aus vacation_entitlements holen
+                            cursor.execute("""
+                                SELECT total_days FROM vacation_entitlements
+                                WHERE employee_id = ? AND year = ?
+                            """, (employee_id, booking_year))
+                            ent_row = cursor.fetchone()
+                            anspruch = ent_row[0] if ent_row else 27
+
+                            # Bereits in Locosoft gebuchter Urlaub
+                            urlaub_locosoft = locosoft_absences.get('urlaub', 0)
+
+                            # Bereits im Portal pending/approved gebuchter Urlaub (noch nicht in Locosoft)
+                            cursor.execute("""
+                                SELECT COALESCE(SUM(CASE WHEN day_part = 'full' THEN 1.0 ELSE 0.5 END), 0)
+                                FROM vacation_bookings
+                                WHERE employee_id = ?
+                                  AND strftime('%Y', booking_date) = ?
+                                  AND vacation_type_id = 1
+                                  AND status IN ('pending', 'approved')
+                            """, (employee_id, str(booking_year)))
+                            portal_pending = cursor.fetchone()[0] or 0
+
+                            # Verfügbar = Anspruch - Locosoft - Portal-Pending
+                            available_days = round(anspruch - urlaub_locosoft - portal_pending, 1)
+                            resturlaub_info = {
+                                'anspruch': anspruch,
+                                'locosoft': urlaub_locosoft,
+                                'portal_pending': portal_pending,
+                                'verfuegbar': available_days
+                            }
+                    except Exception as e:
+                        print(f"⚠️ Locosoft-Abfrage für Resturlaub fehlgeschlagen: {e}")
+
+                # Fallback: Nur Portal-Daten wenn Locosoft nicht verfügbar
+                if available_days is None:
+                    cursor.execute(f"""
+                        SELECT anspruch, verbraucht, geplant, resturlaub
+                        FROM v_vacation_balance_{booking_year}
+                        WHERE employee_id = ?
+                    """, (employee_id,))
+                    bal_row = cursor.fetchone()
+                    if bal_row:
+                        available_days = bal_row[3] or 0  # resturlaub
                         resturlaub_info = {
-                            'anspruch': anspruch,
-                            'locosoft': urlaub_locosoft,
-                            'portal_pending': portal_pending,
+                            'anspruch': bal_row[0],
+                            'verbraucht': bal_row[1],
+                            'geplant': bal_row[2],
                             'verfuegbar': available_days
                         }
-                except Exception as e:
-                    print(f"⚠️ Locosoft-Abfrage für Resturlaub fehlgeschlagen: {e}")
-            
-            # Fallback: Nur Portal-Daten wenn Locosoft nicht verfügbar
-            if available_days is None:
-                cursor.execute(f"""
-                    SELECT anspruch, verbraucht, geplant, resturlaub
-                    FROM v_vacation_balance_{booking_year}
-                    WHERE employee_id = ?
-                """, (employee_id,))
-                bal_row = cursor.fetchone()
-                if bal_row:
-                    available_days = bal_row[3] or 0  # resturlaub
-                    resturlaub_info = {
-                        'anspruch': bal_row[0],
-                        'verbraucht': bal_row[1],
-                        'geplant': bal_row[2],
-                        'verfuegbar': available_days
-                    }
-                else:
-                    available_days = 27  # Default Anspruch
-            
-            # Prüfung: Genug Resturlaub?
-            if available_days is not None and requested_days > available_days:
-                conn.close()
-                return jsonify({
-                    'success': False,
-                    'error': f'Nicht genug Resturlaub! Verfügbar: {available_days} Tage, angefragt: {requested_days} Tag(e)',
-                    'resturlaub_info': resturlaub_info
-                }), 400
-        
-        # Krankheit (type_id=3) - nur Admins dürfen Krankheit eintragen (TAG 113)
-        is_sickness = vacation_type_id == 3
-        if is_sickness:
-            # Prüfe ob User Admin ist (GRP_Urlaub_Admin)
-            conn_check = get_db()
-            cursor_check = conn_check.cursor()
-            cursor_check.execute("""
-                SELECT ad_groups FROM users 
-                WHERE username LIKE ? OR username = ?
-            """, (f"%{ldap_username}%", ldap_username))
-            user_row = cursor_check.fetchone()
-            conn_check.close()
-            
-            is_admin = False
-            if user_row and user_row[0]:
-                try:
-                    groups = json.loads(user_row[0]) if isinstance(user_row[0], str) else user_row[0]
-                    is_admin = 'GRP_Urlaub_Admin' in groups
-                except:
-                    pass
-            
-            if not is_admin:
-                conn.close()
-                return jsonify({
-                    'success': False,
-                    'error': 'Krankheitstage können nur von Admins eingetragen werden'
-                }), 403
-        
-        initial_status = 'approved' if is_sickness else 'pending'
-        
-        cursor.execute("""
-            INSERT INTO vacation_bookings (
-                employee_id, booking_date, vacation_type_id,
-                day_part, status, comment, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (employee_id, booking_date, vacation_type_id, day_part, initial_status, comment, datetime.now().isoformat()))
-        
-        booking_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        
+                    else:
+                        available_days = 27  # Default Anspruch
+
+                # Prüfung: Genug Resturlaub?
+                if available_days is not None and requested_days > available_days:
+                    return jsonify({
+                        'success': False,
+                        'error': f'Nicht genug Resturlaub! Verfügbar: {available_days} Tage, angefragt: {requested_days} Tag(e)',
+                        'resturlaub_info': resturlaub_info
+                    }), 400
+
+            # Krankheit (type_id=3) - nur Admins dürfen Krankheit eintragen (TAG 113)
+            is_sickness = vacation_type_id == 3
+            if is_sickness:
+                # Prüfe ob User Admin ist (GRP_Urlaub_Admin)
+                cursor.execute("""
+                    SELECT ad_groups FROM users
+                    WHERE username LIKE ? OR username = ?
+                """, (f"%{ldap_username}%", ldap_username))
+                user_row = cursor.fetchone()
+
+                is_admin = False
+                if user_row and user_row[0]:
+                    try:
+                        groups = json.loads(user_row[0]) if isinstance(user_row[0], str) else user_row[0]
+                        is_admin = 'GRP_Urlaub_Admin' in groups
+                    except:
+                        pass
+
+                if not is_admin:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Krankheitstage können nur von Admins eingetragen werden'
+                    }), 403
+
+            initial_status = 'approved' if is_sickness else 'pending'
+
+            cursor.execute("""
+                INSERT INTO vacation_bookings (
+                    employee_id, booking_date, vacation_type_id,
+                    day_part, status, comment, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (employee_id, booking_date, vacation_type_id, day_part, initial_status, comment, datetime.now().isoformat()))
+
+            booking_id = cursor.lastrowid
+            conn.commit()
+
+            # Vacation type name für E-Mail holen
+            cursor.execute("SELECT name FROM vacation_types WHERE id = ?", (vacation_type_id,))
+            vt_row = cursor.fetchone()
+            vacation_type_name = vt_row[0] if vt_row else 'Urlaub'
+
         approvers = get_approvers_for_employee(employee_id)
         approver_names = [a['approver_name'] for a in approvers if a['priority'] == 1]
-        
-        # E-Mail an Genehmiger senden (TAG 104b)
-        conn2 = get_db()
-        cursor2 = conn2.cursor()
-        cursor2.execute("SELECT name FROM vacation_types WHERE id = ?", (vacation_type_id,))
-        vt_row = cursor2.fetchone()
-        vacation_type_name = vt_row[0] if vt_row else 'Urlaub'
-        conn2.close()
         
         booking_details_for_email = {
             'date': booking_date,
@@ -1944,68 +1906,67 @@ def cancel_vacation():
         
         if not booking_id:
             return jsonify({'success': False, 'error': 'booking_id erforderlich'}), 400
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Hole Booking-Details
-        cursor.execute("""
-            SELECT 
-                vb.employee_id, 
-                vb.status,
-                vb.booking_date,
-                vb.day_part,
-                vt.name as vacation_type,
-                e.first_name || ' ' || e.last_name as employee_name,
-                e.department_name
-            FROM vacation_bookings vb
-            JOIN employees e ON vb.employee_id = e.id
-            LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
-            WHERE vb.id = ?
-        """, (booking_id,))
-        
-        booking = cursor.fetchone()
-        
-        if not booking:
-            conn.close()
-            return jsonify({'success': False, 'error': 'Buchung nicht gefunden'}), 404
-        
-        # TAG 113: Admins dürfen auch fremde Buchungen stornieren
-        booking_owner_id = booking[0]
-        is_own_booking = booking_owner_id == employee_id
-        
-        # Prüfe ob User Admin ist (GRP_Urlaub_Admin)
-        is_admin = False
-        cursor.execute("""
-            SELECT ad_groups FROM users 
-            WHERE username LIKE ? OR username = ?
-        """, (f"%{ldap_username}%", ldap_username))
-        user_row = cursor.fetchone()
-        if user_row and user_row[0]:
-            try:
-                groups = json.loads(user_row[0]) if isinstance(user_row[0], str) else user_row[0]
-                is_admin = 'GRP_Urlaub_Admin' in groups
-            except:
-                pass
-        
-        if not is_own_booking and not is_admin:
-            conn.close()
-            return jsonify({'success': False, 'error': 'Nur eigene Buchungen können storniert werden (oder Admin-Berechtigung erforderlich)'}), 403
-        
-        # Bereits genehmigte Buchungen können auch storniert werden (mit Benachrichtigung)
-        was_approved = booking[1] == 'approved'
-        
-        # Status auf 'cancelled' setzen
-        cursor.execute("""
-            UPDATE vacation_bookings 
-            SET status = 'cancelled',
-                comment = CASE WHEN comment IS NULL OR comment = '' THEN ? ELSE comment || ' | Storniert: ' || ? END
-            WHERE id = ?
-        """, (reason, reason, booking_id))
-        
-        conn.commit()
-        conn.close()
-        
+
+        with db_session() as conn:
+            cursor = conn.cursor()
+
+            # Hole Booking-Details
+            cursor.execute("""
+                SELECT
+                    vb.employee_id,
+                    vb.status,
+                    vb.booking_date,
+                    vb.day_part,
+                    vt.name as vacation_type,
+                    e.first_name || ' ' || e.last_name as employee_name,
+                    e.department_name,
+                    e.email as owner_email
+                FROM vacation_bookings vb
+                JOIN employees e ON vb.employee_id = e.id
+                LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
+                WHERE vb.id = ?
+            """, (booking_id,))
+
+            booking = cursor.fetchone()
+
+            if not booking:
+                return jsonify({'success': False, 'error': 'Buchung nicht gefunden'}), 404
+
+            # TAG 113: Admins dürfen auch fremde Buchungen stornieren
+            booking_owner_id = booking[0]
+            is_own_booking = booking_owner_id == employee_id
+            owner_email = booking[7]
+
+            # Prüfe ob User Admin ist (GRP_Urlaub_Admin)
+            is_admin = False
+            cursor.execute("""
+                SELECT ad_groups FROM users
+                WHERE username LIKE ? OR username = ?
+            """, (f"%{ldap_username}%", ldap_username))
+            user_row = cursor.fetchone()
+            if user_row and user_row[0]:
+                try:
+                    groups = json.loads(user_row[0]) if isinstance(user_row[0], str) else user_row[0]
+                    is_admin = 'GRP_Urlaub_Admin' in groups
+                except:
+                    pass
+
+            if not is_own_booking and not is_admin:
+                return jsonify({'success': False, 'error': 'Nur eigene Buchungen können storniert werden (oder Admin-Berechtigung erforderlich)'}), 403
+
+            # Bereits genehmigte Buchungen können auch storniert werden (mit Benachrichtigung)
+            was_approved = booking[1] == 'approved'
+
+            # Status auf 'cancelled' setzen
+            cursor.execute("""
+                UPDATE vacation_bookings
+                SET status = 'cancelled',
+                    comment = CASE WHEN comment IS NULL OR comment = '' THEN ? ELSE comment || ' | Storniert: ' || ? END
+                WHERE id = ?
+            """, (reason, reason, booking_id))
+
+            conn.commit()
+
         booking_details = {
             'date': booking[2],
             'day_part': booking[3],
@@ -2013,58 +1974,53 @@ def cancel_vacation():
             'employee_name': booking[5],
             'department': booking[6] or ''
         }
-        
+
         # E-Mail an Genehmiger senden (zur Info)
         # TAG 113: cancelled_by = wer hat storniert (kann Admin sein)
         cancelled_by_name = f"{employee_data.get('first_name', '')} {employee_data.get('last_name', '')}".strip()
-        
+
         # TAG 113: Bei Admin-Storno: Approvers des Buchungs-Eigentümers holen, nicht des Admins
         approvers = get_approvers_for_employee(booking_owner_id)
-        
+
         cancellation_email_sent = send_cancellation_notification_to_approvers(
-            booking_details, 
-            approvers, 
+            booking_details,
+            approvers,
             reason,
             was_approved,
             cancelled_by=cancelled_by_name
         )
-        
+
         # TAG 113: Bei Admin-Storno auch den Mitarbeiter informieren
         employee_email_sent = False
-        if not is_own_booking and is_admin:
-            # Hole E-Mail des Buchungs-Eigentümers
-            cursor2 = get_db().cursor()
-            cursor2.execute("SELECT email FROM employees WHERE id = ?", (booking_owner_id,))
-            owner_row = cursor2.fetchone()
-            if owner_row and owner_row[0]:
+        if not is_own_booking and is_admin and owner_email:
+            try:
+                graph = GraphMailConnector()
+                date_formatted = booking_details['date']
                 try:
-                    graph = GraphMailConnector()
-                    date_formatted = booking_details['date']
-                    try:
-                        date_obj = datetime.strptime(date_formatted, '%Y-%m-%d')
-                        date_formatted = date_obj.strftime('%d.%m.%Y')
-                    except:
-                        pass
-                    
-                    subject = f"🚫 Dein {booking_details['vacation_type']} wurde storniert - {date_formatted}"
-                    body_html = f"""
-                    <div style="font-family: Arial, sans-serif; max-width: 600px;">
-                        <h2 style="color: #dc3545;">🚫 {booking_details['vacation_type']} storniert</h2>
-                        <p>Dein {'genehmigter' if was_approved else 'beantragter'} {booking_details['vacation_type']} für <strong>{date_formatted}</strong> wurde von <strong>{cancelled_by_name}</strong> storniert.</p>
-                        <p style="background: #f8d7da; padding: 15px; border-radius: 5px;"><strong>Grund:</strong> {reason}</p>
-                        <p>Bei Fragen wende dich bitte an die Personalabteilung.</p>
-                        <hr style="border: none; border-top: 1px solid #dee2e6; margin: 20px 0;">
-                        <p style="color: #6c757d; font-size: 12px;">Greiner DRIVE Portal</p>
-                    </div>
-                    """
-                    employee_email_sent = graph.send_mail(
-                        sender_email=DRIVE_EMAIL,
-                        to_emails=[owner_row[0]],
-                        subject=subject,
-                        body_html=body_html
-                    )
-                except Exception as e:
-                    print(f"⚠️ Mitarbeiter-E-Mail bei Admin-Storno fehlgeschlagen: {e}")
+                    date_obj = datetime.strptime(date_formatted, '%Y-%m-%d')
+                    date_formatted = date_obj.strftime('%d.%m.%Y')
+                except:
+                    pass
+
+                subject = f"🚫 Dein {booking_details['vacation_type']} wurde storniert - {date_formatted}"
+                body_html = f"""
+                <div style="font-family: Arial, sans-serif; max-width: 600px;">
+                    <h2 style="color: #dc3545;">🚫 {booking_details['vacation_type']} storniert</h2>
+                    <p>Dein {'genehmigter' if was_approved else 'beantragter'} {booking_details['vacation_type']} für <strong>{date_formatted}</strong> wurde von <strong>{cancelled_by_name}</strong> storniert.</p>
+                    <p style="background: #f8d7da; padding: 15px; border-radius: 5px;"><strong>Grund:</strong> {reason}</p>
+                    <p>Bei Fragen wende dich bitte an die Personalabteilung.</p>
+                    <hr style="border: none; border-top: 1px solid #dee2e6; margin: 20px 0;">
+                    <p style="color: #6c757d; font-size: 12px;">Greiner DRIVE Portal</p>
+                </div>
+                """
+                employee_email_sent = graph.send_mail(
+                    sender_email=DRIVE_EMAIL,
+                    to_emails=[owner_email],
+                    subject=subject,
+                    body_html=body_html
+                )
+            except Exception as e:
+                print(f"⚠️ Mitarbeiter-E-Mail bei Admin-Storno fehlgeschlagen: {e}")
         
         # Wenn bereits genehmigt war: auch HR informieren (muss in Locosoft storniert werden)
         hr_email_sent = False
@@ -2146,92 +2102,85 @@ def book_vacation_batch():
                 datetime.strptime(d, '%Y-%m-%d')
             except ValueError:
                 return jsonify({'success': False, 'error': f'Ungültiges Datum: {d}'}), 400
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Krankheit nur für Admins (TAG 113)
-        is_sickness = vacation_type_id == 3
-        if is_sickness:
-            cursor.execute("""
-                SELECT ad_groups FROM users WHERE username LIKE ? OR username = ?
-            """, (f"%{ldap_username}%", ldap_username))
-            user_row = cursor.fetchone()
-            is_admin = False
-            if user_row and user_row[0]:
-                try:
-                    groups = json.loads(user_row[0]) if isinstance(user_row[0], str) else user_row[0]
-                    is_admin = 'GRP_Urlaub_Admin' in groups
-                except:
-                    pass
-            if not is_admin:
-                conn.close()
-                return jsonify({'success': False, 'error': 'Krankheitstage können nur von Admins eingetragen werden'}), 403
-        
-        # Resturlaub-Validierung für Urlaub (type_id=1)
-        if vacation_type_id == 1:
-            requested_days = len(dates) * (1.0 if day_part == 'full' else 0.5)
-            booking_year = int(dates[0][:4])
-            available_days = None
-            
-            if LOCOSOFT_AVAILABLE and employee_data and employee_data.get('locosoft_id'):
-                try:
-                    locosoft_absences = get_absences_for_employee(employee_data['locosoft_id'], booking_year)
-                    if locosoft_absences:
-                        cursor.execute("SELECT total_days FROM vacation_entitlements WHERE employee_id = ? AND year = ?", (employee_id, booking_year))
-                        ent_row = cursor.fetchone()
-                        anspruch = ent_row[0] if ent_row else 27
-                        urlaub_locosoft = locosoft_absences.get('urlaub', 0)
-                        cursor.execute("""
-                            SELECT COALESCE(SUM(CASE WHEN day_part = 'full' THEN 1.0 ELSE 0.5 END), 0)
-                            FROM vacation_bookings WHERE employee_id = ? AND strftime('%Y', booking_date) = ?
-                            AND vacation_type_id = 1 AND status IN ('pending', 'approved')
-                        """, (employee_id, str(booking_year)))
-                        portal_pending = cursor.fetchone()[0] or 0
-                        available_days = round(anspruch - urlaub_locosoft - portal_pending, 1)
-                except Exception as e:
-                    print(f"⚠️ Locosoft-Abfrage fehlgeschlagen: {e}")
-            
-            if available_days is not None and requested_days > available_days:
-                conn.close()
-                return jsonify({
-                    'success': False,
-                    'error': f'Nicht genug Resturlaub! Verfügbar: {available_days} Tage, angefragt: {requested_days} Tag(e)'
-                }), 400
-        
-        # Prüfe ob bereits Buchungen existieren
-        existing = []
-        for d in dates:
-            cursor.execute("""
-                SELECT id FROM vacation_bookings WHERE employee_id = ? AND booking_date = ? AND status != 'cancelled'
-            """, (employee_id, d))
-            if cursor.fetchone():
-                existing.append(d)
-        
-        if existing:
-            conn.close()
-            return jsonify({'success': False, 'error': f'Bereits gebucht: {existing[0]}'}), 400
-        
-        # Alle Buchungen einfügen
-        initial_status = 'approved' if is_sickness else 'pending'
-        booking_ids = []
-        for d in dates:
-            cursor.execute("""
-                INSERT INTO vacation_bookings (employee_id, booking_date, vacation_type_id, day_part, status, comment, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (employee_id, d, vacation_type_id, day_part, initial_status, comment, datetime.now().isoformat()))
-            booking_ids.append(cursor.lastrowid)
-        
-        conn.commit()
-        conn.close()
-        
-        # Vacation Type Name holen
-        conn2 = get_db()
-        cursor2 = conn2.cursor()
-        cursor2.execute("SELECT name FROM vacation_types WHERE id = ?", (vacation_type_id,))
-        vt_row = cursor2.fetchone()
-        vacation_type_name = vt_row[0] if vt_row else 'Urlaub'
-        conn2.close()
+
+        with db_session() as conn:
+            cursor = conn.cursor()
+
+            # Krankheit nur für Admins (TAG 113)
+            is_sickness = vacation_type_id == 3
+            if is_sickness:
+                cursor.execute("""
+                    SELECT ad_groups FROM users WHERE username LIKE ? OR username = ?
+                """, (f"%{ldap_username}%", ldap_username))
+                user_row = cursor.fetchone()
+                is_admin = False
+                if user_row and user_row[0]:
+                    try:
+                        groups = json.loads(user_row[0]) if isinstance(user_row[0], str) else user_row[0]
+                        is_admin = 'GRP_Urlaub_Admin' in groups
+                    except:
+                        pass
+                if not is_admin:
+                    return jsonify({'success': False, 'error': 'Krankheitstage können nur von Admins eingetragen werden'}), 403
+
+            # Resturlaub-Validierung für Urlaub (type_id=1)
+            if vacation_type_id == 1:
+                requested_days = len(dates) * (1.0 if day_part == 'full' else 0.5)
+                booking_year = int(dates[0][:4])
+                available_days = None
+
+                if LOCOSOFT_AVAILABLE and employee_data and employee_data.get('locosoft_id'):
+                    try:
+                        locosoft_absences = get_absences_for_employee(employee_data['locosoft_id'], booking_year)
+                        if locosoft_absences:
+                            cursor.execute("SELECT total_days FROM vacation_entitlements WHERE employee_id = ? AND year = ?", (employee_id, booking_year))
+                            ent_row = cursor.fetchone()
+                            anspruch = ent_row[0] if ent_row else 27
+                            urlaub_locosoft = locosoft_absences.get('urlaub', 0)
+                            cursor.execute("""
+                                SELECT COALESCE(SUM(CASE WHEN day_part = 'full' THEN 1.0 ELSE 0.5 END), 0)
+                                FROM vacation_bookings WHERE employee_id = ? AND strftime('%Y', booking_date) = ?
+                                AND vacation_type_id = 1 AND status IN ('pending', 'approved')
+                            """, (employee_id, str(booking_year)))
+                            portal_pending = cursor.fetchone()[0] or 0
+                            available_days = round(anspruch - urlaub_locosoft - portal_pending, 1)
+                    except Exception as e:
+                        print(f"⚠️ Locosoft-Abfrage fehlgeschlagen: {e}")
+
+                if available_days is not None and requested_days > available_days:
+                    return jsonify({
+                        'success': False,
+                        'error': f'Nicht genug Resturlaub! Verfügbar: {available_days} Tage, angefragt: {requested_days} Tag(e)'
+                    }), 400
+
+            # Prüfe ob bereits Buchungen existieren
+            existing = []
+            for d in dates:
+                cursor.execute("""
+                    SELECT id FROM vacation_bookings WHERE employee_id = ? AND booking_date = ? AND status != 'cancelled'
+                """, (employee_id, d))
+                if cursor.fetchone():
+                    existing.append(d)
+
+            if existing:
+                return jsonify({'success': False, 'error': f'Bereits gebucht: {existing[0]}'}), 400
+
+            # Alle Buchungen einfügen
+            initial_status = 'approved' if is_sickness else 'pending'
+            booking_ids = []
+            for d in dates:
+                cursor.execute("""
+                    INSERT INTO vacation_bookings (employee_id, booking_date, vacation_type_id, day_part, status, comment, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (employee_id, d, vacation_type_id, day_part, initial_status, comment, datetime.now().isoformat()))
+                booking_ids.append(cursor.lastrowid)
+
+            # Vacation Type Name holen
+            cursor.execute("SELECT name FROM vacation_types WHERE id = ?", (vacation_type_id,))
+            vt_row = cursor.fetchone()
+            vacation_type_name = vt_row[0] if vt_row else 'Urlaub'
+
+            conn.commit()
         
         # EINE E-Mail für alle Tage (E-Mail-Batching)
         approvers = get_approvers_for_employee(employee_id)
@@ -2347,61 +2296,60 @@ def cancel_vacation_batch():
         
         if not booking_ids:
             return jsonify({'success': False, 'error': 'booking_ids erforderlich'}), 400
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Prüfe Admin-Status
-        is_admin = False
-        cursor.execute("SELECT ad_groups FROM users WHERE username LIKE ? OR username = ?", (f"%{ldap_username}%", ldap_username))
-        user_row = cursor.fetchone()
-        if user_row and user_row[0]:
-            try:
-                groups = json.loads(user_row[0]) if isinstance(user_row[0], str) else user_row[0]
-                is_admin = 'GRP_Urlaub_Admin' in groups
-            except:
-                pass
-        
-        cancelled = []
-        errors = []
-        was_approved_any = False
-        cancelled_dates = []
-        booking_owner_name = None
-        
-        for bid in booking_ids:
-            cursor.execute("""
-                SELECT vb.employee_id, vb.status, vb.booking_date, e.first_name || ' ' || e.last_name
-                FROM vacation_bookings vb
-                JOIN employees e ON vb.employee_id = e.id
-                WHERE vb.id = ?
-            """, (bid,))
-            row = cursor.fetchone()
-            
-            if not row:
-                errors.append(f"Buchung {bid} nicht gefunden")
-                continue
-            
-            is_own = row[0] == employee_id
-            if not is_own and not is_admin:
-                errors.append(f"Keine Berechtigung für Buchung {bid}")
-                continue
-            
-            if row[1] == 'approved':
-                was_approved_any = True
-            
-            cursor.execute("""
-                UPDATE vacation_bookings SET status = 'cancelled',
-                comment = CASE WHEN comment IS NULL OR comment = '' THEN ? ELSE comment || ' | Storniert: ' || ? END
-                WHERE id = ?
-            """, (reason, reason, bid))
-            
-            cancelled.append(bid)
-            cancelled_dates.append(row[2])
-            if not booking_owner_name:
-                booking_owner_name = row[3]
-        
-        conn.commit()
-        conn.close()
+
+        with db_session() as conn:
+            cursor = conn.cursor()
+
+            # Prüfe Admin-Status
+            is_admin = False
+            cursor.execute("SELECT ad_groups FROM users WHERE username LIKE ? OR username = ?", (f"%{ldap_username}%", ldap_username))
+            user_row = cursor.fetchone()
+            if user_row and user_row[0]:
+                try:
+                    groups = json.loads(user_row[0]) if isinstance(user_row[0], str) else user_row[0]
+                    is_admin = 'GRP_Urlaub_Admin' in groups
+                except:
+                    pass
+
+            cancelled = []
+            errors = []
+            was_approved_any = False
+            cancelled_dates = []
+            booking_owner_name = None
+
+            for bid in booking_ids:
+                cursor.execute("""
+                    SELECT vb.employee_id, vb.status, vb.booking_date, e.first_name || ' ' || e.last_name
+                    FROM vacation_bookings vb
+                    JOIN employees e ON vb.employee_id = e.id
+                    WHERE vb.id = ?
+                """, (bid,))
+                row = cursor.fetchone()
+
+                if not row:
+                    errors.append(f"Buchung {bid} nicht gefunden")
+                    continue
+
+                is_own = row[0] == employee_id
+                if not is_own and not is_admin:
+                    errors.append(f"Keine Berechtigung für Buchung {bid}")
+                    continue
+
+                if row[1] == 'approved':
+                    was_approved_any = True
+
+                cursor.execute("""
+                    UPDATE vacation_bookings SET status = 'cancelled',
+                    comment = CASE WHEN comment IS NULL OR comment = '' THEN ? ELSE comment || ' | Storniert: ' || ? END
+                    WHERE id = ?
+                """, (reason, reason, bid))
+
+                cancelled.append(bid)
+                cancelled_dates.append(row[2])
+                if not booking_owner_name:
+                    booking_owner_name = row[3]
+
+            conn.commit()
         
         # E-Mail-Benachrichtigung (eine für alle Tage)
         if cancelled and GRAPH_AVAILABLE:
@@ -2479,13 +2427,12 @@ def get_locosoft_days():
     
     # Wenn employee_id statt locosoft_id gegeben, umwandeln
     if employee_id and not locosoft_id:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute("SELECT locosoft_id FROM employees WHERE id = ?", (employee_id,))
-        row = cursor.fetchone()
-        conn.close()
-        if row:
-            locosoft_id = row[0]
+        with db_session() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT locosoft_id FROM employees WHERE id = ?", (employee_id,))
+            row = cursor.fetchone()
+            if row:
+                locosoft_id = row[0]
     
     if not locosoft_id:
         return jsonify({'success': False, 'error': 'Kein locosoft_id oder employee_id angegeben'}), 400
@@ -2565,3 +2512,72 @@ def debug_session():
 
 # Export Blueprint
 __all__ = ['vacation_api']
+
+
+# ============================================================
+# PENDING-COUNT - TAG 116 (für Dashboard)
+# ============================================================
+
+@vacation_api.route('/pending-count', methods=['GET'])
+def get_pending_count():
+    """
+    GET /api/vacation/pending-count
+    
+    Zählt offene Urlaubsanträge für Dashboard-Badge.
+    Für Admins: Alle offenen Anträge
+    Für Genehmiger: Nur eigene offenen Genehmigungen
+    Für normale User: Eigene offene Anträge
+    """
+    try:
+        employee_id, ldap_username, employee_data = get_employee_from_session()
+
+        with db_session() as conn:
+            cursor = conn.cursor()
+
+            # Prüfe ob Admin
+            is_admin = False
+            if ldap_username:
+                cursor.execute("""
+                    SELECT COUNT(*) FROM ldap_group_mappings lgm
+                    JOIN ldap_employee_mapping lem ON lgm.ldap_group_dn = lem.ldap_group_dn
+                    WHERE lem.ldap_username = ? AND lgm.portal_feature = 'urlaub_admin'
+                """, (ldap_username,))
+                result = cursor.fetchone()
+                is_admin = result and result[0] > 0
+
+            if is_admin:
+                # Alle offenen Anträge
+                cursor.execute("""
+                    SELECT COUNT(DISTINCT vb.employee_id || '-' || vb.booking_date)
+                    FROM vacation_bookings vb
+                    WHERE vb.status = 'pending'
+                """)
+            elif ldap_username and is_approver(ldap_username):
+                # Offene Genehmigungen für diesen Genehmiger
+                cursor.execute("""
+                    SELECT COUNT(DISTINCT vb.employee_id || '-' || vb.booking_date)
+                    FROM vacation_bookings vb
+                    JOIN employees e ON vb.employee_id = e.id
+                    JOIN vacation_approval_rules var ON var.employee_id = e.id
+                    WHERE vb.status = 'pending'
+                      AND var.approver_username = ?
+                """, (ldap_username,))
+            else:
+                # Eigene offene Anträge
+                cursor.execute("""
+                    SELECT COUNT(*)
+                    FROM vacation_bookings vb
+                    WHERE vb.status = 'pending' AND vb.employee_id = ?
+                """, (employee_id,))
+
+            count = cursor.fetchone()[0] or 0
+
+        return jsonify({
+            'success': True,
+            'count': count,
+            'is_admin': is_admin,
+            'employee_id': employee_id
+        })
+        
+    except Exception as e:
+        return jsonify({'success': True, 'count': 0, 'error': str(e)})
