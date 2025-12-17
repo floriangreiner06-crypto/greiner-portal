@@ -563,7 +563,7 @@ function loadHeuteLive() {
 
 function loadKapazitaetForecast() {
     const betrieb = document.getElementById('kapa-betrieb-filter')?.value || '';
-    let url = '/api/werkstatt/kapazitaet/forecast';
+    let url = '/api/werkstatt/live/forecast';  // TAG123: Korrekter API-Pfad
     if (betrieb) url += '?subsidiary=' + betrieb;
     
     fetch(url)
@@ -589,33 +589,33 @@ function loadKapazitaetForecast() {
 }
 
 function renderForecast(data) {
-    // KPIs
+    // KPIs - TAG124: Feldnamen an API angepasst
     const woche = data.woche || {};
-    document.getElementById('kapa-woche-prozent').textContent = Math.round(woche.auslastung || 0) + '%';
-    document.getElementById('kapa-woche-aw').textContent = 
-        Math.round(woche.geplant || 0) + ' von ' + Math.round(woche.kapazitaet || 0) + ' AW';
-    
+    document.getElementById('kapa-woche-prozent').textContent = Math.round(woche.auslastung_prozent || 0) + '%';
+    document.getElementById('kapa-woche-aw').textContent =
+        Math.round(woche.geplant_aw || 0) + ' von ' + Math.round(woche.kapazitaet_aw || 0) + ' AW';
+
     document.getElementById('kapa-unverplant').textContent = data.unverplant?.anzahl || 0;
-    document.getElementById('kapa-teile').textContent = data.teile_fehlen?.anzahl || 0;
-    
+    document.getElementById('kapa-teile').textContent = data.teile?.auftraege_warten_auf_teile || 0;
+
     // Warnungen
     renderWarnungen(data.warnungen || []);
-    
+
     // Forecast-Balken
     renderForecastBars(data.forecast || []);
-    
+
     // Detail-Tabellen
     renderDetailTable('table-unverplant', data.unverplant?.auftraege || [], 'unverplant');
     renderDetailTable('table-ueberfaellig', data.ueberfaellig?.auftraege || [], 'ueberfaellig');
-    renderDetailTable('table-teile', data.teile_fehlen?.auftraege || [], 'teile');
-    
+    renderDetailTable('table-teile', data.teile?.auftraege || [], 'teile');
+
     // Titel aktualisieren
-    document.getElementById('detail-unverplant-title').textContent = 
+    document.getElementById('detail-unverplant-title').textContent =
         `Unverplante Aufträge (${data.unverplant?.anzahl || 0})`;
-    document.getElementById('detail-ueberfaellig-title').textContent = 
+    document.getElementById('detail-ueberfaellig-title').textContent =
         `Überfällige Aufträge (${data.ueberfaellig?.anzahl || 0})`;
-    document.getElementById('detail-teile-title').textContent = 
-        `Warten auf Teile (${data.teile_fehlen?.anzahl || 0})`;
+    document.getElementById('detail-teile-title').textContent =
+        `Warten auf Teile (${data.teile?.auftraege_warten_auf_teile || 0})`;
 }
 
 function renderWarnungen(warnungen) {
