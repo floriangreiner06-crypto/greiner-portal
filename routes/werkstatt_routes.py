@@ -51,11 +51,7 @@ def werkstatt_stempeluhr():
     return render_template('aftersales/werkstatt_stempeluhr.html')
 
 
-@werkstatt_routes.route('/werkstatt/stempeluhr/monitor')
-@login_required
-def werkstatt_stempeluhr_monitor():
-    """Stempeluhr Monitor (Vollbild)"""
-    return render_template('aftersales/werkstatt_stempeluhr_monitor.html')
+# HINWEIS: /werkstatt/stempeluhr/monitor ist in app.py definiert (Token-Auth, kein Login)
 
 
 @werkstatt_routes.route('/werkstatt/tagesbericht')
