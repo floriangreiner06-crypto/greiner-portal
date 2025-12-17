@@ -88,12 +88,11 @@
                        value="{{ now.strftime('%Y-%m') if now else '' }}">
             </div>
             <div class="col-md-3">
-                <label class="form-label">Filiale</label>
-                <select id="filterFiliale" class="form-select">
-                    <option value="alle">Alle Filialen</option>
-                    <option value="1">Filiale 1 - Deggendorf</option>
-                    <option value="2">Filiale 2 - Hyundai</option>
-                    <option value="3">Filiale 3 - Landau</option>
+                <label class="form-label">Standort</label>
+                <select id="filterStandort" class="form-select">
+                    <option value="alle">Gesamt</option>
+                    <option value="deggendorf">Deggendorf (Opel + Hyundai)</option>
+                    <option value="landau">Landau</option>
                 </select>
             </div>
             <div class="col-md-3">
@@ -111,14 +110,36 @@
         </div>
     </div>
     
+    <!-- Werktage-Fortschritt (nur aktueller Monat) -->
+    <div class="card mb-4" id="werktageCard" style="display: none;">
+        <div class="card-body py-2">
+            <div class="row align-items-center">
+                <div class="col-auto">
+                    <i class="bi bi-calendar-check text-primary"></i>
+                    <strong>Monatsfortschritt:</strong>
+                </div>
+                <div class="col">
+                    <div class="progress progress-thick">
+                        <div class="progress-bar bg-primary" id="werktageProgress" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="col-auto">
+                    <span id="werktageText">- / - Werktage</span>
+                    (<span id="werktageProzent">0</span>%)
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- KPI Cards -->
     <div class="row g-4 mb-4">
         <div class="col-md-3">
             <div class="card kpi-card h-100">
                 <div class="card-body text-center">
-                    <i class="bi bi-currency-euro text-success fs-2"></i>
-                    <div class="kpi-value text-success" id="kpiUmsatzGesamt">-</div>
-                    <div class="kpi-label">Umsatz Gesamt</div>
+                    <i class="bi bi-piggy-bank text-danger fs-2"></i>
+                    <div class="kpi-value text-danger" id="kpiBreakevenSchwelle">-</div>
+                    <div class="kpi-label">Breakeven-Schwelle</div>
+                    <small class="text-muted">Gesamtkosten/Monat</small>
                 </div>
             </div>
         </div>
@@ -126,26 +147,29 @@
             <div class="card kpi-card h-100">
                 <div class="card-body text-center">
                     <i class="bi bi-bullseye text-primary fs-2"></i>
-                    <div class="kpi-value text-primary" id="kpiBreakEven">-</div>
-                    <div class="kpi-label">Break-Even pro SB</div>
+                    <div class="kpi-value text-primary" id="kpiDBZiel">-</div>
+                    <div class="kpi-label">DB-Ziel pro SB</div>
+                    <small class="text-muted">65% Deckung</small>
                 </div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="card kpi-card h-100">
                 <div class="card-body text-center">
-                    <i class="bi bi-people text-info fs-2"></i>
-                    <div class="kpi-value text-info" id="kpiAnzahlSB">-</div>
-                    <div class="kpi-label">Serviceberater</div>
+                    <i class="bi bi-currency-euro text-success fs-2"></i>
+                    <div class="kpi-value text-success" id="kpiUmsatzGesamt">-</div>
+                    <div class="kpi-label">Team DB aktuell</div>
+                    <small class="text-muted" id="kpiDBSoll">Soll: -</small>
                 </div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="card kpi-card h-100">
                 <div class="card-body text-center">
-                    <i class="bi bi-graph-up text-warning fs-2"></i>
+                    <i class="bi bi-graph-up fs-2" id="kpiErreichungIcon"></i>
                     <div class="kpi-value" id="kpiErreichung">-</div>
                     <div class="kpi-label">Ø Zielerreichung</div>
+                    <small id="kpiErreichungSoll" class="text-muted">Soll: -</small>
                 </div>
             </div>
         </div>
@@ -190,20 +214,18 @@
                         <table class="table table-hover mb-0" id="sbTable">
                             <thead class="table-light">
                                 <tr>
-                                    <th width="60">#</th>
+                                    <th width="50">#</th>
                                     <th>Mitarbeiter</th>
-                                    <th class="text-end">Rechnungen</th>
+                                    <th class="text-end">DB</th>
                                     <th class="text-end">Umsatz</th>
-                                    <th class="text-end">Arbeit</th>
-                                    <th class="text-end">Teile</th>
-                                    <th class="text-end">Ø Rechnung</th>
-                                    <th width="200">Zielerreichung</th>
-                                    <th width="80">Status</th>
+                                    <th width="180">Erreichung</th>
+                                    <th width="140">Prognose</th>
+                                    <th width="100" class="text-center">Trend</th>
                                 </tr>
                             </thead>
                             <tbody id="sbTableBody">
                                 <tr>
-                                    <td colspan="9" class="text-center py-5">
+                                    <td colspan="7" class="text-center py-5">
                                         <div class="spinner-border text-primary" role="status">
                                             <span class="visually-hidden">Lade...</span>
                                         </div>
@@ -365,11 +387,11 @@ document.addEventListener('DOMContentLoaded', function() {
 // Hauptdaten laden
 async function loadData() {
     const monat = document.getElementById('filterMonat').value;
-    const filiale = document.getElementById('filterFiliale').value;
+    const standort = document.getElementById('filterStandort').value;
     const ansicht = document.getElementById('filterAnsicht').value;
-    
+
     try {
-        const response = await fetch(`/api/serviceberater/uebersicht?monat=${monat}&filiale=${filiale}`);
+        const response = await fetch(`/api/serviceberater/uebersicht?monat=${monat}&standort=${standort}`);
         const data = await response.json();
         
         if (data.success) {
@@ -389,45 +411,108 @@ async function loadData() {
 function renderKPIs(data) {
     const sb = data.serviceberater;
     const config = data.config;
-    
-    // Umsatz Gesamt
-    const umsatzGesamt = sb.reduce((sum, s) => sum + s.umsatz_gesamt, 0);
-    document.getElementById('kpiUmsatzGesamt').textContent = formatCurrency(umsatzGesamt);
-    
-    // Break-Even
-    document.getElementById('kpiBreakEven').textContent = formatCurrency(config.break_even);
-    
-    // Anzahl SB
+    const werktage = data.werktage;
+
+    // Breakeven-Schwelle (Gesamtkosten)
+    document.getElementById('kpiBreakevenSchwelle').textContent = formatCurrency(config.breakeven_schwelle);
+
+    // DB-Ziel pro SB
+    document.getElementById('kpiDBZiel').textContent = formatCurrency(config.db_ziel_pro_sb);
+
+    // Team DB aktuell
     const echteServiceberater = sb.filter(s => s.ist_serviceberater);
-    document.getElementById('kpiAnzahlSB').textContent = echteServiceberater.length;
-    
+    const dbGesamt = echteServiceberater.reduce((sum, s) => sum + s.db1, 0);
+    document.getElementById('kpiUmsatzGesamt').textContent = formatCurrency(dbGesamt);
+
+    // DB-Soll bis heute (basierend auf Werktage-Fortschritt)
+    if (werktage && werktage.ist_aktueller_monat) {
+        const dbSollGesamt = config.db_ziel_pro_sb * echteServiceberater.length * (werktage.fortschritt_prozent / 100);
+        document.getElementById('kpiDBSoll').textContent = `Soll: ${formatCurrency(dbSollGesamt)}`;
+    } else {
+        document.getElementById('kpiDBSoll').textContent = `Ziel: ${formatCurrency(config.db_ziel_pro_sb * echteServiceberater.length)}`;
+    }
+
     // Ø Zielerreichung
-    const avgErreichung = echteServiceberater.length > 0 
-        ? echteServiceberater.reduce((sum, s) => sum + s.erreichung, 0) / echteServiceberater.length 
+    const avgErreichung = echteServiceberater.length > 0
+        ? echteServiceberater.reduce((sum, s) => sum + s.erreichung, 0) / echteServiceberater.length
         : 0;
     const kpiErreichung = document.getElementById('kpiErreichung');
     kpiErreichung.textContent = avgErreichung.toFixed(1) + '%';
-    kpiErreichung.className = `kpi-value text-${avgErreichung >= 100 ? 'success' : avgErreichung >= 80 ? 'warning' : 'danger'}`;
+
+    // Erreichungs-Soll (basierend auf Werktage)
+    const erreichungSoll = werktage ? werktage.fortschritt_prozent : 100;
+    document.getElementById('kpiErreichungSoll').textContent = `Soll: ${erreichungSoll.toFixed(1)}%`;
+
+    // Farbe und Icon basierend auf Vergleich mit Soll
+    const icon = document.getElementById('kpiErreichungIcon');
+    if (avgErreichung >= erreichungSoll) {
+        kpiErreichung.className = 'kpi-value text-success';
+        icon.className = 'bi bi-graph-up-arrow text-success fs-2';
+    } else if (avgErreichung >= erreichungSoll * 0.8) {
+        kpiErreichung.className = 'kpi-value text-warning';
+        icon.className = 'bi bi-graph-up text-warning fs-2';
+    } else {
+        kpiErreichung.className = 'kpi-value text-danger';
+        icon.className = 'bi bi-graph-down text-danger fs-2';
+    }
+
+    // Werktage-Fortschritt anzeigen (nur aktueller Monat)
+    if (werktage && werktage.ist_aktueller_monat) {
+        document.getElementById('werktageCard').style.display = 'block';
+        document.getElementById('werktageText').textContent = `${werktage.vergangen} / ${werktage.gesamt} Werktage`;
+        document.getElementById('werktageProzent').textContent = werktage.fortschritt_prozent.toFixed(1);
+        document.getElementById('werktageProgress').style.width = werktage.fortschritt_prozent + '%';
+    } else {
+        document.getElementById('werktageCard').style.display = 'none';
+    }
 }
 
 // Tabelle rendern
 function renderTable(data, ansicht) {
     const tbody = document.getElementById('sbTableBody');
+    const werktage = data.werktage;
     let sb = data.serviceberater;
-    
+
     // Filter
     if (ansicht === 'sb') {
         sb = sb.filter(s => s.ist_serviceberater);
     }
-    
+
     if (sb.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="9" class="text-center py-4 text-muted">
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-muted">
             Keine Daten für diesen Zeitraum
         </td></tr>`;
         return;
     }
-    
-    tbody.innerHTML = sb.map((s, i) => `
+
+    const erreichungSoll = werktage ? werktage.fortschritt_prozent : 100;
+
+    tbody.innerHTML = sb.map((s, i) => {
+        // Prognose-Anzeige
+        let prognoseHtml = '-';
+        let trendHtml = '';
+
+        if (s.hochrechnung) {
+            const hr = s.hochrechnung;
+            prognoseHtml = `<strong>${hr.erreichung_prognose.toFixed(0)}%</strong>`;
+
+            // Trend-Indikator
+            if (hr.auf_kurs) {
+                if (hr.delta_vs_soll > 10) {
+                    trendHtml = `<span class="badge bg-success"><i class="bi bi-rocket-takeoff"></i> +${hr.delta_vs_soll.toFixed(0)}%</span>`;
+                } else {
+                    trendHtml = `<span class="badge bg-success"><i class="bi bi-check-circle"></i> Auf Kurs</span>`;
+                }
+            } else {
+                if (hr.delta_vs_soll < -20) {
+                    trendHtml = `<span class="badge bg-danger"><i class="bi bi-exclamation-triangle"></i> ${hr.delta_vs_soll.toFixed(0)}%</span>`;
+                } else {
+                    trendHtml = `<span class="badge bg-warning text-dark"><i class="bi bi-arrow-down"></i> ${hr.delta_vs_soll.toFixed(0)}%</span>`;
+                }
+            }
+        }
+
+        return `
         <tr class="sb-row" onclick="showDetail(${s.ma_id})">
             <td>
                 ${i < 3 ? `<span class="badge-rang rang-${i+1}">${i+1}</span>` : `<span class="text-muted">${i+1}</span>`}
@@ -435,31 +520,35 @@ function renderTable(data, ansicht) {
             <td>
                 <strong>${s.name}</strong>
                 ${s.ist_serviceberater ? '<span class="badge bg-primary ms-2">SB</span>' : ''}
-                <br><small class="text-muted">${s.title || 'MA ' + s.ma_id}</small>
+                <br><small class="text-muted">${s.anzahl_rechnungen} Rechnungen</small>
             </td>
-            <td class="text-end">${s.anzahl_rechnungen}</td>
-            <td class="text-end"><strong>${formatCurrency(s.umsatz_gesamt)}</strong></td>
-            <td class="text-end">${formatCurrency(s.umsatz_arbeit)}</td>
-            <td class="text-end">${formatCurrency(s.umsatz_teile)}</td>
-            <td class="text-end">${formatCurrency(s.avg_rechnung)}</td>
+            <td class="text-end">
+                <strong>${formatCurrency(s.db1)}</strong>
+                <br><small class="text-muted">Ziel: ${formatCurrency(s.db_ziel)}</small>
+            </td>
+            <td class="text-end">
+                ${formatCurrency(s.umsatz_gesamt)}
+                <br><small class="text-muted">Ø ${formatCurrency(s.avg_rechnung)}</small>
+            </td>
             <td>
                 <div class="d-flex align-items-center">
-                    <div class="progress progress-thick flex-grow-1 me-2">
-                        <div class="progress-bar bg-${s.status}" role="progressbar" 
+                    <div class="progress progress-thick flex-grow-1 me-2" style="position: relative;">
+                        <div class="progress-bar bg-${s.status}" role="progressbar"
                              style="width: ${Math.min(s.erreichung, 100)}%"></div>
+                        ${werktage && werktage.ist_aktueller_monat ? `
+                        <div style="position: absolute; left: ${erreichungSoll}%; top: 0; bottom: 0; width: 2px; background: #333;"
+                             title="Soll: ${erreichungSoll.toFixed(0)}%"></div>
+                        ` : ''}
                     </div>
-                    <span class="text-${s.status}" style="width: 50px; text-align: right;">
+                    <span class="text-${s.status}" style="width: 45px; text-align: right;">
                         ${s.erreichung.toFixed(0)}%
                     </span>
                 </div>
             </td>
-            <td class="text-center">
-                <span class="badge bg-${s.status}">
-                    ${s.status === 'success' ? '✓' : s.status === 'warning' ? '!' : '✗'}
-                </span>
-            </td>
+            <td class="text-end">${prognoseHtml}</td>
+            <td class="text-center">${trendHtml}</td>
         </tr>
-    `).join('');
+    `}).join('');
 }
 
 // Chart rendern
@@ -560,31 +649,46 @@ async function loadWettbewerb() {
 
 // TEK-Konfiguration laden
 async function loadTekConfig() {
+    const monat = document.getElementById('filterMonat').value;
+
     try {
-        const response = await fetch('/api/serviceberater/tek-config');
+        const response = await fetch(`/api/serviceberater/tek-config?monat=${monat}`);
         const data = await response.json();
-        
+
         if (data.success) {
             const tek = data.tek;
+            const ziele = data.ziele;
             const sb = data.serviceberater;
-            
-            // TEK Tabelle
+            const werktage = data.werktage;
+
+            // TEK Tabelle - Kosten
             document.getElementById('tekTable').innerHTML = `
-                <tr><td>Teile/Service - Direkt</td><td class="text-end">${formatCurrency(tek.teile_service.direkt)}</td></tr>
-                <tr><td>Teile/Service - Umlage</td><td class="text-end">${formatCurrency(tek.teile_service.umlage)}</td></tr>
-                <tr><td>Werkstattlohn - Direkt</td><td class="text-end">${formatCurrency(tek.werkstattlohn.direkt)}</td></tr>
-                <tr><td>Werkstattlohn - Umlage</td><td class="text-end">${formatCurrency(tek.werkstattlohn.umlage)}</td></tr>
-                <tr class="table-primary"><td><strong>Vollkosten After Sales</strong></td>
-                    <td class="text-end"><strong>${formatCurrency(tek.vollkosten_after_sales)}</strong></td></tr>
+                <tr><td>Variable Kosten</td><td class="text-end">${formatCurrency(tek.kosten_variable)}</td></tr>
+                <tr><td>Direkte Kosten</td><td class="text-end">${formatCurrency(tek.kosten_direkte)}</td></tr>
+                <tr><td>Indirekte Kosten (Umlage)</td><td class="text-end">${formatCurrency(tek.kosten_indirekte)}</td></tr>
+                <tr class="table-danger"><td><strong>Gesamtkosten/Monat</strong></td>
+                    <td class="text-end"><strong>${formatCurrency(tek.gesamtkosten_monat)}</strong></td></tr>
+                <tr><td colspan="2"><hr class="my-1"></td></tr>
+                <tr><td>Marge Arbeit</td><td class="text-end">${(tek.margen.arbeit * 100).toFixed(1)}%</td></tr>
+                <tr><td>Marge Teile</td><td class="text-end">${(tek.margen.teile * 100).toFixed(1)}%</td></tr>
+                <tr><td>Marge gewichtet</td><td class="text-end"><strong>${(tek.margen.gewichtet * 100).toFixed(1)}%</strong></td></tr>
             `;
-            
-            // Break-Even Tabelle
+
+            // Break-Even Tabelle mit Werktagen
             document.getElementById('breakEvenTable').innerHTML = `
                 <tr><td>Anzahl Serviceberater</td><td class="text-end">${sb.anzahl}</td></tr>
-                <tr><td>Vollkosten pro SB</td><td class="text-end">${formatCurrency(sb.vollkosten_pro_sb)}</td></tr>
-                <tr><td>Ø Marge (gewichtet)</td><td class="text-end">${(tek.margen.gewichtet * 100).toFixed(1)}%</td></tr>
-                <tr class="table-success"><td><strong>Break-Even pro SB</strong></td>
-                    <td class="text-end"><strong>${formatCurrency(sb.break_even)}</strong></td></tr>
+                <tr><td>Aftersales-Deckungsziel</td><td class="text-end">65%</td></tr>
+                <tr><td>DB-Ziel (gesamt)</td><td class="text-end">${formatCurrency(ziele.db_ziel_gesamt)}</td></tr>
+                <tr class="table-primary"><td><strong>DB-Ziel pro SB</strong></td>
+                    <td class="text-end"><strong>${formatCurrency(ziele.db_ziel_pro_sb)}</strong></td></tr>
+                <tr><td colspan="2"><hr class="my-1"></td></tr>
+                <tr><td>Werktage im Monat</td><td class="text-end">${werktage.gesamt}</td></tr>
+                <tr><td>DB-Ziel pro Werktag</td><td class="text-end">${formatCurrency(ziele.db_ziel_pro_werktag)}</td></tr>
+                ${werktage.ist_aktueller_monat ? `
+                <tr><td>Werktage vergangen</td><td class="text-end">${werktage.vergangen}</td></tr>
+                <tr class="table-warning"><td><strong>DB-Soll bis heute</strong></td>
+                    <td class="text-end"><strong>${formatCurrency(ziele.db_soll_bis_heute)}</strong></td></tr>
+                ` : ''}
             `;
         }
     } catch (error) {
@@ -610,34 +714,57 @@ async function showDetail(maId) {
         const data = await response.json();
         
         if (data.success) {
+            const zs = data.zusammenfassung;
+            const wt = data.werktage;
+            const erreichungSoll = wt ? wt.fortschritt_prozent : 100;
+
             document.getElementById('detailModalTitle').textContent = data.name;
             document.getElementById('detailModalBody').innerHTML = `
+                <!-- Werktage-Fortschritt -->
+                ${wt && wt.ist_aktueller_monat ? `
+                <div class="alert alert-light py-2 mb-3">
+                    <div class="d-flex align-items-center">
+                        <span class="me-2"><i class="bi bi-calendar-check"></i> Monatsfortschritt:</span>
+                        <div class="progress flex-grow-1 me-2" style="height: 8px;">
+                            <div class="progress-bar bg-primary" style="width: ${wt.fortschritt_prozent}%"></div>
+                        </div>
+                        <strong>${wt.vergangen}/${wt.gesamt} Werktage (${wt.fortschritt_prozent}%)</strong>
+                    </div>
+                </div>
+                ` : ''}
+
+                <!-- KPIs -->
                 <div class="row mb-4">
                     <div class="col-md-3 text-center">
-                        <h4 class="text-primary">${formatCurrency(data.zusammenfassung.umsatz_gesamt)}</h4>
+                        <h4 class="text-success">${formatCurrency(zs.db1)}</h4>
+                        <small class="text-muted">Deckungsbeitrag</small>
+                        <br><small class="text-muted">Ziel: ${formatCurrency(zs.db_ziel)}</small>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <h4 class="text-primary">${formatCurrency(zs.umsatz_gesamt)}</h4>
                         <small class="text-muted">Umsatz Gesamt</small>
+                        <br><small class="text-muted">${zs.anzahl_rechnungen} Rechnungen</small>
                     </div>
                     <div class="col-md-3 text-center">
-                        <h4>${data.zusammenfassung.anzahl_rechnungen}</h4>
-                        <small class="text-muted">Rechnungen</small>
-                    </div>
-                    <div class="col-md-3 text-center">
-                        <h4>${formatCurrency(data.zusammenfassung.avg_rechnung)}</h4>
+                        <h4>${formatCurrency(zs.avg_rechnung)}</h4>
                         <small class="text-muted">Ø Rechnung</small>
                     </div>
                     <div class="col-md-3 text-center">
-                        <h4 class="${data.zusammenfassung.erreichung >= 100 ? 'text-success' : 'text-warning'}">${data.zusammenfassung.erreichung.toFixed(1)}%</h4>
+                        <h4 class="${zs.erreichung >= erreichungSoll ? 'text-success' : 'text-warning'}">${zs.erreichung.toFixed(1)}%</h4>
                         <small class="text-muted">Zielerreichung</small>
+                        <br><small class="${zs.erreichung >= erreichungSoll ? 'text-success' : 'text-warning'}">
+                            ${zs.erreichung >= erreichungSoll ? '<i class="bi bi-check-circle"></i> Auf Kurs' : '<i class="bi bi-exclamation-triangle"></i> Soll: ' + erreichungSoll.toFixed(0) + '%'}
+                        </small>
                     </div>
                 </div>
-                
+
                 <h6>Letzte Rechnungen</h6>
                 <table class="table table-sm">
                     <thead>
                         <tr><th>Typ</th><th>Nummer</th><th>Datum</th><th class="text-end">Gesamt</th><th class="text-end">Arbeit</th><th class="text-end">Teile</th></tr>
                     </thead>
                     <tbody>
-                        ${data.rechnungen.map(r => `
+                        ${data.rechnungen.length > 0 ? data.rechnungen.map(r => `
                             <tr>
                                 <td><span class="badge bg-secondary">${r.typ}</span></td>
                                 <td>${r.nummer}</td>
@@ -646,9 +773,15 @@ async function showDetail(maId) {
                                 <td class="text-end">${formatCurrency(r.arbeit)}</td>
                                 <td class="text-end">${formatCurrency(r.teile)}</td>
                             </tr>
-                        `).join('')}
+                        `).join('') : '<tr><td colspan="6" class="text-center text-muted">Keine Rechnungen gefunden</td></tr>'}
                     </tbody>
                 </table>
+            `;
+        } else {
+            document.getElementById('detailModalBody').innerHTML = `
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i> ${data.error || 'Keine Daten gefunden'}
+                </div>
             `;
         }
     } catch (error) {

@@ -1330,55 +1330,76 @@ def reject_vacation():
 def get_all_balances():
     """
     GET /api/vacation/balance
-    
-    Gibt Urlaubssalden für alle Mitarbeiter zurück
+
+    Gibt Urlaubssalden für alle Mitarbeiter zurück.
+    TAG 123: Erweitert um has_ad_mapping Flag für Mitarbeiter ohne AD-Zuordnung.
     """
     try:
         year = request.args.get('year', 2025, type=int)
         department = request.args.get('department', None)
         location = request.args.get('location', None)
 
-        query = f"""
-            SELECT
-                employee_id,
-                name,
-                department_name,
-                location,
-                anspruch,
-                verbraucht,
-                geplant,
-                resturlaub
-            FROM v_vacation_balance_{year}
-            WHERE 1=1
-        """
-
-        params = []
-
-        if department:
-            query += " AND department_name = ?"
-            params.append(department)
-
-        if location:
-            query += " AND location = ?"
-            params.append(location)
-
-        query += " ORDER BY name"
-
         with db_session() as conn:
             cursor = conn.cursor()
+
+            # Erst: Mitarbeiter mit AD-Mapping ermitteln
+            cursor.execute("""
+                SELECT employee_id FROM ldap_employee_mapping WHERE ldap_username IS NOT NULL
+            """)
+            employees_with_ad = {row[0] for row in cursor.fetchall()}
+
+            # Dann: Balance-Daten holen
+            query = f"""
+                SELECT
+                    employee_id,
+                    name,
+                    department_name,
+                    location,
+                    anspruch,
+                    verbraucht,
+                    geplant,
+                    resturlaub
+                FROM v_vacation_balance_{year}
+                WHERE 1=1
+            """
+
+            params = []
+
+            if department:
+                query += " AND department_name = ?"
+                params.append(department)
+
+            if location:
+                query += " AND location = ?"
+                params.append(location)
+
+            query += " ORDER BY name"
+
             cursor.execute(query, params)
 
             balances = []
             for row in cursor.fetchall():
+                emp_id = row[0]
+                has_ad = emp_id in employees_with_ad
+                dept_name = row[2]
+
+                # TAG 123: Mitarbeiter ohne AD-Mapping in spezielle Gruppe
+                if not has_ad:
+                    display_dept = f"⚠️ {dept_name or 'Ohne Abteilung'} (kein AD)"
+                else:
+                    display_dept = dept_name
+
                 balances.append({
-                    'employee_id': row[0],
+                    'employee_id': emp_id,
                     'name': row[1],
-                    'department_name': row[2],
+                    'department_name': display_dept,
+                    'department_original': dept_name,  # Original für Filter
                     'location': row[3],
                     'anspruch': row[4],
                     'verbraucht': row[5],
                     'geplant': row[6],
-                    'resturlaub': row[7]
+                    'resturlaub': row[7],
+                    'has_ad_mapping': has_ad
                 })
 
         return jsonify({
@@ -1391,7 +1412,7 @@ def get_all_balances():
             },
             'balances': balances
         })
-        
+
     except Exception as e:
         import traceback
         return jsonify({
@@ -1405,17 +1426,23 @@ def get_all_balances():
 def get_all_bookings():
     """
     GET /api/vacation/all-bookings
-    
+
     Gibt alle Urlaubsbuchungen aller Mitarbeiter zurück (für Kalenderanzeige).
-    Nur approved und pending Buchungen werden zurückgegeben.
-    TAG 113: Für Kollegen-Urlaub-Anzeige im Kalender.
+    TAG 123: Erweitert um Locosoft absence_calendar Daten!
+
+    Kombiniert:
+    1. Portal vacation_bookings (approved, pending)
+    2. Locosoft absence_calendar (Url, BUr, ZA., Krn, etc.)
     """
     try:
         year = request.args.get('year', 2025, type=int)
+        bookings = []
+        booked_dates = {}  # {employee_id: set(dates)} - um Duplikate zu vermeiden
 
         with db_session() as conn:
             cursor = conn.cursor()
 
+            # 1. Portal-Buchungen (wie bisher)
             cursor.execute("""
                 SELECT
                     vb.id,
@@ -1430,24 +1457,98 @@ def get_all_bookings():
                 ORDER BY vb.booking_date
             """, (str(year),))
 
-            bookings = []
             for row in cursor.fetchall():
+                emp_id = row[1]
+                date = row[2]
+
+                # Merke gebuchte Daten pro Mitarbeiter
+                if emp_id not in booked_dates:
+                    booked_dates[emp_id] = set()
+                booked_dates[emp_id].add(date)
+
                 bookings.append({
                     'id': row[0],
-                    'employee_id': row[1],
-                    'date': row[2],
+                    'employee_id': emp_id,
+                    'date': date,
                     'day_part': row[3],
                     'status': row[4],
-                    'type_id': row[5]
+                    'type_id': row[5],
+                    'source': 'portal'
                 })
+
+            # 2. Locosoft-Mapping holen (employee_id -> locosoft_id)
+            cursor.execute("""
+                SELECT e.id, e.locosoft_id
+                FROM employees e
+                WHERE e.aktiv = 1 AND e.locosoft_id IS NOT NULL
+            """)
+            emp_to_loco = {row[0]: row[1] for row in cursor.fetchall()}
+            loco_to_emp = {v: k for k, v in emp_to_loco.items()}
+
+        # 3. Locosoft-Abwesenheiten laden (nur wenn Service verfügbar)
+        if LOCOSOFT_AVAILABLE and loco_to_emp:
+            try:
+                locosoft_ids = list(loco_to_emp.keys())
+                loco_days = get_absence_days_for_employees(locosoft_ids, year)
+
+                # Vacation Type Mapping für Locosoft-Gründe
+                # Frontend CLS: {1:'urlaub', 2:'urlaub', 3:'krank', 5:'schulung', 6:'za'}
+                LOCO_TYPE_MAP = {
+                    'Url': 1,   # Urlaub
+                    'BUr': 1,   # Bezahlter Urlaub
+                    'ZA.': 6,   # Zeitausgleich
+                    'Krn': 3,   # Krank
+                    'Sch': 5,   # Schulung
+                    'Sem': 5,   # Seminar
+                }
+
+                for loco_id, days in loco_days.items():
+                    emp_id = loco_to_emp.get(loco_id)
+                    if not emp_id:
+                        continue
+
+                    for day in days:
+                        date = day['date']
+
+                        # Nur hinzufügen wenn nicht bereits im Portal gebucht
+                        if emp_id in booked_dates and date in booked_dates[emp_id]:
+                            continue
+
+                        reason = day.get('reason', 'Url')
+                        type_id = LOCO_TYPE_MAP.get(reason, 1)
+                        day_contingent = day.get('day_contingent', 1.0)
+
+                        # day_part basierend auf day_contingent
+                        if day_contingent < 1.0:
+                            day_part = 'half'
+                        else:
+                            day_part = 'full'
+
+                        bookings.append({
+                            'id': f"loco_{loco_id}_{date}",  # Pseudo-ID
+                            'employee_id': emp_id,
+                            'date': date,
+                            'day_part': day_part,
+                            'status': 'approved',  # Locosoft = bereits genehmigt
+                            'type_id': type_id,
+                            'source': 'locosoft',
+                            'reason': reason,
+                            'day_contingent': day_contingent
+                        })
+            except Exception as loco_err:
+                print(f"Locosoft-Fehler in all-bookings: {loco_err}")
+
+        # Sortieren nach Datum
+        bookings.sort(key=lambda x: x['date'])
 
         return jsonify({
             'success': True,
             'year': year,
             'count': len(bookings),
-            'bookings': bookings
+            'bookings': bookings,
+            'locosoft_included': LOCOSOFT_AVAILABLE
         })
-        
+
     except Exception as e:
         import traceback
         return jsonify({

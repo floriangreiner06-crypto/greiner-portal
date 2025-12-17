@@ -11,6 +11,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.keys import Keys
 
 KUNDENNUMMER = "1003941"
@@ -29,7 +30,9 @@ class SchaeferbartholdScraper:
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_argument('--window-size=1920,1080')
-        return webdriver.Chrome(options=chrome_options)
+        # Expliziter ChromeDriver-Pfad (nicht im Gunicorn PATH)
+        service = Service(executable_path='/usr/local/bin/chromedriver')
+        return webdriver.Chrome(service=service, options=chrome_options)
     
     def login(self):
         if self.logged_in and self.driver:

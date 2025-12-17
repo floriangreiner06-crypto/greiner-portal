@@ -96,29 +96,29 @@ def get_chef_overview():
                 standorte = list(set([r['standort'] for r in rules]))
                 standort = standorte[0] if len(standorte) == 1 else 'Alle'
 
-                # Team-Mitglieder holen
+                # Team-Mitglieder holen (über department_name statt loco_grp_code)
                 cursor.execute("""
                     SELECT DISTINCT
                         e.id as employee_id,
                         e.first_name || ' ' || e.last_name as name,
-                        gm.grp_code,
-                        le.subsidiary,
-                        CASE le.subsidiary
-                            WHEN 1 THEN 'Deggendorf'
-                            WHEN 3 THEN 'Landau'
-                            ELSE 'Unbekannt'
-                        END as standort
+                        e.department_name as grp_code,
+                        CASE e.location
+                            WHEN 'Deggendorf' THEN 1
+                            WHEN 'Landau a.d. Isar' THEN 3
+                            ELSE NULL
+                        END as subsidiary,
+                        COALESCE(e.location, 'Unbekannt') as standort
                     FROM vacation_approval_rules ar
-                    JOIN loco_employees_group_mapping gm ON ar.loco_grp_code = gm.grp_code
-                    JOIN loco_employees le ON gm.employee_number = le.employee_number
-                        AND (ar.subsidiary IS NULL OR ar.subsidiary = le.subsidiary)
-                    JOIN ldap_employee_mapping lem ON le.employee_number = lem.locosoft_id
-                    JOIN employees e ON lem.employee_id = e.id
+                    JOIN employees e ON e.department_name = ar.loco_grp_code
+                        AND (ar.subsidiary IS NULL
+                             OR (ar.subsidiary = 1 AND e.location = 'Deggendorf')
+                             OR (ar.subsidiary = 3 AND e.location = 'Landau a.d. Isar'))
+                    LEFT JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
                     WHERE ar.approver_ldap_username = ?
                       AND ar.active = 1
                       AND ar.priority = 1
                       AND e.aktiv = 1
-                      AND lem.ldap_username != ?
+                      AND (lem.ldap_username IS NULL OR lem.ldap_username != ?)
                     ORDER BY e.last_name
                 """, (approver_ldap, approver_ldap))
 

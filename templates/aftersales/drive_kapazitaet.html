@@ -339,7 +339,7 @@ function renderWeekOverview(tage) {
         return;
     }
 
-    // Tage nach Datum gruppieren (API liefert pro Betrieb)
+    // TAG 122: Tage nach Datum gruppieren (inkl. Mechaniker-Abwesenheiten)
     const tageByDate = {};
     tage.forEach(t => {
         const datum = t.tag || t.datum;
@@ -349,15 +349,30 @@ function renderWeekOverview(tage) {
                 drive_aw: 0,
                 hersteller_aw: 0,
                 kapazitaet_aw: 0,
+                kapazitaet_basis_aw: 0,
                 garantie_aw: 0,
-                gesamt_aw: 0
+                gesamt_aw: 0,
+                mechaniker_gesamt: 0,
+                mechaniker_abwesend: 0,
+                mechaniker_verfuegbar: 0,
+                abwesenheits_gruende: []
             };
         }
         tageByDate[datum].drive_aw += (t.drive?.gesamt_aw || t.drive_aw || 0);
         tageByDate[datum].hersteller_aw += (t.hersteller?.gesamt_aw || t.hersteller_aw || 0);
         tageByDate[datum].kapazitaet_aw += (t.kapazitaet_aw || 0);
+        tageByDate[datum].kapazitaet_basis_aw += (t.kapazitaet_basis_aw || t.kapazitaet_aw || 0);
         tageByDate[datum].garantie_aw += (t.drive?.garantie_aw || 0);
         tageByDate[datum].gesamt_aw += (t.hersteller?.gesamt_aw || 0);
+        // Mechaniker-Daten (TAG 122)
+        if (t.mechaniker) {
+            tageByDate[datum].mechaniker_gesamt += (t.mechaniker.gesamt || 0);
+            tageByDate[datum].mechaniker_abwesend += (t.mechaniker.abwesend || 0);
+            tageByDate[datum].mechaniker_verfuegbar += (t.mechaniker.verfuegbar || 0);
+            if (t.mechaniker.gruende) {
+                tageByDate[datum].abwesenheits_gruende.push(t.mechaniker.gruende);
+            }
+        }
     });
 
     const sortedDays = Object.values(tageByDate).sort((a, b) => a.datum.localeCompare(b.datum));
@@ -377,6 +392,11 @@ function renderWeekOverview(tage) {
         // G-Anteil berechnen
         const gAnteil = tag.gesamt_aw > 0 ? (tag.garantie_aw / tag.drive_aw) : 0;
 
+        // TAG 122: Abwesenheits-Badge
+        const abwBadge = tag.mechaniker_abwesend > 0
+            ? `<span class="badge bg-warning text-dark mt-1">${tag.mechaniker_abwesend} abwesend</span>`
+            : '';
+
         return `
             <div class="col-md col-6">
                 <div class="day-card ${isToday ? 'today' : ''}">
@@ -387,7 +407,8 @@ function renderWeekOverview(tage) {
                         <span class="text-secondary">${Math.round(tag.hersteller_aw)}</span> →
                         <span class="text-purple">${Math.round(tag.drive_aw)}</span> AW
                     </div>
-                    ${gAnteil > 0.3 ? '<span class="factor-badge factor-high mt-2">Viel G!</span>' : ''}
+                    ${gAnteil > 0.3 ? '<span class="factor-badge factor-high mt-1">Viel G!</span>' : ''}
+                    ${abwBadge}
                 </div>
             </div>
         `;
@@ -420,7 +441,7 @@ function renderDailyDetails(tage) {
         return;
     }
 
-    // Tage nach Datum gruppieren (API liefert pro Betrieb)
+    // TAG 122: Tage nach Datum gruppieren (inkl. Abwesenheiten)
     const tageByDate = {};
     tage.forEach(t => {
         const datum = t.tag || t.datum;
@@ -430,15 +451,30 @@ function renderDailyDetails(tage) {
                 drive_aw: 0,
                 hersteller_aw: 0,
                 kapazitaet_aw: 0,
+                kapazitaet_basis_aw: 0,
                 garantie_aw: 0,
-                anzahl_auftraege: 0
+                anzahl_auftraege: 0,
+                mechaniker_gesamt: 0,
+                mechaniker_abwesend: 0,
+                mechaniker_verfuegbar: 0,
+                abwesenheits_gruende: new Set()
             };
         }
         tageByDate[datum].drive_aw += (t.drive?.gesamt_aw || t.drive_aw || 0);
         tageByDate[datum].hersteller_aw += (t.hersteller?.gesamt_aw || t.hersteller_aw || 0);
         tageByDate[datum].kapazitaet_aw += (t.kapazitaet_aw || 0);
+        tageByDate[datum].kapazitaet_basis_aw += (t.kapazitaet_basis_aw || t.kapazitaet_aw || 0);
         tageByDate[datum].garantie_aw += (t.drive?.garantie_aw || 0);
         tageByDate[datum].anzahl_auftraege += (t.anzahl_auftraege || 0);
+        // Mechaniker-Daten (TAG 122)
+        if (t.mechaniker) {
+            tageByDate[datum].mechaniker_gesamt += (t.mechaniker.gesamt || 0);
+            tageByDate[datum].mechaniker_abwesend += (t.mechaniker.abwesend || 0);
+            tageByDate[datum].mechaniker_verfuegbar += (t.mechaniker.verfuegbar || 0);
+            if (t.mechaniker.gruende) {
+                t.mechaniker.gruende.split(', ').forEach(g => tageByDate[datum].abwesenheits_gruende.add(g));
+            }
+        }
     });
 
     const sortedDays = Object.values(tageByDate).sort((a, b) => a.datum.localeCompare(b.datum));
@@ -453,6 +489,20 @@ function renderDailyDetails(tage) {
         const weekday = new Date(tag.datum).toLocaleDateString('de-DE', {weekday: 'long'});
         const dateStr = new Date(tag.datum).toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit'});
 
+        // TAG 122: Abwesenheits-Info
+        const gruendeArr = Array.from(tag.abwesenheits_gruende || []);
+        const abwBadges = tag.mechaniker_abwesend > 0
+            ? `<span class="badge bg-warning text-dark ms-2" title="${gruendeArr.join(', ')}">
+                <i class="bi bi-person-dash"></i> ${tag.mechaniker_abwesend} abw.
+               </span>`
+            : '';
+
+        // Kapazitäts-Anzeige mit Basis-Info
+        const kapaReduced = tag.kapazitaet_basis_aw > tag.kapazitaet_aw;
+        const kapaInfo = kapaReduced
+            ? `<span class="text-warning">${Math.round(tag.kapazitaet_aw)}</span>/<span class="text-muted">${Math.round(tag.kapazitaet_basis_aw)}</span> AW`
+            : `${Math.round(tag.kapazitaet_aw)} AW`;
+
         return `
             <div class="mb-4 day-row" onclick="showTagesDetail('${tag.datum}')" style="cursor: pointer;">
                 <div class="d-flex justify-content-between align-items-center mb-2">
@@ -460,6 +510,7 @@ function renderDailyDetails(tage) {
                         <strong>${weekday}</strong>
                         <small class="text-muted ms-2">${dateStr}</small>
                         ${tag.anzahl_auftraege ? `<span class="badge bg-secondary ms-2">${tag.anzahl_auftraege} Aufträge</span>` : ''}
+                        ${abwBadges}
                         <i class="bi bi-chevron-right text-muted ms-2"></i>
                     </div>
                     <div class="text-end">
@@ -483,7 +534,7 @@ function renderDailyDetails(tage) {
                         G-Anteil: <span class="fw-bold ${gAnteil > 0.3 ? 'text-danger' : ''}">${Math.round(gAnteil * 100)}%</span>
                     </small>
                     <small>
-                        Kapazität: ${Math.round(tag.kapazitaet_aw)} AW
+                        Kapazität: ${kapaInfo}
                     </small>
                 </div>
             </div>

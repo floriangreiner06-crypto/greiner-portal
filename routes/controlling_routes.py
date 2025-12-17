@@ -1,8 +1,77 @@
 from flask import Blueprint, render_template, jsonify, request
 from decorators.auth_decorators import login_required
 import sqlite3
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import calendar
+
+# =============================================================================
+# WERKTAGE-BERECHNUNG (TAG121)
+# =============================================================================
+
+# Bayerische Feiertage 2025
+FEIERTAGE_2025 = [
+    datetime(2025, 1, 1),    # Neujahr
+    datetime(2025, 1, 6),    # Heilige Drei Könige
+    datetime(2025, 4, 18),   # Karfreitag
+    datetime(2025, 4, 21),   # Ostermontag
+    datetime(2025, 5, 1),    # Tag der Arbeit
+    datetime(2025, 5, 29),   # Christi Himmelfahrt
+    datetime(2025, 6, 9),    # Pfingstmontag
+    datetime(2025, 6, 19),   # Fronleichnam
+    datetime(2025, 8, 15),   # Mariä Himmelfahrt
+    datetime(2025, 10, 3),   # Tag der Deutschen Einheit
+    datetime(2025, 11, 1),   # Allerheiligen
+    datetime(2025, 12, 25),  # 1. Weihnachtstag
+    datetime(2025, 12, 26),  # 2. Weihnachtstag
+]
+
+
+def get_werktage(start_date, end_date, include_end=False):
+    """Berechnet Werktage zwischen zwei Daten (Mo-Fr, ohne Feiertage)"""
+    if isinstance(start_date, str):
+        start_date = datetime.strptime(start_date, '%Y-%m-%d')
+    if isinstance(end_date, str):
+        end_date = datetime.strptime(end_date, '%Y-%m-%d')
+
+    if not include_end:
+        end_date = end_date - timedelta(days=1)
+
+    werktage = 0
+    current = start_date
+
+    while current <= end_date:
+        if current.weekday() < 5 and current not in FEIERTAGE_2025:
+            werktage += 1
+        current += timedelta(days=1)
+
+    return werktage
+
+
+def get_werktage_monat(jahr, monat):
+    """Berechnet Werktage im Monat: {gesamt, vergangen, verbleibend, fortschritt_prozent}"""
+    erster_tag = datetime(jahr, monat, 1)
+    letzter_tag = datetime(jahr, monat, calendar.monthrange(jahr, monat)[1])
+    heute = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    werktage_gesamt = get_werktage(erster_tag, letzter_tag, include_end=True)
+
+    if heute.year == jahr and heute.month == monat:
+        werktage_vergangen = get_werktage(erster_tag, heute, include_end=True)
+        werktage_verbleibend = werktage_gesamt - werktage_vergangen
+    else:
+        werktage_vergangen = werktage_gesamt
+        werktage_verbleibend = 0
+
+    fortschritt = (werktage_vergangen / werktage_gesamt * 100) if werktage_gesamt > 0 else 100
+
+    return {
+        'gesamt': werktage_gesamt,
+        'vergangen': werktage_vergangen,
+        'verbleibend': werktage_verbleibend,
+        'fortschritt_prozent': round(fortschritt, 1),
+        'ist_aktueller_monat': heute.year == jahr and heute.month == monat,
+    }
+
 
 def get_db():
     """SQLite-Verbindung herstellen"""
@@ -1127,8 +1196,14 @@ def berechne_breakeven_prognose(db, monat: int, jahr: int, aktueller_db1: float,
           AND nominal_account_number BETWEEN 700000 AND 899999
           {firma_filter_umsatz}
     """, (von, bis)).fetchone()['tage'] or 0
-    
-    tage_im_monat = calendar.monthrange(jahr, monat)[1]
+
+    # Werktage statt Kalendertage (TAG121)
+    werktage = get_werktage_monat(jahr, monat)
+    werktage_gesamt = werktage['gesamt']
+    werktage_vergangen = werktage['vergangen']
+
+    # Alte Variablen für Kompatibilität
+    tage_im_monat = werktage_gesamt  # Jetzt Werktage statt 31
     
     # =========================================================================
     # PROGNOSE-METHODE: Gleitender Durchschnitt vs. Hochrechnung
@@ -1185,6 +1260,10 @@ def berechne_breakeven_prognose(db, monat: int, jahr: int, aktueller_db1: float,
     else:
         status, ampel = 'kritisch', 'rot'
     
+    # Berechne Soll-DB1 bis heute basierend auf Werktagen
+    db1_pro_werktag = kosten_pro_monat / werktage_gesamt if werktage_gesamt > 0 else 0
+    db1_soll_bis_heute = db1_pro_werktag * werktage_vergangen
+
     return {
         'kosten_12m_schnitt': {
             'variable': round(variable_12m / 12, 2),
@@ -1196,7 +1275,7 @@ def berechne_breakeven_prognose(db, monat: int, jahr: int, aktueller_db1: float,
         'aktueller_db1': round(aktueller_db1, 2),
         'operativer_db1': round(operativ_db1, 2),
         'tage_mit_daten': tage_mit_daten,
-        'tage_im_monat': tage_im_monat,
+        'tage_im_monat': tage_im_monat,  # Jetzt Werktage!
         'prognose_methode': prognose_methode,  # 'gleitend_3m', 'hochrechnung', 'keine_daten'
         'db1_3m_schnitt': round(db1_3m_schnitt, 2) if db1_3m_schnitt else None,
         'hochrechnung_db1': round(hochrechnung_db1, 2) if hochrechnung_db1 else None,
@@ -1205,7 +1284,16 @@ def berechne_breakeven_prognose(db, monat: int, jahr: int, aktueller_db1: float,
         'gap_prozent': round((aktueller_db1 - kosten_pro_monat) / kosten_pro_monat * 100, 1) if kosten_pro_monat > 0 else 0,
         'status': status,
         'ampel': ampel,
-        'hinweis_umlage': tage_mit_daten < 5  # True = gleitender Durchschnitt aktiv
+        'hinweis_umlage': tage_mit_daten < 5,  # True = gleitender Durchschnitt aktiv
+        # Werktage-Infos (TAG121)
+        'werktage': {
+            'gesamt': werktage_gesamt,
+            'vergangen': werktage_vergangen,
+            'verbleibend': werktage['verbleibend'],
+            'fortschritt_prozent': werktage['fortschritt_prozent'],
+        },
+        'db1_soll_bis_heute': round(db1_soll_bis_heute, 2),
+        'db1_pro_werktag': round(db1_pro_werktag, 2),
     }
 
 

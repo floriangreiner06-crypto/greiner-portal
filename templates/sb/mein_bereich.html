@@ -1,0 +1,430 @@
+{% extends "base.html" %}
+
+{% block title %}Mein Bereich - DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .sb-hero {
+        background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    .sb-hero h1 {
+        font-size: 1.75rem;
+        margin-bottom: 0.25rem;
+    }
+
+    .sb-hero .subtitle {
+        opacity: 0.85;
+        font-size: 1rem;
+    }
+
+    .kpi-card {
+        background: white;
+        border-radius: 1rem;
+        padding: 1.5rem;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        transition: transform 0.2s, box-shadow 0.2s;
+        height: 100%;
+    }
+
+    .kpi-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    }
+
+    .kpi-value {
+        font-size: 2.25rem;
+        font-weight: 700;
+        line-height: 1.1;
+    }
+
+    .kpi-label {
+        color: #6c757d;
+        font-size: 0.875rem;
+        margin-top: 0.5rem;
+    }
+
+    .kpi-icon {
+        font-size: 1.5rem;
+        margin-top: 0.5rem;
+    }
+
+    .kpi-success { color: #198754; }
+    .kpi-warning { color: #fd7e14; }
+    .kpi-danger { color: #dc3545; }
+    .kpi-primary { color: #0d6efd; }
+    .kpi-gold { color: #ffc107; }
+
+    .progress-section {
+        background: white;
+        border-radius: 1rem;
+        padding: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        margin-bottom: 2rem;
+    }
+
+    .progress-section .progress {
+        height: 1.5rem;
+        border-radius: 0.75rem;
+    }
+
+    .progress-section .progress-bar {
+        border-radius: 0.75rem;
+        font-weight: 600;
+    }
+
+    .quick-link {
+        background: white;
+        border-radius: 1rem;
+        padding: 1.5rem;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        transition: transform 0.2s, box-shadow 0.2s;
+        text-decoration: none;
+        color: inherit;
+        display: block;
+        height: 100%;
+    }
+
+    .quick-link:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        color: inherit;
+    }
+
+    .quick-link i {
+        font-size: 2.5rem;
+        margin-bottom: 0.75rem;
+        display: block;
+    }
+
+    .quick-link .link-title {
+        font-weight: 600;
+        font-size: 1rem;
+    }
+
+    .quick-link .link-desc {
+        color: #6c757d;
+        font-size: 0.8rem;
+        margin-top: 0.25rem;
+    }
+
+    .werktage-info {
+        background: #f8f9fa;
+        border-radius: 0.5rem;
+        padding: 0.75rem 1rem;
+        font-size: 0.875rem;
+        color: #6c757d;
+    }
+
+    .trend-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.25rem 0.75rem;
+        border-radius: 2rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+
+    .trend-badge.positive {
+        background: #d1e7dd;
+        color: #0f5132;
+    }
+
+    .trend-badge.negative {
+        background: #f8d7da;
+        color: #842029;
+    }
+
+    .loading-spinner {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 300px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+    <!-- Loading State -->
+    <div id="loadingState" class="loading-spinner">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Laden...</span>
+        </div>
+    </div>
+
+    <!-- Content (hidden until loaded) -->
+    <div id="mainContent" style="display: none;">
+
+        <!-- Hero Section -->
+        <div class="sb-hero">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 id="greeting">Guten Tag!</h1>
+                    <div class="subtitle" id="standortInfo">Standort wird geladen...</div>
+                </div>
+                <div class="text-end">
+                    <div class="fs-5 fw-bold" id="currentMonth">Dezember 2025</div>
+                    <div class="werktage-info mt-2" id="werktageInfo">
+                        <i class="bi bi-calendar3"></i> <span id="werktageText">-- Werktage</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- KPI Badges -->
+        <div class="row g-3 mb-4">
+            <div class="col-6 col-md-3">
+                <div class="kpi-card">
+                    <div class="kpi-value" id="kpiErreichung">--</div>
+                    <div class="kpi-label">Zielerreichung</div>
+                    <div class="kpi-icon" id="kpiErreichungIcon"><i class="bi bi-circle"></i></div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="kpi-card">
+                    <div class="kpi-value" id="kpiRang">--</div>
+                    <div class="kpi-label">Team-Rang</div>
+                    <div class="kpi-icon kpi-gold" id="kpiRangIcon"><i class="bi bi-trophy"></i></div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="kpi-card">
+                    <div class="kpi-value" id="kpiPrognose">--</div>
+                    <div class="kpi-label">Prognose Monatsende</div>
+                    <div class="kpi-icon" id="kpiPrognoseIcon"><i class="bi bi-graph-up-arrow"></i></div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="kpi-card">
+                    <div class="kpi-value" id="kpiTrend">--</div>
+                    <div class="kpi-label">vs. Soll</div>
+                    <div class="kpi-icon" id="kpiTrendIcon"><i class="bi bi-arrow-up"></i></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Progress Section -->
+        <div class="progress-section">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <div>
+                    <strong>Deckungsbeitrag</strong>
+                    <span class="text-muted ms-2" id="dbValues">-- / -- Ziel</span>
+                </div>
+                <span class="trend-badge positive" id="trendBadge">
+                    <i class="bi bi-rocket-takeoff"></i> Auf Kurs
+                </span>
+            </div>
+            <div class="progress">
+                <div class="progress-bar bg-success" role="progressbar" id="dbProgress"
+                     style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                    0%
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Links -->
+        <h5 class="mb-3"><i class="bi bi-grid-3x3-gap"></i> Schnellzugriff</h5>
+        <div class="row g-3">
+            <div class="col-6 col-md-4 col-lg-3">
+                <a href="/aftersales/serviceberater" class="quick-link" id="linkRanking">
+                    <i class="bi bi-bar-chart-line text-primary"></i>
+                    <div class="link-title">Team-Ranking</div>
+                    <div class="link-desc">Alle Serviceberater</div>
+                </a>
+            </div>
+            <div class="col-6 col-md-4 col-lg-3">
+                <a href="/werkstatt/live" class="quick-link">
+                    <i class="bi bi-broadcast text-success"></i>
+                    <div class="link-title">Werkstatt Live</div>
+                    <div class="link-desc">Aktuelle Aufträge</div>
+                </a>
+            </div>
+            <div class="col-6 col-md-4 col-lg-3">
+                <a href="/urlaubsplaner" class="quick-link">
+                    <i class="bi bi-calendar-check text-info"></i>
+                    <div class="link-title">Urlaubsplaner</div>
+                    <div class="link-desc">Urlaub beantragen</div>
+                </a>
+            </div>
+            <div class="col-6 col-md-4 col-lg-3">
+                <a href="/aftersales/teile" class="quick-link">
+                    <i class="bi bi-box-seam text-warning"></i>
+                    <div class="link-title">Teilebestellungen</div>
+                    <div class="link-desc">Status & Rückstände</div>
+                </a>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadDashboard();
+});
+
+async function loadDashboard() {
+    const ldapCn = '{{ current_user.display_name | default("") }}';
+    const monat = new Date().toISOString().slice(0, 7);
+
+    try {
+        const response = await fetch(`/api/serviceberater/mein-dashboard?ldap_cn=${encodeURIComponent(ldapCn)}&monat=${monat}`);
+        const data = await response.json();
+
+        if (data.success) {
+            renderDashboard(data);
+        } else {
+            showError(data.error || 'Daten konnten nicht geladen werden');
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        showError('Verbindungsfehler');
+    }
+}
+
+function renderDashboard(data) {
+    // Greeting
+    const hour = new Date().getHours();
+    let greeting = 'Guten Tag';
+    if (hour < 12) greeting = 'Guten Morgen';
+    else if (hour >= 18) greeting = 'Guten Abend';
+
+    const firstName = data.sb.name.split(' ')[0];
+    document.getElementById('greeting').textContent = `${greeting}, ${firstName}!`;
+    document.getElementById('standortInfo').textContent = `Serviceberater ${data.sb.standort_name}`;
+
+    // Month
+    const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
+                        'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+    const [year, month] = data.monat.split('-');
+    document.getElementById('currentMonth').textContent = `${monthNames[parseInt(month) - 1]} ${year}`;
+
+    // Werktage
+    const wt = data.werktage;
+    document.getElementById('werktageText').textContent =
+        `${wt.vergangen}/${wt.gesamt} Werktage (${wt.fortschritt_prozent}%)`;
+
+    // KPIs
+    const mz = data.meine_zahlen;
+    const hr = data.hochrechnung;
+
+    // Erreichung
+    document.getElementById('kpiErreichung').textContent = `${mz.erreichung.toFixed(1)}%`;
+    const erreichungIcon = document.getElementById('kpiErreichungIcon');
+    if (mz.erreichung >= 100) {
+        erreichungIcon.innerHTML = '<i class="bi bi-check-circle-fill"></i>';
+        erreichungIcon.className = 'kpi-icon kpi-success';
+    } else if (mz.erreichung >= 80) {
+        erreichungIcon.innerHTML = '<i class="bi bi-circle-half"></i>';
+        erreichungIcon.className = 'kpi-icon kpi-warning';
+    } else {
+        erreichungIcon.innerHTML = '<i class="bi bi-exclamation-circle"></i>';
+        erreichungIcon.className = 'kpi-icon kpi-danger';
+    }
+
+    // Rang
+    document.getElementById('kpiRang').textContent = `${data.mein_rang}/${data.team_groesse}`;
+    const rangIcon = document.getElementById('kpiRangIcon');
+    if (data.mein_rang === 1) {
+        rangIcon.innerHTML = '<i class="bi bi-trophy-fill"></i>';
+        rangIcon.className = 'kpi-icon kpi-gold';
+    } else if (data.mein_rang <= 3) {
+        rangIcon.innerHTML = '<i class="bi bi-award"></i>';
+        rangIcon.className = 'kpi-icon kpi-primary';
+    } else {
+        rangIcon.innerHTML = '<i class="bi bi-person"></i>';
+        rangIcon.className = 'kpi-icon text-muted';
+    }
+
+    // Prognose
+    if (hr) {
+        document.getElementById('kpiPrognose').textContent = `${hr.erreichung_prognose.toFixed(0)}%`;
+        const prognoseIcon = document.getElementById('kpiPrognoseIcon');
+        if (hr.erreichung_prognose >= 100) {
+            prognoseIcon.innerHTML = '<i class="bi bi-rocket-takeoff-fill"></i>';
+            prognoseIcon.className = 'kpi-icon kpi-success';
+        } else {
+            prognoseIcon.innerHTML = '<i class="bi bi-graph-up-arrow"></i>';
+            prognoseIcon.className = 'kpi-icon kpi-warning';
+        }
+
+        // Trend vs Soll
+        const delta = hr.delta_vs_soll;
+        const trendEl = document.getElementById('kpiTrend');
+        const trendIcon = document.getElementById('kpiTrendIcon');
+
+        if (delta >= 0) {
+            trendEl.textContent = `+${delta.toFixed(0)}%`;
+            trendIcon.innerHTML = '<i class="bi bi-arrow-up-circle-fill"></i>';
+            trendIcon.className = 'kpi-icon kpi-success';
+        } else {
+            trendEl.textContent = `${delta.toFixed(0)}%`;
+            trendIcon.innerHTML = '<i class="bi bi-arrow-down-circle-fill"></i>';
+            trendIcon.className = 'kpi-icon kpi-danger';
+        }
+
+        // Trend Badge
+        const badge = document.getElementById('trendBadge');
+        if (hr.auf_kurs) {
+            badge.className = 'trend-badge positive';
+            badge.innerHTML = '<i class="bi bi-rocket-takeoff"></i> Auf Kurs';
+        } else {
+            badge.className = 'trend-badge negative';
+            badge.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Aufholen!';
+        }
+    } else {
+        document.getElementById('kpiPrognose').textContent = '-';
+        document.getElementById('kpiTrend').textContent = '-';
+    }
+
+    // Progress Bar
+    const db1 = mz.db1;
+    const dbZiel = mz.db_ziel;
+    const percent = Math.min((db1 / dbZiel * 100), 150);
+
+    document.getElementById('dbValues').textContent =
+        `${formatCurrency(db1)} / ${formatCurrency(dbZiel)} Ziel`;
+
+    const progressBar = document.getElementById('dbProgress');
+    progressBar.style.width = `${Math.min(percent, 100)}%`;
+    progressBar.textContent = `${percent.toFixed(0)}%`;
+    progressBar.className = `progress-bar ${percent >= 100 ? 'bg-success' : percent >= 80 ? 'bg-warning' : 'bg-danger'}`;
+
+    // Update ranking link with standort filter
+    document.getElementById('linkRanking').href = `/aftersales/serviceberater?standort=${data.sb.standort}`;
+
+    // Show content
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('mainContent').style.display = 'block';
+}
+
+function formatCurrency(value) {
+    return new Intl.NumberFormat('de-DE', {
+        style: 'currency',
+        currency: 'EUR',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(value);
+}
+
+function showError(message) {
+    document.getElementById('loadingState').innerHTML = `
+        <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle"></i> ${message}
+            <br><small>Bitte wenden Sie sich an die IT.</small>
+        </div>
+    `;
+}
+</script>
+{% endblock %}

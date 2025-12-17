@@ -40,7 +40,7 @@ TITLE_TO_ROLE = {
     # Service
     'Serviceleitung': 'service_leitung',
     'Serviceleiter': 'service_leitung',
-    'Serviceberater': 'service',
+    'Serviceberater': 'serviceberater',  # TAG121: Eigene Rolle für SB-Dashboard
     'Serviceassistentin': 'service',
     'Servicemitarbeiterin': 'service',
     'Garantiesachbearbeiter': 'service',
@@ -94,8 +94,13 @@ FEATURE_ACCESS = {
     'urlaubsplaner': ['*'],
 
     # After Sales / Teile
-    'teilebestellungen': ['admin', 'buchhaltung', 'lager', 'werkstatt', 'werkstatt_leitung', 'service', 'service_leitung', 'disposition'],
-    'aftersales': ['admin', 'buchhaltung', 'werkstatt', 'werkstatt_leitung', 'service', 'service_leitung'],
+    'teilebestellungen': ['admin', 'buchhaltung', 'lager', 'werkstatt', 'werkstatt_leitung', 'service', 'service_leitung', 'serviceberater', 'disposition'],
+    'aftersales': ['admin', 'buchhaltung', 'werkstatt', 'werkstatt_leitung', 'service', 'service_leitung', 'serviceberater'],
+
+    # SB-Controlling (TAG121)
+    'sb_dashboard': ['admin', 'buchhaltung', 'service_leitung', 'serviceberater'],
+    'sb_ranking': ['admin', 'buchhaltung', 'service_leitung', 'serviceberater'],
+    'werkstatt_live': ['admin', 'buchhaltung', 'werkstatt_leitung', 'service_leitung', 'serviceberater'],
 
     # Team-Genehmigungen - nur Leitungen
     'urlaub_genehmigen': ['admin', 'buchhaltung', 'verkauf_leitung', 'werkstatt_leitung', 'service_leitung'],

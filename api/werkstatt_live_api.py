@@ -2289,8 +2289,16 @@ def get_gudat_kapazitaet():
 
     Ruft /api/gudat/workload auf und transformiert die Daten
     ins Format das das Frontend erwartet.
+
+    TAG122: Echte Werkstatt-Kapazität = nur interne Mechanik-Teams:
+    - Allgemeine Reparatur (ID 2)
+    - Diagnosetechnik (ID 3)
+    - NW/GW (ID 5)
     """
     import requests
+
+    # Interne Mechanik-Teams (echte Werkstatt-Kapazität)
+    INTERNE_TEAMS = {2, 3, 5}  # Allgemeine Reparatur, Diagnosetechnik, NW/GW
 
     try:
         # Lokalen Gudat-API Endpunkt aufrufen
@@ -2320,17 +2328,38 @@ def get_gudat_kapazitaet():
         )
         week_data = week_response.json() if week_response.status_code == 200 else {}
 
+        # TAG122: Nur interne Teams für Kapazität zählen
+        teams = data.get('teams', [])
+        interne_teams = [t for t in teams if t.get('id') in INTERNE_TEAMS]
+
+        # Kapazität nur aus internen Teams berechnen
+        intern_kapazitaet = sum(t.get('capacity', 0) for t in interne_teams)
+        intern_geplant = sum(t.get('planned', 0) for t in interne_teams)
+        intern_frei = sum(t.get('free', 0) for t in interne_teams)
+        intern_auslastung = round((intern_geplant / intern_kapazitaet * 100), 1) if intern_kapazitaet > 0 else 0
+
+        # Status basierend auf Auslastung
+        if intern_auslastung >= 90:
+            status = 'critical'
+        elif intern_auslastung >= 70:
+            status = 'warning'
+        else:
+            status = 'ok'
+
         # Transformiere ins Frontend-Format
         result = {
             'success': True,
-            'kapazitaet': data.get('total_capacity', 0),
-            'geplant': data.get('planned', 0),
-            'frei': data.get('free', 0),
-            'auslastung': data.get('utilization_percent', 0),
-            'status': data.get('status', 'unknown'),
-            'teams': data.get('teams', []),
+            'kapazitaet': intern_kapazitaet,  # TAG122: Nur interne Teams
+            'geplant': intern_geplant,
+            'frei': intern_frei,
+            'auslastung': intern_auslastung,
+            'status': status,
+            'teams': teams,  # Alle Teams für Detail-Ansicht
+            'interne_teams': interne_teams,  # TAG122: Nur Mechanik
             'woche': week_data.get('days', []),
-            'timestamp': data.get('timestamp', datetime.now().isoformat())
+            'timestamp': data.get('timestamp', datetime.now().isoformat()),
+            # TAG122: Zusätzliche Info
+            'hinweis': 'Kapazität = nur Allgemeine Reparatur + Diagnosetechnik + NW/GW'
         }
 
         return jsonify(result)
@@ -3231,43 +3260,14 @@ def get_auftraege_enriched():
         
         conn = get_locosoft_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        
+
         # =====================================================================
         # 1. OFFENE AUFTRÄGE AUS LOCOSOFT
+        # TAG 122: times-Tabelle existiert nicht in loco_auswertung_db
+        # Verwende labours für Zeitschätzungen statt Stempeluhr-Daten
         # =====================================================================
         query = """
-            WITH aktive_stempelungen AS (
-                SELECT DISTINCT ON (order_number)
-                    order_number,
-                    employee_number as aktiv_mechaniker_nr,
-                    start_time as stempel_start,
-                    -- TAG 112: Saldo = aktuelle Session + abgeschlossene Zeiten des MA auf diesem Auftrag
-                    EXTRACT(EPOCH FROM (NOW() - start_time))/60 
-                    + COALESCE((
-                        SELECT SUM(duration_minutes) 
-                        FROM times t2 
-                        WHERE t2.order_number = times.order_number 
-                          AND t2.employee_number = times.employee_number
-                          AND t2.end_time IS NOT NULL
-                          AND t2.type = 2
-                    ), 0) as laufzeit_min
-                FROM times
-                WHERE end_time IS NULL
-                  AND type = 2
-                  AND DATE(start_time) = CURRENT_DATE
-                ORDER BY order_number, start_time DESC
-            ),
-            stempel_summen AS (
-                SELECT 
-                    order_number,
-                    SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, NOW()) - start_time))/60) as gestempelt_min,
-                    COUNT(DISTINCT employee_number) as anzahl_mechaniker
-                FROM times
-                WHERE type = 2
-                  AND start_time >= CURRENT_DATE - INTERVAL '%s days'
-                GROUP BY order_number
-            )
-            SELECT 
+            SELECT
                 o.number as auftrag_nr,
                 o.subsidiary as betrieb,
                 o.order_date as auftrag_datum,
@@ -3295,13 +3295,15 @@ def get_auftraege_enriched():
                 l.labour_operation_id,
                 l.charge_type,
                 mech.name as mechaniker_name,
-                ast.aktiv_mechaniker_nr,
-                ast.stempel_start,
-                ast.laufzeit_min as aktiv_laufzeit_min,
-                COALESCE(ss.gestempelt_min, 0) / 6.0 as gestempelt_aw,
-                COALESCE(ss.gestempelt_min, 0) as gestempelt_min
+                -- TAG 122: Ohne times-Tabelle keine aktiven Stempelungen verfügbar
+                NULL::integer as aktiv_mechaniker_nr,
+                NULL::timestamp as stempel_start,
+                NULL::numeric as aktiv_laufzeit_min,
+                -- Geschätzte Zeit basierend auf abgerechneten labours (is_invoiced)
+                COALESCE(l_done.abgerechnet_aw, 0) as gestempelt_aw,
+                COALESCE(l_done.abgerechnet_aw, 0) * 6.0 as gestempelt_min
             FROM orders o
-            LEFT JOIN employees_history sb ON o.order_taking_employee_no = sb.employee_number 
+            LEFT JOIN employees_history sb ON o.order_taking_employee_no = sb.employee_number
                 AND sb.is_latest_record = true
             LEFT JOIN vehicles v ON o.vehicle_number = v.internal_number
             LEFT JOIN makes m ON v.make_number = m.make_number
@@ -3317,14 +3319,18 @@ def get_auftraege_enriched():
                 FROM labours
                 WHERE order_number = o.number AND time_units > 0
             ) l ON true
-            LEFT JOIN employees_history mech ON l.mechaniker_nr = mech.employee_number 
+            LEFT JOIN employees_history mech ON l.mechaniker_nr = mech.employee_number
                 AND mech.is_latest_record = true
-            LEFT JOIN aktive_stempelungen ast ON o.number = ast.order_number
-            LEFT JOIN stempel_summen ss ON o.number = ss.order_number
+            -- TAG 122: Bereits abgerechnete AW als "gestempelt"
+            LEFT JOIN LATERAL (
+                SELECT SUM(time_units) as abgerechnet_aw
+                FROM labours
+                WHERE order_number = o.number AND is_invoiced = true
+            ) l_done ON true
             WHERE o.order_date >= CURRENT_DATE - INTERVAL '%s days'
         """
-        
-        params = [tage, tage]
+
+        params = [tage]
         
         if nur_offen:
             query += " AND o.has_open_positions = true"
@@ -3752,6 +3758,7 @@ def get_auftraege_enriched():
 
 # ============================================================
 # ANWESENHEITS-REPORT - TAG 116
+# DEAKTIVIERT TAG 122: Type 1 nur als abgeschlossene Einträge verfügbar
 # Prüft wer Type 1 (Anwesend) vergessen hat
 # ============================================================
 
@@ -3759,7 +3766,10 @@ def get_auftraege_enriched():
 def get_anwesenheit_report():
     """
     Anwesenheits-Report: Wer hat eingestempelt, wer nicht?
-    
+
+    HINWEIS TAG 122: Dieser Report ist während der Arbeitszeit unzuverlässig!
+    Locosoft exportiert Type 1 Einträge erst nach Feierabend (wenn end_time gesetzt).
+
     Karenzzeit: +5 Minuten nach Sollzeit (08:00)
     Früh: Vor 07:50
     """
@@ -4234,10 +4244,13 @@ def get_drive_kapazitaet():
     """
     DRIVE Kapazitätsplanung: Realistische Auslastung
 
+    TAG 122: Jetzt MIT Abwesenheiten aus absence_calendar!
+
     Zeigt Kapazität pro Tag mit:
     - Herstellervorgabe (SOLL)
     - DRIVE-Korrektur (realistisch)
     - Aufteilung nach Lohnart (G/W/I)
+    - Mechaniker-Verfügbarkeit (Abwesenheiten berücksichtigt)
     """
     try:
         import json as json_lib
@@ -4258,6 +4271,64 @@ def get_drive_kapazitaet():
         correction_g = labour_corrections.get('by_type', {}).get('G', 1.24)
         correction_w = labour_corrections.get('by_type', {}).get('W', 0.94)
         correction_i = labour_corrections.get('by_type', {}).get('I', 1.08)
+
+        # =====================================================================
+        # TAG 122: Mechaniker-Kapazität mit Abwesenheiten
+        # =====================================================================
+        # 1. Aktive Mechaniker pro Betrieb (5000-5999, ohne leave_date)
+        cur.execute("""
+            SELECT
+                subsidiary as betrieb,
+                COUNT(DISTINCT employee_number) as anzahl_mechaniker
+            FROM (
+                SELECT DISTINCT ON (employee_number)
+                    employee_number, subsidiary
+                FROM employees_history
+                WHERE employee_number BETWEEN 5000 AND 5999
+                  AND leave_date IS NULL
+                ORDER BY employee_number, validity_date DESC
+            ) aktive
+            GROUP BY subsidiary
+        """)
+        mechaniker_pro_betrieb = {r['betrieb']: r['anzahl_mechaniker'] for r in cur.fetchall()}
+        logger.debug(f"DRIVE: Mechaniker pro Betrieb: {mechaniker_pro_betrieb}")
+
+        # 2. Abwesenheiten pro Tag/Betrieb (nächste X Tage)
+        cur.execute("""
+            WITH aktive_mechaniker AS (
+                SELECT DISTINCT ON (employee_number)
+                    employee_number, subsidiary
+                FROM employees_history
+                WHERE employee_number BETWEEN 5000 AND 5999
+                  AND leave_date IS NULL
+                ORDER BY employee_number, validity_date DESC
+            )
+            SELECT
+                ac.date as tag,
+                am.subsidiary as betrieb,
+                COUNT(*) as anzahl_abwesend,
+                SUM(ac.day_contingent) as tage_abwesend,
+                STRING_AGG(DISTINCT ac.reason, ', ') as gruende
+            FROM absence_calendar ac
+            JOIN aktive_mechaniker am ON ac.employee_number = am.employee_number
+            WHERE ac.date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '%s days'
+            GROUP BY ac.date, am.subsidiary
+            ORDER BY ac.date, am.subsidiary
+        """, [tage])
+        abwesenheiten_raw = cur.fetchall()
+
+        # Abwesenheiten als Dict: {(tag, betrieb): {'anzahl': X, 'tage': Y, 'gruende': 'Url, Krn'}}
+        abwesenheiten = {}
+        for r in abwesenheiten_raw:
+            key = (r['tag'].isoformat(), r['betrieb'])
+            abwesenheiten[key] = {
+                'anzahl': r['anzahl_abwesend'],
+                'tage': float(r['tage_abwesend'] or 0),
+                'gruende': r['gruende'] or ''
+            }
+
+        # AW pro Mechaniker pro Tag (Basis für Kapazitätsberechnung)
+        AW_PRO_MECHANIKER = 10  # ca. 10 AW pro Mechaniker pro Tag
 
         subsidiary_filter = "AND o.subsidiary = %s" if subsidiary else ""
         params = [tage]
@@ -4292,8 +4363,7 @@ def get_drive_kapazitaet():
         cur.close()
         conn.close()
 
-        # Kapazität pro Tag berechnen
-        KAPAZITAET_PRO_TAG = {1: 80, 2: 40, 3: 60}  # AW pro Betrieb
+        # Kapazität pro Betrieb (Basis ohne Abwesenheiten)
         BETRIEB_NAMEN = {1: 'Deggendorf', 2: 'Hyundai DEG', 3: 'Landau'}
 
         result = []
@@ -4311,31 +4381,56 @@ def get_drive_kapazitaet():
             aw_drive = aw_g_korrigiert + aw_w_korrigiert + aw_i_korrigiert + aw_s
 
             betrieb = r['betrieb']
-            kapazitaet = KAPAZITAET_PRO_TAG.get(betrieb, 60)
+            tag_str = r['tag'].isoformat()
+
+            # TAG 122: Dynamische Kapazität basierend auf Mechaniker-Anzahl
+            gesamt_mechaniker = mechaniker_pro_betrieb.get(betrieb, 0)
+            basis_kapazitaet = gesamt_mechaniker * AW_PRO_MECHANIKER
+
+            # Abwesenheiten für diesen Tag/Betrieb
+            abw_key = (tag_str, betrieb)
+            abw_info = abwesenheiten.get(abw_key, {'anzahl': 0, 'tage': 0, 'gruende': ''})
+            abwesend_tage = abw_info['tage']  # Summe der day_contingent (0.5 = halber Tag)
+
+            # Reduzierte Kapazität
+            verfuegbare_mechaniker = gesamt_mechaniker - abwesend_tage
+            kapazitaet = max(0, round(verfuegbare_mechaniker * AW_PRO_MECHANIKER))
+
+            # Auslastung berechnen (Division by Zero vermeiden)
+            auslastung_hersteller = round(aw_gesamt / kapazitaet * 100, 1) if kapazitaet > 0 else 0
+            auslastung_drive = round(aw_drive / kapazitaet * 100, 1) if kapazitaet > 0 else 0
 
             result.append({
-                'tag': r['tag'].isoformat(),
+                'tag': tag_str,
                 'wochentag': r['tag'].strftime('%A'),
                 'betrieb': betrieb,
                 'betrieb_name': BETRIEB_NAMEN.get(betrieb, '?'),
                 'anzahl_auftraege': r['anzahl_auftraege'],
                 'kapazitaet_aw': kapazitaet,
+                'kapazitaet_basis_aw': basis_kapazitaet,  # Ohne Abwesenheiten
+                'mechaniker': {
+                    'gesamt': gesamt_mechaniker,
+                    'abwesend': abw_info['anzahl'],
+                    'abwesend_tage': round(abwesend_tage, 1),
+                    'verfuegbar': round(verfuegbare_mechaniker, 1),
+                    'gruende': abw_info['gruende']
+                },
                 'hersteller': {
                     'gesamt_aw': round(aw_gesamt, 1),
                     'garantie_aw': round(aw_g, 1),
                     'werkstatt_aw': round(aw_w, 1),
                     'intern_aw': round(aw_i, 1),
-                    'auslastung_pct': round(aw_gesamt / kapazitaet * 100, 1)
+                    'auslastung_pct': auslastung_hersteller
                 },
                 'drive': {
                     'gesamt_aw': round(aw_drive, 1),
                     'garantie_aw': round(aw_g_korrigiert, 1),
                     'werkstatt_aw': round(aw_w_korrigiert, 1),
                     'intern_aw': round(aw_i_korrigiert, 1),
-                    'auslastung_pct': round(aw_drive / kapazitaet * 100, 1)
+                    'auslastung_pct': auslastung_drive
                 },
                 'differenz_aw': round(aw_drive - aw_gesamt, 1),
-                'warnung': aw_drive > kapazitaet * 0.9  # >90% = Warnung
+                'warnung': auslastung_drive > 90  # >90% = Warnung
             })
 
         return jsonify({
@@ -4345,7 +4440,8 @@ def get_drive_kapazitaet():
                 'W': correction_w,
                 'I': correction_i
             },
-            'kapazitaeten': KAPAZITAET_PRO_TAG,
+            'mechaniker_pro_betrieb': mechaniker_pro_betrieb,
+            'aw_pro_mechaniker': AW_PRO_MECHANIKER,
             'tage': result
         })
 

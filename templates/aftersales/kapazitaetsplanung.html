@@ -720,7 +720,7 @@ function renderDetailTable(tableId, auftraege, type) {
 // ============================================================
 
 function loadGudatKapazitaet() {
-    fetch('/api/werkstatt/gudat/kapazitaet')
+    fetch('/api/werkstatt/live/gudat/kapazitaet')  // TAG122: /live/ fehlte
         .then(r => r.json())
         .then(data => {
             if (data.success) {

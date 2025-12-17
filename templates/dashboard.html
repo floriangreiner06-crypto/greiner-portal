@@ -276,26 +276,7 @@
             </a>
         </div>
         
-        <!-- Anwesenheit -->
-        <div class="col-lg-4 col-md-6">
-            <a href="/werkstatt/anwesenheit" class="info-badge badge-anwesenheit" id="badge-anwesenheit-card">
-                <div class="badge-icon">
-                    <i class="bi bi-person-check"></i>
-                </div>
-                <div class="badge-content">
-                    <div class="badge-value">
-                        <span id="badge-anwesenheit">-</span>
-                        <span id="badge-vergessen" class="ms-2 text-danger" style="display:none;">
-                            <i class="bi bi-exclamation-triangle-fill"></i>
-                            <span id="badge-vergessen-count">0</span>
-                            <i class="bi bi-stamp" title="Type 1 vergessen"></i>
-                        </span>
-                    </div>
-                    <div class="badge-label">Mechaniker eingestempelt</div>
-                </div>
-                <i class="bi bi-chevron-right badge-arrow"></i>
-            </a>
-        </div>
+        <!-- TAG122: Anwesenheit-Badge entfernt (Type 1 nur nach Feierabend verfügbar) -->
         
     </div>
 
@@ -367,7 +348,6 @@
                 <div class="modul-links">
                     <a href="/aftersales/kapazitaet"><i class="bi bi-calendar-range me-2"></i>Kapazitätsplanung</a>
                     <a href="/werkstatt/stempeluhr"><i class="bi bi-stopwatch me-2"></i>Stempeluhr LIVE</a>
-                    <a href="/werkstatt/anwesenheit"><i class="bi bi-person-check me-2"></i>Anwesenheits-Report</a>
                     <a href="/werkstatt/cockpit"><i class="bi bi-speedometer2 me-2"></i>Cockpit</a>
                 </div>
             </div>
@@ -490,35 +470,7 @@ async function loadDashboardData() {
         console.warn('Verkauf:', e);
     }
     
-    // Anwesenheit - KORREKTER PFAD: /api/werkstatt/live/anwesenheit/report
-    try {
-        const data = await fetchApi('/api/werkstatt/live/anwesenheit/report');
-        if (data?.success) {
-            const korrekt = data.korrekt?.length || 0;
-            const vergessen = data.vergessen?.length || 0;
-            const total = korrekt + vergessen;
-            
-            if (total > 0) {
-                document.getElementById('badge-anwesenheit').textContent = korrekt + '/' + total;
-            } else {
-                document.getElementById('badge-anwesenheit').textContent = 'N/A';
-            }
-            
-            // Warnung im Badge anzeigen wenn Type 1 vergessen
-            if (vergessen > 0) {
-                document.getElementById('badge-vergessen').style.display = 'inline';
-                document.getElementById('badge-vergessen-count').textContent = vergessen;
-                // Badge-Card rot hervorheben
-                document.getElementById('badge-anwesenheit-card').style.background = 
-                    'linear-gradient(135deg, rgba(231,76,60,0.1), rgba(192,57,43,0.1))';
-                document.getElementById('badge-anwesenheit-card').style.border = '2px solid #e74c3c';
-            }
-        } else {
-            document.getElementById('badge-anwesenheit').textContent = 'N/A';
-        }
-    } catch(e) { 
-        document.getElementById('badge-anwesenheit').textContent = 'N/A';
-    }
+    // TAG122: Anwesenheit-Abfrage entfernt (Type 1 nur nach Feierabend verfügbar)
     
     console.log('Dashboard: Daten geladen.');
 }

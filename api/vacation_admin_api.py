@@ -103,19 +103,11 @@ def get_employees():
                     COALESCE(ve.total_days, 27.0) as anspruch,
                     COALESCE(ve.carried_over, 0) as uebertrag,
                     COALESCE(ve.added_manually, 0) as korrektur,
-                    CASE le.subsidiary
-                        WHEN 1 THEN 'Deggendorf'
-                        WHEN 3 THEN 'Landau'
-                        ELSE 'Unbekannt'
-                    END as standort,
-                    gm.grp_code
+                    COALESCE(e.location, 'Unbekannt') as standort,
+                    e.department_name as grp_code
                 FROM employees e
                 LEFT JOIN vacation_entitlements ve ON e.id = ve.employee_id AND ve.year = {year}
-                LEFT JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
-                LEFT JOIN loco_employees le ON lem.locosoft_id = le.employee_number
-                LEFT JOIN loco_employees_group_mapping gm ON le.employee_number = gm.employee_number
                 WHERE e.aktiv = 1
-                GROUP BY e.id
                 ORDER BY e.last_name, e.first_name
             """)
 

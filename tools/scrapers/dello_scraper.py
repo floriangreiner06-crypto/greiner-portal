@@ -5,6 +5,7 @@ import time
 import re
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -31,7 +32,9 @@ class DelloScraper:
             options.add_argument('--no-sandbox')
             options.add_argument('--disable-dev-shm-usage')
             options.add_argument('--window-size=1920,1080')
-            DelloScraper._driver = webdriver.Chrome(options=options)
+            # Expliziter ChromeDriver-Pfad (nicht im Gunicorn PATH)
+            service = Service(executable_path='/usr/local/bin/chromedriver')
+            DelloScraper._driver = webdriver.Chrome(service=service, options=options)
             DelloScraper._driver.set_page_load_timeout(30)
             DelloScraper._logged_in = False
         return DelloScraper._driver

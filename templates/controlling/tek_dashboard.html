@@ -847,8 +847,11 @@ function updatePrognose(prognose) {
             document.getElementById('prognoseTage').innerHTML = 
                 `<span class="text-info"><i class="bi bi-graph-up-arrow"></i> Ø 3-Monats-Schnitt</span>`;
         } else {
-            document.getElementById('prognoseTage').textContent = 
-                `${p.tage_mit_daten} von ${p.tage_im_monat} Tagen`;
+            // Werktage-Anzeige (TAG121)
+            const werktageText = p.werktage
+                ? `${p.werktage.vergangen}/${p.werktage.gesamt} Werktage (${p.werktage.fortschritt_prozent}%)`
+                : `${p.tage_mit_daten} von ${p.tage_im_monat} Tagen`;
+            document.getElementById('prognoseTage').textContent = werktageText;
         }
     } else {
         document.getElementById('prognoseHochrechnung').textContent = '-';

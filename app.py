@@ -108,9 +108,9 @@ def inject_globals():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     """Login-Page und Authentication"""
-    # Wenn bereits eingeloggt, redirect zu Home
+    # Wenn bereits eingeloggt, redirect zu dynamischer Startseite (TAG122)
     if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('start'))
     
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
@@ -132,7 +132,7 @@ def login():
                     next_page = request.args.get('next')
                     if next_page and next_page.startswith('/'):
                         return redirect(next_page)
-                    return redirect(url_for('dashboard'))
+                    return redirect(url_for('start'))  # TAG122: Dynamische Startseite
                 else:
                     flash('Ungültiger Benutzername oder Passwort.', 'danger')
             except Exception as e:
@@ -341,12 +341,59 @@ if __name__ == '__main__':
 # ========================================
 
 @app.route('/')
+@app.route('/start')
+@login_required
+def start():
+    """
+    Dynamische Startseite nach Login (TAG122)
+
+    Leitet basierend auf portal_role zum passenden Dashboard:
+    - serviceberater → Aftersales mit Standort-Filter
+    - werkstatt_leitung → Werkstatt Dashboard
+    - verkauf/verkauf_leitung → Verkauf Auftragseingang
+    - admin/buchhaltung → Allgemeines Dashboard
+    """
+    role = getattr(current_user, 'portal_role', 'mitarbeiter')
+    standort = getattr(current_user, 'standort', 'deggendorf')
+
+    # Serviceberater → Persönlicher Bereich mit Badges
+    if role == 'serviceberater':
+        return redirect(url_for('mein_bereich'))
+
+    # Werkstatt-Leitung → Werkstatt Dashboard
+    if role == 'werkstatt_leitung':
+        return redirect(url_for('werkstatt_dashboard'))
+
+    # Service-Leitung → Aftersales Übersicht
+    if role == 'service_leitung':
+        return redirect(url_for('aftersales_serviceberater.controlling'))
+
+    # Verkauf → Verkauf Auftragseingang
+    if role in ['verkauf', 'verkauf_leitung']:
+        return redirect(url_for('verkauf.auftragseingang'))
+
+    # Default: Allgemeines Dashboard
+    return redirect(url_for('dashboard'))
+
+
 @app.route('/dashboard')
 @login_required
 def dashboard():
     """Hauptdashboard - Startseite nach Login"""
     from datetime import datetime
     return render_template('dashboard.html', now=datetime.now())
+
+
+@app.route('/mein-bereich')
+@login_required
+def mein_bereich():
+    """
+    Persönlicher Bereich für Serviceberater (TAG122)
+
+    Zeigt KPI-Badges und Schnellzugriff auf relevante Bereiche
+    """
+    from datetime import datetime
+    return render_template('sb/mein_bereich.html', now=datetime.now())
 
 
 # After Sales Routes
@@ -550,5 +597,11 @@ def kapazitaetsplanung():
 @app.route('/werkstatt/anwesenheit')
 @login_required
 def werkstatt_anwesenheit():
-    """Anwesenheits-Report - Wer hat (nicht) eingestempelt? (TAG 116)"""
-    return render_template('aftersales/werkstatt_anwesenheit.html')
+    """
+    Anwesenheits-Report - DEAKTIVIERT (TAG 122)
+
+    Grund: Type 1 (Anwesenheit) wird von Locosoft nur als abgeschlossene
+    Einträge exportiert. Während der Arbeitszeit sind die Daten nicht verfügbar.
+    """
+    flash('Anwesenheits-Report deaktiviert: Type 1 Daten sind erst nach Feierabend verfügbar.', 'warning')
+    return redirect(url_for('werkstatt_dashboard'))
