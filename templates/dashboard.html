@@ -215,7 +215,7 @@
             </a>
         </div>
         
-        <!-- Kapazität -->
+        <!-- Kapazität / Auslastung -->
         <div class="col-lg-4 col-md-6">
             <a href="/aftersales/kapazitaet" class="info-badge badge-kapazitaet">
                 <div class="badge-icon">
@@ -223,7 +223,8 @@
                 </div>
                 <div class="badge-content">
                     <div class="badge-value" id="badge-kapazitaet">-</div>
-                    <div class="badge-label">Kapazität diese Woche</div>
+                    <div class="badge-label">Werkstatt Auslastung</div>
+                    <div class="badge-sub text-muted small" id="badge-kapazitaet-sub"></div>
                 </div>
                 <i class="bi bi-chevron-right badge-arrow"></i>
             </a>
@@ -397,17 +398,25 @@ async function loadDashboardData() {
         console.error('Werkstatt:', e); 
     }
     
-    // Kapazität
+    // Kapazität (Auslastung = offene Arbeit vs. verfügbare Kapazität)
     try {
-        const data = await fetchApi('/api/werkstatt/kapazitaet/forecast');
-        if (data?.success && data.woche) {
-            document.getElementById('badge-kapazitaet').textContent = Math.round(data.woche.auslastung || 0) + '%';
+        const data = await fetchApi('/api/werkstatt/live/kapazitaet');
+        if (data?.success && data.auslastung) {
+            const auslastung = Math.round(data.auslastung.prozent_gesamt || 0);
+            const el = document.getElementById('badge-kapazitaet');
+            el.textContent = auslastung + '%';
+            // Farbe: grün wenn unter 100%, gelb 100-150%, rot über 150%
+            el.className = 'badge-value ' + (auslastung <= 100 ? 'value-ok' : auslastung <= 150 ? 'value-warning' : 'value-danger');
+            // Zusatzinfo: Tage Arbeit
+            const tage = data.auslastung.tage_arbeit || 0;
+            const subEl = document.getElementById('badge-kapazitaet-sub');
+            if (subEl) subEl.textContent = tage.toFixed(1) + ' Tage Arbeit';
         } else {
             document.getElementById('badge-kapazitaet').textContent = 'N/A';
         }
-    } catch(e) { 
+    } catch(e) {
         document.getElementById('badge-kapazitaet').textContent = 'N/A';
-        console.error('Kapazität:', e); 
+        console.error('Kapazität:', e);
     }
     
     // Finanzierte Fahrzeuge - Gesamtübersicht (TAG118)

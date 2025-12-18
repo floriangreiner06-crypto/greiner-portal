@@ -1,0 +1,1136 @@
+{% extends "base.html" %}
+
+{% block title %}Werkstatt Live-Board - DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ============================================================
+   WERKSTATT LIVE-BOARD - Karten-Ansicht (TAG 125)
+   "Wer arbeitet woran" mit Gudat-Warteschlange
+   ============================================================ */
+
+.liveboard-container {
+    background: #f8f9fa;
+    min-height: calc(100vh - 120px);
+    padding: 20px;
+}
+
+/* Header */
+.liveboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 15px 20px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.liveboard-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.liveboard-title i { color: #667eea; }
+
+.liveboard-meta {
+    font-size: 0.85rem;
+    color: #6c757d;
+}
+
+.liveboard-stats {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.stat-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+.stat-badge.aktiv { background: #d4edda; color: #155724; }
+.stat-badge.abwesend { background: #f8d7da; color: #721c24; }
+.stat-badge.gesamt { background: #e2e3e5; color: #383d41; }
+.stat-badge.gudat { background: #ffeaa7; color: #6c5ce7; }
+
+/* Betrieb Filter */
+.betrieb-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.betrieb-tab {
+    padding: 10px 20px;
+    border: none;
+    background: white;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.betrieb-tab:hover { background: #e9ecef; }
+.betrieb-tab.active {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+/* Mechaniker Cards Grid */
+.mechaniker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+}
+
+/* Mechaniker Card */
+.mech-card {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    overflow: hidden;
+    transition: all 0.3s;
+}
+
+.mech-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.12);
+}
+
+/* Card Header */
+.mech-card-header {
+    padding: 15px 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.mech-card-header.aktiv { background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%); }
+.mech-card-header.leerlauf { background: #f8f9fa; }
+.mech-card-header.abwesend { background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%); }
+
+.mech-avatar {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 1.1rem;
+    color: white;
+    flex-shrink: 0;
+}
+
+.mech-avatar.aktiv { background: linear-gradient(135deg, #28a745, #20c997); }
+.mech-avatar.leerlauf { background: #6c757d; }
+.mech-avatar.abwesend { background: linear-gradient(135deg, #dc3545, #c82333); }
+
+.mech-info { flex: 1; }
+
+.mech-name {
+    font-weight: 600;
+    font-size: 1.1rem;
+    margin-bottom: 2px;
+}
+
+.mech-status {
+    font-size: 0.8rem;
+    color: #6c757d;
+}
+
+.mech-betrieb {
+    font-size: 0.7rem;
+    padding: 3px 10px;
+    border-radius: 12px;
+    background: #e9ecef;
+    color: #495057;
+}
+
+/* Aktueller Auftrag */
+.current-job {
+    padding: 15px 20px;
+    background: #f8fff8;
+    border-left: 4px solid #28a745;
+}
+
+.current-job-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #28a745;
+    font-weight: 600;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.current-job-main {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.current-job-kz {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #212529;
+}
+
+.current-job-kunde {
+    font-size: 0.85rem;
+    color: #6c757d;
+    margin-top: 2px;
+}
+
+.current-job-stats {
+    text-align: right;
+}
+
+.current-job-time {
+    font-family: 'Courier New', monospace;
+    font-size: 1.4rem;
+    font-weight: bold;
+    color: #28a745;
+}
+
+.current-job-aw {
+    font-size: 0.8rem;
+    color: #6c757d;
+}
+
+/* Fortschrittsbalken */
+.progress-bar-container {
+    padding: 0 20px 15px;
+    background: #f8fff8;
+}
+
+.progress-custom {
+    height: 8px;
+    border-radius: 4px;
+    background: #e9ecef;
+    overflow: hidden;
+}
+
+.progress-custom .progress-fill {
+    height: 100%;
+    border-radius: 4px;
+    background: linear-gradient(90deg, #28a745, #20c997);
+    transition: width 0.5s ease;
+}
+
+/* Kein aktueller Auftrag */
+.no-current-job {
+    padding: 20px;
+    text-align: center;
+    color: #6c757d;
+    font-style: italic;
+}
+
+/* Abwesend Info */
+.abwesend-info {
+    padding: 20px;
+    text-align: center;
+    background: #fff5f5;
+}
+
+.abwesend-grund {
+    font-size: 1rem;
+    color: #dc3545;
+    font-weight: 500;
+}
+
+/* Warteschlange */
+.queue-section {
+    padding: 15px 20px;
+    border-top: 1px solid #f0f0f0;
+    background: #fafafa;
+}
+
+.queue-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #6c757d;
+    font-weight: 600;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.queue-count {
+    background: #667eea;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.7rem;
+}
+
+.queue-empty {
+    color: #adb5bd;
+    font-size: 0.85rem;
+    font-style: italic;
+}
+
+.queue-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: white;
+    border-radius: 8px;
+    margin-bottom: 6px;
+    border: 1px solid #e9ecef;
+    transition: all 0.2s;
+}
+
+.queue-item:hover {
+    border-color: #667eea;
+    background: #f8f9ff;
+}
+
+.queue-item.gudat {
+    border-left: 3px solid #fdcb6e;
+}
+
+.queue-item.locosoft {
+    border-left: 3px solid #74b9ff;
+}
+
+.queue-item-kz {
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.queue-item-info {
+    font-size: 0.75rem;
+    color: #6c757d;
+}
+
+.queue-item-aw {
+    font-weight: 600;
+    color: #667eea;
+    font-size: 0.85rem;
+}
+
+/* Stats Footer */
+.mech-footer {
+    padding: 10px 20px;
+    background: #f8f9fa;
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: #6c757d;
+}
+
+/* Legende */
+.legende {
+    margin-top: 20px;
+    padding: 15px 20px;
+    background: white;
+    border-radius: 12px;
+    display: flex;
+    gap: 25px;
+    flex-wrap: wrap;
+    font-size: 0.85rem;
+}
+
+.legende-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.legende-color {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+}
+
+.legende-color.aktiv { background: linear-gradient(135deg, #28a745, #20c997); }
+.legende-color.leerlauf { background: #6c757d; }
+.legende-color.abwesend { background: linear-gradient(135deg, #dc3545, #c82333); }
+.legende-color.gudat { background: #fdcb6e; }
+.legende-color.locosoft { background: #74b9ff; }
+
+/* Responsive */
+@media (max-width: 768px) {
+    .liveboard-header { flex-direction: column; gap: 15px; }
+    .mechaniker-grid { grid-template-columns: 1fr; }
+}
+
+/* ============================================================
+   AUFTRAG DETAIL MODAL
+   ============================================================ */
+
+.auftrag-modal .modal-content {
+    border: none;
+    border-radius: 16px;
+    overflow: hidden;
+}
+
+.auftrag-modal .modal-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 20px 25px;
+}
+
+.auftrag-modal .modal-header .btn-close {
+    filter: invert(1);
+    opacity: 0.8;
+}
+
+.auftrag-modal .modal-title {
+    font-weight: 600;
+}
+
+.auftrag-kz-header {
+    font-size: 1.8rem;
+    font-weight: 700;
+}
+
+.auftrag-kunde-header {
+    font-size: 0.9rem;
+    opacity: 0.9;
+}
+
+.auftrag-modal .modal-body {
+    padding: 0;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+/* Info-Sections */
+.auftrag-section {
+    padding: 20px 25px;
+    border-bottom: 1px solid #eee;
+}
+
+.auftrag-section:last-child {
+    border-bottom: none;
+}
+
+.section-title {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #6c757d;
+    font-weight: 600;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Info Grid */
+.info-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+}
+
+.info-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.info-label {
+    font-size: 0.75rem;
+    color: #6c757d;
+    margin-bottom: 2px;
+}
+
+.info-value {
+    font-weight: 500;
+    font-size: 0.95rem;
+}
+
+/* Summen Cards */
+.summen-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+}
+
+.summen-card {
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 12px 15px;
+    text-align: center;
+}
+
+.summen-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #667eea;
+}
+
+.summen-label {
+    font-size: 0.7rem;
+    color: #6c757d;
+    text-transform: uppercase;
+}
+
+/* Positionen Tabelle */
+.position-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.position-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 12px 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin-bottom: 8px;
+}
+
+.position-beschreibung {
+    flex: 1;
+    font-size: 0.9rem;
+}
+
+.position-mechaniker {
+    font-size: 0.75rem;
+    color: #6c757d;
+    margin-top: 4px;
+}
+
+.position-aw {
+    font-weight: 600;
+    color: #667eea;
+    white-space: nowrap;
+    margin-left: 15px;
+}
+
+.position-status {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 10px;
+    margin-left: 10px;
+}
+
+.position-status.offen {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.position-status.abgerechnet {
+    background: #d4edda;
+    color: #155724;
+}
+
+/* Teile Tabelle */
+.teile-table {
+    width: 100%;
+    font-size: 0.85rem;
+}
+
+.teile-table th {
+    font-weight: 600;
+    color: #6c757d;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    padding: 8px 10px;
+    border-bottom: 2px solid #eee;
+}
+
+.teile-table td {
+    padding: 10px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+/* Clickable Aufträge */
+.queue-item.clickable,
+.current-job.clickable {
+    cursor: pointer;
+}
+
+.queue-item.clickable:hover {
+    transform: translateX(3px);
+}
+
+.current-job.clickable:hover {
+    background: #f0fff0;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="liveboard-container">
+    <!-- Header -->
+    <div class="liveboard-header">
+        <div>
+            <h1 class="liveboard-title">
+                <i class="bi bi-grid-3x3-gap-fill"></i> Werkstatt Live-Board
+            </h1>
+            <div class="liveboard-meta">
+                <span id="datum-anzeige">-</span> | Letzte Aktualisierung: <span id="last-update">-</span>
+            </div>
+        </div>
+        <div class="liveboard-stats">
+            <span class="stat-badge aktiv">
+                <i class="bi bi-play-circle-fill"></i>
+                <span id="stat-aktiv">0</span> aktiv
+            </span>
+            <span class="stat-badge abwesend">
+                <i class="bi bi-calendar-x"></i>
+                <span id="stat-abwesend">0</span> abwesend
+            </span>
+            <span class="stat-badge gesamt">
+                <i class="bi bi-people"></i>
+                <span id="stat-gesamt">0</span> Mechaniker
+            </span>
+            <span class="stat-badge gudat" id="gudat-status" style="display: none;">
+                <i class="bi bi-calendar-check"></i>
+                <span id="stat-gudat">0</span> Gudat
+            </span>
+        </div>
+    </div>
+
+    <!-- Betrieb Filter -->
+    <div class="betrieb-tabs">
+        <button class="betrieb-tab active" data-betrieb="alle">Alle Standorte</button>
+        <button class="betrieb-tab" data-betrieb="1">Deggendorf</button>
+        <button class="betrieb-tab" data-betrieb="3">Landau</button>
+    </div>
+
+    <!-- Mechaniker Grid -->
+    <div class="mechaniker-grid" id="mechaniker-grid">
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-3 text-muted">Lade Live-Daten...</p>
+        </div>
+    </div>
+
+    <!-- Legende -->
+    <div class="legende">
+        <div class="legende-item">
+            <div class="legende-color aktiv"></div>
+            <span>In Arbeit</span>
+        </div>
+        <div class="legende-item">
+            <div class="legende-color leerlauf"></div>
+            <span>Verfügbar</span>
+        </div>
+        <div class="legende-item">
+            <div class="legende-color abwesend"></div>
+            <span>Abwesend</span>
+        </div>
+        <div class="legende-item">
+            <div class="legende-color gudat"></div>
+            <span>Gudat Disposition</span>
+        </div>
+        <div class="legende-item">
+            <div class="legende-color locosoft"></div>
+            <span>Locosoft geplant</span>
+        </div>
+    </div>
+</div>
+
+<!-- Auftrag Detail Modal -->
+<div class="modal fade auftrag-modal" id="auftragModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <div class="auftrag-kz-header" id="modal-kz">-</div>
+                    <div class="auftrag-kunde-header" id="modal-kunde">-</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary"></div>
+                    <p class="mt-2 text-muted">Lade Auftragsdetails...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentBetrieb = 'alle';
+let refreshInterval;
+let auftragModal = null;
+
+// Auftrag Modal öffnen
+async function openAuftragModal(auftragNr) {
+    if (!auftragNr) return;
+
+    // Modal lazy initialisieren
+    if (!auftragModal) {
+        const modalEl = document.getElementById('auftragModal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            auftragModal = new bootstrap.Modal(modalEl);
+        } else {
+            console.error('Bootstrap Modal nicht verfügbar');
+            alert('Fehler: Modal konnte nicht geöffnet werden');
+            return;
+        }
+    }
+
+    // Modal öffnen mit Lade-Spinner
+    document.getElementById('modal-kz').textContent = `Auftrag #${auftragNr}`;
+    document.getElementById('modal-kunde').textContent = 'Lade...';
+    document.getElementById('modal-body').innerHTML = `
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary"></div>
+            <p class="mt-2 text-muted">Lade Auftragsdetails...</p>
+        </div>
+    `;
+    auftragModal.show();
+
+    try {
+        const response = await fetch(`/api/werkstatt/live/auftrag/${auftragNr}`);
+        const data = await response.json();
+
+        if (data.success) {
+            renderAuftragModal(data);
+        } else {
+            document.getElementById('modal-body').innerHTML = `
+                <div class="alert alert-danger m-4">
+                    <i class="bi bi-exclamation-triangle"></i> ${data.error}
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        document.getElementById('modal-body').innerHTML = `
+            <div class="alert alert-danger m-4">
+                <i class="bi bi-exclamation-triangle"></i> Fehler beim Laden der Daten
+            </div>
+        `;
+    }
+}
+
+// Modal Content rendern
+function renderAuftragModal(data) {
+    const a = data.auftrag;
+    const fz = a.fahrzeug;
+
+    // Header
+    document.getElementById('modal-kz').textContent = fz.kennzeichen || `Auftrag #${a.auftrag_nr}`;
+    document.getElementById('modal-kunde').textContent = a.kunde || 'Unbekannter Kunde';
+
+    // Body Content
+    let html = `
+        <!-- Fahrzeug & Auftrag Info -->
+        <div class="auftrag-section">
+            <div class="section-title"><i class="bi bi-car-front"></i> Fahrzeug & Auftrag</div>
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">Auftrag-Nr</span>
+                    <span class="info-value">${a.auftrag_nr}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Standort</span>
+                    <span class="info-value">${a.betrieb_name}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Fahrzeug</span>
+                    <span class="info-value">${fz.marke || '-'} ${fz.modell || ''}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">KM-Stand</span>
+                    <span class="info-value">${fz.km_stand ? fz.km_stand.toLocaleString('de-DE') + ' km' : '-'}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">VIN</span>
+                    <span class="info-value" style="font-family: monospace; font-size: 0.85rem;">${fz.vin || '-'}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Serviceberater</span>
+                    <span class="info-value">${a.serviceberater || '-'}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Planung -->
+        <div class="auftrag-section">
+            <div class="section-title"><i class="bi bi-calendar-check"></i> Planung</div>
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">Eingang geplant</span>
+                    <span class="info-value">${a.planung.eingang || '-'}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Fertig geplant</span>
+                    <span class="info-value">${a.planung.fertig || '-'}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Summen -->
+        <div class="auftrag-section">
+            <div class="section-title"><i class="bi bi-calculator"></i> Übersicht</div>
+            <div class="summen-grid">
+                <div class="summen-card">
+                    <div class="summen-value">${a.summen.total_aw}</div>
+                    <div class="summen-label">Gesamt AW</div>
+                </div>
+                <div class="summen-card">
+                    <div class="summen-value" style="color: ${a.summen.offen_aw > 0 ? '#ffc107' : '#28a745'};">${a.summen.offen_aw}</div>
+                    <div class="summen-label">Offen AW</div>
+                </div>
+                <div class="summen-card">
+                    <div class="summen-value" style="color: #28a745;">${a.summen.fakturiert_aw}</div>
+                    <div class="summen-label">Fakturiert</div>
+                </div>
+                <div class="summen-card">
+                    <div class="summen-value">${a.summen.anzahl_positionen}</div>
+                    <div class="summen-label">Positionen</div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Arbeitspositionen
+    if (data.positionen && data.positionen.length > 0) {
+        html += `
+            <div class="auftrag-section">
+                <div class="section-title"><i class="bi bi-wrench"></i> Arbeitspositionen</div>
+                <ul class="position-list">
+        `;
+
+        data.positionen.forEach(p => {
+            const statusClass = p.abgerechnet ? 'abgerechnet' : 'offen';
+            const statusText = p.abgerechnet ? 'Abgerechnet' : 'Offen';
+            html += `
+                <li class="position-item">
+                    <div class="position-beschreibung">
+                        ${p.beschreibung || 'Keine Beschreibung'}
+                        <div class="position-mechaniker">
+                            <i class="bi bi-person"></i> ${p.mechaniker}
+                        </div>
+                    </div>
+                    <span class="position-aw">${p.vorgabe_aw} AW</span>
+                    <span class="position-status ${statusClass}">${statusText}</span>
+                </li>
+            `;
+        });
+
+        html += `</ul></div>`;
+    }
+
+    // Teile
+    if (data.teile && data.teile.length > 0) {
+        html += `
+            <div class="auftrag-section">
+                <div class="section-title"><i class="bi bi-box-seam"></i> Teile (${data.teile.length})</div>
+                <table class="teile-table">
+                    <thead>
+                        <tr>
+                            <th>Teilenummer</th>
+                            <th>Bezeichnung</th>
+                            <th style="text-align: right;">Menge</th>
+                            <th style="text-align: right;">Betrag</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        data.teile.forEach(t => {
+            html += `
+                <tr>
+                    <td style="font-family: monospace;">${t.teilenummer || '-'}</td>
+                    <td>${t.bezeichnung || '-'}</td>
+                    <td style="text-align: right;">${t.menge}</td>
+                    <td style="text-align: right;">${t.betrag.toLocaleString('de-DE', {style: 'currency', currency: 'EUR'})}</td>
+                </tr>
+            `;
+        });
+
+        html += `
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="3" style="text-align: right; font-weight: 600;">Gesamt Teile:</td>
+                            <td style="text-align: right; font-weight: 600;">${a.summen.teile_betrag.toLocaleString('de-DE', {style: 'currency', currency: 'EUR'})}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        `;
+    }
+
+    document.getElementById('modal-body').innerHTML = html;
+}
+
+// Initialen generieren
+function getInitials(name) {
+    if (!name) return '?';
+    const parts = name.split(',');
+    if (parts.length >= 2) {
+        return parts[1].trim()[0] + parts[0].trim()[0];
+    }
+    return name.substring(0, 2).toUpperCase();
+}
+
+// Laufzeit formatieren
+function formatLaufzeit(startTs) {
+    if (!startTs) return '-';
+    const start = new Date(startTs);
+    const now = new Date();
+    const diffMs = now - start;
+    const diffMin = Math.floor(diffMs / 60000);
+    const hours = Math.floor(diffMin / 60);
+    const mins = diffMin % 60;
+    if (hours > 0) {
+        return `${hours}h ${mins}m`;
+    }
+    return `${mins} min`;
+}
+
+// Karte für einen Mechaniker rendern
+function renderMechCard(mech) {
+    const isAktiv = mech.aktiver_auftrag !== null;
+    const isAbwesend = mech.ist_abwesend;
+
+    let statusClass = 'leerlauf';
+    if (isAbwesend) statusClass = 'abwesend';
+    else if (isAktiv) statusClass = 'aktiv';
+
+    const initials = getInitials(mech.name);
+    const shortName = mech.short_name || mech.name.split(',')[0];
+
+    // Warteschlange: Alle Zeitblöcke außer dem aktiven
+    const queue = mech.zeitbloecke.filter(zb => !zb.ist_aktiv);
+
+    let cardHTML = `
+        <div class="mech-card">
+            <div class="mech-card-header ${statusClass}">
+                <div class="mech-avatar ${statusClass}">${initials}</div>
+                <div class="mech-info">
+                    <div class="mech-name">${shortName}</div>
+                    <div class="mech-status">
+                        ${isAbwesend ? mech.abwesend_grund : (isAktiv ? 'In Arbeit' : 'Verfügbar')}
+                    </div>
+                </div>
+                <span class="mech-betrieb">${mech.betrieb_name}</span>
+            </div>
+    `;
+
+    if (isAbwesend) {
+        cardHTML += `
+            <div class="abwesend-info">
+                <i class="bi bi-calendar-x" style="font-size: 2rem; color: #dc3545;"></i>
+                <div class="abwesend-grund mt-2">${mech.abwesend_grund}</div>
+            </div>
+        `;
+    } else if (isAktiv) {
+        const aktiv = mech.aktiver_auftrag;
+        const laufzeit = formatLaufzeit(aktiv.start_ts);
+
+        // Finde den vollen Zeitblock für mehr Details
+        const aktivBlock = mech.zeitbloecke.find(zb => zb.ist_aktiv);
+        const kz = aktivBlock?.kennzeichen || '-';
+        const kunde = aktivBlock?.kunde || '';
+        const aw = aktivBlock?.vorgabe_aw || 0;
+
+        // Fortschritt berechnen (geschätzt basierend auf AW)
+        const sollMin = aw * 6; // 6 min pro AW
+        const start = new Date(aktiv.start_ts);
+        const istMin = Math.floor((new Date() - start) / 60000);
+        const progress = sollMin > 0 ? Math.min(100, (istMin / sollMin) * 100) : 50;
+
+        cardHTML += `
+            <div class="current-job clickable" onclick="openAuftragModal(${aktiv.auftrag_nr})">
+                <div class="current-job-label">
+                    <i class="bi bi-wrench"></i> Aktueller Auftrag
+                    <i class="bi bi-box-arrow-up-right" style="margin-left: auto; opacity: 0.5; font-size: 0.7rem;"></i>
+                </div>
+                <div class="current-job-main">
+                    <div>
+                        <div class="current-job-kz">${kz}</div>
+                        <div class="current-job-kunde">${kunde || 'Auftrag #' + aktiv.auftrag_nr}</div>
+                    </div>
+                    <div class="current-job-stats">
+                        <div class="current-job-time">${laufzeit}</div>
+                        <div class="current-job-aw">${aw} AW</div>
+                    </div>
+                </div>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-custom">
+                    <div class="progress-fill" style="width: ${progress}%;"></div>
+                </div>
+            </div>
+        `;
+    } else {
+        cardHTML += `
+            <div class="no-current-job">
+                <i class="bi bi-pause-circle" style="font-size: 1.5rem;"></i>
+                <div class="mt-2">Kein aktiver Auftrag</div>
+            </div>
+        `;
+    }
+
+    // Warteschlange
+    if (!isAbwesend && queue.length > 0) {
+        cardHTML += `
+            <div class="queue-section">
+                <div class="queue-label">
+                    <i class="bi bi-list-ol"></i> Nächste Aufträge
+                    <span class="queue-count">${queue.length}</span>
+                </div>
+        `;
+
+        // Maximal 4 anzeigen
+        queue.slice(0, 4).forEach(zb => {
+            const isGudat = zb.typ === 'gudat_geplant';
+            const itemClass = isGudat ? 'gudat' : 'locosoft';
+
+            cardHTML += `
+                <div class="queue-item ${itemClass} clickable" onclick="openAuftragModal(${zb.auftrag_nr})">
+                    <div>
+                        <div class="queue-item-kz">${zb.kennzeichen || '#' + zb.auftrag_nr}</div>
+                        <div class="queue-item-info">${zb.kunde || zb.service || (zb.bringen ? zb.bringen + ' Uhr' : '')}</div>
+                    </div>
+                    <div class="queue-item-aw">${zb.vorgabe_aw || 0} AW</div>
+                </div>
+            `;
+        });
+
+        if (queue.length > 4) {
+            cardHTML += `<div class="text-muted text-center" style="font-size: 0.8rem;">+ ${queue.length - 4} weitere</div>`;
+        }
+
+        cardHTML += `</div>`;
+    } else if (!isAbwesend) {
+        cardHTML += `
+            <div class="queue-section">
+                <div class="queue-label">
+                    <i class="bi bi-list-ol"></i> Nächste Aufträge
+                </div>
+                <div class="queue-empty">Keine weiteren Aufträge geplant</div>
+            </div>
+        `;
+    }
+
+    // Footer mit Stats
+    cardHTML += `
+            <div class="mech-footer">
+                <span><i class="bi bi-clock-history"></i> Heute: ${mech.gesamt_minuten} min</span>
+                <span><i class="bi bi-clipboard-check"></i> ${mech.anzahl_auftraege} Aufträge</span>
+            </div>
+        </div>
+    `;
+
+    return cardHTML;
+}
+
+// Grid rendern
+function renderGrid(data) {
+    const container = document.getElementById('mechaniker-grid');
+
+    // Filter nach Betrieb
+    let mechaniker = data.mechaniker;
+    if (currentBetrieb !== 'alle') {
+        mechaniker = mechaniker.filter(m => m.betrieb == currentBetrieb);
+    }
+
+    // Sortieren: Aktive zuerst, dann Verfügbare, dann Abwesende
+    mechaniker.sort((a, b) => {
+        if (a.ist_abwesend && !b.ist_abwesend) return 1;
+        if (!a.ist_abwesend && b.ist_abwesend) return -1;
+        if (a.aktiver_auftrag && !b.aktiver_auftrag) return -1;
+        if (!a.aktiver_auftrag && b.aktiver_auftrag) return 1;
+        return 0;
+    });
+
+    if (mechaniker.length === 0) {
+        container.innerHTML = '<div class="text-center py-5 text-muted">Keine Mechaniker gefunden</div>';
+        return;
+    }
+
+    let html = '';
+    mechaniker.forEach(mech => {
+        html += renderMechCard(mech);
+    });
+
+    container.innerHTML = html;
+}
+
+// Daten laden
+async function loadData() {
+    try {
+        const response = await fetch('/api/werkstatt/live/board');
+        const data = await response.json();
+
+        if (data.success) {
+            // Stats aktualisieren
+            document.getElementById('stat-aktiv').textContent = data.gesamt_aktiv;
+            document.getElementById('stat-abwesend').textContent = data.gesamt_abwesend;
+            document.getElementById('stat-gesamt').textContent = data.gesamt_mechaniker;
+
+            // Gudat Status
+            if (data.gudat_geladen) {
+                document.getElementById('gudat-status').style.display = 'flex';
+                document.getElementById('stat-gudat').textContent = data.gudat_tasks;
+            }
+
+            // Datum
+            const datum = new Date(data.datum);
+            document.getElementById('datum-anzeige').textContent = datum.toLocaleDateString('de-DE', {
+                weekday: 'long',
+                day: '2-digit',
+                month: 'long',
+                year: 'numeric'
+            });
+
+            // Last Update
+            document.getElementById('last-update').textContent = new Date().toLocaleTimeString('de-DE');
+
+            // Grid rendern
+            renderGrid(data);
+
+        } else {
+            console.error('API Error:', data.error);
+            document.getElementById('mechaniker-grid').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle"></i> Fehler: ${data.error}
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Fetch Error:', error);
+    }
+}
+
+// Betrieb-Filter
+document.querySelectorAll('.betrieb-tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+        document.querySelectorAll('.betrieb-tab').forEach(t => t.classList.remove('active'));
+        this.classList.add('active');
+        currentBetrieb = this.dataset.betrieb;
+        loadData();
+    });
+});
+
+// Initial laden und Auto-Refresh
+document.addEventListener('DOMContentLoaded', function() {
+    loadData();
+    refreshInterval = setInterval(loadData, 30000); // Alle 30 Sekunden
+});
+</script>
+{% endblock %}

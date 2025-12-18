@@ -26,6 +26,14 @@ from api.db_utils import locosoft_session, get_locosoft_connection
 # Für RealDictCursor
 from psycopg2.extras import RealDictCursor
 
+# Gudat Client für Disposition (TAG 125)
+sys.path.insert(0, '/opt/greiner-portal/tools')
+try:
+    from gudat_client import GudatClient
+    GUDAT_AVAILABLE = True
+except ImportError:
+    GUDAT_AVAILABLE = False
+
 # Logging
 logger = logging.getLogger(__name__)
 
@@ -48,9 +56,119 @@ def format_datetime(dt):
 
 BETRIEB_NAMEN = {
     1: 'Deggendorf',
-    2: 'Hyundai DEG', 
+    2: 'Hyundai DEG',
     3: 'Landau'
 }
+
+# Gudat Credentials (TAG 125)
+GUDAT_CONFIG = {
+    'username': 'florian.greiner@auto-greiner.de',
+    'password': 'Hyundai2025!'
+}
+
+def get_gudat_disposition(target_date=None):
+    """
+    Holt Werkstatt-Disposition aus Gudat (workshopTasks).
+    Returns dict: {mechaniker_name: [tasks]}
+    """
+    if not GUDAT_AVAILABLE:
+        logger.warning("GudatClient nicht verfügbar")
+        return {}
+
+    from datetime import date
+    if target_date is None:
+        target_date = date.today().isoformat()
+    elif hasattr(target_date, 'isoformat'):
+        target_date = target_date.isoformat()
+
+    try:
+        client = GudatClient(GUDAT_CONFIG['username'], GUDAT_CONFIG['password'])
+        if not client.login():
+            logger.error("Gudat Login fehlgeschlagen")
+            return {}
+
+        # GraphQL Query für workshopTasks
+        query = """
+        query GetWorkshopTasks($page: Int!, $itemsPerPage: Int!, $where: QueryWorkshopTasksWhereWhereConditions) {
+          workshopTasks(first: $itemsPerPage, page: $page, where: $where) {
+            data {
+              id
+              start_date
+              work_load
+              work_state
+              description
+              workshopService { id name }
+              resource { id name }
+              dossier {
+                id
+                vehicle { id license_plate }
+                orders { id number }
+              }
+            }
+          }
+        }
+        """
+
+        variables = {
+            "page": 1,
+            "itemsPerPage": 200,
+            "where": {
+                "AND": [{"column": "START_DATE", "operator": "EQ", "value": target_date}]
+            }
+        }
+
+        response = client.session.post(
+            f"{GudatClient.BASE_URL}/graphql",
+            json={"operationName": "GetWorkshopTasks", "query": query, "variables": variables},
+            headers={
+                'Accept': 'application/json',
+                'X-XSRF-TOKEN': client._get_xsrf(),
+                'Content-Type': 'application/json'
+            }
+        )
+
+        data = response.json()
+        if 'errors' in data:
+            logger.error(f"Gudat GraphQL Fehler: {data['errors']}")
+            return {}
+
+        tasks = data.get('data', {}).get('workshopTasks', {}).get('data', [])
+
+        # Gruppiere nach Mechaniker (resource.name)
+        by_mechanic = {}
+        for task in tasks:
+            resource = task.get('resource')
+            if not resource:
+                continue
+            mech_name = resource.get('name', '').strip()
+            if not mech_name:
+                continue
+
+            # Dossier-Daten extrahieren
+            dossier = task.get('dossier') or {}
+            vehicle = dossier.get('vehicle') or {}
+            orders = dossier.get('orders') or []
+
+            task_data = {
+                'gudat_id': task.get('id'),
+                'kennzeichen': vehicle.get('license_plate', ''),
+                'auftrag_nr': orders[0].get('number') if orders else None,
+                'vorgabe_aw': float(task.get('work_load') or 0),
+                'status': task.get('work_state', ''),
+                'beschreibung': task.get('description', ''),
+                'service': (task.get('workshopService') or {}).get('name', '')
+            }
+
+            if mech_name not in by_mechanic:
+                by_mechanic[mech_name] = []
+            by_mechanic[mech_name].append(task_data)
+
+        logger.info(f"Gudat: {len(tasks)} Tasks für {len(by_mechanic)} Mechaniker geladen")
+        return by_mechanic
+
+    except Exception as e:
+        logger.error(f"Gudat Fehler: {e}")
+        return {}
 
 # Azubis - stempeln nur Anwesenheit, keine Aufträge
 # Diese werden vom Leerlauf-Alarm UND Leistungs-Ranking ausgenommen
@@ -2818,7 +2936,50 @@ def get_kapazitaets_forecast():
         # Gesamtkapazität nächste Woche
         kapazitaet_woche = sum(t['kapazitaet_aw'] for t in tages_forecast[:5])
         geplant_woche = sum(t['geplant_aw'] for t in tages_forecast[:5])
-        
+
+        # =====================================================================
+        # 7. AVG - ABRECHNUNGS-VERZÖGERUNGS-GRÜNDE (TAG 124)
+        # =====================================================================
+
+        avg_query = """
+            SELECT
+                o.clearing_delay_type as avg_code,
+                cdt.description as avg_text,
+                COUNT(*) as anzahl,
+                COALESCE(SUM(l.time_units), 0) as summe_aw
+            FROM orders o
+            LEFT JOIN clearing_delay_types cdt ON o.clearing_delay_type = cdt.type
+            LEFT JOIN labours l ON o.number = l.order_number AND l.time_units > 0
+            WHERE o.has_open_positions = true
+              AND o.clearing_delay_type IS NOT NULL
+              AND o.clearing_delay_type != ''
+        """
+
+        if subsidiary:
+            avg_query += " AND o.subsidiary = %s"
+
+        avg_query += """
+            GROUP BY o.clearing_delay_type, cdt.description
+            ORDER BY anzahl DESC
+        """
+
+        if subsidiary:
+            cur_loco.execute(avg_query, [subsidiary])
+        else:
+            cur_loco.execute(avg_query)
+
+        avg_raw = cur_loco.fetchall()
+
+        avg_statistik = [{
+            'code': a['avg_code'],
+            'text': a['avg_text'] or 'Unbekannt',
+            'anzahl': a['anzahl'],
+            'summe_aw': float(a['summe_aw'] or 0)
+        } for a in avg_raw]
+
+        avg_gesamt = sum(a['anzahl'] for a in avg_statistik)
+        avg_aw_gesamt = sum(a['summe_aw'] for a in avg_statistik)
+
         cur_loco.close()
         conn_loco.close()
         cur_sqlite.close()
@@ -2867,6 +3028,13 @@ def get_kapazitaets_forecast():
                 'geplant_aw': geplant_woche,
                 'auslastung_prozent': round((geplant_woche / kapazitaet_woche * 100) if kapazitaet_woche > 0 else 0, 1),
                 'freie_kapazitaet_aw': kapazitaet_woche - geplant_woche
+            },
+
+            # AVG - Abrechnungs-Verzögerungs-Gründe (TAG 124)
+            'avg': {
+                'gesamt_auftraege': avg_gesamt,
+                'gesamt_aw': round(avg_aw_gesamt, 1),
+                'statistik': avg_statistik
             }
         })
         
@@ -4447,4 +4615,440 @@ def get_drive_kapazitaet():
 
     except Exception as e:
         logger.exception("Fehler bei DRIVE Kapazität")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# =============================================================================
+# WERKSTATT LIVE-BOARD (TAG 125)
+# Gantt-ähnliche Ansicht: Wer arbeitet gerade an was?
+# Hybrid: Geplante Aufträge (aus Disposition) + Live-Stempelstatus
+# =============================================================================
+
+@werkstatt_live_bp.route('/board', methods=['GET'])
+def get_werkstatt_liveboard():
+    """
+    Werkstatt Live-Board: Echtzeit-Übersicht aller Mechaniker und ihrer Aufträge.
+
+    HYBRID-ANSATZ:
+    1. Geplante Aufträge aus Disposition (orders + labours) - Was ist für heute geplant?
+    2. Live-Stempelstatus (times) - Wer arbeitet GERADE an was?
+
+    Zeigt für jeden Mechaniker:
+    - Geplante Aufträge für heute (aus Disposition)
+    - Live-Status: Aktuell in Arbeit (grün pulsierend)
+    - Abgeschlossene Aufträge (lila)
+    - Urlaub/Krank Status
+
+    Query-Parameter:
+    - betrieb: 1=DEG, 2=Hyundai, 3=Landau (optional, default=alle)
+    - datum: YYYY-MM-DD (optional, default=heute)
+
+    Returns:
+        JSON mit Mechaniker-Liste und ihren Zeitblöcken + Eingangs-Liste
+    """
+    try:
+        # Parameter
+        betrieb_filter = request.args.get('betrieb', type=int)
+        datum_str = request.args.get('datum')
+
+        if datum_str:
+            try:
+                datum = datetime.strptime(datum_str, '%Y-%m-%d').date()
+            except ValueError:
+                datum = datetime.now().date()
+        else:
+            datum = datetime.now().date()
+
+        conn = get_locosoft_connection()
+        if not conn:
+            return jsonify({'success': False, 'error': 'Keine Datenbankverbindung'}), 500
+
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        # 1. Alle AKTIVEN Mechaniker holen (mit Gruppen-Filter für Werkstatt)
+        # Nutze employees_history mit is_latest_record um ausgeschiedene MA zu filtern
+        mechaniker_query = """
+            SELECT DISTINCT
+                eh.employee_number,
+                eh.name,
+                egm.grp_code,
+                eh.subsidiary
+            FROM employees_history eh
+            JOIN employees_group_mapping egm ON eh.employee_number = egm.employee_number
+            WHERE egm.grp_code IN ('MON', 'LAK')
+              AND eh.is_latest_record = true
+              AND eh.leave_date IS NULL
+        """
+        params = []
+
+        if betrieb_filter:
+            mechaniker_query += " AND eh.subsidiary = %s"
+            params.append(betrieb_filter)
+
+        mechaniker_query += " ORDER BY eh.subsidiary, eh.name"
+
+        cur.execute(mechaniker_query, params)
+        mechaniker_list = cur.fetchall()
+
+        # 2. Abwesenheiten für heute holen
+        cur.execute("""
+            SELECT ac.employee_number, at.description as grund
+            FROM absence_calendar ac
+            JOIN absence_types at ON ac.type = at.type
+            WHERE ac.date = %s
+        """, [datum])
+        abwesenheiten = {row['employee_number']: row['grund'] for row in cur.fetchall()}
+
+        # 3. GEPLANTE AUFTRÄGE für heute (aus Disposition)
+        cur.execute("""
+            SELECT DISTINCT
+                o.number as auftrag_nr,
+                v.license_plate as kennzeichen,
+                COALESCE(cs.family_name, '') || ' ' || COALESCE(cs.first_name, '') as kunde,
+                v.free_form_make_text as marke,
+                o.estimated_inbound_time as bringen,
+                o.estimated_outbound_time as abholen,
+                o.subsidiary,
+                l.mechanic_no,
+                SUM(l.time_units) OVER (PARTITION BY o.number, l.mechanic_no) as vorgabe_aw
+            FROM orders o
+            LEFT JOIN vehicles v ON o.vehicle_number = v.internal_number
+            LEFT JOIN customers_suppliers cs ON o.order_customer = cs.customer_number
+            LEFT JOIN labours l ON o.number = l.order_number
+            WHERE (DATE(o.estimated_inbound_time) = %s OR DATE(o.estimated_outbound_time) = %s)
+              AND o.has_open_positions = true
+        """, [datum, datum])
+        geplante_auftraege_raw = cur.fetchall()
+
+        # Gruppieren nach Mechaniker
+        geplant_pro_mechaniker = {}
+        unverplante_auftraege = []
+
+        for a in geplante_auftraege_raw:
+            auftrag_data = {
+                'auftrag_nr': a['auftrag_nr'],
+                'kennzeichen': a['kennzeichen'] or '',
+                'kunde': (a['kunde'] or '').strip(),
+                'marke': a['marke'] or '',
+                'bringen': a['bringen'].strftime('%H:%M') if a['bringen'] else None,
+                'bringen_ts': a['bringen'].isoformat() if a['bringen'] else None,
+                'abholen': a['abholen'].strftime('%H:%M') if a['abholen'] else None,
+                'abholen_ts': a['abholen'].isoformat() if a['abholen'] else None,
+                'vorgabe_aw': float(a['vorgabe_aw'] or 0),
+                'subsidiary': a['subsidiary'],
+                'typ': 'geplant'
+            }
+
+            mech_nr = a['mechanic_no']
+            if mech_nr:
+                if mech_nr not in geplant_pro_mechaniker:
+                    geplant_pro_mechaniker[mech_nr] = []
+                # Duplikate vermeiden
+                if not any(x['auftrag_nr'] == auftrag_data['auftrag_nr'] for x in geplant_pro_mechaniker[mech_nr]):
+                    geplant_pro_mechaniker[mech_nr].append(auftrag_data)
+            else:
+                # Unverplant (kein Mechaniker zugewiesen)
+                if not any(x['auftrag_nr'] == auftrag_data['auftrag_nr'] for x in unverplante_auftraege):
+                    unverplante_auftraege.append(auftrag_data)
+
+        # 4. LIVE-STEMPELUNGEN für heute (wer arbeitet GERADE an was)
+        cur.execute("""
+            SELECT DISTINCT ON (t.employee_number, t.order_number)
+                t.employee_number,
+                t.order_number,
+                t.start_time,
+                t.end_time,
+                t.duration_minutes
+            FROM times t
+            WHERE DATE(t.start_time) = %s
+              AND t.type = 2
+            ORDER BY t.employee_number, t.order_number, t.start_time DESC
+        """, [datum])
+        live_stempelungen = cur.fetchall()
+
+        # Gruppieren nach Mechaniker
+        live_pro_mechaniker = {}
+        for s in live_stempelungen:
+            emp = s['employee_number']
+            if emp not in live_pro_mechaniker:
+                live_pro_mechaniker[emp] = []
+            live_pro_mechaniker[emp].append({
+                'auftrag_nr': s['order_number'],
+                'start': s['start_time'].strftime('%H:%M') if s['start_time'] else None,
+                'start_ts': s['start_time'].isoformat() if s['start_time'] else None,
+                'ende': s['end_time'].strftime('%H:%M') if s['end_time'] else None,
+                'ende_ts': s['end_time'].isoformat() if s['end_time'] else None,
+                'dauer_min': s['duration_minutes'] or 0,
+                'ist_aktiv': s['end_time'] is None
+            })
+
+        # 4a. Auftragsdetails für alle Live-Stempelungen holen (inkl. AW aus labours)
+        alle_live_auftraege = list(set(s['order_number'] for s in live_stempelungen))
+        auftrags_details = {}
+        if alle_live_auftraege:
+            placeholders = ','.join(['%s'] * len(alle_live_auftraege))
+            cur.execute(f"""
+                SELECT
+                    o.number as auftrag_nr,
+                    v.license_plate as kennzeichen,
+                    COALESCE(cs.family_name, '') || ' ' || COALESCE(cs.first_name, '') as kunde,
+                    v.free_form_make_text as marke,
+                    COALESCE(l.gesamt_aw, 0) as vorgabe_aw
+                FROM orders o
+                LEFT JOIN vehicles v ON o.vehicle_number = v.internal_number
+                LEFT JOIN customers_suppliers cs ON o.order_customer = cs.customer_number
+                LEFT JOIN (
+                    SELECT order_number, SUM(time_units) as gesamt_aw
+                    FROM labours
+                    WHERE time_units > 0
+                    GROUP BY order_number
+                ) l ON o.number = l.order_number
+                WHERE o.number IN ({placeholders})
+            """, alle_live_auftraege)
+            for row in cur.fetchall():
+                auftrags_details[row['auftrag_nr']] = {
+                    'kennzeichen': row['kennzeichen'] or '',
+                    'kunde': (row['kunde'] or '').strip(),
+                    'marke': row['marke'] or '',
+                    'vorgabe_aw': float(row['vorgabe_aw'] or 0)
+                }
+
+        # 4b. GUDAT Disposition holen (TAG 125)
+        gudat_disposition = get_gudat_disposition(datum)
+
+        # Name-Mapping: Gudat "Vorname Nachname" → Locosoft "Nachname, Vorname"
+        def match_gudat_name(locosoft_name, gudat_names):
+            """Findet passenden Gudat-Namen für Locosoft-Namen"""
+            if not locosoft_name:
+                return None
+            # Locosoft: "Reitmeier, Tobias" → parts = ["Reitmeier", "Tobias"]
+            parts = [p.strip() for p in locosoft_name.split(',')]
+            if len(parts) >= 2:
+                nachname, vorname = parts[0], parts[1].split()[0]  # Nur erster Vorname
+                # Gudat: "Tobias Reitmeier"
+                gudat_pattern1 = f"{vorname} {nachname}"
+                gudat_pattern2 = f"{nachname} {vorname}"
+                for gn in gudat_names:
+                    gn_lower = gn.lower()
+                    if gudat_pattern1.lower() == gn_lower or gudat_pattern2.lower() == gn_lower:
+                        return gn
+                    # Fuzzy: enthält Vor- und Nachname
+                    if vorname.lower() in gn_lower and nachname.lower() in gn_lower:
+                        return gn
+            return None
+
+        # Gudat-Mechaniker-Mapping erstellen
+        gudat_to_locosoft = {}
+        for mech in mechaniker_list:
+            matched = match_gudat_name(mech['name'], gudat_disposition.keys())
+            if matched:
+                gudat_to_locosoft[mech['employee_number']] = gudat_disposition[matched]
+
+        # 5. Mechaniker-Daten zusammenführen
+        result_mechaniker = []
+
+        for mech in mechaniker_list:
+            emp_nr = mech['employee_number']
+            abwesend_grund = abwesenheiten.get(emp_nr)
+
+            # Geplante Aufträge für diesen Mechaniker
+            geplante = geplant_pro_mechaniker.get(emp_nr, [])
+
+            # Live-Stempelungen für diesen Mechaniker
+            live = live_pro_mechaniker.get(emp_nr, [])
+
+            # Aktiver Auftrag (aus Live-Stempelungen)
+            aktiver_auftrag = next((l for l in live if l['ist_aktiv']), None)
+
+            # Zeitblöcke: Kombination aus geplant + live
+            zeitbloecke = []
+
+            # Geplante Aufträge hinzufügen
+            for g in geplante:
+                # Prüfen ob dieser Auftrag schon gestempelt wird
+                live_match = next((l for l in live if l['auftrag_nr'] == g['auftrag_nr']), None)
+
+                zb = {
+                    'auftrag_nr': g['auftrag_nr'],
+                    'kennzeichen': g['kennzeichen'],
+                    'kunde': g['kunde'],
+                    'marke': g['marke'],
+                    'vorgabe_aw': g['vorgabe_aw'],
+                    'bringen': g['bringen'],
+                    'abholen': g['abholen'],
+                    'typ': 'geplant'
+                }
+
+                if live_match:
+                    # Auftrag wird gerade bearbeitet
+                    zb['start'] = live_match['start']
+                    zb['start_ts'] = live_match['start_ts']
+                    zb['ende'] = live_match['ende']
+                    zb['ende_ts'] = live_match['ende_ts']
+                    zb['ist_aktiv'] = live_match['ist_aktiv']
+                    zb['dauer_min'] = live_match['dauer_min']
+                    zb['typ'] = 'aktiv' if live_match['ist_aktiv'] else 'bearbeitet'
+                else:
+                    # Noch nicht angefangen
+                    zb['start'] = g['bringen']
+                    zb['start_ts'] = g['bringen_ts']
+                    zb['ende'] = g['abholen']
+                    zb['ende_ts'] = g['abholen_ts']
+                    zb['ist_aktiv'] = False
+                    zb['dauer_min'] = 0
+
+                zeitbloecke.append(zb)
+
+            # Live-Aufträge die NICHT in geplant sind (Ad-hoc Arbeiten)
+            for l in live:
+                if not any(z['auftrag_nr'] == l['auftrag_nr'] for z in zeitbloecke):
+                    # Details aus Locosoft holen (falls verfügbar)
+                    details = auftrags_details.get(l['auftrag_nr'], {})
+                    zeitbloecke.append({
+                        'auftrag_nr': l['auftrag_nr'],
+                        'kennzeichen': details.get('kennzeichen', ''),
+                        'kunde': details.get('kunde', ''),
+                        'marke': details.get('marke', ''),
+                        'vorgabe_aw': details.get('vorgabe_aw', 0),
+                        'start': l['start'],
+                        'start_ts': l['start_ts'],
+                        'ende': l['ende'],
+                        'ende_ts': l['ende_ts'],
+                        'ist_aktiv': l['ist_aktiv'],
+                        'dauer_min': l['dauer_min'],
+                        'typ': 'aktiv' if l['ist_aktiv'] else 'bearbeitet'
+                    })
+
+            # GUDAT Disposition hinzufügen (TAG 125)
+            gudat_tasks = gudat_to_locosoft.get(emp_nr, [])
+
+            # Finde letzte Endzeit aus bestehenden Zeitblöcken für Gudat-Stacking
+            gudat_start_time = datetime.combine(datum, time(8, 0))  # Default 08:00
+            for zb in zeitbloecke:
+                if zb.get('ende_ts'):
+                    try:
+                        ende_dt = datetime.fromisoformat(zb['ende_ts'])
+                        if ende_dt > gudat_start_time:
+                            gudat_start_time = ende_dt
+                    except:
+                        pass
+
+            for gt in gudat_tasks:
+                # Prüfen ob dieser Auftrag schon in zeitbloecke ist
+                auftrag_nr = gt.get('auftrag_nr')
+                existing = next((z for z in zeitbloecke if z.get('auftrag_nr') == auftrag_nr), None)
+                if existing:
+                    # Gudat-Daten in bestehenden Block mergen (AW, Kennzeichen falls leer)
+                    if not existing.get('kennzeichen') and gt.get('kennzeichen'):
+                        existing['kennzeichen'] = gt.get('kennzeichen')
+                    if not existing.get('vorgabe_aw') and gt.get('vorgabe_aw'):
+                        existing['vorgabe_aw'] = gt.get('vorgabe_aw')
+                    continue  # Nicht nochmal hinzufügen
+                # Auch prüfen ob Kennzeichen schon drin ist
+                kz = gt.get('kennzeichen', '').replace(' ', '').replace('-', '').upper()
+                if kz and any(
+                    (z.get('kennzeichen') or '').replace(' ', '').replace('-', '').upper() == kz
+                    for z in zeitbloecke
+                ):
+                    continue  # Schon vorhanden
+
+                # Geschätzte Dauer: AW * 6 Minuten (oder min 30 Min)
+                aw = gt.get('vorgabe_aw', 0) or 2
+                dauer_min = max(int(aw * 6), 30)
+                gudat_ende_time = gudat_start_time + timedelta(minutes=dauer_min)
+
+                zeitbloecke.append({
+                    'auftrag_nr': auftrag_nr,
+                    'kennzeichen': gt.get('kennzeichen', ''),
+                    'kunde': '',
+                    'marke': '',
+                    'vorgabe_aw': gt.get('vorgabe_aw', 0),
+                    'beschreibung': gt.get('beschreibung', ''),
+                    'service': gt.get('service', ''),
+                    'gudat_status': gt.get('status', ''),
+                    'start': gudat_start_time.strftime('%H:%M'),
+                    'start_ts': gudat_start_time.isoformat(),
+                    'ende': gudat_ende_time.strftime('%H:%M'),
+                    'ende_ts': gudat_ende_time.isoformat(),
+                    'ist_aktiv': False,
+                    'dauer_min': dauer_min,
+                    'typ': 'gudat_geplant'
+                })
+
+                # Nächster Task startet nach diesem
+                gudat_start_time = gudat_ende_time
+
+            # Sortieren nach Startzeit/Bringen
+            zeitbloecke.sort(key=lambda x: x.get('start_ts') or x.get('bringen_ts') or '')
+
+            # Gesamte Arbeitszeit berechnen
+            gesamt_minuten = sum(zb.get('dauer_min', 0) for zb in zeitbloecke if not zb.get('ist_aktiv'))
+            if aktiver_auftrag and aktiver_auftrag.get('start_ts'):
+                start_dt = datetime.fromisoformat(aktiver_auftrag['start_ts'])
+                laufzeit = (datetime.now() - start_dt).total_seconds() / 60
+                gesamt_minuten += laufzeit
+
+            # Gesamt-AW geplant
+            gesamt_aw_geplant = sum(zb.get('vorgabe_aw', 0) for zb in zeitbloecke)
+
+            # Kurznamen ableiten: "Nachname, Vorname" -> "Vorname"
+            full_name = mech['name'] or ''
+            if ',' in full_name:
+                short_name = full_name.split(',')[1].strip().split()[0]  # Vorname
+            else:
+                short_name = full_name.split()[0] if full_name else '?'
+
+            result_mechaniker.append({
+                'employee_number': emp_nr,
+                'name': mech['name'],
+                'short_name': short_name,
+                'betrieb': mech['subsidiary'],
+                'betrieb_name': BETRIEB_NAMEN.get(mech['subsidiary'], '?'),
+                'gruppe': mech['grp_code'],
+                'ist_abwesend': abwesend_grund is not None,
+                'abwesend_grund': abwesend_grund,
+                'zeitbloecke': zeitbloecke,
+                'aktiver_auftrag': aktiver_auftrag,
+                'anzahl_auftraege': len(zeitbloecke),
+                'gesamt_minuten': round(gesamt_minuten),
+                'gesamt_aw_geplant': round(gesamt_aw_geplant, 1)
+            })
+
+        cur.close()
+        conn.close()
+
+        # Nach Betrieb gruppieren
+        betriebe = {}
+        for m in result_mechaniker:
+            b = m['betrieb']
+            if b not in betriebe:
+                betriebe[b] = {
+                    'betrieb': b,
+                    'name': BETRIEB_NAMEN.get(b, '?'),
+                    'mechaniker': []
+                }
+            betriebe[b]['mechaniker'].append(m)
+
+        # Gudat-Stats
+        gudat_tasks_total = sum(len(tasks) for tasks in gudat_disposition.values())
+        gudat_matched = len(gudat_to_locosoft)
+
+        return jsonify({
+            'success': True,
+            'datum': datum.isoformat(),
+            'timestamp': datetime.now().isoformat(),
+            'betriebe': list(betriebe.values()),
+            'mechaniker': result_mechaniker,
+            'eingang': unverplante_auftraege,  # Unverplante Aufträge (Eingangs-Liste)
+            'gesamt_mechaniker': len(result_mechaniker),
+            'gesamt_aktiv': sum(1 for m in result_mechaniker if m['aktiver_auftrag']),
+            'gesamt_abwesend': sum(1 for m in result_mechaniker if m['ist_abwesend']),
+            'gesamt_unverplant': len(unverplante_auftraege),
+            'gudat_geladen': gudat_tasks_total > 0,
+            'gudat_tasks': gudat_tasks_total,
+            'gudat_mechaniker_matched': gudat_matched
+        })
+
+    except Exception as e:
+        logger.exception("Fehler bei Werkstatt Live-Board")
         return jsonify({'success': False, 'error': str(e)}), 500

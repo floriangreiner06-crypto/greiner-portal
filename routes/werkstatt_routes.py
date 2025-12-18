@@ -138,3 +138,11 @@ def drive_kulanz():
 def drive_kapazitaet():
     """DRIVE ML-Kapazität mit Korrekturfaktoren"""
     return render_template('aftersales/drive_kapazitaet.html')
+
+
+@werkstatt_routes.route('/werkstatt/liveboard')
+@werkstatt_routes.route('/werkstatt/drive/liveboard')
+@login_required
+def werkstatt_liveboard():
+    """Werkstatt Live-Board - Wer arbeitet gerade an was? (TAG 125)"""
+    return render_template('aftersales/werkstatt_liveboard.html')

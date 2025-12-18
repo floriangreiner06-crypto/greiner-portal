@@ -345,7 +345,7 @@
                         
                         <div class="accordion-item border-0 border-top">
                             <h2 class="accordion-header">
-                                <button class="accordion-button collapsed py-2" type="button" 
+                                <button class="accordion-button collapsed py-2" type="button"
                                         data-bs-toggle="collapse" data-bs-target="#collapseTeile">
                                     <i class="bi bi-box-seam text-warning me-2"></i>
                                     <span id="detail-teile-title">Warten auf Teile</span>
@@ -361,6 +361,43 @@
                                             <tbody id="table-teile">
                                                 <tr><td colspan="4" class="text-center text-muted">Keine Daten</td></tr>
                                             </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- AVG - ABRECHNUNGS-VERZÖGERUNGS-GRÜNDE (TAG 124) -->
+                        <div class="accordion-item border-0 border-top">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed py-2" type="button"
+                                        data-bs-toggle="collapse" data-bs-target="#collapseAVG">
+                                    <i class="bi bi-hourglass-split text-info me-2"></i>
+                                    <span id="detail-avg-title">Verzögerungsgründe (AVG)</span>
+                                </button>
+                            </h2>
+                            <div id="collapseAVG" class="accordion-collapse collapse" data-bs-parent="#kapaDetails">
+                                <div class="accordion-body p-0">
+                                    <div class="table-responsive" style="max-height: 350px; overflow-y: auto;">
+                                        <table class="table table-sm table-hover mb-0">
+                                            <thead class="table-light sticky-top">
+                                                <tr>
+                                                    <th style="width: 50px;">Code</th>
+                                                    <th>Grund</th>
+                                                    <th class="text-end" style="width: 80px;">Anzahl</th>
+                                                    <th class="text-end" style="width: 80px;">AW</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="table-avg">
+                                                <tr><td colspan="4" class="text-center text-muted">Keine Daten</td></tr>
+                                            </tbody>
+                                            <tfoot class="table-light fw-bold">
+                                                <tr>
+                                                    <td colspan="2">Gesamt</td>
+                                                    <td class="text-end" id="avg-gesamt-anzahl">-</td>
+                                                    <td class="text-end" id="avg-gesamt-aw">-</td>
+                                                </tr>
+                                            </tfoot>
                                         </table>
                                     </div>
                                 </div>
@@ -609,6 +646,9 @@ function renderForecast(data) {
     renderDetailTable('table-ueberfaellig', data.ueberfaellig?.auftraege || [], 'ueberfaellig');
     renderDetailTable('table-teile', data.teile?.auftraege || [], 'teile');
 
+    // AVG-Tabelle (TAG125)
+    renderAVGTable(data.avg || {});
+
     // Titel aktualisieren
     document.getElementById('detail-unverplant-title').textContent =
         `Unverplante Aufträge (${data.unverplant?.anzahl || 0})`;
@@ -616,6 +656,8 @@ function renderForecast(data) {
         `Überfällige Aufträge (${data.ueberfaellig?.anzahl || 0})`;
     document.getElementById('detail-teile-title').textContent =
         `Warten auf Teile (${data.teile?.auftraege_warten_auf_teile || 0})`;
+    document.getElementById('detail-avg-title').textContent =
+        `Verzögerungsgründe AVG (${data.avg?.gesamt_auftraege || 0})`;
 }
 
 function renderWarnungen(warnungen) {
@@ -713,6 +755,52 @@ function renderDetailTable(tableId, auftraege, type) {
             </tr>`;
         }
     }).join('');
+}
+
+// TAG125: AVG-Tabelle rendern
+function renderAVGTable(avgData) {
+    const tbody = document.getElementById('table-avg');
+    const gesamtAnzahl = document.getElementById('avg-gesamt-anzahl');
+    const gesamtAW = document.getElementById('avg-gesamt-aw');
+
+    if (!tbody) return;
+
+    const statistik = avgData.statistik || [];
+
+    if (statistik.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Keine Verzögerungsgründe</td></tr>';
+        if (gesamtAnzahl) gesamtAnzahl.textContent = '0';
+        if (gesamtAW) gesamtAW.textContent = '0';
+        return;
+    }
+
+    // Farben für AVG-Codes
+    const avgColors = {
+        'A': 'warning',   // Auftrag noch nicht abgeschlossen
+        'B': 'info',      // Prüfung
+        'F': 'danger',    // Fehlteile
+        'G': 'secondary', // Garantie/Kulanz
+        'P': 'warning',   // Prüfung erforderlich
+        'R': 'info',      // Rückfrage Kunde
+        'S': 'primary',   // Termin vereinbart
+        'T': 'danger',    // Teile fehlen
+        'V': 'success',   // Freigabe erteilt
+        'W': 'warning'    // Warten auf...
+    };
+
+    tbody.innerHTML = statistik.map(row => {
+        const colorClass = avgColors[row.code] || 'secondary';
+        return `<tr>
+            <td><span class="badge bg-${colorClass}">${row.code || '-'}</span></td>
+            <td>${row.text || 'Unbekannt'}</td>
+            <td class="text-end">${row.anzahl || 0}</td>
+            <td class="text-end">${Math.round(row.summe_aw || 0)}</td>
+        </tr>`;
+    }).join('');
+
+    // Footer aktualisieren
+    if (gesamtAnzahl) gesamtAnzahl.textContent = avgData.gesamt_auftraege || 0;
+    if (gesamtAW) gesamtAW.textContent = Math.round(avgData.gesamt_aw || 0);
 }
 
 // ============================================================
