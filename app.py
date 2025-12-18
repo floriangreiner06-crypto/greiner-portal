@@ -583,6 +583,46 @@ def werkstatt_stempeluhr_monitor():
 
 
 # ========================================
+# TAG 126: LIVEBOARD MONITOR (ohne Login)
+# ========================================
+
+@app.route('/monitor/liveboard')
+@app.route('/monitor/liveboard/gantt')
+def werkstatt_liveboard_monitor():
+    """
+    Werkstatt Live-Board - MONITOR VERSION (ohne Login)
+    Zugriff über Token-Parameter oder interne IP.
+
+    URLs:
+    - /monitor/liveboard?token=XXX&betrieb=deg        (Karten-Ansicht)
+    - /monitor/liveboard/gantt?token=XXX&betrieb=deg  (Gantt-Ansicht)
+    """
+    # Monitor-Token (geheim halten!)
+    MONITOR_TOKEN = 'Greiner2024Werkstatt!'
+
+    # Token aus URL prüfen
+    token = request.args.get('token', '')
+
+    # IP prüfen
+    client_ip = request.remote_addr
+    if request.headers.get('X-Forwarded-For'):
+        client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
+
+    # Zugriff erlauben wenn: korrekter Token ODER interne IP
+    is_internal = client_ip.startswith('10.80.80.') or client_ip == '127.0.0.1'
+    is_valid_token = token == MONITOR_TOKEN
+
+    if not (is_internal or is_valid_token):
+        return "Zugriff verweigert. Token erforderlich.", 403
+
+    # Gantt oder Karten-Ansicht?
+    if request.path.endswith('/gantt'):
+        return render_template('aftersales/werkstatt_liveboard_gantt.html')
+    else:
+        return render_template('aftersales/werkstatt_liveboard.html')
+
+
+# ========================================
 # TAG 116: KAPAZITÄTSPLANUNG + ANWESENHEIT
 # ========================================
 

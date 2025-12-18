@@ -154,6 +154,12 @@
             <div class="stat-label">Pausiert</div>
             <div class="leerlauf-namen" id="pausiertNamen"></div>
         </div>
+        <!-- TAG 126: Feierabend -->
+        <div class="stat-card" id="feierabendCard" style="background: linear-gradient(135deg, #11998e, #38ef7d);">
+            <div class="stat-number" id="countFeierabend">-</div>
+            <div class="stat-label">Feierabend</div>
+            <div class="leerlauf-namen" id="feierabendNamen"></div>
+        </div>
         <div class="stat-card abwesend">
             <div class="stat-number" id="countAbwesend">-</div>
             <div class="stat-label">Abwesend</div>
@@ -208,6 +214,7 @@
             document.getElementById('countAktiv').textContent = data.summary.produktiv || data.summary.aktiv;
             document.getElementById('countLeerlauf').textContent = data.summary.leerlauf;
             document.getElementById('countPausiert').textContent = data.summary.pausiert || 0;  // TAG 112
+            document.getElementById('countFeierabend').textContent = data.summary.feierabend || 0;  // TAG 126
             document.getElementById('countAbwesend').textContent = data.summary.abwesend;
             
             // TAG 112: Pausen-Banner anzeigen
@@ -217,15 +224,27 @@
             }
             
             // TAG 112: Pausiert-Namen anzeigen
+            // TAG 126: Zeige "seit HH:MM" statt Gesamtarbeitszeit
             const pausiertNamen = document.getElementById('pausiertNamen');
             if (data.pausiert_mechaniker && data.pausiert_mechaniker.length > 0) {
                 pausiertNamen.innerHTML = data.pausiert_mechaniker.map(m => {
-                    const heuteStd = Math.floor(m.heute_min / 60);
-                    const zeit = heuteStd > 0 ? `${heuteStd}h` : `${m.heute_min}m`;
-                    return `<span class="badge bg-light text-dark me-1">⏸️ ${m.name.split(',')[0]} (${zeit})</span>`;
+                    const zeit = m.pausiert_seit ? `seit ${m.pausiert_seit}` : '';
+                    return `<span class="badge bg-light text-dark me-1">⏸️ ${m.name.split(',')[0]} ${zeit}</span>`;
                 }).join('');
             } else {
                 pausiertNamen.innerHTML = '';
+            }
+
+            // TAG 126: Feierabend-Namen anzeigen
+            const feierabendNamen = document.getElementById('feierabendNamen');
+            if (data.feierabend_mechaniker && data.feierabend_mechaniker.length > 0) {
+                feierabendNamen.innerHTML = data.feierabend_mechaniker.map(m => {
+                    const heuteStd = Math.floor(m.heute_min / 60);
+                    const zeit = heuteStd > 0 ? `${heuteStd}h` : `${m.heute_min}m`;
+                    return `<span class="badge bg-light text-dark me-1">🏠 ${m.name.split(',')[0]} (${m.gegangen_um})</span>`;
+                }).join('');
+            } else {
+                feierabendNamen.innerHTML = '';
             }
             
             // Leerlauf Alarm

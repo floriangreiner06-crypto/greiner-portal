@@ -434,20 +434,24 @@ function renderDashboard(dashboard) {
 
 function renderMechaniker(mechaniker) {
     const container = document.getElementById('mechanikerContainer');
-    
+
     if (!mechaniker.length) {
         container.innerHTML = '<div class="p-3 text-muted text-center">Keine aktiven Mechaniker</div>';
         return;
     }
-    
+
     let html = '';
     mechaniker.slice(0, 10).forEach(m => {
         const initials = m.name ? m.name.split(',')[0].substring(0, 2).toUpperCase() : '??';
+        // TAG 126: Warnung wenn heute nicht gestempelt
+        const nichtGestempelt = m.heute_gestempelt === false;
+        const warnClass = nichtGestempelt ? 'opacity-50' : '';
+        const warnIcon = nichtGestempelt ? '<i class="bi bi-exclamation-circle text-warning ms-1" title="Heute nicht gestempelt"></i>' : '';
         html += `
-            <div class="mechaniker-item">
+            <div class="mechaniker-item ${warnClass}">
                 <div class="mechaniker-avatar">${initials}</div>
                 <div class="flex-grow-1">
-                    <div class="fw-bold">${m.name || 'Unbekannt'}</div>
+                    <div class="fw-bold">${m.name || 'Unbekannt'}${warnIcon}</div>
                     <small class="text-muted">
                         ${m.anzahl_auftraege} Aufträge | ${m.summe_aw.toFixed(1)} AW
                     </small>
@@ -456,7 +460,7 @@ function renderMechaniker(mechaniker) {
             </div>
         `;
     });
-    
+
     container.innerHTML = html;
 }
 

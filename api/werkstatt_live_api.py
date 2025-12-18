@@ -149,6 +149,9 @@ def get_gudat_disposition(target_date=None):
             vehicle = dossier.get('vehicle') or {}
             orders = dossier.get('orders') or []
 
+            # TAG 126: start_date aus Gudat extrahieren für korrekte Zeitpositionierung
+            gudat_start = task.get('start_date')  # Format: "2025-12-18 10:30:00"
+
             task_data = {
                 'gudat_id': task.get('id'),
                 'kennzeichen': vehicle.get('license_plate', ''),
@@ -156,7 +159,8 @@ def get_gudat_disposition(target_date=None):
                 'vorgabe_aw': float(task.get('work_load') or 0),
                 'status': task.get('work_state', ''),
                 'beschreibung': task.get('description', ''),
-                'service': (task.get('workshopService') or {}).get('name', '')
+                'service': (task.get('workshopService') or {}).get('name', ''),
+                'start_date': gudat_start  # Echte Startzeit aus Gudat
             }
 
             if mech_name not in by_mechanic:
@@ -673,21 +677,41 @@ def get_live_dashboard():
         heute_stats = cur.fetchone()
         
         # 3. Aktive Mechaniker (mit zugeordneten offenen Aufträgen)
+        # TAG 126: Feierabend-Status hinzufügen (Type 1 mit end_time = gegangen)
         cur.execute("""
-            SELECT 
+            WITH feierabend AS (
+                SELECT employee_number, MAX(end_time) as gegangen_um
+                FROM times
+                WHERE type = 1
+                  AND DATE(start_time) = CURRENT_DATE
+                  AND end_time IS NOT NULL
+                GROUP BY employee_number
+            ),
+            heute_gestempelt AS (
+                SELECT DISTINCT employee_number
+                FROM times
+                WHERE type = 2
+                  AND DATE(start_time) = CURRENT_DATE
+            )
+            SELECT
                 l.mechanic_no,
                 eh.name as name,
                 eh.subsidiary as betrieb,
                 COUNT(DISTINCT l.order_number) as anzahl_auftraege,
-                COALESCE(SUM(l.time_units), 0) as summe_aw
+                COALESCE(SUM(l.time_units), 0) as summe_aw,
+                f.gegangen_um,
+                CASE WHEN hg.employee_number IS NOT NULL THEN true ELSE false END as heute_gestempelt
             FROM labours l
             JOIN orders o ON l.order_number = o.number
-            LEFT JOIN employees_history eh ON l.mechanic_no = eh.employee_number 
+            LEFT JOIN employees_history eh ON l.mechanic_no = eh.employee_number
                 AND eh.is_latest_record = true
+            LEFT JOIN feierabend f ON l.mechanic_no = f.employee_number
+            LEFT JOIN heute_gestempelt hg ON l.mechanic_no = hg.employee_number
             WHERE l.mechanic_no IS NOT NULL
               AND o.has_open_positions = true
               AND o.order_date >= CURRENT_DATE - INTERVAL '2 days'
-            GROUP BY l.mechanic_no, eh.name, eh.subsidiary
+              AND f.employee_number IS NULL  -- TAG 126: Feierabend ausschließen
+            GROUP BY l.mechanic_no, eh.name, eh.subsidiary, f.gegangen_um, hg.employee_number
             ORDER BY anzahl_auftraege DESC
         """)
         aktive_mechaniker = cur.fetchall()
@@ -736,7 +760,8 @@ def get_live_dashboard():
                         'name': r['name'] or f"MA {r['mechanic_no']}",
                         'betrieb': r['betrieb'],
                         'anzahl_auftraege': r['anzahl_auftraege'],
-                        'summe_aw': float(r['summe_aw'])
+                        'summe_aw': float(r['summe_aw']),
+                        'heute_gestempelt': r.get('heute_gestempelt', False)  # TAG 126
                     } for r in aktive_mechaniker
                 ],
                 'serviceberater': [
@@ -804,8 +829,8 @@ def get_stempeluhr_live():
                     COALESCE((
                         SELECT SUM(dur) FROM (
                             SELECT DISTINCT ON (start_time, end_time) duration_minutes as dur
-                            FROM times t2 
-                            WHERE t2.order_number = t.order_number 
+                            FROM times t2
+                            WHERE t2.order_number = t.order_number
                               AND t2.employee_number = t.employee_number
                               AND t2.end_time IS NOT NULL
                               AND t2.type = 2
@@ -813,12 +838,12 @@ def get_stempeluhr_live():
                         ) dedup
                     ), 0) as heute_abgeschlossen_min,
                     -- TAG 112: GESAMT auf Auftrag (alle Tage) für Vorgabe-Vergleich
-                    EXTRACT(EPOCH FROM (NOW() - t.start_time))/60 
+                    EXTRACT(EPOCH FROM (NOW() - t.start_time))/60
                     + COALESCE((
                         SELECT SUM(dur) FROM (
                             SELECT DISTINCT ON (start_time, end_time) duration_minutes as dur
-                            FROM times t2 
-                            WHERE t2.order_number = t.order_number 
+                            FROM times t2
+                            WHERE t2.order_number = t.order_number
                               AND t2.employee_number = t.employee_number
                               AND t2.end_time IS NOT NULL
                               AND t2.type = 2
@@ -829,6 +854,16 @@ def get_stempeluhr_live():
                   AND t.type = 2
                   AND t.order_number > 31
                   AND DATE(t.start_time) = CURRENT_DATE
+                  -- TAG 126: Nur wenn KEINE neueren abgeschlossenen Stempelungen existieren
+                  -- (sonst ist diese offene Stempelung "verwaist")
+                  AND NOT EXISTS (
+                      SELECT 1 FROM times t3
+                      WHERE t3.employee_number = t.employee_number
+                        AND t3.type = 2
+                        AND t3.end_time IS NOT NULL
+                        AND DATE(t3.start_time) = CURRENT_DATE
+                        AND t3.start_time > t.start_time
+                  )
                 ORDER BY t.employee_number, t.start_time DESC
             )
             SELECT 
@@ -996,9 +1031,10 @@ def get_stempeluhr_live():
         # =====================================================================
         # 4. PAUSIERT / WARTET - TAG 112
         # Mechaniker die heute produktiv waren aber gerade keine offene Stempelung haben
+        # TAG 126: "Feierabend" erkennen (Type 1 mit end_time = ausgestempelt)
         # =====================================================================
         pausiert_query = """
-            WITH 
+            WITH
             -- MA die heute type=2 gestempelt haben (produktiv)
             heute_gearbeitet AS (
                 SELECT DISTINCT employee_number
@@ -1008,11 +1044,29 @@ def get_stempeluhr_live():
                   AND order_number > 31
             ),
             -- MA die gerade eine offene Stempelung haben
+            -- TAG 126: Verwaiste Stempelungen ignorieren (wenn danach andere beendet wurden)
             aktuell_aktiv AS (
                 SELECT DISTINCT employee_number
+                FROM times t
+                WHERE t.end_time IS NULL
+                  AND t.type = 2
+                  AND DATE(t.start_time) = CURRENT_DATE
+                  AND NOT EXISTS (
+                      SELECT 1 FROM times t3
+                      WHERE t3.employee_number = t.employee_number
+                        AND t3.type = 2
+                        AND t3.end_time IS NOT NULL
+                        AND DATE(t3.start_time) = CURRENT_DATE
+                        AND t3.start_time > t.start_time
+                  )
+            ),
+            -- TAG 126: MA die heute schon "gegangen" sind (Type 1 mit end_time = Feierabend)
+            feierabend AS (
+                SELECT DISTINCT employee_number, end_time as gegangen_um
                 FROM times
-                WHERE end_time IS NULL
+                WHERE type = 1
                   AND DATE(start_time) = CURRENT_DATE
+                  AND end_time IS NOT NULL
             ),
             -- MA die abwesend sind
             abwesend_heute AS (
@@ -1052,7 +1106,7 @@ def get_stempeluhr_live():
                 ) dedup
                 GROUP BY employee_number
             )
-            SELECT 
+            SELECT
                 hg.employee_number,
                 eh.name,
                 eh.subsidiary,
@@ -1066,10 +1120,11 @@ def get_stempeluhr_live():
             LEFT JOIN tagesarbeit ta ON hg.employee_number = ta.employee_number
             WHERE hg.employee_number NOT IN (SELECT employee_number FROM aktuell_aktiv)
               AND hg.employee_number NOT IN (SELECT employee_number FROM abwesend_heute)
+              AND hg.employee_number NOT IN (SELECT employee_number FROM feierabend)
               AND eh.leave_date IS NULL
               AND eh.subsidiary > 0
         """
-        
+
         # Filter nach Betrieb
         if subsidiaries:
             if len(subsidiaries) == 1 and subsidiaries[0] == 2:
@@ -1084,8 +1139,78 @@ def get_stempeluhr_live():
         else:
             pausiert_query += " ORDER BY eh.subsidiary, ls.pausiert_seit DESC"
             cur.execute(pausiert_query)
-        
+
         pausiert = cur.fetchall()
+
+        # =====================================================================
+        # 5. FEIERABEND - TAG 126
+        # Mechaniker die heute gearbeitet haben und bereits ausgestempelt sind
+        # =====================================================================
+        feierabend_query = """
+            WITH
+            heute_gearbeitet AS (
+                SELECT DISTINCT employee_number
+                FROM times
+                WHERE type = 2
+                  AND DATE(start_time) = CURRENT_DATE
+                  AND order_number > 31
+            ),
+            feierabend AS (
+                SELECT employee_number, MAX(end_time) as gegangen_um
+                FROM times
+                WHERE type = 1
+                  AND DATE(start_time) = CURRENT_DATE
+                  AND end_time IS NOT NULL
+                GROUP BY employee_number
+            ),
+            tagesarbeit AS (
+                SELECT
+                    employee_number,
+                    SUM(dur) as heute_min,
+                    COUNT(DISTINCT auftrag) as heute_auftraege
+                FROM (
+                    SELECT DISTINCT ON (employee_number, start_time, end_time)
+                        employee_number,
+                        order_number as auftrag,
+                        duration_minutes as dur
+                    FROM times
+                    WHERE type = 2
+                      AND DATE(start_time) = CURRENT_DATE
+                      AND end_time IS NOT NULL
+                      AND order_number > 31
+                ) dedup
+                GROUP BY employee_number
+            )
+            SELECT
+                hg.employee_number,
+                eh.name,
+                eh.subsidiary,
+                f.gegangen_um,
+                COALESCE(ta.heute_min, 0) as heute_min,
+                COALESCE(ta.heute_auftraege, 0) as heute_auftraege
+            FROM heute_gearbeitet hg
+            JOIN feierabend f ON hg.employee_number = f.employee_number
+            JOIN employees_history eh ON hg.employee_number = eh.employee_number AND eh.is_latest_record = true
+            LEFT JOIN tagesarbeit ta ON hg.employee_number = ta.employee_number
+            WHERE eh.leave_date IS NULL
+              AND eh.subsidiary > 0
+        """
+
+        if subsidiaries:
+            if len(subsidiaries) == 1 and subsidiaries[0] == 2:
+                cur.execute("SELECT 1 WHERE false")
+            elif len(subsidiaries) == 1:
+                feierabend_query += " AND eh.subsidiary = %s ORDER BY f.gegangen_um DESC"
+                cur.execute(feierabend_query, [subsidiaries[0]])
+            else:
+                placeholders = ','.join(['%s'] * len(subsidiaries))
+                feierabend_query += f" AND eh.subsidiary IN ({placeholders}) ORDER BY f.gegangen_um DESC"
+                cur.execute(feierabend_query, subsidiaries)
+        else:
+            feierabend_query += " ORDER BY eh.subsidiary, f.gegangen_um DESC"
+            cur.execute(feierabend_query)
+
+        feierabend_rows = cur.fetchall()
         
         cur.close()
         conn.close()
@@ -1173,12 +1298,26 @@ def get_stempeluhr_live():
                     'status': 'pausiert'
                 } for r in pausiert
             ],
+            # TAG 126: Mechaniker die Feierabend haben (Type 1 mit end_time)
+            'feierabend_mechaniker': [
+                {
+                    'employee_number': r['employee_number'],
+                    'name': r['name'] or f"MA {r['employee_number']}",
+                    'betrieb': r['subsidiary'],
+                    'betrieb_name': BETRIEB_NAMEN.get(r['subsidiary'], '?'),
+                    'gegangen_um': r['gegangen_um'].strftime('%H:%M') if r.get('gegangen_um') else None,
+                    'heute_min': int(r['heute_min'] or 0),
+                    'heute_auftraege': int(r['heute_auftraege'] or 0),
+                    'status': 'feierabend'
+                } for r in feierabend_rows
+            ],
             'summary': {
                 'produktiv': len(produktiv),
                 'leerlauf': len(leerlauf),
                 'pausiert': len(pausiert),
+                'feierabend': len(feierabend_rows),
                 'abwesend': len(abwesend),
-                'gesamt': len(produktiv) + len(leerlauf) + len(pausiert) + len(abwesend)
+                'gesamt': len(produktiv) + len(leerlauf) + len(pausiert) + len(feierabend_rows) + len(abwesend)
             }
         })
         
@@ -4648,8 +4787,22 @@ def get_werkstatt_liveboard():
     """
     try:
         # Parameter
-        betrieb_filter = request.args.get('betrieb', type=int)
+        # TAG 126: Standort-Filter erweitert
+        # betrieb=1 → Nur Deggendorf (subsidiary 1)
+        # betrieb=deg → Deggendorf + Hyundai (subsidiary 1 + 2)
+        # betrieb=3 → Nur Landau (subsidiary 3)
+        betrieb_param = request.args.get('betrieb', '')
         datum_str = request.args.get('datum')
+
+        # Betrieb-Filter parsen
+        betrieb_subsidiaries = None
+        if betrieb_param:
+            if betrieb_param.lower() == 'deg':
+                betrieb_subsidiaries = [1, 2]  # Deggendorf + Hyundai
+            elif betrieb_param == '1':
+                betrieb_subsidiaries = [1]  # Nur Deggendorf
+            elif betrieb_param == '3':
+                betrieb_subsidiaries = [3]  # Nur Landau
 
         if datum_str:
             try:
@@ -4667,6 +4820,7 @@ def get_werkstatt_liveboard():
 
         # 1. Alle AKTIVEN Mechaniker holen (mit Gruppen-Filter für Werkstatt)
         # Nutze employees_history mit is_latest_record um ausgeschiedene MA zu filtern
+        # TAG 126: Azubis (A-%) und Werkstattleiter (5005) ausfiltern für Kiosk-Ansicht
         mechaniker_query = """
             SELECT DISTINCT
                 eh.employee_number,
@@ -4676,14 +4830,17 @@ def get_werkstatt_liveboard():
             FROM employees_history eh
             JOIN employees_group_mapping egm ON eh.employee_number = egm.employee_number
             WHERE egm.grp_code IN ('MON', 'LAK')
+              AND egm.grp_code NOT LIKE 'A-%%'
+              AND eh.employee_number != 5005
               AND eh.is_latest_record = true
               AND eh.leave_date IS NULL
         """
         params = []
 
-        if betrieb_filter:
-            mechaniker_query += " AND eh.subsidiary = %s"
-            params.append(betrieb_filter)
+        if betrieb_subsidiaries:
+            placeholders = ','.join(['%s'] * len(betrieb_subsidiaries))
+            mechaniker_query += f" AND eh.subsidiary IN ({placeholders})"
+            params.extend(betrieb_subsidiaries)
 
         mechaniker_query += " ORDER BY eh.subsidiary, eh.name"
 
@@ -4700,6 +4857,7 @@ def get_werkstatt_liveboard():
         abwesenheiten = {row['employee_number']: row['grund'] for row in cur.fetchall()}
 
         # 3. GEPLANTE AUFTRÄGE für heute (aus Disposition)
+        # TAG 126: Auch abgerechnete Aufträge zeigen (mit Fertig-Status)
         cur.execute("""
             SELECT DISTINCT
                 o.number as auftrag_nr,
@@ -4710,13 +4868,13 @@ def get_werkstatt_liveboard():
                 o.estimated_outbound_time as abholen,
                 o.subsidiary,
                 l.mechanic_no,
-                SUM(l.time_units) OVER (PARTITION BY o.number, l.mechanic_no) as vorgabe_aw
+                SUM(l.time_units) OVER (PARTITION BY o.number, l.mechanic_no) as vorgabe_aw,
+                o.has_open_positions as ist_offen
             FROM orders o
             LEFT JOIN vehicles v ON o.vehicle_number = v.internal_number
             LEFT JOIN customers_suppliers cs ON o.order_customer = cs.customer_number
             LEFT JOIN labours l ON o.number = l.order_number
             WHERE (DATE(o.estimated_inbound_time) = %s OR DATE(o.estimated_outbound_time) = %s)
-              AND o.has_open_positions = true
         """, [datum, datum])
         geplante_auftraege_raw = cur.fetchall()
 
@@ -4736,7 +4894,8 @@ def get_werkstatt_liveboard():
                 'abholen_ts': a['abholen'].isoformat() if a['abholen'] else None,
                 'vorgabe_aw': float(a['vorgabe_aw'] or 0),
                 'subsidiary': a['subsidiary'],
-                'typ': 'geplant'
+                'typ': 'geplant',
+                'ist_fertig': not a['ist_offen']  # TAG 126: Fertig wenn nicht mehr offen
             }
 
             mech_nr = a['mechanic_no']
@@ -4748,6 +4907,9 @@ def get_werkstatt_liveboard():
                     geplant_pro_mechaniker[mech_nr].append(auftrag_data)
             else:
                 # Unverplant (kein Mechaniker zugewiesen)
+                # TAG 126: Betrieb-Filter auch auf unverplante anwenden
+                if betrieb_subsidiaries and a['subsidiary'] not in betrieb_subsidiaries:
+                    continue
                 if not any(x['auftrag_nr'] == auftrag_data['auftrag_nr'] for x in unverplante_auftraege):
                     unverplante_auftraege.append(auftrag_data)
 
@@ -4779,8 +4941,38 @@ def get_werkstatt_liveboard():
                 'ende': s['end_time'].strftime('%H:%M') if s['end_time'] else None,
                 'ende_ts': s['end_time'].isoformat() if s['end_time'] else None,
                 'dauer_min': s['duration_minutes'] or 0,
-                'ist_aktiv': s['end_time'] is None
+                'ist_aktiv': s['end_time'] is None,
+                '_start_time': s['start_time']  # Für Verwaist-Check
             })
+
+        # TAG 126: Verwaiste offene Stempelungen als nicht-aktiv markieren
+        # Wenn ein MA nach einer offenen Stempelung andere Aufträge beendet hat,
+        # ist die offene Stempelung "verwaist" und nicht mehr aktiv
+        for emp, stempelungen in live_pro_mechaniker.items():
+            # Finde neueste abgeschlossene Stempelung
+            abgeschlossene = [s for s in stempelungen if s['ende'] is not None]
+            if abgeschlossene:
+                # Sortiere nach Startzeit um das nächste Ende zu finden
+                abgeschlossene_sorted = sorted(abgeschlossene, key=lambda x: x['_start_time'])
+                for s in stempelungen:
+                    if s['ist_aktiv']:
+                        # Finde die nächste abgeschlossene Stempelung nach dieser offenen
+                        naechste = next(
+                            (a for a in abgeschlossene_sorted if a['_start_time'] > s['_start_time']),
+                            None
+                        )
+                        if naechste:
+                            # Verwaiste Stempelung: Ende setzen auf Start der nächsten
+                            s['ist_aktiv'] = False
+                            s['ende'] = naechste['_start_time'].strftime('%H:%M')
+                            s['ende_ts'] = naechste['_start_time'].isoformat()
+                            # Dauer nachträglich berechnen
+                            dauer = (naechste['_start_time'] - s['_start_time']).total_seconds() / 60
+                            s['dauer_min'] = int(dauer)
+                            s['ist_verwaist'] = True  # Markierung für UI
+            # Cleanup: _start_time entfernen
+            for s in stempelungen:
+                del s['_start_time']
 
         # 4a. Auftragsdetails für alle Live-Stempelungen holen (inkl. AW aus labours)
         alle_live_auftraege = list(set(s['order_number'] for s in live_stempelungen))
@@ -4793,7 +4985,8 @@ def get_werkstatt_liveboard():
                     v.license_plate as kennzeichen,
                     COALESCE(cs.family_name, '') || ' ' || COALESCE(cs.first_name, '') as kunde,
                     v.free_form_make_text as marke,
-                    COALESCE(l.gesamt_aw, 0) as vorgabe_aw
+                    COALESCE(l.gesamt_aw, 0) as vorgabe_aw,
+                    o.has_open_positions as ist_offen
                 FROM orders o
                 LEFT JOIN vehicles v ON o.vehicle_number = v.internal_number
                 LEFT JOIN customers_suppliers cs ON o.order_customer = cs.customer_number
@@ -4810,7 +5003,8 @@ def get_werkstatt_liveboard():
                     'kennzeichen': row['kennzeichen'] or '',
                     'kunde': (row['kunde'] or '').strip(),
                     'marke': row['marke'] or '',
-                    'vorgabe_aw': float(row['vorgabe_aw'] or 0)
+                    'vorgabe_aw': float(row['vorgabe_aw'] or 0),
+                    'ist_fertig': not row['ist_offen']
                 }
 
         # 4b. GUDAT Disposition holen (TAG 125)
@@ -4876,7 +5070,8 @@ def get_werkstatt_liveboard():
                     'vorgabe_aw': g['vorgabe_aw'],
                     'bringen': g['bringen'],
                     'abholen': g['abholen'],
-                    'typ': 'geplant'
+                    'typ': 'geplant',
+                    'ist_fertig': g.get('ist_fertig', False)  # TAG 126: Fertig-Symbol
                 }
 
                 if live_match:
@@ -4916,7 +5111,8 @@ def get_werkstatt_liveboard():
                         'ende_ts': l['ende_ts'],
                         'ist_aktiv': l['ist_aktiv'],
                         'dauer_min': l['dauer_min'],
-                        'typ': 'aktiv' if l['ist_aktiv'] else 'bearbeitet'
+                        'typ': 'aktiv' if l['ist_aktiv'] else 'bearbeitet',
+                        'ist_fertig': details.get('ist_fertig', False)  # TAG 126: Fertig-Symbol
                     })
 
             # GUDAT Disposition hinzufügen (TAG 125)
@@ -4943,19 +5139,61 @@ def get_werkstatt_liveboard():
                         existing['kennzeichen'] = gt.get('kennzeichen')
                     if not existing.get('vorgabe_aw') and gt.get('vorgabe_aw'):
                         existing['vorgabe_aw'] = gt.get('vorgabe_aw')
+                    # TAG 126: Gudat-Startzeit hat Vorrang (aktuellere Disposition!)
+                    if gt.get('start_date') and not existing.get('ist_aktiv'):
+                        try:
+                            start_str = gt['start_date'].replace('T', ' ')
+                            gudat_time = datetime.strptime(start_str, '%Y-%m-%d %H:%M:%S')
+                            existing['start'] = gudat_time.strftime('%H:%M')
+                            existing['start_ts'] = gudat_time.isoformat()
+                            # Ende neu berechnen
+                            aw = existing.get('vorgabe_aw') or gt.get('vorgabe_aw') or 2
+                            dauer = max(int(aw * 6), 30)
+                            ende_time = gudat_time + timedelta(minutes=dauer)
+                            existing['ende'] = ende_time.strftime('%H:%M')
+                            existing['ende_ts'] = ende_time.isoformat()
+                        except (ValueError, TypeError):
+                            pass
                     continue  # Nicht nochmal hinzufügen
                 # Auch prüfen ob Kennzeichen schon drin ist
                 kz = gt.get('kennzeichen', '').replace(' ', '').replace('-', '').upper()
-                if kz and any(
-                    (z.get('kennzeichen') or '').replace(' ', '').replace('-', '').upper() == kz
-                    for z in zeitbloecke
-                ):
-                    continue  # Schon vorhanden
+                if kz:
+                    existing_by_kz = next(
+                        (z for z in zeitbloecke
+                         if (z.get('kennzeichen') or '').replace(' ', '').replace('-', '').upper() == kz),
+                        None
+                    )
+                    if existing_by_kz:
+                        # TAG 126: Auch hier Gudat-Zeit übernehmen
+                        if gt.get('start_date') and not existing_by_kz.get('ist_aktiv'):
+                            try:
+                                start_str = gt['start_date'].replace('T', ' ')
+                                gudat_time = datetime.strptime(start_str, '%Y-%m-%d %H:%M:%S')
+                                existing_by_kz['start'] = gudat_time.strftime('%H:%M')
+                                existing_by_kz['start_ts'] = gudat_time.isoformat()
+                                aw = existing_by_kz.get('vorgabe_aw') or gt.get('vorgabe_aw') or 2
+                                dauer = max(int(aw * 6), 30)
+                                ende_time = gudat_time + timedelta(minutes=dauer)
+                                existing_by_kz['ende'] = ende_time.strftime('%H:%M')
+                                existing_by_kz['ende_ts'] = ende_time.isoformat()
+                            except (ValueError, TypeError):
+                                pass
+                        continue  # Schon vorhanden
+
+                # TAG 126: Echte Startzeit aus Gudat verwenden (falls vorhanden)
+                task_start_time = gudat_start_time  # Fallback
+                if gt.get('start_date'):
+                    try:
+                        # Gudat Format: "2025-12-18 10:30:00" oder "2025-12-18T10:30:00"
+                        start_str = gt['start_date'].replace('T', ' ')
+                        task_start_time = datetime.strptime(start_str, '%Y-%m-%d %H:%M:%S')
+                    except (ValueError, TypeError):
+                        pass  # Bei Fehler Fallback verwenden
 
                 # Geschätzte Dauer: AW * 6 Minuten (oder min 30 Min)
                 aw = gt.get('vorgabe_aw', 0) or 2
                 dauer_min = max(int(aw * 6), 30)
-                gudat_ende_time = gudat_start_time + timedelta(minutes=dauer_min)
+                task_ende_time = task_start_time + timedelta(minutes=dauer_min)
 
                 zeitbloecke.append({
                     'auftrag_nr': auftrag_nr,
@@ -4966,17 +5204,18 @@ def get_werkstatt_liveboard():
                     'beschreibung': gt.get('beschreibung', ''),
                     'service': gt.get('service', ''),
                     'gudat_status': gt.get('status', ''),
-                    'start': gudat_start_time.strftime('%H:%M'),
-                    'start_ts': gudat_start_time.isoformat(),
-                    'ende': gudat_ende_time.strftime('%H:%M'),
-                    'ende_ts': gudat_ende_time.isoformat(),
+                    'start': task_start_time.strftime('%H:%M'),
+                    'start_ts': task_start_time.isoformat(),
+                    'ende': task_ende_time.strftime('%H:%M'),
+                    'ende_ts': task_ende_time.isoformat(),
                     'ist_aktiv': False,
                     'dauer_min': dauer_min,
                     'typ': 'gudat_geplant'
                 })
 
-                # Nächster Task startet nach diesem
-                gudat_start_time = gudat_ende_time
+                # Für Fallback: nächster Task ohne Gudat-Zeit startet nach diesem
+                if task_ende_time > gudat_start_time:
+                    gudat_start_time = task_ende_time
 
             # Sortieren nach Startzeit/Bringen
             zeitbloecke.sort(key=lambda x: x.get('start_ts') or x.get('bringen_ts') or '')
@@ -4990,6 +5229,21 @@ def get_werkstatt_liveboard():
 
             # Gesamt-AW geplant
             gesamt_aw_geplant = sum(zb.get('vorgabe_aw', 0) for zb in zeitbloecke)
+
+            # TAG 126: Leerlauf-Zeit berechnen (für Warnung)
+            leerlauf_minuten = 0
+            nie_gestempelt = True
+            if aktiver_auftrag:
+                # Hat aktiven Auftrag = kein Leerlauf
+                leerlauf_minuten = 0
+                nie_gestempelt = False
+            elif zeitbloecke:
+                # Finde letzte beendete Stempelung
+                beendete = [zb for zb in zeitbloecke if zb.get('ende_ts') and not zb.get('ist_aktiv')]
+                if beendete:
+                    nie_gestempelt = False
+                    letzte_ende = max(datetime.fromisoformat(zb['ende_ts']) for zb in beendete)
+                    leerlauf_minuten = (datetime.now() - letzte_ende).total_seconds() / 60
 
             # Kurznamen ableiten: "Nachname, Vorname" -> "Vorname"
             full_name = mech['name'] or ''
@@ -5011,7 +5265,9 @@ def get_werkstatt_liveboard():
                 'aktiver_auftrag': aktiver_auftrag,
                 'anzahl_auftraege': len(zeitbloecke),
                 'gesamt_minuten': round(gesamt_minuten),
-                'gesamt_aw_geplant': round(gesamt_aw_geplant, 1)
+                'gesamt_aw_geplant': round(gesamt_aw_geplant, 1),
+                'leerlauf_minuten': round(leerlauf_minuten),
+                'nie_gestempelt': nie_gestempelt
             })
 
         cur.close()

@@ -206,7 +206,7 @@
 
     <!-- Summary Cards -->
     <div class="row mb-4">
-        <div class="col-md-4">
+        <div class="col-md-3">
             <div class="card bg-success text-white">
                 <div class="card-body text-center">
                     <div class="big-stat" id="countAktiv">-</div>
@@ -214,12 +214,12 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2">
             <div class="card bg-warning text-dark" id="leerlaufCard">
                 <div class="card-body text-center">
-                    <div class="big-stat" id="countLeerlauf">-</div>
-                    <div>Leerlauf / ohne Auftrag</div>
-                    <div id="leerlaufNamen" class="small mt-2"></div>
+                    <div class="fs-2 fw-bold" id="countLeerlauf">-</div>
+                    <div class="small">Leerlauf</div>
+                    <div id="leerlaufNamen" class="small mt-1"></div>
                 </div>
             </div>
         </div>
@@ -228,7 +228,16 @@
             <div class="card" id="pausiertCard" style="background: linear-gradient(135deg, #667eea, #764ba2); color: white;">
                 <div class="card-body text-center py-2">
                     <div class="fs-2 fw-bold" id="countPausiert">-</div>
-                    <div class="small">Pausiert / Wartet</div>
+                    <div class="small">Pausiert</div>
+                </div>
+            </div>
+        </div>
+        <!-- TAG 126: Feierabend -->
+        <div class="col-md-2">
+            <div class="card" id="feierabendCard" style="background: linear-gradient(135deg, #11998e, #38ef7d); color: white;">
+                <div class="card-body text-center py-2">
+                    <div class="fs-2 fw-bold" id="countFeierabend">-</div>
+                    <div class="small">Feierabend</div>
                 </div>
             </div>
         </div>
@@ -402,6 +411,7 @@ function renderData(data) {
     document.getElementById('countAktiv').textContent = data.summary.produktiv || data.summary.aktiv;
     document.getElementById('countLeerlauf').textContent = data.summary.leerlauf;
     document.getElementById('countPausiert').textContent = data.summary.pausiert || 0;  // TAG 112
+    document.getElementById('countFeierabend').textContent = data.summary.feierabend || 0;  // TAG 126
     document.getElementById('countAbwesend').textContent = data.summary.abwesend;
                 
     // TAG 112: Pausen-Banner anzeigen

@@ -146,3 +146,11 @@ def drive_kapazitaet():
 def werkstatt_liveboard():
     """Werkstatt Live-Board - Wer arbeitet gerade an was? (TAG 125)"""
     return render_template('aftersales/werkstatt_liveboard.html')
+
+
+@werkstatt_routes.route('/werkstatt/liveboard/gantt')
+@werkstatt_routes.route('/werkstatt/drive/liveboard/gantt')
+@login_required
+def werkstatt_liveboard_gantt():
+    """Werkstatt Live-Board Gantt-Ansicht - Horizontale Zeitleiste (TAG 126)"""
+    return render_template('aftersales/werkstatt_liveboard_gantt.html')
