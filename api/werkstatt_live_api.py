@@ -4892,7 +4892,8 @@ def get_werkstatt_liveboard():
             logger.warning(f"Portal-Abwesenheiten für Liveboard: {e}")
 
         # 3. GEPLANTE AUFTRÄGE für heute (aus Disposition)
-        # TAG 126: Auch abgerechnete Aufträge zeigen (mit Fertig-Status)
+        # TAG 127: NUR Aufträge wo BRINGEN = heute
+        # Alte Aufträge (bringen früher) werden nicht mehr angezeigt
         cur.execute("""
             SELECT DISTINCT
                 o.number as auftrag_nr,
@@ -4909,8 +4910,8 @@ def get_werkstatt_liveboard():
             LEFT JOIN vehicles v ON o.vehicle_number = v.internal_number
             LEFT JOIN customers_suppliers cs ON o.order_customer = cs.customer_number
             LEFT JOIN labours l ON o.number = l.order_number
-            WHERE (DATE(o.estimated_inbound_time) = %s OR DATE(o.estimated_outbound_time) = %s)
-        """, [datum, datum])
+            WHERE DATE(o.estimated_inbound_time) = %s
+        """, [datum])
         geplante_auftraege_raw = cur.fetchall()
 
         # Gruppieren nach Mechaniker
@@ -4932,6 +4933,13 @@ def get_werkstatt_liveboard():
                 'typ': 'geplant',
                 'ist_fertig': not a['ist_offen']  # TAG 126: Fertig wenn nicht mehr offen
             }
+
+            # TAG 127: Aufträge von früheren Tagen nicht als "geplant" anzeigen
+            # Wenn bringen nicht heute ist, wird der Auftrag ausgeblendet
+            # (unabhängig von ist_fertig - alte offene Aufträge sind Datenpflege-Problem)
+            bringen_heute = a['bringen'] and a['bringen'].date() == datum
+            if not bringen_heute:
+                continue
 
             mech_nr = a['mechanic_no']
             if mech_nr:
