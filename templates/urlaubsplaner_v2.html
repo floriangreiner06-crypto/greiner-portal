@@ -417,12 +417,12 @@
 
 <!-- POPUP: Neue Buchung erstellen (grün) -->
 <div class="popup-menu green" id="bookPopup">
-    <div class="popup-menu-header" id="bookHeader">📅 Neuer Antrag</div>
+    <div class="popup-menu-header" id="bookHeader" style="white-space: pre-line;">📅 Neuer Antrag</div>
     <div class="popup-menu-body">
         <div class="popup-menu-item active" data-t="1" onclick="selectBookType(1)">🏖️ Urlaub</div>
         <div class="popup-menu-item" data-t="6" onclick="selectBookType(6)">⏰ Zeitausgleich</div>
-        <div class="popup-menu-item" data-t="3" onclick="selectBookType(3)">🤒 Krank</div>
-        <div class="popup-menu-item" data-t="5" onclick="selectBookType(5)">📚 Schulung</div>
+        <div class="popup-menu-item" data-t="5" onclick="selectBookType(5)">🤒 Krank</div>
+        <div class="popup-menu-item" data-t="9" onclick="selectBookType(9)">📚 Schulung</div>
         <div class="popup-menu-divider"></div>
         <!-- TAG 113: Halber Tag Option -->
         <div style="padding: 10px 15px;">
@@ -560,6 +560,7 @@ let myDept = null;  // Eigene Abteilung für Drill-Status
 let deptOpen = {};  // Welche Abteilungen sind aufgeklappt?
 let mon = new Date().getMonth(), yr = new Date().getFullYear();
 let sel = new Set(), selType = 1;
+let selEmpId = null;  // TAG 127: Für welchen MA wird gebucht
 let dragging = false, dragStart = null;
 let editBooking = null;
 let cancelId = null, rejectId = null, approveId = null;
@@ -799,7 +800,8 @@ function render() {
                         }
                     }
                     
-                    const canClick = isMe && !isWE && !isFT;
+                    // TAG 127: Admins können auch in fremden Zeilen klicken
+                    const canClick = (isMe || isAdmin) && !isWE && !isFT;
                     bd += `<td class="${c}" data-d="${ds}" data-e="${emp.employee_id}" data-bid="${bookingId}" ${canClick?'data-ok="1"':''}>${icon}</td>`;
                 }
                 bd += '</tr>';
@@ -823,7 +825,8 @@ function setupInteraction() {
             lastClickPos = {x: e.clientX + 10, y: e.clientY};
             dragging = true;
             dragStart = c.dataset.d;
-            
+            selEmpId = parseInt(c.dataset.e);  // TAG 127: MA tracken
+
             if (hasBooking) {
                 // Gebuchte Zelle: Lösch-Modus
                 dragMode = 'delete';
@@ -915,12 +918,25 @@ function setupInteraction() {
 // ========== BOOK POPUP (Grün) ==========
 function showBookPopup() {
     if (sel.size === 0) return;
-    
+
     const arr = Array.from(sel).sort();
-    const headerText = arr.length === 1 
+
+    // TAG 127: Wenn Admin für anderen MA bucht, Namen anzeigen
+    let empName = '';
+    const isBookingForOther = selEmpId && selEmpId !== meId;
+    if (isBookingForOther) {
+        const emp = allEmployees.find(e => e.employee_id === selEmpId);
+        empName = emp ? emp.name : `MA ${selEmpId}`;
+    }
+
+    let headerText = arr.length === 1
         ? `📅 ${fmtD(arr[0])} buchen`
         : `📅 ${fmtD(arr[0])} - ${fmtD(arr[arr.length-1])} (${arr.length} Tage)`;
-    
+
+    if (isBookingForOther) {
+        headerText = `👤 ${empName}\n${headerText}`;
+    }
+
     document.getElementById('bookHeader').textContent = headerText;
     
     // Reset type selection
@@ -975,38 +991,61 @@ function selectBookType(typeId) {
 
 async function submitBooking() {
     if (sel.size === 0) return;
-    
+
     // TAG 113: Halber Tag prüfen
     const halfCheck = document.getElementById('halfDayCheck');
     const halfTime = document.getElementById('halfDayTime');
     const isHalf = halfCheck.checked;
     const dayPart = isHalf ? 'half' : 'full';
     const halfInfo = isHalf ? (halfTime.value === 'am' ? ' (VM)' : ' (NM)') : '';
-    
+
+    // TAG 127: Admin-Buchung für anderen Mitarbeiter (aus Zell-Klick)
+    const isBookingForOther = selEmpId && selEmpId !== meId;
+    let empName = '';
+    if (isBookingForOther) {
+        const emp = allEmployees.find(e => e.employee_id === selEmpId);
+        empName = emp ? emp.name : `MA ${selEmpId}`;
+    }
+
     // TAG 113: Batch-API für E-Mail-Batching verwenden
     const dates = Array.from(sel).sort();
-    const r = await api('/book-batch', 'POST', {
+    const payload = {
         dates: dates,
         vacation_type_id: selType,
         day_part: dayPart,
-        half_day_time: isHalf ? halfTime.value : null  // VM/NM Info für HR
-    });
-    
+        half_day_time: isHalf ? halfTime.value : null
+    };
+
+    // TAG 127: for_employee_id hinzufügen wenn Admin für anderen bucht
+    if (isBookingForOther) {
+        payload.for_employee_id = selEmpId;
+        payload.admin_direct_booking = true;  // Sofort genehmigt
+    }
+
+    const r = await api('/book-batch', 'POST', payload);
+
     hideBookPopup();
-    
+
     if (r.success) {
         const tageText = isHalf ? `${dates.length * 0.5} Tag(e)` : `${dates.length} Tag(e)`;
-        toast(`${tageText}${halfInfo} beantragt!`, 'success');
+        if (isBookingForOther) {
+            toast(`✅ ${tageText}${halfInfo} für ${empName} eingetragen! (HR wird informiert)`, 'success');
+        } else {
+            toast(`${tageText}${halfInfo} beantragt!`, 'success');
+        }
     } else {
         toast(r.error || 'Fehler beim Buchen', 'danger');
     }
-    
+
     // Immer neu laden um aktuellen Stand zu zeigen
     await loadMyBook();
     await loadAllBookings();
     await loadMe();
     render();
     renderMy();
+
+    // Reset selEmpId
+    selEmpId = null;
 }
 
 // ========== EDIT POPUP (Lila) ==========

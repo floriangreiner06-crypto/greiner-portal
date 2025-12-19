@@ -249,3 +249,142 @@ def execute_write(query: str, params: tuple = ()) -> int:
         cursor.execute(query, params)
         conn.commit()
         return cursor.rowcount
+
+
+# =============================================================================
+# PORTAL ABWESENHEITEN (TAG 127)
+# =============================================================================
+
+# Mapping vacation_type_id -> Locosoft absence reason
+VACATION_TYPE_TO_REASON = {
+    1: 'Url',   # Urlaubstag (beantragt)
+    2: 'Url',   # Urlaubstag (genehmigt)
+    5: 'Krn',   # Krankheit
+    6: 'ZA.',   # Ausgleichstag (Zeitausgleich)
+    7: 'Elt',   # Elternzeit
+    9: 'Sem',   # Schulung
+    11: 'Snd',  # Sonderurlaub
+    12: 'Sem',  # Seminar
+}
+
+
+def get_portal_absences(datum: str = None) -> dict:
+    """
+    Holt Abwesenheiten aus dem Portal (vacation_bookings).
+
+    TAG 127: Diese Funktion wird von Werkstatt-APIs genutzt um
+    Portal-Abwesenheiten (ZA, Krank, etc.) mit Locosoft-Daten zu kombinieren.
+
+    Args:
+        datum: Datum im Format 'YYYY-MM-DD', Default: heute
+
+    Returns:
+        Dict mit locosoft_id als Key:
+        {
+            5008: {
+                'employee_id': 123,
+                'name': 'Ebner, Patrick',
+                'locosoft_id': 5008,
+                'reason': 'ZA.',
+                'vacation_type': 'Ausgleichstag',
+                'day_part': 'full',
+                'source': 'portal'
+            },
+            ...
+        }
+    """
+    from datetime import date
+
+    if datum is None:
+        datum = date.today().isoformat()
+
+    result = {}
+
+    with db_session() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT
+                vb.employee_id,
+                e.first_name || ' ' || e.last_name as name,
+                lem.locosoft_id,
+                vb.vacation_type_id,
+                vt.name as vacation_type,
+                vb.day_part,
+                vb.status
+            FROM vacation_bookings vb
+            JOIN employees e ON vb.employee_id = e.id
+            LEFT JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
+            LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
+            WHERE vb.booking_date = ?
+              AND vb.status = 'approved'
+              AND e.aktiv = 1
+        """, (datum,))
+
+        for row in cursor.fetchall():
+            locosoft_id = row['locosoft_id']
+            if locosoft_id:
+                result[locosoft_id] = {
+                    'employee_id': row['employee_id'],
+                    'name': row['name'],
+                    'locosoft_id': locosoft_id,
+                    'reason': VACATION_TYPE_TO_REASON.get(row['vacation_type_id'], 'sns'),
+                    'vacation_type': row['vacation_type'] or 'Abwesend',
+                    'day_part': row['day_part'],
+                    'source': 'portal'
+                }
+
+    return result
+
+
+def get_portal_absences_for_range(start_date: str, end_date: str) -> dict:
+    """
+    Holt Portal-Abwesenheiten für einen Datumsbereich.
+
+    Args:
+        start_date: Start-Datum 'YYYY-MM-DD'
+        end_date: End-Datum 'YYYY-MM-DD'
+
+    Returns:
+        Dict mit (datum, locosoft_id) als Key:
+        {
+            ('2025-12-19', 5008): {...},
+            ...
+        }
+    """
+    result = {}
+
+    with db_session() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT
+                vb.booking_date,
+                vb.employee_id,
+                e.first_name || ' ' || e.last_name as name,
+                lem.locosoft_id,
+                vb.vacation_type_id,
+                vt.name as vacation_type,
+                vb.day_part
+            FROM vacation_bookings vb
+            JOIN employees e ON vb.employee_id = e.id
+            LEFT JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
+            LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
+            WHERE vb.booking_date BETWEEN ? AND ?
+              AND vb.status = 'approved'
+              AND e.aktiv = 1
+        """, (start_date, end_date))
+
+        for row in cursor.fetchall():
+            locosoft_id = row['locosoft_id']
+            if locosoft_id:
+                key = (row['booking_date'], locosoft_id)
+                result[key] = {
+                    'employee_id': row['employee_id'],
+                    'name': row['name'],
+                    'locosoft_id': locosoft_id,
+                    'reason': VACATION_TYPE_TO_REASON.get(row['vacation_type_id'], 'sns'),
+                    'vacation_type': row['vacation_type'] or 'Abwesend',
+                    'day_part': row['day_part'],
+                    'source': 'portal'
+                }
+
+    return result

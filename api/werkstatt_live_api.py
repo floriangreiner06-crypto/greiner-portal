@@ -20,8 +20,8 @@ from datetime import datetime, timedelta, time
 from flask import Blueprint, jsonify, request
 import logging
 
-# Zentrale DB-Utilities (TAG 117)
-from api.db_utils import locosoft_session, get_locosoft_connection
+# Zentrale DB-Utilities (TAG 117 + TAG 127)
+from api.db_utils import locosoft_session, get_locosoft_connection, get_portal_absences
 
 # Für RealDictCursor
 from psycopg2.extras import RealDictCursor
@@ -1027,7 +1027,33 @@ def get_stempeluhr_live():
             cur.execute(abwesend_query)
         
         abwesend = cur.fetchall()
-        
+
+        # TAG 127: Portal-Abwesenheiten hinzufügen (ZA, Krank aus Urlaubsplaner)
+        try:
+            portal_absences = get_portal_absences()
+            loco_emp_nrs = {r['employee_number'] for r in abwesend}
+
+            for emp_nr, absence in portal_absences.items():
+                # Nur Mechaniker (5000-5999) und nur wenn nicht schon in Locosoft
+                if 5000 <= emp_nr <= 5999 and emp_nr not in loco_emp_nrs:
+                    # Hole Mitarbeiter-Details aus Locosoft für konsistente Darstellung
+                    cur.execute("""
+                        SELECT subsidiary FROM employees_history
+                        WHERE employee_number = %s AND is_latest_record = true
+                    """, [emp_nr])
+                    emp_row = cur.fetchone()
+                    subsidiary = emp_row['subsidiary'] if emp_row else 1
+
+                    # Als Dict hinzufügen (kompatibel mit Locosoft-Format)
+                    abwesend.append({
+                        'employee_number': emp_nr,
+                        'name': absence['name'],
+                        'subsidiary': subsidiary,
+                        'grund': f"{absence['reason']} (Portal)"
+                    })
+        except Exception as e:
+            logger.warning(f"Portal-Abwesenheiten konnten nicht geladen werden: {e}")
+
         # =====================================================================
         # 4. PAUSIERT / WARTET - TAG 112
         # Mechaniker die heute produktiv waren aber gerade keine offene Stempelung haben
@@ -4855,6 +4881,15 @@ def get_werkstatt_liveboard():
             WHERE ac.date = %s
         """, [datum])
         abwesenheiten = {row['employee_number']: row['grund'] for row in cur.fetchall()}
+
+        # TAG 127: Portal-Abwesenheiten hinzufügen (ZA, Krank aus Urlaubsplaner)
+        try:
+            portal_absences = get_portal_absences(datum)
+            for emp_nr, absence in portal_absences.items():
+                if emp_nr not in abwesenheiten:
+                    abwesenheiten[emp_nr] = f"{absence['vacation_type']} (Portal)"
+        except Exception as e:
+            logger.warning(f"Portal-Abwesenheiten für Liveboard: {e}")
 
         # 3. GEPLANTE AUFTRÄGE für heute (aus Disposition)
         # TAG 126: Auch abgerechnete Aufträge zeigen (mit Fertig-Status)

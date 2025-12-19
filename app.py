@@ -429,6 +429,14 @@ try:
 except Exception as e:
     print(f"⚠️  Werkstatt LIVE API nicht geladen: {e}")
 
+# Reparaturpotenzial API (TAG 127 - Upselling-Empfehlungen für Serviceberater)
+try:
+    from api.reparaturpotenzial_api import reparaturpotenzial_api
+    app.register_blueprint(reparaturpotenzial_api)
+    print("✅ Reparaturpotenzial API registriert: /api/werkstatt/reparaturpotenzial")
+except Exception as e:
+    print(f"⚠️  Reparaturpotenzial API nicht geladen: {e}")
+
 # ML API (Machine Learning - Auftragsdauer-Vorhersage)
 try:
     from api.ml_api import ml_api

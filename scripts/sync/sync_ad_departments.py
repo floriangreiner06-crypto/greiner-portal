@@ -71,25 +71,29 @@ def main():
         print("  ✅ SQLite-Verbindung hergestellt")
         
         # Alle aktiven Mitarbeiter mit E-Mail holen
+        # TAG 127: Auch ldap_username aus ldap_employee_mapping laden
         cursor.execute("""
-            SELECT id, email, first_name, last_name, department_name 
-            FROM employees 
-            WHERE aktiv = 1 AND email IS NOT NULL
+            SELECT e.id, e.email, e.first_name, e.last_name, e.department_name,
+                   lem.ldap_username
+            FROM employees e
+            LEFT JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
+            WHERE e.aktiv = 1 AND e.email IS NOT NULL
         """)
         employees = cursor.fetchall()
-        
+
         print(f"\n👥 Prüfe {len(employees)} Mitarbeiter gegen AD...")
         print("-" * 70)
-        
+
         updated = 0
         unchanged = 0
         not_found = 0
         errors = []
         changes = []
-        
-        for emp_id, email, first_name, last_name, current_dept in employees:
-            # Username aus E-Mail extrahieren
-            username = email.split('@')[0] if email else None
+
+        for emp_id, email, first_name, last_name, current_dept, ldap_username in employees:
+            # TAG 127: Bevorzuge ldap_username aus ldap_employee_mapping
+            # Fallback: Username aus E-Mail extrahieren
+            username = ldap_username if ldap_username else (email.split('@')[0] if email else None)
             if not username:
                 continue
             

@@ -1,0 +1,386 @@
+{% extends "base.html" %}
+
+{% block title %}Reparaturpotenzial - Auftragsannahme - {{ app_name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .search-section {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 40px;
+        border-radius: 16px;
+        color: white;
+        margin-bottom: 30px;
+    }
+    .search-section h2 {
+        margin-bottom: 20px;
+    }
+    .search-input-group {
+        max-width: 600px;
+        margin: 0 auto;
+    }
+    .search-input-group input {
+        font-size: 1.3rem;
+        padding: 15px 20px;
+        border-radius: 12px 0 0 12px;
+        border: none;
+        text-transform: uppercase;
+    }
+    .search-input-group button {
+        padding: 15px 30px;
+        border-radius: 0 12px 12px 0;
+        font-weight: bold;
+    }
+
+    /* Fahrzeug-Info */
+    .fahrzeug-card {
+        background: #f8f9fa;
+        border-radius: 12px;
+        padding: 25px;
+        margin-bottom: 25px;
+    }
+    .fahrzeug-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    .fahrzeug-kennzeichen {
+        font-size: 2rem;
+        font-weight: bold;
+        font-family: monospace;
+        background: #212529;
+        color: white;
+        padding: 8px 20px;
+        border-radius: 8px;
+    }
+    .fahrzeug-details {
+        display: flex;
+        gap: 30px;
+        flex-wrap: wrap;
+    }
+    .fahrzeug-detail {
+        text-align: center;
+    }
+    .fahrzeug-detail-value {
+        font-size: 1.5rem;
+        font-weight: bold;
+    }
+    .fahrzeug-detail-label {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+
+    /* Empfehlungen */
+    .empfehlung-card {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 15px;
+        border-left: 5px solid #6c757d;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        transition: all 0.2s;
+    }
+    .empfehlung-card:hover {
+        transform: translateX(5px);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.12);
+    }
+    .empfehlung-card.hoch {
+        border-left-color: #dc3545;
+        background: rgba(220, 53, 69, 0.05);
+    }
+    .empfehlung-card.mittel {
+        border-left-color: #ffc107;
+        background: rgba(255, 193, 7, 0.05);
+    }
+    .empfehlung-card.niedrig {
+        border-left-color: #28a745;
+        background: rgba(40, 167, 69, 0.05);
+    }
+    .empfehlung-card.saisonal {
+        border-left-color: #17a2b8;
+        background: rgba(23, 162, 184, 0.05);
+    }
+
+    .empfehlung-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+    .empfehlung-title {
+        font-size: 1.2rem;
+        font-weight: bold;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .empfehlung-icon {
+        font-size: 1.5rem;
+    }
+    .empfehlung-badge {
+        padding: 5px 12px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+    .empfehlung-badge.hoch { background: #dc3545; color: white; }
+    .empfehlung-badge.mittel { background: #ffc107; color: #212529; }
+    .empfehlung-badge.niedrig { background: #28a745; color: white; }
+
+    .empfehlung-beschreibung {
+        color: #495057;
+        margin-bottom: 8px;
+    }
+    .empfehlung-grund {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+
+    /* Historie */
+    .historie-section {
+        background: #f8f9fa;
+        border-radius: 12px;
+        padding: 20px;
+        margin-top: 30px;
+    }
+    .historie-badge {
+        display: inline-block;
+        padding: 5px 10px;
+        background: #e9ecef;
+        border-radius: 6px;
+        margin: 3px;
+        font-size: 0.85rem;
+    }
+    .historie-badge.done {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    /* Empty State */
+    .no-empfehlungen {
+        text-align: center;
+        padding: 60px;
+        color: #6c757d;
+    }
+    .no-empfehlungen i {
+        font-size: 4rem;
+        margin-bottom: 20px;
+        color: #28a745;
+    }
+
+    /* Loading */
+    .loading-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255,255,255,0.9);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+    }
+    .loading-overlay.active {
+        display: flex;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1">
+                <i class="bi bi-lightbulb text-warning"></i>
+                Reparaturpotenzial
+            </h2>
+            <p class="text-muted mb-0">Upselling-Empfehlungen zur Auftragsannahme</p>
+        </div>
+        <div>
+            <a href="/werkstatt/auftraege" class="btn btn-outline-secondary">
+                <i class="bi bi-list-ul"></i> ML-Auftragsanalyse
+            </a>
+        </div>
+    </div>
+
+    <!-- Suche -->
+    <div class="search-section">
+        <h2 class="text-center"><i class="bi bi-search"></i> Fahrzeug suchen</h2>
+        <div class="search-input-group input-group">
+            <input type="text" class="form-control" id="kennzeichenInput"
+                   placeholder="Kennzeichen eingeben (z.B. DEG-AB 123)"
+                   autocomplete="off">
+            <input type="number" class="form-control" id="kmInput"
+                   placeholder="km-Stand (optional)" style="max-width: 180px; border-radius: 0;">
+            <button class="btn btn-light" type="button" onclick="sucheReparaturpotenzial()">
+                <i class="bi bi-search"></i> Suchen
+            </button>
+        </div>
+        <div class="text-center mt-3 opacity-75">
+            <small>Basierend auf Fahrzeughistorie, km-Stand, Alter und Saison</small>
+        </div>
+    </div>
+
+    <!-- Ergebnisse -->
+    <div id="ergebnisBereich" style="display: none;">
+
+        <!-- Fahrzeug-Info -->
+        <div class="fahrzeug-card" id="fahrzeugInfo">
+            <div class="fahrzeug-header">
+                <div class="fahrzeug-kennzeichen" id="fzKennzeichen">-</div>
+                <div id="fzMarkeModell" style="font-size: 1.2rem;"></div>
+            </div>
+            <div class="fahrzeug-details">
+                <div class="fahrzeug-detail">
+                    <div class="fahrzeug-detail-value" id="fzBaujahr">-</div>
+                    <div class="fahrzeug-detail-label">Baujahr</div>
+                </div>
+                <div class="fahrzeug-detail">
+                    <div class="fahrzeug-detail-value" id="fzKm">-</div>
+                    <div class="fahrzeug-detail-label">km-Stand</div>
+                </div>
+                <div class="fahrzeug-detail">
+                    <div class="fahrzeug-detail-value" id="fzAuftraege">-</div>
+                    <div class="fahrzeug-detail-label">Auftr. (3 Jahre)</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Empfehlungen -->
+        <h4 class="mb-3"><i class="bi bi-lightbulb-fill text-warning"></i> Empfehlungen</h4>
+        <div id="empfehlungenListe"></div>
+
+        <!-- Historie -->
+        <div class="historie-section" id="historieSection">
+            <h5><i class="bi bi-clock-history"></i> Bereits durchgeführt (letzte 3 Jahre)</h5>
+            <div id="historieListe"></div>
+        </div>
+
+    </div>
+
+    <!-- Kein Ergebnis -->
+    <div id="keinErgebnis" style="display: none;">
+        <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle"></i> Fahrzeug nicht gefunden. Bitte Kennzeichen prüfen.
+        </div>
+    </div>
+
+</div>
+
+<!-- Loading Overlay -->
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="text-center">
+        <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;"></div>
+        <div class="mt-3">Analysiere Fahrzeughistorie...</div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Enter-Taste
+    document.getElementById('kennzeichenInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') sucheReparaturpotenzial();
+    });
+    document.getElementById('kmInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') sucheReparaturpotenzial();
+    });
+
+    function sucheReparaturpotenzial() {
+        const kennzeichen = document.getElementById('kennzeichenInput').value.trim();
+        const km = document.getElementById('kmInput').value;
+
+        if (!kennzeichen) {
+            alert('Bitte Kennzeichen eingeben');
+            return;
+        }
+
+        document.getElementById('loadingOverlay').classList.add('active');
+        document.getElementById('ergebnisBereich').style.display = 'none';
+        document.getElementById('keinErgebnis').style.display = 'none';
+
+        let url = `/api/werkstatt/reparaturpotenzial?kennzeichen=${encodeURIComponent(kennzeichen)}`;
+        if (km) url += `&km=${km}`;
+
+        fetch(url)
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('loadingOverlay').classList.remove('active');
+
+                if (data.success) {
+                    zeigeErgebnis(data);
+                } else {
+                    document.getElementById('keinErgebnis').style.display = 'block';
+                }
+            })
+            .catch(err => {
+                document.getElementById('loadingOverlay').classList.remove('active');
+                alert('Fehler: ' + err);
+            });
+    }
+
+    function zeigeErgebnis(data) {
+        document.getElementById('ergebnisBereich').style.display = 'block';
+
+        // Fahrzeug-Info
+        document.getElementById('fzKennzeichen').textContent = data.fahrzeug.kennzeichen || '-';
+        document.getElementById('fzMarkeModell').textContent =
+            `${data.fahrzeug.marke || ''} ${data.fahrzeug.modell || ''}`.trim() || '-';
+        document.getElementById('fzBaujahr').textContent = data.fahrzeug.baujahr || '-';
+        document.getElementById('fzKm').textContent = data.fahrzeug.aktueller_km
+            ? data.fahrzeug.aktueller_km.toLocaleString('de-DE') + ' km' : '-';
+        document.getElementById('fzAuftraege').textContent = data.historie.anzahl_auftraege;
+
+        // Empfehlungen
+        const empfListe = document.getElementById('empfehlungenListe');
+
+        if (data.empfehlungen.length === 0) {
+            empfListe.innerHTML = `
+                <div class="no-empfehlungen">
+                    <i class="bi bi-check-circle"></i>
+                    <h4>Alles in Ordnung!</h4>
+                    <p>Keine dringenden Empfehlungen für dieses Fahrzeug.</p>
+                </div>
+            `;
+        } else {
+            empfListe.innerHTML = data.empfehlungen.map(e => `
+                <div class="empfehlung-card ${e.ist_saisonal ? 'saisonal' : e.dringlichkeit}">
+                    <div class="empfehlung-header">
+                        <div class="empfehlung-title">
+                            <span class="empfehlung-icon">${e.icon}</span>
+                            ${e.name}
+                        </div>
+                        <span class="empfehlung-badge ${e.dringlichkeit}">
+                            ${e.ist_saisonal ? 'Saison' : e.dringlichkeit}
+                        </span>
+                    </div>
+                    <div class="empfehlung-beschreibung">${e.beschreibung}</div>
+                    <div class="empfehlung-grund">
+                        <i class="bi bi-info-circle"></i> ${e.grund}
+                        ${e.km_bis_median > 0 ? ` | Noch ${e.km_bis_median.toLocaleString('de-DE')} km bis Median` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Historie
+        const histListe = document.getElementById('historieListe');
+        const durchgefuehrt = data.historie.durchgefuehrt || {};
+
+        if (Object.keys(durchgefuehrt).length === 0) {
+            histListe.innerHTML = '<p class="text-muted">Keine relevanten Arbeiten in den letzten 3 Jahren gefunden.</p>';
+        } else {
+            histListe.innerHTML = Object.entries(durchgefuehrt).map(([key, val]) => {
+                const datum = val.datum ? new Date(val.datum).toLocaleDateString('de-DE') : '-';
+                const km = val.km_stand ? val.km_stand.toLocaleString('de-DE') + ' km' : '-';
+                return `<span class="historie-badge done"><i class="bi bi-check"></i> ${key}: ${datum} bei ${km}</span>`;
+            }).join('');
+        }
+    }
+</script>
+{% endblock %}

@@ -161,6 +161,73 @@ def get_employee_from_session():
         return None, ldap_username, None
 
 
+def is_vacation_admin(ldap_username=None):
+    """
+    Prüft ob User Urlaubs-Admin ist (TAG 127)
+    Admins können für andere Mitarbeiter Abwesenheiten eintragen
+    """
+    from flask_login import current_user
+
+    if not current_user.is_authenticated:
+        return False
+
+    # Portal-Admin ist immer auch Urlaubs-Admin
+    if getattr(current_user, 'portal_role', '') == 'admin':
+        return True
+
+    # GRP_Urlaub_Admin Gruppe
+    user_groups = getattr(current_user, 'groups', []) or []
+    if isinstance(user_groups, str):
+        try:
+            user_groups = json.loads(user_groups)
+        except:
+            user_groups = []
+
+    if 'GRP_Urlaub_Admin' in user_groups:
+        return True
+
+    # Explizit erlaubte User
+    allowed_users = ['florian.greiner', 'vanessa.groll', 'christian.aichinger', 'sandra.brendel']
+    username = ldap_username or getattr(current_user, 'username', '') or ''
+    username_clean = username.lower().split('@')[0]
+
+    return username_clean in allowed_users
+
+
+def get_employee_by_id(employee_id):
+    """Holt Employee-Daten für einen anderen Mitarbeiter (TAG 127)"""
+    with db_session() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT
+                e.id,
+                e.first_name,
+                e.last_name,
+                e.email,
+                e.department_name,
+                e.is_manager,
+                lem.locosoft_id,
+                lem.ldap_username
+            FROM employees e
+            LEFT JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
+            WHERE e.id = ? AND e.aktiv = 1
+        """, (employee_id,))
+        result = cursor.fetchone()
+
+        if result:
+            return {
+                'employee_id': result[0],
+                'first_name': result[1],
+                'last_name': result[2],
+                'email': result[3],
+                'department': result[4],
+                'is_manager': bool(result[5]),
+                'locosoft_id': result[6],
+                'ldap_username': result[7]
+            }
+        return None
+
+
 # ============================================================================
 # E-MAIL HELPER FUNKTIONEN (TAG 104)
 # ============================================================================
@@ -1751,26 +1818,55 @@ def get_requests():
 def book_vacation():
     """
     POST /api/vacation/book
-    
-    Bucht Urlaub für den angemeldeten User
+
+    Bucht Urlaub für den angemeldeten User.
+    TAG 127: Admins können mit for_employee_id für andere Mitarbeiter buchen.
     """
     try:
-        employee_id, ldap_username, employee_data = get_employee_from_session()
-        
-        if not employee_id:
+        # Aktueller User (für Audit)
+        current_employee_id, ldap_username, current_employee_data = get_employee_from_session()
+
+        if not current_employee_id:
             return jsonify({
                 'success': False,
                 'error': 'Nicht angemeldet'
             }), 401
-        
+
         data = request.get_json()
-        
+
         if not data or 'date' not in data:
             return jsonify({
                 'success': False,
                 'error': 'Fehlende Daten: date erforderlich'
             }), 400
-        
+
+        # TAG 127: Admin-Buchung für anderen Mitarbeiter
+        for_employee_id = data.get('for_employee_id')
+        booking_for_other = False
+
+        if for_employee_id and for_employee_id != current_employee_id:
+            # Prüfe Admin-Rechte
+            if not is_vacation_admin(ldap_username):
+                return jsonify({
+                    'success': False,
+                    'error': 'Keine Berechtigung, für andere Mitarbeiter zu buchen'
+                }), 403
+
+            # Lade Employee-Daten für Ziel-Mitarbeiter
+            target_employee_data = get_employee_by_id(for_employee_id)
+            if not target_employee_data:
+                return jsonify({
+                    'success': False,
+                    'error': f'Mitarbeiter {for_employee_id} nicht gefunden'
+                }), 404
+
+            employee_id = for_employee_id
+            employee_data = target_employee_data
+            booking_for_other = True
+        else:
+            employee_id = current_employee_id
+            employee_data = current_employee_data
+
         booking_date = data['date']
         day_part = data.get('day_part', 'full')
         vacation_type_id = data.get('vacation_type_id', 1)
@@ -1884,38 +1980,37 @@ def book_vacation():
                         'resturlaub_info': resturlaub_info
                     }), 400
 
-            # Krankheit (type_id=3) - nur Admins dürfen Krankheit eintragen (TAG 113)
-            is_sickness = vacation_type_id == 3
-            if is_sickness:
-                # Prüfe ob User Admin ist (GRP_Urlaub_Admin)
-                cursor.execute("""
-                    SELECT ad_groups FROM users
-                    WHERE username LIKE ? OR username = ?
-                """, (f"%{ldap_username}%", ldap_username))
-                user_row = cursor.fetchone()
+            # TAG 127: Abwesenheits-Typen die Admin-Berechtigung brauchen
+            # vacation_type_id: 5=Krankheit, 6=Ausgleichstag (ZA)
+            is_sickness = vacation_type_id == 5  # Krankheit (war vorher 3, korrigiert)
+            is_za = vacation_type_id == 6  # Zeitausgleich
+            is_admin_only_type = is_sickness or is_za
 
-                is_admin = False
-                if user_row and user_row[0]:
-                    try:
-                        groups = json.loads(user_row[0]) if isinstance(user_row[0], str) else user_row[0]
-                        is_admin = 'GRP_Urlaub_Admin' in groups
-                    except:
-                        pass
+            # Prüfe Admin-Berechtigung für spezielle Typen
+            user_is_admin = is_vacation_admin(ldap_username)
 
-                if not is_admin:
-                    return jsonify({
-                        'success': False,
-                        'error': 'Krankheitstage können nur von Admins eingetragen werden'
-                    }), 403
+            if is_admin_only_type and not user_is_admin:
+                return jsonify({
+                    'success': False,
+                    'error': 'Krankheit und Zeitausgleich können nur von Admins eingetragen werden'
+                }), 403
 
-            initial_status = 'approved' if is_sickness else 'pending'
+            # Status-Logik:
+            # - Admin-Buchung für anderen: direkt 'approved' (wird manuell in Locosoft nachgepflegt)
+            # - Krankheit/ZA: direkt 'approved'
+            # - Normaler Urlaub: 'pending' (braucht Genehmigung)
+            if booking_for_other or is_admin_only_type:
+                initial_status = 'approved'
+            else:
+                initial_status = 'pending'
 
             cursor.execute("""
                 INSERT INTO vacation_bookings (
                     employee_id, booking_date, vacation_type_id,
-                    day_part, status, comment, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (employee_id, booking_date, vacation_type_id, day_part, initial_status, comment, datetime.now().isoformat()))
+                    day_part, status, comment, created_by, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (employee_id, booking_date, vacation_type_id, day_part, initial_status, comment,
+                  current_employee_id, datetime.now().isoformat()))
 
             booking_id = cursor.lastrowid
             conn.commit()
@@ -1937,14 +2032,16 @@ def book_vacation():
             'comment': comment
         }
         
-        # Unterschiedliche E-Mails je nach Typ
+        # TAG 127: Unterschiedliche E-Mails und Responses je nach Typ
+        target_name = f"{employee_data.get('first_name', '')} {employee_data.get('last_name', '')}".strip()
+
         if is_sickness:
             # Krankheit: E-Mail an HR + Teamleitung + GL
             sickness_email_sent = send_sickness_notification(booking_details_for_email, approvers)
             return jsonify({
                 'success': True,
                 'booking_id': booking_id,
-                'message': 'Krankheitstag eingetragen (Status: approved)',
+                'message': f'Krankheitstag für {target_name} eingetragen' if booking_for_other else 'Krankheitstag eingetragen',
                 'booking': {
                     'id': booking_id,
                     'date': booking_date,
@@ -1955,10 +2052,27 @@ def book_vacation():
                     'sickness_email': sickness_email_sent
                 }
             }), 201
-        else:
-            # Normaler Urlaub/ZA/Schulung: E-Mail an Genehmiger
-            approver_email_sent = send_new_request_notification_to_approvers(booking_details_for_email, approvers)
-        
+
+        if is_za or booking_for_other:
+            # TAG 127: ZA oder Admin-Buchung für anderen: Direkt approved, E-Mail an HR
+            type_name = 'Zeitausgleich' if is_za else vacation_type_name
+            return jsonify({
+                'success': True,
+                'booking_id': booking_id,
+                'message': f'{type_name} für {target_name} eingetragen (Status: approved)',
+                'booking': {
+                    'id': booking_id,
+                    'date': booking_date,
+                    'day_part': day_part,
+                    'status': 'approved',
+                    'vacation_type': type_name
+                },
+                'for_employee': target_name if booking_for_other else None
+            }), 201
+
+        # Normaler Urlaub: E-Mail an Genehmiger
+        approver_email_sent = send_new_request_notification_to_approvers(booking_details_for_email, approvers)
+
         return jsonify({
             'success': True,
             'booking_id': booking_id,
@@ -2196,7 +2310,25 @@ def book_vacation_batch():
         half_day_time = data.get('half_day_time', None)  # TAG 113: VM/NM für halbe Tage
         vacation_type_id = data.get('vacation_type_id', 1)
         comment = data.get('comment', None)
-        
+
+        # TAG 127: Admin-Direktbuchung für anderen Mitarbeiter
+        for_employee_id = data.get('for_employee_id')
+        admin_direct_booking = data.get('admin_direct_booking', False)
+        booking_for_other = False
+        target_employee_data = employee_data
+
+        if for_employee_id and for_employee_id != employee_id:
+            # Prüfe ob Admin
+            if not is_vacation_admin(ldap_username):
+                return jsonify({'success': False, 'error': 'Keine Berechtigung für Buchung für andere'}), 403
+
+            target_employee_data = get_employee_by_id(for_employee_id)
+            if not target_employee_data:
+                return jsonify({'success': False, 'error': f'Mitarbeiter {for_employee_id} nicht gefunden'}), 404
+
+            employee_id = for_employee_id  # Für diese Buchung verwenden
+            booking_for_other = True
+
         # Validierung
         for d in dates:
             try:
@@ -2267,7 +2399,8 @@ def book_vacation_batch():
                 return jsonify({'success': False, 'error': f'Bereits gebucht: {existing[0]}'}), 400
 
             # Alle Buchungen einfügen
-            initial_status = 'approved' if is_sickness else 'pending'
+            # TAG 127: Admin-Direktbuchungen sind sofort genehmigt
+            initial_status = 'approved' if (is_sickness or admin_direct_booking) else 'pending'
             booking_ids = []
             for d in dates:
                 cursor.execute("""
@@ -2282,11 +2415,65 @@ def book_vacation_batch():
             vacation_type_name = vt_row[0] if vt_row else 'Urlaub'
 
             conn.commit()
-        
-        # EINE E-Mail für alle Tage (E-Mail-Batching)
+
+        # TAG 127: Bei Admin-Direktbuchung Info-Mail an HR statt Genehmigungsanfrage
+        target_employee_name = f"{target_employee_data.get('first_name', '')} {target_employee_data.get('last_name', '')}".strip()
+        department = target_employee_data.get('department', '') or target_employee_data.get('department_name', '')
+
+        if admin_direct_booking and booking_for_other:
+            # Info-Mail an HR für Locosoft-Eintrag
+            email_sent = False
+            if GRAPH_AVAILABLE:
+                try:
+                    graph = GraphMailConnector()
+
+                    # Datums-Formatierung
+                    dates_formatted = [datetime.strptime(d, '%Y-%m-%d').strftime('%d.%m.%Y') for d in dates]
+                    date_display = dates_formatted[0] if len(dates) == 1 else f"{dates_formatted[0]} - {dates_formatted[-1]} ({len(dates)} Tage)"
+
+                    # Admin-Name für E-Mail
+                    admin_name = f"{employee_data.get('first_name', '')} {employee_data.get('last_name', '')}".strip() if employee_data else ldap_username
+
+                    type_icons = {'Urlaub': '🏖️', 'Zeitausgleich': '⏰', 'Ausgleichstag': '⏰', 'Krankheit': '🤒', 'Schulung': '📚'}
+                    icon = type_icons.get(vacation_type_name, '📅')
+
+                    subject = f"ℹ️ Abwesenheit eingetragen: {target_employee_name} - {vacation_type_name}"
+
+                    body_html = f"""
+                    <div style="font-family: Arial, sans-serif; max-width: 600px;">
+                        <h2 style="color: #28a745;">{icon} Abwesenheit eingetragen (Portal)</h2>
+                        <p style="background: #d4edda; padding: 15px; border-radius: 5px; border-left: 4px solid #28a745;">
+                            <strong>Hinweis:</strong> Diese Abwesenheit wurde direkt im Portal eingetragen und ist bereits genehmigt.
+                            Bitte in Locosoft nachtragen.
+                        </p>
+                        <table style="border-collapse: collapse; width: 100%; margin: 20px 0;">
+                            <tr style="background: #f8f9fa;"><td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Mitarbeiter</td><td style="padding: 10px; border: 1px solid #dee2e6;">{target_employee_name}</td></tr>
+                            <tr><td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Abteilung</td><td style="padding: 10px; border: 1px solid #dee2e6;">{department}</td></tr>
+                            <tr style="background: #f8f9fa;"><td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Zeitraum</td><td style="padding: 10px; border: 1px solid #dee2e6;">{date_display}</td></tr>
+                            <tr><td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Art</td><td style="padding: 10px; border: 1px solid #dee2e6;">{vacation_type_name}</td></tr>
+                            <tr style="background: #f8f9fa;"><td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Eingetragen von</td><td style="padding: 10px; border: 1px solid #dee2e6;">{admin_name}</td></tr>
+                        </table>
+                        <hr style="border: none; border-top: 1px solid #dee2e6; margin: 20px 0;">
+                        <p style="color: #6c757d; font-size: 12px;">Diese E-Mail wurde automatisch vom Greiner DRIVE Portal gesendet.</p>
+                    </div>
+                    """
+
+                    email_sent = graph.send_mail(sender_email=DRIVE_EMAIL, to_emails=[HR_EMAIL], subject=subject, body_html=body_html)
+                    if email_sent:
+                        print(f"✅ HR-Info-Mail gesendet für {target_employee_name}: {vacation_type_name}")
+                except Exception as e:
+                    print(f"❌ HR-Info-Mail Fehler: {e}")
+
+            return jsonify({
+                'success': True,
+                'booking_ids': booking_ids,
+                'message': f'{len(dates)} Tag(e) für {target_employee_name} eingetragen (genehmigt)',
+                'email_sent': email_sent
+            }), 201
+
+        # EINE E-Mail für alle Tage (E-Mail-Batching) - normaler Antrag
         approvers = get_approvers_for_employee(employee_id)
-        employee_name = f"{employee_data.get('first_name', '')} {employee_data.get('last_name', '')}".strip()
-        department = employee_data.get('department', '')
+        employee_name = target_employee_name
         
         email_sent = False
         if GRAPH_AVAILABLE and approvers:

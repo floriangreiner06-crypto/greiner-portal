@@ -212,29 +212,60 @@ def sync_employees(dry_run=True):
             """, (emp_num,))
             
             existing = sqlite_cursor.fetchone()
-            
+
             if existing:
-                # UPDATE
+                employee_id = existing[0]
+
+                # TAG 127: Prüfe ob LDAP-Mapping existiert
+                # Wenn ja: department_name NICHT überschreiben (LDAP ist Master)
                 sqlite_cursor.execute("""
-                    UPDATE employees SET
-                        first_name = ?,
-                        last_name = ?,
-                        email = ?,
-                        entry_date = ?,
-                        exit_date = ?,
-                        location = ?,
-                        department_name = ?,
-                        personal_nr = ?,
-                        aktiv = 1
-                    WHERE locosoft_id = ?
-                """, (
-                    first_name, last_name, email,
-                    emp_date, leave_date,
-                    location, department,
-                    personnel_no if personnel_no else None,
-                    emp_num
-                ))
-                log(f"  → Aktualisiert")
+                    SELECT 1 FROM ldap_employee_mapping WHERE employee_id = ?
+                """, (employee_id,))
+                has_ldap_mapping = sqlite_cursor.fetchone() is not None
+
+                if has_ldap_mapping:
+                    # UPDATE OHNE department_name (LDAP ist Master für Abteilung)
+                    sqlite_cursor.execute("""
+                        UPDATE employees SET
+                            first_name = ?,
+                            last_name = ?,
+                            email = ?,
+                            entry_date = ?,
+                            exit_date = ?,
+                            location = ?,
+                            personal_nr = ?,
+                            aktiv = 1
+                        WHERE locosoft_id = ?
+                    """, (
+                        first_name, last_name, email,
+                        emp_date, leave_date,
+                        location,
+                        personnel_no if personnel_no else None,
+                        emp_num
+                    ))
+                    log(f"  → Aktualisiert (Dept via LDAP)")
+                else:
+                    # UPDATE MIT department_name (kein LDAP = Locosoft ist Master)
+                    sqlite_cursor.execute("""
+                        UPDATE employees SET
+                            first_name = ?,
+                            last_name = ?,
+                            email = ?,
+                            entry_date = ?,
+                            exit_date = ?,
+                            location = ?,
+                            department_name = ?,
+                            personal_nr = ?,
+                            aktiv = 1
+                        WHERE locosoft_id = ?
+                    """, (
+                        first_name, last_name, email,
+                        emp_date, leave_date,
+                        location, department,
+                        personnel_no if personnel_no else None,
+                        emp_num
+                    ))
+                    log(f"  → Aktualisiert")
                 stats['updated'] += 1
             else:
                 # INSERT

@@ -154,3 +154,15 @@ def werkstatt_liveboard():
 def werkstatt_liveboard_gantt():
     """Werkstatt Live-Board Gantt-Ansicht - Horizontale Zeitleiste (TAG 126)"""
     return render_template('aftersales/werkstatt_liveboard_gantt.html')
+
+
+# ============================================================
+# TAG 127: Reparaturpotenzial - Upselling-Empfehlungen
+# ============================================================
+
+@werkstatt_routes.route('/werkstatt/reparaturpotenzial')
+@werkstatt_routes.route('/werkstatt/auftragsannahme')
+@login_required
+def werkstatt_reparaturpotenzial():
+    """Reparaturpotenzial - Upselling-Empfehlungen für Serviceberater (TAG 127)"""
+    return render_template('aftersales/werkstatt_reparaturpotenzial.html')
