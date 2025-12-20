@@ -4090,12 +4090,167 @@ def get_auftraege_enriched():
 
 
 # ============================================================
-# ANWESENHEITS-REPORT - TAG 116
-# DEAKTIVIERT TAG 122: Type 1 nur als abgeschlossene Einträge verfügbar
-# Prüft wer Type 1 (Anwesend) vergessen hat
+# ANWESENHEITS-REPORT V2 - TAG 130
+# Basiert auf Type 2 (produktiv) statt Type 1 (anwesend)
+# Type 2 ist sofort verfügbar, Type 1 erst nach Feierabend
 # ============================================================
 
-@werkstatt_live_bp.route('/anwesenheit/report', methods=['GET'])
+@werkstatt_live_bp.route('/anwesenheit', methods=['GET'])
+def get_anwesenheit_v2():
+    """
+    Anwesenheits-Report V2 (TAG 130): Wer hat heute gearbeitet?
+
+    Basiert auf Type 2 (produktive Stempelungen) + Type 1 für Historie.
+    Type 1 nur für vergangene Tage zuverlässig (wird erst bei Ausstempeln geschrieben).
+
+    Parameter:
+    - datum: YYYY-MM-DD (default: heute)
+    - subsidiary: 1=DEG, 2=Hyundai, 3=Landau (optional)
+    """
+    try:
+        datum = request.args.get('datum', datetime.now().strftime('%Y-%m-%d'))
+        subsidiary = request.args.get('subsidiary')
+        conn = get_locosoft_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        # Alle Mechaniker mit Type 2 (produktiv) + Type 1 (Anwesenheit) am gewählten Tag
+        cur.execute('''
+            WITH stempelungen AS (
+                SELECT
+                    t.employee_number,
+                    MIN(t.start_time) as erster_start,
+                    MAX(COALESCE(t.end_time, NOW())) as letztes_ende,
+                    COUNT(DISTINCT t.order_number) FILTER (WHERE t.order_number > 31) as anzahl_auftraege,
+                    SUM(EXTRACT(EPOCH FROM (COALESCE(t.end_time, NOW()) - t.start_time))/60)
+                        FILTER (WHERE t.order_number > 31) as produktiv_min,
+                    SUM(EXTRACT(EPOCH FROM (COALESCE(t.end_time, NOW()) - t.start_time))/60)
+                        FILTER (WHERE t.order_number = 31) as leerlauf_min,
+                    MAX(CASE WHEN t.end_time IS NULL THEN t.order_number END) as aktiver_auftrag,
+                    MAX(CASE WHEN t.end_time IS NULL THEN t.start_time END) as aktiv_seit
+                FROM times t
+                WHERE DATE(t.start_time) = %s
+                  AND t.type = 2
+                  AND t.employee_number BETWEEN 5000 AND 5999
+                GROUP BY t.employee_number
+            ),
+            anwesenheit AS (
+                SELECT
+                    t.employee_number,
+                    MIN(t.start_time) as anwesend_ab,
+                    MAX(t.end_time) as anwesend_bis,
+                    ROUND(SUM(EXTRACT(EPOCH FROM (t.end_time - t.start_time))/60)::numeric) as anwesend_min
+                FROM times t
+                WHERE DATE(t.start_time) = %s
+                  AND t.type = 1
+                  AND t.employee_number BETWEEN 5000 AND 5999
+                GROUP BY t.employee_number
+            ),
+            alle_mechaniker AS (
+                SELECT DISTINCT
+                    eh.employee_number,
+                    eh.name,
+                    eh.subsidiary,
+                    CASE eh.subsidiary
+                        WHEN 1 THEN 'Deggendorf'
+                        WHEN 2 THEN 'Hyundai'
+                        WHEN 3 THEN 'Landau'
+                    END as betrieb
+                FROM employees_history eh
+                WHERE eh.is_latest_record = true
+                  AND eh.employee_number BETWEEN 5000 AND 5999
+                  AND (eh.leave_date IS NULL OR eh.leave_date > %s::date)
+                  AND eh.subsidiary IN (1, 2, 3)
+            )
+            SELECT
+                m.employee_number,
+                m.name,
+                m.subsidiary,
+                m.betrieb,
+                s.erster_start,
+                s.letztes_ende,
+                COALESCE(s.anzahl_auftraege, 0) as anzahl_auftraege,
+                COALESCE(ROUND(s.produktiv_min::numeric), 0) as produktiv_min,
+                COALESCE(ROUND(s.leerlauf_min::numeric), 0) as leerlauf_min,
+                s.aktiver_auftrag,
+                s.aktiv_seit,
+                a.anwesend_ab,
+                a.anwesend_bis,
+                COALESCE(a.anwesend_min, 0) as anwesend_min,
+                CASE WHEN s.employee_number IS NOT NULL THEN true ELSE false END as hat_gearbeitet
+            FROM alle_mechaniker m
+            LEFT JOIN stempelungen s ON m.employee_number = s.employee_number
+            LEFT JOIN anwesenheit a ON m.employee_number = a.employee_number
+            ORDER BY m.betrieb, m.name
+        ''', (datum, datum, datum))
+
+        alle = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        # Filter nach Betrieb
+        if subsidiary:
+            alle = [m for m in alle if str(m['subsidiary']) == str(subsidiary)]
+
+        # Kategorisieren
+        anwesend = []
+        abwesend = []
+        aktiv = []
+
+        for m in alle:
+            entry = {
+                'employee_number': m['employee_number'],
+                'name': m['name'],
+                'betrieb': m['betrieb'],
+                'erster_start': m['erster_start'].strftime('%H:%M') if m['erster_start'] else None,
+                'letztes_ende': m['letztes_ende'].strftime('%H:%M') if m['letztes_ende'] else None,
+                'anzahl_auftraege': m['anzahl_auftraege'],
+                'produktiv_min': int(m['produktiv_min']),
+                'produktiv_std': round(m['produktiv_min'] / 60, 1),
+                'leerlauf_min': int(m['leerlauf_min'] or 0),
+                'aktiver_auftrag': m['aktiver_auftrag'],
+                'aktiv_seit': m['aktiv_seit'].strftime('%H:%M') if m['aktiv_seit'] else None,
+                'anwesend_ab': m['anwesend_ab'].strftime('%H:%M') if m['anwesend_ab'] else None,
+                'anwesend_bis': m['anwesend_bis'].strftime('%H:%M') if m['anwesend_bis'] else None,
+                'anwesend_min': int(m['anwesend_min'] or 0),
+                'anwesend_std': round((m['anwesend_min'] or 0) / 60, 1)
+            }
+            if m['hat_gearbeitet']:
+                anwesend.append(entry)
+                if m['aktiver_auftrag']:
+                    aktiv.append(entry)
+            else:
+                abwesend.append(entry)
+
+        total_produktiv = sum(m['produktiv_min'] for m in anwesend)
+        total_leerlauf = sum(m['leerlauf_min'] for m in anwesend)
+
+        return jsonify({
+            'success': True,
+            'datum': datum,
+            'timestamp': datetime.now().isoformat(),
+            'anwesend': anwesend,
+            'abwesend': abwesend,
+            'aktiv': aktiv,
+            'statistik': {
+                'total_mechaniker': len(alle),
+                'anwesend': len(anwesend),
+                'abwesend': len(abwesend),
+                'gerade_aktiv': len(aktiv),
+                'produktiv_std': round(total_produktiv / 60, 1),
+                'leerlauf_std': round(total_leerlauf / 60, 1)
+            }
+        })
+    except Exception as e:
+        logger.exception("Fehler bei Anwesenheits-Report V2")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================
+# ANWESENHEITS-REPORT V1 (Legacy) - TAG 116
+# DEAKTIVIERT TAG 122: Type 1 nur als abgeschlossene Einträge verfügbar
+# ============================================================
+
+@werkstatt_live_bp.route('/anwesenheit/legacy', methods=['GET'])
 def get_anwesenheit_report():
     """
     Anwesenheits-Report: Wer hat eingestempelt, wer nicht?

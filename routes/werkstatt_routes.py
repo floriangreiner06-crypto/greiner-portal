@@ -1,26 +1,41 @@
 """
 Werkstatt Routes
 ================
-Flask Routes für Werkstatt-Modul
+Flask Routes für Werkstatt-Modul - ZENTRALISIERT (TAG 130)
+
+Alle Werkstatt-Routes sind hier definiert.
+Monitor-Routes (ohne Login) bleiben in app.py wegen Token-Auth.
 
 Erstellt: 2025-12-04 (TAG 90)
 Aktualisiert: 2025-12-06 (TAG 98) - ML-Integration
 Aktualisiert: 2025-12-09 - Cockpit Route hinzugefügt
 Aktualisiert: 2025-12-12 (TAG 116) - Kapazitätsplanung + Anwesenheits-Report
+Aktualisiert: 2025-12-20 (TAG 130) - Routes konsolidiert, Duplikate aus app.py entfernt
 """
 
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, redirect, url_for, flash
 from decorators.auth_decorators import login_required
 
 werkstatt_routes = Blueprint('werkstatt', __name__)
 
 
+# ============================================================
+# HAUPT-EINSTIEG
+# ============================================================
+
+@werkstatt_routes.route('/werkstatt')
 @werkstatt_routes.route('/werkstatt/')
-@werkstatt_routes.route('/werkstatt/uebersicht')
 @login_required
-def werkstatt_uebersicht():
-    """Werkstatt Leistungsübersicht"""
-    return render_template('aftersales/werkstatt_uebersicht.html')
+def werkstatt_index():
+    """Werkstatt Startseite → Dashboard"""
+    return redirect(url_for('werkstatt.werkstatt_dashboard'))
+
+
+@werkstatt_routes.route('/werkstatt/dashboard')
+@login_required
+def werkstatt_dashboard():
+    """Werkstatt Dashboard - Konsolidierte Übersicht (TAG 99)"""
+    return render_template('aftersales/werkstatt_dashboard.html')
 
 
 @werkstatt_routes.route('/werkstatt/cockpit')
@@ -28,6 +43,13 @@ def werkstatt_uebersicht():
 def werkstatt_cockpit():
     """Werkstatt Cockpit - Ampel-System mit Live-Status"""
     return render_template('aftersales/werkstatt_cockpit.html')
+
+
+@werkstatt_routes.route('/werkstatt/uebersicht')
+@login_required
+def werkstatt_uebersicht():
+    """Werkstatt Leistungsübersicht (Legacy)"""
+    return render_template('aftersales/werkstatt_uebersicht.html')
 
 
 @werkstatt_routes.route('/werkstatt/live')
@@ -111,8 +133,15 @@ def kapazitaetsplanung():
 @werkstatt_routes.route('/werkstatt/anwesenheit')
 @login_required
 def werkstatt_anwesenheit():
-    """Anwesenheits-Report - Wer hat (nicht) eingestempelt?"""
+    """Anwesenheits-Report V2 (TAG 130) - Basiert auf Type 2 statt Type 1"""
     return render_template('aftersales/werkstatt_anwesenheit.html')
+
+
+@werkstatt_routes.route('/werkstatt/intelligence')
+@login_required
+def werkstatt_intelligence():
+    """Werkstatt Intelligence - ML Dashboard"""
+    return render_template('werkstatt_intelligence.html')
 
 
 # ============================================================
