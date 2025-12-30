@@ -33,7 +33,7 @@ def get_current_user():
 
     with db_session() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT username, ad_groups FROM users WHERE id = ?", (user_id,))
+        cursor.execute("SELECT username, ad_groups FROM users WHERE id = %s", (user_id,))
         row = cursor.fetchone()
 
         if row:
@@ -86,7 +86,7 @@ def get_org_tree():
                     lem.ldap_username
                 FROM employees e
                 LEFT JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
-                WHERE e.aktiv = 1
+                WHERE e.aktiv = true
                 ORDER BY e.department_name, e.last_name
             """)
 
@@ -164,7 +164,7 @@ def get_departments():
                     SUM(CASE WHEN is_manager = 1 THEN 1 ELSE 0 END) as manager_count,
                     location
                 FROM employees
-                WHERE aktiv = 1 AND department_name IS NOT NULL
+                WHERE aktiv = true AND department_name IS NOT NULL
                 GROUP BY department_name
                 ORDER BY department_name
             """)
@@ -187,7 +187,7 @@ def get_departments():
                         lem.ldap_username
                     FROM employees e
                     LEFT JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
-                    WHERE e.aktiv = 1 AND e.department_name = ?
+                    WHERE e.aktiv = true AND e.department_name = %s
                     ORDER BY e.is_manager DESC, e.last_name
                 """, (dept_name,))
 
@@ -253,12 +253,12 @@ def get_employees_list():
                     e.location
                 FROM employees e
                 LEFT JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
-                WHERE e.aktiv = 1
+                WHERE e.aktiv = true
             """
             params = []
 
             if department:
-                query += " AND e.department_name = ?"
+                query += " AND e.department_name = %s"
                 params.append(department)
 
             query += " ORDER BY e.last_name, e.first_name"
@@ -332,7 +332,7 @@ def get_substitutes():
                 FROM substitution_rules sr
                 JOIN employees e1 ON sr.employee_id = e1.id
                 JOIN employees e2 ON sr.substitute_id = e2.id
-                WHERE e1.aktiv = 1 AND e2.aktiv = 1
+                WHERE e1.aktiv = true AND e2.aktiv = true
                 ORDER BY e1.department_name, e1.last_name, sr.priority
             """)
 
@@ -441,7 +441,7 @@ def delete_substitute(rule_id):
         with db_session() as conn:
             cursor = conn.cursor()
 
-            cursor.execute("DELETE FROM substitution_rules WHERE id = ?", (rule_id,))
+            cursor.execute("DELETE FROM substitution_rules WHERE id = %s", (rule_id,))
 
             if cursor.rowcount == 0:
                 return jsonify({'success': False, 'error': 'Regel nicht gefunden'}), 404
@@ -570,7 +570,7 @@ def delete_approval_rule(rule_id):
             cursor = conn.cursor()
 
             # Soft-Delete: aktiv = 0
-            cursor.execute("UPDATE vacation_approval_rules SET aktiv = 0 WHERE id = ?", (rule_id,))
+            cursor.execute("UPDATE vacation_approval_rules SET aktiv = 0 WHERE id = %s", (rule_id,))
 
             if cursor.rowcount == 0:
                 return jsonify({'success': False, 'error': 'Regel nicht gefunden'}), 404
@@ -611,7 +611,7 @@ def get_department_capacity():
             # Gesamtzahl Mitarbeiter in Abteilung
             cursor.execute("""
                 SELECT COUNT(*) FROM employees
-                WHERE department_name = ? AND aktiv = 1
+                WHERE department_name = %s AND aktiv = true
             """, (department,))
             total = cursor.fetchone()[0]
 
@@ -626,9 +626,9 @@ def get_department_capacity():
                 SELECT COUNT(DISTINCT vb.employee_id)
                 FROM vacation_bookings vb
                 JOIN employees e ON vb.employee_id = e.id
-                WHERE e.department_name = ?
-                  AND e.aktiv = 1
-                  AND vb.booking_date = ?
+                WHERE e.department_name = %s
+                  AND e.aktiv = true
+                  AND vb.booking_date = %s
                   AND vb.status = 'approved'
             """, (department, check_date))
             absent = cursor.fetchone()[0]
@@ -638,9 +638,9 @@ def get_department_capacity():
                 SELECT COUNT(DISTINCT vb.employee_id)
                 FROM vacation_bookings vb
                 JOIN employees e ON vb.employee_id = e.id
-                WHERE e.department_name = ?
-                  AND e.aktiv = 1
-                  AND vb.booking_date = ?
+                WHERE e.department_name = %s
+                  AND e.aktiv = true
+                  AND vb.booking_date = %s
                   AND vb.status = 'pending'
             """, (department, check_date))
             pending = cursor.fetchone()[0]
@@ -694,7 +694,7 @@ def get_capacity_settings():
             if not cursor.fetchone():
                 # Default-Werte zurückgeben
                 cursor.execute("""
-                    SELECT DISTINCT department_name FROM employees WHERE aktiv = 1 AND department_name IS NOT NULL
+                    SELECT DISTINCT department_name FROM employees WHERE aktiv = true AND department_name IS NOT NULL
                 """)
                 departments = [row[0] for row in cursor.fetchall()]
 

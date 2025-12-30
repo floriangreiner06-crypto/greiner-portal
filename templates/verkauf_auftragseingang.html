@@ -9,6 +9,20 @@
         </div>
     </div>
     
+    <!-- Quick-Buttons -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="btn-group" role="group">
+                <button type="button" class="btn btn-outline-primary" id="btnHeute">
+                    <i class="bi bi-calendar-day"></i> Heute
+                </button>
+                <button type="button" class="btn btn-primary" id="btnMonat">
+                    <i class="bi bi-calendar-month"></i> Dieser Monat
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Filter -->
     <div class="row mb-4">
         <div class="col-md-2">
@@ -31,7 +45,7 @@
                 <option value="8">August</option>
                 <option value="9">September</option>
                 <option value="10">Oktober</option>
-                <option value="11" selected>November</option>
+                <option value="11">November</option>
                 <option value="12">Dezember</option>
             </select>
         </div>
@@ -41,7 +55,7 @@
         </div>
         <div class="col-md-1">
             <label>Jahr:</label>
-            <input type="number" id="yearSelect" class="form-control" value="2025" min="2020" max="2030">
+            <input type="number" id="yearSelect" class="form-control" min="2020" max="2030">
         </div>
         <div class="col-md-2">
             <label>Standort:</label>
@@ -63,6 +77,42 @@
             <button id="loadBtn" class="btn btn-primary w-100">
                 <i class="bi bi-search"></i>
             </button>
+        </div>
+    </div>
+
+    <!-- Werktage-Prognose (nur bei Monatsansicht) -->
+    <div class="row mb-4" id="prognoseRow" style="display:none;">
+        <div class="col-12">
+            <div class="card border-info">
+                <div class="card-body py-2">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-calendar-range text-info me-2" style="font-size: 1.5rem;"></i>
+                                <div>
+                                    <strong>Werktage:</strong>
+                                    <span id="werktageBisher">-</span> von <span id="werktageGesamt">-</span> vergangen
+                                    <span class="text-muted ms-2">(<span id="werktageUebrig">-</span> verbleibend)</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-graph-up-arrow text-success me-2" style="font-size: 1.5rem;"></i>
+                                <div>
+                                    <strong>Prognose:</strong>
+                                    <span id="prognoseWert" class="fs-5">-</span> AE
+                                    <span class="text-muted ms-2">(aktuell <span id="aeProTag">-</span> AE/Tag)</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Progress Bar -->
+                    <div class="progress mt-2" style="height: 8px;">
+                        <div class="progress-bar bg-info" id="werktageProgress" role="progressbar" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -108,29 +158,60 @@
 
 {% block scripts %}
 <script>
-// Auftragseingang - JavaScript mit erweiterten Filtern
-let currentMonth = 11;
-let currentYear = 2025;
+// Auftragseingang - JavaScript mit Werktage-Prognose (TAG134)
+const now = new Date();
+let currentMonth = now.getMonth() + 1; // JavaScript months are 0-indexed
+let currentYear = now.getFullYear();
 let currentLocation = '';
 let currentVerkaufer = '';
 let currentPeriod = 'month';
 let currentDay = '';
+let lastTotalAE = 0; // Für Prognose-Berechnung
 
 document.addEventListener('DOMContentLoaded', function() {
+    // Aktuelles Datum setzen
+    document.getElementById('monthSelect').value = currentMonth;
+    document.getElementById('yearSelect').value = currentYear;
+
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('daySelect').value = today;
+
     // Event Listeners
     document.getElementById('loadBtn').addEventListener('click', loadData);
     document.getElementById('periodSelect').addEventListener('change', togglePeriodInputs);
-    
+
+    // Quick-Buttons
+    document.getElementById('btnHeute').addEventListener('click', () => {
+        document.getElementById('periodSelect').value = 'day';
+        document.getElementById('daySelect').value = today;
+        togglePeriodInputs();
+        updateQuickButtons('heute');
+        loadData();
+    });
+
+    document.getElementById('btnMonat').addEventListener('click', () => {
+        document.getElementById('periodSelect').value = 'month';
+        document.getElementById('monthSelect').value = now.getMonth() + 1;
+        document.getElementById('yearSelect').value = now.getFullYear();
+        togglePeriodInputs();
+        updateQuickButtons('monat');
+        loadData();
+    });
+
     // Verkäufer-Liste laden
     loadVerkauferList();
-    
-    // Datum auf heute setzen
-    const today = new Date().toISOString().split('T')[0];
-    document.getElementById('daySelect').value = today;
-    
-    // Initial Load
+
+    // Initial Load (aktueller Monat)
+    updateQuickButtons('monat');
     loadData();
 });
+
+function updateQuickButtons(active) {
+    document.getElementById('btnHeute').classList.toggle('btn-primary', active === 'heute');
+    document.getElementById('btnHeute').classList.toggle('btn-outline-primary', active !== 'heute');
+    document.getElementById('btnMonat').classList.toggle('btn-primary', active === 'monat');
+    document.getElementById('btnMonat').classList.toggle('btn-outline-primary', active !== 'monat');
+}
 
 function togglePeriodInputs() {
     const period = document.getElementById('periodSelect').value;
@@ -172,8 +253,83 @@ async function loadData() {
     currentLocation = document.getElementById('locationSelect').value;
     currentVerkaufer = document.getElementById('verkauferSelect').value;
 
+    // Prognose-Zeile nur bei Monatsansicht zeigen
+    const prognoseRow = document.getElementById('prognoseRow');
+    if (currentPeriod === 'month') {
+        prognoseRow.style.display = 'block';
+    } else {
+        prognoseRow.style.display = 'none';
+    }
+
     await loadSummary();
     await loadDetails();
+
+    // Prognose berechnen (nur bei Monatsansicht)
+    if (currentPeriod === 'month') {
+        updatePrognose();
+    }
+}
+
+// Werktage-Berechnung (Mo-Fr)
+function getWerktageInMonth(year, month) {
+    const firstDay = new Date(year, month - 1, 1);
+    const lastDay = new Date(year, month, 0);
+    let werktage = 0;
+
+    for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
+        const dayOfWeek = d.getDay();
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Nicht Samstag/Sonntag
+            werktage++;
+        }
+    }
+    return werktage;
+}
+
+function getWerktageBisher(year, month) {
+    const today = new Date();
+    const firstDay = new Date(year, month - 1, 1);
+
+    // Wenn anderer Monat als aktueller, alle Werktage des Monats
+    if (year != today.getFullYear() || month != (today.getMonth() + 1)) {
+        return getWerktageInMonth(year, month);
+    }
+
+    // Aktueller Monat: nur bis heute zählen
+    let werktage = 0;
+    for (let d = new Date(firstDay); d <= today; d.setDate(d.getDate() + 1)) {
+        const dayOfWeek = d.getDay();
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+            werktage++;
+        }
+    }
+    return werktage;
+}
+
+function updatePrognose() {
+    const werktageGesamt = getWerktageInMonth(currentYear, currentMonth);
+    const werktageBisher = getWerktageBisher(currentYear, currentMonth);
+    const werktageUebrig = werktageGesamt - werktageBisher;
+
+    // UI aktualisieren
+    document.getElementById('werktageGesamt').textContent = werktageGesamt;
+    document.getElementById('werktageBisher').textContent = werktageBisher;
+    document.getElementById('werktageUebrig').textContent = werktageUebrig;
+
+    // Progress Bar
+    const progress = (werktageBisher / werktageGesamt) * 100;
+    document.getElementById('werktageProgress').style.width = progress + '%';
+
+    // Prognose berechnen
+    if (werktageBisher > 0 && lastTotalAE > 0) {
+        const aeProTag = lastTotalAE / werktageBisher;
+        const prognose = Math.round(aeProTag * werktageGesamt);
+
+        document.getElementById('aeProTag').textContent = aeProTag.toFixed(1);
+        document.getElementById('prognoseWert').textContent = prognose;
+    } else {
+        document.getElementById('aeProTag').textContent = '-';
+        document.getElementById('prognoseWert').textContent = '-';
+    }
 }
 
 async function loadSummary() {
@@ -257,7 +413,10 @@ async function loadSummary() {
         // Gesamt
         const gesamt = neuwagen.gesamt + testvorfuehr.gesamt + gebrauchtwagen.gesamt;
         const gesamt_umsatz = neuwagen.umsatz + testvorfuehr.umsatz + gebrauchtwagen.umsatz;
-        
+
+        // Für Prognose-Berechnung speichern
+        lastTotalAE = gesamt;
+
         html += `
             <div class="col-md-3">
                 <div class="card text-center border-dark">

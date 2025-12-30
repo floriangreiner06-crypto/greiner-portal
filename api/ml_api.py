@@ -17,8 +17,9 @@ from flask import Blueprint, jsonify, request
 import pickle
 import numpy as np
 import pandas as pd
-import sqlite3
 import os
+
+from api.db_utils import db_session, rows_to_list
 
 # Blueprint erstellen
 ml_api = Blueprint('ml_api', __name__, url_prefix='/api/ml')
@@ -28,7 +29,6 @@ ml_api = Blueprint('ml_api', __name__, url_prefix='/api/ml')
 # =============================================================================
 MODEL_DIR = "/opt/greiner-portal/data/ml/models"
 DATA_DIR = "/opt/greiner-portal/data/ml"
-SQLITE_DB = "/opt/greiner-portal/data/greiner_controlling.db"
 
 # Globale Variablen für Modell und Encoder
 _model = None
@@ -107,26 +107,28 @@ def get_training_data():
     return _training_data
 
 def get_mechaniker_namen():
-    """Lädt Mechaniker-Namen aus SQLite (locosoft_id -> Name + Standort)"""
+    """Lädt Mechaniker-Namen aus DB (locosoft_id -> Name + Standort)
+    TAG 136: PostgreSQL-kompatibel via db_session
+    """
     global _mechaniker_namen
     if _mechaniker_namen is None:
         try:
-            conn = sqlite3.connect(SQLITE_DB)
-            query = """
-                SELECT locosoft_id, first_name, last_name, department_name, location
-                FROM employees 
-                WHERE locosoft_id IS NOT NULL
-            """
-            df = pd.read_sql_query(query, conn)
-            conn.close()
-            
+            with db_session() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT locosoft_id, first_name, last_name, department_name, location
+                    FROM employees
+                    WHERE locosoft_id IS NOT NULL
+                """)
+                rows = rows_to_list(cursor.fetchall())
+
             # Dictionary: locosoft_id -> Infos inkl. Standort
             _mechaniker_namen = {}
-            for _, row in df.iterrows():
+            for row in rows:
                 location = row['location'] if row['location'] else 'Unbekannt'
                 # Kürzel für Standort
                 loc_short = 'DEG' if 'Deggendorf' in location else ('LAU' if 'Landau' in location else location[:3].upper())
-                
+
                 _mechaniker_namen[int(row['locosoft_id'])] = {
                     'name': f"{row['first_name']} {row['last_name']}",
                     'first_name': row['first_name'],

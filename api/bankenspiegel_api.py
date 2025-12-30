@@ -17,8 +17,9 @@ from flask import Blueprint, jsonify, request
 from datetime import datetime, date, timedelta
 from typing import Optional, Dict, List, Any
 
-# Zentrale DB-Utilities (TAG 117) - Nur db_session Context Manager
+# Zentrale DB-Utilities (TAG 117, TAG 136: PostgreSQL-kompatibel)
 from api.db_utils import db_session, row_to_dict, rows_to_list
+from api.db_connection import sql_placeholder, get_db_type, convert_placeholders
 
 # Blueprint erstellen
 bankenspiegel_api = Blueprint('bankenspiegel_api', __name__, url_prefix='/api/bankenspiegel')
@@ -32,8 +33,16 @@ def get_dashboard():
     """
     GET /api/bankenspiegel/dashboard
     Dashboard-KPIs
+    TAG 136: PostgreSQL-kompatibel
     """
     try:
+        # TAG 136: PostgreSQL-kompatible Datumsfunktionen
+        is_pg = get_db_type() == 'postgresql'
+        date_30_days = "CURRENT_DATE - INTERVAL '30 days'" if is_pg else "DATE('now', '-30 days')"
+        date_start_month = "DATE_TRUNC('month', CURRENT_DATE)" if is_pg else "DATE('now', 'start of month')"
+        aktiv_check = "aktiv = true" if is_pg else "aktiv = 1"
+        ph = sql_placeholder()
+
         with db_session() as conn:
             cursor = conn.cursor()
 
@@ -49,13 +58,13 @@ def get_dashboard():
             saldo_data = row_to_dict(cursor.fetchone())
 
             # 2. Transaktionen letzte 30 Tage (OHNE INTERNE TRANSFERS)
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT
                     COUNT(*) as anzahl,
                     SUM(CASE WHEN betrag > 0 THEN betrag ELSE 0 END) as einnahmen,
                     SUM(CASE WHEN betrag < 0 THEN ABS(betrag) ELSE 0 END) as ausgaben
                 FROM transaktionen
-                WHERE buchungsdatum >= DATE('now', '-30 days')
+                WHERE buchungsdatum >= {date_30_days}
                   AND NOT (
                     verwendungszweck LIKE '%Autohaus Greiner%Autohaus Greiner%'
                     OR verwendungszweck LIKE '%Umbuchung%'
@@ -66,12 +75,12 @@ def get_dashboard():
             trans_30d = row_to_dict(cursor.fetchone())
 
             # 2b. Interne Transfers (SEPARAT)
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT
                     COUNT(*) as anzahl,
                     SUM(ABS(betrag)) as volumen
                 FROM transaktionen
-                WHERE buchungsdatum >= DATE('now', '-30 days')
+                WHERE buchungsdatum >= {date_30_days}
                   AND (
                     verwendungszweck LIKE '%Autohaus Greiner%Autohaus Greiner%'
                     OR verwendungszweck LIKE '%Umbuchung%'
@@ -81,27 +90,39 @@ def get_dashboard():
             """)
             interne_30d = row_to_dict(cursor.fetchone())
 
-            # 3. Aktueller Monat
+            # 3. Aktueller Monat - TAG 136: PostgreSQL-kompatibel
             aktueller_monat = date.today().strftime('%Y-%m')
-            cursor.execute("""
-                SELECT
-                    SUM(CASE WHEN betrag > 0 THEN betrag ELSE 0 END) as einnahmen,
-                    SUM(CASE WHEN betrag < 0 THEN ABS(betrag) ELSE 0 END) as ausgaben,
-                    SUM(betrag) as saldo,
-                    COUNT(*) as anzahl
-                FROM transaktionen
-                WHERE strftime('%Y-%m', buchungsdatum) = ?
-            """, (aktueller_monat,))
+            if is_pg:
+                # PostgreSQL: TO_CHAR für Monat-Vergleich
+                cursor.execute(f"""
+                    SELECT
+                        SUM(CASE WHEN betrag > 0 THEN betrag ELSE 0 END) as einnahmen,
+                        SUM(CASE WHEN betrag < 0 THEN ABS(betrag) ELSE 0 END) as ausgaben,
+                        SUM(betrag) as saldo,
+                        COUNT(*) as anzahl
+                    FROM transaktionen
+                    WHERE TO_CHAR(buchungsdatum, 'YYYY-MM') = {ph}
+                """, (aktueller_monat,))
+            else:
+                cursor.execute(f"""
+                    SELECT
+                        SUM(CASE WHEN betrag > 0 THEN betrag ELSE 0 END) as einnahmen,
+                        SUM(CASE WHEN betrag < 0 THEN ABS(betrag) ELSE 0 END) as ausgaben,
+                        SUM(betrag) as saldo,
+                        COUNT(*) as anzahl
+                    FROM transaktionen
+                    WHERE TO_CHAR(buchungsdatum, 'YYYY-MM') = {ph}
+                """, (aktueller_monat,))
             monat_data = row_to_dict(cursor.fetchone())
 
             # 4. Top 5 Ausgaben-Kategorien (aktueller Monat)
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT
                     kategorie,
                     COUNT(*) as anzahl,
                     SUM(ABS(betrag)) as summe
                 FROM transaktionen
-                WHERE buchungsdatum >= DATE('now', 'start of month')
+                WHERE buchungsdatum >= {date_start_month}
                 AND betrag < 0
                 AND kategorie IS NOT NULL
                 AND NOT (
@@ -114,9 +135,9 @@ def get_dashboard():
             """)
             top_kategorien = rows_to_list(cursor.fetchall())
 
-            # 5. Anzahl Banken
-            cursor.execute("SELECT COUNT(*) as anzahl FROM banken WHERE aktiv = 1")
-            anzahl_banken = cursor.fetchone()['anzahl']
+            # 5. Anzahl Banken - TAG 136: Boolean für PostgreSQL
+            cursor.execute(f"SELECT COUNT(*) as anzahl FROM banken WHERE {aktiv_check}")
+            anzahl_banken = row_to_dict(cursor.fetchone())['anzahl']
 
         return jsonify({
             'success': True,
@@ -162,9 +183,11 @@ def get_konten():
     """
     GET /api/bankenspiegel/konten?bank_id=1
     Kontenliste mit Salden
+    TAG 136: PostgreSQL-kompatibel
     """
     try:
         bank_id = request.args.get('bank_id', type=int)
+        ph = sql_placeholder()
 
         with db_session() as conn:
             cursor = conn.cursor()
@@ -187,9 +210,9 @@ def get_konten():
 
             params = []
 
-            # Filter nach Bank
+            # Filter nach Bank - TAG 136: dynamischer Placeholder
             if bank_id:
-                query += " AND bank_id = ?"
+                query += f" AND bank_id = {ph}"
                 params.append(bank_id)
 
             query += " ORDER BY sort_order, kontoname"
@@ -197,8 +220,8 @@ def get_konten():
             cursor.execute(query, params)
             konten = rows_to_list(cursor.fetchall())
 
-            # Statistik
-            gesamtsaldo = sum(k['saldo'] or 0 for k in konten)
+            # Statistik - TAG 136: float() für PostgreSQL Decimal
+            gesamtsaldo = sum(float(k['saldo'] or 0) for k in konten)
 
         return jsonify({
             'success': True,
@@ -214,7 +237,7 @@ def get_konten():
         }), 500
 
 # ============================================================================
-# ENDPOINT 3: TRANSAKTIONEN
+# ENDPOINT 3: TRANSAKTIONEN (TAG 136: PostgreSQL-kompatibel)
 # ============================================================================
 
 @bankenspiegel_api.route('/transaktionen', methods=['GET'])
@@ -222,7 +245,10 @@ def get_transaktionen():
     """
     GET /api/bankenspiegel/transaktionen?konto_id=1&von=2025-01-01&bis=2025-12-31
     Transaktionsliste mit Filtern
+    TAG 136: PostgreSQL-kompatibel
     """
+    from api.db_connection import convert_placeholders
+
     try:
         # Parameter auslesen
         konto_id = request.args.get('konto_id', type=int)
@@ -265,7 +291,7 @@ def get_transaktionen():
             """
             params = []
 
-            # Filter anwenden
+            # Filter anwenden (TAG 144: alle ? - convert_placeholders macht %s)
             if konto_id:
                 query += " AND t.konto_id = ?"
                 params.append(konto_id)
@@ -307,18 +333,43 @@ def get_transaktionen():
             query += " LIMIT ? OFFSET ?"
             params.extend([limit, offset])
 
-            cursor.execute(query, params)
+            # TAG 136: ? -> %s für PostgreSQL
+            cursor.execute(convert_placeholders(query), params)
             transaktionen = rows_to_list(cursor.fetchall())
+
+            # TAG 136: Datumswerte in ISO-Format konvertieren für JavaScript
+            for t in transaktionen:
+                if t.get('buchungsdatum'):
+                    if hasattr(t['buchungsdatum'], 'isoformat'):
+                        t['buchungsdatum'] = t['buchungsdatum'].strftime('%Y-%m-%d')
+                    elif isinstance(t['buchungsdatum'], str) and ',' in t['buchungsdatum']:
+                        # RFC Format -> ISO
+                        from datetime import datetime as dt
+                        try:
+                            parsed = dt.strptime(t['buchungsdatum'], '%a, %d %b %Y %H:%M:%S %Z')
+                            t['buchungsdatum'] = parsed.strftime('%Y-%m-%d')
+                        except:
+                            pass
+                if t.get('valutadatum'):
+                    if hasattr(t['valutadatum'], 'isoformat'):
+                        t['valutadatum'] = t['valutadatum'].strftime('%Y-%m-%d')
+                    elif isinstance(t['valutadatum'], str) and ',' in t['valutadatum']:
+                        from datetime import datetime as dt
+                        try:
+                            parsed = dt.strptime(t['valutadatum'], '%a, %d %b %Y %H:%M:%S %Z')
+                            t['valutadatum'] = parsed.strftime('%Y-%m-%d')
+                        except:
+                            pass
 
             # Gesamt-Anzahl
             count_query = "SELECT COUNT(*) as total FROM transaktionen t JOIN konten k ON t.konto_id = k.id WHERE 1=1"
             count_params = []
 
             if konto_id:
-                count_query += " AND t.konto_id = ?"
+                count_query += " AND t.konto_id = %s"
                 count_params.append(konto_id)
             if bank_id:
-                count_query += " AND k.bank_id = ?"
+                count_query += " AND k.bank_id = %s"
                 count_params.append(bank_id)
             if von:
                 count_query += " AND t.buchungsdatum >= ?"
@@ -327,7 +378,7 @@ def get_transaktionen():
                 count_query += " AND t.buchungsdatum <= ?"
                 count_params.append(bis)
             if kategorie:
-                count_query += " AND t.kategorie = ?"
+                count_query += " AND t.kategorie = %s"
                 count_params.append(kategorie)
             if betrag_min is not None:
                 count_query += " AND t.betrag >= ?"
@@ -340,8 +391,9 @@ def get_transaktionen():
                 search_term = f"%{suche}%"
                 count_params.extend([search_term, search_term])
 
-            cursor.execute(count_query, count_params)
-            total = cursor.fetchone()['total']
+            cursor.execute(convert_placeholders(count_query), count_params)
+            count_row = row_to_dict(cursor.fetchone())
+            total = count_row['total']
 
             # Statistik
             stats_query = """
@@ -356,10 +408,10 @@ def get_transaktionen():
             stats_params = []
 
             if konto_id:
-                stats_query += " AND t.konto_id = ?"
+                stats_query += " AND t.konto_id = %s"
                 stats_params.append(konto_id)
             if bank_id:
-                stats_query += " AND k.bank_id = ?"
+                stats_query += " AND k.bank_id = %s"
                 stats_params.append(bank_id)
             if von:
                 stats_query += " AND t.buchungsdatum >= ?"
@@ -368,7 +420,7 @@ def get_transaktionen():
                 stats_query += " AND t.buchungsdatum <= ?"
                 stats_params.append(bis)
             if kategorie:
-                stats_query += " AND t.kategorie = ?"
+                stats_query += " AND t.kategorie = %s"
                 stats_params.append(kategorie)
             if betrag_min is not None:
                 stats_query += " AND t.betrag >= ?"
@@ -381,8 +433,8 @@ def get_transaktionen():
                 search_term = f"%{suche}%"
                 stats_params.extend([search_term, search_term])
 
-            cursor.execute(stats_query, stats_params)
-            stats = cursor.fetchone()
+            cursor.execute(convert_placeholders(stats_query), stats_params)
+            stats = row_to_dict(cursor.fetchone())
 
         return jsonify({
             'success': True,
@@ -395,9 +447,9 @@ def get_transaktionen():
                 'has_more': (offset + limit) < total
             },
             'statistik': {
-                'einnahmen': round(stats['summe_einnahmen'] or 0, 2),
-                'ausgaben': round(stats['summe_ausgaben'] or 0, 2),
-                'saldo': round(stats['saldo'] or 0, 2)
+                'einnahmen': round(float(stats['summe_einnahmen'] or 0), 2),
+                'ausgaben': round(float(stats['summe_ausgaben'] or 0), 2),
+                'saldo': round(float(stats['saldo'] or 0), 2)
             }
         }), 200
 
@@ -408,7 +460,7 @@ def get_transaktionen():
         }), 500
 
 # ============================================================================
-# ENDPOINT 4: EINKAUFSFINANZIERUNG (FIXED - TAG 72)
+# ENDPOINT 4: EINKAUFSFINANZIERUNG (FIXED - TAG 72, TAG 136: PostgreSQL)
 # ============================================================================
 
 @bankenspiegel_api.route('/einkaufsfinanzierung', methods=['GET'])
@@ -416,8 +468,12 @@ def get_einkaufsfinanzierung():
     """
     GET /api/bankenspiegel/einkaufsfinanzierung
     Einkaufsfinanzierung - Übersicht Stellantis & Santander
+    TAG 136: PostgreSQL-kompatibel
     """
     try:
+        # TAG 136: PostgreSQL-Placeholder
+        ph = sql_placeholder()
+
         with db_session() as conn:
             cursor = conn.cursor()
 
@@ -430,7 +486,7 @@ def get_einkaufsfinanzierung():
                     SUM(original_betrag - aktueller_saldo) as gesamt_abbezahlt
                 FROM fahrzeugfinanzierungen
             """)
-            gesamt_row = cursor.fetchone()
+            gesamt_row = row_to_dict(cursor.fetchone())
 
             # 2. DATEN PRO INSTITUT
             cursor.execute("""
@@ -438,12 +494,12 @@ def get_einkaufsfinanzierung():
                 FROM fahrzeugfinanzierungen
                 ORDER BY finanzinstitut
             """)
-            institute_liste = [row['finanzinstitut'] for row in cursor.fetchall()]
+            institute_liste = [row_to_dict(row)['finanzinstitut'] for row in cursor.fetchall()]
 
             institute = []
             for institut in institute_liste:
                 # Statistik pro Institut
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT
                         COUNT(*) as anzahl,
                         SUM(aktueller_saldo) as finanzierung,
@@ -453,24 +509,25 @@ def get_einkaufsfinanzierung():
                         MIN(zinsfreiheit_tage) as min_zinsfreiheit,
                         SUM(original_betrag - aktueller_saldo) as abbezahlt
                     FROM fahrzeugfinanzierungen
-                    WHERE finanzinstitut = ?
+                    WHERE finanzinstitut = {ph}
                 """, (institut,))
-                stats = cursor.fetchone()
+                stats = row_to_dict(cursor.fetchone())
 
                 # Marken-Verteilung
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT
                         rrdi,
                         COUNT(*) as anzahl,
                         SUM(aktueller_saldo) as finanzierung
                     FROM fahrzeugfinanzierungen
-                    WHERE finanzinstitut = ?
+                    WHERE finanzinstitut = {ph}
                     GROUP BY rrdi
                     ORDER BY anzahl DESC
                 """, (institut,))
                 marken = []
                 for row in cursor.fetchall():
-                    marke_name = row['rrdi'] if row['rrdi'] else "Unbekannt"
+                    r = row_to_dict(row)
+                    marke_name = r['rrdi'] if r['rrdi'] else "Unbekannt"
                     # Vereinfachung für Stellantis
                     if institut == 'Stellantis':
                         if "0154X" in str(marke_name):
@@ -480,8 +537,8 @@ def get_einkaufsfinanzierung():
 
                     marken.append({
                         'name': marke_name,
-                        'anzahl': row['anzahl'],
-                        'finanzierung': float(row['finanzierung']) if row['finanzierung'] else 0
+                        'anzahl': r['anzahl'],
+                        'finanzierung': float(r['finanzierung']) if r['finanzierung'] else 0
                     })
 
                 institute.append({
@@ -514,15 +571,16 @@ def get_einkaufsfinanzierung():
 
             top_fahrzeuge = []
             for row in cursor.fetchall():
+                r = row_to_dict(row)
                 top_fahrzeuge.append({
-                    'institut': row['finanzinstitut'],
-                    'vin': row['vin'][-8:] if row['vin'] else '???',
-                    'modell': row['modell'],
-                    'marke': row['rrdi'],
-                    'saldo': float(row['aktueller_saldo']) if row['aktueller_saldo'] else 0,
-                    'original': float(row['original_betrag']) if row['original_betrag'] else 0,
-                    'alter': row['alter_tage'],
-                    'zinsfreiheit': row['zinsfreiheit_tage']
+                    'institut': r['finanzinstitut'],
+                    'vin': r['vin'][-8:] if r['vin'] else '???',
+                    'modell': r['modell'],
+                    'marke': r['rrdi'],
+                    'saldo': float(r['aktueller_saldo']) if r['aktueller_saldo'] else 0,
+                    'original': float(r['original_betrag']) if r['original_betrag'] else 0,
+                    'alter': r['alter_tage'],
+                    'zinsfreiheit': r['zinsfreiheit_tage']
                 })
 
             # 4. ZINSFREIHEIT-WARNUNGEN (< 30 Tage)
@@ -543,15 +601,16 @@ def get_einkaufsfinanzierung():
 
             warnungen = []
             for row in cursor.fetchall():
+                r = row_to_dict(row)
                 warnungen.append({
-                    'institut': row['finanzinstitut'],
-                    'vin': row['vin'][-8:] if row['vin'] else '???',
-                    'modell': row['modell'],
-                    'marke': row['rrdi'],
-                    'tage_uebrig': row['zinsfreiheit_tage'],
-                    'saldo': float(row['aktueller_saldo']) if row['aktueller_saldo'] else 0,
-                    'alter': row['alter_tage'],
-                    'kritisch': row['zinsfreiheit_tage'] < 15 if row['zinsfreiheit_tage'] else False
+                    'institut': r['finanzinstitut'],
+                    'vin': r['vin'][-8:] if r['vin'] else '???',
+                    'modell': r['modell'],
+                    'marke': r['rrdi'],
+                    'tage_uebrig': r['zinsfreiheit_tage'],
+                    'saldo': float(r['aktueller_saldo']) if r['aktueller_saldo'] else 0,
+                    'alter': r['alter_tage'],
+                    'kritisch': r['zinsfreiheit_tage'] < 15 if r['zinsfreiheit_tage'] else False
                 })
 
         return jsonify({
@@ -602,7 +661,7 @@ def get_fahrzeuge_mit_zinsen():
                 query += " AND zinsstatus LIKE '%Warnung%'"
 
             if institut != 'alle':
-                query += " AND finanzinstitut = ?"
+                query += " AND finanzinstitut = %s"
                 params.append(institut)
 
             query += " ORDER BY zinsen_gesamt DESC LIMIT ?"
@@ -662,7 +721,7 @@ def get_konto_snapshots(konto_id):
                 SELECT k.kontoname, k.iban, k.kreditlinie, b.bank_name
                 FROM konten k
                 JOIN banken b ON k.bank_id = b.id
-                WHERE k.id = ?
+                WHERE k.id = %s
             ''', (konto_id,))
 
             konto_row = cursor.fetchone()
@@ -680,7 +739,7 @@ def get_konto_snapshots(konto_id):
                     ausnutzung_prozent,
                     zinstyp
                 FROM konto_snapshots
-                WHERE konto_id = ?
+                WHERE konto_id = %s
                 ORDER BY stichtag ASC
             ''', (konto_id,))
 
@@ -783,7 +842,7 @@ def get_datenstand():
                     buchungsdatum as datum,
                     COUNT(*) as anzahl_transaktionen
                 FROM transaktionen
-                WHERE buchungsdatum >= DATE('now', '-7 days')
+                WHERE buchungsdatum >= CURRENT_DATE - INTERVAL '7 days'
                 GROUP BY buchungsdatum
                 ORDER BY datum DESC
             """)

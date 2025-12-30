@@ -2,72 +2,65 @@
 Zentrale Datenbank-Utilities für Greiner Portal
 ================================================
 Erstellt: TAG 117 - Code-Qualitäts-Refactoring
+Aktualisiert: TAG 136 - PostgreSQL Migration (nutzt db_connection.py)
 
-Diese Datei zentralisiert alle DB-Verbindungen und vermeidet:
-- 11x duplizierte get_db() Funktionen
-- 6x duplizierte get_locosoft_connection() Funktionen
-- Connection Leaks bei Exceptions
+ARCHITEKTUR:
+- db_connection.py: Niedrig-Level (Verbindungen, SQL-Helpers, Placeholders)
+- db_utils.py: Hoch-Level (Business-Logik, KPI-Queries, Query-Helpers)
 
 Verwendung:
     from api.db_utils import db_session, locosoft_session, row_to_dict, rows_to_list
 
-    # SQLite
+    # Portal-Datenbank (SQLite oder PostgreSQL je nach Konfiguration)
     with db_session() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT ...")
         data = rows_to_list(cursor.fetchall())
     # Connection wird automatisch geschlossen!
 
-    # PostgreSQL (Locosoft)
+    # Locosoft PostgreSQL (EXTERNE Datenbank)
     with locosoft_session() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT ...")
 """
 
-import sqlite3
 import os
 from typing import Optional, List, Dict, Any
 from contextlib import contextmanager
 
-# =============================================================================
-# KONFIGURATION
-# =============================================================================
-
-# SQLite Pfad - nutzt Environment oder Fallback
-SQLITE_DB_PATH = os.getenv(
-    'SQLITE_DB_PATH',
-    '/opt/greiner-portal/data/greiner_controlling.db'
+# Import von db_connection für Dual-Mode Support
+from api.db_connection import (
+    get_db as get_portal_db,
+    get_db_context,
+    get_db_type,
+    convert_placeholders,
+    sql_placeholder
 )
 
-# Für lokale Entwicklung (Windows)
-if os.name == 'nt' and not os.path.exists(SQLITE_DB_PATH):
-    # Relativer Pfad für Windows-Entwicklung
-    _base = os.path.dirname(os.path.dirname(__file__))
-    SQLITE_DB_PATH = os.path.join(_base, 'data', 'greiner_controlling.db')
-
-
 # =============================================================================
-# SQLITE VERBINDUNGEN
+# PORTAL-DATENBANK VERBINDUNGEN (nutzt db_connection.py)
 # =============================================================================
 
-def get_db() -> sqlite3.Connection:
+def get_db():
     """
-    Erstellt SQLite-Verbindung mit row_factory.
+    Erstellt Portal-Datenbankverbindung (SQLite oder PostgreSQL).
+
+    TAG 136: Nutzt jetzt db_connection.py für Dual-Mode Support.
 
     WARNUNG: Bevorzuge db_session() Context Manager für automatisches Cleanup!
 
     Returns:
-        sqlite3.Connection mit Row-Factory
+        Connection-Objekt (sqlite3.Connection oder psycopg2.connection)
     """
-    conn = sqlite3.connect(SQLITE_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return get_portal_db()
 
 
 @contextmanager
 def db_session():
     """
-    Context Manager für sichere SQLite-Verbindung.
+    Context Manager für sichere Portal-Datenbankverbindung.
+
+    TAG 136: Nutzt jetzt db_connection.py - funktioniert mit SQLite UND PostgreSQL.
 
     Schließt Connection automatisch, auch bei Exceptions.
 
@@ -79,25 +72,21 @@ def db_session():
         # Connection ist hier garantiert geschlossen
 
     Yields:
-        sqlite3.Connection mit Row-Factory
+        Connection-Objekt (sqlite3.Connection oder psycopg2.connection)
     """
-    conn = None
-    try:
-        conn = sqlite3.connect(SQLITE_DB_PATH)
-        conn.row_factory = sqlite3.Row
+    with get_db_context() as conn:
         yield conn
-    finally:
-        if conn:
-            conn.close()
 
 
 # =============================================================================
-# POSTGRESQL (LOCOSOFT) VERBINDUNGEN
+# LOCOSOFT POSTGRESQL (EXTERNE Datenbank - 10.80.80.8)
 # =============================================================================
 
 def get_locosoft_connection():
     """
-    Erstellt PostgreSQL-Verbindung zu Locosoft.
+    Erstellt PostgreSQL-Verbindung zu Locosoft (EXTERNE Datenbank).
+
+    Dies ist NICHT unsere Portal-DB, sondern die externe Locosoft-DB!
 
     WARNUNG: Bevorzuge locosoft_session() Context Manager für automatisches Cleanup!
 
@@ -146,8 +135,8 @@ def get_locosoft_connection():
         database=env['LOCOSOFT_DATABASE'],
         user=env['LOCOSOFT_USER'],
         password=env['LOCOSOFT_PASSWORD'],
-        connect_timeout=10,  # Timeout bei Netzwerkproblemen
-        options='-c statement_timeout=60000'  # 60s Query-Timeout
+        connect_timeout=10,
+        options='-c statement_timeout=60000'
     )
 
 
@@ -181,69 +170,116 @@ def locosoft_session():
 # ROW CONVERTER UTILITIES
 # =============================================================================
 
-def row_to_dict(row: sqlite3.Row) -> Optional[Dict[str, Any]]:
+def row_to_dict(row, cursor=None) -> Optional[Dict[str, Any]]:
     """
-    Konvertiert sqlite3.Row zu Dictionary.
+    Konvertiert DB-Row zu Dictionary.
+
+    TAG 139: Funktioniert jetzt mit allen Row-Typen:
+    - HybridRow (hat keys() und items())
+    - sqlite3.Row (hat dict() Support)
+    - psycopg2 RealDictRow (ist dict-like)
+    - psycopg2 tuple (braucht cursor.description)
 
     Args:
-        row: sqlite3.Row Objekt oder None
+        row: Row-Objekt oder None
+        cursor: Optional - Cursor für Spaltennamen bei Tuples
 
     Returns:
         Dictionary mit Spalten als Keys, oder None wenn row None ist
     """
-    return dict(row) if row else None
+    if row is None:
+        return None
+
+    # Bereits ein dict
+    if isinstance(row, dict):
+        return dict(row)
+
+    # HybridRow, sqlite3.Row - unterstützen keys() und items()
+    if hasattr(row, 'keys') and hasattr(row, 'items'):
+        return dict(row.items())
+
+    # sqlite3.Row mit nur keys()
+    if hasattr(row, 'keys'):
+        return {k: row[k] for k in row.keys()}
+
+    # Tuple - braucht cursor.description für Spaltennamen
+    if isinstance(row, tuple) and cursor is not None:
+        columns = [desc[0] for desc in cursor.description]
+        return dict(zip(columns, row))
+
+    # Fallback: Wenn tuple ohne cursor, versuche keys() zu erzwingen
+    # (Kann bei NamedTuple funktionieren)
+    if hasattr(row, '_asdict'):
+        return row._asdict()
+
+    # Letzter Fallback: Als dict casten (für unbekannte Row-Typen)
+    try:
+        return dict(row)
+    except (TypeError, ValueError):
+        # Kann nicht konvertiert werden - als None zurückgeben
+        return None
 
 
-def rows_to_list(rows: List[sqlite3.Row]) -> List[Dict[str, Any]]:
+def rows_to_list(rows: List, cursor=None) -> List[Dict[str, Any]]:
     """
-    Konvertiert Liste von sqlite3.Row zu Liste von Dictionaries.
+    Konvertiert Liste von DB-Rows zu Liste von Dictionaries.
+
+    TAG 139: Unterstützt jetzt auch cursor für Tuple-Rows.
 
     Args:
-        rows: Liste von sqlite3.Row Objekten
+        rows: Liste von Row-Objekten
+        cursor: Optional - Cursor für Spaltennamen bei Tuples
 
     Returns:
         Liste von Dictionaries
     """
-    return [dict(row) for row in rows] if rows else []
+    if not rows:
+        return []
+    return [row_to_dict(row, cursor) for row in rows]
 
 
 # =============================================================================
-# QUERY HELPERS
+# QUERY HELPERS (mit PostgreSQL-Kompatibilität)
 # =============================================================================
 
 def execute_query(query: str, params: tuple = (), fetchone: bool = False) -> Any:
     """
     Führt SELECT-Query aus und gibt Ergebnis zurück.
 
-    Convenience-Funktion für einfache Queries.
+    TAG 136: Konvertiert ? zu %s für PostgreSQL automatisch.
+    TAG 139: Übergibt cursor für Tuple-zu-Dict Konvertierung.
 
     Args:
-        query: SQL Query String
+        query: SQL Query String (kann ? als Placeholder nutzen)
         params: Query-Parameter (Tuple)
         fetchone: True für einzelnes Ergebnis, False für Liste
 
     Returns:
         Dict (fetchone=True) oder List[Dict] (fetchone=False)
     """
+    query = convert_placeholders(query)
     with db_session() as conn:
         cursor = conn.cursor()
         cursor.execute(query, params)
         if fetchone:
-            return row_to_dict(cursor.fetchone())
-        return rows_to_list(cursor.fetchall())
+            return row_to_dict(cursor.fetchone(), cursor)
+        return rows_to_list(cursor.fetchall(), cursor)
 
 
 def execute_write(query: str, params: tuple = ()) -> int:
     """
     Führt INSERT/UPDATE/DELETE aus und committed.
 
+    TAG 136: Konvertiert ? zu %s für PostgreSQL automatisch.
+
     Args:
-        query: SQL Query String
+        query: SQL Query String (kann ? als Placeholder nutzen)
         params: Query-Parameter (Tuple)
 
     Returns:
         Anzahl betroffener Zeilen (rowcount)
     """
+    query = convert_placeholders(query)
     with db_session() as conn:
         cursor = conn.cursor()
         cursor.execute(query, params)
@@ -252,7 +288,7 @@ def execute_write(query: str, params: tuple = ()) -> int:
 
 
 # =============================================================================
-# PORTAL ABWESENHEITEN (TAG 127)
+# PORTAL ABWESENHEITEN (TAG 127 - Business Logik)
 # =============================================================================
 
 # Mapping vacation_type_id -> Locosoft absence reason
@@ -274,6 +310,7 @@ def get_portal_absences(datum: str = None) -> dict:
 
     TAG 127: Diese Funktion wird von Werkstatt-APIs genutzt um
     Portal-Abwesenheiten (ZA, Krank, etc.) mit Locosoft-Daten zu kombinieren.
+    TAG 136: PostgreSQL-kompatibel.
 
     Args:
         datum: Datum im Format 'YYYY-MM-DD', Default: heute
@@ -299,10 +336,13 @@ def get_portal_absences(datum: str = None) -> dict:
         datum = date.today().isoformat()
 
     result = {}
+    ph = sql_placeholder()  # ? oder %s je nach DB
+    # TAG 136: PostgreSQL verwendet BOOLEAN, SQLite verwendet 1/0
+    aktiv_check = "e.aktiv = true" if get_db_type() == 'postgresql' else "e.aktiv = true"
 
     with db_session() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
+        query = f"""
             SELECT
                 vb.employee_id,
                 e.first_name || ' ' || e.last_name as name,
@@ -315,21 +355,23 @@ def get_portal_absences(datum: str = None) -> dict:
             JOIN employees e ON vb.employee_id = e.id
             LEFT JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
             LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
-            WHERE vb.booking_date = ?
+            WHERE vb.booking_date = {ph}
               AND vb.status = 'approved'
-              AND e.aktiv = 1
-        """, (datum,))
+              AND {aktiv_check}
+        """
+        cursor.execute(query, (datum,))
 
         for row in cursor.fetchall():
-            locosoft_id = row['locosoft_id']
+            row_dict = row_to_dict(row)
+            locosoft_id = row_dict['locosoft_id']
             if locosoft_id:
                 result[locosoft_id] = {
-                    'employee_id': row['employee_id'],
-                    'name': row['name'],
+                    'employee_id': row_dict['employee_id'],
+                    'name': row_dict['name'],
                     'locosoft_id': locosoft_id,
-                    'reason': VACATION_TYPE_TO_REASON.get(row['vacation_type_id'], 'sns'),
-                    'vacation_type': row['vacation_type'] or 'Abwesend',
-                    'day_part': row['day_part'],
+                    'reason': VACATION_TYPE_TO_REASON.get(row_dict['vacation_type_id'], 'sns'),
+                    'vacation_type': row_dict['vacation_type'] or 'Abwesend',
+                    'day_part': row_dict['day_part'],
                     'source': 'portal'
                 }
 
@@ -339,6 +381,8 @@ def get_portal_absences(datum: str = None) -> dict:
 def get_portal_absences_for_range(start_date: str, end_date: str) -> dict:
     """
     Holt Portal-Abwesenheiten für einen Datumsbereich.
+
+    TAG 136: PostgreSQL-kompatibel.
 
     Args:
         start_date: Start-Datum 'YYYY-MM-DD'
@@ -352,10 +396,13 @@ def get_portal_absences_for_range(start_date: str, end_date: str) -> dict:
         }
     """
     result = {}
+    ph = sql_placeholder()
+    # TAG 136: PostgreSQL verwendet BOOLEAN, SQLite verwendet 1/0
+    aktiv_check = "e.aktiv = true" if get_db_type() == 'postgresql' else "e.aktiv = true"
 
     with db_session() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
+        query = f"""
             SELECT
                 vb.booking_date,
                 vb.employee_id,
@@ -368,22 +415,24 @@ def get_portal_absences_for_range(start_date: str, end_date: str) -> dict:
             JOIN employees e ON vb.employee_id = e.id
             LEFT JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
             LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
-            WHERE vb.booking_date BETWEEN ? AND ?
+            WHERE vb.booking_date BETWEEN {ph} AND {ph}
               AND vb.status = 'approved'
-              AND e.aktiv = 1
-        """, (start_date, end_date))
+              AND {aktiv_check}
+        """
+        cursor.execute(query, (start_date, end_date))
 
         for row in cursor.fetchall():
-            locosoft_id = row['locosoft_id']
+            row_dict = row_to_dict(row)
+            locosoft_id = row_dict['locosoft_id']
             if locosoft_id:
-                key = (row['booking_date'], locosoft_id)
+                key = (row_dict['booking_date'], locosoft_id)
                 result[key] = {
-                    'employee_id': row['employee_id'],
-                    'name': row['name'],
+                    'employee_id': row_dict['employee_id'],
+                    'name': row_dict['name'],
                     'locosoft_id': locosoft_id,
-                    'reason': VACATION_TYPE_TO_REASON.get(row['vacation_type_id'], 'sns'),
-                    'vacation_type': row['vacation_type'] or 'Abwesend',
-                    'day_part': row['day_part'],
+                    'reason': VACATION_TYPE_TO_REASON.get(row_dict['vacation_type_id'], 'sns'),
+                    'vacation_type': row_dict['vacation_type'] or 'Abwesend',
+                    'day_part': row_dict['day_part'],
                     'source': 'portal'
                 }
 

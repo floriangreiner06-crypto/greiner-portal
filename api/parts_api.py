@@ -1,35 +1,17 @@
 """
 Stellantis ServiceBox API
 Endpoints für Bestellungen aus dem ServiceBox-Scraper
+
+TAG 136: PostgreSQL-Migration - nutzt db_session
 """
 from flask import Blueprint, jsonify, request
-import sqlite3
 from datetime import datetime, timedelta
-import os
+
+from api.db_utils import db_session, row_to_dict, rows_to_list
+from api.db_connection import sql_placeholder, get_db_type
 
 # Blueprint erstellen
 parts_api = Blueprint('parts_api', __name__)
-
-# Datenbank-Pfad (wird in app.py konfiguriert)
-DB_PATH = '/opt/greiner-portal/data/greiner_controlling.db'
-
-def get_db_connection():
-    """Erstelle Datenbankverbindung"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-# =============================================================================
-# HELPER FUNCTIONS
-# =============================================================================
-
-def row_to_dict(row):
-    """Konvertiere sqlite3.Row zu Dictionary"""
-    return dict(zip(row.keys(), row)) if row else None
-
-def rows_to_list(rows):
-    """Konvertiere Liste von sqlite3.Row zu Liste von Dictionaries"""
-    return [row_to_dict(row) for row in rows]
 
 
 # =============================================================================
@@ -40,34 +22,37 @@ def get_lieferschein_status_for_bestellungen(cursor, bestellnummern):
     """
     Hole Lieferschein-Status für eine Liste von Bestellnummern
     Status: bestellt → geliefert → in_locosoft → zugebucht
+    TAG 136: PostgreSQL-kompatibel
     """
     if not bestellnummern:
         return {}
-    
-    placeholders = ','.join('?' * len(bestellnummern))
-    
+
+    ph = sql_placeholder()
+    placeholders = ','.join([ph] * len(bestellnummern))
+
+    # TAG142: PostgreSQL Boolean-kompatibel (true/false statt 1/0)
     cursor.execute(f"""
-        SELECT 
+        SELECT
             servicebox_bestellnr,
             COUNT(*) as pos_total,
-            SUM(CASE WHEN locosoft_zugebucht = 1 THEN 1 ELSE 0 END) as zugebucht,
-            SUM(CASE WHEN locosoft_gefunden = 1 AND locosoft_zugebucht = 0 THEN 1 ELSE 0 END) as in_locosoft,
-            SUM(CASE WHEN locosoft_gefunden = 0 THEN 1 ELSE 0 END) as geliefert,
+            SUM(CASE WHEN locosoft_zugebucht = true THEN 1 ELSE 0 END) as zugebucht,
+            SUM(CASE WHEN locosoft_gefunden = true AND locosoft_zugebucht = false THEN 1 ELSE 0 END) as in_locosoft,
+            SUM(CASE WHEN locosoft_gefunden = false THEN 1 ELSE 0 END) as geliefert,
             MAX(lieferdatum) as letztes_lieferdatum
         FROM teile_lieferscheine
         WHERE servicebox_bestellnr IN ({placeholders})
           AND servicebox_bestellnr != ''
         GROUP BY servicebox_bestellnr
     """, bestellnummern)
-    
+
     result = {}
     for row in cursor.fetchall():
-        bestellnr = row[0]
-        total = row[1] or 0
-        zugebucht = row[2] or 0
-        in_loco = row[3] or 0
-        gelief = row[4] or 0
-        
+        row_dict = row_to_dict(row)
+        bestellnr = row_dict['servicebox_bestellnr']
+        total = row_dict['pos_total'] or 0
+        zugebucht = row_dict['zugebucht'] or 0
+        in_loco = row_dict['in_locosoft'] or 0
+
         if total == 0:
             status = 'bestellt'
         elif zugebucht == total:
@@ -76,16 +61,16 @@ def get_lieferschein_status_for_bestellungen(cursor, bestellnummern):
             status = 'in_locosoft'
         else:
             status = 'geliefert'
-        
+
         result[bestellnr] = {
             'status': status,
             'lieferschein_positionen': total,
             'zugebucht': zugebucht,
             'in_locosoft': in_loco,
-            'geliefert': gelief,
-            'letztes_lieferdatum': row[5]
+            'geliefert': row_dict['geliefert'] or 0,
+            'letztes_lieferdatum': row_dict['letztes_lieferdatum']
         }
-    
+
     return result
 
 
@@ -97,20 +82,18 @@ def get_lieferschein_status_for_bestellungen(cursor, bestellnummern):
 def health_check():
     """Health Check"""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("SELECT COUNT(*) as count FROM stellantis_bestellungen")
-        bestellungen_count = cursor.fetchone()['count']
-        
-        cursor.execute("SELECT COUNT(*) as count FROM stellantis_positionen")
-        positionen_count = cursor.fetchone()['count']
-        
-        cursor.execute("SELECT MAX(bestelldatum) as letzte_bestellung FROM stellantis_bestellungen")
-        letzte_bestellung = cursor.fetchone()['letzte_bestellung']
-        
-        conn.close()
-        
+        with db_session() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute("SELECT COUNT(*) as count FROM stellantis_bestellungen")
+            bestellungen_count = row_to_dict(cursor.fetchone())['count']
+
+            cursor.execute("SELECT COUNT(*) as count FROM stellantis_positionen")
+            positionen_count = row_to_dict(cursor.fetchone())['count']
+
+            cursor.execute("SELECT MAX(bestelldatum) as letzte_bestellung FROM stellantis_bestellungen")
+            letzte_bestellung = row_to_dict(cursor.fetchone())['letzte_bestellung']
+
         return jsonify({
             'status': 'healthy',
             'database': 'connected',
@@ -129,15 +112,7 @@ def health_check():
 def get_bestellungen():
     """
     Hole alle Bestellungen mit optionalen Filtern
-    Query Parameters:
-    - datum_von: YYYY-MM-DD (Default: heute - 30 Tage)
-    - datum_bis: YYYY-MM-DD (Default: heute)
-    - lokale_nr: Filtern nach lokale_nr
-    - absender_code: Filtern nach Absender-Code
-    - teilenummer: Filtern nach Teilenummer
-    - suche: Volltextsuche (Bestellnummer, Lokale Nr, Teilenummer)
-    - limit: Max. Anzahl (Default: 100)
-    - offset: Offset für Pagination (Default: 0)
+    TAG 136: PostgreSQL-kompatibel
     """
     try:
         # Query-Parameter
@@ -149,125 +124,129 @@ def get_bestellungen():
         suche = request.args.get('suche')
         limit = int(request.args.get('limit', 100))
         offset = int(request.args.get('offset', 0))
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Base Filter
-        where_conditions = ["DATE(b.bestelldatum) >= ?", "DATE(b.bestelldatum) <= ?"]
-        params = [datum_von, datum_bis]
-        
-        if lokale_nr:
-            where_conditions.append("b.lokale_nr = ?")
-            params.append(lokale_nr)
-            
-        if absender_code:
-            where_conditions.append("b.absender_code = ?")
-            params.append(absender_code)
-            
-        if teilenummer:
-            where_conditions.append("EXISTS (SELECT 1 FROM stellantis_positionen p WHERE p.bestellung_id = b.id AND p.teilenummer LIKE ?)")
-            params.append(f"%{teilenummer}%")
-            
-        if suche:
-            where_conditions.append("(b.bestellnummer LIKE ? OR b.lokale_nr LIKE ? OR b.parsed_kundennummer LIKE ? OR b.match_kunde_name LIKE ? OR EXISTS (SELECT 1 FROM stellantis_positionen p WHERE p.bestellung_id = b.id AND p.teilenummer LIKE ?))")
-            params.extend([f"%{suche}%", f"%{suche}%", f"%{suche}%", f"%{suche}%", f"%{suche}%"])
-        
-        where_clause = " AND ".join(where_conditions)
-        
-        # 1. BESTELLUNGEN mit Pagination
-        query = f"""
-            SELECT
-                b.id,
-                b.bestellnummer,
-                b.bestelldatum,
-                b.absender_code,
-                b.absender_name,
-                b.empfaenger_code,
-                b.lokale_nr,
-                b.url,
-                b.parsed_kundennummer,
-                b.parsed_vin,
-                b.match_typ,
-                b.match_kunde_name,
-                b.match_confidence,
-                (SELECT COUNT(*) FROM stellantis_positionen WHERE bestellung_id = b.id) as anzahl_positionen,
-                (SELECT COALESCE(ROUND(SUM(summe_inkl_mwst), 2), 0) FROM stellantis_positionen WHERE bestellung_id = b.id) as gesamtwert,
-                b.import_timestamp
-            FROM stellantis_bestellungen b
-            WHERE {where_clause}
-            ORDER BY b.bestelldatum DESC 
-            LIMIT ? OFFSET ?
-        """
-        cursor.execute(query, params + [limit, offset])
-        bestellungen = rows_to_list(cursor.fetchall())
-        
-        # Lieferschein-Status für alle Bestellungen holen
-        if bestellungen:
-            bestellnummern = [b['bestellnummer'] for b in bestellungen if b.get('bestellnummer')]
-            lieferschein_status = get_lieferschein_status_for_bestellungen(cursor, bestellnummern)
-            
-            for b in bestellungen:
-                ls_info = lieferschein_status.get(b['bestellnummer'], {})
-                b['lieferschein_status'] = ls_info.get('status', 'bestellt')
-                b['lieferschein_info'] = ls_info
-        
-        # 2. GESAMT-ANZAHL
-        count_query = f"""
-            SELECT COUNT(*) as total
-            FROM stellantis_bestellungen b
-            WHERE {where_clause}
-        """
-        cursor.execute(count_query, params)
-        total = cursor.fetchone()['total']
-        
-        # 3. STATISTIKEN
-        if total > 0:
-            # Hole alle IDs die dem Filter entsprechen
-            ids_query = f"""
-                SELECT b.id
+
+        ph = sql_placeholder()
+
+        # DATE() funktioniert in beiden DBs
+        with db_session() as conn:
+            cursor = conn.cursor()
+
+            # Base Filter
+            where_conditions = [f"DATE(b.bestelldatum) >= {ph}", f"DATE(b.bestelldatum) <= {ph}"]
+            params = [datum_von, datum_bis]
+
+            if lokale_nr:
+                where_conditions.append(f"b.lokale_nr = {ph}")
+                params.append(lokale_nr)
+
+            if absender_code:
+                where_conditions.append(f"b.absender_code = {ph}")
+                params.append(absender_code)
+
+            if teilenummer:
+                where_conditions.append(f"EXISTS (SELECT 1 FROM stellantis_positionen p WHERE p.bestellung_id = b.id AND p.teilenummer LIKE {ph})")
+                params.append(f"%{teilenummer}%")
+
+            if suche:
+                where_conditions.append(f"(b.bestellnummer LIKE {ph} OR b.lokale_nr LIKE {ph} OR b.parsed_kundennummer LIKE {ph} OR b.match_kunde_name LIKE {ph} OR EXISTS (SELECT 1 FROM stellantis_positionen p WHERE p.bestellung_id = b.id AND p.teilenummer LIKE {ph}))")
+                params.extend([f"%{suche}%", f"%{suche}%", f"%{suche}%", f"%{suche}%", f"%{suche}%"])
+
+            where_clause = " AND ".join(where_conditions)
+
+            # 1. BESTELLUNGEN mit Pagination
+            query = f"""
+                SELECT
+                    b.id,
+                    b.bestellnummer,
+                    b.bestelldatum,
+                    b.absender_code,
+                    b.absender_name,
+                    b.empfaenger_code,
+                    b.lokale_nr,
+                    b.url,
+                    b.parsed_kundennummer,
+                    b.parsed_vin,
+                    b.match_typ,
+                    b.match_kunde_name,
+                    b.match_confidence,
+                    (SELECT COUNT(*) FROM stellantis_positionen WHERE bestellung_id = b.id) as anzahl_positionen,
+                    (SELECT COALESCE(ROUND(SUM(summe_inkl_mwst)::numeric, 2), 0) FROM stellantis_positionen WHERE bestellung_id = b.id) as gesamtwert,
+                    b.import_timestamp
+                FROM stellantis_bestellungen b
+                WHERE {where_clause}
+                ORDER BY b.bestelldatum DESC
+                LIMIT {ph} OFFSET {ph}
+            """
+
+            # SQLite braucht andere ROUND-Syntax
+            if get_db_type() != 'postgresql':
+                query = query.replace('::numeric', '')
+
+            cursor.execute(query, params + [limit, offset])
+            bestellungen = rows_to_list(cursor.fetchall())
+
+            # Lieferschein-Status für alle Bestellungen holen
+            if bestellungen:
+                bestellnummern = [b['bestellnummer'] for b in bestellungen if b.get('bestellnummer')]
+                lieferschein_status = get_lieferschein_status_for_bestellungen(cursor, bestellnummern)
+
+                for b in bestellungen:
+                    ls_info = lieferschein_status.get(b['bestellnummer'], {})
+                    b['lieferschein_status'] = ls_info.get('status', 'bestellt')
+                    b['lieferschein_info'] = ls_info
+
+            # 2. GESAMT-ANZAHL
+            count_query = f"""
+                SELECT COUNT(*) as total
                 FROM stellantis_bestellungen b
                 WHERE {where_clause}
             """
-            cursor.execute(ids_query, params)
-            bestellung_ids = [row['id'] for row in cursor.fetchall()]
-            
-            # Stats über diese IDs
-            if bestellung_ids:
-                placeholders = ','.join('?' * len(bestellung_ids))
-                stats_query = f"""
-                    SELECT
-                        COUNT(*) as total_positionen,
-                        COALESCE(SUM(summe_inkl_mwst), 0) as gesamtwert
-                    FROM stellantis_positionen
-                    WHERE bestellung_id IN ({placeholders})
+            cursor.execute(count_query, params)
+            total = row_to_dict(cursor.fetchone())['total']
+
+            # 3. STATISTIKEN
+            if total > 0:
+                ids_query = f"""
+                    SELECT b.id
+                    FROM stellantis_bestellungen b
+                    WHERE {where_clause}
                 """
-                cursor.execute(stats_query, bestellung_ids)
-                stats_row = cursor.fetchone()
-                
-                stats = {
-                    'total_bestellungen': total,
-                    'total_positionen': int(stats_row['total_positionen'] or 0),
-                    'durchschnitt_positionen': round((stats_row['total_positionen'] or 0) / total, 1),
-                    'gesamtwert': round(float(stats_row['gesamtwert'] or 0), 2)
-                }
+                cursor.execute(ids_query, params)
+                bestellung_ids = [row_to_dict(row)['id'] for row in cursor.fetchall()]
+
+                if bestellung_ids:
+                    id_placeholders = ','.join([ph] * len(bestellung_ids))
+                    stats_query = f"""
+                        SELECT
+                            COUNT(*) as total_positionen,
+                            COALESCE(SUM(summe_inkl_mwst), 0) as gesamtwert
+                        FROM stellantis_positionen
+                        WHERE bestellung_id IN ({id_placeholders})
+                    """
+                    cursor.execute(stats_query, bestellung_ids)
+                    stats_row = row_to_dict(cursor.fetchone())
+
+                    stats = {
+                        'total_bestellungen': total,
+                        'total_positionen': int(stats_row['total_positionen'] or 0),
+                        'durchschnitt_positionen': round((stats_row['total_positionen'] or 0) / total, 1),
+                        'gesamtwert': round(float(stats_row['gesamtwert'] or 0), 2)
+                    }
+                else:
+                    stats = {
+                        'total_bestellungen': total,
+                        'total_positionen': 0,
+                        'durchschnitt_positionen': 0,
+                        'gesamtwert': 0
+                    }
             else:
                 stats = {
-                    'total_bestellungen': total,
+                    'total_bestellungen': 0,
                     'total_positionen': 0,
                     'durchschnitt_positionen': 0,
                     'gesamtwert': 0
                 }
-        else:
-            stats = {
-                'total_bestellungen': 0,
-                'total_positionen': 0,
-                'durchschnitt_positionen': 0,
-                'gesamtwert': 0
-            }
-        
-        conn.close()
-        
+
         return jsonify({
             'bestellungen': bestellungen,
             'total': total,
@@ -276,7 +255,7 @@ def get_bestellungen():
             'has_more': (offset + limit) < total,
             'stats': stats
         })
-        
+
     except Exception as e:
         return jsonify({
             'error': str(e)
@@ -287,41 +266,38 @@ def get_bestellungen():
 def get_bestellung_detail(bestellnummer):
     """
     Hole Details einer einzelnen Bestellung inkl. aller Positionen
+    TAG 136: PostgreSQL-kompatibel
     """
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Bestellung
-        cursor.execute("""
-            SELECT * FROM stellantis_bestellungen
-            WHERE bestellnummer = ?
-        """, (bestellnummer,))
-        
-        bestellung = row_to_dict(cursor.fetchone())
-        
-        if not bestellung:
-            conn.close()
-            return jsonify({'error': 'Bestellung nicht gefunden'}), 404
-        
-        # Positionen
-        cursor.execute("""
-            SELECT * FROM stellantis_positionen
-            WHERE bestellung_id = ?
-            ORDER BY id
-        """, (bestellung['id'],))
-        
-        positionen = rows_to_list(cursor.fetchall())
-        
-        # Berechne Gesamtwerte
+        ph = sql_placeholder()
+
+        with db_session() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute(f"""
+                SELECT * FROM stellantis_bestellungen
+                WHERE bestellnummer = {ph}
+            """, (bestellnummer,))
+
+            bestellung = row_to_dict(cursor.fetchone())
+
+            if not bestellung:
+                return jsonify({'error': 'Bestellung nicht gefunden'}), 404
+
+            cursor.execute(f"""
+                SELECT * FROM stellantis_positionen
+                WHERE bestellung_id = {ph}
+                ORDER BY id
+            """, (bestellung['id'],))
+
+            positionen = rows_to_list(cursor.fetchall())
+
         bestellung['anzahl_positionen'] = len(positionen)
         bestellung['gesamtwert'] = round(sum(p.get('summe_inkl_mwst', 0) or 0 for p in positionen), 2)
         bestellung['positionen'] = positionen
-        
-        conn.close()
-        
+
         return jsonify(bestellung)
-        
+
     except Exception as e:
         return jsonify({
             'error': str(e)
@@ -331,28 +307,27 @@ def get_bestellung_detail(bestellnummer):
 def get_absender():
     """Hole Liste aller eindeutigen Absender"""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT DISTINCT
-                absender_code as code,
-                absender_name as name,
-                COUNT(*) as anzahl_bestellungen
-            FROM stellantis_bestellungen
-            WHERE absender_code IS NOT NULL
-            GROUP BY absender_code, absender_name
-            ORDER BY anzahl_bestellungen DESC
-        """)
-        
-        absender = rows_to_list(cursor.fetchall())
-        conn.close()
-        
+        with db_session() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT DISTINCT
+                    absender_code as code,
+                    absender_name as name,
+                    COUNT(*) as anzahl_bestellungen
+                FROM stellantis_bestellungen
+                WHERE absender_code IS NOT NULL
+                GROUP BY absender_code, absender_name
+                ORDER BY anzahl_bestellungen DESC
+            """)
+
+            absender = rows_to_list(cursor.fetchall())
+
         return jsonify({
             'absender': absender,
             'anzahl': len(absender)
         })
-        
+
     except Exception as e:
         return jsonify({
             'error': str(e)
@@ -363,54 +338,56 @@ def get_absender():
 def get_sync_status():
     """
     Liefert den aktuellen Sync-Status für ServiceBox
-    Zeigt wann zuletzt synchronisiert wurde und wie viele Matches
+    TAG 136: PostgreSQL-kompatibel
     """
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Sync-Status
-        cursor.execute("""
-            SELECT 
-                last_run,
-                status,
-                records_processed,
-                records_matched,
-                error_message
-            FROM sync_status
-            WHERE sync_name = 'servicebox'
-        """)
-        sync_row = cursor.fetchone()
-        
-        # Statistiken aus DB
-        cursor.execute("""
-            SELECT 
-                COUNT(*) as total,
-                SUM(CASE WHEN match_typ IS NOT NULL THEN 1 ELSE 0 END) as matched,
-                MAX(bestelldatum) as letzte_bestellung,
-                MIN(bestelldatum) as erste_bestellung
-            FROM stellantis_bestellungen
-        """)
-        stats_row = cursor.fetchone()
-        
-        # Heute
-        cursor.execute("""
-            SELECT COUNT(*) as heute
-            FROM stellantis_bestellungen
-            WHERE DATE(bestelldatum) = DATE('now')
-        """)
-        heute_row = cursor.fetchone()
-        
-        conn.close()
-        
+        # date('now') funktioniert in SQLite, für PostgreSQL: CURRENT_DATE
+        if get_db_type() == 'postgresql':
+            date_today = "CURRENT_DATE"
+        else:
+            date_today = "DATE('now')"
+
+        with db_session() as conn:
+            cursor = conn.cursor()
+
+            # Sync-Status
+            cursor.execute("""
+                SELECT
+                    last_run,
+                    status,
+                    records_processed,
+                    records_matched,
+                    error_message
+                FROM sync_status
+                WHERE sync_name = 'servicebox'
+            """)
+            sync_row = row_to_dict(cursor.fetchone())
+
+            # Statistiken aus DB
+            cursor.execute("""
+                SELECT
+                    COUNT(*) as total,
+                    SUM(CASE WHEN match_typ IS NOT NULL THEN 1 ELSE 0 END) as matched,
+                    MAX(bestelldatum) as letzte_bestellung,
+                    MIN(bestelldatum) as erste_bestellung
+                FROM stellantis_bestellungen
+            """)
+            stats_row = row_to_dict(cursor.fetchone())
+
+            # Heute
+            cursor.execute(f"""
+                SELECT COUNT(*) as heute
+                FROM stellantis_bestellungen
+                WHERE DATE(bestelldatum) = {date_today}
+            """)
+            heute_row = row_to_dict(cursor.fetchone())
+
         # Response bauen
         if sync_row:
             last_run = sync_row['last_run']
-            # Berechne "vor X Minuten/Stunden"
             if last_run:
-                from datetime import datetime
                 try:
-                    last_dt = datetime.strptime(last_run, '%Y-%m-%d %H:%M:%S')
+                    last_dt = datetime.strptime(str(last_run)[:19], '%Y-%m-%d %H:%M:%S')
                     diff = datetime.now() - last_dt
                     minutes = int(diff.total_seconds() / 60)
                     if minutes < 60:
@@ -423,7 +400,7 @@ def get_sync_status():
                     ago_text = None
             else:
                 ago_text = None
-                
+
             sync_status = {
                 'last_run': last_run,
                 'last_run_ago': ago_text,
@@ -437,19 +414,19 @@ def get_sync_status():
                 'last_run': None,
                 'status': 'never_run'
             }
-        
+
         return jsonify({
             'sync': sync_status,
             'stats': {
                 'total': stats_row['total'] if stats_row else 0,
                 'matched': stats_row['matched'] if stats_row else 0,
-                'match_rate': round((stats_row['matched'] or 0) / max(stats_row['total'] or 1, 1) * 100, 1),
+                'match_rate': round((stats_row['matched'] or 0) / max(stats_row['total'] or 1, 1) * 100, 1) if stats_row else 0,
                 'heute': heute_row['heute'] if heute_row else 0,
                 'letzte_bestellung': stats_row['letzte_bestellung'] if stats_row else None
             },
             'cron_schedule': '09:00, 12:00, 16:00, 19:00'
         })
-        
+
     except Exception as e:
         return jsonify({
             'error': str(e)

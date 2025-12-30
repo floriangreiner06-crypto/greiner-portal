@@ -20,8 +20,9 @@ from datetime import datetime, timedelta, time
 from flask import Blueprint, jsonify, request
 import logging
 
-# Zentrale DB-Utilities (TAG 117 + TAG 127)
-from api.db_utils import locosoft_session, get_locosoft_connection, get_portal_absences
+# Zentrale DB-Utilities (TAG 117 + TAG 127 + TAG 136)
+from api.db_utils import locosoft_session, get_locosoft_connection, get_portal_absences, db_session, row_to_dict
+from api.db_connection import get_db_type
 
 # Für RealDictCursor
 from psycopg2.extras import RealDictCursor
@@ -2682,20 +2683,17 @@ def get_kapazitaets_forecast():
     - subsidiary: Filter nach Betrieb (1, 3)
     """
     try:
-        import sqlite3
         from datetime import timedelta
-        
+
         tage_vorschau = request.args.get('tage', 10, type=int)
         subsidiary = request.args.get('subsidiary', type=int)
-        
+
         conn_loco = get_locosoft_connection()
         cur_loco = conn_loco.cursor(cursor_factory=RealDictCursor)
-        
-        # SQLite für Servicebox
-        sqlite_path = '/opt/greiner-portal/data/greiner_controlling.db'
-        conn_sqlite = sqlite3.connect(sqlite_path)
-        conn_sqlite.row_factory = sqlite3.Row
-        cur_sqlite = conn_sqlite.cursor()
+
+        # Portal-DB für Servicebox (TAG 136: PostgreSQL-kompatibel)
+        conn_portal = db_session().__enter__()
+        cur_portal = conn_portal.cursor()
         
         heute = datetime.now().date()
         
@@ -3014,41 +3012,54 @@ def get_kapazitaets_forecast():
         } for t in teile_fehlen]
         
         # Offene Servicebox-Bestellungen (noch nicht zugebucht)
-        cur_sqlite.execute("""
-            SELECT 
+        # TAG 136: PostgreSQL-kompatibel
+        if get_db_type() == 'postgresql':
+            date_filter = "b.bestelldatum >= CURRENT_DATE - INTERVAL '30 days'"
+        else:
+            date_filter = "b.bestelldatum >= date('now', '-30 days')"
+
+        cur_portal.execute(f"""
+            SELECT
                 b.bestellnummer,
                 b.bestelldatum,
                 b.lokale_nr,
                 b.match_kunde_name as kunde,
                 COUNT(p.id) as anzahl_positionen,
-                SUM(p.summe_inkl_mwst) as gesamtwert,
-                (SELECT COUNT(*) FROM teile_lieferscheine tl 
-                 WHERE tl.servicebox_bestellnr = b.bestellnummer 
-                   AND tl.locosoft_zugebucht = 1) as zugebucht_count,
-                (SELECT COUNT(*) FROM teile_lieferscheine tl 
+                COALESCE(SUM(p.summe_inkl_mwst), 0) as gesamtwert,
+                (SELECT COUNT(*) FROM teile_lieferscheine tl
+                 WHERE tl.servicebox_bestellnr = b.bestellnummer
+                   AND tl.locosoft_zugebucht = true) as zugebucht_count,
+                (SELECT COUNT(*) FROM teile_lieferscheine tl
                  WHERE tl.servicebox_bestellnr = b.bestellnummer) as lieferschein_count
             FROM stellantis_bestellungen b
             LEFT JOIN stellantis_positionen p ON b.id = p.bestellung_id
-            WHERE b.bestelldatum >= date('now', '-30 days')
-            GROUP BY b.id
-            HAVING zugebucht_count < anzahl_positionen OR lieferschein_count = 0
+            WHERE {date_filter}
+            GROUP BY b.id, b.bestellnummer, b.bestelldatum, b.lokale_nr, b.match_kunde_name
+            HAVING (SELECT COUNT(*) FROM teile_lieferscheine tl
+                    WHERE tl.servicebox_bestellnr = b.bestellnummer
+                      AND tl.locosoft_zugebucht = true) < COUNT(p.id)
+                OR (SELECT COUNT(*) FROM teile_lieferscheine tl
+                    WHERE tl.servicebox_bestellnr = b.bestellnummer) = 0
             ORDER BY b.bestelldatum DESC
             LIMIT 20
         """)
         
-        offene_bestellungen_raw = cur_sqlite.fetchall()
-        
-        offene_servicebox = [{
-            'bestellnummer': b['bestellnummer'],
-            'bestelldatum': b['bestelldatum'],
-            'lokale_nr': b['lokale_nr'],
-            'kunde': b['kunde'],
-            'anzahl_positionen': b['anzahl_positionen'],
-            'gesamtwert': round(float(b['gesamtwert'] or 0), 2),
-            'status': 'bestellt' if b['lieferschein_count'] == 0 else 'teilweise_geliefert',
-            'zugebucht': b['zugebucht_count'] or 0,
-            'geliefert': b['lieferschein_count'] or 0
-        } for b in offene_bestellungen_raw]
+        offene_bestellungen_raw = cur_portal.fetchall()
+
+        offene_servicebox = []
+        for b in offene_bestellungen_raw:
+            b_dict = row_to_dict(b)
+            offene_servicebox.append({
+                'bestellnummer': b_dict['bestellnummer'],
+                'bestelldatum': b_dict['bestelldatum'],
+                'lokale_nr': b_dict['lokale_nr'],
+                'kunde': b_dict['kunde'],
+                'anzahl_positionen': b_dict['anzahl_positionen'],
+                'gesamtwert': round(float(b_dict['gesamtwert'] or 0), 2),
+                'status': 'bestellt' if b_dict['lieferschein_count'] == 0 else 'teilweise_geliefert',
+                'zugebucht': b_dict['zugebucht_count'] or 0,
+                'geliefert': b_dict['lieferschein_count'] or 0
+            })
         
         # =====================================================================
         # 6. ZUSAMMENFASSUNG & WARNUNGEN
@@ -3147,8 +3158,8 @@ def get_kapazitaets_forecast():
 
         cur_loco.close()
         conn_loco.close()
-        cur_sqlite.close()
-        conn_sqlite.close()
+        cur_portal.close()
+        conn_portal.close()
         
         return jsonify({
             'success': True,
@@ -4160,6 +4171,14 @@ def get_anwesenheit_v2():
                   AND eh.employee_number BETWEEN 5000 AND 5999
                   AND (eh.leave_date IS NULL OR eh.leave_date > %s::date)
                   AND eh.subsidiary IN (1, 2, 3)
+            ),
+            abwesenheiten AS (
+                SELECT
+                    ac.employee_number,
+                    ac.reason,
+                    ac.type as abwesenheit_typ
+                FROM absence_calendar ac
+                WHERE ac.date = %s::date
             )
             SELECT
                 m.employee_number,
@@ -4176,12 +4195,15 @@ def get_anwesenheit_v2():
                 a.anwesend_ab,
                 a.anwesend_bis,
                 COALESCE(a.anwesend_min, 0) as anwesend_min,
-                CASE WHEN s.employee_number IS NOT NULL THEN true ELSE false END as hat_gearbeitet
+                CASE WHEN s.employee_number IS NOT NULL THEN true ELSE false END as hat_gearbeitet,
+                ab.reason as abwesenheit_grund,
+                ab.abwesenheit_typ
             FROM alle_mechaniker m
             LEFT JOIN stempelungen s ON m.employee_number = s.employee_number
             LEFT JOIN anwesenheit a ON m.employee_number = a.employee_number
+            LEFT JOIN abwesenheiten ab ON m.employee_number = ab.employee_number
             ORDER BY m.betrieb, m.name
-        ''', (datum, datum, datum))
+        ''', (datum, datum, datum, datum))
 
         alle = cur.fetchall()
         cur.close()
@@ -4212,7 +4234,9 @@ def get_anwesenheit_v2():
                 'anwesend_ab': m['anwesend_ab'].strftime('%H:%M') if m['anwesend_ab'] else None,
                 'anwesend_bis': m['anwesend_bis'].strftime('%H:%M') if m['anwesend_bis'] else None,
                 'anwesend_min': int(m['anwesend_min'] or 0),
-                'anwesend_std': round((m['anwesend_min'] or 0) / 60, 1)
+                'anwesend_std': round((m['anwesend_min'] or 0) / 60, 1),
+                'abwesenheit_grund': m['abwesenheit_grund'],
+                'abwesenheit_typ': m['abwesenheit_typ']
             }
             if m['hat_gearbeitet']:
                 anwesend.append(entry)

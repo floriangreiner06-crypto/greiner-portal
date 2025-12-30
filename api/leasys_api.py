@@ -1020,47 +1020,55 @@ def kalkulator_status():
 
 
 # =============================================================================
-# CACHING FUNKTIONEN (TAG86)
+# CACHING FUNKTIONEN (TAG86 + TAG136: PostgreSQL-kompatibel)
 # =============================================================================
 
-import sqlite3
-
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'greiner_controlling.db')
+from api.db_utils import db_session, row_to_dict
+from api.db_connection import get_db_type, sql_placeholder, convert_placeholders
 
 def get_cached_vehicles(brand, fuel, ma_id, max_age_minutes=180):
-    """Holt Fahrzeuge aus dem SQLite-Cache."""
+    """Holt Fahrzeuge aus dem Cache (SQLite oder PostgreSQL)."""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        # NULL-Handling für fuel
-        if fuel:
-            cursor.execute('''
-                SELECT data, vehicle_count, created_at,
-                       ROUND((julianday('now') - julianday(created_at)) * 24 * 60, 1) as age_minutes
-                FROM leasys_vehicle_cache
-                WHERE brand = ? AND fuel = ? AND ma_id = ?
-                AND (julianday('now') - julianday(created_at)) * 24 * 60 < ?
-            ''', (brand, fuel, ma_id, max_age_minutes))
+        import json
+        ph = sql_placeholder()
+
+        # Age-Berechnung unterschiedlich für SQLite vs PostgreSQL
+        if get_db_type() == 'postgresql':
+            age_sql = "ROUND(EXTRACT(EPOCH FROM (NOW() - created_at)) / 60, 1)"
+            age_filter = f"EXTRACT(EPOCH FROM (NOW() - created_at)) / 60 < {ph}"
         else:
-            cursor.execute('''
-                SELECT data, vehicle_count, created_at,
-                       ROUND((julianday('now') - julianday(created_at)) * 24 * 60, 1) as age_minutes
-                FROM leasys_vehicle_cache
-                WHERE brand = ? AND fuel IS NULL AND ma_id = ?
-                AND (julianday('now') - julianday(created_at)) * 24 * 60 < ?
-            ''', (brand, ma_id, max_age_minutes))
-        
-        row = cursor.fetchone()
-        conn.close()
-        
+            age_sql = "ROUND((julianday('now') - julianday(created_at)) * 24 * 60, 1)"
+            age_filter = f"(julianday('now') - julianday(created_at)) * 24 * 60 < {ph}"
+
+        with db_session() as conn:
+            cursor = conn.cursor()
+
+            if fuel:
+                cursor.execute(f'''
+                    SELECT data, vehicle_count, created_at,
+                           {age_sql} as age_minutes
+                    FROM leasys_vehicle_cache
+                    WHERE brand = {ph} AND fuel = {ph} AND ma_id = {ph}
+                    AND {age_filter}
+                ''', (brand, fuel, ma_id, max_age_minutes))
+            else:
+                cursor.execute(f'''
+                    SELECT data, vehicle_count, created_at,
+                           {age_sql} as age_minutes
+                    FROM leasys_vehicle_cache
+                    WHERE brand = {ph} AND fuel IS NULL AND ma_id = {ph}
+                    AND {age_filter}
+                ''', (brand, ma_id, max_age_minutes))
+
+            row = cursor.fetchone()
+
         if row:
-            import json
+            row_dict = row_to_dict(row)
             return {
-                'vehicles': json.loads(row[0]),
-                'count': row[1],
-                'cached_at': row[2],
-                'age_minutes': row[3]
+                'vehicles': json.loads(row_dict['data']),
+                'count': row_dict['vehicle_count'],
+                'cached_at': str(row_dict['created_at']),
+                'age_minutes': row_dict['age_minutes']
             }
         return None
     except Exception as e:
@@ -1069,20 +1077,35 @@ def get_cached_vehicles(brand, fuel, ma_id, max_age_minutes=180):
 
 
 def save_vehicles_to_cache(brand, fuel, ma_id, vehicles):
-    """Speichert Fahrzeuge im SQLite-Cache."""
+    """Speichert Fahrzeuge im Cache (SQLite oder PostgreSQL)."""
     try:
         import json
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            INSERT OR REPLACE INTO leasys_vehicle_cache (brand, fuel, ma_id, data, vehicle_count, created_at)
-            VALUES (?, ?, ?, ?, ?, datetime('now'))
-        ''', (brand, fuel, ma_id, json.dumps(vehicles), len(vehicles)))
-        
-        conn.commit()
-        conn.close()
-        print(f"✅ Cache: {len(vehicles)} {brand} {fuel or 'ALL'} Fahrzeuge gespeichert")
+        ph = sql_placeholder()
+
+        # NOW()-Funktion unterschiedlich
+        if get_db_type() == 'postgresql':
+            now_sql = "NOW()"
+            upsert_sql = f'''
+                INSERT INTO leasys_vehicle_cache (brand, fuel, ma_id, data, vehicle_count, created_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {now_sql})
+                ON CONFLICT (brand, COALESCE(fuel, ''), ma_id) DO UPDATE SET
+                    data = EXCLUDED.data,
+                    vehicle_count = EXCLUDED.vehicle_count,
+                    created_at = EXCLUDED.created_at
+            '''
+        else:
+            now_sql = "datetime('now')"
+            upsert_sql = f'''
+                INSERT OR REPLACE INTO leasys_vehicle_cache (brand, fuel, ma_id, data, vehicle_count, created_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {now_sql})
+            '''
+
+        with db_session() as conn:
+            cursor = conn.cursor()
+            cursor.execute(upsert_sql, (brand, fuel, ma_id, json.dumps(vehicles), len(vehicles)))
+            conn.commit()
+
+        print(f"Cache: {len(vehicles)} {brand} {fuel or 'ALL'} Fahrzeuge gespeichert")
         return True
     except Exception as e:
         print(f"Cache write error: {e}")

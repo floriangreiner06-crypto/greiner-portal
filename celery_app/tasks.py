@@ -232,7 +232,8 @@ def import_santander(self):
 @shared_task(soft_time_limit=300)
 def scrape_hyundai():
     """Hyundai Finance Scraper"""
-    return run_script('tools/scrapers/hyundai_bestandsliste_scraper.py', timeout=180)
+    # TAG 144: Pfad korrigiert von tools/scrapers nach scripts/scrapers
+    return run_script('scripts/scrapers/scrape_hyundai.py', timeout=180)
 
 
 @shared_task(bind=True, max_retries=2, soft_time_limit=180)
@@ -271,20 +272,21 @@ def email_werkstatt_tagesbericht():
     return run_script('scripts/reports/werkstatt_tagesbericht_email.py', timeout=120)
 
 
-@shared_task(soft_time_limit=120)
+@shared_task(soft_time_limit=180)
 def db_backup():
-    """Datenbank Backup"""
+    """PostgreSQL Datenbank Backup (pg_dump)"""
     return run_shell(
-        'cp data/greiner_controlling.db data/greiner_controlling.db.backup_$(date +%Y%m%d_%H%M%S)',
-        timeout=60
+        'PGPASSWORD=DrivePortal2024 pg_dump -h 127.0.0.1 -U drive_user -d drive_portal '
+        '-Fc -f /data/greiner-backups/drive_portal_$(date +%Y%m%d_%H%M%S).dump',
+        timeout=120
     )
 
 
 @shared_task(soft_time_limit=60)
 def cleanup_backups():
-    """Alte Backups löschen (behalte letzte 7)"""
+    """Alte Backups loeschen (behalte letzte 7)"""
     return run_shell(
-        'cd data && ls -t greiner_controlling.db.backup_* 2>/dev/null | tail -n +8 | xargs rm -f 2>/dev/null',
+        'cd /data/greiner-backups && ls -t drive_portal_*.dump 2>/dev/null | tail -n +8 | xargs rm -f 2>/dev/null',
         timeout=30
     )
 
@@ -311,13 +313,15 @@ def servicebox_scraper(self):
     with task_lock('servicebox_scraper') as acquired:
         if not acquired:
             return {'status': 'skipped', 'reason': 'Task läuft bereits'}
-        return run_script('tools/scrapers/servicebox_detail_scraper_final.py', timeout=1800)
+        # TAG 144: Pfad korrigiert
+        return run_script('scripts/scrapers/scrape_servicebox.py', timeout=1800)
 
 
 @shared_task(soft_time_limit=600)
 def servicebox_matcher():
     """ServiceBox mit Locosoft matchen"""
-    return run_script('tools/scrapers/servicebox_locosoft_matcher.py', timeout=300)
+    # TAG 144: Pfad korrigiert
+    return run_script('scripts/scrapers/match_servicebox.py', timeout=300)
 
 
 @shared_task(soft_time_limit=300)
@@ -329,7 +333,8 @@ def servicebox_import():
 @shared_task(soft_time_limit=4200)
 def servicebox_master():
     """ServiceBox komplett neu laden"""
-    return run_script('tools/scrapers/servicebox_scraper_complete.py', timeout=3600)
+    # TAG 144: Pfad korrigiert
+    return run_script('scripts/scrapers/scrape_servicebox_full.py', timeout=3600)
 
 
 @shared_task(soft_time_limit=300)
@@ -395,3 +400,130 @@ def werkstatt_leistung():
 def sync_ad_departments():
     """AD Department Sync - Abteilungen aus Active Directory"""
     return run_script('scripts/sync/sync_ad_departments.py', timeout=180)
+
+
+# =============================================================================
+# LAGER / PENNER MARKTPREISE - TAG 142
+# =============================================================================
+
+@shared_task(bind=True, max_retries=1, soft_time_limit=1800)
+def update_penner_marktpreise(self, min_lagerwert: int = 50, limit: int = 100):
+    """
+    Aktualisiert Marktpreise für Penner-Teile.
+
+    Läuft nachts um 3:00 Uhr und scraped eBay/Daparto Preise
+    für alle Penner mit Lagerwert > min_lagerwert.
+
+    Args:
+        min_lagerwert: Mindest-Lagerwert in EUR (default: 50)
+        limit: Max. Anzahl Teile pro Lauf (default: 100)
+    """
+    with task_lock('update_penner_marktpreise') as acquired:
+        if not acquired:
+            return {'status': 'skipped', 'reason': 'Task läuft bereits'}
+
+        from datetime import datetime
+        start_time = datetime.now()
+
+        try:
+            # Service importieren und ausführen
+            from api.preisvergleich_service import preisvergleich_service
+
+            logger.info(f"Starte Penner-Marktpreis-Update (min_lagerwert={min_lagerwert}, limit={limit})")
+
+            result = preisvergleich_service.update_all_penner(
+                min_lagerwert=min_lagerwert,
+                limit=limit
+            )
+
+            duration = (datetime.now() - start_time).total_seconds()
+
+            logger.info(f"Penner-Marktpreis-Update abgeschlossen: {result.get('updated', 0)} Teile in {duration:.1f}s")
+
+            return {
+                'status': 'success',
+                'updated': result.get('updated', 0),
+                'failed': result.get('failed', 0),
+                'skipped': result.get('skipped', 0),
+                'duration': duration
+            }
+
+        except Exception as e:
+            duration = (datetime.now() - start_time).total_seconds()
+            logger.error(f"Penner-Marktpreis-Update fehlgeschlagen: {str(e)}")
+            return {
+                'status': 'error',
+                'error': str(e),
+                'duration': duration
+            }
+
+
+@shared_task(soft_time_limit=300)
+def email_penner_weekly():
+    """
+    Wöchentlicher Penner-Verkaufschancen Report per E-Mail.
+    Läuft jeden Montag um 7:00 Uhr.
+    """
+    return run_script('scripts/send_weekly_penner_report.py --force', timeout=180)
+
+
+@shared_task(bind=True, max_retries=2, soft_time_limit=300)
+def sync_eautoseller_data(self):
+    """
+    Synchronisiert eAutoseller-Daten (KPIs und Fahrzeugliste).
+    Läuft alle 15 Minuten während Arbeitszeit.
+    
+    Aktualisiert:
+    - Dashboard-KPIs (startdata.asp)
+    - Fahrzeugliste (kfzuebersicht.asp)
+    """
+    with task_lock('sync_eautoseller_data') as acquired:
+        if not acquired:
+            return {'status': 'skipped', 'reason': 'already running'}
+        
+        start_time = datetime.now()
+        logger.info("eAutoseller-Daten-Sync gestartet")
+        
+        try:
+            # Import hier, damit Fehler erst beim Ausführen auftreten
+            from lib.eautoseller_client import EAutosellerClient
+            import os
+            
+            # Credentials aus Environment oder Config
+            username = os.getenv('EAUTOSELLER_USERNAME', 'fGreiner')
+            password = os.getenv('EAUTOSELLER_PASSWORD', 'fGreiner12')
+            loginbereich = os.getenv('EAUTOSELLER_LOGINBEREICH', 'kfz')
+            
+            client = EAutosellerClient(username, password, loginbereich)
+            client.login()
+            
+            # KPIs abrufen
+            kpis = client.get_dashboard_kpis()
+            logger.info(f"KPIs abgerufen: {len(kpis)} Widgets")
+            
+            # Fahrzeugliste abrufen (wird später verfeinert)
+            vehicles = client.get_vehicle_list(active_only=True)
+            logger.info(f"Fahrzeugliste abgerufen: {len(vehicles)} Fahrzeuge")
+            
+            duration = (datetime.now() - start_time).total_seconds()
+            
+            return {
+                'status': 'success',
+                'kpis_count': len(kpis),
+                'vehicles_count': len(vehicles),
+                'duration': duration
+            }
+            
+        except Exception as exc:
+            duration = (datetime.now() - start_time).total_seconds()
+            logger.error(f"eAutoseller-Sync fehlgeschlagen: {str(exc)}")
+            
+            # Retry bei Netzwerk-Fehlern
+            if 'timeout' in str(exc).lower() or 'connection' in str(exc).lower():
+                raise self.retry(exc=exc, countdown=60)
+            
+            return {
+                'status': 'error',
+                'error': str(exc),
+                'duration': duration
+            }

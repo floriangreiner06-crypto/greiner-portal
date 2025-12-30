@@ -4,6 +4,8 @@ API: Jahresprämie
 ================
 Berechnung von Jahresprämien basierend auf Lohnjournal
 
+TAG 136: PostgreSQL-Migration
+
 Endpoints:
 - GET  /api/jahrespraemie/berechnungen          - Liste aller Berechnungen
 - GET  /api/jahrespraemie/berechnung/<id>       - Details einer Berechnung
@@ -16,7 +18,6 @@ Endpoints:
 """
 
 from flask import Blueprint, request, jsonify
-import sqlite3
 import pandas as pd
 from datetime import datetime, date
 from decimal import Decimal, ROUND_HALF_UP
@@ -24,17 +25,10 @@ import os
 import hashlib
 import tempfile
 
+from api.db_utils import db_session, row_to_dict, rows_to_list
+from api.db_connection import sql_placeholder, convert_placeholders
+
 jahrespraemie_api = Blueprint('jahrespraemie_api', __name__, url_prefix='/api/jahrespraemie')
-
-# DB-Pfad (wie andere APIs)
-DB_PATH = '/opt/greiner-portal/data/greiner_controlling.db'
-
-
-def get_db_connection():
-    """Datenbankverbindung holen"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
 
 
 def parse_date(d):
@@ -74,26 +68,26 @@ class PraemienRechner:
         self.kulanz_regeln = []
         
     def laden(self):
-        """Berechnung und Mitarbeiter laden"""
+        """Berechnung und Mitarbeiter laden (TAG 136: PostgreSQL-kompatibel)"""
         self.cursor.execute(
-            "SELECT * FROM praemien_berechnungen WHERE id = ?", 
+            convert_placeholders("SELECT * FROM praemien_berechnungen WHERE id = %s"),
             (self.berechnung_id,)
         )
         row = self.cursor.fetchone()
         if row:
-            self.berechnung = dict(row)
-            
+            self.berechnung = row_to_dict(row)
+
         self.cursor.execute(
-            "SELECT * FROM praemien_mitarbeiter WHERE berechnung_id = ?",
+            convert_placeholders("SELECT * FROM praemien_mitarbeiter WHERE berechnung_id = %s"),
             (self.berechnung_id,)
         )
-        self.mitarbeiter = [dict(row) for row in self.cursor.fetchall()]
-        
+        self.mitarbeiter = rows_to_list(self.cursor.fetchall())
+
         self.cursor.execute(
-            "SELECT * FROM praemien_kulanz_regeln WHERE berechnung_id = ? AND aktiv = 1",
+            convert_placeholders("SELECT * FROM praemien_kulanz_regeln WHERE berechnung_id = %s AND aktiv = 1"),
             (self.berechnung_id,)
         )
-        self.kulanz_regeln = [dict(row) for row in self.cursor.fetchall()]
+        self.kulanz_regeln = rows_to_list(self.cursor.fetchall())
         
     def kategorisiere_mitarbeiter(self, row, vz_tz_grenze=30):
         """Mitarbeiter-Kategorie bestimmen"""
@@ -166,12 +160,24 @@ class PraemienRechner:
         wj_ende = self.berechnung['wj_ende']
         
         # Schritt 1: Kategorisierung und Berechtigung
+        # TAG 144: Manuell bearbeitete Felder werden NICHT überschrieben
         for ma in self.mitarbeiter:
-            ma['kategorie'] = self.kategorisiere_mitarbeiter(ma, vz_tz_grenze)
-            ma['ist_festgehalt'] = 1 if self.ist_festgehalt(ma.get('taetigkeit')) else 0
-            berechtigt, grund = self.pruefe_berechtigung(ma, wj_start, wj_ende)
-            ma['ist_berechtigt'] = 1 if berechtigt else 0
-            ma['berechtigung_grund'] = grund
+            manuell_bearbeitet = 'Manuell' in str(ma.get('berechtigung_grund', ''))
+
+            # Kategorie nur setzen wenn NICHT manuell bearbeitet
+            if not manuell_bearbeitet or not ma.get('kategorie'):
+                ma['kategorie'] = self.kategorisiere_mitarbeiter(ma, vz_tz_grenze)
+
+            # Festgehalt nur setzen wenn NICHT manuell bearbeitet
+            if not manuell_bearbeitet:
+                ma['ist_festgehalt'] = 1 if self.ist_festgehalt(ma.get('taetigkeit')) else 0
+
+            # Berechtigung nur prüfen wenn NICHT manuell bearbeitet
+            if not manuell_bearbeitet:
+                berechtigt, grund = self.pruefe_berechtigung(ma, wj_start, wj_ende)
+                ma['ist_berechtigt'] = 1 if berechtigt else 0
+                ma['berechtigung_grund'] = grund
+            # Sonst: manuelle Werte beibehalten
         
         # Schritt 2: Höchstes Festgehalt ermitteln
         festgehalt_ma = [m for m in self.mitarbeiter 
@@ -325,30 +331,30 @@ class PraemienRechner:
         }
     
     def speichern(self):
-        """Berechnung und Mitarbeiter speichern"""
-        self.cursor.execute("""
+        """Berechnung und Mitarbeiter speichern (TAG 136: PostgreSQL-kompatibel)"""
+        self.cursor.execute(convert_placeholders("""
             UPDATE praemien_berechnungen SET
-                hoechstes_festgehalt = ?,
-                hoechstes_festgehalt_ma_id = ?,
-                berechnungsbasis = ?,
-                kulanz_volumen = ?,
-                bereinigter_topf = ?,
-                praemie_I_topf = ?,
-                praemie_II_topf = ?,
-                prokopf_vollzeit = ?,
-                prokopf_teilzeit = ?,
-                prokopf_minijob = ?,
-                anzahl_vollzeit = ?,
-                anzahl_teilzeit = ?,
-                anzahl_minijob = ?,
-                anzahl_azubi_1 = ?,
-                anzahl_azubi_2 = ?,
-                anzahl_azubi_3 = ?,
-                anzahl_gesamt = ?,
-                status = ?,
-                geaendert_am = ?
-            WHERE id = ?
-        """, (
+                hoechstes_festgehalt = %s,
+                hoechstes_festgehalt_ma_id = %s,
+                berechnungsbasis = %s,
+                kulanz_volumen = %s,
+                bereinigter_topf = %s,
+                "praemie_I_topf" = %s,
+                "praemie_II_topf" = %s,
+                prokopf_vollzeit = %s,
+                prokopf_teilzeit = %s,
+                prokopf_minijob = %s,
+                anzahl_vollzeit = %s,
+                anzahl_teilzeit = %s,
+                anzahl_minijob = %s,
+                anzahl_azubi_1 = %s,
+                anzahl_azubi_2 = %s,
+                anzahl_azubi_3 = %s,
+                anzahl_gesamt = %s,
+                status = %s,
+                geaendert_am = %s
+            WHERE id = %s
+        """), (
             self.berechnung['hoechstes_festgehalt'],
             self.berechnung['hoechstes_festgehalt_ma_id'],
             self.berechnung['berechnungsbasis'],
@@ -370,25 +376,25 @@ class PraemienRechner:
             datetime.now().isoformat(),
             self.berechnung_id
         ))
-        
+
         for ma in self.mitarbeiter:
-            self.cursor.execute("""
+            self.cursor.execute(convert_placeholders("""
                 UPDATE praemien_mitarbeiter SET
-                    kategorie = ?,
-                    ist_festgehalt = ?,
-                    jahresbrutto_gekappt = ?,
-                    ist_berechtigt = ?,
-                    berechtigung_grund = ?,
-                    ist_kulanz = ?,
-                    kulanz_betrag = ?,
-                    kulanz_grund = ?,
-                    anteil_lohnsumme = ?,
-                    praemie_I = ?,
-                    praemie_II = ?,
-                    praemie_gesamt = ?,
-                    praemie_gerundet = ?
-                WHERE id = ?
-            """, (
+                    kategorie = %s,
+                    ist_festgehalt = %s,
+                    jahresbrutto_gekappt = %s,
+                    ist_berechtigt = %s,
+                    berechtigung_grund = %s,
+                    ist_kulanz = %s,
+                    kulanz_betrag = %s,
+                    kulanz_grund = %s,
+                    anteil_lohnsumme = %s,
+                    "praemie_I" = %s,
+                    "praemie_II" = %s,
+                    praemie_gesamt = %s,
+                    praemie_gerundet = %s
+                WHERE id = %s
+            """), (
                 ma['kategorie'],
                 ma['ist_festgehalt'],
                 ma.get('jahresbrutto_gekappt'),
@@ -404,57 +410,51 @@ class PraemienRechner:
                 ma.get('praemie_gerundet', 0),
                 ma['id']
             ))
-        
+
         self.conn.commit()
 
 
 # ============================================================================
-# API ENDPOINTS
+# API ENDPOINTS (TAG 136: PostgreSQL-kompatibel)
 # ============================================================================
 
 @jahrespraemie_api.route('/berechnungen', methods=['GET'])
 def get_berechnungen():
     """Liste aller Berechnungen"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT * FROM praemien_berechnungen 
-        ORDER BY erstellt_am DESC
-    """)
-    berechnungen = [dict(row) for row in cursor.fetchall()]
-    conn.close()
+    with db_session() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM praemien_berechnungen
+            ORDER BY erstellt_am DESC
+        """)
+        berechnungen = rows_to_list(cursor.fetchall())
     return jsonify({"berechnungen": berechnungen})
 
 
 @jahrespraemie_api.route('/berechnung/<int:id>', methods=['GET'])
 def get_berechnung(id):
     """Details einer Berechnung"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("SELECT * FROM praemien_berechnungen WHERE id = ?", (id,))
-    berechnung = cursor.fetchone()
-    if not berechnung:
-        conn.close()
-        return jsonify({"error": "Berechnung nicht gefunden"}), 404
-    
-    berechnung = dict(berechnung)
-    
-    cursor.execute("""
-        SELECT * FROM praemien_mitarbeiter 
-        WHERE berechnung_id = ?
-        ORDER BY nachname, vorname
-    """, (id,))
-    mitarbeiter = [dict(row) for row in cursor.fetchall()]
-    
-    cursor.execute("""
-        SELECT * FROM praemien_kulanz_regeln
-        WHERE berechnung_id = ?
-    """, (id,))
-    kulanz_regeln = [dict(row) for row in cursor.fetchall()]
-    
-    conn.close()
-    
+    with db_session() as conn:
+        cursor = conn.cursor()
+
+        cursor.execute(convert_placeholders("SELECT * FROM praemien_berechnungen WHERE id = %s"), (id,))
+        berechnung = row_to_dict(cursor.fetchone())
+        if not berechnung:
+            return jsonify({"error": "Berechnung nicht gefunden"}), 404
+
+        cursor.execute(convert_placeholders("""
+            SELECT * FROM praemien_mitarbeiter
+            WHERE berechnung_id = %s
+            ORDER BY nachname, vorname
+        """), (id,))
+        mitarbeiter = rows_to_list(cursor.fetchall())
+
+        cursor.execute(convert_placeholders("""
+            SELECT * FROM praemien_kulanz_regeln
+            WHERE berechnung_id = %s
+        """), (id,))
+        kulanz_regeln = rows_to_list(cursor.fetchall())
+
     return jsonify({
         "berechnung": berechnung,
         "mitarbeiter": mitarbeiter,
@@ -466,38 +466,36 @@ def get_berechnung(id):
 def neue_berechnung():
     """Neue Berechnung anlegen"""
     data = request.get_json()
-    
+
     wirtschaftsjahr = data.get('wirtschaftsjahr')
     praemientopf = data.get('praemientopf')
     wj_start = data.get('wj_start')
     wj_ende = data.get('wj_ende')
     vz_tz_grenze = data.get('vz_tz_grenze', 30)
-    
+
     if not all([wirtschaftsjahr, praemientopf, wj_start, wj_ende]):
         return jsonify({"error": "Pflichtfelder fehlen"}), 400
-    
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute(
-        "SELECT id FROM praemien_berechnungen WHERE wirtschaftsjahr = ?",
-        (wirtschaftsjahr,)
-    )
-    if cursor.fetchone():
-        conn.close()
-        return jsonify({"error": f"Berechnung für {wirtschaftsjahr} existiert bereits"}), 400
-    
-    cursor.execute("""
-        INSERT INTO praemien_berechnungen (
-            wirtschaftsjahr, wj_start, wj_ende, praemientopf, vz_tz_grenze,
-            prokopf_azubi_1, prokopf_azubi_2, prokopf_azubi_3, status
-        ) VALUES (?, ?, ?, ?, ?, 100, 125, 150, 'entwurf')
-    """, (wirtschaftsjahr, wj_start, wj_ende, praemientopf, vz_tz_grenze))
-    
-    berechnung_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    
+
+    with db_session() as conn:
+        cursor = conn.cursor()
+
+        cursor.execute(
+            convert_placeholders("SELECT id FROM praemien_berechnungen WHERE wirtschaftsjahr = %s"),
+            (wirtschaftsjahr,)
+        )
+        if cursor.fetchone():
+            return jsonify({"error": f"Berechnung für {wirtschaftsjahr} existiert bereits"}), 400
+
+        cursor.execute(convert_placeholders("""
+            INSERT INTO praemien_berechnungen (
+                wirtschaftsjahr, wj_start, wj_ende, praemientopf, vz_tz_grenze,
+                prokopf_azubi_1, prokopf_azubi_2, prokopf_azubi_3, status
+            ) VALUES (?, ?, ?, ?, ?, 100, 125, 150, 'entwurf')
+        """), (wirtschaftsjahr, wj_start, wj_ende, praemientopf, vz_tz_grenze))
+
+        berechnung_id = cursor.lastrowid
+        conn.commit()
+
     return jsonify({
         "success": True,
         "berechnung_id": berechnung_id,
@@ -510,94 +508,152 @@ def upload_lohnjournal(berechnung_id):
     """Lohnjournal hochladen und Mitarbeiter importieren"""
     if 'file' not in request.files:
         return jsonify({"error": "Keine Datei hochgeladen"}), 400
-    
+
     file = request.files['file']
     if file.filename == '':
         return jsonify({"error": "Keine Datei ausgewählt"}), 400
-    
+
     temp_path = os.path.join(tempfile.gettempdir(), file.filename)
     file.save(temp_path)
-    
+
     try:
         df = pd.read_excel(temp_path, sheet_name='01446_Mon_AN', header=0)
-        
+
         df_clean = df[[
             'Zeitraum', 'Personalnummer', 'Name', 'Vorname', 'Name #2',
-            'Eintritt', 'Austritt', 'Std/Woche', 'Bruttobezug', 
+            'Eintritt', 'Austritt', 'Std/Woche', 'Bruttobezug',
             'Zeitraum (JJJJMM)', 'Ang/Arb/Ausz/Sons', 'Tätigkeit'
         ]].copy()
-        
+
         df_clean.columns = [
             'zeitraum', 'pers_nr', 'name_voll', 'vorname', 'nachname',
             'eintritt', 'austritt', 'std_woche', 'bruttobezug',
             'monat', 'ang_arb', 'taetigkeit'
         ]
-        
+
         df_clean['pers_nr'] = pd.to_numeric(df_clean['pers_nr'], errors='coerce').fillna(0).astype(int)
         df_clean['bruttobezug'] = pd.to_numeric(df_clean['bruttobezug'], errors='coerce').fillna(0)
         df_clean['monat'] = pd.to_numeric(df_clean['monat'], errors='coerce').fillna(0).astype(int)
         df_clean['std_woche'] = df_clean['std_woche'].astype(str).str.replace(',', '.').astype(float)
-        
+
         # WJ-Monate: Sept 2024 - Aug 2025
         wj_monate = list(range(202409, 202413)) + list(range(202501, 202509))
         df_wj = df_clean[df_clean['monat'].isin(wj_monate)]
-        
+
+        # TAG 144: Aggregation mit 'last' für Austrittsdatum (nicht 'first')
+        # So wird das letzte bekannte Austrittsdatum verwendet
         ma_agg = df_wj.groupby('pers_nr').agg({
             'bruttobezug': 'sum',
             'vorname': 'first',
             'nachname': 'first',
             'eintritt': 'first',
-            'austritt': 'first',
+            'austritt': 'last',  # TAG 144: Letztes Austrittsdatum nehmen
             'std_woche': 'first',
             'ang_arb': 'first',
             'taetigkeit': 'first'
         }).reset_index()
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("DELETE FROM praemien_mitarbeiter WHERE berechnung_id = ?", (berechnung_id,))
-        
-        for _, row in ma_agg.iterrows():
-            eintritt = parse_date(row['eintritt'])
-            austritt = parse_date(row['austritt'])
-            
+
+        with db_session() as conn:
+            cursor = conn.cursor()
+
+            # TAG 144: Hole Austrittsdaten aus loco_employees (Locosoft-Master)
+            # Abgleich über Name (Nachname,Vorname Format in Locosoft)
             cursor.execute("""
-                INSERT INTO praemien_mitarbeiter (
-                    berechnung_id, personalnummer, vorname, nachname,
-                    eintritt, austritt, std_woche, taetigkeit, ang_arb, jahresbrutto
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                berechnung_id,
-                str(row['pers_nr']),
-                row['vorname'],
-                row['nachname'],
-                eintritt.isoformat() if eintritt else None,
-                austritt.isoformat() if austritt else None,
-                row['std_woche'],
-                row['taetigkeit'],
-                row['ang_arb'],
-                row['bruttobezug']
-            ))
-        
-        file_hash = hashlib.md5(open(temp_path, 'rb').read()).hexdigest()
-        cursor.execute("""
-            UPDATE praemien_berechnungen 
-            SET lohnjournal_datei = ?, lohnjournal_hash = ?
-            WHERE id = ?
-        """, (file.filename, file_hash, berechnung_id))
-        
-        conn.commit()
-        conn.close()
-        
+                SELECT employee_number, name, termination_date, leave_date, employment_date
+                FROM loco_employees
+                WHERE is_latest_record = true
+            """)
+            employees_by_name = {}
+            for row in cursor.fetchall():
+                # Locosoft: termination_date = Kündigung, leave_date = letzter Arbeitstag
+                # Wir nehmen leave_date wenn vorhanden, sonst termination_date
+                exit_date = row[3] if row[3] else row[2]
+                emp_data = {
+                    'exit_date': exit_date,
+                    'entry_date': row[4],
+                    'employee_number': row[0]
+                }
+                # Name in Locosoft ist "Nachname,Vorname" - aufsplitten für Matching
+                if row[1]:
+                    name_parts = row[1].split(',')
+                    if len(name_parts) >= 2:
+                        nachname = name_parts[0].strip().lower()
+                        vorname = name_parts[1].strip().lower()
+                        name_key = f"{vorname}_{nachname}"
+                        employees_by_name[name_key] = emp_data
+
+            cursor.execute(convert_placeholders("DELETE FROM praemien_mitarbeiter WHERE berechnung_id = %s"), (berechnung_id,))
+
+            abgeglichen = 0
+            for _, row in ma_agg.iterrows():
+                pers_nr_str = str(row['pers_nr'])
+
+                # Eintritt aus Lohnjournal
+                eintritt = parse_date(row['eintritt'])
+
+                # TAG 144: Austritt aus Locosoft via Name-Matching
+                austritt_lohnjournal = parse_date(row['austritt'])
+                austritt_locosoft = None
+                emp = None
+
+                # Name-Matching: Vorname_Nachname (lowercase)
+                vorname = str(row['vorname']).strip().lower() if row['vorname'] else ''
+                nachname = str(row['nachname']).strip().lower() if row['nachname'] else ''
+                name_key = f"{vorname}_{nachname}"
+
+                if name_key in employees_by_name:
+                    emp = employees_by_name[name_key]
+                    abgeglichen += 1
+
+                if emp and emp['exit_date']:
+                    austritt_locosoft = emp['exit_date']
+                    if isinstance(austritt_locosoft, str):
+                        austritt_locosoft = parse_date(austritt_locosoft)
+                    # Auch Eintrittsdatum aus Locosoft als Fallback
+                    if not eintritt and emp['entry_date']:
+                        eintritt = emp['entry_date']
+                        if isinstance(eintritt, str):
+                            eintritt = parse_date(eintritt)
+
+                # Verwende Locosoft-Austrittsdatum wenn vorhanden, sonst Lohnjournal
+                austritt = austritt_locosoft if austritt_locosoft else austritt_lohnjournal
+
+                cursor.execute(convert_placeholders("""
+                    INSERT INTO praemien_mitarbeiter (
+                        berechnung_id, personalnummer, vorname, nachname,
+                        eintritt, austritt, std_woche, taetigkeit, ang_arb, jahresbrutto
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """), (
+                    berechnung_id,
+                    pers_nr_str,
+                    row['vorname'],
+                    row['nachname'],
+                    eintritt.isoformat() if eintritt else None,
+                    austritt.isoformat() if austritt else None,
+                    row['std_woche'],
+                    row['taetigkeit'],
+                    row['ang_arb'],
+                    row['bruttobezug']
+                ))
+
+            file_hash = hashlib.md5(open(temp_path, 'rb').read()).hexdigest()
+            cursor.execute(convert_placeholders("""
+                UPDATE praemien_berechnungen
+                SET lohnjournal_datei = %s, lohnjournal_hash = %s
+                WHERE id = %s
+            """), (file.filename, file_hash, berechnung_id))
+
+            conn.commit()
+
         os.remove(temp_path)
-        
+
         return jsonify({
             "success": True,
             "mitarbeiter_count": len(ma_agg),
-            "message": f"{len(ma_agg)} Mitarbeiter importiert"
+            "austrittsdaten_abgeglichen": abgeglichen,
+            "message": f"{len(ma_agg)} Mitarbeiter importiert, {abgeglichen} Austrittsdaten aus Stammdaten abgeglichen"
         })
-        
+
     except Exception as e:
         if os.path.exists(temp_path):
             os.remove(temp_path)
@@ -607,24 +663,26 @@ def upload_lohnjournal(berechnung_id):
 @jahrespraemie_api.route('/berechnen/<int:berechnung_id>', methods=['POST'])
 def berechne_praemien(berechnung_id):
     """Prämien berechnen"""
-    conn = get_db_connection()
-    
+    from api.db_connection import get_db
+
+    conn = get_db()
+
     rechner = PraemienRechner(berechnung_id, conn)
     rechner.laden()
-    
+
     if not rechner.berechnung:
         conn.close()
         return jsonify({"error": "Berechnung nicht gefunden"}), 404
-    
+
     if not rechner.mitarbeiter:
         conn.close()
         return jsonify({"error": "Keine Mitarbeiter vorhanden. Bitte erst Lohnjournal hochladen."}), 400
-    
+
     ergebnis = rechner.berechne()
     rechner.speichern()
-    
+
     conn.close()
-    
+
     return jsonify({
         "success": True,
         "berechnung": ergebnis['berechnung'],
@@ -638,51 +696,144 @@ def setze_kulanz(berechnung_id):
     """Kulanz-Regeln setzen"""
     data = request.get_json()
     regeln = data.get('regeln', [])
-    
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("DELETE FROM praemien_kulanz_regeln WHERE berechnung_id = ?", (berechnung_id,))
-    
-    for regel in regeln:
-        cursor.execute("""
-            INSERT INTO praemien_kulanz_regeln (
-                berechnung_id, regel_typ, kategorie, pauschal_betrag,
-                mitarbeiter_id, beschreibung, aktiv
-            ) VALUES (?, ?, ?, ?, ?, ?, 1)
-        """, (
-            berechnung_id,
-            regel.get('regel_typ'),
-            regel.get('kategorie'),
-            regel.get('pauschal_betrag'),
-            regel.get('mitarbeiter_id'),
-            regel.get('beschreibung')
-        ))
-    
-    conn.commit()
-    conn.close()
-    
+
+    with db_session() as conn:
+        cursor = conn.cursor()
+
+        cursor.execute(convert_placeholders("DELETE FROM praemien_kulanz_regeln WHERE berechnung_id = %s"), (berechnung_id,))
+
+        for regel in regeln:
+            cursor.execute(convert_placeholders("""
+                INSERT INTO praemien_kulanz_regeln (
+                    berechnung_id, regel_typ, kategorie, pauschal_betrag,
+                    mitarbeiter_id, beschreibung, aktiv
+                ) VALUES (?, ?, ?, ?, ?, ?, 1)
+            """), (
+                berechnung_id,
+                regel.get('regel_typ'),
+                regel.get('kategorie'),
+                regel.get('pauschal_betrag'),
+                regel.get('mitarbeiter_id'),
+                regel.get('beschreibung')
+            ))
+
+        conn.commit()
+
     return jsonify({
         "success": True,
         "message": f"{len(regeln)} Kulanz-Regeln gespeichert"
     })
 
 
+@jahrespraemie_api.route('/mitarbeiter/<int:ma_id>/ausschliessen', methods=['POST'])
+def mitarbeiter_ausschliessen(ma_id):
+    """Mitarbeiter manuell von Prämie ausschließen (TAG 144)"""
+    grund = request.form.get('grund', 'Manuell ausgeschlossen')
+
+    with db_session() as conn:
+        cursor = conn.cursor()
+        cursor.execute(convert_placeholders("""
+            UPDATE praemien_mitarbeiter SET
+                ist_berechtigt = 0,
+                berechtigung_grund = %s,
+                "praemie_I" = 0,
+                "praemie_II" = 0,
+                praemie_gesamt = 0,
+                praemie_gerundet = 0
+            WHERE id = %s
+        """), (f"Manuell: {grund}", ma_id))
+        conn.commit()
+
+    return jsonify({"success": True, "message": "Mitarbeiter ausgeschlossen"})
+
+
+@jahrespraemie_api.route('/mitarbeiter/<int:ma_id>/wiederherstellen', methods=['POST'])
+def mitarbeiter_wiederherstellen(ma_id):
+    """Mitarbeiter wieder als berechtigt markieren (TAG 144)"""
+    with db_session() as conn:
+        cursor = conn.cursor()
+        cursor.execute(convert_placeholders("""
+            UPDATE praemien_mitarbeiter SET
+                ist_berechtigt = 1,
+                berechtigung_grund = 'OK (wiederhergestellt)'
+            WHERE id = %s
+        """), (ma_id,))
+        conn.commit()
+
+    return jsonify({"success": True, "message": "Mitarbeiter wiederhergestellt"})
+
+
+@jahrespraemie_api.route('/mitarbeiter/<int:ma_id>', methods=['PUT'])
+def mitarbeiter_update(ma_id):
+    """
+    Mitarbeiter vollständig bearbeiten (TAG 144)
+    Alle Felder editierbar - nach Speichern muss neu berechnet werden!
+    """
+    data = request.get_json()
+
+    with db_session() as conn:
+        cursor = conn.cursor()
+
+        # Prüfen ob Mitarbeiter existiert
+        cursor.execute(convert_placeholders(
+            "SELECT berechnung_id FROM praemien_mitarbeiter WHERE id = %s"
+        ), (ma_id,))
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({"error": "Mitarbeiter nicht gefunden"}), 404
+
+        # Update mit allen Feldern
+        cursor.execute(convert_placeholders("""
+            UPDATE praemien_mitarbeiter SET
+                vorname = %s,
+                nachname = %s,
+                kategorie = %s,
+                std_woche = %s,
+                jahresbrutto = %s,
+                eintritt = %s,
+                austritt = %s,
+                taetigkeit = %s,
+                ist_berechtigt = %s,
+                ist_festgehalt = %s,
+                berechtigung_grund = %s
+            WHERE id = %s
+        """), (
+            data.get('vorname'),
+            data.get('nachname'),
+            data.get('kategorie'),
+            data.get('std_woche'),
+            data.get('jahresbrutto'),
+            data.get('eintritt') or None,
+            data.get('austritt') or None,
+            data.get('taetigkeit'),
+            1 if data.get('ist_berechtigt') else 0,
+            1 if data.get('ist_festgehalt') else 0,
+            data.get('berechtigung_grund', 'Manuell bearbeitet'),
+            ma_id
+        ))
+
+        conn.commit()
+
+    return jsonify({
+        "success": True,
+        "message": "Mitarbeiter aktualisiert - bitte Berechnung neu starten"
+    })
+
+
 @jahrespraemie_api.route('/freigeben/<int:berechnung_id>', methods=['POST'])
 def freigeben(berechnung_id):
     """Berechnung freigeben"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-        UPDATE praemien_berechnungen 
-        SET status = 'freigegeben', freigegeben_am = ?
-        WHERE id = ?
-    """, (datetime.now().isoformat(), berechnung_id))
-    
-    conn.commit()
-    conn.close()
-    
+    with db_session() as conn:
+        cursor = conn.cursor()
+
+        cursor.execute(convert_placeholders("""
+            UPDATE praemien_berechnungen
+            SET status = 'freigegeben', freigegeben_am = %s
+            WHERE id = %s
+        """), (datetime.now().isoformat(), berechnung_id))
+
+        conn.commit()
+
     return jsonify({
         "success": True,
         "message": "Berechnung freigegeben"
@@ -693,12 +844,11 @@ def freigeben(berechnung_id):
 def health_check():
     """Health Check"""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM praemien_berechnungen")
-        count = cursor.fetchone()[0]
-        conn.close()
-        
+        with db_session() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) as cnt FROM praemien_berechnungen")
+            count = row_to_dict(cursor.fetchone())['cnt']
+
         return jsonify({
             "status": "ok",
             "module": "jahrespraemie",

@@ -107,7 +107,7 @@ def get_employees():
                     e.department_name as grp_code
                 FROM employees e
                 LEFT JOIN vacation_entitlements ve ON e.id = ve.employee_id AND ve.year = {year}
-                WHERE e.aktiv = 1
+                WHERE e.aktiv = true
                 ORDER BY e.last_name, e.first_name
             """)
 
@@ -218,8 +218,8 @@ def update_entitlement():
 
             cursor.execute("""
                 UPDATE employees
-                SET vacation_days_total = ?, vacation_entitlement = ?
-                WHERE id = ?
+                SET vacation_days_total = %s, vacation_entitlement = %s
+                WHERE id = %s
             """, (anspruch, anspruch, employee_id))
 
             conn.commit()
@@ -258,7 +258,7 @@ def bulk_update():
                 cursor.execute("""
                     SELECT total_days, carried_over, added_manually
                     FROM vacation_entitlements
-                    WHERE employee_id = ? AND year = ?
+                    WHERE employee_id = %s AND year = %s
                 """, (employee_id, year))
                 current = cursor.fetchone()
 

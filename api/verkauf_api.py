@@ -15,8 +15,9 @@ from flask import Blueprint, jsonify, request
 from datetime import datetime, date
 from typing import Dict, List
 
-# Zentrale DB-Utilities (TAG117)
+# Zentrale DB-Utilities (TAG117, TAG145: sql_placeholder für PostgreSQL)
 from api.db_utils import db_session, locosoft_session
+from api.db_connection import sql_placeholder
 
 # Blueprint erstellen
 verkauf_api = Blueprint('verkauf_api', __name__, url_prefix='/api/verkauf')
@@ -347,7 +348,7 @@ def get_auftragseingang():
                     COUNT(*) as anzahl
                 FROM sales s
                 LEFT JOIN employees e ON s.salesman_number = e.locosoft_id
-                WHERE DATE(s.out_sales_contract_date) = DATE('now')
+                WHERE DATE(s.out_sales_contract_date) = CURRENT_DATE
                   AND s.salesman_number IS NOT NULL
                   {DEDUP_FILTER}
                 GROUP BY s.salesman_number, verkaufer_name, fahrzeugart
@@ -367,8 +368,8 @@ def get_auftragseingang():
                     COUNT(*) as anzahl
                 FROM sales s
                 LEFT JOIN employees e ON s.salesman_number = e.locosoft_id
-                WHERE strftime('%Y', s.out_sales_contract_date) = ?
-                  AND strftime('%m', s.out_sales_contract_date) = ?
+                WHERE EXTRACT(YEAR FROM s.out_sales_contract_date) = %s
+                  AND EXTRACT(MONTH FROM s.out_sales_contract_date) = %s
                   AND s.salesman_number IS NOT NULL
                   {DEDUP_FILTER}
                 GROUP BY s.salesman_number, verkaufer_name, fahrzeugart
@@ -431,12 +432,12 @@ def get_auftragseingang_summary():
 
             # Zeit-Filter aufbauen
             if day:
-                where_clause = f"WHERE DATE(s.out_sales_contract_date) = ? {DEDUP_FILTER}"
+                where_clause = f"WHERE DATE(s.out_sales_contract_date) = %s {DEDUP_FILTER}"
                 params = [day]
             else:
                 where_clause = f"""
-                    WHERE strftime('%Y', s.out_sales_contract_date) = ?
-                      AND strftime('%m', s.out_sales_contract_date) = ?
+                    WHERE EXTRACT(YEAR FROM s.out_sales_contract_date) = %s
+                      AND EXTRACT(MONTH FROM s.out_sales_contract_date) = %s
                       {DEDUP_FILTER}
                 """
                 params = [str(year), f"{month:02d}"]
@@ -499,22 +500,22 @@ def get_auftragseingang_detail():
             # Zeit-Filter: Tag ODER Monat
             if day:
                 # Tages-Filter
-                where_clauses.append("DATE(s.out_sales_contract_date) = ?")
+                where_clauses.append("DATE(s.out_sales_contract_date) = %s")
                 params.append(day)
             else:
                 # Monats-Filter (Fallback)
-                where_clauses.append("strftime('%Y', s.out_sales_contract_date) = ?")
-                where_clauses.append("strftime('%m', s.out_sales_contract_date) = ?")
+                where_clauses.append("EXTRACT(YEAR FROM s.out_sales_contract_date) = %s")
+                where_clauses.append("EXTRACT(MONTH FROM s.out_sales_contract_date) = %s")
                 params.extend([str(year), f"{month:02d}"])
 
             # Standort-Filter
             if location:
-                where_clauses.append("s.out_subsidiary = ?")
+                where_clauses.append("s.out_subsidiary = %s")
                 params.append(int(location))
 
             # Verkäufer-Filter
             if verkaufer:
-                where_clauses.append("s.salesman_number = ?")
+                where_clauses.append("s.salesman_number = %s")
                 params.append(int(verkaufer))
 
             # Dedup-Filter hinzufügen
@@ -627,15 +628,15 @@ def get_auslieferung_summary():
             # Zeit-Filter aufbauen (Rechnungsdatum!)
             if day:
                 where_clause = f"""
-                    WHERE DATE(s.out_invoice_date) = ?
+                    WHERE DATE(s.out_invoice_date) = %s
                       AND s.out_invoice_date IS NOT NULL
                       {DEDUP_FILTER}
                 """
                 params = [day]
             else:
                 where_clause = f"""
-                    WHERE strftime('%Y', s.out_invoice_date) = ?
-                      AND strftime('%m', s.out_invoice_date) = ?
+                    WHERE EXTRACT(YEAR FROM s.out_invoice_date) = %s
+                      AND EXTRACT(MONTH FROM s.out_invoice_date) = %s
                       AND s.out_invoice_date IS NOT NULL
                       {DEDUP_FILTER}
                 """
@@ -704,21 +705,21 @@ def get_auslieferung_detail():
 
             # Zeit-Filter: Tag ODER Monat (auf Rechnungsdatum!)
             if day:
-                where_clauses.append("DATE(s.out_invoice_date) = ?")
+                where_clauses.append("DATE(s.out_invoice_date) = %s")
                 params.append(day)
             else:
-                where_clauses.append("strftime('%Y', s.out_invoice_date) = ?")
-                where_clauses.append("strftime('%m', s.out_invoice_date) = ?")
+                where_clauses.append("EXTRACT(YEAR FROM s.out_invoice_date) = %s")
+                where_clauses.append("EXTRACT(MONTH FROM s.out_invoice_date) = %s")
                 params.extend([str(year), f"{month:02d}"])
 
             # Standort-Filter
             if location:
-                where_clauses.append("s.out_subsidiary = ?")
+                where_clauses.append("s.out_subsidiary = %s")
                 params.append(int(location))
 
             # Verkäufer-Filter
             if verkaufer:
-                where_clauses.append("s.salesman_number = ?")
+                where_clauses.append("s.salesman_number = %s")
                 params.append(int(verkaufer))
 
             # NEU: VIN-Filter (Teilsuche)
@@ -880,21 +881,21 @@ def get_auftragseingang_fahrzeuge():
 
             # Zeit-Filter: Tag ODER Monat (auf Vertragsdatum!)
             if day:
-                where_clauses.append("DATE(s.out_sales_contract_date) = ?")
+                where_clauses.append("DATE(s.out_sales_contract_date) = %s")
                 params.append(day)
             else:
-                where_clauses.append("strftime('%Y', s.out_sales_contract_date) = ?")
-                where_clauses.append("strftime('%m', s.out_sales_contract_date) = ?")
+                where_clauses.append("EXTRACT(YEAR FROM s.out_sales_contract_date) = %s")
+                where_clauses.append("EXTRACT(MONTH FROM s.out_sales_contract_date) = %s")
                 params.extend([str(year), f"{month:02d}"])
 
             # Standort-Filter
             if location:
-                where_clauses.append("s.out_subsidiary = ?")
+                where_clauses.append("s.out_subsidiary = %s")
                 params.append(int(location))
 
             # Verkäufer-Filter
             if verkaufer:
-                where_clauses.append("s.salesman_number = ?")
+                where_clauses.append("s.salesman_number = %s")
                 params.append(int(verkaufer))
 
             # VIN-Filter (Teilsuche)
@@ -1048,6 +1049,218 @@ def get_verkaufer_liste():
                 'success': True,
                 'verkaufer': verkaufer
             })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+# ============================================================================
+# LIEFERFORECAST (NEU TAG133 - Geplante Fahrzeugauslieferungen + DB1-Prognose)
+# ============================================================================
+
+@verkauf_api.route('/lieferforecast', methods=['GET'])
+def get_lieferforecast():
+    """
+    GET /api/verkauf/lieferforecast?von=2025-12-22&bis=2025-12-31&standort=all
+
+    Liefert geplante Fahrzeugauslieferungen mit Rechnungsbeträgen und DB1-Prognose.
+    Datenquellen:
+    - PostgreSQL Locosoft: vehicles.readmission_date (geplante Lieferung)
+    - SQLite: sales.deckungsbeitrag (DB1-Daten)
+
+    Status:
+    - VORFAKTURIERT: has_open_positions=true AND has_closed_positions=true
+    - FAKTURIERT: has_open_positions=false AND has_closed_positions=true
+    - OFFEN: Alle anderen
+    """
+    try:
+        # Parameter
+        von = request.args.get('von', date.today().strftime('%Y-%m-%d'))
+        bis = request.args.get('bis', None)
+        standort = request.args.get('standort', 'all')  # 'all', 'DEG', 'LAN'
+
+        # Default: 14 Tage in die Zukunft
+        if not bis:
+            from datetime import timedelta
+            bis_date = date.today() + timedelta(days=14)
+            bis = bis_date.strftime('%Y-%m-%d')
+
+        with locosoft_session() as conn:
+            cursor = conn.cursor()
+
+            # Standort-Filter
+            standort_filter = ""
+            if standort == 'DEG':
+                standort_filter = "AND v.subsidiary = 2"
+            elif standort == 'LAN':
+                standort_filter = "AND v.subsidiary = 1"
+
+            # Hauptquery: Fahrzeuge mit geplanter Lieferung
+            cursor.execute(f"""
+                SELECT
+                    v.readmission_date as lieferung,
+                    v.vin,
+                    v.dealer_vehicle_type as typ,
+                    v.dealer_vehicle_number as haendler_nr,
+                    v.license_plate as kennzeichen,
+                    v.subsidiary as filiale,
+                    o.number as auftrag_nr,
+                    CASE
+                        WHEN o.has_open_positions = true AND o.has_closed_positions = true THEN 'VORFAKTURIERT'
+                        WHEN o.has_open_positions = false AND o.has_closed_positions = true THEN 'FAKTURIERT'
+                        ELSE 'OFFEN'
+                    END as status,
+                    COALESCE(SUM(i.total_gross), 0) as brutto,
+                    COALESCE(SUM(i.total_net), 0) as netto
+                FROM vehicles v
+                JOIN orders o ON v.dealer_vehicle_number = o.dealer_vehicle_number
+                              AND v.dealer_vehicle_type = o.dealer_vehicle_type
+                LEFT JOIN invoices i ON o.number = i.order_number
+                WHERE v.readmission_date BETWEEN %s AND %s
+                  AND v.dealer_vehicle_type IN ('N', 'V', 'T')
+                  {standort_filter}
+                GROUP BY v.readmission_date, v.vin, v.dealer_vehicle_type,
+                         v.dealer_vehicle_number, v.license_plate, v.subsidiary,
+                         o.number, o.has_open_positions, o.has_closed_positions
+                ORDER BY v.readmission_date, v.vin
+            """, (von, bis))
+
+            rows = cursor.fetchall()
+
+            # Nach Fahrzeug gruppieren (ein Fahrzeug kann mehrere Aufträge haben)
+            fahrzeuge_dict = {}
+            for row in rows:
+                vin = row[1]
+                if vin not in fahrzeuge_dict:
+                    fahrzeuge_dict[vin] = {
+                        'lieferung': str(row[0]),
+                        'vin': vin,
+                        'typ': row[2],
+                        'haendler_nr': row[3],
+                        'kennzeichen': row[4],
+                        'standort': 'DEG' if row[5] == 2 else 'LAN',
+                        'auftraege': [],
+                        'brutto_gesamt': 0,
+                        'netto_gesamt': 0,
+                        'status': 'OFFEN',
+                        'db1': 0,
+                        'db1_prozent': 0,
+                        'marke': '-',
+                        'modell': '-'
+                    }
+
+                brutto = float(row[8]) if row[8] else 0
+                netto = float(row[9]) if row[9] else 0
+
+                fahrzeuge_dict[vin]['auftraege'].append({
+                    'nummer': row[6],
+                    'status': row[7],
+                    'brutto': round(brutto, 2),
+                    'netto': round(netto, 2)
+                })
+                fahrzeuge_dict[vin]['brutto_gesamt'] += brutto
+                fahrzeuge_dict[vin]['netto_gesamt'] += netto
+
+                # Status: Vorfakturiert > Offen
+                if row[7] == 'VORFAKTURIERT':
+                    fahrzeuge_dict[vin]['status'] = 'VORFAKTURIERT'
+                elif row[7] == 'FAKTURIERT' and fahrzeuge_dict[vin]['status'] != 'VORFAKTURIERT':
+                    fahrzeuge_dict[vin]['status'] = 'FAKTURIERT'
+
+            # Runden
+            for vin in fahrzeuge_dict:
+                fahrzeuge_dict[vin]['brutto_gesamt'] = round(fahrzeuge_dict[vin]['brutto_gesamt'], 2)
+                fahrzeuge_dict[vin]['netto_gesamt'] = round(fahrzeuge_dict[vin]['netto_gesamt'], 2)
+
+        # DB1-Daten + Marke/Modell aus SQLite laden
+        MARKEN = {27: 'Hyundai', 40: 'Opel', 41: 'Leapmotor'}
+        if fahrzeuge_dict:
+            with db_session() as sqlite_conn:
+                sqlite_cursor = sqlite_conn.cursor()
+                vins = list(fahrzeuge_dict.keys())
+                # TAG145: PostgreSQL-kompatibel - %s statt ?
+                ph = sql_placeholder()
+                placeholders = ','.join([ph for _ in vins])
+                sqlite_cursor.execute(f"""
+                    SELECT
+                        vin,
+                        COALESCE(deckungsbeitrag, 0) as db1,
+                        COALESCE(db_prozent, 0) as db1_prozent,
+                        COALESCE(netto_vk_preis, 0) as netto_vk,
+                        make_number,
+                        model_description
+                    FROM sales
+                    WHERE vin IN ({placeholders})
+                      AND out_invoice_date IS NOT NULL
+                """, vins)
+
+                for row in sqlite_cursor.fetchall():
+                    vin = row['vin']
+                    if vin in fahrzeuge_dict:
+                        fahrzeuge_dict[vin]['db1'] = round(float(row['db1']), 2)
+                        fahrzeuge_dict[vin]['db1_prozent'] = round(float(row['db1_prozent']), 1)
+                        fahrzeuge_dict[vin]['marke'] = MARKEN.get(row['make_number'], f"Marke {row['make_number']}")
+                        fahrzeuge_dict[vin]['modell'] = row['model_description'] or '-'
+
+        fahrzeuge = list(fahrzeuge_dict.values())
+
+        # Tages-Aggregation
+        tage = {}
+        for fz in fahrzeuge:
+            tag = fz['lieferung']
+            if tag not in tage:
+                tage[tag] = {
+                    'datum': tag,
+                    'fahrzeuge': 0,
+                    'brutto': 0,
+                    'vorfakturiert': 0,
+                    'fakturiert': 0,
+                    'db1': 0
+                }
+            tage[tag]['fahrzeuge'] += 1
+            tage[tag]['brutto'] += fz['brutto_gesamt']
+            tage[tag]['db1'] += fz['db1']
+            if fz['status'] == 'VORFAKTURIERT':
+                tage[tag]['vorfakturiert'] += fz['brutto_gesamt']
+            elif fz['status'] == 'FAKTURIERT':
+                tage[tag]['fakturiert'] += fz['brutto_gesamt']
+
+        # Runden und sortieren
+        tage_liste = []
+        for tag in sorted(tage.keys()):
+            tage[tag]['brutto'] = round(tage[tag]['brutto'], 2)
+            tage[tag]['vorfakturiert'] = round(tage[tag]['vorfakturiert'], 2)
+            tage[tag]['fakturiert'] = round(tage[tag]['fakturiert'], 2)
+            tage[tag]['db1'] = round(tage[tag]['db1'], 2)
+            tage_liste.append(tage[tag])
+
+        # Summen
+        total_db1 = sum(f['db1'] for f in fahrzeuge)
+        total_netto = sum(f['netto_gesamt'] for f in fahrzeuge)
+        avg_db1_prozent = round((total_db1 / total_netto * 100) if total_netto > 0 else 0, 1)
+
+        summe = {
+            'fahrzeuge': len(fahrzeuge),
+            'brutto': round(sum(f['brutto_gesamt'] for f in fahrzeuge), 2),
+            'netto': round(total_netto, 2),
+            'vorfakturiert': round(sum(f['brutto_gesamt'] for f in fahrzeuge if f['status'] == 'VORFAKTURIERT'), 2),
+            'fakturiert': round(sum(f['brutto_gesamt'] for f in fahrzeuge if f['status'] == 'FAKTURIERT'), 2),
+            'db1': round(total_db1, 2),
+            'db1_prozent': avg_db1_prozent
+        }
+
+        return jsonify({
+            'success': True,
+            'von': von,
+            'bis': bis,
+            'standort': standort,
+            'fahrzeuge': fahrzeuge,
+            'tage': tage_liste,
+            'summe': summe
+        })
 
     except Exception as e:
         return jsonify({

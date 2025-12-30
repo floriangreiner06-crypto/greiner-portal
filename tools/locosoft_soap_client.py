@@ -438,7 +438,7 @@ class LocosoftSOAPClient:
     def read_work_order_details(self, order_number: int) -> Optional[Dict]:
         """Liest Auftragsdetails mit allen Positionen."""
         try:
-            result = self.service.readWorkOrderDetails(number=order_number)
+            result = self.service.readWorkOrderDetails(orderNumber=order_number)
             return self._serialize(result) if result else None
         except Exception as e:
             logger.error(f"readWorkOrderDetails({order_number}) fehlgeschlagen: {e}")

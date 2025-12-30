@@ -46,6 +46,14 @@ import json
 # Zentrale DB-Utilities (TAG 117 - Migration abgeschlossen)
 from api.db_utils import db_session, row_to_dict, rows_to_list
 
+# PostgreSQL/SQLite Kompatibilitäts-Helper (TAG 136 - PostgreSQL Migration)
+from api.db_connection import (
+    get_db_type,
+    sql_year,
+    convert_placeholders,
+    sql_placeholder
+)
+
 # Approver Service importieren
 from api.vacation_approver_service import (
     get_approvers_for_employee,
@@ -89,6 +97,23 @@ vacation_api = Blueprint('vacation_api', __name__, url_prefix='/api/vacation')
 HR_EMAIL = 'hr@auto-greiner.de'  # HR-Mailbox für Locosoft-Einträge
 DRIVE_EMAIL = 'drive@auto-greiner.de'  # Absender
 
+# ============================================================================
+# ERROR HANDLERS (TAG 136 - PostgreSQL Migration Bug Fix)
+# ============================================================================
+
+@vacation_api.errorhandler(Exception)
+def handle_vacation_error(e):
+    """
+    Globaler Error Handler für Vacation API.
+    Stellt sicher, dass alle Fehler als JSON zurückgegeben werden.
+    """
+    import traceback
+    return jsonify({
+        'success': False,
+        'error': str(e),
+        'traceback': traceback.format_exc()
+    }), 500
+
 
 def get_employee_from_session():
     """
@@ -115,7 +140,9 @@ def get_employee_from_session():
         with db_session() as conn:
             cursor = conn.cursor()
 
-            cursor.execute("SELECT username FROM users WHERE id = ?", (user_id,))
+            query = f"SELECT username FROM users WHERE id = {sql_placeholder()}"
+            query = convert_placeholders(query)
+            cursor.execute(query, (user_id,))
             user_row = cursor.fetchone()
 
             if not user_row:
@@ -140,7 +167,7 @@ def get_employee_from_session():
                 e.is_manager
             FROM ldap_employee_mapping lem
             JOIN employees e ON lem.employee_id = e.id
-            WHERE lem.ldap_username = ? AND e.aktiv = 1
+            WHERE lem.ldap_username = %s AND e.aktiv = true
         """, (ldap_username,))
 
         result = cursor.fetchone()
@@ -210,7 +237,7 @@ def get_employee_by_id(employee_id):
                 lem.ldap_username
             FROM employees e
             LEFT JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
-            WHERE e.id = ? AND e.aktiv = 1
+            WHERE e.id = %s AND e.aktiv = true
         """, (employee_id,))
         result = cursor.fetchone()
 
@@ -831,18 +858,19 @@ def get_my_balance():
         with db_session() as conn:
             cursor = conn.cursor()
 
+            # TAG 139: View hat 'department' nicht 'department_name'
             cursor.execute(f"""
                 SELECT
                     employee_id,
                     name,
-                    department_name,
+                    department,
                     location,
                     anspruch,
                     verbraucht,
                     geplant,
                     resturlaub
                 FROM v_vacation_balance_{year}
-                WHERE employee_id = ?
+                WHERE employee_id = %s
             """, (employee_id,))
 
             row = cursor.fetchone()
@@ -979,11 +1007,12 @@ def get_my_team():
         with db_session() as conn:
             cursor = conn.cursor()
 
+            # TAG 139: View hat 'department' nicht 'department_name'
             cursor.execute(f"""
                 SELECT
                     employee_id,
                     name,
-                    department_name,
+                    department,
                     location,
                     anspruch,
                     verbraucht,
@@ -1221,7 +1250,7 @@ def approve_vacation():
                 FROM vacation_bookings vb
                 JOIN employees e ON vb.employee_id = e.id
                 LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
-                WHERE vb.id = ?
+                WHERE vb.id = %s
             """, (booking_id,))
 
             booking = cursor.fetchone()
@@ -1236,14 +1265,17 @@ def approve_vacation():
                 return jsonify({'success': False, 'error': f'Buchung hat bereits Status: {booking[1]}'}), 400
 
             # Genehmigen
-            cursor.execute("""
+            # TAG 136: PostgreSQL-kompatible Query
+            query = f"""
                 UPDATE vacation_bookings
                 SET status = 'approved',
-                    approved_by = ?,
-                    approved_at = ?,
-                    comment = CASE WHEN comment IS NULL OR comment = '' THEN ? ELSE comment || ' | Genehmigt: ' || ? END
-                WHERE id = ?
-            """, (employee_id, datetime.now().isoformat(), comment, comment, booking_id))
+                    approved_by = {sql_placeholder()},
+                    approved_at = {sql_placeholder()},
+                    comment = CASE WHEN comment IS NULL OR comment = '' THEN {sql_placeholder()} ELSE comment || ' | Genehmigt: ' || {sql_placeholder()} END
+                WHERE id = {sql_placeholder()}
+            """
+            query = convert_placeholders(query)
+            cursor.execute(query, (employee_id, datetime.now().isoformat(), comment, comment, booking_id))
 
             conn.commit()
 
@@ -1335,7 +1367,7 @@ def reject_vacation():
                 FROM vacation_bookings vb
                 JOIN employees e ON vb.employee_id = e.id
                 LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
-                WHERE vb.id = ?
+                WHERE vb.id = %s
             """, (booking_id,))
 
             booking = cursor.fetchone()
@@ -1350,14 +1382,17 @@ def reject_vacation():
                 return jsonify({'success': False, 'error': f'Buchung hat bereits Status: {booking[1]}'}), 400
 
             # Ablehnen
-            cursor.execute("""
+            # TAG 136: PostgreSQL-kompatible Query
+            query = f"""
                 UPDATE vacation_bookings
                 SET status = 'rejected',
-                    approved_by = ?,
-                    approved_at = ?,
-                    comment = CASE WHEN comment IS NULL OR comment = '' THEN ? ELSE comment || ' | Abgelehnt: ' || ? END
-                WHERE id = ?
-            """, (employee_id, datetime.now().isoformat(), reason, reason, booking_id))
+                    approved_by = {sql_placeholder()},
+                    approved_at = {sql_placeholder()},
+                    comment = CASE WHEN comment IS NULL OR comment = '' THEN {sql_placeholder()} ELSE comment || ' | Abgelehnt: ' || {sql_placeholder()} END
+                WHERE id = {sql_placeholder()}
+            """
+            query = convert_placeholders(query)
+            cursor.execute(query, (employee_id, datetime.now().isoformat(), reason, reason, booking_id))
 
             conn.commit()
 
@@ -1416,11 +1451,12 @@ def get_all_balances():
             employees_with_ad = {row[0] for row in cursor.fetchall()}
 
             # Dann: Balance-Daten holen
+            # TAG 139: View hat 'department' nicht 'department_name'
             query = f"""
                 SELECT
                     employee_id,
                     name,
-                    department_name,
+                    department,
                     location,
                     anspruch,
                     verbraucht,
@@ -1433,11 +1469,11 @@ def get_all_balances():
             params = []
 
             if department:
-                query += " AND department_name = ?"
+                query += " AND department = %s"
                 params.append(department)
 
             if location:
-                query += " AND location = ?"
+                query += " AND location = %s"
                 params.append(location)
 
             query += " ORDER BY name"
@@ -1510,7 +1546,8 @@ def get_all_bookings():
             cursor = conn.cursor()
 
             # 1. Portal-Buchungen (wie bisher)
-            cursor.execute("""
+            # TAG 136: PostgreSQL-kompatible Query mit sql_year() Helper
+            query = f"""
                 SELECT
                     vb.id,
                     vb.employee_id,
@@ -1519,14 +1556,21 @@ def get_all_bookings():
                     vb.status,
                     vb.vacation_type_id
                 FROM vacation_bookings vb
-                WHERE strftime('%Y', vb.booking_date) = ?
+                WHERE {sql_year('vb.booking_date')} = {sql_placeholder()}
                   AND vb.status IN ('approved', 'pending')
                 ORDER BY vb.booking_date
-            """, (str(year),))
+            """
+            query = convert_placeholders(query)
+            cursor.execute(query, (str(year),))
 
             for row in cursor.fetchall():
                 emp_id = row[1]
                 date = row[2]
+                # TAG 136: Konvertiere Date-Objekt zu String (PostgreSQL gibt date zurück)
+                if hasattr(date, 'isoformat'):
+                    date = date.isoformat()
+                elif not isinstance(date, str):
+                    date = str(date)
 
                 # Merke gebuchte Daten pro Mitarbeiter
                 if emp_id not in booked_dates:
@@ -1547,7 +1591,7 @@ def get_all_bookings():
             cursor.execute("""
                 SELECT e.id, e.locosoft_id
                 FROM employees e
-                WHERE e.aktiv = 1 AND e.locosoft_id IS NOT NULL
+                WHERE e.aktiv = true AND e.locosoft_id IS NOT NULL
             """)
             emp_to_loco = {row[0]: row[1] for row in cursor.fetchall()}
             loco_to_emp = {v: k for k, v in emp_to_loco.items()}
@@ -1605,8 +1649,8 @@ def get_all_bookings():
             except Exception as loco_err:
                 print(f"Locosoft-Fehler in all-bookings: {loco_err}")
 
-        # Sortieren nach Datum
-        bookings.sort(key=lambda x: x['date'])
+        # Sortieren nach Datum (TAG 139: str() für gemischte Typen)
+        bookings.sort(key=lambda x: str(x['date']))
 
         return jsonify({
             'success': True,
@@ -1644,7 +1688,8 @@ def get_my_bookings():
         year = request.args.get('year', 2025, type=int)
         status_filter = request.args.get('status', None)
 
-        query = """
+        # TAG 136: PostgreSQL-kompatible Query
+        query = f"""
             SELECT
                 vb.id,
                 vb.booking_date,
@@ -1656,17 +1701,18 @@ def get_my_bookings():
                 vb.created_at
             FROM vacation_bookings vb
             LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
-            WHERE vb.employee_id = ?
-              AND strftime('%Y', vb.booking_date) = ?
+            WHERE vb.employee_id = {sql_placeholder()}
+              AND {sql_year('vb.booking_date')} = {sql_placeholder()}
         """
 
         params = [employee_id, str(year)]
 
         if status_filter:
-            query += " AND vb.status = ?"
+            query += f" AND vb.status = {sql_placeholder()}"
             params.append(status_filter)
 
         query += " ORDER BY vb.booking_date DESC"
+        query = convert_placeholders(query)
 
         with db_session() as conn:
             cursor = conn.cursor()
@@ -1697,17 +1743,27 @@ def get_my_bookings():
             bookings = []
             for row in cursor.fetchall():
                 booking_date = row[1]
-                in_locosoft = booking_date in locosoft_dates
+                # TAG 136: Konvertiere Date-Objekt zu String (PostgreSQL gibt date zurück)
+                if hasattr(booking_date, 'isoformat'):
+                    booking_date = booking_date.isoformat()
+                elif isinstance(booking_date, str):
+                    pass  # Bereits String
+                else:
+                    booking_date = str(booking_date)
+                
+                # Für Locosoft-Vergleich: String-Format verwenden
+                booking_date_str = booking_date if isinstance(booking_date, str) else str(booking_date)
+                in_locosoft = booking_date_str in locosoft_dates
 
                 bookings.append({
                     'id': row[0],
-                    'date': booking_date,
+                    'date': booking_date_str,
                     'day_part': row[2],
                     'status': row[3],
                     'type_id': row[4],
                     'type_name': row[5],
                     'comment': row[6],
-                    'created_at': row[7],
+                    'created_at': row[7] if not hasattr(row[7], 'isoformat') else row[7].isoformat() if row[7] else None,
                     'in_locosoft': in_locosoft
                 })
 
@@ -1756,7 +1812,8 @@ def get_requests():
         year = request.args.get('year', 2025, type=int)
         status_filter = request.args.get('status', None)
 
-        query = """
+        # TAG 136: PostgreSQL-kompatible Query
+        query = f"""
             SELECT
                 vb.id,
                 vb.booking_date,
@@ -1768,17 +1825,18 @@ def get_requests():
                 vb.created_at
             FROM vacation_bookings vb
             LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
-            WHERE vb.employee_id = ?
-              AND strftime('%Y', vb.booking_date) = ?
+            WHERE vb.employee_id = {sql_placeholder()}
+              AND {sql_year('vb.booking_date')} = {sql_placeholder()}
         """
 
         params = [employee_id, str(year)]
 
         if status_filter:
-            query += " AND vb.status = ?"
+            query += f" AND vb.status = {sql_placeholder()}"
             params.append(status_filter)
 
         query += " ORDER BY vb.booking_date DESC"
+        query = convert_placeholders(query)
 
         with db_session() as conn:
             cursor = conn.cursor()
@@ -1786,15 +1844,22 @@ def get_requests():
 
             requests_list = []
             for row in cursor.fetchall():
+                booking_date = row[1]
+                # TAG 136: Konvertiere Date-Objekt zu String (PostgreSQL gibt date zurück)
+                if hasattr(booking_date, 'isoformat'):
+                    booking_date = booking_date.isoformat()
+                elif not isinstance(booking_date, str):
+                    booking_date = str(booking_date)
+                
                 requests_list.append({
                     'id': row[0],
-                    'date': row[1],
+                    'date': booking_date,
                     'day_part': row[2],
                     'status': row[3],
                     'type_id': row[4],
                     'type_name': row[5],
                     'comment': row[6],
-                    'created_at': row[7]
+                    'created_at': row[7] if not hasattr(row[7], 'isoformat') else row[7].isoformat() if row[7] else None
                 })
 
         return jsonify({
@@ -1889,10 +1954,9 @@ def book_vacation():
         with db_session() as conn:
             cursor = conn.cursor()
 
-            cursor.execute("""
-                SELECT id FROM vacation_bookings
-                WHERE employee_id = ? AND booking_date = ? AND status != 'cancelled'
-            """, (employee_id, booking_date))
+            query = f"SELECT id FROM vacation_bookings WHERE employee_id = {sql_placeholder()} AND booking_date = {sql_placeholder()} AND status != 'cancelled'"
+            query = convert_placeholders(query)
+            cursor.execute(query, (employee_id, booking_date))
 
             if cursor.fetchone():
                 return jsonify({
@@ -1923,7 +1987,7 @@ def book_vacation():
                             # Anspruch aus vacation_entitlements holen
                             cursor.execute("""
                                 SELECT total_days FROM vacation_entitlements
-                                WHERE employee_id = ? AND year = ?
+                                WHERE employee_id = %s AND year = %s
                             """, (employee_id, booking_year))
                             ent_row = cursor.fetchone()
                             anspruch = ent_row[0] if ent_row else 27
@@ -1932,14 +1996,17 @@ def book_vacation():
                             urlaub_locosoft = locosoft_absences.get('urlaub', 0)
 
                             # Bereits im Portal pending/approved gebuchter Urlaub (noch nicht in Locosoft)
-                            cursor.execute("""
+                            # TAG 136: PostgreSQL-kompatible Query
+                            query = f"""
                                 SELECT COALESCE(SUM(CASE WHEN day_part = 'full' THEN 1.0 ELSE 0.5 END), 0)
                                 FROM vacation_bookings
-                                WHERE employee_id = ?
-                                  AND strftime('%Y', booking_date) = ?
+                                WHERE employee_id = {sql_placeholder()}
+                                  AND {sql_year('booking_date')} = {sql_placeholder()}
                                   AND vacation_type_id = 1
                                   AND status IN ('pending', 'approved')
-                            """, (employee_id, str(booking_year)))
+                            """
+                            query = convert_placeholders(query)
+                            cursor.execute(query, (employee_id, str(booking_year)))
                             portal_pending = cursor.fetchone()[0] or 0
 
                             # Verfügbar = Anspruch - Locosoft - Portal-Pending
@@ -1955,11 +2022,13 @@ def book_vacation():
 
                 # Fallback: Nur Portal-Daten wenn Locosoft nicht verfügbar
                 if available_days is None:
-                    cursor.execute(f"""
+                    query = f"""
                         SELECT anspruch, verbraucht, geplant, resturlaub
                         FROM v_vacation_balance_{booking_year}
-                        WHERE employee_id = ?
-                    """, (employee_id,))
+                        WHERE employee_id = {sql_placeholder()}
+                    """
+                    query = convert_placeholders(query)
+                    cursor.execute(query, (employee_id,))
                     bal_row = cursor.fetchone()
                     if bal_row:
                         available_days = bal_row[3] or 0  # resturlaub
@@ -2004,19 +2073,24 @@ def book_vacation():
             else:
                 initial_status = 'pending'
 
-            cursor.execute("""
+            # TAG 136: PostgreSQL-kompatible Query - verwende ? und convert_placeholders()
+            query = """
                 INSERT INTO vacation_bookings (
                     employee_id, booking_date, vacation_type_id,
                     day_part, status, comment, created_by, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (employee_id, booking_date, vacation_type_id, day_part, initial_status, comment,
+            """
+            query = convert_placeholders(query)
+            cursor.execute(query, (employee_id, booking_date, vacation_type_id, day_part, initial_status, comment,
                   current_employee_id, datetime.now().isoformat()))
 
             booking_id = cursor.lastrowid
             conn.commit()
 
             # Vacation type name für E-Mail holen
-            cursor.execute("SELECT name FROM vacation_types WHERE id = ?", (vacation_type_id,))
+            query = f"SELECT name FROM vacation_types WHERE id = {sql_placeholder()}"
+            query = convert_placeholders(query)
+            cursor.execute(query, (vacation_type_id,))
             vt_row = cursor.fetchone()
             vacation_type_name = vt_row[0] if vt_row else 'Urlaub'
 
@@ -2139,7 +2213,7 @@ def cancel_vacation():
                 FROM vacation_bookings vb
                 JOIN employees e ON vb.employee_id = e.id
                 LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
-                WHERE vb.id = ?
+                WHERE vb.id = %s
             """, (booking_id,))
 
             booking = cursor.fetchone()
@@ -2156,7 +2230,7 @@ def cancel_vacation():
             is_admin = False
             cursor.execute("""
                 SELECT ad_groups FROM users
-                WHERE username LIKE ? OR username = ?
+                WHERE username LIKE ? OR username = %s
             """, (f"%{ldap_username}%", ldap_username))
             user_row = cursor.fetchone()
             if user_row and user_row[0]:
@@ -2173,12 +2247,15 @@ def cancel_vacation():
             was_approved = booking[1] == 'approved'
 
             # Status auf 'cancelled' setzen
-            cursor.execute("""
+            # TAG 136: PostgreSQL-kompatible Query
+            query = f"""
                 UPDATE vacation_bookings
                 SET status = 'cancelled',
-                    comment = CASE WHEN comment IS NULL OR comment = '' THEN ? ELSE comment || ' | Storniert: ' || ? END
-                WHERE id = ?
-            """, (reason, reason, booking_id))
+                    comment = CASE WHEN comment IS NULL OR comment = '' THEN {sql_placeholder()} ELSE comment || ' | Storniert: ' || {sql_placeholder()} END
+                WHERE id = {sql_placeholder()}
+            """
+            query = convert_placeholders(query)
+            cursor.execute(query, (reason, reason, booking_id))
 
             conn.commit()
 
@@ -2342,9 +2419,9 @@ def book_vacation_batch():
             # Krankheit nur für Admins (TAG 113)
             is_sickness = vacation_type_id == 3
             if is_sickness:
-                cursor.execute("""
-                    SELECT ad_groups FROM users WHERE username LIKE ? OR username = ?
-                """, (f"%{ldap_username}%", ldap_username))
+                query = "SELECT ad_groups FROM users WHERE username LIKE ? OR username = ?"
+                query = convert_placeholders(query)
+                cursor.execute(query, (f"%{ldap_username}%", ldap_username))
                 user_row = cursor.fetchone()
                 is_admin = False
                 if user_row and user_row[0]:
@@ -2366,15 +2443,20 @@ def book_vacation_batch():
                     try:
                         locosoft_absences = get_absences_for_employee(employee_data['locosoft_id'], booking_year)
                         if locosoft_absences:
-                            cursor.execute("SELECT total_days FROM vacation_entitlements WHERE employee_id = ? AND year = ?", (employee_id, booking_year))
+                            query = f"SELECT total_days FROM vacation_entitlements WHERE employee_id = {sql_placeholder()} AND year = {sql_placeholder()}"
+                            query = convert_placeholders(query)
+                            cursor.execute(query, (employee_id, booking_year))
                             ent_row = cursor.fetchone()
                             anspruch = ent_row[0] if ent_row else 27
                             urlaub_locosoft = locosoft_absences.get('urlaub', 0)
-                            cursor.execute("""
+                            # TAG 136: PostgreSQL-kompatible Query
+                            query = f"""
                                 SELECT COALESCE(SUM(CASE WHEN day_part = 'full' THEN 1.0 ELSE 0.5 END), 0)
-                                FROM vacation_bookings WHERE employee_id = ? AND strftime('%Y', booking_date) = ?
+                                FROM vacation_bookings WHERE employee_id = {sql_placeholder()} AND {sql_year('booking_date')} = {sql_placeholder()}
                                 AND vacation_type_id = 1 AND status IN ('pending', 'approved')
-                            """, (employee_id, str(booking_year)))
+                            """
+                            query = convert_placeholders(query)
+                            cursor.execute(query, (employee_id, str(booking_year)))
                             portal_pending = cursor.fetchone()[0] or 0
                             available_days = round(anspruch - urlaub_locosoft - portal_pending, 1)
                     except Exception as e:
@@ -2389,9 +2471,9 @@ def book_vacation_batch():
             # Prüfe ob bereits Buchungen existieren
             existing = []
             for d in dates:
-                cursor.execute("""
-                    SELECT id FROM vacation_bookings WHERE employee_id = ? AND booking_date = ? AND status != 'cancelled'
-                """, (employee_id, d))
+                query = f"SELECT id FROM vacation_bookings WHERE employee_id = {sql_placeholder()} AND booking_date = {sql_placeholder()} AND status != 'cancelled'"
+                query = convert_placeholders(query)
+                cursor.execute(query, (employee_id, d))
                 if cursor.fetchone():
                     existing.append(d)
 
@@ -2402,15 +2484,22 @@ def book_vacation_batch():
             # TAG 127: Admin-Direktbuchungen sind sofort genehmigt
             initial_status = 'approved' if (is_sickness or admin_direct_booking) else 'pending'
             booking_ids = []
+            # TAG 136: PostgreSQL-kompatible Query - verwende ? und convert_placeholders()
+            # WICHTIG: Query als Single-Line String, dann convert_placeholders() aufrufen
+            insert_query = "INSERT INTO vacation_bookings (employee_id, booking_date, vacation_type_id, day_part, status, comment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+            insert_query = convert_placeholders(insert_query)
+            # Debug: Prüfe ob Konvertierung funktioniert hat
+            if '?' in insert_query:
+                print(f"⚠️ WARNUNG: convert_placeholders() hat nicht funktioniert! Query enthält noch ?: {insert_query[:100]}")
+                print(f"⚠️ DB_TYPE: {get_db_type()}")
             for d in dates:
-                cursor.execute("""
-                    INSERT INTO vacation_bookings (employee_id, booking_date, vacation_type_id, day_part, status, comment, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (employee_id, d, vacation_type_id, day_part, initial_status, comment, datetime.now().isoformat()))
+                cursor.execute(insert_query, (employee_id, d, vacation_type_id, day_part, initial_status, comment, datetime.now().isoformat()))
                 booking_ids.append(cursor.lastrowid)
 
             # Vacation Type Name holen
-            cursor.execute("SELECT name FROM vacation_types WHERE id = ?", (vacation_type_id,))
+            query = f"SELECT name FROM vacation_types WHERE id = {sql_placeholder()}"
+            query = convert_placeholders(query)
+            cursor.execute(query, (vacation_type_id,))
             vt_row = cursor.fetchone()
             vacation_type_name = vt_row[0] if vt_row else 'Urlaub'
 
@@ -2590,7 +2679,9 @@ def cancel_vacation_batch():
 
             # Prüfe Admin-Status
             is_admin = False
-            cursor.execute("SELECT ad_groups FROM users WHERE username LIKE ? OR username = ?", (f"%{ldap_username}%", ldap_username))
+            query = f"SELECT ad_groups FROM users WHERE username LIKE {sql_placeholder()} OR username = {sql_placeholder()}"
+            query = convert_placeholders(query)
+            cursor.execute(query, (f"%{ldap_username}%", ldap_username))
             user_row = cursor.fetchone()
             if user_row and user_row[0]:
                 try:
@@ -2610,7 +2701,7 @@ def cancel_vacation_batch():
                     SELECT vb.employee_id, vb.status, vb.booking_date, e.first_name || ' ' || e.last_name
                     FROM vacation_bookings vb
                     JOIN employees e ON vb.employee_id = e.id
-                    WHERE vb.id = ?
+                    WHERE vb.id = %s
                 """, (bid,))
                 row = cursor.fetchone()
 
@@ -2626,11 +2717,14 @@ def cancel_vacation_batch():
                 if row[1] == 'approved':
                     was_approved_any = True
 
-                cursor.execute("""
+                # TAG 136: PostgreSQL-kompatible Query
+                query = f"""
                     UPDATE vacation_bookings SET status = 'cancelled',
-                    comment = CASE WHEN comment IS NULL OR comment = '' THEN ? ELSE comment || ' | Storniert: ' || ? END
-                    WHERE id = ?
-                """, (reason, reason, bid))
+                    comment = CASE WHEN comment IS NULL OR comment = '' THEN {sql_placeholder()} ELSE comment || ' | Storniert: ' || {sql_placeholder()} END
+                    WHERE id = {sql_placeholder()}
+                """
+                query = convert_placeholders(query)
+                cursor.execute(query, (reason, reason, bid))
 
                 cancelled.append(bid)
                 cancelled_dates.append(row[2])
@@ -2717,7 +2811,9 @@ def get_locosoft_days():
     if employee_id and not locosoft_id:
         with db_session() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT locosoft_id FROM employees WHERE id = ?", (employee_id,))
+            query = f"SELECT locosoft_id FROM employees WHERE id = {sql_placeholder()}"
+            query = convert_placeholders(query)
+            cursor.execute(query, (employee_id,))
             row = cursor.fetchone()
             if row:
                 locosoft_id = row[0]
@@ -2828,7 +2924,7 @@ def get_pending_count():
                 cursor.execute("""
                     SELECT COUNT(*) FROM ldap_group_mappings lgm
                     JOIN ldap_employee_mapping lem ON lgm.ldap_group_dn = lem.ldap_group_dn
-                    WHERE lem.ldap_username = ? AND lgm.portal_feature = 'urlaub_admin'
+                    WHERE lem.ldap_username = %s AND lgm.portal_feature = 'urlaub_admin'
                 """, (ldap_username,))
                 result = cursor.fetchone()
                 is_admin = result and result[0] > 0
@@ -2848,14 +2944,14 @@ def get_pending_count():
                     JOIN employees e ON vb.employee_id = e.id
                     JOIN vacation_approval_rules var ON var.employee_id = e.id
                     WHERE vb.status = 'pending'
-                      AND var.approver_username = ?
+                      AND var.approver_username = %s
                 """, (ldap_username,))
             else:
                 # Eigene offene Anträge
                 cursor.execute("""
                     SELECT COUNT(*)
                     FROM vacation_bookings vb
-                    WHERE vb.status = 'pending' AND vb.employee_id = ?
+                    WHERE vb.status = 'pending' AND vb.employee_id = %s
                 """, (employee_id,))
 
             count = cursor.fetchone()[0] or 0

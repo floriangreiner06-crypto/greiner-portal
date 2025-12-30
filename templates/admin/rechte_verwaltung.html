@@ -1,0 +1,835 @@
+{% extends "base.html" %}
+
+{% block title %}Admin - Rechte & Reports - DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .card-header-admin {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        font-weight: 600;
+    }
+    .user-row {
+        transition: background 0.2s;
+    }
+    .user-row:hover {
+        background: #f8f9fa;
+    }
+    .role-badge {
+        font-size: 0.8rem;
+        padding: 0.3rem 0.6rem;
+        margin: 0.1rem;
+    }
+    .role-admin { background: #dc3545; color: white; }
+    .role-buchhaltung { background: #28a745; color: white; }
+    .role-verkauf { background: #007bff; color: white; }
+    .role-werkstatt { background: #fd7e14; color: white; }
+    .role-default { background: #6c757d; color: white; }
+
+    .feature-card {
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+    .feature-card .card-header {
+        background: #f8f9fa;
+        font-weight: 600;
+        font-size: 0.9rem;
+    }
+    .feature-roles {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+    }
+    .feature-role {
+        font-size: 0.75rem;
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        background: #e9ecef;
+    }
+    .feature-role.admin { background: #f8d7da; }
+    .feature-role.buchhaltung { background: #d4edda; }
+
+    .title-mapping {
+        font-size: 0.85rem;
+    }
+    .title-mapping td {
+        padding: 0.4rem 0.75rem;
+    }
+
+    .search-box {
+        max-width: 300px;
+    }
+
+    /* Modal */
+    .role-toggle {
+        cursor: pointer;
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        margin: 0.25rem;
+        display: inline-block;
+        transition: all 0.2s;
+    }
+    .role-toggle:hover {
+        transform: scale(1.05);
+    }
+    .role-toggle.active {
+        box-shadow: 0 0 0 3px rgba(0,123,255,0.5);
+    }
+
+    /* Reports Tab */
+    .report-card {
+        border: 1px solid #dee2e6;
+        border-radius: 10px;
+        transition: all 0.2s;
+        height: 100%;
+    }
+    .report-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .report-icon {
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+    }
+    .report-category {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .subscriber-badge {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+    }
+    .subscriber-list {
+        max-height: 300px;
+        overflow-y: auto;
+    }
+    .subscriber-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem;
+        border-bottom: 1px solid #eee;
+    }
+    .subscriber-item:last-child {
+        border-bottom: none;
+    }
+    .subscriber-inactive {
+        opacity: 0.5;
+        text-decoration: line-through;
+    }
+    .cat-controlling { border-left: 4px solid #0d6efd; }
+    .cat-verkauf { border-left: 4px solid #198754; }
+    .cat-werkstatt { border-left: 4px solid #fd7e14; }
+    .cat-sonstige { border-left: 4px solid #6c757d; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2><i class="bi bi-gear-wide-connected me-2"></i>Administration</h2>
+            <p class="text-muted mb-0">Rechte, Reports & System verwalten</p>
+        </div>
+        <div>
+            <a href="/admin/celery/" class="btn btn-outline-primary">
+                <i class="bi bi-cpu me-1"></i>Task Manager
+            </a>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <ul class="nav nav-tabs mb-4" role="tablist">
+        <li class="nav-item">
+            <a class="nav-link active" data-bs-toggle="tab" href="#users-tab">
+                <i class="bi bi-people me-1"></i>User & Rollen
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#reports-tab">
+                <i class="bi bi-envelope-paper me-1"></i>E-Mail Reports
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#features-tab">
+                <i class="bi bi-key me-1"></i>Feature-Zugriff
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#titles-tab">
+                <i class="bi bi-card-text me-1"></i>Title-Mapping
+            </a>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+        <!-- TAB 1: User & Rollen -->
+        <div class="tab-pane fade show active" id="users-tab">
+            <div class="card">
+                <div class="card-header card-header-admin d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-people me-2"></i>Portal-User</span>
+                    <input type="text" class="form-control form-control-sm search-box"
+                           id="userSearch" placeholder="Suchen...">
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0" id="usersTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Name</th>
+                                    <th>OU (AD)</th>
+                                    <th>Title (AD)</th>
+                                    <th>DB-Rollen</th>
+                                    <th>Letzter Login</th>
+                                    <th class="text-center">Aktion</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usersBody">
+                                <tr>
+                                    <td colspan="6" class="text-center py-4">
+                                        <div class="spinner-border text-primary" role="status"></div>
+                                        <div class="mt-2">Lade User...</div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="alert alert-info mt-3">
+                <i class="bi bi-info-circle me-2"></i>
+                <strong>Hinweis:</strong> User mit <span class="badge role-admin">admin</span> in DB-Rollen
+                erhalten automatisch Zugriff auf <strong>alle</strong> Features (Option C).
+                Der LDAP-Title wird dabei ignoriert.
+            </div>
+        </div>
+
+        <!-- TAB 2: E-Mail Reports -->
+        <div class="tab-pane fade" id="reports-tab">
+            <!-- Migration Button (einmalig) -->
+            <div class="alert alert-info d-none" id="migrationAlert">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-info-circle me-2"></i>Bestehende Empfaenger wurden noch nicht migriert.</span>
+                    <button class="btn btn-sm btn-primary" onclick="migrateSubscribers()">
+                        <i class="bi bi-arrow-repeat me-1"></i>Jetzt migrieren
+                    </button>
+                </div>
+            </div>
+
+            <div class="row" id="reportsGrid">
+                <div class="col-12 text-center py-4">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <div class="mt-2">Lade Reports...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: Feature-Zugriff -->
+        <div class="tab-pane fade" id="features-tab">
+            <div class="row" id="featuresGrid">
+                <div class="col-12 text-center py-4">
+                    <div class="spinner-border text-primary" role="status"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 4: Title-Mapping -->
+        <div class="tab-pane fade" id="titles-tab">
+            <div class="card">
+                <div class="card-header card-header-admin">
+                    <i class="bi bi-card-text me-2"></i>LDAP-Title zu Portal-Rolle
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm title-mapping mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>LDAP-Title</th>
+                                    <th>Portal-Rolle</th>
+                                </tr>
+                            </thead>
+                            <tbody id="titlesBody">
+                                <tr>
+                                    <td colspan="2" class="text-center py-3">
+                                        <div class="spinner-border spinner-border-sm text-primary"></div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="alert alert-warning mt-3">
+                <i class="bi bi-exclamation-triangle me-2"></i>
+                Diese Mappings sind in <code>config/roles_config.py</code> definiert.
+                Zum Hinzufuegen neuer Titles muss die Datei bearbeitet werden.
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Rollen bearbeiten -->
+<div class="modal fade" id="roleModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-shield me-2"></i>Rollen bearbeiten
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h6 id="modalUserName" class="mb-3"></h6>
+                <p class="text-muted small">Klicke auf eine Rolle um sie zuzuweisen/zu entfernen:</p>
+                <div id="roleToggles" class="text-center"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schliessen</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Report Subscribers -->
+<div class="modal fade" id="reportModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <span id="reportModalIcon"></span>
+                    <span id="reportModalTitle"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted mb-3" id="reportModalDesc"></p>
+
+                <!-- Neuen Subscriber hinzufuegen -->
+                <div class="card mb-3">
+                    <div class="card-header bg-light py-2">
+                        <i class="bi bi-plus-circle me-1"></i>Empfaenger hinzufuegen
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-2">
+                            <div class="col-md-5">
+                                <input type="email" class="form-control" id="newSubscriberEmail"
+                                       placeholder="E-Mail-Adresse" list="employeeEmails">
+                                <datalist id="employeeEmails"></datalist>
+                            </div>
+                            <div class="col-md-3" id="standortSelectContainer">
+                                <select class="form-select" id="newSubscriberStandort">
+                                    <option value="">Alle Standorte</option>
+                                    <option value="DEG">Deggendorf</option>
+                                    <option value="LAN">Landau</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <button class="btn btn-primary w-100" onclick="addSubscriber()">
+                                    <i class="bi bi-plus me-1"></i>Hinzufuegen
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Aktuelle Subscriber -->
+                <div class="card">
+                    <div class="card-header bg-light py-2 d-flex justify-content-between">
+                        <span><i class="bi bi-people me-1"></i>Aktuelle Empfaenger</span>
+                        <span class="badge bg-primary" id="subscriberCount">0</span>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="subscriber-list" id="subscriberList">
+                            <div class="text-center py-4 text-muted">Keine Empfaenger</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schliessen</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let usersData = [];
+let rolesData = [];
+let featureData = {};
+let titleData = {};
+let reportsData = {};
+let currentReportId = null;
+let employeesData = [];
+
+// Laden beim Start
+document.addEventListener('DOMContentLoaded', function() {
+    loadUsersRoles();
+    loadFeatureAccess();
+    loadReports();
+    loadEmployees();
+});
+
+// User & Rollen laden
+async function loadUsersRoles() {
+    try {
+        const response = await fetch('/api/admin/users-roles');
+        const data = await response.json();
+
+        usersData = data.users;
+        rolesData = data.available_roles;
+
+        renderUsersTable();
+    } catch (error) {
+        console.error('Fehler:', error);
+        document.getElementById('usersBody').innerHTML =
+            '<tr><td colspan="6" class="text-danger text-center">Fehler beim Laden</td></tr>';
+    }
+}
+
+// Feature-Zugriff laden
+async function loadFeatureAccess() {
+    try {
+        const response = await fetch('/api/admin/feature-access');
+        const data = await response.json();
+
+        featureData = data.feature_access;
+        titleData = data.title_to_role;
+
+        renderFeaturesGrid();
+        renderTitlesTable();
+    } catch (error) {
+        console.error('Fehler:', error);
+    }
+}
+
+// User-Tabelle rendern
+function renderUsersTable() {
+    const tbody = document.getElementById('usersBody');
+
+    if (usersData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center">Keine User gefunden</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = usersData.map(user => {
+        const roles = user.roles.split(', ').map(r => {
+            const roleClass = getRoleClass(r.trim());
+            return `<span class="badge role-badge ${roleClass}">${r.trim()}</span>`;
+        }).join('');
+
+        const lastLogin = user.last_login ?
+            new Date(user.last_login).toLocaleString('de-DE') : '-';
+
+        return `
+            <tr class="user-row" data-user-id="${user.id}">
+                <td><strong>${user.display_name}</strong></td>
+                <td><span class="text-muted">${user.ou || '-'}</span></td>
+                <td><span class="small">${user.title || '-'}</span></td>
+                <td>${roles}</td>
+                <td class="small text-muted">${lastLogin}</td>
+                <td class="text-center">
+                    <button class="btn btn-sm btn-outline-primary"
+                            onclick="openRoleModal(${user.id}, '${user.display_name}', '${user.roles}')">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Rollen-Klasse bestimmen
+function getRoleClass(role) {
+    if (role === 'admin') return 'role-admin';
+    if (role === 'buchhaltung') return 'role-buchhaltung';
+    if (role.includes('verkauf')) return 'role-verkauf';
+    if (role.includes('werkstatt')) return 'role-werkstatt';
+    return 'role-default';
+}
+
+// Features-Grid rendern
+function renderFeaturesGrid() {
+    const grid = document.getElementById('featuresGrid');
+
+    const html = Object.entries(featureData).map(([feature, roles]) => {
+        const rolesList = roles.map(r => {
+            const cls = r === 'admin' ? 'admin' : (r === 'buchhaltung' ? 'buchhaltung' : '');
+            return `<span class="feature-role ${cls}">${r}</span>`;
+        }).join('');
+
+        return `
+            <div class="col-md-4 col-lg-3">
+                <div class="feature-card">
+                    <div class="card-header">
+                        <i class="bi bi-key me-1"></i>${feature}
+                    </div>
+                    <div class="card-body">
+                        <div class="feature-roles">${rolesList}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    grid.innerHTML = html;
+}
+
+// Title-Tabelle rendern
+function renderTitlesTable() {
+    const tbody = document.getElementById('titlesBody');
+
+    const html = Object.entries(titleData).map(([title, role]) => {
+        return `
+            <tr>
+                <td>${title}</td>
+                <td><span class="badge ${getRoleClass(role)}">${role}</span></td>
+            </tr>
+        `;
+    }).join('');
+
+    tbody.innerHTML = html;
+}
+
+// Modal oeffnen
+function openRoleModal(userId, userName, currentRoles) {
+    document.getElementById('modalUserName').textContent = userName;
+
+    const currentRolesList = currentRoles.split(', ').map(r => r.trim());
+
+    const togglesHtml = rolesData.map(role => {
+        const isActive = currentRolesList.includes(role.name);
+        const cls = getRoleClass(role.name);
+        return `
+            <div class="role-toggle ${cls} ${isActive ? 'active' : ''}"
+                 data-role="${role.name}" data-user-id="${userId}"
+                 onclick="toggleRole(this)">
+                ${role.name}
+                ${isActive ? '<i class="bi bi-check-circle ms-1"></i>' : ''}
+            </div>
+        `;
+    }).join('');
+
+    document.getElementById('roleToggles').innerHTML = togglesHtml;
+
+    new bootstrap.Modal(document.getElementById('roleModal')).show();
+}
+
+// Rolle togglen
+async function toggleRole(element) {
+    const userId = element.dataset.userId;
+    const role = element.dataset.role;
+    const isActive = element.classList.contains('active');
+
+    const method = isActive ? 'DELETE' : 'POST';
+
+    try {
+        const response = await fetch(`/api/admin/user/${userId}/role`, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role: role })
+        });
+
+        const result = await response.json();
+
+        if (result.success || response.ok) {
+            // UI aktualisieren
+            element.classList.toggle('active');
+            if (element.classList.contains('active')) {
+                element.innerHTML = `${role} <i class="bi bi-check-circle ms-1"></i>`;
+            } else {
+                element.innerHTML = role;
+            }
+
+            // Tabelle neu laden
+            await loadUsersRoles();
+        } else {
+            alert('Fehler: ' + (result.error || result.message));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Fehler beim Speichern');
+    }
+}
+
+// Suche
+document.getElementById('userSearch').addEventListener('input', function(e) {
+    const search = e.target.value.toLowerCase();
+    const rows = document.querySelectorAll('#usersBody tr');
+
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(search) ? '' : 'none';
+    });
+});
+
+// =============================================================================
+// REPORTS TAB
+// =============================================================================
+
+async function loadReports() {
+    try {
+        const response = await fetch('/api/admin/reports');
+        const data = await response.json();
+
+        if (data.error) {
+            console.error('API Error:', data.error);
+            document.getElementById('reportsGrid').innerHTML =
+                `<div class="col-12 text-danger text-center">Fehler: ${data.error}</div>`;
+            return;
+        }
+
+        reportsData = data.reports;
+
+        // Zeige Migration-Alert wenn keine Subscriber
+        const totalSubs = Object.values(reportsData).reduce((sum, r) => sum + r.subscriber_count, 0);
+        if (totalSubs === 0) {
+            document.getElementById('migrationAlert').classList.remove('d-none');
+        }
+
+        renderReportsGrid();
+    } catch (error) {
+        console.error('Fehler:', error);
+        document.getElementById('reportsGrid').innerHTML =
+            '<div class="col-12 text-danger text-center">Fehler beim Laden der Reports</div>';
+    }
+}
+
+async function loadEmployees() {
+    try {
+        const response = await fetch('/api/admin/reports/employees');
+        const data = await response.json();
+        employeesData = data.employees || [];
+
+        // Datalist fuellen
+        const datalist = document.getElementById('employeeEmails');
+        datalist.innerHTML = employeesData.map(e =>
+            `<option value="${e.email}">${e.name}</option>`
+        ).join('');
+    } catch (error) {
+        console.error('Fehler beim Laden der Mitarbeiter:', error);
+    }
+}
+
+function renderReportsGrid() {
+    const grid = document.getElementById('reportsGrid');
+
+    const categories = {
+        'controlling': { name: 'Controlling', color: 'primary' },
+        'verkauf': { name: 'Verkauf', color: 'success' },
+        'werkstatt': { name: 'Werkstatt', color: 'warning' },
+        'sonstige': { name: 'Sonstige', color: 'secondary' }
+    };
+
+    let html = '';
+
+    for (const [reportId, report] of Object.entries(reportsData)) {
+        const cat = categories[report.category] || categories.sonstige;
+
+        html += `
+            <div class="col-md-6 col-lg-4 mb-3">
+                <div class="report-card p-3 cat-${report.category}">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <div class="report-icon">${report.icon}</div>
+                            <h5 class="mb-1">${report.name}</h5>
+                            <span class="badge bg-${cat.color} report-category">${cat.name}</span>
+                        </div>
+                        <span class="badge bg-primary subscriber-badge">
+                            ${report.subscriber_count} Empfaenger
+                        </span>
+                    </div>
+                    <p class="text-muted small mt-2 mb-2">${report.description}</p>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <small class="text-muted">
+                            <i class="bi bi-clock me-1"></i>${report.schedule}
+                        </small>
+                        <button class="btn btn-sm btn-outline-primary"
+                                onclick="openReportModal('${reportId}')">
+                            <i class="bi bi-gear me-1"></i>Verwalten
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    grid.innerHTML = html || '<div class="col-12 text-muted text-center">Keine Reports gefunden</div>';
+}
+
+async function openReportModal(reportId) {
+    currentReportId = reportId;
+    const report = reportsData[reportId];
+
+    if (!report) {
+        alert('Report nicht gefunden');
+        return;
+    }
+
+    document.getElementById('reportModalIcon').textContent = report.icon;
+    document.getElementById('reportModalTitle').textContent = report.name;
+    document.getElementById('reportModalDesc').textContent = report.description;
+
+    // Standort-Select anzeigen/verstecken
+    const standortContainer = document.getElementById('standortSelectContainer');
+    if (report.supports_standort) {
+        standortContainer.style.display = 'block';
+    } else {
+        standortContainer.style.display = 'none';
+    }
+
+    // Subscriber laden
+    await loadReportSubscribers(reportId);
+
+    new bootstrap.Modal(document.getElementById('reportModal')).show();
+}
+
+async function loadReportSubscribers(reportId) {
+    try {
+        const response = await fetch(`/api/admin/reports/${reportId}`);
+        const data = await response.json();
+
+        const subscribers = data.subscribers || [];
+        const activeCount = subscribers.filter(s => s.active).length;
+
+        document.getElementById('subscriberCount').textContent = activeCount;
+
+        const list = document.getElementById('subscriberList');
+
+        if (subscribers.length === 0) {
+            list.innerHTML = '<div class="text-center py-4 text-muted">Keine Empfaenger konfiguriert</div>';
+            return;
+        }
+
+        list.innerHTML = subscribers.map(sub => {
+            const standortBadge = sub.standort ?
+                `<span class="badge bg-secondary ms-1">${sub.standort}</span>` : '';
+            const inactiveClass = sub.active ? '' : 'subscriber-inactive';
+
+            return `
+                <div class="subscriber-item ${inactiveClass}">
+                    <div>
+                        <i class="bi bi-envelope me-1"></i>
+                        ${sub.email}
+                        ${standortBadge}
+                        ${!sub.active ? '<span class="badge bg-danger ms-1">Inaktiv</span>' : ''}
+                    </div>
+                    <div>
+                        <button class="btn btn-sm btn-outline-secondary me-1"
+                                onclick="toggleSubscription(${sub.id})"
+                                title="${sub.active ? 'Deaktivieren' : 'Aktivieren'}">
+                            <i class="bi bi-${sub.active ? 'pause' : 'play'}"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger"
+                                onclick="deleteSubscription(${sub.id})"
+                                title="Loeschen">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+    } catch (error) {
+        console.error('Fehler:', error);
+    }
+}
+
+async function addSubscriber() {
+    const email = document.getElementById('newSubscriberEmail').value.trim();
+    const standort = document.getElementById('newSubscriberStandort').value || null;
+
+    if (!email) {
+        alert('Bitte E-Mail-Adresse eingeben');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/admin/reports/${currentReportId}/subscribe`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, standort })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            document.getElementById('newSubscriberEmail').value = '';
+            document.getElementById('newSubscriberStandort').value = '';
+            await loadReportSubscribers(currentReportId);
+            await loadReports(); // Grid aktualisieren
+        } else {
+            alert('Fehler: ' + (result.error || result.message));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Fehler beim Hinzufuegen');
+    }
+}
+
+async function toggleSubscription(subscriptionId) {
+    try {
+        const response = await fetch(`/api/admin/reports/subscription/${subscriptionId}/toggle`, {
+            method: 'POST'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            await loadReportSubscribers(currentReportId);
+            await loadReports();
+        } else {
+            alert('Fehler: ' + (result.error || result.message));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+    }
+}
+
+async function deleteSubscription(subscriptionId) {
+    if (!confirm('Wirklich loeschen?')) return;
+
+    try {
+        const response = await fetch(`/api/admin/reports/subscription/${subscriptionId}`, {
+            method: 'DELETE'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            await loadReportSubscribers(currentReportId);
+            await loadReports();
+        } else {
+            alert('Fehler: ' + (result.error || result.message));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+    }
+}
+
+async function migrateSubscribers() {
+    try {
+        const response = await fetch('/api/admin/reports/migrate', {
+            method: 'POST'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            document.getElementById('migrationAlert').classList.add('d-none');
+            await loadReports();
+            alert('Migration erfolgreich! Bestehende Empfaenger wurden uebernommen.');
+        } else {
+            alert('Fehler: ' + result.error);
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Fehler bei der Migration');
+    }
+}
+</script>
+{% endblock %}

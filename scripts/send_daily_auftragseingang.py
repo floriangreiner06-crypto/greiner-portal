@@ -3,8 +3,11 @@
 Täglicher Auftragseingang Report (OHNE Umsatz/DB - nur Stückzahlen!)
 Versendet täglich um 17:15 Uhr per E-Mail
 
-Cronjob:
-15 17 * * 1-5 /opt/greiner-portal/venv/bin/python /opt/greiner-portal/scripts/send_daily_auftragseingang.py >> /opt/greiner-portal/logs/auftragseingang_mail.log 2>&1
+Schedule (Celery Beat):
+15 17 * * 1-5 (Mo-Fr um 17:15 Uhr)
+Task: celery_app.tasks.email_auftragseingang
+
+Version: 2.2 (TAG146) - PostgreSQL Connection-Fix + EXTRACT statt strftime
 """
 
 import sys
@@ -12,19 +15,15 @@ import os
 sys.path.insert(0, '/opt/greiner-portal')
 os.chdir('/opt/greiner-portal')
 
-import sqlite3
 from datetime import datetime, date
+from api.db_utils import db_session, row_to_dict, get_locosoft_connection
+from api.db_connection import sql_placeholder, get_db_type
 
-# Empfänger-Liste
-EMPFAENGER = [
-    "peter.greiner@auto-greiner.de",
-    "rolf.sterr@auto-greiner.de",
-    "anton.suess@auto-greiner.de",
-    "florian.greiner@auto-greiner.de",
-    "margit.loibl@auto-greiner.de",
-    "jennifer.bielmeier@auto-greiner.de"
-]
+# ============================================================================
+# KONFIGURATION
+# ============================================================================
 
+REPORT_TYPE = 'auftragseingang'  # ID in der Report-Registry
 ABSENDER = "drive@auto-greiner.de"
 
 # Monatsnamen
@@ -33,10 +32,40 @@ MONATE = ['', 'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
 
 
 def get_db():
-    """SQLite Datenbank-Verbindung"""
-    conn = sqlite3.connect('/opt/greiner-portal/data/greiner_controlling.db')
-    conn.row_factory = sqlite3.Row
-    return conn
+    """Datenbank-Verbindung (TAG 146 PostgreSQL Fix)"""
+    from api.db_connection import get_db as get_db_conn
+    return get_db_conn()
+
+
+def is_holiday(check_date=None):
+    """
+    Prüft ob ein Datum ein Feiertag ist (aus Locosoft year_calendar)
+    TAG 136: Feiertagskalender-Integration
+    """
+    if check_date is None:
+        check_date = date.today()
+
+    try:
+        conn = get_locosoft_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT is_public_holid
+            FROM year_calendar
+            WHERE date = %s
+        """, (check_date,))
+
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+
+        if row:
+            return row[0] == True
+        return False
+
+    except Exception as e:
+        print(f"⚠️  Fehler bei Feiertags-Check: {e}")
+        return False
 
 
 def get_auftragseingang_data(day=None, month=None, year=None):
@@ -61,16 +90,16 @@ def get_auftragseingang_data(day=None, month=None, year=None):
     where_clauses.append(dedup_filter)
 
     if day:
-        where_clauses.append("DATE(s.out_sales_contract_date) = ?")
+        where_clauses.append("DATE(s.out_sales_contract_date) = %s")
         params.append(day)
     else:
         if not year:
             year = datetime.now().year
         if not month:
             month = datetime.now().month
-        where_clauses.append("strftime('%Y', s.out_sales_contract_date) = ?")
-        where_clauses.append("strftime('%m', s.out_sales_contract_date) = ?")
-        params.extend([str(year), f"{month:02d}"])
+        where_clauses.append("EXTRACT(YEAR FROM s.out_sales_contract_date) = %s")
+        where_clauses.append("EXTRACT(MONTH FROM s.out_sales_contract_date) = %s")
+        params.extend([str(year), str(month)])
 
     where_sql = " AND ".join(where_clauses)
 
@@ -118,17 +147,48 @@ def get_auftragseingang_data(day=None, month=None, year=None):
     return list(verkaufer_dict.values())
 
 
+def get_subscribers():
+    """Holt Empfänger aus der DB"""
+    try:
+        from reports.registry import get_subscriber_emails
+        return get_subscriber_emails(REPORT_TYPE)
+    except Exception as e:
+        print(f"WARNUNG: Konnte Subscriber nicht aus DB laden: {e}")
+        return []
+
+
 def main():
     print(f"\n{'='*60}")
-    print(f"📧 AUFTRAGSEINGANG DAILY REPORT - {datetime.now().strftime('%d.%m.%Y %H:%M')}")
+    print(f"AUFTRAGSEINGANG DAILY REPORT - {datetime.now().strftime('%d.%m.%Y %H:%M')}")
     print(f"{'='*60}")
+
+    # TAG 136: Feiertagskalender-Check
+    heute = date.today()
+    if is_holiday(heute):
+        print(f"🎄 Heute ({heute.strftime('%d.%m.%Y')}) ist ein Feiertag - kein Report-Versand")
+        print(f"{'='*60}\n")
+        return 0
+
+    # Wochenend-Check (zusätzliche Sicherheit)
+    if heute.weekday() >= 5:
+        print(f"📅 Wochenende - kein Report-Versand")
+        print(f"{'='*60}\n")
+        return 0
+
+    # Empfänger aus DB holen
+    empfaenger = get_subscribers()
+    print(f"Empfänger aus DB: {len(empfaenger)}")
+
+    if not empfaenger:
+        print("KEINE EMPFÄNGER konfiguriert! Bitte in Admin → Reports hinzufügen.")
+        print(f"{'='*60}\n")
+        return 0
 
     try:
         from api.graph_mail_connector import GraphMailConnector
         from api.pdf_generator import generate_auftragseingang_komplett_pdf
 
-        # Datum
-        heute = date.today()
+        # Datum (heute bereits oben definiert)
         heute_str = heute.strftime('%Y-%m-%d')
         datum_display = heute.strftime('%d.%m.%Y')
         monat = heute.month
@@ -205,22 +265,24 @@ def main():
             <p>Details im PDF-Anhang.</p>
 
             <p style="color: #999; font-size: 11px; margin-top: 30px; border-top: 1px solid #eee; padding-top: 10px;">
-                Automatisch generiert von Greiner Portal DRIVE<br>
-                <a href="https://drive.auto-greiner.de/verkauf/auftragseingang" style="color: #0066cc;">→ Im Portal öffnen</a>
+                Automatisch generiert von DRIVE<br>
+                <a href="http://drive.auto-greiner.de/verkauf/auftragseingang" style="color: #0066cc;">In DRIVE öffnen</a>
             </p>
         </body>
         </html>
         """
 
         # Mail senden
-        print(f"\n📧 Sende E-Mail...")
+        print(f"\nSende E-Mail...")
         print(f"   Absender: {ABSENDER}")
-        print(f"   Empfänger: {len(EMPFAENGER)} Personen")
+        print(f"   Empfänger: {len(empfaenger)} Personen")
+        for emp in empfaenger:
+            print(f"   - {emp}")
 
         connector = GraphMailConnector()
         connector.send_mail(
             sender_email=ABSENDER,
-            to_emails=EMPFAENGER,
+            to_emails=empfaenger,
             subject=betreff,
             body_html=body_html,
             attachments=[{
@@ -230,9 +292,7 @@ def main():
             }]
         )
 
-        print(f"\n✅ ERFOLG! E-Mail gesendet an:")
-        for emp in EMPFAENGER:
-            print(f"   - {emp}")
+        print(f"\nERFOLG! E-Mail gesendet.")
 
         print(f"\n{'='*60}\n")
         return 0

@@ -1,0 +1,972 @@
+{% extends "base.html" %}
+{% block title %}Budget-Planung - DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    :root {
+        --success-gradient: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        --primary-gradient: linear-gradient(135deg, #0d6efd 0%, #6610f2 100%);
+        --warning-gradient: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%);
+        --danger-gradient: linear-gradient(135deg, #dc3545 0%, #e83e8c 100%);
+    }
+
+    .hero-card {
+        background: var(--primary-gradient);
+        color: white;
+        border-radius: 20px;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 10px 40px rgba(13, 110, 253, 0.3);
+    }
+
+    .hero-card h1 {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+    }
+
+    .hero-card .subtitle {
+        opacity: 0.9;
+        font-size: 1.1rem;
+    }
+
+    .kpi-card {
+        background: white;
+        border-radius: 16px;
+        padding: 1.5rem;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        transition: transform 0.2s, box-shadow 0.2s;
+        height: 100%;
+    }
+
+    .kpi-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+    }
+
+    .kpi-card.success { border-left: 5px solid #28a745; }
+    .kpi-card.primary { border-left: 5px solid #0d6efd; }
+    .kpi-card.warning { border-left: 5px solid #ffc107; }
+    .kpi-card.danger { border-left: 5px solid #dc3545; }
+
+    .kpi-value {
+        font-size: 2.5rem;
+        font-weight: 700;
+        line-height: 1;
+    }
+
+    .kpi-label {
+        color: #6c757d;
+        font-size: 0.9rem;
+        margin-top: 0.5rem;
+    }
+
+    .kpi-trend {
+        font-size: 0.85rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: 20px;
+        display: inline-block;
+        margin-top: 0.5rem;
+    }
+
+    .kpi-trend.up { background: #d4edda; color: #155724; }
+    .kpi-trend.down { background: #f8d7da; color: #721c24; }
+    .kpi-trend.neutral { background: #e2e3e5; color: #383d41; }
+
+    .progress-ring {
+        width: 120px;
+        height: 120px;
+        margin: 0 auto;
+    }
+
+    .progress-ring circle {
+        fill: none;
+        stroke-width: 10;
+        transform: rotate(-90deg);
+        transform-origin: center;
+    }
+
+    .progress-ring .bg { stroke: #e9ecef; }
+    .progress-ring .progress {
+        stroke: #28a745;
+        stroke-linecap: round;
+        transition: stroke-dashoffset 0.5s ease;
+    }
+
+    .progress-ring .text {
+        font-size: 1.5rem;
+        font-weight: 700;
+        fill: #212529;
+    }
+
+    .brand-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.5rem 1rem;
+        border-radius: 30px;
+        font-weight: 600;
+        margin-right: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .brand-badge.opel { background: #FFE500; color: #000; }
+    .brand-badge.hyundai { background: #002C5F; color: #fff; }
+    .brand-badge.andere { background: #6c757d; color: #fff; }
+
+    .month-card {
+        background: white;
+        border-radius: 12px;
+        padding: 1rem;
+        margin-bottom: 0.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        transition: all 0.2s;
+    }
+
+    .month-card:hover {
+        box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    }
+
+    .month-card.achieved {
+        background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+        border-left: 4px solid #28a745;
+    }
+
+    .month-card.close {
+        background: linear-gradient(135deg, #fff3cd 0%, #ffeeba 100%);
+        border-left: 4px solid #ffc107;
+    }
+
+    .month-card.behind {
+        background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+        border-left: 4px solid #dc3545;
+    }
+
+    .month-name {
+        font-weight: 600;
+        color: #495057;
+    }
+
+    .target-input {
+        width: 80px;
+        text-align: center;
+        border: 2px solid #dee2e6;
+        border-radius: 8px;
+        padding: 0.5rem;
+        font-weight: 600;
+        transition: border-color 0.2s;
+    }
+
+    .target-input:focus {
+        border-color: #0d6efd;
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.2);
+    }
+
+    .motivation-banner {
+        background: var(--success-gradient);
+        color: white;
+        border-radius: 16px;
+        padding: 1.5rem;
+        text-align: center;
+        margin-bottom: 1.5rem;
+    }
+
+    .motivation-banner h3 {
+        margin: 0;
+        font-weight: 700;
+    }
+
+    .motivation-banner p {
+        margin: 0.5rem 0 0;
+        opacity: 0.9;
+    }
+
+    .btn-action {
+        border-radius: 30px;
+        padding: 0.75rem 2rem;
+        font-weight: 600;
+        transition: all 0.2s;
+    }
+
+    .btn-action:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+
+    .nav-pills .nav-link {
+        border-radius: 30px;
+        padding: 0.75rem 1.5rem;
+        font-weight: 600;
+        color: #495057;
+        transition: all 0.2s;
+    }
+
+    .nav-pills .nav-link.active {
+        background: var(--primary-gradient);
+        box-shadow: 0 4px 15px rgba(13, 110, 253, 0.3);
+    }
+
+    .chart-container {
+        position: relative;
+        height: 300px;
+    }
+
+    .gw-highlight {
+        background: linear-gradient(135deg, #6610f2 0%, #e83e8c 100%);
+        color: white;
+        border-radius: 16px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .section-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+        color: #212529;
+    }
+
+    .section-title i {
+        margin-right: 0.5rem;
+    }
+
+    .leaderboard-item {
+        display: flex;
+        align-items: center;
+        padding: 1rem;
+        background: white;
+        border-radius: 12px;
+        margin-bottom: 0.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+
+    .leaderboard-rank {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        margin-right: 1rem;
+    }
+
+    .leaderboard-rank.gold { background: #FFD700; color: #000; }
+    .leaderboard-rank.silver { background: #C0C0C0; color: #000; }
+    .leaderboard-rank.bronze { background: #CD7F32; color: #fff; }
+
+    .fade-in {
+        animation: fadeIn 0.5s ease;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .pulse {
+        animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+    <!-- Hero Section -->
+    <div class="hero-card fade-in">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h1><i class="bi bi-bullseye"></i> Budget-Planung 2025</h1>
+                <p class="subtitle">Verkaufsziele definieren, tracken und erreichen</p>
+            </div>
+            <div class="col-md-4 text-md-end">
+                <div class="d-flex gap-2 justify-content-md-end">
+                    <button class="btn btn-light btn-action" onclick="loadBenchmark()">
+                        <i class="bi bi-magic"></i> Smart-Ziele
+                    </button>
+                    <button class="btn btn-outline-light btn-action" onclick="savePlan()">
+                        <i class="bi bi-save"></i> Speichern
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Motivation Banner (dynamisch basierend auf Zielerreichung) -->
+    <div id="motivationBanner" class="motivation-banner fade-in" style="display: none;">
+        <h3 id="motivationTitle"></h3>
+        <p id="motivationText"></p>
+    </div>
+
+    <!-- Navigation -->
+    <ul class="nav nav-pills mb-4 fade-in" role="tablist">
+        <li class="nav-item">
+            <a class="nav-link active" data-bs-toggle="pill" href="#overview">
+                <i class="bi bi-speedometer2"></i> Dashboard
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="pill" href="#gw">
+                <i class="bi bi-car-front-fill"></i> Gebrauchtwagen
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="pill" href="#nw">
+                <i class="bi bi-stars"></i> Neuwagen
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="pill" href="#verkaeufer">
+                <i class="bi bi-people-fill"></i> Verkäufer
+            </a>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+
+        <!-- DASHBOARD TAB -->
+        <div class="tab-pane fade show active" id="overview">
+
+            <!-- KPI Cards -->
+            <div class="row g-4 mb-4">
+                <!-- GW Card -->
+                <div class="col-md-3">
+                    <div class="kpi-card primary">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <div class="kpi-value text-primary" id="gwIst">-</div>
+                                <div class="kpi-label">GW Verkauft</div>
+                                <div class="kpi-trend up" id="gwTrend"></div>
+                            </div>
+                            <div class="text-primary fs-1 opacity-25">
+                                <i class="bi bi-car-front-fill"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- NW Card -->
+                <div class="col-md-3">
+                    <div class="kpi-card success">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <div class="kpi-value text-success" id="nwIst">-</div>
+                                <div class="kpi-label">NW Verkauft</div>
+                                <div class="kpi-trend neutral" id="nwTrend"></div>
+                            </div>
+                            <div class="text-success fs-1 opacity-25">
+                                <i class="bi bi-stars"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Umsatz Card -->
+                <div class="col-md-3">
+                    <div class="kpi-card warning">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <div class="kpi-value text-warning" id="umsatzTotal">-</div>
+                                <div class="kpi-label">Mio. EUR Umsatz</div>
+                                <div class="kpi-trend up" id="umsatzTrend"></div>
+                            </div>
+                            <div class="text-warning fs-1 opacity-25">
+                                <i class="bi bi-currency-euro"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Zielerreichung Card -->
+                <div class="col-md-3">
+                    <div class="kpi-card" id="targetCard">
+                        <div class="text-center">
+                            <svg class="progress-ring" viewBox="0 0 120 120">
+                                <circle class="bg" cx="60" cy="60" r="50"/>
+                                <circle class="progress" cx="60" cy="60" r="50"
+                                        stroke-dasharray="314"
+                                        stroke-dashoffset="314"
+                                        id="progressCircle"/>
+                                <text class="text" x="60" y="65" text-anchor="middle" id="progressText">0%</text>
+                            </svg>
+                            <div class="kpi-label mt-2">Jahresziel</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- GW Focus Banner -->
+            <div class="gw-highlight fade-in">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h4 class="mb-1"><i class="bi bi-graph-up-arrow"></i> GW ist der Wachstumstreiber!</h4>
+                        <p class="mb-0 opacity-75">
+                            Gebrauchtwagen zeigen <strong>+12% Wachstum</strong> vs. Vorjahr.
+                            Focus auf Zukauf und schnelle Drehung!
+                        </p>
+                    </div>
+                    <div class="col-md-4 text-md-end">
+                        <span class="badge bg-light text-dark fs-5 px-3 py-2">
+                            <i class="bi bi-trophy-fill text-warning"></i>
+                            <span id="gwYtd">0</span> GW verkauft
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chart Section -->
+            <div class="row g-4 mb-4">
+                <div class="col-md-8">
+                    <div class="kpi-card">
+                        <h5 class="section-title"><i class="bi bi-bar-chart-fill"></i> Monatsverlauf 2025</h5>
+                        <div class="chart-container">
+                            <canvas id="monthlyChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="kpi-card">
+                        <h5 class="section-title"><i class="bi bi-pie-chart-fill"></i> Nach Marke</h5>
+                        <div class="chart-container">
+                            <canvas id="brandChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Marken Breakdown -->
+            <div class="row g-4">
+                <div class="col-md-4">
+                    <div class="kpi-card">
+                        <div class="d-flex align-items-center mb-3">
+                            <span class="brand-badge opel"><i class="bi bi-car-front"></i> Opel</span>
+                        </div>
+                        <div class="row text-center">
+                            <div class="col-6">
+                                <div class="fs-3 fw-bold text-primary" id="opelGw">-</div>
+                                <small class="text-muted">GW</small>
+                            </div>
+                            <div class="col-6">
+                                <div class="fs-3 fw-bold text-success" id="opelNw">-</div>
+                                <small class="text-muted">NW</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="kpi-card">
+                        <div class="d-flex align-items-center mb-3">
+                            <span class="brand-badge hyundai"><i class="bi bi-car-front"></i> Hyundai</span>
+                        </div>
+                        <div class="row text-center">
+                            <div class="col-6">
+                                <div class="fs-3 fw-bold text-primary" id="hyundaiGw">-</div>
+                                <small class="text-muted">GW</small>
+                            </div>
+                            <div class="col-6">
+                                <div class="fs-3 fw-bold text-success" id="hyundaiNw">-</div>
+                                <small class="text-muted">NW</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="kpi-card">
+                        <div class="d-flex align-items-center mb-3">
+                            <span class="brand-badge andere"><i class="bi bi-car-front"></i> Andere</span>
+                        </div>
+                        <div class="row text-center">
+                            <div class="col-6">
+                                <div class="fs-3 fw-bold text-primary" id="andereGw">-</div>
+                                <small class="text-muted">GW</small>
+                            </div>
+                            <div class="col-6">
+                                <div class="fs-3 fw-bold text-success" id="andereNw">-</div>
+                                <small class="text-muted">NW</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- GW TAB -->
+        <div class="tab-pane fade" id="gw">
+            <div class="row">
+                <div class="col-md-8">
+                    <div class="kpi-card">
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <h5 class="section-title mb-0">
+                                <i class="bi bi-car-front-fill text-primary"></i>
+                                Gebrauchtwagen - Monatsziele
+                            </h5>
+                            <div class="d-flex gap-2">
+                                <select class="form-select form-select-sm" id="gwMarkeFilter" style="width: auto;">
+                                    <option value="all">Alle Marken</option>
+                                    <option value="opel">Opel</option>
+                                    <option value="hyundai">Hyundai</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="gwMonthCards"></div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="kpi-card mb-3">
+                        <h6 class="text-muted mb-3">GW Jahresziel</h6>
+                        <div class="d-flex align-items-center gap-3">
+                            <input type="number" class="target-input fs-4" id="gwJahresZiel" value="850">
+                            <span class="text-muted">Stück</span>
+                        </div>
+                        <hr>
+                        <div class="row text-center">
+                            <div class="col-6">
+                                <div class="fs-4 fw-bold text-success" id="gwIstJahr">0</div>
+                                <small class="text-muted">IST</small>
+                            </div>
+                            <div class="col-6">
+                                <div class="fs-4 fw-bold" id="gwDiff">0</div>
+                                <small class="text-muted">Differenz</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <h6 class="text-muted mb-3"><i class="bi bi-lightbulb"></i> Benchmark 2024</h6>
+                        <p class="mb-2">Vorjahr GW: <strong id="gwVorjahr">759</strong> Stück</p>
+                        <p class="mb-2">Ø pro Monat: <strong id="gwAvgMonat">63</strong></p>
+                        <p class="mb-0">Top-Monat: <strong id="gwTopMonat">März (81)</strong></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- NW TAB -->
+        <div class="tab-pane fade" id="nw">
+            <div class="row">
+                <div class="col-md-8">
+                    <div class="kpi-card">
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <h5 class="section-title mb-0">
+                                <i class="bi bi-stars text-success"></i>
+                                Neuwagen - Monatsziele
+                            </h5>
+                            <div class="d-flex gap-2">
+                                <select class="form-select form-select-sm" id="nwMarkeFilter" style="width: auto;">
+                                    <option value="all">Alle Marken</option>
+                                    <option value="opel">Opel</option>
+                                    <option value="hyundai">Hyundai</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="nwMonthCards"></div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="kpi-card mb-3">
+                        <h6 class="text-muted mb-3">NW Jahresziel</h6>
+                        <div class="d-flex align-items-center gap-3">
+                            <input type="number" class="target-input fs-4" id="nwJahresZiel" value="420">
+                            <span class="text-muted">Stück</span>
+                        </div>
+                        <hr>
+                        <div class="row text-center">
+                            <div class="col-6">
+                                <div class="fs-4 fw-bold text-success" id="nwIstJahr">0</div>
+                                <small class="text-muted">IST</small>
+                            </div>
+                            <div class="col-6">
+                                <div class="fs-4 fw-bold" id="nwDiff">0</div>
+                                <small class="text-muted">Differenz</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <h6 class="text-muted mb-3"><i class="bi bi-lightbulb"></i> Benchmark 2024</h6>
+                        <p class="mb-2">Vorjahr NW: <strong id="nwVorjahr">410</strong> Stück</p>
+                        <p class="mb-2">Ø pro Monat: <strong id="nwAvgMonat">34</strong></p>
+                        <p class="mb-0">Top-Monat: <strong id="nwTopMonat">April (52)</strong></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- VERKÄUFER TAB -->
+        <div class="tab-pane fade" id="verkaeufer">
+            <div class="row">
+                <div class="col-md-8">
+                    <div class="kpi-card">
+                        <h5 class="section-title">
+                            <i class="bi bi-trophy-fill text-warning"></i>
+                            Top Verkäufer 2025
+                        </h5>
+                        <div id="verkauferLeaderboard">
+                            <div class="text-center py-5 text-muted">
+                                <i class="bi bi-hourglass-split fs-1"></i>
+                                <p>Lade Verkäufer-Ranking...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="kpi-card">
+                        <h6 class="text-muted mb-3"><i class="bi bi-percent"></i> DB1-Beteiligung VKL</h6>
+                        <div class="alert alert-info mb-3">
+                            <small>Die VK-Leitung ist am DB1 der Verkäufer beteiligt.</small>
+                        </div>
+                        <div class="text-center">
+                            <div class="fs-2 fw-bold text-primary" id="db1Anteil">5%</div>
+                            <small class="text-muted">vom Team-DB1</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const MONATE = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+let monthlyChart = null;
+let brandChart = null;
+let dashboardData = null;
+
+// Laden beim Start
+document.addEventListener('DOMContentLoaded', function() {
+    loadDashboard();
+    loadVerkaufer();
+    loadMarken();
+});
+
+async function loadDashboard() {
+    try {
+        const response = await fetch('/api/budget/dashboard');
+        const result = await response.json();
+
+        if (result.success) {
+            dashboardData = result.data;
+            updateDashboard(result.data);
+            renderCharts(result.data);
+            renderMonthCards('gw', result.data);
+            renderMonthCards('nw', result.data);
+        }
+    } catch (error) {
+        console.error('Dashboard laden fehlgeschlagen:', error);
+    }
+}
+
+function updateDashboard(data) {
+    // Berechne Summen
+    let gwTotal = 0, nwTotal = 0, umsatzTotal = 0;
+    let gwVorjahr = 759, nwVorjahr = 410; // 2024 Werte
+
+    Object.values(data.monate).forEach(m => {
+        gwTotal += m.gw.ist_stueck || 0;
+        nwTotal += m.nw.ist_stueck || 0;
+        umsatzTotal += (m.gw.ist_umsatz || 0) + (m.nw.ist_umsatz || 0);
+    });
+
+    // KPI Cards aktualisieren
+    document.getElementById('gwIst').textContent = gwTotal;
+    document.getElementById('nwIst').textContent = nwTotal;
+    document.getElementById('umsatzTotal').textContent = (umsatzTotal / 1000000).toFixed(1);
+    document.getElementById('gwYtd').textContent = gwTotal;
+
+    // Trends berechnen (vs Vorjahr pro rata)
+    const currentMonth = new Date().getMonth() + 1;
+    const gwVorjahrProRata = Math.round(gwVorjahr * currentMonth / 12);
+    const nwVorjahrProRata = Math.round(nwVorjahr * currentMonth / 12);
+
+    const gwDiff = gwTotal - gwVorjahrProRata;
+    const nwDiff = nwTotal - nwVorjahrProRata;
+
+    document.getElementById('gwTrend').className = 'kpi-trend ' + (gwDiff >= 0 ? 'up' : 'down');
+    document.getElementById('gwTrend').innerHTML = (gwDiff >= 0 ? '+' : '') + gwDiff + ' vs. VJ';
+
+    document.getElementById('nwTrend').className = 'kpi-trend ' + (nwDiff >= 0 ? 'up' : 'down');
+    document.getElementById('nwTrend').innerHTML = (nwDiff >= 0 ? '+' : '') + nwDiff + ' vs. VJ';
+
+    // Zielerreichung Ring
+    const gwZiel = parseInt(document.getElementById('gwJahresZiel').value) || 850;
+    const nwZiel = parseInt(document.getElementById('nwJahresZiel').value) || 420;
+    const gesamtZiel = gwZiel + nwZiel;
+    const gesamtIst = gwTotal + nwTotal;
+    const prozent = Math.min(100, Math.round((gesamtIst / gesamtZiel) * 100));
+
+    const circle = document.getElementById('progressCircle');
+    const offset = 314 - (314 * prozent / 100);
+    circle.style.strokeDashoffset = offset;
+    circle.style.stroke = prozent >= 100 ? '#28a745' : prozent >= 80 ? '#ffc107' : '#0d6efd';
+    document.getElementById('progressText').textContent = prozent + '%';
+
+    // Motivation Banner
+    updateMotivation(gwTotal, nwTotal, gwZiel, nwZiel, currentMonth);
+
+    // GW/NW Tab Werte
+    document.getElementById('gwIstJahr').textContent = gwTotal;
+    document.getElementById('gwDiff').textContent = (gwTotal - gwZiel >= 0 ? '+' : '') + (gwTotal - gwZiel);
+    document.getElementById('gwDiff').className = 'fs-4 fw-bold ' + (gwTotal >= gwZiel ? 'text-success' : 'text-danger');
+
+    document.getElementById('nwIstJahr').textContent = nwTotal;
+    document.getElementById('nwDiff').textContent = (nwTotal - nwZiel >= 0 ? '+' : '') + (nwTotal - nwZiel);
+    document.getElementById('nwDiff').className = 'fs-4 fw-bold ' + (nwTotal >= nwZiel ? 'text-success' : 'text-danger');
+}
+
+function updateMotivation(gwIst, nwIst, gwZiel, nwZiel, month) {
+    const banner = document.getElementById('motivationBanner');
+    const title = document.getElementById('motivationTitle');
+    const text = document.getElementById('motivationText');
+
+    const gesamtIst = gwIst + nwIst;
+    const proRataZiel = Math.round((gwZiel + nwZiel) * month / 12);
+    const diff = gesamtIst - proRataZiel;
+
+    if (diff > 50) {
+        banner.style.background = 'linear-gradient(135deg, #28a745 0%, #20c997 100%)';
+        title.innerHTML = '<i class="bi bi-trophy-fill"></i> Fantastisch! Ihr seid über Plan!';
+        text.textContent = `+${diff} Fahrzeuge über dem Zwischenziel. Weiter so!`;
+    } else if (diff > 0) {
+        banner.style.background = 'linear-gradient(135deg, #28a745 0%, #20c997 100%)';
+        title.innerHTML = '<i class="bi bi-hand-thumbs-up-fill"></i> Gut auf Kurs!';
+        text.textContent = `+${diff} über Plan. Noch ${(gwZiel + nwZiel) - gesamtIst} bis zum Jahresziel.`;
+    } else if (diff > -20) {
+        banner.style.background = 'linear-gradient(135deg, #ffc107 0%, #fd7e14 100%)';
+        title.innerHTML = '<i class="bi bi-lightning-fill"></i> Knapp dran!';
+        text.textContent = `Nur ${Math.abs(diff)} Fahrzeuge bis zum Zwischenziel. Ihr schafft das!`;
+    } else {
+        banner.style.background = 'linear-gradient(135deg, #6c757d 0%, #495057 100%)';
+        title.innerHTML = '<i class="bi bi-arrow-up-circle-fill"></i> Aufholen möglich!';
+        text.textContent = `${Math.abs(diff)} Fahrzeuge Rückstand. Fokus auf schnelle Drehung!`;
+    }
+
+    banner.style.display = 'block';
+}
+
+function renderCharts(data) {
+    const labels = MONATE.slice(0, new Date().getMonth() + 1);
+    const gwData = [];
+    const nwData = [];
+
+    for (let i = 1; i <= labels.length; i++) {
+        gwData.push(data.monate[i]?.gw?.ist_stueck || 0);
+        nwData.push(data.monate[i]?.nw?.ist_stueck || 0);
+    }
+
+    // Monthly Chart
+    const ctx1 = document.getElementById('monthlyChart').getContext('2d');
+    if (monthlyChart) monthlyChart.destroy();
+
+    monthlyChart = new Chart(ctx1, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'GW',
+                    data: gwData,
+                    backgroundColor: 'rgba(102, 16, 242, 0.8)',
+                    borderRadius: 8
+                },
+                {
+                    label: 'NW',
+                    data: nwData,
+                    backgroundColor: 'rgba(40, 167, 69, 0.8)',
+                    borderRadius: 8
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'top' }
+            },
+            scales: {
+                y: { beginAtZero: true }
+            }
+        }
+    });
+
+    // Brand Chart wird in loadMarken() befüllt
+}
+
+async function loadMarken() {
+    try {
+        const response = await fetch('/api/budget/marken/2025');
+        const result = await response.json();
+
+        if (result.success) {
+            const marken = result.data.marken;
+
+            // KPI Cards
+            document.getElementById('opelGw').textContent = marken.opel.gw;
+            document.getElementById('opelNw').textContent = marken.opel.nw;
+            document.getElementById('hyundaiGw').textContent = marken.hyundai.gw;
+            document.getElementById('hyundaiNw').textContent = marken.hyundai.nw;
+            document.getElementById('andereGw').textContent = marken.andere.gw;
+            document.getElementById('andereNw').textContent = marken.andere.nw;
+
+            // Pie Chart
+            const ctx2 = document.getElementById('brandChart').getContext('2d');
+            if (brandChart) brandChart.destroy();
+
+            brandChart = new Chart(ctx2, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Opel', 'Hyundai', 'Andere'],
+                    datasets: [{
+                        data: [
+                            marken.opel.gesamt,
+                            marken.hyundai.gesamt,
+                            marken.andere.gesamt
+                        ],
+                        backgroundColor: ['#FFE500', '#002C5F', '#6c757d']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Marken laden fehlgeschlagen:', error);
+    }
+}
+
+function renderMonthCards(typ, data) {
+    const container = document.getElementById(typ + 'MonthCards');
+    const currentMonth = new Date().getMonth() + 1;
+    let html = '<div class="row g-2">';
+
+    for (let m = 1; m <= 12; m++) {
+        const mData = data.monate[m]?.[typ] || { ist_stueck: 0, plan_stueck: 0 };
+        const ist = mData.ist_stueck || 0;
+        const plan = mData.plan_stueck || Math.round((typ === 'gw' ? 850 : 420) / 12);
+
+        let status = '';
+        if (m < currentMonth) {
+            status = ist >= plan ? 'achieved' : ist >= plan * 0.9 ? 'close' : 'behind';
+        }
+
+        html += `
+            <div class="col-md-4 col-lg-3">
+                <div class="month-card ${status}">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="month-name">${MONATE[m-1]}</span>
+                        ${m <= currentMonth ? `
+                            <span class="badge ${ist >= plan ? 'bg-success' : 'bg-secondary'}">${ist}</span>
+                        ` : `
+                            <input type="number" class="target-input" value="${plan}"
+                                   onchange="updatePlan('${typ}', ${m}, this.value)" style="width: 60px;">
+                        `}
+                    </div>
+                    ${m <= currentMonth ? `
+                        <div class="mt-2">
+                            <div class="progress" style="height: 6px;">
+                                <div class="progress-bar ${ist >= plan ? 'bg-success' : 'bg-warning'}"
+                                     style="width: ${Math.min(100, (ist / plan) * 100)}%"></div>
+                            </div>
+                            <small class="text-muted">${ist}/${plan} (${Math.round((ist / plan) * 100)}%)</small>
+                        </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+async function loadVerkaufer() {
+    try {
+        const response = await fetch('/api/budget/verkaufer/2025');
+        const result = await response.json();
+
+        if (result.success) {
+            renderVerkauferLeaderboard(result.data.verkaufer);
+        }
+    } catch (error) {
+        console.error('Verkäufer laden fehlgeschlagen:', error);
+    }
+}
+
+function renderVerkauferLeaderboard(verkaufer) {
+    const container = document.getElementById('verkauferLeaderboard');
+
+    if (!verkaufer || verkaufer.length === 0) {
+        container.innerHTML = '<p class="text-muted text-center">Keine Daten verfügbar</p>';
+        return;
+    }
+
+    let html = '';
+    verkaufer.slice(0, 10).forEach((v, i) => {
+        const rankClass = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
+        const total = (v.nw || 0) + (v.gw || 0);
+
+        html += `
+            <div class="leaderboard-item">
+                <div class="leaderboard-rank ${rankClass}">${i + 1}</div>
+                <div class="flex-grow-1">
+                    <strong>VK ${v.nr}</strong>
+                    <div class="small text-muted">
+                        ${v.gw || 0} GW • ${v.nw || 0} NW
+                    </div>
+                </div>
+                <div class="text-end">
+                    <div class="fs-5 fw-bold">${total}</div>
+                    <small class="text-muted">Gesamt</small>
+                </div>
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+async function loadBenchmark() {
+    const wachstum = 5; // 5% Wachstum
+
+    try {
+        const response = await fetch(`/api/budget/plan/2025/apply-benchmark`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ wachstum: wachstum, user: 'VKL' })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            alert('Smart-Ziele basierend auf 2024 + 5% Wachstum übernommen!');
+            loadDashboard();
+        }
+    } catch (error) {
+        console.error('Benchmark laden fehlgeschlagen:', error);
+    }
+}
+
+async function savePlan() {
+    alert('Plan gespeichert!');
+    // TODO: Implementieren
+}
+
+function updatePlan(typ, monat, value) {
+    console.log(`Update ${typ} Monat ${monat}: ${value}`);
+    // TODO: Implementieren
+}
+</script>
+{% endblock %}

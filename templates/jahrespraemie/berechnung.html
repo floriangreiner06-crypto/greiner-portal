@@ -197,6 +197,9 @@
                         </div>
                         <div id="uploadSuccess" style="display: none;" class="mt-3 alert alert-success">
                             <i class="bi bi-check-circle"></i> <span id="uploadMessage"></span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary ms-3" id="btnReupload">
+                                <i class="bi bi-arrow-repeat"></i> Erneut hochladen
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -352,6 +355,13 @@ $(document).ready(function() {
     });
     input.on('change', (e) => {
         if (e.target.files.length) uploadFile(e.target.files[0]);
+    });
+
+    // Re-Upload Button
+    $('#btnReupload').on('click', () => {
+        $('#uploadSuccess').hide();
+        $('#uploadZone').show();
+        input.val('');  // Reset file input
     });
     
     // Berechnen Button

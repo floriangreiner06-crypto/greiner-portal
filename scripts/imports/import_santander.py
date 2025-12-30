@@ -7,17 +7,20 @@ Importiert Fahrzeugfinanzierungen von Santander Bank aus CSV
 Verzeichnis: /opt/greiner-portal/scripts/imports/
 Author: Claude AI + Florian Greiner
 Date: 2025-11-08
-Version: 1.1 - MIT ZINSDATEN
+Version: 1.2 - TAG 136: PostgreSQL-kompatibel
 """
 
-import sqlite3
 import csv
 import sys
 from datetime import datetime
 from pathlib import Path
 
+# Projekt-Pfad hinzufügen
+sys.path.insert(0, '/opt/greiner-portal')
+from api.db_utils import db_session, row_to_dict, rows_to_list
+from api.db_connection import sql_placeholder, get_db_type
+
 # Konfiguration
-DB_PATH = '/opt/greiner-portal/data/greiner_controlling.db'
 CSV_DIR = '/mnt/buchhaltung/Buchhaltung/Kontoauszüge/Santander'
 FINANZINSTITUT = 'Santander'
 
@@ -79,27 +82,33 @@ def import_santander_bestand(csv_file=None, dry_run=False):
             return False
         print(f"📄 Verwende: {csv_file.name}")
 
-    print(f"🗄️  Datenbank: {DB_PATH}")
+    print(f"🗄️  Datenbank: PostgreSQL/SQLite via db_session")
     print(f"🔄 Dry-Run: {'JA (keine Änderungen)' if dry_run else 'NEIN (schreibt in DB)'}")
     print()
 
-    # Datenbank öffnen
-    conn = sqlite3.connect(DB_PATH)
+    # Datenbank öffnen via db_session
+    conn = db_session().__enter__()
     c = conn.cursor()
+    ph = sql_placeholder()
 
-    # Prüfe ob Schema erweitert wurde
-    c.execute("PRAGMA table_info(fahrzeugfinanzierungen)")
-    columns = [row[1] for row in c.fetchall()]
+    # Prüfe ob Schema erweitert wurde - PostgreSQL und SQLite unterschiedlich
+    if get_db_type() == 'postgresql':
+        c.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'fahrzeugfinanzierungen'
+        """)
+        columns = [row[0] for row in c.fetchall()]
+    else:
+        c.execute("PRAGMA table_info(fahrzeugfinanzierungen)")
+        columns = [row[1] for row in c.fetchall()]
+
     required_cols = ['finanzinstitut', 'zins_startdatum', 'endfaelligkeit']
     missing_cols = [col for col in required_cols if col not in columns]
-    
+
     if missing_cols:
         print(f"❌ FEHLER: Datenbank-Schema nicht vollständig!")
         print(f"   Fehlende Spalten: {', '.join(missing_cols)}")
-        print("   Bitte erst Migrationen ausführen:")
-        print("   cd /opt/greiner-portal/migrations/phase1")
-        print("   ./run_migration_santander.sh")
-        print("   sqlite3 data/greiner_controlling.db < 007_add_zinsdaten.sql")
+        print("   Bitte erst Migrationen ausführen.")
         conn.close()
         return False
 
@@ -118,7 +127,7 @@ def import_santander_bestand(csv_file=None, dry_run=False):
     # Backup vor dem Löschen (falls kein Dry-Run)
     if not dry_run:
         print("🗑️  Lösche alte Santander-Einträge...")
-        c.execute("DELETE FROM fahrzeugfinanzierungen WHERE finanzinstitut = ?", (FINANZINSTITUT,))
+        c.execute(f"DELETE FROM fahrzeugfinanzierungen WHERE finanzinstitut = {ph}", (FINANZINSTITUT,))
         geloescht = c.rowcount
         print(f"   ✅ {geloescht} alte Einträge gelöscht")
         print()
@@ -201,8 +210,10 @@ def import_santander_bestand(csv_file=None, dry_run=False):
                     continue
 
                 # Insert in DB - ERWEITERT MIT ZINSDATEN!
+                # TAG 136: PostgreSQL-kompatibel (NOW() vs datetime('now'))
                 if not dry_run:
-                    c.execute("""
+                    now_func = "NOW()" if get_db_type() == 'postgresql' else "datetime('now')"
+                    c.execute(f"""
                         INSERT INTO fahrzeugfinanzierungen (
                             finanzinstitut,
                             finanzierungsnummer,
@@ -228,7 +239,7 @@ def import_santander_bestand(csv_file=None, dry_run=False):
                             endfaelligkeit,
                             import_datum,
                             datei_quelle
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
+                        ) VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {now_func}, {ph})
                     """, (
                         FINANZINSTITUT,
                         finanzierungsnr,
@@ -302,27 +313,28 @@ def import_santander_bestand(csv_file=None, dry_run=False):
         print()
 
         # ZINSEN-STATISTIK
-        c.execute("""
-            SELECT COUNT(*) FROM fahrzeuge_mit_zinsen 
-            WHERE finanzinstitut = ? AND zinsstatus = 'Zinsen laufen'
+        c.execute(f"""
+            SELECT COUNT(*) as cnt FROM fahrzeuge_mit_zinsen
+            WHERE finanzinstitut = {ph} AND zinsstatus = 'Zinsen laufen'
         """, (FINANZINSTITUT,))
-        zinsen_laufen = c.fetchone()[0]
-        
+        row = row_to_dict(c.fetchone())
+        zinsen_laufen = row['cnt']
+
         if zinsen_laufen > 0:
             print("💰 ZINSEN-ÜBERSICHT:")
-            c.execute("""
-                SELECT 
+            c.execute(f"""
+                SELECT
                     SUM(aktueller_saldo) as saldo,
                     SUM(zinsen_gesamt) as zinsen_gesamt,
                     AVG(tage_seit_zinsstart) as avg_tage
-                FROM fahrzeuge_mit_zinsen 
-                WHERE finanzinstitut = ? AND zinsstatus = 'Zinsen laufen'
+                FROM fahrzeuge_mit_zinsen
+                WHERE finanzinstitut = {ph} AND zinsstatus = 'Zinsen laufen'
             """, (FINANZINSTITUT,))
-            row = c.fetchone()
+            row = row_to_dict(c.fetchone())
             print(f"  Fahrzeuge mit Zinsen:    {zinsen_laufen:>6}")
-            print(f"  Finanzierung (Zinsen):   {row[0]:>15,.2f} €")
-            print(f"  Zinsen gesamt:           {row[1]:>15,.2f} €")
-            print(f"  Ø Tage seit Zinsstart:   {row[2]:>15.0f} Tage")
+            print(f"  Finanzierung (Zinsen):   {row['saldo']:>15,.2f} €")
+            print(f"  Zinsen gesamt:           {row['zinsen_gesamt']:>15,.2f} €")
+            print(f"  Ø Tage seit Zinsstart:   {row['avg_tage']:>15.0f} Tage")
             print()
 
     conn.close()

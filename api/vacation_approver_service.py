@@ -167,7 +167,7 @@ def get_team_by_manager(manager_username: str) -> List[Dict]:
                     FROM employees e
                     JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
                     LEFT JOIN loco_employees le ON lem.locosoft_id = le.employee_number AND le.is_latest_record = 1
-                    WHERE lem.ldap_username = ?
+                    WHERE lem.ldap_username = %s
                 """, (member['ldap_username'],))
 
                 row = cursor.fetchone()
@@ -196,7 +196,7 @@ def get_employee_ad_groups(employee_id: int) -> List[str]:
                 FROM employees e
                 JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
                 JOIN users u ON lem.ldap_username = REPLACE(u.username, '@auto-greiner.de', '')
-                WHERE e.id = ?
+                WHERE e.id = %s
             """, (employee_id,))
 
             row = cursor.fetchone()
@@ -255,7 +255,7 @@ def get_approvers_for_employee(employee_id: int) -> List[Dict]:
                 SELECT lem.ldap_username
                 FROM employees e
                 JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
-                WHERE e.id = ?
+                WHERE e.id = %s
             """, (employee_id,))
 
             row = cursor.fetchone()
@@ -285,7 +285,7 @@ def get_approvers_for_employee(employee_id: int) -> List[Dict]:
                 FROM users u
                 LEFT JOIN ldap_employee_mapping lem ON lem.ldap_username = REPLACE(u.username, '@auto-greiner.de', '')
                 LEFT JOIN employees e ON lem.employee_id = e.id
-                WHERE REPLACE(u.username, '@auto-greiner.de', '') = ?
+                WHERE REPLACE(u.username, '@auto-greiner.de', '') = %s
             """, (manager_username,))
 
             manager_row = cursor.fetchone()
@@ -339,7 +339,7 @@ def get_team_for_approver(approver_ldap_username: str, include_self: bool = Fals
             # 1. Hole AD-Gruppen des Users
             cursor.execute("""
                 SELECT ad_groups FROM users
-                WHERE username = ? OR username = ?
+                WHERE username = %s OR username = %s
             """, (approver_ldap_username, f"{approver_ldap_username}@auto-greiner.de"))
 
             row = cursor.fetchone()
@@ -370,7 +370,7 @@ def get_team_for_approver(approver_ldap_username: str, include_self: bool = Fals
                     FROM employees e
                     JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
                     LEFT JOIN loco_employees le ON lem.locosoft_id = le.employee_number AND le.is_latest_record = 1
-                    WHERE e.aktiv = 1
+                    WHERE e.aktiv = true
                     ORDER BY e.last_name, e.first_name
                 """)
 
@@ -424,7 +424,7 @@ def is_approver(ldap_username: str) -> bool:
 
             cursor.execute("""
                 SELECT ad_groups FROM users
-                WHERE username = ? OR username = ?
+                WHERE username = %s OR username = %s
             """, (ldap_username, f"{ldap_username}@auto-greiner.de"))
 
             row = cursor.fetchone()
@@ -452,7 +452,7 @@ def is_admin(ldap_username: str) -> bool:
 
             cursor.execute("""
                 SELECT ad_groups FROM users
-                WHERE username = ? OR username = ?
+                WHERE username = %s OR username = %s
             """, (ldap_username, f"{ldap_username}@auto-greiner.de"))
 
             row = cursor.fetchone()
@@ -490,7 +490,7 @@ def get_approver_summary(ldap_username: str) -> Dict:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT ad_groups FROM users
-                WHERE username = ? OR username = ?
+                WHERE username = %s OR username = %s
             """, (ldap_username, f"{ldap_username}@auto-greiner.de"))
 
             row = cursor.fetchone()

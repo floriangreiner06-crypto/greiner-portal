@@ -247,6 +247,14 @@ print("✅ Verkauf API registriert: /api/verkauf/")
 print("✅ Parts API registriert: /api/stellantis/")
 print("✅ Admin API registriert: /api/admin/")
 
+# eAutoseller API (TAG 145)
+try:
+    from api.eautoseller_api import eautoseller_api
+    app.register_blueprint(eautoseller_api)
+    print("✅ eAutoseller API registriert: /api/eautoseller/")
+except ImportError as e:
+    print(f"⚠️  eAutoseller API nicht geladen: {e}")
+
 # Mail API (Graph/Office 365)
 try:
     from api.mail_api import mail_api
@@ -362,7 +370,7 @@ def start():
 
     # Werkstatt-Leitung → Werkstatt Dashboard
     if role == 'werkstatt_leitung':
-        return redirect(url_for('werkstatt_dashboard'))
+        return redirect(url_for('werkstatt.werkstatt_dashboard'))
 
     # Service-Leitung → Aftersales Übersicht
     if role == 'service_leitung':
@@ -449,9 +457,31 @@ except Exception as e:
 try:
     from api.teile_status_api import teile_status_bp
     app.register_blueprint(teile_status_bp)
+    
+    # Portal-Namen Umfrage API
+    try:
+        from api.portal_name_survey_api import portal_name_survey_bp, init_survey_table
+        app.register_blueprint(portal_name_survey_bp, url_prefix='')
+        # Tabelle initialisieren
+        init_survey_table()
+        print("✅ Portal-Namen Umfrage API geladen")
+    except ImportError as e:
+        print(f"⚠️  Portal-Namen Umfrage API nicht gefunden: {e}")
+    except Exception as e:
+        print(f"⚠️  Fehler beim Laden der Portal-Namen Umfrage API: {e}")
+        import traceback
+        traceback.print_exc()
     print("✅ Teile-Status API registriert: /api/teile/")
 except Exception as e:
     print(f"⚠️  Teile-Status API nicht geladen: {e}")
+
+# Renner & Penner API (TAG 141 - Lagerumschlag-Analyse)
+try:
+    from api.renner_penner_api import renner_penner_bp
+    app.register_blueprint(renner_penner_bp)
+    print("✅ Renner & Penner API registriert: /api/lager/")
+except Exception as e:
+    print(f"⚠️  Renner & Penner API nicht geladen: {e}")
 
 # Organization API (TAG 113 - Organigramm & Vertretungsregeln)
 try:
@@ -469,19 +499,43 @@ try:
 except Exception as e:
     print(f"⚠️  Gudat API nicht geladen: {e}")
 
-# DEBUG Route für TAG76 - später entfernen!
-@app.route('/debug/user')
+# Ersatzwagen-Kalender API (TAG 131 - PoC)
+try:
+    from api.ersatzwagen_api import ersatzwagen_bp
+    app.register_blueprint(ersatzwagen_bp)
+    print("✅ Ersatzwagen API registriert: /api/ersatzwagen/")
+except Exception as e:
+    print(f"⚠️  Ersatzwagen API nicht geladen: {e}")
+
+# Budget-Planung API (TAG 143)
+try:
+    from api.budget_api import budget_bp
+    app.register_blueprint(budget_bp)
+    print("✅ Budget API registriert: /api/budget/")
+except Exception as e:
+    print(f"⚠️  Budget API nicht geladen: {e}")
+
+# Ersatzwagen-Kalender Test-UI (TAG 131)
+@app.route('/test/ersatzwagen')
 @login_required
-def debug_user():
-    """Debug: Zeigt aktuelle User-Session-Daten"""
-    return {
-        'username': current_user.username,
-        'display_name': current_user.display_name,
-        'title': getattr(current_user, 'title', 'N/A'),
-        'portal_role': getattr(current_user, 'portal_role', 'N/A'),
-        'allowed_features': getattr(current_user, 'allowed_features', []),
-        'roles': current_user.roles
-    }
+def test_ersatzwagen_kalender():
+    """Ersatzwagen-Kalender PoC - Test-UI"""
+    return render_template('test/ersatzwagen_kalender.html')
+
+# DEBUG Route - nur in Development! (TAG 130)
+if os.getenv('FLASK_ENV') == 'development' or app.debug:
+    @app.route('/debug/user')
+    @login_required
+    def debug_user():
+        """Debug: Zeigt aktuelle User-Session-Daten"""
+        return {
+            'username': current_user.username,
+            'display_name': current_user.display_name,
+            'title': getattr(current_user, 'title', 'N/A'),
+            'portal_role': getattr(current_user, 'portal_role', 'N/A'),
+            'allowed_features': getattr(current_user, 'allowed_features', []),
+            'roles': current_user.roles
+        }
 
 # ========================================
 # LEASYS PROGRAMMFINDER
@@ -495,72 +549,9 @@ def leasys_programmfinder():
 
 
 # ========================================
-# WERKSTATT ÜBERSICHT
+# WERKSTATT MONITOR-ROUTES (ohne Login, Token-Auth)
+# Normale Werkstatt-Routes sind in werkstatt_routes.py (TAG 130)
 # ========================================
-
-@app.route('/werkstatt')
-@app.route('/werkstatt/cockpit')
-@login_required
-def werkstatt_cockpit():
-    """Werkstatt Cockpit - Minimalistisch: Ampel + Probleme (TAG 99)"""
-    return render_template('aftersales/werkstatt_cockpit.html')
-
-
-@app.route('/werkstatt/dashboard')
-@login_required
-def werkstatt_dashboard():
-    """Werkstatt Dashboard - Konsolidierte Übersicht (TAG 99)"""
-    return render_template('aftersales/werkstatt_dashboard.html')
-
-
-@app.route('/werkstatt/uebersicht')
-@login_required
-def werkstatt_uebersicht():
-    """Werkstatt-Übersicht - Mechaniker-Leistungsgrade (Legacy)"""
-    return render_template('aftersales/werkstatt_uebersicht.html')
-
-
-@app.route('/werkstatt/live')
-@login_required
-def werkstatt_live():
-    """Werkstatt LIVE-Monitoring - Echtzeit-Auftragsübersicht"""
-    return render_template('aftersales/werkstatt_live.html')
-
-
-@app.route('/werkstatt/stempeluhr')
-@login_required
-def werkstatt_stempeluhr():
-    """Werkstatt Stempeluhr - LIVE Mechaniker-Übersicht"""
-    return render_template('aftersales/werkstatt_stempeluhr.html')
-
-
-@app.route('/werkstatt/intelligence')
-@login_required
-def werkstatt_intelligence():
-    """Werkstatt Intelligence - ML Dashboard"""
-    return render_template('werkstatt_intelligence.html')
-
-
-@app.route('/werkstatt/tagesbericht')
-@login_required
-def werkstatt_tagesbericht():
-    """Werkstatt Tagesbericht - Kontrolle Stempelungen/Zuweisungen"""
-    return render_template('aftersales/werkstatt_tagesbericht.html')
-
-
-@app.route('/werkstatt/auftraege')
-@login_required
-def werkstatt_auftraege():
-    """Werkstatt Aufträge - ML-Analyse (TAG 98)"""
-    return render_template('aftersales/werkstatt_auftraege.html')
-
-
-@app.route('/werkstatt/teile-status')
-@login_required
-def werkstatt_teile_status():
-    """Werkstatt Teile-Status - Fehlende Teile Übersicht (TAG 100)"""
-    return render_template('aftersales/werkstatt_teile_status.html')
-
 
 @app.route('/monitor/stempeluhr')
 @app.route('/werkstatt/stempeluhr/monitor')
@@ -630,26 +621,4 @@ def werkstatt_liveboard_monitor():
         return render_template('aftersales/werkstatt_liveboard.html')
 
 
-# ========================================
-# TAG 116: KAPAZITÄTSPLANUNG + ANWESENHEIT
-# ========================================
-
-@app.route('/aftersales/kapazitaet')
-@app.route('/aftersales/kapazitaetsplanung')
-@login_required
-def kapazitaetsplanung():
-    """Kapazitätsplanung - Forecast, Gudat, ML-Analyse (TAG 116)"""
-    return render_template('aftersales/kapazitaetsplanung.html')
-
-
-@app.route('/werkstatt/anwesenheit')
-@login_required
-def werkstatt_anwesenheit():
-    """
-    Anwesenheits-Report - DEAKTIVIERT (TAG 122)
-
-    Grund: Type 1 (Anwesenheit) wird von Locosoft nur als abgeschlossene
-    Einträge exportiert. Während der Arbeitszeit sind die Daten nicht verfügbar.
-    """
-    flash('Anwesenheits-Report deaktiviert: Type 1 Daten sind erst nach Feierabend verfügbar.', 'warning')
-    return redirect(url_for('werkstatt_dashboard'))
+# TAG 116/130: Kapazitätsplanung + Anwesenheit sind jetzt in werkstatt_routes.py

@@ -2,12 +2,14 @@
 Zins-Optimierung API - TAG 78
 Umbuchungs-Empfehlungen und EK-Finanzierung Analyse
 MIT HYUNDAI ZINSEN!
+TAG 136: PostgreSQL-kompatibel
 """
 from flask import Blueprint, jsonify
 from datetime import datetime
 
-# Zentrale DB-Utilities (TAG117)
-from api.db_utils import db_session
+# Zentrale DB-Utilities (TAG117, TAG136: PostgreSQL-kompatibel)
+from api.db_utils import db_session, row_to_dict, rows_to_list
+from api.db_connection import get_db_type, convert_placeholders
 
 zins_api = Blueprint('zins_api', __name__)
 
@@ -19,7 +21,11 @@ def zins_report():
         return _zins_report_impl(c)
 
 def _zins_report_impl(c):
-    """Implementierung des Zins-Reports"""
+    """Implementierung des Zins-Reports
+    TAG 136: PostgreSQL-kompatibel
+    """
+    # TAG 136: Boolean-Check für PostgreSQL/SQLite
+    aktiv_check = "k.aktiv = true" if get_db_type() == 'postgresql' else "k.aktiv = true"
 
     result = {
         'timestamp': datetime.now().isoformat(),
@@ -35,29 +41,34 @@ def _zins_report_impl(c):
     total_zinsen_monat = 0
 
     # 1. Konten im Soll
-    c.execute("""
+    c.execute(f"""
         SELECT k.id, k.kontoname, k.sollzins, k.kreditlimit,
                (SELECT saldo FROM salden WHERE konto_id = k.id ORDER BY datum DESC LIMIT 1) as saldo
         FROM konten k
-        WHERE k.aktiv = 1 AND k.sollzins IS NOT NULL
+        WHERE {aktiv_check} AND k.sollzins IS NOT NULL
     """)
     for row in c.fetchall():
-        saldo = row['saldo'] or 0
+        r = row_to_dict(row)
+        saldo = float(r['saldo'] or 0)
         if saldo < 0:
-            zinsen_monat = abs(saldo) * (row['sollzins'] / 100) / 12
+            zinsen_monat = abs(saldo) * (float(r['sollzins']) / 100) / 12
             total_zinsen_monat += zinsen_monat
             result['konten_sollzinsen'].append({
-                'konto_id': row['id'],
-                'kontoname': row['kontoname'],
+                'konto_id': r['id'],
+                'kontoname': r['kontoname'],
                 'saldo': saldo,
-                'sollzins': row['sollzins'],
+                'sollzins': float(r['sollzins']),
                 'zinsen_monat': round(zinsen_monat, 2)
             })
 
     # 2. Stellantis über Zinsfreiheit
     c.execute("SELECT zinssatz FROM ek_finanzierung_konditionen WHERE finanzinstitut = 'Stellantis'")
     stellantis_row = c.fetchone()
-    stellantis_zins = stellantis_row['zinssatz'] if stellantis_row else 9.03
+    if stellantis_row:
+        sr = row_to_dict(stellantis_row)
+        stellantis_zins = float(sr['zinssatz']) if sr['zinssatz'] else 9.03
+    else:
+        stellantis_zins = 9.03
 
     c.execute("""
         SELECT vin, modell, alter_tage, zinsfreiheit_tage, aktueller_saldo
@@ -69,13 +80,14 @@ def _zins_report_impl(c):
     """)
     stellantis_zinsen = 0
     for row in c.fetchall():
-        ueber_tage = row['alter_tage'] - row['zinsfreiheit_tage']
-        saldo = row['aktueller_saldo'] or 0
+        r = row_to_dict(row)
+        ueber_tage = int(r['alter_tage'] or 0) - int(r['zinsfreiheit_tage'] or 0)
+        saldo = float(r['aktueller_saldo'] or 0)
         zinsen = saldo * (stellantis_zins / 100) / 12
         stellantis_zinsen += zinsen
         result['stellantis_ueber_zinsfreiheit'].append({
-            'vin': row['vin'],
-            'modell': row['modell'],
+            'vin': r['vin'],
+            'modell': r['modell'],
             'tage_ueber': ueber_tage,
             'saldo': saldo,
             'zinsen_monat': round(zinsen, 2)
@@ -92,12 +104,13 @@ def _zins_report_impl(c):
         ORDER BY (zinsfreiheit_tage - alter_tage) ASC
     """)
     for row in c.fetchall():
-        potenzielle_zinsen = (row['aktueller_saldo'] or 0) * (stellantis_zins / 100) / 12
+        r = row_to_dict(row)
+        potenzielle_zinsen = float(r['aktueller_saldo'] or 0) * (stellantis_zins / 100) / 12
         result['stellantis_bald_ablaufend'].append({
-            'vin': row['vin'],
-            'modell': row['modell'],
-            'rest_tage': row['rest_tage'],
-            'saldo': row['aktueller_saldo'],
+            'vin': r['vin'],
+            'modell': r['modell'],
+            'rest_tage': r['rest_tage'],
+            'saldo': float(r['aktueller_saldo'] or 0),
             'potenzielle_zinsen_monat': round(potenzielle_zinsen, 2)
         })
 
@@ -107,13 +120,15 @@ def _zins_report_impl(c):
         FROM fahrzeugfinanzierungen WHERE finanzinstitut = 'Santander'
     """)
     row = c.fetchone()
-    if row and row['saldo']:
-        result['santander'] = {
-            'anzahl': row['anzahl'],
-            'saldo': row['saldo'],
-            'zinsen_monat': row['zinsen'] or 0
-        }
-        total_zinsen_monat += (row['zinsen'] or 0)
+    if row:
+        r = row_to_dict(row)
+        if r['saldo']:
+            result['santander'] = {
+                'anzahl': int(r['anzahl'] or 0),
+                'saldo': float(r['saldo'] or 0),
+                'zinsen_monat': float(r['zinsen'] or 0)
+            }
+            total_zinsen_monat += float(r['zinsen'] or 0)
 
     # 5. Hyundai - JETZT MIT ECHTEN ZINSEN AUS DB!
     c.execute("""
@@ -122,47 +137,57 @@ def _zins_report_impl(c):
         FROM fahrzeugfinanzierungen WHERE finanzinstitut = 'Hyundai Finance'
     """)
     row = c.fetchone()
-    if row and row['saldo']:
-        zinsen_monat = row['zinsen_monat'] or 0
-        result['hyundai'] = {
-            'anzahl': row['anzahl'],
-            'saldo': row['saldo'],
-            'zinsen_gesamt': row['zinsen_gesamt'] or 0,
-            'zinsen_monat': round(zinsen_monat, 2)
-        }
-        total_zinsen_monat += zinsen_monat
+    if row:
+        r = row_to_dict(row)
+        if r['saldo']:
+            zinsen_monat = float(r['zinsen_monat'] or 0)
+            result['hyundai'] = {
+                'anzahl': int(r['anzahl'] or 0),
+                'saldo': float(r['saldo'] or 0),
+                'zinsen_gesamt': float(r['zinsen_gesamt'] or 0),
+                'zinsen_monat': round(zinsen_monat, 2)
+            }
+            total_zinsen_monat += zinsen_monat
 
     # 6. Empfehlungen generieren
     # 6a. Konten-Umbuchung
     if result['konten_sollzinsen']:
-        c.execute("""
+        c.execute(f"""
             SELECT k.kontoname,
                    (SELECT saldo FROM salden WHERE konto_id = k.id ORDER BY datum DESC LIMIT 1) as saldo
-            FROM konten k WHERE k.aktiv = 1 AND k.sollzins IS NOT NULL
+            FROM konten k WHERE {aktiv_check} AND k.sollzins IS NOT NULL
             ORDER BY (SELECT saldo FROM salden WHERE konto_id = k.id ORDER BY datum DESC LIMIT 1) DESC
             LIMIT 1
         """)
         haben_konto = c.fetchone()
-        if haben_konto and haben_konto['saldo'] and haben_konto['saldo'] > 10000:
-            for soll in result['konten_sollzinsen']:
-                result['empfehlungen'].append({
-                    'typ': 'konten_umbuchung',
-                    'prioritaet': 2,
-                    'von': haben_konto['kontoname'],
-                    'nach': soll['kontoname'],
-                    'betrag': min(haben_konto['saldo'], abs(soll['saldo'])),
-                    'ersparnis_monat': soll['zinsen_monat'],
-                    'beschreibung': f"Umbuchung von {haben_konto['kontoname']} nach {soll['kontoname']} um Sollzinsen zu vermeiden"
-                })
+        if haben_konto:
+            hk = row_to_dict(haben_konto)
+            if hk['saldo'] and float(hk['saldo']) > 10000:
+                for soll in result['konten_sollzinsen']:
+                    result['empfehlungen'].append({
+                        'typ': 'konten_umbuchung',
+                        'prioritaet': 2,
+                        'von': hk['kontoname'],
+                        'nach': soll['kontoname'],
+                        'betrag': min(float(hk['saldo']), abs(soll['saldo'])),
+                        'ersparnis_monat': soll['zinsen_monat'],
+                        'beschreibung': f"Umbuchung von {hk['kontoname']} nach {soll['kontoname']} um Sollzinsen zu vermeiden"
+                    })
 
     # 6b. Stellantis → Santander Umfinanzierung
     if result['stellantis_ueber_zinsfreiheit']:
         c.execute("SELECT gesamt_limit FROM ek_finanzierung_konditionen WHERE finanzinstitut = 'Santander'")
-        santander_limit = c.fetchone()
-        santander_limit = santander_limit['gesamt_limit'] if santander_limit else 1500000
+        santander_limit_row = c.fetchone()
+        if santander_limit_row:
+            sl = row_to_dict(santander_limit_row)
+            santander_limit = float(sl['gesamt_limit']) if sl['gesamt_limit'] else 1500000
+        else:
+            santander_limit = 1500000
 
-        c.execute("SELECT SUM(aktueller_saldo) FROM fahrzeugfinanzierungen WHERE finanzinstitut = 'Santander'")
-        santander_genutzt = c.fetchone()[0] or 0
+        c.execute("SELECT SUM(aktueller_saldo) as summe FROM fahrzeugfinanzierungen WHERE finanzinstitut = 'Santander'")
+        sg_row = c.fetchone()
+        sg = row_to_dict(sg_row) if sg_row else {}
+        santander_genutzt = float(sg.get('summe') or 0)
         santander_frei = santander_limit - santander_genutzt
 
         umfinanzierung_summe = sum(f['saldo'] for f in result['stellantis_ueber_zinsfreiheit'])
@@ -196,24 +221,39 @@ def _zins_report_impl(c):
 
 @zins_api.route('/api/zinsen/dashboard', methods=['GET'])
 def zins_dashboard():
-    """Kompakte Dashboard-Daten - MIT HYUNDAI!"""
+    """Kompakte Dashboard-Daten - MIT HYUNDAI!
+    TAG 136: PostgreSQL-kompatibel
+    """
     with db_session() as conn:
         c = conn.cursor()
+
+        # TAG 136: Boolean-Check für PostgreSQL/SQLite
+        aktiv_check = "k.aktiv = true" if get_db_type() == 'postgresql' else "k.aktiv = true"
 
         # Stellantis Zinssatz
         c.execute("SELECT zinssatz FROM ek_finanzierung_konditionen WHERE finanzinstitut = 'Stellantis'")
         row = c.fetchone()
-        stellantis_zins = row['zinssatz'] if row else 9.03
+        if row:
+            r = row_to_dict(row)
+            stellantis_zins = float(r['zinssatz']) if r['zinssatz'] else 9.03
+        else:
+            stellantis_zins = 9.03
 
-        # Konten im Soll
-        c.execute("""
-            SELECT SUM(ABS(saldo) * k.sollzins / 100 / 12) as zinsen
+        # Konten im Soll - Subquery für PostgreSQL-Kompatibilität
+        c.execute(f"""
+            SELECT SUM(ABS(s.saldo) * k.sollzins / 100 / 12) as zinsen
             FROM konten k
-            JOIN (SELECT konto_id, saldo FROM salden WHERE (konto_id, datum) IN
-                  (SELECT konto_id, MAX(datum) FROM salden GROUP BY konto_id)) s ON s.konto_id = k.id
-            WHERE k.aktiv = 1 AND s.saldo < 0 AND k.sollzins IS NOT NULL
+            JOIN (
+                SELECT s1.konto_id, s1.saldo
+                FROM salden s1
+                JOIN (SELECT konto_id, MAX(datum) as max_datum FROM salden GROUP BY konto_id) s2
+                  ON s1.konto_id = s2.konto_id AND s1.datum = s2.max_datum
+            ) s ON s.konto_id = k.id
+            WHERE {aktiv_check} AND s.saldo < 0 AND k.sollzins IS NOT NULL
         """)
-        konten_zinsen = c.fetchone()['zinsen'] or 0
+        row = c.fetchone()
+        r = row_to_dict(row) if row else {}
+        konten_zinsen = float(r.get('zinsen') or 0)
 
         # Stellantis über Zinsfreiheit
         c.execute("""
@@ -224,10 +264,11 @@ def zins_dashboard():
               AND alter_tage > zinsfreiheit_tage
         """)
         row = c.fetchone()
+        r = row_to_dict(row) if row else {}
         stellantis_ueber = {
-            'anzahl': row['anzahl'] or 0,
-            'saldo': row['saldo'] or 0,
-            'zinsen_monat': round(row['zinsen_monat'] or 0, 2)
+            'anzahl': int(r.get('anzahl') or 0),
+            'saldo': float(r.get('saldo') or 0),
+            'zinsen_monat': round(float(r.get('zinsen_monat') or 0), 2)
         }
 
         # Stellantis bald ablaufend
@@ -239,9 +280,10 @@ def zins_dashboard():
               AND (zinsfreiheit_tage - alter_tage) BETWEEN 0 AND 14
         """)
         row = c.fetchone()
+        r = row_to_dict(row) if row else {}
         stellantis_bald = {
-            'anzahl': row['anzahl'] or 0,
-            'saldo': row['saldo'] or 0
+            'anzahl': int(r.get('anzahl') or 0),
+            'saldo': float(r.get('saldo') or 0)
         }
 
         # Santander
@@ -250,10 +292,11 @@ def zins_dashboard():
             FROM fahrzeugfinanzierungen WHERE finanzinstitut = 'Santander'
         """)
         row = c.fetchone()
+        r = row_to_dict(row) if row else {}
         santander = {
-            'anzahl': row['anzahl'] or 0,
-            'saldo': row['saldo'] or 0,
-            'zinsen_monat': round(row['zinsen'] or 0, 2)
+            'anzahl': int(r.get('anzahl') or 0),
+            'saldo': float(r.get('saldo') or 0),
+            'zinsen_monat': round(float(r.get('zinsen') or 0), 2)
         }
 
         # === NEU: HYUNDAI ===
@@ -263,11 +306,12 @@ def zins_dashboard():
             FROM fahrzeugfinanzierungen WHERE finanzinstitut = 'Hyundai Finance'
         """)
         row = c.fetchone()
+        r = row_to_dict(row) if row else {}
         hyundai = {
-            'anzahl': row['anzahl'] or 0,
-            'saldo': row['saldo'] or 0,
-            'zinsen_gesamt': round(row['zinsen_gesamt'] or 0, 2),
-            'zinsen_monat': round(row['zinsen_monat'] or 0, 2)
+            'anzahl': int(r.get('anzahl') or 0),
+            'saldo': float(r.get('saldo') or 0),
+            'zinsen_gesamt': round(float(r.get('zinsen_gesamt') or 0), 2),
+            'zinsen_monat': round(float(r.get('zinsen_monat') or 0), 2)
         }
 
         # Gesamtzinsen INKL. Hyundai
@@ -293,40 +337,45 @@ def umbuchung_empfehlung():
         return _umbuchung_empfehlung_impl(c)
 
 def _umbuchung_empfehlung_impl(c):
-    """Implementierung der Umbuchungs-Empfehlungen"""
+    """Implementierung der Umbuchungs-Empfehlungen
+    TAG 136: PostgreSQL-kompatibel
+    """
+    # TAG 136: Boolean-Check für PostgreSQL/SQLite
+    aktiv_check = "k.aktiv = true" if get_db_type() == 'postgresql' else "k.aktiv = true"
     empfehlungen = []
 
     # Konten im Soll finden
-    c.execute("""
+    c.execute(f"""
         SELECT k.id, k.kontoname, k.firma, k.sollzins,
                (SELECT saldo FROM salden WHERE konto_id = k.id ORDER BY datum DESC LIMIT 1) as saldo
         FROM konten k
-        WHERE k.aktiv = 1 AND k.sollzins IS NOT NULL
+        WHERE {aktiv_check} AND k.sollzins IS NOT NULL
         AND (SELECT saldo FROM salden WHERE konto_id = k.id ORDER BY datum DESC LIMIT 1) < 0
     """)
-    soll_konten = c.fetchall()
+    soll_konten = rows_to_list(c.fetchall())
 
     for soll in soll_konten:
         soll_id = soll['id']
         soll_name = soll['kontoname']
         soll_firma = soll['firma']
-        sollzins = soll['sollzins']
-        soll_saldo = soll['saldo']
+        sollzins = float(soll['sollzins'] or 0)
+        soll_saldo = float(soll['saldo'] or 0)
         bedarf = abs(soll_saldo)
         zinsen_monat = bedarf * (sollzins / 100) / 12
 
         # Haben-Konten gleiche Firma (normale Umbuchung)
-        c.execute("""
+        c.execute(convert_placeholders(f"""
             SELECT k.id, k.kontoname,
                    (SELECT saldo FROM salden WHERE konto_id = k.id ORDER BY datum DESC LIMIT 1) as saldo
             FROM konten k
-            WHERE k.aktiv = 1 AND k.firma = ? AND k.id != ?
+            WHERE {aktiv_check} AND k.firma = %s AND k.id != %s
             AND (SELECT saldo FROM salden WHERE konto_id = k.id ORDER BY datum DESC LIMIT 1) > 10000
-            ORDER BY saldo DESC
-        """, (soll_firma, soll_id))
+            ORDER BY (SELECT saldo FROM salden WHERE konto_id = k.id ORDER BY datum DESC LIMIT 1) DESC
+        """), (soll_firma, soll_id))
 
-        for haben in c.fetchall():
-            umbuchbar = min(haben['saldo'], bedarf)
+        for haben_row in c.fetchall():
+            haben = row_to_dict(haben_row)
+            umbuchbar = min(float(haben['saldo'] or 0), bedarf)
             ersparnis = umbuchbar * (sollzins / 100) / 12
             empfehlungen.append({
                 'von_konto': haben['kontoname'],
@@ -345,18 +394,19 @@ def _umbuchung_empfehlung_impl(c):
 
         # Falls noch Bedarf: Andere Firmen (Privatentnahme)
         if bedarf > 10000:
-            c.execute("""
+            c.execute(convert_placeholders(f"""
                 SELECT k.id, k.kontoname, k.firma,
                        (SELECT saldo FROM salden WHERE konto_id = k.id ORDER BY datum DESC LIMIT 1) as saldo
                 FROM konten k
-                WHERE k.aktiv = 1
-                AND k.firma != ? AND k.firma != 'EXTERN' AND k.firma IS NOT NULL
+                WHERE {aktiv_check}
+                AND k.firma != %s AND k.firma != 'EXTERN' AND k.firma IS NOT NULL
                 AND (SELECT saldo FROM salden WHERE konto_id = k.id ORDER BY datum DESC LIMIT 1) > 10000
-                ORDER BY saldo DESC
-            """, (soll_firma,))
+                ORDER BY (SELECT saldo FROM salden WHERE konto_id = k.id ORDER BY datum DESC LIMIT 1) DESC
+            """), (soll_firma,))
 
-            for haben in c.fetchall():
-                umbuchbar = min(haben['saldo'], bedarf)
+            for haben_row in c.fetchall():
+                haben = row_to_dict(haben_row)
+                umbuchbar = min(float(haben['saldo'] or 0), bedarf)
                 ersparnis = umbuchbar * (sollzins / 100) / 12
                 empfehlungen.append({
                     'von_konto': haben['kontoname'],
@@ -378,28 +428,34 @@ def _umbuchung_empfehlung_impl(c):
     # ============================================
     # FAHRZEUG-UMFINANZIERUNGEN (Stellantis -> Santander)
     # ============================================
-    
+
     # Santander freies Limit prüfen
     c.execute("""SELECT gesamt_limit FROM ek_finanzierung_konditionen WHERE finanzinstitut = 'Santander'""")
     row = c.fetchone()
-    santander_limit = row[0] if row else 1500000
-    
-    c.execute("""SELECT SUM(aktueller_saldo) FROM fahrzeugfinanzierungen WHERE finanzinstitut = 'Santander'""")
+    if row:
+        r = row_to_dict(row)
+        santander_limit = float(r['gesamt_limit']) if r['gesamt_limit'] else 1500000
+    else:
+        santander_limit = 1500000
+
+    c.execute("""SELECT SUM(aktueller_saldo) as summe FROM fahrzeugfinanzierungen WHERE finanzinstitut = 'Santander'""")
     row = c.fetchone()
-    santander_belegt = row[0] if row and row[0] else 0
+    r = row_to_dict(row) if row else {}
+    santander_belegt = float(r.get('summe') or 0)
     santander_frei = santander_limit - santander_belegt
-    
+
     # Stellantis über Zinsfreiheit (9,03% -> 4,5% = 4,53% Ersparnis)
     c.execute("""
         SELECT vin, modell, aktueller_saldo, (alter_tage - zinsfreiheit_tage) as tage_ueber
         FROM fahrzeugfinanzierungen
         WHERE finanzinstitut = 'Stellantis' AND alter_tage > zinsfreiheit_tage
-        ORDER BY tage_ueber DESC
+        ORDER BY (alter_tage - zinsfreiheit_tage) DESC
     """)
-    stellantis_ueber = c.fetchall()
-    
+    stellantis_ueber = rows_to_list(c.fetchall())
+
+    umfinanzierbar = 0
     if stellantis_ueber and santander_frei > 50000:
-        gesamt_saldo = sum(f["aktueller_saldo"] for f in stellantis_ueber)
+        gesamt_saldo = sum(float(f["aktueller_saldo"] or 0) for f in stellantis_ueber)
         umfinanzierbar = min(gesamt_saldo, santander_frei)
         # Stellantis 9,03% vs Santander ~4,5% = 4,53% Ersparnis
         ersparnis_prozent = 4.53
@@ -409,7 +465,7 @@ def _umbuchung_empfehlung_impl(c):
             'von': 'Stellantis',
             'nach': 'Santander',
             'anzahl_fahrzeuge': len(stellantis_ueber),
-            'fahrzeuge': [{"vin": f["vin"], "modell": f["modell"].strip() if f["modell"] else "", "saldo": f["aktueller_saldo"], "tage_ueber": f["tage_ueber"]} for f in stellantis_ueber],
+            'fahrzeuge': [{"vin": f["vin"], "modell": (f["modell"] or "").strip(), "saldo": float(f["aktueller_saldo"] or 0), "tage_ueber": int(f["tage_ueber"] or 0)} for f in stellantis_ueber],
             'betrag': round(gesamt_saldo, 2),
             'santander_frei': round(santander_frei, 2),
             'beschreibung': f'Umfinanzierung von {len(stellantis_ueber)} Fahrzeugen (über Zinsfreiheit) zu Santander',
@@ -417,7 +473,7 @@ def _umbuchung_empfehlung_impl(c):
             'ersparnis_jahr': round(ersparnis_monat * 12, 2),
             'prioritaet': 1
         })
-    
+
     # Stellantis bald ablaufend (< 14 Tage)
     c.execute("""
         SELECT vin, modell, aktueller_saldo, (zinsfreiheit_tage - alter_tage) as tage_verbleibend
@@ -425,13 +481,13 @@ def _umbuchung_empfehlung_impl(c):
         WHERE finanzinstitut = 'Stellantis'
         AND alter_tage <= zinsfreiheit_tage
         AND (zinsfreiheit_tage - alter_tage) <= 14
-        ORDER BY tage_verbleibend ASC
+        ORDER BY (zinsfreiheit_tage - alter_tage) ASC
     """)
-    stellantis_bald = c.fetchall()
-    
+    stellantis_bald = rows_to_list(c.fetchall())
+
     if stellantis_bald:
-        gesamt_saldo_bald = sum(f["aktueller_saldo"] for f in stellantis_bald)
-        noch_frei = santander_frei - (umfinanzierbar if stellantis_ueber else 0)
+        gesamt_saldo_bald = sum(float(f["aktueller_saldo"] or 0) for f in stellantis_bald)
+        noch_frei = santander_frei - umfinanzierbar
         if noch_frei > 50000:
             ersparnis_monat_bald = min(gesamt_saldo_bald, noch_frei) * (4.53 / 100) / 12
             empfehlungen.append({
@@ -439,7 +495,7 @@ def _umbuchung_empfehlung_impl(c):
                 'von': 'Stellantis',
                 'nach': 'Santander',
                 'anzahl_fahrzeuge': len(stellantis_bald),
-                'fahrzeuge': [{"vin": f["vin"], "modell": f["modell"].strip() if f["modell"] else "", "saldo": f["aktueller_saldo"], "tage_verbleibend": f["tage_verbleibend"]} for f in stellantis_bald],
+                'fahrzeuge': [{"vin": f["vin"], "modell": (f["modell"] or "").strip(), "saldo": float(f["aktueller_saldo"] or 0), "tage_verbleibend": int(f["tage_verbleibend"] or 0)} for f in stellantis_bald],
                 'betrag': round(gesamt_saldo_bald, 2),
                 'santander_noch_frei': round(noch_frei, 2),
                 'beschreibung': f'{len(stellantis_bald)} Fahrzeuge mit bald ablaufender Zinsfreiheit (<14 Tage) - Umfinanzierung prüfen',

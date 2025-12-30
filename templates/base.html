@@ -72,6 +72,9 @@
                             <li><a class="dropdown-item" href="/controlling/tek">
                                 <i class="bi bi-bar-chart-line"></i> TEK (Tägliche Erfolgskontrolle)
                             </a></li>
+                            <li><a class="dropdown-item text-muted small" href="/controlling/tek/archiv">
+                                <i class="bi bi-archive"></i> TEK Archiv (v1)
+                            </a></li>
                             <li><hr class="dropdown-divider"></li>
                             {% endif %}
                             
@@ -138,6 +141,22 @@
                             <li><a class="dropdown-item" href="/verkauf/auslieferung/detail">
                                 <i class="bi bi-truck"></i> Auslieferungen
                             </a></li>
+                            <li><a class="dropdown-item" href="/verkauf/eautoseller-bestand">
+                                <i class="bi bi-car-front"></i> eAutoseller Bestand
+                            </a></li>
+
+                            <!-- Budget-Planung (nur GF + VK-Leitung) -->
+                            {% if current_user.portal_role in ['admin', 'geschaeftsleitung', 'verkauf_leitung'] %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li><h6 class="dropdown-header text-muted">Planung</h6></li>
+                            <li><a class="dropdown-item" href="/verkauf/budget">
+                                <i class="bi bi-bullseye text-primary"></i> <strong>Budget-Planung</strong>
+                            </a></li>
+                            <li><a class="dropdown-item" href="/verkauf/lieferforecast">
+                                <i class="bi bi-calendar-week"></i> Lieferforecast
+                            </a></li>
+                            {% endif %}
+
                             <li><hr class="dropdown-divider"></li>
                             <li><h6 class="dropdown-header text-muted">Tools</h6></li>
                             <li><a class="dropdown-item" href="/verkauf/leasys-programmfinder">
@@ -159,13 +178,10 @@
                             <li><a class="dropdown-item" href="/urlaubsplaner/v2">
                                 <i class="bi bi-calendar-plus"></i> Mein Urlaub
                             </a></li>
-                            {% if current_user.is_authenticated and current_user.portal_role in ['admin', 'geschaeftsleitung'] %}
+                            {% if current_user.is_authenticated and current_user.portal_role in ['admin', 'geschaeftsleitung', 'buchhaltung', 'service_leitung', 'verkauf_leitung', 'werkstatt_leitung'] %}
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="/urlaubsplaner/chef">
-                                <i class="bi bi-diagram-3"></i> Chef-Übersicht
-                            </a></li>
-                            <li><a class="dropdown-item" href="/urlaubsplaner/admin">
-                                <i class="bi bi-gear text-danger"></i> Administration
+                                <i class="bi bi-diagram-3"></i> Team-Übersicht
                             </a></li>
                             {% endif %}
                         </ul>
@@ -188,6 +204,9 @@
                             <li><h6 class="dropdown-header text-muted">Teile</h6></li>
                             <li><a class="dropdown-item" href="/werkstatt/teile-status">
                                 <i class="bi bi-exclamation-triangle text-warning"></i> <strong>Teile-Status</strong>
+                            </a></li>
+                            <li><a class="dropdown-item" href="/werkstatt/renner-penner">
+                                <i class="bi bi-graph-up-arrow text-success"></i> <strong>Renner & Penner</strong>
                             </a></li>
                             <li><a class="dropdown-item" href="/aftersales/teile/bestellungen">
                                 <i class="bi bi-box-seam"></i> Teilebestellungen
@@ -242,6 +261,42 @@
                     </li>
                     {% endif %}
 
+                    <!-- Admin Dropdown (nur für Admins) -->
+                    {% if current_user.is_authenticated and current_user.portal_role == 'admin' %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="adminDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-shield-lock"></i> Admin
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><h6 class="dropdown-header text-muted">System</h6></li>
+                            <li><a class="dropdown-item" href="/admin/celery/">
+                                <i class="bi bi-list-task"></i> Task Manager
+                            </a></li>
+                            <li><a class="dropdown-item" href="http://10.80.80.20:5555" target="_blank">
+                                <i class="bi bi-flower1"></i> Flower Dashboard
+                            </a></li>
+                            <li><a class="dropdown-item" href="/admin/rechte">
+                                <i class="bi bi-person-lock"></i> Rechteverwaltung
+                            </a></li>
+
+                            <li><hr class="dropdown-divider"></li>
+                            <li><h6 class="dropdown-header text-muted">Organisation</h6></li>
+                            <li><a class="dropdown-item" href="/admin/organigramm">
+                                <i class="bi bi-diagram-3"></i> Organigramm
+                            </a></li>
+                            <li><a class="dropdown-item" href="/urlaubsplaner/admin">
+                                <i class="bi bi-calendar-check"></i> Urlaubsplaner Admin
+                            </a></li>
+
+                            <li><hr class="dropdown-divider"></li>
+                            <li><h6 class="dropdown-header text-muted">Entwicklung</h6></li>
+                            <li><a class="dropdown-item" href="/debug/user">
+                                <i class="bi bi-bug"></i> Debug User
+                            </a></li>
+                        </ul>
+                    </li>
+                    {% endif %}
+
                 </ul>
 
                 <!-- Right Side: User Menu -->
@@ -286,25 +341,6 @@
                                 <li><a class="dropdown-item" href="#">
                                     <i class="bi bi-gear"></i> Einstellungen
                                 </a></li>
-                                {% if current_user.portal_role == 'admin' %}
-                                <li><hr class="dropdown-divider"></li>
-                                <li><h6 class="dropdown-header text-muted">Administration</h6></li>
-                                <li><a class="dropdown-item" href="/admin/celery/">
-                                    <i class="bi bi-list-task"></i> Task Manager
-                                </a></li>
-                                <li><a class="dropdown-item" href="http://10.80.80.20:5555" target="_blank">
-                                    <i class="bi bi-flower1"></i> Flower Dashboard
-                                </a></li>
-                                <li><a class="dropdown-item" href="/admin/organigramm">
-                                    <i class="bi bi-diagram-3"></i> Organigramm
-                                </a></li>
-                                <li><a class="dropdown-item" href="/admin/system-status">
-                                    <i class="bi bi-activity"></i> System Status
-                                </a></li>
-                                <li><a class="dropdown-item" href="/debug/user">
-                                    <i class="bi bi-bug"></i> Debug User
-                                </a></li>
-                                {% endif %}
                                 <li><hr class="dropdown-divider"></li>
                                 <li><a class="dropdown-item text-danger" href="/logout">
                                     <i class="bi bi-box-arrow-right"></i> Logout

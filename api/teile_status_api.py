@@ -38,41 +38,43 @@ LIEFERZEITEN_CACHE = {}
 
 
 def load_lieferzeiten():
-    """Lädt durchschnittliche Lieferzeiten pro Lieferant aus SQLite"""
+    """Lädt durchschnittliche Lieferzeiten pro Lieferant aus Portal-DB (PostgreSQL)"""
     global LIEFERZEITEN_CACHE
     try:
-        conn = get_sqlite_connection()
+        conn = get_sqlite_connection()  # Jetzt eigentlich PostgreSQL via db_connection
         cur = conn.cursor()
-        
+
+        # TAG 139: PostgreSQL-kompatible Syntax
         cur.execute("""
             WITH auftrag_teile AS (
                 SELECT p.part_number, o.order_date
                 FROM loco_parts p
                 JOIN loco_orders o ON p.order_number = o.number
-                WHERE o.order_date >= date('now', '-180 days')
+                WHERE o.order_date >= CURRENT_DATE - INTERVAL '180 days'
             ),
             erste_lieferung AS (
                 SELECT part_number, MIN(delivery_note_date) as lieferdatum, supplier_number
                 FROM loco_parts_inbound_delivery_notes
-                WHERE delivery_note_date >= date('now', '-180 days')
+                WHERE delivery_note_date >= CURRENT_DATE - INTERVAL '180 days'
                 GROUP BY part_number
             )
-            SELECT 
+            SELECT
                 el.supplier_number,
-                ROUND(AVG(julianday(el.lieferdatum) - julianday(at.order_date)), 1) as avg_tage,
+                ROUND(AVG(EXTRACT(EPOCH FROM (el.lieferdatum - at.order_date)) / 86400.0)::numeric, 1) as avg_tage,
                 COUNT(*) as anzahl
             FROM auftrag_teile at
             JOIN erste_lieferung el ON at.part_number = el.part_number
-            WHERE julianday(el.lieferdatum) >= julianday(at.order_date)
-            AND julianday(el.lieferdatum) - julianday(at.order_date) BETWEEN 0 AND 30
+            WHERE el.lieferdatum >= at.order_date
+            AND EXTRACT(EPOCH FROM (el.lieferdatum - at.order_date)) / 86400.0 BETWEEN 0 AND 30
             GROUP BY el.supplier_number
             HAVING COUNT(*) >= 10
         """)
         
+        # TAG 139: Index-Zugriff statt Dict (kein RealDictCursor mehr)
         for row in cur.fetchall():
-            LIEFERZEITEN_CACHE[row['supplier_number']] = {
-                'avg_tage': row['avg_tage'],
-                'anzahl': row['anzahl']
+            LIEFERZEITEN_CACHE[row[0]] = {  # supplier_number
+                'avg_tage': row[1],  # avg_tage
+                'anzahl': row[2]     # anzahl
             }
         
         conn.close()
@@ -373,7 +375,7 @@ def get_auftrag_teile(auftrag_nr):
             cur_sqlite.execute("""
                 SELECT supplier_number, MAX(delivery_note_date) as letzte_lieferung
                 FROM loco_parts_inbound_delivery_notes
-                WHERE part_number = ?
+                WHERE part_number = %s
                 GROUP BY supplier_number
                 ORDER BY letzte_lieferung DESC
                 LIMIT 1
@@ -387,7 +389,7 @@ def get_auftrag_teile(auftrag_nr):
                 # Lieferanten-Name
                 cur_sqlite.execute("""
                     SELECT family_name FROM loco_customers_suppliers
-                    WHERE customer_number = ?
+                    WHERE customer_number = %s
                 """, [supplier_nr])
                 name_row = cur_sqlite.fetchone()
                 teil_dict['lieferant_name'] = name_row['family_name'] if name_row else f"Lieferant {supplier_nr}"
@@ -455,30 +457,31 @@ def get_lieferanten_stats():
         conn = get_sqlite_connection()
         cur = conn.cursor()
         
+        # TAG 139: PostgreSQL-kompatible Syntax
         cur.execute("""
             WITH auftrag_teile AS (
                 SELECT p.part_number, o.order_date
                 FROM loco_parts p
                 JOIN loco_orders o ON p.order_number = o.number
-                WHERE o.order_date >= date('now', '-180 days')
+                WHERE o.order_date >= CURRENT_DATE - INTERVAL '180 days'
             ),
             erste_lieferung AS (
                 SELECT part_number, MIN(delivery_note_date) as lieferdatum, supplier_number
                 FROM loco_parts_inbound_delivery_notes
-                WHERE delivery_note_date >= date('now', '-180 days')
+                WHERE delivery_note_date >= CURRENT_DATE - INTERVAL '180 days'
                 GROUP BY part_number
             ),
             stats AS (
-                SELECT 
+                SELECT
                     el.supplier_number,
-                    ROUND(AVG(julianday(el.lieferdatum) - julianday(at.order_date)), 1) as avg_tage,
-                    MIN(julianday(el.lieferdatum) - julianday(at.order_date)) as min_tage,
-                    MAX(julianday(el.lieferdatum) - julianday(at.order_date)) as max_tage,
+                    ROUND(AVG(EXTRACT(EPOCH FROM (el.lieferdatum - at.order_date)) / 86400.0)::numeric, 1) as avg_tage,
+                    MIN(EXTRACT(EPOCH FROM (el.lieferdatum - at.order_date)) / 86400.0) as min_tage,
+                    MAX(EXTRACT(EPOCH FROM (el.lieferdatum - at.order_date)) / 86400.0) as max_tage,
                     COUNT(*) as anzahl
                 FROM auftrag_teile at
                 JOIN erste_lieferung el ON at.part_number = el.part_number
-                WHERE julianday(el.lieferdatum) >= julianday(at.order_date)
-                AND julianday(el.lieferdatum) - julianday(at.order_date) BETWEEN 0 AND 30
+                WHERE el.lieferdatum >= at.order_date
+                AND EXTRACT(EPOCH FROM (el.lieferdatum - at.order_date)) / 86400.0 BETWEEN 0 AND 30
                 GROUP BY el.supplier_number
                 HAVING COUNT(*) >= 10
             )

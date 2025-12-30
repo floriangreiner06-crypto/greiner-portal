@@ -48,15 +48,15 @@ def _get_auftragseingang_data_impl(cursor, day, month, year):
     where_clauses.append(dedup_filter)
     
     if day:
-        where_clauses.append("DATE(s.out_sales_contract_date) = ?")
+        where_clauses.append("DATE(s.out_sales_contract_date) = %s")
         params.append(day)
     else:
         if not year:
             year = datetime.now().year
         if not month:
             month = datetime.now().month
-        where_clauses.append("strftime('%Y', s.out_sales_contract_date) = ?")
-        where_clauses.append("strftime('%m', s.out_sales_contract_date) = ?")
+        where_clauses.append("EXTRACT(YEAR FROM s.out_sales_contract_date) = %s")
+        where_clauses.append("EXTRACT(MONTH FROM s.out_sales_contract_date) = %s")
         params.extend([str(year), f"{month:02d}"])
     
     where_sql = " AND ".join(where_clauses)

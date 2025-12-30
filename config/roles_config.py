@@ -18,6 +18,8 @@ TITLE_TO_ROLE = {
     
     # Buchhaltung → buchhaltung (Vollzugriff)
     'Buchhaltung': 'buchhaltung',
+    'Mitarbeiterin Buchhaltung': 'buchhaltung',
+    'Mitarbeiter Buchhaltung': 'buchhaltung',
 
     # Verkauf
     'Verkaufsleitung': 'verkauf_leitung',

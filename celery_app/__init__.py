@@ -300,6 +300,36 @@ app.conf.update(
             'schedule': crontab(minute=15, hour=19),
             'options': {'queue': 'aftersales'}
         },
+
+        # =====================================================================
+        # LAGER / PENNER MARKTPREISE - TAG 142
+        # =====================================================================
+
+        # Penner Marktpreis-Update (nachts um 3:00)
+        'update-penner-marktpreise': {
+            'task': 'celery_app.tasks.update_penner_marktpreise',
+            'schedule': crontab(minute=0, hour=3),
+            'kwargs': {'min_lagerwert': 50, 'limit': 100},
+            'options': {'queue': 'aftersales'}
+        },
+
+        # Penner Wochenreport (Montag 7:00)
+        'email-penner-weekly': {
+            'task': 'celery_app.tasks.email_penner_weekly',
+            'schedule': crontab(minute=0, hour=7, day_of_week='mon'),
+            'options': {'queue': 'aftersales'}
+        },
+        
+        # =====================================================================
+        # EAUTOSELLER INTEGRATION - TAG 145
+        # =====================================================================
+        
+        # eAutoseller Daten-Sync (alle 15 Min während Arbeitszeit)
+        'sync-eautoseller-data': {
+            'task': 'celery_app.tasks.sync_eautoseller_data',
+            'schedule': crontab(minute='*/15', hour='7-18', day_of_week='mon-fri'),
+            'options': {'queue': 'verkauf'}
+        },
     },
     
     # Task-Routen (welche Queue für welchen Task)

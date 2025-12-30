@@ -13,6 +13,7 @@ Verwendung:
 Author: Claude
 Date: 2025-12-09 (TAG 110)
 Updated: 2025-12-16 (TAG 120) - Azubis ausgeschlossen, Auftragsnummern bei Warnungen, Link-Fix
+Updated: 2025-12-23 (TAG 135) - Dynamische Empfänger aus DB
 """
 
 import os
@@ -40,17 +41,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-BETRIEB_NAMEN = {1: 'Deggendorf', 2: 'Hyundai DEG', 3: 'Landau'}
+# ============================================================================
+# KONFIGURATION
+# ============================================================================
 
-# Empfänger-Konfiguration
-EMAIL_CONFIG = {
-    'absender': 'drive@auto-greiner.de',
-    'empfaenger': {
-        1: ['florian.greiner@auto-greiner.de'],
-        3: ['florian.greiner@auto-greiner.de'],
-        'alle': ['florian.greiner@auto-greiner.de']
-    }
-}
+REPORT_TYPE = 'werkstatt_tagesbericht'  # ID in der Report-Registry
+ABSENDER = 'drive@auto-greiner.de'
+BETRIEB_NAMEN = {1: 'Deggendorf', 2: 'Hyundai DEG', 3: 'Landau'}
+STANDORT_BETRIEB_MAP = {'DEG': 1, 'LAN': 3}  # Mapping für DB-Subscriptions
 
 # API Base URL (lokal)
 API_BASE = 'http://localhost:5000/api/werkstatt/live'
@@ -375,63 +373,126 @@ def erstelle_email_html(daten: dict) -> str:
     return html
 
 
+def get_subscribers_by_standort():
+    """
+    Holt Empfänger aus der DB, gruppiert nach Standort.
+    Returns: dict mit standort -> [emails]
+    """
+    try:
+        from reports.registry import get_subscribers
+
+        # Alle Subscriber für diesen Report
+        all_subs = get_subscribers(REPORT_TYPE)
+
+        # Nach Standort gruppieren
+        by_standort = {
+            None: [],   # Alle Standorte
+            'DEG': [],
+            'LAN': []
+        }
+
+        for sub in all_subs:
+            standort = sub.get('standort')
+            email = sub.get('email')
+
+            if standort is None:
+                by_standort[None].append(email)
+            elif standort in by_standort:
+                by_standort[standort].append(email)
+
+        return by_standort
+
+    except Exception as e:
+        logger.warning(f"Konnte Subscriber nicht aus DB laden: {e}")
+        return {None: [], 'DEG': [], 'LAN': []}
+
+
 def sende_tagesbericht(datum: date = None, subsidiary: int = None, test_mode: bool = False):
     """
     Hauptfunktion: Holt Daten und sendet E-Mail.
+    Wenn subsidiary angegeben: nur an diesen Betrieb
+    Sonst: an alle aus DB nach Standort
     """
     if datum is None:
         datum = date.today()
 
     logger.info(f"=== Werkstatt Tagesbericht für {datum} ===")
 
-    # Daten von API holen
-    logger.info("Hole Daten von API...")
-    daten = hole_api_daten(datum, subsidiary)
+    # Empfänger aus DB holen
+    subscribers_by_standort = get_subscribers_by_standort()
+    total_subs = sum(len(v) for v in subscribers_by_standort.values())
+    logger.info(f"Empfänger aus DB: {total_subs}")
 
-    logger.info(f"  Mechaniker: {daten['kpis'].get('mechaniker_anwesend', 0)}")
-    logger.info(f"  Aufträge: {daten['kpis'].get('auftraege_abgerechnet', 0)}")
-    logger.info(f"  Leistungsgrad: {format_prozent(daten['kpis'].get('leistungsgrad_heute', 0))}")
-    logger.info(f"  Entgangener Umsatz: {format_euro(daten['kpis'].get('entgangener_umsatz', 0))}")
+    if total_subs == 0:
+        logger.warning("KEINE EMPFÄNGER konfiguriert! Bitte in Admin → Reports hinzufügen.")
+        return True  # Kein Fehler, aber nichts zu tun
 
-    # HTML erstellen
-    html_body = erstelle_email_html(daten)
+    connector = GraphMailConnector()
+    emails_sent = 0
 
-    # Empfänger bestimmen
-    if subsidiary and subsidiary in EMAIL_CONFIG['empfaenger']:
-        empfaenger = EMAIL_CONFIG['empfaenger'][subsidiary]
+    # Bestimme welche Reports zu senden sind
+    if subsidiary:
+        # Nur spezifischer Betrieb (z.B. via --betrieb Parameter)
+        standorte_to_send = [(subsidiary, subscribers_by_standort.get(None, []))]
     else:
-        empfaenger = EMAIL_CONFIG['empfaenger']['alle']
+        # Alle Standort-Reports basierend auf Subscriptions
+        standorte_to_send = []
 
-    absender = EMAIL_CONFIG['absender']
-    betreff = f"🔧 Werkstatt Tagesbericht - {daten['datum_formatiert']} ({daten['betrieb_name']})"
+        # Empfänger ohne Standort-Filter bekommen Gesamt-Report (alle Betriebe)
+        if subscribers_by_standort.get(None):
+            standorte_to_send.append((None, subscribers_by_standort[None]))
 
-    if test_mode:
-        logger.info(f"TEST-MODUS: E-Mail würde gesendet an {empfaenger}")
-        logger.info(f"  Betreff: {betreff}")
-        # HTML speichern für Vorschau
-        preview_path = f"/tmp/werkstatt_tagesbericht_{datum}.html"
-        with open(preview_path, 'w', encoding='utf-8') as f:
-            f.write(html_body)
-        logger.info(f"  HTML-Vorschau gespeichert: {preview_path}")
-        return True
+        # Standort-spezifische Reports
+        for standort_code, betrieb_id in STANDORT_BETRIEB_MAP.items():
+            if subscribers_by_standort.get(standort_code):
+                standorte_to_send.append((betrieb_id, subscribers_by_standort[standort_code]))
 
-    # E-Mail senden
-    logger.info(f"Sende E-Mail an {empfaenger}...")
+    for betrieb, empfaenger in standorte_to_send:
+        betrieb_name = BETRIEB_NAMEN.get(betrieb, 'Alle Betriebe')
+        logger.info(f"\n--- Report für {betrieb_name} ---")
 
-    try:
-        connector = GraphMailConnector()
-        connector.send_mail(
-            sender_email=absender,
-            to_emails=empfaenger,
-            subject=betreff,
-            body_html=html_body
-        )
-        logger.info("✅ E-Mail erfolgreich gesendet!")
-        return True
+        # Daten von API holen
+        logger.info("Hole Daten von API...")
+        daten = hole_api_daten(datum, betrieb)
 
-    except Exception as e:
-        logger.error(f"❌ Fehler beim Senden: {e}")
-        return False
+        logger.info(f"  Mechaniker: {daten['kpis'].get('mechaniker_anwesend', 0)}")
+        logger.info(f"  Aufträge: {daten['kpis'].get('auftraege_abgerechnet', 0)}")
+        logger.info(f"  Leistungsgrad: {format_prozent(daten['kpis'].get('leistungsgrad_heute', 0))}")
+        logger.info(f"  Entgangener Umsatz: {format_euro(daten['kpis'].get('entgangener_umsatz', 0))}")
+
+        # HTML erstellen
+        html_body = erstelle_email_html(daten)
+        betreff = f"Werkstatt Tagesbericht - {daten['datum_formatiert']} ({daten['betrieb_name']})"
+
+        if test_mode:
+            logger.info(f"TEST-MODUS: E-Mail würde gesendet an {empfaenger}")
+            logger.info(f"  Betreff: {betreff}")
+            preview_path = f"/tmp/werkstatt_tagesbericht_{datum}_{betrieb or 'alle'}.html"
+            with open(preview_path, 'w', encoding='utf-8') as f:
+                f.write(html_body)
+            logger.info(f"  HTML-Vorschau gespeichert: {preview_path}")
+            continue
+
+        # E-Mail senden
+        logger.info(f"Sende E-Mail an {len(empfaenger)} Empfänger...")
+        for emp in empfaenger:
+            logger.info(f"   - {emp}")
+
+        try:
+            connector.send_mail(
+                sender_email=ABSENDER,
+                to_emails=empfaenger,
+                subject=betreff,
+                body_html=html_body
+            )
+            emails_sent += len(empfaenger)
+            logger.info(f"OK - {betrieb_name} Report gesendet!")
+
+        except Exception as e:
+            logger.error(f"Fehler beim Senden: {e}")
+
+    logger.info(f"\n=== FERTIG: {emails_sent} E-Mails gesendet ===")
+    return emails_sent > 0 or test_mode
 
 
 def main():

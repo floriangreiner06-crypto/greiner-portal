@@ -118,6 +118,14 @@ def werkstatt_preisradar():
     return render_template('aftersales/preisradar.html')
 
 
+@werkstatt_routes.route('/werkstatt/renner-penner')
+@werkstatt_routes.route('/teile/renner-penner')
+@login_required
+def werkstatt_renner_penner():
+    """Renner & Penner - Lagerumschlag-Analyse (TAG 141)"""
+    return render_template('aftersales/renner_penner.html')
+
+
 # ============================================================
 # TAG 116: Kapazitätsplanung (ausgelagert aus Dashboard)
 # ============================================================

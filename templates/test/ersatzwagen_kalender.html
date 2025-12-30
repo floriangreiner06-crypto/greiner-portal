@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+{% block title %}Ersatzwagen-Kalender (PoC) - DRIVE{% endblock %}
+{% block extra_css %}
+<style>
+.kalender-card { border-radius: 10px; overflow: hidden; }
+.fahrzeug-row {
+    padding: 8px 12px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.fahrzeug-row:hover { background: #f8f9fa; }
+.kennzeichen { font-weight: 700; font-family: monospace; font-size: 14px; }
+.modell { color: #6c757d; font-size: 12px; }
+.status-frei { color: #27ae60; }
+.status-belegt { color: #e74c3c; }
+.belegung-info { font-size: 11px; color: #6c757d; }
+.belegung-badge {
+    background: #e74c3c;
+    color: white;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+}
+.frei-badge {
+    background: #27ae60;
+    color: white;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+}
+.stat-card { text-align: center; padding: 15px; border-radius: 10px; }
+.stat-number { font-size: 32px; font-weight: 700; }
+.timeline-container { overflow-x: auto; }
+.timeline { display: flex; gap: 2px; min-width: max-content; }
+.timeline-day {
+    width: 40px;
+    text-align: center;
+    font-size: 10px;
+    padding: 4px 0;
+    border-radius: 4px;
+}
+.timeline-day.heute { background: #3498db; color: white; }
+.timeline-day.belegt { background: #e74c3c; color: white; }
+.timeline-day.frei { background: #27ae60; color: white; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="mb-0">
+            <i class="bi bi-car-front text-primary"></i> Ersatzwagen-Kalender
+            <span class="badge bg-warning text-dark ms-2">PoC</span>
+        </h4>
+        <div class="d-flex gap-2 align-items-center">
+            <input type="date" id="datum-filter" class="form-control form-control-sm" style="width: 150px;">
+            <button class="btn btn-outline-primary btn-sm" onclick="loadData()">
+                <i class="bi bi-arrow-clockwise"></i> Aktualisieren
+            </button>
+            <button class="btn btn-outline-success btn-sm" onclick="syncCarloop()" id="btn-sync">
+                <i class="bi bi-cloud-download"></i> Carloop Sync
+            </button>
+        </div>
+    </div>
+
+    <!-- Statistik -->
+    <div class="row g-3 mb-3">
+        <div class="col-md-3">
+            <div class="stat-card bg-light">
+                <div class="stat-number text-primary" id="stat-gesamt">-</div>
+                <small class="text-muted">Ersatzwagen gesamt</small>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card bg-success bg-opacity-10">
+                <div class="stat-number text-success" id="stat-frei">-</div>
+                <small class="text-muted">Frei</small>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card bg-danger bg-opacity-10">
+                <div class="stat-number text-danger" id="stat-belegt">-</div>
+                <small class="text-muted">Belegt</small>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card bg-info bg-opacity-10">
+                <div class="stat-number text-info" id="stat-quote">-</div>
+                <small class="text-muted">Auslastung</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <!-- Freie Fahrzeuge -->
+        <div class="col-lg-6">
+            <div class="card kalender-card h-100">
+                <div class="card-header bg-success text-white py-2">
+                    <h6 class="mb-0">
+                        <i class="bi bi-check-circle"></i> Verfügbar
+                        <span class="badge bg-light text-success ms-2" id="count-frei">0</span>
+                    </h6>
+                </div>
+                <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
+                    <div id="liste-frei"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Belegte Fahrzeuge -->
+        <div class="col-lg-6">
+            <div class="card kalender-card h-100">
+                <div class="card-header bg-danger text-white py-2">
+                    <h6 class="mb-0">
+                        <i class="bi bi-x-circle"></i> Belegt
+                        <span class="badge bg-light text-danger ms-2" id="count-belegt">0</span>
+                    </h6>
+                </div>
+                <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
+                    <div id="liste-belegt"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Carloop Reservierungen -->
+    <div class="card mt-3">
+        <div class="card-header bg-info text-white py-2 d-flex justify-content-between align-items-center">
+            <h6 class="mb-0"><i class="bi bi-calendar-event"></i> Carloop Reservierungen</h6>
+            <button class="btn btn-light btn-sm" onclick="loadCarloopRes()">
+                <i class="bi bi-arrow-clockwise"></i>
+            </button>
+        </div>
+        <div class="card-body p-0" style="max-height: 300px; overflow-y: auto;">
+            <div id="carloop-liste"></div>
+        </div>
+    </div>
+
+    <!-- API Info -->
+    <div class="card mt-3">
+        <div class="card-header bg-dark text-white py-2">
+            <h6 class="mb-0"><i class="bi bi-code-slash"></i> API Endpoints (PoC)</h6>
+        </div>
+        <div class="card-body">
+            <code>GET /api/ersatzwagen/fahrzeuge</code> - Liste aller Ersatzwagen<br>
+            <code>GET /api/ersatzwagen/verfuegbar?datum=YYYY-MM-DD</code> - Freie Fahrzeuge<br>
+            <code>GET /api/ersatzwagen/kalender?von=...&bis=...</code> - Belegungskalender<br>
+            <code>POST /api/ersatzwagen/zuweisen</code> - Ersatzwagen zu Termin zuweisen<br>
+            <code>POST /api/ersatzwagen/sync</code> - Carloop-Daten synchronisieren<br>
+            <code>GET /api/ersatzwagen/carloop</code> - Carloop-Reservierungen aus DB
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const heute = new Date().toISOString().split('T')[0];
+document.getElementById('datum-filter').value = heute;
+
+async function loadData() {
+    const datum = document.getElementById('datum-filter').value;
+
+    try {
+        const resp = await fetch(`/api/ersatzwagen/verfuegbar?datum=${datum}`);
+        const data = await resp.json();
+
+        if (data.success) {
+            renderData(data);
+        } else {
+            showError(data.error || 'Fehler beim Laden');
+        }
+    } catch (e) {
+        showError('Verbindungsfehler: ' + e.message);
+    }
+}
+
+function renderData(data) {
+    const stats = data.statistik || {};
+    document.getElementById('stat-gesamt').textContent = stats.gesamt || 0;
+    document.getElementById('stat-frei').textContent = stats.frei || 0;
+    document.getElementById('stat-belegt').textContent = stats.belegt || 0;
+
+    const quote = stats.gesamt > 0 ? Math.round((stats.belegt / stats.gesamt) * 100) : 0;
+    document.getElementById('stat-quote').textContent = quote + '%';
+
+    document.getElementById('count-frei').textContent = (data.frei || []).length;
+    document.getElementById('count-belegt').textContent = (data.belegt || []).length;
+
+    // Freie Fahrzeuge
+    const listeFrei = document.getElementById('liste-frei');
+    if (data.frei && data.frei.length > 0) {
+        listeFrei.innerHTML = data.frei.map(f => `
+            <div class="fahrzeug-row">
+                <div>
+                    <span class="kennzeichen">${f.kennzeichen}</span>
+                    <span class="modell ms-2">${f.modell}</span>
+                </div>
+                <span class="frei-badge">Frei</span>
+            </div>
+        `).join('');
+    } else {
+        listeFrei.innerHTML = '<div class="text-center text-muted py-4">Keine freien Fahrzeuge</div>';
+    }
+
+    // Belegte Fahrzeuge
+    const listeBelegt = document.getElementById('liste-belegt');
+    if (data.belegt && data.belegt.length > 0) {
+        listeBelegt.innerHTML = data.belegt.map(f => `
+            <div class="fahrzeug-row">
+                <div>
+                    <span class="kennzeichen">${f.kennzeichen}</span>
+                    <span class="modell ms-2">${f.modell}</span>
+                    <div class="belegung-info">
+                        <i class="bi bi-person"></i> ${f.belegung?.kunde || 'Unbekannt'}
+                        ${f.belegung?.bis ? `<br><i class="bi bi-calendar"></i> bis ${formatDate(f.belegung.bis)}` : ''}
+                    </div>
+                </div>
+                <span class="belegung-badge">Belegt</span>
+            </div>
+        `).join('');
+    } else {
+        listeBelegt.innerHTML = '<div class="text-center text-muted py-4">Keine belegten Fahrzeuge</div>';
+    }
+}
+
+function formatDate(isoStr) {
+    if (!isoStr) return '-';
+    try {
+        const d = new Date(isoStr);
+        return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    } catch {
+        return isoStr;
+    }
+}
+
+function showError(msg) {
+    document.getElementById('liste-frei').innerHTML = `<div class="alert alert-warning m-3">${msg}</div>`;
+    document.getElementById('liste-belegt').innerHTML = '';
+}
+
+document.getElementById('datum-filter').addEventListener('change', loadData);
+
+async function syncCarloop() {
+    const btn = document.getElementById('btn-sync');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Sync...';
+    try {
+        const resp = await fetch('/api/ersatzwagen/sync', { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            alert(`Sync OK: ${data.reservierungen} Reservierungen, ${data.fahrzeuge} Fahrzeuge`);
+            loadData();
+            loadCarloopRes();
+        } else {
+            alert('Sync-Fehler: ' + (data.error || 'Unbekannt'));
+        }
+    } catch (e) {
+        alert('Sync-Fehler: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-cloud-download"></i> Carloop Sync';
+    }
+}
+
+async function loadCarloopRes() {
+    const liste = document.getElementById('carloop-liste');
+    try {
+        const resp = await fetch('/api/ersatzwagen/carloop');
+        const data = await resp.json();
+        if (data.success && data.reservierungen.length > 0) {
+            liste.innerHTML = `<table class="table table-sm table-striped mb-0">
+                <thead><tr><th>Kennzeichen</th><th>Kunde</th><th>Von</th><th>Bis</th><th>Status</th></tr></thead>
+                <tbody>${data.reservierungen.map(r => `
+                    <tr>
+                        <td><code>${r.kennzeichen}</code></td>
+                        <td>${r.kunde_name || '-'}</td>
+                        <td>${formatDate(r.von)}</td>
+                        <td>${formatDate(r.bis)}</td>
+                        <td><span class="badge ${r.status === 'ausgegeben' ? 'bg-danger' : 'bg-secondary'}">${r.status}</span></td>
+                    </tr>
+                `).join('')}</tbody>
+            </table>`;
+        } else {
+            liste.innerHTML = '<div class="text-muted text-center py-3">Keine Carloop-Daten. Klicke "Carloop Sync"</div>';
+        }
+    } catch (e) {
+        liste.innerHTML = `<div class="alert alert-warning m-3">${e.message}</div>`;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => { loadData(); loadCarloopRes(); });
+</script>
+{% endblock %}

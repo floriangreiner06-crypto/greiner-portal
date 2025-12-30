@@ -203,6 +203,15 @@ function renderListe(containerId, mitarbeiter, type) {
         } else if (type === 'primary') {
             badge = `<span class="zeit-badge bg-primary text-white">Seit ${m.aktiv_seit || '-'}</span>
                      <span class="badge bg-dark ms-1">Auftrag ${m.aktiver_auftrag}</span>`;
+        } else if (type === 'danger') {
+            // Abwesend: Grund anzeigen falls vorhanden
+            if (m.abwesenheit_grund) {
+                badge = `<span class="badge bg-warning text-dark">${m.abwesenheit_grund}</span>`;
+            } else if (m.abwesenheit_typ) {
+                badge = `<span class="badge bg-secondary">${m.abwesenheit_typ}</span>`;
+            } else {
+                badge = `<span class="badge bg-light text-muted">Nicht gestempelt</span>`;
+            }
         }
         return `<div class="mitarbeiter-row status-${type === 'success' ? 'ok' : type === 'danger' ? 'danger' : 'aktiv'}">
             <div class="mitarbeiter-info">

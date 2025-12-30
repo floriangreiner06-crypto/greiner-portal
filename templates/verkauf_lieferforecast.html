@@ -1,0 +1,366 @@
+{% extends "base.html" %}
+{% block title %}Lieferforecast - Greiner DRIVE{% endblock %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2><i class="bi bi-calendar-check"></i> Lieferforecast</h2>
+            <p class="text-muted">Geplante Fahrzeugauslieferungen mit Umsatz- und DB1-Prognose</p>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="row mb-4">
+        <div class="col-md-2">
+            <label>Von:</label>
+            <input type="date" id="vonDate" class="form-control">
+        </div>
+        <div class="col-md-2">
+            <label>Bis:</label>
+            <input type="date" id="bisDate" class="form-control">
+        </div>
+        <div class="col-md-2">
+            <label>Standort:</label>
+            <select id="standortSelect" class="form-select">
+                <option value="all">Alle Standorte</option>
+                <option value="DEG">Deggendorf</option>
+                <option value="LAN">Landau</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label>&nbsp;</label>
+            <button id="loadBtn" class="btn btn-primary w-100">
+                <i class="bi bi-search"></i> Laden
+            </button>
+        </div>
+        <div class="col-md-4 text-end">
+            <label>&nbsp;</label>
+            <div class="btn-group">
+                <button class="btn btn-outline-secondary" onclick="setDateRange(7)">7 Tage</button>
+                <button class="btn btn-outline-secondary" onclick="setDateRange(14)">14 Tage</button>
+                <button class="btn btn-outline-secondary" onclick="setDateRange(30)">30 Tage</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Zusammenfassung KPIs -->
+    <div class="row mb-4">
+        <div class="col">
+            <div class="card bg-primary text-white">
+                <div class="card-body text-center py-2">
+                    <h6 class="card-title mb-1">Fahrzeuge</h6>
+                    <h3 id="kpiFahrzeuge" class="mb-0">-</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card bg-success text-white">
+                <div class="card-body text-center py-2">
+                    <h6 class="card-title mb-1">Umsatz Brutto</h6>
+                    <h3 id="kpiBrutto" class="mb-0">-</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card bg-warning text-dark">
+                <div class="card-body text-center py-2">
+                    <h6 class="card-title mb-1">Vorfakturiert</h6>
+                    <h3 id="kpiVorfakturiert" class="mb-0">-</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card bg-info text-white">
+                <div class="card-body text-center py-2">
+                    <h6 class="card-title mb-1">Fakturiert</h6>
+                    <h3 id="kpiFakturiert" class="mb-0">-</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card border-success">
+                <div class="card-body text-center py-2">
+                    <h6 class="card-title mb-1 text-success">DB1 Prognose</h6>
+                    <h3 id="kpiDb1" class="mb-0 text-success">-</h3>
+                    <small id="kpiDb1Prozent" class="text-muted">-</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tages-Übersicht -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-calendar3"></i> Tages-Übersicht</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped mb-0">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Datum</th>
+                                    <th class="text-center">Fzg</th>
+                                    <th class="text-end">Vorfakturiert</th>
+                                    <th class="text-end">Fakturiert</th>
+                                    <th class="text-end">Brutto</th>
+                                    <th class="text-end text-success">DB1</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tageTableBody">
+                                <tr>
+                                    <td colspan="6" class="text-center py-4">
+                                        <div class="spinner-border" role="status"></div>
+                                        <p class="mb-0 mt-2">Lade Daten...</p>
+                                    </td>
+                                </tr>
+                            </tbody>
+                            <tfoot class="table-secondary" id="tageTfoot">
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fahrzeug-Details -->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-car-front"></i> Fahrzeuge</h5>
+                    <span id="fahrzeugeCount" class="badge bg-light text-dark">0</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                        <table class="table table-hover table-sm mb-0">
+                            <thead class="table-dark sticky-top">
+                                <tr>
+                                    <th>Lieferung</th>
+                                    <th>Standort</th>
+                                    <th>Marke</th>
+                                    <th>Modell</th>
+                                    <th>Kennzeichen</th>
+                                    <th class="text-center">Status</th>
+                                    <th class="text-end">Brutto</th>
+                                    <th class="text-end text-success">DB1</th>
+                                    <th class="text-end text-success">%</th>
+                                </tr>
+                            </thead>
+                            <tbody id="fahrzeugeTableBody">
+                                <tr>
+                                    <td colspan="9" class="text-center py-4">
+                                        <div class="spinner-border" role="status"></div>
+                                        <p class="mb-0 mt-2">Lade Daten...</p>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.sticky-top {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+.badge-status {
+    font-size: 0.75rem;
+    padding: 0.35em 0.65em;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Default: heute bis +14 Tage
+    const heute = new Date();
+    const bis = new Date();
+    bis.setDate(bis.getDate() + 14);
+
+    document.getElementById('vonDate').value = formatDate(heute);
+    document.getElementById('bisDate').value = formatDate(bis);
+
+    // Events
+    document.getElementById('loadBtn').addEventListener('click', loadData);
+
+    // Initial load
+    loadData();
+});
+
+function formatDate(date) {
+    return date.toISOString().split('T')[0];
+}
+
+function setDateRange(days) {
+    const heute = new Date();
+    const bis = new Date();
+    bis.setDate(bis.getDate() + days);
+
+    document.getElementById('vonDate').value = formatDate(heute);
+    document.getElementById('bisDate').value = formatDate(bis);
+    loadData();
+}
+
+function formatCurrency(value) {
+    return new Intl.NumberFormat('de-DE', {
+        style: 'currency',
+        currency: 'EUR',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(value);
+}
+
+function formatDateDisplay(dateStr) {
+    const date = new Date(dateStr);
+    const days = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+    return days[date.getDay()] + ', ' + date.toLocaleDateString('de-DE');
+}
+
+function getStatusBadge(status) {
+    switch(status) {
+        case 'VORFAKTURIERT':
+            return '<span class="badge bg-warning text-dark badge-status">Vorfakt.</span>';
+        case 'FAKTURIERT':
+            return '<span class="badge bg-success badge-status">Fakt.</span>';
+        default:
+            return '<span class="badge bg-secondary badge-status">Offen</span>';
+    }
+}
+
+function getTypBadge(typ) {
+    switch(typ) {
+        case 'N':
+            return '<span class="badge bg-primary badge-status">NW</span>';
+        case 'V':
+            return '<span class="badge bg-info badge-status">VF</span>';
+        case 'T':
+            return '<span class="badge bg-info badge-status">TW</span>';
+        default:
+            return '<span class="badge bg-secondary badge-status">' + typ + '</span>';
+    }
+}
+
+function getDb1Color(db1Prozent) {
+    if (db1Prozent >= 5) return 'text-success fw-bold';
+    if (db1Prozent >= 3) return 'text-success';
+    if (db1Prozent >= 0) return 'text-warning';
+    return 'text-danger fw-bold';
+}
+
+async function loadData() {
+    const von = document.getElementById('vonDate').value;
+    const bis = document.getElementById('bisDate').value;
+    const standort = document.getElementById('standortSelect').value;
+
+    // Loading states
+    document.getElementById('tageTableBody').innerHTML = `
+        <tr><td colspan="6" class="text-center py-4">
+            <div class="spinner-border" role="status"></div>
+            <p class="mb-0 mt-2">Lade Daten...</p>
+        </td></tr>`;
+    document.getElementById('fahrzeugeTableBody').innerHTML = `
+        <tr><td colspan="9" class="text-center py-4">
+            <div class="spinner-border" role="status"></div>
+            <p class="mb-0 mt-2">Lade Daten...</p>
+        </td></tr>`;
+
+    try {
+        const response = await fetch(`/api/verkauf/lieferforecast?von=${von}&bis=${bis}&standort=${standort}`);
+        const data = await response.json();
+
+        if (!data.success) {
+            throw new Error(data.error || 'Fehler beim Laden');
+        }
+
+        // KPIs aktualisieren
+        document.getElementById('kpiFahrzeuge').textContent = data.summe.fahrzeuge;
+        document.getElementById('kpiBrutto').textContent = formatCurrency(data.summe.brutto);
+        document.getElementById('kpiVorfakturiert').textContent = formatCurrency(data.summe.vorfakturiert);
+        document.getElementById('kpiFakturiert').textContent = formatCurrency(data.summe.fakturiert);
+        document.getElementById('kpiDb1').textContent = formatCurrency(data.summe.db1);
+        document.getElementById('kpiDb1Prozent').textContent = data.summe.db1_prozent.toFixed(1) + ' %';
+
+        // Tages-Tabelle
+        let tageHtml = '';
+        if (data.tage.length === 0) {
+            tageHtml = '<tr><td colspan="6" class="text-center py-4 text-muted">Keine Auslieferungen im Zeitraum</td></tr>';
+        } else {
+            for (const tag of data.tage) {
+                const isToday = tag.datum === formatDate(new Date());
+                const rowClass = isToday ? 'table-primary' : '';
+                tageHtml += `
+                    <tr class="${rowClass}">
+                        <td><strong>${formatDateDisplay(tag.datum)}</strong>${isToday ? ' <span class="badge bg-primary">Heute</span>' : ''}</td>
+                        <td class="text-center"><span class="badge bg-dark">${tag.fahrzeuge}</span></td>
+                        <td class="text-end text-warning">${formatCurrency(tag.vorfakturiert)}</td>
+                        <td class="text-end text-success">${formatCurrency(tag.fakturiert)}</td>
+                        <td class="text-end fw-bold">${formatCurrency(tag.brutto)}</td>
+                        <td class="text-end text-success fw-bold">${formatCurrency(tag.db1)}</td>
+                    </tr>
+                `;
+            }
+        }
+        document.getElementById('tageTableBody').innerHTML = tageHtml;
+
+        // Summen-Footer
+        document.getElementById('tageTfoot').innerHTML = `
+            <tr>
+                <th>SUMME</th>
+                <th class="text-center">${data.summe.fahrzeuge}</th>
+                <th class="text-end">${formatCurrency(data.summe.vorfakturiert)}</th>
+                <th class="text-end">${formatCurrency(data.summe.fakturiert)}</th>
+                <th class="text-end">${formatCurrency(data.summe.brutto)}</th>
+                <th class="text-end text-success">${formatCurrency(data.summe.db1)} (${data.summe.db1_prozent}%)</th>
+            </tr>
+        `;
+
+        // Fahrzeuge-Tabelle
+        let fzHtml = '';
+        if (data.fahrzeuge.length === 0) {
+            fzHtml = '<tr><td colspan="9" class="text-center py-4 text-muted">Keine Fahrzeuge gefunden</td></tr>';
+        } else {
+            for (const fz of data.fahrzeuge) {
+                const isToday = fz.lieferung === formatDate(new Date());
+                const rowClass = isToday ? 'table-primary' : '';
+                const db1Color = getDb1Color(fz.db1_prozent);
+                // Modell kürzen wenn zu lang
+                const modellKurz = fz.modell && fz.modell.length > 35 ? fz.modell.substring(0, 35) + '...' : fz.modell;
+                fzHtml += `
+                    <tr class="${rowClass}">
+                        <td>${formatDateDisplay(fz.lieferung)}</td>
+                        <td><span class="badge ${fz.standort === 'DEG' ? 'bg-info' : 'bg-secondary'}">${fz.standort}</span></td>
+                        <td><strong>${fz.marke || '-'}</strong></td>
+                        <td title="${fz.modell || ''}">${modellKurz || '-'}</td>
+                        <td>${fz.kennzeichen || '-'}</td>
+                        <td class="text-center">${getStatusBadge(fz.status)}</td>
+                        <td class="text-end">${formatCurrency(fz.brutto_gesamt)}</td>
+                        <td class="text-end ${db1Color}">${formatCurrency(fz.db1)}</td>
+                        <td class="text-end ${db1Color}">${fz.db1_prozent.toFixed(1)}%</td>
+                    </tr>
+                `;
+            }
+        }
+        document.getElementById('fahrzeugeTableBody').innerHTML = fzHtml;
+        document.getElementById('fahrzeugeCount').textContent = data.fahrzeuge.length;
+
+    } catch (error) {
+        console.error('Fehler:', error);
+        document.getElementById('tageTableBody').innerHTML = `
+            <tr><td colspan="6" class="text-center py-4 text-danger">
+                <i class="bi bi-exclamation-triangle"></i> Fehler: ${error.message}
+            </td></tr>`;
+        document.getElementById('fahrzeugeTableBody').innerHTML = `
+            <tr><td colspan="9" class="text-center py-4 text-danger">
+                <i class="bi bi-exclamation-triangle"></i> Fehler: ${error.message}
+            </td></tr>`;
+    }
+}
+</script>
+{% endblock %}

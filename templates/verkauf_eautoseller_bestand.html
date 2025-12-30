@@ -1,0 +1,401 @@
+{% extends "base.html" %}
+{% block title %}eAutoseller Live-Bestand - Greiner DRIVE{% endblock %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2><i class="bi bi-car-front"></i> eAutoseller Live-Bestand</h2>
+            <p class="text-muted">Aktuelle Fahrzeuge auf Hof mit Standzeit-Analyse</p>
+        </div>
+    </div>
+    
+    <!-- eAutoseller KPIs -->
+    <div class="row mb-4" id="eautosellerKpiRow">
+        <div class="col-md-3">
+            <div class="card text-center border-primary">
+                <div class="card-body">
+                    <h5 class="card-title text-primary">Verkäufe (Widget 202)</h5>
+                    <h2 class="mb-0 text-primary" id="kpiVerkaufe">-</h2>
+                    <small class="text-muted">Aus eAutoseller</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center border-info">
+                <div class="card-body">
+                    <h5 class="card-title text-info">Bestand (Widget 203)</h5>
+                    <h2 class="mb-0 text-info" id="kpiBestand">-</h2>
+                    <small class="text-muted">Aktive Fahrzeuge</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center border-success">
+                <div class="card-body">
+                    <h5 class="card-title text-success">Anfragen (Widget 204)</h5>
+                    <h2 class="mb-0 text-success" id="kpiAnfragen">-</h2>
+                    <small class="text-muted">Offene Anfragen</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center border-warning">
+                <div class="card-body">
+                    <h5 class="card-title text-warning">Pipeline (Widget 205)</h5>
+                    <h2 class="mb-0 text-warning" id="kpiPipeline">-</h2>
+                    <small class="text-muted">In Bearbeitung</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Standzeit KPIs -->
+    <div class="row mb-4" id="kpiRow">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title text-muted">Gesamt Fahrzeuge</h5>
+                    <h2 class="mb-0" id="kpiTotal">-</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center border-success">
+                <div class="card-body">
+                    <h5 class="card-title text-success">OK</h5>
+                    <h2 class="mb-0 text-success" id="kpiOk">-</h2>
+                    <small class="text-muted">&lt; 30 Tage</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center border-warning">
+                <div class="card-body">
+                    <h5 class="card-title text-warning">Warnung</h5>
+                    <h2 class="mb-0 text-warning" id="kpiWarning">-</h2>
+                    <small class="text-muted">30-60 Tage</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center border-danger">
+                <div class="card-body">
+                    <h5 class="card-title text-danger">Kritisch</h5>
+                    <h2 class="mb-0 text-danger" id="kpiCritical">-</h2>
+                    <small class="text-muted">&gt; 60 Tage</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Filter -->
+    <div class="row mb-3">
+        <div class="col-md-3">
+            <label>Status:</label>
+            <select id="statusFilter" class="form-select">
+                <option value="">Alle</option>
+                <option value="ok">OK (&lt; 30 Tage)</option>
+                <option value="warning">Warnung (30-60 Tage)</option>
+                <option value="critical">Kritisch (&gt; 60 Tage)</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label>Min. Standzeit (Tage):</label>
+            <input type="number" id="minStandzeit" class="form-control" placeholder="z.B. 60">
+        </div>
+        <div class="col-md-3">
+            <label>Max. Standzeit (Tage):</label>
+            <input type="number" id="maxStandzeit" class="form-control" placeholder="z.B. 90">
+        </div>
+        <div class="col-md-3">
+            <label>&nbsp;</label>
+            <button id="refreshBtn" class="btn btn-primary w-100">
+                <i class="bi bi-arrow-clockwise"></i> Aktualisieren
+            </button>
+        </div>
+    </div>
+    
+    <!-- Loading -->
+    <div class="row mb-3" id="loadingRow" style="display:none;">
+        <div class="col-12 text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Lädt...</span>
+            </div>
+            <p class="mt-2">Daten werden geladen...</p>
+        </div>
+    </div>
+    
+    <!-- Alerts -->
+    <div class="row mb-3" id="alertRow"></div>
+    
+    <!-- Fahrzeugliste -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Fahrzeugliste</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="vehicleTable">
+                            <thead>
+                                <tr>
+                                    <th>Marke</th>
+                                    <th>Modell</th>
+                                    <th>Preis</th>
+                                    <th>Hereinnahme</th>
+                                    <th>Standzeit</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="vehicleTableBody">
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted">
+                                        <i class="bi bi-arrow-clockwise"></i> Daten werden geladen...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Info -->
+    <div class="row mt-3">
+        <div class="col-12">
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i>
+                <strong>Hinweis:</strong> Daten werden direkt aus eAutoseller geladen. 
+                Letzte Aktualisierung: <span id="lastUpdate">-</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ============================================================
+// eAutoseller Bestand Dashboard
+// ============================================================
+
+let currentData = null;
+
+// Initial Load
+$(document).ready(function() {
+    loadKPIs();
+    loadVehicles();
+    
+    // Refresh Button
+    $('#refreshBtn').on('click', function() {
+        loadKPIs();
+        loadVehicles();
+    });
+    
+    // Filter
+    $('#statusFilter, #minStandzeit, #maxStandzeit').on('change', function() {
+        applyFilters();
+    });
+});
+
+// Load KPIs from eAutoseller
+function loadKPIs() {
+    $.ajax({
+        url: '/api/eautoseller/kpis',
+        method: 'GET',
+        success: function(response) {
+            if (response.success && response.kpis) {
+                updateKPICards(response.kpis);
+            } else {
+                console.warn('KPIs konnten nicht geladen werden:', response.error);
+            }
+        },
+        error: function(xhr) {
+            console.error('Fehler beim Laden der KPIs:', xhr.statusText);
+        }
+    });
+}
+
+// Update KPI Cards
+function updateKPICards(kpis) {
+    console.log('Update KPIs:', kpis);
+    
+    // Widget 202: Verkäufe
+    if (kpis.widget_202 && kpis.widget_202.values && kpis.widget_202.values.length > 0) {
+        const value = kpis.widget_202.values[0];
+        $('#kpiVerkaufe').text(value || '-');
+    } else {
+        $('#kpiVerkaufe').text('-');
+    }
+    
+    // Widget 203: Bestand
+    if (kpis.widget_203 && kpis.widget_203.values && kpis.widget_203.values.length > 0) {
+        const value = kpis.widget_203.values[0];
+        $('#kpiBestand').text(value || '-');
+    } else {
+        $('#kpiBestand').text('-');
+    }
+    
+    // Widget 204: Anfragen
+    if (kpis.widget_204 && kpis.widget_204.values && kpis.widget_204.values.length > 0) {
+        const value = kpis.widget_204.values[0];
+        $('#kpiAnfragen').text(value || '-');
+    } else {
+        $('#kpiAnfragen').text('-');
+    }
+    
+    // Widget 205: Pipeline
+    if (kpis.widget_205 && kpis.widget_205.values && kpis.widget_205.values.length > 0) {
+        const value = kpis.widget_205.values[0];
+        $('#kpiPipeline').text(value || '-');
+    } else {
+        $('#kpiPipeline').text('-');
+    }
+}
+
+// Load Vehicles
+function loadVehicles() {
+    $('#loadingRow').show();
+    $('#vehicleTableBody').html('<tr><td colspan="6" class="text-center"><div class="spinner-border spinner-border-sm"></div> Lädt...</td></tr>');
+    
+    $.ajax({
+        url: '/api/eautoseller/vehicles',
+        method: 'GET',
+        data: {
+            active_only: true
+        },
+            fetch_hereinnahme: true,
+        success: function(response) {
+            if (response.success) {
+                currentData = response.vehicles;
+                updateKPIs(response.statistics);
+                renderVehicles(response.vehicles);
+                $('#lastUpdate').text(new Date().toLocaleString('de-DE'));
+            } else {
+                showAlert('danger', 'Fehler: ' + (response.error || 'Unbekannter Fehler'));
+            }
+        },
+        error: function(xhr) {
+            showAlert('danger', 'Fehler beim Laden der Daten: ' + xhr.statusText);
+            $('#vehicleTableBody').html('<tr><td colspan="6" class="text-center text-danger">Fehler beim Laden</td></tr>');
+        },
+        complete: function() {
+            $('#loadingRow').hide();
+        }
+    });
+}
+
+// Update KPIs
+function updateKPIs(stats) {
+    $('#kpiTotal').text(stats.total || 0);
+    $('#kpiOk').text(stats.ok || 0);
+    $('#kpiWarning').text(stats.warning || 0);
+    $('#kpiCritical').text(stats.critical || 0);
+}
+
+// Render Vehicles
+function renderVehicles(vehicles) {
+    if (!vehicles || vehicles.length === 0) {
+        $('#vehicleTableBody').html('<tr><td colspan="6" class="text-center text-muted">Keine Fahrzeuge gefunden</td></tr>');
+        return;
+    }
+    
+    // Sortiere nach Standzeit (kritisch zuerst)
+    vehicles.sort((a, b) => {
+        const standzeitA = a.standzeit_tage || 0;
+        const standzeitB = b.standzeit_tage || 0;
+        return standzeitB - standzeitA;
+    });
+    
+    let html = '';
+    vehicles.forEach(function(vehicle) {
+        const status = vehicle.standzeit_status || 'unknown';
+        const statusClass = {
+            'ok': 'success',
+            'warning': 'warning',
+            'critical': 'danger',
+            'unknown': 'secondary'
+        }[status] || 'secondary';
+        
+        const statusIcon = {
+            'ok': '✓',
+            'warning': '⚠',
+            'critical': '🔴',
+            'unknown': '?'
+        }[status] || '?';
+        
+        const standzeit = vehicle.standzeit_tage !== null ? vehicle.standzeit_tage + ' Tage' : 'N/A';
+        const preis = vehicle.preis ? new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(vehicle.preis) : '-';
+        const hereinnahme = vehicle.hereinnahme ? new Date(vehicle.hereinnahme).toLocaleDateString('de-DE') : '-';
+        
+        html += `
+            <tr class="table-${statusClass === 'danger' ? 'danger' : statusClass === 'warning' ? 'warning' : ''}">
+                <td>${vehicle.marke || '-'}</td>
+                <td>${vehicle.modell || '-'}</td>
+                <td>${preis}</td>
+                <td>${hereinnahme}</td>
+                <td><strong>${standzeit}</strong></td>
+                <td><span class="badge bg-${statusClass}">${statusIcon} ${status.toUpperCase()}</span></td>
+            </tr>
+        `;
+    });
+    
+    $('#vehicleTableBody').html(html);
+}
+
+// Apply Filters
+function applyFilters() {
+    if (!currentData) return;
+    
+    let filtered = [...currentData];
+    
+    // Status Filter
+    const statusFilter = $('#statusFilter').val();
+    if (statusFilter) {
+        filtered = filtered.filter(v => v.standzeit_status === statusFilter);
+    }
+    
+    // Min Standzeit
+    const minStandzeit = $('#minStandzeit').val();
+    if (minStandzeit) {
+        filtered = filtered.filter(v => v.standzeit_tage !== null && v.standzeit_tage >= parseInt(minStandzeit));
+    }
+    
+    // Max Standzeit
+    const maxStandzeit = $('#maxStandzeit').val();
+    if (maxStandzeit) {
+        filtered = filtered.filter(v => v.standzeit_tage !== null && v.standzeit_tage <= parseInt(maxStandzeit));
+    }
+    
+    renderVehicles(filtered);
+    
+    // Update KPIs für gefilterte Daten
+    const stats = {
+        total: filtered.length,
+        ok: filtered.filter(v => v.standzeit_status === 'ok').length,
+        warning: filtered.filter(v => v.standzeit_status === 'warning').length,
+        critical: filtered.filter(v => v.standzeit_status === 'critical').length
+    };
+    updateKPIs(stats);
+}
+
+// Show Alert
+function showAlert(type, message) {
+    const alertHtml = `
+        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    $('#alertRow').html(alertHtml);
+    
+    // Auto-dismiss nach 5 Sekunden
+    setTimeout(function() {
+        $('.alert').fadeOut();
+    }, 5000);
+}
+</script>
+{% endblock %}
+

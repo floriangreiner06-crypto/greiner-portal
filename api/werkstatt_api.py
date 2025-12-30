@@ -10,13 +10,15 @@ Endpoints:
 
 Erstellt: 2025-12-04 (TAG 90)
 Updated: TAG 117 - Migration auf db_session
+Updated: TAG 136 - PostgreSQL-kompatibel
 """
 
 from flask import Blueprint, jsonify, request
 from datetime import datetime, timedelta
 
-# Zentrale DB-Utilities (TAG117)
-from api.db_utils import db_session
+# Zentrale DB-Utilities (TAG117, TAG136: PostgreSQL-kompatibel)
+from api.db_utils import db_session, row_to_dict, rows_to_list
+from api.db_connection import convert_placeholders, get_db_type
 
 werkstatt_api = Blueprint('werkstatt_api', __name__, url_prefix='/api/werkstatt')
 
@@ -109,7 +111,7 @@ def get_leistung():
                 if betrieb_nr == 1:
                     query += " AND (w.betrieb_nr = 1 OR w.betrieb_nr IS NULL OR w.betrieb_nr = 0)"
                 else:
-                    query += " AND w.betrieb_nr = ?"
+                    query += " AND w.betrieb_nr = %s"
                     params.append(betrieb_nr)
 
             if not inkl_ehemalige:
@@ -128,15 +130,16 @@ def get_leistung():
             else:
                 query += " ORDER BY leistungsgrad DESC NULLS LAST"
 
-            cursor.execute(query, params)
-            mechaniker = [dict(row) for row in cursor.fetchall()]
+            # TAG 136: PostgreSQL-Kompatibilität
+            cursor.execute(convert_placeholders(query), params)
+            mechaniker = rows_to_list(cursor.fetchall())
 
-            # Gesamt-KPIs berechnen
-            gesamt_auftraege = sum(m['auftraege'] or 0 for m in mechaniker)
-            gesamt_stempelzeit = sum(m['stempelzeit'] or 0 for m in mechaniker)
-            gesamt_anwesenheit = sum(m['anwesenheit'] or 0 for m in mechaniker)
-            gesamt_aw = sum(m['aw'] or 0 for m in mechaniker)
-            gesamt_umsatz = sum(m['umsatz'] or 0 for m in mechaniker)
+            # Gesamt-KPIs berechnen - TAG 136: float() für PostgreSQL Decimal-Werte
+            gesamt_auftraege = sum(float(m['auftraege'] or 0) for m in mechaniker)
+            gesamt_stempelzeit = sum(float(m['stempelzeit'] or 0) for m in mechaniker)
+            gesamt_anwesenheit = sum(float(m['anwesenheit'] or 0) for m in mechaniker)
+            gesamt_aw = sum(float(m['aw'] or 0) for m in mechaniker)
+            gesamt_umsatz = sum(float(m['umsatz'] or 0) for m in mechaniker)
             gesamt_vorgabe = gesamt_aw * 6
             gesamt_leistungsgrad = round(gesamt_vorgabe / gesamt_stempelzeit * 100, 1) if gesamt_stempelzeit > 0 else 0
             gesamt_produktivitaet = round(gesamt_stempelzeit / gesamt_anwesenheit * 100, 1) if gesamt_anwesenheit > 0 else 0
@@ -153,19 +156,25 @@ def get_leistung():
                 if betrieb_nr == 1:
                     tage_query += " AND (betrieb_nr = 1 OR betrieb_nr IS NULL OR betrieb_nr = 0)"
                 else:
-                    tage_query += " AND betrieb_nr = ?"
+                    tage_query += " AND betrieb_nr = %s"
                     tage_params.append(betrieb_nr)
 
-            cursor.execute(tage_query, tage_params)
-            anzahl_tage = cursor.fetchone()[0] or 0
+            cursor.execute(convert_placeholders(tage_query), tage_params)
+            tage_row = cursor.fetchone()
+            anzahl_tage = (row_to_dict(tage_row) if tage_row else {}).get('count', 0) or (tage_row[0] if tage_row else 0) or 0
 
             # Trend-Daten (letzte 14 Tage)
-            trend_query = """
+            # TAG 136: date('now', '-14 days') -> CURRENT_DATE - INTERVAL für PostgreSQL
+            if get_db_type() == 'postgresql':
+                datum_filter = "datum >= CURRENT_DATE - INTERVAL '14 days'"
+            else:
+                datum_filter = "datum >= date('now', '-14 days')"
+            trend_query = f"""
                 SELECT
                     datum,
                     ROUND(SUM(vorgabezeit_aw) * 6.0 / NULLIF(SUM(stempelzeit_min), 0) * 100, 1) as leistungsgrad
                 FROM werkstatt_leistung_daily
-                WHERE datum >= date('now', '-14 days')
+                WHERE {datum_filter}
             """
             trend_params = []
             if betrieb and betrieb != 'alle':
@@ -173,12 +182,12 @@ def get_leistung():
                 if betrieb_nr == 1:
                     trend_query += " AND (betrieb_nr = 1 OR betrieb_nr IS NULL OR betrieb_nr = 0)"
                 else:
-                    trend_query += " AND betrieb_nr = ?"
+                    trend_query += " AND betrieb_nr = %s"
                     trend_params.append(betrieb_nr)
             trend_query += " GROUP BY datum ORDER BY datum"
 
-            cursor.execute(trend_query, trend_params)
-            trend = [dict(row) for row in cursor.fetchall()]
+            cursor.execute(convert_placeholders(trend_query), trend_params)
+            trend = rows_to_list(cursor.fetchall())
 
             # SOLL-KAPAZITÄT MIT ABWESENHEITEN
             AW_PRO_TAG = 80
@@ -192,12 +201,14 @@ def get_leistung():
                     arbeitstage += 1
                 current += timedelta(days=1)
 
-            mech_query = """
+            # TAG 136: is_latest_record ist BOOLEAN in PostgreSQL, INTEGER in SQLite
+            is_latest_check = "e.is_latest_record = true" if get_db_type() == 'postgresql' else "e.is_latest_record = 1"
+            mech_query = f"""
                 SELECT COUNT(DISTINCT e.employee_number) as anzahl
                 FROM loco_employees e
                 JOIN loco_employees_group_mapping g ON e.employee_number = g.employee_number
                 WHERE g.grp_code = 'MON'
-                AND e.is_latest_record = 1
+                AND {is_latest_check}
                 AND (e.leave_date IS NULL OR e.leave_date > ?)
                 AND e.employee_number NOT IN (
                     SELECT employee_number FROM loco_employees_group_mapping
@@ -210,20 +221,21 @@ def get_leistung():
                 if betrieb_nr == 1:
                     mech_query += " AND (e.subsidiary = 1 OR e.subsidiary IS NULL OR e.subsidiary = 0)"
                 else:
-                    mech_query += " AND e.subsidiary = ?"
+                    mech_query += " AND e.subsidiary = %s"
                     mech_params.append(betrieb_nr)
 
-            cursor.execute(mech_query, mech_params)
-            basis_mechaniker = cursor.fetchone()[0] or 0
+            cursor.execute(convert_placeholders(mech_query), mech_params)
+            mech_row = cursor.fetchone()
+            basis_mechaniker = (row_to_dict(mech_row) if mech_row else {}).get('anzahl', 0) or 0
 
-            abwesenheit_query = """
+            abwesenheit_query = f"""
                 SELECT COUNT(*) as tage
                 FROM loco_absence_calendar ac
                 JOIN loco_employees e ON ac.employee_number = e.employee_number
                 JOIN loco_employees_group_mapping g ON e.employee_number = g.employee_number
                 WHERE ac.date >= ? AND ac.date <= ?
                 AND g.grp_code = 'MON'
-                AND e.is_latest_record = 1
+                AND {is_latest_check}
                 AND e.employee_number NOT IN (
                     SELECT employee_number FROM loco_employees_group_mapping
                     WHERE grp_code IN ('A-W', 'A-L', 'A-K')
@@ -235,12 +247,13 @@ def get_leistung():
                 if betrieb_nr == 1:
                     abwesenheit_query += " AND (e.subsidiary = 1 OR e.subsidiary IS NULL OR e.subsidiary = 0)"
                 else:
-                    abwesenheit_query += " AND e.subsidiary = ?"
+                    abwesenheit_query += " AND e.subsidiary = %s"
                     abwesenheit_params.append(betrieb_nr)
 
             try:
-                cursor.execute(abwesenheit_query, abwesenheit_params)
-                abwesenheitstage = cursor.fetchone()[0] or 0
+                cursor.execute(convert_placeholders(abwesenheit_query), abwesenheit_params)
+                abw_row = cursor.fetchone()
+                abwesenheitstage = (row_to_dict(abw_row) if abw_row else {}).get('tage', 0) or 0
             except:
                 abwesenheitstage = 0
 
@@ -251,13 +264,18 @@ def get_leistung():
             # SVS aus charge_types_sync
             svs = 119.0
             try:
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='charge_types_sync'")
+                # TAG 136: Tabellenprüfung für PostgreSQL/SQLite
+                if get_db_type() == 'postgresql':
+                    cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_name = 'charge_types_sync'")
+                else:
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='charge_types_sync'")
                 if cursor.fetchone():
                     betrieb_nr = 1 if betrieb == 'alle' or betrieb == '1,2' else int(betrieb)
-                    cursor.execute("SELECT stundensatz FROM charge_types_sync WHERE type = 10 AND subsidiary = ?", [betrieb_nr])
+                    cursor.execute(convert_placeholders("SELECT stundensatz FROM charge_types_sync WHERE type = 10 AND subsidiary = %s"), [betrieb_nr])
                     row = cursor.fetchone()
-                    if row and row[0]:
-                        svs = float(row[0])
+                    if row:
+                        r = row_to_dict(row) if row else {}
+                        svs = float(r.get('stundensatz', 119.0) or 119.0)
             except:
                 pass
 
@@ -325,7 +343,7 @@ def get_mechaniker_detail(mechaniker_nr):
         with db_session() as conn:
             cursor = conn.cursor()
 
-            cursor.execute("""
+            cursor.execute(convert_placeholders("""
                 SELECT
                     datum,
                     anzahl_auftraege as auftraege,
@@ -334,13 +352,13 @@ def get_mechaniker_detail(mechaniker_nr):
                     leistungsgrad,
                     umsatz
                 FROM werkstatt_leistung_daily
-                WHERE mechaniker_nr = ?
+                WHERE mechaniker_nr = %s
                 AND datum >= ? AND datum <= ?
                 ORDER BY datum DESC
-            """, [mechaniker_nr, datum_von, datum_bis])
-            tage = [dict(row) for row in cursor.fetchall()]
+            """), [mechaniker_nr, datum_von, datum_bis])
+            tage = rows_to_list(cursor.fetchall())
 
-            cursor.execute("""
+            cursor.execute(convert_placeholders("""
                 SELECT
                     rechnungs_datum,
                     rechnungs_nr,
@@ -354,8 +372,8 @@ def get_mechaniker_detail(mechaniker_nr):
                 WHERE rechnungs_datum >= ? AND rechnungs_datum <= ?
                 ORDER BY rechnungs_datum DESC
                 LIMIT 50
-            """, [datum_von, datum_bis])
-            auftraege = [dict(row) for row in cursor.fetchall()]
+            """), [datum_von, datum_bis])
+            auftraege = rows_to_list(cursor.fetchall())
 
             return jsonify({
                 'success': True,
@@ -402,7 +420,7 @@ def get_schlechteste_auftraege():
                     JOIN loco_labours l ON a.rechnungs_nr = l.invoice_number
                         AND a.rechnungs_typ = l.invoice_type
                     LEFT JOIN loco_employees e ON l.mechanic_no = e.employee_number
-                        AND e.is_latest_record = 1
+                        AND e.is_latest_record = {'true' if get_db_type() == 'postgresql' else '1'}
                     WHERE a.rechnungs_datum >= ? AND a.rechnungs_datum <= ?
                     AND a.leistungsgrad IS NOT NULL
                     AND a.leistungsgrad > 0
@@ -414,7 +432,7 @@ def get_schlechteste_auftraege():
             params = [datum_von, datum_bis, min_stempelzeit]
 
             if betrieb and betrieb != 'alle':
-                query += " AND a.betrieb = ?"
+                query += " AND a.betrieb = %s"
                 params.append(int(betrieb))
 
             query += """
@@ -431,8 +449,8 @@ def get_schlechteste_auftraege():
             """
             params.append(limit)
 
-            cursor.execute(query, params)
-            rows = cursor.fetchall()
+            cursor.execute(convert_placeholders(query), params)
+            rows = rows_to_list(cursor.fetchall())
 
             mechaniker_auftraege = {}
             for row in rows:
@@ -484,7 +502,15 @@ def get_trend():
 
             AW_PRO_TAG = 80
 
-            query = """
+            # TAG 136: date('now', '-X days') -> CURRENT_DATE - INTERVAL für PostgreSQL
+            if get_db_type() == 'postgresql':
+                datum_filter = f"datum >= CURRENT_DATE - INTERVAL '{tage} days'"
+                params = []
+            else:
+                datum_filter = "datum >= date('now', ?)"
+                params = [f'-{tage} days']
+
+            query = f"""
                 SELECT
                     datum,
                     COUNT(DISTINCT mechaniker_nr) as mechaniker,
@@ -495,31 +521,32 @@ def get_trend():
                     ROUND(SUM(vorgabezeit_aw) * 6.0 / NULLIF(SUM(stempelzeit_min), 0) * 100, 1) as leistungsgrad,
                     ROUND(SUM(stempelzeit_min) / NULLIF(SUM(anwesenheit_min), 0) * 100, 1) as auslastung
                 FROM werkstatt_leistung_daily
-                WHERE datum >= date('now', ?)
+                WHERE {datum_filter}
             """
-            params = [f'-{tage} days']
 
             if betrieb and betrieb != 'alle':
                 betrieb_nr = int(betrieb)
                 if betrieb_nr == 1:
                     query += " AND (betrieb_nr = 1 OR betrieb_nr IS NULL OR betrieb_nr = 0)"
                 else:
-                    query += " AND betrieb_nr = ?"
+                    query += " AND betrieb_nr = %s"
                     params.append(betrieb_nr)
 
             query += " GROUP BY datum ORDER BY datum"
 
-            cursor.execute(query, params)
-            trend_raw = [dict(row) for row in cursor.fetchall()]
+            cursor.execute(convert_placeholders(query), params)
+            trend_raw = rows_to_list(cursor.fetchall())
 
-            # Basis-Mechaniker zählen
-            mech_query = """
+            # Basis-Mechaniker zählen - TAG 136: PostgreSQL-kompatibel
+            is_latest = "true" if get_db_type() == 'postgresql' else "1"
+            leave_check = "CURRENT_DATE" if get_db_type() == 'postgresql' else "date('now')"
+            mech_query = f"""
                 SELECT COUNT(DISTINCT e.employee_number) as anzahl
                 FROM loco_employees e
                 JOIN loco_employees_group_mapping g ON e.employee_number = g.employee_number
                 WHERE g.grp_code = 'MON'
-                AND e.is_latest_record = 1
-                AND (e.leave_date IS NULL OR e.leave_date > date('now'))
+                AND e.is_latest_record = {is_latest}
+                AND (e.leave_date IS NULL OR e.leave_date > {leave_check})
                 AND e.employee_number NOT IN (
                     SELECT employee_number FROM loco_employees_group_mapping
                     WHERE grp_code IN ('A-W', 'A-L', 'A-K')
@@ -531,54 +558,62 @@ def get_trend():
                 if betrieb_nr == 1:
                     mech_query += " AND (e.subsidiary = 1 OR e.subsidiary IS NULL OR e.subsidiary = 0)"
                 else:
-                    mech_query += " AND e.subsidiary = ?"
+                    mech_query += " AND e.subsidiary = %s"
                     mech_params.append(betrieb_nr)
 
-            cursor.execute(mech_query, mech_params)
-            basis_mechaniker = cursor.fetchone()[0] or 0
+            cursor.execute(convert_placeholders(mech_query), mech_params)
+            mech_row = cursor.fetchone()
+            basis_mechaniker = (row_to_dict(mech_row) if mech_row else {}).get('anzahl', 0) or 0
 
             trend = []
             for t in trend_raw:
                 datum = t['datum']
 
-                datum_obj = datetime.strptime(datum, '%Y-%m-%d').date()
+                # TAG 136: datum kann ein date-Objekt sein in PostgreSQL
+                if hasattr(datum, 'isoformat'):
+                    datum_str = datum.isoformat()
+                    datum_obj = datum
+                else:
+                    datum_str = str(datum)
+                    datum_obj = datetime.strptime(datum_str, '%Y-%m-%d').date()
                 ist_wochenende = datum_obj.weekday() >= 5
 
-                cursor.execute("""
+                cursor.execute(convert_placeholders("""
                     SELECT name FROM holidays
-                    WHERE date = ? AND bundesland = 'Bayern'
-                """, [datum])
+                    WHERE date = %s AND bundesland = 'Bayern'
+                """), [datum_str])
                 feiertag_row = cursor.fetchone()
                 ist_feiertag = feiertag_row is not None
 
                 ist_werktag = not ist_wochenende and not ist_feiertag
 
                 if ist_werktag:
-                    abw_query = """
+                    abw_query = f"""
                         SELECT COUNT(DISTINCT ac.employee_number) as abwesend
                         FROM loco_absence_calendar ac
                         JOIN loco_employees e ON ac.employee_number = e.employee_number
                         JOIN loco_employees_group_mapping g ON e.employee_number = g.employee_number
-                        WHERE ac.date = ?
+                        WHERE ac.date = %s
                         AND g.grp_code = 'MON'
-                        AND e.is_latest_record = 1
+                        AND e.is_latest_record = {is_latest}
                         AND e.employee_number NOT IN (
                             SELECT employee_number FROM loco_employees_group_mapping
                             WHERE grp_code IN ('A-W', 'A-L', 'A-K')
                         )
                     """
-                    abw_params = [datum]
+                    abw_params = [datum_str]
                     if betrieb and betrieb != 'alle':
                         betrieb_nr = int(betrieb)
                         if betrieb_nr == 1:
                             abw_query += " AND (e.subsidiary = 1 OR e.subsidiary IS NULL OR e.subsidiary = 0)"
                         else:
-                            abw_query += " AND e.subsidiary = ?"
+                            abw_query += " AND e.subsidiary = %s"
                             abw_params.append(betrieb_nr)
 
                     try:
-                        cursor.execute(abw_query, abw_params)
-                        abwesend = cursor.fetchone()[0] or 0
+                        cursor.execute(convert_placeholders(abw_query), abw_params)
+                        abw_row = cursor.fetchone()
+                        abwesend = (row_to_dict(abw_row) if abw_row else {}).get('abwesend', 0) or 0
                     except:
                         abwesend = 0
 
@@ -588,7 +623,7 @@ def get_trend():
                     continue
 
                 trend.append({
-                    'datum': datum,
+                    'datum': datum_str,  # TAG 136: Immer String zurückgeben
                     'mechaniker': t['mechaniker'],
                     'auftraege': t['auftraege'],
                     'stempelzeit': t['stempelzeit'],
@@ -692,7 +727,7 @@ def get_problemfaelle():
                 if betrieb_nr == 1:
                     query += " AND (w.betrieb = 1 OR w.betrieb IS NULL OR w.betrieb = 0)"
                 else:
-                    query += " AND w.betrieb = ?"
+                    query += " AND w.betrieb = %s"
                     params.append(betrieb_nr)
 
             query += " ORDER BY leistungsgrad ASC LIMIT 200"

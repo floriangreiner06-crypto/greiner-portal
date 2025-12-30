@@ -2,20 +2,25 @@
 # -*- coding: utf-8 -*-
 """
 MT940 Import für Bankenspiegel V2 - FINAL CORRECT
+TAG 136: PostgreSQL-kompatibel via db_utils
 """
 
 import sys
-import sqlite3
 import argparse
 from pathlib import Path
 import mt940
 import re
 
+# Projekt-Pfad hinzufügen
+sys.path.insert(0, '/opt/greiner-portal')
+from api.db_utils import db_session, row_to_dict
+from api.db_connection import sql_placeholder, get_db_type, get_db
+
 class MT940Importer:
-    def __init__(self, db_path):
-        self.db_path = db_path
+    def __init__(self):
         self.conn = None
         self.cursor = None
+        self.ph = None  # Placeholder für SQL
         self.stats = {
             'files_read': 0,
             'files_imported': 0,
@@ -25,27 +30,35 @@ class MT940Importer:
             'salden_duplicates': 0,
             'errors': 0
         }
-    
+
     def connect(self):
-        self.conn = sqlite3.connect(self.db_path)
+        # TAG 144: get_db() statt db_session().__enter__() für korrekte PostgreSQL-Verbindung
+        self.conn = get_db()
         self.cursor = self.conn.cursor()
-    
+        self.ph = sql_placeholder()
+
     def close(self):
         if self.conn:
             self.conn.close()
     
     def get_konto_id_by_number(self, kontonummer):
-        self.cursor.execute("SELECT id FROM konten WHERE kontonummer = ?", (kontonummer,))
+        ph = self.ph
+        self.cursor.execute(f"SELECT id FROM konten WHERE kontonummer = {ph}", (kontonummer,))
         result = self.cursor.fetchone()
         if result:
-            return result[0]
-        
+            row = row_to_dict(result)
+            return row['id']
+
+        # LTRIM funktioniert in beiden DBs
         self.cursor.execute(
-            "SELECT id FROM konten WHERE LTRIM(kontonummer, '0') = LTRIM(?, '0')",
+            f"SELECT id FROM konten WHERE LTRIM(kontonummer, '0') = LTRIM({ph}, '0')",
             (kontonummer,)
         )
         result = self.cursor.fetchone()
-        return result[0] if result else None
+        if result:
+            row = row_to_dict(result)
+            return row['id']
+        return None
     
     def extract_kontonummer(self, filename):
         match = re.search(r'Umsaetze[_\s]+(\d+)[_\s]+', filename, re.IGNORECASE)
@@ -63,20 +76,24 @@ class MT940Importer:
         return None
     
     def transaction_exists(self, konto_id, buchungsdatum, betrag, verwendungszweck):
+        ph = self.ph
         self.cursor.execute(
-            """SELECT COUNT(*) FROM transaktionen 
-               WHERE konto_id = ? AND buchungsdatum = ? AND betrag = ? AND verwendungszweck = ?""",
+            f"""SELECT COUNT(*) as cnt FROM transaktionen
+               WHERE konto_id = {ph} AND buchungsdatum = {ph} AND betrag = {ph} AND verwendungszweck = {ph}""",
             (konto_id, buchungsdatum, betrag, verwendungszweck)
         )
-        return self.cursor.fetchone()[0] > 0
-    
+        row = row_to_dict(self.cursor.fetchone())
+        return row['cnt'] > 0
+
     def saldo_exists(self, konto_id, datum):
         """Prüft ob Saldo für dieses Datum existiert"""
+        ph = self.ph
         self.cursor.execute(
-            """SELECT COUNT(*) FROM salden WHERE konto_id = ? AND datum = ?""",
+            f"""SELECT COUNT(*) as cnt FROM salden WHERE konto_id = {ph} AND datum = {ph}""",
             (konto_id, datum)
         )
-        return self.cursor.fetchone()[0] > 0
+        row = row_to_dict(self.cursor.fetchone())
+        return row['cnt'] > 0
     
     def date_to_string(self, date_obj):
         if date_obj is None:
@@ -139,12 +156,13 @@ class MT940Importer:
                 salden_dict[datum] = (saldo, '62F')
 
             # Importieren - INSERT oder UPDATE
+            ph = self.ph
             for datum, (saldo, typ) in salden_dict.items():
                 if not self.saldo_exists(konto_id, datum):
                     # Neuer Eintrag
                     self.cursor.execute(
-                        """INSERT INTO salden (konto_id, datum, saldo, quelle, import_datei)
-                           VALUES (?, ?, ?, 'MT940', ?)""",
+                        f"""INSERT INTO salden (konto_id, datum, saldo, quelle, import_datei)
+                           VALUES ({ph}, {ph}, {ph}, 'MT940', {ph})""",
                         (konto_id, datum, saldo, file_path.name)
                     )
                     salden_imported += 1
@@ -152,8 +170,8 @@ class MT940Importer:
                     # Update wenn 62F (Schlusssaldo)
                     if typ == '62F':
                         self.cursor.execute(
-                            """UPDATE salden SET saldo = ?, import_datei = ?
-                               WHERE konto_id = ? AND datum = ?""",
+                            f"""UPDATE salden SET saldo = {ph}, import_datei = {ph}
+                               WHERE konto_id = {ph} AND datum = {ph}""",
                             (saldo, file_path.name, konto_id, datum)
                         )
                         salden_updated += 1
@@ -198,14 +216,15 @@ class MT940Importer:
             if self.transaction_exists(konto_id, buchungsdatum, betrag, verwendungszweck):
                 self.stats['transactions_duplicates'] += 1
                 return False
-            
+
+            ph = self.ph
             self.cursor.execute(
-                """INSERT INTO transaktionen (
+                f"""INSERT INTO transaktionen (
                     konto_id, buchungsdatum, valutadatum, betrag, buchungstext,
                     verwendungszweck, gegenkonto_iban, gegenkonto_name,
                     import_quelle, import_datei
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'MT940', ?)""",
-                (konto_id, buchungsdatum, valutadatum, betrag, buchungstext, 
+                ) VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, 'MT940', {ph})""",
+                (konto_id, buchungsdatum, valutadatum, betrag, buchungstext,
                  verwendungszweck, gegenkonto_iban, gegenkonto_name, import_datei)
             )
             self.stats['transactions_imported'] += 1
@@ -217,9 +236,13 @@ class MT940Importer:
             return False
     
     def get_konto_name(self, konto_id):
-        self.cursor.execute("SELECT kontoname FROM konten WHERE id = ?", (konto_id,))
+        ph = self.ph
+        self.cursor.execute(f"SELECT kontoname FROM konten WHERE id = {ph}", (konto_id,))
         result = self.cursor.fetchone()
-        return result[0] if result else "Unbekannt"
+        if result:
+            row = row_to_dict(result)
+            return row['kontoname']
+        return "Unbekannt"
     
     def import_file(self, file_path):
         print(f"\n{'='*80}")
@@ -300,17 +323,17 @@ class MT940Importer:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('directory', type=str)
-    parser.add_argument('--db', type=str, default='/opt/greiner-portal/data/greiner_controlling.db')
-    
+    # --db Argument wird ignoriert, db_session nutzt Umgebungsvariable
+
     args = parser.parse_args()
-    
+
     directory = Path(args.directory)
     if not directory.exists():
         print(f"❌ Verzeichnis nicht gefunden")
         sys.exit(1)
-    
-    importer = MT940Importer(args.db)
-    
+
+    importer = MT940Importer()
+
     try:
         importer.connect()
         importer.import_directory(directory)

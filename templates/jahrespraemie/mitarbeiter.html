@@ -20,6 +20,12 @@ tr.nicht-berechtigt {
 tr.kulanz {
     background-color: #fff3cd !important;
 }
+.clickable-row {
+    cursor: pointer;
+}
+.clickable-row:hover {
+    background-color: #e9ecef !important;
+}
 </style>
 {% endblock %}
 
@@ -97,6 +103,7 @@ tr.kulanz {
                             <th class="text-end">Prämie I</th>
                             <th class="text-end">Prämie II</th>
                             <th class="text-end">Gesamt</th>
+                            <th class="text-center">Aktion</th>
                         </tr>
                     </thead>
                     <tbody id="maBody">
@@ -108,9 +115,96 @@ tr.kulanz {
                             <th class="text-end" id="sumP1">-</th>
                             <th class="text-end" id="sumP2">-</th>
                             <th class="text-end" id="sumGesamt">-</th>
+                            <th></th>
                         </tr>
                     </tfoot>
                 </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bearbeiten-Modal -->
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil"></i> Mitarbeiter bearbeiten</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editId">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Vorname</label>
+                        <input type="text" class="form-control" id="editVorname">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Nachname</label>
+                        <input type="text" class="form-control" id="editNachname">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Kategorie</label>
+                        <select class="form-select" id="editKategorie">
+                            <option value="Vollzeit">Vollzeit</option>
+                            <option value="Teilzeit">Teilzeit</option>
+                            <option value="Minijob">Minijob</option>
+                            <option value="Azubi_1">Azubi 1. Jahr</option>
+                            <option value="Azubi_2">Azubi 2. Jahr</option>
+                            <option value="Azubi_3">Azubi 3. Jahr</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Std/Woche</label>
+                        <input type="number" class="form-control" id="editStdWoche" step="0.5">
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Jahresbrutto (€)</label>
+                        <input type="number" class="form-control" id="editJahresbrutto" step="0.01">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Eintritt</label>
+                        <input type="date" class="form-control" id="editEintritt">
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Austritt</label>
+                        <input type="date" class="form-control" id="editAustritt">
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Tätigkeit</label>
+                        <input type="text" class="form-control" id="editTaetigkeit">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="editBerechtigt">
+                            <label class="form-check-label" for="editBerechtigt">Berechtigt</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="editFestgehalt">
+                            <label class="form-check-label" for="editFestgehalt">Festgehalt (keine variable Vergütung)</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-12 mb-3">
+                        <label class="form-label">Berechtigung/Bemerkung</label>
+                        <input type="text" class="form-control" id="editGrund" placeholder="z.B. OK, Ausgetreten, Elternzeit...">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-primary" onclick="saveMitarbeiter()">
+                    <i class="bi bi-check"></i> Speichern & Neu berechnen
+                </button>
             </div>
         </div>
     </div>
@@ -175,7 +269,7 @@ function renderMitarbeiter() {
         sumGesamt += m.praemie_gerundet || 0;
         
         tbody.append(`
-            <tr class="${rowClass}">
+            <tr class="${rowClass} clickable-row" onclick="openEdit(${m.id})">
                 <td>${m.nachname}, ${m.vorname} ${kulanzBadge}</td>
                 <td>${katBadge}</td>
                 <td class="text-center">${m.std_woche || '-'}</td>
@@ -184,6 +278,7 @@ function renderMitarbeiter() {
                 <td class="text-end">${formatCurrency(m.praemie_I)}</td>
                 <td class="text-end">${formatCurrency(m.praemie_II)}</td>
                 <td class="text-end"><strong>${formatCurrency(m.praemie_gerundet)}</strong></td>
+                <td class="text-center"><i class="bi bi-pencil text-primary"></i></td>
             </tr>
         `);
     });
@@ -218,6 +313,69 @@ function exportCSV() {
 
 function formatCurrency(value) {
     return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value || 0);
+}
+
+function openEdit(maId) {
+    const m = alleMitarbeiter.find(x => x.id === maId);
+    if (!m) return;
+
+    $('#editId').val(m.id);
+    $('#editVorname').val(m.vorname);
+    $('#editNachname').val(m.nachname);
+    $('#editKategorie').val(m.kategorie);
+    $('#editStdWoche').val(m.std_woche);
+    $('#editJahresbrutto').val(m.jahresbrutto);
+    $('#editEintritt').val(m.eintritt ? m.eintritt.substring(0, 10) : '');
+    $('#editAustritt').val(m.austritt ? m.austritt.substring(0, 10) : '');
+    $('#editTaetigkeit').val(m.taetigkeit || '');
+    $('#editBerechtigt').prop('checked', m.ist_berechtigt == 1);
+    $('#editFestgehalt').prop('checked', m.ist_festgehalt == 1);
+    // TAG 144: Bei Bearbeitung immer "Manuell" setzen damit Werte nicht überschrieben werden
+    const grund = m.berechtigung_grund || 'OK';
+    $('#editGrund').val(grund.includes('Manuell') ? grund : 'Manuell bearbeitet');
+
+    new bootstrap.Modal($('#editModal')).show();
+}
+
+function saveMitarbeiter() {
+    const data = {
+        id: $('#editId').val(),
+        vorname: $('#editVorname').val(),
+        nachname: $('#editNachname').val(),
+        kategorie: $('#editKategorie').val(),
+        std_woche: $('#editStdWoche').val(),
+        jahresbrutto: $('#editJahresbrutto').val(),
+        eintritt: $('#editEintritt').val(),
+        austritt: $('#editAustritt').val(),
+        taetigkeit: $('#editTaetigkeit').val(),
+        ist_berechtigt: $('#editBerechtigt').is(':checked') ? 1 : 0,
+        ist_festgehalt: $('#editFestgehalt').is(':checked') ? 1 : 0,
+        berechtigung_grund: $('#editGrund').val()
+    };
+
+    $.ajax({
+        url: '/api/jahrespraemie/mitarbeiter/' + data.id,
+        method: 'PUT',
+        contentType: 'application/json',
+        data: JSON.stringify(data)
+    }).done(function(res) {
+        if (res.success) {
+            bootstrap.Modal.getInstance($('#editModal')).hide();
+            // Neu berechnen
+            $.post('/api/jahrespraemie/berechnen/' + BERECHNUNG_ID)
+                .done(function() {
+                    loadMitarbeiter();
+                })
+                .fail(function() {
+                    alert('Daten gespeichert, aber Neuberechnung fehlgeschlagen.');
+                    loadMitarbeiter();
+                });
+        } else {
+            alert('Fehler: ' + (res.error || 'Unbekannt'));
+        }
+    }).fail(function() {
+        alert('Serverfehler beim Speichern');
+    });
 }
 </script>
 {% endblock %}

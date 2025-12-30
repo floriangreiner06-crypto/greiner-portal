@@ -30,7 +30,7 @@ bankenspiegel_bp = Blueprint('bankenspiegel', __name__, url_prefix='/bankenspieg
 
 # ============================================================================
 # KRITISCHER 404-FIX - NIEMALS LÖSCHEN!
-import sqlite3
+# TAG142: sqlite3 Import entfernt - nutze api.db_connection.get_db()
 # ============================================================================
 
 @bankenspiegel_bp.route('/')

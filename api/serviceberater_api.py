@@ -20,8 +20,8 @@ from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
 import calendar
 
-# Zentrale DB-Utilities (TAG117)
-from api.db_utils import get_locosoft_connection, get_db
+# Zentrale DB-Utilities (TAG117, TAG136: PostgreSQL-kompatibel)
+from api.db_utils import get_locosoft_connection, get_db, locosoft_session, row_to_dict
 
 
 # ============================================================
@@ -181,47 +181,57 @@ get_sqlite_connection = get_db
 
 
 def get_ma_namen():
-    """Hole MA-Namen aus employees Tabelle (SQLite)"""
+    """Hole MA-Namen aus employees Tabelle (Portal DB - SQLite/PostgreSQL)
+    TAG136: PostgreSQL-kompatibel via db_session
+    """
     try:
-        conn = get_sqlite_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT locosoft_id, first_name, last_name, department_name
-            FROM employees
-            WHERE locosoft_id IS NOT NULL
-        """)
-        namen = {row[0]: {'name': f"{row[1]} {row[2]}", 'title': row[3] or ''} for row in cursor.fetchall()}
-        conn.close()
-        return namen
+        from api.db_utils import db_session
+        with db_session() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT locosoft_id, first_name, last_name, department_name
+                FROM employees
+                WHERE locosoft_id IS NOT NULL
+            """)
+            # RealDictCursor gibt dict-like rows zurück
+            namen = {}
+            for row in cursor.fetchall():
+                row_dict = row_to_dict(row)
+                namen[row_dict['locosoft_id']] = {
+                    'name': f"{row_dict['first_name']} {row_dict['last_name']}",
+                    'title': row_dict['department_name'] or ''
+                }
+            return namen
     except Exception as e:
         print(f"get_ma_namen error: {e}")
         return {}
 
 
 def get_ma_namen_locosoft():
-    """Hole MA-Namen aus Locosoft employees Tabelle (für 4xxx/5xxx SB)"""
+    """Hole MA-Namen aus Locosoft employees Tabelle (für 4xxx/5xxx SB)
+    Dies geht gegen die EXTERNE Locosoft PostgreSQL-DB (10.80.80.8)
+    """
     try:
-        conn = get_locosoft_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT employee_number, name
-            FROM employees
-            WHERE is_latest_record = true
-              AND employee_number IS NOT NULL
-        """)
-        # Name ist "Nachname,Vorname" -> umwandeln zu "Vorname Nachname"
-        namen = {}
-        for row in cursor.fetchall():
-            ma_id = row[0]
-            name_raw = row[1] or f"MA {ma_id}"
-            if ',' in name_raw:
-                nachname, vorname = name_raw.split(',', 1)
-                namen[ma_id] = {'name': f"{vorname.strip()} {nachname.strip()}", 'title': 'Serviceberater'}
-            else:
-                namen[ma_id] = {'name': name_raw, 'title': 'Serviceberater'}
-        cursor.close()
-        conn.close()
-        return namen
+        with locosoft_session() as conn:
+            # Locosoft hat eigenes RealDictCursor nicht aktiviert
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT employee_number, name
+                FROM employees
+                WHERE is_latest_record = true
+                  AND employee_number IS NOT NULL
+            """)
+            # Name ist "Nachname,Vorname" -> umwandeln zu "Vorname Nachname"
+            namen = {}
+            for row in cursor.fetchall():
+                ma_id = row['employee_number']
+                name_raw = row['name'] or f"MA {ma_id}"
+                if ',' in name_raw:
+                    nachname, vorname = name_raw.split(',', 1)
+                    namen[ma_id] = {'name': f"{vorname.strip()} {nachname.strip()}", 'title': 'Serviceberater'}
+                else:
+                    namen[ma_id] = {'name': name_raw, 'title': 'Serviceberater'}
+            return namen
     except Exception as e:
         print(f"get_ma_namen_locosoft error: {e}")
         return {}
@@ -231,59 +241,77 @@ def get_breakeven_schwelle():
     """
     Hole Breakeven-Schwelle aus TEK (12-Monats-Durchschnitt Gesamtkosten)
     Gleiche Berechnung wie in controlling_routes.py berechne_breakeven_prognose()
+
+    TAG136: PostgreSQL-kompatibel - nutzt db_session (Portal-DB, NICHT Locosoft!)
+    loco_journal_accountings wurde von Locosoft in die Portal-DB importiert.
     """
+    from api.db_utils import db_session
+    from api.db_connection import convert_placeholders
+
     try:
-        conn = get_sqlite_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT
-                COALESCE(SUM(CASE
-                    WHEN (nominal_account_number BETWEEN 415100 AND 415199
-                          OR nominal_account_number BETWEEN 435500 AND 435599
-                          OR (nominal_account_number BETWEEN 455000 AND 456999 AND substr(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
-                          OR (nominal_account_number BETWEEN 487000 AND 487099 AND substr(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
-                          OR nominal_account_number BETWEEN 491000 AND 497899)
-                    THEN CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END ELSE 0 END) / 100.0, 0) as variable,
+        with db_session() as conn:
+            cursor = conn.cursor()
 
-                COALESCE(SUM(CASE
-                    WHEN (nominal_account_number BETWEEN 400000 AND 489999
-                          AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','4','5','6','7')
-                          AND NOT (nominal_account_number BETWEEN 415100 AND 415199
-                                   OR nominal_account_number BETWEEN 424000 AND 424999
-                                   OR nominal_account_number BETWEEN 435500 AND 435599
-                                   OR nominal_account_number BETWEEN 438000 AND 438999
-                                   OR nominal_account_number BETWEEN 455000 AND 456999
-                                   OR nominal_account_number BETWEEN 487000 AND 487099
-                                   OR nominal_account_number BETWEEN 491000 AND 497999))
-                    THEN CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END ELSE 0 END) / 100.0, 0) as direkte,
+            # Datum-Berechnung - DB-unabhängig in Python
+            from datetime import date
+            from dateutil.relativedelta import relativedelta
+            heute = date.today()
+            vor_12_monaten = heute - relativedelta(months=12)
 
-                COALESCE(SUM(CASE
-                    WHEN ((nominal_account_number BETWEEN 400000 AND 499999 AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0')
-                          OR (nominal_account_number BETWEEN 424000 AND 424999 AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
-                          OR (nominal_account_number BETWEEN 438000 AND 438999 AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
-                          OR nominal_account_number BETWEEN 498000 AND 499999
-                          OR (nominal_account_number BETWEEN 891000 AND 896999 AND NOT (nominal_account_number BETWEEN 893200 AND 893299)))
-                    THEN CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END ELSE 0 END) / 100.0, 0) as indirekte
-            FROM loco_journal_accountings
-            WHERE accounting_date >= date('now', '-12 months') AND accounting_date < date('now')
-        """)
-        row = cursor.fetchone()
-        conn.close()
+            # SUBSTR funktioniert in SQLite und PostgreSQL
+            # convert_placeholders: ? -> %s für PostgreSQL
+            cursor.execute(convert_placeholders("""
+                SELECT
+                    COALESCE(SUM(CASE
+                        WHEN (nominal_account_number BETWEEN 415100 AND 415199
+                              OR nominal_account_number BETWEEN 435500 AND 435599
+                              OR (nominal_account_number BETWEEN 455000 AND 456999 AND SUBSTR(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
+                              OR (nominal_account_number BETWEEN 487000 AND 487099 AND SUBSTR(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
+                              OR nominal_account_number BETWEEN 491000 AND 497899)
+                        THEN CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END ELSE 0 END) / 100.0, 0) as variable,
 
-        if row:
-            variable = row[0] or 0
-            direkte = row[1] or 0
-            indirekte = row[2] or 0
-            kosten_pro_monat = (variable + direkte + indirekte) / 12
-            return {
-                'variable': round(variable / 12, 2),
-                'direkte': round(direkte / 12, 2),
-                'indirekte': round(indirekte / 12, 2),
-                'gesamt': round(kosten_pro_monat, 2)
-            }
+                    COALESCE(SUM(CASE
+                        WHEN (nominal_account_number BETWEEN 400000 AND 489999
+                              AND SUBSTR(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','4','5','6','7')
+                              AND NOT (nominal_account_number BETWEEN 415100 AND 415199
+                                       OR nominal_account_number BETWEEN 424000 AND 424999
+                                       OR nominal_account_number BETWEEN 435500 AND 435599
+                                       OR nominal_account_number BETWEEN 438000 AND 438999
+                                       OR nominal_account_number BETWEEN 455000 AND 456999
+                                       OR nominal_account_number BETWEEN 487000 AND 487099
+                                       OR nominal_account_number BETWEEN 491000 AND 497999))
+                        THEN CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END ELSE 0 END) / 100.0, 0) as direkte,
+
+                    COALESCE(SUM(CASE
+                        WHEN ((nominal_account_number BETWEEN 400000 AND 499999 AND SUBSTR(CAST(nominal_account_number AS TEXT), 5, 1) = '0')
+                              OR (nominal_account_number BETWEEN 424000 AND 424999 AND SUBSTR(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
+                              OR (nominal_account_number BETWEEN 438000 AND 438999 AND SUBSTR(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
+                              OR nominal_account_number BETWEEN 498000 AND 499999
+                              OR (nominal_account_number BETWEEN 891000 AND 896999 AND NOT (nominal_account_number BETWEEN 893200 AND 893299)))
+                        THEN CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END ELSE 0 END) / 100.0, 0) as indirekte
+                FROM loco_journal_accountings
+                WHERE accounting_date >= ? AND accounting_date < ?
+            """), (vor_12_monaten.isoformat(), heute.isoformat()))
+            row = cursor.fetchone()
+
+            if row:
+                row_dict = row_to_dict(row)
+                # float() für Decimal-Werte (PostgreSQL)
+                variable = float(row_dict['variable'] or 0)
+                direkte = float(row_dict['direkte'] or 0)
+                indirekte = float(row_dict['indirekte'] or 0)
+                kosten_pro_monat = (variable + direkte + indirekte) / 12
+                return {
+                    'variable': round(variable / 12, 2),
+                    'direkte': round(direkte / 12, 2),
+                    'indirekte': round(indirekte / 12, 2),
+                    'gesamt': round(kosten_pro_monat, 2)
+                }
         return {'variable': 0, 'direkte': 0, 'indirekte': 0, 'gesamt': 430000}  # Fallback
     except Exception as e:
         print(f"get_breakeven_schwelle error: {e}")
+        import traceback
+        traceback.print_exc()
         return {'variable': 0, 'direkte': 0, 'indirekte': 0, 'gesamt': 430000}  # Fallback
 
 
@@ -338,11 +366,14 @@ def uebersicht():
         else:
             standort_filter = f"AND i.subsidiary IN ({','.join(map(str, subsidiaries))})"
 
-        # Serviceberater-Umsätze (KORRIGIERT TAG121: echter SB = order_taking_employee_no)
-        # JOIN mit orders.number (nicht order_number!)
+        # Serviceberater-Umsätze (TAG133: is_customer_reception Flag für echte SB)
+        # JOIN mit orders.number + employees für Rolle
         cursor.execute(f"""
             SELECT
                 o.order_taking_employee_no as ma_id,
+                e.name as name_raw,
+                e.is_customer_reception,
+                e.subsidiary as ma_subsidiary,
                 COUNT(DISTINCT i.invoice_number) as anzahl_rechnungen,
                 SUM(i.total_gross) as umsatz_gesamt,
                 SUM(i.job_amount_gross) as umsatz_arbeit,
@@ -350,6 +381,8 @@ def uebersicht():
                 AVG(i.total_gross) as avg_rechnung
             FROM invoices i
             JOIN orders o ON i.order_number = o.number
+            LEFT JOIN employees e ON o.order_taking_employee_no = e.employee_number
+                AND e.is_latest_record = true
             WHERE i.invoice_date >= %s
               AND i.invoice_date < %s
               AND i.is_canceled = false
@@ -357,19 +390,19 @@ def uebersicht():
               AND i.invoice_type IN (2, 3, 6)
               AND o.order_taking_employee_no IS NOT NULL
               {standort_filter}
-            GROUP BY o.order_taking_employee_no
+            GROUP BY o.order_taking_employee_no, e.name, e.is_customer_reception, e.subsidiary
             ORDER BY umsatz_gesamt DESC
         """, (start_datum, ende_datum))
-        
+
         rows = cursor.fetchall()
         cursor.close()
         conn.close()
 
-        # MA-Namen aus Locosoft (für 4xxx/5xxx SB)
+        # MA-Namen direkt aus Query (nicht mehr separater Aufruf nötig)
         ma_namen = get_ma_namen_locosoft()
 
-        # Anzahl SB für Zielberechnung
-        anzahl_sb = len([r for r in rows if r['ma_id'] in SERVICEBERATER_IDS]) or len(SERVICEBERATER_IDS)
+        # Anzahl SB für Zielberechnung (TAG133: nutze is_customer_reception Flag)
+        anzahl_sb = len([r for r in rows if r.get('is_customer_reception')]) or len(SERVICEBERATER_IDS)
 
         # DYNAMISCHE Zielberechnung aus TEK (TAG121)
         # Breakeven-Schwelle = 12-Monats-Durchschnitt Gesamtkosten (~430.000€)
@@ -406,13 +439,22 @@ def uebersicht():
             else:
                 status = 'danger'
             
-            ma_info = ma_namen.get(ma_id, {})
-            
+            # Name aus Query oder Fallback
+            name_raw = row.get('name_raw') or ''
+            if ',' in name_raw:
+                nachname, vorname = name_raw.split(',', 1)
+                name = f"{vorname.strip()} {nachname.strip()}"
+            else:
+                name = name_raw or f"MA {ma_id}"
+
+            # ist_serviceberater aus Locosoft-Flag (TAG133)
+            ist_sb = row.get('is_customer_reception', False)
+
             serviceberater.append({
                 'ma_id': ma_id,
-                'name': ma_info.get('name', f'MA {ma_id}'),
-                'title': ma_info.get('title', 'Serviceberater'),
-                'ist_serviceberater': ma_id in SERVICEBERATER_IDS,
+                'name': name,
+                'title': 'Serviceberater' if ist_sb else 'Mitarbeiter',
+                'ist_serviceberater': ist_sb,
                 'anzahl_rechnungen': row['anzahl_rechnungen'],
                 'umsatz_gesamt': round(umsatz, 2),
                 'umsatz_arbeit': round(arbeit, 2),
@@ -641,39 +683,75 @@ def detail(ma_id):
 def wettbewerb():
     """
     Aktueller Verkaufswettbewerb (z.B. Contrasept)
-    
+
     Query-Parameter:
     - monat: YYYY-MM (default: aus Wettbewerb-Config)
+
+    Datenquelle: labours-Tabelle (Arbeitspositionen) mit Suchbegriffen
     """
     monat_param = request.args.get('monat')
-    
+
     # Wettbewerb-Zeitraum
     start_datum = AKTIVER_WETTBEWERB['start']
     ende_datum = AKTIVER_WETTBEWERB['ende']
-    
+    suchbegriffe = AKTIVER_WETTBEWERB['suchbegriffe']
+
     try:
         conn = get_locosoft_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
-        # TODO: Hier müssten wir die Positionen der Rechnungen abfragen
-        # um nach "Contrasept" zu filtern. Das erfordert Zugriff auf
-        # eine positions-Tabelle in Locosoft (invoice_positions o.ä.)
-        
-        # Vorerst: Dummy-Daten als Platzhalter
-        # In der echten Implementierung: Query auf positions-Tabelle
-        
+
+        # Contrasept/Desinfektion aus labours-Tabelle
+        # JOIN mit orders für Serviceberater, invoices für Datum
+        cursor.execute("""
+            SELECT
+                o.order_taking_employee_no as ma_id,
+                e.name as name_raw,
+                COUNT(*) as anzahl,
+                ROUND(SUM(l.net_price_in_order)::numeric, 2) as umsatz
+            FROM labours l
+            JOIN orders o ON l.order_number = o.number
+            JOIN invoices i ON l.invoice_type = i.invoice_type AND l.invoice_number = i.invoice_number
+            LEFT JOIN employees e ON o.order_taking_employee_no = e.employee_number AND e.is_latest_record = true
+            WHERE (l.text_line ILIKE %s OR l.text_line ILIKE %s OR l.text_line ILIKE %s)
+              AND l.is_invoiced = true
+              AND i.invoice_date >= %s
+              AND i.invoice_date <= %s
+              AND o.order_taking_employee_no IS NOT NULL
+            GROUP BY o.order_taking_employee_no, e.name
+            ORDER BY COUNT(*) DESC
+        """, (
+            f'%{suchbegriffe[0]}%',
+            f'%{suchbegriffe[1]}%',
+            f'%{suchbegriffe[2]}%',
+            start_datum,
+            ende_datum
+        ))
+
+        rows = cursor.fetchall()
         cursor.close()
         conn.close()
-        
-        # Platzhalter-Ranking (wird später durch echte Daten ersetzt)
-        ranking = [
-            {'rang': 1, 'ma_id': 1025, 'name': 'Serviceberater 1', 'anzahl': 47, 'umsatz': 1410},
-            {'rang': 2, 'ma_id': 1006, 'name': 'Serviceberater 2', 'anzahl': 42, 'umsatz': 1260},
-            {'rang': 3, 'ma_id': 1016, 'name': 'Serviceberater 3', 'anzahl': 31, 'umsatz': 930},
-        ]
-        
+
+        # Ranking aufbereiten
+        ranking = []
+        for idx, row in enumerate(rows, 1):
+            # Name formatieren (Nachname,Vorname → Vorname Nachname)
+            name_raw = row['name_raw'] or f"MA {row['ma_id']}"
+            if ',' in name_raw:
+                nachname, vorname = name_raw.split(',', 1)
+                name = f"{vorname.strip()} {nachname.strip()}"
+            else:
+                name = name_raw
+
+            ranking.append({
+                'rang': idx,
+                'ma_id': row['ma_id'],
+                'name': name,
+                'anzahl': row['anzahl'],
+                'umsatz': float(row['umsatz'] or 0),
+            })
+
         team_gesamt = sum(r['anzahl'] for r in ranking)
-        
+
         return jsonify({
             'success': True,
             'wettbewerb': {
@@ -692,11 +770,11 @@ def wettbewerb():
             'team': {
                 'gesamt': team_gesamt,
                 'ziel': AKTIVER_WETTBEWERB['ziel_team'],
-                'erreichung': round(team_gesamt / AKTIVER_WETTBEWERB['ziel_team'] * 100, 1),
+                'erreichung': round(team_gesamt / AKTIVER_WETTBEWERB['ziel_team'] * 100, 1) if AKTIVER_WETTBEWERB['ziel_team'] > 0 else 0,
             },
-            'hinweis': 'Wettbewerb-Daten sind Platzhalter. Echte Daten erfordern Zugriff auf Rechnungspositionen.',
+            'suchbegriffe': suchbegriffe,
         })
-        
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 

@@ -57,7 +57,7 @@ def get_chef_overview():
                 SELECT DISTINCT
                     ar.approver_ldap_username,
                     e.first_name || ' ' || e.last_name as approver_name,
-                    e.id as approver_id
+                    e.id as approver_id, e.last_name
                 FROM vacation_approval_rules ar
                 JOIN ldap_employee_mapping lem ON ar.approver_ldap_username = lem.ldap_username
                 JOIN employees e ON lem.employee_id = e.id
@@ -85,7 +85,7 @@ def get_chef_overview():
                             ELSE 'Alle'
                         END as standort
                     FROM vacation_approval_rules
-                    WHERE approver_ldap_username = ? AND active = 1 AND priority = 1
+                    WHERE approver_ldap_username = %s AND active = 1 AND priority = 1
                 """, (approver_ldap,))
 
                 rules = cursor.fetchall()
@@ -107,18 +107,18 @@ def get_chef_overview():
                             WHEN 'Landau a.d. Isar' THEN 3
                             ELSE NULL
                         END as subsidiary,
-                        COALESCE(e.location, 'Unbekannt') as standort
+                        COALESCE(e.location, 'Unbekannt') as standort, e.last_name
                     FROM vacation_approval_rules ar
                     JOIN employees e ON e.department_name = ar.loco_grp_code
                         AND (ar.subsidiary IS NULL
                              OR (ar.subsidiary = 1 AND e.location = 'Deggendorf')
                              OR (ar.subsidiary = 3 AND e.location = 'Landau a.d. Isar'))
                     LEFT JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
-                    WHERE ar.approver_ldap_username = ?
+                    WHERE ar.approver_ldap_username = %s
                       AND ar.active = 1
                       AND ar.priority = 1
-                      AND e.aktiv = 1
-                      AND (lem.ldap_username IS NULL OR lem.ldap_username != ?)
+                      AND e.aktiv = true
+                      AND (lem.ldap_username IS NULL OR lem.ldap_username != %s)
                     ORDER BY e.last_name
                 """, (approver_ldap, approver_ldap))
 
