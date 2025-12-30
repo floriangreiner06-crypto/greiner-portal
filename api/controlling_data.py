@@ -127,15 +127,9 @@ def get_tek_data(monat=None, jahr=None, firma='0', standort='0', modus='teil', u
         """, (von, bis))
         einsatz_dict = {r['bereich']: float(r['einsatz'] or 0) for r in cursor.fetchall()}
 
-        # TAG146: Kalkulatorische Lohnkosten für Werkstatt (IMMER hinzurechnen!)
-        # Werkstatt-Lohn wird in Locosoft nicht vollständig gebucht
-        # Wir addieren 40% vom Umsatz als kalkulatorische Lohnkosten
-        if '4-Lohn' in umsatz_dict:
-            werkstatt_umsatz = umsatz_dict['4-Lohn']
-            if werkstatt_umsatz > 0:
-                # Kalkulatorische Lohnkosten: 40% vom Umsatz (addieren zu gebuchten Kosten!)
-                kalk_lohnkosten = werkstatt_umsatz * 0.40
-                einsatz_dict['4-Lohn'] = einsatz_dict.get('4-Lohn', 0) + kalk_lohnkosten
+        # TAG147 FIX: Kalkulatorische Lohnkosten ENTFERNT
+        # Global Cube rechnet OHNE kalkulatorische Aufschläge
+        # Die 40%-Regel war FALSCH und führte zu 25k € Abweichung
 
         # Bereiche zusammenführen
         bereiche = []
