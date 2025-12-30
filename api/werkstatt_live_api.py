@@ -260,24 +260,29 @@ def health_check():
 def get_leistung_live():
     """
     LIVE Mechaniker-Leistungsübersicht direkt aus Locosoft.
-    Ersetzt den SQLite-Mirror-basierten Endpoint.
-    
+
+    **TAG 148 REFACTORING:** Nutzt jetzt werkstatt_data.py (Single Source of Truth)
+    Vorher: 270 Zeilen SQL direkt in API
+    Nachher: 50 Zeilen - nutzt WerkstattData.get_mechaniker_leistung()
+
     Query-Parameter:
     - zeitraum: heute|woche|monat|vormonat|quartal|jahr|custom
     - von: Startdatum (bei custom)
-    - bis: Enddatum (bei custom)  
+    - bis: Enddatum (bei custom)
     - betrieb: alle|1|2|3
     - sort: leistungsgrad|stempelzeit|aw|auftraege
     - inkl_ehemalige: 0|1
     """
     try:
+        from api.werkstatt_data import WerkstattData
+
         zeitraum = request.args.get('zeitraum', 'monat')
         von = request.args.get('von')
         bis = request.args.get('bis')
-        betrieb = request.args.get('betrieb', 'alle')
+        betrieb_param = request.args.get('betrieb', 'alle')
         sort_by = request.args.get('sort', 'leistungsgrad')
         inkl_ehemalige = request.args.get('inkl_ehemalige', '0') == '1'
-        
+
         # Datumsbereich berechnen
         heute = datetime.now().date()
         if zeitraum == 'heute':
@@ -306,220 +311,50 @@ def get_leistung_live():
         else:
             datum_von = heute.replace(day=1)
             datum_bis = heute
-        
-        conn = get_locosoft_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        
-        # Mechaniker-Leistung LIVE aus Locosoft (DEDUPLIZIERT!)
-        query = """
-            WITH 
-            -- Stempelzeit pro Mechaniker/Tag (DEDUPLIZIERT!)
-            stempel_dedupliziert AS (
-                SELECT 
-                    employee_number,
-                    DATE(start_time) as datum,
-                    SUM(minuten) as stempel_min,
-                    COUNT(DISTINCT order_number) as auftraege
-                FROM (
-                    SELECT DISTINCT ON (employee_number, start_time, end_time)
-                        employee_number,
-                        order_number,
-                        start_time,
-                        end_time,
-                        EXTRACT(EPOCH FROM (end_time - start_time)) / 60 as minuten
-                    FROM times
-                    WHERE type = 2
-                      AND end_time IS NOT NULL
-                      AND start_time >= %s AND start_time < %s + INTERVAL '1 day'
-                ) dedup
-                GROUP BY employee_number, DATE(start_time)
-            ),
-            -- Anwesenheit pro Mechaniker/Tag
-            anwesenheit AS (
-                SELECT 
-                    employee_number,
-                    DATE(start_time) as datum,
-                    SUM(EXTRACT(EPOCH FROM (end_time - start_time)) / 60) as anwesend_min
-                FROM times
-                WHERE type = 1
-                  AND end_time IS NOT NULL
-                  AND start_time >= %s AND start_time < %s + INTERVAL '1 day'
-                GROUP BY employee_number, DATE(start_time)
-            ),
-            -- Verrechnete AW pro Mechaniker (aus Rechnungen im Zeitraum)
-            aw_verrechnet AS (
-                SELECT 
-                    l.mechanic_no as employee_number,
-                    SUM(l.time_units) as aw,
-                    SUM(l.net_price_in_order) as umsatz
-                FROM labours l
-                JOIN invoices i ON l.invoice_number = i.invoice_number AND l.invoice_type = i.invoice_type
-                WHERE i.invoice_date >= %s AND i.invoice_date <= %s
-                  AND l.is_invoiced = true
-                  AND l.mechanic_no IS NOT NULL
-                  
-                GROUP BY l.mechanic_no
-            ),
-            -- Mechaniker-Aggregation
-            mechaniker_summen AS (
-                SELECT 
-                    COALESCE(s.employee_number, a.employee_number, aw.employee_number) as employee_number,
-                    COUNT(DISTINCT COALESCE(s.datum, a.datum)) as tage,
-                    COALESCE(SUM(s.auftraege), 0) as auftraege,
-                    COALESCE(SUM(s.stempel_min), 0) as stempelzeit,
-                    COALESCE(SUM(a.anwesend_min), 0) as anwesenheit,
-                    COALESCE(MAX(aw.aw), 0) as aw,
-                    COALESCE(MAX(aw.umsatz), 0) as umsatz
-                FROM stempel_dedupliziert s
-                FULL OUTER JOIN anwesenheit a ON s.employee_number = a.employee_number AND s.datum = a.datum
-                LEFT JOIN aw_verrechnet aw ON COALESCE(s.employee_number, a.employee_number) = aw.employee_number
-                GROUP BY COALESCE(s.employee_number, a.employee_number, aw.employee_number)
-            )
-            SELECT 
-                ms.employee_number as mechaniker_nr,
-                eh.name as name,
-                eh.subsidiary as betrieb,
-                ms.tage,
-                ms.auftraege,
-                ROUND(ms.stempelzeit::numeric, 0) as stempelzeit,
-                ROUND(ms.anwesenheit::numeric, 0) as anwesenheit,
-                ROUND(ms.aw::numeric, 1) as aw,
-                ROUND(ms.umsatz::numeric, 2) as umsatz,
-                CASE 
-                    WHEN ms.stempelzeit > 0 AND ms.aw > 0 
-                    THEN ROUND((ms.aw * 6 / ms.stempelzeit * 100)::numeric, 1)
-                    ELSE NULL
-                END as leistungsgrad,
-                CASE 
-                    WHEN ms.anwesenheit > 0 AND ms.stempelzeit > 0
-                    THEN ROUND((ms.stempelzeit / ms.anwesenheit * 100)::numeric, 1)
-                    ELSE NULL
-                END as produktivitaet,
-                CASE WHEN eh.leave_date IS NULL OR eh.leave_date > CURRENT_DATE THEN true ELSE false END as ist_aktiv
-            FROM mechaniker_summen ms
-            JOIN employees_history eh ON ms.employee_number = eh.employee_number AND eh.is_latest_record = true
-            WHERE ms.employee_number BETWEEN 5000 AND 5999
-              AND ms.employee_number NOT IN (5025, 5026, 5028)  -- Azubis ausschließen
-              AND (ms.stempelzeit > 0 OR ms.aw > 0)
-        """
-        
-        params = [datum_von, datum_bis, datum_von, datum_bis, datum_von, datum_bis]
-        
-        # Filter
-        conditions = []
-        if betrieb and betrieb != 'alle':
-            conditions.append(f"eh.subsidiary = {int(betrieb)}")
-        if not inkl_ehemalige:
-            conditions.append("(eh.leave_date IS NULL OR eh.leave_date > CURRENT_DATE)")
-        
-        if conditions:
-            query += " AND " + " AND ".join(conditions)
-        
-        # Sortierung
-        sort_map = {
-            'leistungsgrad': 'leistungsgrad DESC NULLS LAST',
-            'stempelzeit': 'stempelzeit DESC',
-            'aw': 'aw DESC',
-            'auftraege': 'auftraege DESC'
-        }
-        query += f" ORDER BY {sort_map.get(sort_by, 'leistungsgrad DESC NULLS LAST')}"
-        
-        cur.execute(query, params)
-        mechaniker = cur.fetchall()
-        
-        # Gesamt-KPIs
-        gesamt_auftraege = sum(int(m['auftraege'] or 0) for m in mechaniker)
-        gesamt_stempelzeit = sum(float(m['stempelzeit'] or 0) for m in mechaniker)
-        gesamt_anwesenheit = sum(float(m['anwesenheit'] or 0) for m in mechaniker)
-        gesamt_aw = sum(float(m['aw'] or 0) for m in mechaniker)
-        gesamt_umsatz = sum(float(m['umsatz'] or 0) for m in mechaniker)
-        
-        gesamt_leistungsgrad = round(gesamt_aw * 6 / gesamt_stempelzeit * 100, 1) if gesamt_stempelzeit > 0 else 0
-        gesamt_produktivitaet = round(gesamt_stempelzeit / gesamt_anwesenheit * 100, 1) if gesamt_anwesenheit > 0 else 0
-        
-        # Anzahl Arbeitstage
-        cur.execute("""
-            SELECT COUNT(DISTINCT DATE(start_time)) as count 
-            FROM times 
-            WHERE type = 2 AND start_time >= %s AND start_time < %s + INTERVAL '1 day'
-        """, [datum_von, datum_bis])
-        anzahl_tage = cur.fetchone()['count'] or 0
-        
-        # Trend (letzte 14 Tage)
-        cur.execute("""
-            WITH stempel_trend AS (
-                SELECT 
-                    DATE(start_time) as datum,
-                    SUM(minuten) as stempel_min
-                FROM (
-                    SELECT DISTINCT ON (employee_number, start_time, end_time)
-                        start_time,
-                        EXTRACT(EPOCH FROM (end_time - start_time)) / 60 as minuten
-                    FROM times
-                    WHERE type = 2 AND end_time IS NOT NULL
-                      AND start_time >= CURRENT_DATE - 14
-                ) dedup
-                GROUP BY DATE(start_time)
-            ),
-            aw_trend AS (
-                SELECT 
-                    i.invoice_date as datum,
-                    SUM(l.time_units) as aw
-                FROM labours l
-                JOIN invoices i ON l.invoice_number = i.invoice_number AND l.invoice_type = i.invoice_type
-                WHERE i.invoice_date >= CURRENT_DATE - 14
-                  AND l.is_invoiced = true AND l.mechanic_no IS NOT NULL
-                GROUP BY i.invoice_date
-            )
-            SELECT 
-                s.datum,
-                ROUND((COALESCE(a.aw, 0) * 6 / NULLIF(s.stempel_min, 0) * 100)::numeric, 1) as leistungsgrad
-            FROM stempel_trend s
-            LEFT JOIN aw_trend a ON s.datum = a.datum
-            ORDER BY s.datum
-        """)
-        trend = [{'datum': str(r['datum']), 'leistungsgrad': float(r['leistungsgrad'] or 0)} for r in cur.fetchall()]
-        
-        cur.close()
-        conn.close()
-        
+
+        # Betrieb-Parameter konvertieren
+        betrieb = int(betrieb_param) if betrieb_param and betrieb_param != 'alle' else None
+
+        # ===================================================================
+        # HAUPTDATEN VON WERKSTATT_DATA.PY HOLEN (Single Source of Truth!)
+        # ===================================================================
+        data = WerkstattData.get_mechaniker_leistung(
+            von=datum_von,
+            bis=datum_bis,
+            betrieb=betrieb,
+            inkl_ehemalige=inkl_ehemalige,
+            sort_by=sort_by
+        )
+
+        # Trend holen (letzte 14 Tage)
+        trend = WerkstattData.get_leistung_trend(
+            von=heute - timedelta(days=14),
+            bis=heute
+        )
+
+        # Response aufbauen (Format muss mit altem Endpoint kompatibel sein!)
         return jsonify({
             'success': True,
-            'source': 'LIVE',
+            'source': 'LIVE_V2',  # V2 = nutzt werkstatt_data.py
             'zeitraum': {
-                'von': str(datum_von),
-                'bis': str(datum_bis),
+                'von': data['zeitraum']['von'],
+                'bis': data['zeitraum']['bis'],
                 'label': zeitraum
             },
-            'betrieb': betrieb,
-            'mechaniker': [
-                {
-                    'mechaniker_nr': m['mechaniker_nr'],
-                    'name': m['name'],
-                    'betrieb': m['betrieb'],
-                    'ist_aktiv': m['ist_aktiv'],
-                    'tage': int(m['tage'] or 0),
-                    'auftraege': int(m['auftraege'] or 0),
-                    'stempelzeit': float(m['stempelzeit'] or 0),
-                    'anwesenheit': float(m['anwesenheit'] or 0),
-                    'aw': float(m['aw'] or 0),
-                    'umsatz': float(m['umsatz'] or 0),
-                    'leistungsgrad': float(m['leistungsgrad']) if m['leistungsgrad'] else None,
-                    'produktivitaet': float(m['produktivitaet']) if m['produktivitaet'] else None
-                } for m in mechaniker
-            ],
-            'anzahl_mechaniker': len(mechaniker),
-            'anzahl_tage': anzahl_tage,
-            'gesamt_auftraege': gesamt_auftraege,
-            'gesamt_stempelzeit': gesamt_stempelzeit,
-            'gesamt_anwesenheit': gesamt_anwesenheit,
-            'gesamt_aw': round(gesamt_aw, 1),
-            'gesamt_umsatz': round(gesamt_umsatz, 2),
-            'gesamt_leistungsgrad': gesamt_leistungsgrad,
-            'gesamt_produktivitaet': gesamt_produktivitaet,
+            'betrieb': betrieb_param,
+            'mechaniker': data['mechaniker'],
+            'anzahl_mechaniker': data['anzahl_mechaniker'],
+            'anzahl_tage': data['anzahl_tage'],
+            'gesamt_auftraege': data['gesamt']['auftraege'],
+            'gesamt_stempelzeit': data['gesamt']['stempelzeit'],
+            'gesamt_anwesenheit': data['gesamt']['anwesenheit'],
+            'gesamt_aw': data['gesamt']['aw'],
+            'gesamt_umsatz': data['gesamt']['umsatz'],
+            'gesamt_leistungsgrad': data['gesamt']['leistungsgrad'],
+            'gesamt_produktivitaet': data['gesamt']['produktivitaet'],
             'trend': trend
         })
-        
+
     except Exception as e:
         logger.exception("Fehler bei LIVE Leistungsübersicht")
         return jsonify({
