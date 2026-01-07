@@ -598,26 +598,25 @@ def gesamtplanung():
             datum_bis = f"{kal_jahr}-{kal_monat+1:02d}-01"
         
         # Filter bauen (abhängig von Standort-Filter)
-        # WICHTIG: Kosten (4xxxxx) verwenden Konto-Endziffer (6. Ziffer) für Standort-Zuordnung
+        # WICHTIG: Indirekte Kosten haben 5. Ziffer = '0' (Gemeinkosten), daher kein Endziffer-Filter
+        # Direkte Kosten haben Endziffer 1-7, aber für Gesamtplanung ignorieren wir das
         guv_filter = "AND (posting_text IS NULL OR posting_text NOT LIKE '%%G&V-Abschluss%%')"
         
         if standort_filter:
             # Einzelner Standort
             if standort_filter == 1:
-                # Deggendorf: Stellantis (subsidiary=1, Endziffer=1) + Hyundai (subsidiary=2, Endziffer=2)
-                firma_filter_kosten = "AND ((subsidiary_to_company_ref = 1 AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1') OR (subsidiary_to_company_ref = 2 AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'))"
+                # Deggendorf: Stellantis (subsidiary=1) + Hyundai (subsidiary=2)
+                firma_filter_kosten = "AND (subsidiary_to_company_ref = 1 OR subsidiary_to_company_ref = 2)"
             elif standort_filter == 2:
-                # Hyundai DEG: Nur Hyundai (subsidiary=2, Endziffer=2)
-                firma_filter_kosten = "AND subsidiary_to_company_ref = 2 AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
+                # Hyundai DEG: Nur Hyundai
+                firma_filter_kosten = "AND subsidiary_to_company_ref = 2"
             elif standort_filter == 3:
-                # Landau: Nur Stellantis (subsidiary=1, Endziffer=2)
-                firma_filter_kosten = "AND subsidiary_to_company_ref = 1 AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
+                # Landau: Nur Stellantis
+                firma_filter_kosten = "AND subsidiary_to_company_ref = 1"
             else:
                 firma_filter_kosten = ""
         else:
-            # Alle Standorte: Alle Firmen (aber Endziffer-Filter beachten)
-            # Für indirekte Kosten (Endziffer=0) kein Standort-Filter nötig
-            # Für direkte Kosten: Endziffer 1-7 (verschiedene Standorte)
+            # Alle Standorte: Alle Firmen
             firma_filter_kosten = ""
         
         # Indirekte Kosten laden
