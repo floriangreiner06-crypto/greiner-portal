@@ -616,9 +616,10 @@
     // Filter-Change-Handler
     document.getElementById('filterFirma').addEventListener('change', function() {
         const standortSelect = document.getElementById('filterStandort');
-        // Standort nur bei Stellantis (Firma 1) aktivieren
-        standortSelect.disabled = this.value !== '1';
-        if (this.value !== '1') {
+        // Standort bei Stellantis (Firma 1) oder Alle (Firma 0) aktivieren
+        // Bei Hyundai (Firma 2) deaktivieren, da Hyundai keinen Standort-Filter hat
+        standortSelect.disabled = this.value === '2';
+        if (this.value === '2') {
             standortSelect.value = '0';
         }
     });
