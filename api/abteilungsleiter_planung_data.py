@@ -925,8 +925,8 @@ class AbteilungsleiterPlanungData:
         
         try:
             # 1. Umsatz, DB1, DB2 aus BWA (SSOT) - Bereichs-spezifisch
-            from api.db_utils import db_session, locosoft_session
-            from api.db_connection import convert_placeholders, row_to_dict
+            from api.db_utils import db_session, locosoft_session, row_to_dict
+            from api.db_connection import convert_placeholders
             
             with db_session() as conn:
                 cursor = conn.cursor()
@@ -1134,6 +1134,164 @@ class AbteilungsleiterPlanungData:
         
         except Exception as e:
             logger.error(f"Fehler beim Laden der Vorjahres-Referenz: {str(e)}")
+        
+        return result
+
+    # =========================================================================
+    # BWA YTD (SSOT für kumulierte Werte)
+    # =========================================================================
+
+    @staticmethod
+    def _lade_bwa_ytd(
+        bereich: str,
+        standort: int,
+        bis_monat: int,
+        jahr: int
+    ) -> Dict[str, Any]:
+        """
+        Lädt YTD-Werte direkt aus BWA (SSOT).
+        
+        Args:
+            bereich: 'NW', 'GW', 'Teile', 'Werkstatt', 'Sonstige'
+            standort: 1, 2, oder 3
+            bis_monat: Kalendermonat (1-12)
+            jahr: Kalenderjahr
+        
+        Returns:
+            Dict mit umsatz, db1, db2 (aus BWA)
+        """
+        from api.db_utils import db_session, row_to_dict
+        from api.db_connection import convert_placeholders
+        
+        result = {
+            'umsatz': 0,
+            'db1': 0,
+            'db2': 0
+        }
+        
+        # GJ-Start bestimmen (September)
+        if bis_monat >= 9:
+            gj_start_jahr = jahr
+        else:
+            gj_start_jahr = jahr - 1
+        
+        datum_von = f"{gj_start_jahr}-09-01"
+        if bis_monat == 12:
+            datum_bis = f"{jahr+1}-01-01"
+        else:
+            datum_bis = f"{jahr}-{bis_monat+1:02d}-01"
+        
+        # BWA-Filter bauen
+        if standort == 2:
+            firma = '2'  # Hyundai
+        else:
+            firma = '1'  # Stellantis
+        
+        # BWA-Filter (analog zu build_firma_standort_filter)
+        if firma == '1':
+            firma_filter_umsatz = "AND subsidiary_to_company_ref = 1"
+            firma_filter_einsatz = "AND subsidiary_to_company_ref = 1"
+            firma_filter_kosten = "AND subsidiary_to_company_ref = 1"
+            if standort == 1:
+                firma_filter_umsatz += " AND branch_number = 1"
+                firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
+                firma_filter_kosten += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
+            elif standort == 3:
+                firma_filter_umsatz += " AND branch_number = 3"
+                firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
+                firma_filter_kosten += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
+        elif firma == '2':
+            firma_filter_umsatz = "AND subsidiary_to_company_ref = 2"
+            firma_filter_einsatz = "AND subsidiary_to_company_ref = 2"
+            firma_filter_kosten = "AND subsidiary_to_company_ref = 2"
+        else:
+            firma_filter_umsatz = ""
+            firma_filter_einsatz = ""
+            firma_filter_kosten = ""
+        
+        guv_filter = "AND (posting_text IS NULL OR posting_text NOT LIKE '%%G&V-Abschluss%%')"
+        
+        # Bereichs-spezifische Konten
+        if bereich == 'NW':
+            umsatz_konten = "BETWEEN 810000 AND 819999"
+            einsatz_konten = "BETWEEN 710000 AND 719999"
+        elif bereich == 'GW':
+            umsatz_konten = "BETWEEN 820000 AND 829999"
+            einsatz_konten = "BETWEEN 720000 AND 729999"
+        elif bereich == 'Teile':
+            umsatz_konten = "BETWEEN 830000 AND 839999"
+            einsatz_konten = "BETWEEN 730000 AND 739999"
+        elif bereich == 'Werkstatt':
+            umsatz_konten = "BETWEEN 840000 AND 849999"
+            einsatz_konten = "BETWEEN 740000 AND 749999"
+        elif bereich == 'Sonstige':
+            umsatz_konten = "BETWEEN 860000 AND 869999"
+            einsatz_konten = "BETWEEN 760000 AND 769999"
+        else:
+            return result
+        
+        try:
+            with db_session() as conn:
+                cursor = conn.cursor()
+                
+                # Umsatz YTD
+                cursor.execute(convert_placeholders(f"""
+                    SELECT COALESCE(SUM(
+                        CASE WHEN debit_or_credit = 'H' THEN posted_value ELSE -posted_value END
+                    ) / 100.0, 0) as umsatz
+                    FROM loco_journal_accountings
+                    WHERE accounting_date >= ? AND accounting_date < ?
+                      AND nominal_account_number {umsatz_konten}
+                      {firma_filter_umsatz}
+                      {guv_filter}
+                """), (datum_von, datum_bis))
+                row = cursor.fetchone()
+                result['umsatz'] = float(row_to_dict(row)['umsatz'] or 0) if row else 0
+                
+                # Einsatz YTD
+                cursor.execute(convert_placeholders(f"""
+                    SELECT COALESCE(SUM(
+                        CASE WHEN debit_or_credit = 'S' THEN posted_value ELSE -posted_value END
+                    ) / 100.0, 0) as einsatz
+                    FROM loco_journal_accountings
+                    WHERE accounting_date >= ? AND accounting_date < ?
+                      AND nominal_account_number {einsatz_konten}
+                      {firma_filter_einsatz}
+                      {guv_filter}
+                """), (datum_von, datum_bis))
+                row = cursor.fetchone()
+                einsatz = float(row_to_dict(row)['einsatz'] or 0) if row else 0
+                
+                # DB1 YTD
+                result['db1'] = result['umsatz'] - einsatz
+                
+                # Variable Kosten YTD
+                cursor.execute(convert_placeholders(f"""
+                    SELECT COALESCE(SUM(
+                        CASE WHEN debit_or_credit = 'S' THEN posted_value ELSE -posted_value END
+                    ) / 100.0, 0) as variable
+                    FROM loco_journal_accountings
+                    WHERE accounting_date >= ? AND accounting_date < ?
+                      AND (
+                        nominal_account_number BETWEEN 415100 AND 415199
+                        OR nominal_account_number BETWEEN 435500 AND 435599
+                        OR (nominal_account_number BETWEEN 455000 AND 456999
+                            AND substr(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
+                        OR (nominal_account_number BETWEEN 487000 AND 487099
+                            AND substr(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
+                        OR nominal_account_number BETWEEN 491000 AND 497899
+                      )
+                      {firma_filter_kosten}
+                      {guv_filter}
+                """), (datum_von, datum_bis))
+                row = cursor.fetchone()
+                variable = float(row_to_dict(row)['variable'] or 0) if row else 0
+                
+                # DB2 YTD
+                result['db2'] = result['db1'] - variable
+                
+        except Exception as e:
+            logger.error(f"Fehler beim Laden der BWA YTD-Werte: {str(e)}")
         
         return result
 
@@ -1389,22 +1547,51 @@ class AbteilungsleiterPlanungData:
                     db2_plan = float(planung.get('db2_ziel', 0) or 0) if planung else 0
                     stueck_plan = int(planung.get('plan_stueck', 0) or 0) if planung else 0
                 
-                # Vorjahreswerte
+                # Vorjahreswerte (aus BWA)
                 umsatz_vj = float(vorjahr.get('umsatz', 0) or 0)
                 db1_vj = float(vorjahr.get('db1', 0) or 0)
                 db2_vj = float(vorjahr.get('db2', 0) or 0)
                 stueck_vj = int(vorjahr.get('stueck', 0) or 0)
                 
-                # Kumulieren
+                # Kumulieren (Planung)
                 kum_umsatz += umsatz_plan
                 kum_db1 += db1_plan
                 kum_db2 += db2_plan
                 kum_stueck += stueck_plan
                 
+                # VJ-Werte kumulieren (für einzelne Monate)
                 kum_umsatz_vj += umsatz_vj
                 kum_db1_vj += db1_vj
                 kum_db2_vj += db2_vj
                 kum_stueck_vj += stueck_vj
+                
+                # YTD und VJ-YTD direkt aus BWA laden (SSOT)
+                # GJ-Monat zu Kalendermonat konvertieren
+                gj_start_jahr = int(geschaeftsjahr.split('/')[0])
+                if monat <= 4:  # Sep-Dez
+                    kal_monat = monat + 8
+                    kal_jahr = gj_start_jahr
+                else:  # Jan-Aug
+                    kal_monat = monat - 4
+                    kal_jahr = gj_start_jahr + 1
+                
+                # YTD aus BWA (vom GJ-Start bis aktuellen Monat)
+                ytd_bwa = AbteilungsleiterPlanungData._lade_bwa_ytd(
+                    bereich, standort, kal_monat, kal_jahr
+                )
+                
+                # VJ-YTD aus BWA (vom VJ-GJ-Start bis entsprechenden Monat)
+                vj_gj_start = gj_start_jahr - 1
+                if monat <= 4:  # Sep-Dez
+                    vj_kal_monat = monat + 8
+                    vj_kal_jahr = vj_gj_start
+                else:  # Jan-Aug
+                    vj_kal_monat = monat - 4
+                    vj_kal_jahr = vj_gj_start + 1
+                
+                vj_ytd_bwa = AbteilungsleiterPlanungData._lade_bwa_ytd(
+                    bereich, standort, vj_kal_monat, vj_kal_jahr
+                )
                 
                 # Monatsname
                 monatsnamen = ['Sep', 'Okt', 'Nov', 'Dez', 'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug']
@@ -1424,35 +1611,50 @@ class AbteilungsleiterPlanungData:
                     'db2_vj': db2_vj,
                     'stueck_vj': stueck_vj,
                     'kumuliert': {
-                        'umsatz': kum_umsatz,
-                        'db1': kum_db1,
-                        'db2': kum_db2,
-                        'stueck': kum_stueck
+                        'umsatz': ytd_bwa.get('umsatz', kum_umsatz),
+                        'db1': ytd_bwa.get('db1', kum_db1),
+                        'db2': ytd_bwa.get('db2', kum_db2),
+                        'stueck': kum_stueck  # Stückzahl weiterhin kumuliert
                     },
                     'kumuliert_vj': {
-                        'umsatz': kum_umsatz_vj,
-                        'db1': kum_db1_vj,
-                        'db2': kum_db2_vj,
-                        'stueck': kum_stueck_vj
+                        'umsatz': vj_ytd_bwa.get('umsatz', kum_umsatz_vj),
+                        'db1': vj_ytd_bwa.get('db1', kum_db1_vj),
+                        'db2': vj_ytd_bwa.get('db2', kum_db2_vj),
+                        'stueck': kum_stueck_vj  # Stückzahl weiterhin kumuliert
                     },
                     'monat_abgelaufen': monat_abgelaufen,
                     'ist_werte_verwendet': monat_abgelaufen and not planung  # Flag: IST-Werte statt Planung
                 })
             
-            # Gesamt-Kumulierte Werte
-            result['kumuliert'] = {
-                'umsatz': kum_umsatz,
-                'db1': kum_db1,
-                'db2': kum_db2,
-                'stueck': kum_stueck
-            }
-            
-            result['kumuliert_vj'] = {
-                'umsatz': kum_umsatz_vj,
-                'db1': kum_db1_vj,
-                'db2': kum_db2_vj,
-                'stueck': kum_stueck_vj
-            }
+            # Gesamt-Kumulierte Werte (letzter Monat = Gesamt)
+            # YTD und VJ-YTD für letzten Monat (August = GJ-Monat 12) direkt aus BWA
+            if result['monate']:
+                letzter_monat = result['monate'][-1]
+                result['kumuliert'] = letzter_monat.get('kumuliert', {
+                    'umsatz': kum_umsatz,
+                    'db1': kum_db1,
+                    'db2': kum_db2,
+                    'stueck': kum_stueck
+                })
+                result['kumuliert_vj'] = letzter_monat.get('kumuliert_vj', {
+                    'umsatz': kum_umsatz_vj,
+                    'db1': kum_db1_vj,
+                    'db2': kum_db2_vj,
+                    'stueck': kum_stueck_vj
+                })
+            else:
+                result['kumuliert'] = {
+                    'umsatz': kum_umsatz,
+                    'db1': kum_db1,
+                    'db2': kum_db2,
+                    'stueck': kum_stueck
+                }
+                result['kumuliert_vj'] = {
+                    'umsatz': kum_umsatz_vj,
+                    'db1': kum_db1_vj,
+                    'db2': kum_db2_vj,
+                    'stueck': kum_stueck_vj
+                }
             
             return result
             
