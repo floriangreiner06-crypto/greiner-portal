@@ -1179,3 +1179,318 @@ class AbteilungsleiterPlanungData:
             logger.error(f"Fehler bei Freigabe: {str(e)}")
             return {'success': False, 'message': str(e)}
 
+    # =========================================================================
+    # JAHRESPLANUNG & KUMULIERTE WERTE
+    # =========================================================================
+
+    @staticmethod
+    def lade_jahresplanung(
+        geschaeftsjahr: str,
+        bereich: str,
+        standort: int
+    ) -> Dict[str, Any]:
+        """
+        Lädt alle Planungen für ein Geschäftsjahr (alle 12 Monate).
+        
+        Args:
+            geschaeftsjahr: z.B. '2025/26'
+            bereich: 'NW', 'GW', 'Teile', 'Werkstatt', 'Sonstige'
+            standort: 1, 2, oder 3
+        
+        Returns:
+            Dict mit:
+            - monate: Liste aller 12 Monate mit Planungsdaten
+            - kumuliert: Kumulierte Werte (YTD)
+            - kumuliert_vj: Kumulierte Vorjahres-Werte
+        """
+        from api.db_utils import db_session, row_to_dict
+        from psycopg2.extras import RealDictCursor
+        
+        result = {
+            'geschaeftsjahr': geschaeftsjahr,
+            'bereich': bereich,
+            'standort': standort,
+            'monate': [],
+            'kumuliert': {
+                'umsatz': 0,
+                'db1': 0,
+                'db2': 0,
+                'stueck': 0
+            },
+            'kumuliert_vj': {
+                'umsatz': 0,
+                'db1': 0,
+                'db2': 0,
+                'stueck': 0
+            }
+        }
+        
+        try:
+            with db_session() as conn:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                
+                # Alle Planungen für dieses Jahr laden
+                cursor.execute("""
+                    SELECT * FROM abteilungsleiter_planung
+                    WHERE geschaeftsjahr = %s AND bereich = %s AND standort = %s
+                    ORDER BY monat
+                """, (geschaeftsjahr, bereich, standort))
+                
+                planungen = {row['monat']: row_to_dict(row) for row in cursor.fetchall()}
+            
+            # Für alle 12 GJ-Monate Daten sammeln
+            kum_umsatz = 0
+            kum_db1 = 0
+            kum_db2 = 0
+            kum_stueck = 0
+            
+            kum_umsatz_vj = 0
+            kum_db1_vj = 0
+            kum_db2_vj = 0
+            kum_stueck_vj = 0
+            
+            for monat in range(1, 13):
+                planung = planungen.get(monat)
+                
+                # Vorjahres-Referenz laden
+                vorjahr = AbteilungsleiterPlanungData._lade_vorjahr_referenz(
+                    bereich, standort, monat, geschaeftsjahr
+                )
+                
+                # Planungswerte (falls vorhanden)
+                umsatz_plan = float(planung.get('umsatz_ziel', 0) or 0) if planung else 0
+                db1_plan = float(planung.get('db1_ziel', 0) or 0) if planung else 0
+                db2_plan = float(planung.get('db2_ziel', 0) or 0) if planung else 0
+                stueck_plan = int(planung.get('plan_stueck', 0) or 0) if planung else 0
+                
+                # Vorjahreswerte
+                umsatz_vj = float(vorjahr.get('umsatz', 0) or 0)
+                db1_vj = float(vorjahr.get('db1', 0) or 0)
+                db2_vj = float(vorjahr.get('db2', 0) or 0)
+                stueck_vj = int(vorjahr.get('stueck', 0) or 0)
+                
+                # Kumulieren
+                kum_umsatz += umsatz_plan
+                kum_db1 += db1_plan
+                kum_db2 += db2_plan
+                kum_stueck += stueck_plan
+                
+                kum_umsatz_vj += umsatz_vj
+                kum_db1_vj += db1_vj
+                kum_db2_vj += db2_vj
+                kum_stueck_vj += stueck_vj
+                
+                # Monatsname
+                monatsnamen = ['Sep', 'Okt', 'Nov', 'Dez', 'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug']
+                monat_name = monatsnamen[monat - 1]
+                
+                # Prüfen ob Monat abgelaufen
+                monat_abgelaufen = ist_monat_abgelaufen(geschaeftsjahr, monat)
+                
+                result['monate'].append({
+                    'monat': monat,
+                    'monat_name': monat_name,
+                    'planung': planung,
+                    'vorjahr': vorjahr,
+                    'umsatz_plan': umsatz_plan,
+                    'db1_plan': db1_plan,
+                    'db2_plan': db2_plan,
+                    'stueck_plan': stueck_plan,
+                    'umsatz_vj': umsatz_vj,
+                    'db1_vj': db1_vj,
+                    'db2_vj': db2_vj,
+                    'stueck_vj': stueck_vj,
+                    'kumuliert': {
+                        'umsatz': kum_umsatz,
+                        'db1': kum_db1,
+                        'db2': kum_db2,
+                        'stueck': kum_stueck
+                    },
+                    'kumuliert_vj': {
+                        'umsatz': kum_umsatz_vj,
+                        'db1': kum_db1_vj,
+                        'db2': kum_db2_vj,
+                        'stueck': kum_stueck_vj
+                    },
+                    'monat_abgelaufen': monat_abgelaufen
+                })
+            
+            # Gesamt-Kumulierte Werte
+            result['kumuliert'] = {
+                'umsatz': kum_umsatz,
+                'db1': kum_db1,
+                'db2': kum_db2,
+                'stueck': kum_stueck
+            }
+            
+            result['kumuliert_vj'] = {
+                'umsatz': kum_umsatz_vj,
+                'db1': kum_db1_vj,
+                'db2': kum_db2_vj,
+                'stueck': kum_stueck_vj
+            }
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Fehler beim Laden der Jahresplanung: {str(e)}")
+            return {
+                'geschaeftsjahr': geschaeftsjahr,
+                'bereich': bereich,
+                'standort': standort,
+                'monate': [],
+                'kumuliert': {'umsatz': 0, 'db1': 0, 'db2': 0, 'stueck': 0},
+                'kumuliert_vj': {'umsatz': 0, 'db1': 0, 'db2': 0, 'stueck': 0},
+                'error': str(e)
+            }
+
+    @staticmethod
+    def kopiere_vorjahr(
+        geschaeftsjahr: str,
+        bereich: str,
+        standort: int,
+        erstellt_von: str
+    ) -> Dict[str, Any]:
+        """
+        Kopiert Vorjahres-Planung als Basis für neues Geschäftsjahr.
+        
+        Args:
+            geschaeftsjahr: z.B. '2025/26'
+            bereich: 'NW', 'GW', 'Teile', 'Werkstatt', 'Sonstige'
+            standort: 1, 2, oder 3
+            erstellt_von: Username
+        
+        Returns:
+            Dict mit Anzahl kopierter Monate
+        """
+        from api.db_utils import db_session
+        from psycopg2.extras import RealDictCursor
+        
+        # Vorjahr bestimmen
+        vj_start = int(geschaeftsjahr.split('/')[0]) - 1
+        vj_geschaeftsjahr = f"{vj_start}/{str(vj_start + 1)[2:]}"
+        
+        try:
+            with db_session() as conn:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                
+                # Vorjahres-Planungen laden
+                cursor.execute("""
+                    SELECT * FROM abteilungsleiter_planung
+                    WHERE geschaeftsjahr = %s AND bereich = %s AND standort = %s
+                    ORDER BY monat
+                """, (vj_geschaeftsjahr, bereich, standort))
+                
+                vj_planungen = cursor.fetchall()
+                
+                if not vj_planungen:
+                    return {
+                        'success': False,
+                        'message': f'Keine Vorjahres-Planung gefunden für {vj_geschaeftsjahr}'
+                    }
+                
+                kopiert = 0
+                
+                # Für jeden Monat Vorjahres-Planung kopieren
+                for vj_planung in vj_planungen:
+                    # Basis-Werte aus Vorjahr übernehmen
+                    # Aber Ziele neu berechnen (können sich ändern)
+                    
+                    # Planungsdaten aus Vorjahr extrahieren
+                    planung_data = {}
+                    for key in ['plan_stueck', 'plan_bruttoertrag_pro_fzg', 'plan_provision_pct', 
+                               'plan_vk_preis', 'plan_standzeit_tage', 'plan_stundensatz',
+                               'plan_produktivitaet', 'plan_leistungsgrad', 'plan_auslastung',
+                               'plan_lagerumschlag', 'plan_penner_quote', 'plan_servicegrad',
+                               'plan_umsatz', 'plan_marge_pct', 'plan_ek_preis', 'plan_vk_preis_teile',
+                               'plan_direkte_kosten']:
+                        if key in vj_planung:
+                            planung_data[key] = vj_planung[key]
+                    
+                    # Berechnung durchführen (neu, da sich Ziele ändern können)
+                    if bereich in ['NW', 'GW']:
+                        berechnung = AbteilungsleiterPlanungData.berechne_nw_gw_planung(
+                            geschaeftsjahr=geschaeftsjahr,
+                            monat=vj_planung['monat'],
+                            bereich=bereich,
+                            standort=standort,
+                            planung_data=planung_data
+                        )
+                    elif bereich == 'Werkstatt':
+                        berechnung = AbteilungsleiterPlanungData.berechne_werkstatt_planung(
+                            geschaeftsjahr=geschaeftsjahr,
+                            monat=vj_planung['monat'],
+                            standort=standort,
+                            planung_data=planung_data
+                        )
+                    elif bereich == 'Teile':
+                        berechnung = AbteilungsleiterPlanungData.berechne_teile_planung(
+                            geschaeftsjahr=geschaeftsjahr,
+                            monat=vj_planung['monat'],
+                            standort=standort,
+                            planung_data=planung_data
+                        )
+                    else:
+                        continue  # Sonstige noch nicht implementiert
+                    
+                    # Hybrid-Berechnung
+                    hybrid = AbteilungsleiterPlanungData.berechne_hybrid_ziele(
+                        berechnung['umsatz_basis'],
+                        berechnung['db1_basis'],
+                        geschaeftsjahr,
+                        bereich,
+                        standort
+                    )
+                    
+                    # Zusammenführen
+                    insert_data = {
+                        'geschaeftsjahr': geschaeftsjahr,
+                        'monat': vj_planung['monat'],
+                        'bereich': bereich,
+                        'standort': standort,
+                        'status': 'entwurf',
+                        'erstellt_von': erstellt_von,
+                        **planung_data,  # Alle Planungsdaten aus Vorjahr
+                        'umsatz_basis': berechnung['umsatz_basis'],
+                        'db1_basis': berechnung['db1_basis'],
+                        'db2_basis': berechnung.get('db2_basis', 0),
+                        'aufhol_umsatz': hybrid['aufhol_umsatz'],
+                        'aufhol_db1': hybrid['aufhol_db1'],
+                        'umsatz_ziel': hybrid['umsatz_ziel'],
+                        'db1_ziel': hybrid['db1_ziel'],
+                        'db2_ziel': berechnung.get('db2_basis', 0)
+                    }
+                    
+                    # SQL-Query bauen
+                    columns = list(insert_data.keys())
+                    values = [insert_data[col] for col in columns]
+                    placeholders = ', '.join(['%s'] * len(values))
+                    
+                    query = f"""
+                        INSERT INTO abteilungsleiter_planung ({', '.join(columns)})
+                        VALUES ({placeholders})
+                        ON CONFLICT (geschaeftsjahr, monat, bereich, standort)
+                        DO UPDATE SET
+                            {', '.join([f"{col} = EXCLUDED.{col}" for col in columns if col not in ['geschaeftsjahr', 'monat', 'bereich', 'standort']])},
+                            geaendert_von = EXCLUDED.erstellt_von,
+                            geaendert_am = CURRENT_TIMESTAMP
+                    """
+                    
+                    cursor.execute(query, values)
+                    kopiert += 1
+                
+                conn.commit()
+                
+                return {
+                    'success': True,
+                    'message': f'{kopiert} Monate vom Vorjahr kopiert',
+                    'kopiert': kopiert
+                }
+                
+        except Exception as e:
+            logger.error(f"Fehler beim Kopieren des Vorjahres: {str(e)}")
+            return {
+                'success': False,
+                'message': str(e)
+            }
+

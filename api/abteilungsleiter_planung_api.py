@@ -458,3 +458,58 @@ def get_impact(planung_id: int):
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
+@planung_bp.route('/jahresplanung', methods=['GET'])
+@login_required
+def jahresplanung_laden():
+    """
+    Lädt Jahresplanung für einen Bereich und Standort.
+    
+    Query-Params:
+        - geschaeftsjahr: z.B. '2025/26'
+        - bereich: 'NW', 'GW', 'Teile', 'Werkstatt', 'Sonstige'
+        - standort: 1, 2, oder 3
+    """
+    geschaeftsjahr = request.args.get('geschaeftsjahr', get_gj_from_date())
+    bereich = request.args.get('bereich')
+    standort = request.args.get('standort', type=int)
+    
+    if not bereich or not standort:
+        return jsonify({'success': False, 'error': 'bereich und standort erforderlich'}), 400
+    
+    try:
+        jahresplanung = AbteilungsleiterPlanungData.lade_jahresplanung(
+            geschaeftsjahr, bereich, standort
+        )
+        return jsonify({'success': True, 'data': jahresplanung})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@planung_bp.route('/kopiere-vorjahr', methods=['POST'])
+@login_required
+def kopiere_vorjahr():
+    """
+    Kopiert Vorjahres-Planung als Basis für neues Geschäftsjahr.
+    
+    Body:
+        - geschaeftsjahr: z.B. '2025/26'
+        - bereich: 'NW', 'GW', 'Teile', 'Werkstatt', 'Sonstige'
+        - standort: 1, 2, oder 3
+    """
+    data = request.get_json()
+    geschaeftsjahr = data.get('geschaeftsjahr', get_gj_from_date())
+    bereich = data.get('bereich')
+    standort = data.get('standort')
+    
+    if not bereich or not standort:
+        return jsonify({'success': False, 'error': 'bereich und standort erforderlich'}), 400
+    
+    try:
+        result = AbteilungsleiterPlanungData.kopiere_vorjahr(
+            geschaeftsjahr, bereich, standort, current_user.username
+        )
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+

@@ -104,6 +104,28 @@ def kalender_zu_gj_monat(kal_monat: int, geschaeftsjahr: str) -> int:
     return 1  # Fallback
 
 
+def gj_monat_zu_name(gj_monat: int) -> str:
+    """
+    Konvertiert GJ-Monat zu Monatsname.
+    
+    Args:
+        gj_monat: GJ-Monat (1=Sep, 2=Okt, ..., 12=Aug)
+    
+    Returns:
+        Monatsname (z.B. 'September', 'Januar')
+    """
+    monatsnamen = [
+        '',  # 0 (nicht verwendet)
+        'September', 'Oktober', 'November', 'Dezember',  # 1-4
+        'Januar', 'Februar', 'März', 'April',  # 5-8
+        'Mai', 'Juni', 'Juli', 'August'  # 9-12
+    ]
+    
+    if 1 <= gj_monat <= 12:
+        return monatsnamen[gj_monat]
+    return f'Monat {gj_monat}'
+
+
 @planung_routes.route('/abteilungsleiter')
 @planung_routes.route('/abteilungsleiter/')
 @login_required
@@ -113,21 +135,16 @@ def uebersicht():
     
     Query-Params:
         - geschaeftsjahr: z.B. '2025/26'
-        - monat: 1-12
+        - monat: 1-12 (GJ-Monat: 1=Sep, 2=Okt, ..., 5=Jan, ..., 12=Aug)
         - standort: 1, 2, oder 3
     """
     geschaeftsjahr = request.args.get('geschaeftsjahr', get_gj_from_date())
     monat_param = request.args.get('monat', type=int)
     
-    # Wenn monat > 4, könnte es ein Kalendermonat sein (Sep=9, Okt=10, etc.)
-    # Konvertiere zu GJ-Monat falls nötig
-    if monat_param:
-        if monat_param >= 9:  # Sep-Dez (Kalendermonat)
-            monat = kalender_zu_gj_monat(monat_param, geschaeftsjahr)
-        elif monat_param <= 12:  # GJ-Monat (1-12)
-            monat = monat_param
-        else:
-            monat = get_gj_monat()  # Fallback
+    # monat_param ist jetzt immer GJ-Monat (1-12), nicht mehr Kalendermonat
+    # GJ-Monat 1 = Sep, 2 = Okt, ..., 5 = Jan, ..., 12 = Aug
+    if monat_param and 1 <= monat_param <= 12:
+        monat = monat_param
     else:
         monat = get_gj_monat()  # Aktueller GJ-Monat
     standort = request.args.get('standort', type=int)
@@ -171,10 +188,14 @@ def uebersicht():
     except Exception as e:
         flash(f'Fehler beim Laden der Planungen: {str(e)}', 'danger')
     
+    # Monatsname für Anzeige
+    monat_name = gj_monat_zu_name(monat)
+    
     return render_template(
         'planung/abteilungsleiter_uebersicht.html',
         geschaeftsjahr=geschaeftsjahr,
         monat=monat,
+        monat_name=monat_name,
         standort=standort,
         bereiche=bereiche,
         standorte=standorte,
@@ -195,15 +216,10 @@ def planungsformular(bereich: str, standort: int):
     geschaeftsjahr = request.args.get('geschaeftsjahr', get_gj_from_date())
     monat_param = request.args.get('monat', type=int)
     
-    # Wenn monat > 4, könnte es ein Kalendermonat sein (Sep=9, Okt=10, etc.)
-    # Konvertiere zu GJ-Monat falls nötig
-    if monat_param:
-        if monat_param >= 9:  # Sep-Dez (Kalendermonat)
-            monat = kalender_zu_gj_monat(monat_param, geschaeftsjahr)
-        elif monat_param <= 12:  # GJ-Monat (1-12)
-            monat = monat_param
-        else:
-            monat = get_gj_monat()  # Fallback
+    # monat_param ist jetzt immer GJ-Monat (1-12), nicht mehr Kalendermonat
+    # GJ-Monat 1 = Sep, 2 = Okt, ..., 5 = Jan, ..., 12 = Aug
+    if monat_param and 1 <= monat_param <= 12:
+        monat = monat_param
     else:
         monat = get_gj_monat()  # Aktueller GJ-Monat
     
@@ -290,10 +306,14 @@ def planungsformular(bereich: str, standort: int):
     except Exception as e:
         print(f"Fehler beim Laden der Vorjahres-Referenz: {str(e)}")
     
+    # Monatsname für Anzeige
+    monat_name = gj_monat_zu_name(monat)
+    
     return render_template(
         'planung/abteilungsleiter_formular.html',
         geschaeftsjahr=geschaeftsjahr,
         monat=monat,
+        monat_name=monat_name,
         bereich=bereich,
         standort=standort,
         standort_name=standort_namen.get(standort, f'Standort {standort}'),
@@ -353,15 +373,10 @@ def freigabe_uebersicht():
     geschaeftsjahr = request.args.get('geschaeftsjahr', get_gj_from_date())
     monat_param = request.args.get('monat', type=int)
     
-    # Wenn monat > 4, könnte es ein Kalendermonat sein (Sep=9, Okt=10, etc.)
-    # Konvertiere zu GJ-Monat falls nötig
-    if monat_param:
-        if monat_param >= 9:  # Sep-Dez (Kalendermonat)
-            monat = kalender_zu_gj_monat(monat_param, geschaeftsjahr)
-        elif monat_param <= 12:  # GJ-Monat (1-12)
-            monat = monat_param
-        else:
-            monat = get_gj_monat()  # Fallback
+    # monat_param ist jetzt immer GJ-Monat (1-12), nicht mehr Kalendermonat
+    # GJ-Monat 1 = Sep, 2 = Okt, ..., 5 = Jan, ..., 12 = Aug
+    if monat_param and 1 <= monat_param <= 12:
+        monat = monat_param
     else:
         monat = get_gj_monat()  # Aktueller GJ-Monat
     
@@ -398,11 +413,70 @@ def freigabe_uebersicht():
         3: 'Landau'
     }
     
+    # Monatsname für Anzeige
+    monat_name = gj_monat_zu_name(monat)
+    
     return render_template(
         'planung/freigabe_uebersicht.html',
         geschaeftsjahr=geschaeftsjahr,
         monat=monat,
+        monat_name=monat_name,
         planungen=planungen,
         standort_namen=standort_namen
+    )
+
+
+@planung_routes.route('/abteilungsleiter/jahresplanung/<bereich>/<int:standort>')
+@login_required
+def jahresplanung(bereich: str, standort: int):
+    """
+    Jahresplanung-Ansicht für einen Bereich und Standort.
+    
+    Zeigt alle 12 GJ-Monate mit:
+    - Planungswerten pro Monat
+    - Kumulierten Werten (YTD)
+    - Vorjahreswerten pro Monat
+    - Kumulierten Vorjahreswerten
+    """
+    geschaeftsjahr = request.args.get('geschaeftsjahr', get_gj_from_date())
+    
+    # Validierung
+    if bereich not in ['NW', 'GW', 'Teile', 'Werkstatt', 'Sonstige']:
+        flash('Ungültiger Bereich', 'danger')
+        return redirect(url_for('abteilungsleiter_planung.uebersicht'))
+    
+    if standort not in [1, 2, 3]:
+        flash('Ungültiger Standort', 'danger')
+        return redirect(url_for('abteilungsleiter_planung.uebersicht'))
+    
+    # Jahresplanung laden
+    jahresplanung_data = None
+    try:
+        if AbteilungsleiterPlanungData:
+            jahresplanung_data = AbteilungsleiterPlanungData.lade_jahresplanung(
+                geschaeftsjahr, bereich, standort
+            )
+    except Exception as e:
+        flash(f'Fehler beim Laden der Jahresplanung: {str(e)}', 'danger')
+        jahresplanung_data = {
+            'monate': [],
+            'kumuliert': {'umsatz': 0, 'db1': 0, 'db2': 0, 'stueck': 0},
+            'kumuliert_vj': {'umsatz': 0, 'db1': 0, 'db2': 0, 'stueck': 0}
+        }
+    
+    # Standort-Name
+    standort_namen = {
+        1: 'Deggendorf',
+        2: 'Hyundai DEG',
+        3: 'Landau'
+    }
+    
+    return render_template(
+        'planung/jahresplanung.html',
+        geschaeftsjahr=geschaeftsjahr,
+        bereich=bereich,
+        standort=standort,
+        standort_name=standort_namen.get(standort, f'Standort {standort}'),
+        jahresplanung=jahresplanung_data
     )
 

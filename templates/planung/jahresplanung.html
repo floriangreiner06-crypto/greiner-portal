@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+
+{% block title %}Jahresplanung {{ bereich }} - {{ standort_name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .jahresplanung-hero {
+        background: linear-gradient(135deg, #0d6efd 0%, #6f42c1 100%);
+        color: white;
+        border-radius: 16px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+    }
+    .monat-row {
+        border-bottom: 1px solid #dee2e6;
+    }
+    .monat-row:hover {
+        background-color: #f8f9fa;
+    }
+    .monat-header {
+        font-weight: 600;
+        background-color: #e9ecef;
+    }
+    .kumuliert-row {
+        background-color: #fff3cd;
+        font-weight: 600;
+    }
+    .kumuliert-vj-row {
+        background-color: #d1ecf1;
+        font-weight: 600;
+    }
+    .wert-plan {
+        color: #0d6efd;
+    }
+    .wert-vj {
+        color: #6c757d;
+    }
+    .wert-kumuliert {
+        color: #198754;
+        font-weight: 700;
+    }
+    .wert-kumuliert-vj {
+        color: #0dcaf0;
+        font-weight: 700;
+    }
+    .diff-positive {
+        color: #198754;
+    }
+    .diff-negative {
+        color: #dc3545;
+    }
+    .noch-nicht-geplant {
+        color: #6c757d;
+        font-style: italic;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="jahresplanung-hero">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h3 class="mb-1">{{ bereich }} Jahresplanung {{ geschaeftsjahr }}</h3>
+                <p class="mb-0">{{ standort_name }}</p>
+            </div>
+            <div>
+                <a href="{{ url_for('abteilungsleiter_planung.uebersicht', geschaeftsjahr=geschaeftsjahr) }}" 
+                   class="btn btn-light btn-sm">
+                    <i class="bi bi-arrow-left"></i> Zurück zur Übersicht
+                </a>
+                <button id="btnCopyVorjahr" class="btn btn-warning btn-sm ms-2">
+                    <i class="bi bi-copy"></i> Vorjahr kopieren
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    {% if jahresplanung and jahresplanung.monate %}
+    <!-- Jahresplanung Tabelle -->
+    <div class="card">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="bi bi-calendar-range"></i> Monatliche Planung & Kumulierte Werte</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th rowspan="2" class="align-middle">Monat</th>
+                            <th colspan="4" class="text-center">Planung</th>
+                            <th colspan="4" class="text-center">Vorjahr</th>
+                            <th colspan="4" class="text-center">Kumuliert (YTD)</th>
+                            <th colspan="4" class="text-center">Kumuliert VJ</th>
+                        </tr>
+                        <tr>
+                            <th>Umsatz</th>
+                            <th>DB1</th>
+                            <th>DB2</th>
+                            <th>Stück</th>
+                            <th>Umsatz</th>
+                            <th>DB1</th>
+                            <th>DB2</th>
+                            <th>Stück</th>
+                            <th>Umsatz</th>
+                            <th>DB1</th>
+                            <th>DB2</th>
+                            <th>Stück</th>
+                            <th>Umsatz</th>
+                            <th>DB1</th>
+                            <th>DB2</th>
+                            <th>Stück</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for monat_data in jahresplanung.monate %}
+                        <tr class="monat-row">
+                            <td class="monat-header">
+                                <strong>{{ monat_data.monat_name }}</strong>
+                                {% if monat_data.monat_abgelaufen %}
+                                <span class="badge bg-secondary ms-1">Abgelaufen</span>
+                                {% endif %}
+                                {% if monat_data.planung %}
+                                <a href="{{ url_for('abteilungsleiter_planung.planungsformular', 
+                                    bereich=bereich, standort=standort, 
+                                    geschaeftsjahr=geschaeftsjahr, monat=monat_data.monat) }}" 
+                                   class="btn btn-sm btn-outline-primary ms-2">
+                                    <i class="bi bi-pencil"></i> Bearbeiten
+                                </a>
+                                {% else %}
+                                <a href="{{ url_for('abteilungsleiter_planung.planungsformular', 
+                                    bereich=bereich, standort=standort, 
+                                    geschaeftsjahr=geschaeftsjahr, monat=monat_data.monat) }}" 
+                                   class="btn btn-sm btn-outline-success ms-2">
+                                    <i class="bi bi-plus-circle"></i> Planen
+                                </a>
+                                {% endif %}
+                            </td>
+                            <!-- Planung -->
+                            <td class="wert-plan">
+                                {% if monat_data.planung %}
+                                {{ "{:,.2f}".format(monat_data.umsatz_plan) }} €
+                                {% else %}
+                                <span class="noch-nicht-geplant">Noch nicht geplant</span>
+                                {% endif %}
+                            </td>
+                            <td class="wert-plan">
+                                {% if monat_data.planung %}
+                                {{ "{:,.2f}".format(monat_data.db1_plan) }} €
+                                {% else %}
+                                <span class="noch-nicht-geplant">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="wert-plan">
+                                {% if monat_data.planung %}
+                                {{ "{:,.2f}".format(monat_data.db2_plan) }} €
+                                {% else %}
+                                <span class="noch-nicht-geplant">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="wert-plan">
+                                {% if monat_data.planung %}
+                                {{ monat_data.stueck_plan }}
+                                {% else %}
+                                <span class="noch-nicht-geplant">-</span>
+                                {% endif %}
+                            </td>
+                            <!-- Vorjahr -->
+                            <td class="wert-vj">{{ "{:,.2f}".format(monat_data.umsatz_vj) }} €</td>
+                            <td class="wert-vj">{{ "{:,.2f}".format(monat_data.db1_vj) }} €</td>
+                            <td class="wert-vj">{{ "{:,.2f}".format(monat_data.db2_vj) }} €</td>
+                            <td class="wert-vj">{{ monat_data.stueck_vj }}</td>
+                            <!-- Kumuliert -->
+                            <td class="wert-kumuliert">{{ "{:,.2f}".format(monat_data.kumuliert.umsatz) }} €</td>
+                            <td class="wert-kumuliert">{{ "{:,.2f}".format(monat_data.kumuliert.db1) }} €</td>
+                            <td class="wert-kumuliert">{{ "{:,.2f}".format(monat_data.kumuliert.db2) }} €</td>
+                            <td class="wert-kumuliert">{{ monat_data.kumuliert.stueck }}</td>
+                            <!-- Kumuliert VJ -->
+                            <td class="wert-kumuliert-vj">{{ "{:,.2f}".format(monat_data.kumuliert_vj.umsatz) }} €</td>
+                            <td class="wert-kumuliert-vj">{{ "{:,.2f}".format(monat_data.kumuliert_vj.db1) }} €</td>
+                            <td class="wert-kumuliert-vj">{{ "{:,.2f}".format(monat_data.kumuliert_vj.db2) }} €</td>
+                            <td class="wert-kumuliert-vj">{{ monat_data.kumuliert_vj.stueck }}</td>
+                        </tr>
+                        {% endfor %}
+                        <!-- Gesamt-Zeile -->
+                        <tr class="kumuliert-row">
+                            <td><strong>GESAMT (Jahr)</strong></td>
+                            <td class="wert-kumuliert"><strong>{{ "{:,.2f}".format(jahresplanung.kumuliert.umsatz) }} €</strong></td>
+                            <td class="wert-kumuliert"><strong>{{ "{:,.2f}".format(jahresplanung.kumuliert.db1) }} €</strong></td>
+                            <td class="wert-kumuliert"><strong>{{ "{:,.2f}".format(jahresplanung.kumuliert.db2) }} €</strong></td>
+                            <td class="wert-kumuliert"><strong>{{ jahresplanung.kumuliert.stueck }}</strong></td>
+                            <td colspan="4"></td>
+                            <td colspan="4"></td>
+                            <td class="wert-kumuliert-vj"><strong>{{ "{:,.2f}".format(jahresplanung.kumuliert_vj.umsatz) }} €</strong></td>
+                            <td class="wert-kumuliert-vj"><strong>{{ "{:,.2f}".format(jahresplanung.kumuliert_vj.db1) }} €</strong></td>
+                            <td class="wert-kumuliert-vj"><strong>{{ "{:,.2f}".format(jahresplanung.kumuliert_vj.db2) }} €</strong></td>
+                            <td class="wert-kumuliert-vj"><strong>{{ jahresplanung.kumuliert_vj.stueck }}</strong></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle"></i> Keine Planungsdaten gefunden.
+    </div>
+    {% endif %}
+</div>
+
+<script>
+document.getElementById('btnCopyVorjahr').addEventListener('click', function() {
+    if (!confirm('Möchten Sie wirklich die Vorjahres-Planung kopieren? Dies überschreibt eventuell bestehende Planungen.')) {
+        return;
+    }
+    
+    fetch('/api/planung/abteilungsleiter/kopiere-vorjahr', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            geschaeftsjahr: '{{ geschaeftsjahr }}',
+            bereich: '{{ bereich }}',
+            standort: {{ standort }}
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Vorjahr erfolgreich kopiert! ' + data.message);
+            location.reload();
+        } else {
+            alert('Fehler: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Fehler:', error);
+        alert('Fehler beim Kopieren des Vorjahres');
+    });
+});
+</script>
+{% endblock %}
+
