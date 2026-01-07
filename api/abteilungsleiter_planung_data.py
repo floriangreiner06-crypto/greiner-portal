@@ -1576,20 +1576,63 @@ class AbteilungsleiterPlanungData:
                     kal_jahr = gj_start_jahr + 1
                 
                 # YTD aus BWA (vom GJ-Start bis aktuellen Monat)
-                # Für abgelaufene Monate: IST-Werte aus BWA
-                # Für zukünftige Monate: Kumulierte Planungswerte
+                # Für abgelaufene Monate: IST-Werte aus BWA (kumuliert)
+                # Für zukünftige Monate: IST-Werte aus BWA (bis zum letzten abgelaufenen Monat) + Planungswerte (falls vorhanden)
                 if monat_abgelaufen:
-                    # Abgelaufener Monat: YTD direkt aus BWA (IST-Werte)
+                    # Abgelaufener Monat: YTD direkt aus BWA (IST-Werte, kumuliert)
                     ytd_bwa = AbteilungsleiterPlanungData._lade_bwa_ytd(
                         bereich, standort, kal_monat, kal_jahr
                     )
                 else:
-                    # Zukünftiger Monat: YTD = kumulierte Planungswerte
-                    ytd_bwa = {
-                        'umsatz': kum_umsatz,
-                        'db1': kum_db1,
-                        'db2': kum_db2
-                    }
+                    # Zukünftiger Monat: YTD = IST-Werte aus BWA (bis zum letzten abgelaufenen Monat)
+                    # + Planungswerte für zukünftige Monate (falls vorhanden)
+                    # Finde den letzten abgelaufenen Monat
+                    letzter_abgelaufener_monat = None
+                    for m in range(monat - 1, 0, -1):
+                        if ist_monat_abgelaufen(geschaeftsjahr, m):
+                            letzter_abgelaufener_monat = m
+                            break
+                    
+                    if letzter_abgelaufener_monat:
+                        # YTD bis zum letzten abgelaufenen Monat aus BWA
+                        if letzter_abgelaufener_monat <= 4:  # Sep-Dez
+                            letzter_kal_monat = letzter_abgelaufener_monat + 8
+                            letzter_kal_jahr = gj_start_jahr
+                        else:  # Jan-Aug
+                            letzter_kal_monat = letzter_abgelaufener_monat - 4
+                            letzter_kal_jahr = gj_start_jahr + 1
+                        
+                        ytd_bis_letzter = AbteilungsleiterPlanungData._lade_bwa_ytd(
+                            bereich, standort, letzter_kal_monat, letzter_kal_jahr
+                        )
+                        
+                        # Kumulierte Planungswerte für zukünftige Monate (vom letzten abgelaufenen Monat + 1 bis aktuellen Monat)
+                        kum_planung_zukunft = {
+                            'umsatz': 0,
+                            'db1': 0,
+                            'db2': 0
+                        }
+                        
+                        for m in range(letzter_abgelaufener_monat + 1, monat + 1):
+                            planung_m = planungen.get(m)
+                            if planung_m:
+                                kum_planung_zukunft['umsatz'] += float(planung_m.get('umsatz_ziel', 0) or 0)
+                                kum_planung_zukunft['db1'] += float(planung_m.get('db1_ziel', 0) or 0)
+                                kum_planung_zukunft['db2'] += float(planung_m.get('db2_ziel', 0) or 0)
+                        
+                        # YTD = IST-Werte bis letzter abgelaufener Monat + Planungswerte für zukünftige Monate
+                        ytd_bwa = {
+                            'umsatz': ytd_bis_letzter.get('umsatz', 0) + kum_planung_zukunft['umsatz'],
+                            'db1': ytd_bis_letzter.get('db1', 0) + kum_planung_zukunft['db1'],
+                            'db2': ytd_bis_letzter.get('db2', 0) + kum_planung_zukunft['db2']
+                        }
+                    else:
+                        # Kein abgelaufener Monat gefunden: YTD = kumulierte Planungswerte
+                        ytd_bwa = {
+                            'umsatz': kum_umsatz,
+                            'db1': kum_db1,
+                            'db2': kum_db2
+                        }
                 
                 # VJ-YTD aus BWA (vom VJ-GJ-Start bis entsprechenden Monat)
                 vj_gj_start = gj_start_jahr - 1
