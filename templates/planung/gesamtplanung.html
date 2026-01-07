@@ -102,26 +102,42 @@
     <div class="gesamtplanung-card">
         <h5><i class="bi bi-calculator"></i> Gesamtwerte (alle Kostenstellen)</h5>
         <div class="row">
-            <div class="col-md-3 text-center">
+            <div class="col-md-2 text-center">
                 <div class="text-muted mb-1">Umsatz</div>
                 <div class="wert-gross">{{ "{:,.2f}".format(gesamtwerte.umsatz) }} €</div>
             </div>
-            <div class="col-md-3 text-center">
+            <div class="col-md-2 text-center">
                 <div class="text-muted mb-1">DB1 (Bruttoertrag)</div>
                 <div class="wert-gross">{{ "{:,.2f}".format(gesamtwerte.db1) }} €</div>
             </div>
-            <div class="col-md-3 text-center">
-                <div class="text-muted mb-1">DB2 (Deckungsbeitrag 2)</div>
+            <div class="col-md-2 text-center">
+                <div class="text-muted mb-1">DB2</div>
                 <div class="wert-gross {% if gesamtwerte.db2 < 0 %}wert-negativ{% endif %}">
                     {{ "{:,.2f}".format(gesamtwerte.db2) }} €
                 </div>
             </div>
-            <div class="col-md-3 text-center">
-                <div class="text-muted mb-1">Betriebsergebnis (Näherung)</div>
-                <div class="wert-gross {% if betriebsergebnis < 0 %}wert-negativ{% endif %}">
+            <div class="col-md-2 text-center">
+                <div class="text-muted mb-1">Direkte Kosten</div>
+                <div class="wert-gross text-danger">-{{ "{:,.2f}".format(direkte_kosten) }} €</div>
+            </div>
+            <div class="col-md-2 text-center">
+                <div class="text-muted mb-1">DB3</div>
+                <div class="wert-gross {% if db3 < 0 %}wert-negativ{% endif %}">
+                    {{ "{:,.2f}".format(db3) }} €
+                </div>
+            </div>
+            <div class="col-md-2 text-center">
+                <div class="text-muted mb-1">Indirekte Kosten</div>
+                <div class="wert-gross text-danger">-{{ "{:,.2f}".format(indirekte_kosten) }} €</div>
+            </div>
+        </div>
+        <div class="row mt-3">
+            <div class="col-md-12 text-center">
+                <div class="text-muted mb-1">Betriebsergebnis (BE)</div>
+                <div class="wert-gross {% if betriebsergebnis < 0 %}wert-negativ{% endif %}" style="font-size: 2rem;">
                     {{ "{:,.2f}".format(betriebsergebnis) }} €
                 </div>
-                <small class="text-muted">(DB2 - indirekte Kosten, Näherung)</small>
+                <small class="text-muted">DB3 - Indirekte Kosten (aus BWA)</small>
             </div>
         </div>
         {% if gesamtwerte.stueck > 0 %}

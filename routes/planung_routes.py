@@ -575,11 +575,114 @@ def gesamtplanung():
     except Exception as e:
         flash(f'Fehler beim Laden der Gesamtplanung: {str(e)}', 'danger')
     
+    # Indirekte Kosten aus BWA laden
+    indirekte_kosten = 0
+    direkte_kosten = 0
+    try:
+        from api.db_connection import convert_placeholders, get_locosoft_connection
+        
+        # GJ-Monat zu Kalendermonat konvertieren
+        gj_start_jahr = int(geschaeftsjahr.split('/')[0])
+        if monat <= 4:  # Sep-Dez
+            kal_monat = monat + 8
+            kal_jahr = gj_start_jahr
+        else:  # Jan-Aug
+            kal_monat = monat - 4
+            kal_jahr = gj_start_jahr + 1
+        
+        # Datum für Monat
+        datum_von = f"{kal_jahr}-{kal_monat:02d}-01"
+        if kal_monat == 12:
+            datum_bis = f"{kal_jahr+1}-01-01"
+        else:
+            datum_bis = f"{kal_jahr}-{kal_monat+1:02d}-01"
+        
+        # Filter bauen (abhängig von Standort-Filter)
+        guv_filter = "AND (posting_text IS NULL OR posting_text NOT LIKE '%%G&V-Abschluss%%')"
+        
+        if standort_filter:
+            # Einzelner Standort
+            if standort_filter == 1:
+                # Deggendorf: Stellantis (subsidiary=1) + Hyundai (subsidiary=2)
+                firma_filter_kosten = "AND (subsidiary_to_company_ref = 1 OR subsidiary_to_company_ref = 2)"
+            elif standort_filter == 2:
+                # Hyundai DEG: Nur Hyundai
+                firma_filter_kosten = "AND subsidiary_to_company_ref = 2"
+            elif standort_filter == 3:
+                # Landau: Nur Stellantis
+                firma_filter_kosten = "AND subsidiary_to_company_ref = 1"
+            else:
+                firma_filter_kosten = ""
+        else:
+            # Alle Standorte: Alle Firmen
+            firma_filter_kosten = ""
+        
+        # Indirekte Kosten laden
+        with get_locosoft_connection() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute(convert_placeholders(f"""
+                SELECT COALESCE(SUM(
+                    CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
+                )/100.0, 0) as wert
+                FROM loco_journal_accountings
+                WHERE accounting_date >= ? AND accounting_date < ?
+                  AND (
+                    (nominal_account_number BETWEEN 400000 AND 499999
+                     AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0')
+                    OR (nominal_account_number BETWEEN 424000 AND 424999
+                        AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
+                    OR (nominal_account_number BETWEEN 438000 AND 438999
+                        AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
+                    OR nominal_account_number BETWEEN 498000 AND 499999
+                    OR (nominal_account_number BETWEEN 891000 AND 896999
+                        AND NOT (nominal_account_number BETWEEN 893200 AND 893299))
+                  )
+                  {firma_filter_kosten}
+                  {guv_filter}
+            """), (datum_von, datum_bis))
+            
+            row = cursor.fetchone()
+            if row:
+                indirekte_kosten = float(row[0] or 0)
+            
+            # Direkte Kosten laden (für DB3)
+            cursor.execute(convert_placeholders(f"""
+                SELECT COALESCE(SUM(
+                    CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
+                )/100.0, 0) as wert
+                FROM loco_journal_accountings
+                WHERE accounting_date >= ? AND accounting_date < ?
+                  AND nominal_account_number BETWEEN 400000 AND 489999
+                  AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','4','5','6','7')
+                  AND NOT (
+                    nominal_account_number BETWEEN 415100 AND 415199
+                    OR nominal_account_number BETWEEN 424000 AND 424999
+                    OR nominal_account_number BETWEEN 435500 AND 435599
+                    OR nominal_account_number BETWEEN 438000 AND 438999
+                    OR nominal_account_number BETWEEN 455000 AND 456999
+                    OR nominal_account_number BETWEEN 487000 AND 487099
+                    OR nominal_account_number BETWEEN 491000 AND 497999
+                  )
+                  {firma_filter_kosten}
+                  {guv_filter}
+            """), (datum_von, datum_bis))
+            
+            row = cursor.fetchone()
+            if row:
+                direkte_kosten = float(row[0] or 0)
+    
+    except Exception as e:
+        flash(f'Fehler beim Laden der indirekten Kosten: {str(e)}', 'warning')
+        # Fallback: Näherung
+        indirekte_kosten = gesamtwerte['db2'] * 0.1
+        direkte_kosten = 0
+    
     # Gewinnberechnung
-    # DB2 ist bereits Deckungsbeitrag 2 (nach variablen Kosten)
-    # Betriebsergebnis = DB2 - indirekte Kosten (vereinfacht: DB2 * 0.9 als Näherung)
-    # TODO: Indirekte Kosten aus BWA oder separater Tabelle laden
-    betriebsergebnis = gesamtwerte['db2'] * 0.9  # Näherung: 10% indirekte Kosten
+    # DB3 = DB2 - direkte Kosten
+    db3 = gesamtwerte['db2'] - direkte_kosten
+    # Betriebsergebnis = DB3 - indirekte Kosten
+    betriebsergebnis = db3 - indirekte_kosten
     
     # Standort-Namen
     standort_namen = {
@@ -609,6 +712,9 @@ def gesamtplanung():
         bereich_filter=bereich_filter,
         planungen_gruppiert=planungen_gruppiert,
         gesamtwerte=gesamtwerte,
+        direkte_kosten=direkte_kosten,
+        indirekte_kosten=indirekte_kosten,
+        db3=db3,
         betriebsergebnis=betriebsergebnis,
         standort_namen=standort_namen,
         bereich_namen=bereich_namen
