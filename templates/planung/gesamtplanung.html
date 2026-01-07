@@ -174,7 +174,7 @@
                         {% for key, p in planungen_gruppiert.items() %}
                         <tr>
                             <td><strong>{{ bereich_namen.get(p.bereich, p.bereich) }}</strong></td>
-                            <td>{{ standort_namen.get(p.standort, f'Standort {p.standort}') }}</td>
+                            <td>{{ standort_namen.get(p.standort, 'Standort ' ~ p.standort) }}</td>
                             <td class="text-end">{{ "{:,.2f}".format(p.umsatz) }} €</td>
                             <td class="text-end">{{ "{:,.2f}".format(p.db1) }} €</td>
                             <td class="text-end {% if p.db2 < 0 %}text-danger{% endif %}">
