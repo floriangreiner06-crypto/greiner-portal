@@ -885,18 +885,19 @@ class AbteilungsleiterPlanungData:
         # Hyundai = subsidiary_to_company_ref = 2
         
         # WICHTIG: Für Werkstatt, Teile, Sonstige keine Marken-Unterscheidung, nur Standort!
+        # WICHTIG: Hyundai hat branch_number = 2, Stellantis Deggendorf hat branch_number = 1
         if bereich in ['Werkstatt', 'Teile', 'Sonstige']:
             # Werkstatt/Teile/Sonstige: Nur nach Standort filtern (Deggendorf oder Landau), nicht nach Marke
             if standort == 1:
-                # Deggendorf: branch_number = 1 (sowohl Stellantis als auch Hyundai)
-                firma_filter_umsatz = "AND branch_number = 1"
-                firma_filter_einsatz = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
-                firma_filter_kosten = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
+                # Deggendorf: Stellantis (branch=1, subsidiary=1) + Hyundai (branch=2, subsidiary=2)
+                firma_filter_umsatz = "AND ((branch_number = 1 AND subsidiary_to_company_ref = 1) OR (branch_number = 2 AND subsidiary_to_company_ref = 2))"
+                firma_filter_einsatz = "AND ((substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1' AND subsidiary_to_company_ref = 1) OR (substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 2))"
+                firma_filter_kosten = "AND ((substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1' AND subsidiary_to_company_ref = 1) OR (substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 2))"
             elif standort == 3:
-                # Landau: branch_number = 3 (sowohl Stellantis als auch Hyundai)
-                firma_filter_umsatz = "AND branch_number = 3"
-                firma_filter_einsatz = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
-                firma_filter_kosten = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
+                # Landau: branch_number = 3 (nur Stellantis, Hyundai hat keinen Standort in Landau)
+                firma_filter_umsatz = "AND branch_number = 3 AND subsidiary_to_company_ref = 1"
+                firma_filter_einsatz = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 1"
+                firma_filter_kosten = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 1"
             else:
                 # Standort 2 (Hyundai) oder andere: Alle Werte
                 firma_filter_umsatz = ""
