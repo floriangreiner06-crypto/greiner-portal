@@ -153,7 +153,7 @@ def lade_ist_werte_fuer_monat(
                 # Landau: branch_number = 3 (nur Stellantis, Hyundai hat keinen Standort in Landau)
                 firma_filter_umsatz = "AND (branch_number = 3 OR (nominal_account_number BETWEEN 810000 AND 819999 AND SUBSTRING(nominal_account_number::TEXT, 5, 1) = '2'))"
                 firma_filter_einsatz = "AND (SUBSTRING(nominal_account_number::TEXT, 5, 1) = '2')"
-                subsidiary_filter = "AND subsidiary = 1"  # Nur Stellantis
+                subsidiary_filter = "AND out_subsidiary = 1"  # Nur Stellantis (für Locosoft-Tabellen)
             else:
                 # Standort 2 (Hyundai) oder andere: Alle Werte
                 firma_filter_umsatz = ""
