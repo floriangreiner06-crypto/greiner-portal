@@ -26,7 +26,6 @@ from api.db_connection import get_db
 from api.db_utils import db_session, row_to_dict
 from api.aufhol_logik import apply_aufhol_auf_kst_ziel, get_aufhol_beitrag_fuer_kst
 from api.unternehmensplan_data import get_current_geschaeftsjahr
-from psycopg2.extras import RealDictCursor
 
 logger = logging.getLogger(__name__)
 
@@ -1100,7 +1099,7 @@ class AbteilungsleiterPlanungData:
         """
         try:
             with db_session() as conn:
-                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                cursor = conn.cursor()
                 
                 # 1. Planung laden
                 cursor.execute("""
@@ -1113,9 +1112,13 @@ class AbteilungsleiterPlanungData:
                     WHERE id = %s
                 """, (planung_id,))
                 
-                planung = cursor.fetchone()
-                if not planung:
+                row = cursor.fetchone()
+                if not row:
                     return {'success': False, 'message': 'Planung nicht gefunden'}
+                
+                # Zu Dict konvertieren
+                from api.db_utils import row_to_dict
+                planung = row_to_dict(row)
                 
                 # 2. Status auf 'freigegeben' setzen
                 cursor.execute("""
@@ -1204,7 +1207,6 @@ class AbteilungsleiterPlanungData:
             - kumuliert_vj: Kumulierte Vorjahres-Werte
         """
         from api.db_utils import db_session, row_to_dict
-        from psycopg2.extras import RealDictCursor
         
         result = {
             'geschaeftsjahr': geschaeftsjahr,
@@ -1227,7 +1229,7 @@ class AbteilungsleiterPlanungData:
         
         try:
             with db_session() as conn:
-                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                cursor = conn.cursor()
                 
                 # Alle Planungen für dieses Jahr laden
                 cursor.execute("""
@@ -1236,7 +1238,7 @@ class AbteilungsleiterPlanungData:
                     ORDER BY monat
                 """, (geschaeftsjahr, bereich, standort))
                 
-                planungen = {row['monat']: row_to_dict(row) for row in cursor.fetchall()}
+                planungen = {row_to_dict(row)['monat']: row_to_dict(row) for row in cursor.fetchall()}
             
             # Für alle 12 GJ-Monate Daten sammeln
             kum_umsatz = 0
@@ -1363,8 +1365,7 @@ class AbteilungsleiterPlanungData:
         Returns:
             Dict mit Anzahl kopierter Monate
         """
-        from api.db_utils import db_session
-        from psycopg2.extras import RealDictCursor
+        from api.db_utils import db_session, row_to_dict
         
         # Vorjahr bestimmen
         vj_start = int(geschaeftsjahr.split('/')[0]) - 1
@@ -1372,7 +1373,7 @@ class AbteilungsleiterPlanungData:
         
         try:
             with db_session() as conn:
-                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                cursor = conn.cursor()
                 
                 # Vorjahres-Planungen laden
                 cursor.execute("""
@@ -1381,13 +1382,16 @@ class AbteilungsleiterPlanungData:
                     ORDER BY monat
                 """, (vj_geschaeftsjahr, bereich, standort))
                 
-                vj_planungen = cursor.fetchall()
+                rows = cursor.fetchall()
                 
-                if not vj_planungen:
+                if not rows:
                     return {
                         'success': False,
                         'message': f'Keine Vorjahres-Planung gefunden für {vj_geschaeftsjahr}'
                     }
+                
+                # Zu Dict konvertieren
+                vj_planungen = [row_to_dict(row) for row in rows]
                 
                 kopiert = 0
                 
