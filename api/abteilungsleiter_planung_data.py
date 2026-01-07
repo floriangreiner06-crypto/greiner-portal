@@ -1576,9 +1576,20 @@ class AbteilungsleiterPlanungData:
                     kal_jahr = gj_start_jahr + 1
                 
                 # YTD aus BWA (vom GJ-Start bis aktuellen Monat)
-                ytd_bwa = AbteilungsleiterPlanungData._lade_bwa_ytd(
-                    bereich, standort, kal_monat, kal_jahr
-                )
+                # Für abgelaufene Monate: IST-Werte aus BWA
+                # Für zukünftige Monate: Kumulierte Planungswerte
+                if monat_abgelaufen:
+                    # Abgelaufener Monat: YTD direkt aus BWA (IST-Werte)
+                    ytd_bwa = AbteilungsleiterPlanungData._lade_bwa_ytd(
+                        bereich, standort, kal_monat, kal_jahr
+                    )
+                else:
+                    # Zukünftiger Monat: YTD = kumulierte Planungswerte
+                    ytd_bwa = {
+                        'umsatz': kum_umsatz,
+                        'db1': kum_db1,
+                        'db2': kum_db2
+                    }
                 
                 # VJ-YTD aus BWA (vom VJ-GJ-Start bis entsprechenden Monat)
                 vj_gj_start = gj_start_jahr - 1
