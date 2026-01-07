@@ -883,9 +883,9 @@ class AbteilungsleiterPlanungData:
         # Stellantis = subsidiary_to_company_ref = 1
         # Hyundai = subsidiary_to_company_ref = 2
         
-        # WICHTIG: Für Werkstatt keine Marken-Unterscheidung, nur Standort!
-        if bereich == 'Werkstatt':
-            # Werkstatt: Nur nach Standort filtern (Deggendorf oder Landau), nicht nach Marke
+        # WICHTIG: Für Werkstatt, Teile, Sonstige keine Marken-Unterscheidung, nur Standort!
+        if bereich in ['Werkstatt', 'Teile', 'Sonstige']:
+            # Werkstatt/Teile/Sonstige: Nur nach Standort filtern (Deggendorf oder Landau), nicht nach Marke
             if standort == 1:
                 # Deggendorf: branch_number = 1 (sowohl Stellantis als auch Hyundai)
                 firma_filter_umsatz = "AND branch_number = 1"
