@@ -856,25 +856,53 @@ class AbteilungsleiterPlanungData:
         else:
             vj_bis = f"{kal_jahr}-{kal_monat+1:02d}-01"
         
-        # Standort-Filter für Locosoft
-        # Standort 1 = Deggendorf (subsidiary 1)
-        # Standort 2 = Hyundai (subsidiary 2)
-        # Standort 3 = Landau (subsidiary 1, branch_number 3)
-        if standort == 1:
-            firma_filter_umsatz = "AND (branch_number = 1 OR (nominal_account_number BETWEEN 810000 AND 819999 AND SUBSTRING(nominal_account_number::TEXT, 5, 1) = '1'))"
-            firma_filter_einsatz = "AND (SUBSTRING(nominal_account_number::TEXT, 5, 1) = '1')"
-            subsidiary_filter = "AND out_subsidiary = 1"
-        elif standort == 2:
-            firma_filter_umsatz = "AND subsidiary = 2"
-            firma_filter_einsatz = "AND subsidiary = 2"
-            subsidiary_filter = "AND out_subsidiary = 2"
-        elif standort == 3:
-            firma_filter_umsatz = "AND (branch_number = 3 OR (nominal_account_number BETWEEN 810000 AND 819999 AND SUBSTRING(nominal_account_number::TEXT, 5, 1) = '2'))"
-            firma_filter_einsatz = "AND (SUBSTRING(nominal_account_number::TEXT, 5, 1) = '2')"
-            subsidiary_filter = "AND out_subsidiary = 1"
+        # BWA-Filter (SSOT) - TAG157: Unterschiedliche Zuordnungslogik!
+        # Umsatz (8xxxxx): via branch_number (1=DEG, 3=LAN)
+        # Einsatz (7xxxxx): via Konto-Endziffer (6. Ziffer: 1=DEG, 2=LAN)
+        # Kosten (4xxxxx): via Konto-Endziffer (6. Ziffer: 1=DEG, 2=LAN)
+        # Stellantis = subsidiary_to_company_ref = 1
+        # Hyundai = subsidiary_to_company_ref = 2
+        
+        # Firma bestimmen (Standort 1,3 = Stellantis, Standort 2 = Hyundai)
+        if standort == 2:
+            firma = '2'  # Hyundai
+        else:
+            firma = '1'  # Stellantis
+        
+        # BWA-Filter bauen (analog zu build_firma_standort_filter)
+        if firma == '1':
+            # Stellantis (Autohaus Greiner)
+            firma_filter_umsatz = "AND subsidiary_to_company_ref = 1"
+            firma_filter_einsatz = "AND subsidiary_to_company_ref = 1"
+            firma_filter_kosten = "AND subsidiary_to_company_ref = 1"
+            if standort == 1:
+                # Deggendorf: branch_number=1 für Umsatz, Konto-Endziffer=1 für Einsatz+Kosten
+                firma_filter_umsatz += " AND branch_number = 1"
+                firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
+                firma_filter_kosten += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
+            elif standort == 3:
+                # Landau: branch_number=3 für Umsatz, Konto-Endziffer=2 für Einsatz+Kosten
+                firma_filter_umsatz += " AND branch_number = 3"
+                firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
+                firma_filter_kosten += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
+        elif firma == '2':
+            # Hyundai (Auto Greiner) - separate Firma
+            firma_filter_umsatz = "AND subsidiary_to_company_ref = 2"
+            firma_filter_einsatz = "AND subsidiary_to_company_ref = 2"
+            firma_filter_kosten = "AND subsidiary_to_company_ref = 2"
         else:
             firma_filter_umsatz = ""
             firma_filter_einsatz = ""
+            firma_filter_kosten = ""
+        
+        # Standort-Filter für sales/dealer_vehicles (Locosoft)
+        if standort == 1:
+            subsidiary_filter = "AND out_subsidiary = 1"
+        elif standort == 2:
+            subsidiary_filter = "AND out_subsidiary = 2"
+        elif standort == 3:
+            subsidiary_filter = "AND out_subsidiary = 1"  # Landau ist auch subsidiary 1
+        else:
             subsidiary_filter = ""
         
         result = {
@@ -896,110 +924,169 @@ class AbteilungsleiterPlanungData:
         }
         
         try:
-            # 1. Umsatz und DB1 aus loco_journal_accountings
-            conn = get_db()
-            cursor = conn.cursor()
+            # 1. Umsatz, DB1, DB2 aus BWA (SSOT) - Bereichs-spezifisch
+            from api.db_utils import db_session, locosoft_session
+            from api.db_connection import convert_placeholders, row_to_dict
             
-            # Bereichs-spezifische Konten
-            if bereich == 'NW':
-                umsatz_konten = "BETWEEN 810000 AND 819999"
-                einsatz_konten = "BETWEEN 710000 AND 719999"
-            elif bereich == 'GW':
-                umsatz_konten = "BETWEEN 820000 AND 829999"
-                einsatz_konten = "BETWEEN 720000 AND 729999"
-            elif bereich == 'Teile':
-                umsatz_konten = "BETWEEN 830000 AND 839999"
-                einsatz_konten = "BETWEEN 730000 AND 739999"
-            elif bereich == 'Werkstatt':
-                umsatz_konten = "BETWEEN 840000 AND 849999"
-                einsatz_konten = "BETWEEN 740000 AND 749999"
-            elif bereich == 'Sonstige':
-                umsatz_konten = "BETWEEN 860000 AND 869999"
-                einsatz_konten = "BETWEEN 760000 AND 769999"
-            else:
-                conn.close()
-                return result
-            
-            # Umsatz
-            cursor.execute(f"""
-                SELECT COALESCE(SUM(
-                    CASE WHEN debit_or_credit = 'H' THEN posted_value ELSE -posted_value END
-                ) / 100.0, 0) as umsatz
-                FROM loco_journal_accountings
-                WHERE accounting_date >= %s AND accounting_date < %s
-                  AND nominal_account_number {umsatz_konten}
-                  {firma_filter_umsatz}
-            """, (vj_von, vj_bis))
-            row = cursor.fetchone()
-            result['umsatz'] = float(row[0] or 0) if row else 0
-            
-            # Einsatz
-            cursor.execute(f"""
-                SELECT COALESCE(SUM(
-                    CASE WHEN debit_or_credit = 'S' THEN posted_value ELSE -posted_value END
-                ) / 100.0, 0) as einsatz
-                FROM loco_journal_accountings
-                WHERE accounting_date >= %s AND accounting_date < %s
-                  AND nominal_account_number {einsatz_konten}
-                  {firma_filter_einsatz}
-            """, (vj_von, vj_bis))
-            row = cursor.fetchone()
-            einsatz = float(row[0] or 0) if row else 0
-            
-            # DB1 = Umsatz - Einsatz
-            result['db1'] = result['umsatz'] - einsatz
-            
-            conn.close()
-            
-            # 2. Locosoft-spezifische Daten
-            conn_loco = get_locosoft_connection()
-            cursor_loco = conn_loco.cursor()
-            
-            if bereich in ['NW', 'GW']:
-                # Typ-Filter: NW = N+V, GW = G+D
+            with db_session() as conn:
+                cursor = conn.cursor()
+                
+                # Bereichs-spezifische Konten (BWA-Logik)
                 if bereich == 'NW':
-                    typ_filter = "dealer_vehicle_type IN ('N', 'V')"
-                else:  # GW
-                    typ_filter = "dealer_vehicle_type IN ('G', 'D')"
-                
-                # Standort-Filter für dealer_vehicles: out_subsidiary verwenden
-                if standort == 1:
-                    standort_filter = "AND out_subsidiary = 1"
-                elif standort == 2:
-                    standort_filter = "AND out_subsidiary = 2"
-                elif standort == 3:
-                    standort_filter = "AND out_subsidiary = 1"  # Landau ist auch subsidiary 1
+                    umsatz_konten = "BETWEEN 810000 AND 819999"
+                    einsatz_konten = "BETWEEN 710000 AND 719999"
+                elif bereich == 'GW':
+                    umsatz_konten = "BETWEEN 820000 AND 829999"
+                    einsatz_konten = "BETWEEN 720000 AND 729999"
+                elif bereich == 'Teile':
+                    umsatz_konten = "BETWEEN 830000 AND 839999"
+                    einsatz_konten = "BETWEEN 730000 AND 739999"
+                elif bereich == 'Werkstatt':
+                    umsatz_konten = "BETWEEN 840000 AND 849999"
+                    einsatz_konten = "BETWEEN 740000 AND 749999"
+                elif bereich == 'Sonstige':
+                    umsatz_konten = "BETWEEN 860000 AND 869999"
+                    einsatz_konten = "BETWEEN 760000 AND 769999"
                 else:
-                    standort_filter = ""
+                    return result
                 
-                # Stückzahl
-                cursor_loco.execute(f"""
-                    SELECT COUNT(*) as stueck
-                    FROM dealer_vehicles
-                    WHERE out_invoice_date >= %s AND out_invoice_date < %s
-                      AND out_invoice_date IS NOT NULL
-                      AND {typ_filter}
-                      {standort_filter}
-                """, (vj_von, vj_bis))
-                row = cursor_loco.fetchone()
-                result['stueck'] = int(row[0] or 0) if row else 0
+                # G&V-Abschlussbuchungen ausschließen (BWA-Logik)
+                guv_filter = "AND (posting_text IS NULL OR posting_text NOT LIKE '%%G&V-Abschluss%%')"
                 
-                # Durchschnittliche Standzeit (nur wenn Stückzahl > 0)
-                if result['stueck'] > 0:
-                    cursor_loco.execute(f"""
-                        SELECT AVG(out_invoice_date - in_arrival_date) as avg_standzeit
-                        FROM dealer_vehicles
-                        WHERE out_invoice_date >= %s AND out_invoice_date < %s
-                          AND out_invoice_date IS NOT NULL
-                          AND in_arrival_date IS NOT NULL
+                # Umsatz (BWA-Logik: H-S)
+                cursor.execute(convert_placeholders(f"""
+                    SELECT COALESCE(SUM(
+                        CASE WHEN debit_or_credit = 'H' THEN posted_value ELSE -posted_value END
+                    ) / 100.0, 0) as umsatz
+                    FROM loco_journal_accountings
+                    WHERE accounting_date >= ? AND accounting_date < ?
+                      AND nominal_account_number {umsatz_konten}
+                      {firma_filter_umsatz}
+                      {guv_filter}
+                """), (vj_von, vj_bis))
+                row = cursor.fetchone()
+                result['umsatz'] = float(row_to_dict(row)['umsatz'] or 0) if row else 0
+                
+                # Einsatz (BWA-Logik: S-H)
+                cursor.execute(convert_placeholders(f"""
+                    SELECT COALESCE(SUM(
+                        CASE WHEN debit_or_credit = 'S' THEN posted_value ELSE -posted_value END
+                    ) / 100.0, 0) as einsatz
+                    FROM loco_journal_accountings
+                    WHERE accounting_date >= ? AND accounting_date < ?
+                      AND nominal_account_number {einsatz_konten}
+                      {firma_filter_einsatz}
+                      {guv_filter}
+                """), (vj_von, vj_bis))
+                row = cursor.fetchone()
+                einsatz = float(row_to_dict(row)['einsatz'] or 0) if row else 0
+                
+                # DB1 = Umsatz - Einsatz (BWA-Logik)
+                result['db1'] = result['umsatz'] - einsatz
+                
+                # Variable Kosten (BWA-Logik)
+                cursor.execute(convert_placeholders(f"""
+                    SELECT COALESCE(SUM(
+                        CASE WHEN debit_or_credit = 'S' THEN posted_value ELSE -posted_value END
+                    ) / 100.0, 0) as variable
+                    FROM loco_journal_accountings
+                    WHERE accounting_date >= ? AND accounting_date < ?
+                      AND (
+                        nominal_account_number BETWEEN 415100 AND 415199
+                        OR nominal_account_number BETWEEN 435500 AND 435599
+                        OR (nominal_account_number BETWEEN 455000 AND 456999
+                            AND substr(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
+                        OR (nominal_account_number BETWEEN 487000 AND 487099
+                            AND substr(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
+                        OR nominal_account_number BETWEEN 491000 AND 497899
+                      )
+                      {firma_filter_kosten}
+                      {guv_filter}
+                """), (vj_von, vj_bis))
+                row = cursor.fetchone()
+                variable = float(row_to_dict(row)['variable'] or 0) if row else 0
+                
+                # DB2 = DB1 - Variable Kosten (BWA-Logik)
+                result['db2'] = result['db1'] - variable
+                
+                # 2. Stückzahl aus sales-Tabelle (dedupliziert) - EMPFOHLEN
+                if bereich in ['NW', 'GW']:
+                    # Typ-Filter
+                    if bereich == 'NW':
+                        typ_filter = "dealer_vehicle_type IN ('N', 'V')"
+                    else:  # GW
+                        typ_filter = "dealer_vehicle_type IN ('G', 'D')"
+                    
+                    # Standort-Filter
+                    if standort == 1:
+                        standort_filter = "AND out_subsidiary = 1"
+                    elif standort == 2:
+                        standort_filter = "AND out_subsidiary = 2"
+                    elif standort == 3:
+                        standort_filter = "AND out_subsidiary = 1"
+                    else:
+                        standort_filter = ""
+                    
+                    # Dedup-Filter (verhindert Doppelzählungen N→T/V)
+                    dedup_filter = """
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM sales s2
+                            WHERE s2.vin = s.vin
+                                AND s2.out_sales_contract_date = s.out_sales_contract_date
+                                AND s2.dealer_vehicle_type IN ('T', 'V')
+                                AND s.dealer_vehicle_type = 'N'
+                        )
+                    """
+                    
+                    # Stückzahl aus sales (dedupliziert)
+                    cursor.execute(f"""
+                        SELECT COUNT(*) as stueck
+                        FROM sales s
+                        WHERE s.out_invoice_date >= %s AND s.out_invoice_date < %s
+                          AND s.out_invoice_date IS NOT NULL
                           AND {typ_filter}
                           {standort_filter}
+                          {dedup_filter}
                     """, (vj_von, vj_bis))
-                    row = cursor_loco.fetchone()
-                    if row and row[0]:
-                        result['standzeit'] = int(row[0] or 0)
-                    else:
-                        result['standzeit'] = 0
+                    row = cursor.fetchone()
+                    result['stueck'] = int(row[0] or 0) if row else 0
+                
+                # 3. Standzeit aus dealer_vehicles (nur wenn Stückzahl > 0)
+                if bereich in ['NW', 'GW'] and result['stueck'] > 0:
+                    with locosoft_session() as conn_loco:
+                        cursor_loco = conn_loco.cursor()
+                        
+                        # Typ-Filter für Standzeit
+                        if bereich == 'NW':
+                            typ_filter_standzeit = "dealer_vehicle_type IN ('N', 'V')"
+                        else:  # GW
+                            typ_filter_standzeit = "dealer_vehicle_type IN ('G', 'D')"
+                        
+                        # Standort-Filter für Standzeit
+                        if standort == 1:
+                            standort_filter_standzeit = "AND out_subsidiary = 1"
+                        elif standort == 2:
+                            standort_filter_standzeit = "AND out_subsidiary = 2"
+                        elif standort == 3:
+                            standort_filter_standzeit = "AND out_subsidiary = 1"
+                        else:
+                            standort_filter_standzeit = ""
+                        
+                        cursor_loco.execute(f"""
+                            SELECT AVG(out_invoice_date - in_arrival_date) as avg_standzeit
+                            FROM dealer_vehicles
+                            WHERE out_invoice_date >= %s AND out_invoice_date < %s
+                              AND out_invoice_date IS NOT NULL
+                              AND in_arrival_date IS NOT NULL
+                              AND {typ_filter_standzeit}
+                              {standort_filter_standzeit}
+                        """, (vj_von, vj_bis))
+                        row = cursor_loco.fetchone()
+                        if row and row[0]:
+                            result['standzeit'] = int(row[0] or 0)
+                        else:
+                            result['standzeit'] = 0
                 else:
                     result['standzeit'] = 0
             
@@ -1040,7 +1127,6 @@ class AbteilungsleiterPlanungData:
                 result['servicegrad'] = 95.0       # Default
                 result['zinskosten_lager'] = result['lagerwert'] * ZINSSATZ_JAHR / 12
             
-            conn_loco.close()
         
         except Exception as e:
             logger.error(f"Fehler beim Laden der Vorjahres-Referenz: {str(e)}")
