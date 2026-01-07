@@ -145,10 +145,10 @@ def lade_ist_werte_fuer_monat(
         if bereich in ['Werkstatt', 'Teile', 'Sonstige']:
             # Werkstatt/Teile/Sonstige: Nur nach Standort filtern (Deggendorf oder Landau), nicht nach Marke
             if standort == 1:
-                # Deggendorf: Stellantis (branch=1, subsidiary=1) + Hyundai (branch=2, subsidiary=2)
-                firma_filter_umsatz = "AND ((branch_number = 1 AND SUBSTRING(nominal_account_number::TEXT, 5, 1) = '1') OR (branch_number = 2 AND subsidiary = 2))"
-                firma_filter_einsatz = "AND ((SUBSTRING(nominal_account_number::TEXT, 5, 1) = '1' AND subsidiary = 1) OR (SUBSTRING(nominal_account_number::TEXT, 5, 1) = '2' AND subsidiary = 2))"
-                subsidiary_filter = "AND (subsidiary = 1 OR subsidiary = 2)"  # Beide Firmen
+                # Deggendorf: Stellantis (branch=1, subsidiary_to_company_ref=1) + Hyundai (branch=2, subsidiary_to_company_ref=2)
+                firma_filter_umsatz = "AND ((branch_number = 1 AND SUBSTRING(nominal_account_number::TEXT, 5, 1) = '1') OR (branch_number = 2 AND subsidiary_to_company_ref = 2))"
+                firma_filter_einsatz = "AND ((SUBSTRING(nominal_account_number::TEXT, 5, 1) = '1' AND subsidiary_to_company_ref = 1) OR (SUBSTRING(nominal_account_number::TEXT, 5, 1) = '2' AND subsidiary_to_company_ref = 2))"
+                subsidiary_filter = "AND (out_subsidiary = 1 OR out_subsidiary = 2)"  # Beide Firmen (für Locosoft-Tabellen)
             elif standort == 3:
                 # Landau: branch_number = 3 (nur Stellantis, Hyundai hat keinen Standort in Landau)
                 firma_filter_umsatz = "AND (branch_number = 3 OR (nominal_account_number BETWEEN 810000 AND 819999 AND SUBSTRING(nominal_account_number::TEXT, 5, 1) = '2'))"
