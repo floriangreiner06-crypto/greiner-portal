@@ -140,22 +140,42 @@ def lade_ist_werte_fuer_monat(
     
     try:
         # Standort-Filter
-        if standort == 1:
-            firma_filter_umsatz = "AND (branch_number = 1 OR (nominal_account_number BETWEEN 810000 AND 819999 AND SUBSTRING(nominal_account_number::TEXT, 5, 1) = '1'))"
-            firma_filter_einsatz = "AND (SUBSTRING(nominal_account_number::TEXT, 5, 1) = '1')"
-            subsidiary_filter = "AND subsidiary = 1"
-        elif standort == 2:
-            firma_filter_umsatz = "AND subsidiary = 2"
-            firma_filter_einsatz = "AND subsidiary = 2"
-            subsidiary_filter = "AND subsidiary = 2"
-        elif standort == 3:
-            firma_filter_umsatz = "AND (branch_number = 3 OR (nominal_account_number BETWEEN 810000 AND 819999 AND SUBSTRING(nominal_account_number::TEXT, 5, 1) = '2'))"
-            firma_filter_einsatz = "AND (SUBSTRING(nominal_account_number::TEXT, 5, 1) = '2')"
-            subsidiary_filter = "AND subsidiary = 1"
+        # WICHTIG: Für Werkstatt keine Marken-Unterscheidung, nur Standort!
+        if bereich == 'Werkstatt':
+            # Werkstatt: Nur nach Standort filtern (Deggendorf oder Landau), nicht nach Marke
+            if standort == 1:
+                # Deggendorf: branch_number = 1 (sowohl Stellantis als auch Hyundai)
+                firma_filter_umsatz = "AND branch_number = 1"
+                firma_filter_einsatz = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
+                subsidiary_filter = "AND (subsidiary = 1 OR subsidiary = 2)"  # Beide Firmen
+            elif standort == 3:
+                # Landau: branch_number = 3 (sowohl Stellantis als auch Hyundai)
+                firma_filter_umsatz = "AND branch_number = 3"
+                firma_filter_einsatz = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
+                subsidiary_filter = "AND (subsidiary = 1 OR subsidiary = 2)"  # Beide Firmen
+            else:
+                # Standort 2 (Hyundai) oder andere: Alle Werte
+                firma_filter_umsatz = ""
+                firma_filter_einsatz = ""
+                subsidiary_filter = ""
         else:
-            firma_filter_umsatz = ""
-            firma_filter_einsatz = ""
-            subsidiary_filter = ""
+            # Andere Bereiche: Normale Standort-Filterung
+            if standort == 1:
+                firma_filter_umsatz = "AND (branch_number = 1 OR (nominal_account_number BETWEEN 810000 AND 819999 AND SUBSTRING(nominal_account_number::TEXT, 5, 1) = '1'))"
+                firma_filter_einsatz = "AND (SUBSTRING(nominal_account_number::TEXT, 5, 1) = '1')"
+                subsidiary_filter = "AND subsidiary = 1"
+            elif standort == 2:
+                firma_filter_umsatz = "AND subsidiary = 2"
+                firma_filter_einsatz = "AND subsidiary = 2"
+                subsidiary_filter = "AND subsidiary = 2"
+            elif standort == 3:
+                firma_filter_umsatz = "AND (branch_number = 3 OR (nominal_account_number BETWEEN 810000 AND 819999 AND SUBSTRING(nominal_account_number::TEXT, 5, 1) = '2'))"
+                firma_filter_einsatz = "AND (SUBSTRING(nominal_account_number::TEXT, 5, 1) = '2')"
+                subsidiary_filter = "AND subsidiary = 1"
+            else:
+                firma_filter_umsatz = ""
+                firma_filter_einsatz = ""
+                subsidiary_filter = ""
         
         # 1. Umsatz und DB1 aus DRIVE Portal (loco_journal_accountings)
         conn = get_db()
@@ -863,37 +883,57 @@ class AbteilungsleiterPlanungData:
         # Stellantis = subsidiary_to_company_ref = 1
         # Hyundai = subsidiary_to_company_ref = 2
         
-        # Firma bestimmen (Standort 1,3 = Stellantis, Standort 2 = Hyundai)
-        if standort == 2:
-            firma = '2'  # Hyundai
-        else:
-            firma = '1'  # Stellantis
-        
-        # BWA-Filter bauen (analog zu build_firma_standort_filter)
-        if firma == '1':
-            # Stellantis (Autohaus Greiner)
-            firma_filter_umsatz = "AND subsidiary_to_company_ref = 1"
-            firma_filter_einsatz = "AND subsidiary_to_company_ref = 1"
-            firma_filter_kosten = "AND subsidiary_to_company_ref = 1"
+        # WICHTIG: Für Werkstatt keine Marken-Unterscheidung, nur Standort!
+        if bereich == 'Werkstatt':
+            # Werkstatt: Nur nach Standort filtern (Deggendorf oder Landau), nicht nach Marke
             if standort == 1:
-                # Deggendorf: branch_number=1 für Umsatz, Konto-Endziffer=1 für Einsatz+Kosten
-                firma_filter_umsatz += " AND branch_number = 1"
-                firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
-                firma_filter_kosten += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
+                # Deggendorf: branch_number = 1 (sowohl Stellantis als auch Hyundai)
+                firma_filter_umsatz = "AND branch_number = 1"
+                firma_filter_einsatz = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
+                firma_filter_kosten = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
             elif standort == 3:
-                # Landau: branch_number=3 für Umsatz, Konto-Endziffer=2 für Einsatz+Kosten
-                firma_filter_umsatz += " AND branch_number = 3"
-                firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
-                firma_filter_kosten += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
-        elif firma == '2':
-            # Hyundai (Auto Greiner) - separate Firma
-            firma_filter_umsatz = "AND subsidiary_to_company_ref = 2"
-            firma_filter_einsatz = "AND subsidiary_to_company_ref = 2"
-            firma_filter_kosten = "AND subsidiary_to_company_ref = 2"
+                # Landau: branch_number = 3 (sowohl Stellantis als auch Hyundai)
+                firma_filter_umsatz = "AND branch_number = 3"
+                firma_filter_einsatz = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
+                firma_filter_kosten = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
+            else:
+                # Standort 2 (Hyundai) oder andere: Alle Werte
+                firma_filter_umsatz = ""
+                firma_filter_einsatz = ""
+                firma_filter_kosten = ""
         else:
-            firma_filter_umsatz = ""
-            firma_filter_einsatz = ""
-            firma_filter_kosten = ""
+            # Andere Bereiche: Normale Firma/Standort-Filterung
+            # Firma bestimmen (Standort 1,3 = Stellantis, Standort 2 = Hyundai)
+            if standort == 2:
+                firma = '2'  # Hyundai
+            else:
+                firma = '1'  # Stellantis
+            
+            # BWA-Filter bauen (analog zu build_firma_standort_filter)
+            if firma == '1':
+                # Stellantis (Autohaus Greiner)
+                firma_filter_umsatz = "AND subsidiary_to_company_ref = 1"
+                firma_filter_einsatz = "AND subsidiary_to_company_ref = 1"
+                firma_filter_kosten = "AND subsidiary_to_company_ref = 1"
+                if standort == 1:
+                    # Deggendorf: branch_number=1 für Umsatz, Konto-Endziffer=1 für Einsatz+Kosten
+                    firma_filter_umsatz += " AND branch_number = 1"
+                    firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
+                    firma_filter_kosten += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
+                elif standort == 3:
+                    # Landau: branch_number=3 für Umsatz, Konto-Endziffer=2 für Einsatz+Kosten
+                    firma_filter_umsatz += " AND branch_number = 3"
+                    firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
+                    firma_filter_kosten += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
+            elif firma == '2':
+                # Hyundai (Auto Greiner) - separate Firma
+                firma_filter_umsatz = "AND subsidiary_to_company_ref = 2"
+                firma_filter_einsatz = "AND subsidiary_to_company_ref = 2"
+                firma_filter_kosten = "AND subsidiary_to_company_ref = 2"
+            else:
+                firma_filter_umsatz = ""
+                firma_filter_einsatz = ""
+                firma_filter_kosten = ""
         
         # Standort-Filter für sales/dealer_vehicles (Locosoft)
         if standort == 1:
@@ -1182,32 +1222,52 @@ class AbteilungsleiterPlanungData:
             datum_bis = f"{jahr}-{bis_monat+1:02d}-01"
         
         # BWA-Filter bauen
-        if standort == 2:
-            firma = '2'  # Hyundai
-        else:
-            firma = '1'  # Stellantis
-        
-        # BWA-Filter (analog zu build_firma_standort_filter)
-        if firma == '1':
-            firma_filter_umsatz = "AND subsidiary_to_company_ref = 1"
-            firma_filter_einsatz = "AND subsidiary_to_company_ref = 1"
-            firma_filter_kosten = "AND subsidiary_to_company_ref = 1"
+        # WICHTIG: Für Werkstatt keine Marken-Unterscheidung, nur Standort!
+        if bereich == 'Werkstatt':
+            # Werkstatt: Nur nach Standort filtern (Deggendorf oder Landau), nicht nach Marke
             if standort == 1:
-                firma_filter_umsatz += " AND branch_number = 1"
-                firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
-                firma_filter_kosten += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
+                # Deggendorf: branch_number = 1 (sowohl Stellantis als auch Hyundai)
+                firma_filter_umsatz = "AND branch_number = 1"
+                firma_filter_einsatz = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
+                firma_filter_kosten = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
             elif standort == 3:
-                firma_filter_umsatz += " AND branch_number = 3"
-                firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
-                firma_filter_kosten += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
-        elif firma == '2':
-            firma_filter_umsatz = "AND subsidiary_to_company_ref = 2"
-            firma_filter_einsatz = "AND subsidiary_to_company_ref = 2"
-            firma_filter_kosten = "AND subsidiary_to_company_ref = 2"
+                # Landau: branch_number = 3 (sowohl Stellantis als auch Hyundai)
+                firma_filter_umsatz = "AND branch_number = 3"
+                firma_filter_einsatz = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
+                firma_filter_kosten = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
+            else:
+                # Standort 2 (Hyundai) oder andere: Alle Werte
+                firma_filter_umsatz = ""
+                firma_filter_einsatz = ""
+                firma_filter_kosten = ""
         else:
-            firma_filter_umsatz = ""
-            firma_filter_einsatz = ""
-            firma_filter_kosten = ""
+            # Andere Bereiche: Normale Firma/Standort-Filterung
+            if standort == 2:
+                firma = '2'  # Hyundai
+            else:
+                firma = '1'  # Stellantis
+            
+            # BWA-Filter (analog zu build_firma_standort_filter)
+            if firma == '1':
+                firma_filter_umsatz = "AND subsidiary_to_company_ref = 1"
+                firma_filter_einsatz = "AND subsidiary_to_company_ref = 1"
+                firma_filter_kosten = "AND subsidiary_to_company_ref = 1"
+                if standort == 1:
+                    firma_filter_umsatz += " AND branch_number = 1"
+                    firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
+                    firma_filter_kosten += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
+                elif standort == 3:
+                    firma_filter_umsatz += " AND branch_number = 3"
+                    firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
+                    firma_filter_kosten += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
+            elif firma == '2':
+                firma_filter_umsatz = "AND subsidiary_to_company_ref = 2"
+                firma_filter_einsatz = "AND subsidiary_to_company_ref = 2"
+                firma_filter_kosten = "AND subsidiary_to_company_ref = 2"
+            else:
+                firma_filter_umsatz = ""
+                firma_filter_einsatz = ""
+                firma_filter_kosten = ""
         
         guv_filter = "AND (posting_text IS NULL OR posting_text NOT LIKE '%%G&V-Abschluss%%')"
         
