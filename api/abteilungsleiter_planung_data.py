@@ -140,9 +140,9 @@ def lade_ist_werte_fuer_monat(
     
     try:
         # Standort-Filter
-        # WICHTIG: Für Werkstatt keine Marken-Unterscheidung, nur Standort!
-        if bereich == 'Werkstatt':
-            # Werkstatt: Nur nach Standort filtern (Deggendorf oder Landau), nicht nach Marke
+        # WICHTIG: Für Werkstatt, Teile, Sonstige keine Marken-Unterscheidung, nur Standort!
+        if bereich in ['Werkstatt', 'Teile', 'Sonstige']:
+            # Werkstatt/Teile/Sonstige: Nur nach Standort filtern (Deggendorf oder Landau), nicht nach Marke
             if standort == 1:
                 # Deggendorf: branch_number = 1 (sowohl Stellantis als auch Hyundai)
                 firma_filter_umsatz = "AND branch_number = 1"
@@ -1222,9 +1222,9 @@ class AbteilungsleiterPlanungData:
             datum_bis = f"{jahr}-{bis_monat+1:02d}-01"
         
         # BWA-Filter bauen
-        # WICHTIG: Für Werkstatt keine Marken-Unterscheidung, nur Standort!
-        if bereich == 'Werkstatt':
-            # Werkstatt: Nur nach Standort filtern (Deggendorf oder Landau), nicht nach Marke
+        # WICHTIG: Für Werkstatt, Teile, Sonstige keine Marken-Unterscheidung, nur Standort!
+        if bereich in ['Werkstatt', 'Teile', 'Sonstige']:
+            # Werkstatt/Teile/Sonstige: Nur nach Standort filtern (Deggendorf oder Landau), nicht nach Marke
             if standort == 1:
                 # Deggendorf: branch_number = 1 (sowohl Stellantis als auch Hyundai)
                 firma_filter_umsatz = "AND branch_number = 1"
