@@ -1529,19 +1529,48 @@ class AbteilungsleiterPlanungData:
                     bereich, standort, monat, geschaeftsjahr
                 )
                 
-                # Planungswerte (falls vorhanden)
-                # Wenn Monat abgelaufen und keine Planung: IST-Werte verwenden
-                if monat_abgelaufen and not planung:
-                    # IST-Werte für abgelaufenen Monat laden
+                # Monatswerte für Anzeige
+                # Für abgelaufene Monate: IMMER IST-Werte aus BWA (SSOT)
+                # Für zukünftige Monate: Planungswerte (falls vorhanden)
+                if monat_abgelaufen:
+                    # Abgelaufener Monat: IST-Werte aus BWA für diesen Monat
+                    # Verwende _lade_bwa_ytd für diesen Monat und vorherigen Monat, dann Differenz
+                    if monat == 1:  # September (erster Monat)
+                        # YTD für September = Monatswert
+                        ytd_aktuell = AbteilungsleiterPlanungData._lade_bwa_ytd(
+                            bereich, standort, kal_monat, kal_jahr
+                        )
+                        umsatz_plan = ytd_aktuell.get('umsatz', 0)
+                        db1_plan = ytd_aktuell.get('db1', 0)
+                        db2_plan = ytd_aktuell.get('db2', 0)
+                    else:
+                        # YTD für aktuellen Monat
+                        ytd_aktuell = AbteilungsleiterPlanungData._lade_bwa_ytd(
+                            bereich, standort, kal_monat, kal_jahr
+                        )
+                        # YTD für vorherigen Monat
+                        if monat <= 4:  # Sep-Dez
+                            vorher_kal_monat = monat + 7  # Vorheriger Monat
+                            vorher_kal_jahr = gj_start_jahr
+                        else:  # Jan-Aug
+                            vorher_kal_monat = monat - 5
+                            vorher_kal_jahr = gj_start_jahr + 1
+                        
+                        ytd_vorher = AbteilungsleiterPlanungData._lade_bwa_ytd(
+                            bereich, standort, vorher_kal_monat, vorher_kal_jahr
+                        )
+                        # Monatswert = Differenz zwischen YTD aktuell und YTD vorher
+                        umsatz_plan = ytd_aktuell.get('umsatz', 0) - ytd_vorher.get('umsatz', 0)
+                        db1_plan = ytd_aktuell.get('db1', 0) - ytd_vorher.get('db1', 0)
+                        db2_plan = ytd_aktuell.get('db2', 0) - ytd_vorher.get('db2', 0)
+                    
+                    # Stückzahl aus lade_ist_werte_fuer_monat (nicht aus BWA)
                     ist_werte = lade_ist_werte_fuer_monat(
                         geschaeftsjahr, monat, bereich, standort
                     )
-                    umsatz_plan = float(ist_werte.get('umsatz_ist', 0) or 0)
-                    db1_plan = float(ist_werte.get('db1_ist', 0) or 0)
-                    db2_plan = float(ist_werte.get('db2_ist', 0) or 0)
                     stueck_plan = int(ist_werte.get('stueck_ist', 0) or 0)
                 else:
-                    # Planungswerte (falls vorhanden)
+                    # Zukünftiger Monat: Planungswerte (falls vorhanden)
                     umsatz_plan = float(planung.get('umsatz_ziel', 0) or 0) if planung else 0
                     db1_plan = float(planung.get('db1_ziel', 0) or 0) if planung else 0
                     db2_plan = float(planung.get('db2_ziel', 0) or 0) if planung else 0
