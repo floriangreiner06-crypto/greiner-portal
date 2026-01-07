@@ -91,8 +91,8 @@
                             <th rowspan="2" class="align-middle">Monat</th>
                             <th colspan="4" class="text-center">Planung</th>
                             <th colspan="4" class="text-center">Vorjahr</th>
-                            <th colspan="4" class="text-center">Kumuliert (YTD)</th>
-                            <th colspan="4" class="text-center">Kumuliert VJ</th>
+                            <th colspan="4" class="text-center" title="Kumuliert vom GJ-Start (Sep) bis zu diesem Monat">Kumuliert (YTD)</th>
+                            <th colspan="4" class="text-center" title="Vorjahr IST-Werte kumuliert vom VJ-GJ-Start (Sep) bis zu diesem Monat">Kumuliert VJ</th>
                         </tr>
                         <tr>
                             <th>Umsatz</th>
@@ -180,15 +180,31 @@
                             <td class="wert-vj">{{ "{:,.2f}".format(monat_data.db2_vj) }} €</td>
                             <td class="wert-vj">{{ monat_data.stueck_vj }}</td>
                             <!-- Kumuliert -->
-                            <td class="wert-kumuliert">{{ "{:,.2f}".format(monat_data.kumuliert.umsatz) }} €</td>
-                            <td class="wert-kumuliert">{{ "{:,.2f}".format(monat_data.kumuliert.db1) }} €</td>
-                            <td class="wert-kumuliert">{{ "{:,.2f}".format(monat_data.kumuliert.db2) }} €</td>
-                            <td class="wert-kumuliert">{{ monat_data.kumuliert.stueck }}</td>
+                            <td class="wert-kumuliert" title="{% if monat_data.monat_abgelaufen %}IST-Werte (BWA) kumuliert vom GJ-Start (Sep) bis {{ monat_data.monat_name }}{% else %}Planung kumuliert vom GJ-Start (Sep) bis {{ monat_data.monat_name }}{% endif %}">
+                                {{ "{:,.2f}".format(monat_data.kumuliert.umsatz) }} €
+                            </td>
+                            <td class="wert-kumuliert" title="{% if monat_data.monat_abgelaufen %}IST-Werte (BWA) kumuliert vom GJ-Start (Sep) bis {{ monat_data.monat_name }}{% else %}Planung kumuliert vom GJ-Start (Sep) bis {{ monat_data.monat_name }}{% endif %}">
+                                {{ "{:,.2f}".format(monat_data.kumuliert.db1) }} €
+                            </td>
+                            <td class="wert-kumuliert" title="{% if monat_data.monat_abgelaufen %}IST-Werte (BWA) kumuliert vom GJ-Start (Sep) bis {{ monat_data.monat_name }}{% else %}Planung kumuliert vom GJ-Start (Sep) bis {{ monat_data.monat_name }}{% endif %}">
+                                {{ "{:,.2f}".format(monat_data.kumuliert.db2) }} €
+                            </td>
+                            <td class="wert-kumuliert" title="{% if monat_data.monat_abgelaufen %}IST-Werte kumuliert vom GJ-Start (Sep) bis {{ monat_data.monat_name }}{% else %}Planung kumuliert vom GJ-Start (Sep) bis {{ monat_data.monat_name }}{% endif %}">
+                                {{ monat_data.kumuliert.stueck }}
+                            </td>
                             <!-- Kumuliert VJ -->
-                            <td class="wert-kumuliert-vj">{{ "{:,.2f}".format(monat_data.kumuliert_vj.umsatz) }} €</td>
-                            <td class="wert-kumuliert-vj">{{ "{:,.2f}".format(monat_data.kumuliert_vj.db1) }} €</td>
-                            <td class="wert-kumuliert-vj">{{ "{:,.2f}".format(monat_data.kumuliert_vj.db2) }} €</td>
-                            <td class="wert-kumuliert-vj">{{ monat_data.kumuliert_vj.stueck }}</td>
+                            <td class="wert-kumuliert-vj" title="Vorjahr IST-Werte (BWA) kumuliert vom VJ-GJ-Start (Sep) bis {{ monat_data.monat_name }}">
+                                {{ "{:,.2f}".format(monat_data.kumuliert_vj.umsatz) }} €
+                            </td>
+                            <td class="wert-kumuliert-vj" title="Vorjahr IST-Werte (BWA) kumuliert vom VJ-GJ-Start (Sep) bis {{ monat_data.monat_name }}">
+                                {{ "{:,.2f}".format(monat_data.kumuliert_vj.db1) }} €
+                            </td>
+                            <td class="wert-kumuliert-vj" title="Vorjahr IST-Werte (BWA) kumuliert vom VJ-GJ-Start (Sep) bis {{ monat_data.monat_name }}">
+                                {{ "{:,.2f}".format(monat_data.kumuliert_vj.db2) }} €
+                            </td>
+                            <td class="wert-kumuliert-vj" title="Vorjahr IST-Werte kumuliert vom VJ-GJ-Start (Sep) bis {{ monat_data.monat_name }}">
+                                {{ monat_data.kumuliert_vj.stueck }}
+                            </td>
                         </tr>
                         {% endfor %}
                         <!-- Gesamt-Zeile -->
