@@ -1618,11 +1618,13 @@ class AbteilungsleiterPlanungData:
                             bereich, standort, kal_monat, kal_jahr
                         )
                         # YTD für vorherigen Monat
-                        if monat <= 4:  # Sep-Dez
-                            vorher_kal_monat = monat + 7  # Vorheriger Monat
+                        # GJ-Monat zu Kalendermonat: GJ-Monat 1-4 = Sep-Dez (Kalender 9-12), GJ-Monat 5-12 = Jan-Aug (Kalender 1-8)
+                        vorher_gj_monat = monat - 1
+                        if vorher_gj_monat <= 4:  # Sep-Dez
+                            vorher_kal_monat = vorher_gj_monat + 8
                             vorher_kal_jahr = gj_start_jahr
                         else:  # Jan-Aug
-                            vorher_kal_monat = monat - 5
+                            vorher_kal_monat = vorher_gj_monat - 4
                             vorher_kal_jahr = gj_start_jahr + 1
                         
                         ytd_vorher = AbteilungsleiterPlanungData._lade_bwa_ytd(
