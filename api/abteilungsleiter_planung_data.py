@@ -1421,11 +1421,11 @@ class AbteilungsleiterPlanungData:
                     
                     # Planungsdaten aus Vorjahr extrahieren
                     planung_data = {}
-                    for key in ['plan_stueck', 'plan_bruttoertrag_pro_fzg', 'plan_provision_pct', 
-                               'plan_vk_preis', 'plan_standzeit_tage', 'plan_stundensatz',
+                    for key in ['plan_stueck', 'plan_bruttoertrag_pro_fzg', 'plan_variable_kosten_prozent', 
+                               'plan_verkaufspreis', 'plan_standzeit_tage', 'plan_stundensatz',
                                'plan_produktivitaet', 'plan_leistungsgrad', 'plan_auslastung',
                                'plan_lagerumschlag', 'plan_penner_quote', 'plan_servicegrad',
-                               'plan_umsatz', 'plan_marge_pct', 'plan_ek_preis', 'plan_vk_preis_teile',
+                               'plan_umsatz', 'plan_marge_prozent', 'plan_ek_preis', 'plan_vk_preis_teile',
                                'plan_direkte_kosten']:
                         if key in vj_planung:
                             planung_data[key] = vj_planung[key]
