@@ -1090,42 +1090,46 @@ class AbteilungsleiterPlanungData:
                 else:
                     result['standzeit'] = 0
             
-            elif bereich == 'Werkstatt':
-                # Stunden verkauft (verrechnet)
-                # Für Werkstatt: subsidiary_filter verwenden (orders haben subsidiary)
-                cursor_loco.execute(f"""
-                    SELECT COALESCE(SUM(l.time_units), 0) as stunden_verkauft
-                    FROM labours l
-                    JOIN orders o ON l.order_number = o.number
-                    WHERE o.invoice_date >= %s AND o.invoice_date < %s
-                      AND l.is_invoiced = true
-                      {subsidiary_filter}
-                """, (vj_von, vj_bis))
-                row = cursor_loco.fetchone()
-                result['stunden_verkauft'] = float(row[0] or 0) if row else 0
+                # 4. Werkstatt-spezifische Daten
+                if bereich == 'Werkstatt':
+                    with locosoft_session() as conn_loco:
+                        cursor_loco = conn_loco.cursor()
+                        # Stunden verkauft (verrechnet)
+                        # Für Werkstatt: subsidiary_filter verwenden (orders haben subsidiary)
+                        cursor_loco.execute(f"""
+                            SELECT COALESCE(SUM(l.time_units), 0) as stunden_verkauft
+                            FROM labours l
+                            JOIN orders o ON l.order_number = o.number
+                            WHERE o.invoice_date >= %s AND o.invoice_date < %s
+                              AND l.is_invoiced = true
+                              {subsidiary_filter}
+                        """, (vj_von, vj_bis))
+                        row = cursor_loco.fetchone()
+                        result['stunden_verkauft'] = float(row[0] or 0) if row else 0
+                        
+                        # Stundensatz = Umsatz / Stunden
+                        if result['stunden_verkauft'] > 0:
+                            result['stundensatz'] = result['umsatz'] / result['stunden_verkauft']
+                        
+                        # Produktivität, Leistungsgrad, Auslastung
+                        # TODO: Aus werkstatt_data.py laden (komplexe Berechnung)
+                        # Für jetzt: Placeholder
+                        result['produktivitaet'] = 105.0  # Default
+                        result['leistungsgrad'] = 90.0    # Default
+                        result['auslastung'] = 75.0       # Default
                 
-                # Stundensatz = Umsatz / Stunden
-                if result['stunden_verkauft'] > 0:
-                    result['stundensatz'] = result['umsatz'] / result['stunden_verkauft']
-                
-                # Produktivität, Leistungsgrad, Auslastung
-                # TODO: Aus werkstatt_data.py laden (komplexe Berechnung)
-                # Für jetzt: Placeholder
-                result['produktivitaet'] = 105.0  # Default
-                result['leistungsgrad'] = 90.0    # Default
-                result['auslastung'] = 75.0       # Default
-            
-            elif bereich == 'Teile':
-                # Lagerumschlag, Penner-Quote, Servicegrad
-                # TODO: Aus teile_data.py laden (komplexe Berechnung)
-                # Für jetzt: Placeholder
-                if result['umsatz'] > 0:
-                    # Annahme: Lagerwert = Umsatz / 4 (4x Umschlag)
-                    result['lagerwert'] = result['umsatz'] / 4
-                    result['lagerumschlag'] = 4.0
-                result['penner_quote'] = 18.0     # Default
-                result['servicegrad'] = 95.0       # Default
-                result['zinskosten_lager'] = result['lagerwert'] * ZINSSATZ_JAHR / 12
+                # 5. Teile-spezifische Daten
+                if bereich == 'Teile':
+                    # Lagerumschlag, Penner-Quote, Servicegrad
+                    # TODO: Aus teile_data.py laden (komplexe Berechnung)
+                    # Für jetzt: Placeholder
+                    if result['umsatz'] > 0:
+                        # Annahme: Lagerwert = Umsatz / 4 (4x Umschlag)
+                        result['lagerwert'] = result['umsatz'] / 4
+                        result['lagerumschlag'] = 4.0
+                    result['penner_quote'] = 18.0     # Default
+                    result['servicegrad'] = 95.0       # Default
+                    result['zinskosten_lager'] = result['lagerwert'] * ZINSSATZ_JAHR / 12
             
         
         except Exception as e:
