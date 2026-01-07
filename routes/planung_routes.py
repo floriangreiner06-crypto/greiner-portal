@@ -8,6 +8,7 @@ Routes:
 - /planung/abteilungsleiter/<bereich>/<standort> - Planungsformular
 - /planung/abteilungsleiter/<id> - Planung anzeigen
 - /planung/freigabe - Freigabe-Übersicht (für Geschäftsführung)
+- /planung/gesamtplanung - Gesamtplanungsansicht (alle KST, alle Betriebe)
 """
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
@@ -109,20 +110,19 @@ def gj_monat_zu_name(gj_monat: int) -> str:
     Konvertiert GJ-Monat zu Monatsname.
     
     Args:
-        gj_monat: GJ-Monat (1=Sep, 2=Okt, ..., 12=Aug)
+        gj_monat: GJ-Monat (1-12)
     
     Returns:
         Monatsname (z.B. 'September', 'Januar')
     """
-    monatsnamen = [
-        '',  # 0 (nicht verwendet)
-        'September', 'Oktober', 'November', 'Dezember',  # 1-4
-        'Januar', 'Februar', 'März', 'April',  # 5-8
-        'Mai', 'Juni', 'Juli', 'August'  # 9-12
+    monate = [
+        'September', 'Oktober', 'November', 'Dezember',
+        'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August'
     ]
     
     if 1 <= gj_monat <= 12:
-        return monatsnamen[gj_monat]
+        return monate[gj_monat - 1]
+    
     return f'Monat {gj_monat}'
 
 
@@ -289,14 +289,12 @@ def planungsformular(bereich: str, standort: int):
                 geschaeftsjahr, monat, bereich, standort
             )
         
-        # Bestehende Planung laden (falls vorhanden)
+        # Bestehende Planung aus DB laden
         with db_session() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
-            
             cursor.execute("""
                 SELECT * FROM abteilungsleiter_planung
-                WHERE geschaeftsjahr = %s AND monat = %s
-                  AND bereich = %s AND standort = %s
+                WHERE geschaeftsjahr = %s AND monat = %s AND bereich = %s AND standort = %s
             """, (geschaeftsjahr, monat, bereich, standort))
             
             row = cursor.fetchone()
@@ -306,45 +304,22 @@ def planungsformular(bereich: str, standort: int):
     except Exception as e:
         flash(f'Fehler beim Laden der Planung: {str(e)}', 'danger')
     
+    # Vorjahres-Referenz laden
+    vorjahr = None
+    try:
+        if AbteilungsleiterPlanungData:
+            vorjahr = AbteilungsleiterPlanungData._lade_vorjahr_referenz(
+                bereich, standort, monat, geschaeftsjahr
+            )
+    except Exception as e:
+        flash(f'Fehler beim Laden der Vorjahres-Referenz: {str(e)}', 'warning')
+    
     # Standort-Name
     standort_namen = {
         1: 'Deggendorf',
         2: 'Hyundai DEG',
         3: 'Landau'
     }
-    
-    # Vorjahres-Referenz laden (für Anzeige im Template)
-    vorjahr = {}
-    try:
-        if AbteilungsleiterPlanungData:
-            vorjahr = AbteilungsleiterPlanungData._lade_vorjahr_referenz(
-                bereich, standort, monat, geschaeftsjahr
-            )
-            # Vorjahreswerte in planung-Objekt einfügen (falls nicht vorhanden)
-            if planung:
-                if not planung.get('vj_stueck'):
-                    planung['vj_stueck'] = vorjahr.get('stueck', 0)
-                if not planung.get('vj_umsatz'):
-                    planung['vj_umsatz'] = vorjahr.get('umsatz', 0)
-                if not planung.get('vj_db1'):
-                    planung['vj_db1'] = vorjahr.get('db1', 0)
-                if not planung.get('vj_standzeit'):
-                    planung['vj_standzeit'] = vorjahr.get('standzeit', 0)
-            else:
-                # Wenn keine Planung vorhanden, planung-Objekt mit VJ-Werten erstellen
-                planung = {
-                    'vj_stueck': vorjahr.get('stueck', 0),
-                    'vj_umsatz': vorjahr.get('umsatz', 0),
-                    'vj_db1': vorjahr.get('db1', 0),
-                    'vj_standzeit': vorjahr.get('standzeit', 0),
-                    'vj_stundensatz': vorjahr.get('stundensatz', 0),
-                    'vj_stunden_verkauft': vorjahr.get('stunden_verkauft', 0),
-                    'vj_lagerumschlag': vorjahr.get('lagerumschlag', 0),
-                    'vj_penner_quote': vorjahr.get('penner_quote', 0),
-                    'vj_servicegrad': vorjahr.get('servicegrad', 0)
-                }
-    except Exception as e:
-        print(f"Fehler beim Laden der Vorjahres-Referenz: {str(e)}")
     
     # Monatsname für Anzeige
     monat_name = gj_monat_zu_name(monat)
@@ -359,47 +334,9 @@ def planungsformular(bereich: str, standort: int):
         standort_name=standort_namen.get(standort, f'Standort {standort}'),
         planung=planung,
         ist_werte=ist_werte,
-        monat_abgelaufen=monat_abgelaufen,
-        vorjahr=vorjahr
+        vorjahr=vorjahr,
+        monat_abgelaufen=monat_abgelaufen
     )
-
-
-@planung_routes.route('/abteilungsleiter/<int:planung_id>')
-@login_required
-def planung_anzeigen(planung_id: int):
-    """Zeigt eine Planung an (Read-Only)."""
-    try:
-        with db_session() as conn:
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-            
-            cursor.execute("""
-                SELECT * FROM abteilungsleiter_planung
-                WHERE id = %s
-            """, (planung_id,))
-            
-            planung = cursor.fetchone()
-            if not planung:
-                flash('Planung nicht gefunden', 'danger')
-                return redirect(url_for('abteilungsleiter_planung.uebersicht'))
-            
-            planung_dict = row_to_dict(planung)
-            
-            # Standort-Name
-            standort_namen = {
-                1: 'Deggendorf',
-                2: 'Hyundai DEG',
-                3: 'Landau'
-            }
-            
-            return render_template(
-                'planung/abteilungsleiter_detail.html',
-                planung=planung_dict,
-                standort_name=standort_namen.get(planung_dict['standort'], f'Standort {planung_dict["standort"]}')
-            )
-    
-    except Exception as e:
-        flash(f'Fehler: {str(e)}', 'danger')
-        return redirect(url_for('abteilungsleiter_planung.uebersicht'))
 
 
 @planung_routes.route('/freigabe')
@@ -407,41 +344,46 @@ def planung_anzeigen(planung_id: int):
 def freigabe_uebersicht():
     """
     Freigabe-Übersicht für Geschäftsführung.
-    
-    Zeigt alle Planungen mit Status 'entwurf' zur Freigabe.
+    Zeigt alle Planungen mit Status 'eingereicht' oder 'entwurf'.
     """
     geschaeftsjahr = request.args.get('geschaeftsjahr', get_gj_from_date())
     monat_param = request.args.get('monat', type=int)
     
-    # monat_param ist jetzt immer GJ-Monat (1-12), nicht mehr Kalendermonat
-    # GJ-Monat 1 = Sep, 2 = Okt, ..., 5 = Jan, ..., 12 = Aug
+    # monat_param ist jetzt immer GJ-Monat (1-12)
     if monat_param and 1 <= monat_param <= 12:
         monat = monat_param
     else:
-        monat = get_gj_monat()  # Aktueller GJ-Monat
+        monat = get_gj_monat()
     
-    # Prüfen ob User Freigabe-Berechtigung hat
-    if not current_user.can_access_feature('admin'):
-        flash('Keine Berechtigung für Freigabe', 'danger')
-        return redirect(url_for('abteilungsleiter_planung.uebersicht'))
+    standort = request.args.get('standort', type=int)
     
-    # Planungen mit Status 'entwurf' laden
+    # Planungen laden
     planungen = []
     try:
         with db_session() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             
-            cursor.execute("""
+            query = """
                 SELECT id, bereich, standort, status,
                        umsatz_basis, db1_basis, umsatz_ziel, db1_ziel,
                        erstellt_von, erstellt_am, kommentar
                 FROM abteilungsleiter_planung
                 WHERE geschaeftsjahr = %s AND monat = %s
-                  AND status = 'entwurf'
-                ORDER BY bereich, standort
-            """, (geschaeftsjahr, monat))
+                  AND status IN ('entwurf', 'eingereicht')
+            """
+            params = [geschaeftsjahr, monat]
             
-            planungen = [row_to_dict(row) for row in cursor.fetchall()]
+            if standort:
+                query += " AND standort = %s"
+                params.append(standort)
+            
+            query += " ORDER BY bereich, standort"
+            
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            
+            for row in rows:
+                planungen.append(row_to_dict(row))
     
     except Exception as e:
         flash(f'Fehler beim Laden der Planungen: {str(e)}', 'danger')
@@ -461,6 +403,7 @@ def freigabe_uebersicht():
         geschaeftsjahr=geschaeftsjahr,
         monat=monat,
         monat_name=monat_name,
+        standort=standort,
         planungen=planungen,
         standort_namen=standort_namen
     )
@@ -520,3 +463,153 @@ def jahresplanung(bereich: str, standort: int):
         jahresplanung=jahresplanung_data
     )
 
+
+@planung_routes.route('/gesamtplanung')
+@login_required
+def gesamtplanung():
+    """
+    Gesamtplanungsansicht für alle Kostenstellen und Betriebe.
+    
+    Zeigt aggregierte Planungswerte mit:
+    - Filterung nach Geschäftsjahr, Monat, Standort, Bereich
+    - Gewinnberechnung (DB2, Betriebsergebnis)
+    - Gruppierung nach Bereich und Standort
+    """
+    geschaeftsjahr = request.args.get('geschaeftsjahr', get_gj_from_date())
+    monat_param = request.args.get('monat', type=int)
+    standort_filter = request.args.get('standort', type=int)
+    bereich_filter = request.args.get('bereich', type=str)
+    
+    # monat_param ist GJ-Monat (1-12)
+    if monat_param and 1 <= monat_param <= 12:
+        monat = monat_param
+    else:
+        monat = get_gj_monat()
+    
+    # Planungen aggregieren
+    gesamtwerte = {
+        'umsatz': 0,
+        'db1': 0,
+        'db2': 0,
+        'stueck': 0
+    }
+    
+    # Gruppierung nach Bereich und Standort
+    planungen_gruppiert = {}
+    
+    try:
+        with db_session() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            query = """
+                SELECT 
+                    bereich,
+                    standort,
+                    SUM(COALESCE(umsatz_ziel, 0)) as umsatz,
+                    SUM(COALESCE(db1_ziel, 0)) as db1,
+                    SUM(COALESCE(db2_ziel, 0)) as db2,
+                    SUM(COALESCE(plan_stueck, 0)) as stueck,
+                    COUNT(*) as anzahl_planungen
+                FROM abteilungsleiter_planung
+                WHERE geschaeftsjahr = %s AND monat = %s
+                  AND status = 'freigegeben'
+            """
+            params = [geschaeftsjahr, monat]
+            
+            if standort_filter:
+                query += " AND standort = %s"
+                params.append(standort_filter)
+            
+            if bereich_filter:
+                query += " AND bereich = %s"
+                params.append(bereich_filter)
+            
+            query += """
+                GROUP BY bereich, standort
+                ORDER BY bereich, standort
+            """
+            
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            
+            for row in rows:
+                r = row_to_dict(row)
+                bereich = r['bereich']
+                standort = r['standort']
+                
+                # Für Teile und Werkstatt: Standort 2 auf Standort 1 mappen
+                if bereich in ['Teile', 'Werkstatt'] and standort == 2:
+                    standort = 1
+                
+                key = f"{bereich}_{standort}"
+                
+                if key in planungen_gruppiert:
+                    # Werte zusammenfassen
+                    existing = planungen_gruppiert[key]
+                    planungen_gruppiert[key] = {
+                        'bereich': bereich,
+                        'standort': standort,
+                        'umsatz': existing['umsatz'] + float(r['umsatz'] or 0),
+                        'db1': existing['db1'] + float(r['db1'] or 0),
+                        'db2': existing['db2'] + float(r['db2'] or 0),
+                        'stueck': existing['stueck'] + int(r['stueck'] or 0),
+                        'anzahl_planungen': existing['anzahl_planungen'] + int(r['anzahl_planungen'] or 0)
+                    }
+                else:
+                    planungen_gruppiert[key] = {
+                        'bereich': bereich,
+                        'standort': standort,
+                        'umsatz': float(r['umsatz'] or 0),
+                        'db1': float(r['db1'] or 0),
+                        'db2': float(r['db2'] or 0),
+                        'stueck': int(r['stueck'] or 0),
+                        'anzahl_planungen': int(r['anzahl_planungen'] or 0)
+                    }
+                
+                # Gesamtwerte
+                gesamtwerte['umsatz'] += float(r['umsatz'] or 0)
+                gesamtwerte['db1'] += float(r['db1'] or 0)
+                gesamtwerte['db2'] += float(r['db2'] or 0)
+                gesamtwerte['stueck'] += int(r['stueck'] or 0)
+    
+    except Exception as e:
+        flash(f'Fehler beim Laden der Gesamtplanung: {str(e)}', 'danger')
+    
+    # Gewinnberechnung
+    # DB2 ist bereits Deckungsbeitrag 2 (nach variablen Kosten)
+    # Betriebsergebnis = DB2 - indirekte Kosten (vereinfacht: DB2 * 0.9 als Näherung)
+    # TODO: Indirekte Kosten aus BWA oder separater Tabelle laden
+    betriebsergebnis = gesamtwerte['db2'] * 0.9  # Näherung: 10% indirekte Kosten
+    
+    # Standort-Namen
+    standort_namen = {
+        1: 'Deggendorf',
+        2: 'Hyundai DEG',
+        3: 'Landau'
+    }
+    
+    # Bereichs-Namen
+    bereich_namen = {
+        'NW': 'Neuwagen',
+        'GW': 'Gebrauchtwagen',
+        'Teile': 'Teile',
+        'Werkstatt': 'Werkstatt',
+        'Sonstige': 'Sonstige'
+    }
+    
+    # Monatsname
+    monat_name = gj_monat_zu_name(monat)
+    
+    return render_template(
+        'planung/gesamtplanung.html',
+        geschaeftsjahr=geschaeftsjahr,
+        monat=monat,
+        monat_name=monat_name,
+        standort_filter=standort_filter,
+        bereich_filter=bereich_filter,
+        planungen_gruppiert=planungen_gruppiert,
+        gesamtwerte=gesamtwerte,
+        betriebsergebnis=betriebsergebnis,
+        standort_namen=standort_namen,
+        bereich_namen=bereich_namen
+    )
