@@ -141,6 +141,8 @@
                             <td class="wert-plan">
                                 {% if monat_data.planung %}
                                 {{ "{:,.2f}".format(monat_data.umsatz_plan) }} €
+                                {% elif monat_data.ist_werte_verwendet %}
+                                <span class="text-success" title="IST-Wert (automatisch aus Locosoft)">{{ "{:,.2f}".format(monat_data.umsatz_plan) }} €</span>
                                 {% else %}
                                 <span class="noch-nicht-geplant">Noch nicht geplant</span>
                                 {% endif %}
@@ -148,6 +150,8 @@
                             <td class="wert-plan">
                                 {% if monat_data.planung %}
                                 {{ "{:,.2f}".format(monat_data.db1_plan) }} €
+                                {% elif monat_data.ist_werte_verwendet %}
+                                <span class="text-success" title="IST-Wert (automatisch aus Locosoft)">{{ "{:,.2f}".format(monat_data.db1_plan) }} €</span>
                                 {% else %}
                                 <span class="noch-nicht-geplant">-</span>
                                 {% endif %}
@@ -155,6 +159,8 @@
                             <td class="wert-plan">
                                 {% if monat_data.planung %}
                                 {{ "{:,.2f}".format(monat_data.db2_plan) }} €
+                                {% elif monat_data.ist_werte_verwendet %}
+                                <span class="text-success" title="IST-Wert (automatisch aus Locosoft)">{{ "{:,.2f}".format(monat_data.db2_plan) }} €</span>
                                 {% else %}
                                 <span class="noch-nicht-geplant">-</span>
                                 {% endif %}
@@ -162,6 +168,8 @@
                             <td class="wert-plan">
                                 {% if monat_data.planung %}
                                 {{ monat_data.stueck_plan }}
+                                {% elif monat_data.ist_werte_verwendet %}
+                                <span class="text-success" title="IST-Wert (automatisch aus Locosoft)">{{ monat_data.stueck_plan }}</span>
                                 {% else %}
                                 <span class="noch-nicht-geplant">-</span>
                                 {% endif %}

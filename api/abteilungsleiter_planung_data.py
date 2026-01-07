@@ -1273,16 +1273,31 @@ class AbteilungsleiterPlanungData:
             for monat in range(1, 13):
                 planung = planungen.get(monat)
                 
+                # Prüfen ob Monat abgelaufen
+                monat_abgelaufen = ist_monat_abgelaufen(geschaeftsjahr, monat)
+                
                 # Vorjahres-Referenz laden
                 vorjahr = AbteilungsleiterPlanungData._lade_vorjahr_referenz(
                     bereich, standort, monat, geschaeftsjahr
                 )
                 
                 # Planungswerte (falls vorhanden)
-                umsatz_plan = float(planung.get('umsatz_ziel', 0) or 0) if planung else 0
-                db1_plan = float(planung.get('db1_ziel', 0) or 0) if planung else 0
-                db2_plan = float(planung.get('db2_ziel', 0) or 0) if planung else 0
-                stueck_plan = int(planung.get('plan_stueck', 0) or 0) if planung else 0
+                # Wenn Monat abgelaufen und keine Planung: IST-Werte verwenden
+                if monat_abgelaufen and not planung:
+                    # IST-Werte für abgelaufenen Monat laden
+                    ist_werte = lade_ist_werte_fuer_monat(
+                        geschaeftsjahr, monat, bereich, standort
+                    )
+                    umsatz_plan = float(ist_werte.get('umsatz_ist', 0) or 0)
+                    db1_plan = float(ist_werte.get('db1_ist', 0) or 0)
+                    db2_plan = float(ist_werte.get('db2_ist', 0) or 0)
+                    stueck_plan = int(ist_werte.get('stueck_ist', 0) or 0)
+                else:
+                    # Planungswerte (falls vorhanden)
+                    umsatz_plan = float(planung.get('umsatz_ziel', 0) or 0) if planung else 0
+                    db1_plan = float(planung.get('db1_ziel', 0) or 0) if planung else 0
+                    db2_plan = float(planung.get('db2_ziel', 0) or 0) if planung else 0
+                    stueck_plan = int(planung.get('plan_stueck', 0) or 0) if planung else 0
                 
                 # Vorjahreswerte
                 umsatz_vj = float(vorjahr.get('umsatz', 0) or 0)
@@ -1304,9 +1319,6 @@ class AbteilungsleiterPlanungData:
                 # Monatsname
                 monatsnamen = ['Sep', 'Okt', 'Nov', 'Dez', 'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug']
                 monat_name = monatsnamen[monat - 1]
-                
-                # Prüfen ob Monat abgelaufen
-                monat_abgelaufen = ist_monat_abgelaufen(geschaeftsjahr, monat)
                 
                 result['monate'].append({
                     'monat': monat,
@@ -1333,7 +1345,8 @@ class AbteilungsleiterPlanungData:
                         'db2': kum_db2_vj,
                         'stueck': kum_stueck_vj
                     },
-                    'monat_abgelaufen': monat_abgelaufen
+                    'monat_abgelaufen': monat_abgelaufen,
+                    'ist_werte_verwendet': monat_abgelaufen and not planung  # Flag: IST-Werte statt Planung
                 })
             
             # Gesamt-Kumulierte Werte
