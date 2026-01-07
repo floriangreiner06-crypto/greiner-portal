@@ -956,37 +956,56 @@ class AbteilungsleiterPlanungData:
             cursor_loco = conn_loco.cursor()
             
             if bereich in ['NW', 'GW']:
-                # Typ-Filter: NW = N+V, GW = G
+                # Typ-Filter: NW = N+V, GW = G+D
                 if bereich == 'NW':
                     typ_filter = "dealer_vehicle_type IN ('N', 'V')"
+                else:  # GW
+                    typ_filter = "dealer_vehicle_type IN ('G', 'D')"
+                
+                # Standort-Filter für dealer_vehicles: out_subsidiary verwenden
+                if standort == 1:
+                    standort_filter = "AND out_subsidiary = 1"
+                elif standort == 2:
+                    standort_filter = "AND out_subsidiary = 2"
+                elif standort == 3:
+                    standort_filter = "AND out_subsidiary = 1"  # Landau ist auch subsidiary 1
                 else:
-                    typ_filter = "dealer_vehicle_type = 'G'"
+                    standort_filter = ""
                 
                 # Stückzahl
                 cursor_loco.execute(f"""
                     SELECT COUNT(*) as stueck
                     FROM dealer_vehicles
                     WHERE out_invoice_date >= %s AND out_invoice_date < %s
+                      AND out_invoice_date IS NOT NULL
                       AND {typ_filter}
-                      {subsidiary_filter}
+                      {standort_filter}
                 """, (vj_von, vj_bis))
                 row = cursor_loco.fetchone()
                 result['stueck'] = int(row[0] or 0) if row else 0
                 
-                # Durchschnittliche Standzeit (aus verkauften Fahrzeugen)
-                cursor_loco.execute(f"""
-                    SELECT AVG(out_invoice_date - in_arrival_date) as avg_standzeit
-                    FROM dealer_vehicles
-                    WHERE out_invoice_date >= %s AND out_invoice_date < %s
-                      AND {typ_filter}
-                      AND in_arrival_date IS NOT NULL
-                      {subsidiary_filter}
-                """, (vj_von, vj_bis))
-                row = cursor_loco.fetchone()
-                result['standzeit'] = int(row[0] or 0) if row else 0
+                # Durchschnittliche Standzeit (nur wenn Stückzahl > 0)
+                if result['stueck'] > 0:
+                    cursor_loco.execute(f"""
+                        SELECT AVG(out_invoice_date - in_arrival_date) as avg_standzeit
+                        FROM dealer_vehicles
+                        WHERE out_invoice_date >= %s AND out_invoice_date < %s
+                          AND out_invoice_date IS NOT NULL
+                          AND in_arrival_date IS NOT NULL
+                          AND {typ_filter}
+                          {standort_filter}
+                    """, (vj_von, vj_bis))
+                    row = cursor_loco.fetchone()
+                    if row and row[0]:
+                        result['standzeit'] = int(row[0] or 0)
+                    else:
+                        result['standzeit'] = 0
+                else:
+                    result['standzeit'] = 0
             
             elif bereich == 'Werkstatt':
                 # Stunden verkauft (verrechnet)
+                # Für Werkstatt: subsidiary_filter verwenden (orders haben subsidiary)
                 cursor_loco.execute(f"""
                     SELECT COALESCE(SUM(l.time_units), 0) as stunden_verkauft
                     FROM labours l
