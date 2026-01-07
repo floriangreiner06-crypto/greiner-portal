@@ -1,0 +1,159 @@
+<!-- Frage 1: Umsatz -->
+<div class="frage-card">
+    <div class="frage-nummer">1️⃣</div>
+    <div class="frage-text">Welchen Umsatz planst du?</div>
+    <div class="input-group input-group-large">
+        <span class="input-group-text">€</span>
+        <input type="number" name="plan_umsatz" class="form-control" 
+               value="{% if monat_abgelaufen and ist_werte %}{{ "%.2f"|format(ist_werte.umsatz_ist) if ist_werte.umsatz_ist else '' }}{% elif planung %}{{ planung.umsatz_basis }}{% endif %}" 
+               placeholder="z.B. 1200000" step="0.01" min="0" {% if monat_abgelaufen %}readonly{% else %}required{% endif %}>
+        <span class="input-group-text">(Jahr)</span>
+    </div>
+    {% if monat_abgelaufen and ist_werte %}
+    <div class="vj-hinweis">✅ <strong>IST:</strong> {{ "%.2f"|format(ist_werte.umsatz_ist) }} € (automatisch aus Locosoft)</div>
+    {% else %}
+    <div class="vj-hinweis">📊 Vorjahr: {{ "%.2f"|format(planung.vj_umsatz) if planung and planung.vj_umsatz else 'N/A' }} € | +5% Wachstum</div>
+    {% endif %}
+</div>
+
+<!-- Frage 2: Marge -->
+<div class="frage-card">
+    <div class="frage-nummer">2️⃣</div>
+    <div class="frage-text">Welche Marge planst du?</div>
+    <div class="input-group input-group-large">
+        <input type="number" name="plan_marge" class="form-control" 
+               value="{{ planung.plan_marge if planung else '28' }}" 
+               placeholder="z.B. 28" step="0.1" min="0" max="100" required>
+        <span class="input-group-text">% vom Umsatz</span>
+    </div>
+    <div class="vj-hinweis">📊 Vorjahr: 28% | Branche: 25-35%</div>
+</div>
+
+<!-- Frage 3: Lagerumschlag -->
+<div class="frage-card">
+    <div class="frage-nummer">3️⃣</div>
+    <div class="frage-text">Lagerumschlag (Umschläge pro Jahr)?</div>
+    <div class="input-group input-group-large">
+        <input type="number" name="plan_lagerumschlag" class="form-control" 
+               value="{% if monat_abgelaufen and ist_werte %}{{ "%.1f"|format(ist_werte.lagerumschlag_ist) if ist_werte.lagerumschlag_ist else '' }}{% elif planung %}{{ planung.plan_lagerumschlag }}{% endif %}" 
+               placeholder="z.B. 4.5" step="0.1" min="0" {% if monat_abgelaufen %}readonly{% else %}required{% endif %}>
+        <span class="input-group-text">x</span>
+    </div>
+    {% if monat_abgelaufen and ist_werte %}
+    <div class="vj-hinweis">✅ <strong>IST:</strong> {{ "%.1f"|format(ist_werte.lagerumschlag_ist) }}x (automatisch aus Locosoft)</div>
+    {% else %}
+    <div class="vj-hinweis">📊 Vorjahr: {{ "%.1f"|format(planung.vj_lagerumschlag) if planung and planung.vj_lagerumschlag else 'N/A' }}x | Ziel: 4-6x</div>
+    {% endif %}
+    <div class="impact-box" id="impact-lagerumschlag" style="display: none;">
+        <strong>💡 Impact:</strong> <span id="impact-lagerumschlag-text"></span>
+    </div>
+</div>
+
+<!-- Frage 4: Durchschnittlicher Lagerwert (automatisch) -->
+<div class="frage-card">
+    <div class="frage-nummer">4️⃣</div>
+    <div class="frage-text">Durchschnittlicher Lagerwert?</div>
+    <div class="input-group input-group-large">
+        <span class="input-group-text">€</span>
+        <input type="number" name="plan_lagerwert" class="form-control" 
+               value="{{ planung.plan_lagerwert if planung and planung.plan_lagerwert else '' }}" 
+               placeholder="Automatisch: Umsatz / Umschlag" step="0.01" readonly>
+    </div>
+    <div class="vj-hinweis">📊 Automatisch: Umsatz / Lagerumschlag</div>
+</div>
+
+<!-- Frage 5: Penner-Quote -->
+<div class="frage-card">
+    <div class="frage-nummer">5️⃣</div>
+    <div class="frage-text">Penner-Quote (Langsamdreher &lt;20% Umsatz)?</div>
+    <div class="input-group input-group-large">
+        <input type="number" name="plan_penner_quote" class="form-control" 
+               value="{% if monat_abgelaufen and ist_werte %}{{ "%.1f"|format(ist_werte.penner_quote_ist) if ist_werte.penner_quote_ist else '' }}{% elif planung %}{{ planung.plan_penner_quote }}{% endif %}" 
+               placeholder="z.B. 15" step="0.1" min="0" max="100" {% if monat_abgelaufen %}readonly{% else %}required{% endif %}>
+        <span class="input-group-text">%</span>
+    </div>
+    {% if monat_abgelaufen and ist_werte %}
+    <div class="vj-hinweis">✅ <strong>IST:</strong> {{ "%.1f"|format(ist_werte.penner_quote_ist) }}% (automatisch aus Locosoft)</div>
+    {% else %}
+    <div class="vj-hinweis">📊 Vorjahr: {{ "%.1f"|format(planung.vj_penner_quote) if planung and planung.vj_penner_quote else 'N/A' }}% | Ziel: &lt;20%</div>
+    {% endif %}
+    <div class="impact-box" id="impact-penner" style="display: none;">
+        <strong>💡 Impact:</strong> <span id="impact-penner-text"></span>
+    </div>
+</div>
+
+<!-- Frage 6: Servicegrad -->
+<div class="frage-card">
+    <div class="frage-nummer">6️⃣</div>
+    <div class="frage-text">Servicegrad (Teile sofort verfügbar)?</div>
+    <div class="input-group input-group-large">
+        <input type="number" name="plan_servicegrad" class="form-control" 
+               value="{% if monat_abgelaufen and ist_werte %}{{ "%.1f"|format(ist_werte.servicegrad_ist) if ist_werte.servicegrad_ist else '' }}{% elif planung %}{{ planung.plan_servicegrad }}{% endif %}" 
+               placeholder="z.B. 96" step="0.1" min="0" max="100" {% if monat_abgelaufen %}readonly{% else %}required{% endif %}>
+        <span class="input-group-text">%</span>
+    </div>
+    {% if monat_abgelaufen and ist_werte %}
+    <div class="vj-hinweis">✅ <strong>IST:</strong> {{ "%.1f"|format(ist_werte.servicegrad_ist) }}% (automatisch aus Locosoft)</div>
+    {% else %}
+    <div class="vj-hinweis">📊 Vorjahr: {{ "%.1f"|format(planung.vj_servicegrad) if planung and planung.vj_servicegrad else 'N/A' }}% | Ziel: &gt;95%</div>
+    {% endif %}
+    <div class="impact-box" id="impact-servicegrad" style="display: none;">
+        <strong>💡 Impact:</strong> <span id="impact-servicegrad-text"></span>
+    </div>
+</div>
+
+<!-- Frage 7: Durchschnittlicher EK-Preis -->
+<div class="frage-card">
+    <div class="frage-nummer">7️⃣</div>
+    <div class="frage-text">Durchschnittlicher EK-Preis pro Teil?</div>
+    <div class="input-group input-group-large">
+        <span class="input-group-text">€</span>
+        <input type="number" name="plan_ek_preis" class="form-control" 
+               value="{{ planung.plan_ek_preis if planung else '' }}" 
+               placeholder="z.B. 45" step="0.01" min="0" required>
+        <span class="input-group-text">pro Teil</span>
+    </div>
+    <div class="vj-hinweis">📊 Vorjahr: {{ "%.2f"|format(planung.vj_ek_preis) if planung and planung.vj_ek_preis else 'N/A' }} € | Für Lagerwert-Berechnung</div>
+</div>
+
+<!-- Frage 8: Durchschnittlicher VK-Preis -->
+<div class="frage-card">
+    <div class="frage-nummer">8️⃣</div>
+    <div class="frage-text">Durchschnittlicher VK-Preis pro Teil?</div>
+    <div class="input-group input-group-large">
+        <span class="input-group-text">€</span>
+        <input type="number" name="plan_vk_preis" class="form-control" 
+               value="{{ planung.plan_vk_preis if planung else '' }}" 
+               placeholder="z.B. 63" step="0.01" min="0" required>
+        <span class="input-group-text">pro Teil</span>
+    </div>
+    <div class="vj-hinweis">📊 Vorjahr: {{ "%.2f"|format(planung.vj_vk_preis) if planung and planung.vj_vk_preis else 'N/A' }} € | Marge: 28,6%</div>
+</div>
+
+<!-- Frage 9: Zinskosten Lager (automatisch) -->
+<div class="frage-card">
+    <div class="frage-nummer">9️⃣</div>
+    <div class="frage-text">Zinskosten Lager (Jahr)?</div>
+    <div class="input-group input-group-large">
+        <span class="input-group-text">€</span>
+        <input type="number" name="plan_zinskosten_lager" class="form-control" 
+               value="{{ planung.plan_zinskosten_lager if planung and planung.plan_zinskosten_lager else '' }}" 
+               placeholder="Automatisch berechnet" step="0.01" readonly>
+    </div>
+    <div class="vj-hinweis">📊 Automatisch: Lagerwert × 5% Zinssatz</div>
+</div>
+
+<!-- Frage 10: Direkte Kosten -->
+<div class="frage-card">
+    <div class="frage-nummer">🔟</div>
+    <div class="frage-text">Direkte Kosten (Personal, Miete, etc.)?</div>
+    <div class="input-group input-group-large">
+        <span class="input-group-text">€</span>
+        <input type="number" name="plan_direkte_kosten_teile" class="form-control" 
+               value="{{ planung.plan_direkte_kosten_teile if planung else '' }}" 
+               placeholder="z.B. 80000" step="0.01" min="0" required>
+        <span class="input-group-text">(Jahr)</span>
+    </div>
+    <div class="vj-hinweis">📊 Vorjahr: {{ "%.2f"|format(planung.vj_direkte_kosten_teile) if planung and planung.vj_direkte_kosten_teile else 'N/A' }} € | Prozent vom Umsatz: 6,7%</div>
+</div>
+

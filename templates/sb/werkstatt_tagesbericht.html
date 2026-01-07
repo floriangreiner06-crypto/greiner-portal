@@ -1,0 +1,746 @@
+{% extends "base.html" %}
+
+{% block title %}Tagesbericht Werkstatt{% endblock %}
+
+{% block extra_css %}
+<style>
+    .report-card {
+        border-radius: 12px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .report-card .card-header {
+        border-radius: 12px 12px 0 0;
+        font-weight: bold;
+    }
+    .status-ok { color: #198754; }
+    .status-warnung { color: #ffc107; }
+    .status-alarm { color: #dc3545; }
+    .badge-count {
+        font-size: 1.5rem;
+        min-width: 50px;
+    }
+    .summary-card {
+        text-align: center;
+        padding: 20px;
+        border-radius: 12px;
+    }
+    .summary-card .count {
+        font-size: 2.5rem;
+        font-weight: bold;
+    }
+    .summary-card.alarm { background: #f8d7da; border: 2px solid #dc3545; }
+    .summary-card.warnung { background: #fff3cd; border: 2px solid #ffc107; }
+    .summary-card.ok { background: #d1e7dd; border: 2px solid #198754; }
+    .summary-card.info { background: #cff4fc; border: 2px solid #0dcaf0; }
+    .table-problem { background: #fff3cd; }
+    .progress-mini {
+        height: 6px;
+        border-radius: 3px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2><i class="bi bi-clipboard-check text-primary"></i> Tagesbericht Werkstatt</h2>
+            <p class="text-muted mb-0">Kontrolle: Stempelungen, Zuweisungen, Vorgaben</p>
+        </div>
+        <div class="d-flex gap-2">
+            <input type="date" id="datumFilter" class="form-control" style="width: 160px;">
+            <select id="betriebFilter" class="form-select" style="width: 180px;">
+                <option value="">Alle Betriebe</option>
+                <option value="1">Deggendorf</option>
+                <option value="3">Landau</option>
+            </select>
+            <button class="btn btn-primary" onclick="loadReport()">
+                <i class="bi bi-arrow-clockwise"></i> Aktualisieren
+            </button>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="summary-card" id="cardOhneVorgabe">
+                <div class="count" id="countOhneVorgabe">-</div>
+                <div>Ohne Vorgabe</div>
+                <small class="text-muted">Stempelung ohne AW</small>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="summary-card" id="cardFalscheZuweisung">
+                <div class="count" id="countFalscheZuweisung">-</div>
+                <div>Falsche Zuweisung</div>
+                <small class="text-muted">Gestempelt ≠ Zugewiesen</small>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="summary-card" id="cardUeberschritten">
+                <div class="count" id="countUeberschritten">-</div>
+                <div>Vorgabe überschritten</div>
+                <small class="text-muted">>100% der Vorgabe</small>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="summary-card info">
+                <div class="count" id="countAktiv">-</div>
+                <div>Aktiv gesamt</div>
+                <small class="text-muted">Laufende Stempelungen</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- 1. Ohne Vorgabe -->
+    <div class="card report-card">
+        <div class="card-header bg-warning text-dark">
+            <i class="bi bi-exclamation-triangle"></i> 
+            Stempelung ohne Vorgabe
+            <span class="badge bg-dark ms-2" id="badgeOhneVorgabe">0</span>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small">Mechaniker arbeitet an Auftrag, hat aber 0 AW zugewiesen.</p>
+            <div id="tableOhneVorgabe">
+                <div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Falsche Zuweisung -->
+    <div class="card report-card">
+        <div class="card-header bg-danger text-white">
+            <i class="bi bi-person-x"></i> 
+            Mechaniker-Zuweisung prüfen
+            <span class="badge bg-light text-dark ms-2" id="badgeFalscheZuweisung">0</span>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small">Gestempelter Mechaniker ≠ Zugewiesener Mechaniker im Auftrag.</p>
+            <div id="tableFalscheZuweisung">
+                <div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. Vorgabe überschritten -->
+    <div class="card report-card">
+        <div class="card-header bg-danger text-white">
+            <i class="bi bi-clock-history"></i> 
+            Vorgabe überschritten (>100%)
+            <span class="badge bg-light text-dark ms-2" id="badgeUeberschritten">0</span>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small">Aktuelle Arbeitszeit übersteigt die Vorgabe.</p>
+            <div id="tableUeberschritten">
+                <div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alle Aktiven -->
+    <div class="card report-card">
+        <div class="card-header bg-success text-white">
+            <i class="bi bi-people"></i> 
+            Alle aktiven Stempelungen
+            <span class="badge bg-light text-dark ms-2" id="badgeAktiv">0</span>
+        </div>
+        <div class="card-body">
+            <div id="tableAktiv">
+                <div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Nachkalkulation -->
+    <div class="card report-card">
+        <div class="card-header bg-info text-white">
+            <i class="bi bi-calculator"></i> 
+            Auftrags-Nachkalkulation (heute abgerechnet)
+            <span class="badge bg-light text-dark ms-2" id="badgeNachkalk">0</span>
+            <button class="btn btn-sm btn-light float-end" onclick="loadNachkalkulation()">
+                <i class="bi bi-arrow-clockwise"></i> Laden
+            </button>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small">Vergleich Vorgabe vs. Gestempelt für heute abgerechnete Werkstatt-Aufträge.</p>
+            
+            <!-- Nachkalk Summary -->
+            <div class="row g-3 mb-4" id="nachkalkSummary" style="display:none;">
+                <div class="col-md-2">
+                    <div class="card bg-light">
+                        <div class="card-body text-center py-2">
+                            <div class="fs-4 fw-bold text-primary" id="nkRechnungen">-</div>
+                            <small class="text-muted">Rechnungen</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="card bg-light">
+                        <div class="card-body text-center py-2">
+                            <div class="fs-4 fw-bold text-success" id="nkUmsatz">-</div>
+                            <small class="text-muted">Umsatz</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="card bg-light">
+                        <div class="card-body text-center py-2">
+                            <div class="fs-4 fw-bold" id="nkVorgabe">-</div>
+                            <small class="text-muted">Vorgabe AW</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="card bg-light">
+                        <div class="card-body text-center py-2">
+                            <div class="fs-4 fw-bold" id="nkGestempelt">-</div>
+                            <small class="text-muted">Gestempelt AW</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="card bg-light">
+                        <div class="card-body text-center py-2">
+                            <div class="fs-4 fw-bold" id="nkLeistungsgrad">-</div>
+                            <small class="text-muted">Leistungsgrad</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="card bg-danger text-white">
+                        <div class="card-body text-center py-2">
+                            <div class="fs-4 fw-bold" id="nkVerlust">-</div>
+                            <small>Verlust</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="tableNachkalk">
+                <div class="text-center py-3 text-muted">
+                    <i class="bi bi-arrow-up-circle fs-3"></i>
+                    <p class="mt-2">Klicken Sie "Laden" um die Nachkalkulation anzuzeigen</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Zeitstempel -->
+    <div class="text-center text-muted mt-3">
+        <small>Aktualisiert: <span id="timestamp">-</span></small>
+    </div>
+</div>
+
+<!-- Auftrag Modal -->
+<div class="modal fade" id="auftragModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="auftragModalTitle">Auftrag</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="auftragModalBody">
+                <!-- Wird dynamisch gefüllt -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Datum auf heute setzen
+    document.getElementById('datumFilter').value = new Date().toISOString().split('T')[0];
+    loadReport();
+});
+
+function loadReport() {
+    const datum = document.getElementById('datumFilter').value;
+    const betrieb = document.getElementById('betriebFilter').value;
+    
+    let url = `/api/werkstatt/live/tagesbericht?datum=${datum}`;
+    if (betrieb) url += `&subsidiary=${betrieb}`;
+    
+    fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                renderReport(data);
+            } else {
+                alert('Fehler: ' + data.error);
+            }
+        })
+        .catch(err => console.error('Fehler:', err));
+}
+
+function renderReport(data) {
+    const s = data.summary;
+    
+    // Summary Cards
+    document.getElementById('countOhneVorgabe').textContent = s.ohne_vorgabe;
+    document.getElementById('countFalscheZuweisung').textContent = s.falsche_zuweisung;
+    document.getElementById('countUeberschritten').textContent = s.ueberschritten;
+    document.getElementById('countAktiv').textContent = s.aktiv_gesamt;
+    
+    // Card Styling
+    document.getElementById('cardOhneVorgabe').className = 
+        'summary-card ' + (s.ohne_vorgabe > 0 ? 'warnung' : 'ok');
+    document.getElementById('cardFalscheZuweisung').className = 
+        'summary-card ' + (s.falsche_zuweisung > 0 ? 'alarm' : 'ok');
+    document.getElementById('cardUeberschritten').className = 
+        'summary-card ' + (s.ueberschritten > 0 ? 'alarm' : 'ok');
+    
+    // Badges
+    document.getElementById('badgeOhneVorgabe').textContent = s.ohne_vorgabe;
+    document.getElementById('badgeFalscheZuweisung').textContent = s.falsche_zuweisung;
+    document.getElementById('badgeUeberschritten').textContent = s.ueberschritten;
+    document.getElementById('badgeAktiv').textContent = s.aktiv_gesamt;
+    
+    // Tabellen
+    renderOhneVorgabe(data.ohne_vorgabe);
+    renderFalscheZuweisung(data.falsche_zuweisung);
+    renderUeberschritten(data.ueberschritten);
+    renderAktiv(data.alle_aktiv);
+    
+    // Timestamp
+    document.getElementById('timestamp').textContent = 
+        new Date(data.timestamp).toLocaleString('de-DE');
+}
+
+function renderOhneVorgabe(items) {
+    const container = document.getElementById('tableOhneVorgabe');
+    
+    if (!items.length) {
+        container.innerHTML = '<div class="text-success"><i class="bi bi-check-circle"></i> Keine Probleme gefunden</div>';
+        return;
+    }
+    
+    let html = `<table class="table table-sm table-hover">
+        <thead><tr>
+            <th>Mechaniker</th>
+            <th>Auftrag</th>
+            <th>Start</th>
+            <th>Gestempelt</th>
+            <th>Zugewiesen</th>
+        </tr></thead><tbody>`;
+    
+    items.forEach(i => {
+        html += `<tr class="table-warning">
+            <td><strong>${i.mechaniker}</strong></td>
+            <td><a href="#" onclick="showAuftrag(${i.order_number})">${i.order_number}</a></td>
+            <td>${i.start_uhrzeit || '-'}</td>
+            <td>${i.gestempelt_min} min</td>
+            <td><span class="text-danger fw-bold">${i.zugewiesene_aw} AW</span></td>
+        </tr>`;
+    });
+    
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+function renderFalscheZuweisung(items) {
+    const container = document.getElementById('tableFalscheZuweisung');
+    
+    if (!items.length) {
+        container.innerHTML = '<div class="text-success"><i class="bi bi-check-circle"></i> Keine Probleme gefunden</div>';
+        return;
+    }
+    
+    let html = `<table class="table table-sm table-hover">
+        <thead><tr>
+            <th>Auftrag</th>
+            <th>Gestempelt</th>
+            <th></th>
+            <th>AW zugewiesen an</th>
+            <th>AW</th>
+        </tr></thead><tbody>`;
+    
+    items.forEach(i => {
+        html += `<tr class="table-danger">
+            <td><a href="#" onclick="showAuftrag(${i.order_number})">${i.order_number}</a></td>
+            <td><strong>${i.gestempelt_name}</strong></td>
+            <td><i class="bi bi-arrow-left-right text-danger"></i></td>
+            <td><strong>${i.zugewiesen_name}</strong></td>
+            <td>${i.zugewiesene_aw} AW</td>
+        </tr>`;
+    });
+    
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+function renderUeberschritten(items) {
+    const container = document.getElementById('tableUeberschritten');
+    
+    if (!items.length) {
+        container.innerHTML = '<div class="text-success"><i class="bi bi-check-circle"></i> Alle im Zeitrahmen</div>';
+        return;
+    }
+    
+    let html = `<table class="table table-sm table-hover">
+        <thead><tr>
+            <th>Mechaniker</th>
+            <th>Auftrag</th>
+            <th>Ist</th>
+            <th>Vorgabe</th>
+            <th>Status</th>
+        </tr></thead><tbody>`;
+    
+    items.forEach(i => {
+        const ueber = i.ist_min - i.vorgabe_min;
+        html += `<tr class="table-danger">
+            <td><strong>${i.mechaniker}</strong></td>
+            <td><a href="#" onclick="showAuftrag(${i.order_number})">${i.order_number}</a></td>
+            <td>${i.ist_min} min</td>
+            <td>${i.vorgabe_min} min (${i.vorgabe_aw} AW)</td>
+            <td>
+                <span class="badge bg-danger">${i.prozent}%</span>
+                <small class="text-danger">+${ueber} min</small>
+            </td>
+        </tr>`;
+    });
+    
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+function renderAktiv(items) {
+    const container = document.getElementById('tableAktiv');
+    
+    if (!items.length) {
+        container.innerHTML = '<div class="text-muted">Keine aktiven Stempelungen</div>';
+        return;
+    }
+    
+    let html = `<table class="table table-sm table-hover">
+        <thead><tr>
+            <th>Mechaniker</th>
+            <th>Auftrag</th>
+            <th>Start</th>
+            <th>Ist</th>
+            <th>Vorgabe</th>
+            <th style="width:150px">Fortschritt</th>
+        </tr></thead><tbody>`;
+    
+    items.forEach(i => {
+        let rowClass = '';
+        let barClass = 'bg-success';
+        if (i.prozent >= 100) {
+            rowClass = 'table-danger';
+            barClass = 'bg-danger';
+        } else if (i.prozent >= 80) {
+            rowClass = 'table-warning';
+            barClass = 'bg-warning';
+        }
+        
+        const barWidth = Math.min(i.prozent, 100);
+        
+        html += `<tr class="${rowClass}">
+            <td><strong>${i.mechaniker}</strong></td>
+            <td><a href="#" onclick="showAuftrag(${i.order_number})">${i.order_number}</a></td>
+            <td>${i.start_uhrzeit || '-'}</td>
+            <td>${i.ist_min} min</td>
+            <td>${i.vorgabe_min > 0 ? i.vorgabe_min + ' min' : '-'}</td>
+            <td>
+                ${i.vorgabe_min > 0 ? `
+                    <div class="progress progress-mini">
+                        <div class="progress-bar ${barClass}" style="width: ${barWidth}%"></div>
+                    </div>
+                    <small>${i.prozent}%</small>
+                ` : '<span class="text-muted">-</span>'}
+            </td>
+        </tr>`;
+    });
+    
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+function showAuftrag(nr) {
+    // Modal mit Auftragsdetails laden
+    const modal = document.getElementById('auftragModal');
+    const modalBody = document.getElementById('auftragModalBody');
+    const modalTitle = document.getElementById('auftragModalTitle');
+    
+    modalTitle.textContent = `Auftrag ${nr}`;
+    modalBody.innerHTML = '<div class="text-center py-4"><div class="spinner-border"></div><p class="mt-2">Lade Auftragsdetails...</p></div>';
+    
+    new bootstrap.Modal(modal).show();
+    
+    fetch(`/api/werkstatt/live/auftrag/${nr}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                renderAuftragModal(data);
+            } else {
+                modalBody.innerHTML = `<div class="alert alert-danger">Fehler: ${data.error}</div>`;
+            }
+        })
+        .catch(err => {
+            modalBody.innerHTML = `<div class="alert alert-danger">Verbindungsfehler: ${err}</div>`;
+        });
+}
+
+function renderAuftragModal(data) {
+    const a = data.auftrag;
+    const modalBody = document.getElementById('auftragModalBody');
+    
+    let html = `
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <h6 class="text-muted mb-1">Fahrzeug</h6>
+                <div class="fw-bold">${a.fahrzeug.kennzeichen || '-'}</div>
+                <small>${a.fahrzeug.marke || ''} ${a.fahrzeug.modell || ''}</small>
+            </div>
+            <div class="col-md-6">
+                <h6 class="text-muted mb-1">Kunde</h6>
+                <div class="fw-bold">${a.kunde || '-'}</div>
+                <small>Nr. ${a.kunden_nr || '-'}</small>
+            </div>
+        </div>
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <h6 class="text-muted mb-1">Betrieb</h6>
+                <div>${a.betrieb_name}</div>
+            </div>
+            <div class="col-md-4">
+                <h6 class="text-muted mb-1">Serviceberater</h6>
+                <div>${a.serviceberater || '-'}</div>
+            </div>
+            <div class="col-md-4">
+                <h6 class="text-muted mb-1">Datum</h6>
+                <div>${a.datum ? new Date(a.datum).toLocaleDateString('de-DE') : '-'}</div>
+            </div>
+        </div>
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <div class="card bg-light">
+                    <div class="card-body text-center py-2">
+                        <div class="fs-5 fw-bold text-primary">${a.summen.total_aw} AW</div>
+                        <small>Vorgabe gesamt</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-light">
+                    <div class="card-body text-center py-2">
+                        <div class="fs-5 fw-bold">${a.summen.anzahl_positionen}</div>
+                        <small>Positionen</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-light">
+                    <div class="card-body text-center py-2">
+                        <div class="fs-5 fw-bold">${a.summen.teile_betrag.toFixed(2)}€</div>
+                        <small>Teile</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <h6 class="mt-4 mb-2"><i class="bi bi-list-task"></i> Arbeitspositionen</h6>
+        <table class="table table-sm table-bordered">
+            <thead class="table-light">
+                <tr>
+                    <th>Pos</th>
+                    <th>Beschreibung</th>
+                    <th>Mechaniker</th>
+                    <th class="text-end">AW</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>`;
+    
+    data.positionen.forEach(p => {
+        const statusBadge = p.abgerechnet 
+            ? '<span class="badge bg-success">Abgerechnet</span>' 
+            : '<span class="badge bg-warning">Offen</span>';
+        html += `
+            <tr>
+                <td>${p.position}</td>
+                <td><small>${p.beschreibung || '-'}</small></td>
+                <td>${p.mechaniker}</td>
+                <td class="text-end">${p.vorgabe_aw}</td>
+                <td>${statusBadge}</td>
+            </tr>`;
+    });
+    
+    html += `</tbody></table>`;
+    
+    if (data.teile && data.teile.length > 0) {
+        html += `
+            <h6 class="mt-4 mb-2"><i class="bi bi-box"></i> Teile</h6>
+            <table class="table table-sm table-bordered">
+                <thead class="table-light">
+                    <tr>
+                        <th>Teilenr.</th>
+                        <th>Bezeichnung</th>
+                        <th class="text-end">Menge</th>
+                        <th class="text-end">Betrag</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+        
+        data.teile.forEach(t => {
+            html += `
+                <tr>
+                    <td><small>${t.teilenummer || '-'}</small></td>
+                    <td><small>${t.bezeichnung || '-'}</small></td>
+                    <td class="text-end">${t.menge}</td>
+                    <td class="text-end">${t.betrag.toFixed(2)}€</td>
+                </tr>`;
+        });
+        
+        html += `</tbody></table>`;
+    }
+    
+    modalBody.innerHTML = html;
+}
+
+function loadNachkalkulation() {
+    const datum = document.getElementById('datumFilter').value;
+    const betrieb = document.getElementById('betriebFilter').value;
+    
+    let url = `/api/werkstatt/live/nachkalkulation?datum=${datum}`;
+    if (betrieb) url += `&subsidiary=${betrieb}`;
+    
+    document.getElementById('tableNachkalk').innerHTML = `
+        <div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div> Lade Nachkalkulation...</div>
+    `;
+    
+    fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                renderNachkalkulation(data);
+            } else {
+                document.getElementById('tableNachkalk').innerHTML = `
+                    <div class="alert alert-danger">Fehler: ${data.error}</div>
+                `;
+            }
+        })
+        .catch(err => {
+            console.error('Fehler:', err);
+            document.getElementById('tableNachkalk').innerHTML = `
+                <div class="alert alert-danger">Verbindungsfehler</div>
+            `;
+        });
+}
+
+function renderNachkalkulation(data) {
+    const s = data.summary;
+
+    // Summary anzeigen
+    document.getElementById('nachkalkSummary').style.display = 'flex';
+    // TAG 120: Zeige unvollständig abgerechnete Aufträge
+    const unvollst = s.anzahl_unvollstaendig || 0;
+    const rechnungenText = unvollst > 0
+        ? `${s.anzahl_rechnungen} <small class="text-warning">(${unvollst} offen)</small>`
+        : s.anzahl_rechnungen;
+    document.getElementById('nkRechnungen').innerHTML = rechnungenText;
+    document.getElementById('nkUmsatz').textContent = s.total_rechnung_eur.toLocaleString('de-DE', {style: 'currency', currency: 'EUR'});
+    document.getElementById('nkVorgabe').textContent = s.total_vorgabe_aw.toFixed(1);
+    document.getElementById('nkGestempelt').textContent = s.total_gestempelt_aw.toFixed(1);
+    document.getElementById('nkLeistungsgrad').textContent = s.gesamt_leistungsgrad.toFixed(1) + '%';
+    document.getElementById('nkVerlust').textContent = s.total_verlust_eur.toLocaleString('de-DE', {style: 'currency', currency: 'EUR'});
+    
+    // Leistungsgrad-Farbe
+    const lgEl = document.getElementById('nkLeistungsgrad');
+    lgEl.className = 'fs-4 fw-bold';
+    if (s.gesamt_leistungsgrad >= 100) lgEl.classList.add('text-success');
+    else if (s.gesamt_leistungsgrad >= 80) lgEl.classList.add('text-primary');
+    else if (s.gesamt_leistungsgrad >= 60) lgEl.classList.add('text-warning');
+    else lgEl.classList.add('text-danger');
+    
+    // Badge aktualisieren
+    document.getElementById('badgeNachkalk').textContent = s.anzahl_rechnungen;
+    
+    // Tabelle
+    const container = document.getElementById('tableNachkalk');
+    
+    if (!data.auftraege.length) {
+        container.innerHTML = '<div class="text-muted text-center"><i class="bi bi-inbox"></i> Keine abgerechneten Aufträge heute</div>';
+        return;
+    }
+    
+    let html = `<table class="table table-sm table-hover">
+        <thead><tr>
+            <th>Auftrag</th>
+            <th>Kunde</th>
+            <th>Kennz.</th>
+            <th>Serviceberater</th>
+            <th>Mechaniker</th>
+            <th class="text-end">Rechnung</th>
+            <th class="text-end">Vorgabe</th>
+            <th class="text-end">Gestempelt</th>
+            <th class="text-end">Diff</th>
+            <th class="text-center">LG</th>
+            <th class="text-end">Verlust</th>
+            <th class="text-center">Status</th>
+        </tr></thead><tbody>`;
+    
+    data.auftraege.forEach(a => {
+        let rowClass = '';
+        let diffBadge = '';
+        
+        if (a.status === 'kritisch') {
+            rowClass = 'table-danger';
+            diffBadge = `<span class="badge bg-danger">+${a.diff_aw} AW</span>`;
+        } else if (a.status === 'warnung') {
+            rowClass = 'table-warning';
+            diffBadge = `<span class="badge bg-warning text-dark">+${a.diff_aw} AW</span>`;
+        } else {
+            diffBadge = `<span class="badge bg-success">${a.diff_aw} AW</span>`;
+        }
+        
+        let lgBadge = '';
+        if (a.leistungsgrad >= 100) lgBadge = `<span class="badge bg-success">${a.leistungsgrad}%</span>`;
+        else if (a.leistungsgrad >= 80) lgBadge = `<span class="badge bg-primary">${a.leistungsgrad}%</span>`;
+        else if (a.leistungsgrad >= 60) lgBadge = `<span class="badge bg-warning text-dark">${a.leistungsgrad}%</span>`;
+        else lgBadge = `<span class="badge bg-danger">${a.leistungsgrad}%</span>`;
+        
+        const verlustText = a.verlust_eur > 0
+            ? `<span class="text-danger fw-bold">-${a.verlust_eur.toFixed(0)}€</span>`
+            : `<span class="text-success">+${Math.abs(a.verlust_eur).toFixed(0)}€</span>`;
+
+        // TAG 120: Status für unvollständige Abrechnung
+        let statusBadge = '';
+        let vorgabeText = `${a.vorgabe_aw} AW`;
+        if (a.vollstaendig_abgerechnet === false) {
+            statusBadge = `<span class="badge bg-warning text-dark" title="Fakturiert: ${a.fakturiert_aw || 0} AW / Offen: ${a.offen_aw || 0} AW">
+                <i class="bi bi-exclamation-triangle"></i> Offen
+            </span>`;
+            // Zeige Aufschlüsselung bei offenen Aufträgen
+            vorgabeText = `<span title="Gesamt: ${a.vorgabe_aw} AW (${a.fakturiert_aw || 0} fakt. / ${a.offen_aw || 0} offen)">${a.vorgabe_aw} AW</span>`;
+        } else {
+            statusBadge = `<span class="badge bg-success"><i class="bi bi-check"></i></span>`;
+        }
+
+        html += `<tr class="${rowClass}">
+            <td><a href="#" onclick="showAuftrag(${a.order_number})">${a.order_number}</a></td>
+            <td><small>${a.kunde || '-'}</small></td>
+            <td><small>${a.kennzeichen || '-'}</small></td>
+            <td><small>${a.serviceberater || '-'}</small></td>
+            <td><small>${a.mechaniker || '-'}</small></td>
+            <td class="text-end">${a.rechnung_eur.toFixed(2)}€</td>
+            <td class="text-end">${vorgabeText}</td>
+            <td class="text-end">${a.gestempelt_aw} AW</td>
+            <td class="text-end">${diffBadge}</td>
+            <td class="text-center">${lgBadge}</td>
+            <td class="text-end">${verlustText}</td>
+            <td class="text-center">${statusBadge}</td>
+        </tr>`;
+    });
+    
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+</script>
+{% endblock %}

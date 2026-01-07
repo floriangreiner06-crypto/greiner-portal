@@ -1,0 +1,1070 @@
+{% extends "base.html" %}
+
+{% block title %}TEK - Tägliche Erfolgskontrolle{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Kompakte Tabelle */
+    .tek-table { font-size: 0.9rem; }
+    .tek-table th {
+        background: #343a40;
+        color: #fff;
+        font-weight: 500;
+        padding: 0.5rem;
+        white-space: nowrap;
+    }
+    .tek-table td { padding: 0.4rem 0.5rem; vertical-align: middle; }
+    .tek-table tbody tr { cursor: pointer; transition: background 0.1s; }
+    .tek-table tbody tr:hover { background: #f8f9fa; }
+
+    /* Bereichs-Zeilen */
+    .bereich-row { font-weight: 600; }
+    .bereich-row.bereich-nw { border-left: 4px solid #0d6efd; }
+    .bereich-row.bereich-gw { border-left: 4px solid #6c757d; }
+    .bereich-row.bereich-teile { border-left: 4px solid #ffc107; }
+    .bereich-row.bereich-lohn { border-left: 4px solid #198754; }
+    .bereich-row.bereich-sonst { border-left: 4px solid #17a2b8; }
+
+    /* Gesamt-Zeile */
+    .gesamt-row {
+        background: #e9ecef !important;
+        font-weight: 700;
+        font-size: 1rem;
+        border-top: 2px solid #343a40;
+    }
+
+    /* Werte-Styling */
+    .val-pos { color: #198754; }
+    .val-neg { color: #dc3545; }
+    .val-warn { color: #ffc107; }
+    .val-muted { color: #6c757d; }
+
+    /* Delta-Badges */
+    .delta { font-size: 0.75rem; padding: 0.15rem 0.35rem; border-radius: 3px; }
+    .delta-pos { background: #d1e7dd; color: #0f5132; }
+    .delta-neg { background: #f8d7da; color: #842029; }
+
+    /* Marge-Balken */
+    .marge-bar {
+        height: 6px;
+        background: #e9ecef;
+        border-radius: 3px;
+        overflow: hidden;
+        min-width: 50px;
+    }
+    .marge-bar-fill { height: 100%; transition: width 0.3s; }
+    .marge-ok { background: #198754; }
+    .marge-warn { background: #ffc107; }
+    .marge-bad { background: #dc3545; }
+
+    /* Header-Stats */
+    .stat-box {
+        background: #fff;
+        border-radius: 8px;
+        padding: 0.75rem 1rem;
+        border-left: 4px solid;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .stat-box.stat-umsatz { border-left-color: #198754; }
+    .stat-box.stat-einsatz { border-left-color: #dc3545; }
+    .stat-box.stat-db1 { border-left-color: #0d6efd; }
+    .stat-box.stat-marge { border-left-color: #6f42c1; }
+    .stat-label { font-size: 0.75rem; color: #6c757d; text-transform: uppercase; }
+    .stat-value { font-size: 1.25rem; font-weight: 700; }
+
+    /* Prognose-Leiste */
+    .prognose-bar {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        font-size: 0.85rem;
+    }
+    .prognose-item { border-right: 1px solid #dee2e6; padding-right: 1rem; margin-right: 1rem; }
+    .prognose-item:last-child { border-right: none; }
+
+    /* Breakeven-Box */
+    .breakeven-box {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        border: 1px solid #dee2e6;
+    }
+    .breakeven-ampel {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-weight: 600;
+    }
+    .ampel-gruen { background: #198754; color: white; }
+    .ampel-gelb { background: #ffc107; color: #212529; }
+    .ampel-rot { background: #dc3545; color: white; }
+
+    /* Drill-Down Modal */
+    .drill-table { font-size: 0.85rem; }
+    .drill-table th { background: #f8f9fa; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+
+    <!-- Header mit Filter -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h1 class="h4 mb-0">Tägliche Erfolgskontrolle</h1>
+            <small class="text-muted" id="zeitraumLabel">Dezember 2025</small>
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+            <select class="form-select form-select-sm" id="filterFirma" style="width: auto;" onchange="onFirmaChange()">
+                <option value="0">Alle Firmen</option>
+                <option value="1">Stellantis</option>
+                <option value="2">Hyundai</option>
+            </select>
+            <select class="form-select form-select-sm" id="filterStandort" style="width: auto; display: none;" onchange="loadData()">
+                <option value="0">Alle Standorte</option>
+                <option value="1">Deggendorf</option>
+                <option value="2">Landau</option>
+            </select>
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary" onclick="changeMonth(-1)"><i class="bi bi-chevron-left"></i></button>
+                <select class="form-select form-select-sm" id="filterMonat" style="width: 100px; border-radius: 0;" onchange="loadData()">
+                    <option value="1">Januar</option>
+                    <option value="2">Februar</option>
+                    <option value="3">März</option>
+                    <option value="4">April</option>
+                    <option value="5">Mai</option>
+                    <option value="6">Juni</option>
+                    <option value="7">Juli</option>
+                    <option value="8">August</option>
+                    <option value="9">September</option>
+                    <option value="10">Oktober</option>
+                    <option value="11">November</option>
+                    <option value="12">Dezember</option>
+                </select>
+                <button class="btn btn-outline-secondary" onclick="changeMonth(1)"><i class="bi bi-chevron-right"></i></button>
+            </div>
+            <select class="form-select form-select-sm" id="filterJahr" style="width: 80px;" onchange="loadData()">
+                <option value="2024">2024</option>
+                <option value="2025">2025</option>
+                <option value="2026" selected>2026</option>
+            </select>
+            <button class="btn btn-sm btn-outline-primary" onclick="loadData()" title="Aktualisieren">
+                <i class="bi bi-arrow-clockwise"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Kompakte KPI-Leiste -->
+    <div class="row g-2 mb-3">
+        <div class="col-6 col-md-3">
+            <div class="stat-box stat-umsatz">
+                <div class="stat-label">Umsatz</div>
+                <div class="stat-value" id="kpiUmsatz">-</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-box stat-einsatz">
+                <div class="stat-label">Einsatz</div>
+                <div class="stat-value" id="kpiEinsatz">-</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-box stat-db1">
+                <div class="stat-label">Deckungsbeitrag 1</div>
+                <div class="stat-value" id="kpiDB1">-</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-box stat-marge">
+                <div class="stat-label">Marge</div>
+                <div class="stat-value" id="kpiMarge">-</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Prognose + Breakeven Leiste -->
+    <div class="row g-2 mb-3">
+        <div class="col-md-6">
+            <div class="prognose-bar d-flex flex-wrap align-items-center h-100" id="prognoseBar">
+                <div class="prognose-item">
+                    <span class="text-muted">Fortschritt:</span>
+                    <strong id="werktageText">-</strong>
+                    <small class="text-muted" id="werktageDetail">(- von - WT)</small>
+                </div>
+                <div class="prognose-item">
+                    <span class="text-muted">Ø/Tag:</span>
+                    <strong id="tagesschnitt">-</strong>
+                </div>
+                <div class="prognose-item">
+                    <span class="text-muted">Hochrechnung:</span>
+                    <strong id="hochrechnung">-</strong>
+                </div>
+                <div class="prognose-item">
+                    <span class="text-muted">vs. VM:</span>
+                    <span id="vsVormonat">-</span>
+                </div>
+                <div class="prognose-item">
+                    <span class="text-muted">vs. VJ:</span>
+                    <span id="vsVorjahr">-</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="breakeven-box h-100" style="padding: 0.4rem 0.8rem;">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                        <div class="small text-muted">Breakeven-Prognose</div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span id="breakevenAmpel" class="breakeven-ampel ampel-gruen">-</span>
+                            <span class="text-muted">vs.</span>
+                            <span id="breakevenSchwelle" class="fw-bold">-</span>
+                            <span class="text-muted small">Kosten</span>
+                        </div>
+                    </div>
+                    <div class="text-end">
+                        <div class="small text-muted">Abstand</div>
+                        <div id="breakevenAbstand" class="fw-bold" style="font-size: 1rem;">-</div>
+                    </div>
+                </div>
+                <div class="small text-muted mt-1" id="breakevenHinweis" style="font-size: 0.7rem;">
+                    Hochrechnung DB1 (Ø/Tag × Werktage) vs. Ø Kosten (3 Monate)
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- HAUPTTABELLE: Heute + Monat -->
+    <div class="card border-0 shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover tek-table mb-0">
+                <thead>
+                    <tr>
+                        <th rowspan="2" style="width: 10%; vertical-align: middle;">Bereich</th>
+                        <th rowspan="2" class="text-center" style="width: 5%; vertical-align: middle;">Stk</th>
+                        <th colspan="2" class="text-center bg-primary text-white" id="heuteHeader" style="display: none;">Heute (<span id="heuteWochentag">-</span>)</th>
+                        <th colspan="6" class="text-center bg-secondary text-white">Monat</th>
+                        <th rowspan="2" class="text-center" style="width: 6%; vertical-align: middle;">vs. VM</th>
+                        <th rowspan="2" class="text-center" style="width: 6%; vertical-align: middle;">vs. VJ</th>
+                    </tr>
+                    <tr>
+                        <th class="text-end bg-light text-primary" id="heuteUmsatzHeader" style="display: none;">Umsatz</th>
+                        <th class="text-end bg-light text-primary" id="heuteDB1Header" style="display: none;">DB1</th>
+                        <th class="text-end">Umsatz</th>
+                        <th class="text-end">Einsatz</th>
+                        <th class="text-end">DB1</th>
+                        <th class="text-center">Marge</th>
+                        <th class="text-end">DB1/Stk</th>
+                        <th class="text-center">Anteil</th>
+                    </tr>
+                </thead>
+                <tbody id="tekBody">
+                    <tr>
+                        <td colspan="13" class="text-center py-4">
+                            <div class="spinner-border spinner-border-sm text-primary"></div>
+                            <span class="ms-2">Lädt...</span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Legende -->
+    <div class="mt-2 small text-muted">
+        <i class="bi bi-info-circle me-1"></i>
+        Klick auf Bereich für Drill-Down |
+        Stk = Fahrzeugstück (nur NW/GW) |
+        VM = Vormonat | VJ = Vorjahr |
+        <span class="text-warning">*</span> = kalkulatorischer Einsatz
+    </div>
+
+</div>
+
+<!-- Drill-Down Modal -->
+<div class="modal fade" id="drillModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header py-2 bg-light">
+                <h6 class="modal-title" id="drillModalTitle">Bereich Details</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0" id="drillModalBody">
+                <div class="text-center py-4">
+                    <div class="spinner-border spinner-border-sm"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Konfiguration
+const BEREICHE = {
+    '1-NW':     { name: 'Neuwagen',        icon: 'bi-car-front',      class: 'bereich-nw',    benchMarge: 12 },
+    '2-GW':     { name: 'Gebrauchtwagen',  icon: 'bi-car-front-fill', class: 'bereich-gw',    benchMarge: 10 },
+    '3-Teile':  { name: 'Teile & Zubehör', icon: 'bi-gear',           class: 'bereich-teile', benchMarge: 32 },
+    '4-Lohn':   { name: 'Werkstatt',       icon: 'bi-wrench',         class: 'bereich-lohn',  benchMarge: 50 },
+    '5-Sonst':  { name: 'Sonstige',        icon: 'bi-three-dots',     class: 'bereich-sonst', benchMarge: 10 }
+};
+
+let currentData = null;
+
+// Formatierung
+const fmtEuro = v => v == null ? '-' : new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(v);
+const fmtPct = v => v == null ? '-' : v.toFixed(1) + '%';
+
+function changeMonth(delta) {
+    let m = parseInt(document.getElementById('filterMonat').value) + delta;
+    let y = parseInt(document.getElementById('filterJahr').value);
+    if (m < 1) { m = 12; y--; }
+    if (m > 12) { m = 1; y++; }
+    document.getElementById('filterMonat').value = m;
+    document.getElementById('filterJahr').value = y;
+    loadData();
+}
+
+function onFirmaChange() {
+    const firma = document.getElementById('filterFirma').value;
+    document.getElementById('filterStandort').style.display = firma === '1' ? 'inline-block' : 'none';
+    if (firma !== '1') document.getElementById('filterStandort').value = '0';
+    loadData();
+}
+
+async function loadData() {
+    const firma = document.getElementById('filterFirma').value;
+    const standort = document.getElementById('filterStandort').value;
+    const monat = document.getElementById('filterMonat').value;
+    const jahr = document.getElementById('filterJahr').value;
+
+    document.getElementById('tekBody').innerHTML = '<tr><td colspan="9" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr>';
+
+    try {
+        // TAG167: umlage='mit' für Vergleich mit GlobalCube (Umlage wird NICHT bereinigt)
+        const url = `/controlling/api/tek?firma=${firma}&standort=${standort}&monat=${monat}&jahr=${jahr}&modus=teil&umlage=mit`;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (data.success) {
+            currentData = data;
+            console.log('TEK Data:', data);  // Debug
+            renderAll(data);
+            document.getElementById('zeitraumLabel').textContent = data.filter.monat_name + ' ' + data.filter.jahr;
+        } else {
+            throw new Error(data.error);
+        }
+    } catch (err) {
+        console.error(err);
+        document.getElementById('tekBody').innerHTML = `<tr><td colspan="9" class="text-center py-4 text-danger">${err.message}</td></tr>`;
+    }
+}
+
+function renderAll(data) {
+    renderKPIs(data);
+    renderPrognose(data);
+    renderHeute(data);
+    renderBreakeven(data);
+    renderTable(data);
+}
+
+function renderHeute(data) {
+    const heute = data.heute;
+    const showHeute = !!heute;
+
+    // Header ein/ausblenden
+    document.getElementById('heuteHeader').style.display = showHeute ? '' : 'none';
+    document.getElementById('heuteUmsatzHeader').style.display = showHeute ? '' : 'none';
+    document.getElementById('heuteDB1Header').style.display = showHeute ? '' : 'none';
+
+    if (showHeute) {
+        document.getElementById('heuteWochentag').textContent = heute.wochentag;
+    }
+
+    // Flag für renderTable
+    window.showHeuteColumns = showHeute;
+}
+
+function renderKPIs(data) {
+    const g = data.gesamt;
+    document.getElementById('kpiUmsatz').textContent = fmtEuro(g.umsatz);
+    document.getElementById('kpiEinsatz').textContent = fmtEuro(g.einsatz);
+    document.getElementById('kpiDB1').textContent = fmtEuro(g.db1);
+    document.getElementById('kpiDB1').className = 'stat-value ' + (g.db1 >= 0 ? 'val-pos' : 'val-neg');
+    document.getElementById('kpiMarge').textContent = fmtPct(g.marge);
+}
+
+function renderPrognose(data) {
+    const p = data.prognose;
+    const vm = data.vormonat;
+    const vj = data.vorjahr;
+    const g = data.gesamt;
+
+    if (!p || !p.werktage) {
+        document.getElementById('prognoseBar').style.display = 'none';
+        return;
+    }
+    document.getElementById('prognoseBar').style.display = 'flex';
+
+    const wt = p.werktage;
+    document.getElementById('werktageText').textContent = Math.round(wt.fortschritt_prozent) + '%';
+    document.getElementById('werktageDetail').textContent = `(${wt.vergangen}/${wt.gesamt} WT)`;
+
+    const tagesschnitt = wt.vergangen > 0 ? g.db1 / wt.vergangen : 0;
+    const hochrechnung = tagesschnitt * wt.gesamt;
+    document.getElementById('tagesschnitt').textContent = fmtEuro(tagesschnitt);
+    document.getElementById('hochrechnung').textContent = fmtEuro(hochrechnung);
+
+    // vs. Vormonat
+    if (vm && vm.db1 !== undefined) {
+        const diff = hochrechnung - vm.db1;
+        const pct = vm.db1 !== 0 ? (diff / Math.abs(vm.db1) * 100) : 0;
+        const cls = diff >= 0 ? 'delta delta-pos' : 'delta delta-neg';
+        document.getElementById('vsVormonat').innerHTML = `<span class="${cls}">${diff >= 0 ? '+' : ''}${pct.toFixed(0)}%</span>`;
+    } else {
+        document.getElementById('vsVormonat').innerHTML = '-';
+    }
+
+    // vs. Vorjahr
+    if (vj && vj.db1 !== undefined) {
+        const diff = hochrechnung - vj.db1;
+        const pct = vj.db1 !== 0 ? (diff / Math.abs(vj.db1) * 100) : 0;
+        const cls = diff >= 0 ? 'delta delta-pos' : 'delta delta-neg';
+        document.getElementById('vsVorjahr').innerHTML = `<span class="${cls}">${diff >= 0 ? '+' : ''}${pct.toFixed(0)}%</span>`;
+    } else {
+        document.getElementById('vsVorjahr').innerHTML = '-';
+    }
+}
+
+function renderBreakeven(data) {
+    const p = data.prognose;
+    const g = data.gesamt;
+
+    if (!p || !p.werktage || !p.breakeven_schwelle) {
+        document.getElementById('breakevenAmpel').textContent = '-';
+        document.getElementById('breakevenAbstand').textContent = '-';
+        return;
+    }
+
+    const wt = p.werktage;
+    const tagesschnitt = wt.vergangen > 0 ? g.db1 / wt.vergangen : 0;
+    const hochrechnung = tagesschnitt * wt.gesamt;
+    const breakeven = p.breakeven_schwelle;
+    const abstand = hochrechnung - breakeven;
+
+    const ampelEl = document.getElementById('breakevenAmpel');
+    const abstandEl = document.getElementById('breakevenAbstand');
+    const schwelleEl = document.getElementById('breakevenSchwelle');
+    const hinweisEl = document.getElementById('breakevenHinweis');
+
+    // Schwelle (Kosten) anzeigen
+    schwelleEl.textContent = fmtEuro(breakeven);
+
+    // Ampel-Logik
+    renderAmpel(ampelEl, abstandEl, hochrechnung, abstand);
+
+    // Dynamischer Hinweis mit verbleibenden Werktagen
+    const verbleibend = wt.verbleibend || (wt.gesamt - wt.vergangen);
+
+    // Kostenverteilung-Info (wenn anteilig)
+    const kv = p.kostenverteilung || {};
+    const anteilInfo = (kv.anteilig && kv.umsatz_anteil < 99)
+        ? ` · <span class="text-info">${kv.umsatz_anteil.toFixed(0)}% Kostenanteil</span>`
+        : '';
+
+    if (verbleibend > 0 && abstand < 0) {
+        // Noch nicht erreicht - was wird pro Tag benötigt?
+        const fehlbetrag = Math.abs(abstand);
+        const benoetigtProTag = fehlbetrag / verbleibend;
+        hinweisEl.innerHTML = `Noch <strong>${verbleibend} WT</strong> · Benötigt: <strong>${fmtEuro(benoetigtProTag)}</strong>/Tag zusätzlich zum Ø${anteilInfo}`;
+    } else if (verbleibend > 0) {
+        // Bereits erreicht - Puffer
+        hinweisEl.innerHTML = `Noch <strong>${verbleibend} WT</strong> · Bei Ø ${fmtEuro(tagesschnitt)}/Tag → Prognose: ${fmtEuro(hochrechnung)}${anteilInfo}`;
+    } else {
+        // Monat abgeschlossen
+        hinweisEl.innerHTML = `Monat abgeschlossen · Endstand DB1 vs. Ø Kosten (3M)${anteilInfo}`;
+    }
+}
+
+function renderAmpel(ampelEl, abstandEl, hochrechnung, abstand) {
+    if (abstand >= 50000) {
+        ampelEl.textContent = fmtEuro(hochrechnung);
+        ampelEl.className = 'breakeven-ampel ampel-gruen';
+        abstandEl.innerHTML = `<span class="val-pos">+${fmtEuro(abstand)}</span>`;
+    } else if (abstand >= 0) {
+        ampelEl.textContent = fmtEuro(hochrechnung);
+        ampelEl.className = 'breakeven-ampel ampel-gelb';
+        abstandEl.innerHTML = `<span class="val-warn">+${fmtEuro(abstand)}</span>`;
+    } else {
+        ampelEl.textContent = fmtEuro(hochrechnung);
+        ampelEl.className = 'breakeven-ampel ampel-rot';
+        abstandEl.innerHTML = `<span class="val-neg">${fmtEuro(abstand)}</span>`;
+    }
+}
+
+function renderTable(data) {
+    const tbody = document.getElementById('tekBody');
+    const g = data.gesamt;
+    const heute = data.heute;
+    const showHeute = window.showHeuteColumns;
+    let html = '';
+
+    for (const [key, b] of Object.entries(data.bereiche)) {
+        const cfg = BEREICHE[key] || { name: key, icon: 'bi-circle', class: '', benchMarge: 10 };
+
+        // Werkstatt: kalk. Werte verwenden
+        const einsatz = b.einsatz_kalk !== undefined ? b.einsatz_kalk : b.einsatz;
+        const db1 = b.db1_kalk !== undefined ? b.db1_kalk : b.db1;
+        const marge = b.marge_kalk !== undefined ? b.marge_kalk : (b.umsatz > 0 ? db1 / b.umsatz * 100 : 0);
+        const isKalk = b.einsatz_kalk !== undefined;
+
+        // Stückzahlen
+        const stueck = b.stueck || null;
+        const db1ProStueck = b.db1_pro_stueck || (stueck > 0 ? db1 / stueck : null);
+
+        // VM/VJ Vergleich
+        const vmDb1 = b.vm_db1 || 0;
+        const vjDb1 = b.vj_db1 || 0;
+        const vmDiff = db1 - vmDb1;
+        const vjDiff = db1 - vjDb1;
+        const vmPct = vmDb1 !== 0 ? (vmDiff / Math.abs(vmDb1) * 100) : 0;
+        const vjPct = vjDb1 !== 0 ? (vjDiff / Math.abs(vjDb1) * 100) : 0;
+
+        // Marge-Balken
+        const margeClass = marge >= cfg.benchMarge ? 'marge-ok' : (marge >= cfg.benchMarge * 0.7 ? 'marge-warn' : 'marge-bad');
+        const margeWidth = Math.min(marge * 2, 100);
+
+        // Anteil am Gesamt-DB1
+        const anteil = g.db1 > 0 ? (db1 / g.db1 * 100) : 0;
+
+        // Heute-Spalten (falls vorhanden)
+        const heuteUmsatz = heute && b.heute_umsatz !== undefined ? b.heute_umsatz : null;
+        const heuteDb1 = heute && b.heute_db1 !== undefined ? b.heute_db1 : null;
+
+        html += `
+            <tr class="bereich-row ${cfg.class}" onclick="showDrill('${key}')">
+                <td>
+                    <i class="bi ${cfg.icon} me-2"></i>${cfg.name}
+                    ${b.produktivitaet ? `<small class="text-info ms-1">(EW: ${b.produktivitaet}%)</small>` : ''}
+                </td>
+                <td class="text-center">${stueck ? `<span class="badge bg-primary">${stueck}</span>` : '<span class="val-muted">-</span>'}</td>
+                ${showHeute ? `
+                <td class="text-end bg-light">${heuteUmsatz !== null ? fmtEuro(heuteUmsatz) : '<span class="val-muted">-</span>'}</td>
+                <td class="text-end bg-light ${heuteDb1 !== null && heuteDb1 >= 0 ? 'val-pos' : heuteDb1 !== null ? 'val-neg' : ''}">${heuteDb1 !== null ? fmtEuro(heuteDb1) : '<span class="val-muted">-</span>'}</td>
+                ` : ''}
+                <td class="text-end">${fmtEuro(b.umsatz)}</td>
+                <td class="text-end">${fmtEuro(einsatz)}${isKalk ? ' <span class="val-warn">*</span>' : ''}</td>
+                <td class="text-end fw-bold ${db1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(db1)}</td>
+                <td class="text-center">
+                    <div class="d-flex align-items-center justify-content-center gap-1">
+                        <div class="marge-bar"><div class="marge-bar-fill ${margeClass}" style="width: ${margeWidth}%"></div></div>
+                        <span class="small">${fmtPct(marge)}</span>
+                    </div>
+                </td>
+                <td class="text-end">${db1ProStueck !== null ? fmtEuro(db1ProStueck) : '<span class="val-muted">-</span>'}</td>
+                <td class="text-center"><small>${anteil > 0 ? anteil.toFixed(0) + '%' : '-'}</small></td>
+                <td class="text-center">
+                    ${vmDb1 !== 0 || b.vm_umsatz > 0
+                        ? `<span class="delta ${vmDiff >= 0 ? 'delta-pos' : 'delta-neg'}">${vmDiff >= 0 ? '+' : ''}${vmPct.toFixed(0)}%</span>`
+                        : '<span class="val-muted">-</span>'}
+                </td>
+                <td class="text-center">
+                    ${vjDb1 !== 0 || b.vj_umsatz > 0
+                        ? `<span class="delta ${vjDiff >= 0 ? 'delta-pos' : 'delta-neg'}">${vjDiff >= 0 ? '+' : ''}${vjPct.toFixed(0)}%</span>`
+                        : '<span class="val-muted">-</span>'}
+                </td>
+            </tr>
+        `;
+    }
+
+    // Gesamt-Zeile
+    const totalStueck = g.stueck || 0;
+    const totalDb1ProStueck = g.db1_pro_stueck || (totalStueck > 0 ? g.db1 / totalStueck : null);
+
+    // VM/VJ für Gesamt
+    const vm = data.vormonat;
+    const vj = data.vorjahr;
+    const totalVmDiff = vm ? g.db1 - vm.db1 : 0;
+    const totalVjDiff = vj ? g.db1 - vj.db1 : 0;
+    const totalVmPct = vm && vm.db1 !== 0 ? (totalVmDiff / Math.abs(vm.db1) * 100) : 0;
+    const totalVjPct = vj && vj.db1 !== 0 ? (totalVjDiff / Math.abs(vj.db1) * 100) : 0;
+
+    html += `
+        <tr class="gesamt-row">
+            <td><i class="bi bi-calculator me-2"></i>GESAMT</td>
+            <td class="text-center">${totalStueck > 0 ? `<span class="badge bg-dark">${totalStueck}</span>` : '-'}</td>
+            ${showHeute ? `
+            <td class="text-end bg-light">${heute ? fmtEuro(heute.umsatz) : '-'}</td>
+            <td class="text-end bg-light ${heute && heute.db1 >= 0 ? 'val-pos' : heute ? 'val-neg' : ''}">${heute ? fmtEuro(heute.db1) : '-'}</td>
+            ` : ''}
+            <td class="text-end">${fmtEuro(g.umsatz)}</td>
+            <td class="text-end">${fmtEuro(g.einsatz)}</td>
+            <td class="text-end ${g.db1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(g.db1)}</td>
+            <td class="text-center">${fmtPct(g.marge)}</td>
+            <td class="text-end">${totalDb1ProStueck !== null ? fmtEuro(totalDb1ProStueck) : '-'}</td>
+            <td class="text-center">100%</td>
+            <td class="text-center">
+                ${vm ? `<span class="delta ${totalVmDiff >= 0 ? 'delta-pos' : 'delta-neg'}">${totalVmDiff >= 0 ? '+' : ''}${totalVmPct.toFixed(0)}%</span>` : '-'}
+            </td>
+            <td class="text-center">
+                ${vj ? `<span class="delta ${totalVjDiff >= 0 ? 'delta-pos' : 'delta-neg'}">${totalVjDiff >= 0 ? '+' : ''}${totalVjPct.toFixed(0)}%</span>` : '-'}
+            </td>
+        </tr>
+    `;
+
+    tbody.innerHTML = html;
+}
+
+// Toggle-Funktion für Drill-Down Konten-Details
+function toggleKonten(row, typ, index) {
+    const detailRow = document.getElementById(`konten-${typ}-${index}`);
+    const icon = row.querySelector('.drill-icon');
+    if (detailRow) {
+        detailRow.classList.toggle('d-none');
+        if (icon) {
+            icon.classList.toggle('bi-chevron-right');
+            icon.classList.toggle('bi-chevron-down');
+        }
+    }
+}
+
+async function showDrill(bereichKey) {
+    const cfg = BEREICHE[bereichKey] || { name: bereichKey };
+    const modal = new bootstrap.Modal(document.getElementById('drillModal'));
+    document.getElementById('drillModalTitle').innerHTML = `<i class="bi ${cfg.icon} me-2"></i>${cfg.name} - Details`;
+    document.getElementById('drillModalBody').innerHTML = '<div class="text-center py-4"><div class="spinner-border spinner-border-sm"></div></div>';
+    modal.show();
+
+    try {
+        const url = `/controlling/api/tek/detail?bereich=${bereichKey}&firma=${currentData.filter.firma}&standort=${currentData.filter.standort}&monat=${currentData.filter.monat}&jahr=${currentData.filter.jahr}`;
+        console.log('Drill-Down URL:', url);
+        const res = await fetch(url);
+        const data = await res.json();
+        console.log('Drill-Down Response:', data);
+
+        if (data.success) {
+            renderDrill(bereichKey, data);
+        } else {
+            throw new Error(data.error || data.traceback || 'Unbekannter Fehler');
+        }
+    } catch (err) {
+        console.error('Drill-Down Error:', err);
+        document.getElementById('drillModalBody').innerHTML = `<div class="alert alert-danger m-3">${err.message}</div>`;
+    }
+}
+
+function renderDrill(bereichKey, data) {
+    let html = '<div class="p-3">';
+
+    // Modelle/Absatzwege nur für NW/GW anzeigen
+    const hatModelle = data.fahrzeuge && data.fahrzeuge.length > 0;
+    const hatAbsatzwege = data.absatzwege && data.absatzwege.length > 0;
+    const totalStueck = hatModelle ? data.fahrzeuge.reduce((s, f) => s + f.stueck, 0) : 0;
+
+    // Tabs für Umsatz / Einsatz / Modelle / Absatzwege
+    html += `
+        <ul class="nav nav-tabs mb-3">
+            <li class="nav-item">
+                <a class="nav-link active" data-bs-toggle="tab" href="#drillUmsatz">
+                    <i class="bi bi-arrow-up-circle text-success me-1"></i>Umsatz
+                    <span class="badge bg-success">${fmtEuro(data.umsatz.gesamt)}</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" data-bs-toggle="tab" href="#drillEinsatz">
+                    <i class="bi bi-arrow-down-circle text-danger me-1"></i>Einsatz
+                    <span class="badge bg-danger">${fmtEuro(data.einsatz.gesamt)}</span>
+                </a>
+            </li>
+            ${hatModelle ? `
+            <li class="nav-item">
+                <a class="nav-link" data-bs-toggle="tab" href="#drillModelle">
+                    <i class="bi bi-car-front text-primary me-1"></i>Modelle
+                    <span class="badge bg-primary">${totalStueck} Stk</span>
+                </a>
+            </li>
+            ` : ''}
+            ${hatAbsatzwege ? `
+            <li class="nav-item">
+                <a class="nav-link" data-bs-toggle="tab" href="#drillAbsatzwege">
+                    <i class="bi bi-diagram-3 text-info me-1"></i>Absatzwege
+                </a>
+            </li>
+            ` : ''}
+        </ul>
+        <div class="tab-content">
+    `;
+
+    // Umsatz-Tab (mit Drill-Down für Einzelkonten) - tabellarisch mit Einsatz | Erlös | DB1 | DB%
+    html += '<div class="tab-pane fade show active" id="drillUmsatz">';
+    if (data.umsatz.gruppen && data.umsatz.gruppen.length > 0) {
+        html += '<table class="table table-sm drill-table"><thead><tr><th>Erlösgruppe</th><th class="text-end text-danger">Einsatz</th><th class="text-end text-success">Erlös</th><th class="text-end">DB1</th><th class="text-end">DB%</th></tr></thead><tbody>';
+        for (let i = 0; i < data.umsatz.gruppen.length; i++) {
+            const g = data.umsatz.gruppen[i];
+            // Passende Einsatz-Gruppe finden (gleiche Gruppe-Nummer, 8x → 7x)
+            const einsatzGruppe = data.einsatz.gruppen ? data.einsatz.gruppen.find(eg => eg.gruppe === String(g.gruppe).replace(/^8/, '7')) : null;
+            const einsatzBetrag = einsatzGruppe ? einsatzGruppe.betrag : 0;
+            const db1 = g.betrag - einsatzBetrag;
+            const marge = g.betrag > 0 ? (db1 / g.betrag * 100) : 0;
+            const hatKonten = g.konten && g.konten.length > 0;
+            const rowClass = hatKonten ? 'drill-row' : '';
+            html += `<tr class="${rowClass}" ${hatKonten ? `onclick="toggleKonten(this, 'umsatz', ${i})" style="cursor:pointer"` : ''}>
+                <td><i class="bi ${hatKonten ? 'bi-chevron-right' : 'bi-folder'} text-success me-1 drill-icon"></i>${g.name} <small class="text-muted">(${g.gruppe})</small></td>
+                <td class="text-end val-neg">${fmtEuro(einsatzBetrag)}</td>
+                <td class="text-end val-pos">${fmtEuro(g.betrag)}</td>
+                <td class="text-end ${db1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(db1)}</td>
+                <td class="text-end ${marge >= 0 ? 'val-pos' : 'val-neg'}">${fmtPct(marge)}</td>
+            </tr>`;
+            // Versteckte Zeile für Konten-Details
+            if (hatKonten) {
+                const einsatzKonten = einsatzGruppe ? einsatzGruppe.konten || [] : [];
+                html += `<tr class="konten-detail d-none" id="konten-umsatz-${i}"><td colspan="5" class="p-0">
+                    <table class="table table-sm table-bordered mb-0" style="font-size: 0.75rem;">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Konto</th>
+                                <th>Bezeichnung</th>
+                                <th class="text-end text-danger">Einsatz</th>
+                                <th class="text-end text-success">Erlös</th>
+                                <th class="text-end">DB1</th>
+                                <th class="text-end">DB%</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+                // Konten matchen
+                const kontenPaare = [];
+                const usedEinsatz = new Set();
+                for (const u of g.konten) {
+                    const einsatzKonto = String(u.konto).replace(/^8/, '7');
+                    const e = einsatzKonten.find(k => String(k.konto) === einsatzKonto);
+                    if (e) usedEinsatz.add(e.konto);
+                    const kDb1 = u.betrag - (e ? e.betrag : 0);
+                    kontenPaare.push({ u, e: e || null, db1: kDb1 });
+                }
+                for (const e of einsatzKonten) {
+                    if (!usedEinsatz.has(e.konto)) {
+                        kontenPaare.push({ u: null, e, db1: -e.betrag });
+                    }
+                }
+                for (const p of kontenPaare) {
+                    const konto = p.u ? p.u.konto : p.e.konto;
+                    const bez = p.u ? p.u.bezeichnung : p.e.bezeichnung;
+                    const erloes = p.u ? p.u.betrag : 0;
+                    const einsatz = p.e ? p.e.betrag : 0;
+                    const kMarge = erloes > 0 ? (p.db1 / erloes * 100) : 0;
+                    html += `<tr>
+                        <td><code>${konto}</code></td>
+                        <td>${bez}</td>
+                        <td class="text-end val-neg">${einsatz > 0 ? fmtEuro(einsatz) : '-'}</td>
+                        <td class="text-end val-pos">${erloes > 0 ? fmtEuro(erloes) : '-'}</td>
+                        <td class="text-end ${p.db1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(p.db1)}</td>
+                        <td class="text-end ${kMarge >= 0 ? 'val-pos' : 'val-neg'}">${fmtPct(kMarge)}</td>
+                    </tr>`;
+                }
+                html += '</tbody></table></td></tr>';
+            }
+        }
+        // Summenzeile
+        const sumErloes = data.umsatz.gruppen.reduce((s, g) => s + g.betrag, 0);
+        const sumEinsatz = data.einsatz.gruppen ? data.einsatz.gruppen.reduce((s, g) => s + g.betrag, 0) : 0;
+        const sumDb1 = sumErloes - sumEinsatz;
+        const sumMarge = sumErloes > 0 ? (sumDb1 / sumErloes * 100) : 0;
+        html += `<tr class="table-secondary fw-bold">
+            <td>Gesamt</td>
+            <td class="text-end val-neg">${fmtEuro(sumEinsatz)}</td>
+            <td class="text-end val-pos">${fmtEuro(sumErloes)}</td>
+            <td class="text-end ${sumDb1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(sumDb1)}</td>
+            <td class="text-end ${sumMarge >= 0 ? 'val-pos' : 'val-neg'}">${fmtPct(sumMarge)}</td>
+        </tr>`;
+        html += '</tbody></table>';
+    } else {
+        html += '<div class="text-muted text-center py-3">Keine Umsatz-Gruppen</div>';
+    }
+    html += '</div>';
+
+    // Einsatz-Tab (mit Drill-Down für Einzelkonten) - tabellarisch mit Einsatz | Erlös | DB1 | DB%
+    html += '<div class="tab-pane fade" id="drillEinsatz">';
+    if (data.einsatz.gruppen && data.einsatz.gruppen.length > 0) {
+        html += '<table class="table table-sm drill-table"><thead><tr><th>Kostengruppe</th><th class="text-end text-danger">Einsatz</th><th class="text-end text-success">Erlös</th><th class="text-end">DB1</th><th class="text-end">DB%</th></tr></thead><tbody>';
+        for (let i = 0; i < data.einsatz.gruppen.length; i++) {
+            const g = data.einsatz.gruppen[i];
+            // Passende Umsatz-Gruppe finden (gleiche Gruppe-Nummer, 7x → 8x)
+            const umsatzGruppe = data.umsatz.gruppen ? data.umsatz.gruppen.find(ug => ug.gruppe === String(g.gruppe).replace(/^7/, '8')) : null;
+            const erloesBetrag = umsatzGruppe ? umsatzGruppe.betrag : 0;
+            const db1 = erloesBetrag - g.betrag;
+            const marge = erloesBetrag > 0 ? (db1 / erloesBetrag * 100) : 0;
+            const hatKonten = g.konten && g.konten.length > 0;
+            const rowClass = hatKonten ? 'drill-row' : '';
+            html += `<tr class="${rowClass}" ${hatKonten ? `onclick="toggleKonten(this, 'einsatz', ${i})" style="cursor:pointer"` : ''}>
+                <td><i class="bi ${hatKonten ? 'bi-chevron-right' : 'bi-folder'} text-danger me-1 drill-icon"></i>${g.name} <small class="text-muted">(${g.gruppe})</small></td>
+                <td class="text-end val-neg">${fmtEuro(g.betrag)}</td>
+                <td class="text-end val-pos">${fmtEuro(erloesBetrag)}</td>
+                <td class="text-end ${db1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(db1)}</td>
+                <td class="text-end ${marge >= 0 ? 'val-pos' : 'val-neg'}">${fmtPct(marge)}</td>
+            </tr>`;
+            // Versteckte Zeile für Konten-Details
+            if (hatKonten) {
+                const umsatzKonten = umsatzGruppe ? umsatzGruppe.konten || [] : [];
+                html += `<tr class="konten-detail d-none" id="konten-einsatz-${i}"><td colspan="5" class="p-0">
+                    <table class="table table-sm table-bordered mb-0" style="font-size: 0.75rem;">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Konto</th>
+                                <th>Bezeichnung</th>
+                                <th class="text-end text-danger">Einsatz</th>
+                                <th class="text-end text-success">Erlös</th>
+                                <th class="text-end">DB1</th>
+                                <th class="text-end">DB%</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+                // Konten matchen
+                const kontenPaare = [];
+                const usedUmsatz = new Set();
+                for (const e of g.konten) {
+                    const umsatzKonto = String(e.konto).replace(/^7/, '8');
+                    const u = umsatzKonten.find(k => String(k.konto) === umsatzKonto);
+                    if (u) usedUmsatz.add(u.konto);
+                    const erloes = u ? u.betrag : 0;
+                    const kDb1 = erloes - e.betrag;
+                    kontenPaare.push({ u: u || null, e, db1: kDb1 });
+                }
+                for (const u of umsatzKonten) {
+                    if (!usedUmsatz.has(u.konto)) {
+                        kontenPaare.push({ u, e: null, db1: u.betrag });
+                    }
+                }
+                for (const p of kontenPaare) {
+                    const konto = p.e ? p.e.konto : p.u.konto;
+                    const bez = p.e ? p.e.bezeichnung : p.u.bezeichnung;
+                    const erloes = p.u ? p.u.betrag : 0;
+                    const einsatz = p.e ? p.e.betrag : 0;
+                    const kMarge = erloes > 0 ? (p.db1 / erloes * 100) : 0;
+                    html += `<tr>
+                        <td><code>${konto}</code></td>
+                        <td>${bez}</td>
+                        <td class="text-end val-neg">${einsatz > 0 ? fmtEuro(einsatz) : '-'}</td>
+                        <td class="text-end val-pos">${erloes > 0 ? fmtEuro(erloes) : '-'}</td>
+                        <td class="text-end ${p.db1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(p.db1)}</td>
+                        <td class="text-end ${kMarge >= 0 ? 'val-pos' : 'val-neg'}">${fmtPct(kMarge)}</td>
+                    </tr>`;
+                }
+                html += '</tbody></table></td></tr>';
+            }
+        }
+        // Summenzeile
+        const sumEinsatz = data.einsatz.gruppen.reduce((s, g) => s + g.betrag, 0);
+        const sumErloes = data.umsatz.gruppen ? data.umsatz.gruppen.reduce((s, g) => s + g.betrag, 0) : 0;
+        const sumDb1 = sumErloes - sumEinsatz;
+        const sumMarge = sumErloes > 0 ? (sumDb1 / sumErloes * 100) : 0;
+        html += `<tr class="table-secondary fw-bold">
+            <td>Gesamt</td>
+            <td class="text-end val-neg">${fmtEuro(sumEinsatz)}</td>
+            <td class="text-end val-pos">${fmtEuro(sumErloes)}</td>
+            <td class="text-end ${sumDb1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(sumDb1)}</td>
+            <td class="text-end ${sumMarge >= 0 ? 'val-pos' : 'val-neg'}">${fmtPct(sumMarge)}</td>
+        </tr>`;
+        html += '</tbody></table>';
+    } else {
+        html += '<div class="text-muted text-center py-3">Keine Einsatz-Gruppen</div>';
+    }
+    html += '</div>';
+
+    // Modelle-Tab (nur für NW/GW) - zeigt DB1/Stk mit tabellarischem Drill-Down
+    if (hatModelle) {
+        html += '<div class="tab-pane fade" id="drillModelle">';
+        html += '<table class="table table-sm drill-table"><thead><tr><th>Modell</th><th class="text-end">Stück</th><th class="text-end">DB1</th><th class="text-end">DB1/Stk</th></tr></thead><tbody>';
+        for (let i = 0; i < data.fahrzeuge.length; i++) {
+            const f = data.fahrzeuge[i];
+            const db1 = f.db1 || 0;
+            const db1ProStueck = f.db1_pro_stueck || 0;
+            const hatKonten = f.konten && f.konten.length > 0;
+            const rowClass = hatKonten ? 'drill-row' : '';
+            html += `<tr class="${rowClass}" ${hatKonten ? `onclick="toggleKonten(this, 'modell', ${i})" style="cursor:pointer"` : ''}>
+                <td><i class="bi ${hatKonten ? 'bi-chevron-right' : 'bi-car-front'} text-primary me-1 drill-icon"></i>${f.modell}</td>
+                <td class="text-end"><strong>${f.stueck}</strong></td>
+                <td class="text-end ${db1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(db1)}</td>
+                <td class="text-end ${db1ProStueck >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(db1ProStueck)}</td>
+            </tr>`;
+            // Versteckte Zeile: Tabellarische Ansicht (Einsatz | Erlös | DB1)
+            if (hatKonten) {
+                const umsatzKonten = f.konten.filter(k => k.umsatz > 0);
+                const einsatzKonten = f.konten.filter(k => k.einsatz > 0);
+                // Konten nach letzten 5 Ziffern matchen (71xxxx ↔ 81xxxx, 72xxxx ↔ 82xxxx)
+                const getKontoSuffix = (k) => String(k).slice(-5);
+                const kontenPaare = [];
+                const usedEinsatz = new Set();
+                for (const u of umsatzKonten) {
+                    const suffix = getKontoSuffix(u.konto);
+                    const e = einsatzKonten.find(k => getKontoSuffix(k.konto) === suffix);
+                    if (e) usedEinsatz.add(e.konto);
+                    const db1 = u.umsatz - (e ? e.einsatz : 0);
+                    kontenPaare.push({ u, e: e || null, db1 });
+                }
+                // Einsatz-Konten ohne Umsatz-Gegenstück
+                for (const e of einsatzKonten) {
+                    if (!usedEinsatz.has(e.konto)) {
+                        kontenPaare.push({ u: null, e, db1: -e.einsatz });
+                    }
+                }
+                html += `<tr class="konten-detail d-none" id="konten-modell-${i}"><td colspan="4" class="p-0">
+                    <table class="table table-sm table-bordered mb-0" style="font-size: 0.75rem;">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Konto</th>
+                                <th>Bezeichnung</th>
+                                <th class="text-end text-danger">Einsatz</th>
+                                <th class="text-end text-success">Erlös</th>
+                                <th class="text-end">DB1</th>
+                                <th class="text-end">DB%</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+                for (const p of kontenPaare) {
+                    const konto = p.u ? p.u.konto : p.e.konto;
+                    const bez = p.u ? p.u.bezeichnung : p.e.bezeichnung;
+                    const stueck = p.u ? p.u.stueck : 0;
+                    const erloes = p.u ? p.u.umsatz : 0;
+                    const marge = erloes > 0 ? (p.db1 / erloes * 100) : 0;
+                    html += `<tr>
+                        <td><code>${konto}</code></td>
+                        <td>${bez}${stueck ? ` <span class="text-muted">(${stueck})</span>` : ''}</td>
+                        <td class="text-end val-neg">${p.e ? fmtEuro(p.e.einsatz) : '-'}</td>
+                        <td class="text-end val-pos">${p.u ? fmtEuro(p.u.umsatz) : '-'}</td>
+                        <td class="text-end ${p.db1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(p.db1)}</td>
+                        <td class="text-end ${marge >= 0 ? 'val-pos' : 'val-neg'}">${fmtPct(marge)}</td>
+                    </tr>`;
+                }
+                const sumUmsatz = umsatzKonten.reduce((s, k) => s + k.umsatz, 0);
+                const sumEinsatz = einsatzKonten.reduce((s, k) => s + k.einsatz, 0);
+                const sumDb1 = sumUmsatz - sumEinsatz;
+                const sumMarge = sumUmsatz > 0 ? (sumDb1 / sumUmsatz * 100) : 0;
+                html += `<tr class="table-secondary fw-bold">
+                    <td colspan="2">Summe</td>
+                    <td class="text-end val-neg">${fmtEuro(sumEinsatz)}</td>
+                    <td class="text-end val-pos">${fmtEuro(sumUmsatz)}</td>
+                    <td class="text-end ${sumDb1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(sumDb1)}</td>
+                    <td class="text-end ${sumMarge >= 0 ? 'val-pos' : 'val-neg'}">${fmtPct(sumMarge)}</td>
+                </tr>`;
+                html += '</tbody></table></td></tr>';
+            }
+        }
+        // Summenzeile
+        const totalDb1 = data.fahrzeuge.reduce((s, f) => s + (f.db1 || 0), 0);
+        const avgDb1ProStueck = totalStueck > 0 ? totalDb1 / totalStueck : 0;
+        html += `<tr class="table-secondary fw-bold">
+            <td>Gesamt</td>
+            <td class="text-end">${totalStueck}</td>
+            <td class="text-end">${fmtEuro(totalDb1)}</td>
+            <td class="text-end">${fmtEuro(avgDb1ProStueck)}</td>
+        </tr>`;
+        html += '</tbody></table>';
+        html += '</div>';
+    }
+
+    // Absatzwege-Tab (nur für NW/GW) - zeigt DB1/Stk mit tabellarischem Drill-Down
+    if (hatAbsatzwege) {
+        html += '<div class="tab-pane fade" id="drillAbsatzwege">';
+        html += '<table class="table table-sm drill-table"><thead><tr><th>Absatzweg</th><th class="text-end">Stück</th><th class="text-end">DB1</th><th class="text-end">DB1/Stk</th></tr></thead><tbody>';
+        for (let i = 0; i < data.absatzwege.length; i++) {
+            const a = data.absatzwege[i];
+            const db1 = a.db1 || 0;
+            const db1ProStueck = a.db1_pro_stueck || 0;
+            const hatKonten = a.konten && a.konten.length > 0;
+            const rowClass = hatKonten ? 'drill-row' : '';
+            html += `<tr class="${rowClass}" ${hatKonten ? `onclick="toggleKonten(this, 'absatzweg', ${i})" style="cursor:pointer"` : ''}>
+                <td><i class="bi ${hatKonten ? 'bi-chevron-right' : 'bi-diagram-3'} text-info me-1 drill-icon"></i>${a.absatzweg}</td>
+                <td class="text-end"><strong>${a.stueck}</strong></td>
+                <td class="text-end ${db1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(db1)}</td>
+                <td class="text-end ${db1ProStueck >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(db1ProStueck)}</td>
+            </tr>`;
+            // Versteckte Zeile: Tabellarische Ansicht (Einsatz | Erlös | DB1)
+            if (hatKonten) {
+                const umsatzKonten = a.konten.filter(k => k.umsatz > 0);
+                const einsatzKonten = a.konten.filter(k => k.einsatz > 0);
+                // Konten nach letzten 5 Ziffern matchen (71xxxx ↔ 81xxxx, 72xxxx ↔ 82xxxx)
+                const getKontoSuffix = (k) => String(k).slice(-5);
+                const kontenPaare = [];
+                const usedEinsatz = new Set();
+                for (const u of umsatzKonten) {
+                    const suffix = getKontoSuffix(u.konto);
+                    const e = einsatzKonten.find(k => getKontoSuffix(k.konto) === suffix);
+                    if (e) usedEinsatz.add(e.konto);
+                    const db1 = u.umsatz - (e ? e.einsatz : 0);
+                    kontenPaare.push({ u, e: e || null, db1 });
+                }
+                for (const e of einsatzKonten) {
+                    if (!usedEinsatz.has(e.konto)) {
+                        kontenPaare.push({ u: null, e, db1: -e.einsatz });
+                    }
+                }
+                html += `<tr class="konten-detail d-none" id="konten-absatzweg-${i}"><td colspan="4" class="p-0">
+                    <table class="table table-sm table-bordered mb-0" style="font-size: 0.75rem;">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Konto</th>
+                                <th>Bezeichnung</th>
+                                <th class="text-end text-danger">Einsatz</th>
+                                <th class="text-end text-success">Erlös</th>
+                                <th class="text-end">DB1</th>
+                                <th class="text-end">DB%</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+                for (const p of kontenPaare) {
+                    const konto = p.u ? p.u.konto : p.e.konto;
+                    const bez = p.u ? p.u.bezeichnung : p.e.bezeichnung;
+                    const stueck = p.u ? p.u.stueck : 0;
+                    const erloes = p.u ? p.u.umsatz : 0;
+                    const marge = erloes > 0 ? (p.db1 / erloes * 100) : 0;
+                    html += `<tr>
+                        <td><code>${konto}</code></td>
+                        <td>${bez}${stueck ? ` <span class="text-muted">(${stueck})</span>` : ''}</td>
+                        <td class="text-end val-neg">${p.e ? fmtEuro(p.e.einsatz) : '-'}</td>
+                        <td class="text-end val-pos">${p.u ? fmtEuro(p.u.umsatz) : '-'}</td>
+                        <td class="text-end ${p.db1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(p.db1)}</td>
+                        <td class="text-end ${marge >= 0 ? 'val-pos' : 'val-neg'}">${fmtPct(marge)}</td>
+                    </tr>`;
+                }
+                const sumUmsatz = umsatzKonten.reduce((s, k) => s + k.umsatz, 0);
+                const sumEinsatz = einsatzKonten.reduce((s, k) => s + k.einsatz, 0);
+                const sumDb1 = sumUmsatz - sumEinsatz;
+                const sumMarge = sumUmsatz > 0 ? (sumDb1 / sumUmsatz * 100) : 0;
+                html += `<tr class="table-secondary fw-bold">
+                    <td colspan="2">Summe</td>
+                    <td class="text-end val-neg">${fmtEuro(sumEinsatz)}</td>
+                    <td class="text-end val-pos">${fmtEuro(sumUmsatz)}</td>
+                    <td class="text-end ${sumDb1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(sumDb1)}</td>
+                    <td class="text-end ${sumMarge >= 0 ? 'val-pos' : 'val-neg'}">${fmtPct(sumMarge)}</td>
+                </tr>`;
+                html += '</tbody></table></td></tr>';
+            }
+        }
+        // Summenzeile
+        const totalAbsatzDb1 = data.absatzwege.reduce((s, a) => s + (a.db1 || 0), 0);
+        const totalAbsatzStueck = data.absatzwege.reduce((s, a) => s + a.stueck, 0);
+        const avgAbsatzDb1 = totalAbsatzStueck > 0 ? totalAbsatzDb1 / totalAbsatzStueck : 0;
+        html += `<tr class="table-secondary fw-bold">
+            <td>Gesamt</td>
+            <td class="text-end">${totalAbsatzStueck}</td>
+            <td class="text-end">${fmtEuro(totalAbsatzDb1)}</td>
+            <td class="text-end">${fmtEuro(avgAbsatzDb1)}</td>
+        </tr>`;
+        html += '</tbody></table>';
+        html += '</div>';
+    }
+
+    html += '</div></div>';
+    document.getElementById('drillModalBody').innerHTML = html;
+}
+
+// Init
+document.addEventListener('DOMContentLoaded', function() {
+    const now = new Date();
+    document.getElementById('filterMonat').value = now.getMonth() + 1;
+    document.getElementById('filterJahr').value = now.getFullYear();
+    loadData();
+});
+</script>
+{% endblock %}

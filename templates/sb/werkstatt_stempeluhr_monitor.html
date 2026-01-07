@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stempeluhr LIVE - Monitor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body {
+            background: #1a1a2e;
+            color: white;
+            font-family: 'Segoe UI', sans-serif;
+            overflow: hidden;
+        }
+        
+        /* Header */
+        .monitor-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .monitor-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        .monitor-time {
+            font-size: 1.2rem;
+            font-family: monospace;
+        }
+        
+        /* Stats Row */
+        .stats-row {
+            display: flex;
+            padding: 10px;
+            gap: 10px;
+        }
+        .stat-card {
+            flex: 1;
+            padding: 15px;
+            border-radius: 12px;
+            text-align: center;
+        }
+        .stat-card.aktiv { background: linear-gradient(135deg, #11998e, #38ef7d); }
+        .stat-card.leerlauf { background: linear-gradient(135deg, #f093fb, #f5576c); }
+        .stat-card.abwesend { background: #6c757d; }
+        .stat-number {
+            font-size: 3rem;
+            font-weight: bold;
+            line-height: 1;
+        }
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+        .leerlauf-namen {
+            font-size: 0.85rem;
+            margin-top: 5px;
+        }
+        
+        /* Alarm Animation */
+        .stat-card.alarm {
+            animation: alarm-pulse 0.5s infinite;
+        }
+        @keyframes alarm-pulse {
+            0%, 100% { background: linear-gradient(135deg, #f5576c, #f093fb); }
+            50% { background: linear-gradient(135deg, #ff0000, #ff6b6b); }
+        }
+        
+        /* Mechaniker Grid */
+        .mechaniker-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 10px;
+            padding: 10px;
+            max-height: calc(100vh - 200px);
+            overflow-y: auto;
+        }
+        .mechaniker-card {
+            background: #16213e;
+            border-radius: 10px;
+            padding: 12px;
+            border-left: 4px solid #38ef7d;
+        }
+        .mechaniker-card.warnung { border-left-color: #ffc107; }
+        .mechaniker-card.kritisch { border-left-color: #dc3545; }
+        
+        .mech-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .mech-name {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+        .mech-time {
+            font-size: 1.3rem;
+            font-weight: bold;
+            font-family: monospace;
+        }
+        .mech-time.ok { color: #38ef7d; }
+        .mech-time.warnung { color: #ffc107; }
+        .mech-time.kritisch { color: #dc3545; }
+        
+        .mech-info {
+            font-size: 0.85rem;
+            color: #aaa;
+        }
+        
+        .progress-bar-custom {
+            height: 8px;
+            background: #0f3460;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+        .progress-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s;
+        }
+        .progress-fill.ok { background: linear-gradient(90deg, #11998e, #38ef7d); }
+        .progress-fill.warnung { background: linear-gradient(90deg, #f7971e, #ffd200); }
+        .progress-fill.kritisch { background: linear-gradient(90deg, #cb2d3e, #ef473a); }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="monitor-header">
+        <div class="monitor-title">
+            <i class="bi bi-stopwatch"></i> Stempeluhr LIVE
+        </div>
+        <div class="monitor-time" id="currentTime">--:--:--</div>
+    </div>
+    
+    <!-- Stats Row -->
+    <div class="stats-row">
+        <div class="stat-card aktiv">
+            <div class="stat-number" id="countAktiv">-</div>
+            <div class="stat-label">Aktiv</div>
+        </div>
+        <div class="stat-card leerlauf" id="leerlaufCard">
+            <div class="stat-number" id="countLeerlauf">-</div>
+            <div class="stat-label">Leerlauf</div>
+            <div class="leerlauf-namen" id="leerlaufNamen"></div>
+        </div>
+        <!-- TAG 112: Pausiert/Wartet -->
+        <div class="stat-card" id="pausiertCard" style="background: linear-gradient(135deg, #667eea, #764ba2);">
+            <div class="stat-number" id="countPausiert">-</div>
+            <div class="stat-label">Pausiert</div>
+            <div class="leerlauf-namen" id="pausiertNamen"></div>
+        </div>
+        <!-- TAG 126: Feierabend -->
+        <div class="stat-card" id="feierabendCard" style="background: linear-gradient(135deg, #11998e, #38ef7d);">
+            <div class="stat-number" id="countFeierabend">-</div>
+            <div class="stat-label">Feierabend</div>
+            <div class="leerlauf-namen" id="feierabendNamen"></div>
+        </div>
+        <div class="stat-card abwesend">
+            <div class="stat-number" id="countAbwesend">-</div>
+            <div class="stat-label">Abwesend</div>
+        </div>
+    </div>
+    
+    <!-- Mechaniker Grid -->
+    <!-- Pausen-Banner TAG 112 -->
+    <div id="pausenBanner" class="alert alert-warning text-center py-2 mx-2 mb-2" style="display: none; background: linear-gradient(135deg, #f5af19, #f12711); border: none; color: white; font-weight: bold;">
+        🍽️ MITTAGSPAUSE (12:00 - 13:00) - Stempelzeiten werden fortgesetzt
+    </div>
+    <div class="mechaniker-grid" id="mechanikerGrid">
+        <div class="text-center py-5">
+            <div class="spinner-border text-light"></div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const REFRESH_INTERVAL = 5000; // 5 Sekunden
+        
+        // Uhrzeit aktualisieren
+        function updateClock() {
+            document.getElementById('currentTime').textContent = 
+                new Date().toLocaleTimeString('de-DE');
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+        
+        // URL-Parameter auslesen (z.B. subsidiary=1)
+        const urlParams = new URLSearchParams(window.location.search);
+        const subsidiary = urlParams.get('subsidiary');
+        
+        // API-URL mit Filter bauen
+        let apiUrl = '/api/werkstatt/live/stempeluhr';
+        if (subsidiary) {
+            apiUrl += '?subsidiary=' + subsidiary;
+        }
+        
+        // Daten laden
+        function refreshData() {
+            fetch(apiUrl)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) renderData(data);
+                })
+                .catch(err => console.error('Fehler:', err));
+        }
+        
+        function renderData(data) {
+            // Stats
+            document.getElementById('countAktiv').textContent = data.summary.produktiv || data.summary.aktiv;
+            document.getElementById('countLeerlauf').textContent = data.summary.leerlauf;
+            document.getElementById('countPausiert').textContent = data.summary.pausiert || 0;  // TAG 112
+            document.getElementById('countFeierabend').textContent = data.summary.feierabend || 0;  // TAG 126
+            document.getElementById('countAbwesend').textContent = data.summary.abwesend;
+            
+            // TAG 112: Pausen-Banner anzeigen
+            const pausenBanner = document.getElementById('pausenBanner');
+            if (pausenBanner) {
+                pausenBanner.style.display = data.ist_pausenzeit ? 'block' : 'none';
+            }
+            
+            // TAG 112: Pausiert-Namen anzeigen
+            // TAG 126: Zeige "seit HH:MM" statt Gesamtarbeitszeit
+            const pausiertNamen = document.getElementById('pausiertNamen');
+            if (data.pausiert_mechaniker && data.pausiert_mechaniker.length > 0) {
+                pausiertNamen.innerHTML = data.pausiert_mechaniker.map(m => {
+                    const zeit = m.pausiert_seit ? `seit ${m.pausiert_seit}` : '';
+                    return `<span class="badge bg-light text-dark me-1">⏸️ ${m.name.split(',')[0]} ${zeit}</span>`;
+                }).join('');
+            } else {
+                pausiertNamen.innerHTML = '';
+            }
+
+            // TAG 126: Feierabend-Namen anzeigen
+            const feierabendNamen = document.getElementById('feierabendNamen');
+            if (data.feierabend_mechaniker && data.feierabend_mechaniker.length > 0) {
+                feierabendNamen.innerHTML = data.feierabend_mechaniker.map(m => {
+                    const heuteStd = Math.floor(m.heute_min / 60);
+                    const zeit = heuteStd > 0 ? `${heuteStd}h` : `${m.heute_min}m`;
+                    return `<span class="badge bg-light text-dark me-1">🏠 ${m.name.split(',')[0]} (${m.gegangen_um})</span>`;
+                }).join('');
+            } else {
+                feierabendNamen.innerHTML = '';
+            }
+            
+            // Leerlauf Alarm
+            const leerlaufCard = document.getElementById('leerlaufCard');
+            const leerlaufNamen = document.getElementById('leerlaufNamen');
+            
+            if (data.leerlauf_mechaniker.length > 0) {
+                let hasAlarm = data.leerlauf_mechaniker.some(m => 
+                    m.nie_gestempelt || m.leerlauf_minuten >= 10);
+                
+                if (hasAlarm) {
+                    leerlaufCard.classList.add('alarm');
+                    playAlarmSound();
+                } else {
+                    leerlaufCard.classList.remove('alarm');
+                }
+                
+                leerlaufNamen.innerHTML = data.leerlauf_mechaniker.map(m => {
+                    const zeit = m.nie_gestempelt ? 'NIE!' : `${m.leerlauf_minuten}min`;
+                    const icon = (m.nie_gestempelt || m.leerlauf_minuten >= 10) ? '🚨' : 
+                                 (m.leerlauf_minuten >= 5) ? '⚠️' : '';
+                    return `<span class="badge bg-danger me-1">${icon} ${m.name.split(',')[0]} ${zeit}</span>`;
+                }).join('');
+            } else {
+                leerlaufCard.classList.remove('alarm');
+                leerlaufNamen.innerHTML = '<span class="text-success">✓ Alle arbeiten</span>';
+            }
+            
+            // Mechaniker Grid
+            const grid = document.getElementById('mechanikerGrid');
+            grid.innerHTML = data.aktive_mechaniker.map(m => {
+                const fortschritt = m.fortschritt_prozent;
+                let statusClass = 'ok';
+                if (fortschritt >= 100) statusClass = 'kritisch';
+                else if (fortschritt >= 80) statusClass = 'warnung';
+                
+                const cardClass = fortschritt >= 100 ? 'kritisch' : (fortschritt >= 80 ? 'warnung' : '');
+                
+                // TAG 112: Klare Trennung Heute vs Gesamt
+                const heuteGesamt = m.heute_gesamt_min || m.laufzeit_min;
+                const gesamtAuftrag = m.laufzeit_min;
+                const hatVortage = gesamtAuftrag > heuteGesamt;
+                
+                return `
+                    <div class="mechaniker-card ${cardClass}">
+                        <div class="mech-header">
+                            <span class="mech-name">${m.name}</span>
+                            <div class="text-end">
+                                <div class="mech-time ${statusClass}">${heuteGesamt} min</div>
+                                ${hatVortage ? `<div style="font-size: 0.7rem; color: #888;">Ges: ${gesamtAuftrag} min</div>` : ''}
+                            </div>
+                        </div>
+                        <div class="mech-info">
+                            <div>📋 <strong>${m.auftrags_art || '-'}</strong> ${m.order_number} | ${m.kennzeichen || '-'}</div>
+                            <div>⏱️ Seit ${m.start_uhrzeit} | Vorgabe: ${m.vorgabe_aw} AW (${m.vorgabe_min} min)</div>
+                            ${m.serviceberater ? `<div>👤 ${m.serviceberater}</div>` : ''}
+                        </div>
+                        <div class="progress-bar-custom">
+                            <div class="progress-fill ${statusClass}" style="width: ${Math.min(fortschritt, 100)}%"></div>
+                        </div>
+                        ${fortschritt > 0 ? `<div style="font-size: 0.7rem; text-align: right; margin-top: 2px; color: ${statusClass === 'kritisch' ? '#ef473a' : statusClass === 'warnung' ? '#ffd200' : '#38ef7d'};">${fortschritt}% ${fortschritt > 100 ? '⚠️' : ''}</div>` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        // Alarm Sound
+        let lastAlarmTime = 0;
+        function playAlarmSound() {
+            const now = Date.now();
+            if (now - lastAlarmTime < 60000) return; // Max alle 60 Sekunden
+            lastAlarmTime = now;
+            
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.frequency.value = 800;
+                osc.type = 'square';
+                gain.gain.value = 0.3;
+                osc.start();
+                setTimeout(() => { osc.stop(); ctx.close(); }, 300);
+            } catch(e) {}
+        }
+        
+        // Start
+        refreshData();
+        setInterval(refreshData, REFRESH_INTERVAL);
+    </script>
+</body>
+</html>

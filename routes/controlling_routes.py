@@ -9,6 +9,9 @@ import psycopg2.extras
 from api.db_utils import db_session, row_to_dict, rows_to_list, locosoft_session
 from api.db_connection import convert_placeholders, sql_placeholder, get_db_type
 
+# TAG 146: Wiederverwendbares TEK-Datenmodul (100% Konsistenz mit Reports!)
+from api.controlling_data import get_tek_data
+
 # =============================================================================
 # WERKTAGE-BERECHNUNG (TAG121)
 # =============================================================================
@@ -192,6 +195,13 @@ def normalisiere_fibu_modell(modell: str) -> str:
 def get_stueckzahlen_locosoft(von: str, bis: str, bereich: str = '1-NW', firma: str = '0', standort: str = '0') -> dict:
     """
     Holt Fahrzeug-StÃ¼ckzahlen aus Locosoft dealer_vehicles.
+    
+    TAG167 FIX: Stückzahlen aus dealer_vehicles (tatsächliche Auslieferungen),
+    NICHT aus journal_accountings (nur bereits gebuchte Verkäufe)!
+    
+    Grund: dealer_vehicles zeigt alle fakturierten Auslieferungen sofort,
+    während journal_accountings nur bereits gebuchte Verkäufe enthält.
+    Die FIBU-Buchungen kommen oft verzögert (z.B. bei Monatsabschluss).
 
     Returns: {
         'modelle': {
@@ -408,16 +418,68 @@ def tek_dashboard_archiv():
                          active_page='controlling')
 
 
+@controlling_bp.route('/unternehmensplan')
+@controlling_bp.route('/rendite')
+@login_required
+def unternehmensplan_dashboard():
+    """Unternehmensplan - 1% Rendite Dashboard (TAG157)
+
+    Gesamtunternehmensplanung über alle Kostenstellen:
+    - IST vs PLAN über alle Bereiche (NW, GW, Teile, Werkstatt, Sonstige)
+    - Gap-Analyse zum 1%-Renditeziel
+    - Prognose bis Geschäftsjahresende
+    - Handlungsempfehlungen pro Bereich
+    """
+    return render_template('controlling/unternehmensplan.html',
+                         page_title='Unternehmensplan - 1% Rendite',
+                         active_page='controlling')
+
+
+@controlling_bp.route('/kundenzentrale')
+@login_required
+def kundenzentrale_dashboard():
+    """Kundenzentrale Tagesziel Dashboard (TAG 164)
+    
+    Tägliches Fakturierungsziel für Kundenzentrale:
+    - Heute fakturiert vs. Tagesziel
+    - Filterbar nach Standorten (Deggendorf, Landau)
+    - Aufschlüsselung nach Bereichen
+    """
+    return render_template('controlling/kundenzentrale.html',
+                         page_title='Kundenzentrale - Tagesziel',
+                         active_page='controlling')
+
+
+@controlling_bp.route('/kst-ziele')
+@controlling_bp.route('/ziele')
+@login_required
+def kst_ziele_dashboard():
+    """KST-Ziele Tagesstatus Dashboard (TAG161)
+
+    Kostenstellen-Zielplanung mit Tagesstatus:
+    - IST vs SOLL pro Bereich mit Hochrechnung
+    - Daumen hoch/runter Status
+    - Handlungsempfehlungen
+    """
+    return render_template('controlling/kst_ziele.html',
+                         page_title='KST-Ziele Tagesstatus',
+                         active_page='controlling')
+
+
 # =============================================================================
 # HELPER: Umsatz/Einsatz pro Bereich fÃ¼r beliebigen Zeitraum
 # =============================================================================
 
-def get_bereich_daten(von: str, bis: str, firma_filter_umsatz: str, umlage_erloese_filter: str = '') -> dict:
+def get_bereich_daten(von: str, bis: str, firma_filter_umsatz: str, umlage_erloese_filter: str = '', firma_filter_einsatz: str = None) -> dict:
     """
     Holt Umsatz und Einsatz pro Bereich fÃ¼r einen Zeitraum.
     TAG 136: PostgreSQL-kompatibel
+    TAG 157: firma_filter_einsatz für korrekte Standort-Zuordnung (Konto-Endziffer)
     Returns: {'1-NW': {'umsatz': X, 'einsatz': Y}, ...}
     """
+    # TAG157: Wenn kein separater Einsatz-Filter, nutze Umsatz-Filter (Abwärtskompatibilität)
+    if firma_filter_einsatz is None:
+        firma_filter_einsatz = firma_filter_umsatz
     with db_session() as conn:
         cursor = conn.cursor()
 
@@ -443,7 +505,7 @@ def get_bereich_daten(von: str, bis: str, firma_filter_umsatz: str, umlage_erloe
         """), (von, bis))
         umsatz_rows = [row_to_dict(r) for r in cursor.fetchall()]
 
-        # EINSATZ
+        # EINSATZ (TAG157: firma_filter_einsatz mit Konto-Endziffer für korrekte Standort-Zuordnung!)
         cursor.execute(convert_placeholders(f"""
             SELECT
                 CASE
@@ -458,7 +520,7 @@ def get_bereich_daten(von: str, bis: str, firma_filter_umsatz: str, umlage_erloe
             FROM loco_journal_accountings
             WHERE accounting_date >= ? AND accounting_date < ?
               AND nominal_account_number BETWEEN 700000 AND 799999
-              {firma_filter_umsatz}
+              {firma_filter_einsatz}
             GROUP BY bereich
         """), (von, bis))
         einsatz_rows = [row_to_dict(r) for r in cursor.fetchall()]
@@ -610,33 +672,38 @@ def api_tek():
         ph = sql_placeholder()  # Returns ? fÃ¼r SQLite, %s fÃ¼r PostgreSQL
         
         # Filter bauen
-        # WICHTIG: FÃ¼r Umsatz/Einsatz (7/8xxxxx) gilt branch_number
-        #          FÃ¼r Kosten (4xxxxx) gilt die letzte Ziffer der Kontonummer!
-        #          - Letzte Ziffer 1 = Deggendorf
-        #          - Letzte Ziffer 2 = Landau
-        #          - subsidiary_to_company_ref 2 = Hyundai (separate Firma)
-        
+        # WICHTIG (TAG157 FIX): Locosoft verwendet unterschiedliche Standort-Zuordnungen:
+        #          - Umsatz (8xxxxx): branch_number (1=DEG, 3=LAN) oder subsidiary (2=HYU)
+        #          - Einsatz (7xxxxx): Konto-Endziffer (6. Stelle: 1=DEG, 2=LAN) oder subsidiary (2=HYU)
+        #          - Kosten (4xxxxx): Konto-Endziffer (6. Stelle: 1=DEG, 2=LAN) oder subsidiary (2=HYU)
+
         firma_filter = ""
-        firma_filter_umsatz = ""   # FÃ¼r Umsatz/Einsatz: branch_number
-        firma_filter_kosten = ""   # FÃ¼r Kosten: letzte Ziffer der Kontonummer
+        firma_filter_umsatz = ""   # FÃ¼r Umsatz: branch_number
+        firma_filter_einsatz = ""  # FÃ¼r Einsatz: Konto-Endziffer! (TAG157) - IMMER initialisieren!
+        firma_filter_kosten = ""   # FÃ¼r Kosten: Konto-Endziffer
         standort_name = "Alle"
         standort_code = standort  # FÃ¼r MA-Verteilung
-        
+
+        # TAG167: firma_filter_einsatz IMMER initialisieren (auch bei firma='0')
+        # Fallback für get_bereich_daten() falls nicht gesetzt
         if firma == '1':
             # Stellantis (Autohaus Greiner)
             firma_filter = "AND subsidiary_to_company_ref = 1"
             firma_filter_umsatz = "AND subsidiary_to_company_ref = 1"
+            firma_filter_einsatz = "AND subsidiary_to_company_ref = 1"
             firma_filter_kosten = "AND subsidiary_to_company_ref = 1"
             standort_name = "Stellantis (DEG+LAN)"
             if standort == '1':
-                # Deggendorf: branch_number=1 fÃ¼r Umsatz, letzte Ziffer=1 fÃ¼r Kosten
+                # Deggendorf: branch_number=1 fÃ¼r Umsatz, Konto-Endziffer=1 fÃ¼r Einsatz/Kosten
                 firma_filter_umsatz += " AND branch_number = 1"
+                firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
                 firma_filter_kosten += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
                 standort_name = "Deggendorf"
                 standort_code = '1'
             elif standort == '2':  # Landau (frÃ¼her '3' fÃ¼r branch, jetzt '2' fÃ¼r Konto-Endung)
-                # Landau: branch_number=3 fÃ¼r Umsatz, letzte Ziffer=2 fÃ¼r Kosten
+                # Landau: branch_number=3 fÃ¼r Umsatz, Konto-Endziffer=2 fÃ¼r Einsatz/Kosten
                 firma_filter_umsatz += " AND branch_number = 3"
+                firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
                 firma_filter_kosten += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
                 standort_name = "Landau"
                 standort_code = '3'  # FÃ¼r MA-Verteilung in employees (location='Landau')
@@ -644,6 +711,7 @@ def api_tek():
             # Hyundai (Auto Greiner) - separate Firma
             firma_filter = "AND subsidiary_to_company_ref = 2"
             firma_filter_umsatz = "AND subsidiary_to_company_ref = 2"
+            firma_filter_einsatz = "AND subsidiary_to_company_ref = 2"
             firma_filter_kosten = "AND subsidiary_to_company_ref = 2"
             standort_name = "Hyundai"
         
@@ -750,7 +818,7 @@ def api_tek():
                 FROM loco_journal_accountings
                 WHERE accounting_date >= ? AND accounting_date < ?
                   AND nominal_account_number BETWEEN 700000 AND 799999
-                  {firma_filter_umsatz}
+                  {firma_filter_einsatz}
                 GROUP BY bereich
             """), (von, bis))
             einsatz_rows = cursor.fetchall()
@@ -867,9 +935,9 @@ def api_tek():
         vj_von_bereich = f"{jahr-1}-{monat:02d}-01"
         vj_bis_bereich = f"{jahr-1}-{monat+1:02d}-01" if monat < 12 else f"{jahr}-01-01"
 
-        # VM-Daten pro Bereich holen
-        vm_bereiche = get_bereich_daten(vm_von_bereich, vm_bis_bereich, firma_filter_umsatz, umlage_erloese_filter)
-        vj_bereiche = get_bereich_daten(vj_von_bereich, vj_bis_bereich, firma_filter_umsatz, umlage_erloese_filter)
+        # VM-Daten pro Bereich holen (TAG157: firma_filter_einsatz für korrekte Standort-Zuordnung!)
+        vm_bereiche = get_bereich_daten(vm_von_bereich, vm_bis_bereich, firma_filter_umsatz, umlage_erloese_filter, firma_filter_einsatz)
+        vj_bereiche = get_bereich_daten(vj_von_bereich, vj_bis_bereich, firma_filter_umsatz, umlage_erloese_filter, firma_filter_einsatz)
 
         # VM/VJ zu jedem Bereich hinzufÃ¼gen
         for bkey in bereiche:
@@ -1071,12 +1139,13 @@ def api_tek():
             row = cursor.fetchone()
             vm_umsatz = float(row_to_dict(row)['umsatz'] or 0) if row else 0
 
+            # TAG157: firma_filter_einsatz für korrekte Standort-Zuordnung!
             cursor.execute(convert_placeholders(f"""
                 SELECT SUM(CASE WHEN debit_or_credit = 'S' THEN posted_value ELSE -posted_value END) / 100.0 as einsatz
                 FROM loco_journal_accountings
                 WHERE accounting_date >= ? AND accounting_date < ?
                   AND nominal_account_number BETWEEN 700000 AND 799999
-                  {firma_filter_umsatz}
+                  {firma_filter_einsatz}
             """), (vm_von, vm_bis))
             row = cursor.fetchone()
             vm_einsatz = float(row_to_dict(row)['einsatz'] or 0) if row else 0
@@ -1103,12 +1172,13 @@ def api_tek():
             row = cursor.fetchone()
             vj_umsatz = float(row_to_dict(row)['umsatz'] or 0) if row else 0
 
+            # TAG157: firma_filter_einsatz für korrekte Standort-Zuordnung!
             cursor.execute(convert_placeholders(f"""
                 SELECT SUM(CASE WHEN debit_or_credit = 'S' THEN posted_value ELSE -posted_value END) / 100.0 as einsatz
                 FROM loco_journal_accountings
                 WHERE accounting_date >= ? AND accounting_date < ?
                   AND nominal_account_number BETWEEN 700000 AND 799999
-                  {firma_filter_umsatz}
+                  {firma_filter_einsatz}
             """), (vj_von, vj_bis))
             row = cursor.fetchone()
             vj_einsatz = float(row_to_dict(row)['einsatz'] or 0) if row else 0
@@ -1118,10 +1188,11 @@ def api_tek():
         # =====================================================================
         # BREAKEVEN-PROGNOSE - TAG 136: nutzt jetzt intern db_session()
         # ECHTE KOSTEN - keine anteilige Verteilung!
-        # Hyundai ist nur eine formaljuristische HÃ¼lle ohne eigene Kostenstruktur.
-        # Die echten Kosten werden Ã¼ber firma_filter_kosten zugeordnet.
+        # Hyundai ist nur eine formaljuristische Hülle ohne eigene Kostenstruktur.
+        # Die echten Kosten werden über firma_filter_kosten zugeordnet.
+        # TAG157: firma_filter_einsatz für korrekte Standort-Zuordnung!
         # =====================================================================
-        prognose = berechne_breakeven_prognose(monat, jahr, total_db1, firma_filter_umsatz, firma_filter_kosten, anteilige_kosten=False)
+        prognose = berechne_breakeven_prognose(monat, jahr, total_db1, firma_filter_umsatz, firma_filter_kosten, anteilige_kosten=False, firma_filter_einsatz=firma_filter_einsatz)
 
         # =====================================================================
         # STANDORT-BREAKEVENS (nur wenn Alle Firmen oder Stellantis)
@@ -1133,7 +1204,7 @@ def api_tek():
             with db_session() as conn:
                 cursor = conn.cursor()
 
-                # Deggendorf: branch_number=1 fÃ¼r Umsatz, 6. Ziffer=1 fÃ¼r Kosten
+                # Deggendorf: branch_number=1 für Umsatz, 6. Ziffer=1 für Einsatz/Kosten
                 cursor.execute(convert_placeholders("""
                     SELECT COALESCE(SUM(CASE WHEN debit_or_credit = 'H' THEN posted_value ELSE -posted_value END) / 100.0, 0) as umsatz
                     FROM loco_journal_accountings
@@ -1143,17 +1214,18 @@ def api_tek():
                 """), (von, bis))
                 dego_umsatz = float(row_to_dict(cursor.fetchone()).get('umsatz') or 0)
 
+                # TAG157: Einsatz-Zuordnung über Konto-Endziffer (6. Ziffer), NICHT branch_number!
                 cursor.execute(convert_placeholders("""
                     SELECT COALESCE(SUM(CASE WHEN debit_or_credit = 'S' THEN posted_value ELSE -posted_value END) / 100.0, 0) as einsatz
                     FROM loco_journal_accountings
                     WHERE accounting_date >= ? AND accounting_date < ?
                       AND nominal_account_number BETWEEN 700000 AND 799999
-                      AND branch_number = 1
+                      AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'
                 """), (von, bis))
                 dego_einsatz = float(row_to_dict(cursor.fetchone()).get('einsatz') or 0)
                 dego_db1 = dego_umsatz - dego_einsatz
 
-                # Landau: branch_number=3 fÃ¼r Umsatz, 6. Ziffer=2 fÃ¼r Kosten
+                # Landau: branch_number=3 für Umsatz, 6. Ziffer=2 für Einsatz/Kosten
                 cursor.execute(convert_placeholders("""
                     SELECT COALESCE(SUM(CASE WHEN debit_or_credit = 'H' THEN posted_value ELSE -posted_value END) / 100.0, 0) as umsatz
                     FROM loco_journal_accountings
@@ -1163,12 +1235,13 @@ def api_tek():
                 """), (von, bis))
                 lano_umsatz = float(row_to_dict(cursor.fetchone()).get('umsatz') or 0)
 
+                # TAG157: Einsatz-Zuordnung über Konto-Endziffer (6. Ziffer), NICHT branch_number!
                 cursor.execute(convert_placeholders("""
                     SELECT COALESCE(SUM(CASE WHEN debit_or_credit = 'S' THEN posted_value ELSE -posted_value END) / 100.0, 0) as einsatz
                     FROM loco_journal_accountings
                     WHERE accounting_date >= ? AND accounting_date < ?
                       AND nominal_account_number BETWEEN 700000 AND 799999
-                      AND branch_number = 3
+                      AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'
                 """), (von, bis))
                 lano_einsatz = float(row_to_dict(cursor.fetchone()).get('einsatz') or 0)
                 lano_db1 = lano_umsatz - lano_einsatz
@@ -1181,12 +1254,14 @@ def api_tek():
             dego_prognose = berechne_breakeven_prognose_standort(
                 monat, jahr, dego_db1,
                 " AND branch_number = 1",
+                " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'",
                 " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
             )
             # Landau: 6. Ziffer = 2
             lano_prognose = berechne_breakeven_prognose_standort(
                 monat, jahr, lano_db1,
                 " AND branch_number = 3",
+                " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'",
                 " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
             )
 
@@ -1227,14 +1302,14 @@ def api_tek():
                 """, (heute_str, morgen_str))
                 heute_umsatz = float(loco_cur.fetchone()['umsatz'] or 0)
 
-                # Tageseinsatz GESAMT
+                # Tageseinsatz GESAMT (TAG157: firma_filter_einsatz für korrekte Standort-Zuordnung!)
                 loco_cur.execute(f"""
                     SELECT
                         COALESCE(SUM(CASE WHEN debit_or_credit = 'S' THEN posted_value ELSE -posted_value END) / 100.0, 0) as einsatz
                     FROM journal_accountings
                     WHERE accounting_date >= %s AND accounting_date < %s
                       AND nominal_account_number BETWEEN 700000 AND 799999
-                      {firma_filter_umsatz}
+                      {firma_filter_einsatz}
                 """, (heute_str, morgen_str))
                 heute_einsatz = float(loco_cur.fetchone()['einsatz'] or 0)
 
@@ -1258,7 +1333,7 @@ def api_tek():
                 """, (heute_str, morgen_str))
                 heute_umsatz_bereich = {r['bereich']: float(r['umsatz'] or 0) for r in loco_cur.fetchall()}
 
-                # Tageseinsatz PRO BEREICH
+                # Tageseinsatz PRO BEREICH (TAG157: firma_filter_einsatz für korrekte Standort-Zuordnung!)
                 loco_cur.execute(f"""
                     SELECT
                         CASE
@@ -1273,7 +1348,7 @@ def api_tek():
                     FROM journal_accountings
                     WHERE accounting_date >= %s AND accounting_date < %s
                       AND nominal_account_number BETWEEN 700000 AND 799999
-                      {firma_filter_umsatz}
+                      {firma_filter_einsatz}
                     GROUP BY bereich
                 """, (heute_str, morgen_str))
                 heute_einsatz_bereich = {r['bereich']: float(r['einsatz'] or 0) for r in loco_cur.fetchall()}
@@ -2828,7 +2903,8 @@ def berechne_vollkosten(von: str, bis: str, firma_filter: str, standort: str = '
 # =============================================================================
 
 def berechne_breakeven_prognose_standort(monat: int, jahr: int, aktueller_db1: float,
-                                          firma_filter_umsatz: str, firma_filter_kosten: str) -> dict:
+                                          firma_filter_umsatz: str, firma_filter_kosten: str,
+                                          firma_filter_einsatz: str = None) -> dict:
     """
     Berechnet Breakeven-Prognose fÃ¼r einen spezifischen Standort.
 
@@ -2839,7 +2915,11 @@ def berechne_breakeven_prognose_standort(monat: int, jahr: int, aktueller_db1: f
     Parameter:
     - firma_filter_umsatz: Filter fÃ¼r Umsatz/Einsatz (z.B. " AND branch_number = 1")
     - firma_filter_kosten: Filter fÃ¼r Kosten (z.B. " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'")
+    - firma_filter_einsatz: Filter fÃ¼r Einsatz (z.B. " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'")
     """
+    # TAG167: Fallback für Einsatz-Filter - Abwärtskompatibilität
+    if firma_filter_einsatz is None:
+        firma_filter_einsatz = firma_filter_umsatz
     from dateutil.relativedelta import relativedelta
 
     von = f"{jahr}-{monat:02d}-01"
@@ -2899,12 +2979,13 @@ def berechne_breakeven_prognose_standort(monat: int, jahr: int, aktueller_db1: f
         row = cursor.fetchone()
         operativ_umsatz = float(row_to_dict(row).get('umsatz') or 0) if row else 0
 
+        # TAG157: firma_filter_einsatz für korrekte Standort-Zuordnung!
         cursor.execute(convert_placeholders(f"""
             SELECT COALESCE(SUM(CASE WHEN debit_or_credit = 'S' THEN posted_value ELSE -posted_value END) / 100.0, 0) as einsatz
             FROM loco_journal_accountings
             WHERE accounting_date >= ? AND accounting_date < ?
               AND nominal_account_number BETWEEN 700000 AND 799999
-              {firma_filter_umsatz}
+              {firma_filter_einsatz}
         """), (von, bis))
         row = cursor.fetchone()
         operativ_einsatz = float(row_to_dict(row).get('einsatz') or 0) if row else 0
@@ -2917,7 +2998,7 @@ def berechne_breakeven_prognose_standort(monat: int, jahr: int, aktueller_db1: f
             FROM loco_journal_accountings
             WHERE accounting_date >= ? AND accounting_date < ?
               AND nominal_account_number BETWEEN 700000 AND 899999
-              {firma_filter_umsatz}
+              {firma_filter_einsatz}
         """), (von, bis))
         row = cursor.fetchone()
         tage_mit_daten = int(row_to_dict(row).get('tage') or 0) if row else 0
@@ -2960,19 +3041,21 @@ def berechne_breakeven_prognose_standort(monat: int, jahr: int, aktueller_db1: f
 
 def berechne_breakeven_prognose(monat: int, jahr: int, aktueller_db1: float,
                                  firma_filter_umsatz: str, firma_filter_kosten: str = None,
-                                 anteilige_kosten: bool = True) -> dict:
+                                 anteilige_kosten: bool = True, firma_filter_einsatz: str = None) -> dict:
     """
     Berechnet Breakeven-Prognose
     TAG 136: PostgreSQL-kompatibel - nutzt intern db_session()
     TAG 136+: Anteilige Kostenverteilung nach Umsatz-Anteil
+    TAG 157: firma_filter_einsatz für korrekte Standort-Zuordnung (Konto-Endziffer)
 
     Parameter:
-    - firma_filter_umsatz: Filter fÃ¼r Umsatz/Einsatz-Konten (7/8xxxxx) - nutzt branch_number
-    - firma_filter_kosten: Filter fÃ¼r Kosten-Konten (4xxxxx) - nutzt letzte Ziffer
-    - anteilige_kosten: True = Kosten anteilig nach Umsatz verteilen (fÃ¼r Firmen ohne eigene Kostenkonten)
+    - firma_filter_umsatz: Filter für Umsatz-Konten (8xxxxx) - nutzt branch_number
+    - firma_filter_einsatz: Filter für Einsatz-Konten (7xxxxx) - nutzt Konto-Endziffer! (TAG157)
+    - firma_filter_kosten: Filter für Kosten-Konten (4xxxxx) - nutzt Konto-Endziffer
+    - anteilige_kosten: True = Kosten anteilig nach Umsatz verteilen (für Firmen ohne eigene Kostenkonten)
 
     Logik:
-    - < 5 Buchungstage: Gleitender Durchschnitt (Ã˜ DB1 der letzten 3 Monate)
+    - < 5 Buchungstage: Gleitender Durchschnitt (Ø DB1 der letzten 3 Monate)
     - >= 5 Buchungstage: Normale Hochrechnung basierend auf aktuellem DB1/Tag
     """
     from dateutil.relativedelta import relativedelta
@@ -2980,6 +3063,10 @@ def berechne_breakeven_prognose(monat: int, jahr: int, aktueller_db1: float,
     # Fallback: Wenn kein separater Kosten-Filter, verwende Umsatz-Filter
     if firma_filter_kosten is None:
         firma_filter_kosten = firma_filter_umsatz
+
+    # TAG157: Fallback für Einsatz-Filter - Abwärtskompatibilität
+    if firma_filter_einsatz is None:
+        firma_filter_einsatz = firma_filter_umsatz
 
     von = f"{jahr}-{monat:02d}-01"
     bis = f"{jahr}-{monat+1:02d}-01" if monat < 12 else f"{jahr+1}-01-01"
@@ -3090,12 +3177,13 @@ def berechne_breakeven_prognose(monat: int, jahr: int, aktueller_db1: float,
         row = cursor.fetchone()
         operativ_umsatz = float(row_to_dict(row).get('umsatz') or 0) if row else 0
 
+        # TAG157: firma_filter_einsatz für korrekte Standort-Zuordnung!
         cursor.execute(convert_placeholders(f"""
             SELECT COALESCE(SUM(CASE WHEN debit_or_credit = 'S' THEN posted_value ELSE -posted_value END) / 100.0, 0) as einsatz
             FROM loco_journal_accountings
             WHERE accounting_date >= ? AND accounting_date < ?
               AND nominal_account_number BETWEEN 700000 AND 799999
-              {firma_filter_umsatz}
+              {firma_filter_einsatz}
         """), (von, bis))
         row = cursor.fetchone()
         operativ_einsatz = float(row_to_dict(row).get('einsatz') or 0) if row else 0
@@ -3108,7 +3196,7 @@ def berechne_breakeven_prognose(monat: int, jahr: int, aktueller_db1: float,
             FROM loco_journal_accountings
             WHERE accounting_date >= ? AND accounting_date < ?
               AND nominal_account_number BETWEEN 700000 AND 899999
-              {firma_filter_umsatz}
+              {firma_filter_einsatz}
         """), (von, bis))
         row = cursor.fetchone()
         tage_mit_daten = int(row_to_dict(row).get('tage') or 0) if row else 0

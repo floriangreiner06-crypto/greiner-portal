@@ -1,0 +1,1058 @@
+{% extends "base.html" %}
+
+{% block title %}Werkstatt Live-Board{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ============================================================
+   WERKSTATT LIVE-BOARD - KIOSK VERSION (TAG 126)
+   Kompakte Karten, Abwesende in Fußzeile, optimiert für Monitor
+   ============================================================ */
+
+/* KIOSK: Navigation ausblenden, nur Logo behalten */
+.navbar .navbar-nav,
+.navbar .nav-item,
+.navbar .dropdown,
+.navbar .navbar-toggler,
+.navbar #navbarNav {
+    display: none !important;
+}
+
+.navbar {
+    padding: 5px 15px !important;
+    min-height: auto !important;
+}
+
+.navbar-brand {
+    margin-right: 0 !important;
+}
+
+/* Kiosk Container - volle Höhe (minus kleine Navbar) */
+.liveboard-container {
+    background: #1a1a2e;
+    height: calc(100vh - 45px);
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Header - kompakt, fixiert */
+.liveboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 15px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    flex-shrink: 0;
+}
+
+.liveboard-title {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: white;
+    margin: 0;
+}
+
+.liveboard-title i { color: #667eea; }
+
+/* TAG 126: Standort-Badge für Filter */
+.standort-badge {
+    font-size: 0.75rem;
+    padding: 3px 10px;
+    border-radius: 12px;
+    background: #667eea;
+    color: white;
+    margin-left: 10px;
+    font-weight: 500;
+}
+
+.liveboard-meta {
+    font-size: 0.8rem;
+    color: #888;
+}
+
+.liveboard-stats {
+    display: flex;
+    gap: 10px;
+}
+
+.stat-badge {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+    border-radius: 15px;
+    font-weight: 500;
+    font-size: 0.85rem;
+}
+
+.stat-badge.aktiv { background: #28a745; color: white; }
+.stat-badge.verfuegbar { background: #6c757d; color: white; }
+.stat-badge.gudat { background: #fdcb6e; color: #2d3436; }
+
+/* Mechaniker Cards Grid - volle Höhe nutzen */
+.mechaniker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 8px;
+    flex: 1;
+    align-content: stretch;
+    overflow-y: auto;
+}
+
+/* Kompakte Mechaniker Card - volle Höhe */
+.mech-card {
+    background: #16213e;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #0f3460;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+/* Card Header - sehr kompakt */
+.mech-card-header {
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #0f3460;
+}
+
+.mech-card-header.aktiv {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+}
+
+.mech-card-header.leerlauf {
+    background: #0f3460;
+}
+
+.mech-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 0.9rem;
+    color: white;
+    background: rgba(255,255,255,0.2);
+    flex-shrink: 0;
+}
+
+.mech-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.mech-name {
+    font-weight: 600;
+    font-size: 1rem;
+    color: white;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mech-status {
+    font-size: 0.7rem;
+    color: rgba(255,255,255,0.7);
+}
+
+.mech-time-badge {
+    font-family: 'Courier New', monospace;
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: #ffd93d;
+    background: rgba(0,0,0,0.3);
+    padding: 3px 8px;
+    border-radius: 5px;
+}
+
+/* Aktueller Auftrag - kompakt */
+.current-job {
+    padding: 8px 12px;
+    background: rgba(40, 167, 69, 0.15);
+    border-left: 3px solid #28a745;
+    cursor: pointer;
+}
+
+.current-job:hover {
+    background: rgba(40, 167, 69, 0.25);
+}
+
+.current-job-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+.current-job-kz {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: white;
+}
+
+.current-job-nr {
+    font-size: 0.75rem;
+    background: #667eea;
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: 8px;
+}
+
+.current-job-aw {
+    font-size: 0.9rem;
+    color: #ffd93d;
+    font-weight: 600;
+}
+
+/* Fortschrittsbalken */
+.progress-mini {
+    height: 4px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 2px;
+    margin-top: 6px;
+    overflow: hidden;
+}
+
+.progress-mini .fill {
+    height: 100%;
+    background: linear-gradient(90deg, #28a745, #20c997);
+    border-radius: 2px;
+}
+
+/* Kein aktueller Auftrag */
+.no-current-job {
+    padding: 12px;
+    text-align: center;
+    color: #666;
+    font-size: 0.85rem;
+}
+
+/* Leerlauf Warnung */
+.leerlauf-warnung {
+    background: rgba(255, 193, 7, 0.2) !important;
+    border-left: 3px solid #ffc107;
+}
+
+.leerlauf-alarm {
+    background: rgba(220, 53, 69, 0.3) !important;
+    border-left: 3px solid #dc3545;
+    animation: pulse-alarm 1.5s infinite;
+}
+
+@keyframes pulse-alarm {
+    0%, 100% { background: rgba(220, 53, 69, 0.2); }
+    50% { background: rgba(220, 53, 69, 0.4); }
+}
+
+.leerlauf-text {
+    font-weight: 600;
+    margin-top: 5px;
+}
+
+.leerlauf-text.warnung { color: #ffc107; }
+.leerlauf-text.alarm { color: #dc3545; }
+
+.mech-card-header.leerlauf-warning {
+    background: linear-gradient(135deg, #6c757d 0%, #ffc107 100%);
+}
+
+.mech-card-header.leerlauf-alarm {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+    animation: pulse-header 1.5s infinite;
+}
+
+@keyframes pulse-header {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.8; }
+}
+
+/* Warteschlange - flexibel wachsend */
+.queue-section {
+    padding: 6px 10px;
+    background: rgba(0,0,0,0.2);
+    flex: 1;
+    overflow-y: auto;
+    min-height: 100px;
+}
+
+.queue-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 8px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 4px;
+    margin-bottom: 3px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-left: 3px solid transparent;
+    /* Minimale Höhe, wird per JS skaliert */
+    min-height: 24px;
+}
+
+.queue-item:hover {
+    background: rgba(255,255,255,0.1);
+}
+
+.queue-item.gudat {
+    border-left-color: #fdcb6e;
+}
+
+.queue-item.locosoft {
+    border-left-color: #74b9ff;
+}
+
+/* Hauptauftrag (meiste AW) hervorheben */
+.queue-item.hauptauftrag {
+    background: rgba(102, 126, 234, 0.25);
+    border-left-color: #667eea;
+    border-left-width: 4px;
+}
+
+.queue-item.hauptauftrag .queue-item-kz {
+    color: #a29bfe;
+    font-size: 0.95rem;
+}
+
+.queue-item.hauptauftrag .queue-item-aw {
+    color: #ffd93d;
+    font-weight: 700;
+}
+
+/* TAG 126: Fertige Aufträge (bereits abgerechnet) */
+.queue-item.fertig {
+    background: rgba(40, 167, 69, 0.15);
+    border-left-color: #28a745;
+}
+
+.queue-item.fertig .queue-item-kz {
+    color: #81c784;
+}
+
+.fertig-icon {
+    color: #28a745;
+    font-size: 0.9rem;
+    margin-left: 4px;
+    animation: pulse-check 2s infinite;
+}
+
+@keyframes pulse-check {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+.queue-item-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+
+.queue-item-kz {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: white;
+    white-space: nowrap;
+}
+
+.queue-item-nr {
+    font-size: 0.65rem;
+    background: rgba(102, 126, 234, 0.5);
+    color: white;
+    padding: 1px 5px;
+    border-radius: 3px;
+}
+
+.queue-item-aw {
+    font-weight: 600;
+    color: #74b9ff;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+/* Footer Stats */
+.mech-footer {
+    padding: 5px 12px;
+    background: rgba(0,0,0,0.3);
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: #888;
+}
+
+/* Abwesende Fußzeile - fixiert am unteren Rand */
+.abwesende-footer {
+    background: rgba(220, 53, 69, 0.2);
+    border: 1px solid rgba(220, 53, 69, 0.3);
+    border-radius: 8px;
+    padding: 6px 15px;
+    margin-top: 8px;
+    flex-shrink: 0;
+}
+
+.abwesende-label {
+    font-size: 0.75rem;
+    color: #dc3545;
+    font-weight: 600;
+    text-transform: uppercase;
+    margin-right: 10px;
+}
+
+.abwesende-list {
+    display: inline;
+    color: #ccc;
+    font-size: 0.85rem;
+}
+
+.abwesende-item {
+    display: inline-block;
+    margin-right: 15px;
+}
+
+.abwesende-name {
+    color: #fff;
+    font-weight: 500;
+}
+
+.abwesende-grund {
+    color: #888;
+    font-size: 0.75rem;
+}
+
+/* TAG 126: Feierabend Fußzeile */
+.feierabend-footer {
+    background: rgba(40, 167, 69, 0.2);
+    border: 1px solid rgba(40, 167, 69, 0.3);
+    border-radius: 8px;
+    padding: 6px 15px;
+    margin-top: 8px;
+    flex-shrink: 0;
+}
+
+.feierabend-label {
+    font-size: 0.75rem;
+    color: #28a745;
+    font-weight: 600;
+    text-transform: uppercase;
+    margin-right: 10px;
+}
+
+.feierabend-item {
+    display: inline-block;
+    margin-right: 15px;
+}
+
+.feierabend-name {
+    color: #28a745;
+    font-weight: 500;
+}
+
+.feierabend-zeit {
+    color: #888;
+    font-size: 0.75rem;
+}
+
+/* View Switch Button (TAG 126) */
+.view-switch-btn {
+    position: fixed;
+    bottom: 15px;
+    right: 15px;
+    background: #667eea;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 25px;
+    text-decoration: none;
+    font-size: 0.85rem;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    transition: transform 0.2s;
+    z-index: 100;
+}
+
+.view-switch-btn:hover {
+    transform: scale(1.05);
+    color: white;
+    text-decoration: none;
+}
+
+/* Auftrag Detail Modal */
+.auftrag-modal .modal-content {
+    background: #16213e;
+    border: 1px solid #0f3460;
+    border-radius: 12px;
+}
+
+.auftrag-modal .modal-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    padding: 15px 20px;
+    border-radius: 12px 12px 0 0;
+}
+
+.auftrag-modal .modal-header .btn-close {
+    filter: invert(1);
+}
+
+.auftrag-kz-header {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: white;
+}
+
+.auftrag-nr-header {
+    font-size: 0.9rem;
+    color: rgba(255,255,255,0.8);
+}
+
+.auftrag-modal .modal-body {
+    padding: 0;
+    max-height: 70vh;
+    overflow-y: auto;
+    color: #ccc;
+}
+
+.auftrag-section {
+    padding: 15px 20px;
+    border-bottom: 1px solid #0f3460;
+}
+
+.section-title {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #667eea;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+.info-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+
+.info-label {
+    font-size: 0.7rem;
+    color: #666;
+}
+
+.info-value {
+    font-weight: 500;
+    color: white;
+}
+
+.summen-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+}
+
+.summen-card {
+    background: rgba(0,0,0,0.3);
+    border-radius: 8px;
+    padding: 10px;
+    text-align: center;
+}
+
+.summen-value {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #667eea;
+}
+
+.summen-label {
+    font-size: 0.65rem;
+    color: #888;
+    text-transform: uppercase;
+}
+
+.position-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 10px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 5px;
+    margin-bottom: 5px;
+}
+
+.position-beschreibung {
+    flex: 1;
+    font-size: 0.85rem;
+}
+
+.position-mechaniker {
+    font-size: 0.7rem;
+    color: #666;
+}
+
+.position-aw {
+    font-weight: 600;
+    color: #667eea;
+}
+
+/* Scrollbar für dunkles Theme */
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(0,0,0,0.2);
+}
+
+::-webkit-scrollbar-thumb {
+    background: #667eea;
+    border-radius: 3px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .mechaniker-grid {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="liveboard-container">
+    <!-- Header -->
+    <div class="liveboard-header">
+        <div>
+            <h1 class="liveboard-title">
+                <i class="bi bi-grid-3x3-gap-fill"></i> Werkstatt Live
+                <span id="standort-badge" class="standort-badge" style="display: none;"></span>
+            </h1>
+            <div class="liveboard-meta">
+                <span id="datum-anzeige">-</span> | <span id="last-update">-</span>
+            </div>
+        </div>
+        <div class="liveboard-stats">
+            <span class="stat-badge aktiv">
+                <i class="bi bi-play-circle-fill"></i>
+                <span id="stat-aktiv">0</span> aktiv
+            </span>
+            <span class="stat-badge verfuegbar">
+                <i class="bi bi-pause-circle"></i>
+                <span id="stat-verfuegbar">0</span> frei
+            </span>
+            <span class="stat-badge gudat" id="gudat-status" style="display: none;">
+                <i class="bi bi-calendar-check"></i>
+                <span id="stat-gudat">0</span> Gudat
+            </span>
+        </div>
+    </div>
+
+    <!-- Mechaniker Grid -->
+    <div class="mechaniker-grid" id="mechaniker-grid">
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-3 text-muted">Lade Live-Daten...</p>
+        </div>
+    </div>
+
+    <!-- TAG 126: Feierabend Fußzeile -->
+    <div class="feierabend-footer" id="feierabend-footer" style="display: none;">
+        <span class="feierabend-label"><i class="bi bi-house-door"></i> Feierabend:</span>
+        <span class="feierabend-list" id="feierabend-list"></span>
+    </div>
+
+    <!-- Abwesende Fußzeile -->
+    <div class="abwesende-footer" id="abwesende-footer" style="display: none;">
+        <span class="abwesende-label"><i class="bi bi-calendar-x"></i> Abwesend:</span>
+        <span class="abwesende-list" id="abwesende-list"></span>
+    </div>
+</div>
+
+<!-- Link zur Gantt-Ansicht -->
+<a href="/werkstatt/liveboard/gantt{{ '?betrieb=' + request.args.get('betrieb') if request.args.get('betrieb') else '' }}" class="view-switch-btn">
+    <i class="bi bi-bar-chart-steps"></i> Zeitleiste
+</a>
+
+<!-- Auftrag Detail Modal -->
+<div class="modal fade auftrag-modal" id="auftragModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <div class="auftrag-kz-header" id="modal-kz">-</div>
+                    <div class="auftrag-nr-header" id="modal-nr">-</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let refreshInterval;
+let auftragModal = null;
+
+// Initialen generieren
+function getInitials(name) {
+    if (!name) return '?';
+    const parts = name.split(',');
+    if (parts.length >= 2) {
+        return parts[1].trim()[0] + parts[0].trim()[0];
+    }
+    return name.substring(0, 2).toUpperCase();
+}
+
+// Kurzname
+function getShortName(name) {
+    if (!name) return '?';
+    const parts = name.split(',');
+    return parts[0] || name;
+}
+
+// Laufzeit formatieren
+function formatLaufzeit(startTs) {
+    if (!startTs) return '-';
+    const start = new Date(startTs);
+    const now = new Date();
+    const diffMin = Math.floor((now - start) / 60000);
+    const hours = Math.floor(diffMin / 60);
+    const mins = diffMin % 60;
+    return hours > 0 ? `${hours}h${mins}m` : `${mins}m`;
+}
+
+// Auftrag Modal
+async function openAuftragModal(auftragNr) {
+    if (!auftragNr) return;
+
+    if (!auftragModal) {
+        const el = document.getElementById('auftragModal');
+        if (el && typeof bootstrap !== 'undefined') {
+            auftragModal = new bootstrap.Modal(el);
+        } else {
+            return;
+        }
+    }
+
+    document.getElementById('modal-kz').textContent = 'Lade...';
+    document.getElementById('modal-nr').textContent = `Auftrag #${auftragNr}`;
+    document.getElementById('modal-body').innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>';
+    auftragModal.show();
+
+    try {
+        const response = await fetch(`/api/werkstatt/live/auftrag/${auftragNr}`);
+        const data = await response.json();
+        if (data.success) {
+            renderModal(data);
+        } else {
+            document.getElementById('modal-body').innerHTML = `<div class="alert alert-danger m-4">${data.error}</div>`;
+        }
+    } catch (e) {
+        document.getElementById('modal-body').innerHTML = '<div class="alert alert-danger m-4">Fehler beim Laden</div>';
+    }
+}
+
+function renderModal(data) {
+    const a = data.auftrag;
+    const fz = a.fahrzeug;
+
+    document.getElementById('modal-kz').textContent = fz.kennzeichen || 'Kein Kennzeichen';
+    document.getElementById('modal-nr').textContent = `Auftrag #${a.auftrag_nr} | ${a.betrieb_name}`;
+
+    let html = `
+        <div class="auftrag-section">
+            <div class="section-title"><i class="bi bi-car-front"></i> Fahrzeug</div>
+            <div class="info-grid">
+                <div><span class="info-label">Marke/Modell</span><div class="info-value">${fz.marke || '-'} ${fz.modell || ''}</div></div>
+                <div><span class="info-label">KM-Stand</span><div class="info-value">${fz.km_stand ? fz.km_stand.toLocaleString('de-DE') + ' km' : '-'}</div></div>
+                <div><span class="info-label">Kunde</span><div class="info-value">${a.kunde || '-'}</div></div>
+                <div><span class="info-label">Serviceberater</span><div class="info-value">${a.serviceberater || '-'}</div></div>
+            </div>
+        </div>
+        <div class="auftrag-section">
+            <div class="section-title"><i class="bi bi-calculator"></i> Arbeitswerte</div>
+            <div class="summen-grid">
+                <div class="summen-card"><div class="summen-value">${a.summen.total_aw}</div><div class="summen-label">Gesamt</div></div>
+                <div class="summen-card"><div class="summen-value" style="color: ${a.summen.offen_aw > 0 ? '#ffc107' : '#28a745'};">${a.summen.offen_aw}</div><div class="summen-label">Offen</div></div>
+                <div class="summen-card"><div class="summen-value" style="color: #28a745;">${a.summen.fakturiert_aw}</div><div class="summen-label">Fakturiert</div></div>
+                <div class="summen-card"><div class="summen-value">${a.summen.anzahl_positionen}</div><div class="summen-label">Positionen</div></div>
+            </div>
+        </div>
+    `;
+
+    if (data.positionen && data.positionen.length > 0) {
+        html += `<div class="auftrag-section"><div class="section-title"><i class="bi bi-wrench"></i> Positionen</div>`;
+        data.positionen.forEach(p => {
+            html += `
+                <div class="position-item">
+                    <div class="position-beschreibung">${p.beschreibung || '-'}<div class="position-mechaniker"><i class="bi bi-person"></i> ${p.mechaniker}</div></div>
+                    <span class="position-aw">${p.vorgabe_aw} AW</span>
+                </div>
+            `;
+        });
+        html += '</div>';
+    }
+
+    document.getElementById('modal-body').innerHTML = html;
+}
+
+// Karte rendern
+function renderMechCard(mech) {
+    const isAktiv = mech.aktiver_auftrag !== null;
+    const initials = getInitials(mech.name);
+    const shortName = getShortName(mech.name);
+    const queue = mech.zeitbloecke.filter(zb => !zb.ist_aktiv);
+
+    // Leerlauf-Status ermitteln
+    const leerlaufMin = mech.leerlauf_minuten || 0;
+    const nieGestempelt = mech.nie_gestempelt;
+    const isAlarm = !isAktiv && (nieGestempelt || leerlaufMin >= 10);
+    const isWarnung = !isAktiv && !isAlarm && leerlaufMin >= 5;
+
+    // Header-Klasse bestimmen
+    let headerClass = 'leerlauf';
+    if (isAktiv) headerClass = 'aktiv';
+    else if (isAlarm) headerClass = 'leerlauf-alarm';
+    else if (isWarnung) headerClass = 'leerlauf-warning';
+
+    let html = `
+        <div class="mech-card">
+            <div class="mech-card-header ${headerClass}">
+                <div class="mech-avatar">${initials}</div>
+                <div class="mech-info">
+                    <div class="mech-name">${shortName}</div>
+                    <div class="mech-status">${isAktiv ? 'In Arbeit' : (isAlarm ? 'LEERLAUF!' : (isWarnung ? 'Leerlauf' : 'Verfügbar'))}</div>
+                </div>
+    `;
+
+    if (isAktiv) {
+        const aktiv = mech.aktiver_auftrag;
+        html += `<div class="mech-time-badge">${formatLaufzeit(aktiv.start_ts)}</div>`;
+    } else if (isAlarm || isWarnung) {
+        // Leerlauf-Zeit anzeigen
+        const zeitText = nieGestempelt ? 'nie' : `${leerlaufMin}m`;
+        html += `<div class="mech-time-badge" style="color: ${isAlarm ? '#dc3545' : '#ffc107'};">${zeitText}</div>`;
+    }
+
+    html += `</div>`;
+
+    if (isAktiv) {
+        const aktiv = mech.aktiver_auftrag;
+        const aktivBlock = mech.zeitbloecke.find(zb => zb.ist_aktiv);
+        const kz = aktivBlock?.kennzeichen || '-';
+        const aw = aktivBlock?.vorgabe_aw || 0;
+        const sollMin = aw * 6;
+        const istMin = Math.floor((new Date() - new Date(aktiv.start_ts)) / 60000);
+        const progress = sollMin > 0 ? Math.min(100, (istMin / sollMin) * 100) : 50;
+
+        html += `
+            <div class="current-job" onclick="openAuftragModal(${aktiv.auftrag_nr})">
+                <div class="current-job-row">
+                    <div>
+                        <span class="current-job-kz">${kz}</span>
+                        <span class="current-job-nr">#${aktiv.auftrag_nr}</span>
+                    </div>
+                    <span class="current-job-aw">${aw} AW</span>
+                </div>
+                <div class="progress-mini"><div class="fill" style="width: ${progress}%;"></div></div>
+            </div>
+        `;
+    } else {
+        // Leerlauf-Bereich mit Warnung
+        let leerlaufClass = '';
+        let leerlaufContent = '<i class="bi bi-pause-circle"></i> Kein Auftrag';
+
+        if (isAlarm) {
+            leerlaufClass = 'leerlauf-alarm';
+            leerlaufContent = `<i class="bi bi-exclamation-triangle-fill"></i> LEERLAUF<div class="leerlauf-text alarm">${nieGestempelt ? 'Noch nicht gestempelt!' : leerlaufMin + ' Minuten'}</div>`;
+        } else if (isWarnung) {
+            leerlaufClass = 'leerlauf-warnung';
+            leerlaufContent = `<i class="bi bi-exclamation-circle"></i> Leerlauf<div class="leerlauf-text warnung">${leerlaufMin} Minuten</div>`;
+        }
+
+        html += `<div class="no-current-job ${leerlaufClass}">${leerlaufContent}</div>`;
+    }
+
+    // Queue - alle anzeigen mit AW-Skalierung
+    if (queue.length > 0) {
+        // Hauptauftrag finden (meiste AW)
+        const maxAw = Math.max(...queue.map(zb => zb.vorgabe_aw || 0));
+        const hauptauftragNr = queue.find(zb => (zb.vorgabe_aw || 0) === maxAw)?.auftrag_nr;
+
+        html += `<div class="queue-section">`;
+        queue.forEach(zb => {
+            const isGudat = zb.typ === 'gudat_geplant';
+            const aw = zb.vorgabe_aw || 0;
+            const isHaupt = zb.auftrag_nr === hauptauftragNr && aw > 0;
+
+            // Höhe skalieren: min 24px, max 60px, proportional zu AW
+            // 1 AW = ~3px zusätzlich
+            const height = Math.min(60, Math.max(24, 20 + (aw * 2.5)));
+
+            // TAG 126: Fertig-Symbol wenn Auftrag bereits abgerechnet
+            const fertigIcon = zb.ist_fertig ? '<i class="bi bi-check-circle-fill fertig-icon"></i>' : '';
+
+            html += `
+                <div class="queue-item ${isGudat ? 'gudat' : 'locosoft'} ${isHaupt ? 'hauptauftrag' : ''} ${zb.ist_fertig ? 'fertig' : ''}"
+                     style="height: ${height}px;"
+                     onclick="openAuftragModal(${zb.auftrag_nr})">
+                    <div class="queue-item-left">
+                        <span class="queue-item-kz">${zb.kennzeichen || '-'}</span>
+                        <span class="queue-item-nr">#${zb.auftrag_nr}</span>
+                        ${fertigIcon}
+                    </div>
+                    <span class="queue-item-aw">${aw} AW</span>
+                </div>
+            `;
+        });
+        html += `</div>`;
+    }
+
+    html += `
+        <div class="mech-footer">
+            <span><i class="bi bi-clock"></i> ${mech.gesamt_minuten}m heute</span>
+            <span><i class="bi bi-list-check"></i> ${mech.anzahl_auftraege} Aufträge</span>
+        </div>
+    </div>`;
+
+    return html;
+}
+
+// Grid rendern
+function renderGrid(data) {
+    const container = document.getElementById('mechaniker-grid');
+
+    // Aktive und Verfügbare (nicht abwesend)
+    const aktive = data.mechaniker.filter(m => !m.ist_abwesend && m.aktiver_auftrag);
+    const verfuegbare = data.mechaniker.filter(m => !m.ist_abwesend && !m.aktiver_auftrag);
+    const abwesende = data.mechaniker.filter(m => m.ist_abwesend);
+
+    // Stats
+    document.getElementById('stat-aktiv').textContent = aktive.length;
+    document.getElementById('stat-verfuegbar').textContent = verfuegbare.length;
+
+    // Mechaniker rendern (aktive zuerst, dann verfügbare)
+    const zuRendern = [...aktive, ...verfuegbare];
+
+    if (zuRendern.length === 0) {
+        container.innerHTML = '<div class="text-center py-5" style="color: #666;">Keine Mechaniker verfügbar</div>';
+    } else {
+        container.innerHTML = zuRendern.map(renderMechCard).join('');
+    }
+
+    // Abwesende Fußzeile
+    const footer = document.getElementById('abwesende-footer');
+    const list = document.getElementById('abwesende-list');
+
+    if (abwesende.length > 0) {
+        footer.style.display = 'block';
+        list.innerHTML = abwesende.map(m =>
+            `<span class="abwesende-item"><span class="abwesende-name">${getShortName(m.name)}</span> <span class="abwesende-grund">(${m.abwesend_grund})</span></span>`
+        ).join('');
+    } else {
+        footer.style.display = 'none';
+    }
+}
+
+// URL-Parameter auslesen (TAG 126)
+const urlParams = new URLSearchParams(window.location.search);
+const betriebFilter = urlParams.get('betrieb'); // 1=DEG, 2=Hyundai, 3=Landau
+
+// Daten laden
+async function loadData() {
+    try {
+        let boardUrl = '/api/werkstatt/live/board';
+        let stempelUrl = '/api/werkstatt/live/stempeluhr';
+        if (betriebFilter) {
+            boardUrl += `?betrieb=${betriebFilter}`;
+            // Stempeluhr verwendet subsidiary, nicht betrieb
+            const subsidiaryMap = {'deg': '1,2', '1': '1', '3': '3'};
+            const subsidiary = subsidiaryMap[betriebFilter] || '';
+            if (subsidiary) stempelUrl += `?subsidiary=${subsidiary}`;
+        }
+
+        // Parallel laden
+        const [boardResponse, stempelResponse] = await Promise.all([
+            fetch(boardUrl),
+            fetch(stempelUrl)
+        ]);
+        const data = await boardResponse.json();
+        const stempelData = await stempelResponse.json();
+
+        if (data.success) {
+            // Gudat Status
+            if (data.gudat_geladen) {
+                document.getElementById('gudat-status').style.display = 'flex';
+                document.getElementById('stat-gudat').textContent = data.gudat_tasks;
+            }
+
+            // Datum & Zeit
+            const datum = new Date(data.datum);
+            document.getElementById('datum-anzeige').textContent = datum.toLocaleDateString('de-DE', {
+                weekday: 'short', day: '2-digit', month: '2-digit'
+            });
+            document.getElementById('last-update').textContent = new Date().toLocaleTimeString('de-DE');
+
+            renderGrid(data);
+
+            // TAG 126: Feierabend Footer
+            if (stempelData.success && stempelData.feierabend_mechaniker) {
+                renderFeierabendFooter(stempelData.feierabend_mechaniker);
+            }
+        }
+    } catch (e) {
+        console.error('Fetch Error:', e);
+    }
+}
+
+// TAG 126: Feierabend Footer rendern
+function renderFeierabendFooter(feierabend) {
+    const footer = document.getElementById('feierabend-footer');
+    const list = document.getElementById('feierabend-list');
+
+    if (feierabend && feierabend.length > 0) {
+        footer.style.display = 'block';
+        list.innerHTML = feierabend.map(m =>
+            `<span class="feierabend-item"><span class="feierabend-name">${getShortName(m.name)}</span> <span class="feierabend-zeit">(${m.gegangen_um})</span></span>`
+        ).join('');
+    } else {
+        footer.style.display = 'none';
+    }
+}
+
+// Standort-Namen Mapping (TAG 126)
+// betrieb=1 → Nur Deggendorf
+// betrieb=deg → Deggendorf + Hyundai
+// betrieb=3 → Landau
+const standortNamen = {
+    '1': 'Deggendorf',
+    'deg': 'DEG + Hyundai',
+    '3': 'Landau'
+};
+
+// Init
+document.addEventListener('DOMContentLoaded', function() {
+    // Standort-Badge anzeigen wenn gefiltert
+    if (betriebFilter && standortNamen[betriebFilter]) {
+        const badge = document.getElementById('standort-badge');
+        badge.textContent = standortNamen[betriebFilter];
+        badge.style.display = 'inline';
+    }
+
+    loadData();
+    // Auto-Refresh alle 15 Sekunden (inkl. Gudat)
+    refreshInterval = setInterval(loadData, 15000);
+});
+</script>
+{% endblock %}

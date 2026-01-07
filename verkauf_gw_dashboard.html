@@ -1,0 +1,397 @@
+{% extends "base.html" %}
+{% block title %}GW-Bestand - Greiner DRIVE{% endblock %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2><i class="bi bi-car-front"></i> GW-Bestand & Standzeit</h2>
+            <p class="text-muted">Gebrauchtwagen-Bestand mit Standzeit-Analyse direkt aus Locosoft</p>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <label>Standort:</label>
+            <select id="standortSelect" class="form-select">
+                <option value="">Alle Standorte</option>
+                <option value="1">DEG Opel</option>
+                <option value="2">DEG Hyundai</option>
+                <option value="3">Landau</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label>Standzeit-Kategorie:</label>
+            <select id="kategorieSelect" class="form-select">
+                <option value="">Alle Kategorien</option>
+                <option value="frisch">0-60 Tage</option>
+                <option value="normal">61-90 Tage</option>
+                <option value="erhoht">91-120 Tage (Erhoht)</option>
+                <option value="kritisch">121-180 Tage (Kritisch)</option>
+                <option value="dringend">>180 Tage (Dringend)</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label>&nbsp;</label>
+            <button id="loadBtn" class="btn btn-primary w-100">
+                <i class="bi bi-search"></i> Laden
+            </button>
+        </div>
+        <div class="col-md-4 text-end">
+            <label>&nbsp;</label>
+            <div>
+                <span class="text-muted">Stand: <span id="datenstand">-</span></span>
+                <button id="refreshBtn" class="btn btn-outline-secondary btn-sm ms-2">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistik-Karten -->
+    <div class="row mb-4" id="statistikCards">
+        <!-- Wird per JavaScript gefuellt -->
+    </div>
+
+    <!-- Standzeit-Ampel -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-speedometer2"></i> Standzeit-Ampel
+                </div>
+                <div class="card-body">
+                    <div class="row" id="ampelRow">
+                        <!-- Wird per JavaScript gefuellt -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Problemfaelle (Top 10) -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-danger">
+                <div class="card-header bg-danger text-white">
+                    <i class="bi bi-exclamation-triangle"></i> Problemfaelle (Standzeit >90 Tage)
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover mb-0" id="problemTable">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Kennz.</th>
+                                    <th>Modell</th>
+                                    <th>Standort</th>
+                                    <th class="text-end">Standzeit</th>
+                                    <th class="text-end">VK-Preis</th>
+                                    <th>Kategorie</th>
+                                    <th>Aktion</th>
+                                </tr>
+                            </thead>
+                            <tbody id="problemTableBody">
+                                <!-- Wird per JavaScript gefuellt -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fahrzeugliste -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-list-ul"></i> Fahrzeugliste (<span id="fahrzeugCount">0</span> Fahrzeuge)</span>
+                    <button class="btn btn-sm btn-outline-success" id="exportBtn">
+                        <i class="bi bi-download"></i> CSV Export
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                        <table class="table table-striped table-hover table-sm mb-0" id="fahrzeugTable">
+                            <thead class="table-dark sticky-top">
+                                <tr>
+                                    <th>Haendler#</th>
+                                    <th>Kennzeichen</th>
+                                    <th>VIN</th>
+                                    <th>Modell</th>
+                                    <th>EZ</th>
+                                    <th class="text-end">KM</th>
+                                    <th class="text-end">EK</th>
+                                    <th class="text-end">VK</th>
+                                    <th class="text-end">Kalk. DB</th>
+                                    <th class="text-end">Standzeit</th>
+                                    <th>Kategorie</th>
+                                    <th>Standort</th>
+                                </tr>
+                            </thead>
+                            <tbody id="fahrzeugTableBody">
+                                <!-- Wird per JavaScript gefuellt -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.ampel-card {
+    text-align: center;
+    padding: 15px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+.ampel-card:hover {
+    transform: scale(1.02);
+}
+.ampel-card.active {
+    box-shadow: 0 0 10px rgba(0,0,0,0.3);
+}
+.ampel-frisch { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; }
+.ampel-normal { background: linear-gradient(135deg, #17a2b8 0%, #6c757d 100%); color: white; }
+.ampel-erhoht { background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%); color: black; }
+.ampel-kritisch { background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; }
+.ampel-dringend { background: linear-gradient(135deg, #343a40 0%, #212529 100%); color: white; }
+
+.badge-frisch { background-color: #28a745; }
+.badge-normal { background-color: #17a2b8; }
+.badge-erhoht { background-color: #ffc107; color: black; }
+.badge-kritisch { background-color: #dc3545; }
+.badge-dringend { background-color: #343a40; }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const standortSelect = document.getElementById('standortSelect');
+    const kategorieSelect = document.getElementById('kategorieSelect');
+    const loadBtn = document.getElementById('loadBtn');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const exportBtn = document.getElementById('exportBtn');
+
+    let currentData = null;
+
+    // Initial laden
+    loadDashboard();
+
+    // Event Listener
+    loadBtn.addEventListener('click', loadDashboard);
+    refreshBtn.addEventListener('click', loadDashboard);
+    standortSelect.addEventListener('change', loadDashboard);
+    kategorieSelect.addEventListener('change', loadFahrzeuge);
+    exportBtn.addEventListener('click', exportCSV);
+
+    async function loadDashboard() {
+        const standort = standortSelect.value;
+
+        try {
+            // Dashboard-Daten laden
+            const params = new URLSearchParams();
+            if (standort) params.append('standort', standort);
+
+            const response = await fetch(`/api/fahrzeug/gw/dashboard?${params}`);
+            const data = await response.json();
+
+            if (data.success) {
+                currentData = data;
+                renderStatistik(data.statistik);
+                renderAmpel(data.statistik.kategorien);
+                renderProblemfaelle(data.top_problemfaelle);
+                document.getElementById('datenstand').textContent =
+                    new Date(data.stand).toLocaleString('de-DE');
+
+                // Fahrzeuge separat laden
+                loadFahrzeuge();
+            } else {
+                alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+            }
+        } catch (error) {
+            console.error('Fehler:', error);
+            alert('Verbindungsfehler');
+        }
+    }
+
+    async function loadFahrzeuge() {
+        const standort = standortSelect.value;
+        const kategorie = kategorieSelect.value;
+
+        const params = new URLSearchParams();
+        if (standort) params.append('standort', standort);
+        if (kategorie) params.append('kategorie', kategorie);
+
+        try {
+            const response = await fetch(`/api/fahrzeug/gw?${params}`);
+            const data = await response.json();
+
+            renderFahrzeugListe(data.fahrzeuge || []);
+            document.getElementById('fahrzeugCount').textContent =
+                (data.fahrzeuge || []).length;
+        } catch (error) {
+            console.error('Fehler:', error);
+        }
+    }
+
+    function renderStatistik(statistik) {
+        const container = document.getElementById('statistikCards');
+        const gesamt = statistik.gesamt || {};
+        const problem = statistik.problemfaelle || {};
+
+        container.innerHTML = `
+            <div class="col-md-3">
+                <div class="card text-white bg-primary">
+                    <div class="card-body">
+                        <h5 class="card-title">GW Bestand</h5>
+                        <h2>${gesamt.anzahl || 0}</h2>
+                        <small>Fahrzeuge gesamt</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-white bg-info">
+                    <div class="card-body">
+                        <h5 class="card-title">Lagerwert</h5>
+                        <h2>${formatCurrency(gesamt.summe_vk || 0)}</h2>
+                        <small>VK-Wert gesamt</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-white bg-danger">
+                    <div class="card-body">
+                        <h5 class="card-title">Problemfaelle</h5>
+                        <h2>${problem.anzahl || 0}</h2>
+                        <small>${problem.anteil_pct || 0}% vom Bestand</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-white bg-warning">
+                    <div class="card-body">
+                        <h5 class="card-title">Kapital gebunden</h5>
+                        <h2>${formatCurrency(problem.summe_vk || 0)}</h2>
+                        <small>in Problemfaellen</small>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderAmpel(kategorien) {
+        const container = document.getElementById('ampelRow');
+        const order = ['frisch', 'normal', 'erhoht', 'kritisch', 'dringend'];
+        const labels = {
+            'frisch': '0-60 Tage',
+            'normal': '61-90 Tage',
+            'erhoht': '91-120 Tage',
+            'kritisch': '121-180 Tage',
+            'dringend': '>180 Tage'
+        };
+
+        let html = '';
+        for (const kat of order) {
+            const data = kategorien[kat] || { anzahl: 0, summe_vk: 0, avg_standzeit: 0 };
+            html += `
+                <div class="col">
+                    <div class="ampel-card ampel-${kat}" onclick="filterByKategorie('${kat}')">
+                        <h3>${data.anzahl}</h3>
+                        <div><strong>${labels[kat]}</strong></div>
+                        <small>${formatCurrency(data.summe_vk)}</small>
+                        <div class="mt-1"><small>Ø ${data.avg_standzeit} Tage</small></div>
+                    </div>
+                </div>
+            `;
+        }
+        container.innerHTML = html;
+    }
+
+    function renderProblemfaelle(liste) {
+        const tbody = document.getElementById('problemTableBody');
+
+        if (!liste || liste.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Keine Problemfaelle</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = liste.map(f => `
+            <tr>
+                <td><code>${f.license_plate || '-'}</code></td>
+                <td>${f.modell || '-'}</td>
+                <td>${f.standort_name}</td>
+                <td class="text-end"><strong>${f.standzeit_tage}</strong> Tage</td>
+                <td class="text-end">${formatCurrency(f.vk_preis)}</td>
+                <td><span class="badge badge-${f.kategorie}">${f.kategorie}</span></td>
+                <td>
+                    <span class="badge bg-${f.dringlichkeit === 'hoch' ? 'danger' : 'warning'}">
+                        ${f.dringlichkeit === 'hoch' ? 'Haendler-VK' : 'Rabatt'}
+                    </span>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function renderFahrzeugListe(fahrzeuge) {
+        const tbody = document.getElementById('fahrzeugTableBody');
+
+        if (!fahrzeuge || fahrzeuge.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted">Keine Fahrzeuge gefunden</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = fahrzeuge.map(f => `
+            <tr>
+                <td><code>${f.dealer_vehicle_number}</code></td>
+                <td>${f.license_plate || '-'}</td>
+                <td><small>${(f.vin || '').slice(-8)}</small></td>
+                <td>${f.modell || '-'}</td>
+                <td>${f.ez ? new Date(f.ez).toLocaleDateString('de-DE') : '-'}</td>
+                <td class="text-end">${f.km_stand ? f.km_stand.toLocaleString('de-DE') : '-'}</td>
+                <td class="text-end">${formatCurrency(f.ek_preis)}</td>
+                <td class="text-end">${formatCurrency(f.vk_preis)}</td>
+                <td class="text-end ${f.kalk_db >= 0 ? 'text-success' : 'text-danger'}">${formatCurrency(f.kalk_db)}</td>
+                <td class="text-end"><strong>${f.standzeit_tage}</strong></td>
+                <td><span class="badge badge-${f.standzeit_kategorie}">${f.standzeit_kategorie}</span></td>
+                <td>${f.standort_name}</td>
+            </tr>
+        `).join('');
+    }
+
+    function formatCurrency(value) {
+        if (value === null || value === undefined) return '-';
+        return new Intl.NumberFormat('de-DE', {
+            style: 'currency',
+            currency: 'EUR',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0
+        }).format(value);
+    }
+
+    function exportCSV() {
+        const standort = standortSelect.value;
+        const kategorie = kategorieSelect.value;
+
+        const params = new URLSearchParams();
+        if (standort) params.append('standort', standort);
+        if (kategorie) params.append('kategorie', kategorie);
+
+        // CSV-Download triggern
+        window.location.href = `/api/fahrzeug/gw/export?${params}`;
+    }
+
+    // Global function for ampel click
+    window.filterByKategorie = function(kategorie) {
+        kategorieSelect.value = kategorie;
+        loadFahrzeuge();
+
+        // Visual feedback
+        document.querySelectorAll('.ampel-card').forEach(c => c.classList.remove('active'));
+        document.querySelector(`.ampel-${kategorie}`).classList.add('active');
+    };
+});
+</script>
+{% endblock %}

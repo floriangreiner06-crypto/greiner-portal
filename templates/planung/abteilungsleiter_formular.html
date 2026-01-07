@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+
+{% block title %}Planung {{ bereich }} - {{ standort_name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .planung-hero {
+        background: linear-gradient(135deg, #0d6efd 0%, #6f42c1 100%);
+        color: white;
+        border-radius: 16px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+    }
+    .frage-card {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        border-left: 4px solid #0d6efd;
+    }
+    .frage-nummer {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #0d6efd;
+        margin-bottom: 0.5rem;
+    }
+    .frage-text {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+    }
+    .input-group-large {
+        font-size: 1.2rem;
+    }
+    .input-group-large input {
+        font-size: 1.2rem;
+        font-weight: 600;
+        text-align: center;
+    }
+    .vj-hinweis {
+        font-size: 0.85rem;
+        color: #6c757d;
+        margin-top: 0.5rem;
+    }
+    .impact-box {
+        background: #f0f9ff;
+        border-left: 4px solid #0ea5e9;
+        padding: 1rem;
+        border-radius: 8px;
+        margin-top: 1rem;
+    }
+    .ergebnis-vorschau {
+        background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+        border-radius: 12px;
+        padding: 2rem;
+        margin-top: 2rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="planung-hero">
+        <h3 class="mb-1">{{ bereich }} Planung {{ geschaeftsjahr }}</h3>
+        <p class="mb-0">{{ standort_name }} | Monat {{ monat }}</p>
+        {% if monat_abgelaufen %}
+        <div class="alert alert-warning mt-3 mb-0">
+            <i class="bi bi-info-circle"></i> <strong>Monat bereits abgelaufen!</strong> 
+            Die IST-Werte werden automatisch aus Locosoft geladen und sind schreibgeschützt.
+        </div>
+        {% endif %}
+    </div>
+    
+    {% if monat_abgelaufen and ist_werte %}
+    <!-- IST-Werte Anzeige -->
+    <div class="card mb-4 border-success">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0"><i class="bi bi-check-circle"></i> IST-Werte (aus Locosoft)</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <strong>Umsatz:</strong> {{ "%.2f"|format(ist_werte.umsatz_ist) }} €
+                </div>
+                <div class="col-md-3">
+                    <strong>DB1:</strong> {{ "%.2f"|format(ist_werte.db1_ist) }} €
+                </div>
+                {% if bereich in ['NW', 'GW'] %}
+                <div class="col-md-3">
+                    <strong>Stück:</strong> {{ ist_werte.stueck_ist }}
+                </div>
+                <div class="col-md-3">
+                    <strong>Standzeit:</strong> {{ ist_werte.standzeit_ist }} Tage
+                </div>
+                {% elif bereich == 'Werkstatt' %}
+                <div class="col-md-3">
+                    <strong>Stunden verkauft:</strong> {{ "%.1f"|format(ist_werte.stunden_verkauft_ist) }}
+                </div>
+                <div class="col-md-3">
+                    <strong>Stundensatz:</strong> {{ "%.2f"|format(ist_werte.stundensatz_ist) }} €
+                </div>
+                <div class="col-md-3">
+                    <strong>Produktivität:</strong> {{ "%.1f"|format(ist_werte.produktivitaet_ist) if ist_werte.produktivitaet_ist else 'N/A' }}%
+                </div>
+                <div class="col-md-3">
+                    <strong>Leistungsgrad:</strong> {{ "%.1f"|format(ist_werte.leistungsgrad_ist) if ist_werte.leistungsgrad_ist else 'N/A' }}%
+                </div>
+                {% elif bereich == 'Teile' %}
+                <div class="col-md-3">
+                    <strong>Lagerumschlag:</strong> {{ "%.1f"|format(ist_werte.lagerumschlag_ist) if ist_werte.lagerumschlag_ist else 'N/A' }}x
+                </div>
+                <div class="col-md-3">
+                    <strong>Penner-Quote:</strong> {{ "%.1f"|format(ist_werte.penner_quote_ist) if ist_werte.penner_quote_ist else 'N/A' }}%
+                </div>
+                <div class="col-md-3">
+                    <strong>Servicegrad:</strong> {{ "%.1f"|format(ist_werte.servicegrad_ist) if ist_werte.servicegrad_ist else 'N/A' }}%
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <form id="planung-form">
+        <input type="hidden" name="geschaeftsjahr" value="{{ geschaeftsjahr }}">
+        <input type="hidden" name="monat" value="{{ monat }}">
+        <input type="hidden" name="bereich" value="{{ bereich }}">
+        <input type="hidden" name="standort" value="{{ standort }}">
+
+        {% if bereich in ['NW', 'GW'] %}
+            <!-- NW/GW: 10 Fragen -->
+            {% include 'planung/fragen_nw_gw.html' %}
+        {% elif bereich == 'Werkstatt' %}
+            <!-- Werkstatt: 10 Fragen -->
+            {% include 'planung/fragen_werkstatt.html' %}
+        {% elif bereich == 'Teile' %}
+            <!-- Teile: 10 Fragen -->
+            {% include 'planung/fragen_teile.html' %}
+        {% endif %}
+
+        <!-- Ergebnis-Vorschau -->
+        <div class="ergebnis-vorschau" id="ergebnis-vorschau" style="display: none;">
+            <h5 class="mb-3"><i class="bi bi-calculator"></i> Ergebnis-Vorschau</h5>
+            <div id="ergebnis-content"></div>
+        </div>
+
+        <!-- Buttons -->
+        <div class="d-flex gap-2 mt-4">
+            {% if not monat_abgelaufen %}
+            <button type="button" class="btn btn-primary" onclick="speichern()">
+                <i class="bi bi-save"></i> Speichern
+            </button>
+            <button type="button" class="btn btn-outline-secondary" onclick="berechnen()">
+                <i class="bi bi-calculator"></i> Berechnen
+            </button>
+            {% else %}
+            <div class="alert alert-info mb-0">
+                <i class="bi bi-info-circle"></i> Dieser Monat ist bereits abgelaufen. 
+                Die IST-Werte werden automatisch aus Locosoft geladen und können nicht geändert werden.
+            </div>
+            {% endif %}
+            <a href="{{ url_for('abteilungsleiter_planung.uebersicht', geschaeftsjahr=geschaeftsjahr, monat=monat) }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Zurück
+            </a>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const API_BASE = '/api/planung/abteilungsleiter';
+
+// Planung speichern
+async function speichern() {
+    const form = document.getElementById('planung-form');
+    const formData = new FormData(form);
+    
+    // FormData zu JSON konvertieren
+    const data = {
+        geschaeftsjahr: formData.get('geschaeftsjahr'),
+        monat: parseInt(formData.get('monat')),
+        bereich: formData.get('bereich'),
+        standort: parseInt(formData.get('standort')),
+        planung_data: {}
+    };
+    
+    // Alle Input-Felder sammeln
+    form.querySelectorAll('input[name^="plan_"]').forEach(input => {
+        const key = input.name.replace('plan_', 'plan_');
+        const value = input.type === 'number' ? parseFloat(input.value) || 0 : input.value;
+        if (value !== '' && value !== null) {
+            data.planung_data[key] = value;
+        }
+    });
+    
+    try {
+        const response = await fetch(API_BASE, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('Planung gespeichert!');
+            berechnen(); // Ergebnis anzeigen
+        } else {
+            alert('Fehler: ' + result.error);
+        }
+    } catch (error) {
+        alert('Fehler: ' + error.message);
+    }
+}
+
+// Planung berechnen
+async function berechnen() {
+    const form = document.getElementById('planung-form');
+    const formData = new FormData(form);
+    
+    const data = {
+        geschaeftsjahr: formData.get('geschaeftsjahr'),
+        monat: parseInt(formData.get('monat')),
+        bereich: formData.get('bereich'),
+        standort: parseInt(formData.get('standort')),
+        planung_data: {}
+    };
+    
+    form.querySelectorAll('input[name^="plan_"]').forEach(input => {
+        const key = input.name.replace('plan_', 'plan_');
+        const value = input.type === 'number' ? parseFloat(input.value) || 0 : input.value;
+        if (value !== '' && value !== null) {
+            data.planung_data[key] = value;
+        }
+    });
+    
+    try {
+        const response = await fetch(API_BASE, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Ergebnis anzeigen
+            const vorschau = document.getElementById('ergebnis-vorschau');
+            const content = document.getElementById('ergebnis-content');
+            
+            const berechnung = result.berechnung || {};
+            const hybrid = result.hybrid || {};
+            
+            content.innerHTML = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Basis (Bottom-Up)</h6>
+                        <p>Umsatz: <strong>${berechnung.umsatz_basis?.toLocaleString('de-DE', {style: 'currency', currency: 'EUR'}) || '0 €'}</strong></p>
+                        <p>DB1: <strong>${berechnung.db1_basis?.toLocaleString('de-DE', {style: 'currency', currency: 'EUR'}) || '0 €'}</strong></p>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Gesamt (Basis + Aufhol)</h6>
+                        <p>Umsatz Ziel: <strong>${hybrid.umsatz_ziel?.toLocaleString('de-DE', {style: 'currency', currency: 'EUR'}) || '0 €'}</strong></p>
+                        <p>DB1 Ziel: <strong>${hybrid.db1_ziel?.toLocaleString('de-DE', {style: 'currency', currency: 'EUR'}) || '0 €'}</strong></p>
+                    </div>
+                </div>
+            `;
+            
+            vorschau.style.display = 'block';
+        } else {
+            alert('Fehler: ' + result.error);
+        }
+    } catch (error) {
+        alert('Fehler: ' + error.message);
+    }
+}
+
+// Vorjahres-Daten laden (wenn vorhanden)
+{% if planung %}
+document.addEventListener('DOMContentLoaded', function() {
+    const planungData = {{ planung|tojson }};
+    
+    // Alle Felder befüllen
+    Object.keys(planungData).forEach(key => {
+        if (key.startsWith('plan_')) {
+            const input = document.querySelector(`input[name="${key}"]`);
+            if (input) {
+                input.value = planungData[key] || '';
+            }
+        }
+    });
+});
+{% endif %}
+</script>
+{% endblock %}
+

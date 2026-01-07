@@ -1,0 +1,730 @@
+{% extends "base.html" %}
+
+{% block title %}KST-Ziele - Tagesstatus{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Wiederverwendete Styles aus unternehmensplan.html */
+    .rendite-hero {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+    }
+
+    /* Status-Ampel (wiederverwendet aus GW-Dashboard) */
+    .status-card {
+        text-align: center;
+        padding: 1rem;
+        border-radius: 10px;
+        transition: transform 0.2s;
+        cursor: default;
+    }
+    .status-card:hover {
+        transform: translateY(-3px);
+    }
+    .status-positiv {
+        background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+        color: white;
+    }
+    .status-warnung {
+        background: linear-gradient(135deg, #eab308 0%, #ca8a04 100%);
+        color: black;
+    }
+    .status-negativ {
+        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        color: white;
+    }
+    .status-neutral {
+        background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+        color: white;
+    }
+
+    .status-icon {
+        font-size: 2.5rem;
+        margin-bottom: 0.5rem;
+    }
+    .status-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+    }
+
+    /* Bereich-Cards (wiederverwendet aus unternehmensplan.html) */
+    .bereich-card {
+        background: #fff;
+        border-radius: 10px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 1px 5px rgba(0,0,0,0.08);
+        border-left: 4px solid;
+        transition: transform 0.2s;
+    }
+    .bereich-card:hover {
+        transform: translateX(5px);
+    }
+    .bereich-nw { border-left-color: #3b82f6; }
+    .bereich-gw { border-left-color: #6b7280; }
+    .bereich-teile { border-left-color: #f59e0b; }
+    .bereich-werkstatt { border-left-color: #22c55e; }
+    .bereich-sonstige { border-left-color: #8b5cf6; }
+
+    /* Progress-Balken */
+    .progress-ziel {
+        height: 10px;
+        background: #e5e7eb;
+        border-radius: 5px;
+        overflow: hidden;
+        margin-top: 0.5rem;
+    }
+    .progress-ziel-fill {
+        height: 100%;
+        border-radius: 5px;
+        transition: width 0.5s;
+    }
+    .fill-positiv { background: #22c55e; }
+    .fill-warnung { background: #eab308; }
+    .fill-negativ { background: #ef4444; }
+
+    /* Empfehlungen (wiederverwendet) */
+    .empfehlung-item {
+        padding: 0.75rem 1rem;
+        background: #fef3c7;
+        border-left: 3px solid #f59e0b;
+        border-radius: 0 8px 8px 0;
+        margin-bottom: 0.5rem;
+        font-size: 0.95rem;
+    }
+    .empfehlung-item i {
+        color: #f59e0b;
+    }
+
+    /* Datenstand */
+    .datenstand-banner {
+        background: #dbeafe;
+        border: 1px solid #93c5fd;
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        font-size: 0.85rem;
+        color: #1e40af;
+    }
+
+    /* Gesamt-Status Hero */
+    .gesamt-status {
+        text-align: center;
+    }
+    .gesamt-icon {
+        font-size: 5rem;
+    }
+    .gesamt-text {
+        font-size: 1.5rem;
+        font-weight: 600;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h4 class="mb-0"><i class="bi bi-bullseye"></i> KST-Ziele Tagesstatus</h4>
+            <small class="text-muted">Kostenstellen-Ziele mit Hochrechnung | GJ <span id="gj-label">2025/26</span></small>
+        </div>
+        <div class="d-flex gap-2">
+            <select id="monat-select" class="form-select form-select-sm" style="width: auto;">
+                <option value="">Aktueller Monat</option>
+                <option value="1">Sep</option>
+                <option value="2">Okt</option>
+                <option value="3">Nov</option>
+                <option value="4">Dez</option>
+                <option value="5">Jan</option>
+                <option value="6">Feb</option>
+                <option value="7">Mar</option>
+                <option value="8">Apr</option>
+                <option value="9">Mai</option>
+                <option value="10">Jun</option>
+                <option value="11">Jul</option>
+                <option value="12">Aug</option>
+            </select>
+            <select id="standort-select" class="form-select form-select-sm" style="width: auto;">
+                <option value="0">Alle Standorte</option>
+                <option value="1">DEG Opel</option>
+                <option value="2">DEG Hyundai</option>
+                <option value="3">Landau</option>
+            </select>
+            <button class="btn btn-outline-secondary btn-sm" onclick="loadDashboard()">
+                <i class="bi bi-arrow-clockwise"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Datenstand -->
+    <div class="datenstand-banner mb-3">
+        <i class="bi bi-info-circle me-1"></i>
+        <strong><span id="monat-label">-</span> <span id="jahr-label">-</span></strong>
+        <span class="ms-2 text-muted" id="datenstand-text">Lade Daten...</span>
+        <span class="float-end"><span id="tage-mit-daten">-</span> Buchungstage | Hochrechnung auf <span id="werktage">22</span> Werktage</span>
+    </div>
+
+    <!-- Gesamt-Status Hero -->
+    <div class="rendite-hero">
+        <div class="row align-items-center">
+            <div class="col-md-3 text-center">
+                <div class="gesamt-status">
+                    <div class="gesamt-icon" id="gesamt-icon">-</div>
+                    <div class="gesamt-text" id="gesamt-text">Lade...</div>
+                </div>
+            </div>
+            <div class="col-md-3 text-center border-start">
+                <div class="text-muted mb-1">DB1 IST</div>
+                <div class="h2 mb-0" id="db1-ist">-</div>
+                <small>bisher gebucht</small>
+            </div>
+            <div class="col-md-3 text-center border-start">
+                <div class="text-muted mb-1">DB1 PROGNOSE</div>
+                <div class="h2 mb-0" id="db1-prognose">-</div>
+                <small>hochgerechnet</small>
+            </div>
+            <div class="col-md-3 text-center border-start">
+                <div class="text-muted mb-1">DB1 TAGESZIEL</div>
+                <div class="h2 mb-0" id="db1-tag-ziel">-</div>
+                <small>pro Werktag (22 Tage)</small>
+            </div>
+        </div>
+        <div class="row mt-3">
+            <div class="col-12">
+                <div class="progress-ziel" style="height: 15px;">
+                    <div class="progress-ziel-fill" id="gesamt-progress" style="width: 0%"></div>
+                </div>
+                <div class="d-flex justify-content-between mt-1 small">
+                    <span>0%</span>
+                    <span id="erreichung-pct">-</span>
+                    <span>100%</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bereiche-Ampel -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="bi bi-bar-chart"></i> Status nach Kostenstelle</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row" id="bereiche-ampel">
+                        <!-- Wird per JS gefuellt -->
+                        <div class="col text-center text-muted py-4">Lade...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Planungsübersicht (TAG 165) -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-0"><i class="bi bi-calculator"></i> Planungsübersicht (Basis + Aufhol)</h6>
+                        <small class="text-muted"><strong>Monatsziele</strong> - Bottom-Up Planung + Top-Down Aufhol-Beitrag</small>
+                    </div>
+                    <small id="planung-standort-hinweis" class="text-muted d-none"></small>
+                </div>
+                <div class="card-body" id="planung-container">
+                    <div class="text-center py-4 text-muted">Lade Planungsdaten...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Details & Empfehlungen -->
+    <div class="row">
+        <!-- Bereich-Details -->
+        <div class="col-md-7">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="bi bi-list-check"></i> Details pro Bereich</h6>
+                    <small class="text-muted">IST | Prognose | Ziel</small>
+                </div>
+                <div class="card-body" id="bereiche-details">
+                    <div class="text-center py-4 text-muted">Lade Daten...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Empfehlungen -->
+        <div class="col-md-5">
+            <div class="card">
+                <div class="card-header bg-warning bg-opacity-25">
+                    <h6 class="mb-0"><i class="bi bi-lightbulb"></i> Handlungsempfehlungen</h6>
+                </div>
+                <div class="card-body" id="empfehlungen-container">
+                    <div class="text-center py-4 text-muted">Lade...</div>
+                </div>
+            </div>
+
+            <!-- Quick-Links -->
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="bi bi-link-45deg"></i> Quick-Links</h6>
+                </div>
+                <div class="card-body">
+                    <a href="/controlling/unternehmensplan" class="btn btn-outline-primary btn-sm w-100 mb-2">
+                        <i class="bi bi-bullseye"></i> 1%-Ziel Dashboard
+                    </a>
+                    <a href="/verkauf/gw-bestand" class="btn btn-outline-secondary btn-sm w-100 mb-2">
+                        <i class="bi bi-car-front"></i> GW-Bestand
+                    </a>
+                    <a href="/controlling/tek" class="btn btn-outline-secondary btn-sm w-100">
+                        <i class="bi bi-graph-up"></i> TEK Dashboard
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const API_BASE = '/api/kst-ziele';
+
+// Formatierung (wiederverwendet aus unternehmensplan.html)
+function formatEuro(val, decimals = 0) {
+    if (val === null || val === undefined) return '-';
+    const num = parseFloat(val);
+    if (isNaN(num)) return '-';
+    if (Math.abs(num) >= 1000000) {
+        return (num / 1000000).toFixed(1) + ' Mio';
+    }
+    return num.toLocaleString('de-DE', { maximumFractionDigits: decimals }) + ' EUR';
+}
+
+function formatProzent(val) {
+    if (val === null || val === undefined) return '-';
+    return parseFloat(val).toFixed(0) + '%';
+}
+
+// Dashboard laden
+async function loadDashboard() {
+    const monat = document.getElementById('monat-select').value;
+    const standort = document.getElementById('standort-select').value;
+
+    const params = new URLSearchParams();
+    if (monat) params.append('monat', monat);
+    if (standort) params.append('standort', standort);
+
+    try {
+        const response = await fetch(`${API_BASE}/dashboard?${params}`);
+
+        // Session-Check
+        if (response.redirected || !response.ok) {
+            window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname);
+            return;
+        }
+
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            throw new Error('Session abgelaufen');
+        }
+
+        const data = await response.json();
+
+        if (data.success) {
+            updateGesamt(data);
+            updateBereicheAmpel(data.bereiche);
+            updateBereicheDetails(data.bereiche);
+            updateEmpfehlungen(data);
+            updateDatenstand(data);
+        } else {
+            alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        document.getElementById('gesamt-text').textContent = 'Verbindungsfehler';
+    }
+    
+    // Planungsübersicht laden (TAG 165)
+    loadPlanung();
+}
+
+// Planungsübersicht laden (TAG 165)
+async function loadPlanung() {
+    const monat = document.getElementById('monat-select').value;
+    const standortSelect = document.getElementById('standort-select').value || '1';
+    let standort = standortSelect;
+    
+    // Bei "Alle Standorte" (0) verwenden wir Deggendorf als Default
+    const hinweisEl = document.getElementById('planung-standort-hinweis');
+    if (standortSelect === '0') {
+        standort = '1'; // DEG Opel als Default
+        hinweisEl.textContent = 'Hinweis: Planung für Deggendorf (bei "Alle" ausgewählt)';
+        hinweisEl.classList.remove('d-none');
+    } else {
+        hinweisEl.classList.add('d-none');
+    }
+
+    const params = new URLSearchParams();
+    if (monat) params.append('monat', monat);
+    params.append('standort', standort);
+
+    try {
+        const response = await fetch(`${API_BASE}/planung?${params}`);
+
+        if (response.redirected || !response.ok) {
+            return; // Session-Check bereits in loadDashboard
+        }
+
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            return;
+        }
+
+        const data = await response.json();
+
+        if (data.error) {
+            document.getElementById('planung-container').innerHTML = 
+                `<div class="alert alert-warning">${data.error}</div>`;
+            return;
+        }
+
+        updatePlanung(data);
+    } catch (error) {
+        console.error('Fehler beim Laden der Planung:', error);
+        document.getElementById('planung-container').innerHTML = 
+            '<div class="alert alert-danger">Fehler beim Laden der Planungsdaten</div>';
+    }
+}
+
+// Planungsübersicht anzeigen (TAG 165)
+function updatePlanung(data) {
+    const container = document.getElementById('planung-container');
+    
+    if (!data.bereiche || Object.keys(data.bereiche).length === 0) {
+        container.innerHTML = '<div class="text-center py-3 text-muted">Keine Planungsdaten verfügbar</div>';
+        return;
+    }
+
+    const bereichKlassen = {
+        'NW': 'bereich-nw',
+        'GW': 'bereich-gw',
+        'Teile': 'bereich-teile',
+        'Werkstatt': 'bereich-werkstatt',
+        'Sonstige': 'bereich-sonstige'
+    };
+
+    const bereichNamen = {
+        'NW': 'Neuwagen',
+        'GW': 'Gebrauchtwagen',
+        'Teile': 'Teile',
+        'Werkstatt': 'Werkstatt',
+        'Sonstige': 'Sonstige'
+    };
+
+    let html = '<div class="row">';
+    
+    Object.keys(data.bereiche).forEach(bereich => {
+        const bereichData = data.bereiche[bereich];
+        const basis = bereichData.basis || {};
+        const aufhol = bereichData.aufhol || {};
+        const gesamt = bereichData.gesamt || {};
+        
+        const umsatzBasis = basis.umsatz || 0;
+        const umsatzAufhol = aufhol.umsatz || 0;
+        const umsatzGesamt = gesamt.umsatz || 0;
+        
+        const db1Basis = basis.db1 || 0;
+        const db1Aufhol = aufhol.db1 || 0;
+        const db1Gesamt = gesamt.db1 || 0;
+        
+        const gapJahr = aufhol.gap_jahr || 0;
+        const monateVerbleibend = aufhol.monate_verbleibend || 0;
+        
+        // Aufhol-Anteil in Prozent
+        const aufholAnteilUmsatz = umsatzGesamt > 0 ? (umsatzAufhol / umsatzGesamt * 100) : 0;
+        const aufholAnteilDb1 = db1Gesamt > 0 ? (db1Aufhol / db1Gesamt * 100) : 0;
+
+        html += `
+            <div class="col-md-6 mb-3">
+                <div class="card ${bereichKlassen[bereich] || ''}" style="border-left-width: 4px;">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0"><strong>${bereichNamen[bereich] || bereich}</strong></h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-info py-2 mb-3" style="font-size: 0.85rem;">
+                            <i class="bi bi-info-circle me-1"></i>
+                            <strong>Monatsziel:</strong> Basis (Bottom-Up) + Aufhol (Top-Down) = Gesamt
+                        </div>
+                        
+                        <!-- Umsatz -->
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <small class="text-muted">Umsatz <span class="text-muted">(pro Monat)</span></small>
+                                <strong class="text-primary">${formatEuro(umsatzGesamt)}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between small">
+                                <span class="text-muted">Basis:</span>
+                                <span>${formatEuro(umsatzBasis)}</span>
+                            </div>
+                            <div class="d-flex justify-content-between small">
+                                <span class="text-muted">Aufhol:</span>
+                                <span class="text-warning">+${formatEuro(umsatzAufhol)} (${aufholAnteilUmsatz.toFixed(1)}%)</span>
+                            </div>
+                        </div>
+                        
+                        <!-- DB1 -->
+                        <div class="mb-2">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <small class="text-muted">DB1 <span class="text-muted">(pro Monat)</span></small>
+                                <strong class="text-success">${formatEuro(db1Gesamt)}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between small">
+                                <span class="text-muted">Basis:</span>
+                                <span>${formatEuro(db1Basis)}</span>
+                            </div>
+                            <div class="d-flex justify-content-between small">
+                                <span class="text-muted">Aufhol:</span>
+                                <span class="text-warning">+${formatEuro(db1Aufhol)} (${aufholAnteilDb1.toFixed(1)}%)</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Gap-Info -->
+                        ${gapJahr > 0 ? `
+                            <div class="mt-2 pt-2 border-top">
+                                <small class="text-muted">
+                                    <i class="bi bi-info-circle"></i> 
+                                    Gap: ${formatEuro(gapJahr)} | 
+                                    ${monateVerbleibend} Monate verbleibend
+                                </small>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function updateGesamt(data) {
+    const gesamt = data.gesamt || {};
+
+    // GJ Label
+    document.getElementById('gj-label').textContent = data.geschaeftsjahr || '2025/26';
+
+    // Gesamt-Werte
+    document.getElementById('db1-ist').textContent = formatEuro(gesamt.db1_ist);
+    document.getElementById('db1-prognose').textContent = formatEuro(gesamt.db1_prognose);
+
+    // Tagesziel berechnen (Monatsziel / 22 Werktage)
+    const tagesZiel = (gesamt.db1_ziel || 0) / 22;
+    document.getElementById('db1-tag-ziel').textContent = formatEuro(tagesZiel);
+
+    // Erreichung
+    const erreichung = gesamt.erreichung_pct || 0;
+    document.getElementById('erreichung-pct').textContent = formatProzent(erreichung) + ' Erreichung';
+
+    // Progress-Balken
+    const progressEl = document.getElementById('gesamt-progress');
+    progressEl.style.width = Math.min(erreichung, 120) + '%';
+    progressEl.className = 'progress-ziel-fill ' +
+        (erreichung >= 100 ? 'fill-positiv' : erreichung >= 85 ? 'fill-warnung' : 'fill-negativ');
+
+    // Gesamt-Status Icon
+    const iconEl = document.getElementById('gesamt-icon');
+    const textEl = document.getElementById('gesamt-text');
+
+    if (gesamt.status === 'positiv') {
+        iconEl.textContent = '👍';
+        textEl.textContent = 'ZIEL ERREICHT';
+        textEl.className = 'gesamt-text text-success';
+    } else if (gesamt.status === 'warnung') {
+        iconEl.textContent = '⚠️';
+        textEl.textContent = 'KNAPP';
+        textEl.className = 'gesamt-text text-warning';
+    } else {
+        iconEl.textContent = '👎';
+        const delta = (gesamt.db1_ziel || 0) - (gesamt.db1_prognose || 0);
+        textEl.textContent = 'FEHLEN ' + formatEuro(delta);
+        textEl.className = 'gesamt-text text-danger';
+    }
+}
+
+function updateBereicheAmpel(bereiche) {
+    const container = document.getElementById('bereiche-ampel');
+
+    if (!bereiche || !bereiche.length) {
+        container.innerHTML = '<div class="col text-center text-muted">Keine Daten</div>';
+        return;
+    }
+
+    let html = '';
+    bereiche.forEach(b => {
+        const statusClass = 'status-' + b.status;
+        const icon = b.status === 'positiv' ? '👍' : b.status === 'warnung' ? '⚠️' : '👎';
+        const erreichung = b.prognose?.erreichung_pct || 0;
+
+        html += `
+            <div class="col">
+                <div class="status-card ${statusClass}">
+                    <div class="status-icon">${icon}</div>
+                    <div class="status-value">${b.bereich}</div>
+                    <div class="small">${formatProzent(erreichung)}</div>
+                </div>
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+function updateBereicheDetails(bereiche) {
+    const container = document.getElementById('bereiche-details');
+
+    if (!bereiche || !bereiche.length) {
+        container.innerHTML = '<div class="text-center py-3 text-muted">Keine Daten</div>';
+        return;
+    }
+
+    const bereichKlassen = {
+        'NW': 'bereich-nw',
+        'GW': 'bereich-gw',
+        'Teile': 'bereich-teile',
+        'Werkstatt': 'bereich-werkstatt',
+        'Sonstige': 'bereich-sonstige'
+    };
+
+    let html = '';
+    bereiche.forEach(b => {
+        const ist = b.ist || {};
+        const ziel = b.ziel || {};
+        const prognose = b.prognose || {};
+        const erreichung = prognose.erreichung_pct || 0;
+        const fillClass = erreichung >= 100 ? 'fill-positiv' : erreichung >= 85 ? 'fill-warnung' : 'fill-negativ';
+
+        // Bereichsspezifische KPIs
+        let extraInfo = '';
+        if (b.bereich === 'NW' || b.bereich === 'GW') {
+            extraInfo = `<span class="badge bg-secondary me-1">${ist.stueck || 0} Stk</span>`;
+            if (ziel.stueck) extraInfo += `<small class="text-muted">(Ziel: ${ziel.stueck})</small>`;
+        } else if (b.bereich === 'Werkstatt') {
+            if (ist.stunden) extraInfo = `<span class="badge bg-secondary me-1">${ist.stunden}h</span>`;
+            if (ist.auslastung) extraInfo += `<span class="badge bg-info">${ist.auslastung}% Ausl.</span>`;
+        }
+
+        html += `
+            <div class="bereich-card ${bereichKlassen[b.bereich] || ''}">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <strong>${b.bereich}</strong>
+                        ${extraInfo}
+                    </div>
+                    <div class="text-end">
+                        <span class="badge ${b.status === 'positiv' ? 'bg-success' : b.status === 'warnung' ? 'bg-warning text-dark' : 'bg-danger'}">
+                            ${formatProzent(erreichung)}
+                        </span>
+                    </div>
+                </div>
+                <div class="row small mt-2">
+                    <div class="col-3">
+                        <div class="text-muted">IST</div>
+                        <div class="fw-bold">${formatEuro(ist.db1)}</div>
+                    </div>
+                    <div class="col-3">
+                        <div class="text-muted">Prognose</div>
+                        <div class="fw-bold">${formatEuro(prognose.db1)}</div>
+                    </div>
+                    <div class="col-3">
+                        <div class="text-muted">Ziel/Monat</div>
+                        <div class="fw-bold">${formatEuro(ziel.db1)}</div>
+                    </div>
+                    <div class="col-3">
+                        <div class="text-muted">Ziel/Tag</div>
+                        <div class="fw-bold text-primary">${formatEuro((ziel.db1 || 0) / 22)}</div>
+                    </div>
+                </div>
+                <div class="progress-ziel">
+                    <div class="progress-ziel-fill ${fillClass}" style="width: ${Math.min(erreichung, 120)}%"></div>
+                </div>
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+function updateEmpfehlungen(data) {
+    const container = document.getElementById('empfehlungen-container');
+
+    // Empfehlungen aus Status-Endpoint oder generieren
+    const bereiche = data.bereiche || [];
+    let empfehlungen = [];
+
+    bereiche.forEach(b => {
+        if (b.status === 'negativ') {
+            const delta = (b.ziel?.db1 || 0) - (b.prognose?.db1 || 0);
+            if (b.bereich === 'NW') {
+                empfehlungen.push(`<i class="bi bi-car-front me-2"></i><strong>NW:</strong> Auslieferungen beschleunigen (${formatEuro(delta)} fehlen)`);
+            } else if (b.bereich === 'GW') {
+                empfehlungen.push(`<i class="bi bi-speedometer2 me-2"></i><strong>GW:</strong> Standzeit-Leichen abverkaufen, Rabattaktion starten`);
+            } else if (b.bereich === 'Teile') {
+                empfehlungen.push(`<i class="bi bi-box-seam me-2"></i><strong>Teile:</strong> Werkstatt-Umsatz steigern`);
+            } else if (b.bereich === 'Werkstatt') {
+                empfehlungen.push(`<i class="bi bi-wrench me-2"></i><strong>Werkstatt:</strong> Offene Auftraege abschliessen, Leerlauf reduzieren`);
+            }
+        }
+    });
+
+    if (!empfehlungen.length) {
+        container.innerHTML = `
+            <div class="alert alert-success mb-0">
+                <i class="bi bi-check-circle me-2"></i>
+                Alle Bereiche auf Kurs - keine dringenden Massnahmen erforderlich.
+            </div>
+        `;
+        return;
+    }
+
+    let html = '';
+    empfehlungen.forEach(e => {
+        html += `<div class="empfehlung-item">${e}</div>`;
+    });
+
+    container.innerHTML = html;
+}
+
+function updateDatenstand(data) {
+    const datenstandText = document.getElementById('datenstand-text');
+    const monatLabel = document.getElementById('monat-label');
+    const jahrLabel = document.getElementById('jahr-label');
+    const tageEl = document.getElementById('tage-mit-daten');
+    const werktageEl = document.getElementById('werktage');
+
+    const stand = data.stand ? new Date(data.stand).toLocaleString('de-DE') : '-';
+    datenstandText.textContent = `Stand: ${stand}`;
+
+    // Monat-Namen aus Kalendermonat
+    const monatNamen = ['', 'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
+                        'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+    monatLabel.textContent = monatNamen[data.kalender_monat] || '-';
+    jahrLabel.textContent = data.kalender_jahr || '-';
+
+    // Buchungstage aus API
+    tageEl.textContent = data.tage_mit_daten || 0;
+    werktageEl.textContent = data.werktage_monat || 22;
+}
+
+// Initial laden
+document.addEventListener('DOMContentLoaded', loadDashboard);
+
+// Filter-Events
+document.getElementById('monat-select').addEventListener('change', loadDashboard);
+document.getElementById('standort-select').addEventListener('change', loadDashboard);
+</script>
+{% endblock %}

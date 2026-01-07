@@ -18,6 +18,7 @@ Datenquellen:
 from flask import Blueprint, request, jsonify
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
+from typing import Dict, Any
 import calendar
 
 # Zentrale DB-Utilities (TAG117, TAG136: PostgreSQL-kompatibel)
@@ -319,12 +320,8 @@ def get_breakeven_schwelle():
 # API ENDPOINTS
 # ============================================================
 
-# Standort-Konfiguration (TAG121)
-STANDORTE = {
-    'alle': {'name': 'Gesamt', 'subsidiaries': [1, 2, 3]},
-    'deggendorf': {'name': 'Deggendorf', 'subsidiaries': [1, 2]},  # Opel (1) + Hyundai (2)
-    'landau': {'name': 'Landau', 'subsidiaries': [3]},  # Opel Landau
-}
+# Standort-Konfiguration (TAG164: Zentralisiert)
+from api.standort_utils import STANDORTE, get_standort_config
 
 
 @serviceberater_api.route('/uebersicht', methods=['GET'])
@@ -340,9 +337,7 @@ def uebersicht():
     standort = request.args.get('standort', 'alle').lower()
 
     # Standort validieren
-    if standort not in STANDORTE:
-        standort = 'alle'
-    standort_config = STANDORTE[standort]
+    standort_config = get_standort_config(standort)
 
     try:
         jahr, monat = monat_param.split('-')
@@ -905,29 +900,53 @@ def get_sb_config_from_ldap(ldap_cn: str) -> dict:
 def mein_dashboard():
     """
     Persönliches Dashboard für eingeloggten Serviceberater (TAG122)
+    
+    TAG 164: Unterstützt ma_id Parameter für Geschäfts-/Serviceleitung
 
     Query-Parameter:
     - monat: YYYY-MM (default: aktueller Monat)
     - ldap_cn: LDAP Common Name des eingeloggten Users (z.B. "Herbert Huber")
+    - ma_id: Locosoft MA-ID (optional, für Geschäfts-/Serviceleitung)
 
     Hinweis: In Produktion wird ldap_cn aus current_user.cn geholt,
     hier als Parameter für Testing.
     """
+    from flask_login import current_user
+    
     monat_param = request.args.get('monat', datetime.now().strftime('%Y-%m'))
+    ma_id_param = request.args.get('ma_id')
     ldap_cn = request.args.get('ldap_cn', '')
 
-    # SB-Konfiguration ermitteln
-    sb_config = get_sb_config_from_ldap(ldap_cn)
+    # TAG 164: ma_id Parameter hat Priorität (für Geschäfts-/Serviceleitung)
+    if ma_id_param:
+        try:
+            ma_id = int(ma_id_param)
+            if ma_id not in SERVICEBERATER_CONFIG:
+                return jsonify({
+                    'success': False,
+                    'error': f'Serviceberater mit MA-ID {ma_id} nicht gefunden'
+                }), 404
+            
+            sb_config = SERVICEBERATER_CONFIG[ma_id]
+            standort = sb_config['standort']
+        except ValueError:
+            return jsonify({
+                'success': False,
+                'error': 'Ungültige ma_id'
+            }), 400
+    else:
+        # Normale Logik: LDAP CN verwenden
+        sb_config = get_sb_config_from_ldap(ldap_cn)
 
-    if not sb_config:
-        return jsonify({
-            'success': False,
-            'error': f'Kein Serviceberater-Mapping für "{ldap_cn}" gefunden',
-            'bekannte_sb': list(LDAP_TO_LOCOSOFT_SB.keys())
-        }), 404
+        if not sb_config:
+            return jsonify({
+                'success': False,
+                'error': f'Kein Serviceberater-Mapping für "{ldap_cn}" gefunden',
+                'bekannte_sb': list(LDAP_TO_LOCOSOFT_SB.keys())
+            }), 404
 
-    ma_id = sb_config['ma_id']
-    standort = sb_config['standort']
+        ma_id = sb_config['ma_id']
+        standort = sb_config['standort']
 
     try:
         jahr, monat = monat_param.split('-')
@@ -1048,6 +1067,7 @@ def mein_dashboard():
                 'name': sb_config['name'],
                 'standort': standort,
                 'standort_name': 'Deggendorf' if standort == 'deggendorf' else 'Landau',
+                'ldap_cn': sb_config.get('ldap_cn', ''),
             },
             'meine_zahlen': {
                 'anzahl_rechnungen': row['anzahl_rechnungen'] if row else 0,
@@ -1097,12 +1117,430 @@ def sb_config_endpoint():
     })
 
 
+# ============================================================
+# 1%-ZIEL ABLEITUNG - TAG 164
+# ============================================================
+
+def get_sb_umsatz_ziel_aus_1pct(geschaeftsjahr: str, monat: int, ma_id: int = None) -> Dict[str, Any]:
+    """
+    Berechnet Serviceberater-Umsatz-Ziel - PRIORITÄT: KST-Ziel > 1%-Ziel.
+    
+    Steps:
+    1. Prüfe KST-Ziel für "Werkstatt" (höchste Priorität)
+    2. Falls kein KST-Ziel: Hole 1%-Ziel-Umsatz für Geschäftsjahr
+    3. Berechne Werkstatt-Umsatz-Ziel (aus KST oder 1%-Ziel)
+    4. Teile durch Anzahl Serviceberater
+    5. Prüfe auf manuelle Anpassung in mitarbeiter_ziele
+    
+    Args:
+        geschaeftsjahr: z.B. '2025/26'
+        monat: Kalendermonat (1-12)
+        ma_id: Optional - Locosoft MA-ID für spezifischen SB
+    
+    Returns:
+        Dict mit Ziel-Berechnung und Herkunft
+    """
+    from api.unternehmensplan_data import get_gap_analyse, get_ist_daten, get_current_geschaeftsjahr
+    from api.db_utils import db_session, row_to_dict
+    
+    # TAG 164: PRIORITÄT 1 - KST-Ziel für Werkstatt (falls vorhanden)
+    werkstatt_umsatz_ziel = None
+    werkstatt_db1_ziel = None  # DB1-Ziel aus KST (falls vorhanden)
+    quelle = '1%-Ziel'  # Default
+    
+    try:
+        with db_session() as conn:
+            cursor = conn.cursor()
+            # Prüfe KST-Ziel für Werkstatt (standort=0 = alle Standorte)
+            cursor.execute("""
+                SELECT umsatz_ziel, db1_ziel
+                FROM kst_ziele
+                WHERE geschaeftsjahr = %s
+                  AND monat = %s
+                  AND bereich = 'Werkstatt'
+                  AND standort = 0
+                LIMIT 1
+            """, (geschaeftsjahr, monat))
+            row = cursor.fetchone()
+            
+            if row and row['umsatz_ziel']:
+                werkstatt_umsatz_ziel = float(row['umsatz_ziel'])
+                werkstatt_db1_ziel = float(row['db1_ziel']) if row['db1_ziel'] else None
+                quelle = 'KST-Ziel'
+    except Exception as e:
+        print(f"Fehler beim Laden KST-Ziel: {e}")
+    
+    # TAG 164: PRIORITÄT 2 - Fallback auf 1%-Ziel-Ableitung
+    if werkstatt_umsatz_ziel is None or werkstatt_umsatz_ziel == 0:
+        # 1. Gesamtumsatz-Ziel (aus Unternehmensplan)
+        gap_analyse = get_gap_analyse(geschaeftsjahr)
+        gesamtumsatz_ziel_jahr = gap_analyse.get('prognose_jahresende', {}).get('umsatz', 0)
+        
+        # Fallback: Wenn keine Prognose, nutze IST × 1,01 (1% mehr)
+        if gesamtumsatz_ziel_jahr == 0:
+            ist_daten = get_ist_daten(geschaeftsjahr, standort=0, nur_abgeschlossene=False)
+            gesamtumsatz_ist = ist_daten.get('gesamt', {}).get('umsatz', 0)
+            gesamtumsatz_ziel_jahr = gesamtumsatz_ist * 1.01  # 1% mehr als IST
+        
+        gesamtumsatz_ziel_monat = gesamtumsatz_ziel_jahr / 12
+        
+        # 2. Werkstatt-Anteil (historisch aus IST-Daten)
+        ist_daten = get_ist_daten(geschaeftsjahr, standort=0, nur_abgeschlossene=False)
+        werkstatt_umsatz_ist = ist_daten.get('bereiche', {}).get('Werkstatt', {}).get('umsatz', 0)
+        gesamtumsatz_ist = ist_daten.get('gesamt', {}).get('umsatz', 0)
+        
+        if gesamtumsatz_ist > 0:
+            werkstatt_anteil = werkstatt_umsatz_ist / gesamtumsatz_ist
+        else:
+            werkstatt_anteil = 0.15  # Fallback: 15%
+        
+        # 3. Werkstatt-Umsatz-Ziel (aus 1%-Ziel)
+        werkstatt_umsatz_ziel = gesamtumsatz_ziel_monat * werkstatt_anteil
+        werkstatt_anteil_pct = werkstatt_anteil * 100
+    else:
+        # KST-Ziel verwendet - keine Anteilsberechnung nötig
+        werkstatt_anteil_pct = None
+    
+    # 4. Anzahl Serviceberater
+    anzahl_sb = len(SERVICEBERATER_IDS)
+    
+    # 5. SB-Umsatz-Ziel (automatisch) - gleichmäßig aufgeteilt
+    sb_umsatz_ziel_auto = werkstatt_umsatz_ziel / anzahl_sb if anzahl_sb > 0 else 0
+    
+    # 6. Prüfe auf manuelle Anpassung
+    umsatz_ziel_final = sb_umsatz_ziel_auto
+    db1_ziel_manuell = None
+    ist_manuell = False
+    
+    if ma_id:
+        try:
+            with db_session() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT umsatz_ziel, db1_ziel, ist_manuell, kommentar
+                    FROM mitarbeiter_ziele
+                    WHERE locosoft_ma_id = %s
+                      AND geschaeftsjahr = %s
+                      AND monat = %s
+                """, (ma_id, geschaeftsjahr, monat))
+                row = cursor.fetchone()
+                
+                if row:
+                    row_dict = row_to_dict(row)
+                    if row_dict.get('umsatz_ziel'):
+                        umsatz_ziel_final = float(row_dict['umsatz_ziel'])
+                        ist_manuell = row_dict.get('ist_manuell', False)
+                    if row_dict.get('db1_ziel'):
+                        db1_ziel_manuell = float(row_dict['db1_ziel'])
+        except Exception as e:
+            print(f"Fehler beim Laden manueller Ziele: {e}")
+    
+    # DB1-Ziel ermitteln - PRIORITÄT: Manuell > KST > Berechnet
+    if db1_ziel_manuell:
+        # Priorität 1: Manuelles DB1-Ziel
+        db1_ziel = db1_ziel_manuell
+    elif werkstatt_db1_ziel:
+        # Priorität 2: DB1-Ziel aus KST (durch Anzahl SB teilen)
+        db1_ziel = werkstatt_db1_ziel / anzahl_sb if anzahl_sb > 0 else 0
+    else:
+        # Priorität 3: DB1-Ziel berechnen (42,4% gewichtete Marge)
+        marge = TEK_CONFIG['marge_gewichtet']
+        db1_ziel = umsatz_ziel_final * marge
+    
+    # TAG 165: AUFHOL-LOGIK - SSOT-Konzept für alle KST (standort-spezifisch)
+    # Nutze zentrale Aufhol-Logik-Funktion mit standort-spezifischem Gap
+    aufhol_beitrag = 0
+    aufhol_umsatz = 0
+    gap_jahr = 0
+    monate_verbleibend = 0
+    try:
+        from api.aufhol_logik import get_aufhol_beitrag_fuer_kst
+        
+        # Standort für Aufhol-Logik ermitteln
+        standort_fuer_aufhol = None
+        if ma_id:
+            sb_standort = get_sb_standort_from_ma_id(ma_id)
+            if sb_standort == 'deggendorf':
+                standort_fuer_aufhol = 'deggendorf'  # Kombiniert Standort 1+2
+            elif sb_standort == 'landau':
+                standort_fuer_aufhol = 3  # Standort 3
+        # Falls kein ma_id: verwende KST-Ziel Standort oder 0 (alle)
+        elif werkstatt_umsatz_ziel:
+            # KST-Ziel hat standort=0 (alle) oder spezifischen Standort
+            # Für jetzt: verwende 'deggendorf' als Default (kann später erweitert werden)
+            standort_fuer_aufhol = 'deggendorf'
+        
+        aufhol_data = get_aufhol_beitrag_fuer_kst(geschaeftsjahr, 'Werkstatt', standort=standort_fuer_aufhol)
+        
+        # Anzahl SB pro Standort für Aufhol-Verteilung
+        if ma_id:
+            sb_standort = get_sb_standort_from_ma_id(ma_id)
+            if sb_standort == 'deggendorf':
+                anzahl_sb_standort = len(SB_DEGGENDORF)
+            elif sb_standort == 'landau':
+                anzahl_sb_standort = len(SB_LANDAU)
+            else:
+                anzahl_sb_standort = anzahl_sb
+        else:
+            anzahl_sb_standort = anzahl_sb
+        
+        aufhol_beitrag = aufhol_data['aufhol_beitrag_db1'] / anzahl_sb_standort if anzahl_sb_standort > 0 else 0
+        aufhol_umsatz = aufhol_data['aufhol_beitrag_umsatz'] / anzahl_sb_standort if anzahl_sb_standort > 0 else 0
+        gap_jahr = aufhol_data.get('gap_jahr', 0)
+        monate_verbleibend = aufhol_data.get('monate_verbleibend', 0)
+        
+        # DB1-Ziel um Aufhol-Beitrag erhöhen
+        db1_ziel = db1_ziel + aufhol_beitrag
+        
+        # Umsatz-Ziel um Aufhol-Beitrag erhöhen
+        umsatz_ziel_final = umsatz_ziel_final + aufhol_umsatz
+    except Exception as e:
+        print(f"Fehler bei Aufhol-Logik: {e}")
+        import traceback
+        traceback.print_exc()
+        # Bei Fehler: Normale Ziele ohne Aufhol verwenden
+    
+    return {
+        'umsatz_ziel': round(umsatz_ziel_final, 2),
+        'db1_ziel': round(db1_ziel, 2),
+        'ist_manuell': ist_manuell,
+        'aufhol_beitrag': round(aufhol_beitrag, 2),
+        'aufhol_umsatz': round(aufhol_umsatz, 2),
+        'herkunft': {
+            'quelle': quelle,
+            'werkstatt_umsatz_ziel': round(werkstatt_umsatz_ziel, 2),
+            'anzahl_sb': anzahl_sb,
+            'sb_umsatz_ziel_auto': round(sb_umsatz_ziel_auto, 2),
+            'marge_gewichtet': marge if 'marge' in locals() else TEK_CONFIG['marge_gewichtet'],
+            'werkstatt_anteil': round(werkstatt_anteil_pct, 1) if werkstatt_anteil_pct else None,
+            'gap_jahr': round(gap_jahr, 0) if gap_jahr > 0 else None,
+            'monate_verbleibend': monate_verbleibend if monate_verbleibend > 0 else None
+        }
+    }
+
+
+@serviceberater_api.route('/tagesziel', methods=['GET'])
+def tagesziel():
+    """
+    Tägliche IST vs SOLL für Serviceberater (TAG 164)
+    
+    Query-Parameter:
+    - ma_id: Locosoft MA-ID (optional, sonst alle SB)
+    - datum: YYYY-MM-DD (default: heute)
+    """
+    from api.unternehmensplan_data import get_current_geschaeftsjahr
+    from datetime import date
+    
+    ma_id_param = request.args.get('ma_id', type=int)
+    datum_param = request.args.get('datum', date.today().isoformat())
+    
+    try:
+        datum = datetime.strptime(datum_param, '%Y-%m-%d').date()
+    except:
+        datum = date.today()
+    
+    monat = datum.month
+    jahr = datum.year
+    geschaeftsjahr = get_current_geschaeftsjahr()
+    
+    # Werktage-Berechnung
+    werktage = get_werktage_monat(jahr, monat)
+    
+    # Ziel-Berechnung
+    if ma_id_param:
+        ma_ids = [ma_id_param]
+    else:
+        ma_ids = SERVICEBERATER_IDS
+    
+    result = []
+    
+    try:
+        # Import Datenmodul (SSOT)
+        from api.serviceberater_data import ServiceberaterData
+        
+        for ma_id in ma_ids:
+            # Monatsziel
+            ziel_data = get_sb_umsatz_ziel_aus_1pct(geschaeftsjahr, monat, ma_id)
+            monatsziel = ziel_data['umsatz_ziel']
+            tagesziel = monatsziel / werktage['gesamt'] if werktage['gesamt'] > 0 else 0
+            
+            # IST heute (aus Datenmodul - SSOT)
+            ist_heute = ServiceberaterData.get_sb_umsatz_heute(ma_id, datum)
+            umsatz_heute = ist_heute['umsatz_gesamt']
+            db1_heute = ist_heute['db1']
+            
+            # IST Monat (aus Datenmodul - SSOT)
+            ist_monat = ServiceberaterData.get_sb_umsatz_monat(ma_id, monat, jahr)
+            umsatz_monat = ist_monat['umsatz_gesamt']
+            db1_monat = ist_monat['db1']
+            
+            # Erfüllung
+            erfuellung_heute = (umsatz_heute / tagesziel * 100) if tagesziel > 0 else 0
+            erfuellung_monat = (umsatz_monat / monatsziel * 100) if monatsziel > 0 else 0
+            zeitfortschritt = werktage['fortschritt_prozent']
+            
+            # Status
+            if erfuellung_heute >= 100:
+                status_heute = 'ok'
+            elif erfuellung_heute >= 80:
+                status_heute = 'warnung'
+            else:
+                status_heute = 'kritisch'
+            
+            # Auf Kurs?
+            auf_kurs = erfuellung_monat >= zeitfortschritt
+            
+            # Name
+            ma_namen = get_ma_namen_locosoft()
+            ma_info = ma_namen.get(ma_id, {'name': f'MA {ma_id}'})
+            
+            result.append({
+                'ma_id': ma_id,
+                'name': ma_info['name'],
+                'datum': datum.isoformat(),
+                'ziele': {
+                    'monatsziel_umsatz': round(monatsziel, 2),
+                    'tagesziel_umsatz': round(tagesziel, 2),
+                    'db1_ziel': round(ziel_data['db1_ziel'], 2),
+                    'werktage_gesamt': werktage['gesamt'],
+                    'werktage_vergangen': werktage['vergangen'],
+                    'werktage_verbleibend': werktage['verbleibend'],
+                    'ist_manuell': ziel_data['ist_manuell']
+                },
+                'ist': {
+                    'umsatz_heute': ist_heute['umsatz_gesamt'],
+                    'umsatz_monat': ist_monat['umsatz_gesamt'],
+                    'db1_heute': ist_heute['db1'],
+                    'db1_monat': ist_monat['db1'],
+                    'anzahl_rechnungen_heute': ist_heute['anzahl_rechnungen'],
+                    'anzahl_rechnungen_monat': ist_monat['anzahl_rechnungen']
+                },
+                'erfuellung': {
+                    'heute_prozent': round(erfuellung_heute, 1),
+                    'monat_prozent': round(erfuellung_monat, 1),
+                    'zeitfortschritt_prozent': round(zeitfortschritt, 1),
+                    'status': status_heute,
+                    'auf_kurs': auf_kurs
+                },
+                'herkunft': ziel_data['herkunft']
+            })
+        
+        if ma_id_param:
+            return jsonify({
+                'success': True,
+                'data': result[0] if result else None
+            })
+        else:
+            return jsonify({
+                'success': True,
+                'data': result
+            })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@serviceberater_api.route('/monatsziel', methods=['GET'])
+def monatsziel():
+    """
+    Monatsziel für Serviceberater (TAG 164)
+    
+    Query-Parameter:
+    - ma_id: Locosoft MA-ID
+    - monat: YYYY-MM (default: aktueller Monat)
+    """
+    from api.unternehmensplan_data import get_current_geschaeftsjahr
+    from datetime import date
+    
+    ma_id = request.args.get('ma_id', type=int)
+    monat_param = request.args.get('monat', datetime.now().strftime('%Y-%m'))
+    
+    if not ma_id:
+        return jsonify({'success': False, 'error': 'ma_id erforderlich'}), 400
+    
+    try:
+        jahr, monat = monat_param.split('-')
+        monat = int(monat)
+        jahr = int(jahr)
+    except:
+        return jsonify({'success': False, 'error': 'Ungültiges Datumsformat'}), 400
+    
+    geschaeftsjahr = get_current_geschaeftsjahr()
+    
+    # Ziel-Berechnung
+    ziel_data = get_sb_umsatz_ziel_aus_1pct(geschaeftsjahr, monat, ma_id)
+    
+    # Werktage
+    werktage = get_werktage_monat(jahr, monat)
+    tagesziel = ziel_data['umsatz_ziel'] / werktage['gesamt'] if werktage['gesamt'] > 0 else 0
+    
+    # IST Monat
+    start_monat = f"{jahr}-{monat:02d}-01"
+    if monat == 12:
+        ende_monat = f"{jahr+1}-01-01"
+    else:
+        ende_monat = f"{jahr}-{monat+1:02d}-01"
+    
+    try:
+        # Import Datenmodul (SSOT)
+        from api.serviceberater_data import ServiceberaterData
+        
+        # IST Monat (aus Datenmodul - SSOT)
+        ist_monat = ServiceberaterData.get_sb_umsatz_monat(ma_id, monat, jahr)
+        umsatz_ist = ist_monat['umsatz_gesamt']
+        db1_ist = ist_monat['db1']
+        
+        # Erfüllung
+        erfuellung_umsatz = (umsatz_ist / ziel_data['umsatz_ziel'] * 100) if ziel_data['umsatz_ziel'] > 0 else 0
+        erfuellung_db1 = (db1_ist / ziel_data['db1_ziel'] * 100) if ziel_data['db1_ziel'] > 0 else 0
+        zeitfortschritt = werktage['fortschritt_prozent']
+        
+        # Name
+        ma_namen = get_ma_namen_locosoft()
+        ma_info = ma_namen.get(ma_id, {'name': f'MA {ma_id}'})
+        
+        return jsonify({
+            'success': True,
+            'monat': monat_param,
+            'ma_id': ma_id,
+            'name': ma_info['name'],
+            'ziel_herkunft': ziel_data['herkunft'],
+            'ziele': {
+                'umsatz_ziel': round(ziel_data['umsatz_ziel'], 2),
+                'db1_ziel': round(ziel_data['db1_ziel'], 2),
+                'tagesziel_umsatz': round(tagesziel, 2),
+                'werktage_gesamt': werktage['gesamt'],
+                'werktage_vergangen': werktage['vergangen'],
+                'werktage_verbleibend': werktage['verbleibend'],
+                'ist_manuell': ziel_data['ist_manuell']
+            },
+            'ist': {
+                'umsatz_aktuell': ist_monat['umsatz_gesamt'],
+                'db1_aktuell': ist_monat['db1'],
+                'anzahl_rechnungen': ist_monat['anzahl_rechnungen']
+            },
+            'erfuellung': {
+                'umsatz_prozent': round(erfuellung_umsatz, 1),
+                'db1_prozent': round(erfuellung_db1, 1),
+                'zeitfortschritt_prozent': round(zeitfortschritt, 1),
+                'status': 'ok' if erfuellung_umsatz >= zeitfortschritt else ('warnung' if erfuellung_umsatz >= zeitfortschritt * 0.8 else 'kritisch')
+            }
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @serviceberater_api.route('/health', methods=['GET'])
 def health():
     """Health Check"""
     return jsonify({
         'success': True,
         'status': 'healthy',
-        'version': '1.1.0',  # TAG122: SB-Rolle
+        'version': '1.2.0',  # TAG164: 1%-Ziel Ableitung
         'timestamp': datetime.now().isoformat(),
     })

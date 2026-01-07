@@ -1,0 +1,1310 @@
+{% extends "base.html" %}
+
+{% block title %}Werkstatt Live-Board (Gantt){% endblock %}
+
+{% block extra_css %}
+<style>
+/* ============================================================
+   WERKSTATT LIVE-BOARD - GANTT/ZEITLEISTEN VERSION (TAG 126)
+   Horizontale Zeitleiste mit Aufträgen als Balken
+   ============================================================ */
+
+/* KIOSK: Navigation ausblenden, nur Logo behalten */
+.navbar .navbar-nav,
+.navbar .nav-item,
+.navbar .dropdown,
+.navbar .navbar-toggler,
+.navbar #navbarNav {
+    display: none !important;
+}
+
+.navbar {
+    padding: 5px 15px !important;
+    min-height: auto !important;
+}
+
+.navbar-brand {
+    margin-right: 0 !important;
+}
+
+/* Container */
+.gantt-container {
+    background: #1a1a2e;
+    min-height: calc(100vh - 45px);
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Header */
+.gantt-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 15px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    flex-shrink: 0;
+}
+
+.gantt-title {
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: white;
+    margin: 0;
+}
+
+.gantt-title i { color: #667eea; }
+
+.standort-badge {
+    font-size: 0.75rem;
+    padding: 3px 10px;
+    border-radius: 12px;
+    background: #667eea;
+    color: white;
+    margin-left: 10px;
+    font-weight: 500;
+}
+
+.gantt-meta {
+    font-size: 0.85rem;
+    color: #888;
+}
+
+.gantt-stats {
+    display: flex;
+    gap: 10px;
+}
+
+.stat-badge {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+    border-radius: 15px;
+    font-weight: 500;
+    font-size: 0.85rem;
+}
+
+.stat-badge.aktiv { background: #28a745; color: white; }
+.stat-badge.verfuegbar { background: #6c757d; color: white; }
+
+/* Gantt Chart Area */
+.gantt-chart {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: #16213e;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+/* Zeitachse Header */
+.time-axis {
+    display: flex;
+    background: #0f3460;
+    border-bottom: 2px solid #667eea;
+    flex-shrink: 0;
+}
+
+.time-axis-label {
+    width: 160px;
+    min-width: 160px;
+    padding: 10px 12px;
+    font-weight: 600;
+    color: #888;
+    font-size: 0.85rem;
+    border-right: 1px solid #234;
+}
+
+.time-axis-hours {
+    flex: 1;
+    display: flex;
+    position: relative;
+}
+
+.time-hour {
+    flex: 1;
+    text-align: center;
+    padding: 8px 0;
+    font-size: 0.75rem;
+    color: #888;
+    border-left: 1px solid #234;
+}
+
+.time-hour.current {
+    background: rgba(102, 126, 234, 0.2);
+    color: #667eea;
+    font-weight: 600;
+}
+
+/* Mechaniker Rows */
+.gantt-rows {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.gantt-row {
+    display: flex;
+    border-bottom: 1px solid #234;
+    min-height: 60px;
+    flex: 1; /* Dynamisch: Zeilen teilen sich verfügbaren Platz */
+    max-height: 120px; /* Nicht zu groß bei wenigen Mechanikern */
+}
+
+.gantt-row:hover {
+    background: rgba(255,255,255,0.02);
+}
+
+.gantt-row.abwesend {
+    opacity: 0.5;
+    background: rgba(220, 53, 69, 0.1);
+}
+
+.gantt-row.leerlauf-warning {
+    background: rgba(255, 193, 7, 0.1);
+}
+
+.gantt-row.leerlauf-alarm {
+    background: rgba(220, 53, 69, 0.15);
+    animation: pulse-row 2s infinite;
+}
+
+@keyframes pulse-row {
+    0%, 100% { background: rgba(220, 53, 69, 0.15); }
+    50% { background: rgba(220, 53, 69, 0.25); }
+}
+
+/* Mechaniker Name Column */
+.mech-label {
+    width: 160px;
+    min-width: 160px;
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-right: 1px solid #234;
+    background: rgba(0,0,0,0.2);
+}
+
+.mech-avatar-small {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 0.9rem;
+    color: white;
+    flex-shrink: 0;
+}
+
+.mech-avatar-small.aktiv { background: #28a745; }
+.mech-avatar-small.verfuegbar { background: #6c757d; }
+.mech-avatar-small.abwesend { background: #dc3545; }
+.mech-avatar-small.leerlauf { background: #ffc107; color: #333; }
+
+.mech-label-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.mech-label-name {
+    font-weight: 600;
+    font-size: 1rem;
+    color: white;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mech-label-status {
+    font-size: 0.8rem;
+    color: #888;
+}
+
+.mech-label-status.aktiv { color: #28a745; }
+.mech-label-status.leerlauf { color: #ffc107; }
+.mech-label-status.alarm { color: #dc3545; }
+
+/* Timeline Area */
+.gantt-timeline {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Hour Grid Lines */
+.hour-grid {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    pointer-events: none;
+}
+
+.hour-line {
+    flex: 1;
+    border-left: 1px dashed #234;
+}
+
+/* Current Time Indicator */
+.current-time-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #dc3545;
+    z-index: 10;
+    box-shadow: 0 0 8px rgba(220, 53, 69, 0.8);
+}
+
+.current-time-marker {
+    position: absolute;
+    top: -5px;
+    left: -4px;
+    width: 10px;
+    height: 10px;
+    background: #dc3545;
+    border-radius: 50%;
+}
+
+/* Mittagspause Indikator (TAG 126) */
+.lunch-break-zone {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: repeating-linear-gradient(
+        45deg,
+        rgba(108, 117, 125, 0.15),
+        rgba(108, 117, 125, 0.15) 4px,
+        rgba(108, 117, 125, 0.25) 4px,
+        rgba(108, 117, 125, 0.25) 8px
+    );
+    border-left: 1px dashed #6c757d;
+    border-right: 1px dashed #6c757d;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.lunch-break-label {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 0.6rem;
+    color: #888;
+    background: rgba(22, 33, 62, 0.9);
+    padding: 2px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+}
+
+/* Task Bars */
+.task-bar {
+    position: absolute;
+    height: calc(100% - 16px); /* Dynamisch: passt sich Zeilenhöhe an */
+    top: 8px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.task-bar:hover {
+    transform: scaleY(1.1);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    z-index: 5;
+}
+
+.task-bar.aktiv {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    border: 2px solid #28a745;
+    animation: pulse-task 1.5s infinite;
+}
+
+/* Soll/Ist Status für aktive Aufträge (TAG 126) */
+.task-bar.aktiv.on-time {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    border-color: #28a745;
+}
+
+.task-bar.aktiv.warning {
+    background: linear-gradient(135deg, #f39c12 0%, #fdcb6e 100%);
+    border-color: #f39c12;
+    animation: pulse-warning 1s infinite;
+}
+
+.task-bar.aktiv.overtime {
+    background: linear-gradient(135deg, #dc3545 0%, #c0392b 100%);
+    border-color: #dc3545;
+    animation: pulse-overtime 0.8s infinite;
+}
+
+@keyframes pulse-task {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.5); }
+    50% { box-shadow: 0 0 0 6px rgba(40, 167, 69, 0); }
+}
+
+@keyframes pulse-warning {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(243, 156, 18, 0.5); }
+    50% { box-shadow: 0 0 0 6px rgba(243, 156, 18, 0); }
+}
+
+@keyframes pulse-overtime {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.6); }
+    50% { box-shadow: 0 0 0 8px rgba(220, 53, 69, 0); }
+}
+
+/* Soll-Ende Marker */
+.soll-marker {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: rgba(255, 255, 255, 0.6);
+    border-left: 2px dashed rgba(255, 255, 255, 0.8);
+}
+
+/* Fortschrittsanzeige im Balken */
+.task-progress {
+    position: absolute;
+    bottom: 2px;
+    left: 4px;
+    right: 4px;
+    height: 3px;
+    background: rgba(0,0,0,0.3);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.task-progress-fill {
+    height: 100%;
+    background: rgba(255,255,255,0.8);
+    border-radius: 2px;
+    transition: width 0.3s;
+}
+
+.task-progress-fill.warning { background: #2d3436; }
+.task-progress-fill.overtime { background: #fff; }
+
+/* Zeit-Info Badge */
+.task-time-info {
+    position: absolute;
+    top: -18px;
+    right: 0;
+    font-size: 0.65rem;
+    padding: 1px 5px;
+    border-radius: 3px;
+    white-space: nowrap;
+}
+
+.task-time-info.on-time { background: #28a745; color: white; }
+.task-time-info.warning { background: #f39c12; color: #2d3436; }
+.task-time-info.overtime { background: #dc3545; color: white; }
+
+.task-bar.geplant {
+    background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
+    border: 1px solid #74b9ff;
+}
+
+.task-bar.bearbeitet {
+    background: linear-gradient(135deg, #a29bfe 0%, #6c5ce7 100%);
+    border: 1px solid #a29bfe;
+}
+
+.task-bar.gudat {
+    background: linear-gradient(135deg, #fdcb6e 0%, #f39c12 100%);
+    border: 1px solid #fdcb6e;
+    color: #2d3436;
+}
+
+.task-bar.fertig {
+    background: linear-gradient(135deg, #00b894 0%, #00cec9 100%);
+    border: 2px solid #00b894;
+}
+
+.task-bar.hauptauftrag {
+    border-width: 2px;
+    border-color: #ffd93d;
+    box-shadow: 0 0 8px rgba(255, 217, 61, 0.4);
+}
+
+.task-bar-content {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: white;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+.task-bar.gudat .task-bar-content {
+    color: #2d3436;
+    text-shadow: none;
+}
+
+.task-kz {
+    font-weight: 600;
+}
+
+.task-nr {
+    opacity: 0.8;
+    font-size: 0.7rem;
+}
+
+.task-aw {
+    margin-left: auto;
+    font-weight: 600;
+    background: rgba(0,0,0,0.2);
+    padding: 1px 5px;
+    border-radius: 3px;
+}
+
+.task-fertig-icon {
+    color: #fff;
+    font-size: 0.85rem;
+}
+
+/* Abwesende Footer */
+.abwesende-footer {
+    padding: 8px 15px;
+    background: rgba(220, 53, 69, 0.1);
+    border-top: 1px solid #dc3545;
+    display: none;
+    flex-shrink: 0;
+}
+
+.abwesende-footer h6 {
+    color: #dc3545;
+    font-size: 0.8rem;
+    margin: 0 0 5px 0;
+}
+
+.abwesende-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.abwesende-item {
+    font-size: 0.8rem;
+    color: #ccc;
+}
+
+.abwesende-grund {
+    color: #888;
+    font-size: 0.7rem;
+}
+
+/* TAG 126: Unverplante Aufträge */
+.unverplant-footer {
+    padding: 8px 15px;
+    background: rgba(255, 193, 7, 0.1);
+    border-top: 1px solid #ffc107;
+    display: none;
+    flex-shrink: 0;
+}
+
+.unverplant-footer h6 {
+    color: #ffc107;
+    font-size: 0.8rem;
+    margin: 0 0 8px 0;
+}
+
+.unverplant-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.unverplant-item {
+    background: rgba(255, 193, 7, 0.2);
+    border: 1px solid rgba(255, 193, 7, 0.4);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 0.8rem;
+    color: #fff;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.unverplant-item:hover {
+    background: rgba(255, 193, 7, 0.4);
+    transform: translateY(-1px);
+}
+
+.unverplant-item .kz {
+    font-weight: 600;
+}
+
+.unverplant-item .zeit {
+    color: #aaa;
+    font-size: 0.7rem;
+    margin-left: 5px;
+}
+
+.unverplant-item .fertig-badge {
+    color: #28a745;
+    margin-left: 5px;
+}
+
+/* TAG 126: Feierabend Footer */
+.feierabend-footer {
+    padding: 8px 15px;
+    background: rgba(40, 167, 69, 0.1);
+    border-top: 1px solid #28a745;
+    display: none;
+    flex-shrink: 0;
+}
+
+.feierabend-footer h6 {
+    color: #28a745;
+    font-size: 0.8rem;
+    margin: 0 0 5px 0;
+}
+
+.feierabend-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.feierabend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    background: rgba(40, 167, 69, 0.15);
+    border-radius: 12px;
+    font-size: 0.8rem;
+}
+
+.feierabend-name {
+    color: #28a745;
+    font-weight: 500;
+}
+
+.feierabend-zeit {
+    color: #888;
+    font-size: 0.7rem;
+}
+
+/* Legende */
+.gantt-legend {
+    display: flex;
+    gap: 15px;
+    padding: 8px 15px;
+    background: rgba(0,0,0,0.2);
+    border-top: 1px solid #234;
+    flex-shrink: 0;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.75rem;
+    color: #888;
+}
+
+.legend-color {
+    width: 16px;
+    height: 12px;
+    border-radius: 2px;
+}
+
+.legend-color.aktiv { background: #28a745; }
+.legend-color.geplant { background: #74b9ff; }
+.legend-color.bearbeitet { background: #a29bfe; }
+.legend-color.gudat { background: #fdcb6e; }
+.legend-color.fertig { background: #00b894; }
+
+/* Link to Card View */
+.view-switch {
+    position: fixed;
+    bottom: 15px;
+    right: 15px;
+    background: #667eea;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 25px;
+    text-decoration: none;
+    font-size: 0.85rem;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    transition: transform 0.2s;
+    z-index: 100;
+}
+
+.view-switch:hover {
+    transform: scale(1.05);
+    color: white;
+    text-decoration: none;
+}
+
+/* Modal (same as card view) */
+.modal-content {
+    background: #1a1a2e;
+    border: 1px solid #667eea;
+    border-radius: 12px;
+}
+
+.modal-header {
+    border-bottom: 1px solid #234;
+    padding: 15px 20px;
+}
+
+.modal-title {
+    color: white;
+    font-size: 1.1rem;
+}
+
+.modal-body {
+    padding: 20px;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.btn-close {
+    filter: invert(1);
+}
+
+.detail-section {
+    margin-bottom: 20px;
+}
+
+.detail-section h6 {
+    color: #667eea;
+    font-size: 0.85rem;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #234;
+    padding-bottom: 5px;
+}
+
+.detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+
+.detail-item {
+    background: rgba(255,255,255,0.05);
+    padding: 8px 12px;
+    border-radius: 6px;
+}
+
+.detail-label {
+    font-size: 0.7rem;
+    color: #888;
+    text-transform: uppercase;
+}
+
+.detail-value {
+    font-size: 0.95rem;
+    color: white;
+    font-weight: 500;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="gantt-container">
+    <!-- Header -->
+    <div class="gantt-header">
+        <div>
+            <h1 class="gantt-title">
+                <i class="bi bi-bar-chart-steps"></i> Werkstatt Zeitleiste
+                <span id="standort-badge" class="standort-badge" style="display: none;"></span>
+            </h1>
+            <div class="gantt-meta">
+                <span id="datum-anzeige">-</span> | Aktualisiert: <span id="last-update">-</span>
+            </div>
+        </div>
+        <div class="gantt-stats">
+            <span class="stat-badge aktiv">
+                <i class="bi bi-play-circle-fill"></i>
+                <span id="stat-aktiv">0</span> aktiv
+            </span>
+            <span class="stat-badge verfuegbar">
+                <i class="bi bi-pause-circle"></i>
+                <span id="stat-verfuegbar">0</span> frei
+            </span>
+        </div>
+    </div>
+
+    <!-- Gantt Chart -->
+    <div class="gantt-chart">
+        <!-- Time Axis -->
+        <div class="time-axis">
+            <div class="time-axis-label">Mechaniker</div>
+            <div class="time-axis-hours" id="time-axis-hours">
+                <!-- Hours will be generated by JS -->
+            </div>
+        </div>
+
+        <!-- Rows -->
+        <div class="gantt-rows" id="gantt-rows">
+            <!-- Rows will be generated by JS -->
+        </div>
+
+        <!-- Legend -->
+        <div class="gantt-legend">
+            <div class="legend-item"><div class="legend-color aktiv"></div> In Arbeit (im Soll)</div>
+            <div class="legend-item"><div class="legend-color" style="background:#f39c12;"></div> Warnung (80-100%)</div>
+            <div class="legend-item"><div class="legend-color" style="background:#dc3545;"></div> Überzogen (&gt;100%)</div>
+            <div class="legend-item"><div class="legend-color geplant"></div> Geplant</div>
+            <div class="legend-item"><div class="legend-color bearbeitet"></div> Erledigt</div>
+            <div class="legend-item"><div class="legend-color gudat"></div> Gudat</div>
+            <div class="legend-item"><div class="legend-color fertig"></div> Abgerechnet</div>
+        </div>
+    </div>
+
+    <!-- TAG 126: Unverplante Aufträge -->
+    <div class="unverplant-footer" id="unverplant-footer">
+        <h6><i class="bi bi-exclamation-triangle"></i> Unverplante Aufträge (kein Mechaniker zugewiesen)</h6>
+        <div class="unverplant-list" id="unverplant-list"></div>
+    </div>
+
+    <!-- TAG 126: Feierabend Footer -->
+    <div class="feierabend-footer" id="feierabend-footer">
+        <h6><i class="bi bi-house-door"></i> Feierabend</h6>
+        <div class="feierabend-list" id="feierabend-list"></div>
+    </div>
+
+    <!-- Abwesende Footer -->
+    <div class="abwesende-footer" id="abwesende-footer">
+        <h6><i class="bi bi-person-x"></i> Abwesend</h6>
+        <div class="abwesende-list" id="abwesende-list"></div>
+    </div>
+</div>
+
+<!-- Link to Card View -->
+<a href="/werkstatt/liveboard{{ '?betrieb=' + request.args.get('betrieb') if request.args.get('betrieb') else '' }}" class="view-switch">
+    <i class="bi bi-grid-3x3-gap"></i> Karten-Ansicht
+</a>
+
+<!-- Auftrag Modal -->
+<div class="modal fade" id="auftragModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modal-nr">Auftrag #</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Timeline Config
+const START_HOUR = 6;
+const END_HOUR = 18;
+const TOTAL_HOURS = END_HOUR - START_HOUR;
+
+let refreshInterval;
+
+// URL-Parameter auslesen
+const urlParams = new URLSearchParams(window.location.search);
+const betriebFilter = urlParams.get('betrieb');
+
+// Standort-Namen
+const standortNamen = {
+    '1': 'Deggendorf',
+    'deg': 'DEG + Hyundai',
+    '3': 'Landau'
+};
+
+// Helper: Get initials from name
+function getInitials(name) {
+    if (!name) return '??';
+    const parts = name.split(',');
+    if (parts.length >= 2) {
+        return (parts[1].trim()[0] || '') + (parts[0].trim()[0] || '');
+    }
+    return name.substring(0, 2).toUpperCase();
+}
+
+// Helper: Get short name
+function getShortName(name) {
+    if (!name) return '?';
+    const parts = name.split(',');
+    if (parts.length >= 2) {
+        const vorname = parts[1].trim().split(' ')[0];
+        return vorname;
+    }
+    return name.split(' ')[0];
+}
+
+// Generate time axis
+function generateTimeAxis() {
+    const container = document.getElementById('time-axis-hours');
+    const now = new Date();
+    const currentHour = now.getHours();
+
+    let html = '';
+    for (let h = START_HOUR; h < END_HOUR; h++) {
+        const isCurrent = h === currentHour;
+        html += `<div class="time-hour ${isCurrent ? 'current' : ''}">${h}:00</div>`;
+    }
+    container.innerHTML = html;
+}
+
+// Calculate position on timeline (percentage)
+function getTimePosition(timeStr) {
+    if (!timeStr) return null;
+    const date = new Date(timeStr);
+    const hours = date.getHours() + date.getMinutes() / 60;
+    const position = ((hours - START_HOUR) / TOTAL_HOURS) * 100;
+    return Math.max(0, Math.min(100, position));
+}
+
+// Calculate width based on duration (AW or time)
+function getTaskWidth(startTs, endTs, aw) {
+    if (startTs && endTs) {
+        const start = new Date(startTs);
+        const end = new Date(endTs);
+        const durationHours = (end - start) / (1000 * 60 * 60);
+        return (durationHours / TOTAL_HOURS) * 100;
+    }
+    // Estimate from AW (1 AW ≈ 6 min)
+    const durationHours = (aw * 6) / 60;
+    return Math.max(2, (durationHours / TOTAL_HOURS) * 100);
+}
+
+// Open modal with order details
+async function openAuftragModal(auftragNr) {
+    const modal = new bootstrap.Modal(document.getElementById('auftragModal'));
+    document.getElementById('modal-nr').textContent = `Auftrag #${auftragNr}`;
+    document.getElementById('modal-body').innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
+    modal.show();
+
+    try {
+        const response = await fetch(`/api/werkstatt/live/auftrag/${auftragNr}`);
+        const data = await response.json();
+        if (data.success) {
+            // TAG 126: positionen ist auf Root-Ebene, nicht in auftrag
+            const auftragData = {
+                ...data.auftrag,
+                positionen: data.positionen || [],
+                teile: data.teile || []
+            };
+            renderAuftragModal(auftragData);
+        } else {
+            document.getElementById('modal-body').innerHTML = `<div class="text-danger">${data.error || 'Fehler beim Laden'}</div>`;
+        }
+    } catch (e) {
+        console.error('Modal Error:', e);
+        document.getElementById('modal-body').innerHTML = '<div class="text-danger">Verbindungsfehler</div>';
+    }
+}
+
+// Render modal content
+function renderAuftragModal(a) {
+    // TAG 126: API gibt verschachtelte Struktur zurück
+    const fzg = a.fahrzeug || {};
+    const summen = a.summen || {};
+    const status = a.status || {};
+    const planung = a.planung || {};
+
+    document.getElementById('modal-nr').textContent = `Auftrag #${a.auftrag_nr} | ${a.betrieb_name}`;
+
+    let html = `
+        <div class="detail-section">
+            <h6><i class="bi bi-car-front"></i> Fahrzeug</h6>
+            <div class="detail-grid">
+                <div class="detail-item"><div class="detail-label">Kennzeichen</div><div class="detail-value">${fzg.kennzeichen || '-'}</div></div>
+                <div class="detail-item"><div class="detail-label">Marke/Modell</div><div class="detail-value">${fzg.marke || '-'} ${fzg.modell || ''}</div></div>
+                <div class="detail-item"><div class="detail-label">VIN</div><div class="detail-value" style="font-size:0.8rem">${fzg.vin || '-'}</div></div>
+                <div class="detail-item"><div class="detail-label">KM-Stand</div><div class="detail-value">${fzg.km_stand ? fzg.km_stand.toLocaleString('de-DE') + ' km' : '-'}</div></div>
+            </div>
+        </div>
+        <div class="detail-section">
+            <h6><i class="bi bi-clipboard-check"></i> Auftrag</h6>
+            <div class="detail-grid">
+                <div class="detail-item"><div class="detail-label">Kunde</div><div class="detail-value">${a.kunde || '-'}</div></div>
+                <div class="detail-item"><div class="detail-label">Serviceberater</div><div class="detail-value">${a.serviceberater || '-'}</div></div>
+                <div class="detail-item"><div class="detail-label">Eingang</div><div class="detail-value">${planung.eingang || '-'}</div></div>
+                <div class="detail-item"><div class="detail-label">Fertig bis</div><div class="detail-value">${planung.fertig || '-'}</div></div>
+            </div>
+        </div>
+        <div class="detail-section">
+            <h6><i class="bi bi-clock-history"></i> AW-Summen</h6>
+            <div class="detail-grid">
+                <div class="detail-item"><div class="detail-label">Gesamt AW</div><div class="detail-value">${(summen.total_aw || 0).toFixed(1)}</div></div>
+                <div class="detail-item"><div class="detail-label">Offen</div><div class="detail-value">${(summen.offen_aw || 0).toFixed(1)}</div></div>
+                <div class="detail-item"><div class="detail-label">Fakturiert</div><div class="detail-value">${(summen.fakturiert_aw || 0).toFixed(1)}</div></div>
+                <div class="detail-item"><div class="detail-label">Zugeordnet</div><div class="detail-value">${(summen.zugeordnet_aw || 0).toFixed(1)}</div></div>
+            </div>
+        </div>
+    `;
+
+    if (a.positionen && a.positionen.length > 0) {
+        html += `<div class="detail-section"><h6><i class="bi bi-list-task"></i> Arbeitspositionen (${a.positionen.length})</h6>`;
+        a.positionen.forEach(p => {
+            const statusIcon = p.abgerechnet ? '<i class="bi bi-check-circle-fill text-success"></i>' : '<i class="bi bi-clock text-warning"></i>';
+            html += `
+                <div class="detail-item mb-2">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span style="color:#ccc">${p.beschreibung || 'Arbeitsposition'}</span>
+                        <span>
+                            ${statusIcon}
+                            <span class="text-primary ms-2">${p.vorgabe_aw || 0} AW</span>
+                        </span>
+                    </div>
+                </div>
+            `;
+        });
+        html += '</div>';
+    }
+
+    document.getElementById('modal-body').innerHTML = html;
+}
+
+// Render a single mechanic row
+function renderGanttRow(mech) {
+    const isAktiv = mech.aktiver_auftrag !== null;
+    const initials = getInitials(mech.name);
+    const shortName = getShortName(mech.name);
+
+    // Leerlauf status
+    const leerlaufMin = mech.leerlauf_minuten || 0;
+    const nieGestempelt = mech.nie_gestempelt;
+    const isAlarm = !isAktiv && !mech.ist_abwesend && (nieGestempelt || leerlaufMin >= 10);
+    const isWarnung = !isAktiv && !mech.ist_abwesend && !isAlarm && leerlaufMin >= 5;
+
+    // Row class
+    let rowClass = '';
+    if (mech.ist_abwesend) rowClass = 'abwesend';
+    else if (isAlarm) rowClass = 'leerlauf-alarm';
+    else if (isWarnung) rowClass = 'leerlauf-warning';
+
+    // Avatar class
+    let avatarClass = 'verfuegbar';
+    if (mech.ist_abwesend) avatarClass = 'abwesend';
+    else if (isAktiv) avatarClass = 'aktiv';
+    else if (isAlarm || isWarnung) avatarClass = 'leerlauf';
+
+    // Status text
+    let statusText = 'Verfügbar';
+    let statusClass = '';
+    if (mech.ist_abwesend) {
+        statusText = mech.abwesend_grund;
+    } else if (isAktiv) {
+        statusText = 'In Arbeit';
+        statusClass = 'aktiv';
+    } else if (isAlarm) {
+        statusText = nieGestempelt ? 'Nie gestempelt!' : `Leerlauf ${leerlaufMin}m`;
+        statusClass = 'alarm';
+    } else if (isWarnung) {
+        statusText = `Leerlauf ${leerlaufMin}m`;
+        statusClass = 'leerlauf';
+    }
+
+    // Build task bars
+    let taskBars = '';
+    const zeitbloecke = mech.zeitbloecke || [];
+
+    // Find hauptauftrag (most AW)
+    const maxAw = Math.max(...zeitbloecke.map(zb => zb.vorgabe_aw || 0), 0);
+    const hauptauftragNr = zeitbloecke.find(zb => (zb.vorgabe_aw || 0) === maxAw && maxAw > 0)?.auftrag_nr;
+
+    zeitbloecke.forEach(zb => {
+        const startPos = getTimePosition(zb.start_ts);
+        if (startPos === null) return;
+
+        const width = getTaskWidth(zb.start_ts, zb.ende_ts, zb.vorgabe_aw || 2);
+        const isGudat = zb.typ === 'gudat_geplant';
+        const isHaupt = zb.auftrag_nr === hauptauftragNr;
+
+        let barClass = zb.typ || 'geplant';
+        if (zb.ist_fertig) barClass = 'fertig';
+        if (isGudat) barClass = 'gudat';
+        if (zb.ist_aktiv) barClass = 'aktiv';
+        if (isHaupt) barClass += ' hauptauftrag';
+
+        const fertigIcon = zb.ist_fertig ? '<i class="bi bi-check-circle-fill task-fertig-icon"></i>' : '';
+
+        // TAG 126: Soll/Ist-Visualisierung für aktive Aufträge
+        let timeStatusClass = '';
+        let progressHtml = '';
+        let timeInfoHtml = '';
+
+        if (zb.ist_aktiv && zb.start_ts) {
+            const aw = zb.vorgabe_aw || 0;
+            const sollMinuten = aw * 6; // 1 AW = 6 Minuten
+            const startTime = new Date(zb.start_ts);
+            const now = new Date();
+
+            // TAG 126: Mittagspause abziehen (12:00 - 12:45 = 45 Min)
+            let istMinuten = Math.floor((now - startTime) / 60000);
+            const pauseStart = new Date(startTime);
+            pauseStart.setHours(12, 0, 0, 0);
+            const pauseEnd = new Date(startTime);
+            pauseEnd.setHours(12, 45, 0, 0);
+
+            // Prüfen ob Zeitraum die Pause überlappt
+            if (startTime < pauseEnd && now > pauseStart) {
+                // Berechne Überlappung mit Pausenzeit
+                const overlapStart = Math.max(startTime.getTime(), pauseStart.getTime());
+                const overlapEnd = Math.min(now.getTime(), pauseEnd.getTime());
+                if (overlapEnd > overlapStart) {
+                    const pauseMinuten = Math.floor((overlapEnd - overlapStart) / 60000);
+                    istMinuten -= pauseMinuten;
+                }
+            }
+
+            // Status berechnen
+            const prozent = sollMinuten > 0 ? (istMinuten / sollMinuten) * 100 : 0;
+
+            if (prozent < 80) {
+                timeStatusClass = 'on-time';
+            } else if (prozent < 100) {
+                timeStatusClass = 'warning';
+            } else {
+                timeStatusClass = 'overtime';
+            }
+
+            // Zeit-Differenz berechnen
+            const diffMin = istMinuten - sollMinuten;
+            let zeitText = '';
+            if (diffMin > 0) {
+                zeitText = `+${diffMin}m über Soll`;
+            } else if (diffMin < 0) {
+                zeitText = `${Math.abs(diffMin)}m verbleibend`;
+            } else {
+                zeitText = 'Soll erreicht';
+            }
+
+            // Fortschrittsbalken
+            const progressWidth = Math.min(100, prozent);
+            progressHtml = `
+                <div class="task-progress">
+                    <div class="task-progress-fill ${timeStatusClass}" style="width: ${progressWidth}%;"></div>
+                </div>
+            `;
+
+            // Zeit-Info Badge
+            timeInfoHtml = `<div class="task-time-info ${timeStatusClass}">${istMinuten}/${sollMinuten}m</div>`;
+
+            barClass += ' ' + timeStatusClass;
+        }
+
+        taskBars += `
+            <div class="task-bar ${barClass}"
+                 style="left: ${startPos}%; width: ${width}%;"
+                 onclick="openAuftragModal(${zb.auftrag_nr})"
+                 title="${zb.kennzeichen || ''} #${zb.auftrag_nr} - ${zb.vorgabe_aw || 0} AW">
+                ${timeInfoHtml}
+                <div class="task-bar-content">
+                    <span class="task-kz">${zb.kennzeichen || '-'}</span>
+                    <span class="task-nr">#${zb.auftrag_nr}</span>
+                    ${fertigIcon}
+                    <span class="task-aw">${zb.vorgabe_aw || 0}</span>
+                </div>
+                ${progressHtml}
+            </div>
+        `;
+    });
+
+    // Current time line position
+    const now = new Date();
+    const currentPos = getTimePosition(now.toISOString());
+
+    // Mittagspause Position berechnen (12:00 - 12:45)
+    // 12:00 = (12 - 6) / 12 * 100 = 50%
+    // 12:45 = (12.75 - 6) / 12 * 100 = 56.25%
+    const lunchStart = ((12 - START_HOUR) / TOTAL_HOURS) * 100;
+    const lunchWidth = (0.75 / TOTAL_HOURS) * 100; // 45 Min = 0.75h
+
+    return `
+        <div class="gantt-row ${rowClass}">
+            <div class="mech-label">
+                <div class="mech-avatar-small ${avatarClass}">${initials}</div>
+                <div class="mech-label-info">
+                    <div class="mech-label-name">${shortName}</div>
+                    <div class="mech-label-status ${statusClass}">${statusText}</div>
+                </div>
+            </div>
+            <div class="gantt-timeline">
+                <div class="hour-grid">
+                    ${Array(TOTAL_HOURS).fill('<div class="hour-line"></div>').join('')}
+                </div>
+                <div class="lunch-break-zone" style="left: ${lunchStart}%; width: ${lunchWidth}%;">
+                    <span class="lunch-break-label">Pause</span>
+                </div>
+                <div class="current-time-line" style="left: ${currentPos}%;">
+                    <div class="current-time-marker"></div>
+                </div>
+                ${taskBars}
+            </div>
+        </div>
+    `;
+}
+
+// Render full chart
+function renderChart(data) {
+    const container = document.getElementById('gantt-rows');
+
+    // Filter and sort
+    const aktive = data.mechaniker.filter(m => !m.ist_abwesend && m.aktiver_auftrag);
+    const verfuegbare = data.mechaniker.filter(m => !m.ist_abwesend && !m.aktiver_auftrag);
+    const abwesende = data.mechaniker.filter(m => m.ist_abwesend);
+
+    // Stats
+    document.getElementById('stat-aktiv').textContent = aktive.length;
+    document.getElementById('stat-verfuegbar').textContent = verfuegbare.length;
+
+    // Render rows (aktive first, then verfügbare)
+    const zuRendern = [...aktive, ...verfuegbare];
+
+    if (zuRendern.length === 0) {
+        container.innerHTML = '<div class="text-center py-5" style="color: #666;">Keine Mechaniker verfügbar</div>';
+    } else {
+        container.innerHTML = zuRendern.map(renderGanttRow).join('');
+
+        // TAG 126: Feste Zeilenhöhe berechnen um Springen zu verhindern
+        requestAnimationFrame(() => {
+            const rows = container.querySelectorAll('.gantt-row');
+            const availableHeight = container.clientHeight;
+            const rowCount = rows.length;
+            // Zeilenhöhe: min 60px, max 100px, optimal für 10-12 Mechaniker
+            const rowHeight = Math.min(100, Math.max(60, Math.floor(availableHeight / rowCount)));
+            rows.forEach(row => {
+                row.style.height = rowHeight + 'px';
+                row.style.flex = 'none';
+            });
+        });
+    }
+
+    // TAG 126: Unverplante Aufträge
+    const unverplantFooter = document.getElementById('unverplant-footer');
+    const unverplantList = document.getElementById('unverplant-list');
+    const unverplant = data.eingang || [];
+
+    // Nur Aufträge mit Kennzeichen und Bringen-Zeit anzeigen
+    const relevanteUnverplant = unverplant.filter(a => a.kennzeichen && a.bringen);
+
+    if (relevanteUnverplant.length > 0) {
+        unverplantFooter.style.display = 'block';
+        unverplantList.innerHTML = relevanteUnverplant.map(a => `
+            <div class="unverplant-item" onclick="openAuftragModal(${a.auftrag_nr})">
+                <span class="kz">${a.kennzeichen}</span>
+                <span class="zeit">${a.bringen}</span>
+                ${a.ist_fertig ? '<i class="bi bi-check-circle-fill fertig-badge"></i>' : ''}
+            </div>
+        `).join('');
+    } else {
+        unverplantFooter.style.display = 'none';
+    }
+
+    // Abwesende footer
+    const footer = document.getElementById('abwesende-footer');
+    const list = document.getElementById('abwesende-list');
+
+    if (abwesende.length > 0) {
+        footer.style.display = 'block';
+        list.innerHTML = abwesende.map(m =>
+            `<span class="abwesende-item"><span class="abwesende-name">${getShortName(m.name)}</span> <span class="abwesende-grund">(${m.abwesend_grund})</span></span>`
+        ).join('');
+    } else {
+        footer.style.display = 'none';
+    }
+}
+
+// Load data
+async function loadData() {
+    try {
+        let boardUrl = '/api/werkstatt/live/board';
+        let stempelUrl = '/api/werkstatt/live/stempeluhr';
+        if (betriebFilter) {
+            boardUrl += `?betrieb=${betriebFilter}`;
+            // Stempeluhr verwendet subsidiary, nicht betrieb
+            const subsidiaryMap = {'deg': '1,2', '1': '1', '3': '3'};
+            const subsidiary = subsidiaryMap[betriebFilter] || '';
+            if (subsidiary) stempelUrl += `?subsidiary=${subsidiary}`;
+        }
+
+        // Parallel laden
+        const [boardResponse, stempelResponse] = await Promise.all([
+            fetch(boardUrl),
+            fetch(stempelUrl)
+        ]);
+        const data = await boardResponse.json();
+        const stempelData = await stempelResponse.json();
+
+        if (data.success) {
+            // Date & time
+            const datum = new Date(data.datum);
+            document.getElementById('datum-anzeige').textContent = datum.toLocaleDateString('de-DE', {
+                weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric'
+            });
+            document.getElementById('last-update').textContent = new Date().toLocaleTimeString('de-DE');
+
+            renderChart(data);
+
+            // TAG 126: Feierabend Footer
+            if (stempelData.success && stempelData.feierabend_mechaniker) {
+                renderFeierabendFooter(stempelData.feierabend_mechaniker);
+            }
+        }
+    } catch (e) {
+        console.error('Fetch Error:', e);
+    }
+}
+
+// TAG 126: Feierabend Footer rendern
+function renderFeierabendFooter(feierabend) {
+    const footer = document.getElementById('feierabend-footer');
+    const list = document.getElementById('feierabend-list');
+
+    if (feierabend && feierabend.length > 0) {
+        footer.style.display = 'block';
+        list.innerHTML = feierabend.map(m =>
+            `<span class="feierabend-item">
+                <span class="feierabend-name">${getShortName(m.name)}</span>
+                <span class="feierabend-zeit">(${m.gegangen_um})</span>
+            </span>`
+        ).join('');
+    } else {
+        footer.style.display = 'none';
+    }
+}
+
+// Init
+document.addEventListener('DOMContentLoaded', function() {
+    // Standort badge
+    if (betriebFilter && standortNamen[betriebFilter]) {
+        const badge = document.getElementById('standort-badge');
+        badge.textContent = standortNamen[betriebFilter];
+        badge.style.display = 'inline';
+    }
+
+    generateTimeAxis();
+    loadData();
+
+    // Auto-refresh every 15 seconds
+    refreshInterval = setInterval(() => {
+        generateTimeAxis(); // Update current hour highlight
+        loadData();
+    }, 15000);
+});
+</script>
+{% endblock %}

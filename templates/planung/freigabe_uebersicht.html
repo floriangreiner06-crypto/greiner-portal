@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}Planung Freigabe{% endblock %}
+
+{% block extra_css %}
+<style>
+    .freigabe-card {
+        border: 1px solid #dee2e6;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        transition: box-shadow 0.2s;
+    }
+    .freigabe-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .freigabe-card.entwurf {
+        border-left: 4px solid #fbbf24;
+    }
+    .kpi-badge {
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        background: #f3f4f6;
+        border-radius: 8px;
+        margin-right: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+    .kpi-label {
+        font-size: 0.85rem;
+        color: #6b7280;
+    }
+    .kpi-value {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #111827;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h4 class="mb-0"><i class="bi bi-check-circle"></i> Planung Freigabe</h4>
+            <small class="text-muted">GJ {{ geschaeftsjahr }} | Monat {{ monat }}</small>
+        </div>
+        <a href="{{ url_for('abteilungsleiter_planung.uebersicht', geschaeftsjahr=geschaeftsjahr, monat=monat) }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left"></i> Zurück
+        </a>
+    </div>
+
+    {% if planungen %}
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle"></i> 
+        {{ planungen|length }} Planung(en) warten auf Freigabe
+    </div>
+
+    {% for planung in planungen %}
+    <div class="freigabe-card entwurf">
+        <div class="d-flex justify-content-between align-items-start mb-3">
+            <div>
+                <h5 class="mb-1">{{ planung.bereich }} - {{ standort_namen[planung.standort] }}</h5>
+                <small class="text-muted">
+                    Erstellt von {{ planung.erstellt_von }} am {{ planung.erstellt_am[:10] if planung.erstellt_am else '' }}
+                </small>
+            </div>
+            <div>
+                <button class="btn btn-success btn-sm" onclick="freigeben({{ planung.id }})">
+                    <i class="bi bi-check-circle"></i> Freigeben
+                </button>
+                <button class="btn btn-outline-danger btn-sm" onclick="ablehnen({{ planung.id }})">
+                    <i class="bi bi-x-circle"></i> Ablehnen
+                </button>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <h6>Basis (Bottom-Up)</h6>
+                <div class="kpi-badge">
+                    <div class="kpi-label">Umsatz Basis</div>
+                    <div class="kpi-value">{{ "%.2f"|format(planung.umsatz_basis or 0) }} €</div>
+                </div>
+                <div class="kpi-badge">
+                    <div class="kpi-label">DB1 Basis</div>
+                    <div class="kpi-value">{{ "%.2f"|format(planung.db1_basis or 0) }} €</div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <h6>Gesamt (Basis + Aufhol)</h6>
+                <div class="kpi-badge">
+                    <div class="kpi-label">Umsatz Ziel</div>
+                    <div class="kpi-value">{{ "%.2f"|format(planung.umsatz_ziel or 0) }} €</div>
+                </div>
+                <div class="kpi-badge">
+                    <div class="kpi-label">DB1 Ziel</div>
+                    <div class="kpi-value">{{ "%.2f"|format(planung.db1_ziel or 0) }} €</div>
+                </div>
+            </div>
+        </div>
+
+        {% if planung.kommentar %}
+        <div class="mt-3">
+            <strong>Kommentar:</strong> {{ planung.kommentar }}
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+
+    {% else %}
+    <div class="alert alert-success">
+        <i class="bi bi-check-circle"></i> 
+        Keine Planungen zur Freigabe vorhanden. Alle Planungen sind bereits freigegeben oder es gibt keine Entwürfe.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const API_BASE = '/api/planung/abteilungsleiter';
+
+async function freigeben(planung_id) {
+    const kommentar = prompt('Kommentar (optional):');
+    
+    try {
+        const response = await fetch(`${API_BASE}/${planung_id}/freigeben`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({kommentar: kommentar || null})
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('Planung freigegeben! Ziele wurden in kst_ziele geschrieben.');
+            location.reload();
+        } else {
+            alert('Fehler: ' + result.message);
+        }
+    } catch (error) {
+        alert('Fehler: ' + error.message);
+    }
+}
+
+async function ablehnen(planung_id) {
+    const kommentar = prompt('Grund für Ablehnung:');
+    
+    if (!kommentar) {
+        alert('Bitte geben Sie einen Grund an.');
+        return;
+    }
+    
+    // TODO: API-Endpoint für Ablehnung implementieren
+    alert('Ablehnung-Funktion wird noch implementiert.');
+}
+</script>
+{% endblock %}
+

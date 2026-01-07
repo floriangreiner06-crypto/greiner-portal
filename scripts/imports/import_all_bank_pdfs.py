@@ -13,13 +13,13 @@ Unterstützte Banken:
 
 Läuft 3x täglich via Cron: 08:00, 12:00, 17:00
 
-Version: 1.0 (TAG 82)
+Version: 2.0 (TAG 165) - PostgreSQL Migration
 Erstellt: 25.11.2025
+Updated: 2026-01-03 (PostgreSQL Support)
 """
 
 import os
 import sys
-import sqlite3
 import re
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -27,11 +27,13 @@ from datetime import datetime, timedelta
 # Parser-Pfad hinzufügen (Projekt-Root, nicht parsers-Ordner!)
 sys.path.insert(0, '/opt/greiner-portal')
 
+# PostgreSQL DB-Connection (TAG 165)
+from api.db_connection import get_db, sql_placeholder, convert_placeholders, get_db_type
+
 # ============================================================================
 # KONFIGURATION
 # ============================================================================
 
-DB_PATH = '/opt/greiner-portal/data/greiner_controlling.db'
 BASE_PATH = '/mnt/buchhaltung/Buchhaltung/Kontoauszüge'
 
 # Bank-Konfigurationen: (Ordner, Parser-Klasse, IBAN-Muster, Datei-Prefix)
@@ -77,50 +79,63 @@ BANK_CONFIGS = {
 # HELPER FUNCTIONS
 # ============================================================================
 
-def get_db_connection():
-    """Datenbankverbindung herstellen"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
 def get_konto_id_by_iban(conn, iban):
     """Konto-ID anhand IBAN ermitteln"""
     cursor = conn.cursor()
-    cursor.execute("SELECT id, kontoname FROM konten WHERE iban = ?", (iban,))
+    ph = sql_placeholder()
+    cursor.execute(f"SELECT id, kontoname FROM konten WHERE iban = {ph}", (iban,))
     result = cursor.fetchone()
-    return (result['id'], result['kontoname']) if result else (None, None)
+    if result:
+        # HybridRow unterstützt sowohl Index als auch Dict-Zugriff
+        return (result[0] if hasattr(result, '__getitem__') else result['id'], 
+                result[1] if hasattr(result, '__getitem__') else result['kontoname'])
+    return (None, None)
 
 def transaction_exists(conn, konto_id, buchungsdatum, betrag, verwendungszweck):
     """Prüfen ob Transaktion bereits existiert"""
     cursor = conn.cursor()
     # Vereinfachter Check: Datum + Betrag + erste 50 Zeichen Verwendungszweck
     vzweck_short = verwendungszweck[:50] if verwendungszweck else ''
-    cursor.execute("""
+    ph = sql_placeholder()
+    
+    # PostgreSQL: SUBSTRING() statt SUBSTR()
+    is_pg = get_db_type() == 'postgresql'
+    substr_func = 'SUBSTRING' if is_pg else 'SUBSTR'
+    
+    query = f"""
         SELECT COUNT(*) FROM transaktionen 
-        WHERE konto_id = ? 
-        AND buchungsdatum = ? 
-        AND ABS(betrag - ?) < 0.01
-        AND SUBSTR(verwendungszweck, 1, 50) = ?
-    """, (konto_id, buchungsdatum, betrag, vzweck_short))
-    return cursor.fetchone()[0] > 0
+        WHERE konto_id = {ph} 
+        AND buchungsdatum = {ph} 
+        AND ABS(betrag - {ph}) < 0.01
+        AND {substr_func}(verwendungszweck, 1, 50) = {ph}
+    """
+    cursor.execute(query, (konto_id, buchungsdatum, betrag, vzweck_short))
+    result = cursor.fetchone()
+    count = result[0] if hasattr(result, '__getitem__') else result['count']
+    return count > 0
 
 def saldo_exists(conn, konto_id, datum):
     """Prüfen ob Saldo für Datum bereits existiert"""
     cursor = conn.cursor()
+    ph = sql_placeholder()
     cursor.execute(
-        "SELECT COUNT(*) FROM salden WHERE konto_id = ? AND datum = ?",
+        f"SELECT COUNT(*) FROM salden WHERE konto_id = {ph} AND datum = {ph}",
         (konto_id, datum)
     )
-    return cursor.fetchone()[0] > 0
+    result = cursor.fetchone()
+    count = result[0] if hasattr(result, '__getitem__') else result['count']
+    return count > 0
 
 def get_last_import_date(conn, konto_id):
     """Letztes Import-Datum für ein Konto ermitteln"""
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT MAX(datum) FROM salden WHERE konto_id = ?
-    """, (konto_id,))
+    ph = sql_placeholder()
+    cursor.execute(f"SELECT MAX(datum) FROM salden WHERE konto_id = {ph}", (konto_id,))
     result = cursor.fetchone()
-    return result[0] if result and result[0] else None
+    if result:
+        max_date = result[0] if hasattr(result, '__getitem__') else result['max']
+        return max_date
+    return None
 
 def parse_date_from_filename(filename, pattern):
     """Datum aus Dateiname extrahieren (DD.MM.YY Format)"""
@@ -162,79 +177,83 @@ def import_single_pdf(pdf_path, bank_key, bank_config):
             print(f"     ❌ Keine IBAN gefunden")
             return {'imported': 0, 'skipped': 0, 'error': 'Keine IBAN'}
         
-        # DB-Verbindung
-        conn = get_db_connection()
+        # DB-Verbindung (PostgreSQL via api.db_connection)
+        conn = get_db()
         cursor = conn.cursor()
+        ph = sql_placeholder()
         
-        # Konto-ID ermitteln
-        konto_id, kontoname = get_konto_id_by_iban(conn, iban)
-        
-        if not konto_id:
-            print(f"     ❌ Konto nicht gefunden: {iban}")
-            conn.close()
-            return {'imported': 0, 'skipped': 0, 'error': f'Konto {iban} nicht gefunden'}
-        
-        # Transaktionen importieren
-        tx_imported = 0
-        tx_skipped = 0
-        
-        transactions = result.get('transactions', []) if isinstance(result, dict) else result
-        
-        for tx in transactions:
-            # Unterstütze sowohl dicts als auch Transaction-Objekte
-            if hasattr(tx, 'buchungsdatum'):
-                # Transaction-Objekt
-                buchungsdatum = tx.buchungsdatum
-                betrag = tx.betrag
-                verwendungszweck = tx.verwendungszweck or ''
-                valutadatum = tx.valutadatum or buchungsdatum
-            else:
-                # Dict
-                buchungsdatum = tx.get('buchungsdatum') or tx.get('datum')
-                betrag = tx.get('betrag', 0)
-                verwendungszweck = tx.get('verwendungszweck', '')
-                valutadatum = tx.get('valutadatum') or buchungsdatum
+        try:
+            # Konto-ID ermitteln
+            konto_id, kontoname = get_konto_id_by_iban(conn, iban)
             
-            if not buchungsdatum:
-                continue
+            if not konto_id:
+                print(f"     ❌ Konto nicht gefunden: {iban}")
+                return {'imported': 0, 'skipped': 0, 'error': f'Konto {iban} nicht gefunden'}
             
-            # Duplikat-Check
-            if transaction_exists(conn, konto_id, buchungsdatum, betrag, verwendungszweck):
-                tx_skipped += 1
-                continue
+            # Transaktionen importieren
+            tx_imported = 0
+            tx_skipped = 0
             
-            # Transaktion einfügen
-            cursor.execute("""
-                INSERT INTO transaktionen (
+            transactions = result.get('transactions', []) if isinstance(result, dict) else result
+            
+            for tx in transactions:
+                # Unterstütze sowohl dicts als auch Transaction-Objekte
+                if hasattr(tx, 'buchungsdatum'):
+                    # Transaction-Objekt
+                    buchungsdatum = tx.buchungsdatum
+                    betrag = tx.betrag
+                    verwendungszweck = tx.verwendungszweck or ''
+                    valutadatum = tx.valutadatum or buchungsdatum
+                else:
+                    # Dict
+                    buchungsdatum = tx.get('buchungsdatum') or tx.get('datum')
+                    betrag = tx.get('betrag', 0)
+                    verwendungszweck = tx.get('verwendungszweck', '')
+                    valutadatum = tx.get('valutadatum') or buchungsdatum
+                
+                if not buchungsdatum:
+                    continue
+                
+                # Duplikat-Check
+                if transaction_exists(conn, konto_id, buchungsdatum, betrag, verwendungszweck):
+                    tx_skipped += 1
+                    continue
+                
+                # Transaktion einfügen (PostgreSQL: %s statt ?)
+                query = f"""
+                    INSERT INTO transaktionen (
+                        konto_id, buchungsdatum, valutadatum, betrag,
+                        verwendungszweck, import_quelle, import_datei
+                    ) VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                """
+                cursor.execute(query, (
                     konto_id, buchungsdatum, valutadatum, betrag,
-                    verwendungszweck, import_quelle, import_datei
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                konto_id, buchungsdatum, valutadatum, betrag,
-                verwendungszweck, 'PDF', filename
-            ))
-            tx_imported += 1
-        
-        # Saldo importieren
-        saldo_imported = False
-        endsaldo = result.get('endsaldo') if isinstance(result, dict) else (parser.endsaldo if hasattr(parser, 'endsaldo') else None)
-        saldo_datum = result.get('saldo_datum') if isinstance(result, dict) else None
-        
-        # Falls kein saldo_datum, letztes Buchungsdatum verwenden
-        if endsaldo is not None and not saldo_datum and transactions:
-            last_tx = transactions[-1]
-            saldo_datum = last_tx.buchungsdatum if hasattr(last_tx, 'buchungsdatum') else last_tx.get('buchungsdatum')
-        
-        if endsaldo is not None and saldo_datum:
-            if not saldo_exists(conn, konto_id, saldo_datum):
-                cursor.execute("""
-                    INSERT INTO salden (konto_id, datum, saldo, quelle, import_datei)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (konto_id, saldo_datum, endsaldo, 'PDF', filename))
-                saldo_imported = True
-        
-        conn.commit()
-        conn.close()
+                    verwendungszweck, 'PDF', filename
+                ))
+                tx_imported += 1
+            
+            # Saldo importieren
+            saldo_imported = False
+            endsaldo = result.get('endsaldo') if isinstance(result, dict) else (parser.endsaldo if hasattr(parser, 'endsaldo') else None)
+            saldo_datum = result.get('saldo_datum') if isinstance(result, dict) else None
+            
+            # Falls kein saldo_datum, letztes Buchungsdatum verwenden
+            if endsaldo is not None and not saldo_datum and transactions:
+                last_tx = transactions[-1]
+                saldo_datum = last_tx.buchungsdatum if hasattr(last_tx, 'buchungsdatum') else last_tx.get('buchungsdatum')
+            
+            if endsaldo is not None and saldo_datum:
+                if not saldo_exists(conn, konto_id, saldo_datum):
+                    query = f"""
+                        INSERT INTO salden (konto_id, datum, saldo, quelle, import_datei)
+                        VALUES ({ph}, {ph}, {ph}, {ph}, {ph})
+                    """
+                    cursor.execute(query, (konto_id, saldo_datum, endsaldo, 'PDF', filename))
+                    saldo_imported = True
+            
+            conn.commit()
+        finally:
+            conn.close()
         
         # Status ausgeben
         status_parts = []

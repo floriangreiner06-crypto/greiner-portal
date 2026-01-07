@@ -1,0 +1,156 @@
+<!-- Frage 1: Stückzahl -->
+<div class="frage-card">
+    <div class="frage-nummer">1️⃣</div>
+    <div class="frage-text">Wie viele {{ bereich }}-Fahrzeuge planst du zu verkaufen?</div>
+    <div class="input-group input-group-large">
+        <input type="number" name="plan_stueck" class="form-control" 
+               value="{% if monat_abgelaufen and ist_werte %}{{ ist_werte.stueck_ist }}{% elif planung %}{{ planung.plan_stueck }}{% endif %}" 
+               placeholder="z.B. 255" min="0" {% if monat_abgelaufen %}readonly{% else %}required{% endif %}>
+        <span class="input-group-text">Stück (Jahr)</span>
+    </div>
+    {% if monat_abgelaufen and ist_werte %}
+    <div class="vj-hinweis">✅ <strong>IST:</strong> {{ ist_werte.stueck_ist }} Stk. (automatisch aus Locosoft)</div>
+    {% else %}
+    <div class="vj-hinweis">📊 Vorjahr: {{ planung.vj_stueck if planung and planung.vj_stueck else 'N/A' }} Stk.</div>
+    {% endif %}
+</div>
+
+<!-- Frage 2: Bruttoertrag pro Fahrzeug -->
+<div class="frage-card">
+    <div class="frage-nummer">2️⃣</div>
+    <div class="frage-text">Welchen Ø Bruttoertrag pro Fahrzeug erwartest du?</div>
+    <div class="input-group input-group-large">
+        <span class="input-group-text">€</span>
+        <input type="number" name="plan_bruttoertrag_pro_fzg" class="form-control" 
+               value="{{ planung.plan_bruttoertrag_pro_fzg if planung else '' }}" 
+               placeholder="z.B. 3725" step="0.01" min="0" required>
+        <span class="input-group-text">pro Fahrzeug</span>
+    </div>
+    <div class="vj-hinweis">📊 Vorjahr: {{ "%.2f"|format(planung.vj_umsatz / planung.vj_stueck) if planung and planung.vj_umsatz and planung.vj_stueck else 'N/A' }} €</div>
+</div>
+
+<!-- Frage 3: Variable Kosten -->
+<div class="frage-card">
+    <div class="frage-nummer">3️⃣</div>
+    <div class="frage-text">Provisionen & Boni (Variable Kosten)?</div>
+    <div class="input-group input-group-large">
+        <input type="number" name="plan_variable_kosten_prozent" class="form-control" 
+               value="{{ planung.plan_variable_kosten_prozent if planung else '' }}" 
+               placeholder="z.B. 8.5" step="0.1" min="0" max="100" required>
+        <span class="input-group-text">% vom Bruttoertrag</span>
+    </div>
+    <div class="vj-hinweis">📊 Üblich: 8-12%</div>
+</div>
+
+<!-- Frage 4: Verkaufspreis -->
+<div class="frage-card">
+    <div class="frage-nummer">4️⃣</div>
+    <div class="frage-text">Durchschnittlicher Verkaufspreis?</div>
+    <div class="input-group input-group-large">
+        <span class="input-group-text">€</span>
+        <input type="number" name="plan_verkaufspreis" class="form-control" 
+               value="{{ planung.plan_verkaufspreis if planung else '' }}" 
+               placeholder="z.B. 25588" step="0.01" min="0" required>
+        <span class="input-group-text">pro Fahrzeug</span>
+    </div>
+    <div class="vj-hinweis">📊 Automatisch: BE / Marge</div>
+</div>
+
+<!-- Frage 5: Standzeit -->
+<div class="frage-card">
+    <div class="frage-nummer">5️⃣</div>
+    <div class="frage-text">Durchschnittliche Standzeit (Lagerdauer)?</div>
+    <div class="input-group input-group-large">
+        <input type="number" name="plan_standzeit_tage" class="form-control" 
+               value="{% if monat_abgelaufen and ist_werte %}{{ ist_werte.standzeit_ist }}{% elif planung %}{{ planung.plan_standzeit_tage }}{% endif %}" 
+               placeholder="z.B. 28" min="0" {% if monat_abgelaufen %}readonly{% else %}required{% endif %}>
+        <span class="input-group-text">Tage</span>
+    </div>
+    {% if monat_abgelaufen and ist_werte %}
+    <div class="vj-hinweis">✅ <strong>IST:</strong> {{ ist_werte.standzeit_ist }} Tage (automatisch aus Locosoft)</div>
+    {% else %}
+    <div class="vj-hinweis">📊 Vorjahr: {{ planung.vj_standzeit if planung and planung.vj_standzeit else 'N/A' }} Tage | Ziel: &lt;30 Tage</div>
+    {% endif %}
+    <div class="impact-box" id="impact-standzeit" style="display: none;">
+        <strong>💡 Impact:</strong> <span id="impact-standzeit-text"></span>
+    </div>
+</div>
+
+<!-- Frage 6: Fertigmachen -->
+<div class="frage-card">
+    <div class="frage-nummer">6️⃣</div>
+    <div class="frage-text">Fertigmachen-Kosten pro Fahrzeug?</div>
+    <div class="input-group input-group-large">
+        <span class="input-group-text">€</span>
+        <input type="number" name="plan_fertigmachen_pro_fzg" class="form-control" 
+               value="{{ planung.plan_fertigmachen_pro_fzg if planung else '' }}" 
+               placeholder="z.B. 232" step="0.01" min="0">
+        <span class="input-group-text">pro Fahrzeug</span>
+    </div>
+</div>
+
+<!-- Frage 7: Werbung -->
+<div class="frage-card">
+    <div class="frage-nummer">7️⃣</div>
+    <div class="frage-text">Werbung & Marketing (Jahr)?</div>
+    <div class="input-group input-group-large">
+        <span class="input-group-text">€</span>
+        <input type="number" name="plan_werbung_jahr" class="form-control" 
+               value="{{ planung.plan_werbung_jahr if planung else '' }}" 
+               placeholder="z.B. 53374" step="0.01" min="0">
+        <span class="input-group-text">(Jahr)</span>
+    </div>
+</div>
+
+<!-- Frage 8: Kulanz -->
+<div class="frage-card">
+    <div class="frage-nummer">8️⃣</div>
+    <div class="frage-text">Kulanz & Garantie (Jahr)?</div>
+    <div class="input-group input-group-large">
+        <span class="input-group-text">€</span>
+        <input type="number" name="plan_kulanz_jahr" class="form-control" 
+               value="{{ planung.plan_kulanz_jahr if planung else '' }}" 
+               placeholder="z.B. 66943" step="0.01" min="0">
+        <span class="input-group-text">(Jahr)</span>
+    </div>
+</div>
+
+<!-- Frage 9: Training / EK-Preis -->
+{% if bereich == 'NW' %}
+<div class="frage-card">
+    <div class="frage-nummer">9️⃣</div>
+    <div class="frage-text">Training & Schulung (Jahr)?</div>
+    <div class="input-group input-group-large">
+        <span class="input-group-text">€</span>
+        <input type="number" name="plan_training_jahr" class="form-control" 
+               value="{{ planung.plan_training_jahr if planung else '' }}" 
+               placeholder="z.B. 9023" step="0.01" min="0">
+        <span class="input-group-text">(Jahr)</span>
+    </div>
+</div>
+{% else %}
+<div class="frage-card">
+    <div class="frage-nummer">9️⃣</div>
+    <div class="frage-text">Durchschnittlicher EK (Einsatzwert)?</div>
+    <div class="input-group input-group-large">
+        <span class="input-group-text">€</span>
+        <input type="number" name="plan_ek_preis" class="form-control" 
+               value="{{ planung.plan_ek_preis if planung else '' }}" 
+               placeholder="z.B. 15750" step="0.01" min="0">
+        <span class="input-group-text">pro Fahrzeug</span>
+    </div>
+    <div class="vj-hinweis">📊 Für Zinskosten-Berechnung</div>
+</div>
+{% endif %}
+
+<!-- Frage 10: Saisonalisierung (optional) -->
+<div class="frage-card">
+    <div class="frage-nummer">🔟</div>
+    <div class="frage-text">Saisonalisierung (optional)</div>
+    <div class="alert alert-info">
+        <small>Standard-Saisonalisierung wird automatisch angewendet. Bei Bedarf kann hier eine individuelle Verteilung eingegeben werden.</small>
+    </div>
+    <textarea name="plan_saisonalisierung" class="form-control" rows="3" 
+              placeholder='JSON: {"Sep": 8, "Okt": 9, "Nov": 8, ...}'>{{ planung.plan_saisonalisierung if planung and planung.plan_saisonalisierung else '' }}</textarea>
+</div>
+

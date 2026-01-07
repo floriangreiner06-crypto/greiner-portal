@@ -1,0 +1,751 @@
+{% extends "base.html" %}
+
+{% block title %}Werkstatt Kompakt{% endblock %}
+
+{% block extra_css %}
+<style>
+    :root {
+        --primary-gradient: linear-gradient(135deg, #1a5f7a, #2e8b57);
+        --card-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    
+    .page-header {
+        background: var(--primary-gradient);
+        color: white;
+        padding: 20px 30px;
+        border-radius: 12px;
+        margin-bottom: 24px;
+    }
+    .page-header h2 { margin: 0; font-weight: 600; }
+    .page-header .subtitle { opacity: 0.9; margin-top: 4px; }
+    
+    /* KPI Strip */
+    .kpi-strip {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+    .kpi-card {
+        background: white;
+        border-radius: 10px;
+        padding: 16px;
+        text-align: center;
+        box-shadow: var(--card-shadow);
+        transition: transform 0.2s;
+    }
+    .kpi-card:hover { transform: translateY(-2px); }
+    .kpi-icon {
+        width: 40px; height: 40px;
+        border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
+        margin: 0 auto 10px;
+        font-size: 18px;
+    }
+    .kpi-icon.green { background: rgba(40, 167, 69, 0.15); color: #28a745; }
+    .kpi-icon.yellow { background: rgba(255, 193, 7, 0.15); color: #e0a800; }
+    .kpi-icon.red { background: rgba(220, 53, 69, 0.15); color: #dc3545; }
+    .kpi-icon.blue { background: rgba(0, 123, 255, 0.15); color: #007bff; }
+    .kpi-value {
+        font-size: 26px;
+        font-weight: 700;
+        font-family: 'Segoe UI', monospace;
+    }
+    .kpi-value.green { color: #28a745; }
+    .kpi-value.yellow { color: #e0a800; }
+    .kpi-value.red { color: #dc3545; }
+    .kpi-value.blue { color: #007bff; }
+    .kpi-label {
+        font-size: 11px;
+        color: #6c757d;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    /* Verlust Highlight */
+    .verlust-highlight {
+        background: linear-gradient(135deg, rgba(220,53,69,0.1), rgba(220,53,69,0.05));
+        border: 1px solid #dc3545;
+        border-radius: 12px;
+        padding: 16px 24px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+    .verlust-icon {
+        width: 48px; height: 48px;
+        background: #dc3545;
+        border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 22px; color: white;
+    }
+    .verlust-value {
+        font-size: 32px;
+        font-weight: 700;
+        font-family: 'Segoe UI', monospace;
+        color: #dc3545;
+    }
+    
+    /* Cards */
+    .section-card {
+        background: white;
+        border-radius: 12px;
+        box-shadow: var(--card-shadow);
+        margin-bottom: 20px;
+        overflow: hidden;
+    }
+    .section-header {
+        padding: 14px 20px;
+        border-bottom: 1px solid #e9ecef;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: #f8f9fa;
+    }
+    .section-title {
+        font-size: 15px;
+        font-weight: 600;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .section-badge {
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+    .badge-success { background: rgba(40,167,69,0.15); color: #28a745; }
+    .badge-warning { background: rgba(255,193,7,0.15); color: #e0a800; }
+    .badge-danger { background: rgba(220,53,69,0.15); color: #dc3545; }
+    .section-body { padding: 16px 20px; }
+    
+    /* Gauge */
+    .gauge-container {
+        display: flex;
+        justify-content: center;
+        gap: 40px;
+        padding: 20px 0;
+    }
+    .gauge-item { text-align: center; }
+    .gauge-circle {
+        position: relative;
+        width: 120px; height: 120px;
+        margin: 0 auto 10px;
+    }
+    .gauge-circle svg { transform: rotate(-90deg); }
+    .gauge-bg { fill: none; stroke: #e9ecef; stroke-width: 10; }
+    .gauge-fill { fill: none; stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset 1s ease; }
+    .gauge-fill.green { stroke: #28a745; }
+    .gauge-fill.blue { stroke: #007bff; }
+    .gauge-fill.yellow { stroke: #ffc107; }
+    .gauge-fill.red { stroke: #dc3545; }
+    .gauge-text {
+        position: absolute;
+        top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 24px; font-weight: 700;
+    }
+    .gauge-label { font-size: 13px; color: #6c757d; }
+    
+    /* Ranking Table */
+    .ranking-row {
+        display: grid;
+        grid-template-columns: 36px 1fr 80px 60px 80px;
+        gap: 10px;
+        padding: 10px 0;
+        border-bottom: 1px solid #f1f1f1;
+        align-items: center;
+    }
+    .ranking-row:last-child { border-bottom: none; }
+    .rank-badge {
+        width: 28px; height: 28px;
+        border-radius: 6px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 12px; font-weight: 700;
+    }
+    .rank-badge.gold { background: linear-gradient(135deg, #ffc107, #e0a800); color: #333; }
+    .rank-badge.silver { background: linear-gradient(135deg, #94a3b8, #64748b); color: white; }
+    .rank-badge.bronze { background: linear-gradient(135deg, #e0a800, #c9820c); color: white; }
+    .rank-badge.normal { background: #e9ecef; color: #6c757d; }
+    .progress-sm { height: 6px; border-radius: 3px; background: #e9ecef; }
+    .progress-bar-sm { height: 100%; border-radius: 3px; }
+    
+    /* Stempel Items */
+    .stamp-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        margin-bottom: 8px;
+    }
+    .stamp-item:last-child { margin-bottom: 0; }
+    .stamp-avatar {
+        width: 36px; height: 36px;
+        border-radius: 8px;
+        background: rgba(0,123,255,0.15);
+        color: #007bff;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 13px; font-weight: 600;
+    }
+    .stamp-time {
+        font-family: monospace;
+        font-size: 15px; font-weight: 600;
+    }
+    .stamp-time.warning { color: #e0a800; }
+    .stamp-time.danger { color: #dc3545; }
+    .stamp-time.normal { color: #28a745; }
+    
+    /* Problem Items */
+    .problem-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px;
+        background: rgba(220,53,69,0.1);
+        border-radius: 8px;
+        border-left: 3px solid #dc3545;
+        margin-bottom: 8px;
+    }
+    .problem-item:last-child { margin-bottom: 0; }
+    .problem-item.warning {
+        background: rgba(255,193,7,0.1);
+        border-left-color: #ffc107;
+    }
+    
+    /* Order Table */
+    .order-table { width: 100%; font-size: 13px; }
+    .order-header {
+        display: grid;
+        grid-template-columns: 80px 1fr 100px 70px 70px 60px 80px;
+        gap: 8px;
+        padding: 10px 0;
+        border-bottom: 2px solid #e9ecef;
+        font-size: 11px;
+        text-transform: uppercase;
+        color: #6c757d;
+    }
+    .order-row {
+        display: grid;
+        grid-template-columns: 80px 1fr 100px 70px 70px 60px 80px;
+        gap: 8px;
+        padding: 10px 0;
+        border-bottom: 1px solid #f1f1f1;
+        align-items: center;
+    }
+    .order-row:hover { background: #f8f9fa; }
+    .order-nr { font-family: monospace; color: #007bff; font-weight: 500; }
+    .lg-badge {
+        font-size: 11px;
+        padding: 3px 8px;
+        border-radius: 4px;
+        text-align: center;
+    }
+    .lg-badge.excellent { background: rgba(40,167,69,0.15); color: #28a745; }
+    .lg-badge.good { background: rgba(0,123,255,0.15); color: #007bff; }
+    .lg-badge.warning { background: rgba(255,193,7,0.15); color: #e0a800; }
+    .lg-badge.danger { background: rgba(220,53,69,0.15); color: #dc3545; }
+    .order-verlust { font-family: monospace; color: #dc3545; font-weight: 600; }
+    
+    /* Responsive */
+    @media (max-width: 1200px) {
+        .kpi-strip { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 768px) {
+        .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+    }
+    
+    /* Live Dot */
+    .live-dot {
+        width: 8px; height: 8px;
+        background: #28a745;
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+        display: inline-block;
+    }
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    
+    <!-- Header -->
+    <div class="page-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h2><i class="bi bi-speedometer2"></i> Werkstatt Kompakt</h2>
+                <div class="subtitle">Performance & Tagesbericht auf einen Blick</div>
+            </div>
+            <div class="d-flex gap-2 align-items-center">
+                <input type="date" id="datumFilter" class="form-control form-control-sm" style="width: 140px; background: rgba(255,255,255,0.9);">
+                <select id="betriebFilter" class="form-select form-select-sm" style="width: 150px; background: rgba(255,255,255,0.9);">
+                    <option value="">Alle Betriebe</option>
+                    <option value="1,2">Deggendorf</option>
+                    <option value="3">Landau</option>
+                </select>
+                <button class="btn btn-light btn-sm" onclick="loadAllData()">
+                    <span class="live-dot me-1"></span> Aktualisieren
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- KPI Strip -->
+    <div class="kpi-strip">
+        <div class="kpi-card">
+            <div class="kpi-icon green"><i class="bi bi-people-fill"></i></div>
+            <div class="kpi-value" id="kpiMechaniker">-</div>
+            <div class="kpi-label">Mechaniker</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-icon blue"><i class="bi bi-clipboard-check"></i></div>
+            <div class="kpi-value blue" id="kpiAuftraege">-</div>
+            <div class="kpi-label">Aufträge heute</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-icon green"><i class="bi bi-lightning-fill"></i></div>
+            <div class="kpi-value green" id="kpiAW">-</div>
+            <div class="kpi-label">Arbeitswerte</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-icon blue"><i class="bi bi-clock"></i></div>
+            <div class="kpi-value" id="kpiStunden">-</div>
+            <div class="kpi-label">Stempelzeit (Std)</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-icon yellow"><i class="bi bi-exclamation-triangle"></i></div>
+            <div class="kpi-value yellow" id="kpiOhneVorgabe">-</div>
+            <div class="kpi-label">Ohne Vorgabe</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-icon red"><i class="bi bi-x-circle"></i></div>
+            <div class="kpi-value red" id="kpiUeberschritten">-</div>
+            <div class="kpi-label">Überschritten</div>
+        </div>
+    </div>
+    
+    <!-- Verlust Highlight -->
+    <div class="verlust-highlight" id="verlustBox" style="display: none;">
+        <div class="d-flex align-items-center gap-3">
+            <div class="verlust-icon"><i class="bi bi-currency-euro"></i></div>
+            <div>
+                <div class="text-muted small">Heutiger Verlust durch Überzeiten</div>
+                <div class="text-muted" style="font-size: 11px;">Differenz Vorgabe vs. Stempelzeit × Verrechnungssatz</div>
+            </div>
+        </div>
+        <div class="verlust-value" id="verlustWert">-</div>
+    </div>
+    
+    <!-- Main Grid -->
+    <div class="row">
+        
+        <!-- Left Column -->
+        <div class="col-lg-6">
+            
+            <!-- Performance Gauges -->
+            <div class="section-card">
+                <div class="section-header">
+                    <h3 class="section-title"><i class="bi bi-speedometer text-primary"></i> Performance</h3>
+                    <span class="section-badge badge-success" id="perfStatus">Lädt...</span>
+                </div>
+                <div class="section-body">
+                    <div class="gauge-container">
+                        <div class="gauge-item">
+                            <div class="gauge-circle">
+                                <svg width="120" height="120">
+                                    <circle class="gauge-bg" cx="60" cy="60" r="50"></circle>
+                                    <circle class="gauge-fill green" id="gaugeLG" cx="60" cy="60" r="50" 
+                                            stroke-dasharray="314" stroke-dashoffset="314"></circle>
+                                </svg>
+                                <div class="gauge-text" id="gaugeLGText">-</div>
+                            </div>
+                            <div class="gauge-label">Leistungsgrad</div>
+                        </div>
+                        <div class="gauge-item">
+                            <div class="gauge-circle">
+                                <svg width="120" height="120">
+                                    <circle class="gauge-bg" cx="60" cy="60" r="50"></circle>
+                                    <circle class="gauge-fill blue" id="gaugeProd" cx="60" cy="60" r="50" 
+                                            stroke-dasharray="314" stroke-dashoffset="314"></circle>
+                                </svg>
+                                <div class="gauge-text" id="gaugeProdText">-</div>
+                            </div>
+                            <div class="gauge-label">Produktivität</div>
+                        </div>
+                    </div>
+                    <div class="row text-center mt-3">
+                        <div class="col-4">
+                            <div class="fw-bold fs-5" id="sumUmsatz">-</div>
+                            <small class="text-muted">Umsatz</small>
+                        </div>
+                        <div class="col-4">
+                            <div class="fw-bold fs-5" id="sumVorgabe">-</div>
+                            <small class="text-muted">Vorgabe AW</small>
+                        </div>
+                        <div class="col-4">
+                            <div class="fw-bold fs-5" id="sumGestempelt">-</div>
+                            <small class="text-muted">Gestempelt AW</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Mechaniker Ranking -->
+            <div class="section-card">
+                <div class="section-header">
+                    <h3 class="section-title"><i class="bi bi-trophy text-warning"></i> Top Mechaniker</h3>
+                    <span class="section-badge badge-success">Dieser Monat</span>
+                </div>
+                <div class="section-body" id="mechRanking">
+                    <div class="text-center text-muted py-3">Lädt...</div>
+                </div>
+            </div>
+            
+        </div>
+        
+        <!-- Right Column -->
+        <div class="col-lg-6">
+            
+            <!-- Aktive Stempelungen -->
+            <div class="section-card">
+                <div class="section-header">
+                    <h3 class="section-title"><i class="bi bi-play-circle text-success"></i> Aktive Stempelungen</h3>
+                    <span class="section-badge badge-warning" id="stempelCount">-</span>
+                </div>
+                <div class="section-body" id="stempelListe" style="max-height: 280px; overflow-y: auto;">
+                    <div class="text-center text-muted py-3">Lädt...</div>
+                </div>
+            </div>
+            
+            <!-- Probleme -->
+            <div class="section-card">
+                <div class="section-header">
+                    <h3 class="section-title"><i class="bi bi-exclamation-octagon text-danger"></i> Aufmerksamkeit</h3>
+                    <span class="section-badge badge-danger" id="problemCount">-</span>
+                </div>
+                <div class="section-body" id="problemListe">
+                    <div class="text-center text-muted py-3">Lädt...</div>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+    
+    <!-- Aufträge mit Verlust (Full Width) -->
+    <div class="section-card">
+        <div class="section-header">
+            <h3 class="section-title"><i class="bi bi-file-earmark-x text-danger"></i> Aufträge mit höchstem Verlust</h3>
+            <span class="section-badge badge-danger" id="nachkalkCount">-</span>
+        </div>
+        <div class="section-body">
+            <div class="order-table">
+                <div class="order-header">
+                    <div>Auftrag</div>
+                    <div>Kunde</div>
+                    <div>Mechaniker</div>
+                    <div class="text-end">Vorgabe</div>
+                    <div class="text-end">Gest.</div>
+                    <div class="text-center">LG</div>
+                    <div class="text-end">Verlust</div>
+                </div>
+                <div id="nachkalkListe">
+                    <div class="text-center text-muted py-3">Lädt...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Formatierung
+function formatEur(val) {
+    return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(val);
+}
+
+function formatNum(val, decimals = 1) {
+    return new Intl.NumberFormat('de-DE', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(val);
+}
+
+// Gauge updaten
+function updateGauge(id, percent, color) {
+    const gauge = document.getElementById(id);
+    const circumference = 314; // 2 * PI * 50
+    const offset = circumference - (Math.min(percent, 150) / 150 * circumference);
+    gauge.style.strokeDashoffset = offset;
+    
+    // Farbe basierend auf Wert
+    gauge.classList.remove('green', 'blue', 'yellow', 'red');
+    if (percent >= 85) gauge.classList.add('green');
+    else if (percent >= 70) gauge.classList.add('blue');
+    else if (percent >= 50) gauge.classList.add('yellow');
+    else gauge.classList.add('red');
+}
+
+// Initialen extrahieren
+function getInitials(name) {
+    if (!name) return '??';
+    const parts = name.split(/[,\s]+/).filter(p => p.length > 0);
+    if (parts.length >= 2) {
+        return (parts[0][0] + parts[parts.length-1][0]).toUpperCase();
+    }
+    return name.substring(0, 2).toUpperCase();
+}
+
+// Daten laden
+async function loadAllData() {
+    const datum = document.getElementById('datumFilter').value || new Date().toISOString().split('T')[0];
+    const betrieb = document.getElementById('betriebFilter').value;
+    
+    try {
+        // Parallel laden
+        const [leistung, stempel, tagesbericht, nachkalk] = await Promise.all([
+            fetch(`/api/werkstatt/live/leistung?zeitraum=monat${betrieb ? '&betrieb=' + betrieb.split(',')[0] : ''}`).then(r => r.json()),
+            fetch(`/api/werkstatt/live/stempeluhr${betrieb ? '?subsidiary=' + betrieb : ''}`).then(r => r.json()),
+            fetch(`/api/werkstatt/live/tagesbericht?datum=${datum}${betrieb ? '&subsidiary=' + betrieb.split(',')[0] : ''}`).then(r => r.json()),
+            fetch(`/api/werkstatt/live/nachkalkulation?datum=${datum}${betrieb ? '&subsidiary=' + betrieb.split(',')[0] : ''}`).then(r => r.json())
+        ]);
+        
+        // KPIs
+        document.getElementById('kpiMechaniker').textContent = leistung.anzahl_mechaniker || 0;
+        document.getElementById('kpiAuftraege').textContent = nachkalk.summary?.anzahl_rechnungen || 0;
+        document.getElementById('kpiAW').textContent = formatNum(leistung.gesamt_aw || 0, 0);
+        document.getElementById('kpiStunden').textContent = formatNum((leistung.gesamt_stempelzeit || 0) / 60, 1);
+        document.getElementById('kpiOhneVorgabe').textContent = tagesbericht.summary?.ohne_vorgabe || 0;
+        document.getElementById('kpiUeberschritten').textContent = tagesbericht.summary?.ueberschritten || 0;
+        
+        // Gauges
+        const lg = leistung.gesamt_leistungsgrad || 0;
+        const prod = leistung.gesamt_produktivitaet || 0;
+        updateGauge('gaugeLG', lg);
+        updateGauge('gaugeProd', prod);
+        document.getElementById('gaugeLGText').textContent = formatNum(lg, 1) + '%';
+        document.getElementById('gaugeProdText').textContent = formatNum(prod, 1) + '%';
+        
+        // Performance Status
+        const perfStatus = document.getElementById('perfStatus');
+        if (lg >= 85) {
+            perfStatus.textContent = 'Gut ✓';
+            perfStatus.className = 'section-badge badge-success';
+        } else if (lg >= 70) {
+            perfStatus.textContent = 'Ok';
+            perfStatus.className = 'section-badge badge-warning';
+        } else {
+            perfStatus.textContent = 'Kritisch';
+            perfStatus.className = 'section-badge badge-danger';
+        }
+        
+        // Summary
+        document.getElementById('sumUmsatz').textContent = formatEur(nachkalk.summary?.total_rechnung_eur || 0);
+        document.getElementById('sumVorgabe').textContent = formatNum(nachkalk.summary?.total_vorgabe_aw || 0, 1);
+        document.getElementById('sumGestempelt').textContent = formatNum(nachkalk.summary?.total_gestempelt_aw || 0, 1);
+        
+        // Verlust Box
+        const verlust = nachkalk.summary?.total_verlust_eur || 0;
+        if (verlust > 0) {
+            document.getElementById('verlustBox').style.display = 'flex';
+            document.getElementById('verlustWert').textContent = '-' + formatEur(verlust);
+        } else {
+            document.getElementById('verlustBox').style.display = 'none';
+        }
+        
+        // Mechaniker Ranking
+        renderRanking(leistung.mechaniker || []);
+        
+        // Aktive Stempelungen
+        renderStempelungen(stempel.aktive_mechaniker || []);
+        
+        // Probleme
+        renderProbleme(tagesbericht);
+        
+        // Nachkalkulation
+        renderNachkalkulation(nachkalk.auftraege || []);
+        
+    } catch (error) {
+        console.error('Fehler beim Laden:', error);
+    }
+}
+
+function renderRanking(mechaniker) {
+    const container = document.getElementById('mechRanking');
+    
+    if (!mechaniker.length) {
+        container.innerHTML = '<div class="text-center text-muted py-3">Keine Daten</div>';
+        return;
+    }
+    
+    const top5 = mechaniker.slice(0, 5);
+    const ranks = ['gold', 'silver', 'bronze', 'normal', 'normal'];
+    
+    let html = '';
+    top5.forEach((m, i) => {
+        const lg = m.leistungsgrad || 0;
+        let lgClass = 'danger';
+        if (lg >= 100) lgClass = 'success';
+        else if (lg >= 85) lgClass = 'primary';
+        else if (lg >= 70) lgClass = 'warning';
+        
+        html += `
+        <div class="ranking-row">
+            <div class="rank-badge ${ranks[i]}">${i + 1}</div>
+            <div class="fw-medium">${m.name || 'MA ' + m.mechaniker_nr}</div>
+            <div class="progress-sm">
+                <div class="progress-bar-sm bg-${lgClass}" style="width: ${Math.min(lg, 150) / 1.5}%"></div>
+            </div>
+            <div class="text-end small">${m.auftraege || 0} Auftr.</div>
+            <div class="text-end fw-bold text-${lgClass}">${formatNum(lg)}%</div>
+        </div>`;
+    });
+    
+    container.innerHTML = html;
+}
+
+function renderStempelungen(aktive) {
+    const container = document.getElementById('stempelListe');
+    document.getElementById('stempelCount').textContent = aktive.length + ' aktiv';
+    
+    if (!aktive.length) {
+        container.innerHTML = '<div class="text-center text-muted py-3">Keine aktiven Stempelungen</div>';
+        return;
+    }
+    
+    let html = '';
+    aktive.forEach(s => {
+        const min = s.laufzeit_min || 0;
+        let timeClass = 'normal';
+        if (min > 120) timeClass = 'danger';
+        else if (min > 60) timeClass = 'warning';
+        
+        html += `
+        <div class="stamp-item">
+            <div class="d-flex align-items-center gap-3">
+                <div class="stamp-avatar">${getInitials(s.name)}</div>
+                <div>
+                    <div class="fw-medium">${s.name || 'MA ' + s.employee_number}</div>
+                    <small class="text-muted">Auftrag #${s.order_number}</small>
+                </div>
+            </div>
+            <div class="text-end">
+                <div class="stamp-time ${timeClass}">${min} min</div>
+                <small class="text-muted">seit ${s.start_uhrzeit || '-'}</small>
+            </div>
+        </div>`;
+    });
+    
+    container.innerHTML = html;
+}
+
+function renderProbleme(data) {
+    const container = document.getElementById('problemListe');
+    const probleme = [];
+    
+    // Sammle Probleme
+    if (data.summary?.ohne_vorgabe > 0) {
+        probleme.push({
+            icon: '⚠️',
+            text: `<strong>${data.summary.ohne_vorgabe} Aufträge</strong> ohne Vorgabe`,
+            type: 'warning'
+        });
+    }
+    
+    if (data.summary?.ueberschritten > 0) {
+        probleme.push({
+            icon: '⏰',
+            text: `<strong>${data.summary.ueberschritten} Aufträge</strong> mit Vorgabe-Überschreitung`,
+            type: 'danger'
+        });
+    }
+    
+    if (data.summary?.falsche_zuweisung > 0) {
+        probleme.push({
+            icon: '👤',
+            text: `<strong>${data.summary.falsche_zuweisung} Aufträge</strong> mit falscher Mechaniker-Zuweisung`,
+            type: 'warning'
+        });
+    }
+    
+    document.getElementById('problemCount').textContent = probleme.length + ' Probleme';
+    
+    if (!probleme.length) {
+        container.innerHTML = '<div class="text-center text-success py-3"><i class="bi bi-check-circle"></i> Keine Probleme erkannt</div>';
+        return;
+    }
+    
+    let html = '';
+    probleme.forEach(p => {
+        html += `
+        <div class="problem-item ${p.type === 'warning' ? 'warning' : ''}">
+            <div>${p.icon}</div>
+            <div>${p.text}</div>
+        </div>`;
+    });
+    
+    container.innerHTML = html;
+}
+
+function renderNachkalkulation(auftraege) {
+    const container = document.getElementById('nachkalkListe');
+    
+    // Nur Aufträge mit Verlust
+    const mitVerlust = auftraege.filter(a => a.verlust_eur > 0).slice(0, 8);
+    document.getElementById('nachkalkCount').textContent = formatEur(mitVerlust.reduce((s, a) => s + a.verlust_eur, 0)) + ' Verlust';
+    
+    if (!mitVerlust.length) {
+        container.innerHTML = '<div class="text-center text-success py-3"><i class="bi bi-check-circle"></i> Keine Verluste heute</div>';
+        return;
+    }
+    
+    let html = '';
+    mitVerlust.forEach(a => {
+        const lg = a.leistungsgrad || 0;
+        let lgClass = 'danger';
+        if (lg >= 85) lgClass = 'excellent';
+        else if (lg >= 70) lgClass = 'good';
+        else if (lg >= 50) lgClass = 'warning';
+        
+        html += `
+        <div class="order-row">
+            <div class="order-nr">${a.order_number}</div>
+            <div class="text-truncate">${a.kunde || '-'}</div>
+            <div class="text-truncate">${a.mechaniker || '-'}</div>
+            <div class="text-end">${formatNum(a.vorgabe_aw)} AW</div>
+            <div class="text-end">${formatNum(a.gestempelt_aw)} AW</div>
+            <div><span class="lg-badge ${lgClass}">${formatNum(lg)}%</span></div>
+            <div class="order-verlust text-end">-${formatEur(a.verlust_eur)}</div>
+        </div>`;
+    });
+    
+    container.innerHTML = html;
+}
+
+// Init
+document.addEventListener('DOMContentLoaded', function() {
+    // Heute als Default
+    document.getElementById('datumFilter').value = new Date().toISOString().split('T')[0];
+    
+    // LDAP-Standort als Default (falls vorhanden)
+    {% if current_user and current_user.standort_subsidiaries %}
+    document.getElementById('betriebFilter').value = '{{ current_user.standort_subsidiaries }}';
+    {% endif %}
+    
+    loadAllData();
+    
+    // Auto-Refresh alle 60 Sekunden
+    setInterval(loadAllData, 60000);
+});
+
+// Filter-Änderungen
+document.getElementById('datumFilter').addEventListener('change', loadAllData);
+document.getElementById('betriebFilter').addEventListener('change', loadAllData);
+</script>
+{% endblock %}

@@ -154,6 +154,12 @@ app.conf.update(
             'schedule': crontab(minute=30, hour=17, day_of_week='mon-fri'),
             'options': {'queue': 'aftersales'}
         },
+        # TAG167: TEK-E-Mail-Versand pausiert bis Stückzahlen-Fix aktiv ist
+        # 'email-tek-daily': {
+        #     'task': 'celery_app.tasks.email_tek_daily',
+        #     'schedule': crontab(minute=30, hour=19, day_of_week='mon-fri'),
+        #     'options': {'queue': 'controlling'}
+        # },
         
         # Wartung
         'db-backup': {

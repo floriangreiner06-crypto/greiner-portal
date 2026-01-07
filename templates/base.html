@@ -61,8 +61,9 @@
                             <i class="bi bi-graph-up-arrow"></i> Controlling
                         </a>
                         <ul class="dropdown-menu">
-                            <!-- Dashboard (nur für Bankenspiegel-Berechtigte) -->
                             {% if current_user.can_access_feature('bankenspiegel') %}
+                            <!-- Übersichten -->
+                            <li><h6 class="dropdown-header text-muted">Übersichten</h6></li>
                             <li><a class="dropdown-item" href="/controlling/dashboard">
                                 <i class="bi bi-speedometer2"></i> Dashboard
                             </a></li>
@@ -72,40 +73,52 @@
                             <li><a class="dropdown-item" href="/controlling/tek">
                                 <i class="bi bi-bar-chart-line"></i> TEK (Tägliche Erfolgskontrolle)
                             </a></li>
-                            <li><a class="dropdown-item text-muted small" href="/controlling/tek/archiv">
-                                <i class="bi bi-archive"></i> TEK Archiv (v1)
+
+                            <li><hr class="dropdown-divider"></li>
+
+                            <!-- Zielplanung -->
+                            <li><h6 class="dropdown-header text-muted">Zielplanung</h6></li>
+                            <li><a class="dropdown-item" href="/controlling/unternehmensplan">
+                                <i class="bi bi-bullseye text-warning"></i> 1%-Ziel (Unternehmensplan)
                             </a></li>
+                            <li><a class="dropdown-item" href="/controlling/kst-ziele">
+                                <i class="bi bi-bar-chart text-success"></i> KST-Ziele (Tagesstatus)
+                            </a></li>
+
                             <li><hr class="dropdown-divider"></li>
                             {% endif %}
                             
-                            <!-- Zinsen-Analyse (für alle mit zinsen-Berechtigung) -->
-                            {% if current_user.can_access_feature('zinsen') %}
+                            <!-- Abteilungsleiter-Planung (für alle mit Controlling-Zugriff) -->
+                            <li><a class="dropdown-item" href="/planung/abteilungsleiter">
+                                <i class="bi bi-clipboard-check text-primary"></i> Abteilungsleiter-Planung
+                            </a></li>
+                            
+                            <!-- Analysen -->
+                            {% if current_user.can_access_feature('zinsen') or current_user.can_access_feature('einkaufsfinanzierung') or current_user.can_access_feature('bankenspiegel') %}
                             <li><h6 class="dropdown-header text-muted">Analysen</h6></li>
+                            {% endif %}
+                            {% if current_user.can_access_feature('zinsen') %}
                             <li><a class="dropdown-item" href="/bankenspiegel/zinsen-analyse">
                                 <i class="bi bi-percent"></i> Zinsen-Analyse
                             </a></li>
                             {% endif %}
-                            
-                            <!-- Einkaufsfinanzierung (für Disposition) -->
                             {% if current_user.can_access_feature('einkaufsfinanzierung') %}
                             <li><a class="dropdown-item" href="/bankenspiegel/einkaufsfinanzierung">
                                 <i class="bi bi-truck"></i> Einkaufsfinanzierung
                             </a></li>
                             {% endif %}
-                            
-                            <!-- Jahresprämie (für Buchhaltung/Admin) -->
                             {% if current_user.can_access_feature('bankenspiegel') %}
                             <li><a class="dropdown-item" href="/jahrespraemie/">
                                 <i class="bi bi-gift"></i> Jahresprämie
                             </a></li>
                             {% endif %}
-                            
-                            <!-- Bankenspiegel Bereich (nur für Bankenspiegel-Berechtigte) -->
+
+                            <!-- Bankenspiegel (nur für Bankenspiegel-Berechtigte) -->
                             {% if current_user.can_access_feature('bankenspiegel') %}
                             <li><hr class="dropdown-divider"></li>
                             <li><h6 class="dropdown-header text-muted">Bankenspiegel</h6></li>
                             <li><a class="dropdown-item" href="/bankenspiegel/dashboard">
-                                <i class="bi bi-bank2"></i> Bankenspiegel Dashboard
+                                <i class="bi bi-bank2"></i> Dashboard
                             </a></li>
                             <li><a class="dropdown-item" href="/bankenspiegel/konten">
                                 <i class="bi bi-wallet2"></i> Kontenübersicht
@@ -116,12 +129,13 @@
                             <li><a class="dropdown-item" href="/bankenspiegel/fahrzeugfinanzierungen">
                                 <i class="bi bi-car-front"></i> Fahrzeugfinanzierungen
                             </a></li>
-                            
+
                             <li><hr class="dropdown-divider"></li>
-                            
-                            <!-- Reports -->
-                            <li><a class="dropdown-item disabled text-muted" href="#" title="Coming Soon">
-                                <i class="bi bi-file-earmark-bar-graph"></i> Reports
+
+                            <!-- Archiv -->
+                            <li><h6 class="dropdown-header text-muted small">Archiv</h6></li>
+                            <li><a class="dropdown-item text-muted small" href="/controlling/tek/archiv">
+                                <i class="bi bi-archive"></i> TEK v1
                             </a></li>
                             {% endif %}
                         </ul>
@@ -143,6 +157,9 @@
                             </a></li>
                             <li><a class="dropdown-item" href="/verkauf/eautoseller-bestand">
                                 <i class="bi bi-car-front"></i> eAutoseller Bestand
+                            </a></li>
+                            <li><a class="dropdown-item" href="/verkauf/gw-bestand">
+                                <i class="bi bi-clock-history text-warning"></i> GW-Standzeit
                             </a></li>
 
                             <!-- Budget-Planung (nur GF + VK-Leitung) -->
@@ -195,6 +212,10 @@
                         </a>
                         <ul class="dropdown-menu">
                             <li><h6 class="dropdown-header text-muted">Controlling</h6></li>
+                            <li><a class="dropdown-item" href="/aftersales/serviceberater/uebersicht">
+                                <i class="bi bi-people"></i> Serviceberater Übersicht
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="/aftersales/serviceberater/">
                                 <i class="bi bi-person-badge"></i> Serviceberater Controlling
                             </a></li>
@@ -367,9 +388,7 @@
     <footer class="footer mt-auto py-3 bg-light">
         <div class="container-fluid text-center">
             <span class="text-muted">
-                © 2025 Autohaus Greiner GmbH & Co. KG |
-                <i class="bi bi-server"></i> srvlinux01.auto-greiner.de |
-                Version 2.0
+                © 2025 Autohaus Greiner GmbH & Co. KG | Version 2.0
             </span>
         </div>
     </footer>

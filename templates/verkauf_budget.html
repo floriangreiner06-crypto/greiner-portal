@@ -8,6 +8,7 @@
         --primary-gradient: linear-gradient(135deg, #0d6efd 0%, #6610f2 100%);
         --warning-gradient: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%);
         --danger-gradient: linear-gradient(135deg, #dc3545 0%, #e83e8c 100%);
+        --profit-gradient: linear-gradient(135deg, #198754 0%, #0dcaf0 100%);
     }
 
     .hero-card {
@@ -230,6 +231,79 @@
         margin-right: 0.5rem;
     }
 
+    /* Margen-Ampel */
+    .marge-ampel {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-weight: 600;
+        font-size: 0.85rem;
+    }
+
+    .marge-ampel.gruen { background: #d4edda; color: #155724; }
+    .marge-ampel.gelb { background: #fff3cd; color: #856404; }
+    .marge-ampel.rot { background: #f8d7da; color: #721c24; }
+
+    .marge-warnung {
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        color: white;
+        border-radius: 12px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        animation: warnung-pulse 2s infinite;
+    }
+
+    @keyframes warnung-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4); }
+        50% { box-shadow: 0 0 20px 10px rgba(220, 53, 69, 0.2); }
+    }
+
+    /* Provision Card */
+    .provision-card {
+        background: var(--profit-gradient);
+        color: white;
+        border-radius: 16px;
+        padding: 1.5rem;
+    }
+
+    .provision-staffel {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .staffel-step {
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        background: rgba(255,255,255,0.2);
+    }
+
+    .staffel-step.active {
+        background: white;
+        color: #198754;
+        font-weight: 700;
+    }
+
+    /* DB1 Fokus */
+    .db1-highlight {
+        font-size: 2rem;
+        font-weight: 800;
+        background: linear-gradient(135deg, #198754, #0dcaf0);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    .jahresabschluss-info {
+        background: linear-gradient(135deg, #495057 0%, #212529 100%);
+        color: white;
+        border-radius: 16px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+
     .leaderboard-item {
         display: flex;
         align-items: center;
@@ -282,18 +356,57 @@
     <div class="hero-card fade-in">
         <div class="row align-items-center">
             <div class="col-md-8">
-                <h1><i class="bi bi-bullseye"></i> Budget-Planung 2025</h1>
-                <p class="subtitle">Verkaufsziele definieren, tracken und erreichen</p>
+                <h1><i class="bi bi-graph-up-arrow"></i> Budget-Planung 2026</h1>
+                <p class="subtitle">Profit-orientiert planen - DB1 im Fokus, nicht nur Stueckzahlen</p>
             </div>
             <div class="col-md-4 text-md-end">
-                <div class="d-flex gap-2 justify-content-md-end">
+                <div class="d-flex gap-2 justify-content-md-end flex-wrap">
+                    <a href="/verkauf/budget/wizard" class="btn btn-warning btn-action">
+                        <i class="bi bi-magic"></i> 5-Fragen-Wizard
+                    </a>
                     <button class="btn btn-light btn-action" onclick="loadBenchmark()">
-                        <i class="bi bi-magic"></i> Smart-Ziele
+                        <i class="bi bi-calculator"></i> Smart-Ziele
                     </button>
-                    <button class="btn btn-outline-light btn-action" onclick="savePlan()">
-                        <i class="bi bi-save"></i> Speichern
+                    <button class="btn btn-outline-light btn-action" onclick="showMargenAnalyse()">
+                        <i class="bi bi-exclamation-triangle"></i> Margen-Check
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Margen-Warnung (wird dynamisch eingeblendet wenn kritisch) -->
+    <div id="margenWarnung" class="marge-warnung fade-in" style="display: none;">
+        <div class="d-flex align-items-center gap-3">
+            <i class="bi bi-exclamation-triangle-fill fs-3"></i>
+            <div>
+                <strong id="warnungTitel">ACHTUNG: Kritische Margen erkannt!</strong>
+                <div id="warnungDetails" class="small opacity-75"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Jahresabschluss-Info -->
+    <div class="jahresabschluss-info fade-in">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h5 class="mb-2"><i class="bi bi-file-earmark-bar-graph"></i> Erkenntnis aus Jahresabschluss GJ 24/25</h5>
+                <div class="row">
+                    <div class="col-md-6">
+                        <span class="badge bg-warning text-dark me-2">Opel GW</span>
+                        <span class="opacity-75">Marge nur 0.7% - muss auf 6% steigen!</span>
+                    </div>
+                    <div class="col-md-6">
+                        <span class="badge bg-success me-2">Hyundai GW</span>
+                        <span class="opacity-75">Marge 10.1% - Benchmark halten!</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 text-md-end">
+                <div class="db1-highlight" style="-webkit-text-fill-color: white;">
+                    DB1 = Gewinn
+                </div>
+                <small class="opacity-75">Nicht Stueck, sondern Profit planen!</small>
             </div>
         </div>
     </div>
@@ -333,8 +446,40 @@
         <!-- DASHBOARD TAB -->
         <div class="tab-pane fade show active" id="overview">
 
-            <!-- KPI Cards -->
+            <!-- KPI Cards - PROFIT FOKUS -->
             <div class="row g-4 mb-4">
+                <!-- DB1 Card (WICHTIGSTE KENNZAHL) -->
+                <div class="col-md-3">
+                    <div class="kpi-card success">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <div class="kpi-value text-success" id="db1Total">-</div>
+                                <div class="kpi-label">Tsd. EUR DB1</div>
+                                <div class="kpi-trend up" id="db1Trend"></div>
+                            </div>
+                            <div class="text-success fs-1 opacity-25">
+                                <i class="bi bi-currency-euro"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Marge Card -->
+                <div class="col-md-3">
+                    <div class="kpi-card" id="margeCard">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <div class="kpi-value" id="margeAvg">-</div>
+                                <div class="kpi-label">% Durchschn. Marge</div>
+                                <span class="marge-ampel" id="margeAmpel">-</span>
+                            </div>
+                            <div class="fs-1 opacity-25">
+                                <i class="bi bi-percent"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- GW Card -->
                 <div class="col-md-3">
                     <div class="kpi-card primary">
@@ -353,49 +498,16 @@
 
                 <!-- NW Card -->
                 <div class="col-md-3">
-                    <div class="kpi-card success">
-                        <div class="d-flex justify-content-between align-items-start">
-                            <div>
-                                <div class="kpi-value text-success" id="nwIst">-</div>
-                                <div class="kpi-label">NW Verkauft</div>
-                                <div class="kpi-trend neutral" id="nwTrend"></div>
-                            </div>
-                            <div class="text-success fs-1 opacity-25">
-                                <i class="bi bi-stars"></i>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Umsatz Card -->
-                <div class="col-md-3">
                     <div class="kpi-card warning">
                         <div class="d-flex justify-content-between align-items-start">
                             <div>
-                                <div class="kpi-value text-warning" id="umsatzTotal">-</div>
-                                <div class="kpi-label">Mio. EUR Umsatz</div>
-                                <div class="kpi-trend up" id="umsatzTrend"></div>
+                                <div class="kpi-value text-warning" id="nwIst">-</div>
+                                <div class="kpi-label">NW Verkauft</div>
+                                <div class="kpi-trend neutral" id="nwTrend"></div>
                             </div>
                             <div class="text-warning fs-1 opacity-25">
-                                <i class="bi bi-currency-euro"></i>
+                                <i class="bi bi-stars"></i>
                             </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Zielerreichung Card -->
-                <div class="col-md-3">
-                    <div class="kpi-card" id="targetCard">
-                        <div class="text-center">
-                            <svg class="progress-ring" viewBox="0 0 120 120">
-                                <circle class="bg" cx="60" cy="60" r="50"/>
-                                <circle class="progress" cx="60" cy="60" r="50"
-                                        stroke-dasharray="314"
-                                        stroke-dashoffset="314"
-                                        id="progressCircle"/>
-                                <text class="text" x="60" y="65" text-anchor="middle" id="progressText">0%</text>
-                            </svg>
-                            <div class="kpi-label mt-2">Jahresziel</div>
                         </div>
                     </div>
                 </div>
@@ -416,6 +528,26 @@
                             <i class="bi bi-trophy-fill text-warning"></i>
                             <span id="gwYtd">0</span> GW verkauft
                         </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Wizard-Plan Uebersicht -->
+            <div class="row g-4 mb-4" id="wizardPlanSection" style="display: none;">
+                <div class="col-12">
+                    <div class="kpi-card" style="border-left: 5px solid #6f42c1;">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="section-title mb-0">
+                                <i class="bi bi-magic text-purple"></i> Budget 2026 (Wizard-Plan)
+                            </h5>
+                            <a href="/verkauf/budget/wizard" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-pencil"></i> Bearbeiten
+                            </a>
+                        </div>
+                        <div class="row" id="wizardPlanCards">
+                            <!-- Wird dynamisch gefuellt -->
+                        </div>
+                        <div class="text-muted small mt-2" id="wizardPlanMeta"></div>
                     </div>
                 </div>
             </div>
@@ -604,7 +736,7 @@
                     <div class="kpi-card">
                         <h5 class="section-title">
                             <i class="bi bi-trophy-fill text-warning"></i>
-                            Top Verkäufer 2025
+                            Top Verkäufer 2025 - nach DB1
                         </h5>
                         <div id="verkauferLeaderboard">
                             <div class="text-center py-5 text-muted">
@@ -615,14 +747,40 @@
                     </div>
                 </div>
                 <div class="col-md-4">
-                    <div class="kpi-card">
-                        <h6 class="text-muted mb-3"><i class="bi bi-percent"></i> DB1-Beteiligung VKL</h6>
-                        <div class="alert alert-info mb-3">
-                            <small>Die VK-Leitung ist am DB1 der Verkäufer beteiligt.</small>
+                    <!-- VKL Provision Card -->
+                    <div class="provision-card mb-3">
+                        <h6 class="mb-3"><i class="bi bi-cash-coin"></i> VKL-Provision</h6>
+                        <div class="text-center mb-3">
+                            <div class="fs-1 fw-bold" id="vklProvisionBetrag">0 EUR</div>
+                            <small class="opacity-75">bei <span id="vklProvisionPct">5</span>% Beteiligung</small>
                         </div>
+                        <hr class="opacity-25">
+                        <div class="small mb-2">Staffelung:</div>
+                        <div class="provision-staffel" id="provisionStaffel">
+                            <span class="staffel-step active">5% Basis</span>
+                            <span class="staffel-step">7.5% ab 50k</span>
+                            <span class="staffel-step">10% ab 100k</span>
+                            <span class="staffel-step">12.5% ab 150k</span>
+                        </div>
+                    </div>
+
+                    <!-- Team DB1 -->
+                    <div class="kpi-card">
+                        <h6 class="text-muted mb-3"><i class="bi bi-graph-up"></i> Team DB1</h6>
                         <div class="text-center">
-                            <div class="fs-2 fw-bold text-primary" id="db1Anteil">5%</div>
-                            <small class="text-muted">vom Team-DB1</small>
+                            <div class="db1-highlight" id="teamDb1">0 EUR</div>
+                            <small class="text-muted">Gesamt-Deckungsbeitrag</small>
+                        </div>
+                        <hr>
+                        <div class="row text-center small">
+                            <div class="col-6">
+                                <div class="fw-bold" id="teamMarge">0%</div>
+                                <span class="text-muted">Avg. Marge</span>
+                            </div>
+                            <div class="col-6">
+                                <div class="fw-bold" id="teamStueck">0</div>
+                                <span class="text-muted">Fahrzeuge</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -637,16 +795,86 @@
 {% block extra_js %}
 <script>
 const MONATE = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+const AKTUELLES_JAHR = new Date().getFullYear();
 let monthlyChart = null;
 let brandChart = null;
 let dashboardData = null;
+let margenData = null;
+let provisionData = null;
 
 // Laden beim Start
 document.addEventListener('DOMContentLoaded', function() {
     loadDashboard();
     loadVerkaufer();
     loadMarken();
+    loadMargenAnalyse();
+    loadVklProvision();
+    loadWizardPlaene();
 });
+
+async function loadWizardPlaene() {
+    try {
+        const response = await fetch('/api/budget/wizard-plaene?jahr=2026');
+        const result = await response.json();
+
+        if (result.success && result.anzahl > 0) {
+            renderWizardPlaene(result);
+            document.getElementById('wizardPlanSection').style.display = 'block';
+        }
+    } catch (error) {
+        console.error('Wizard-Plaene laden fehlgeschlagen:', error);
+    }
+}
+
+function renderWizardPlaene(data) {
+    const container = document.getElementById('wizardPlanCards');
+    const meta = document.getElementById('wizardPlanMeta');
+
+    // Zusammenfassung anzeigen
+    const nw = data.zusammenfassung.NW || {};
+    const gw = data.zusammenfassung.GW || {};
+
+    container.innerHTML = `
+        <div class="col-md-3">
+            <div class="p-3 bg-light rounded text-center">
+                <div class="fs-3 fw-bold text-primary">${nw.stueck || 0}</div>
+                <div class="small text-muted">NW Stueck</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="p-3 bg-light rounded text-center">
+                <div class="fs-3 fw-bold text-success">${((nw.db1 || 0) / 1000).toFixed(0)}k</div>
+                <div class="small text-muted">NW DB1</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="p-3 bg-light rounded text-center">
+                <div class="fs-3 fw-bold text-primary">${gw.stueck || 0}</div>
+                <div class="small text-muted">GW Stueck</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="p-3 bg-light rounded text-center">
+                <div class="fs-3 fw-bold text-success">${((gw.db1 || 0) / 1000).toFixed(0)}k</div>
+                <div class="small text-muted">GW DB1</div>
+            </div>
+        </div>
+    `;
+
+    // Standort-Details
+    const standorte = data.plaene.filter(p => p.typ === 'NW').map(p =>
+        `${p.standort_name}: ${p.stueck} Stk`
+    ).join(' | ');
+
+    // Letzte Aenderung
+    const letzteAenderung = data.plaene[0]?.letzte_aenderung ?
+        new Date(data.plaene[0].letzte_aenderung).toLocaleDateString('de-DE') : '-';
+
+    meta.innerHTML = `
+        <i class="bi bi-clock"></i> Letzte Aenderung: ${letzteAenderung} |
+        <i class="bi bi-geo-alt"></i> ${standorte}
+    `;
+}
 
 async function loadDashboard() {
     try {
@@ -676,11 +904,16 @@ function updateDashboard(data) {
         umsatzTotal += (m.gw.ist_umsatz || 0) + (m.nw.ist_umsatz || 0);
     });
 
-    // KPI Cards aktualisieren
-    document.getElementById('gwIst').textContent = gwTotal;
-    document.getElementById('nwIst').textContent = nwTotal;
-    document.getElementById('umsatzTotal').textContent = (umsatzTotal / 1000000).toFixed(1);
-    document.getElementById('gwYtd').textContent = gwTotal;
+    // KPI Cards aktualisieren (mit null-Checks)
+    const gwIstEl = document.getElementById('gwIst');
+    const nwIstEl = document.getElementById('nwIst');
+    const umsatzTotalEl = document.getElementById('umsatzTotal');
+    const gwYtdEl = document.getElementById('gwYtd');
+
+    if (gwIstEl) gwIstEl.textContent = gwTotal;
+    if (nwIstEl) nwIstEl.textContent = nwTotal;
+    if (umsatzTotalEl) umsatzTotalEl.textContent = (umsatzTotal / 1000000).toFixed(1);
+    if (gwYtdEl) gwYtdEl.textContent = gwTotal;
 
     // Trends berechnen (vs Vorjahr pro rata)
     const currentMonth = new Date().getMonth() + 1;
@@ -690,42 +923,66 @@ function updateDashboard(data) {
     const gwDiff = gwTotal - gwVorjahrProRata;
     const nwDiff = nwTotal - nwVorjahrProRata;
 
-    document.getElementById('gwTrend').className = 'kpi-trend ' + (gwDiff >= 0 ? 'up' : 'down');
-    document.getElementById('gwTrend').innerHTML = (gwDiff >= 0 ? '+' : '') + gwDiff + ' vs. VJ';
+    const gwTrendEl = document.getElementById('gwTrend');
+    const nwTrendEl = document.getElementById('nwTrend');
 
-    document.getElementById('nwTrend').className = 'kpi-trend ' + (nwDiff >= 0 ? 'up' : 'down');
-    document.getElementById('nwTrend').innerHTML = (nwDiff >= 0 ? '+' : '') + nwDiff + ' vs. VJ';
+    if (gwTrendEl) {
+        gwTrendEl.className = 'kpi-trend ' + (gwDiff >= 0 ? 'up' : 'down');
+        gwTrendEl.innerHTML = (gwDiff >= 0 ? '+' : '') + gwDiff + ' vs. VJ';
+    }
+
+    if (nwTrendEl) {
+        nwTrendEl.className = 'kpi-trend ' + (nwDiff >= 0 ? 'up' : 'down');
+        nwTrendEl.innerHTML = (nwDiff >= 0 ? '+' : '') + nwDiff + ' vs. VJ';
+    }
 
     // Zielerreichung Ring
-    const gwZiel = parseInt(document.getElementById('gwJahresZiel').value) || 850;
-    const nwZiel = parseInt(document.getElementById('nwJahresZiel').value) || 420;
+    const gwJahresZielEl = document.getElementById('gwJahresZiel');
+    const nwJahresZielEl = document.getElementById('nwJahresZiel');
+    const gwZiel = gwJahresZielEl ? (parseInt(gwJahresZielEl.value) || 850) : 850;
+    const nwZiel = nwJahresZielEl ? (parseInt(nwJahresZielEl.value) || 420) : 420;
     const gesamtZiel = gwZiel + nwZiel;
     const gesamtIst = gwTotal + nwTotal;
     const prozent = Math.min(100, Math.round((gesamtIst / gesamtZiel) * 100));
 
     const circle = document.getElementById('progressCircle');
-    const offset = 314 - (314 * prozent / 100);
-    circle.style.strokeDashoffset = offset;
-    circle.style.stroke = prozent >= 100 ? '#28a745' : prozent >= 80 ? '#ffc107' : '#0d6efd';
-    document.getElementById('progressText').textContent = prozent + '%';
+    if (circle) {
+        const offset = 314 - (314 * prozent / 100);
+        circle.style.strokeDashoffset = offset;
+        circle.style.stroke = prozent >= 100 ? '#28a745' : prozent >= 80 ? '#ffc107' : '#0d6efd';
+    }
+    const progressText = document.getElementById('progressText');
+    if (progressText) progressText.textContent = prozent + '%';
 
     // Motivation Banner
     updateMotivation(gwTotal, nwTotal, gwZiel, nwZiel, currentMonth);
 
-    // GW/NW Tab Werte
-    document.getElementById('gwIstJahr').textContent = gwTotal;
-    document.getElementById('gwDiff').textContent = (gwTotal - gwZiel >= 0 ? '+' : '') + (gwTotal - gwZiel);
-    document.getElementById('gwDiff').className = 'fs-4 fw-bold ' + (gwTotal >= gwZiel ? 'text-success' : 'text-danger');
+    // GW/NW Tab Werte (mit null-Checks)
+    const gwIstJahrEl = document.getElementById('gwIstJahr');
+    const gwDiffEl = document.getElementById('gwDiff');
+    const nwIstJahrEl = document.getElementById('nwIstJahr');
+    const nwDiffEl = document.getElementById('nwDiff');
 
-    document.getElementById('nwIstJahr').textContent = nwTotal;
-    document.getElementById('nwDiff').textContent = (nwTotal - nwZiel >= 0 ? '+' : '') + (nwTotal - nwZiel);
-    document.getElementById('nwDiff').className = 'fs-4 fw-bold ' + (nwTotal >= nwZiel ? 'text-success' : 'text-danger');
+    if (gwIstJahrEl) gwIstJahrEl.textContent = gwTotal;
+    if (gwDiffEl) {
+        gwDiffEl.textContent = (gwTotal - gwZiel >= 0 ? '+' : '') + (gwTotal - gwZiel);
+        gwDiffEl.className = 'fs-4 fw-bold ' + (gwTotal >= gwZiel ? 'text-success' : 'text-danger');
+    }
+
+    if (nwIstJahrEl) nwIstJahrEl.textContent = nwTotal;
+    if (nwDiffEl) {
+        nwDiffEl.textContent = (nwTotal - nwZiel >= 0 ? '+' : '') + (nwTotal - nwZiel);
+        nwDiffEl.className = 'fs-4 fw-bold ' + (nwTotal >= nwZiel ? 'text-success' : 'text-danger');
+    }
 }
 
 function updateMotivation(gwIst, nwIst, gwZiel, nwZiel, month) {
     const banner = document.getElementById('motivationBanner');
     const title = document.getElementById('motivationTitle');
     const text = document.getElementById('motivationText');
+
+    // Null-Check
+    if (!banner || !title || !text) return;
 
     const gesamtIst = gwIst + nwIst;
     const proRataZiel = Math.round((gwZiel + nwZiel) * month / 12);
@@ -762,8 +1019,11 @@ function renderCharts(data) {
         nwData.push(data.monate[i]?.nw?.ist_stueck || 0);
     }
 
-    // Monthly Chart
-    const ctx1 = document.getElementById('monthlyChart').getContext('2d');
+    // Monthly Chart (mit null-Check)
+    const monthlyChartEl = document.getElementById('monthlyChart');
+    if (!monthlyChartEl) return;
+
+    const ctx1 = monthlyChartEl.getContext('2d');
     if (monthlyChart) monthlyChart.destroy();
 
     monthlyChart = new Chart(ctx1, {
@@ -808,16 +1068,26 @@ async function loadMarken() {
         if (result.success) {
             const marken = result.data.marken;
 
-            // KPI Cards
-            document.getElementById('opelGw').textContent = marken.opel.gw;
-            document.getElementById('opelNw').textContent = marken.opel.nw;
-            document.getElementById('hyundaiGw').textContent = marken.hyundai.gw;
-            document.getElementById('hyundaiNw').textContent = marken.hyundai.nw;
-            document.getElementById('andereGw').textContent = marken.andere.gw;
-            document.getElementById('andereNw').textContent = marken.andere.nw;
+            // KPI Cards (mit null-Check)
+            const opelGw = document.getElementById('opelGw');
+            const opelNw = document.getElementById('opelNw');
+            const hyundaiGw = document.getElementById('hyundaiGw');
+            const hyundaiNw = document.getElementById('hyundaiNw');
+            const andereGw = document.getElementById('andereGw');
+            const andereNw = document.getElementById('andereNw');
 
-            // Pie Chart
-            const ctx2 = document.getElementById('brandChart').getContext('2d');
+            if (opelGw) opelGw.textContent = marken.opel.gw;
+            if (opelNw) opelNw.textContent = marken.opel.nw;
+            if (hyundaiGw) hyundaiGw.textContent = marken.hyundai.gw;
+            if (hyundaiNw) hyundaiNw.textContent = marken.hyundai.nw;
+            if (andereGw) andereGw.textContent = marken.andere.gw;
+            if (andereNw) andereNw.textContent = marken.andere.nw;
+
+            // Pie Chart (mit null-Check)
+            const brandChartEl = document.getElementById('brandChart');
+            if (!brandChartEl) return;
+
+            const ctx2 = brandChartEl.getContext('2d');
             if (brandChart) brandChart.destroy();
 
             brandChart = new Chart(ctx2, {
@@ -967,6 +1237,233 @@ async function savePlan() {
 function updatePlan(typ, monat, value) {
     console.log(`Update ${typ} Monat ${monat}: ${value}`);
     // TODO: Implementieren
+}
+
+// ============================================================================
+// MARGEN-ANALYSE
+// ============================================================================
+
+async function loadMargenAnalyse() {
+    try {
+        const response = await fetch(`/api/budget/margen-analyse?jahr=${AKTUELLES_JAHR}`);
+        const result = await response.json();
+
+        if (result.success) {
+            margenData = result.data;
+            updateMargenWarnung(result.data);
+            updateMargenKpis(result.data);
+        }
+    } catch (error) {
+        console.error('Margen-Analyse laden fehlgeschlagen:', error);
+    }
+}
+
+function updateMargenWarnung(data) {
+    const warnung = document.getElementById('margenWarnung');
+    const titel = document.getElementById('warnungTitel');
+    const details = document.getElementById('warnungDetails');
+
+    if (data.warnungen && data.warnungen.length > 0) {
+        warnung.style.display = 'block';
+
+        if (data.kritisch > 0) {
+            titel.textContent = `KRITISCH: ${data.kritisch} Bereiche unter 3% Marge!`;
+        } else {
+            titel.textContent = `ACHTUNG: ${data.warnungen.length} Bereiche unter Ziel-Marge`;
+        }
+
+        // Zeige Top 3 Warnungen
+        const top3 = data.warnungen.slice(0, 3).map(w => w.message).join(' | ');
+        details.textContent = top3;
+    } else {
+        warnung.style.display = 'none';
+    }
+}
+
+function updateMargenKpis(data) {
+    // Berechne Durchschnitts-Marge
+    let totalDb1 = 0;
+    let totalUmsatz = 0;
+
+    Object.values(data.standorte).forEach(standort => {
+        Object.values(standort.marken).forEach(marke => {
+            ['nw', 'gw'].forEach(typ => {
+                if (marke[typ]) {
+                    totalDb1 += marke[typ].db1 || 0;
+                    totalUmsatz += marke[typ].umsatz || 0;
+                }
+            });
+        });
+    });
+
+    const avgMarge = totalUmsatz > 0 ? (totalDb1 / totalUmsatz * 100) : 0;
+
+    // Update KPIs
+    document.getElementById('db1Total').textContent = Math.round(totalDb1 / 1000);
+    document.getElementById('margeAvg').textContent = avgMarge.toFixed(1);
+
+    // Ampel
+    const ampel = document.getElementById('margeAmpel');
+    if (avgMarge < 5) {
+        ampel.className = 'marge-ampel rot';
+        ampel.textContent = 'Kritisch';
+        document.getElementById('margeCard').classList.add('danger');
+    } else if (avgMarge < 7) {
+        ampel.className = 'marge-ampel gelb';
+        ampel.textContent = 'Unter Ziel';
+        document.getElementById('margeCard').classList.add('warning');
+    } else {
+        ampel.className = 'marge-ampel gruen';
+        ampel.textContent = 'OK';
+        document.getElementById('margeCard').classList.add('success');
+    }
+}
+
+function showMargenAnalyse() {
+    if (!margenData) {
+        alert('Margen-Daten werden geladen...');
+        return;
+    }
+
+    // Modal oder Alert mit Details
+    let msg = 'MARGEN-ANALYSE ' + AKTUELLES_JAHR + '\n\n';
+
+    Object.values(margenData.standorte).forEach(standort => {
+        msg += `${standort.name}:\n`;
+        Object.entries(standort.marken).forEach(([marke, mData]) => {
+            ['nw', 'gw'].forEach(typ => {
+                if (mData[typ]) {
+                    const ampelIcon = mData[typ].ampel === 'gruen' ? '✓' :
+                                     mData[typ].ampel === 'gelb' ? '⚠' : '✗';
+                    msg += `  ${marke.toUpperCase()} ${typ.toUpperCase()}: ${mData[typ].marge_pct}% ${ampelIcon}\n`;
+                }
+            });
+        });
+        msg += '\n';
+    });
+
+    if (margenData.warnungen.length > 0) {
+        msg += '\nWARNUNGEN:\n';
+        margenData.warnungen.forEach(w => {
+            msg += `• ${w.message}\n`;
+            msg += `  Potential: +${w.potential.toLocaleString()}€ bei Ziel-Marge\n`;
+        });
+    }
+
+    alert(msg);
+}
+
+// ============================================================================
+// VKL-PROVISION
+// ============================================================================
+
+async function loadVklProvision() {
+    try {
+        const response = await fetch(`/api/budget/vkl-provision?jahr=${AKTUELLES_JAHR}`);
+        const result = await response.json();
+
+        if (result.success) {
+            provisionData = result.data;
+            updateProvisionDisplay(result.data);
+        }
+    } catch (error) {
+        console.error('VKL-Provision laden fehlgeschlagen:', error);
+    }
+}
+
+function updateProvisionDisplay(data) {
+    const gesamt = data.gesamt;
+
+    // Team-Werte
+    document.getElementById('teamDb1').textContent =
+        Math.round(gesamt.db1).toLocaleString() + ' €';
+    document.getElementById('teamStueck').textContent = gesamt.stueck;
+
+    const avgMarge = gesamt.umsatz > 0 ? (gesamt.db1 / gesamt.umsatz * 100) : 0;
+    document.getElementById('teamMarge').textContent = avgMarge.toFixed(1) + '%';
+
+    // Provision
+    const prov = gesamt.provision;
+    document.getElementById('vklProvisionBetrag').textContent =
+        Math.round(prov.provision_betrag).toLocaleString() + ' €';
+    document.getElementById('vklProvisionPct').textContent = prov.provision_pct;
+
+    // Staffel-Steps aktualisieren
+    const steps = document.querySelectorAll('.staffel-step');
+    steps.forEach((step, i) => {
+        step.classList.toggle('active', i < prov.stufe);
+    });
+}
+
+// Aktualisiertes Verkäufer-Leaderboard mit DB1
+function renderVerkauferLeaderboard(verkaufer) {
+    const container = document.getElementById('verkauferLeaderboard');
+
+    if (!verkaufer || verkaufer.length === 0) {
+        container.innerHTML = '<p class="text-muted text-center">Keine Daten verfügbar</p>';
+        return;
+    }
+
+    let html = '';
+    verkaufer.slice(0, 10).forEach((v, i) => {
+        const rankClass = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
+        const total = (v.nw || 0) + (v.gw || 0);
+        const db1 = v.db1 || 0;
+        const marge = v.marge_pct || 0;
+
+        // Marge-Badge
+        let margeBadge = '';
+        if (marge >= 8) {
+            margeBadge = '<span class="marge-ampel gruen ms-2">' + marge.toFixed(1) + '%</span>';
+        } else if (marge >= 5) {
+            margeBadge = '<span class="marge-ampel gelb ms-2">' + marge.toFixed(1) + '%</span>';
+        } else if (marge > 0) {
+            margeBadge = '<span class="marge-ampel rot ms-2">' + marge.toFixed(1) + '%</span>';
+        }
+
+        html += `
+            <div class="leaderboard-item">
+                <div class="leaderboard-rank ${rankClass}">${i + 1}</div>
+                <div class="flex-grow-1">
+                    <strong>VK ${v.nr || v.verkaufer_nr}</strong>
+                    ${margeBadge}
+                    <div class="small text-muted">
+                        ${v.gw || 0} GW • ${v.nw || 0} NW
+                    </div>
+                </div>
+                <div class="text-end">
+                    <div class="fs-5 fw-bold text-success">${Math.round(db1).toLocaleString()}€</div>
+                    <small class="text-muted">DB1</small>
+                </div>
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+// Verkäufer laden - nutze jetzt VKL-Provision Endpoint für DB1-Daten
+async function loadVerkaufer() {
+    try {
+        const response = await fetch(`/api/budget/vkl-provision?jahr=${AKTUELLES_JAHR}`);
+        const result = await response.json();
+
+        if (result.success && result.data.verkaufer) {
+            renderVerkauferLeaderboard(result.data.verkaufer);
+        }
+    } catch (error) {
+        console.error('Verkäufer laden fehlgeschlagen:', error);
+        // Fallback auf alten Endpoint
+        try {
+            const resp2 = await fetch(`/api/budget/verkaufer/${AKTUELLES_JAHR}`);
+            const res2 = await resp2.json();
+            if (res2.success) {
+                renderVerkauferLeaderboard(res2.data.verkaufer);
+            }
+        } catch (e) {
+            console.error('Auch Fallback fehlgeschlagen:', e);
+        }
+    }
 }
 </script>
 {% endblock %}

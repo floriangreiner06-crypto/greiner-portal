@@ -212,19 +212,66 @@
             </div>
         </div>
 
-        <!-- Progress Section -->
+        <!-- Tagesziel-Karte (TAG 164) -->
+        <div class="card mb-4" id="tageszielCard" style="display: none;">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div>
+                        <h5 class="mb-1">
+                            <i class="bi bi-bullseye text-primary"></i>
+                            Dein Tagesziel
+                        </h5>
+                        <small class="text-muted" id="tageszielDatum">Heute</small>
+                    </div>
+                    <span class="badge bg-secondary" id="tageszielStatus">Lädt...</span>
+                </div>
+                
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Heute fakturiert:</span>
+                            <strong class="fs-5" id="tageszielIst">-</strong>
+                        </div>
+                        <div class="d-flex justify-content-between mb-3">
+                            <span>Ziel:</span>
+                            <span id="tageszielZiel">-</span>
+                        </div>
+                        <div class="progress" style="height: 1.5rem;">
+                            <div class="progress-bar" role="progressbar" id="tageszielProgress"
+                                 style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                                <span id="tageszielProzent">0%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="border-start ps-3">
+                            <div class="mb-2">
+                                <small class="text-muted">Monat:</small>
+                                <div class="fw-bold" id="tageszielMonat">-</div>
+                            </div>
+                            <div>
+                                <small class="text-muted">Zeitfortschritt:</small>
+                                <div class="fw-bold" id="tageszielZeit">-</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Progress Section - TAG 165: Umsatz statt DB1 -->
         <div class="progress-section">
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <div>
-                    <strong>Deckungsbeitrag</strong>
-                    <span class="text-muted ms-2" id="dbValues">-- / -- Ziel</span>
+                    <strong>Umsatz</strong>
+                    <span class="text-muted ms-2" id="umsatzValues">-- / -- Ziel</span>
                 </div>
                 <span class="trend-badge positive" id="trendBadge">
                     <i class="bi bi-rocket-takeoff"></i> Auf Kurs
                 </span>
             </div>
             <div class="progress">
-                <div class="progress-bar bg-success" role="progressbar" id="dbProgress"
+                <div class="progress-bar bg-success" role="progressbar" id="umsatzProgress"
                      style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
                     0%
                 </div>
@@ -272,14 +319,24 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     loadDashboard();
+    loadTagesziel();  // TAG 164: Tagesziel-Karte
 });
 
 async function loadDashboard() {
-    const ldapCn = '{{ current_user.display_name | default("") }}';
     const monat = new Date().toISOString().slice(0, 7);
+    let url = `/api/serviceberater/mein-dashboard?monat=${monat}`;
+    
+    // TAG 164: ma_id Parameter für Geschäfts-/Serviceleitung
+    {% if ma_id_param %}
+    const maId = {{ ma_id_param }};
+    url += `&ma_id=${maId}`;
+    {% else %}
+    const ldapCn = '{{ current_user.display_name | default("") }}';
+    url += `&ldap_cn=${encodeURIComponent(ldapCn)}`;
+    {% endif %}
 
     try {
-        const response = await fetch(`/api/serviceberater/mein-dashboard?ldap_cn=${encodeURIComponent(ldapCn)}&monat=${monat}`);
+        const response = await fetch(url);
         const data = await response.json();
 
         if (data.success) {
@@ -388,18 +445,42 @@ function renderDashboard(data) {
         document.getElementById('kpiTrend').textContent = '-';
     }
 
-    // Progress Bar
-    const db1 = mz.db1;
-    const dbZiel = mz.db_ziel;
-    const percent = Math.min((db1 / dbZiel * 100), 150);
+    // Progress Bar - TAG 165: Umsatz statt DB1
+    // Lade Monatsziel für Umsatz
+    const monat = data.monat;
+    const maId = data.sb.ma_id;
+    
+    // Lade Monatsziel (enthält umsatz_ziel)
+    fetch(`/api/serviceberater/monatsziel?ma_id=${maId}&monat=${monat}`)
+        .then(r => r.json())
+        .then(zielData => {
+            if (zielData.success) {
+                const umsatz = mz.umsatz_gesamt;
+                const umsatzZiel = zielData.ziele.umsatz_ziel;
+                const percent = Math.min((umsatz / umsatzZiel * 100), 150);
 
-    document.getElementById('dbValues').textContent =
-        `${formatCurrency(db1)} / ${formatCurrency(dbZiel)} Ziel`;
+                document.getElementById('umsatzValues').textContent =
+                    `${formatCurrency(umsatz)} / ${formatCurrency(umsatzZiel)} Ziel`;
 
-    const progressBar = document.getElementById('dbProgress');
-    progressBar.style.width = `${Math.min(percent, 100)}%`;
-    progressBar.textContent = `${percent.toFixed(0)}%`;
-    progressBar.className = `progress-bar ${percent >= 100 ? 'bg-success' : percent >= 80 ? 'bg-warning' : 'bg-danger'}`;
+                const progressBar = document.getElementById('umsatzProgress');
+                progressBar.style.width = `${Math.min(percent, 100)}%`;
+                progressBar.textContent = `${percent.toFixed(0)}%`;
+                progressBar.className = `progress-bar ${percent >= 100 ? 'bg-success' : percent >= 80 ? 'bg-warning' : 'bg-danger'}`;
+            }
+        })
+        .catch(err => {
+            console.error('Fehler beim Laden des Umsatz-Ziels:', err);
+            // Fallback auf DB1 (alte Logik)
+            const db1 = mz.db1;
+            const dbZiel = mz.db_ziel;
+            const percent = Math.min((db1 / dbZiel * 100), 150);
+            document.getElementById('umsatzValues').textContent =
+                `${formatCurrency(db1)} / ${formatCurrency(dbZiel)} Ziel (DB1)`;
+            const progressBar = document.getElementById('umsatzProgress');
+            progressBar.style.width = `${Math.min(percent, 100)}%`;
+            progressBar.textContent = `${percent.toFixed(0)}%`;
+            progressBar.className = `progress-bar ${percent >= 100 ? 'bg-success' : percent >= 80 ? 'bg-warning' : 'bg-danger'}`;
+        });
 
     // Update ranking link with standort filter
     document.getElementById('linkRanking').href = `/aftersales/serviceberater?standort=${data.sb.standort}`;
@@ -407,6 +488,71 @@ function renderDashboard(data) {
     // Show content
     document.getElementById('loadingState').style.display = 'none';
     document.getElementById('mainContent').style.display = 'block';
+}
+
+// Tagesziel laden (TAG 164)
+async function loadTagesziel() {
+    const heute = new Date().toISOString().split('T')[0];
+    
+    try {
+        // Lade alle Tagesziele und filtere nach dem aktuellen User
+        const response = await fetch(`/api/serviceberater/tagesziel?datum=${heute}`);
+        const data = await response.json();
+        
+        if (data.success && data.data) {
+            const tagesziele = Array.isArray(data.data) ? data.data : [data.data];
+            
+            // Finde den passenden Serviceberater (basierend auf ldap_cn)
+            // Da wir keine ma_id haben, nehmen wir den ersten (später verbessern)
+            if (tagesziele.length > 0) {
+                renderTagesziel(tagesziele[0]);
+            } else {
+                document.getElementById('tageszielCard').style.display = 'none';
+            }
+        } else {
+            document.getElementById('tageszielCard').style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Fehler beim Laden des Tagesziels:', error);
+        document.getElementById('tageszielCard').style.display = 'none';
+    }
+}
+
+// Tagesziel rendern (TAG 164)
+function renderTagesziel(tz) {
+    if (!tz) {
+        document.getElementById('tageszielCard').style.display = 'none';
+        return;
+    }
+    
+    const card = document.getElementById('tageszielCard');
+    card.style.display = 'block';
+    
+    // Status
+    const statusClass = tz.erfuellung.status === 'ok' ? 'success' : 
+                       tz.erfuellung.status === 'warnung' ? 'warning' : 'danger';
+    const statusText = tz.erfuellung.status === 'ok' ? 'Auf Kurs ✅' : 
+                      tz.erfuellung.status === 'warnung' ? 'Knapp ⚠️' : 'Kritisch ❌';
+    
+    document.getElementById('tageszielStatus').className = `badge bg-${statusClass}`;
+    document.getElementById('tageszielStatus').textContent = statusText;
+    
+    // Werte
+    document.getElementById('tageszielIst').textContent = formatCurrency(tz.ist.umsatz_heute);
+    document.getElementById('tageszielIst').className = `fs-5 text-${statusClass}`;
+    document.getElementById('tageszielZiel').textContent = formatCurrency(tz.ziele.tagesziel_umsatz);
+    
+    // Progress
+    const prozent = Math.min(tz.erfuellung.heute_prozent, 100);
+    document.getElementById('tageszielProgress').style.width = prozent + '%';
+    document.getElementById('tageszielProgress').className = `progress-bar bg-${statusClass}`;
+    document.getElementById('tageszielProzent').textContent = prozent.toFixed(1) + '%';
+    
+    // Monat & Zeit
+    document.getElementById('tageszielMonat').textContent = 
+        `${tz.erfuellung.monat_prozent.toFixed(1)}% (${formatCurrency(tz.ist.umsatz_monat)} / ${formatCurrency(tz.ziele.monatsziel_umsatz)})`;
+    document.getElementById('tageszielZeit').textContent = 
+        `${tz.ziele.werktage_vergangen}/${tz.ziele.werktage_gesamt} Werktage (${tz.erfuellung.zeitfortschritt_prozent.toFixed(1)}%)`;
 }
 
 function formatCurrency(value) {

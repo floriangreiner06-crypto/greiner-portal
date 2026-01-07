@@ -1,0 +1,1149 @@
+{% extends "base.html" %}
+{% block title %}Budget-Wizard - DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    :root {
+        --wizard-primary: #0d6efd;
+        --wizard-success: #198754;
+        --wizard-warning: #ffc107;
+        --wizard-excellent: #6f42c1;
+    }
+
+    .wizard-container {
+        max-width: 800px;
+        margin: 0 auto;
+    }
+
+    .wizard-hero {
+        background: linear-gradient(135deg, #0d6efd 0%, #6f42c1 100%);
+        color: white;
+        border-radius: 24px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        text-align: center;
+    }
+
+    .wizard-hero h1 {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+    }
+
+    .wizard-hero .subtitle {
+        opacity: 0.9;
+        font-size: 1.1rem;
+    }
+
+    .typ-selector {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        margin-bottom: 2rem;
+    }
+
+    .typ-btn {
+        padding: 1rem 2rem;
+        border-radius: 16px;
+        border: 3px solid transparent;
+        background: white;
+        cursor: pointer;
+        transition: all 0.3s;
+        text-align: center;
+        min-width: 160px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+
+    .typ-btn:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    }
+
+    .typ-btn.active {
+        border-color: var(--wizard-primary);
+        background: linear-gradient(135deg, #e7f1ff 0%, #f8f9fa 100%);
+    }
+
+    .typ-btn .icon {
+        font-size: 2.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .typ-btn .label {
+        font-weight: 700;
+        font-size: 1.1rem;
+    }
+
+    .typ-btn .count {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+
+    .standort-selector {
+        display: flex;
+        gap: 0.75rem;
+        justify-content: center;
+        margin-bottom: 2rem;
+        flex-wrap: wrap;
+    }
+
+    .standort-btn {
+        padding: 0.75rem 1.25rem;
+        border-radius: 12px;
+        border: 2px solid #dee2e6;
+        background: white;
+        cursor: pointer;
+        transition: all 0.3s;
+        text-align: center;
+        min-width: 140px;
+    }
+
+    .standort-btn:hover {
+        border-color: #adb5bd;
+        transform: translateY(-2px);
+    }
+
+    .standort-btn.active {
+        border-color: var(--wizard-primary);
+        background: #e7f1ff;
+    }
+
+    .standort-btn.warning {
+        border-color: #dc3545;
+        background: #fff5f5;
+    }
+
+    .standort-btn .name {
+        font-weight: 600;
+        font-size: 0.95rem;
+    }
+
+    .standort-btn .info {
+        font-size: 0.75rem;
+        color: #6c757d;
+    }
+
+    .standort-btn .badge-warning {
+        background: #dc3545;
+        color: white;
+        font-size: 0.65rem;
+        padding: 0.15rem 0.4rem;
+        border-radius: 8px;
+        margin-left: 0.25rem;
+    }
+
+    .wizard-progress {
+        display: flex;
+        justify-content: center;
+        gap: 0.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .progress-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #dee2e6;
+        transition: all 0.3s;
+    }
+
+    .progress-dot.active {
+        background: var(--wizard-primary);
+        transform: scale(1.3);
+    }
+
+    .progress-dot.completed {
+        background: var(--wizard-success);
+    }
+
+    .wizard-card {
+        background: white;
+        border-radius: 20px;
+        padding: 2rem;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        margin-bottom: 1.5rem;
+    }
+
+    .wizard-card .step-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+    }
+
+    .wizard-card .step-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+    }
+
+    .wizard-card .step-question {
+        font-size: 1.1rem;
+        color: #495057;
+        margin-bottom: 1.5rem;
+    }
+
+    .wizard-slider-container {
+        padding: 0 1rem;
+    }
+
+    .wizard-slider {
+        -webkit-appearance: none;
+        width: 100%;
+        height: 12px;
+        border-radius: 6px;
+        background: linear-gradient(to right, #dc3545 0%, #ffc107 40%, #198754 100%);
+        outline: none;
+    }
+
+    .wizard-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: white;
+        border: 4px solid var(--wizard-primary);
+        cursor: pointer;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    }
+
+    .slider-labels {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 0.5rem;
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+
+    .slider-value {
+        font-size: 3rem;
+        font-weight: 800;
+        color: var(--wizard-primary);
+        text-align: center;
+        margin: 1rem 0;
+    }
+
+    .slider-value .unit {
+        font-size: 1.5rem;
+        font-weight: 600;
+    }
+
+    .vorjahr-badge {
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        background: #e9ecef;
+        border-radius: 20px;
+        font-size: 0.9rem;
+        margin-top: 1rem;
+    }
+
+    .benchmark-bar {
+        height: 8px;
+        background: #e9ecef;
+        border-radius: 4px;
+        margin: 1rem 0;
+        position: relative;
+    }
+
+    .benchmark-bar .current {
+        position: absolute;
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.3s;
+    }
+
+    .benchmark-bar .marker {
+        position: absolute;
+        width: 3px;
+        height: 16px;
+        top: -4px;
+        background: #212529;
+    }
+
+    .strategie-options {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .strategie-btn {
+        flex: 1;
+        min-width: 200px;
+        max-width: 250px;
+        padding: 1.5rem;
+        border-radius: 16px;
+        border: 3px solid #dee2e6;
+        background: white;
+        cursor: pointer;
+        transition: all 0.3s;
+        text-align: center;
+    }
+
+    .strategie-btn:hover {
+        border-color: #adb5bd;
+        transform: translateY(-2px);
+    }
+
+    .strategie-btn.active {
+        border-color: var(--wizard-primary);
+        background: linear-gradient(135deg, #e7f1ff 0%, #f8f9fa 100%);
+    }
+
+    .strategie-btn .icon {
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .strategie-btn .label {
+        font-weight: 700;
+        margin-bottom: 0.25rem;
+    }
+
+    .strategie-btn .desc {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+
+    .summary-card {
+        background: linear-gradient(135deg, #198754 0%, #20c997 100%);
+        color: white;
+        border-radius: 20px;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 1.5rem;
+        margin-top: 1.5rem;
+    }
+
+    .summary-item {
+        text-align: center;
+    }
+
+    .summary-item .value {
+        font-size: 1.8rem;
+        font-weight: 800;
+    }
+
+    .summary-item .label {
+        font-size: 0.85rem;
+        opacity: 0.9;
+    }
+
+    .monatsverteilung {
+        background: #f8f9fa;
+        border-radius: 12px;
+        padding: 1rem;
+        margin-top: 1.5rem;
+    }
+
+    .monat-bar {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .monat-bar:last-child {
+        border-bottom: none;
+    }
+
+    .monat-bar .name {
+        width: 40px;
+        font-weight: 600;
+    }
+
+    .monat-bar .bar {
+        flex: 1;
+        height: 20px;
+        background: #e9ecef;
+        border-radius: 4px;
+        overflow: hidden;
+    }
+
+    .monat-bar .bar-fill {
+        height: 100%;
+        background: var(--wizard-primary);
+        border-radius: 4px;
+        transition: width 0.5s;
+    }
+
+    .monat-bar .value {
+        width: 60px;
+        text-align: right;
+        font-weight: 600;
+    }
+
+    .wizard-nav {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 2rem;
+    }
+
+    .wizard-btn {
+        padding: 1rem 2rem;
+        border-radius: 30px;
+        border: none;
+        font-weight: 600;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+
+    .wizard-btn-back {
+        background: #e9ecef;
+        color: #495057;
+    }
+
+    .wizard-btn-back:hover {
+        background: #dee2e6;
+    }
+
+    .wizard-btn-next {
+        background: linear-gradient(135deg, #0d6efd 0%, #6f42c1 100%);
+        color: white;
+        box-shadow: 0 4px 15px rgba(13, 110, 253, 0.3);
+    }
+
+    .wizard-btn-next:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(13, 110, 253, 0.4);
+    }
+
+    .wizard-btn-save {
+        background: linear-gradient(135deg, #198754 0%, #20c997 100%);
+        color: white;
+        box-shadow: 0 4px 15px rgba(25, 135, 84, 0.3);
+    }
+
+    .empfehlung-card {
+        background: #fff3cd;
+        border-left: 4px solid #ffc107;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .empfehlung-card.kritisch {
+        background: #f8d7da;
+        border-color: #dc3545;
+    }
+
+    .empfehlung-card.excellent {
+        background: #d1e7dd;
+        border-color: #198754;
+    }
+
+    .bewertung-badge {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+
+    .bewertung-badge.excellent {
+        background: var(--wizard-excellent);
+        color: white;
+    }
+
+    .bewertung-badge.gut {
+        background: var(--wizard-success);
+        color: white;
+    }
+
+    .bewertung-badge.kritisch {
+        background: #dc3545;
+        color: white;
+    }
+
+    .hidden {
+        display: none !important;
+    }
+
+    .fade-in {
+        animation: fadeIn 0.4s ease;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="wizard-container">
+
+        <!-- Hero -->
+        <div class="wizard-hero fade-in">
+            <h1>Budget-Planung 2026</h1>
+            <p class="subtitle">5 Fragen statt 50 Excel-Zeilen</p>
+        </div>
+
+        <!-- Typ-Auswahl -->
+        <div class="typ-selector fade-in">
+            <div class="typ-btn active" onclick="selectTyp('NW')" id="typBtnNW">
+                <div class="icon">🚗</div>
+                <div class="label">Neuwagen</div>
+                <div class="count">535 Stk in 2024</div>
+            </div>
+            <div class="typ-btn" onclick="selectTyp('GW')" id="typBtnGW">
+                <div class="icon">🔄</div>
+                <div class="label">Gebrauchtwagen</div>
+                <div class="count">615 Stk in 2024</div>
+            </div>
+        </div>
+
+        <!-- Standort-Auswahl -->
+        <div class="standort-selector fade-in" id="standortSelector">
+            <div class="standort-btn active" onclick="selectStandort(null)" id="standortBtnAlle">
+                <div class="name">Alle Standorte</div>
+                <div class="info">Gesamt-Budget</div>
+            </div>
+            <div class="standort-btn" onclick="selectStandort(1)" id="standortBtn1">
+                <div class="name">Deggendorf Opel</div>
+                <div class="info" id="standort1Info">255 NW | 295 GW</div>
+            </div>
+            <div class="standort-btn" onclick="selectStandort(2)" id="standortBtn2">
+                <div class="name">DEG Hyundai</div>
+                <div class="info" id="standort2Info">234 NW | 163 GW</div>
+            </div>
+            <div class="standort-btn" onclick="selectStandort(3)" id="standortBtn3">
+                <div class="name">Landau</div>
+                <div class="info" id="standort3Info">46 NW | 157 GW</div>
+            </div>
+        </div>
+
+        <!-- Progress -->
+        <div class="wizard-progress" id="progressDots">
+            <div class="progress-dot active"></div>
+            <div class="progress-dot"></div>
+            <div class="progress-dot"></div>
+            <div class="progress-dot"></div>
+            <div class="progress-dot"></div>
+        </div>
+
+        <!-- Empfehlungen -->
+        <div id="empfehlungenContainer"></div>
+
+        <!-- Steps -->
+        <div id="wizardSteps">
+            <!-- Step 1: Stueckzahl -->
+            <div class="wizard-card fade-in" id="step1">
+                <div class="text-center">
+                    <div class="step-icon">🚗</div>
+                    <div class="step-title">Stueckzahl-Ziel</div>
+                    <div class="step-question" id="step1Question">Wie viele Fahrzeuge moechten Sie 2026 verkaufen?</div>
+                </div>
+
+                <div class="wizard-slider-container">
+                    <div class="slider-value">
+                        <span id="stueckValue">550</span>
+                        <span class="unit">Fzg</span>
+                    </div>
+
+                    <input type="range" class="wizard-slider" id="stueckSlider"
+                           min="400" max="700" value="550" step="5"
+                           oninput="updateSlider('stueck', this.value)">
+
+                    <div class="slider-labels">
+                        <span>-20%</span>
+                        <span>Vorjahr</span>
+                        <span>+20%</span>
+                    </div>
+                </div>
+
+                <div class="text-center">
+                    <span class="vorjahr-badge" id="stueckVorjahr">2024: 535 Fahrzeuge</span>
+                </div>
+            </div>
+
+            <!-- Step 2: Bruttoertrag -->
+            <div class="wizard-card fade-in hidden" id="step2">
+                <div class="text-center">
+                    <div class="step-icon">💰</div>
+                    <div class="step-title">Bruttoertrag pro Fahrzeug</div>
+                    <div class="step-question">Welchen Bruttoertrag pro Fahrzeug streben Sie an?</div>
+                </div>
+
+                <div class="wizard-slider-container">
+                    <div class="slider-value">
+                        <span id="bruttoertragValue">3,165</span>
+                        <span class="unit">EUR</span>
+                    </div>
+
+                    <input type="range" class="wizard-slider" id="bruttoertragSlider"
+                           min="1500" max="4500" value="3165" step="50"
+                           oninput="updateSlider('bruttoertrag', this.value)">
+
+                    <div class="slider-labels">
+                        <span>EUR 1.500</span>
+                        <span>Branche</span>
+                        <span>EUR 4.500</span>
+                    </div>
+                </div>
+
+                <div class="text-center">
+                    <span class="vorjahr-badge" id="bruttoertragVorjahr">2024: EUR 3.165/Fzg</span>
+                    <span class="bewertung-badge excellent ms-2" id="bruttoertragBewertung">Ueber Branchenschnitt!</span>
+                </div>
+
+                <div class="benchmark-bar mt-3">
+                    <div class="marker" style="left: 33%;" title="Branche Min"></div>
+                    <div class="marker" style="left: 55%;" title="Branche Max"></div>
+                    <div class="current" id="bruttoertragBar" style="width: 70%; background: var(--wizard-excellent);"></div>
+                </div>
+                <div class="slider-labels">
+                    <span>Min: EUR 1.500</span>
+                    <span>Branche: EUR 1.500-2.500</span>
+                    <span>Max</span>
+                </div>
+            </div>
+
+            <!-- Step 3: Variable Kosten -->
+            <div class="wizard-card fade-in hidden" id="step3">
+                <div class="text-center">
+                    <div class="step-icon">📊</div>
+                    <div class="step-title">Variable Kosten-Quote</div>
+                    <div class="step-question">Wie hoch soll die variable Kostenquote sein?</div>
+                </div>
+
+                <div class="wizard-slider-container">
+                    <div class="slider-value">
+                        <span id="vkQuoteValue">32</span>
+                        <span class="unit">%</span>
+                    </div>
+
+                    <input type="range" class="wizard-slider" id="vkQuoteSlider"
+                           min="15" max="45" value="32" step="1"
+                           oninput="updateSlider('vkQuote', this.value)"
+                           style="background: linear-gradient(to right, #198754 0%, #ffc107 60%, #dc3545 100%);">
+
+                    <div class="slider-labels">
+                        <span>15% (ideal)</span>
+                        <span>35% (Ziel)</span>
+                        <span>45%</span>
+                    </div>
+                </div>
+
+                <div class="text-center">
+                    <span class="vorjahr-badge" id="vkQuoteVorjahr">2024: 34,1%</span>
+                </div>
+            </div>
+
+            <!-- Step 4: Strategie -->
+            <div class="wizard-card fade-in hidden" id="step4">
+                <div class="text-center">
+                    <div class="step-icon">🎯</div>
+                    <div class="step-title">Wachstumsstrategie</div>
+                    <div class="step-question">Welche Strategie verfolgen Sie?</div>
+                </div>
+
+                <div class="strategie-options">
+                    <div class="strategie-btn" onclick="selectStrategie('konservativ')" id="strategieKonservativ">
+                        <div class="icon">🛡️</div>
+                        <div class="label">Konservativ</div>
+                        <div class="desc">Fokus auf Stabilitaet, 0% Wachstum</div>
+                    </div>
+                    <div class="strategie-btn active" onclick="selectStrategie('moderat')" id="strategieModerat">
+                        <div class="icon">📈</div>
+                        <div class="label">Moderat</div>
+                        <div class="desc">Leichtes Wachstum, +3%</div>
+                    </div>
+                    <div class="strategie-btn" onclick="selectStrategie('ambitioniert')" id="strategieAmbitioniert">
+                        <div class="icon">🚀</div>
+                        <div class="label">Ambitioniert</div>
+                        <div class="desc">Aggressives Wachstum, +5-7%</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 5: Zusammenfassung -->
+            <div class="wizard-card fade-in hidden" id="step5">
+                <div class="text-center">
+                    <div class="step-icon">✅</div>
+                    <div class="step-title">Ihr Budget-Plan 2026</div>
+                    <div class="step-question">Pruefen Sie die Zusammenfassung und bestaetigen Sie</div>
+                </div>
+
+                <div class="summary-card">
+                    <h5 class="text-center mb-0"><span id="summaryTyp">NW</span> Budget 2026</h5>
+                    <div class="summary-grid">
+                        <div class="summary-item">
+                            <div class="value" id="summaryStueck">550</div>
+                            <div class="label">Fahrzeuge</div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="value" id="summaryBruttoertrag">1,74M</div>
+                            <div class="label">Bruttoertrag</div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="value" id="summaryDb1">1,18M</div>
+                            <div class="label">DB1</div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="value" id="summaryBeProFzg">3.165</div>
+                            <div class="label">EUR/Fzg</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="monatsverteilung">
+                    <h6 class="mb-3">Monatsverteilung (Saisonalisiert)</h6>
+                    <div id="monatsverteilungBars"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation -->
+        <div class="wizard-nav">
+            <button class="wizard-btn wizard-btn-back" onclick="prevStep()" id="btnBack">
+                <i class="bi bi-arrow-left"></i> Zurueck
+            </button>
+            <button class="wizard-btn wizard-btn-next" onclick="nextStep()" id="btnNext">
+                Weiter <i class="bi bi-arrow-right"></i>
+            </button>
+            <button class="wizard-btn wizard-btn-save hidden" onclick="savePlan()" id="btnSave">
+                <i class="bi bi-check-lg"></i> Plan speichern
+            </button>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// State
+let currentStep = 1;
+let currentTyp = 'NW';
+let currentStandort = null;  // null = alle Standorte
+let wizardData = null;
+
+// Standort-Daten (IST 2024)
+const STANDORT_DATEN = {
+    NW: {
+        1: { stueck: 255, be: 950130, name: 'Deggendorf Opel' },
+        2: { stueck: 234, be: 695724, name: 'DEG Hyundai' },
+        3: { stueck: 46, be: 47259, betriebsergebnis: -56221, name: 'Landau', warning: true }
+    },
+    GW: {
+        1: { stueck: 295, be: 595550, name: 'Deggendorf Opel' },
+        2: { stueck: 163, be: 357285, name: 'DEG Hyundai' },
+        3: { stueck: 157, be: 151249, name: 'Landau' }
+    }
+};
+
+// Form-Werte
+let formValues = {
+    stueck: 550,
+    bruttoertrag_pro_fzg: 3165,
+    variable_kosten_quote: 32,
+    strategie: 'moderat'
+};
+
+// Init
+document.addEventListener('DOMContentLoaded', function() {
+    loadWizardData('NW');
+    updateStandortButtons();
+});
+
+function selectStandort(standortId) {
+    currentStandort = standortId;
+
+    // UI aktualisieren
+    document.querySelectorAll('.standort-btn').forEach(btn => btn.classList.remove('active'));
+    if (standortId === null) {
+        document.getElementById('standortBtnAlle').classList.add('active');
+    } else {
+        document.getElementById(`standortBtn${standortId}`).classList.add('active');
+    }
+
+    // Daten neu laden mit Standort-Filter
+    loadWizardData(currentTyp, standortId);
+}
+
+function updateStandortButtons() {
+    const typ = currentTyp;
+    const data = STANDORT_DATEN[typ];
+
+    // Standort-Infos aktualisieren
+    for (let i = 1; i <= 3; i++) {
+        const standort = data[i];
+        const infoEl = document.getElementById(`standort${i}Info`);
+        const btnEl = document.getElementById(`standortBtn${i}`);
+
+        if (standort) {
+            const beProFzg = Math.round(standort.be / standort.stueck);
+            infoEl.textContent = `${standort.stueck} Stk | EUR ${beProFzg}/Fzg`;
+
+            // Warnung fuer Landau NW
+            if (standort.warning) {
+                btnEl.classList.add('warning');
+                if (!btnEl.querySelector('.badge-warning')) {
+                    const badge = document.createElement('span');
+                    badge.className = 'badge-warning';
+                    badge.textContent = 'BE negativ!';
+                    btnEl.querySelector('.name').appendChild(badge);
+                }
+            } else {
+                btnEl.classList.remove('warning');
+                const badge = btnEl.querySelector('.badge-warning');
+                if (badge) badge.remove();
+            }
+        }
+    }
+}
+
+async function loadWizardData(typ, standort = null) {
+    try {
+        let url = `/api/budget/wizard/${typ}?jahr=2026`;
+        if (standort) {
+            url += `&standort=${standort}`;
+        }
+        const response = await fetch(url);
+        const result = await response.json();
+
+        if (result.success) {
+            wizardData = result;
+            updateWizardFromData(result);
+            renderEmpfehlungen(result.empfehlungen);
+        }
+    } catch (error) {
+        console.error('Wizard-Daten laden fehlgeschlagen:', error);
+    }
+}
+
+function updateWizardFromData(data) {
+    const fragen = data.fragen;
+
+    // Step 1: Stueckzahl
+    const f1 = fragen.find(f => f.feld === 'stueck');
+    if (f1) {
+        document.getElementById('stueckSlider').min = f1.minimum;
+        document.getElementById('stueckSlider').max = f1.maximum;
+        document.getElementById('stueckSlider').value = f1.default;
+        document.getElementById('stueckValue').textContent = f1.default.toLocaleString();
+        document.getElementById('stueckVorjahr').textContent = f1.info;
+        document.getElementById('step1Question').textContent = f1.frage;
+        formValues.stueck = f1.default;
+    }
+
+    // Step 2: Bruttoertrag
+    const f2 = fragen.find(f => f.feld === 'bruttoertrag_pro_fzg');
+    if (f2) {
+        document.getElementById('bruttoertragSlider').min = f2.minimum;
+        document.getElementById('bruttoertragSlider').max = f2.maximum;
+        document.getElementById('bruttoertragSlider').value = f2.default;
+        document.getElementById('bruttoertragValue').textContent = f2.default.toLocaleString();
+        document.getElementById('bruttoertragVorjahr').textContent = `2024: EUR ${f2.vorjahr.toLocaleString()}/Fzg`;
+        formValues.bruttoertrag_pro_fzg = f2.default;
+
+        // Bewertung
+        const bewertung = f2.bewertung;
+        const badge = document.getElementById('bruttoertragBewertung');
+        badge.className = `bewertung-badge ${bewertung} ms-2`;
+        badge.textContent = bewertung === 'excellent' ? 'Ueber Branchenschnitt!' :
+                           bewertung === 'gut' ? 'Im Branchenschnitt' : 'Unter Branchenschnitt';
+    }
+
+    // Step 3: VK-Quote
+    const f3 = fragen.find(f => f.feld === 'variable_kosten_quote');
+    if (f3) {
+        document.getElementById('vkQuoteSlider').value = f3.default;
+        document.getElementById('vkQuoteValue').textContent = f3.default;
+        document.getElementById('vkQuoteVorjahr').textContent = `2024: ${f3.vorjahr}%`;
+        formValues.variable_kosten_quote = f3.default;
+    }
+
+    // Typ-Buttons aktualisieren
+    const ist2024 = data.ist_2024;
+    document.querySelector('#typBtnNW .count').textContent =
+        currentTyp === 'NW' ? `${ist2024.stueck || 535} Stk in 2024` : '535 Stk in 2024';
+    document.querySelector('#typBtnGW .count').textContent =
+        currentTyp === 'GW' ? `${ist2024.stueck || 615} Stk in 2024` : '615 Stk in 2024';
+}
+
+function renderEmpfehlungen(empfehlungen) {
+    const container = document.getElementById('empfehlungenContainer');
+
+    if (!empfehlungen || empfehlungen.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+
+    let html = '';
+    empfehlungen.forEach(e => {
+        const klasse = e.prioritaet === 1 ? 'kritisch' : e.icon === '⭐' ? 'excellent' : '';
+        html += `
+            <div class="empfehlung-card ${klasse}">
+                <strong>${e.icon} ${e.titel}</strong>
+                <div class="small">${e.text}</div>
+                ${e.massnahme ? `<div class="small text-muted mt-1"><i class="bi bi-lightbulb"></i> ${e.massnahme}</div>` : ''}
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+function selectTyp(typ) {
+    currentTyp = typ;
+    currentStandort = null;  // Reset Standort bei Typ-Wechsel
+
+    document.querySelectorAll('.typ-btn').forEach(btn => btn.classList.remove('active'));
+    document.getElementById(`typBtn${typ}`).classList.add('active');
+
+    // Standort-Auswahl zuruecksetzen
+    document.querySelectorAll('.standort-btn').forEach(btn => btn.classList.remove('active'));
+    document.getElementById('standortBtnAlle').classList.add('active');
+
+    // Standort-Buttons aktualisieren (zeigt Landau-Warnung nur bei NW)
+    updateStandortButtons();
+
+    loadWizardData(typ);
+}
+
+function selectStrategie(strategie) {
+    formValues.strategie = strategie;
+
+    document.querySelectorAll('.strategie-btn').forEach(btn => btn.classList.remove('active'));
+
+    const stratIds = {
+        'konservativ': 'strategieKonservativ',
+        'moderat': 'strategieModerat',
+        'ambitioniert': 'strategieAmbitioniert'
+    };
+
+    document.getElementById(stratIds[strategie]).classList.add('active');
+}
+
+function updateSlider(field, value) {
+    value = parseInt(value);
+
+    if (field === 'stueck') {
+        formValues.stueck = value;
+        document.getElementById('stueckValue').textContent = value.toLocaleString();
+    } else if (field === 'bruttoertrag') {
+        formValues.bruttoertrag_pro_fzg = value;
+        document.getElementById('bruttoertragValue').textContent = value.toLocaleString();
+
+        // Bewertung aktualisieren
+        const benchmarks = wizardData?.benchmarks?.bruttoertrag_pro_fzg || {min: 1500, max: 2500};
+        const badge = document.getElementById('bruttoertragBewertung');
+        if (value > benchmarks.max) {
+            badge.className = 'bewertung-badge excellent ms-2';
+            badge.textContent = 'Ueber Branchenschnitt!';
+        } else if (value >= benchmarks.min) {
+            badge.className = 'bewertung-badge gut ms-2';
+            badge.textContent = 'Im Branchenschnitt';
+        } else {
+            badge.className = 'bewertung-badge kritisch ms-2';
+            badge.textContent = 'Unter Branchenschnitt';
+        }
+
+        // Bar aktualisieren
+        const percent = Math.min(100, (value / 4500) * 100);
+        document.getElementById('bruttoertragBar').style.width = percent + '%';
+    } else if (field === 'vkQuote') {
+        formValues.variable_kosten_quote = value;
+        document.getElementById('vkQuoteValue').textContent = value;
+    }
+}
+
+function updateProgressDots() {
+    const dots = document.querySelectorAll('.progress-dot');
+    dots.forEach((dot, i) => {
+        dot.classList.remove('active', 'completed');
+        if (i + 1 < currentStep) {
+            dot.classList.add('completed');
+        } else if (i + 1 === currentStep) {
+            dot.classList.add('active');
+        }
+    });
+}
+
+function showStep(step) {
+    // Alle Steps verstecken
+    for (let i = 1; i <= 5; i++) {
+        document.getElementById(`step${i}`).classList.add('hidden');
+    }
+
+    // Aktuellen Step zeigen
+    document.getElementById(`step${step}`).classList.remove('hidden');
+
+    // Buttons aktualisieren
+    document.getElementById('btnBack').style.visibility = step === 1 ? 'hidden' : 'visible';
+
+    if (step === 5) {
+        document.getElementById('btnNext').classList.add('hidden');
+        document.getElementById('btnSave').classList.remove('hidden');
+        calculateSummary();
+    } else {
+        document.getElementById('btnNext').classList.remove('hidden');
+        document.getElementById('btnSave').classList.add('hidden');
+    }
+
+    updateProgressDots();
+}
+
+function nextStep() {
+    if (currentStep < 5) {
+        currentStep++;
+        showStep(currentStep);
+    }
+}
+
+function prevStep() {
+    if (currentStep > 1) {
+        currentStep--;
+        showStep(currentStep);
+    }
+}
+
+async function calculateSummary() {
+    try {
+        const response = await fetch(`/api/budget/wizard/${currentTyp}/berechnen`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formValues)
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            const plan = result.jahresplan;
+
+            document.getElementById('summaryTyp').textContent = currentTyp;
+            document.getElementById('summaryStueck').textContent = plan.stueck.toLocaleString();
+            document.getElementById('summaryBruttoertrag').textContent =
+                (plan.bruttoertrag / 1000000).toFixed(2) + 'M';
+            document.getElementById('summaryDb1').textContent =
+                (plan.db1 / 1000000).toFixed(2) + 'M';
+            document.getElementById('summaryBeProFzg').textContent =
+                plan.be_pro_fzg.toLocaleString();
+
+            // Monatsverteilung
+            renderMonatsverteilung(result.monate);
+        }
+    } catch (error) {
+        console.error('Berechnung fehlgeschlagen:', error);
+    }
+}
+
+function renderMonatsverteilung(monate) {
+    const container = document.getElementById('monatsverteilungBars');
+    const maxStueck = Math.max(...monate.map(m => m.stueck));
+
+    let html = '';
+    monate.forEach(m => {
+        const width = (m.stueck / maxStueck) * 100;
+        html += `
+            <div class="monat-bar">
+                <span class="name">${m.name}</span>
+                <div class="bar">
+                    <div class="bar-fill" style="width: ${width}%"></div>
+                </div>
+                <span class="value">${m.stueck} Stk</span>
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+async function savePlan() {
+    const saveBtn = document.getElementById('btnSave');
+    const originalText = saveBtn.innerHTML;
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Speichere...';
+
+    try {
+        const payload = {
+            ...formValues,
+            jahr: 2026,
+            user: 'wizard'
+        };
+        // Standort nur senden wenn spezifisch gewaehlt
+        if (currentStandort !== null) {
+            payload.standort = currentStandort;
+        }
+
+        const response = await fetch(`/api/budget/wizard/${currentTyp}/speichern`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            // Erfolgs-Animation
+            saveBtn.innerHTML = '<i class="bi bi-check-circle"></i> Gespeichert!';
+            saveBtn.style.background = 'linear-gradient(135deg, #198754 0%, #20c997 100%)';
+
+            // Erfolgs-Modal anzeigen
+            showSuccessModal(result);
+
+            setTimeout(() => {
+                // Redirect zur Budget-Uebersicht
+                window.location.href = '/verkauf/budget';
+            }, 2500);
+        } else {
+            throw new Error(result.error || 'Unbekannter Fehler');
+        }
+    } catch (error) {
+        console.error('Speichern fehlgeschlagen:', error);
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = originalText;
+        alert('Fehler beim Speichern: ' + error.message);
+    }
+}
+
+function showSuccessModal(result) {
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.7); display: flex;
+        align-items: center; justify-content: center; z-index: 9999;
+    `;
+
+    const standorteHtml = result.standorte.map(s =>
+        `<div style="display:flex;justify-content:space-between;padding:0.5rem 0;border-bottom:1px solid #dee2e6;">
+            <span>${s.standort_name}</span>
+            <span><strong>${s.stueck} Stk</strong> | EUR ${(s.db1/1000).toFixed(0)}k DB1</span>
+        </div>`
+    ).join('');
+
+    modal.innerHTML = `
+        <div style="background:white;border-radius:20px;padding:2rem;max-width:500px;text-align:center;">
+            <div style="font-size:4rem;margin-bottom:1rem;">✅</div>
+            <h3 style="color:#198754;margin-bottom:1rem;">${result.typ}-Budget ${result.jahr} gespeichert!</h3>
+            <div style="background:#f8f9fa;border-radius:12px;padding:1rem;margin-bottom:1rem;text-align:left;">
+                <h6 style="margin-bottom:0.5rem;">Jahresplan:</h6>
+                <div><strong>${result.jahresplan.stueck}</strong> Fahrzeuge</div>
+                <div>EUR <strong>${(result.jahresplan.bruttoertrag/1000000).toFixed(2)}M</strong> Bruttoertrag</div>
+                <div>EUR <strong>${(result.jahresplan.db1/1000000).toFixed(2)}M</strong> DB1</div>
+            </div>
+            <div style="background:#e7f5ff;border-radius:12px;padding:1rem;text-align:left;">
+                <h6 style="margin-bottom:0.5rem;">Verteilung auf Standorte:</h6>
+                ${standorteHtml}
+            </div>
+            <p style="color:#6c757d;margin-top:1rem;font-size:0.9rem;">
+                Weiterleitung zum Budget-Dashboard...
+            </p>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+}
+
+// Initial
+showStep(1);
+</script>
+{% endblock %}

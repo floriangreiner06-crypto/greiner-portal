@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% block title %}Anwesenheits-Report - Greiner DRIVE{% endblock %}
+{% block extra_css %}
+<style>
+.anwesenheit-card {
+    border-radius: 12px;
+    overflow: hidden;
+    border: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+.status-ok { background: linear-gradient(135deg, rgba(39,174,96,0.1), rgba(46,204,113,0.1)); border-left: 4px solid #27ae60; }
+.status-warning { background: linear-gradient(135deg, rgba(243,156,18,0.1), rgba(241,196,15,0.1)); border-left: 4px solid #f39c12; }
+.status-danger { background: linear-gradient(135deg, rgba(231,76,60,0.1), rgba(192,57,43,0.1)); border-left: 4px solid #e74c3c; }
+.status-aktiv { background: linear-gradient(135deg, rgba(52,152,219,0.1), rgba(41,128,185,0.1)); border-left: 4px solid #3498db; }
+.mitarbeiter-row {
+    padding: 10px 15px;
+    border-radius: 8px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.mitarbeiter-info { display: flex; align-items: center; gap: 12px; }
+.mitarbeiter-avatar {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: bold; color: white; font-size: 12px;
+}
+.mitarbeiter-name { font-weight: 600; font-size: 13px; }
+.mitarbeiter-details { font-size: 11px; color: #6c757d; }
+.zeit-badge { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 20px; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+.live-indicator { animation: pulse 2s infinite; }
+.filter-bar { background: #f8f9fa; border-radius: 8px; padding: 12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <!-- Header + Filter -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="filter-bar d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <h4 class="mb-0"><i class="bi bi-person-check text-success"></i> Anwesenheits-Report</h4>
+                </div>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <input type="date" id="datum-filter" class="form-control form-control-sm" style="width: 150px;">
+                    <select id="betrieb-filter" class="form-select form-select-sm" style="width: 130px;">
+                        <option value="">Alle Betriebe</option>
+                        <option value="1">Deggendorf</option>
+                        <option value="2">Hyundai</option>
+                        <option value="3">Landau</option>
+                    </select>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="setHeute()">Heute</button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="setGestern()">Gestern</button>
+                    <span id="live-badge" class="badge bg-success live-indicator" style="display:none;">
+                        <i class="bi bi-broadcast"></i> LIVE
+                    </span>
+                    <span id="update-time" class="text-muted small"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- KPIs -->
+    <div class="row mb-3 g-2">
+        <div class="col-6 col-md-3">
+            <div class="card anwesenheit-card status-ok h-100">
+                <div class="card-body text-center py-2">
+                    <h3 id="kpi-anwesend" class="mb-0 fw-bold text-success">-</h3>
+                    <small class="text-muted">Anwesend</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card anwesenheit-card status-danger h-100">
+                <div class="card-body text-center py-2">
+                    <h3 id="kpi-abwesend" class="mb-0 fw-bold text-danger">-</h3>
+                    <small class="text-muted">Abwesend</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card anwesenheit-card status-aktiv h-100">
+                <div class="card-body text-center py-2">
+                    <h3 id="kpi-aktiv" class="mb-0 fw-bold text-primary">-</h3>
+                    <small class="text-muted">Gerade aktiv</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card anwesenheit-card status-warning h-100">
+                <div class="card-body text-center py-2">
+                    <h3 id="kpi-produktiv" class="mb-0 fw-bold text-warning">-</h3>
+                    <small class="text-muted">Produktiv-Std</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Listen -->
+    <div class="row g-3">
+        <!-- Anwesend -->
+        <div class="col-lg-6">
+            <div class="card anwesenheit-card">
+                <div class="card-header bg-success text-white py-2">
+                    <h6 class="mb-0">
+                        <i class="bi bi-check-circle"></i> Anwesend
+                        <span class="badge bg-light text-success ms-2" id="count-anwesend">0</span>
+                    </h6>
+                </div>
+                <div class="card-body p-0">
+                    <div id="liste-anwesend" class="p-2" style="max-height: 400px; overflow-y: auto;"></div>
+                </div>
+            </div>
+        </div>
+        <!-- Abwesend -->
+        <div class="col-lg-6">
+            <div class="card anwesenheit-card">
+                <div class="card-header bg-danger text-white py-2">
+                    <h6 class="mb-0">
+                        <i class="bi bi-x-circle"></i> Abwesend / Nicht gestempelt
+                        <span class="badge bg-light text-danger ms-2" id="count-abwesend">0</span>
+                    </h6>
+                </div>
+                <div class="card-body p-0">
+                    <div id="liste-abwesend" class="p-2" style="max-height: 400px; overflow-y: auto;"></div>
+                </div>
+            </div>
+        </div>
+        <!-- Gerade aktiv -->
+        <div class="col-12" id="aktiv-section" style="display:none;">
+            <div class="card anwesenheit-card">
+                <div class="card-header bg-primary text-white py-2">
+                    <h6 class="mb-0">
+                        <i class="bi bi-activity"></i> Gerade aktiv (offene Stempelung)
+                        <span class="badge bg-light text-primary ms-2" id="count-aktiv">0</span>
+                    </h6>
+                </div>
+                <div class="card-body p-0">
+                    <div id="liste-aktiv" class="p-2" style="max-height: 300px; overflow-y: auto;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function loadAnwesenheit() {
+    const datum = document.getElementById('datum-filter').value;
+    const betrieb = document.getElementById('betrieb-filter').value;
+    let url = '/api/werkstatt/live/anwesenheit?datum=' + datum;
+    if (betrieb) url += '&subsidiary=' + betrieb;
+    try {
+        const resp = await fetch(url);
+        const data = await resp.json();
+        if (data.success) {
+            renderReport(data);
+            const heute = new Date().toISOString().split('T')[0];
+            const isHeute = datum === heute;
+            document.getElementById('live-badge').style.display = isHeute ? 'inline-block' : 'none';
+            document.getElementById('aktiv-section').style.display = isHeute ? 'block' : 'none';
+            document.getElementById('update-time').textContent = 'Stand: ' + new Date().toLocaleTimeString('de-DE');
+        } else {
+            showError(data.error);
+        }
+    } catch (e) {
+        showError('Verbindungsfehler: ' + e.message);
+    }
+}
+
+function renderReport(data) {
+    const stats = data.statistik || {};
+    document.getElementById('kpi-anwesend').textContent = stats.anwesend || 0;
+    document.getElementById('kpi-abwesend').textContent = stats.abwesend || 0;
+    document.getElementById('kpi-aktiv').textContent = stats.gerade_aktiv || 0;
+    document.getElementById('kpi-produktiv').textContent = (stats.produktiv_std || 0) + 'h';
+    document.getElementById('count-anwesend').textContent = (data.anwesend || []).length;
+    document.getElementById('count-abwesend').textContent = (data.abwesend || []).length;
+    document.getElementById('count-aktiv').textContent = (data.aktiv || []).length;
+    renderListe('liste-anwesend', data.anwesend || [], 'success');
+    renderListe('liste-abwesend', data.abwesend || [], 'danger');
+    renderListe('liste-aktiv', data.aktiv || [], 'primary');
+}
+
+function renderListe(containerId, mitarbeiter, type) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    if (!mitarbeiter.length) {
+        container.innerHTML = '<div class="text-center text-muted py-3">Keine Einträge</div>';
+        return;
+    }
+    const colors = { success: '#27ae60', danger: '#e74c3c', primary: '#3498db' };
+    container.innerHTML = mitarbeiter.map(m => {
+        const initials = getInitials(m.name);
+        let badge = '';
+        if (type === 'success') {
+            const anwesendInfo = m.anwesend_ab ? `<span class="badge bg-info ms-1" title="Type 1 Anwesenheit">${m.anwesend_ab}-${m.anwesend_bis || '?'}</span>` : '';
+            badge = `<span class="zeit-badge bg-success text-white">${m.erster_start || '-'} - ${m.letztes_ende || '-'}</span>
+                     <span class="badge bg-secondary ms-1">${m.produktiv_std}h / ${m.anzahl_auftraege} Auftr.</span>${anwesendInfo}`;
+        } else if (type === 'primary') {
+            badge = `<span class="zeit-badge bg-primary text-white">Seit ${m.aktiv_seit || '-'}</span>
+                     <span class="badge bg-dark ms-1">Auftrag ${m.aktiver_auftrag}</span>`;
+        } else if (type === 'danger') {
+            // Abwesend: Grund anzeigen falls vorhanden
+            if (m.abwesenheit_grund) {
+                badge = `<span class="badge bg-warning text-dark">${m.abwesenheit_grund}</span>`;
+            } else if (m.abwesenheit_typ) {
+                badge = `<span class="badge bg-secondary">${m.abwesenheit_typ}</span>`;
+            } else {
+                badge = `<span class="badge bg-light text-muted">Nicht gestempelt</span>`;
+            }
+        }
+        return `<div class="mitarbeiter-row status-${type === 'success' ? 'ok' : type === 'danger' ? 'danger' : 'aktiv'}">
+            <div class="mitarbeiter-info">
+                <div class="mitarbeiter-avatar" style="background:${colors[type]}">${initials}</div>
+                <div>
+                    <div class="mitarbeiter-name">${m.name}</div>
+                    <div class="mitarbeiter-details">${m.betrieb || ''}</div>
+                </div>
+            </div>
+            <div>${badge}</div>
+        </div>`;
+    }).join('');
+}
+
+function getInitials(name) {
+    if (!name) return '?';
+    const p = name.split(',');
+    return p.length >= 2 ? (p[0][0] + p[1].trim()[0]).toUpperCase() : name.substring(0,2).toUpperCase();
+}
+
+function showError(msg) {
+    ['liste-anwesend','liste-abwesend','liste-aktiv'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = `<div class="alert alert-warning py-2">${msg}</div>`;
+    });
+}
+
+function setHeute() {
+    document.getElementById('datum-filter').value = new Date().toISOString().split('T')[0];
+    loadAnwesenheit();
+}
+
+function setGestern() {
+    const d = new Date(); d.setDate(d.getDate() - 1);
+    document.getElementById('datum-filter').value = d.toISOString().split('T')[0];
+    loadAnwesenheit();
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('datum-filter').value = new Date().toISOString().split('T')[0];
+    loadAnwesenheit();
+    document.getElementById('datum-filter').addEventListener('change', loadAnwesenheit);
+    document.getElementById('betrieb-filter').addEventListener('change', loadAnwesenheit);
+    setInterval(() => {
+        const heute = new Date().toISOString().split('T')[0];
+        if (document.getElementById('datum-filter').value === heute) loadAnwesenheit();
+    }, 60000);
+});
+</script>
+{% endblock %}

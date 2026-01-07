@@ -244,6 +244,14 @@ app.register_blueprint(admin_api)
 app.register_blueprint(teile_api)
 app.register_blueprint(zins_api)
 print("✅ Verkauf API registriert: /api/verkauf/")
+
+# Fahrzeug API (TAG 160 - Bestand aus Locosoft)
+try:
+    from api.fahrzeug_api import fahrzeug_api
+    app.register_blueprint(fahrzeug_api)
+    print("✅ Fahrzeug API registriert: /api/fahrzeug/")
+except ImportError as e:
+    print(f"⚠️  Fahrzeug API nicht geladen: {e}")
 print("✅ Parts API registriert: /api/stellantis/")
 print("✅ Admin API registriert: /api/admin/")
 
@@ -393,15 +401,31 @@ def dashboard():
 
 
 @app.route('/mein-bereich')
+@app.route('/sb/mein-bereich')  # TAG 164: Alternative URL für Kompatibilität
 @login_required
 def mein_bereich():
     """
     Persönlicher Bereich für Serviceberater (TAG122)
-
+    
+    TAG 164: Unterstützt ma_id Parameter für Geschäfts-/Serviceleitung
     Zeigt KPI-Badges und Schnellzugriff auf relevante Bereiche
     """
+    from flask import request
     from datetime import datetime
-    return render_template('sb/mein_bereich.html', now=datetime.now())
+    from flask_login import current_user
+    
+    # TAG 164: ma_id Parameter für Geschäfts-/Serviceleitung
+    ma_id_param = request.args.get('ma_id')
+    
+    # Prüfe Berechtigung: Wenn ma_id angegeben, muss User admin/controlling sein
+    if ma_id_param:
+        if not (current_user.can_access_feature('admin') or current_user.can_access_feature('controlling')):
+            from flask import abort
+            abort(403)
+    
+    return render_template('sb/mein_bereich.html', 
+                         now=datetime.now(),
+                         ma_id_param=ma_id_param)
 
 
 # After Sales Routes
@@ -421,6 +445,14 @@ try:
 except Exception as e:
     print(f"⚠️  Serviceberater API nicht geladen: {e}")
 
+# Kundenzentrale API (TAG 164 - Tägliches Fakturierungsziel)
+try:
+    from api.kundenzentrale_api import kundenzentrale_api
+    app.register_blueprint(kundenzentrale_api)
+    print("✅ Kundenzentrale API registriert: /api/kundenzentrale/")
+except Exception as e:
+    print(f"⚠️  Kundenzentrale API nicht geladen: {e}")
+
 # Werkstatt API (Leistungsübersicht)
 try:
     from api.werkstatt_api import werkstatt_api
@@ -433,6 +465,22 @@ except Exception as e:
 try:
     from api.werkstatt_live_api import werkstatt_live_bp
     app.register_blueprint(werkstatt_live_bp)
+    
+    # TAG 165: Abteilungsleiter-Planung
+    try:
+        from api.abteilungsleiter_planung_api import planung_bp
+        app.register_blueprint(planung_bp)
+        print("✅ Abteilungsleiter-Planung API registriert")
+    except ImportError as e:
+        print(f"⚠️  Abteilungsleiter-Planung API nicht gefunden: {e}")
+    
+    # TAG 165: Abteilungsleiter-Planung Routes
+    try:
+        from routes.planung_routes import planung_routes
+        app.register_blueprint(planung_routes)
+        print("✅ Abteilungsleiter-Planung Routes registriert")
+    except ImportError as e:
+        print(f"⚠️  Abteilungsleiter-Planung Routes nicht gefunden: {e}")
     print("✅ Werkstatt LIVE API registriert: /api/werkstatt/live/")
 except Exception as e:
     print(f"⚠️  Werkstatt LIVE API nicht geladen: {e}")
@@ -514,6 +562,22 @@ try:
     print("✅ Budget API registriert: /api/budget/")
 except Exception as e:
     print(f"⚠️  Budget API nicht geladen: {e}")
+
+# Unternehmensplan API - 1%-Rendite Dashboard (TAG 157)
+try:
+    from api.unternehmensplan_api import unternehmensplan_bp
+    app.register_blueprint(unternehmensplan_bp)
+    print("✅ Unternehmensplan API registriert: /api/unternehmensplan/")
+except Exception as e:
+    print(f"⚠️  Unternehmensplan API nicht geladen: {e}")
+
+# KST-Ziele API - Kostenstellenbezogene Zielplanung (TAG 161)
+try:
+    from api.kst_ziele_api import kst_ziele_bp
+    app.register_blueprint(kst_ziele_bp)
+    print("✅ KST-Ziele API registriert: /api/kst-ziele/")
+except Exception as e:
+    print(f"⚠️  KST-Ziele API nicht geladen: {e}")
 
 # Ersatzwagen-Kalender Test-UI (TAG 131)
 @app.route('/test/ersatzwagen')

@@ -1,0 +1,651 @@
+{% extends "base.html" %}
+
+{% block title %}BWA - Betriebswirtschaftliche Auswertung{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* KPI-Karten */
+    .kpi-row { margin-bottom: 1rem; }
+    .kpi-card {
+        background: #fff;
+        border-radius: 8px;
+        padding: 0.75rem 1rem;
+        border-left: 4px solid;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        height: 100%;
+    }
+    .kpi-card.kpi-umsatz { border-left-color: #198754; }
+    .kpi-card.kpi-einsatz { border-left-color: #6c757d; }
+    .kpi-card.kpi-db1 { border-left-color: #0d6efd; }
+    .kpi-card.kpi-be { border-left-color: #6f42c1; }
+    .kpi-card.kpi-ue { border-left-color: #ffc107; }
+    .kpi-label { font-size: 0.7rem; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px; }
+    .kpi-value { font-size: 1.3rem; font-weight: 700; line-height: 1.2; }
+    .kpi-delta { font-size: 0.75rem; }
+
+    /* WJ-Fortschritt */
+    .wj-bar {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        margin-bottom: 1rem;
+    }
+    .wj-progress {
+        height: 8px;
+        background: #e9ecef;
+        border-radius: 4px;
+        overflow: hidden;
+        margin: 0.5rem 0;
+    }
+    .wj-progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #0d6efd, #198754);
+        transition: width 0.5s;
+    }
+
+    /* Kompakte BWA-Tabelle */
+    .bwa-table { font-size: 0.9rem; }
+    .bwa-table th {
+        background: #343a40;
+        color: #fff;
+        font-weight: 500;
+        padding: 0.5rem;
+        white-space: nowrap;
+    }
+    .bwa-table td { padding: 0.4rem 0.6rem; vertical-align: middle; }
+
+    /* Zeilen-Typen */
+    .row-input { cursor: pointer; transition: background 0.15s; }
+    .row-input:hover { background: #e3f2fd !important; }
+    .row-input td:first-child { padding-left: 1.5rem; }
+    .row-result { background: #e9ecef; font-weight: 600; }
+    .row-final {
+        background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+        font-weight: 700;
+        font-size: 1rem;
+    }
+
+    /* Werte */
+    .val-pos { color: #198754; }
+    .val-neg { color: #dc3545; }
+    .val-muted { color: #6c757d; }
+
+    /* Delta-Badges */
+    .delta {
+        font-size: 0.7rem;
+        padding: 0.1rem 0.4rem;
+        border-radius: 3px;
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+    }
+    .delta-pos { background: #d1e7dd; color: #0f5132; }
+    .delta-neg { background: #f8d7da; color: #842029; }
+    .delta-neutral { background: #e9ecef; color: #6c757d; }
+
+    /* Inline Drill-Down */
+    .drill-row { display: none; }
+    .drill-row.show { display: table-row; }
+    .drill-content {
+        background: #f8f9fa;
+        padding: 0;
+    }
+    .drill-inner {
+        padding: 1rem;
+        border-left: 3px solid #0d6efd;
+        margin: 0.5rem 1rem;
+        background: #fff;
+        border-radius: 0 8px 8px 0;
+    }
+    .drill-table { font-size: 0.8rem; margin-bottom: 0; }
+    .drill-table th { background: #f1f3f5; color: #495057; font-weight: 600; }
+
+    /* Expand Icon */
+    .expand-icon {
+        display: inline-block;
+        width: 16px;
+        text-align: center;
+        color: #6c757d;
+        transition: transform 0.2s;
+    }
+    .row-expanded .expand-icon { transform: rotate(90deg); color: #0d6efd; }
+
+    /* Mobile */
+    @media (max-width: 768px) {
+        .kpi-value { font-size: 1.1rem; }
+        .bwa-table { font-size: 0.8rem; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+
+    <!-- Header mit Filter -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h1 class="h4 mb-0">
+                <i class="bi bi-graph-up me-2"></i>BWA
+            </h1>
+            <small class="text-muted" id="zeitraumLabel">-</small>
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+            <select class="form-select form-select-sm" id="filterFirma" style="width: auto;" onchange="onFirmaChange()">
+                <option value="0">Alle Firmen</option>
+                <option value="1">Stellantis</option>
+                <option value="2">Hyundai</option>
+            </select>
+            <select class="form-select form-select-sm" id="filterStandort" style="width: auto; display: none;" onchange="loadData()">
+                <option value="0">Alle Standorte</option>
+                <option value="1">Deggendorf</option>
+                <option value="2">Landau</option>
+            </select>
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary" onclick="changeMonth(-1)"><i class="bi bi-chevron-left"></i></button>
+                <select class="form-select form-select-sm" id="filterMonat" style="width: 100px; border-radius: 0;" onchange="loadData()">
+                    <option value="1">Januar</option>
+                    <option value="2">Februar</option>
+                    <option value="3">März</option>
+                    <option value="4">April</option>
+                    <option value="5">Mai</option>
+                    <option value="6">Juni</option>
+                    <option value="7">Juli</option>
+                    <option value="8">August</option>
+                    <option value="9">September</option>
+                    <option value="10">Oktober</option>
+                    <option value="11">November</option>
+                    <option value="12">Dezember</option>
+                </select>
+                <button class="btn btn-outline-secondary" onclick="changeMonth(1)"><i class="bi bi-chevron-right"></i></button>
+            </div>
+            <select class="form-select form-select-sm" id="filterJahr" style="width: 80px;" onchange="loadData()">
+                <option value="2024">2024</option>
+                <option value="2025">2025</option>
+                <option value="2026" selected>2026</option>
+            </select>
+            <button class="btn btn-sm btn-outline-primary" onclick="loadData()" title="Aktualisieren">
+                <i class="bi bi-arrow-clockwise"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- KPI-Karten -->
+    <div class="row g-2 kpi-row">
+        <div class="col-6 col-md">
+            <div class="kpi-card kpi-umsatz">
+                <div class="kpi-label">Umsatz</div>
+                <div class="kpi-value" id="kpiUmsatz">-</div>
+                <div class="kpi-delta" id="kpiUmsatzDelta"></div>
+            </div>
+        </div>
+        <div class="col-6 col-md">
+            <div class="kpi-card kpi-einsatz">
+                <div class="kpi-label">Einsatz</div>
+                <div class="kpi-value" id="kpiEinsatz">-</div>
+                <div class="kpi-delta" id="kpiEinsatzDelta"></div>
+            </div>
+        </div>
+        <div class="col-6 col-md">
+            <div class="kpi-card kpi-db1">
+                <div class="kpi-label">Bruttoertrag (DB1)</div>
+                <div class="kpi-value" id="kpiDB1">-</div>
+                <div class="kpi-delta" id="kpiDB1Delta"></div>
+            </div>
+        </div>
+        <div class="col-6 col-md">
+            <div class="kpi-card kpi-be">
+                <div class="kpi-label">Betriebsergebnis</div>
+                <div class="kpi-value" id="kpiBE">-</div>
+                <div class="kpi-delta" id="kpiBEDelta"></div>
+            </div>
+        </div>
+        <div class="col-6 col-md">
+            <div class="kpi-card kpi-ue">
+                <div class="kpi-label">Unternehmensergebnis</div>
+                <div class="kpi-value" id="kpiUE">-</div>
+                <div class="kpi-delta" id="kpiUEDelta"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- WJ-Fortschritt -->
+    <div class="wj-bar">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <span class="text-muted small">Wirtschaftsjahr</span>
+                <strong id="wjLabel" class="ms-2">Sep 2024 - Aug 2025</strong>
+            </div>
+            <div class="d-flex gap-4">
+                <div>
+                    <span class="text-muted small">YTD Umsatz:</span>
+                    <strong id="ytdUmsatz" class="ms-1">-</strong>
+                </div>
+                <div>
+                    <span class="text-muted small">YTD DB1:</span>
+                    <strong id="ytdDB1" class="ms-1">-</strong>
+                </div>
+                <div>
+                    <span class="text-muted small">YTD UE:</span>
+                    <strong id="ytdUE" class="ms-1">-</strong>
+                </div>
+            </div>
+        </div>
+        <div class="wj-progress">
+            <div class="wj-progress-fill" id="wjProgress" style="width: 0%"></div>
+        </div>
+        <div class="d-flex justify-content-between">
+            <small class="text-muted" id="wjStart">Sep</small>
+            <small id="wjFortschritt" class="fw-bold">-</small>
+            <small class="text-muted" id="wjEnde">Aug</small>
+        </div>
+    </div>
+
+    <!-- BWA-Tabelle -->
+    <div class="card border-0 shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover bwa-table mb-0">
+                <thead>
+                    <tr>
+                        <th style="width: 25%">Position</th>
+                        <th class="text-end" style="width: 15%">Monat</th>
+                        <th class="text-center" style="width: 8%">%</th>
+                        <th class="text-center" style="width: 10%">vs. VJ</th>
+                        <th class="text-end" style="width: 15%">YTD</th>
+                        <th class="text-center" style="width: 10%">vs. VJ</th>
+                    </tr>
+                </thead>
+                <tbody id="bwaBody">
+                    <tr>
+                        <td colspan="6" class="text-center py-4">
+                            <div class="spinner-border spinner-border-sm text-primary"></div>
+                            <span class="ms-2">Lädt...</span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Legende (kompakt) -->
+    <div class="mt-2 small text-muted">
+        <i class="bi bi-info-circle me-1"></i>
+        Klick auf Zeile für Drill-Down |
+        DB1 = Umsatz - Einsatz |
+        DB2 = DB1 - Variable Kosten |
+        DB3 = DB2 - Direkte Kosten |
+        BE = DB3 - Indirekte Kosten |
+        UE = BE + Neutral
+    </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Daten-Cache
+let bwaData = null;
+let expandedRows = new Set();
+
+// Formatierung
+const fmtEuro = v => v == null ? '-' : new Intl.NumberFormat('de-DE', {
+    style: 'currency', currency: 'EUR', maximumFractionDigits: 0
+}).format(v);
+
+const fmtEuroCompact = v => {
+    if (v == null) return '-';
+    if (Math.abs(v) >= 1000000) {
+        return (v / 1000000).toFixed(1) + ' Mio €';
+    }
+    if (Math.abs(v) >= 1000) {
+        return (v / 1000).toFixed(0) + ' T€';
+    }
+    return fmtEuro(v);
+};
+
+const fmtPct = v => v == null ? '-' : v.toFixed(1) + '%';
+
+function deltaHtml(value, invert = false) {
+    if (value == null || value === undefined) return '<span class="delta delta-neutral">-</span>';
+    const isPositive = invert ? value < 0 : value >= 0;
+    const cls = isPositive ? 'delta-pos' : 'delta-neg';
+    const sign = value >= 0 ? '+' : '';
+    return `<span class="delta ${cls}">${sign}${value.toFixed(0)}%</span>`;
+}
+
+// Navigation
+function changeMonth(delta) {
+    let m = parseInt(document.getElementById('filterMonat').value) + delta;
+    let y = parseInt(document.getElementById('filterJahr').value);
+    if (m < 1) { m = 12; y--; }
+    if (m > 12) { m = 1; y++; }
+    document.getElementById('filterMonat').value = m;
+    document.getElementById('filterJahr').value = y;
+    loadData();
+}
+
+function onFirmaChange() {
+    const firma = document.getElementById('filterFirma').value;
+    document.getElementById('filterStandort').style.display = firma === '1' ? 'inline-block' : 'none';
+    if (firma !== '1') document.getElementById('filterStandort').value = '0';
+    loadData();
+}
+
+// Daten laden
+async function loadData() {
+    const firma = document.getElementById('filterFirma').value;
+    const standort = document.getElementById('filterStandort').value;
+    const monat = document.getElementById('filterMonat').value;
+    const jahr = document.getElementById('filterJahr').value;
+
+    document.getElementById('bwaBody').innerHTML = '<tr><td colspan="6" class="text-center py-4"><div class="spinner-border spinner-border-sm"></div></td></tr>';
+    expandedRows.clear();
+
+    try {
+        const url = `/api/controlling/bwa?monat=${monat}&jahr=${jahr}&firma=${firma}&standort=${standort}`;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (data.status === 'ok') {
+            bwaData = data;
+            renderAll(data);
+        } else {
+            throw new Error(data.message || 'Fehler beim Laden');
+        }
+    } catch (err) {
+        console.error(err);
+        document.getElementById('bwaBody').innerHTML = `<tr><td colspan="6" class="text-center py-4 text-danger">${err.message}</td></tr>`;
+    }
+}
+
+function renderAll(data) {
+    const d = data.data;
+    const vj = data.vorjahr || {};
+    const abw = data.abweichungen || {};
+    const ytd = data.ytd || {};
+    const ytdVj = data.ytd_vorjahr || {};
+    const ytdAbw = data.ytd_abweichungen || {};
+
+    // Zeitraum-Label
+    document.getElementById('zeitraumLabel').textContent = `${d.monat_name} ${d.jahr}` +
+        (d.standort_name && d.standort_name !== 'Alle' ? ` (${d.standort_name})` : '');
+
+    // KPI-Karten
+    renderKPIs(d, abw);
+
+    // WJ-Fortschritt
+    renderWJProgress(d, ytd, ytdAbw);
+
+    // Tabelle
+    renderTable(d, vj, abw, ytd, ytdVj, ytdAbw);
+}
+
+function renderKPIs(d, abw) {
+    document.getElementById('kpiUmsatz').textContent = fmtEuroCompact(d.umsatz);
+    document.getElementById('kpiUmsatzDelta').innerHTML = deltaHtml(abw.umsatz);
+
+    document.getElementById('kpiEinsatz').textContent = fmtEuroCompact(d.einsatz);
+    document.getElementById('kpiEinsatzDelta').innerHTML = deltaHtml(abw.einsatz, true); // Weniger Einsatz = gut
+
+    document.getElementById('kpiDB1').textContent = fmtEuroCompact(d.db1);
+    document.getElementById('kpiDB1').className = 'kpi-value ' + (d.db1 >= 0 ? 'val-pos' : 'val-neg');
+    document.getElementById('kpiDB1Delta').innerHTML = deltaHtml(abw.db1);
+
+    document.getElementById('kpiBE').textContent = fmtEuroCompact(d.betriebsergebnis);
+    document.getElementById('kpiBE').className = 'kpi-value ' + (d.betriebsergebnis >= 0 ? 'val-pos' : 'val-neg');
+    document.getElementById('kpiBEDelta').innerHTML = deltaHtml(abw.betriebsergebnis);
+
+    document.getElementById('kpiUE').textContent = fmtEuroCompact(d.unternehmensergebnis);
+    document.getElementById('kpiUE').className = 'kpi-value ' + (d.unternehmensergebnis >= 0 ? 'val-pos' : 'val-neg');
+    document.getElementById('kpiUEDelta').innerHTML = deltaHtml(abw.unternehmensergebnis);
+}
+
+function renderWJProgress(d, ytd, ytdAbw) {
+    const monat = d.monat;
+    const jahr = d.jahr;
+
+    // Wirtschaftsjahr: Sep-Aug
+    const wjStartJahr = monat >= 9 ? jahr : jahr - 1;
+    const wjEndeJahr = wjStartJahr + 1;
+
+    document.getElementById('wjLabel').textContent = `Sep ${wjStartJahr} - Aug ${wjEndeJahr}`;
+    document.getElementById('wjStart').textContent = `Sep ${wjStartJahr}`;
+    document.getElementById('wjEnde').textContent = `Aug ${wjEndeJahr}`;
+
+    // Fortschritt berechnen (Sep=1, Aug=12)
+    let wjMonat = monat >= 9 ? monat - 8 : monat + 4;
+    const fortschritt = Math.round((wjMonat / 12) * 100);
+
+    document.getElementById('wjProgress').style.width = fortschritt + '%';
+    document.getElementById('wjFortschritt').textContent = `${wjMonat}/12 Monate (${fortschritt}%)`;
+
+    // YTD-Werte
+    document.getElementById('ytdUmsatz').textContent = fmtEuroCompact(ytd.umsatz);
+    document.getElementById('ytdDB1').textContent = fmtEuroCompact(ytd.db1);
+    document.getElementById('ytdUE').textContent = fmtEuroCompact(ytd.unternehmensergebnis);
+}
+
+function renderTable(d, vj, abw, ytd, ytdVj, ytdAbw) {
+    const umsatz = d.umsatz || 1;
+
+    const rows = [
+        { key: 'umsatz', label: 'Umsatzerlöse', type: 'input', drilldown: 'umsatz' },
+        { key: 'einsatz', label: 'Einsatzwerte', type: 'input', drilldown: 'einsatz' },
+        { key: 'db1', label: 'Bruttoertrag (DB1)', type: 'result' },
+        { key: 'variable', label: 'Variable Kosten', type: 'input', drilldown: 'variable' },
+        { key: 'db2', label: 'Bruttoertrag II (DB2)', type: 'result' },
+        { key: 'direkte', label: 'Direkte Kosten', type: 'input', drilldown: 'direkte' },
+        { key: 'db3', label: 'Deckungsbeitrag (DB3)', type: 'result' },
+        { key: 'indirekte', label: 'Indirekte Kosten', type: 'input', drilldown: 'indirekte' },
+        { key: 'betriebsergebnis', label: 'Betriebsergebnis (BE)', type: 'result' },
+        { key: 'neutral', label: 'Neutrales Ergebnis', type: 'input', drilldown: 'neutral' },
+        { key: 'unternehmensergebnis', label: 'Unternehmensergebnis (UE)', type: 'final' }
+    ];
+
+    let html = '';
+
+    for (const row of rows) {
+        const value = d[row.key] || 0;
+        const pct = umsatz > 0 ? (value / umsatz * 100) : 0;
+        const vjDelta = abw[row.key];
+        const ytdValue = ytd[row.key] || 0;
+        const ytdDelta = ytdAbw[row.key];
+
+        const valueClass = value < 0 ? 'val-neg' : (value > 0 && row.type !== 'input' ? 'val-pos' : '');
+
+        let rowClass = '';
+        let expandIcon = '';
+
+        if (row.type === 'input' && row.drilldown) {
+            rowClass = 'row-input';
+            expandIcon = `<span class="expand-icon"><i class="bi bi-chevron-right"></i></span>`;
+        } else if (row.type === 'result') {
+            rowClass = 'row-result';
+        } else if (row.type === 'final') {
+            rowClass = 'row-final';
+        }
+
+        const clickHandler = row.drilldown ? `onclick="toggleDrill('${row.key}', '${row.drilldown}', '${row.label}')"` : '';
+
+        html += `
+            <tr class="${rowClass}" id="row-${row.key}" ${clickHandler}>
+                <td>${expandIcon}${row.label}</td>
+                <td class="text-end ${valueClass}">${fmtEuro(value)}</td>
+                <td class="text-center text-muted small">${fmtPct(pct)}</td>
+                <td class="text-center">${deltaHtml(vjDelta, row.key.includes('einsatz') || row.key.includes('kosten'))}</td>
+                <td class="text-end ${ytdValue < 0 ? 'val-neg' : ''}">${fmtEuroCompact(ytdValue)}</td>
+                <td class="text-center">${deltaHtml(ytdDelta, row.key.includes('einsatz') || row.key.includes('kosten'))}</td>
+            </tr>
+        `;
+
+        // Drill-Down Zeile (versteckt)
+        if (row.drilldown) {
+            html += `
+                <tr class="drill-row" id="drill-${row.key}">
+                    <td colspan="6" class="drill-content p-0">
+                        <div class="drill-inner" id="drill-content-${row.key}">
+                            <div class="text-center py-3">
+                                <div class="spinner-border spinner-border-sm"></div>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
+    }
+
+    document.getElementById('bwaBody').innerHTML = html;
+}
+
+// Drill-Down Toggle
+async function toggleDrill(key, position, label) {
+    const row = document.getElementById('row-' + key);
+    const drillRow = document.getElementById('drill-' + key);
+    const content = document.getElementById('drill-content-' + key);
+
+    if (expandedRows.has(key)) {
+        // Schließen
+        expandedRows.delete(key);
+        row.classList.remove('row-expanded');
+        drillRow.classList.remove('show');
+    } else {
+        // Öffnen
+        expandedRows.add(key);
+        row.classList.add('row-expanded');
+        drillRow.classList.add('show');
+
+        // Daten laden
+        content.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div></div>';
+
+        try {
+            const monat = document.getElementById('filterMonat').value;
+            const jahr = document.getElementById('filterJahr').value;
+            const firma = document.getElementById('filterFirma').value;
+            const standort = document.getElementById('filterStandort').value;
+
+            const url = `/api/controlling/bwa/detail?position=${position}&monat=${monat}&jahr=${jahr}&firma=${firma}&standort=${standort}&ebene=gruppen`;
+            const res = await fetch(url);
+            const data = await res.json();
+
+            if (data.status === 'ok') {
+                renderDrillContent(content, data, position, label);
+            } else {
+                throw new Error(data.message);
+            }
+        } catch (err) {
+            content.innerHTML = `<div class="alert alert-danger mb-0">${err.message}</div>`;
+        }
+    }
+}
+
+function renderDrillContent(container, data, position, label) {
+    let html = `
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <strong>${label}</strong>
+            <span class="badge bg-primary">${data.anzahl_gruppen} Gruppen</span>
+        </div>
+        <table class="table table-sm drill-table">
+            <thead>
+                <tr>
+                    <th>Gruppe</th>
+                    <th>Bezeichnung</th>
+                    <th class="text-end">Betrag</th>
+                    <th class="text-center"># Konten</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    for (const g of data.gruppen) {
+        const cls = g.betrag >= 0 ? 'val-pos' : 'val-neg';
+        html += `
+            <tr class="drill-group-row" onclick="loadKonten('${position}', '${g.gruppe}', this)" style="cursor: pointer;">
+                <td><code>${g.gruppe}xxxx</code></td>
+                <td><i class="bi bi-folder text-warning me-1"></i>${g.name}</td>
+                <td class="text-end ${cls}">${fmtEuro(g.betrag)}</td>
+                <td class="text-center text-muted">${g.anzahl_konten}</td>
+            </tr>
+            <tr class="konten-row d-none" id="konten-${position}-${g.gruppe}">
+                <td colspan="4" class="p-0 bg-white">
+                    <div class="konten-content ps-4 py-2" id="konten-content-${position}-${g.gruppe}"></div>
+                </td>
+            </tr>
+        `;
+    }
+
+    html += `
+            </tbody>
+            <tfoot class="table-light">
+                <tr>
+                    <th colspan="2">Summe</th>
+                    <th class="text-end">${fmtEuro(data.summe)}</th>
+                    <th></th>
+                </tr>
+            </tfoot>
+        </table>
+    `;
+
+    container.innerHTML = html;
+}
+
+// Konten-Details laden
+async function loadKonten(position, gruppe, row) {
+    const kontenRow = document.getElementById(`konten-${position}-${gruppe}`);
+    const content = document.getElementById(`konten-content-${position}-${gruppe}`);
+
+    if (kontenRow.classList.contains('d-none')) {
+        // Öffnen
+        kontenRow.classList.remove('d-none');
+        content.innerHTML = '<div class="spinner-border spinner-border-sm"></div>';
+
+        try {
+            const monat = document.getElementById('filterMonat').value;
+            const jahr = document.getElementById('filterJahr').value;
+            const firma = document.getElementById('filterFirma').value;
+            const standort = document.getElementById('filterStandort').value;
+
+            const url = `/api/controlling/bwa/detail?position=${position}&monat=${monat}&jahr=${jahr}&firma=${firma}&standort=${standort}&ebene=konten&gruppe=${gruppe}`;
+            const res = await fetch(url);
+            const data = await res.json();
+
+            if (data.status === 'ok') {
+                renderKontenContent(content, data);
+            } else {
+                throw new Error(data.message);
+            }
+        } catch (err) {
+            content.innerHTML = `<span class="text-danger">${err.message}</span>`;
+        }
+    } else {
+        // Schließen
+        kontenRow.classList.add('d-none');
+    }
+}
+
+function renderKontenContent(container, data) {
+    let html = '<table class="table table-sm table-bordered mb-0" style="font-size: 0.75rem;"><tbody>';
+
+    for (const k of data.konten) {
+        const cls = k.betrag >= 0 ? 'val-pos' : 'val-neg';
+        html += `
+            <tr>
+                <td style="width: 80px;"><code>${k.konto}</code></td>
+                <td>${k.bezeichnung}</td>
+                <td class="text-end ${cls}" style="width: 100px;">${fmtEuro(k.betrag)}</td>
+            </tr>
+        `;
+    }
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+// Init
+document.addEventListener('DOMContentLoaded', function() {
+    const now = new Date();
+    document.getElementById('filterMonat').value = now.getMonth() + 1;
+    document.getElementById('filterJahr').value = now.getFullYear();
+    loadData();
+});
+</script>
+{% endblock %}

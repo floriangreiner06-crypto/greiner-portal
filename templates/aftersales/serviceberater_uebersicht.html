@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+
+{% block title %}Serviceberater Übersicht - DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .sb-card {
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        transition: all 0.3s ease;
+        background: white;
+    }
+    .sb-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        transform: translateY(-2px);
+    }
+    .sb-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+    .sb-name {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: #2c3e50;
+    }
+    .sb-standort {
+        font-size: 0.875rem;
+        color: #6c757d;
+        padding: 0.25rem 0.75rem;
+        background: #f8f9fa;
+        border-radius: 20px;
+    }
+    .sb-standort.deggendorf {
+        background: #e3f2fd;
+        color: #1976d2;
+    }
+    .sb-standort.landau {
+        background: #fff3e0;
+        color: #f57c00;
+    }
+    .sb-preview {
+        margin-top: 1rem;
+        padding: 1rem;
+        background: #f8f9fa;
+        border-radius: 6px;
+        min-height: 200px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #6c757d;
+    }
+    .sb-actions {
+        margin-top: 1rem;
+        display: flex;
+        gap: 0.5rem;
+    }
+    .btn-view {
+        flex: 1;
+    }
+    .standort-header {
+        margin-top: 2rem;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #dee2e6;
+    }
+    .standort-header:first-child {
+        margin-top: 0;
+    }
+    .standort-header h3 {
+        margin: 0;
+        font-size: 1.1rem;
+        color: #495057;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1 class="h3 mb-2">
+                <i class="bi bi-people"></i> Serviceberater Übersicht
+            </h1>
+            <p class="text-muted">
+                Übersicht aller Serviceberater "Mein Bereich" Dashboards für Geschäfts- und Serviceleitung
+            </p>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            {% set current_standort = '' %}
+            {% for sb in serviceberater %}
+                {% if sb.standort != current_standort %}
+                    {% if current_standort != '' %}
+                        </div> <!-- End previous standort group -->
+                    {% endif %}
+                    <div class="standort-header">
+                        <h3>
+                            <i class="bi bi-geo-alt"></i> 
+                            {{ sb.standort_name }}
+                            <span class="badge bg-secondary ms-2">{{ serviceberater | selectattr('standort', 'equalto', sb.standort) | list | length }} Serviceberater</span>
+                        </h3>
+                    </div>
+                    <div class="row">
+                    {% set current_standort = sb.standort %}
+                {% endif %}
+                
+                <div class="col-md-6 col-lg-4">
+                    <div class="sb-card">
+                        <div class="sb-card-header">
+                            <div>
+                                <div class="sb-name">{{ sb.name }}</div>
+                                <div class="sb-standort {{ sb.standort }}">
+                                    <i class="bi bi-geo-alt-fill"></i> {{ sb.standort_name }}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="sb-preview" id="preview-{{ sb.ma_id }}">
+                            <div class="text-center">
+                                <i class="bi bi-arrow-repeat" style="font-size: 2rem; opacity: 0.3;"></i>
+                                <div class="mt-2">Lade Dashboard...</div>
+                            </div>
+                        </div>
+                        
+                        <div class="sb-actions">
+                            <a href="/sb/mein-bereich?ma_id={{ sb.ma_id }}" 
+                               class="btn btn-primary btn-view" 
+                               target="_blank">
+                                <i class="bi bi-box-arrow-up-right"></i> Dashboard öffnen
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+            </div> <!-- End last standort group -->
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Lade Vorschau-Daten für alle Serviceberater
+    const serviceberater = {{ serviceberater | tojson }};
+    const monat = new Date().toISOString().slice(0, 7);
+    
+    serviceberater.forEach(function(sb) {
+        loadPreview(sb.ma_id, sb.name);
+    });
+});
+
+async function loadPreview(maId, name) {
+    const previewEl = document.getElementById(`preview-${maId}`);
+    const monat = new Date().toISOString().slice(0, 7);
+    
+    try {
+        // Hole SB-Konfiguration
+        const configResponse = await fetch(`/api/serviceberater/sb-config`);
+        const configData = await configResponse.json();
+        
+        if (!configData.success) {
+            previewEl.innerHTML = `<div class="text-center text-muted">Keine Daten verfügbar</div>`;
+            return;
+        }
+        
+        const sbConfig = configData.serviceberater.find(sb => sb.ma_id === maId);
+        if (!sbConfig) {
+            previewEl.innerHTML = `<div class="text-center text-muted">Serviceberater nicht gefunden</div>`;
+            return;
+        }
+        
+        // Hole Dashboard-Daten
+        const response = await fetch(`/api/serviceberater/mein-dashboard?ldap_cn=${encodeURIComponent(sbConfig.ldap_cn)}&monat=${monat}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            const mz = data.meine_zahlen;
+            const wt = data.werktage;
+            
+            previewEl.innerHTML = `
+                <div class="w-100">
+                    <div class="row text-center mb-2">
+                        <div class="col-6">
+                            <div class="text-muted small">Erreichung</div>
+                            <div class="fw-bold ${mz.erreichung >= 100 ? 'text-success' : mz.erreichung >= 80 ? 'text-warning' : 'text-danger'}">
+                                ${mz.erreichung.toFixed(1)}%
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-muted small">DB1</div>
+                            <div class="fw-bold">${mz.db1.toLocaleString('de-DE', {maximumFractionDigits: 0})} €</div>
+                        </div>
+                    </div>
+                    <div class="row text-center">
+                        <div class="col-6">
+                            <div class="text-muted small">Rang</div>
+                            <div class="fw-bold">${data.mein_rang}/${data.team_groesse}</div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-muted small">Werktage</div>
+                            <div class="fw-bold">${wt.vergangen}/${wt.gesamt}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else {
+            previewEl.innerHTML = `<div class="text-center text-muted">${data.error || 'Fehler beim Laden'}</div>`;
+        }
+    } catch (error) {
+        console.error(`Fehler beim Laden für SB ${maId}:`, error);
+        previewEl.innerHTML = `<div class="text-center text-muted">Fehler beim Laden</div>`;
+    }
+}
+</script>
+{% endblock %}
+

@@ -62,10 +62,38 @@ def budget_planung():
     return render_template('verkauf_budget.html', now=datetime.now())
 
 
+@verkauf_bp.route('/budget/wizard')
+@verkauf_bp.route('/planung/wizard')
+def budget_wizard():
+    """Budget-Wizard - 5 Fragen statt 50 Zeilen (TAG 155)
+
+    Vereinfachte Budget-Planung für Abteilungsleiter:
+    - 5 geführte Fragen mit Slider-Eingaben
+    - Vorjahres-Benchmarks als Vorschläge
+    - Automatische Monatsverteilung (Saisonalisierung)
+    - Gamification mit Bewertungen
+    """
+    return render_template('verkauf_budget_wizard.html', now=datetime.now())
+
+
 @verkauf_bp.route('/eautoseller-bestand')
 def eautoseller_bestand():
     """eAutoseller Live-Bestand Dashboard
-    
+
     Zeigt aktuelle Fahrzeuge auf Hof mit Standzeit-Analyse
     """
     return render_template('verkauf_eautoseller_bestand.html', now=datetime.now())
+
+
+@verkauf_bp.route('/gw-bestand')
+@verkauf_bp.route('/gw-dashboard')
+def gw_dashboard():
+    """GW-Bestand Dashboard (TAG 160)
+
+    Zeigt Gebrauchtwagen-Bestand mit Standzeit-Analyse:
+    - Standzeit-Kategorien (Ampel)
+    - Problemfaelle (>90 Tage)
+    - Fahrzeugliste mit Filter
+    - Daten direkt aus Locosoft
+    """
+    return render_template('verkauf_gw_dashboard.html', now=datetime.now())

@@ -1,0 +1,163 @@
+<!-- Frage 1: Anzahl Serviceberater -->
+<div class="frage-card">
+    <div class="frage-nummer">1️⃣</div>
+    <div class="frage-text">Wie viele Serviceberater hast du?</div>
+    <div class="input-group input-group-large">
+        <input type="number" name="plan_anzahl_sb" class="form-control" 
+               value="{% if monat_abgelaufen and ist_werte %}{{ ist_werte.anzahl_sb_ist if ist_werte.anzahl_sb_ist else '' }}{% elif planung %}{{ planung.plan_anzahl_sb }}{% endif %}" 
+               placeholder="z.B. 3" min="0" {% if monat_abgelaufen %}readonly{% else %}required{% endif %}>
+        <span class="input-group-text">SB</span>
+    </div>
+    {% if monat_abgelaufen and ist_werte %}
+    <div class="vj-hinweis">✅ <strong>IST:</strong> {{ ist_werte.anzahl_sb_ist if ist_werte.anzahl_sb_ist else 'N/A' }} SB (automatisch aus Locosoft)</div>
+    {% else %}
+    <div class="vj-hinweis">📊 Verfügbare Stunden: ~2.400h/Jahr (3 SB × 800h)</div>
+    {% endif %}
+</div>
+
+<!-- Frage 2: Stundensatz -->
+<div class="frage-card">
+    <div class="frage-nummer">2️⃣</div>
+    <div class="frage-text">Welchen Stundensatz planst du?</div>
+    <div class="input-group input-group-large">
+        <span class="input-group-text">€</span>
+        <input type="number" name="plan_stundensatz" class="form-control" 
+               value="{% if monat_abgelaufen and ist_werte %}{{ "%.2f"|format(ist_werte.stundensatz_ist) if ist_werte.stundensatz_ist else '' }}{% elif planung %}{{ planung.plan_stundensatz }}{% endif %}" 
+               placeholder="z.B. 155" step="0.01" min="0" {% if monat_abgelaufen %}readonly{% else %}required{% endif %}>
+        <span class="input-group-text">pro Stunde</span>
+    </div>
+    {% if monat_abgelaufen and ist_werte %}
+    <div class="vj-hinweis">✅ <strong>IST:</strong> {{ "%.2f"|format(ist_werte.stundensatz_ist) }} € (automatisch aus Locosoft)</div>
+    {% else %}
+    <div class="vj-hinweis">📊 Vorjahr: {{ "%.2f"|format(planung.vj_stundensatz) if planung and planung.vj_stundensatz else 'N/A' }} € | Branche: € 150-200</div>
+    {% endif %}
+    <div class="impact-box" id="impact-stundensatz" style="display: none;">
+        <strong>💡 Impact:</strong> <span id="impact-stundensatz-text"></span>
+    </div>
+</div>
+
+<!-- Frage 3: Produktivität -->
+<div class="frage-card">
+    <div class="frage-nummer">3️⃣</div>
+    <div class="frage-text">Produktivität (Stempelzeit / Anwesenheit)?</div>
+    <div class="input-group input-group-large">
+        <input type="number" name="plan_produktivitaet" class="form-control" 
+               value="{% if monat_abgelaufen and ist_werte %}{{ "%.1f"|format(ist_werte.produktivitaet_ist) if ist_werte.produktivitaet_ist else '' }}{% elif planung %}{{ planung.plan_produktivitaet }}{% endif %}" 
+               placeholder="z.B. 110" step="0.1" min="0" max="150" {% if monat_abgelaufen %}readonly{% else %}required{% endif %}>
+        <span class="input-group-text">%</span>
+    </div>
+    {% if monat_abgelaufen and ist_werte %}
+    <div class="vj-hinweis">✅ <strong>IST:</strong> {{ "%.1f"|format(ist_werte.produktivitaet_ist) }}% (automatisch aus Locosoft)</div>
+    {% else %}
+    <div class="vj-hinweis">📊 Vorjahr: {{ "%.1f"|format(planung.vj_produktivitaet) if planung and planung.vj_produktivitaet else 'N/A' }}% | Ziel: 100-120%</div>
+    {% endif %}
+    <div class="impact-box" id="impact-produktivitaet" style="display: none;">
+        <strong>💡 Impact:</strong> <span id="impact-produktivitaet-text"></span>
+    </div>
+</div>
+
+<!-- Frage 4: Leistungsgrad -->
+<div class="frage-card">
+    <div class="frage-nummer">4️⃣</div>
+    <div class="frage-text">Leistungsgrad (AW pro Stunde gestempelt)?</div>
+    <div class="input-group input-group-large">
+        <input type="number" name="plan_leistungsgrad" class="form-control" 
+               value="{% if monat_abgelaufen and ist_werte %}{{ "%.1f"|format(ist_werte.leistungsgrad_ist) if ist_werte.leistungsgrad_ist else '' }}{% elif planung %}{{ planung.plan_leistungsgrad }}{% endif %}" 
+               placeholder="z.B. 95" step="0.1" min="0" max="120" {% if monat_abgelaufen %}readonly{% else %}required{% endif %}>
+        <span class="input-group-text">%</span>
+    </div>
+    {% if monat_abgelaufen and ist_werte %}
+    <div class="vj-hinweis">✅ <strong>IST:</strong> {{ "%.1f"|format(ist_werte.leistungsgrad_ist) }}% (automatisch aus Locosoft)</div>
+    {% else %}
+    <div class="vj-hinweis">📊 Vorjahr: {{ "%.1f"|format(planung.vj_leistungsgrad) if planung and planung.vj_leistungsgrad else 'N/A' }}% | Ziel: 90-100%</div>
+    {% endif %}
+    <div class="impact-box" id="impact-leistungsgrad" style="display: none;">
+        <strong>💡 Impact:</strong> <span id="impact-leistungsgrad-text"></span>
+    </div>
+</div>
+
+<!-- Frage 5: Auslastung -->
+<div class="frage-card">
+    <div class="frage-nummer">5️⃣</div>
+    <div class="frage-text">Auslastung (Anwesende / Verfügbare)?</div>
+    <div class="input-group input-group-large">
+        <input type="number" name="plan_auslastung" class="form-control" 
+               value="{% if monat_abgelaufen and ist_werte %}{{ "%.1f"|format(ist_werte.auslastung_ist) if ist_werte.auslastung_ist else '' }}{% elif planung %}{{ planung.plan_auslastung }}{% endif %}" 
+               placeholder="z.B. 78" step="0.1" min="0" max="100" {% if monat_abgelaufen %}readonly{% else %}required{% endif %}>
+        <span class="input-group-text">%</span>
+    </div>
+    {% if monat_abgelaufen and ist_werte %}
+    <div class="vj-hinweis">✅ <strong>IST:</strong> {{ "%.1f"|format(ist_werte.auslastung_ist) }}% (automatisch aus Locosoft)</div>
+    {% else %}
+    <div class="vj-hinweis">📊 Vorjahr: {{ "%.1f"|format(planung.vj_auslastung) if planung and planung.vj_auslastung else 'N/A' }}% | Ziel: 75-85%</div>
+    {% endif %}
+    <div class="impact-box" id="impact-auslastung" style="display: none;">
+        <strong>💡 Impact:</strong> <span id="impact-auslastung-text"></span>
+    </div>
+</div>
+
+<!-- Frage 6: Verkaufte Stunden (automatisch berechnet) -->
+<div class="frage-card">
+    <div class="frage-nummer">6️⃣</div>
+    <div class="frage-text">Verkaufte Stunden (Jahr)?</div>
+    <div class="input-group input-group-large">
+        <input type="number" name="plan_stunden_verkauft" class="form-control" 
+               value="{{ planung.stunden_verkauft if planung and planung.stunden_verkauft else '' }}" 
+               placeholder="Automatisch berechnet" step="0.1" readonly>
+        <span class="input-group-text">Stunden</span>
+    </div>
+    <div class="vj-hinweis">📊 Automatisch: Anwesenheit × Produktivität × Leistungsgrad</div>
+</div>
+
+<!-- Frage 7: DB1-Marge -->
+<div class="frage-card">
+    <div class="frage-nummer">7️⃣</div>
+    <div class="frage-text">DB1-Marge Werkstatt?</div>
+    <div class="input-group input-group-large">
+        <input type="number" name="plan_db1_marge" class="form-control" 
+               value="{{ planung.plan_db1_marge if planung else '55' }}" 
+               placeholder="z.B. 55" step="0.1" min="0" max="100" required>
+        <span class="input-group-text">% vom Umsatz</span>
+    </div>
+    <div class="vj-hinweis">📊 Vorjahr: 55% | Branche: 50-60%</div>
+</div>
+
+<!-- Frage 8: Durchschnittliche AW pro Auftrag -->
+<div class="frage-card">
+    <div class="frage-nummer">8️⃣</div>
+    <div class="frage-text">Durchschnittliche AW pro Auftrag?</div>
+    <div class="input-group input-group-large">
+        <input type="number" name="plan_avg_aw_pro_auftrag" class="form-control" 
+               value="{{ planung.plan_avg_aw_pro_auftrag if planung else '' }}" 
+               placeholder="z.B. 2.5" step="0.1" min="0" required>
+        <span class="input-group-text">AW pro Auftrag</span>
+    </div>
+    <div class="vj-hinweis">📊 Vorjahr: {{ "%.1f"|format(planung.vj_avg_aw_pro_auftrag) if planung and planung.vj_avg_aw_pro_auftrag else 'N/A' }} AW | Für Kapazitätsplanung</div>
+</div>
+
+<!-- Frage 9: Durchschnittliche Durchlaufzeit -->
+<div class="frage-card">
+    <div class="frage-nummer">9️⃣</div>
+    <div class="frage-text">Durchschnittliche Durchlaufzeit?</div>
+    <div class="input-group input-group-large">
+        <input type="number" name="plan_durchlaufzeit_tage" class="form-control" 
+               value="{{ planung.plan_durchlaufzeit_tage if planung else '' }}" 
+               placeholder="z.B. 0.8" step="0.1" min="0" required>
+        <span class="input-group-text">Tage</span>
+    </div>
+    <div class="vj-hinweis">📊 Vorjahr: {{ "%.1f"|format(planung.vj_durchlaufzeit_tage) if planung and planung.vj_durchlaufzeit_tage else 'N/A' }} Tage | Ziel: &lt;1 Tag</div>
+</div>
+
+<!-- Frage 10: Wiederkehrrate -->
+<div class="frage-card">
+    <div class="frage-nummer">🔟</div>
+    <div class="frage-text">Wiederkehrrate (Kunden kommen wieder)?</div>
+    <div class="input-group input-group-large">
+        <input type="number" name="plan_wiederkehrrate" class="form-control" 
+               value="{{ planung.plan_wiederkehrrate if planung else '' }}" 
+               placeholder="z.B. 65" step="0.1" min="0" max="100" required>
+        <span class="input-group-text">%</span>
+    </div>
+    <div class="vj-hinweis">📊 Vorjahr: {{ "%.1f"|format(planung.vj_wiederkehrrate) if planung and planung.vj_wiederkehrrate else 'N/A' }}% | Ziel: &gt;60%</div>
+</div>
+

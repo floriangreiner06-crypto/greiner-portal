@@ -1,0 +1,755 @@
+{% extends "base.html" %}
+
+{% block title %}Unternehmensplan - 1% Rendite{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Hero-Bereich mit Rendite-Ziel */
+    .rendite-hero {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+    }
+    .rendite-ziel {
+        font-size: 4rem;
+        font-weight: 700;
+        color: #ffd700;
+    }
+    .rendite-ist {
+        font-size: 3rem;
+        font-weight: 600;
+    }
+    .rendite-positiv { color: #4ade80; }
+    .rendite-negativ { color: #f87171; }
+
+    /* Gap-Box */
+    .gap-box {
+        background: #fff;
+        border-radius: 10px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        border-left: 5px solid;
+    }
+    .gap-fehlt { border-left-color: #ef4444; }
+    .gap-ok { border-left-color: #22c55e; }
+    .gap-value {
+        font-size: 2rem;
+        font-weight: 700;
+    }
+
+    /* Bereich-Cards */
+    .bereich-card {
+        background: #fff;
+        border-radius: 10px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 1px 5px rgba(0,0,0,0.08);
+        border-left: 4px solid;
+        transition: transform 0.2s;
+    }
+    .bereich-card:hover {
+        transform: translateX(5px);
+    }
+    .bereich-nw { border-left-color: #3b82f6; }
+    .bereich-gw { border-left-color: #6b7280; }
+    .bereich-teile { border-left-color: #f59e0b; }
+    .bereich-werkstatt { border-left-color: #22c55e; }
+    .bereich-sonstige { border-left-color: #8b5cf6; }
+
+    .marge-badge {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-weight: 600;
+        font-size: 0.85rem;
+    }
+    .marge-ok { background: #dcfce7; color: #166534; }
+    .marge-warnung { background: #fef3c7; color: #92400e; }
+    .marge-kritisch { background: #fee2e2; color: #991b1b; }
+
+    /* Fortschrittsbalken */
+    .progress-gj {
+        height: 12px;
+        background: #e5e7eb;
+        border-radius: 6px;
+        overflow: hidden;
+    }
+    .progress-gj-fill {
+        height: 100%;
+        border-radius: 6px;
+        transition: width 0.5s;
+    }
+    .progress-vergangen { background: #3b82f6; }
+    .progress-ziel { background: #fbbf24; position: relative; }
+
+    /* Empfehlungen */
+    .empfehlung-item {
+        padding: 0.75rem 1rem;
+        background: #f9fafb;
+        border-radius: 8px;
+        margin-bottom: 0.5rem;
+        font-size: 0.95rem;
+    }
+
+    /* Datenstand-Banner */
+    .datenstand-banner {
+        background: #dbeafe;
+        border: 1px solid #93c5fd;
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        font-size: 0.85rem;
+        color: #1e40af;
+    }
+
+    /* Monatsverlauf-Tabelle */
+    .monat-tabelle {
+        font-size: 0.9rem;
+    }
+    .monat-tabelle th {
+        background: #f3f4f6;
+        font-weight: 600;
+        padding: 0.5rem;
+    }
+    .monat-tabelle td {
+        padding: 0.4rem 0.5rem;
+    }
+    .monat-aktuell {
+        background: #fffbeb !important;
+    }
+    .monat-zukunft {
+        background: #f9fafb;
+        color: #9ca3af;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h4 class="mb-0">Unternehmensplan</h4>
+            <small class="text-muted">Ziel: 1% Gesamtrendite | Geschäftsjahr <span id="gj-label">2025/26</span></small>
+        </div>
+        <div class="d-flex gap-2">
+            <select id="standort-select" class="form-select form-select-sm" style="width: auto;">
+                <option value="0">Alle Standorte</option>
+                <option value="1">DEG Opel</option>
+                <option value="2">DEG Hyundai</option>
+                <option value="3">Landau</option>
+            </select>
+            <button class="btn btn-outline-secondary btn-sm" onclick="loadDashboard()">
+                <i class="bi bi-arrow-clockwise"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Datenstand-Banner -->
+    <div class="datenstand-banner mb-3" id="datenstand-banner">
+        <i class="bi bi-info-circle me-1"></i>
+        <span id="datenstand-text">Lade Daten...</span>
+    </div>
+
+    <!-- Hero: Rendite-Übersicht -->
+    <div class="rendite-hero">
+        <div class="row align-items-center">
+            <div class="col-md-4 text-center border-end">
+                <div class="text-muted mb-1">ZIEL</div>
+                <div class="rendite-ziel">1%</div>
+                <div>Gesamtrendite</div>
+            </div>
+            <div class="col-md-4 text-center border-end">
+                <div class="text-muted mb-1">IST YTD</div>
+                <div class="rendite-ist" id="rendite-ist">-</div>
+                <div id="rendite-status">Lade...</div>
+            </div>
+            <div class="col-md-4 text-center">
+                <div class="text-muted mb-1">PROGNOSE GJ-ENDE</div>
+                <div class="rendite-ist" id="rendite-prognose">-</div>
+                <div id="prognose-status">Lade...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gap-Analyse & Monatsverlauf -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="gap-box gap-fehlt" id="gap-box">
+                <div class="text-muted mb-1">GAP ZUM 1%-ZIEL (JAHRESENDE)</div>
+                <div class="gap-value" id="gap-value">-</div>
+                <small class="text-muted" id="gap-hinweis">Noch X Monate verbleibend</small>
+            </div>
+        </div>
+        <div class="col-md-8">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h6 class="card-title mb-2">Geschäftsjahr-Fortschritt</h6>
+                    <div class="progress-gj mb-2">
+                        <div class="progress-gj-fill progress-vergangen" id="gj-progress" style="width: 33%"></div>
+                    </div>
+                    <div class="d-flex justify-content-between small text-muted">
+                        <span>Sep 25</span>
+                        <span id="gj-monat-aktuell">Monat 4/12</span>
+                        <span>Aug 26</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body py-2">
+                    <small class="text-muted">UMSATZ YTD</small>
+                    <h4 class="mb-0" id="kpi-umsatz">-</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body py-2">
+                    <small class="text-muted">DB1 (ROHERTRAG)</small>
+                    <h4 class="mb-0" id="kpi-db1">-</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body py-2">
+                    <small class="text-muted">KOSTEN</small>
+                    <h4 class="mb-0" id="kpi-kosten">-</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body py-2">
+                    <small class="text-muted">BETRIEBSERGEBNIS</small>
+                    <h4 class="mb-0" id="kpi-betriebsergebnis">-</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Erweiterte KPIs: Neutrales Ergebnis und Unternehmensergebnis -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card text-center">
+                <div class="card-body py-2">
+                    <small class="text-muted">NEUTRALES ERGEBNIS</small>
+                    <h4 class="mb-0" id="kpi-neutral">-</h4>
+                    <small class="text-muted">(Konten 2xxxxx: Zinsen, a.o. Erträge)</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center border-primary">
+                <div class="card-body py-2">
+                    <small class="text-muted">UNTERNEHMENSERGEBNIS</small>
+                    <h4 class="mb-0 fw-bold" id="kpi-ergebnis">-</h4>
+                    <small class="text-muted">(Betriebsergebnis + Neutral)</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center">
+                <div class="card-body py-2">
+                    <small class="text-muted">IST-RENDITE</small>
+                    <h4 class="mb-0" id="kpi-rendite">-</h4>
+                    <small class="text-muted">(Unternehmensergebnis / Umsatz)</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bereiche & Empfehlungen -->
+    <div class="row">
+        <!-- Bereiche -->
+        <div class="col-md-7">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0">Bereiche (Kostenstellen)</h6>
+                    <small class="text-muted">Marge = DB1 / Umsatz</small>
+                </div>
+                <div class="card-body" id="bereiche-container">
+                    <div class="text-center py-4 text-muted">Lade Daten...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Empfehlungen -->
+        <div class="col-md-5">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">Handlungsempfehlungen</h6>
+                </div>
+                <div class="card-body" id="empfehlungen-container">
+                    <div class="text-center py-4 text-muted">Lade...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- YTD-Kumuliert (1%-Ziel Tracking) -->
+    <div class="card mt-4">
+        <div class="card-header bg-primary text-white">
+            <h6 class="mb-0"><i class="bi bi-graph-up-arrow"></i> 1%-Ziel Tracking (Kumuliert)</h6>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-3">
+                    <div class="card text-center border-primary">
+                        <div class="card-body py-2">
+                            <small class="text-muted">YTD ERGEBNIS</small>
+                            <h4 class="mb-0" id="ytd-ergebnis">-</h4>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body py-2">
+                            <small class="text-muted">1%-ZIEL YTD</small>
+                            <h4 class="mb-0" id="ytd-ziel">-</h4>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body py-2">
+                            <small class="text-muted">GAP ZUM ZIEL</small>
+                            <h4 class="mb-0" id="ytd-gap">-</h4>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body py-2">
+                            <small class="text-muted">PRO MONAT NÖTIG</small>
+                            <h4 class="mb-0" id="ytd-pro-monat">-</h4>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- YTD Chart -->
+            <div style="height: 250px;">
+                <canvas id="ytd-chart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Monatsverlauf -->
+    <div class="card mt-4">
+        <div class="card-header">
+            <h6 class="mb-0">Monatsverlauf GJ <span id="gj-label2">2025/26</span></h6>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm monat-tabelle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Monat</th>
+                            <th class="text-end">Umsatz</th>
+                            <th class="text-end">Einsatz</th>
+                            <th class="text-end">DB1</th>
+                            <th class="text-end">Kosten</th>
+                            <th class="text-end">Betriebs-Erg.</th>
+                            <th class="text-end">Neutral</th>
+                            <th class="text-end">Unternehmens-Erg.</th>
+                        </tr>
+                    </thead>
+                    <tbody id="monat-tbody">
+                        <tr><td colspan="8" class="text-center py-3 text-muted">Lade...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const API_BASE = '/api/unternehmensplan';
+
+// Formatierung
+function formatEuro(val, decimals = 0) {
+    if (val === null || val === undefined) return '-';
+    const num = parseFloat(val);
+    if (isNaN(num)) return '-';
+    if (Math.abs(num) >= 1000000) {
+        return (num / 1000000).toFixed(1) + ' Mio €';
+    }
+    return num.toLocaleString('de-DE', { maximumFractionDigits: decimals }) + ' €';
+}
+
+function formatProzent(val) {
+    if (val === null || val === undefined) return '-';
+    return parseFloat(val).toFixed(2) + '%';
+}
+
+let ytdChart = null;
+
+// Dashboard laden
+async function loadDashboard() {
+    const standort = document.getElementById('standort-select').value;
+
+    try {
+        // Dashboard-Daten laden
+        const response = await fetch(`${API_BASE}/dashboard?standort=${standort}`);
+        if (!response.ok) throw new Error('API-Fehler');
+        const data = await response.json();
+
+        updateHero(data);
+        updateKPIs(data);
+        updateGap(data);
+        updateBereiche(data);
+        updateEmpfehlungen(data);
+        updateMonatsverlauf(data);
+
+        // Datenstand
+        const datenstandText = document.getElementById('datenstand-text');
+        if (datenstandText) {
+            datenstandText.textContent = data.ist?.datenstand || 'Daten geladen';
+        }
+
+        // YTD-Kumuliert Daten laden
+        const ytdResponse = await fetch(`${API_BASE}/ytd?standort=${standort}`);
+        if (ytdResponse.ok) {
+            const ytdData = await ytdResponse.json();
+            updateYTDTracking(ytdData);
+        }
+
+    } catch (error) {
+        console.error('Fehler:', error);
+        document.getElementById('rendite-ist').textContent = 'Fehler';
+        document.getElementById('rendite-status').textContent = error.message;
+    }
+}
+
+function updateYTDTracking(data) {
+    const ytd = data.ytd || {};
+    const prognose = data.prognose_jahresende || {};
+    const verbesserung = data.verbesserung_noetig || {};
+
+    // KPI-Karten
+    const ytdErgebnisEl = document.getElementById('ytd-ergebnis');
+    ytdErgebnisEl.textContent = formatEuro(ytd.ergebnis);
+    ytdErgebnisEl.className = 'mb-0 ' + (ytd.ergebnis >= 0 ? 'text-success' : 'text-danger');
+
+    document.getElementById('ytd-ziel').textContent = formatEuro(ytd.ziel_1pct);
+
+    const gapEl = document.getElementById('ytd-gap');
+    gapEl.textContent = formatEuro(ytd.gap);
+    gapEl.className = 'mb-0 ' + (ytd.gap >= 0 ? 'text-success' : 'text-danger');
+
+    const proMonatEl = document.getElementById('ytd-pro-monat');
+    if (verbesserung.pro_monat > 0) {
+        proMonatEl.textContent = '+' + formatEuro(verbesserung.pro_monat);
+        proMonatEl.className = 'mb-0 text-warning';
+    } else {
+        proMonatEl.textContent = 'Auf Kurs';
+        proMonatEl.className = 'mb-0 text-success';
+    }
+
+    // Chart zeichnen
+    drawYTDChart(data.monate || []);
+}
+
+function drawYTDChart(monate) {
+    const ctx = document.getElementById('ytd-chart');
+    if (!ctx) return;
+
+    // Alten Chart zerstören
+    if (ytdChart) {
+        ytdChart.destroy();
+    }
+
+    const labels = monate.map(m => m.label);
+    const ergebnisData = monate.map(m => m.kumuliert?.ergebnis || 0);
+    const zielData = monate.map(m => m.ziel_1pct?.ergebnis || 0);
+
+    ytdChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'IST Ergebnis (kumuliert)',
+                    data: ergebnisData,
+                    borderColor: ergebnisData[ergebnisData.length - 1] >= 0 ? '#22c55e' : '#ef4444',
+                    backgroundColor: ergebnisData[ergebnisData.length - 1] >= 0 ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 5,
+                    pointHoverRadius: 8
+                },
+                {
+                    label: '1%-Ziel (kumuliert)',
+                    data: zielData,
+                    borderColor: '#fbbf24',
+                    borderDash: [5, 5],
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 3
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return context.dataset.label + ': ' + formatEuro(context.raw);
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    ticks: {
+                        callback: function(value) {
+                            return formatEuro(value);
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function updateHero(data) {
+    const gap = data.gap || {};
+    const ist = gap.ist_ytd || {};
+    const prognose = gap.prognose_jahresende || {};
+
+    // IST Rendite
+    const renditeIst = document.getElementById('rendite-ist');
+    const renditeVal = ist.rendite || 0;
+    renditeIst.textContent = formatProzent(renditeVal);
+    renditeIst.className = 'rendite-ist ' + (renditeVal >= 1 ? 'rendite-positiv' : 'rendite-negativ');
+
+    const renditeStatus = document.getElementById('rendite-status');
+    if (renditeVal >= 1) {
+        renditeStatus.innerHTML = '<span class="badge bg-success">ZIEL ERREICHT</span>';
+    } else {
+        const diff = (1 - renditeVal).toFixed(2);
+        renditeStatus.innerHTML = `<span class="badge bg-warning text-dark">${diff}% zum Ziel</span>`;
+    }
+
+    // Prognose
+    const renditePrognose = document.getElementById('rendite-prognose');
+    const prognoseVal = prognose.rendite || 0;
+    renditePrognose.textContent = formatProzent(prognoseVal);
+    renditePrognose.className = 'rendite-ist ' + (prognoseVal >= 1 ? 'rendite-positiv' : 'rendite-negativ');
+
+    const prognoseStatus = document.getElementById('prognose-status');
+    if (prognoseVal >= 1) {
+        prognoseStatus.innerHTML = '<span class="badge bg-success">AUF KURS</span>';
+    } else {
+        prognoseStatus.innerHTML = '<span class="badge bg-danger">UNTER ZIEL</span>';
+    }
+
+    // GJ-Labels
+    const gj = data.geschaeftsjahr || '2025/26';
+    document.getElementById('gj-label').textContent = gj;
+    document.getElementById('gj-label2').textContent = gj;
+
+    // GJ-Fortschritt
+    const monatAktuell = gap.aktueller_monat || 4;
+    const progress = (monatAktuell / 12) * 100;
+    document.getElementById('gj-progress').style.width = progress + '%';
+    document.getElementById('gj-monat-aktuell').textContent = `Monat ${monatAktuell}/12`;
+}
+
+function updateKPIs(data) {
+    const ist = data.ist?.gesamt || data.gap?.ist_ytd || {};
+    document.getElementById('kpi-umsatz').textContent = formatEuro(ist.umsatz);
+    document.getElementById('kpi-db1').textContent = formatEuro(ist.db1);
+    document.getElementById('kpi-kosten').textContent = formatEuro(ist.kosten);
+
+    // TAG157: Betriebsergebnis (DB1 - Kosten)
+    const betriebsergebnis = ist.betriebsergebnis ?? ((ist.db1 || 0) - (ist.kosten || 0));
+    const betriebsEl = document.getElementById('kpi-betriebsergebnis');
+    betriebsEl.textContent = formatEuro(betriebsergebnis);
+    betriebsEl.className = 'mb-0 ' + (betriebsergebnis >= 0 ? 'text-success' : 'text-danger');
+
+    // TAG157: Neutrales Ergebnis (Konten 2xxxxx)
+    const neutralEl = document.getElementById('kpi-neutral');
+    const neutrales = ist.neutrales_ergebnis || 0;
+    neutralEl.textContent = formatEuro(neutrales);
+    neutralEl.className = 'mb-0 ' + (neutrales >= 0 ? 'text-success' : 'text-danger');
+
+    // TAG157: Unternehmensergebnis = Betriebsergebnis + Neutrales (wie GlobalCube!)
+    const ergebnis = ist.ergebnis ?? (betriebsergebnis + neutrales);
+    const ergebnisEl = document.getElementById('kpi-ergebnis');
+    ergebnisEl.textContent = formatEuro(ergebnis);
+    ergebnisEl.className = 'mb-0 fw-bold ' + (ergebnis >= 0 ? 'text-success' : 'text-danger');
+
+    // TAG157: Rendite (Unternehmensergebnis / Umsatz)
+    const renditeEl = document.getElementById('kpi-rendite');
+    const rendite = ist.rendite ?? ((ist.umsatz > 0) ? (ergebnis / ist.umsatz * 100) : 0);
+    renditeEl.textContent = formatProzent(rendite);
+    renditeEl.className = 'mb-0 ' + (rendite >= 1 ? 'text-success' : 'text-danger');
+}
+
+function updateGap(data) {
+    const gap = data.gap || {};
+    const gapBox = document.getElementById('gap-box');
+    const gapValue = document.getElementById('gap-value');
+    const gapHinweis = document.getElementById('gap-hinweis');
+
+    const gapJahresende = gap.gap_jahresende || 0;
+
+    if (gapJahresende <= 0) {
+        gapBox.className = 'gap-box gap-ok';
+        gapValue.textContent = 'ZIEL ERREICHT';
+        gapValue.className = 'gap-value text-success';
+    } else {
+        gapBox.className = 'gap-box gap-fehlt';
+        gapValue.textContent = '+' + formatEuro(gapJahresende);
+        gapValue.className = 'gap-value text-danger';
+    }
+
+    gapHinweis.textContent = `Noch ${gap.monate_verbleibend || 0} Monate im GJ`;
+}
+
+function updateBereiche(data) {
+    const container = document.getElementById('bereiche-container');
+    const bereiche = data.gap?.bereiche || [];
+
+    if (!bereiche.length) {
+        container.innerHTML = '<div class="text-center py-3 text-muted">Keine Daten</div>';
+        return;
+    }
+
+    const bereichKlassen = {
+        'NW': 'bereich-nw',
+        'GW': 'bereich-gw',
+        'Teile': 'bereich-teile',
+        'Werkstatt': 'bereich-werkstatt',
+        'Sonstige': 'bereich-sonstige'
+    };
+
+    let html = '';
+    bereiche.forEach(b => {
+        const margeClass = b.status === 'ok' ? 'marge-ok' :
+                          b.status === 'warnung' ? 'marge-warnung' : 'marge-kritisch';
+        const potenzialText = b.potenzial_db1 > 0 ? `+${formatEuro(b.potenzial_db1)} möglich` : 'Optimal';
+
+        html += `
+            <div class="bereich-card ${bereichKlassen[b.bereich] || ''}">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>${b.bereich}</strong>
+                        <span class="marge-badge ${margeClass} ms-2">${b.marge_ist}%</span>
+                        <small class="text-muted ms-2">(Ziel: ${b.marge_ziel}%)</small>
+                    </div>
+                    <div class="text-end">
+                        <div class="small text-muted">Umsatz: ${formatEuro(b.umsatz)}</div>
+                        <div class="small ${b.potenzial_db1 > 0 ? 'text-danger' : 'text-success'}">${potenzialText}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+function updateEmpfehlungen(data) {
+    const container = document.getElementById('empfehlungen-container');
+    const empfehlungen = data.gap?.empfehlungen || [];
+
+    if (!empfehlungen.length) {
+        container.innerHTML = '<div class="text-center py-3 text-muted">Keine Empfehlungen</div>';
+        return;
+    }
+
+    let html = '';
+    empfehlungen.forEach(e => {
+        html += `<div class="empfehlung-item">${e}</div>`;
+    });
+
+    container.innerHTML = html;
+}
+
+function updateMonatsverlauf(data) {
+    const tbody = document.getElementById('monat-tbody');
+    const monate = data.ist?.monate || [];
+    const aktuellerMonat = data.gap?.aktueller_monat || 12;
+
+    if (!monate.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-3 text-muted">Keine Daten</td></tr>';
+        return;
+    }
+
+    let html = '';
+    let sumUmsatz = 0, sumEinsatz = 0, sumDb1 = 0, sumKosten = 0;
+    let sumBetrieb = 0, sumNeutral = 0, sumErgebnis = 0;
+
+    monate.forEach((m, idx) => {
+        const istAktuell = idx + 1 === aktuellerMonat;
+        const istZukunft = idx + 1 > aktuellerMonat;
+        const rowClass = istAktuell ? 'monat-aktuell' : (istZukunft ? 'monat-zukunft' : '');
+
+        // TAG157: Erweiterte Ergebnis-Berechnung wie GlobalCube
+        const betriebsergebnis = m.betriebsergebnis ?? ((m.db1 || 0) - (m.kosten || 0));
+        const neutrales = m.neutrales_ergebnis || 0;
+        const ergebnis = m.ergebnis ?? (betriebsergebnis + neutrales);
+
+        // Summen (nur für abgeschlossene Monate)
+        if (!istZukunft) {
+            sumUmsatz += m.umsatz || 0;
+            sumEinsatz += m.einsatz || 0;
+            sumDb1 += m.db1 || 0;
+            sumKosten += m.kosten || 0;
+            sumBetrieb += betriebsergebnis;
+            sumNeutral += neutrales;
+            sumErgebnis += ergebnis;
+        }
+
+        html += `
+            <tr class="${rowClass}">
+                <td><strong>${m.label}</strong></td>
+                <td class="text-end">${formatEuro(m.umsatz)}</td>
+                <td class="text-end">${formatEuro(m.einsatz)}</td>
+                <td class="text-end">${formatEuro(m.db1)}</td>
+                <td class="text-end">${formatEuro(m.kosten)}</td>
+                <td class="text-end ${betriebsergebnis >= 0 ? 'text-success' : 'text-danger'}">${formatEuro(betriebsergebnis)}</td>
+                <td class="text-end ${neutrales >= 0 ? 'text-success' : 'text-danger'}">${formatEuro(neutrales)}</td>
+                <td class="text-end fw-bold ${ergebnis >= 0 ? 'text-success' : 'text-danger'}">${formatEuro(ergebnis)}</td>
+            </tr>
+        `;
+    });
+
+    // Summenzeile
+    html += `
+        <tr class="table-dark fw-bold">
+            <td>SUMME YTD</td>
+            <td class="text-end">${formatEuro(sumUmsatz)}</td>
+            <td class="text-end">${formatEuro(sumEinsatz)}</td>
+            <td class="text-end">${formatEuro(sumDb1)}</td>
+            <td class="text-end">${formatEuro(sumKosten)}</td>
+            <td class="text-end ${sumBetrieb >= 0 ? 'text-success' : 'text-danger'}">${formatEuro(sumBetrieb)}</td>
+            <td class="text-end ${sumNeutral >= 0 ? 'text-success' : 'text-danger'}">${formatEuro(sumNeutral)}</td>
+            <td class="text-end ${sumErgebnis >= 0 ? 'text-success' : 'text-danger'}">${formatEuro(sumErgebnis)}</td>
+        </tr>
+    `;
+
+    tbody.innerHTML = html;
+}
+
+// Init
+document.addEventListener('DOMContentLoaded', loadDashboard);
+document.getElementById('standort-select').addEventListener('change', loadDashboard);
+</script>
+{% endblock %}

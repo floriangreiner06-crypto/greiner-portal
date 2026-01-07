@@ -1,0 +1,841 @@
+{% extends "base.html" %}
+
+{% block title %}Stempeluhr LIVE - {{ app_name }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/stempeluhr_cross_betrieb.css') }}">
+<style>
+    /* Refresh Indicator */
+    .refresh-badge {
+        position: fixed;
+        top: 70px;
+        right: 20px;
+        z-index: 1000;
+        background: white;
+        padding: 8px 15px;
+        border-radius: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+        font-size: 0.85rem;
+    }
+    .refresh-badge.refreshing {
+        background: #0d6efd;
+        color: white;
+    }
+    
+    /* Mechaniker Cards */
+    .mechaniker-card {
+        border-radius: 12px;
+        transition: all 0.3s;
+        border: none;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    .mechaniker-card:hover {
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        transform: translateY(-2px);
+    }
+    
+    /* Status Farben */
+    .status-aktiv { border-left: 5px solid #198754; }
+    .status-warnung { border-left: 5px solid #ffc107; }
+    .status-kritisch { border-left: 5px solid #dc3545; }
+    .status-leerlauf { border-left: 5px solid #6c757d; background: #f8f9fa; }
+    
+    /* Fortschrittsbalken */
+    .progress-custom {
+        height: 24px;
+        border-radius: 12px;
+        background: #e9ecef;
+        overflow: visible;
+        position: relative;
+    }
+    .progress-custom .progress-bar {
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        line-height: 24px;
+        transition: width 0.5s ease;
+    }
+    .progress-bar.bg-success { background: linear-gradient(90deg, #198754, #20c997) !important; }
+    .progress-bar.bg-warning { background: linear-gradient(90deg, #ffc107, #fd7e14) !important; }
+    .progress-bar.bg-danger { background: linear-gradient(90deg, #dc3545, #e74c3c) !important; }
+    
+    /* Große Zahlen */
+    .big-stat {
+        font-size: 3rem;
+        font-weight: 700;
+        line-height: 1;
+    }
+    
+    /* Avatar */
+    .mechaniker-avatar {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 1.1rem;
+        color: white;
+    }
+    .avatar-aktiv { background: linear-gradient(135deg, #198754, #20c997); }
+    .avatar-warnung { background: linear-gradient(135deg, #ffc107, #fd7e14); }
+    .avatar-kritisch { background: linear-gradient(135deg, #dc3545, #e74c3c); }
+    .avatar-leerlauf { background: #6c757d; }
+    
+    /* Zeit-Display */
+    .zeit-display {
+        font-family: 'Courier New', monospace;
+        font-size: 1.5rem;
+        font-weight: bold;
+    }
+    
+    /* Betrieb Badge */
+    .betrieb-badge {
+        font-size: 0.7rem;
+        padding: 2px 8px;
+        border-radius: 10px;
+    }
+    .betrieb-1 { background: #e3f2fd; color: #1565c0; }
+    .betrieb-2 { background: #fff3e0; color: #e65100; }
+    .betrieb-3 { background: #e8f5e9; color: #2e7d32; }
+    
+    /* Leerlauf Section - ALARM STYLING */
+    .leerlauf-section {
+        border-radius: 12px;
+        padding: 20px;
+    }
+    .leerlauf-ok {
+        background: #d4edda;
+    }
+    .leerlauf-warnung {
+        background: #fff3cd;
+    }
+    .leerlauf-alarm {
+        background: #f8d7da;
+        animation: pulse-alarm 1s infinite;
+    }
+    @keyframes pulse-alarm {
+        0%, 100% { background: #f8d7da; }
+        50% { background: #f5c6cb; }
+    }
+    .leerlauf-item {
+        display: inline-flex;
+        align-items: center;
+        padding: 8px 12px;
+        background: white;
+        border-radius: 20px;
+        margin: 4px;
+        font-size: 0.9rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .leerlauf-item.alarm {
+        background: #dc3545;
+        color: white;
+        animation: blink-alarm 0.5s infinite;
+    }
+    .leerlauf-item.warnung {
+        background: #ffc107;
+        color: #000;
+    }
+    @keyframes blink-alarm {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.7; }
+    }
+    
+    /* Abwesend Section */
+    .abwesend-section {
+        background: #e9ecef;
+        border-radius: 12px;
+        padding: 15px;
+    }
+    .abwesend-item {
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 10px;
+        background: white;
+        border-radius: 15px;
+        margin: 3px;
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+    
+    /* Klickbare Kacheln */
+    .mechaniker-card {
+        cursor: pointer;
+    }
+    .mechaniker-card:active {
+        transform: scale(0.98);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    
+    <!-- Refresh Badge -->
+    <div class="refresh-badge" id="refreshBadge">
+        <i class="bi bi-arrow-repeat" id="refreshIcon"></i>
+        <span id="refreshText">5s</span>
+    </div>
+
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1">
+                <i class="bi bi-stopwatch text-primary"></i>
+                Stempeluhr LIVE
+            </h2>
+            <p class="text-muted mb-0">Echtzeit-Übersicht der Mechaniker-Stempelungen</p>
+        </div>
+        <div>
+            <!-- TAG 109: Default nach LDAP-Standort (current_user.standort_subsidiaries) -->
+            <select class="form-select form-select-sm d-inline-block me-2" id="filterBetrieb" style="width: auto;" onchange="refreshData()">
+                <option value="">Alle Betriebe</option>
+                <option value="1,2" {% if current_user.is_authenticated and current_user.standort_subsidiaries == '1,2' %}selected{% endif %}>Deggendorf</option>
+                <option value="3" {% if current_user.is_authenticated and current_user.standort_subsidiaries == '3' %}selected{% endif %}>Landau</option>
+            </select>
+            <button class="btn btn-outline-primary btn-sm" onclick="refreshData()">
+                <i class="bi bi-arrow-repeat"></i> Aktualisieren
+            </button>
+            <a href="/werkstatt/live" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-clipboard-data"></i> Aufträge
+            </a>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body text-center">
+                    <div class="big-stat" id="countAktiv">-</div>
+                    <div>Aktiv arbeitend</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card bg-warning text-dark" id="leerlaufCard">
+                <div class="card-body text-center">
+                    <div class="fs-2 fw-bold" id="countLeerlauf">-</div>
+                    <div class="small">Leerlauf</div>
+                    <div id="leerlaufNamen" class="small mt-1"></div>
+                </div>
+            </div>
+        </div>
+        <!-- TAG 112: Pausiert/Wartet -->
+        <div class="col-md-2">
+            <div class="card" id="pausiertCard" style="background: linear-gradient(135deg, #667eea, #764ba2); color: white;">
+                <div class="card-body text-center py-2">
+                    <div class="fs-2 fw-bold" id="countPausiert">-</div>
+                    <div class="small">Pausiert</div>
+                </div>
+            </div>
+        </div>
+        <!-- TAG 126: Feierabend -->
+        <div class="col-md-2">
+            <div class="card" id="feierabendCard" style="background: linear-gradient(135deg, #11998e, #38ef7d); color: white;">
+                <div class="card-body text-center py-2">
+                    <div class="fs-2 fw-bold" id="countFeierabend">-</div>
+                    <div class="small">Feierabend</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card bg-secondary text-white">
+                <div class="card-body text-center py-2">
+                    <div class="fs-2 fw-bold" id="countAbwesend">-</div>
+                    <div class="small">Abwesend</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-1">
+            <div class="card bg-info text-white">
+                <div class="card-body text-center py-2">
+                    <div class="fs-2 fw-bold" id="countGesamt">-</div>
+                    <div class="small">Gesamt</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pausen-Banner TAG 112 -->
+    <div id="pausenBanner" class="alert alert-warning text-center py-2 mb-3" style="display: none; background: linear-gradient(135deg, #f5af19, #f12711); border: none; color: white; font-weight: bold;">
+        🍽️ MITTAGSPAUSE (12:00 - 13:00) - Stempelzeiten werden fortgesetzt
+    </div>
+    
+    <!-- Aktive Mechaniker -->
+    <div class="card mb-4">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0">
+                <i class="bi bi-person-check"></i>
+                Aktive Mechaniker
+                <span class="badge bg-light text-success ms-2" id="badgeAktiv">0</span>
+            </h5>
+        </div>
+        <div class="card-body" id="aktivContainer">
+            <div class="text-center py-5">
+                <div class="spinner-border text-success"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAG 112: Pausiert/Wartet Mechaniker -->
+    <div class="card mb-4" id="pausiertSection" style="display: none;">
+        <div class="card-header text-white" style="background: linear-gradient(135deg, #667eea, #764ba2);">
+            <h5 class="mb-0">
+                <i class="bi bi-pause-circle"></i>
+                Pausiert / Wartet
+                <span class="badge bg-light text-dark ms-2" id="badgePausiert">0</span>
+            </h5>
+        </div>
+        <div class="card-body" id="pausiertContainer">
+            <div class="text-center py-3">
+                <div class="spinner-border spinner-border-sm"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Abwesende Mechaniker -->
+    <div class="card mb-4">
+        <div class="card-header bg-secondary text-white">
+            <h5 class="mb-0">
+                <i class="bi bi-calendar-x"></i>
+                Heute abwesend
+                <span class="badge bg-light text-secondary ms-2" id="badgeAbwesend">0</span>
+            </h5>
+        </div>
+        <div class="card-body" id="abwesendContainer">
+            <div class="text-center py-3">
+                <div class="spinner-border spinner-border-sm text-secondary"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Timestamp -->
+    <div class="text-center mt-3 text-muted" id="lastUpdate">-</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let refreshInterval = null;
+const REFRESH_SECONDS = 5;
+
+let mlPredictions = {};  // Cache für ML-Vorhersagen
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Stempeluhr LIVE initialized');
+    loadMLPredictions();  // ML-Daten vorladen
+    refreshData();
+    startAutoRefresh();
+});
+
+// ML-Vorhersagen laden (für alle offenen Aufträge)
+function loadMLPredictions() {
+    fetch('/api/werkstatt/live/auftraege-enriched?tage=7&mit_ml=true')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                // Cache nach Auftragsnummer
+                mlPredictions = {};
+                (data.auftraege || []).forEach(a => {
+                    mlPredictions[a.auftrag_nr] = {
+                        ml_vorhersage_aw: a.ml_vorhersage_aw,
+                        ml_potenzial_aw: a.ml_potenzial_aw,
+                        ml_status: a.ml_status,
+                        ml_status_icon: a.ml_status_icon,
+                        mechaniker_effizienz: a.mechaniker_effizienz
+                    };
+                });
+                console.log('ML-Predictions geladen:', Object.keys(mlPredictions).length);
+            }
+        })
+        .catch(err => console.log('ML-Predictions nicht verfügbar:', err));
+}
+
+function startAutoRefresh() {
+    let countdown = REFRESH_SECONDS;
+    
+    if (refreshInterval) clearInterval(refreshInterval);
+    
+    // Auto-Refresh alle 5 Minuten für ML-Predictions
+    setInterval(loadMLPredictions, 5 * 60 * 1000);
+    
+    refreshInterval = setInterval(() => {
+        countdown--;
+        document.getElementById('refreshText').textContent = countdown + 's';
+        
+        if (countdown <= 0) {
+            refreshData();
+            countdown = REFRESH_SECONDS;
+        }
+    }, 1000);
+}
+
+function refreshData() {
+    const badge = document.getElementById('refreshBadge');
+    const icon = document.getElementById('refreshIcon');
+    
+    badge.classList.add('refreshing');
+    icon.style.animation = 'spin 0.5s linear infinite';
+    
+    const subsidiary = document.getElementById('filterBetrieb').value;
+    let url = '/api/werkstatt/live/stempeluhr';
+    if (subsidiary) url += '?subsidiary=' + subsidiary;
+    
+    fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            badge.classList.remove('refreshing');
+            icon.style.animation = '';
+            
+            if (!data.success) {
+                console.error('API Error:', data.error);
+                return;
+            }
+            
+            renderData(data);
+            document.getElementById('lastUpdate').textContent = 
+                'Aktualisiert: ' + new Date().toLocaleTimeString('de-DE');
+        })
+        .catch(err => {
+            badge.classList.remove('refreshing');
+            icon.style.animation = '';
+            console.error('Fetch error:', err);
+        });
+}
+
+function renderData(data) {
+    // Summary
+    document.getElementById('countAktiv').textContent = data.summary.produktiv || data.summary.aktiv;
+    document.getElementById('countLeerlauf').textContent = data.summary.leerlauf;
+    document.getElementById('countPausiert').textContent = data.summary.pausiert || 0;  // TAG 112
+    document.getElementById('countFeierabend').textContent = data.summary.feierabend || 0;  // TAG 126
+    document.getElementById('countAbwesend').textContent = data.summary.abwesend;
+                
+    // TAG 112: Pausen-Banner anzeigen
+    const pausenBanner = document.getElementById('pausenBanner');
+    if (pausenBanner) {
+        pausenBanner.style.display = data.ist_pausenzeit ? 'block' : 'none';
+    }
+    document.getElementById('countGesamt').textContent = data.summary.gesamt;
+    document.getElementById('badgeAktiv').textContent = data.summary.produktiv || data.summary.aktiv;
+    document.getElementById('badgePausiert').textContent = data.summary.pausiert || 0;  // TAG 112
+    document.getElementById('badgeAbwesend').textContent = data.summary.abwesend;
+    
+    // Aktive Mechaniker
+    renderAktive(data.aktive_mechaniker);
+    
+    // TAG 112: Pausiert/Wartet Mechaniker
+    renderPausiert(data.pausiert_mechaniker || []);
+    
+    // Filter-Hinweis bei Hyundai
+    if (data.filter && data.filter.hinweis) {
+        console.log('Filter-Hinweis:', data.filter.hinweis);
+    }
+    
+    // Leerlauf direkt im Badge anzeigen
+    renderLeerlaufBadge(data.leerlauf_mechaniker);
+    
+    // Abwesend
+    renderAbwesend(data.abwesend_mechaniker);
+}
+
+function renderAktive(mechaniker) {
+    const container = document.getElementById('aktivContainer');
+    
+    if (!mechaniker.length) {
+        container.innerHTML = '<div class="text-center text-muted py-4"><i class="bi bi-emoji-frown fs-1"></i><br>Keine aktiven Stempelungen</div>';
+        return;
+    }
+    
+    let html = '<div class="row">';
+    
+    mechaniker.forEach(m => {
+        const fortschritt = m.fortschritt_prozent;
+        let statusClass, avatarClass, barClass;
+        
+        if (fortschritt >= 100) {
+            statusClass = 'status-kritisch';
+            avatarClass = 'avatar-kritisch';
+            barClass = 'bg-danger';
+        } else if (fortschritt >= 80) {
+            statusClass = 'status-warnung';
+            avatarClass = 'avatar-warnung';
+            barClass = 'bg-warning';
+        } else {
+            statusClass = 'status-aktiv';
+            avatarClass = 'avatar-aktiv';
+            barClass = 'bg-success';
+        }
+        
+        const initials = m.name.split(',')[0].substring(0, 2).toUpperCase();
+        
+        // Cross-Betrieb Styling (TAG 101)
+        const crossBetriebClass = m.cross_betrieb ? 'cross-betrieb' : '';
+        const crossBetriebBadge = m.cross_betrieb 
+            ? `<span class="cross-betrieb-badge ${m.auftrag_betrieb === 2 ? 'hyundai' : ''}" 
+                     title="MA von ${m.betrieb_name}, arbeitet an ${m.auftrag_betrieb_name}-Auftrag">
+                 ${m.auftrag_betrieb_name}
+               </span>` 
+            : '';
+        
+        const vorgabeText = m.vorgabe_aw > 0 
+            ? `${m.vorgabe_aw} AW (${m.vorgabe_min} min)` 
+            : 'Keine Vorgabe';
+        const sbText = m.serviceberater ? `<i class="bi bi-person-badge"></i> ${m.serviceberater}` : '';
+        
+        // ML-Prognose aus Cache holen
+        const ml = mlPredictions[m.order_number] || {};
+        let mlHtml = '';
+        
+        if (ml.ml_vorhersage_aw) {
+            const mlIcon = ml.ml_status_icon || '⚪';
+            const mlClass = ml.ml_status === 'unterbewertet' ? 'text-danger' : 
+                           (ml.ml_status === 'leicht_unterbewertet' ? 'text-warning' : 
+                           (ml.ml_status === 'überbewertet' ? 'text-success' : 'text-muted'));
+            
+            const potenzialText = ml.ml_potenzial_aw > 0 
+                ? `+${ml.ml_potenzial_aw.toFixed(1)} AW` 
+                : (ml.ml_potenzial_aw < 0 ? `${ml.ml_potenzial_aw.toFixed(1)} AW` : '');
+            
+            mlHtml = `
+                <div class="small mt-2 p-2 rounded" style="background: rgba(142,68,173,0.1);">
+                    <span class="${mlClass} fw-bold">
+                        ${mlIcon} ML: ${ml.ml_vorhersage_aw} AW
+                    </span>
+                    ${potenzialText ? `<span class="${mlClass} ms-2">(${potenzialText})</span>` : ''}
+                    ${ml.mechaniker_effizienz ? `<span class="badge bg-${ml.mechaniker_effizienz >= 100 ? 'success' : 'warning'} ms-2" title="Mechaniker-Effizienz">${Math.round(ml.mechaniker_effizienz)}%</span>` : ''}
+                </div>
+            `;
+        }
+        
+        html += `
+            <div class="col-lg-6 col-xl-4 mb-3">
+                <div class="card mechaniker-card ${statusClass} ${crossBetriebClass}" onclick="showAuftragDetail(${m.order_number})">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center mb-3">
+                            <div class="mechaniker-avatar ${avatarClass} me-3">${initials}</div>
+                            <div class="flex-grow-1">
+                                <h6 class="mb-0 fw-bold">${m.name}${crossBetriebBadge}</h6>
+                                <small class="text-muted">
+                                    <span class="betrieb-badge betrieb-${m.betrieb}">${m.betrieb_name}</span>
+                                    MA ${m.employee_number}
+                                </small>
+                            </div>
+                            <div class="text-end">
+                                <div class="zeit-display text-${fortschritt >= 100 ? 'danger' : fortschritt >= 80 ? 'warning' : 'success'}">
+                                    ${m.heute_gesamt_min || m.laufzeit_min} min
+                                </div>
+                                ${m.laufzeit_min > (m.heute_gesamt_min || m.laufzeit_min) ? `<div class="small text-muted" style="font-size: 0.75rem;">Ges: ${m.laufzeit_min} min</div>` : ''}
+                            </div>
+                        </div>
+                        
+                        <div class="mb-2">
+                            <div class="d-flex justify-content-between small mb-1">
+                                <span><i class="bi bi-file-earmark-text"></i> <strong>${m.auftrags_art || "-"}</strong> ${m.order_number}</span>
+                                <span>${m.kennzeichen || '-'} ${m.marke || ''}</span>
+                            </div>
+                            <div class="d-flex justify-content-between small text-muted">
+                                <span><i class="bi bi-clock"></i> Seit ${m.start_uhrzeit}</span>
+                                <span>${sbText}</span>
+                            </div>
+                            <div class="small text-muted mt-1">
+                                Vorgabe: ${vorgabeText}
+                            </div>
+                        </div>
+                        
+                        <div class="progress progress-custom">
+                            <div class="progress-bar ${barClass}" 
+                                 style="width: ${Math.min(fortschritt, 100)}%"
+                                 role="progressbar">
+                                ${fortschritt}%
+                            </div>
+                        </div>
+                        ${fortschritt > 100 ? `<div class="text-danger small mt-1 text-end"><i class="bi bi-exclamation-triangle"></i> ${fortschritt - 100}% über Vorgabe!</div>` : ''}
+                        
+                        ${mlHtml}
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function renderLeerlaufBadge(mechaniker) {
+    const card = document.getElementById('leerlaufCard');
+    const namenContainer = document.getElementById('leerlaufNamen');
+    
+    if (!mechaniker.length) {
+        card.className = 'card bg-success text-white';
+        namenContainer.innerHTML = '<i class="bi bi-check-circle"></i> Alle arbeiten';
+        return;
+    }
+    
+    // Alarm-Status berechnen
+    let hasAlarm = false;
+    let hasWarnung = false;
+    
+    mechaniker.forEach(m => {
+        if (m.nie_gestempelt || m.leerlauf_minuten >= 10) {
+            hasAlarm = true;
+        } else if (m.leerlauf_minuten >= 5) {
+            hasWarnung = true;
+        }
+    });
+    
+    // Card-Farbe basierend auf Status
+    if (hasAlarm) {
+        card.className = 'card bg-danger text-white';
+        card.style.animation = 'pulse-alarm 1s infinite';
+        playAlarmSound();
+    } else if (hasWarnung) {
+        card.className = 'card bg-warning text-dark';
+        card.style.animation = '';
+    } else {
+        card.className = 'card bg-warning text-dark';
+        card.style.animation = '';
+    }
+    
+    // Namen mit Status anzeigen
+    let html = '';
+    mechaniker.forEach(m => {
+        let icon = '';
+        let badgeClass = 'bg-secondary';
+        let zeitText = '';
+        
+        if (m.nie_gestempelt || m.leerlauf_minuten < 0) {
+            icon = '⚠️';
+            badgeClass = 'bg-danger';
+            zeitText = 'NIE!';
+        } else if (m.leerlauf_minuten >= 10) {
+            icon = '🚨';
+            badgeClass = 'bg-danger';
+            zeitText = `${m.leerlauf_minuten}min`;
+        } else if (m.leerlauf_minuten >= 5) {
+            icon = '⚠️';
+            badgeClass = 'bg-warning text-dark';
+            zeitText = `${m.leerlauf_minuten}min`;
+        } else {
+            zeitText = m.leerlauf_minuten > 0 ? `${m.leerlauf_minuten}min` : 'jetzt';
+        }
+        
+        const nachname = m.name.split(',')[0];
+        html += `<span class="badge ${badgeClass} me-1 mb-1">${icon} ${nachname} ${zeitText}</span>`;
+    });
+    
+    namenContainer.innerHTML = html;
+}
+
+// Alarm-Sound (nur einmal pro Refresh)
+let lastAlarmTime = 0;
+function playAlarmSound() {
+    const now = Date.now();
+    if (now - lastAlarmTime < 30000) return; // Max alle 30 Sekunden
+    lastAlarmTime = now;
+    
+    // Einfacher Beep-Sound
+    try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.value = 800;
+        oscillator.type = 'square';
+        gainNode.gain.value = 0.3;
+        
+        oscillator.start();
+        setTimeout(() => {
+            oscillator.stop();
+            audioContext.close();
+        }, 200);
+    } catch(e) {
+        console.log('Audio nicht verfügbar');
+    }
+}
+
+// TAG 112: Pausiert/Wartet Mechaniker rendern
+function renderPausiert(mechaniker) {
+    const section = document.getElementById('pausiertSection');
+    const container = document.getElementById('pausiertContainer');
+    
+    if (!mechaniker || !mechaniker.length) {
+        section.style.display = 'none';
+        return;
+    }
+    
+    section.style.display = 'block';
+    
+    let html = '<div class="d-flex flex-wrap">';
+    
+    mechaniker.forEach(m => {
+        const nachname = m.name.split(',')[0];
+        const heuteStd = Math.floor(m.heute_min / 60);
+        const heuteMinRest = m.heute_min % 60;
+        const heuteText = heuteStd > 0 ? `${heuteStd}h ${heuteMinRest}min` : `${m.heute_min} min`;
+        
+        html += `
+            <div class="p-2 m-1 rounded" style="background: rgba(102, 126, 234, 0.1); border: 1px solid rgba(102, 126, 234, 0.3);">
+                <div class="fw-bold">
+                    <span class="betrieb-badge betrieb-${m.betrieb} me-1">${m.betrieb}</span>
+                    ${nachname}
+                </div>
+                <div class="small text-muted">
+                    <i class="bi bi-pause-circle"></i> Seit ${m.pausiert_seit || '?'}
+                </div>
+                <div class="small">
+                    <span class="text-success"><i class="bi bi-clock-history"></i> ${heuteText} heute</span>
+                    <span class="ms-2 text-muted">${m.heute_auftraege} Aufträge</span>
+                </div>
+                ${m.letzter_auftrag ? `<div class="small text-muted">Letzter: #${m.letzter_auftrag}</div>` : ''}
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function renderAbwesend(mechaniker) {
+    const container = document.getElementById('abwesendContainer');
+    
+    if (!mechaniker || !mechaniker.length) {
+        container.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-check-circle"></i> Niemand abwesend</div>';
+        return;
+    }
+    
+    // Grund-Mapping
+    const grundMap = {
+        'Url': 'Urlaub',
+        'Sch': 'Schule',
+        'Kra': 'Krank',
+        'Fei': 'Feiertag'
+    };
+    
+    let html = '<div class="abwesend-section"><div class="d-flex flex-wrap">';
+    
+    mechaniker.forEach(m => {
+        const grund = grundMap[m.grund] || m.grund || '?';
+        html += `
+            <div class="abwesend-item">
+                <span class="betrieb-badge betrieb-${m.betrieb} me-2">${m.betrieb}</span>
+                ${m.name}
+                <span class="badge bg-secondary ms-2">${grund}</span>
+            </div>
+        `;
+    });
+    
+    html += '</div></div>';
+    container.innerHTML = html;
+}
+
+function showAuftragDetail(orderNumber) {
+    // Modal für Auftragsdetails
+    const modalHtml = `
+        <div class="modal fade" id="auftragModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="bi bi-file-earmark-text"></i> Auftrag ${orderNumber}</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body" id="auftragModalBody">
+                        <div class="text-center py-4">
+                            <div class="spinner-border text-primary"></div>
+                            <div class="mt-2">Lade Auftragsdetails...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Altes Modal entfernen falls vorhanden
+    const existingModal = document.getElementById('auftragModal');
+    if (existingModal) existingModal.remove();
+    
+    // Neues Modal einfügen
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // Modal öffnen
+    const modal = new bootstrap.Modal(document.getElementById('auftragModal'));
+    modal.show();
+    
+    // Daten laden
+    fetch(`/api/werkstatt/live/auftrag/${orderNumber}`)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) {
+                document.getElementById('auftragModalBody').innerHTML = 
+                    `<div class="alert alert-danger">${data.error}</div>`;
+                return;
+            }
+            
+            const a = data.auftrag;
+            let posHtml = '';
+            
+            data.positionen.forEach(p => {
+                posHtml += `
+                    <tr>
+                        <td>${p.position}</td>
+                        <td>${p.beschreibung || '-'}</td>
+                        <td>${p.vorgabe_aw} AW</td>
+                        <td>${p.mechaniker || '-'}</td>
+                        <td>${p.abgerechnet ? '<span class="badge bg-success">Ja</span>' : '<span class="badge bg-warning">Nein</span>'}</td>
+                    </tr>
+                `;
+            });
+            
+            document.getElementById('auftragModalBody').innerHTML = `
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <h6>Fahrzeug</h6>
+                        <p class="mb-1"><strong>${a.fahrzeug.kennzeichen || '-'}</strong> ${a.fahrzeug.marke || ''} ${a.fahrzeug.modell || ''}</p>
+                        <p class="text-muted small mb-0">KM: ${a.fahrzeug.km_stand || '-'}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Kunde</h6>
+                        <p class="mb-1">${a.kunde || '-'}</p>
+                        <p class="text-muted small mb-0">Serviceberater: ${a.serviceberater || '-'}</p>
+                    </div>
+                </div>
+                <hr>
+                <h6>Arbeitspositionen (${data.positionen.length})</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Pos</th>
+                                <th>Beschreibung</th>
+                                <th>AW</th>
+                                <th>Mechaniker</th>
+                                <th>Abger.</th>
+                            </tr>
+                        </thead>
+                        <tbody>${posHtml || '<tr><td colspan="5" class="text-muted">Keine Positionen</td></tr>'}</tbody>
+                    </table>
+                </div>
+                <div class="text-end">
+                    <strong>Gesamt: ${a.summen.total_aw} AW</strong>
+                </div>
+            `;
+        })
+        .catch(err => {
+            document.getElementById('auftragModalBody').innerHTML = 
+                `<div class="alert alert-danger">Fehler: ${err.message}</div>`;
+        });
+}
+
+// CSS für Spin-Animation
+const style = document.createElement('style');
+style.textContent = '@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }';
+document.head.appendChild(style);
+</script>
+{% endblock %}

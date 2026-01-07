@@ -1,0 +1,307 @@
+{% extends "base.html" %}
+
+{% block title %}Kundenzentrale - Tagesziel - Greiner DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .hero-display {
+        background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
+        color: white;
+        padding: 3rem 2rem;
+        border-radius: 1rem;
+        margin-bottom: 2rem;
+        text-align: center;
+    }
+    
+    .hero-display h1 {
+        font-size: 3rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+    }
+    
+    .hero-display .subtitle {
+        font-size: 1.25rem;
+        opacity: 0.9;
+    }
+    
+    .kpi-card {
+        border-radius: 12px;
+        border: none;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        transition: transform 0.2s;
+    }
+    
+    .kpi-card:hover {
+        transform: translateY(-2px);
+    }
+    
+    .kpi-value {
+        font-size: 2.5rem;
+        font-weight: 700;
+    }
+    
+    .kpi-label {
+        font-size: 0.9rem;
+        color: #6c757d;
+        margin-top: 0.5rem;
+    }
+    
+    .progress-thick {
+        height: 2rem;
+        border-radius: 1rem;
+        font-size: 1.1rem;
+        font-weight: 600;
+    }
+    
+    .filter-bar {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1">
+                <i class="bi bi-receipt text-primary"></i>
+                Kundenzentrale - Tagesziel
+            </h2>
+            <p class="text-muted mb-0">Tägliches Fakturierungsziel aus 1%-Renditeziel</p>
+        </div>
+        <div>
+            <button class="btn btn-primary" onclick="loadData()">
+                <i class="bi bi-arrow-clockwise"></i> Aktualisieren
+            </button>
+        </div>
+    </div>
+    
+    <!-- Filter -->
+    <div class="filter-bar">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">Datum</label>
+                <input type="date" id="filterDatum" class="form-control" 
+                       value="{{ now.strftime('%Y-%m-%d') if now else '' }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Standort</label>
+                <select id="filterStandort" class="form-select">
+                    <option value="alle">Gesamt</option>
+                    <option value="deggendorf">Deggendorf (Opel + Hyundai)</option>
+                    <option value="landau">Landau</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-primary w-100" onclick="loadData()">
+                    <i class="bi bi-search"></i> Anzeigen
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Hero Display (groß, einfach, klar) -->
+    <div class="hero-display" id="heroDisplay" style="display: none;">
+        <h1 id="heroUmsatz">-</h1>
+        <div class="subtitle" id="heroNachricht">Lädt...</div>
+        <div class="mt-3">
+            <div class="progress progress-thick" style="max-width: 600px; margin: 0 auto;">
+                <div class="progress-bar" id="heroProgress" role="progressbar" 
+                     style="width: 0%">
+                    <span id="heroProzent">0%</span>
+                </div>
+            </div>
+            <div class="mt-2">
+                <small>Ziel: <span id="heroZiel">-</span></small>
+            </div>
+        </div>
+    </div>
+    
+    <!-- KPI Cards -->
+    <div class="row g-4 mb-4" id="kpiCards" style="display: none;">
+        <div class="col-md-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body text-center">
+                    <i class="bi bi-currency-euro text-primary fs-2"></i>
+                    <div class="kpi-value text-primary" id="kpiHeute">-</div>
+                    <div class="kpi-label">Heute fakturiert</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body text-center">
+                    <i class="bi bi-bullseye text-success fs-2"></i>
+                    <div class="kpi-value text-success" id="kpiZiel">-</div>
+                    <div class="kpi-label">Tagesziel</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body text-center">
+                    <i class="bi bi-graph-up-arrow text-info fs-2"></i>
+                    <div class="kpi-value text-info" id="kpiMonat">-</div>
+                    <div class="kpi-label">Monat fakturiert</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card kpi-card h-100">
+                <div class="card-body text-center">
+                    <i class="bi bi-receipt text-warning fs-2"></i>
+                    <div class="kpi-value text-warning" id="kpiRechnungen">-</div>
+                    <div class="kpi-label">Rechnungen heute</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Aufschlüsselung -->
+    <div class="card mb-4" id="aufschlüsselungCard" style="display: none;">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="bi bi-pie-chart"></i> Aufschlüsselung nach Bereichen</h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-3" id="aufschlüsselungBody">
+                <!-- Wird per JavaScript gefüllt -->
+            </div>
+        </div>
+    </div>
+    
+    <!-- Loading -->
+    <div id="loadingState" class="text-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Lade...</span>
+        </div>
+        <p class="mt-2 text-muted">Daten werden geladen...</p>
+    </div>
+    
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Initialisierung
+document.addEventListener('DOMContentLoaded', function() {
+    // Aktuelles Datum setzen
+    const heute = new Date().toISOString().split('T')[0];
+    document.getElementById('filterDatum').value = heute;
+    
+    // Daten laden
+    loadData();
+});
+
+// Daten laden
+async function loadData() {
+    const datum = document.getElementById('filterDatum').value;
+    const standort = document.getElementById('filterStandort').value;
+    
+    document.getElementById('loadingState').style.display = 'block';
+    document.getElementById('heroDisplay').style.display = 'none';
+    document.getElementById('kpiCards').style.display = 'none';
+    document.getElementById('aufschlüsselungCard').style.display = 'none';
+    
+    try {
+        const response = await fetch(`/api/kundenzentrale/tagesziel?datum=${datum}&standort=${standort}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            renderData(data);
+        } else {
+            showError(data.error || 'Daten konnten nicht geladen werden');
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        showError('Verbindungsfehler');
+    } finally {
+        document.getElementById('loadingState').style.display = 'none';
+    }
+}
+
+// Daten rendern
+function renderData(data) {
+    const erfuellung = data.erfuellung;
+    const ist = data.ist;
+    const ziele = data.ziele;
+    
+    // Status-Klasse
+    const statusClass = erfuellung.status === 'ok' ? 'success' : 
+                       erfuellung.status === 'warnung' ? 'warning' : 'danger';
+    
+    // Hero Display
+    document.getElementById('heroDisplay').style.display = 'block';
+    document.getElementById('heroUmsatz').textContent = formatEuro(ist.umsatz_heute);
+    document.getElementById('heroNachricht').textContent = erfuellung.nachricht;
+    document.getElementById('heroZiel').textContent = formatEuro(ziele.tagesziel_umsatz);
+    
+    // Progress
+    const prozent = Math.min(erfuellung.heute_prozent, 100);
+    const progressBar = document.getElementById('heroProgress');
+    progressBar.style.width = prozent + '%';
+    progressBar.className = `progress-bar bg-${statusClass}`;
+    document.getElementById('heroProzent').textContent = prozent.toFixed(1) + '%';
+    
+    // KPI Cards
+    document.getElementById('kpiCards').style.display = 'flex';
+    document.getElementById('kpiHeute').textContent = formatEuro(ist.umsatz_heute);
+    document.getElementById('kpiZiel').textContent = formatEuro(ziele.tagesziel_umsatz);
+    document.getElementById('kpiMonat').textContent = formatEuro(ist.umsatz_monat);
+    document.getElementById('kpiRechnungen').textContent = ist.anzahl_rechnungen_heute;
+    
+    // Aufschlüsselung
+    const aufschlüsselung = data.aufschlüsselung;
+    const aufBody = document.getElementById('aufschlüsselungBody');
+    aufBody.innerHTML = `
+        <div class="col-md-3">
+            <div class="text-center p-3 bg-light rounded">
+                <div class="fw-bold text-primary">${formatEuro(aufschlüsselung.werkstatt)}</div>
+                <small class="text-muted">Werkstatt</small>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="text-center p-3 bg-light rounded">
+                <div class="fw-bold text-success">${formatEuro(aufschlüsselung.verkauf)}</div>
+                <small class="text-muted">Verkauf</small>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="text-center p-3 bg-light rounded">
+                <div class="fw-bold text-info">${formatEuro(aufschlüsselung.teile)}</div>
+                <small class="text-muted">Teile</small>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="text-center p-3 bg-light rounded">
+                <div class="fw-bold text-warning">${formatEuro(aufschlüsselung.sonstiges)}</div>
+                <small class="text-muted">Sonstiges</small>
+            </div>
+        </div>
+    `;
+    document.getElementById('aufschlüsselungCard').style.display = 'block';
+}
+
+function formatEuro(value) {
+    return new Intl.NumberFormat('de-DE', { 
+        style: 'currency', 
+        currency: 'EUR',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(value);
+}
+
+function showError(message) {
+    document.getElementById('loadingState').innerHTML = `
+        <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle"></i> ${message}
+        </div>
+    `;
+}
+</script>
+{% endblock %}
+
