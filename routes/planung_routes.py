@@ -151,11 +151,23 @@ def uebersicht():
     
     # Bereiche
     bereiche = ['NW', 'GW', 'Teile', 'Werkstatt', 'Sonstige']
+    
+    # Standorte: Für Teile und Werkstatt nur Deggendorf (Standort 1), nicht Hyundai DEG (Standort 2)
     standorte = {
         1: 'Deggendorf',
         2: 'Hyundai DEG',
         3: 'Landau'
     }
+    
+    # Für Teile und Werkstatt: Nur Standort 1 (Deggendorf) anzeigen, Standort 2 (Hyundai DEG) ausblenden
+    standorte_fuer_bereich = {}
+    for bereich_key in bereiche:
+        if bereich_key in ['Teile', 'Werkstatt']:
+            # Nur Deggendorf (1) und Landau (3), nicht Hyundai DEG (2)
+            standorte_fuer_bereich[bereich_key] = {1: 'Deggendorf', 3: 'Landau'}
+        else:
+            # Alle Standorte
+            standorte_fuer_bereich[bereich_key] = standorte
     
     # Planungen laden
     planungen = {}
@@ -182,8 +194,35 @@ def uebersicht():
             rows = cursor.fetchall()
             
             for row in rows:
-                key = f"{row['bereich']}_{row['standort']}"
-                planungen[key] = row_to_dict(row)
+                bereich_key = row['bereich']
+                standort_key = row['standort']
+                
+                # Für Teile und Werkstatt: Standort 2 (Hyundai DEG) auf Standort 1 (Deggendorf) mappen
+                if bereich_key in ['Teile', 'Werkstatt'] and standort_key == 2:
+                    standort_key = 1  # Hyundai DEG -> Deggendorf
+                
+                key = f"{bereich_key}_{standort_key}"
+                # Wenn bereits eine Planung für Standort 1 existiert, Werte zusammenfassen
+                if key in planungen:
+                    # Werte zusammenfassen (falls beide existieren)
+                    existing = planungen[key]
+                    planungen[key] = {
+                        'id': existing.get('id'),  # Behalte erste ID
+                        'bereich': bereich_key,
+                        'standort': standort_key,
+                        'status': existing.get('status') or row_to_dict(row).get('status'),
+                        'umsatz_basis': (existing.get('umsatz_basis') or 0) + (row_to_dict(row).get('umsatz_basis') or 0),
+                        'db1_basis': (existing.get('db1_basis') or 0) + (row_to_dict(row).get('db1_basis') or 0),
+                        'umsatz_ziel': (existing.get('umsatz_ziel') or 0) + (row_to_dict(row).get('umsatz_ziel') or 0),
+                        'db1_ziel': (existing.get('db1_ziel') or 0) + (row_to_dict(row).get('db1_ziel') or 0),
+                        'erstellt_von': existing.get('erstellt_von') or row_to_dict(row).get('erstellt_von'),
+                        'erstellt_am': existing.get('erstellt_am') or row_to_dict(row).get('erstellt_am'),
+                        'freigegeben_von': existing.get('freigegeben_von') or row_to_dict(row).get('freigegeben_von'),
+                        'freigegeben_am': existing.get('freigegeben_am') or row_to_dict(row).get('freigegeben_am')
+                    }
+                else:
+                    planungen[key] = row_to_dict(row)
+                    planungen[key]['standort'] = standort_key  # Standort auf 1 mappen
     
     except Exception as e:
         flash(f'Fehler beim Laden der Planungen: {str(e)}', 'danger')
@@ -199,6 +238,7 @@ def uebersicht():
         standort=standort,
         bereiche=bereiche,
         standorte=standorte,
+        standorte_fuer_bereich=standorte_fuer_bereich,
         planungen=planungen
     )
 

@@ -92,7 +92,8 @@
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <strong>{{ bereich }}</strong>
-                    {% for s_id, s_name in standorte.items() %}
+                    {% set bereich_standorte = standorte_fuer_bereich.get(bereich, standorte) %}
+                    {% for s_id, s_name in bereich_standorte.items() %}
                         {% if not standort or standort == s_id %}
                         <div class="btn-group">
                             <a href="{{ url_for('abteilungsleiter_planung.jahresplanung', bereich=bereich, standort=s_id, geschaeftsjahr=geschaeftsjahr) }}" 
@@ -108,7 +109,8 @@
                     {% endfor %}
                 </div>
                 <div class="card-body">
-                    {% for s_id, s_name in standorte.items() %}
+                    {% set bereich_standorte = standorte_fuer_bereich.get(bereich, standorte) %}
+                    {% for s_id, s_name in bereich_standorte.items() %}
                         {% if not standort or standort == s_id %}
                         {% set key = bereich ~ '_' ~ s_id %}
                         {% if planungen.get(key) %}
