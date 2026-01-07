@@ -1524,6 +1524,15 @@ class AbteilungsleiterPlanungData:
                 # Prüfen ob Monat abgelaufen
                 monat_abgelaufen = ist_monat_abgelaufen(geschaeftsjahr, monat)
                 
+                # GJ-Monat zu Kalendermonat konvertieren (für BWA-Abfragen)
+                gj_start_jahr = int(geschaeftsjahr.split('/')[0])
+                if monat <= 4:  # Sep-Dez
+                    kal_monat = monat + 8
+                    kal_jahr = gj_start_jahr
+                else:  # Jan-Aug
+                    kal_monat = monat - 4
+                    kal_jahr = gj_start_jahr + 1
+                
                 # Vorjahres-Referenz laden
                 vorjahr = AbteilungsleiterPlanungData._lade_vorjahr_referenz(
                     bereich, standort, monat, geschaeftsjahr
