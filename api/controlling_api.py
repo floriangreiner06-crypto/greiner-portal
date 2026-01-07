@@ -220,41 +220,55 @@ def build_firma_standort_filter(firma: str, standort: str):
     """
     Baut Firma/Standort-Filter für BWA-Queries.
 
-    WICHTIG: Für Umsatz/Einsatz (7/8xxxxx) gilt branch_number
-             Für Kosten (4xxxxx) gilt die letzte Ziffer der Kontonummer!
-             - Letzte Ziffer 1 = Deggendorf
-             - Letzte Ziffer 2 = Landau
-             - subsidiary_to_company_ref 2 = Hyundai (separate Firma)
+    TAG157: WICHTIG - Unterschiedliche Zuordnungslogik!
+    - Umsatz (8xxxxx): via branch_number (1=DEG, 3=LAN)
+    - Einsatz (7xxxxx): via Konto-Endziffer (6. Ziffer: 1=DEG, 2=LAN)
+    - Kosten (4xxxxx): via Konto-Endziffer (6. Ziffer: 1=DEG, 2=LAN)
+    - subsidiary_to_company_ref 2 = Hyundai (separate Firma)
+
+    TAG167: Neuer Filter "deg-both" für Deggendorf (Stellantis+Hyundai)
 
     Returns:
-        tuple: (firma_filter_umsatz, firma_filter_kosten, standort_name)
+        tuple: (firma_filter_umsatz, firma_filter_einsatz, firma_filter_kosten, standort_name)
     """
     firma_filter_umsatz = ""
+    firma_filter_einsatz = ""  # TAG157: Separater Filter für Einsatz!
     firma_filter_kosten = ""
     standort_name = "Alle"
 
-    if firma == '1':
+    # TAG167: Spezialfall: Deggendorf (Stellantis+Hyundai)
+    if standort == 'deg-both':
+        # Deggendorf: Stellantis (branch=1, subsidiary=1) + Hyundai (branch=2, subsidiary=2)
+        firma_filter_umsatz = "AND ((branch_number = 1 AND subsidiary_to_company_ref = 1) OR (branch_number = 2 AND subsidiary_to_company_ref = 2))"
+        firma_filter_einsatz = "AND ((substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1' AND subsidiary_to_company_ref = 1) OR (substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 2))"
+        firma_filter_kosten = "AND ((substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1' AND subsidiary_to_company_ref = 1) OR (substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 2))"
+        standort_name = "Deggendorf (Stellantis+Hyundai)"
+    elif firma == '1':
         # Stellantis (Autohaus Greiner)
         firma_filter_umsatz = "AND subsidiary_to_company_ref = 1"
+        firma_filter_einsatz = "AND subsidiary_to_company_ref = 1"
         firma_filter_kosten = "AND subsidiary_to_company_ref = 1"
         standort_name = "Stellantis (DEG+LAN)"
         if standort == '1':
-            # Deggendorf: branch_number=1 für Umsatz, letzte Ziffer=1 für Kosten
+            # Deggendorf: branch_number=1 für Umsatz, Konto-Endziffer=1 für Einsatz+Kosten
             firma_filter_umsatz += " AND branch_number = 1"
+            firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
             firma_filter_kosten += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
             standort_name = "Deggendorf"
         elif standort == '2':
-            # Landau: branch_number=3 für Umsatz, letzte Ziffer=2 für Kosten
+            # Landau: branch_number=3 für Umsatz, Konto-Endziffer=2 für Einsatz+Kosten
             firma_filter_umsatz += " AND branch_number = 3"
+            firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
             firma_filter_kosten += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
             standort_name = "Landau"
     elif firma == '2':
         # Hyundai (Auto Greiner) - separate Firma
         firma_filter_umsatz = "AND subsidiary_to_company_ref = 2"
+        firma_filter_einsatz = "AND subsidiary_to_company_ref = 2"
         firma_filter_kosten = "AND subsidiary_to_company_ref = 2"
         standort_name = "Hyundai"
 
-    return firma_filter_umsatz, firma_filter_kosten, standort_name
+    return firma_filter_umsatz, firma_filter_einsatz, firma_filter_kosten, standort_name
 
 
 @controlling_api.route('/api/controlling/bwa', methods=['GET'])
@@ -370,8 +384,8 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
     else:
         datum_bis = f"{jahr}-{monat+1:02d}-01"
 
-    # Filter bauen
-    firma_filter_umsatz, firma_filter_kosten, standort_name = build_firma_standort_filter(firma, standort)
+    # Filter bauen (TAG157: Jetzt mit separatem Einsatz-Filter!)
+    firma_filter_umsatz, firma_filter_einsatz, firma_filter_kosten, standort_name = build_firma_standort_filter(firma, standort)
 
     # WICHTIG: G&V-Abschlussbuchungen ausschließen (verfälschen BWA!)
     # TAG136: %% escaped für PostgreSQL (sonst als Placeholder interpretiert)
@@ -391,7 +405,7 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
     """), (datum_von, datum_bis))
     umsatz = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
-    # Einsatz
+    # Einsatz (TAG157: firma_filter_einsatz für korrekte Standort-Zuordnung!)
     cursor.execute(convert_placeholders(f"""
         SELECT COALESCE(SUM(
             CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
@@ -399,7 +413,7 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
         FROM loco_journal_accountings
         WHERE accounting_date >= ? AND accounting_date < ?
           AND nominal_account_number BETWEEN 700000 AND 799999
-          {firma_filter_umsatz}
+          {firma_filter_einsatz}
           {guv_filter}
     """), (datum_von, datum_bis))
     einsatz = float(row_to_dict(cursor.fetchone())['wert'] or 0)
@@ -534,8 +548,8 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
     else:
         datum_bis = f"{jahr}-{bis_monat+1:02d}-01"
 
-    # Filter bauen
-    firma_filter_umsatz, firma_filter_kosten, _ = build_firma_standort_filter(firma, standort)
+    # Filter bauen (TAG157: Jetzt mit separatem Einsatz-Filter!)
+    firma_filter_umsatz, firma_filter_einsatz, firma_filter_kosten, _ = build_firma_standort_filter(firma, standort)
 
     # WICHTIG: G&V-Abschlussbuchungen ausschließen (verfälschen BWA!)
     # TAG136: %% escaped für PostgreSQL (sonst als Placeholder interpretiert)
@@ -555,7 +569,7 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
     """), (datum_von, datum_bis))
     umsatz = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
-    # Einsatz YTD
+    # Einsatz YTD (TAG157: firma_filter_einsatz für korrekte Standort-Zuordnung!)
     cursor.execute(convert_placeholders(f"""
         SELECT COALESCE(SUM(
             CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
@@ -563,7 +577,7 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
         FROM loco_journal_accountings
         WHERE accounting_date >= ? AND accounting_date < ?
           AND nominal_account_number BETWEEN 700000 AND 799999
-          {firma_filter_umsatz}
+          {firma_filter_einsatz}
           {guv_filter}
     """), (datum_von, datum_bis))
     einsatz = float(row_to_dict(cursor.fetchone())['wert'] or 0)
@@ -684,8 +698,8 @@ def berechne_bwa_live(monat: int, jahr: int, firma: str = '0', standort: str = '
         with db_session() as conn:
             cursor = conn.cursor()
 
-            # Filter bauen (für standort_name)
-            _, _, standort_name = build_firma_standort_filter(firma, standort)
+            # Filter bauen (für standort_name) - TAG157: 4 Rückgabewerte
+            _, _, _, standort_name = build_firma_standort_filter(firma, standort)
 
             # Aktueller Monat berechnen
             werte = _berechne_bwa_werte(cursor, monat, jahr, firma, standort)
@@ -812,11 +826,13 @@ def get_bwa_detail():
         else:
             datum_bis = f"{jahr}-{monat+1:02d}-01"
 
-        # Filter bauen
-        firma_filter_umsatz, firma_filter_kosten, standort_name = build_firma_standort_filter(firma, standort)
+        # Filter bauen (TAG157: Jetzt mit separatem Einsatz-Filter!)
+        firma_filter_umsatz, firma_filter_einsatz, firma_filter_kosten, standort_name = build_firma_standort_filter(firma, standort)
 
         # Position -> SQL-Filter Mapping
-        # 'filter_type': 'umsatz' = nutzt firma_filter_umsatz, 'kosten' = nutzt firma_filter_kosten
+        # 'filter_type': 'umsatz' = nutzt firma_filter_umsatz
+        # 'filter_type': 'einsatz' = nutzt firma_filter_einsatz (TAG157: Konto-Endziffer!)
+        # 'filter_type': 'kosten' = nutzt firma_filter_kosten
         position_filter = {
             'umsatz': {
                 'where': """((nominal_account_number BETWEEN 800000 AND 889999)
@@ -827,7 +843,7 @@ def get_bwa_detail():
             'einsatz': {
                 'where': "nominal_account_number BETWEEN 700000 AND 799999",
                 'vorzeichen': "CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END",
-                'filter_type': 'umsatz'
+                'filter_type': 'einsatz'  # TAG157: Eigener Filter mit Konto-Endziffer!
             },
             'variable': {
                 'where': """(
@@ -907,8 +923,11 @@ def get_bwa_detail():
         pf = position_filter[position]
 
         # Den richtigen Firma-Filter basierend auf Position wählen
+        # TAG157: Separater Einsatz-Filter für korrekte Standort-Zuordnung
         if pf['filter_type'] == 'kosten':
             aktiver_filter = firma_filter_kosten
+        elif pf['filter_type'] == 'einsatz':
+            aktiver_filter = firma_filter_einsatz
         else:
             aktiver_filter = firma_filter_umsatz
 
@@ -1120,10 +1139,15 @@ BEREICHE_CONFIG = {
 
 
 def _berechne_bereich_werte(cursor, bereich: str, config: dict, datum_von: str, datum_bis: str,
-                            firma_filter: str, guv_filter: str):
+                            firma_filter_umsatz: str, guv_filter: str, firma_filter_einsatz: str = None):
     """
     Berechnet Erlös, Einsatz und Bruttoertrag für einen Bereich.
+    TAG157: Separater Einsatz-Filter für korrekte Standort-Zuordnung.
     """
+    # TAG157: Fallback für Abwärtskompatibilität
+    if firma_filter_einsatz is None:
+        firma_filter_einsatz = firma_filter_umsatz
+
     # Erlöse
     if 'erlos_prefix' in config:
         prefix = config['erlos_prefix']
@@ -1139,12 +1163,12 @@ def _berechne_bereich_werte(cursor, bereich: str, config: dict, datum_von: str, 
         FROM loco_journal_accountings
         WHERE accounting_date >= %s AND accounting_date < %s
           AND {erlos_where}
-          {firma_filter}
+          {firma_filter_umsatz}
           {guv_filter}
     """), (datum_von, datum_bis))
     erlos = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
-    # Einsatz
+    # Einsatz (TAG157: firma_filter_einsatz für korrekte Standort-Zuordnung!)
     if 'einsatz_prefix' in config:
         prefix = config['einsatz_prefix']
         einsatz_where = f"nominal_account_number BETWEEN {prefix}0000 AND {prefix}9999"
@@ -1159,7 +1183,7 @@ def _berechne_bereich_werte(cursor, bereich: str, config: dict, datum_von: str, 
         FROM loco_journal_accountings
         WHERE accounting_date >= %s AND accounting_date < %s
           AND {einsatz_where}
-          {firma_filter}
+          {firma_filter_einsatz}
           {guv_filter}
     """), (datum_von, datum_bis))
     einsatz = float(row_to_dict(cursor.fetchone())['wert'] or 0)
@@ -1213,8 +1237,8 @@ def get_bwa_v2():
         else:
             datum_bis = f"{jahr}-{monat+1:02d}-01"
 
-        # Filter bauen
-        firma_filter_umsatz, firma_filter_kosten, standort_name = build_firma_standort_filter(firma, standort)
+        # Filter bauen (TAG157: Jetzt mit separatem Einsatz-Filter!)
+        firma_filter_umsatz, firma_filter_einsatz, firma_filter_kosten, standort_name = build_firma_standort_filter(firma, standort)
         guv_filter = "AND (posting_text IS NULL OR posting_text NOT LIKE '%%G&V-Abschluss%%')"
 
         with db_session() as conn:
@@ -1234,7 +1258,7 @@ def get_bwa_v2():
             """), (datum_von, datum_bis))
             umsatz_gesamt = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
-            # Gesamt-Einsatz (alle 7er Konten)
+            # Gesamt-Einsatz (alle 7er Konten) - TAG157: firma_filter_einsatz!
             cursor.execute(convert_placeholders(f"""
                 SELECT COALESCE(SUM(
                     CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
@@ -1242,19 +1266,19 @@ def get_bwa_v2():
                 FROM loco_journal_accountings
                 WHERE accounting_date >= %s AND accounting_date < %s
                   AND nominal_account_number BETWEEN 700000 AND 799999
-                  {firma_filter_umsatz}
+                  {firma_filter_einsatz}
                   {guv_filter}
             """), (datum_von, datum_bis))
             einsatz_gesamt = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
             db1_gesamt = umsatz_gesamt - einsatz_gesamt
 
-            # Bruttoerträge pro Bereich berechnen
+            # Bruttoerträge pro Bereich berechnen (TAG157: Mit separatem Einsatz-Filter!)
             bereiche = []
             for bereich_key, config in sorted(BEREICHE_CONFIG.items(), key=lambda x: x[1]['order']):
                 werte = _berechne_bereich_werte(
                     cursor, bereich_key, config, datum_von, datum_bis,
-                    firma_filter_umsatz, guv_filter
+                    firma_filter_umsatz, guv_filter, firma_filter_einsatz
                 )
                 bereiche.append({
                     'key': bereich_key,
@@ -1371,7 +1395,7 @@ def get_bwa_v2():
             """), (vorjahr_datum_von, vorjahr_datum_bis))
             vj_umsatz = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
-            # Vorjahr Gesamt-Einsatz
+            # Vorjahr Gesamt-Einsatz (TAG157: firma_filter_einsatz!)
             cursor.execute(convert_placeholders(f"""
                 SELECT COALESCE(SUM(
                     CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
@@ -1379,19 +1403,19 @@ def get_bwa_v2():
                 FROM loco_journal_accountings
                 WHERE accounting_date >= %s AND accounting_date < %s
                   AND nominal_account_number BETWEEN 700000 AND 799999
-                  {firma_filter_umsatz}
+                  {firma_filter_einsatz}
                   {guv_filter}
             """), (vorjahr_datum_von, vorjahr_datum_bis))
             vj_einsatz = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
             vj_db1 = vj_umsatz - vj_einsatz
 
-            # Vorjahr Bereiche
+            # Vorjahr Bereiche (TAG157: Mit separatem Einsatz-Filter!)
             vj_bereiche = []
             for bereich_key, config in sorted(BEREICHE_CONFIG.items(), key=lambda x: x[1]['order']):
                 werte = _berechne_bereich_werte(
                     cursor, bereich_key, config, vorjahr_datum_von, vorjahr_datum_bis,
-                    firma_filter_umsatz, guv_filter
+                    firma_filter_umsatz, guv_filter, firma_filter_einsatz
                 )
                 vj_bereiche.append({
                     'key': bereich_key,
@@ -1509,7 +1533,7 @@ def get_bwa_v2():
             """), (ytd_datum_von, datum_bis))
             ytd_umsatz = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
-            # YTD Einsatz
+            # YTD Einsatz (TAG157: firma_filter_einsatz!)
             cursor.execute(convert_placeholders(f"""
                 SELECT COALESCE(SUM(
                     CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
@@ -1517,19 +1541,19 @@ def get_bwa_v2():
                 FROM loco_journal_accountings
                 WHERE accounting_date >= %s AND accounting_date < %s
                   AND nominal_account_number BETWEEN 700000 AND 799999
-                  {firma_filter_umsatz}
+                  {firma_filter_einsatz}
                   {guv_filter}
             """), (ytd_datum_von, datum_bis))
             ytd_einsatz = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
             ytd_db1 = ytd_umsatz - ytd_einsatz
 
-            # YTD Bereiche
+            # YTD Bereiche (TAG157: Mit separatem Einsatz-Filter!)
             ytd_bereiche = []
             for bereich_key, config in sorted(BEREICHE_CONFIG.items(), key=lambda x: x[1]['order']):
                 werte = _berechne_bereich_werte(
                     cursor, bereich_key, config, ytd_datum_von, datum_bis,
-                    firma_filter_umsatz, guv_filter
+                    firma_filter_umsatz, guv_filter, firma_filter_einsatz
                 )
                 ytd_bereiche.append({
                     'key': bereich_key,
@@ -1817,7 +1841,8 @@ def get_bwa_v2_drilldown():
         else:
             datum_bis = f"{jahr}-{monat+1:02d}-01"
 
-        firma_filter_umsatz, firma_filter_kosten, standort_name = build_firma_standort_filter(firma, standort)
+        # TAG157: Jetzt mit separatem Einsatz-Filter!
+        firma_filter_umsatz, firma_filter_einsatz, firma_filter_kosten, standort_name = build_firma_standort_filter(firma, standort)
         guv_filter = "AND (posting_text IS NULL OR posting_text NOT LIKE '%%G&V-Abschluss%%')"
 
         # Subsidiary für Kontobezeichnungen: 1=Stellantis, 2=Hyundai
@@ -1884,7 +1909,7 @@ def get_bwa_v2_drilldown():
                 details.sort(key=lambda x: (x['bereich_order'], -x['wert']))
 
             elif typ == 'einsatz':
-                # Alle Einsatzwerte (7xxxxx)
+                # Alle Einsatzwerte (7xxxxx) - TAG157: firma_filter_einsatz!
                 titel = "Einsatzwerte"
                 cursor.execute(convert_placeholders(f"""
                     SELECT
@@ -1893,7 +1918,7 @@ def get_bwa_v2_drilldown():
                     FROM loco_journal_accountings
                     WHERE accounting_date >= %s AND accounting_date < %s
                       AND nominal_account_number BETWEEN 700000 AND 799999
-                      {firma_filter_umsatz}
+                      {firma_filter_einsatz}
                       {guv_filter}
                     GROUP BY nominal_account_number
                     HAVING ABS(SUM(CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END)) > 0
