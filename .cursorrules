@@ -1,0 +1,171 @@
+# Cursor AI Rules - Greiner Portal DRIVE System
+
+## Projekt-Kontext
+Du arbeitest am **Greiner Portal DRIVE** - einem internen Management-System für ein Autohaus mit 3 Standorten (Deggendorf Opel/Hyundai, Landau).
+
+**Tech-Stack:**
+- Backend: Flask 3.0 + Gunicorn (4 workers)
+- Frontend: Jinja2 + Bootstrap 5 + Chart.js
+- Datenbank: PostgreSQL (drive_portal DB) + Locosoft DB (extern, read-only)
+- Scheduler: Celery + Redis + Flower
+- Auth: LDAP/Active Directory via Flask-Login
+
+**Deployment:**
+- Server: 10.80.80.20 (auto-greiner.de)
+- Produktiv: /opt/greiner-portal/ (Port 5000)
+- Windows-Sync: \\Srvrdb01\Allgemein\Greiner Portal\Greiner_Portal_NEU\Server\
+- Server-Mount: /mnt/greiner-portal-sync/
+
+## Wichtigste Regeln
+
+### 1. Code-Änderungen
+- **Python-Code (API/Routes)**: Erfordert `sudo systemctl restart greiner-portal` auf Server
+- **Templates (.html)**: Kein Restart nötig, nur Browser-Refresh (Strg+F5)
+- **Static (CSS/JS)**: `STATIC_VERSION` in app.py erhöhen für Cache-Busting
+
+### 2. Datenbankzugriff
+```python
+# IMMER verwenden:
+from api.db_connection import get_db
+
+conn = get_db()  # Automatisch PostgreSQL
+cursor = conn.cursor()
+cursor.execute("SELECT * FROM employees WHERE active = true")
+rows = cursor.fetchall()  # HybridRow: row[0] UND row['name'] möglich
+conn.close()
+```
+
+**SQL-Syntax (PostgreSQL!):**
+- Placeholder: `%s` (NICHT `?`)
+- Boolean: `active = true` (NICHT `= 1`)
+- Datum: `CURRENT_DATE` (NICHT `date('now')`)
+- Jahr: `EXTRACT(YEAR FROM col)` (NICHT `strftime`)
+
+### 3. Projekt-Struktur
+```
+api/               → Backend-Logik (z.B. bankenspiegel_api.py)
+routes/            → Flask-Blueprints (z.B. bankenspiegel_routes.py)
+templates/         → Jinja2-Templates
+celery_app/        → Celery Tasks (tasks.py)
+auth/              → LDAP + Auth-Manager
+docs/              → DB-Schema, Session-Logs
+```
+
+### 4. Modul-Architektur
+Jedes Feature hat:
+1. **API-Datei** in `api/` (z.B. `bankenspiegel_api.py`)
+2. **Routes-Datei** in `routes/` (z.B. `bankenspiegel_routes.py`)
+3. **Templates** in `templates/` (z.B. `bankenspiegel_dashboard.html`)
+
+### 5. Authentifizierung
+```python
+from flask_login import login_required, current_user
+
+@bp.route('/admin/xyz')
+@login_required
+def admin_page():
+    if not current_user.can_access_feature('admin'):
+        return jsonify({'error': 'Keine Berechtigung'}), 403
+```
+
+**OU-basierte Rollen:**
+- OU=Geschäftsleitung → admin
+- OU=Controlling → controlling
+- OU=Verkauf → verkauf
+- OU=Werkstatt → werkstatt
+
+### 6. Celery-Tasks
+```python
+# Neue Task definieren in celery_app/tasks.py
+from celery_app.celery_config import celery
+
+@celery.task(name='tasks.beispiel_task')
+def beispiel_task():
+    # Task-Logik
+    pass
+```
+
+**Task-Trigger:**
+- Web-UI: http://10.80.80.20:5000/admin/celery/
+- Flower: http://10.80.80.20:5555
+
+### 7. Standort-Mapping
+```python
+# IMMER verwenden:
+STANDORT_MAPPING = {
+    1: 'DEG',  # Deggendorf Opel
+    2: 'HYU',  # Deggendorf Hyundai
+    3: 'LAN'   # Landau
+}
+```
+
+### 8. Session-Dokumentation
+**Bei Session-Start lesen:**
+1. `CLAUDE.md` (diese Datei)
+2. `docs/sessions/TODO_FOR_CLAUDE_SESSION_START_TAG[X].md`
+3. `docs/sessions/SESSION_WRAP_UP_TAG[X-1].md`
+
+**Bei Session-Ende erstellen:**
+1. `docs/sessions/SESSION_WRAP_UP_TAG[X].md`
+2. `docs/sessions/TODO_FOR_CLAUDE_SESSION_START_TAG[X+1].md`
+3. Git-Commit lokal (Windows)
+4. Git-Commit auf Server: `ssh ag-admin@10.80.80.20 "cd /opt/greiner-portal && git add -A && git commit -m 'chore: Sync TAG[X]'"`
+
+### 9. Fehlerbehandlung
+```python
+# Standard-Pattern:
+try:
+    conn = get_db()
+    cursor = conn.cursor()
+    # ... DB-Logik
+    conn.commit()
+    return jsonify({'success': True})
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Fehler in xyz: {str(e)}")
+    return jsonify({'error': str(e)}), 500
+finally:
+    if conn:
+        conn.close()
+```
+
+### 10. Debugging auf Server
+```bash
+# Logs live
+journalctl -u greiner-portal -f
+
+# Celery Worker
+sudo systemctl status celery-worker
+
+# PostgreSQL Verbindung testen
+PGPASSWORD=DrivePortal2024 psql -h 127.0.0.1 -U drive_user -d drive_portal -c "SELECT 1"
+```
+
+## Wichtige Dateien
+- `CLAUDE.md` - Projekt-Kontext (IMMER lesen!)
+- `docs/DB_SCHEMA_POSTGRESQL.md` - DB-Schema DRIVE Portal
+- `docs/DB_SCHEMA_LOCOSOFT.md` - DB-Schema Locosoft (extern)
+- `app.py` - Flask Entry Point
+- `api/db_connection.py` - DB-Verbindungslogik
+- `auth/auth_manager.py` - Authentifizierung
+
+## Code-Style
+- Python: PEP 8, 4 Spaces
+- SQL: UPPERCASE für Keywords, snake_case für Tabellen/Spalten
+- Jinja2: 2 Spaces, `{{ var }}` mit Leerzeichen
+- Git-Commits: Conventional Commits (feat/fix/chore/docs)
+
+## Niemals tun
+- ❌ SQLite-Syntax verwenden (`?`, `date('now')`)
+- ❌ Direkt in `/opt/greiner-portal/` editieren (nur via Sync!)
+- ❌ `.git` Ordner in rsync syncen
+- ❌ Passwörter in Code committen
+- ❌ Produktiv-DB ohne Backup ändern
+- ❌ `sudo systemctl restart` vergessen nach Python-Änderungen
+
+## Häufige Tasks
+1. **Neue API erstellen**: api/xyz_api.py → routes/xyz_routes.py → templates/xyz.html
+2. **DB-Schema ändern**: Migration-Script in docs/ dokumentieren
+3. **Celery-Task hinzufügen**: celery_app/tasks.py → Web-UI testen
+4. **Bug-Fix**: Logs prüfen → Fix → Test → Commit → Sync → Restart
