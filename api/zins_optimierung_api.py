@@ -255,11 +255,25 @@ def zins_dashboard():
         r = row_to_dict(row) if row else {}
         konten_zinsen = float(r.get('zinsen') or 0)
 
-        # Stellantis über Zinsfreiheit
+        # Stellantis GESAMT (alle aktiven Fahrzeuge für Tabelle)
+        c.execute("""
+            SELECT COUNT(*) as anzahl, SUM(aktueller_saldo) as saldo
+            FROM fahrzeugfinanzierungen
+            WHERE finanzinstitut = 'Stellantis' AND aktiv = true
+        """)
+        row = c.fetchone()
+        r = row_to_dict(row) if row else {}
+        stellantis_gesamt = {
+            'anzahl': int(r.get('anzahl') or 0),
+            'saldo': float(r.get('saldo') or 0)
+        }
+        
+        # Stellantis über Zinsfreiheit (nur für Zinsen-Berechnung)
         c.execute("""
             SELECT COUNT(*) as anzahl, SUM(aktueller_saldo) as saldo, SUM(zinsen_letzte_periode) as zinsen_monat
             FROM fahrzeugfinanzierungen
             WHERE finanzinstitut = 'Stellantis'
+              AND aktiv = true
               AND zinsfreiheit_tage IS NOT NULL
               AND alter_tage > zinsfreiheit_tage
         """)
@@ -276,6 +290,7 @@ def zins_dashboard():
             SELECT COUNT(*) as anzahl, SUM(aktueller_saldo) as saldo
             FROM fahrzeugfinanzierungen
             WHERE finanzinstitut = 'Stellantis'
+              AND aktiv = true
               AND zinsfreiheit_tage IS NOT NULL
               AND (zinsfreiheit_tage - alter_tage) BETWEEN 0 AND 14
         """)
@@ -289,7 +304,8 @@ def zins_dashboard():
         # Santander
         c.execute("""
             SELECT COUNT(*) as anzahl, SUM(aktueller_saldo) as saldo, SUM(zinsen_letzte_periode) as zinsen
-            FROM fahrzeugfinanzierungen WHERE finanzinstitut = 'Santander'
+            FROM fahrzeugfinanzierungen 
+            WHERE finanzinstitut = 'Santander' AND aktiv = true
         """)
         row = c.fetchone()
         r = row_to_dict(row) if row else {}
@@ -303,7 +319,8 @@ def zins_dashboard():
         c.execute("""
             SELECT COUNT(*) as anzahl, SUM(aktueller_saldo) as saldo,
                    SUM(zinsen_gesamt) as zinsen_gesamt, SUM(zinsen_letzte_periode) as zinsen_monat
-            FROM fahrzeugfinanzierungen WHERE finanzinstitut = 'Hyundai Finance'
+            FROM fahrzeugfinanzierungen 
+            WHERE finanzinstitut = 'Hyundai Finance' AND aktiv = true
         """)
         row = c.fetchone()
         r = row_to_dict(row) if row else {}
@@ -321,9 +338,10 @@ def zins_dashboard():
             'zinskosten_monat': round(total_zinsen, 2),
             'zinskosten_jahr': round(total_zinsen * 12, 2),
             'konten_sollzinsen': round(konten_zinsen, 2),
-            'stellantis_ueber_zinsfreiheit': stellantis_ueber,
+            'stellantis_gesamt': stellantis_gesamt,  # TAG 172: Alle aktiven Fahrzeuge für Tabelle
+            'stellantis_ueber_zinsfreiheit': stellantis_ueber,  # Nur die mit Zinsen
             'stellantis_bald_ablaufend': stellantis_bald,
-            'santander_zinsen': santander['zinsen_monat'],
+            'santander': santander,  # TAG 172: Vollständige Daten (anzahl, saldo, zinsen_monat)
             'hyundai': hyundai,
             'handlungsbedarf': stellantis_ueber['anzahl'] + stellantis_bald['anzahl']
         })

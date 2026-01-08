@@ -279,18 +279,18 @@ function updateInstitutTabelle(dashboard, report) {
         },
         {
             name: 'Stellantis',
-            fahrzeuge: dashboard.stellantis_ueber_zinsfreiheit?.anzahl || 0,
-            saldo: dashboard.stellantis_ueber_zinsfreiheit?.saldo || 0,
+            fahrzeuge: dashboard.stellantis_gesamt?.anzahl || 0,  // TAG 172: Alle aktiven Fahrzeuge
+            saldo: dashboard.stellantis_gesamt?.saldo || 0,
             monat: dashboard.stellantis_ueber_zinsfreiheit?.zinsen_monat || 0,
             jahr: (dashboard.stellantis_ueber_zinsfreiheit?.zinsen_monat || 0) * 12,
             status: (dashboard.stellantis_ueber_zinsfreiheit?.anzahl || 0) > 0 ? 'danger' : 'ok'
         },
         {
             name: 'Santander',
-            fahrzeuge: report.santander?.anzahl || 0,
-            saldo: report.santander?.saldo || 0,
-            monat: dashboard.santander_zinsen || 0,
-            jahr: (dashboard.santander_zinsen || 0) * 12,
+            fahrzeuge: dashboard.santander?.anzahl || 0,  // TAG 172: Vollständige Daten
+            saldo: dashboard.santander?.saldo || 0,
+            monat: dashboard.santander?.zinsen_monat || 0,
+            jahr: (dashboard.santander?.zinsen_monat || 0) * 12,
             status: 'ok'
         },
         {

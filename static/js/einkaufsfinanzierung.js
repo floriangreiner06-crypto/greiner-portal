@@ -37,11 +37,11 @@ async function loadData() {
         }
         
         // UI aktualisieren
-        updateKPIs(data.gesamt, data.warnungen.length);
+        updateKPIs(data.gesamt, data.warnungen ? data.warnungen.length : 0);
         updateInstituteCards(data.institute);
         updateCharts(data.institute);
         updateTopFahrzeuge(data.top_fahrzeuge);
-        updateWarnungen(data.warnungen);
+        updateWarnungen(data.warnungen || []);
         loadFahrzeugeMitZinsen();
         
         // Timestamp
@@ -328,17 +328,29 @@ function updateWarnungen(warnungen) {
     warnungen.forEach(warnung => {
         const row = document.createElement('tr');
         
-        const badgeColor = warnung.kritisch ? 'danger' : 'warning';
-        const tageClass = warnung.kritisch ? 'text-danger fw-bold' : 'text-warning';
+        const tage_uebrig = warnung.tage_uebrig || 0;
+        const ist_ueber = tage_uebrig < 0;
+        const badgeColor = ist_ueber ? 'danger' : (warnung.kritisch ? 'danger' : 'warning');
+        const tageClass = ist_ueber ? 'text-danger fw-bold' : (warnung.kritisch ? 'text-danger fw-bold' : 'text-warning');
+        
+        // Text für Tage-Anzeige
+        let tageText = '';
+        if (ist_ueber) {
+            tageText = `<span class="badge bg-danger">ÜBER Zinsfreiheit: ${Math.abs(tage_uebrig)} Tage</span>`;
+        } else {
+            tageText = `${tage_uebrig} Tage übrig`;
+            if (warnung.kritisch) {
+                tageText += ' <span class="badge bg-danger ms-1">KRITISCH</span>';
+            }
+        }
         
         row.innerHTML = `
-            <td><span class="badge bg-primary">Stellantis</span></td>
+            <td><span class="badge bg-primary">${warnung.institut || 'Stellantis'}</span></td>
             <td><code>${warnung.vin}</code></td>
             <td>${warnung.modell || '-'}</td>
             <td class="${tageClass}">
                 <i class="bi bi-exclamation-triangle-fill"></i>
-                ${warnung.tage_uebrig} Tage
-                ${warnung.kritisch ? '<span class="badge bg-danger ms-1">KRITISCH</span>' : ''}
+                ${tageText}
             </td>
             <td class="text-end">${formatCurrency(warnung.saldo)}</td>
             <td class="text-end text-muted">${warnung.alter} Tage</td>

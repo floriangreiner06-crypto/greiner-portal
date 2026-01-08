@@ -6,7 +6,6 @@ Liest Passwörter aus config/credentials.json
 Version: 2.1 - Fix: Nur neueste ZIP pro RRDI, finanzinstitut gesetzt
 """
 
-import sqlite3
 import zipfile
 import pandas as pd
 import os
@@ -17,8 +16,11 @@ import sys
 import json
 from pathlib import Path
 
+# Projekt-Pfad für Imports
+sys.path.insert(0, '/opt/greiner-portal')
+from api.db_connection import get_db
+
 # Konfiguration
-DB_PATH = '/opt/greiner-portal/data/greiner_controlling.db'
 CREDENTIALS_PATH = '/opt/greiner-portal/config/credentials.json'
 
 
@@ -145,13 +147,14 @@ try:
 
     print(f"\n📊 Excel-Dateien zu verarbeiten: {len(excel_files)}\n")
 
-    # Datenbank
-    conn = sqlite3.connect(DB_PATH)
+    # Datenbank (PostgreSQL)
+    conn = get_db()
     c = conn.cursor()
 
     # NUR Stellantis löschen (nicht Santander/Hyundai!)
     c.execute("DELETE FROM fahrzeugfinanzierungen WHERE finanzinstitut = 'Stellantis'")
     deleted = c.rowcount
+    conn.commit()
     print(f"🗑️  {deleted} alte Stellantis-Fahrzeuge gelöscht\n")
 
     stats = {'neu': 0}
@@ -197,7 +200,30 @@ try:
             modell = str(row['modell']) if pd.notna(row['modell']) else None
             alter_tage = int(row['alter_tage']) if pd.notna(row['alter_tage']) else None
             zinsfreiheit_tage = int(row['zinsfreiheit_tage']) if pd.notna(row['zinsfreiheit_tage']) else None
-            vertragsbeginn = str(row['vertragsbeginn'])[:10] if pd.notna(row['vertragsbeginn']) else None
+            
+            # Datum konvertieren (Excel kann verschiedene Formate haben)
+            vertragsbeginn = None
+            if pd.notna(row['vertragsbeginn']):
+                try:
+                    # Versuche Excel-Datum oder String-Datum zu parsen
+                    if isinstance(row['vertragsbeginn'], str):
+                        # Format: DD.MM.YYYY oder YYYY-MM-DD
+                        if '.' in row['vertragsbeginn']:
+                            from datetime import datetime
+                            dt = datetime.strptime(row['vertragsbeginn'].strip()[:10], '%d.%m.%Y')
+                            vertragsbeginn = dt.strftime('%Y-%m-%d')
+                        else:
+                            vertragsbeginn = row['vertragsbeginn'].strip()[:10]
+                    elif hasattr(row['vertragsbeginn'], 'strftime'):
+                        # Pandas Timestamp
+                        vertragsbeginn = row['vertragsbeginn'].strftime('%Y-%m-%d')
+                    else:
+                        # Excel-Nummer
+                        from datetime import datetime, timedelta
+                        excel_epoch = datetime(1899, 12, 30)
+                        vertragsbeginn = (excel_epoch + timedelta(days=int(row['vertragsbeginn']))).strftime('%Y-%m-%d')
+                except:
+                    vertragsbeginn = None
             aktueller_saldo = float(row['aktueller_saldo']) if pd.notna(row['aktueller_saldo']) else 0
             original_betrag = float(row['original_betrag']) if pd.notna(row['original_betrag']) else 0
 
@@ -210,13 +236,42 @@ try:
             # produkt_kategorie = produktfamilie
             produkt_kategorie = produktfamilie
 
-            c.execute("""
-                INSERT OR REPLACE INTO fahrzeugfinanzierungen
-                (finanzinstitut, rrdi, produktfamilie, vin, modell, hersteller, produkt_kategorie,
-                 alter_tage, zinsfreiheit_tage, vertragsbeginn, aktueller_saldo, original_betrag, 
-                 import_datum, aktiv)
-                VALUES ('Stellantis', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 1)
-            """, (
+            # Prüfe ob VIN bereits existiert
+            c.execute("SELECT id FROM fahrzeugfinanzierungen WHERE vin = %s AND finanzinstitut = 'Stellantis'", (vin,))
+            existing = c.fetchone()
+            
+            if existing:
+                # Update
+                c.execute("""
+                    UPDATE fahrzeugfinanzierungen SET
+                        rrdi = %s,
+                        produktfamilie = %s,
+                        modell = %s,
+                        hersteller = %s,
+                        produkt_kategorie = %s,
+                        alter_tage = %s,
+                        zinsfreiheit_tage = %s,
+                        vertragsbeginn = %s,
+                        aktueller_saldo = %s,
+                        original_betrag = %s,
+                        import_datum = NOW(),
+                        aktualisiert_am = NOW(),
+                        aktiv = true
+                    WHERE vin = %s AND finanzinstitut = 'Stellantis'
+                """, (
+                    rrdi, produktfamilie, modell, hersteller, produkt_kategorie,
+                    alter_tage, zinsfreiheit_tage, vertragsbeginn,
+                    aktueller_saldo, original_betrag, vin
+                ))
+            else:
+                # Insert
+                c.execute("""
+                    INSERT INTO fahrzeugfinanzierungen
+                    (finanzinstitut, rrdi, produktfamilie, vin, modell, hersteller, produkt_kategorie,
+                     alter_tage, zinsfreiheit_tage, vertragsbeginn, aktueller_saldo, original_betrag, 
+                     import_datum, aktiv)
+                    VALUES ('Stellantis', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), true)
+                """, (
                 rrdi, produktfamilie, vin, modell, hersteller, produkt_kategorie,
                 alter_tage, zinsfreiheit_tage, vertragsbeginn, aktueller_saldo, original_betrag
             ))
@@ -236,9 +291,9 @@ try:
     c.execute("""
         UPDATE fahrzeugfinanzierungen
         SET 
-            zinsen_gesamt = ROUND(aktueller_saldo * ? / 100 * (alter_tage - zinsfreiheit_tage) / 365.0, 2),
-            zinsen_letzte_periode = ROUND(aktueller_saldo * ? / 100 * 30 / 365.0, 2),
-            zins_startdatum = date('now', '-' || (alter_tage - zinsfreiheit_tage) || ' days')
+            zinsen_gesamt = ROUND((aktueller_saldo * %s / 100 * (alter_tage - zinsfreiheit_tage) / 365.0)::NUMERIC, 2),
+            zinsen_letzte_periode = ROUND((aktueller_saldo * %s / 100 * 30 / 365.0)::NUMERIC, 2),
+            zins_startdatum = CURRENT_DATE - INTERVAL '1 day' * (alter_tage - zinsfreiheit_tage)
         WHERE finanzinstitut = 'Stellantis'
           AND alter_tage > zinsfreiheit_tage
     """, (STELLANTIS_ZINSSATZ, STELLANTIS_ZINSSATZ))
@@ -249,7 +304,7 @@ try:
     
     # Zinsen-Summary
     c.execute("""
-        SELECT COUNT(*), ROUND(SUM(aktueller_saldo),0), ROUND(SUM(zinsen_gesamt),2)
+        SELECT COUNT(*), ROUND(SUM(aktueller_saldo)::NUMERIC,0), ROUND(SUM(zinsen_gesamt)::NUMERIC,2)
         FROM fahrzeugfinanzierungen
         WHERE finanzinstitut = 'Stellantis' AND zinsen_gesamt > 0
     """)
@@ -263,7 +318,7 @@ try:
     print("="*60)
     
     c.execute("""
-        SELECT rrdi, COUNT(*), ROUND(SUM(aktueller_saldo), 2)
+        SELECT rrdi, COUNT(*), ROUND(SUM(aktueller_saldo)::NUMERIC, 2)
         FROM fahrzeugfinanzierungen 
         WHERE finanzinstitut = 'Stellantis'
         GROUP BY rrdi
@@ -285,7 +340,7 @@ try:
     print("="*60)
     
     c.execute("""
-        SELECT finanzinstitut, COUNT(*), ROUND(SUM(aktueller_saldo), 2)
+        SELECT finanzinstitut, COUNT(*), ROUND(SUM(aktueller_saldo)::NUMERIC, 2)
         FROM fahrzeugfinanzierungen 
         GROUP BY finanzinstitut
     """)

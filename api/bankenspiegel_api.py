@@ -485,6 +485,7 @@ def get_einkaufsfinanzierung():
                     SUM(original_betrag) as gesamt_original,
                     SUM(original_betrag - aktueller_saldo) as gesamt_abbezahlt
                 FROM fahrzeugfinanzierungen
+                WHERE aktiv = true
             """)
             gesamt_row = row_to_dict(cursor.fetchone())
 
@@ -492,6 +493,7 @@ def get_einkaufsfinanzierung():
             cursor.execute("""
                 SELECT DISTINCT finanzinstitut
                 FROM fahrzeugfinanzierungen
+                WHERE aktiv = true
                 ORDER BY finanzinstitut
             """)
             institute_liste = [row_to_dict(row)['finanzinstitut'] for row in cursor.fetchall()]
@@ -509,7 +511,7 @@ def get_einkaufsfinanzierung():
                         MIN(zinsfreiheit_tage) as min_zinsfreiheit,
                         SUM(original_betrag - aktueller_saldo) as abbezahlt
                     FROM fahrzeugfinanzierungen
-                    WHERE finanzinstitut = {ph}
+                    WHERE finanzinstitut = {ph} AND aktiv = true
                 """, (institut,))
                 stats = row_to_dict(cursor.fetchone())
 
@@ -520,20 +522,29 @@ def get_einkaufsfinanzierung():
                         COUNT(*) as anzahl,
                         SUM(aktueller_saldo) as finanzierung
                     FROM fahrzeugfinanzierungen
-                    WHERE finanzinstitut = {ph}
+                    WHERE finanzinstitut = {ph} AND aktiv = true
                     GROUP BY rrdi
                     ORDER BY anzahl DESC
                 """, (institut,))
                 marken = []
                 for row in cursor.fetchall():
                     r = row_to_dict(row)
-                    marke_name = r['rrdi'] if r['rrdi'] else "Unbekannt"
-                    # Vereinfachung für Stellantis
+                    rrdi_value = r['rrdi'] if r['rrdi'] else None
+                    
+                    # Marken-Name bestimmen
                     if institut == 'Stellantis':
-                        if "0154X" in str(marke_name):
+                        if rrdi_value and "0154X" in str(rrdi_value):
                             marke_name = "Leapmotor"
-                        else:
+                        elif rrdi_value:
                             marke_name = "Opel/Hyundai"
+                        else:
+                            marke_name = "Unbekannt"
+                    elif institut == 'Santander':
+                        # Santander hat oft kein rrdi, daher "Unbekannt"
+                        marke_name = "Unbekannt" if not rrdi_value else rrdi_value
+                    else:
+                        # Hyundai Finance oder andere
+                        marke_name = rrdi_value if rrdi_value else "Unbekannt"
 
                     marken.append({
                         'name': marke_name,
@@ -565,6 +576,7 @@ def get_einkaufsfinanzierung():
                     alter_tage,
                     zinsfreiheit_tage
                 FROM fahrzeugfinanzierungen
+                WHERE aktiv = true
                 ORDER BY aktueller_saldo DESC
                 LIMIT 10
             """)
@@ -583,7 +595,7 @@ def get_einkaufsfinanzierung():
                     'zinsfreiheit': r['zinsfreiheit_tage']
                 })
 
-            # 4. ZINSFREIHEIT-WARNUNGEN (< 30 Tage)
+            # 4. ZINSFREIHEIT-WARNUNGEN (<= 30 Tage ODER bereits über Zinsfreiheit)
             cursor.execute("""
                 SELECT
                     finanzinstitut,
@@ -594,23 +606,38 @@ def get_einkaufsfinanzierung():
                     aktueller_saldo,
                     alter_tage
                 FROM fahrzeugfinanzierungen
-                WHERE zinsfreiheit_tage IS NOT NULL
-                AND zinsfreiheit_tage < 30
-                ORDER BY zinsfreiheit_tage ASC
+                WHERE aktiv = true
+                AND zinsfreiheit_tage IS NOT NULL
+                AND (
+                    zinsfreiheit_tage <= 30
+                    OR alter_tage > zinsfreiheit_tage
+                )
+                ORDER BY 
+                    CASE WHEN alter_tage > zinsfreiheit_tage THEN 0 ELSE 1 END,
+                    zinsfreiheit_tage ASC
             """)
 
             warnungen = []
             for row in cursor.fetchall():
                 r = row_to_dict(row)
+                zinsfreiheit_tage = r['zinsfreiheit_tage']
+                alter_tage = r['alter_tage'] or 0
+                
+                # Berechne tatsächliche Tage übrig (kann negativ sein wenn bereits über Zinsfreiheit)
+                if alter_tage > zinsfreiheit_tage:
+                    tage_uebrig = -(alter_tage - zinsfreiheit_tage)  # Negativ = bereits über
+                else:
+                    tage_uebrig = zinsfreiheit_tage - alter_tage  # Positiv = noch übrig
+                
                 warnungen.append({
                     'institut': r['finanzinstitut'],
                     'vin': r['vin'][-8:] if r['vin'] else '???',
                     'modell': r['modell'],
                     'marke': r['rrdi'],
-                    'tage_uebrig': r['zinsfreiheit_tage'],
+                    'tage_uebrig': tage_uebrig,
                     'saldo': float(r['aktueller_saldo']) if r['aktueller_saldo'] else 0,
-                    'alter': r['alter_tage'],
-                    'kritisch': r['zinsfreiheit_tage'] < 15 if r['zinsfreiheit_tage'] else False
+                    'alter': alter_tage,
+                    'kritisch': tage_uebrig < 15 if tage_uebrig >= 0 else True  # Negativ = kritisch
                 })
 
         return jsonify({
@@ -643,6 +670,7 @@ def get_fahrzeuge_mit_zinsen():
     """
     GET /api/bankenspiegel/fahrzeuge-mit-zinsen
     Fahrzeuge mit Zinsen
+    TAG 172: PostgreSQL-kompatibel, verwendet row_to_dict
     """
     try:
         status = request.args.get('status', 'zinsen_laufen')
@@ -652,6 +680,7 @@ def get_fahrzeuge_mit_zinsen():
         with db_session() as conn:
             c = conn.cursor()
 
+            # TAG 172: Verwende ? als Placeholder, convert_placeholders macht %s daraus
             query = "SELECT * FROM fahrzeuge_mit_zinsen WHERE 1=1"
             params = []
 
@@ -661,27 +690,26 @@ def get_fahrzeuge_mit_zinsen():
                 query += " AND zinsstatus LIKE '%Warnung%'"
 
             if institut != 'alle':
-                query += " AND finanzinstitut = %s"
+                query += " AND finanzinstitut = ?"
                 params.append(institut)
 
             query += " ORDER BY zinsen_gesamt DESC LIMIT ?"
             params.append(limit)
 
-            c.execute(query, params)
-            columns = [description[0] for description in c.description]
-            rows = c.fetchall()
-
-            fahrzeuge = [dict(zip(columns, row)) for row in rows]
+            # TAG 172: PostgreSQL-kompatibel - convert_placeholders konvertiert ? zu %s
+            final_query = convert_placeholders(query)
+            c.execute(final_query, params)
+            fahrzeuge = rows_to_list(c.fetchall())
 
             # Statistik berechnen
-            gesamt_saldo = sum(f.get('aktueller_saldo') or 0 for f in fahrzeuge)
-            gesamt_zinsen = sum(f.get('zinsen_gesamt') or 0 for f in fahrzeuge)
+            gesamt_saldo = sum(float(f.get('aktueller_saldo') or 0) for f in fahrzeuge)
+            gesamt_zinsen = sum(float(f.get('zinsen_gesamt') or 0) for f in fahrzeuge)
 
             # Santander vs Stellantis Split
             santander = [f for f in fahrzeuge if f.get('finanzinstitut') == 'Santander']
             stellantis = [f for f in fahrzeuge if f.get('finanzinstitut') == 'Stellantis']
 
-            santander_zinsen_monatlich = sum(f.get('zinsen_monatlich_geschaetzt') or 0 for f in santander) if santander else None
+            santander_zinsen_monatlich = sum(float(f.get('zinsen_monatlich_geschaetzt') or 0) for f in santander) if santander else None
 
         return jsonify({
             'success': True,

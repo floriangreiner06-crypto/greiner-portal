@@ -1,17 +1,19 @@
 """
 Hyundai Finance CSV Import - MIT ZINSBERECHNUNG
 ================================================
-Version: TAG 78
+Version: TAG 172 - PostgreSQL Migration
 Zinssatz: 4,68% p.a. (aus ek_finanzierung_konditionen)
 """
 import os
 import sys
 import csv
-import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-DB_PATH = '/opt/greiner-portal/data/greiner_controlling.db'
+# Projekt-Pfad für Imports
+sys.path.insert(0, '/opt/greiner-portal')
+from api.db_connection import get_db
+
 CSV_DIR = '/mnt/buchhaltung/Buchhaltung/Kontoauszüge/HyundaiFinance'
 
 # Hyundai Zinssatz aus DB (ek_finanzierung_konditionen TAG 77)
@@ -96,7 +98,7 @@ def import_hyundai_finance(csv_file=None, dry_run=False):
     print(f"📅 Datum: {datetime.fromtimestamp(csv_path.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')}")
     
     if not dry_run:
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db()
         cursor = conn.cursor()
     
     vehicles = []
@@ -242,7 +244,7 @@ def import_hyundai_finance(csv_file=None, dry_run=False):
                     zinsen_letzte_periode,
                     datei_quelle,
                     import_datum
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
             """, (
                 'Hyundai Finance',
                 v['rrdi'],
@@ -261,8 +263,7 @@ def import_hyundai_finance(csv_file=None, dry_run=False):
                 v['zins_startdatum'],
                 v['zinsen_gesamt'],  # NEU
                 v['zinsen_monat'],   # NEU (als "letzte Periode" = Monatszins)
-                csv_path.name,
-                datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                csv_path.name
             ))
             insert_count += 1
         
