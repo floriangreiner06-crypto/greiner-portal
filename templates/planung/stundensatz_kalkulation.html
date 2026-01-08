@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+
+{% block title %}Stundensatz-Kalkulation{% endblock %}
+
+{% block extra_css %}
+<style>
+    .kpi-card {
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+        background: white;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .kpi-value {
+        font-size: 2rem;
+        font-weight: bold;
+        color: #0d6efd;
+    }
+    .kpi-label {
+        font-size: 0.9rem;
+        color: #6c757d;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .standort-card {
+        border: 2px solid #dee2e6;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        background: #f8f9fa;
+    }
+    .standort-header {
+        border-bottom: 2px solid #0d6efd;
+        padding-bottom: 0.5rem;
+        margin-bottom: 1rem;
+    }
+    table {
+        font-size: 0.95rem;
+    }
+    .table th {
+        background: #f8f9fa;
+        font-weight: 600;
+    }
+    .loading {
+        text-align: center;
+        padding: 3rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h4 class="mb-0"><i class="bi bi-calculator"></i> Stundensatz-Kalkulation</h4>
+            <small class="text-muted">BWA-basierte Kalkulation für Werkstatt-Stundensätze | Geschäftsjahr <span id="gj-display">-</span></small>
+        </div>
+        <div class="btn-group">
+            <button class="btn btn-primary btn-sm" onclick="ladeDaten()">
+                <i class="bi bi-arrow-clockwise"></i> Aktualisieren
+            </button>
+            <a href="{{ url_for('abteilungsleiter_planung.uebersicht') }}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrow-left"></i> Zurück
+            </a>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="card mb-3">
+        <div class="card-body">
+            <form class="row g-3" onsubmit="ladeDaten(); return false;">
+                <div class="col-md-4">
+                    <label class="form-label">Geschäftsjahr</label>
+                    <input type="text" id="geschaeftsjahr" name="geschaeftsjahr" 
+                           value="{{ geschaeftsjahr or '' }}" 
+                           placeholder="z.B. 2024/25" 
+                           class="form-control form-control-sm">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Standort</label>
+                    <select id="standort" name="standort" class="form-select form-select-sm">
+                        <option value="">Alle Standorte</option>
+                        {% for s_id, s_name in standort_namen.items() %}
+                        <option value="{{ s_id }}" {% if standort == s_id %}selected{% endif %}>{{ s_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary btn-sm w-100">
+                        <i class="bi bi-funnel"></i> Filtern
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Ergebnisse -->
+    <div id="ergebnisse">
+        <div class="loading">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Lade Daten...</span>
+            </div>
+            <p class="mt-2 text-muted">Lade Stundensatz-Kalkulation...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentData = null;
+
+async function ladeDaten() {
+    const geschaeftsjahr = document.getElementById('geschaeftsjahr').value;
+    const standort = document.getElementById('standort').value;
+    
+    const params = new URLSearchParams();
+    if (geschaeftsjahr) params.append('geschaeftsjahr', geschaeftsjahr);
+    if (standort) params.append('standort', standort);
+    
+    try {
+        const response = await fetch(`/api/stundensatz/kalkulation?${params}`);
+        const data = await response.json();
+        
+        currentData = data;
+        renderErgebnisse(data);
+    } catch (error) {
+        console.error('Fehler beim Laden:', error);
+        document.getElementById('ergebnisse').innerHTML = `
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle"></i> Fehler beim Laden der Daten: ${error.message}
+            </div>
+        `;
+    }
+}
+
+function renderErgebnisse(data) {
+    const container = document.getElementById('ergebnisse');
+    document.getElementById('gj-display').textContent = data.geschaeftsjahr || '-';
+    
+    if (!data.standorte || Object.keys(data.standorte).length === 0) {
+        container.innerHTML = '<div class="alert alert-info">Keine Daten gefunden.</div>';
+        return;
+    }
+    
+    let html = '';
+    
+    for (const [standort_id, standort_data] of Object.entries(data.standorte)) {
+        const s = standort_data;
+        
+        html += `
+            <div class="standort-card">
+                <div class="standort-header">
+                    <h5 class="mb-0"><i class="bi bi-geo-alt"></i> ${s.name}</h5>
+                    <small class="text-muted">Geschäftsjahr ${data.geschaeftsjahr} (${data.von} bis ${data.bis})</small>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-3">
+                        <div class="kpi-card text-center">
+                            <div class="kpi-label">Stundensatz</div>
+                            <div class="kpi-value">${formatCurrency(s.stundensatz)}</div>
+                            <small class="text-muted">€/h</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="kpi-card text-center">
+                            <div class="kpi-label">Kosten pro Stunde</div>
+                            <div class="kpi-value text-danger">${formatCurrency(s.kosten_pro_stunde)}</div>
+                            <small class="text-muted">€/h</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="kpi-card text-center">
+                            <div class="kpi-label">DB1 pro Stunde</div>
+                            <div class="kpi-value text-success">${formatCurrency(s.db1_pro_stunde)}</div>
+                            <small class="text-muted">€/h</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="kpi-card text-center">
+                            <div class="kpi-label">DB2 pro Stunde</div>
+                            <div class="kpi-value text-success">${formatCurrency(s.db2_pro_stunde)}</div>
+                            <small class="text-muted">€/h</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm">
+                        <thead>
+                            <tr>
+                                <th>Kennzahl</th>
+                                <th class="text-end">Wert (Jahr)</th>
+                                <th class="text-end">Pro Stunde</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Umsatz</strong></td>
+                                <td class="text-end">${formatCurrency(s.umsatz)} €</td>
+                                <td class="text-end">${formatCurrency(s.stundensatz)} €/h</td>
+                            </tr>
+                            <tr>
+                                <td>Einsatz</td>
+                                <td class="text-end">${formatCurrency(s.einsatz)} €</td>
+                                <td class="text-end">${formatCurrency(s.einsatz / (s.stunden_verkauft || 1))} €/h</td>
+                            </tr>
+                            <tr class="table-success">
+                                <td><strong>DB1 (Bruttoertrag)</strong></td>
+                                <td class="text-end"><strong>${formatCurrency(s.db1)} €</strong></td>
+                                <td class="text-end"><strong>${formatCurrency(s.db1_pro_stunde)} €/h</strong></td>
+                            </tr>
+                            <tr>
+                                <td>Variable Kosten</td>
+                                <td class="text-end">${formatCurrency(s.variable_kosten)} €</td>
+                                <td class="text-end">${formatCurrency(s.variable_kosten / (s.stunden_verkauft || 1))} €/h</td>
+                            </tr>
+                            <tr>
+                                <td>Direkte Kosten</td>
+                                <td class="text-end">${formatCurrency(s.direkte_kosten)} €</td>
+                                <td class="text-end">${formatCurrency(s.direkte_kosten / (s.stunden_verkauft || 1))} €/h</td>
+                            </tr>
+                            <tr class="table-success">
+                                <td><strong>DB2</strong></td>
+                                <td class="text-end"><strong>${formatCurrency(s.db2)} €</strong></td>
+                                <td class="text-end"><strong>${formatCurrency(s.db2_pro_stunde)} €/h</strong></td>
+                            </tr>
+                            <tr class="table-info">
+                                <td><strong>Stunden verkauft</strong></td>
+                                <td class="text-end"><strong>${formatNumber(s.stunden_verkauft)} h</strong></td>
+                                <td class="text-end">-</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
+    
+    container.innerHTML = html;
+}
+
+function formatCurrency(value) {
+    if (value === null || value === undefined || isNaN(value)) return '0.00';
+    return new Intl.NumberFormat('de-DE', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(value);
+}
+
+function formatNumber(value) {
+    if (value === null || value === undefined || isNaN(value)) return '0';
+    return new Intl.NumberFormat('de-DE', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(value);
+}
+
+// Beim Laden der Seite Daten laden
+document.addEventListener('DOMContentLoaded', function() {
+    ladeDaten();
+});
+</script>
+{% endblock %}
+

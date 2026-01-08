@@ -26,7 +26,7 @@
                placeholder="z.B. 3725" step="0.01" min="0" required>
         <span class="input-group-text">pro Fahrzeug</span>
     </div>
-    <div class="vj-hinweis">📊 Vorjahr: {{ "%.2f"|format(planung.vj_umsatz / planung.vj_stueck) if planung and planung.vj_umsatz and planung.vj_stueck else 'N/A' }} €</div>
+    <div class="vj-hinweis">📊 Vorjahr: {{ "%.2f"|format(planung.vj_db1 / planung.vj_stueck) if planung and planung.vj_db1 and planung.vj_stueck and planung.vj_stueck > 0 else 'N/A' }} € (DB1/Stück aus BWA)</div>
 </div>
 
 <!-- Frage 3: Variable Kosten -->

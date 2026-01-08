@@ -227,6 +227,7 @@ def build_firma_standort_filter(firma: str, standort: str):
     - subsidiary_to_company_ref 2 = Hyundai (separate Firma)
 
     TAG167: Neuer Filter "deg-both" für Deggendorf (Stellantis+Hyundai)
+    TAG171: Fix - Wenn firma='0' (Alle) und standort='2' (Landau), automatisch Stellantis filtern
 
     Returns:
         tuple: (firma_filter_umsatz, firma_filter_einsatz, firma_filter_kosten, standort_name)
@@ -236,12 +237,23 @@ def build_firma_standort_filter(firma: str, standort: str):
     firma_filter_kosten = ""
     standort_name = "Alle"
 
+    # TAG171: Fix - Wenn "Alle Firmen" aber spezifischer Standort, automatisch Firma setzen
+    # Landau gehört zu Stellantis, also wenn standort='2' und firma='0', dann firma='1' verwenden
+    if firma == '0' and standort == '2':
+        # Landau gehört zu Stellantis
+        firma = '1'
+    elif firma == '0' and standort == '1':
+        # Deggendorf hat sowohl Stellantis als auch Hyundai → deg-both verwenden
+        standort = 'deg-both'
+
     # TAG167: Spezialfall: Deggendorf (Stellantis+Hyundai)
     if standort == 'deg-both':
         # Deggendorf: Stellantis (branch=1, subsidiary=1) + Hyundai (branch=2, subsidiary=2)
+        # TAG171: Fix - Hyundai verwendet 6. Ziffer '1' (wie Stellantis), nicht '2'!
+        # Für Einsatz/Kosten: Beide verwenden 6. Ziffer '1', daher: 6. Ziffer='1' AND subsidiary IN (1,2)
         firma_filter_umsatz = "AND ((branch_number = 1 AND subsidiary_to_company_ref = 1) OR (branch_number = 2 AND subsidiary_to_company_ref = 2))"
-        firma_filter_einsatz = "AND ((substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1' AND subsidiary_to_company_ref = 1) OR (substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 2))"
-        firma_filter_kosten = "AND ((substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1' AND subsidiary_to_company_ref = 1) OR (substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 2))"
+        firma_filter_einsatz = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1' AND subsidiary_to_company_ref IN (1, 2)"
+        firma_filter_kosten = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1' AND subsidiary_to_company_ref IN (1, 2)"
         standort_name = "Deggendorf (Stellantis+Hyundai)"
     elif firma == '1':
         # Stellantis (Autohaus Greiner)
@@ -250,16 +262,22 @@ def build_firma_standort_filter(firma: str, standort: str):
         firma_filter_kosten = "AND subsidiary_to_company_ref = 1"
         standort_name = "Stellantis (DEG+LAN)"
         if standort == '1':
-            # Deggendorf: branch_number=1 für Umsatz, Konto-Endziffer=1 für Einsatz+Kosten
+            # Deggendorf: branch_number=1 für Umsatz, Konto-Endziffer=1 für Einsatz
+            # TAG171: Fix - Kosten nach branch_number filtern, nicht nach 6. Ziffer!
+            # Problem: Kosten mit branch=1 aber 6. Ziffer='2' wurden nicht zugeordnet
             firma_filter_umsatz += " AND branch_number = 1"
             firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
-            firma_filter_kosten += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
+            # Kosten: ALLE Kosten mit branch=1 gehören zu Deggendorf (unabhängig von 6. Ziffer)
+            firma_filter_kosten += " AND branch_number = 1"
             standort_name = "Deggendorf"
         elif standort == '2':
-            # Landau: branch_number=3 für Umsatz, Konto-Endziffer=2 für Einsatz+Kosten
+            # Landau: branch_number=3 für Umsatz, Konto-Endziffer=2 für Einsatz
+            # TAG171: Fix - Kosten nach branch_number filtern, nicht nach 6. Ziffer!
+            # Problem: Kosten mit branch=3 aber 6. Ziffer='1' wurden nicht zugeordnet
             firma_filter_umsatz += " AND branch_number = 3"
             firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
-            firma_filter_kosten += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
+            # Kosten: ALLE Kosten mit branch=3 gehören zu Landau (unabhängig von 6. Ziffer)
+            firma_filter_kosten += " AND branch_number = 3"
             standort_name = "Landau"
     elif firma == '2':
         # Hyundai (Auto Greiner) - separate Firma

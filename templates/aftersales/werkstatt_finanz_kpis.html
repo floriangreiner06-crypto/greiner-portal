@@ -1,0 +1,796 @@
+{% extends "base.html" %}
+
+{% block title %}Finanz-KPIs - Werkstatt - Greiner DRIVE{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}?v={{ STATIC_VERSION }}">
+<style>
+/* ============================================================
+   WERKSTATT FINANZ-KPIS DASHBOARD - TAG 171
+   Numbero-Style mit Tachos und oberer Nav/Filter-Zeile
+   ============================================================ */
+
+body {
+    background: #1a1d29;
+    color: #ffffff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+.dashboard-container {
+    padding: 0;
+    background: #1a1d29;
+    min-height: 100vh;
+}
+
+/* ============================================================
+   TOP NAVIGATION BAR (Numbero-Style)
+   ============================================================ */
+.top-nav-bar {
+    background: #252833;
+    border-bottom: 1px solid #3a3f52;
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+}
+
+.nav-left {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+}
+
+.nav-logo {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #4a9eff;
+}
+
+.nav-tabs {
+    display: flex;
+    gap: 8px;
+}
+
+.nav-tab {
+    padding: 8px 16px;
+    background: transparent;
+    border: none;
+    color: #9ca3af;
+    cursor: pointer;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+}
+
+.nav-tab:hover {
+    background: #3a3f52;
+    color: #ffffff;
+}
+
+.nav-tab.active {
+    background: #4a9eff;
+    color: #ffffff;
+}
+
+.nav-center {
+    flex: 1;
+    text-align: center;
+}
+
+.nav-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.nav-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.filter-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #2d3142;
+    padding: 6px 12px;
+    border-radius: 6px;
+}
+
+.filter-group label {
+    font-size: 0.85rem;
+    color: #9ca3af;
+    margin: 0;
+}
+
+.filter-group select,
+.filter-group input[type="date"] {
+    background: #1a1d29;
+    border: 1px solid #3a3f52;
+    color: #ffffff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+}
+
+.filter-group select:focus,
+.filter-group input[type="date"]:focus {
+    outline: none;
+    border-color: #4a9eff;
+}
+
+.filter-btn {
+    background: #2d3142;
+    border: 1px solid #3a3f52;
+    color: #9ca3af;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+}
+
+.filter-btn:hover {
+    background: #3a3f52;
+    color: #ffffff;
+}
+
+.filter-btn.active {
+    background: #4a9eff;
+    color: #ffffff;
+    border-color: #4a9eff;
+}
+
+.nav-icon {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #2d3142;
+    border-radius: 6px;
+    cursor: pointer;
+    color: #9ca3af;
+    transition: all 0.2s;
+}
+
+.nav-icon:hover {
+    background: #3a3f52;
+    color: #ffffff;
+}
+
+/* ============================================================
+   MAIN DASHBOARD CONTENT
+   ============================================================ */
+.dashboard-content {
+    padding: 24px;
+    max-width: 1600px;
+    margin: 0 auto;
+}
+
+/* Central Panel */
+.central-panel {
+    background: #252833;
+    border-radius: 12px;
+    padding: 32px;
+    margin-bottom: 24px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+
+.central-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 32px;
+}
+
+.service-revenue {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+}
+
+.service-revenue-value {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.service-revenue-label {
+    font-size: 1rem;
+    color: #9ca3af;
+}
+
+.target-donut {
+    width: 80px;
+    height: 80px;
+    position: relative;
+}
+
+.revenue-breakdown {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 32px;
+}
+
+.revenue-item {
+    text-align: center;
+}
+
+.revenue-item-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #4a9eff;
+    margin-bottom: 8px;
+}
+
+.revenue-item-label {
+    font-size: 0.9rem;
+    color: #9ca3af;
+}
+
+.betriebe-section {
+    margin-top: 32px;
+    padding-top: 32px;
+    border-top: 1px solid #3a3f52;
+}
+
+.betriebe-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #ffffff;
+    margin-bottom: 20px;
+}
+
+.betriebe-list {
+    display: grid;
+    gap: 12px;
+}
+
+.betrieb-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    background: #1a1d29;
+    border-radius: 8px;
+    border-left: 4px solid #3a3f52;
+}
+
+.betrieb-card.status-ok { border-left-color: #10b981; }
+.betrieb-card.status-warnung { border-left-color: #f59e0b; }
+.betrieb-card.status-kritisch { border-left-color: #ef4444; }
+
+.betrieb-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.betrieb-icon {
+    width: 24px;
+    height: 24px;
+    background: #2d3142;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #9ca3af;
+}
+
+.betrieb-name {
+    font-weight: 500;
+    color: #ffffff;
+}
+
+.betrieb-prozent {
+    font-size: 1.25rem;
+    font-weight: 700;
+}
+
+.betrieb-prozent.status-ok { color: #10b981; }
+.betrieb-prozent.status-warnung { color: #f59e0b; }
+.betrieb-prozent.status-kritisch { color: #ef4444; }
+
+.open-items {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-top: 32px;
+    padding-top: 32px;
+    border-top: 1px solid #3a3f52;
+}
+
+.open-item {
+    text-align: center;
+}
+
+.open-item-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #f59e0b;
+    margin-bottom: 8px;
+}
+
+.open-item-label {
+    font-size: 0.9rem;
+    color: #9ca3af;
+}
+
+/* ============================================================
+   TACHO GAUGES (Circular)
+   ============================================================ */
+.gauges-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+.gauge-container {
+    background: #252833;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+
+.gauge-title {
+    font-size: 0.9rem;
+    color: #9ca3af;
+    margin-bottom: 16px;
+    text-align: center;
+}
+
+.gauge-wrapper {
+    position: relative;
+    width: 100%;
+    height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.gauge-info {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    z-index: 10;
+}
+
+.gauge-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.gauge-label {
+    font-size: 0.85rem;
+    color: #9ca3af;
+    margin-top: 4px;
+}
+
+.gauge-list {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.gauge-list-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9rem;
+    color: #9ca3af;
+}
+
+.gauge-list-value {
+    font-weight: 600;
+    color: #ffffff;
+}
+
+/* Loading & Error States */
+.loading, .error-message {
+    text-align: center;
+    padding: 40px;
+    color: #9ca3af;
+}
+
+.error-message {
+    background: #7f1d1d;
+    color: #fca5a5;
+    border-radius: 8px;
+    margin: 24px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <!-- Top Navigation Bar (Numbero-Style) -->
+    <div class="top-nav-bar">
+        <div class="nav-left">
+            <div class="nav-logo">DRIVE</div>
+            <div class="nav-tabs">
+                <button class="nav-tab active">Finanz-KPIs</button>
+                <button class="nav-tab">Auswertung</button>
+                <button class="nav-tab">HR</button>
+            </div>
+        </div>
+        <div class="nav-center">
+            <div class="nav-title">Werkstatt Finanz-KPIs</div>
+        </div>
+        <div class="nav-right">
+            <div class="filter-group">
+                <label>Zeitraum:</label>
+                <select id="zeitraum" onchange="handleZeitraumChange()">
+                    <option value="heute">Heute</option>
+                    <option value="woche">Woche</option>
+                    <option value="monat" selected>Monat</option>
+                    <option value="quartal">Quartal</option>
+                    <option value="jahr">Jahr</option>
+                    <option value="custom">Benutzerdefiniert</option>
+                </select>
+            </div>
+            <div class="filter-group" id="custom-date-range" style="display: none;">
+                <label>Von:</label>
+                <input type="date" id="von" onchange="loadKPIs()">
+                <label>Bis:</label>
+                <input type="date" id="bis" onchange="loadKPIs()">
+            </div>
+            <div class="filter-group">
+                <label>Standort:</label>
+                <select id="betrieb" onchange="loadKPIs()">
+                    <option value="alle" selected>Alle</option>
+                    <option value="1">Deggendorf</option>
+                    <option value="2">Hyundai</option>
+                    <option value="3">Landau</option>
+                </select>
+            </div>
+            <div class="nav-icon" onclick="loadKPIs()" title="Aktualisieren">
+                <i class="bi bi-arrow-clockwise"></i>
+            </div>
+            <div class="nav-icon" title="Hilfe">
+                <i class="bi bi-question-circle"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="dashboard-content">
+        <!-- Loading State -->
+        <div id="loading" class="loading">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Lädt...</span>
+            </div>
+            <p style="margin-top: 16px;">Lade Finanz-KPIs...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="error" class="error-message" style="display: none;"></div>
+
+        <!-- Dashboard Content -->
+        <div id="dashboard-content" style="display: none;">
+            <!-- Central Panel -->
+            <div class="central-panel">
+                <div class="central-header">
+                    <div class="service-revenue">
+                        <div>
+                            <div class="service-revenue-value" id="serviceerlöse">-</div>
+                            <div class="service-revenue-label">Serviceerlöse gesamt</div>
+                        </div>
+                        <div class="target-donut">
+                            <canvas id="target-donut-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="revenue-breakdown">
+                    <div class="revenue-item">
+                        <div class="revenue-item-value" id="lohnerlöse">-</div>
+                        <div class="revenue-item-label">Lohnerlöse</div>
+                    </div>
+                    <div class="revenue-item">
+                        <div class="revenue-item-value" id="et_erlöse">-</div>
+                        <div class="revenue-item-label">ET Erlöse</div>
+                    </div>
+                </div>
+
+                <div class="betriebe-section">
+                    <div class="betriebe-title">Betrieb Erlöse zum Ziel</div>
+                    <div id="betriebe-list" class="betriebe-list"></div>
+                </div>
+
+                <div class="open-items">
+                    <div class="open-item">
+                        <div class="open-item-value" id="offener_lohn">-</div>
+                        <div class="open-item-label">Offener Lohn</div>
+                    </div>
+                    <div class="open-item">
+                        <div class="open-item-value" id="offene_teile">-</div>
+                        <div class="open-item-label">Offene Teile</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tacho Gauges Grid -->
+            <div class="gauges-grid">
+                <!-- Gauge 1: Offene Stunden -->
+                <div class="gauge-container">
+                    <div class="gauge-title">Offene Stunden</div>
+                    <div class="gauge-wrapper">
+                        <canvas id="gauge-offene-stunden"></canvas>
+                        <div class="gauge-info">
+                            <div class="gauge-value" id="gauge-offene-stunden-value">-</div>
+                            <div class="gauge-label">Stunden</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Gauge 2: VK Std. je Auftrag -->
+                <div class="gauge-container">
+                    <div class="gauge-title">VK Std. je Auftrag</div>
+                    <div class="gauge-wrapper">
+                        <canvas id="gauge-vk-std"></canvas>
+                        <div class="gauge-info">
+                            <div class="gauge-value" id="gauge-vk-std-value">-</div>
+                            <div class="gauge-label">Std/Auftrag</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Gauge 3: Erzielter VS -->
+                <div class="gauge-container">
+                    <div class="gauge-title">Erzielter VS</div>
+                    <div class="gauge-wrapper">
+                        <canvas id="gauge-vs"></canvas>
+                        <div class="gauge-info">
+                            <div class="gauge-value" id="gauge-vs-value">-</div>
+                            <div class="gauge-label">€</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Gauge 4: Leistungsgrad -->
+                <div class="gauge-container">
+                    <div class="gauge-title">Leistungsgrad</div>
+                    <div class="gauge-wrapper">
+                        <canvas id="gauge-leistungsgrad"></canvas>
+                        <div class="gauge-info">
+                            <div class="gauge-value" id="gauge-leistungsgrad-value">-</div>
+                            <div class="gauge-label">%</div>
+                        </div>
+                    </div>
+                    <div class="gauge-list">
+                        <div class="gauge-list-item">
+                            <span>Auslastung</span>
+                            <span class="gauge-list-value" id="auslastung">-</span>
+                        </div>
+                        <div class="gauge-list-item">
+                            <span>Anwesenheitsgrad</span>
+                            <span class="gauge-list-value" id="anwesenheitsgrad">-</span>
+                        </div>
+                        <div class="gauge-list-item">
+                            <span>Produktivität</span>
+                            <span class="gauge-list-value" id="produktivität">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Format number as currency
+function formatCurrency(value) {
+    return new Intl.NumberFormat('de-DE', {
+        style: 'currency',
+        currency: 'EUR',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(value);
+}
+
+// Format number
+function formatNumber(value, decimals = 2) {
+    return new Intl.NumberFormat('de-DE', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+    }).format(value);
+}
+
+// Get status class
+function getStatusClass(status) {
+    return status === 'ok' ? 'status-ok' : (status === 'warnung' ? 'status-warnung' : 'status-kritisch');
+}
+
+// Create circular gauge chart
+function createGauge(canvasId, value, maxValue, label, colors) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const radius = Math.min(canvas.width, canvas.height) / 2 - 20;
+    
+    // Set canvas size
+    canvas.width = 300;
+    canvas.height = 200;
+    
+    const percentage = Math.min((value / maxValue) * 100, 100);
+    const angle = (percentage / 100) * Math.PI; // Semi-circle
+    
+    // Draw background arc
+    ctx.beginPath();
+    ctx.arc(centerX, centerY + radius * 0.3, radius, Math.PI, 0, false);
+    ctx.strokeStyle = '#3a3f52';
+    ctx.lineWidth = 20;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    
+    // Draw value arc with gradient
+    ctx.beginPath();
+    ctx.arc(centerX, centerY + radius * 0.3, radius, Math.PI, Math.PI - angle, true);
+    ctx.strokeStyle = colors[0];
+    ctx.lineWidth = 20;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+}
+
+// Handle Zeitraum change
+function handleZeitraumChange() {
+    const zeitraum = document.getElementById('zeitraum').value;
+    const customRange = document.getElementById('custom-date-range');
+    if (zeitraum === 'custom') {
+        customRange.style.display = 'flex';
+    } else {
+        customRange.style.display = 'none';
+    }
+    loadKPIs();
+}
+
+// Load KPIs from API
+async function loadKPIs() {
+    const zeitraum = document.getElementById('zeitraum').value;
+    const betrieb = document.getElementById('betrieb').value;
+    
+    // Build API URL
+    let url = `/api/werkstatt/finanz-kpis?zeitraum=${zeitraum}&betrieb=${betrieb}`;
+    if (zeitraum === 'custom') {
+        const von = document.getElementById('von').value;
+        const bis = document.getElementById('bis').value;
+        if (von && bis) {
+            url += `&von=${von}&bis=${bis}`;
+        }
+    }
+    
+    // Show loading
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('error').style.display = 'none';
+    document.getElementById('dashboard-content').style.display = 'none';
+    
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (!data.success) {
+            throw new Error(data.error || 'Fehler beim Laden der Daten');
+        }
+        
+        // Update central panel
+        document.getElementById('serviceerlöse').textContent = formatCurrency(data.serviceerlöse_gesamt);
+        document.getElementById('lohnerlöse').textContent = formatCurrency(data.lohnerlöse);
+        document.getElementById('et_erlöse').textContent = formatCurrency(data.et_erlöse);
+        document.getElementById('offener_lohn').textContent = formatCurrency(data.offener_lohn);
+        document.getElementById('offene_teile').textContent = formatCurrency(data.offene_teile);
+        
+        // Update target donut (placeholder - calculate from betriebe_erlöse)
+        const avgProzent = data.betriebe_erlöse && data.betriebe_erlöse.length > 0
+            ? data.betriebe_erlöse.reduce((sum, b) => sum + b.ist_prozent, 0) / data.betriebe_erlöse.length
+            : 0;
+        createDonutChart('target-donut-chart', avgProzent);
+        
+        // Update Betriebe
+        const betriebeList = document.getElementById('betriebe-list');
+        betriebeList.innerHTML = '';
+        
+        if (data.betriebe_erlöse && data.betriebe_erlöse.length > 0) {
+            data.betriebe_erlöse.forEach(betrieb => {
+                const statusClass = getStatusClass(betrieb.status);
+                
+                const betriebCard = document.createElement('div');
+                betriebCard.className = `betrieb-card ${statusClass}`;
+                betriebCard.innerHTML = `
+                    <div class="betrieb-info">
+                        <div class="betrieb-icon"><i class="bi bi-building"></i></div>
+                        <div class="betrieb-name">${betrieb.betrieb_name}</div>
+                    </div>
+                    <div class="betrieb-prozent ${statusClass}">${formatNumber(betrieb.ist_prozent)}%</div>
+                `;
+                betriebeList.appendChild(betriebCard);
+            });
+        }
+        
+        // Update Gauges (placeholder values - would need additional API endpoints)
+        // For now, using calculated values
+        const offeneStunden = data.offener_lohn / 100; // Placeholder calculation
+        createGauge('gauge-offene-stunden', offeneStunden, 10000, 'Stunden', ['#ef4444']);
+        document.getElementById('gauge-offene-stunden-value').textContent = formatNumber(offeneStunden, 0);
+        
+        const vkStd = 2.2; // Placeholder
+        createGauge('gauge-vk-std', vkStd, 5, 'Std/Auftrag', ['#10b981']);
+        document.getElementById('gauge-vk-std-value').textContent = formatNumber(vkStd, 2);
+        
+        const vs = 115; // Placeholder
+        createGauge('gauge-vs', vs, 200, '€', ['#4a9eff']);
+        document.getElementById('gauge-vs-value').textContent = formatCurrency(vs);
+        
+        const leistungsgrad = 107; // Placeholder
+        createGauge('gauge-leistungsgrad', leistungsgrad, 150, '%', ['#10b981']);
+        document.getElementById('gauge-leistungsgrad-value').textContent = formatNumber(leistungsgrad) + '%';
+        document.getElementById('auslastung').textContent = '97%';
+        document.getElementById('anwesenheitsgrad').textContent = '68%';
+        document.getElementById('produktivität').textContent = '103%';
+        
+        // Show content
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('dashboard-content').style.display = 'block';
+        
+    } catch (error) {
+        console.error('Error loading KPIs:', error);
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('error').style.display = 'block';
+        document.getElementById('error').textContent = `Fehler: ${error.message}`;
+    }
+}
+
+// Create donut chart for target
+function createDonutChart(canvasId, percentage) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const radius = Math.min(canvas.width, canvas.height) / 2 - 10;
+    
+    canvas.width = 80;
+    canvas.height = 80;
+    
+    // Draw background
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+    ctx.strokeStyle = '#3a3f52';
+    ctx.lineWidth = 8;
+    ctx.stroke();
+    
+    // Draw value
+    const angle = (percentage / 100) * 2 * Math.PI;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, -Math.PI / 2, -Math.PI / 2 + angle);
+    ctx.strokeStyle = percentage >= 100 ? '#10b981' : (percentage >= 90 ? '#f59e0b' : '#ef4444');
+    ctx.lineWidth = 8;
+    ctx.stroke();
+    
+    // Draw text
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 16px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(Math.round(percentage) + '%', centerX, centerY);
+}
+
+// Load KPIs on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadKPIs();
+});
+</script>
+{% endblock %}

@@ -1758,6 +1758,21 @@ class WerkstattData:
 
             teile = cursor.fetchall()
 
+            # Gestempelte Zeit aus times-Tabelle holen
+            cursor.execute("""
+                SELECT COALESCE(SUM(minuten), 0) as gestempelt_min
+                FROM (
+                    SELECT DISTINCT ON (order_number, employee_number, start_time, end_time)
+                        EXTRACT(EPOCH FROM (COALESCE(end_time, NOW()) - start_time)) / 60 as minuten
+                    FROM times
+                    WHERE order_number = %s
+                      AND type = 2
+                ) dedup
+            """, [auftrag_nr])
+            
+            gestempelt_result = cursor.fetchone()
+            gestempelt_min = int(gestempelt_result['gestempelt_min'] or 0) if gestempelt_result else 0
+
             # Summen berechnen
             total_aw = sum(float(p['vorgabe_aw'] or 0) for p in positionen)
             fakturiert_aw = sum(float(p['vorgabe_aw'] or 0) for p in positionen if p['abgerechnet'])
@@ -1807,8 +1822,10 @@ class WerkstattData:
                         'vollstaendig_abgerechnet': offen_aw == 0,
                         'vollstaendig_zugeordnet': nicht_zugeordnet_aw == 0,
                         'anzahl_positionen': len(positionen),
-                        'teile_betrag': total_teile
-                    }
+                        'teile_betrag': total_teile,
+                        'gestempelt_min': gestempelt_min
+                    },
+                    'gestempelt_min': gestempelt_min
                 },
                 'positionen': [
                     {
@@ -2049,6 +2066,227 @@ class WerkstattData:
     # =========================================================================
     # NACHKALKULATION - Vorgabe vs. Gestempelt vs. Verrechnet
     # =========================================================================
+
+    # =========================================================================
+    # FINANZ-KPIS (Revenue / Costs)
+    # =========================================================================
+
+    @staticmethod
+    def get_finanz_kpis(
+        von: Optional[date] = None,
+        bis: Optional[date] = None,
+        betrieb: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Holt Finanz-KPIs für Werkstatt aus BWA und Locosoft.
+        
+        WICHTIG: Nutzt BWA-Daten (loco_journal_accountings) für Erlöse
+        und Locosoft-Daten für offene Posten.
+        
+        Args:
+            von: Startdatum (default: Monatserster)
+            bis: Enddatum (default: heute)
+            betrieb: Betrieb-ID (1=DEG, 2=HYU, 3=LAN, None=alle)
+        
+        Returns:
+            Dict mit Finanz-KPIs:
+            - serviceerlöse_gesamt: Serviceerlöse (840000-849999)
+            - lohnerlöse: Lohnerlöse (840000-849999)
+            - et_erlöse: ET Erlöse (830000-839999)
+            - offener_lohn: Offene Rechnungen (Locosoft)
+            - offene_teile: Offene Teile-Bestellungen (Locosoft)
+            - betriebe_erlöse: Liste mit Erlösen pro Betrieb
+        
+        Erstellt: TAG 171 - Phase 1: Finanz-KPIs (SSOT)
+        """
+        from datetime import datetime, timedelta
+        from api.db_utils import db_session, row_to_dict
+        from api.db_connection import convert_placeholders
+        from api.controlling_api import build_firma_standort_filter
+        
+        # Default Zeitraum: Aktueller Monat
+        if von is None:
+            von = date.today().replace(day=1)
+        if bis is None:
+            bis = date.today()
+        
+        datum_von = von.isoformat()
+        datum_bis = bis.isoformat()
+        datum_bis_exklusiv = (datetime.strptime(datum_bis, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
+        
+        # Standort-Filter bauen (SSOT: build_firma_standort_filter verwendet standort='2' für Landau!)
+        # WICHTIG: BWA-Filter verwendet standort='2' für Landau, nicht '3'!
+        # Locosoft verwendet subsidiary=3 für Landau, aber BWA verwendet standort='2'
+        if betrieb is None:
+            firma = '0'
+            standort = '0'
+        elif betrieb == 1:
+            firma = '1'
+            standort = '1'  # Deggendorf
+        elif betrieb == 2:
+            firma = '2'
+            standort = '2'  # Hyundai (aber für BWA nicht relevant, da separate Firma)
+        elif betrieb == 3:
+            firma = '1'
+            standort = '2'  # Landau (BWA verwendet standort='2', nicht '3'!)
+        else:
+            firma = '0'
+            standort = '0'
+        
+        firma_filter_umsatz, _, _, standort_name = build_firma_standort_filter(firma, standort)
+        guv_filter = "AND (posting_text IS NULL OR posting_text NOT LIKE '%%G&V-Abschluss%%')"
+        
+        result = {
+            'serviceerlöse_gesamt': 0.0,
+            'lohnerlöse': 0.0,
+            'et_erlöse': 0.0,
+            'offener_lohn': 0.0,
+            'offene_teile': 0.0,
+            'betriebe_erlöse': []
+        }
+        
+        # BWA-Daten aus DRIVE Portal DB
+        with db_session() as conn:
+            cursor = conn.cursor()
+            
+            # 1. Serviceerlöse gesamt (840000-849999)
+            cursor.execute(convert_placeholders(f"""
+                SELECT COALESCE(SUM(
+                    CASE WHEN debit_or_credit='H' THEN posted_value ELSE -posted_value END
+                )/100.0, 0) as wert
+                FROM loco_journal_accountings
+                WHERE accounting_date >= ? AND accounting_date < ?
+                  AND nominal_account_number BETWEEN 840000 AND 849999
+                  {firma_filter_umsatz}
+                  {guv_filter}
+            """), (datum_von, datum_bis_exklusiv))
+            result['serviceerlöse_gesamt'] = float(row_to_dict(cursor.fetchone())['wert'] or 0)
+            result['lohnerlöse'] = result['serviceerlöse_gesamt']  # Identisch
+            
+            # 2. ET Erlöse (830000-839999)
+            cursor.execute(convert_placeholders(f"""
+                SELECT COALESCE(SUM(
+                    CASE WHEN debit_or_credit='H' THEN posted_value ELSE -posted_value END
+                )/100.0, 0) as wert
+                FROM loco_journal_accountings
+                WHERE accounting_date >= ? AND accounting_date < ?
+                  AND nominal_account_number BETWEEN 830000 AND 839999
+                  {firma_filter_umsatz}
+                  {guv_filter}
+            """), (datum_von, datum_bis_exklusiv))
+            result['et_erlöse'] = float(row_to_dict(cursor.fetchone())['wert'] or 0)
+            
+            # 3. Betrieb Erlöse zum Ziel (pro Betrieb)
+            for betrieb_nr in [1, 2, 3]:
+                if betrieb is not None and betrieb != betrieb_nr:
+                    continue
+                
+                # Filter für diesen Betrieb (SSOT: BWA verwendet standort='2' für Landau!)
+                if betrieb_nr == 1:
+                    b_firma = '1'
+                    b_standort = '1'  # Deggendorf
+                elif betrieb_nr == 2:
+                    b_firma = '2'
+                    b_standort = '2'  # Hyundai (aber für BWA nicht relevant, da separate Firma)
+                else:  # betrieb_nr == 3
+                    b_firma = '1'
+                    b_standort = '2'  # Landau (BWA verwendet standort='2', nicht '3'!)
+                
+                b_firma_filter_umsatz, _, _, b_standort_name = build_firma_standort_filter(b_firma, b_standort)
+                
+                # Serviceerlöse für diesen Betrieb
+                cursor.execute(convert_placeholders(f"""
+                    SELECT COALESCE(SUM(
+                        CASE WHEN debit_or_credit='H' THEN posted_value ELSE -posted_value END
+                    )/100.0, 0) as wert
+                    FROM loco_journal_accountings
+                    WHERE accounting_date >= ? AND accounting_date < ?
+                      AND nominal_account_number BETWEEN 840000 AND 849999
+                      {b_firma_filter_umsatz}
+                      {guv_filter}
+                """), (datum_von, datum_bis_exklusiv))
+                betrieb_erlöse = float(row_to_dict(cursor.fetchone())['wert'] or 0)
+                
+                # TODO: Zielwert aus Planung holen (für jetzt: 100% = Ziel)
+                ziel_erlöse = betrieb_erlöse  # Placeholder
+                ist_prozent = 100.0 if ziel_erlöse > 0 else 0
+                
+                result['betriebe_erlöse'].append({
+                    'betrieb': betrieb_nr,
+                    'betrieb_name': b_standort_name,
+                    'erlöse': round(betrieb_erlöse, 2),
+                    'ziel': round(ziel_erlöse, 2),
+                    'ist_prozent': round(ist_prozent, 2),
+                    'status': 'ok' if ist_prozent >= 100 else ('warnung' if ist_prozent >= 90 else 'kritisch')
+                })
+        
+        # 4. Offener Lohn (unfakturierte Arbeitspositionen aus Locosoft)
+        # WICHTIG: labours mit invoice_number IS NULL = noch nicht fakturiert!
+        try:
+            from api.standort_utils import build_locosoft_filter_orders
+            
+            with locosoft_session() as loco_conn:
+                loco_cursor = loco_conn.cursor()
+                
+                # Standort-Filter für orders (nutzt build_locosoft_filter_orders)
+                standort_filter = build_locosoft_filter_orders(betrieb if betrieb else 0)
+                
+                # Unfakturierte Arbeitspositionen: labours ohne invoice_number
+                # WICHTIG: net_price_in_order ist bereits in Euro (nicht in Cent)!
+                # PDF-Analyse Auftrag 20853: CSV zeigt 356 EUR, net_price_in_order = 3,56 EUR
+                # → net_price_in_order ist bereits in Euro, aber die Werte sind falsch gespeichert
+                # Test zeigt: net_price_in_order (ohne Division, time_units > 0) = 115.373 EUR
+                # CSV zeigt: 127.075 EUR → näher, aber immer noch unterschiedlich
+                # Möglicherweise: net_price_in_order * 1.1 (10% Aufschlag?) oder andere Berechnung
+                # VORLÄUFIG: net_price_in_order direkt verwenden (ohne Division), nur time_units > 0
+                loco_cursor.execute(f"""
+                    SELECT COALESCE(SUM(l.net_price_in_order), 0) as offener_lohn
+                    FROM labours l
+                    JOIN orders o ON l.order_number = o.number
+                    WHERE l.invoice_number IS NULL
+                      AND l.time_units > 0
+                      {standort_filter}
+                """)
+                
+                row = loco_cursor.fetchone()
+                if row:
+                    result['offener_lohn'] = float(row[0] or 0)
+        except Exception as e:
+            logger.warning(f"Offener Lohn konnte nicht geladen werden: {e}")
+            result['offener_lohn'] = 0.0
+        
+        # 5. Offene Teile (unfakturierte Teilepositionen aus Locosoft)
+        # WICHTIG: parts mit invoice_number IS NULL = noch nicht fakturiert!
+        try:
+            from api.standort_utils import build_locosoft_filter_orders
+            
+            with locosoft_session() as loco_conn:
+                loco_cursor = loco_conn.cursor()
+                
+                # Standort-Filter für orders (nutzt build_locosoft_filter_orders)
+                standort_filter = build_locosoft_filter_orders(betrieb if betrieb else 0)
+                
+                # Unfakturierte Teile: parts ohne invoice_number
+                # WICHTIG: CSV zeigt VK-Wert (sum), PDF zeigt Einsatzwert (usage_value)
+                # Für "Offene Teile" verwenden wir VK-Wert (sum) wie in CSV
+                # sum ist bereits in Euro (nicht in Cent) - keine Division durch 100!
+                # Analog zu net_price_in_order: sum direkt verwenden
+                loco_cursor.execute(f"""
+                    SELECT COALESCE(SUM(p.sum), 0) as offene_teile
+                    FROM parts p
+                    JOIN orders o ON p.order_number = o.number
+                    WHERE p.invoice_number IS NULL
+                      {standort_filter}
+                """)
+                
+                row = loco_cursor.fetchone()
+                if row:
+                    result['offene_teile'] = float(row[0] or 0)
+        except Exception as e:
+            logger.warning(f"Offene Teile konnten nicht geladen werden: {e}")
+            result['offene_teile'] = 0.0
+        
+        return result
 
     @staticmethod
     def get_nachkalkulation(datum: Optional[date] = None, betrieb: Optional[int] = None,

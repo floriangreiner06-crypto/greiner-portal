@@ -336,6 +336,17 @@ app.conf.update(
             'schedule': crontab(minute='*/15', hour='7-18', day_of_week='mon-fri'),
             'options': {'queue': 'verkauf'}
         },
+        
+        # =====================================================================
+        # SERVICEBERATER-BENACHRICHTIGUNGEN - TAG 171
+        # =====================================================================
+        
+        # Serviceberater-Benachrichtigungen bei Zeitüberschreitungen (alle 15 Min während Arbeitszeit)
+        'benachrichtige-serviceberater-ueberschreitungen': {
+            'task': 'celery_app.tasks.benachrichtige_serviceberater_ueberschreitungen',
+            'schedule': crontab(minute='*/15', hour='7-18', day_of_week='mon-fri'),
+            'options': {'queue': 'aftersales'}
+        },
     },
     
     # Task-Routen (welche Queue für welchen Task)
@@ -344,6 +355,7 @@ app.conf.update(
         'celery_app.tasks.sync_*': {'queue': 'verkauf'},
         'celery_app.tasks.servicebox_*': {'queue': 'aftersales'},
         'celery_app.tasks.werkstatt_*': {'queue': 'aftersales'},
+        'celery_app.tasks.benachrichtige_*': {'queue': 'aftersales'},
     },
 )
 

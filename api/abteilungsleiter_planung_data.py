@@ -52,6 +52,108 @@ STANDORT_NAMEN = {
 }
 
 # =============================================================================
+# HILFSFUNKTIONEN: WERKSTATT-KPIs AUS werkstatt_data.py
+# =============================================================================
+
+def berechne_werkstatt_kpis_fuer_zeitraum(
+    von_datum: str,
+    bis_datum: str,
+    standort: int
+) -> Dict[str, float]:
+    """
+    Berechnet Werkstatt-KPIs (Produktivität, Leistungsgrad, Auslastung) 
+    für einen Zeitraum aus werkstatt_data.py.
+    
+    Args:
+        von_datum: Startdatum (YYYY-MM-DD)
+        bis_datum: Enddatum (YYYY-MM-DD)
+        standort: 1=DEG, 2=HYU, 3=LAN
+    
+    Returns:
+        dict: {
+            'produktivitaet': float (in %),
+            'leistungsgrad': float (in %),
+            'auslastung': float (in %),
+            'stempelzeit': float (Minuten),
+            'anwesenheit': float (Minuten),
+            'aw': float,
+            'verfuegbare_stunden': float
+        }
+    """
+    from api.werkstatt_data import WerkstattData
+    from datetime import datetime
+    
+    try:
+        # Datum parsen
+        von = datetime.strptime(von_datum, '%Y-%m-%d').date()
+        bis = datetime.strptime(bis_datum, '%Y-%m-%d').date()
+        
+        # Betrieb aus Standort ableiten
+        # Standort 1 = Deggendorf (Betrieb 1), Standort 2 = Hyundai DEG (Betrieb 2), Standort 3 = Landau (Betrieb 3)
+        betrieb = standort
+        
+        # Mechaniker-Leistung aus werkstatt_data.py laden
+        leistung_data = WerkstattData.get_mechaniker_leistung(
+            von=von,
+            bis=bis,
+            betrieb=betrieb,
+            inkl_ehemalige=False
+        )
+        
+        gesamt = leistung_data.get('gesamt', {})
+        
+        # KPIs extrahieren
+        produktivitaet = gesamt.get('produktivitaet', 0)  # Bereits in %
+        leistungsgrad = gesamt.get('leistungsgrad', 0)   # Bereits in %
+        stempelzeit = gesamt.get('stempelzeit', 0)        # Minuten
+        anwesenheit = gesamt.get('anwesenheit', 0)        # Minuten
+        aw = gesamt.get('aw', 0)                          # AW
+        
+        # Auslastung berechnen: Anwesend / Verfügbare
+        # Verfügbare Stunden = Anzahl Mechaniker × Arbeitstage × 8 Stunden
+        anzahl_mechaniker = leistung_data.get('anzahl_mechaniker', 0)
+        anzahl_tage = leistung_data.get('anzahl_tage', 0)
+        
+        if anzahl_tage > 0:
+            # Verfügbare Stunden pro Mechaniker pro Tag (Standard: 8h)
+            stunden_pro_tag = 8.0
+            verfuegbare_stunden_gesamt = anzahl_mechaniker * anzahl_tage * stunden_pro_tag
+            verfuegbare_minuten_gesamt = verfuegbare_stunden_gesamt * 60
+            
+            # Auslastung = Anwesenheit / Verfügbare
+            if verfuegbare_minuten_gesamt > 0:
+                auslastung = (anwesenheit / verfuegbare_minuten_gesamt) * 100
+            else:
+                auslastung = 0.0
+        else:
+            auslastung = 0.0
+            verfuegbare_stunden_gesamt = 0.0
+        
+        return {
+            'produktivitaet': round(produktivitaet, 1),
+            'leistungsgrad': round(leistungsgrad, 1),
+            'auslastung': round(auslastung, 1),
+            'stempelzeit': round(stempelzeit, 0),
+            'anwesenheit': round(anwesenheit, 0),
+            'aw': round(aw, 1),
+            'verfuegbare_stunden': round(verfuegbare_stunden_gesamt, 1)
+        }
+    
+    except Exception as e:
+        logger.error(f"Fehler beim Berechnen der Werkstatt-KPIs: {str(e)}")
+        # Fallback: Placeholder-Werte
+        return {
+            'produktivitaet': 105.0,
+            'leistungsgrad': 90.0,
+            'auslastung': 75.0,
+            'stempelzeit': 0.0,
+            'anwesenheit': 0.0,
+            'aw': 0.0,
+            'verfuegbare_stunden': 0.0
+        }
+
+
+# =============================================================================
 # HILFSFUNKTIONEN: IST-WERTE FÜR ABGELAUFENE MONATE
 # =============================================================================
 
@@ -148,12 +250,12 @@ def lade_ist_werte_fuer_monat(
                 # Deggendorf: Stellantis (branch=1, subsidiary_to_company_ref=1) + Hyundai (branch=2, subsidiary_to_company_ref=2)
                 firma_filter_umsatz = "AND ((branch_number = 1 AND SUBSTRING(nominal_account_number::TEXT, 5, 1) = '1') OR (branch_number = 2 AND subsidiary_to_company_ref = 2))"
                 firma_filter_einsatz = "AND ((SUBSTRING(nominal_account_number::TEXT, 5, 1) = '1' AND subsidiary_to_company_ref = 1) OR (SUBSTRING(nominal_account_number::TEXT, 5, 1) = '2' AND subsidiary_to_company_ref = 2))"
-                subsidiary_filter = "AND (out_subsidiary = 1 OR out_subsidiary = 2)"  # Beide Firmen (für Locosoft-Tabellen)
+                subsidiary_filter = "AND (o.subsidiary = 1 OR o.subsidiary = 2)"  # Beide Firmen (für Locosoft-Tabellen)
             elif standort == 3:
                 # Landau: branch_number = 3 (nur Stellantis, Hyundai hat keinen Standort in Landau)
                 firma_filter_umsatz = "AND (branch_number = 3 OR (nominal_account_number BETWEEN 810000 AND 819999 AND SUBSTRING(nominal_account_number::TEXT, 5, 1) = '2'))"
                 firma_filter_einsatz = "AND (SUBSTRING(nominal_account_number::TEXT, 5, 1) = '2')"
-                subsidiary_filter = "AND out_subsidiary = 1"  # Nur Stellantis (für Locosoft-Tabellen)
+                subsidiary_filter = "AND o.subsidiary = 1"  # Nur Stellantis (für Locosoft-Tabellen)
             else:
                 # Standort 2 (Hyundai) oder andere: Alle Werte
                 firma_filter_umsatz = ""
@@ -249,7 +351,8 @@ def lade_ist_werte_fuer_monat(
             
             # Standort-Filter für dealer_vehicles: out_subsidiary verwenden
             if standort == 1:
-                standort_filter = "AND out_subsidiary = 1"
+                # Deggendorf: Stellantis (subsidiary=1) + Hyundai (subsidiary=2)
+                standort_filter = "AND (out_subsidiary = 1 OR out_subsidiary = 2)"
             elif standort == 2:
                 standort_filter = "AND out_subsidiary = 2"
             elif standort == 3:
@@ -288,27 +391,34 @@ def lade_ist_werte_fuer_monat(
                 result['standzeit_ist'] = 0
         
         elif bereich == 'Werkstatt':
-            # Stunden verkauft (verrechnet)
+            # Stunden verkauft (verrechnet) - über invoices JOIN
             cursor_loco.execute(f"""
-                SELECT COALESCE(SUM(l.time_units), 0) as stunden_verkauft
+                SELECT COALESCE(SUM(l.time_units), 0) as aw_verkauft
                 FROM labours l
+                JOIN invoices i ON l.invoice_number = i.invoice_number 
+                    AND l.invoice_type = i.invoice_type
                 JOIN orders o ON l.order_number = o.number
-                WHERE o.invoice_date >= %s AND o.invoice_date < %s
+                WHERE i.invoice_date >= %s AND i.invoice_date < %s
                   AND l.is_invoiced = true
+                  AND i.is_canceled = false
                   {subsidiary_filter}
             """, (von_datum, bis_datum))
             row = cursor_loco.fetchone()
-            result['stunden_verkauft_ist'] = float(row[0] or 0) if row else 0
+            aw_verkauft = float(row[0] or 0) if row else 0
+            # AW zu Stunden umrechnen: 1 AW = 6 Minuten = 0.1 Stunden
+            result['stunden_verkauft_ist'] = aw_verkauft / 6.0
             
-            # Stundensatz
+            # Stundensatz = Umsatz / Stunden (nicht AW!)
             if result['stunden_verkauft_ist'] > 0:
                 result['stundensatz_ist'] = result['umsatz_ist'] / result['stunden_verkauft_ist']
+            else:
+                result['stundensatz_ist'] = 0.0
             
-            # TODO: Produktivität, Leistungsgrad, Auslastung aus werkstatt_data.py laden
-            # Für jetzt: Placeholder (werden später aus Stempeluhr-Daten berechnet)
-            result['produktivitaet_ist'] = 105.0  # Default
-            result['leistungsgrad_ist'] = 90.0    # Default
-            result['auslastung_ist'] = 75.0       # Default
+            # Werkstatt-KPIs aus werkstatt_data.py laden
+            kpis = berechne_werkstatt_kpis_fuer_zeitraum(von_datum, bis_datum, standort)
+            result['produktivitaet_ist'] = kpis.get('produktivitaet', 105.0)
+            result['leistungsgrad_ist'] = kpis.get('leistungsgrad', 90.0)
+            result['auslastung_ist'] = kpis.get('auslastung', 75.0)
         
         elif bereich == 'Teile':
             # Lagerumschlag berechnen (wenn Lagerwert bekannt)
@@ -493,24 +603,29 @@ class AbteilungsleiterPlanungData:
         stundensatz = float(planung_data.get('plan_stundensatz', 0) or 0)
         produktivitaet = float(planung_data.get('plan_produktivitaet', 0) or 0) / 100
         leistungsgrad = float(planung_data.get('plan_leistungsgrad', 0) or 0) / 100
-        auslastung = float(planung_data.get('plan_auslastung', 0) or 0) / 100
+        # TAG 169: float() verwenden für Dezimalwerte (z.B. 8.5), dann runden
+        anzahl_mechaniker = round(float(planung_data.get('plan_anzahl_mechaniker', 0) or 0), 1)  # NEU: Frage 5
         db1_marge = float(planung_data.get('plan_db1_marge', 0) or 0) / 100
         
         # 2. Verfügbare Stunden (pro Monat)
-        # Annahme: 22 Werktage × 8 Stunden = 176 Stunden pro SB/Monat
-        stunden_verfuegbar = anzahl_sb * 176
+        # Annahme: 22 Werktage × 8 Stunden = 176 Stunden pro Mechaniker/Monat
+        stunden_verfuegbar_pro_mechaniker_pro_monat = 176
+        stunden_verfuegbar_pro_monat = anzahl_mechaniker * stunden_verfuegbar_pro_mechaniker_pro_monat
         
-        # 3. Anwesende Stunden = Verfügbare × Auslastung
-        stunden_anwesend = stunden_verfuegbar * auslastung
+        # 3. Anwesende Stunden = Verfügbare (alle Mechaniker sind anwesend)
+        stunden_anwesend_pro_monat = stunden_verfuegbar_pro_monat
         
         # 4. Stempelzeit = Anwesend × Produktivität
-        stunden_gestempelt = stunden_anwesend * produktivitaet
+        stunden_gestempelt_pro_monat = stunden_anwesend_pro_monat * produktivitaet
         
         # 5. Verkaufte Stunden = Gestempelt × Leistungsgrad
-        stunden_verkauft = stunden_gestempelt * leistungsgrad
+        stunden_verkauft_pro_monat = stunden_gestempelt_pro_monat * leistungsgrad
         
-        # 6. Umsatz = Verkaufte Stunden × Stundensatz
-        umsatz_basis = stunden_verkauft * stundensatz
+        # TAG 169: Auf Geschäftsjahr hochrechnen (12 Monate)
+        stunden_verkauft_jahr = stunden_verkauft_pro_monat * 12
+        
+        # 6. Umsatz = Verkaufte Stunden (Jahr) × Stundensatz
+        umsatz_basis = stunden_verkauft_jahr * stundensatz
         
         # 7. DB1 = Umsatz × DB1-Marge
         db1_basis = umsatz_basis * db1_marge
@@ -520,27 +635,43 @@ class AbteilungsleiterPlanungData:
             'Werkstatt', standort, monat, geschaeftsjahr
         )
         
-        # 9. Impact-Analyse
+        # 9. Impact-Analyse (mit Vorjahres-Daten für detaillierte Berechnung)
+        # Auslastung aus Mechaniker-Anzahl berechnen (für Impact-Berechnung)
+        anzahl_mechaniker_vj = vorjahr.get('anzahl_mechaniker', 0)
+        if anzahl_mechaniker_vj > 0:
+            stunden_verfuegbar_vj = anzahl_mechaniker_vj * 176
+            auslastung_vj = (vorjahr.get('anwesenheit', 0) / 60) / stunden_verfuegbar_vj * 100 if stunden_verfuegbar_vj > 0 else 0
+        else:
+            auslastung_vj = vorjahr.get('auslastung', 0)
+        
+        # Auslastung Plan aus Mechaniker-Anzahl berechnen
+        auslastung_plan = 100.0  # Wenn Mechaniker eingegeben, sind sie 100% verfügbar
+        
+        # Vorjahres-Stunden auf Jahr hochrechnen (für Vergleich)
+        stunden_verkauft_vj_jahr = vorjahr.get('stunden_verkauft', 0) * 12 if vorjahr.get('stunden_verkauft', 0) > 0 else 0
+        
         impact = AbteilungsleiterPlanungData._berechne_werkstatt_impact(
             produktivitaet * 100,
             leistungsgrad * 100,
-            auslastung * 100,
+            auslastung_plan,
             stundensatz,
             vorjahr.get('produktivitaet', 0),
             vorjahr.get('leistungsgrad', 0),
-            vorjahr.get('auslastung', 0),
+            auslastung_vj,
             vorjahr.get('stundensatz', 0),
-            stunden_verkauft,
-            vorjahr.get('stunden_verkauft', 0),
-            db1_marge
+            stunden_verkauft_jahr,  # TAG 169: Jahr statt Monat
+            stunden_verkauft_vj_jahr,  # TAG 169: Jahr statt Monat
+            db1_marge,
+            vorjahr_data=vorjahr  # Vorjahres-Daten für detaillierte Berechnung
         )
         
         return {
             'umsatz_basis': round(umsatz_basis, 2),
             'db1_basis': round(db1_basis, 2),
-            'stunden_verkauft': round(stunden_verkauft, 2),
-            'stunden_anwesend': round(stunden_anwesend, 2),
-            'stunden_gestempelt': round(stunden_gestempelt, 2),
+            'stunden_verkauft': round(stunden_verkauft_jahr, 2),  # TAG 169: Jahr statt Monat
+            'stunden_anwesend': round(stunden_anwesend_pro_monat * 12, 2),  # TAG 169: Auf Jahr hochgerechnet
+            'stunden_gestempelt': round(stunden_gestempelt_pro_monat * 12, 2),  # TAG 169: Auf Jahr hochgerechnet
+            'anzahl_mechaniker': anzahl_mechaniker,  # TAG 169: Für Rückgabe
             'impact': impact,
             'vorjahr': vorjahr
         }
@@ -670,72 +801,129 @@ class AbteilungsleiterPlanungData:
         stundensatz_vj: float,
         stunden_verkauft_plan: float,
         stunden_verkauft_vj: float,
-        db1_marge: float
+        db1_marge: float,
+        vorjahr_data: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Berechnet Impact von Werkstatt-KPI-Änderungen."""
+        """
+        Berechnet Impact von Werkstatt-KPI-Änderungen auf DB.
+        
+        WICHTIG: Berücksichtigt die Zusammenhänge zwischen KPIs:
+        - Leistungsgrad: Bei gleicher Stempelzeit mehr AW verrechnet
+        - Produktivität: Bei gleicher Anwesenheit mehr gestempelt
+        - Auslastung: Mehr verfügbare Kapazität genutzt
+        """
         impact = {}
         
-        # Produktivität-Impact
-        if produktivitaet_vj > 0:
-            produktivitaet_diff = produktivitaet_plan - produktivitaet_vj
-            stunden_mehr = stunden_verkauft_vj * (produktivitaet_diff / 100)
-            umsatz_mehr = stunden_mehr * stundensatz_plan
-            db1_mehr = umsatz_mehr * db1_marge
-            impact['produktivitaet'] = {
-                'plan': produktivitaet_plan,
-                'vj': produktivitaet_vj,
-                'differenz': produktivitaet_diff,
-                'stunden_mehr': round(stunden_mehr, 2),
-                'umsatz_mehr': round(umsatz_mehr, 2),
-                'db1_mehr': round(db1_mehr, 2)
-            }
+        # Vorjahres-Daten für Berechnungen (falls verfügbar)
+        anwesenheit_vj_minuten = vorjahr_data.get('anwesenheit', 0) if vorjahr_data else 0
+        stempelzeit_vj_minuten = vorjahr_data.get('stempelzeit', 0) if vorjahr_data else 0
+        verfuegbare_stunden_vj = vorjahr_data.get('verfuegbare_stunden', 0) if vorjahr_data else 0
         
-        # Leistungsgrad-Impact
-        if leistungsgrad_vj > 0:
+        # Fallback: Wenn keine Vorjahres-Daten, aus Stunden verkauft schätzen
+        if anwesenheit_vj_minuten == 0 and stunden_verkauft_vj > 0:
+            # Schätzung: Anwesenheit = Stunden verkauft / (Produktivität × Leistungsgrad)
+            produktivitaet_vj_dez = produktivitaet_vj / 100 if produktivitaet_vj > 0 else 1.0
+            leistungsgrad_vj_dez = leistungsgrad_vj / 100 if leistungsgrad_vj > 0 else 1.0
+            anwesenheit_vj_stunden = stunden_verkauft_vj / (produktivitaet_vj_dez * leistungsgrad_vj_dez)
+            anwesenheit_vj_minuten = anwesenheit_vj_stunden * 60
+            stempelzeit_vj_minuten = anwesenheit_vj_minuten * produktivitaet_vj_dez
+        
+        # 1. LEISTUNGSGRAD-Impact
+        # Bei gleicher Stempelzeit werden mehr AW verrechnet
+        if leistungsgrad_vj > 0 and stempelzeit_vj_minuten > 0:
             leistungsgrad_diff = leistungsgrad_plan - leistungsgrad_vj
-            stunden_mehr = stunden_verkauft_vj * (leistungsgrad_diff / 100)
+            # AW_mehr = Stempelzeit × (Leistungsgrad_diff) / 100 / 6
+            # (6 Minuten = 0,1 AW)
+            aw_mehr = stempelzeit_vj_minuten * (leistungsgrad_diff / 100) / 6
+            # Stunden_mehr = AW_mehr × 6 / 60 (1 AW = 6 Min = 0,1h)
+            stunden_mehr = aw_mehr * 6 / 60
             umsatz_mehr = stunden_mehr * stundensatz_plan
             db1_mehr = umsatz_mehr * db1_marge
+            
             impact['leistungsgrad'] = {
                 'plan': leistungsgrad_plan,
                 'vj': leistungsgrad_vj,
-                'differenz': leistungsgrad_diff,
+                'differenz': round(leistungsgrad_diff, 1),
+                'aw_mehr': round(aw_mehr, 1),
                 'stunden_mehr': round(stunden_mehr, 2),
                 'umsatz_mehr': round(umsatz_mehr, 2),
                 'db1_mehr': round(db1_mehr, 2)
             }
         
-        # Auslastung-Impact
-        if auslastung_vj > 0:
-            auslastung_diff = auslastung_plan - auslastung_vj
-            stunden_mehr = stunden_verkauft_vj * (auslastung_diff / 100)
+        # 2. PRODUKTIVITÄT-Impact
+        # Bei gleicher Anwesenheit wird mehr gestempelt
+        if produktivitaet_vj > 0 and anwesenheit_vj_minuten > 0:
+            produktivitaet_diff = produktivitaet_plan - produktivitaet_vj
+            # Stempelzeit_mehr = Anwesenheit × (Produktivität_diff) / 100
+            stempelzeit_mehr_minuten = anwesenheit_vj_minuten * (produktivitaet_diff / 100)
+            # AW_mehr = Stempelzeit_mehr × Leistungsgrad_plan / 100 / 6
+            leistungsgrad_plan_dez = leistungsgrad_plan / 100 if leistungsgrad_plan > 0 else 0
+            aw_mehr = stempelzeit_mehr_minuten * leistungsgrad_plan_dez / 6
+            # Stunden_mehr = AW_mehr × 6 / 60
+            stunden_mehr = aw_mehr * 6 / 60
             umsatz_mehr = stunden_mehr * stundensatz_plan
             db1_mehr = umsatz_mehr * db1_marge
+            
+            impact['produktivitaet'] = {
+                'plan': produktivitaet_plan,
+                'vj': produktivitaet_vj,
+                'differenz': round(produktivitaet_diff, 1),
+                'stempelzeit_mehr': round(stempelzeit_mehr_minuten, 0),
+                'aw_mehr': round(aw_mehr, 1),
+                'stunden_mehr': round(stunden_mehr, 2),
+                'umsatz_mehr': round(umsatz_mehr, 2),
+                'db1_mehr': round(db1_mehr, 2)
+            }
+        
+        # 3. AUSLASTUNG-Impact
+        # Mehr verfügbare Kapazität wird genutzt
+        if auslastung_vj > 0 and verfuegbare_stunden_vj > 0:
+            auslastung_diff = auslastung_plan - auslastung_vj
+            # Verfügbare_mehr = (Auslastung_diff) / 100 × Verfügbare_Kapazität
+            verfuegbare_mehr_stunden = verfuegbare_stunden_vj * (auslastung_diff / 100)
+            verfuegbare_mehr_minuten = verfuegbare_mehr_stunden * 60
+            # Anwesenheit_mehr = Verfügbare_mehr
+            anwesenheit_mehr_minuten = verfuegbare_mehr_minuten
+            # Stempelzeit_mehr = Anwesenheit_mehr × Produktivität_plan / 100
+            produktivitaet_plan_dez = produktivitaet_plan / 100 if produktivitaet_plan > 0 else 0
+            stempelzeit_mehr_minuten = anwesenheit_mehr_minuten * produktivitaet_plan_dez
+            # AW_mehr = Stempelzeit_mehr × Leistungsgrad_plan / 100 / 6
+            leistungsgrad_plan_dez = leistungsgrad_plan / 100 if leistungsgrad_plan > 0 else 0
+            aw_mehr = stempelzeit_mehr_minuten * leistungsgrad_plan_dez / 6
+            # Stunden_mehr = AW_mehr × 6 / 60
+            stunden_mehr = aw_mehr * 6 / 60
+            umsatz_mehr = stunden_mehr * stundensatz_plan
+            db1_mehr = umsatz_mehr * db1_marge
+            
             impact['auslastung'] = {
                 'plan': auslastung_plan,
                 'vj': auslastung_vj,
-                'differenz': auslastung_diff,
+                'differenz': round(auslastung_diff, 1),
+                'verfuegbare_mehr': round(verfuegbare_mehr_stunden, 1),
+                'aw_mehr': round(aw_mehr, 1),
                 'stunden_mehr': round(stunden_mehr, 2),
                 'umsatz_mehr': round(umsatz_mehr, 2),
                 'db1_mehr': round(db1_mehr, 2)
             }
         
-        # Stundensatz-Impact
+        # 4. STUNDENSATZ-Impact
+        # Direkter Impact auf Umsatz bei gleichen verkauften Stunden
         if stundensatz_vj > 0:
             stundensatz_diff = stundensatz_plan - stundensatz_vj
             umsatz_mehr = stunden_verkauft_plan * stundensatz_diff
             db1_mehr = umsatz_mehr * db1_marge
+            
             impact['stundensatz'] = {
                 'plan': stundensatz_plan,
                 'vj': stundensatz_vj,
-                'differenz': stundensatz_diff,
+                'differenz': round(stundensatz_diff, 2),
                 'umsatz_mehr': round(umsatz_mehr, 2),
                 'db1_mehr': round(db1_mehr, 2)
             }
         
-        # Gesamt-Impact
-        gesamt_umsatz = sum([v.get('umsatz_mehr', 0) for v in impact.values()])
-        gesamt_db1 = sum([v.get('db1_mehr', 0) for v in impact.values()])
+        # Gesamt-Impact (Summe aller Einzel-Impacts)
+        gesamt_umsatz = sum([v.get('umsatz_mehr', 0) for v in impact.values() if isinstance(v, dict) and 'umsatz_mehr' in v])
+        gesamt_db1 = sum([v.get('db1_mehr', 0) for v in impact.values() if isinstance(v, dict) and 'db1_mehr' in v])
         impact['gesamt'] = {
             'umsatz_mehr': round(gesamt_umsatz, 2),
             'db1_mehr': round(gesamt_db1, 2)
@@ -829,27 +1017,14 @@ class AbteilungsleiterPlanungData:
         Args:
             bereich: 'NW', 'GW', 'Teile', 'Werkstatt', 'Sonstige'
             standort: 1, 2, oder 3
-            monat: 1-12 (Kalendermonat)
+            monat: 1-12 (GJ-Monat) oder None für ganzes Geschäftsjahr
             geschaeftsjahr: z.B. '2025/26'
         
         Returns:
             dict: Vorjahres-Werte für alle KPIs
         """
-        from api.db_utils import get_locosoft_connection
+        from api.db_utils import get_locosoft_connection, locosoft_session
         from datetime import date
-        
-        # Zeitraum bestimmen
-        # monat ist GJ-Monat (1-12), nicht Kalendermonat!
-        if not monat:
-            # Aktuellen GJ-Monat bestimmen
-            heute = date.today()
-            if heute.month >= 9:
-                gj_start = heute.year
-                gj_monat = heute.month - 8
-            else:
-                gj_start = heute.year - 1
-                gj_monat = heute.month + 4
-            monat = gj_monat
         
         # Geschäftsjahr parsen (z.B. '2025/26' -> 2025)
         if geschaeftsjahr:
@@ -861,21 +1036,27 @@ class AbteilungsleiterPlanungData:
         # Vorjahr = GJ-Start - 1
         vj_gj_start = gj_start_jahr - 1
         
-        # GJ-Monat zu Kalendermonat konvertieren
-        # GJ-Monat 1-4 = Sep-Dez (Kalender: 9-12)
-        # GJ-Monat 5-12 = Jan-Aug (Kalender: 1-8)
-        if monat <= 4:
-            kal_monat = monat + 8
-            kal_jahr = vj_gj_start
+        # Zeitraum bestimmen
+        if monat is None:
+            # Ganzes Geschäftsjahr laden (Sep bis Aug)
+            vj_von = f"{vj_gj_start}-09-01"
+            vj_bis = f"{vj_gj_start + 1}-09-01"
         else:
-            kal_monat = monat - 4
-            kal_jahr = vj_gj_start + 1
-        
-        vj_von = f"{kal_jahr}-{kal_monat:02d}-01"
-        if kal_monat == 12:
-            vj_bis = f"{kal_jahr+1}-01-01"
-        else:
-            vj_bis = f"{kal_jahr}-{kal_monat+1:02d}-01"
+            # GJ-Monat zu Kalendermonat konvertieren
+            # GJ-Monat 1-4 = Sep-Dez (Kalender: 9-12)
+            # GJ-Monat 5-12 = Jan-Aug (Kalender: 1-8)
+            if monat <= 4:
+                kal_monat = monat + 8
+                kal_jahr = vj_gj_start
+            else:
+                kal_monat = monat - 4
+                kal_jahr = vj_gj_start + 1
+            
+            vj_von = f"{kal_jahr}-{kal_monat:02d}-01"
+            if kal_monat == 12:
+                vj_bis = f"{kal_jahr+1}-01-01"
+            else:
+                vj_bis = f"{kal_jahr}-{kal_monat+1:02d}-01"
         
         # BWA-Filter (SSOT) - TAG157: Unterschiedliche Zuordnungslogik!
         # Umsatz (8xxxxx): via branch_number (1=DEG, 3=LAN)
@@ -937,15 +1118,30 @@ class AbteilungsleiterPlanungData:
                 firma_filter_einsatz = ""
                 firma_filter_kosten = ""
         
-        # Standort-Filter für sales/dealer_vehicles (Locosoft)
-        if standort == 1:
-            subsidiary_filter = "AND out_subsidiary = 1"
-        elif standort == 2:
-            subsidiary_filter = "AND out_subsidiary = 2"
-        elif standort == 3:
-            subsidiary_filter = "AND out_subsidiary = 1"  # Landau ist auch subsidiary 1
+        # Standort-Filter für Locosoft-Tabellen
+        # Für orders/invoices: o.subsidiary oder i.subsidiary
+        # Für dealer_vehicles: out_subsidiary
+        if bereich in ['Werkstatt', 'Teile', 'Sonstige']:
+            # Werkstatt/Teile/Sonstige: orders/invoices haben subsidiary
+            if standort == 1:
+                # Deggendorf: Stellantis (subsidiary=1) + Hyundai (subsidiary=2)
+                subsidiary_filter = "AND (o.subsidiary = 1 OR o.subsidiary = 2)"
+            elif standort == 3:
+                # Landau: Nur Stellantis (subsidiary=1)
+                subsidiary_filter = "AND o.subsidiary = 1"
+            else:
+                subsidiary_filter = ""
         else:
-            subsidiary_filter = ""
+            # Für NW/GW: dealer_vehicles haben out_subsidiary
+            if standort == 1:
+                # Deggendorf: Stellantis (subsidiary=1) + Hyundai (subsidiary=2)
+                subsidiary_filter = "AND (out_subsidiary = 1 OR out_subsidiary = 2)"
+            elif standort == 2:
+                subsidiary_filter = "AND out_subsidiary = 2"
+            elif standort == 3:
+                subsidiary_filter = "AND out_subsidiary = 1"  # Landau ist auch subsidiary 1
+            else:
+                subsidiary_filter = ""
         
         result = {
             'umsatz': 0,
@@ -1051,48 +1247,42 @@ class AbteilungsleiterPlanungData:
                 # DB2 = DB1 - Variable Kosten (BWA-Logik)
                 result['db2'] = result['db1'] - variable
                 
-                # 2. Stückzahl aus sales-Tabelle (dedupliziert) - EMPFOHLEN
+                # 2. Stückzahl aus Locosoft dealer_vehicles (SSOT für Fahrzeugzählungen)
                 if bereich in ['NW', 'GW']:
-                    # Typ-Filter
-                    if bereich == 'NW':
-                        typ_filter = "dealer_vehicle_type IN ('N', 'V')"
-                    else:  # GW
-                        typ_filter = "dealer_vehicle_type IN ('G', 'D')"
-                    
-                    # Standort-Filter
-                    if standort == 1:
-                        standort_filter = "AND out_subsidiary = 1"
-                    elif standort == 2:
-                        standort_filter = "AND out_subsidiary = 2"
-                    elif standort == 3:
-                        standort_filter = "AND out_subsidiary = 1"
-                    else:
-                        standort_filter = ""
-                    
-                    # Dedup-Filter (verhindert Doppelzählungen N→T/V)
-                    dedup_filter = """
-                        AND NOT EXISTS (
-                            SELECT 1
-                            FROM sales s2
-                            WHERE s2.vin = s.vin
-                                AND s2.out_sales_contract_date = s.out_sales_contract_date
-                                AND s2.dealer_vehicle_type IN ('T', 'V')
-                                AND s.dealer_vehicle_type = 'N'
-                        )
-                    """
-                    
-                    # Stückzahl aus sales (dedupliziert)
-                    cursor.execute(f"""
-                        SELECT COUNT(*) as stueck
-                        FROM sales s
-                        WHERE s.out_invoice_date >= %s AND s.out_invoice_date < %s
-                          AND s.out_invoice_date IS NOT NULL
-                          AND {typ_filter}
-                          {standort_filter}
-                          {dedup_filter}
-                    """, (vj_von, vj_bis))
-                    row = cursor.fetchone()
-                    result['stueck'] = int(row[0] or 0) if row else 0
+                    with locosoft_session() as conn_loco:
+                        cursor_loco = conn_loco.cursor()
+                        
+                        # Typ-Filter
+                        # TAG169: Angepasst an Global Cube
+                        # NW = N+T+V (Neuwagen, Tageszulassung, Vorführwagen)
+                        # GW = D+G+L (Demo, Gebrauchtwagen, Leihfahrzeug)
+                        if bereich == 'NW':
+                            typ_filter = "dealer_vehicle_type IN ('N', 'T', 'V')"
+                        else:  # GW
+                            typ_filter = "dealer_vehicle_type IN ('D', 'G', 'L')"
+                        
+                        # Standort-Filter für dealer_vehicles: out_subsidiary verwenden
+                        if standort == 1:
+                            # Deggendorf: Stellantis (subsidiary=1) + Hyundai (subsidiary=2)
+                            standort_filter = "AND (out_subsidiary = 1 OR out_subsidiary = 2)"
+                        elif standort == 2:
+                            standort_filter = "AND out_subsidiary = 2"
+                        elif standort == 3:
+                            standort_filter = "AND out_subsidiary = 1"  # Landau ist auch subsidiary 1, aber branch 3
+                        else:
+                            standort_filter = ""
+                        
+                        # Stückzahl direkt aus Locosoft dealer_vehicles (wie bei IST-Werten)
+                        cursor_loco.execute(f"""
+                            SELECT COUNT(*) as stueck
+                            FROM dealer_vehicles
+                            WHERE out_invoice_date >= %s AND out_invoice_date < %s
+                              AND out_invoice_date IS NOT NULL
+                              AND {typ_filter}
+                              {standort_filter}
+                        """, (vj_von, vj_bis))
+                        row = cursor_loco.fetchone()
+                        result['stueck'] = int(row[0] or 0) if row else 0
                 
                 # 3. Standzeit aus dealer_vehicles (nur wenn Stückzahl > 0)
                 if bereich in ['NW', 'GW'] and result['stueck'] > 0:
@@ -1100,14 +1290,19 @@ class AbteilungsleiterPlanungData:
                         cursor_loco = conn_loco.cursor()
                         
                         # Typ-Filter für Standzeit
+                        # TAG169: Angepasst an Global Cube
+                        # NW = N+T+V (Neuwagen, Tageszulassung, Vorführwagen)
+                        # GW = D+G+L (Demo, Gebrauchtwagen, Leihfahrzeug)
                         if bereich == 'NW':
-                            typ_filter_standzeit = "dealer_vehicle_type IN ('N', 'V')"
+                            typ_filter_standzeit = "dealer_vehicle_type IN ('N', 'T', 'V')"
                         else:  # GW
-                            typ_filter_standzeit = "dealer_vehicle_type IN ('G', 'D')"
+                            typ_filter_standzeit = "dealer_vehicle_type IN ('D', 'G', 'L')"
                         
                         # Standort-Filter für Standzeit
+                        # TAG169: Korrigiert - Deggendorf muss beide Subsidiaries enthalten
                         if standort == 1:
-                            standort_filter_standzeit = "AND out_subsidiary = 1"
+                            # Deggendorf: Stellantis (subsidiary=1) + Hyundai (subsidiary=2)
+                            standort_filter_standzeit = "AND (out_subsidiary = 1 OR out_subsidiary = 2)"
                         elif standort == 2:
                             standort_filter_standzeit = "AND out_subsidiary = 2"
                         elif standort == 3:
@@ -1136,29 +1331,136 @@ class AbteilungsleiterPlanungData:
                 if bereich == 'Werkstatt':
                     with locosoft_session() as conn_loco:
                         cursor_loco = conn_loco.cursor()
-                        # Stunden verkauft (verrechnet)
+                        # Stunden verkauft (verrechnet) - über invoices JOIN
                         # Für Werkstatt: subsidiary_filter verwenden (orders haben subsidiary)
                         cursor_loco.execute(f"""
-                            SELECT COALESCE(SUM(l.time_units), 0) as stunden_verkauft
+                            SELECT COALESCE(SUM(l.time_units), 0) as aw_verkauft
                             FROM labours l
+                            JOIN invoices i ON l.invoice_number = i.invoice_number 
+                                AND l.invoice_type = i.invoice_type
                             JOIN orders o ON l.order_number = o.number
-                            WHERE o.invoice_date >= %s AND o.invoice_date < %s
+                            WHERE i.invoice_date >= %s AND i.invoice_date < %s
                               AND l.is_invoiced = true
+                              AND i.is_canceled = false
                               {subsidiary_filter}
                         """, (vj_von, vj_bis))
                         row = cursor_loco.fetchone()
-                        result['stunden_verkauft'] = float(row[0] or 0) if row else 0
+                        aw_verkauft = float(row[0] or 0) if row else 0
+                        # AW zu Stunden umrechnen: 1 AW = 6 Minuten = 0.1 Stunden
+                        result['stunden_verkauft'] = aw_verkauft / 6.0
                         
-                        # Stundensatz = Umsatz / Stunden
+                        # Stundensatz = Umsatz / Stunden (nicht AW!)
                         if result['stunden_verkauft'] > 0:
                             result['stundensatz'] = result['umsatz'] / result['stunden_verkauft']
+                        else:
+                            result['stundensatz'] = 0.0
                         
-                        # Produktivität, Leistungsgrad, Auslastung
-                        # TODO: Aus werkstatt_data.py laden (komplexe Berechnung)
-                        # Für jetzt: Placeholder
-                        result['produktivitaet'] = 105.0  # Default
-                        result['leistungsgrad'] = 90.0    # Default
-                        result['auslastung'] = 75.0       # Default
+                        # Produktivität, Leistungsgrad, Auslastung aus werkstatt_data.py laden
+                        kpis = berechne_werkstatt_kpis_fuer_zeitraum(vj_von, vj_bis, standort)
+                        result['produktivitaet'] = kpis.get('produktivitaet', 105.0)
+                        result['leistungsgrad'] = kpis.get('leistungsgrad', 90.0)
+                        result['auslastung'] = kpis.get('auslastung', 75.0)
+                        # Zusätzliche Daten für Impact-Berechnung
+                        result['anwesenheit'] = kpis.get('anwesenheit', 0)  # Minuten
+                        result['stempelzeit'] = kpis.get('stempelzeit', 0)  # Minuten
+                        result['verfuegbare_stunden'] = kpis.get('verfuegbare_stunden', 0)  # Stunden
+                        
+                        # Anzahl Mechaniker (für Frage 5)
+                        # Berechnung: Verfügbare Stunden / 176 (Stunden pro Mechaniker pro Monat)
+                        if result['verfuegbare_stunden'] > 0:
+                            result['anzahl_mechaniker'] = round(result['verfuegbare_stunden'] / 176)
+                        else:
+                            # Fallback: Aus werkstatt_data.py Mechaniker-Anzahl
+                            from api.werkstatt_data import WerkstattData
+                            from datetime import datetime
+                            vj_von_date = datetime.strptime(vj_von, '%Y-%m-%d').date()
+                            vj_bis_date = datetime.strptime(vj_bis, '%Y-%m-%d').date()
+                            leistung_data = WerkstattData.get_mechaniker_leistung(
+                                von=vj_von_date,
+                                bis=vj_bis_date,
+                                betrieb=standort,
+                                inkl_ehemalige=False
+                            )
+                            result['anzahl_mechaniker'] = leistung_data.get('anzahl_mechaniker', 0)
+                        
+                        # Frage 8: Durchschnittliche AW pro Auftrag
+                        # subsidiary_filter für Werkstatt: o.subsidiary
+                        if standort == 1:
+                            werkstatt_subsidiary_filter = "AND (o.subsidiary = 1 OR o.subsidiary = 2)"
+                        elif standort == 3:
+                            werkstatt_subsidiary_filter = "AND o.subsidiary = 1"
+                        else:
+                            werkstatt_subsidiary_filter = ""
+                        
+                        cursor_loco.execute(f"""
+                            SELECT 
+                                COUNT(DISTINCT o.number) as anzahl_auftraege,
+                                COALESCE(SUM(l.time_units), 0) as gesamt_aw
+                            FROM orders o
+                            JOIN invoices i ON i.order_number = o.number
+                            JOIN labours l ON l.order_number = o.number
+                                AND l.invoice_number = i.invoice_number 
+                                AND l.invoice_type = i.invoice_type
+                            WHERE i.invoice_date >= %s AND i.invoice_date < %s
+                              AND l.is_invoiced = true
+                              AND i.is_canceled = false
+                              {werkstatt_subsidiary_filter}
+                        """, (vj_von, vj_bis))
+                        row = cursor_loco.fetchone()
+                        anzahl_auftraege = int(row[0] or 0) if row else 0
+                        gesamt_aw = float(row[1] or 0) if row else 0
+                        if anzahl_auftraege > 0:
+                            result['avg_aw_pro_auftrag'] = round(gesamt_aw / anzahl_auftraege, 1)
+                        else:
+                            result['avg_aw_pro_auftrag'] = 0.0
+                        
+                        # Frage 9: Durchschnittliche Durchlaufzeit (Tage)
+                        # TAG 169: Median statt AVG verwenden, um Outlier (z.B. Garantiearbeiten mit langer Teileverfügbarkeit) zu vermeiden
+                        # Filter: Nur Aufträge mit realistischer Durchlaufzeit (0-30 Tage)
+                        cursor_loco.execute(f"""
+                            SELECT 
+                                PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (i.invoice_date::timestamp - o.order_date::timestamp)) / 86400.0) as durchlaufzeit_tage
+                            FROM orders o
+                            JOIN invoices i ON i.order_number = o.number
+                            WHERE i.invoice_date >= %s AND i.invoice_date < %s
+                              AND i.invoice_date IS NOT NULL
+                              AND o.order_date IS NOT NULL
+                              AND i.is_canceled = false
+                              AND EXTRACT(EPOCH FROM (i.invoice_date::timestamp - o.order_date::timestamp)) / 86400.0 BETWEEN 0 AND 30
+                              {werkstatt_subsidiary_filter}
+                        """, (vj_von, vj_bis))
+                        row = cursor_loco.fetchone()
+                        if row and row[0]:
+                            result['durchlaufzeit_tage'] = round(float(row[0]), 1)
+                        else:
+                            result['durchlaufzeit_tage'] = 0.0
+                        
+                        # Frage 10: Wiederkehrrate (Kunden mit >1 Auftrag / Gesamt Kunden)
+                        cursor_loco.execute(f"""
+                            WITH kunden_auftraege AS (
+                                SELECT 
+                                    o.order_customer as customer_number,
+                                    COUNT(DISTINCT o.number) as anzahl_auftraege
+                                FROM orders o
+                                JOIN invoices i ON i.order_number = o.number
+                                WHERE i.invoice_date >= %s AND i.invoice_date < %s
+                                  AND o.order_customer IS NOT NULL
+                                  AND i.is_canceled = false
+                                  {werkstatt_subsidiary_filter}
+                                GROUP BY o.order_customer
+                            )
+                            SELECT 
+                                COUNT(*) FILTER (WHERE anzahl_auftraege > 1) as wiederkehrer,
+                                COUNT(*) as gesamt_kunden
+                            FROM kunden_auftraege
+                        """, (vj_von, vj_bis))
+                        row = cursor_loco.fetchone()
+                        wiederkehrer = int(row[0] or 0) if row else 0
+                        gesamt_kunden = int(row[1] or 0) if row else 0
+                        if gesamt_kunden > 0:
+                            result['wiederkehrrate'] = round((wiederkehrer / gesamt_kunden) * 100, 1)
+                        else:
+                            result['wiederkehrrate'] = 0.0
                 
                 # 5. Teile-spezifische Daten
                 if bereich == 'Teile':
@@ -1885,7 +2187,7 @@ class AbteilungsleiterPlanungData:
                     planung_data = {}
                     for key in ['plan_stueck', 'plan_bruttoertrag_pro_fzg', 'plan_variable_kosten_prozent', 
                                'plan_verkaufspreis', 'plan_standzeit_tage', 'plan_stundensatz',
-                               'plan_produktivitaet', 'plan_leistungsgrad', 'plan_auslastung',
+                               'plan_produktivitaet', 'plan_leistungsgrad', 'plan_anzahl_mechaniker',  # TAG 169: plan_auslastung → plan_anzahl_mechaniker
                                'plan_lagerumschlag', 'plan_penner_quote', 'plan_servicegrad',
                                'plan_umsatz', 'plan_marge_prozent', 'plan_ek_preis', 'plan_vk_preis_teile',
                                'plan_direkte_kosten']:

@@ -76,23 +76,23 @@
     </div>
 </div>
 
-<!-- Frage 5: Auslastung -->
+<!-- Frage 5: Anzahl verfügbarer produktiver Mechaniker -->
 <div class="frage-card">
     <div class="frage-nummer">5️⃣</div>
-    <div class="frage-text">Auslastung (Anwesende / Verfügbare)?</div>
+    <div class="frage-text">Wie viele verfügbare produktive Mechaniker planst du?</div>
     <div class="input-group input-group-large">
-        <input type="number" name="plan_auslastung" class="form-control" 
-               value="{% if monat_abgelaufen and ist_werte %}{{ "%.1f"|format(ist_werte.auslastung_ist) if ist_werte.auslastung_ist else '' }}{% elif planung %}{{ planung.plan_auslastung }}{% endif %}" 
-               placeholder="z.B. 78" step="0.1" min="0" max="100" {% if monat_abgelaufen %}readonly{% else %}required{% endif %}>
-        <span class="input-group-text">%</span>
+        <input type="number" name="plan_anzahl_mechaniker" class="form-control" 
+               value="{% if monat_abgelaufen and ist_werte %}{{ ist_werte.anzahl_mechaniker_ist if ist_werte.anzahl_mechaniker_ist else '' }}{% elif planung %}{{ planung.plan_anzahl_mechaniker }}{% endif %}" 
+               placeholder="z.B. 8.5" min="0" step="0.1" {% if monat_abgelaufen %}readonly{% else %}required{% endif %}>
+        <span class="input-group-text">Mechaniker</span>
     </div>
     {% if monat_abgelaufen and ist_werte %}
-    <div class="vj-hinweis">✅ <strong>IST:</strong> {{ "%.1f"|format(ist_werte.auslastung_ist) }}% (automatisch aus Locosoft)</div>
+    <div class="vj-hinweis">✅ <strong>IST:</strong> {{ ist_werte.anzahl_mechaniker_ist if ist_werte.anzahl_mechaniker_ist else 'N/A' }} Mechaniker (automatisch aus Locosoft)</div>
     {% else %}
-    <div class="vj-hinweis">📊 Vorjahr: {{ "%.1f"|format(planung.vj_auslastung) if planung and planung.vj_auslastung else 'N/A' }}% | Ziel: 75-85%</div>
+    <div class="vj-hinweis">📊 Vorjahr: {{ planung.vj_anzahl_mechaniker if planung and planung.vj_anzahl_mechaniker else (vorjahr.anzahl_mechaniker if vorjahr and vorjahr.anzahl_mechaniker else 'N/A') }} Mechaniker | Verfügbare Stunden: ~{{ ((planung.vj_anzahl_mechaniker * 176) if planung and planung.vj_anzahl_mechaniker else ((vorjahr.anzahl_mechaniker * 176) if vorjahr and vorjahr.anzahl_mechaniker else 'N/A')) }}h/Monat</div>
     {% endif %}
-    <div class="impact-box" id="impact-auslastung" style="display: none;">
-        <strong>💡 Impact:</strong> <span id="impact-auslastung-text"></span>
+    <div class="impact-box" id="impact-anzahl_mechaniker" style="display: none;">
+        <strong>💡 Impact:</strong> <span id="impact-anzahl_mechaniker-text"></span>
     </div>
 </div>
 
@@ -106,7 +106,7 @@
                placeholder="Automatisch berechnet" step="0.1" readonly>
         <span class="input-group-text">Stunden</span>
     </div>
-    <div class="vj-hinweis">📊 Automatisch: Anwesenheit × Produktivität × Leistungsgrad</div>
+    <div class="vj-hinweis">📊 Automatisch: Mechaniker × 176h × Produktivität × Leistungsgrad</div>
 </div>
 
 <!-- Frage 7: DB1-Marge -->
@@ -127,12 +127,17 @@
     <div class="frage-nummer">8️⃣</div>
     <div class="frage-text">Durchschnittliche AW pro Auftrag?</div>
     <div class="input-group input-group-large">
-        <input type="number" name="plan_avg_aw_pro_auftrag" class="form-control" 
-               value="{{ planung.plan_avg_aw_pro_auftrag if planung else '' }}" 
+        <input type="number" name="plan_aw_pro_auftrag" class="form-control" 
+               value="{{ planung.plan_aw_pro_auftrag if planung else '' }}" 
                placeholder="z.B. 2.5" step="0.1" min="0" required>
         <span class="input-group-text">AW pro Auftrag</span>
     </div>
-    <div class="vj-hinweis">📊 Vorjahr: {{ "%.1f"|format(planung.vj_avg_aw_pro_auftrag) if planung and planung.vj_avg_aw_pro_auftrag else 'N/A' }} AW | Für Kapazitätsplanung</div>
+    <div class="vj-hinweis">📊 Vorjahr: {{ "%.1f"|format(planung.vj_avg_aw_pro_auftrag) if planung and planung.vj_avg_aw_pro_auftrag else ("%.1f"|format(vorjahr.avg_aw_pro_auftrag) if vorjahr and vorjahr.avg_aw_pro_auftrag else 'N/A') }} AW | Für Kapazitätsplanung</div>
+    {% if not planung or not planung.vj_avg_aw_pro_auftrag %}
+    <div class="alert alert-warning mt-2" style="font-size: 0.85rem;">
+        ⚠️ Vorjahreswert wird aus Locosoft berechnet
+    </div>
+    {% endif %}
 </div>
 
 <!-- Frage 9: Durchschnittliche Durchlaufzeit -->
@@ -140,12 +145,17 @@
     <div class="frage-nummer">9️⃣</div>
     <div class="frage-text">Durchschnittliche Durchlaufzeit?</div>
     <div class="input-group input-group-large">
-        <input type="number" name="plan_durchlaufzeit_tage" class="form-control" 
-               value="{{ planung.plan_durchlaufzeit_tage if planung else '' }}" 
+        <input type="number" name="plan_durchlaufzeit" class="form-control" 
+               value="{{ planung.plan_durchlaufzeit if planung else '' }}" 
                placeholder="z.B. 0.8" step="0.1" min="0" required>
         <span class="input-group-text">Tage</span>
     </div>
-    <div class="vj-hinweis">📊 Vorjahr: {{ "%.1f"|format(planung.vj_durchlaufzeit_tage) if planung and planung.vj_durchlaufzeit_tage else 'N/A' }} Tage | Ziel: &lt;1 Tag</div>
+    <div class="vj-hinweis">📊 Vorjahr: {{ "%.1f"|format(planung.vj_durchlaufzeit_tage) if planung and planung.vj_durchlaufzeit_tage else ("%.1f"|format(vorjahr.durchlaufzeit_tage) if vorjahr and vorjahr.durchlaufzeit_tage else 'N/A') }} Tage | Ziel: &lt;1 Tag</div>
+    {% if not planung or not planung.vj_durchlaufzeit_tage %}
+    <div class="alert alert-warning mt-2" style="font-size: 0.85rem;">
+        ⚠️ Vorjahreswert wird aus Locosoft berechnet
+    </div>
+    {% endif %}
 </div>
 
 <!-- Frage 10: Wiederkehrrate -->
@@ -158,7 +168,12 @@
                placeholder="z.B. 65" step="0.1" min="0" max="100" required>
         <span class="input-group-text">%</span>
     </div>
-    <div class="vj-hinweis">📊 Vorjahr: {{ "%.1f"|format(planung.vj_wiederkehrrate) if planung and planung.vj_wiederkehrrate else 'N/A' }}% | Ziel: &gt;60%</div>
+    <div class="vj-hinweis">📊 Vorjahr: {{ "%.1f"|format(planung.vj_wiederkehrrate) if planung and planung.vj_wiederkehrrate else ("%.1f"|format(vorjahr.wiederkehrrate) if vorjahr and vorjahr.wiederkehrrate else 'N/A') }}% | Ziel: &gt;60%</div>
+    {% if not planung or not planung.vj_wiederkehrrate %}
+    <div class="alert alert-warning mt-2" style="font-size: 0.85rem;">
+        ⚠️ Vorjahreswert wird aus Locosoft berechnet
+    </div>
+    {% endif %}
 </div>
 
 

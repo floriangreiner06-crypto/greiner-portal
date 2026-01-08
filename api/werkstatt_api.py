@@ -15,10 +15,14 @@ Updated: TAG 136 - PostgreSQL-kompatibel
 
 from flask import Blueprint, jsonify, request
 from datetime import datetime, timedelta
+from flask_login import login_required
+import logging
 
 # Zentrale DB-Utilities (TAG117, TAG136: PostgreSQL-kompatibel)
 from api.db_utils import db_session, row_to_dict, rows_to_list
 from api.db_connection import convert_placeholders, get_db_type
+
+logger = logging.getLogger(__name__)
 
 werkstatt_api = Blueprint('werkstatt_api', __name__, url_prefix='/api/werkstatt')
 
@@ -772,6 +776,37 @@ def get_problemfaelle():
             'error': str(e),
             'traceback': traceback.format_exc()
         }), 500
+
+
+@werkstatt_api.route('/meine-employee-nr', methods=['GET'])
+@login_required
+def get_meine_employee_nr():
+    """
+    Gibt die Locosoft employee_number des aktuell eingeloggten Users zurück.
+    Für Modal-Benachrichtigungen bei Überschreitungen.
+    
+    TAG 171: Serviceberater-Modal
+    """
+    try:
+        from api.vacation_api import get_employee_from_session
+        
+        employee_id, ldap_username, employee_data = get_employee_from_session()
+        
+        if not employee_data or not employee_data.get('locosoft_id'):
+            return jsonify({
+                'success': False,
+                'error': 'Keine employee_number gefunden'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'employee_number': employee_data['locosoft_id'],
+            'ldap_username': ldap_username
+        })
+    
+    except Exception as e:
+        logger.exception("Fehler beim Holen der employee_number")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @werkstatt_api.route('/health', methods=['GET'])

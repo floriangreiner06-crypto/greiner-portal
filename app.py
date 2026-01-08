@@ -238,12 +238,23 @@ from api.parts_api import parts_api
 from api.admin_api import admin_api
 from api.zins_optimierung_api import zins_api
 from api.teile_api import teile_api
+from api.gewinnplanung_v2_gw_api import gewinnplanung_v2_gw_api
 app.register_blueprint(verkauf_api)
 app.register_blueprint(parts_api)
 app.register_blueprint(admin_api)
 app.register_blueprint(teile_api)
 app.register_blueprint(zins_api)
+app.register_blueprint(gewinnplanung_v2_gw_api)
+print("✅ Gewinnplanung V2 GW API registriert: /api/gewinnplanung/v2/gw/")
 print("✅ Verkauf API registriert: /api/verkauf/")
+
+# Stundensatz-Kalkulation API (TAG 169)
+try:
+    from api.stundensatz_kalkulation_api import stundensatz_api
+    app.register_blueprint(stundensatz_api)
+    print("✅ Stundensatz-Kalkulation API registriert: /api/stundensatz/")
+except Exception as e:
+    print(f"⚠️  Stundensatz-Kalkulation API nicht geladen: {e}")
 
 # Fahrzeug API (TAG 160 - Bestand aus Locosoft)
 try:
@@ -479,6 +490,11 @@ try:
         from routes.planung_routes import planung_routes
         app.register_blueprint(planung_routes)
         print("✅ Abteilungsleiter-Planung Routes registriert")
+        
+        # Gewinnplanungstool V2 (TAG 169)
+        from routes.gewinnplanung_v2_routes import gewinnplanung_v2_routes
+        app.register_blueprint(gewinnplanung_v2_routes)
+        print("✅ Gewinnplanungstool V2 Routes registriert: /planung/v2/")
     except ImportError as e:
         print(f"⚠️  Abteilungsleiter-Planung Routes nicht gefunden: {e}")
     print("✅ Werkstatt LIVE API registriert: /api/werkstatt/live/")

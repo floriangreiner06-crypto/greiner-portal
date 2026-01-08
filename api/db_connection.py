@@ -153,8 +153,13 @@ class HybridConnection:
     def __init__(self, conn):
         self._conn = conn
 
-    def cursor(self):
-        return HybridCursor(self._conn.cursor())
+    def cursor(self, cursor_factory=None, **kwargs):
+        # Wenn cursor_factory angegeben, verwende normale psycopg2 Connection
+        # (z.B. für RealDictCursor)
+        if cursor_factory is not None:
+            return self._conn.cursor(cursor_factory=cursor_factory, **kwargs)
+        # Sonst HybridCursor für Index UND Dict Zugriff
+        return HybridCursor(self._conn.cursor(**kwargs))
 
     def commit(self):
         return self._conn.commit()

@@ -405,5 +405,140 @@
     <!-- Custom Scripts -->
     {% block scripts %}{% endblock %}
 
+    <!-- Serviceberater-Benachrichtigungs-Modal (Global - TAG 171) -->
+    {% if current_user.is_authenticated %}
+    <div class="modal fade" id="serviceberaterModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill"></i> Überschreitung - Ihre Aufmerksamkeit erforderlich</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="serviceberaterModalBody"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Globales Script für Serviceberater-Benachrichtigungen -->
+    <script>
+    (function() {
+        'use strict';
+        
+        // Prüfe alle 30 Sekunden, ob Überschreitungen vorhanden sind
+        const CHECK_INTERVAL = 30000; // 30 Sekunden
+        let lastCheckedAuftragNr = null; // Verhindert mehrfaches Anzeigen desselben Auftrags
+        let checkTimer = null;
+        
+        async function checkUeberschreitungen() {
+            try {
+                const response = await fetch('/api/werkstatt/live/meine-ueberschreitungen');
+                const data = await response.json();
+                
+                if (data.success && data.hat_ueberschreitungen && data.auftrag) {
+                    const auftrag = data.auftrag;
+                    
+                    // Prüfe ob Modal bereits für diesen Auftrag angezeigt wurde
+                    if (lastCheckedAuftragNr === auftrag.auftrag_nr) {
+                        return; // Bereits angezeigt
+                    }
+                    
+                    // Prüfe ob Modal bereits geöffnet ist
+                    const modalEl = document.getElementById('serviceberaterModal');
+                    if (modalEl) {
+                        const modal = bootstrap.Modal.getInstance(modalEl);
+                        if (modal && modal._isShown) {
+                            return; // Modal bereits geöffnet
+                        }
+                    }
+                    
+                    // Modal-Inhalt erstellen
+                    const modalBody = document.getElementById('serviceberaterModalBody');
+                    if (!modalBody) return;
+                    
+                    const betriebName = auftrag.betrieb_name || 'Unbekannt';
+                    const hatServiceberater = auftrag.hat_serviceberater;
+                    
+                    let headerText = '';
+                    if (!hatServiceberater) {
+                        headerText = `<div class="alert alert-warning mb-3">
+                            <h5 class="alert-heading"><i class="bi bi-exclamation-triangle-fill"></i> Auftrag ohne Serviceberater!</h5>
+                            <p class="mb-0">Auftrag <strong>${auftrag.auftrag_nr}</strong> (${betriebName}) hat keinen zugeordneten Serviceberater und überschreitet die Vorgabe.</p>
+                        </div>`;
+                    } else {
+                        headerText = `<div class="alert alert-danger mb-3">
+                            <h5 class="alert-heading"><i class="bi bi-exclamation-triangle-fill"></i> Auftrag überschreitet Vorgabe!</h5>
+                            <p class="mb-0">Ihr Auftrag <strong>${auftrag.auftrag_nr}</strong> liegt deutlich über der Vorgabe.</p>
+                        </div>`;
+                    }
+                    
+                    modalBody.innerHTML = headerText + `
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <h6><i class="bi bi-car-front"></i> Fahrzeug</h6>
+                                <p><strong>${auftrag.fahrzeug.kennzeichen || '-'}</strong><br>${auftrag.fahrzeug.marke || ''} ${auftrag.fahrzeug.modell || ''}</p>
+                            </div>
+                            <div class="col-md-6">
+                                <h6><i class="bi bi-clock"></i> Zeit</h6>
+                                <p>
+                                    <strong>Gestempelt:</strong> ${Math.round(auftrag.gestempelt_min)} min (${(auftrag.gestempelt_min / 60).toFixed(1)} Std)<br>
+                                    <strong>Vorgabe:</strong> ${Math.round(auftrag.vorgabe_min)} min (${(auftrag.vorgabe_min / 60).toFixed(1)} Std)<br>
+                                    <strong class="text-danger">Überschreitung: +${Math.round(auftrag.diff_min)} min (${auftrag.diff_prozent.toFixed(0)}%)</strong>
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <div class="alert alert-info">
+                            <strong><i class="bi bi-lightbulb"></i> Mögliche Ursachen:</strong>
+                            <ul class="mb-0 mt-2">
+                                <li>Teile fehlen oder verzögert?</li>
+                                <li>Unterstützung durch Kollegen nötig?</li>
+                                <li>Vorgabe zu niedrig angesetzt?</li>
+                                <li>Unvorhergesehene Probleme aufgetreten?</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="d-flex justify-content-end gap-2">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>
+                            <a href="/werkstatt/cockpit" class="btn btn-primary">
+                                <i class="bi bi-arrow-right"></i> Zum Cockpit
+                            </a>
+                        </div>
+                    `;
+                    
+                    // Modal öffnen
+                    const modal = new bootstrap.Modal(modalEl);
+                    modal.show();
+                    
+                    // Merke diesen Auftrag
+                    lastCheckedAuftragNr = auftrag.auftrag_nr;
+                    
+                    // Reset nach 5 Minuten (damit bei weiterer Überschreitung wieder angezeigt wird)
+                    setTimeout(() => {
+                        lastCheckedAuftragNr = null;
+                    }, 300000); // 5 Minuten
+                }
+            } catch (error) {
+                console.warn('Fehler beim Prüfen von Überschreitungen:', error);
+            }
+        }
+        
+        // Starte Prüfung nach 5 Sekunden (damit Seite geladen ist)
+        setTimeout(() => {
+            checkUeberschreitungen();
+            
+            // Dann regelmäßig prüfen
+            checkTimer = setInterval(checkUeberschreitungen, CHECK_INTERVAL);
+        }, 5000);
+        
+        // Cleanup beim Verlassen der Seite
+        window.addEventListener('beforeunload', function() {
+            if (checkTimer) {
+                clearInterval(checkTimer);
+            }
+        });
+    })();
+    </script>
+    {% endif %}
+
 </body>
 </html>

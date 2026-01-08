@@ -550,9 +550,9 @@ const FT = {
     '2026-12-25':'1. Weihnachtstag','2026-12-26':'2. Weihnachtstag'
 };
 
-const ICON = {1:'🏖️',2:'👶',3:'🤒',5:'📚',6:'⏰'};
-const CLS = {1:'urlaub',2:'urlaub',3:'krank',5:'schulung',6:'za'};
-const TYPE_NAME = {1:'Urlaub',2:'Sonderurlaub',3:'Krank',5:'Schulung',6:'Zeitausgleich'};
+const ICON = {1:'🏖️',2:'👶',3:'🤒',5:'🤒',6:'⏰',9:'📚',12:'📚'};
+const CLS = {1:'urlaub',2:'urlaub',3:'krank',5:'krank',6:'za',9:'schulung',12:'schulung'};
+const TYPE_NAME = {1:'Urlaub',2:'Sonderurlaub',3:'Krank',5:'Krankheit',6:'Zeitausgleich',9:'Schulung',12:'Seminar'};
 
 let me = null, meId = null, isAppr = false, isAdmin = false;
 let allEmployees = [], myBook = [], allBookings = [];
@@ -619,7 +619,7 @@ async function loadMe() {
 }
 
 async function loadAllEmployees() {
-    const r = await api('/balance?year=2025');
+    const r = await api('/balance?year=' + yr);
     if (r.success && r.balances) {
         allEmployees = r.balances.map(e => ({
             employee_id: e.employee_id,
@@ -662,10 +662,25 @@ async function loadAllBookings() {
 async function loadAppr() {
     const r = await api('/pending-approvals');
     if (r.success && r.pending?.length) {
+        // TAG 167: Defensive Programming - Nur Anträge anzeigen die genehmigt werden können
+        // Backend filtert bereits, aber zusätzliche Validierung für Sicherheit
+        const validPending = r.pending.filter(p => {
+            // Prüfe ob employee_id vorhanden ist (Backend sollte bereits filtern)
+            if (!p.employee_id) {
+                console.warn('⚠️ Antrag ohne employee_id gefunden:', p);
+                return false;
+            }
+            return true;
+        });
+        
+        if (validPending.length !== r.pending.length) {
+            console.warn(`⚠️ ${r.pending.length - validPending.length} Anträge wurden gefiltert (keine gültige employee_id)`);
+        }
+        
         document.getElementById('apprBox').style.display = 'block';
-        document.getElementById('apprCnt').textContent = r.pending.length;
+        document.getElementById('apprCnt').textContent = validPending.length;
         let h = '';
-        r.pending.forEach(p => {
+        validPending.forEach(p => {
             h += `<div class="appr-item">
                 <div><strong>${p.employee_name}</strong> - ${fmtD(p.date)}</div>
                 <div class="btns">

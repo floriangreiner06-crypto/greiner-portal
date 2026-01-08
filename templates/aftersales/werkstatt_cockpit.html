@@ -478,6 +478,32 @@
     </div>
     
 </div>
+
+<!-- Auftrags-Detail Modal -->
+<div class="modal fade" id="auftragModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-file-earmark-text"></i> Auftrag <span id="modalAuftragNr"></span></h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="auftragModalBody"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Serviceberater-Benachrichtigungs-Modal (TAG 171) -->
+<div class="modal fade" id="serviceberaterModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill"></i> Überschreitung - Ihre Aufmerksamkeit erforderlich</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="serviceberaterModalBody"></div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -526,7 +552,7 @@ async function loadCockpit() {
                 icon: '🔴',
                 titel: `Auftrag ${m.order_number} bei ${m.fortschritt_prozent}%`,
                 detail: `${m.name} · ${m.laufzeit_min} min / ${m.vorgabe_aw} AW`,
-                link: `/werkstatt/auftrag/${m.order_number}`
+                auftrag_nr: m.order_number  // Für JavaScript-Funktion statt link
             });
         });
         
@@ -563,6 +589,11 @@ async function loadCockpit() {
         updateAmpel(status, probleme, aktive.length, leerlauf.length);
         updateInfoZeile(heuteData, kapazitaetData);
         updateStempeluhr(aktive, leerlauf, ueberschritten);
+        
+        // Serviceberater-Modal prüfen (nur bei Überschreitungen)
+        if (ueberschritten.length > 0) {
+            checkServiceberaterModal(ueberschritten);
+        }
         
         // Timestamp
         document.getElementById('updateTime').textContent = 
@@ -611,7 +642,7 @@ function updateAmpel(status, probleme, aktiveCount, leerlaufCount) {
                     <strong>${p.titel}</strong>
                     <small>${p.detail}</small>
                 </div>
-                ${p.link ? `<a href="${p.link}" class="btn btn-sm btn-outline-secondary action">Details</a>` : ''}
+                ${p.auftrag_nr ? `<button type="button" class="btn btn-sm btn-outline-secondary action" onclick="event.stopPropagation(); showAuftragDetail(${p.auftrag_nr})">Details</button>` : ''}
             </div>
         `).join('');
     }
@@ -741,6 +772,9 @@ function getInitials(name) {
 
 // Event Listeners
 document.addEventListener('DOMContentLoaded', function() {
+    // Meine Employee-Nr laden (für Serviceberater-Modal)
+    loadMeineEmployeeNr();
+    
     loadCockpit();
     
     // Auto-Refresh
@@ -754,5 +788,260 @@ document.addEventListener('DOMContentLoaded', function() {
 window.addEventListener('beforeunload', function() {
     if (refreshTimer) clearInterval(refreshTimer);
 });
+
+// ============================================================================
+// SERVICEBERATER-MODAL (TAG 171)
+// ============================================================================
+let meineEmployeeNr = null;
+
+// Meine Employee-Nr beim Laden holen
+async function loadMeineEmployeeNr() {
+    try {
+        const response = await fetch('/api/werkstatt/meine-employee-nr');
+        const data = await response.json();
+        if (data.success) {
+            meineEmployeeNr = data.employee_number;
+            console.log('Meine Employee-Nr:', meineEmployeeNr);
+        }
+    } catch (e) {
+        console.warn('Konnte employee_number nicht laden:', e);
+    }
+}
+
+// Fallback-User wenn Serviceberater fehlt (TAG 171)
+const FALLBACK_USER_BY_BETRIEB = {
+    1: [3007],  // Deggendorf: Matthias König (Serviceleiter)
+    2: [3007],  // Deggendorf Hyundai: Matthias König (Serviceleiter)
+    3: [1003, 4002]  // Landau: Rolf Sterr (Filialleiter) + Leonhard Keidl (Serviceberater)
+};
+
+// Prüft ob Überschreitungen für aktuellen Serviceberater sind
+async function checkServiceberaterModal(ueberschritten) {
+    if (!meineEmployeeNr) {
+        // Erstmal employee_number laden
+        await loadMeineEmployeeNr();
+        if (!meineEmployeeNr) return;
+    }
+    
+    // Für jede Überschreitung: Serviceberater-Nr aus Auftrag holen
+    for (const ueberschritt of ueberschritten) {
+        try {
+            const auftragDetail = await fetch(`/api/werkstatt/live/auftrag/${ueberschritt.order_number}`)
+                .then(r => r.json());
+            
+            if (auftragDetail.success) {
+                const auftrag = auftragDetail.auftrag;
+                const serviceberater_nr = auftrag?.serviceberater_nr;
+                const betrieb = auftrag?.betrieb; // 1, 2 oder 3
+                
+                let sollModalOeffnen = false;
+                
+                // Fall 1: Serviceberater zugeordnet → Prüfe ob aktueller User = Serviceberater
+                if (serviceberater_nr && serviceberater_nr == meineEmployeeNr) {
+                    sollModalOeffnen = true;
+                }
+                // Fall 2: Kein Serviceberater → Prüfe ob aktueller User = Fallback-User
+                else if (!serviceberater_nr && betrieb) {
+                    const fallbackUsers = FALLBACK_USER_BY_BETRIEB[betrieb] || [];
+                    if (fallbackUsers.includes(meineEmployeeNr)) {
+                        sollModalOeffnen = true;
+                    }
+                }
+                
+                if (sollModalOeffnen) {
+                    showServiceberaterModal(ueberschritt, auftragDetail);
+                    return; // Nur einmal öffnen
+                }
+            }
+        } catch (e) {
+            console.warn('Fehler beim Prüfen des Auftrags:', e);
+        }
+    }
+}
+
+// Modal für Serviceberater anzeigen
+function showServiceberaterModal(ueberschritt, auftragDetail) {
+    const auftrag = auftragDetail.auftrag;
+    const s = auftrag.summen || {};
+    const f = auftrag.fahrzeug || {};
+    
+    // Berechne Überschreitung
+    const gestempelt_min = s.gestempelt_min || 0;
+    const vorgabe_min = (s.total_aw || 0) * 6;
+    const diff_min = gestempelt_min - vorgabe_min;
+    const diff_prozent = vorgabe_min > 0 ? ((gestempelt_min / vorgabe_min) * 100) : 0;
+    
+    // Modal-Inhalt
+    const modalBody = document.getElementById('serviceberaterModalBody');
+    // Prüfe ob Serviceberater fehlt
+    const serviceberater_nr = auftrag.serviceberater_nr;
+    const hatServiceberater = serviceberater_nr && serviceberater_nr > 0;
+    const betrieb = auftrag.betrieb;
+    const betriebName = betrieb === 1 ? 'Deggendorf' : betrieb === 2 ? 'Deggendorf Hyundai' : betrieb === 3 ? 'Landau' : 'Unbekannt';
+    
+    let headerText = '';
+    if (!hatServiceberater) {
+        headerText = `<div class="alert alert-warning mb-3">
+            <h5 class="alert-heading"><i class="bi bi-exclamation-triangle-fill"></i> Auftrag ohne Serviceberater!</h5>
+            <p class="mb-0">Auftrag <strong>${auftrag.auftrag_nr}</strong> (${betriebName}) hat keinen zugeordneten Serviceberater und überschreitet die Vorgabe.</p>
+        </div>`;
+    } else {
+        headerText = `<div class="alert alert-danger mb-3">
+            <h5 class="alert-heading"><i class="bi bi-exclamation-triangle-fill"></i> Auftrag überschreitet Vorgabe!</h5>
+            <p class="mb-0">Ihr Auftrag <strong>${auftrag.auftrag_nr}</strong> liegt deutlich über der Vorgabe.</p>
+        </div>`;
+    }
+    
+    modalBody.innerHTML = headerText + `
+        
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <h6><i class="bi bi-car-front"></i> Fahrzeug</h6>
+                <p><strong>${f.kennzeichen || '-'}</strong><br>${f.marke || ''} ${f.modell || ''}</p>
+            </div>
+            <div class="col-md-6">
+                <h6><i class="bi bi-clock"></i> Zeit</h6>
+                <p>
+                    <strong>Gestempelt:</strong> ${Math.round(gestempelt_min)} min (${(gestempelt_min / 60).toFixed(1)} Std)<br>
+                    <strong>Vorgabe:</strong> ${Math.round(vorgabe_min)} min (${(vorgabe_min / 60).toFixed(1)} Std)<br>
+                    <strong class="text-danger">Überschreitung: +${Math.round(diff_min)} min (${diff_prozent.toFixed(0)}%)</strong>
+                </p>
+            </div>
+        </div>
+        
+        <div class="alert alert-info">
+            <strong><i class="bi bi-lightbulb"></i> Mögliche Ursachen:</strong>
+            <ul class="mb-0 mt-2">
+                <li>Teile fehlen oder verzögert?</li>
+                <li>Unterstützung durch Kollegen nötig?</li>
+                <li>Vorgabe zu niedrig angesetzt?</li>
+                <li>Unvorhergesehene Probleme aufgetreten?</li>
+            </ul>
+        </div>
+        
+        <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>
+            <button type="button" class="btn btn-primary" onclick="showAuftragDetail(${auftrag.auftrag_nr}); bootstrap.Modal.getInstance(document.getElementById('serviceberaterModal')).hide();">
+                <i class="bi bi-arrow-right"></i> Zum Auftrag
+            </button>
+        </div>
+    `;
+    
+    // Modal öffnen
+    const modal = new bootstrap.Modal(document.getElementById('serviceberaterModal'));
+    modal.show();
+}
+
+// ============================================================================
+// AUFTRAG DETAIL MODAL
+// ============================================================================
+function showAuftragDetail(auftragNr) {
+    const modal = new bootstrap.Modal(document.getElementById('auftragModal'));
+    document.getElementById('modalAuftragNr').textContent = auftragNr;
+    document.getElementById('auftragModalBody').innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>';
+    modal.show();
+
+    fetch(`/api/werkstatt/live/auftrag/${auftragNr}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (!data.success) {
+                document.getElementById('auftragModalBody').innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> ${data.error || 'Fehler beim Laden'}</div>`;
+                return;
+            }
+            const a = data.auftrag;
+            const f = a.fahrzeug || {};
+            const s = a.summen || {};
+
+            // Status-Badges für Auftrag
+            let statusBadges = '';
+            if (s.vollstaendig_abgerechnet === false) {
+                statusBadges += `<span class="badge bg-warning text-dark me-1"><i class="bi bi-exclamation-triangle"></i> ${s.offen_aw || 0} AW offen</span>`;
+            }
+            if (s.vollstaendig_zugeordnet === false) {
+                statusBadges += `<span class="badge bg-info me-1"><i class="bi bi-person-x"></i> ${s.nicht_zugeordnet_aw || 0} AW ohne Mech.</span>`;
+            }
+            if (s.vollstaendig_abgerechnet && s.vollstaendig_zugeordnet) {
+                statusBadges = '<span class="badge bg-success"><i class="bi bi-check"></i> Vollstaendig</span>';
+            }
+
+            let html = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6><i class="bi bi-car-front"></i> Fahrzeug</h6>
+                        <p><strong>${f.kennzeichen || '-'}</strong><br>${f.marke || ''} ${f.modell || ''}</p>
+                        <h6><i class="bi bi-person"></i> Kunde</h6>
+                        <p>${a.kunde || '-'}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <h6><i class="bi bi-info-circle"></i> Auftrag</h6>
+                        <p>SB: ${a.serviceberater || '-'}<br>Datum: ${a.datum || '-'}</p>
+                        <h6><i class="bi bi-calculator"></i> AW-Summen</h6>
+                        <p>
+                            <strong>Gesamt:</strong> ${s.total_aw || 0} AW<br>
+                            <small class="text-success">Fakturiert: ${s.fakturiert_aw || 0} AW</small> |
+                            <small class="text-warning">Offen: ${s.offen_aw || 0} AW</small><br>
+                            <small class="text-primary">Zugeordnet: ${s.zugeordnet_aw || 0} AW</small> |
+                            <small class="text-info">Ohne Mech.: ${s.nicht_zugeordnet_aw || 0} AW</small><br>
+                            ${s.gestempelt_min ? `
+                                <small class="text-muted">
+                                    Gestempelt: ${Math.round(s.gestempelt_min)} min (${(s.gestempelt_min / 60).toFixed(1)} Std)<br>
+                                    ${s.total_aw ? (() => {
+                                        const vorgabe_min = s.total_aw * 6;
+                                        const diff_min = s.gestempelt_min - vorgabe_min;
+                                        if (diff_min > 0) {
+                                            return `<small class="text-danger"><i class="bi bi-arrow-up"></i> ${Math.round(diff_min)} min über Vorgabe (${Math.round(vorgabe_min)} min)</small>`;
+                                        } else if (diff_min < 0) {
+                                            return `<small class="text-success"><i class="bi bi-arrow-down"></i> ${Math.round(Math.abs(diff_min))} min unter Vorgabe (${Math.round(vorgabe_min)} min)</small>`;
+                                        } else {
+                                            return `<small class="text-success"><i class="bi bi-check-circle"></i> Genau Vorgabe (${Math.round(vorgabe_min)} min)</small>`;
+                                        }
+                                    })() : ''}
+                                </small>
+                            ` : ''}
+                        </p>
+                        <p>${statusBadges}</p>
+                    </div>
+                </div>
+                <hr>
+                <h6><i class="bi bi-list-check"></i> Positionen (${s.anzahl_positionen || 0})</h6>
+                <table class="table table-sm">
+                    <thead><tr><th>Pos</th><th>Beschreibung</th><th>Mechaniker</th><th class="text-end">AW</th><th class="text-center">Status</th></tr></thead>
+                    <tbody>`;
+
+            if (data.positionen) {
+                data.positionen.forEach(p => {
+                    // Status-Badge pro Position
+                    let posStatus = '';
+                    if (p.abgerechnet) {
+                        posStatus = '<span class="badge bg-success"><i class="bi bi-check"></i></span>';
+                    } else {
+                        posStatus = '<span class="badge bg-warning text-dark">Offen</span>';
+                    }
+                    if (!p.mechaniker_nr) {
+                        posStatus += ' <span class="badge bg-info"><i class="bi bi-person-x"></i></span>';
+                    }
+
+                    html += `<tr>
+                        <td>${p.position}</td>
+                        <td>${(p.beschreibung || '-').substring(0, 50)}</td>
+                        <td>${p.mechaniker || '-'}</td>
+                        <td class="text-end">${p.vorgabe_aw ? p.vorgabe_aw.toFixed(1) : '-'}</td>
+                        <td class="text-center">${posStatus}</td>
+                    </tr>`;
+                });
+            }
+            html += '</tbody></table>';
+            document.getElementById('auftragModalBody').innerHTML = html;
+        })
+        .catch(err => {
+            console.error('Fehler beim Laden des Auftrags:', err);
+            document.getElementById('auftragModalBody').innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> Fehler: ${err.message || err}</div>`;
+        });
+}
 </script>
 {% endblock %}

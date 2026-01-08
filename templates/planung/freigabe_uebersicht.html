@@ -61,7 +61,7 @@
             <div>
                 <h5 class="mb-1">{{ planung.bereich }} - {{ standort_namen[planung.standort] }}</h5>
                 <small class="text-muted">
-                    Erstellt von {{ planung.erstellt_von }} am {{ planung.erstellt_am[:10] if planung.erstellt_am else '' }}
+                    Erstellt von {{ planung.erstellt_von }} am {{ planung.erstellt_am if planung.erstellt_am else '' }}
                 </small>
             </div>
             <div>

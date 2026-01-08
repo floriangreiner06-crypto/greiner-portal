@@ -97,6 +97,13 @@ def werkstatt_serviceberater():
     return render_template('aftersales/serviceberater.html')
 
 
+@werkstatt_routes.route('/werkstatt/finanz-kpis')
+@login_required
+def werkstatt_finanz_kpis():
+    """Werkstatt Finanz-KPIs Dashboard - TAG 171 (inspiriert von Numbero)"""
+    return render_template('aftersales/werkstatt_finanz_kpis.html')
+
+
 @werkstatt_routes.route('/werkstatt/teilebestellungen')
 @login_required
 def werkstatt_teilebestellungen():

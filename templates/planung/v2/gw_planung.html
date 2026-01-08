@@ -1,0 +1,423 @@
+{% extends "base.html" %}
+
+{% block title %}GW Planung {{ geschaeftsjahr }} - {{ standort_name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Header -->
+    <div class="planung-hero mb-4">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h3 class="mb-1">GW Planung {{ geschaeftsjahr }}</h3>
+                <p class="mb-0">{{ standort_name }} | <strong>Jahresplanung</strong> (12 Monate)</p>
+            </div>
+            <div>
+                <button type="button" class="btn btn-primary" onclick="speicherePlanung()">
+                    <i class="bi bi-save"></i> Speichern
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vorjahreswerte Info -->
+    <div id="vorjahr-info" class="alert alert-info" style="display: none;">
+        <h5><i class="bi bi-info-circle"></i> Vorjahreswerte ({{ geschaeftsjahr.split('/')[0]|int - 1 }}/{{ geschaeftsjahr.split('/')[0]|int - 2000 }})</h5>
+        <div id="vorjahr-content"></div>
+    </div>
+
+    <!-- Planungsformular -->
+    <form id="gw-planung-form">
+        <!-- Frage 1: Stückzahl -->
+        <div class="frage-card mb-3">
+            <div class="frage-nummer">1️⃣</div>
+            <div class="frage-text">Wie viele GW-Fahrzeuge planst du zu verkaufen?</div>
+            <div class="input-group input-group-large">
+                <input type="number" name="plan_stueck" id="plan_stueck" class="form-control" 
+                       placeholder="z.B. 625" min="0" step="1" required>
+                <span class="input-group-text">Stück (Jahr)</span>
+            </div>
+            <div class="vj-hinweis" id="vj-stueck">
+                📊 Vorjahr (Jahr): <strong id="vj-stueck-jahr">-</strong> Stk.
+            </div>
+        </div>
+
+        <!-- Frage 2: Bruttoertrag pro Fahrzeug -->
+        <div class="frage-card mb-3">
+            <div class="frage-nummer">2️⃣</div>
+            <div class="frage-text">Welchen Ø Bruttoertrag pro Fahrzeug erwartest du?</div>
+            <div class="input-group input-group-large">
+                <span class="input-group-text">€</span>
+                <input type="number" name="plan_bruttoertrag_pro_fzg" id="plan_bruttoertrag_pro_fzg" 
+                       class="form-control" placeholder="z.B. 1000" min="0" step="0.01" required>
+                <span class="input-group-text">pro Fahrzeug</span>
+            </div>
+            <div class="vj-hinweis" id="vj-bruttoertrag">
+                📊 Vorjahr: <strong id="vj-bruttoertrag-wert">-</strong> € (DB1/Stück aus BWA)
+            </div>
+        </div>
+
+        <!-- Frage 3: Variable Kosten -->
+        <div class="frage-card mb-3">
+            <div class="frage-nummer">3️⃣</div>
+            <div class="frage-text">Provisionen & Boni (Variable Kosten)?</div>
+            <div class="input-group input-group-large">
+                <input type="number" name="plan_variable_kosten_pct" id="plan_variable_kosten_pct" 
+                       class="form-control" placeholder="z.B. 10" min="0" max="100" step="0.1" required>
+                <span class="input-group-text">% vom Bruttoertrag</span>
+            </div>
+            <div class="vj-hinweis">
+                📊 Üblich: 8-12%
+            </div>
+        </div>
+
+        <!-- Frage 4: Verkaufspreis -->
+        <div class="frage-card mb-3">
+            <div class="frage-nummer">4️⃣</div>
+            <div class="frage-text">Durchschnittlicher Verkaufspreis?</div>
+            <div class="input-group input-group-large">
+                <span class="input-group-text">€</span>
+                <input type="number" name="plan_verkaufspreis" id="plan_verkaufspreis" 
+                       class="form-control" placeholder="z.B. 20000" min="0" step="0.01" required>
+                <span class="input-group-text">pro Fahrzeug</span>
+            </div>
+            <div class="vj-hinweis">
+                <small class="text-muted">Automatisch: BE / Marge</small>
+            </div>
+        </div>
+
+        <!-- Frage 5: Standzeit (WICHTIG!) -->
+        <div class="frage-card mb-3 border-warning">
+            <div class="frage-nummer">5️⃣</div>
+            <div class="frage-text">
+                <strong>Ø Standzeit (Tage)?</strong>
+                <span class="badge bg-warning text-dark ms-2">WICHTIG!</span>
+            </div>
+            <div class="input-group input-group-large">
+                <input type="number" name="plan_standzeit_tage" id="plan_standzeit_tage" 
+                       class="form-control" placeholder="z.B. 30" min="0" max="365" step="1" required>
+                <span class="input-group-text">Tage</span>
+            </div>
+            <div class="vj-hinweis" id="vj-standzeit">
+                📊 Vorjahr: <strong id="vj-standzeit-wert">-</strong> Tage
+                <span class="badge bg-danger ms-2" id="standzeit-warnung" style="display: none;">
+                    ⚠️ Im Vorjahr schlecht!
+                </span>
+            </div>
+            <div class="alert alert-warning mt-2" id="standzeit-impact" style="display: none;">
+                <strong>Impact:</strong> Standzeit-Reduktion spart <strong id="standzeit-ersparnis">-</strong> € Zinskosten!
+            </div>
+        </div>
+
+        <!-- Frage 6: EK-Preis (für Zinskosten) -->
+        <div class="frage-card mb-3">
+            <div class="frage-nummer">6️⃣</div>
+            <div class="frage-text">Ø EK-Preis (für Zinskosten-Berechnung)?</div>
+            <div class="input-group input-group-large">
+                <span class="input-group-text">€</span>
+                <input type="number" name="plan_ek_preis" id="plan_ek_preis" 
+                       class="form-control" placeholder="z.B. 15000" min="0" step="0.01">
+                <span class="input-group-text">pro Fahrzeug</span>
+            </div>
+            <div class="vj-hinweis">
+                <small class="text-muted">Wird automatisch geschätzt falls leer</small>
+            </div>
+        </div>
+
+        <!-- Frage 7: Zinssatz (optional) -->
+        <div class="frage-card mb-3">
+            <div class="frage-nummer">7️⃣</div>
+            <div class="frage-text">Zinssatz (p.a.) für Zinskosten?</div>
+            <div class="input-group input-group-large">
+                <input type="number" name="plan_zinssatz_pct" id="plan_zinssatz_pct" 
+                       class="form-control" placeholder="5.0" min="0" max="20" step="0.1" value="5.0">
+                <span class="input-group-text">% p.a.</span>
+            </div>
+            <div class="vj-hinweis">
+                <small class="text-muted">Standard: 5% p.a.</small>
+            </div>
+        </div>
+    </form>
+
+    <!-- Ergebnis-Vorschau -->
+    <div class="card mt-4" id="ergebnis-vorschau" style="display: none;">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="bi bi-calculator"></i> Ergebnis-Vorschau</h5>
+        </div>
+        <div class="card-body">
+            <div id="ergebnis-content"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+const API_BASE = '/api/gewinnplanung/v2/gw';
+const STANDORT = {{ standort }};
+const GESCHAEFTSJAHR = '{{ geschaeftsjahr }}';
+
+// Vorjahreswerte laden
+async function ladeVorjahr() {
+    try {
+        const response = await fetch(`${API_BASE}/vorjahr/${STANDORT}?geschaeftsjahr=${GESCHAEFTSJAHR}`);
+        const result = await response.json();
+        
+        if (result.success && result.vorjahr) {
+            const vj = result.vorjahr;
+            
+            // Vorjahreswerte anzeigen
+            document.getElementById('vj-stueck-jahr').textContent = (vj.stueck || 0).toLocaleString('de-DE');
+            document.getElementById('vj-bruttoertrag-wert').textContent = 
+                vj.stueck > 0 ? (vj.db1 / vj.stueck).toFixed(2) : '-';
+            document.getElementById('vj-standzeit-wert').textContent = (vj.standzeit || 0).toFixed(1);
+            
+            // Standzeit-Warnung (wenn > 30 Tage)
+            if (vj.standzeit > 30) {
+                document.getElementById('standzeit-warnung').style.display = 'inline';
+            }
+            
+            // Vorjahr-Info anzeigen
+            document.getElementById('vorjahr-content').innerHTML = `
+                <div class="row">
+                    <div class="col-md-3">
+                        <strong>Stück:</strong> ${(vj.stueck || 0).toLocaleString('de-DE')} Stk.
+                    </div>
+                    <div class="col-md-3">
+                        <strong>Umsatz:</strong> ${(vj.umsatz || 0).toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
+                    </div>
+                    <div class="col-md-3">
+                        <strong>DB1:</strong> ${(vj.db1 || 0).toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
+                    </div>
+                    <div class="col-md-3">
+                        <strong>Standzeit:</strong> ${(vj.standzeit || 0).toFixed(1)} Tage
+                        ${vj.standzeit > 30 ? '<span class="badge bg-danger ms-1">⚠️</span>' : ''}
+                    </div>
+                </div>
+                <div class="row mt-2">
+                    <div class="col-md-3">
+                        <strong>Zinskosten:</strong> ${(vj.zinskosten || 0).toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
+                    </div>
+                    <div class="col-md-3">
+                        <strong>DB2:</strong> ${(vj.db2 || 0).toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
+                    </div>
+                </div>
+            `;
+            document.getElementById('vorjahr-info').style.display = 'block';
+        }
+    } catch (error) {
+        console.error('Fehler beim Laden der Vorjahreswerte:', error);
+    }
+}
+
+// Berechnung durchführen
+async function berechnePlanung() {
+    const formData = {
+        standort: STANDORT,
+        geschaeftsjahr: GESCHAEFTSJAHR,
+        planung: {
+            plan_stueck: parseFloat(document.getElementById('plan_stueck').value) || 0,
+            plan_bruttoertrag_pro_fzg: parseFloat(document.getElementById('plan_bruttoertrag_pro_fzg').value) || 0,
+            plan_variable_kosten_pct: parseFloat(document.getElementById('plan_variable_kosten_pct').value) || 0,
+            plan_verkaufspreis: parseFloat(document.getElementById('plan_verkaufspreis').value) || 0,
+            plan_standzeit_tage: parseInt(document.getElementById('plan_standzeit_tage').value) || 0,
+            plan_ek_preis: parseFloat(document.getElementById('plan_ek_preis').value) || 0,
+            plan_zinssatz_pct: parseFloat(document.getElementById('plan_zinssatz_pct').value) || 5.0
+        }
+    };
+    
+    try {
+        const response = await fetch(`${API_BASE}/berechnung`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(formData)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            const berechnung = result.berechnung;
+            const impact = berechnung.impact;
+            
+            // Ergebnis anzeigen
+            document.getElementById('ergebnis-content').innerHTML = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Basis-Berechnung</h6>
+                        <table class="table table-sm">
+                            <tr>
+                                <td>Umsatz:</td>
+                                <td class="text-end"><strong>${berechnung.umsatz_plan.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</strong></td>
+                            </tr>
+                            <tr>
+                                <td>Bruttoertrag:</td>
+                                <td class="text-end">${berechnung.bruttoertrag_plan.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td>
+                            </tr>
+                            <tr>
+                                <td>Variable Kosten:</td>
+                                <td class="text-end">${berechnung.variable_kosten_plan.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td>
+                            </tr>
+                            <tr>
+                                <td><strong>DB1:</strong></td>
+                                <td class="text-end"><strong>${berechnung.db1_plan.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</strong></td>
+                            </tr>
+                            <tr>
+                                <td>Direkte Kosten:</td>
+                                <td class="text-end">${berechnung.direkte_kosten_plan.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td>
+                            </tr>
+                            <tr>
+                                <td>Zinskosten:</td>
+                                <td class="text-end">${berechnung.zinskosten_plan.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td>
+                            </tr>
+                            <tr>
+                                <td><strong>DB2:</strong></td>
+                                <td class="text-end"><strong>${berechnung.db2_plan.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</strong></td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Impact-Analyse</h6>
+                        <div class="alert alert-success">
+                            <strong>Standzeit-Impact:</strong><br>
+                            Vorjahr: ${impact.standzeit.vj.toFixed(1)} Tage<br>
+                            Plan: ${impact.standzeit.plan} Tage<br>
+                            Ersparnis: <strong>${impact.standzeit.zinskosten_ersparnis.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</strong>
+                        </div>
+                        <div class="alert alert-info">
+                            <strong>Zinskosten-Impact:</strong><br>
+                            Vorjahr: ${impact.zinskosten.vj.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €<br>
+                            Plan: ${impact.zinskosten.plan.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €<br>
+                            Ersparnis: <strong>${impact.zinskosten.differenz.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</strong>
+                        </div>
+                        <div class="alert alert-primary">
+                            <strong>Gesamt-Impact:</strong><br>
+                            DB1 mehr: <strong>${impact.gesamt.db1_mehr.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</strong><br>
+                            DB2 mehr: <strong>${impact.gesamt.db2_mehr.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</strong>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('ergebnis-vorschau').style.display = 'block';
+            
+            // Standzeit-Impact anzeigen
+            if (impact.standzeit.zinskosten_ersparnis > 0) {
+                document.getElementById('standzeit-ersparnis').textContent = 
+                    impact.standzeit.zinskosten_ersparnis.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                document.getElementById('standzeit-impact').style.display = 'block';
+            }
+        }
+    } catch (error) {
+        console.error('Fehler bei Berechnung:', error);
+        alert('Fehler bei Berechnung: ' + error.message);
+    }
+}
+
+// Planung speichern
+async function speicherePlanung() {
+    const formData = {
+        standort: STANDORT,
+        geschaeftsjahr: GESCHAEFTSJAHR,
+        status: 'entwurf',
+        planung: {
+            plan_stueck: parseFloat(document.getElementById('plan_stueck').value) || 0,
+            plan_bruttoertrag_pro_fzg: parseFloat(document.getElementById('plan_bruttoertrag_pro_fzg').value) || 0,
+            plan_variable_kosten_pct: parseFloat(document.getElementById('plan_variable_kosten_pct').value) || 0,
+            plan_verkaufspreis: parseFloat(document.getElementById('plan_verkaufspreis').value) || 0,
+            plan_standzeit_tage: parseInt(document.getElementById('plan_standzeit_tage').value) || 0,
+            plan_ek_preis: parseFloat(document.getElementById('plan_ek_preis').value) || 0,
+            plan_zinssatz_pct: parseFloat(document.getElementById('plan_zinssatz_pct').value) || 5.0
+        }
+    };
+    
+    try {
+        const response = await fetch(`${API_BASE}/planung/${STANDORT}?geschaeftsjahr=${GESCHAEFTSJAHR}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(formData)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('✅ Planung gespeichert!');
+            berechnePlanung(); // Vorschau aktualisieren
+        } else {
+            alert('Fehler: ' + result.error);
+        }
+    } catch (error) {
+        console.error('Fehler beim Speichern:', error);
+        alert('Fehler beim Speichern: ' + error.message);
+    }
+}
+
+// Event-Listener
+document.addEventListener('DOMContentLoaded', function() {
+    ladeVorjahr();
+    
+    // Berechnung bei Änderung
+    const inputs = document.querySelectorAll('#gw-planung-form input');
+    inputs.forEach(input => {
+        input.addEventListener('input', berechnePlanung);
+        input.addEventListener('change', berechnePlanung);
+    });
+    
+    // Bestehende Planung laden
+    fetch(`${API_BASE}/planung/${STANDORT}?geschaeftsjahr=${GESCHAEFTSJAHR}`)
+        .then(r => r.json())
+        .then(result => {
+            if (result.success && result.planung) {
+                const p = result.planung;
+                document.getElementById('plan_stueck').value = p.plan_stueck || '';
+                document.getElementById('plan_bruttoertrag_pro_fzg').value = p.plan_bruttoertrag_pro_fzg || '';
+                document.getElementById('plan_variable_kosten_pct').value = p.plan_variable_kosten_pct || '';
+                document.getElementById('plan_verkaufspreis').value = p.plan_verkaufspreis || '';
+                document.getElementById('plan_standzeit_tage').value = p.plan_standzeit_tage || '';
+                document.getElementById('plan_ek_preis').value = p.plan_ek_preis || '';
+                document.getElementById('plan_zinssatz_pct').value = p.plan_zinssatz_pct || 5.0;
+                berechnePlanung();
+            }
+        });
+});
+</script>
+
+<style>
+.planung-hero {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 2rem;
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.frage-card {
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.frage-nummer {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.frage-text {
+    font-size: 1.1rem;
+    font-weight: 500;
+    margin-bottom: 1rem;
+}
+
+.input-group-large {
+    max-width: 400px;
+}
+
+.vj-hinweis {
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+    color: #6c757d;
+}
+
+.border-warning {
+    border: 2px solid #ffc107 !important;
+}
+</style>
+{% endblock %}
+

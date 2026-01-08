@@ -257,6 +257,23 @@
     .problem-row-warning {
         background: #fff3cd !important;
     }
+    
+    /* Handlungsempfehlungen */
+    .empfehlung-item {
+        transition: all 0.2s;
+    }
+    .empfehlung-item:hover {
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .empfehlung-item.border-danger {
+        border-left-width: 5px !important;
+    }
+    .empfehlung-item.border-warning {
+        border-left-width: 4px !important;
+    }
+    .empfehlung-item.border-info {
+        border-left-width: 3px !important;
+    }
 </style>
 {% endblock %}
 
@@ -515,6 +532,7 @@
             </div>
         </div>
     </div>
+    
     
     <!-- Tabs -->
     <ul class="nav nav-tabs mb-4" id="mainTabs" role="tablist">
@@ -1422,10 +1440,15 @@ function showAuftragDetail(auftragNr) {
     modal.show();
 
     fetch(`/api/werkstatt/live/auftrag/${auftragNr}`)
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
         .then(data => {
             if (!data.success) {
-                document.getElementById('auftragModalBody').innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                document.getElementById('auftragModalBody').innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> ${data.error || 'Fehler beim Laden'}</div>`;
                 return;
             }
             const a = data.auftrag;
@@ -1463,6 +1486,25 @@ function showAuftragDetail(auftragNr) {
                             <small class="text-primary">Zugeordnet: ${s.zugeordnet_aw || 0} AW</small> |
                             <small class="text-info">Ohne Mech.: ${s.nicht_zugeordnet_aw || 0} AW</small>
                         </p>
+                        ${a.gestempelt_min || s.gestempelt_min ? `
+                            <h6><i class="bi bi-clock-history"></i> Gestempelte Zeit</h6>
+                            <p>
+                                <strong>${formatNumber(a.gestempelt_min || s.gestempelt_min || 0, 0)} min</strong> 
+                                (${formatNumber((a.gestempelt_min || s.gestempelt_min || 0) / 60, 1)} Std)<br>
+                                ${s.total_aw ? (() => {
+                                    const gestempelt = a.gestempelt_min || s.gestempelt_min || 0;
+                                    const vorgabe_min = s.total_aw * 6;
+                                    const diff_min = gestempelt - vorgabe_min;
+                                    if (diff_min > 0) {
+                                        return `<small class="text-danger"><i class="bi bi-arrow-up"></i> ${formatNumber(diff_min, 0)} min über Vorgabe (${formatNumber(vorgabe_min, 0)} min)</small>`;
+                                    } else if (diff_min < 0) {
+                                        return `<small class="text-success"><i class="bi bi-arrow-down"></i> ${formatNumber(Math.abs(diff_min), 0)} min unter Vorgabe (${formatNumber(vorgabe_min, 0)} min)</small>`;
+                                    } else {
+                                        return `<small class="text-success"><i class="bi bi-check-circle"></i> Genau Vorgabe (${formatNumber(vorgabe_min, 0)} min)</small>`;
+                                    }
+                                })() : ''}
+                            </p>
+                        ` : ''}
                         <p>${statusBadges}</p>
                     </div>
                 </div>
@@ -1498,7 +1540,8 @@ function showAuftragDetail(auftragNr) {
             document.getElementById('auftragModalBody').innerHTML = html;
         })
         .catch(err => {
-            document.getElementById('auftragModalBody').innerHTML = `<div class="alert alert-danger">Fehler: ${err}</div>`;
+            console.error('Fehler beim Laden des Auftrags:', err);
+            document.getElementById('auftragModalBody').innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> Fehler: ${err.message || err}</div>`;
         });
 }
 
@@ -1550,5 +1593,6 @@ function exportData() {
     link.download = `werkstatt_leistung_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
 }
+
 </script>
 {% endblock %}

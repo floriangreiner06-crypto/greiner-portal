@@ -61,9 +61,119 @@ BETRIEB_NAMEN = {
     3: 'Landau'
 }
 
-# TAG 153: Gudat-Disposition aus gudat_data.py
-# Migration-Plan: docs/GUDAT_TO_LOCOSOFT_MIGRATION.md
-from api.gudat_data import GudatData, get_gudat_disposition
+# Gudat Credentials (TAG 125)
+GUDAT_CONFIG = {
+    'username': 'florian.greiner@auto-greiner.de',
+    'password': 'Hyundai2025!'
+}
+
+def get_gudat_disposition(target_date=None):
+    """
+    Holt Werkstatt-Disposition aus Gudat (workshopTasks).
+    Returns dict: {mechaniker_name: [tasks]}
+    """
+    if not GUDAT_AVAILABLE:
+        logger.warning("GudatClient nicht verfügbar")
+        return {}
+
+    from datetime import date
+    if target_date is None:
+        target_date = date.today().isoformat()
+    elif hasattr(target_date, 'isoformat'):
+        target_date = target_date.isoformat()
+
+    try:
+        client = GudatClient(GUDAT_CONFIG['username'], GUDAT_CONFIG['password'])
+        if not client.login():
+            logger.error("Gudat Login fehlgeschlagen")
+            return {}
+
+        # GraphQL Query für workshopTasks
+        query = """
+        query GetWorkshopTasks($page: Int!, $itemsPerPage: Int!, $where: QueryWorkshopTasksWhereWhereConditions) {
+          workshopTasks(first: $itemsPerPage, page: $page, where: $where) {
+            data {
+              id
+              start_date
+              work_load
+              work_state
+              description
+              workshopService { id name }
+              resource { id name }
+              dossier {
+                id
+                vehicle { id license_plate }
+                orders { id number }
+              }
+            }
+          }
+        }
+        """
+
+        variables = {
+            "page": 1,
+            "itemsPerPage": 200,
+            "where": {
+                "AND": [{"column": "START_DATE", "operator": "EQ", "value": target_date}]
+            }
+        }
+
+        response = client.session.post(
+            f"{GudatClient.BASE_URL}/graphql",
+            json={"operationName": "GetWorkshopTasks", "query": query, "variables": variables},
+            headers={
+                'Accept': 'application/json',
+                'X-XSRF-TOKEN': client._get_xsrf(),
+                'Content-Type': 'application/json'
+            }
+        )
+
+        data = response.json()
+        if 'errors' in data:
+            logger.error(f"Gudat GraphQL Fehler: {data['errors']}")
+            return {}
+
+        tasks = data.get('data', {}).get('workshopTasks', {}).get('data', [])
+
+        # Gruppiere nach Mechaniker (resource.name)
+        by_mechanic = {}
+        for task in tasks:
+            resource = task.get('resource')
+            if not resource:
+                continue
+            mech_name = resource.get('name', '').strip()
+            if not mech_name:
+                continue
+
+            # Dossier-Daten extrahieren
+            dossier = task.get('dossier') or {}
+            vehicle = dossier.get('vehicle') or {}
+            orders = dossier.get('orders') or []
+
+            # TAG 126: start_date aus Gudat extrahieren für korrekte Zeitpositionierung
+            gudat_start = task.get('start_date')  # Format: "2025-12-18 10:30:00"
+
+            task_data = {
+                'gudat_id': task.get('id'),
+                'kennzeichen': vehicle.get('license_plate', ''),
+                'auftrag_nr': orders[0].get('number') if orders else None,
+                'vorgabe_aw': float(task.get('work_load') or 0),
+                'status': task.get('work_state', ''),
+                'beschreibung': task.get('description', ''),
+                'service': (task.get('workshopService') or {}).get('name', ''),
+                'start_date': gudat_start  # Echte Startzeit aus Gudat
+            }
+
+            if mech_name not in by_mechanic:
+                by_mechanic[mech_name] = []
+            by_mechanic[mech_name].append(task_data)
+
+        logger.info(f"Gudat: {len(tasks)} Tasks für {len(by_mechanic)} Mechaniker geladen")
+        return by_mechanic
+
+    except Exception as e:
+        logger.error(f"Gudat Fehler: {e}")
+        return {}
 
 # Azubis - stempeln nur Anwesenheit, keine Aufträge
 # Diese werden vom Leerlauf-Alarm UND Leistungs-Ranking ausgenommen
@@ -449,35 +559,294 @@ def get_tagesbericht():
 def get_nachkalkulation():
     """
     Auftrags-Nachkalkulation: Vergleich Vorgabe vs. Gestempelt vs. Verrechnet
-
-    TAG 151: Refaktoriert - nutzt WerkstattData.get_nachkalkulation()
-    Vorher: 297 LOC | Nachher: 35 LOC
-
+    Für Sensibilisierung von Serviceberatern und Fakturisten.
+    
     Query-Parameter:
     - subsidiary: Filter nach Betrieb (1, 2, 3)
     - datum: Datum im Format YYYY-MM-DD (default: heute)
-    - typ: alle|extern|intern
+    - typ: alle|extern|intern (default: alle)
+           extern = nur externe Kunden (echte Werkstattaufträge)
+           intern = nur interne Aufträge (eigene Fahrzeuge)
     """
     try:
-        from api.werkstatt_data import WerkstattData
-
         subsidiary = request.args.get('subsidiary', type=int)
         datum_str = request.args.get('datum')
-        typ_filter = request.args.get('typ', 'alle')
-
-        datum = None
+        typ_filter = request.args.get('typ', 'alle')  # alle, extern, intern
+        
         if datum_str:
             datum = datetime.strptime(datum_str, '%Y-%m-%d').date()
+        else:
+            datum = datetime.now().date()
+        
+        conn = get_locosoft_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Heute abgerechnete Werkstatt-Aufträge
+        # WICHTIG: Ausschluss von Fahrzeugverkäufen (invoice_type 7, 8)
+        # Nur echte Werkstattarbeit: invoice_type 2, 4, 5, 6
+        query = """
+            WITH heute_rechnungen AS (
+                SELECT 
+                    i.order_number,
+                    i.invoice_number,
+                    i.invoice_type,
+                    i.invoice_date,
+                    i.job_amount_net,
+                    i.subsidiary,
+                    i.creating_employee,
+                    o.order_customer as kunden_nr
+                FROM invoices i
+                LEFT JOIN orders o ON i.order_number = o.number
+                WHERE DATE(i.invoice_date) = %s
+                  AND i.invoice_type IN (2, 4, 5, 6)  -- Keine Fahrzeugverkäufe (7, 8)!
+                  AND i.job_amount_net > 0
+                  AND i.is_canceled = false
+            ),
+            -- Labours: ALLE AW des Auftrags (TAG 120 - Fix für unvollständige Abrechnungen)
+            labour_summen AS (
+                SELECT
+                    l.order_number,
+                    -- Gesamt-AW: ALLE Positionen (auch ohne Mechaniker-Zuordnung)
+                    SUM(l.time_units) as gesamt_aw,
+                    -- Fakturierte AW: Nur die bereits abgerechneten
+                    SUM(CASE WHEN l.is_invoiced THEN l.time_units ELSE 0 END) as fakturiert_aw,
+                    -- Offene AW: Noch nicht abgerechnet
+                    SUM(CASE WHEN NOT l.is_invoiced THEN l.time_units ELSE 0 END) as offen_aw,
+                    -- Zugeordnete AW (mit Mechaniker)
+                    SUM(CASE WHEN l.mechanic_no IS NOT NULL THEN l.time_units ELSE 0 END) as zugeordnet_aw,
+                    -- Nicht zugeordnete AW (ohne Mechaniker)
+                    SUM(CASE WHEN l.mechanic_no IS NULL THEN l.time_units ELSE 0 END) as nicht_zugeordnet_aw,
+                    SUM(l.net_price_in_order) as vorgabe_eur,
+                    STRING_AGG(DISTINCT eh.name, ', ') as mechaniker_namen,
+                    -- Gewichteter AW-Preis aus charge_types (Verrechnungssatz)
+                    CASE
+                        WHEN SUM(l.time_units) > 0 THEN
+                            ROUND((SUM(l.time_units * COALESCE(ct.timeunit_rate, 0)) / NULLIF(SUM(l.time_units), 0))::numeric, 2)
+                        ELSE 0
+                    END as aw_preis_db,
+                    -- Vollständig abgerechnet?
+                    CASE
+                        WHEN SUM(CASE WHEN NOT l.is_invoiced THEN l.time_units ELSE 0 END) > 0 THEN false
+                        ELSE true
+                    END as vollstaendig_abgerechnet
+                FROM labours l
+                LEFT JOIN employees_history eh ON l.mechanic_no = eh.employee_number
+                    AND eh.is_latest_record = true
+                LEFT JOIN charge_types ct ON l.charge_type = ct.type AND ct.subsidiary = 1
+                WHERE l.order_number IN (SELECT order_number FROM heute_rechnungen)
+                GROUP BY l.order_number
+            ),
+            -- Stempelungen: Gesamt-Zeit für diese Aufträge (DEDUPLIZIERT!)
+            stempel_summen AS (
+                SELECT 
+                    order_number,
+                    SUM(minuten) as gestempelt_min
+                FROM (
+                    SELECT DISTINCT ON (order_number, employee_number, start_time, end_time)
+                        order_number,
+                        EXTRACT(EPOCH FROM (COALESCE(end_time, NOW()) - start_time)) / 60 as minuten
+                    FROM times
+                    WHERE type = 2
+                      AND order_number IN (SELECT order_number FROM heute_rechnungen)
+                ) dedup
+                GROUP BY order_number
+            ),
+            -- Auftragsdetails
+            auftrags_details AS (
+                SELECT 
+                    o.number as order_number,
+                    o.order_date,
+                    o.order_taking_employee_no as sb_nr,
+                    sb.name as sb_name,
+                    v.license_plate as kennzeichen,
+                    m.description as marke,
+                    COALESCE(cs.family_name || ', ' || cs.first_name, cs.family_name, 'Unbekannt') as kunde,
+                    cs.customer_number as kunden_nr,
+                    -- Intern-Erkennung: Kundennummer 3000001 oder Name enthält 'intern'
+                    CASE 
+                        WHEN cs.customer_number = 3000001 THEN true
+                        WHEN LOWER(cs.family_name) LIKE '%%intern%%' THEN true
+                        WHEN LOWER(cs.family_name) LIKE '%%greiner%%' AND LOWER(cs.family_name) LIKE '%%auto%%' THEN true
+                        ELSE false
+                    END as ist_intern
+                FROM orders o
+                LEFT JOIN employees_history sb ON o.order_taking_employee_no = sb.employee_number
+                    AND sb.is_latest_record = true
+                LEFT JOIN vehicles v ON o.vehicle_number = v.internal_number
+                LEFT JOIN makes m ON v.make_number = m.make_number
+                LEFT JOIN customers_suppliers cs ON o.order_customer = cs.customer_number
+                WHERE o.number IN (SELECT order_number FROM heute_rechnungen)
+            )
+            SELECT
+                r.order_number,
+                r.invoice_number,
+                r.invoice_type,
+                r.subsidiary,
+                ROUND(r.job_amount_net::numeric, 2) as rechnung_eur,
+                -- TAG 120: Alle AW anzeigen (nicht nur zugeordnete)
+                ROUND(COALESCE(l.gesamt_aw, 0)::numeric, 1) as vorgabe_aw,
+                ROUND(COALESCE(l.fakturiert_aw, 0)::numeric, 1) as fakturiert_aw,
+                ROUND(COALESCE(l.offen_aw, 0)::numeric, 1) as offen_aw,
+                COALESCE(l.vollstaendig_abgerechnet, true) as vollstaendig_abgerechnet,
+                ROUND(COALESCE(l.vorgabe_eur, 0)::numeric, 2) as vorgabe_eur,
+                ROUND(COALESCE(l.aw_preis_db, 0)::numeric, 2) as aw_preis_db,
+                ROUND(COALESCE(s.gestempelt_min, 0)::numeric / 6, 1) as gestempelt_aw,
+                ROUND(COALESCE(s.gestempelt_min, 0)::numeric, 0) as gestempelt_min,
+                l.mechaniker_namen,
+                a.sb_name,
+                a.sb_nr,
+                a.kennzeichen,
+                a.marke,
+                a.kunde,
+                a.kunden_nr,
+                a.ist_intern,
+                a.order_date
+            FROM heute_rechnungen r
+            LEFT JOIN labour_summen l ON r.order_number = l.order_number
+            LEFT JOIN stempel_summen s ON r.order_number = s.order_number
+            LEFT JOIN auftrags_details a ON r.order_number = a.order_number
+            WHERE 1=1
+        """
+        
+        params = [datum]
+        
+        # Betrieb-Filter
+        if subsidiary:
+            query += " AND r.subsidiary = %s"
+            params.append(subsidiary)
+        
+        # Intern/Extern Filter
+        if typ_filter == 'extern':
+            query += " AND a.ist_intern = false"
+        elif typ_filter == 'intern':
+            query += " AND a.ist_intern = true"
+        
+        query += " ORDER BY (COALESCE(s.gestempelt_min, 0) / 6 - COALESCE(l.gesamt_aw, 0)) DESC"
+        
+        cur.execute(query, params)
+        rows = cur.fetchall()
+        
+        # Nachkalkulation berechnen
+        auftraege = []
+        total_rechnung = 0
+        total_vorgabe_aw = 0
+        total_gestempelt_aw = 0
+        total_verlust = 0
+        probleme = 0
+        
+        for r in rows:
+            vorgabe_aw = float(r['vorgabe_aw'] or 0)
+            gestempelt_aw = float(r['gestempelt_aw'] or 0)
+            rechnung_eur = float(r['rechnung_eur'] or 0)
+            
+            # Differenz berechnen
+            diff_aw = gestempelt_aw - vorgabe_aw
+            
+            # AW-Preis aus charge_types (DB-Verrechnungssatz) verwenden
+            aw_preis_db = float(r.get('aw_preis_db') or 0)
+            
+            if aw_preis_db > 0:
+                # Verrechnungssatz aus Datenbank
+                aw_preis = aw_preis_db
+                verlust_eur = diff_aw * aw_preis
+            elif vorgabe_aw > 0:
+                # Fallback: AW-Preis aus Rechnung ableiten
+                aw_preis = rechnung_eur / vorgabe_aw
+                verlust_eur = diff_aw * aw_preis
+            else:
+                aw_preis = 0
+                verlust_eur = 0
+            
+            # Leistungsgrad (Vorgabe / Gestempelt * 100)
+            if gestempelt_aw > 0:
+                leistungsgrad = vorgabe_aw / gestempelt_aw * 100
+            else:
+                leistungsgrad = 0
+            
+            # Status bestimmen
+            if diff_aw <= 0:
+                status = 'ok'  # Schneller als Vorgabe
+            elif diff_aw <= 2:
+                status = 'warnung'  # Leicht über Vorgabe
+            else:
+                status = 'kritisch'  # Deutlich über Vorgabe
+                probleme += 1
+            
+            # TAG 120: Neue Felder für Abrechnungs-Status
+            fakturiert_aw = float(r.get('fakturiert_aw') or 0)
+            offen_aw = float(r.get('offen_aw') or 0)
+            vollstaendig = r.get('vollstaendig_abgerechnet', True)
 
-        data = WerkstattData.get_nachkalkulation(datum=datum, betrieb=subsidiary, typ=typ_filter)
+            auftraege.append({
+                'order_number': r['order_number'],
+                'invoice_number': r['invoice_number'],
+                'invoice_type': r['invoice_type'],
+                'betrieb': r['subsidiary'],
+                'betrieb_name': BETRIEB_NAMEN.get(r['subsidiary'], '?'),
+                'rechnung_eur': rechnung_eur,
+                'vorgabe_aw': vorgabe_aw,
+                # TAG 120: Aufschlüsselung AW-Status
+                'fakturiert_aw': fakturiert_aw,
+                'offen_aw': offen_aw,
+                'vollstaendig_abgerechnet': vollstaendig,
+                'gestempelt_aw': gestempelt_aw,
+                'gestempelt_min': int(r['gestempelt_min'] or 0),
+                'diff_aw': round(diff_aw, 1),
+                'aw_preis': round(aw_preis, 2),
+                'verlust_eur': round(verlust_eur, 2),
+                'leistungsgrad': round(leistungsgrad, 1),
+                'status': status,
+                'mechaniker': r['mechaniker_namen'],
+                'serviceberater': r['sb_name'] or f"MA {r['sb_nr']}" if r['sb_nr'] else None,
+                'serviceberater_nr': r['sb_nr'],
+                'kennzeichen': r['kennzeichen'],
+                'marke': r['marke'],
+                'kunde': r['kunde'],
+                'kunden_nr': r['kunden_nr'],
+                'ist_intern': r['ist_intern'],
+                'auftragsdatum': r['order_date'].strftime('%d.%m.%Y') if r['order_date'] else None
+            })
+            
+            total_rechnung += rechnung_eur
+            total_vorgabe_aw += vorgabe_aw
+            total_gestempelt_aw += gestempelt_aw
+            if verlust_eur > 0:
+                total_verlust += verlust_eur
 
+        # TAG 120: Unvollständig abgerechnete Aufträge zählen
+        unvollstaendig = sum(1 for a in auftraege if not a.get('vollstaendig_abgerechnet', True))
+
+        # Gesamt-Leistungsgrad
+        if total_gestempelt_aw > 0:
+            gesamt_leistungsgrad = total_vorgabe_aw / total_gestempelt_aw * 100
+        else:
+            gesamt_leistungsgrad = 0
+        
+        cur.close()
+        conn.close()
+        
         return jsonify({
             'success': True,
-            'source': 'LIVE_V2',
             'timestamp': datetime.now().isoformat(),
-            **data
+            'datum': str(datum),
+            'filter': {
+                'subsidiary': subsidiary,
+                'typ': typ_filter
+            },
+            'auftraege': auftraege,
+            'summary': {
+                'anzahl_rechnungen': len(auftraege),
+                'anzahl_probleme': probleme,
+                'anzahl_unvollstaendig': unvollstaendig,  # TAG 120: Nicht vollständig abgerechnete Aufträge
+                'total_rechnung_eur': round(total_rechnung, 2),
+                'total_vorgabe_aw': round(total_vorgabe_aw, 1),
+                'total_gestempelt_aw': round(total_gestempelt_aw, 1),
+                'total_diff_aw': round(total_gestempelt_aw - total_vorgabe_aw, 1),
+                'total_verlust_eur': round(total_verlust, 2),
+                'gesamt_leistungsgrad': round(gesamt_leistungsgrad, 1)
+            }
         })
-
+        
     except Exception as e:
         logger.exception("Fehler bei Nachkalkulation")
         return jsonify({
@@ -500,9 +869,14 @@ def get_auftrag_detail(auftrag_nr):
         data = WerkstattData.get_auftrag_detail(auftrag_nr)
 
         if not data.get('success', True):
-            return jsonify(data), 404
+            logger.warning(f"Auftrag {auftrag_nr} nicht gefunden: {data.get('error', 'Unbekannter Fehler')}")
+            return jsonify({
+                'success': False,
+                'error': data.get('error', f'Auftrag {auftrag_nr} nicht gefunden')
+            }), 404
 
         return jsonify({
+            'success': True,
             'source': 'LIVE_V2',
             'timestamp': datetime.now().isoformat(),
             **data
@@ -619,19 +993,93 @@ def get_gudat_kapazitaet():
     """
     Proxy für Gudat Kapazitäts-Daten
 
-    TAG 153: Refaktoriert - nutzt GudatData.get_kapazitaet()
-    Vorher: 100 LOC | Nachher: 15 LOC
+    Ruft /api/gudat/workload auf und transformiert die Daten
+    ins Format das das Frontend erwartet.
+
+    TAG122: Echte Werkstatt-Kapazität = nur interne Mechanik-Teams:
+    - Allgemeine Reparatur (ID 2)
+    - Diagnosetechnik (ID 3)
+    - NW/GW (ID 5)
     """
+    import requests
+
+    # Interne Mechanik-Teams (echte Werkstatt-Kapazität)
+    INTERNE_TEAMS = {2, 3, 5}  # Allgemeine Reparatur, Diagnosetechnik, NW/GW
+
     try:
-        from api.gudat_data import GudatData
+        # Lokalen Gudat-API Endpunkt aufrufen
+        response = requests.get(
+            'http://localhost:5000/api/gudat/workload',
+            timeout=10
+        )
 
-        data = GudatData.get_kapazitaet()
+        if response.status_code != 200:
+            return jsonify({
+                'success': False,
+                'error': f'Gudat API Fehler: {response.status_code}'
+            }), response.status_code
 
-        if not data.get('success'):
-            return jsonify(data), 503
+        data = response.json()
 
-        return jsonify(data)
+        if 'error' in data:
+            return jsonify({
+                'success': False,
+                'error': data['error']
+            }), 400
 
+        # Wochen-Daten holen
+        week_response = requests.get(
+            'http://localhost:5000/api/gudat/workload/week',
+            timeout=10
+        )
+        week_data = week_response.json() if week_response.status_code == 200 else {}
+
+        # TAG122: Nur interne Teams für Kapazität zählen
+        teams = data.get('teams', [])
+        interne_teams = [t for t in teams if t.get('id') in INTERNE_TEAMS]
+
+        # Kapazität nur aus internen Teams berechnen
+        intern_kapazitaet = sum(t.get('capacity', 0) for t in interne_teams)
+        intern_geplant = sum(t.get('planned', 0) for t in interne_teams)
+        intern_frei = sum(t.get('free', 0) for t in interne_teams)
+        intern_auslastung = round((intern_geplant / intern_kapazitaet * 100), 1) if intern_kapazitaet > 0 else 0
+
+        # Status basierend auf Auslastung
+        if intern_auslastung >= 90:
+            status = 'critical'
+        elif intern_auslastung >= 70:
+            status = 'warning'
+        else:
+            status = 'ok'
+
+        # Transformiere ins Frontend-Format
+        result = {
+            'success': True,
+            'kapazitaet': intern_kapazitaet,  # TAG122: Nur interne Teams
+            'geplant': intern_geplant,
+            'frei': intern_frei,
+            'auslastung': intern_auslastung,
+            'status': status,
+            'teams': teams,  # Alle Teams für Detail-Ansicht
+            'interne_teams': interne_teams,  # TAG122: Nur Mechanik
+            'woche': week_data.get('days', []),
+            'timestamp': data.get('timestamp', datetime.now().isoformat()),
+            # TAG122: Zusätzliche Info
+            'hinweis': 'Kapazität = nur Allgemeine Reparatur + Diagnosetechnik + NW/GW'
+        }
+
+        return jsonify(result)
+
+    except requests.exceptions.Timeout:
+        return jsonify({
+            'success': False,
+            'error': 'Gudat API Timeout'
+        }), 504
+    except requests.exceptions.ConnectionError:
+        return jsonify({
+            'success': False,
+            'error': 'Gudat API nicht erreichbar'
+        }), 503
     except Exception as e:
         logger.exception("Fehler bei Gudat Kapazität")
         return jsonify({
@@ -1203,28 +1651,327 @@ def get_kapazitaets_forecast():
 @werkstatt_live_bp.route('/heute', methods=['GET'])
 def get_heute_live():
     """
-    Echte Zahlen von heute: Gestempelt, Verrechnet, Aktive Mechaniker
-
-    TAG 151: Refaktoriert - nutzt WerkstattData.get_heute_live()
-    Vorher: 330 LOC | Nachher: 30 LOC
-
+    GET /api/werkstatt/live/heute
+    
+    Zeigt ECHTE Zahlen von HEUTE:
+    - Gestempelte Stunden/AW
+    - Verrechnete AW und Umsatz
+    - Aktive Mechaniker
+    - Produktivität
+    
+    Das ist der Unterschied zum FORECAST:
+    - FORECAST = Was ist geplant (Termine)
+    - HEUTE LIVE = Was passiert wirklich (Stempelungen)
+    
     Query-Parameter:
-    - subsidiary: Filter nach Betrieb (1, 2, 3)
+    - subsidiary: Filter nach Betrieb (1=Deggendorf, 3=Landau)
     """
     try:
-        from api.werkstatt_data import WerkstattData
-
         subsidiary = request.args.get('subsidiary', type=int)
-
-        data = WerkstattData.get_heute_live(betrieb=subsidiary)
-
+        heute = datetime.now().date()
+        
+        conn = get_locosoft_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # ===== 1. ANWESENHEIT HEUTE (order_number = 0) =====
+        # order_number = 0 ist die Anwesenheits-Stempelung (Kommen/Gehen)
+        # Das ist die ECHTE Arbeitszeit der Mechaniker!
+        anwesenheit_query = """
+            SELECT 
+                COUNT(DISTINCT employee_number) as mechaniker,
+                COALESCE(ROUND(SUM(duration_minutes)::numeric / 60, 1), 0) as stunden
+            FROM times 
+            WHERE DATE(start_time) = CURRENT_DATE
+            AND DATE(end_time) = CURRENT_DATE
+            AND employee_number BETWEEN 5000 AND 5999
+            AND order_number = 0
+        """
+        if subsidiary:
+            # TODO: Anwesenheit hat keinen subsidiary - erstmal ohne Filter
+            pass
+        cur.execute(anwesenheit_query)
+        anwesenheit = cur.fetchone()
+        
+        # ===== 2. PRODUKTIVE ARBEIT HEUTE (order_number > 0) =====
+        # Auftragsarbeit - dedupliziert nach Mechaniker/Auftrag/Startzeit
+        stempel_query = """
+            SELECT 
+                COUNT(DISTINCT sub.order_number) as auftraege,
+                COUNT(DISTINCT sub.employee_number) as mechaniker,
+                COALESCE(ROUND(SUM(sub.stunden)::numeric, 1), 0) as stunden,
+                COALESCE(ROUND(SUM(sub.stunden)::numeric * 6, 1), 0) as aw
+            FROM (
+                SELECT employee_number, order_number, start_time, 
+                       MAX(duration_minutes)/60.0 as stunden
+                FROM times 
+                WHERE DATE(start_time) = CURRENT_DATE
+                AND DATE(end_time) = CURRENT_DATE
+                AND employee_number BETWEEN 5000 AND 5999
+                AND order_number > 0
+                GROUP BY employee_number, order_number, start_time
+            ) sub
+        """
+        if subsidiary:
+            stempel_query = """
+                SELECT 
+                    COUNT(DISTINCT sub.order_number) as auftraege,
+                    COUNT(DISTINCT sub.employee_number) as mechaniker,
+                    COALESCE(ROUND(SUM(sub.stunden)::numeric, 1), 0) as stunden,
+                    COALESCE(ROUND(SUM(sub.stunden)::numeric * 6, 1), 0) as aw
+                FROM (
+                    SELECT t.employee_number, t.order_number, t.start_time, 
+                           MAX(t.duration_minutes)/60.0 as stunden
+                    FROM times t
+                    JOIN orders o ON t.order_number = o.number
+                    WHERE DATE(t.start_time) = CURRENT_DATE
+                    AND DATE(t.end_time) = CURRENT_DATE
+                    AND t.employee_number BETWEEN 5000 AND 5999
+                    AND t.order_number > 0
+                    AND o.subsidiary = %s
+                    GROUP BY t.employee_number, t.order_number, t.start_time
+                ) sub
+            """
+            cur.execute(stempel_query, (subsidiary,))
+        else:
+            cur.execute(stempel_query)
+        
+        gestempelt = cur.fetchone()
+        
+        # ===== 2. AKTIV GESTEMPELT (gerade am arbeiten) =====
+        aktiv_query = """
+            SELECT 
+                t.employee_number,
+                e.name as mechaniker_name,
+                t.order_number,
+                t.start_time,
+                v.license_plate as kennzeichen
+            FROM times t
+            JOIN employees_history e ON t.employee_number = e.employee_number AND e.is_latest_record = true
+            LEFT JOIN orders o ON t.order_number = o.number
+            LEFT JOIN vehicles v ON o.vehicle_number = v.internal_number
+            WHERE DATE(t.start_time) = CURRENT_DATE
+            AND t.end_time IS NULL
+            ORDER BY t.start_time DESC
+        """
+        cur.execute(aktiv_query)
+        aktiv_raw = cur.fetchall()
+        
+        # Duplikate entfernen (nach employee_number gruppieren)
+        aktiv_dict = {}
+        for row in aktiv_raw:
+            emp_no = row['employee_number']
+            if emp_no not in aktiv_dict:
+                aktiv_dict[emp_no] = {
+                    'employee_number': emp_no,
+                    'name': row['mechaniker_name'],
+                    'order_number': row['order_number'],
+                    'kennzeichen': row['kennzeichen'],
+                    'seit': row['start_time'].strftime('%H:%M') if row['start_time'] else None
+                }
+        aktiv_gestempelt = list(aktiv_dict.values())
+        
+        # ===== 3. VERRECHNET HEUTE (Werkstatt, ohne Fahrzeugverkauf) =====
+        # invoice_type 8 = Fahrzeugverkauf (ausschließen!)
+        verrechnet_query = """
+            SELECT 
+                COUNT(*) as rechnungen,
+                COALESCE(ROUND(SUM(job_amount_net)::numeric, 2), 0) as lohn_netto,
+                COALESCE(ROUND(SUM(part_amount_net)::numeric, 2), 0) as teile_netto,
+                COALESCE(ROUND(SUM(total_net)::numeric, 2), 0) as gesamt_netto
+            FROM invoices
+            WHERE DATE(invoice_date) = CURRENT_DATE
+            AND is_canceled = false
+            AND invoice_type NOT IN (8)
+        """
+        if subsidiary:
+            verrechnet_query = """
+                SELECT 
+                    COUNT(*) as rechnungen,
+                    COALESCE(ROUND(SUM(job_amount_net)::numeric, 2), 0) as lohn_netto,
+                    COALESCE(ROUND(SUM(part_amount_net)::numeric, 2), 0) as teile_netto,
+                    COALESCE(ROUND(SUM(total_net)::numeric, 2), 0) as gesamt_netto
+                FROM invoices
+                WHERE DATE(invoice_date) = CURRENT_DATE
+                AND is_canceled = false
+                AND invoice_type NOT IN (8)
+                AND subsidiary = %s
+            """
+            cur.execute(verrechnet_query, (subsidiary,))
+        else:
+            cur.execute(verrechnet_query)
+        
+        verrechnet = cur.fetchone()
+        
+        # ===== 4. VERRECHNET AW HEUTE =====
+        aw_query = """
+            SELECT 
+                COUNT(DISTINCT l.order_number) as auftraege,
+                COALESCE(ROUND(SUM(l.time_units)::numeric, 1), 0) as aw_verrechnet
+            FROM invoices i
+            JOIN labours l ON i.order_number = l.order_number
+            WHERE DATE(i.invoice_date) = CURRENT_DATE
+            AND i.is_canceled = false
+            AND i.invoice_type NOT IN (8)
+            AND l.is_invoiced = true
+        """
+        if subsidiary:
+            aw_query = """
+                SELECT 
+                    COUNT(DISTINCT l.order_number) as auftraege,
+                    COALESCE(ROUND(SUM(l.time_units)::numeric, 1), 0) as aw_verrechnet
+                FROM invoices i
+                JOIN labours l ON i.order_number = l.order_number
+                WHERE DATE(i.invoice_date) = CURRENT_DATE
+                AND i.is_canceled = false
+                AND i.invoice_type NOT IN (8)
+                AND l.is_invoiced = true
+                AND i.subsidiary = %s
+            """
+            cur.execute(aw_query, (subsidiary,))
+        else:
+            cur.execute(aw_query)
+        
+        aw_verrechnet = cur.fetchone()
+        
+        # ===== 5. KAPAZITÄT HEUTE (für Auslastungs-Berechnung) =====
+        # Mechaniker = employee_number 5000-5999
+        kapazitaet_query = """
+            WITH aktuelle_arbeitszeiten AS (
+                SELECT DISTINCT ON (employee_number, dayofweek)
+                    employee_number, dayofweek, work_duration
+                FROM employees_worktimes
+                ORDER BY employee_number, dayofweek, validity_date DESC
+            )
+            SELECT 
+                COUNT(DISTINCT eh.employee_number) as mechaniker_gesamt,
+                COALESCE(SUM(COALESCE(aw.work_duration, 8)), 0) as stunden_kapazitaet
+            FROM employees_history eh
+            LEFT JOIN aktuelle_arbeitszeiten aw 
+                ON eh.employee_number = aw.employee_number 
+                AND aw.dayofweek = EXTRACT(DOW FROM CURRENT_DATE)
+            LEFT JOIN absence_calendar ab 
+                ON eh.employee_number = ab.employee_number 
+                AND ab.date = CURRENT_DATE
+            WHERE eh.is_latest_record = true
+            AND eh.employee_number BETWEEN 5000 AND 5999
+            AND eh.leave_date IS NULL
+            AND ab.employee_number IS NULL
+        """
+        if subsidiary:
+            kapazitaet_query = kapazitaet_query.replace(
+                "AND ab.employee_number IS NULL",
+                f"AND ab.employee_number IS NULL AND eh.subsidiary = {subsidiary}"
+            )
+        
+        cur.execute(kapazitaet_query)
+        kapazitaet = cur.fetchone()
+        
+        kapazitaet_aw = float(kapazitaet['stunden_kapazitaet'] or 0) * 6  # Stunden → AW
+        mechaniker_anwesend = int(kapazitaet['mechaniker_gesamt'] or 0)
+        
+        # ===== BERECHNUNGEN =====
+        # Anwesenheit = echte Arbeitszeit
+        anwesend_stunden = float(anwesenheit['stunden'] or 0)
+        anwesend_mechaniker = int(anwesenheit['mechaniker'] or 0)
+        
+        # Produktive Arbeit
+        produktiv_aw = float(gestempelt['aw'] or 0)
+        produktiv_stunden = float(gestempelt['stunden'] or 0)
+        produktiv_auftraege = int(gestempelt['auftraege'] or 0)
+        
+        # Verrechnet
+        verrechnet_aw_val = float(aw_verrechnet['aw_verrechnet'] or 0)
+        
+        # Kapazität basiert auf anwesenden Mechanikern
+        # Wenn noch keiner ausgestempelt: nehme die Kapazitäts-Query
+        if anwesend_mechaniker > 0:
+            kapazitaet_stunden = anwesend_mechaniker * 8.0  # Soll-Stunden
+            kapazitaet_aw = kapazitaet_stunden * 6
+        else:
+            kapazitaet_stunden = float(kapazitaet['stunden_kapazitaet'] or 0)
+            kapazitaet_aw = kapazitaet_stunden * 6
+        
+        # Produktivität = Anwesenheit / Soll-Kapazität
+        # (Nicht die gestempelten AW, sondern die echte Anwesenheitszeit)
+        produktivitaet = round((anwesend_stunden / kapazitaet_stunden * 100) if kapazitaet_stunden > 0 else 0, 1)
+        
+        # Status basierend auf Produktivität (110% = Ziel!)
+        if produktivitaet >= 110:
+            status = 'optimal'
+            status_text = 'Ziel erreicht! 🎯'
+            status_icon = '🟢'
+        elif produktivitaet >= 90:
+            status = 'gut'
+            status_text = 'Gut unterwegs'
+            status_icon = '🟢'
+        elif produktivitaet >= 50:
+            status = 'normal'
+            status_text = 'Normal'
+            status_icon = '🔵'
+        else:
+            status = 'niedrig'
+            status_text = 'Unterausgelastet'
+            status_icon = '🔵'
+        
+        cur.close()
+        conn.close()
+        
         return jsonify({
             'success': True,
-            'source': 'LIVE_V2',
             'timestamp': datetime.now().isoformat(),
-            **data
+            'datum': str(heute),
+            'datum_formatiert': heute.strftime('%d.%m.%Y'),
+            'filter': {
+                'subsidiary': subsidiary
+            },
+            
+            # ANWESENHEIT (echte Arbeitszeit)
+            'anwesenheit': {
+                'mechaniker': anwesend_mechaniker,
+                'stunden': anwesend_stunden,
+                'aw': round(anwesend_stunden * 6, 1)
+            },
+            
+            # PRODUKTIVE ARBEIT (Aufträge)
+            'produktiv': {
+                'auftraege': produktiv_auftraege,
+                'stunden': produktiv_stunden,
+                'aw': produktiv_aw
+            },
+            
+            # AKTUELL AKTIV (gerade am arbeiten)
+            'aktiv': {
+                'anzahl': len(aktiv_gestempelt),
+                'mechaniker': aktiv_gestempelt[:20]  # Max 20
+            },
+            
+            # VERRECHNET (Umsatz)
+            'verrechnet': {
+                'rechnungen': int(verrechnet['rechnungen'] or 0),
+                'auftraege': int(aw_verrechnet['auftraege'] or 0),
+                'aw': float(verrechnet_aw_val),
+                'lohn_netto': float(verrechnet['lohn_netto'] or 0),
+                'teile_netto': float(verrechnet['teile_netto'] or 0),
+                'gesamt_netto': float(verrechnet['gesamt_netto'] or 0)
+            },
+            
+            # KAPAZITÄT
+            'kapazitaet': {
+                'mechaniker': anwesend_mechaniker if anwesend_mechaniker > 0 else mechaniker_anwesend,
+                'stunden_soll': kapazitaet_stunden,
+                'aw': kapazitaet_aw
+            },
+            
+            # PRODUKTIVITÄT (Anwesenheit vs Soll)
+            'produktivitaet': {
+                'prozent': produktivitaet,
+                'status': status,
+                'status_text': status_text,
+                'status_icon': status_icon,
+                'ziel': 110  # 110% ist das Ziel!
+            }
         })
-
+        
     except Exception as e:
         logger.exception("Fehler bei HEUTE LIVE")
         return jsonify({
@@ -1784,40 +2531,164 @@ def get_auftraege_enriched():
 @werkstatt_live_bp.route('/anwesenheit', methods=['GET'])
 def get_anwesenheit_v2():
     """
-    Anwesenheits-Report V2: Wer hat heute gearbeitet?
+    Anwesenheits-Report V2 (TAG 130): Wer hat heute gearbeitet?
 
-    TAG 151: Refaktoriert - nutzt WerkstattData.get_anwesenheit()
-    Vorher: 160 LOC | Nachher: 35 LOC
+    Basiert auf Type 2 (produktive Stempelungen) + Type 1 für Historie.
+    Type 1 nur für vergangene Tage zuverlässig (wird erst bei Ausstempeln geschrieben).
 
-    Query-Parameter:
-    - datum: Datum im Format YYYY-MM-DD (default: heute)
-    - subsidiary: Filter nach Betrieb (1, 2, 3)
+    Parameter:
+    - datum: YYYY-MM-DD (default: heute)
+    - subsidiary: 1=DEG, 2=Hyundai, 3=Landau (optional)
     """
     try:
-        from api.werkstatt_data import WerkstattData
+        datum = request.args.get('datum', datetime.now().strftime('%Y-%m-%d'))
+        subsidiary = request.args.get('subsidiary')
+        conn = get_locosoft_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
 
-        datum_str = request.args.get('datum')
-        subsidiary = request.args.get('subsidiary', type=int)
+        # Alle Mechaniker mit Type 2 (produktiv) + Type 1 (Anwesenheit) am gewählten Tag
+        cur.execute('''
+            WITH stempelungen AS (
+                SELECT
+                    t.employee_number,
+                    MIN(t.start_time) as erster_start,
+                    MAX(COALESCE(t.end_time, NOW())) as letztes_ende,
+                    COUNT(DISTINCT t.order_number) FILTER (WHERE t.order_number > 31) as anzahl_auftraege,
+                    SUM(EXTRACT(EPOCH FROM (COALESCE(t.end_time, NOW()) - t.start_time))/60)
+                        FILTER (WHERE t.order_number > 31) as produktiv_min,
+                    SUM(EXTRACT(EPOCH FROM (COALESCE(t.end_time, NOW()) - t.start_time))/60)
+                        FILTER (WHERE t.order_number = 31) as leerlauf_min,
+                    MAX(CASE WHEN t.end_time IS NULL THEN t.order_number END) as aktiver_auftrag,
+                    MAX(CASE WHEN t.end_time IS NULL THEN t.start_time END) as aktiv_seit
+                FROM times t
+                WHERE DATE(t.start_time) = %s
+                  AND t.type = 2
+                  AND t.employee_number BETWEEN 5000 AND 5999
+                GROUP BY t.employee_number
+            ),
+            anwesenheit AS (
+                SELECT
+                    t.employee_number,
+                    MIN(t.start_time) as anwesend_ab,
+                    MAX(t.end_time) as anwesend_bis,
+                    ROUND(SUM(EXTRACT(EPOCH FROM (t.end_time - t.start_time))/60)::numeric) as anwesend_min
+                FROM times t
+                WHERE DATE(t.start_time) = %s
+                  AND t.type = 1
+                  AND t.employee_number BETWEEN 5000 AND 5999
+                GROUP BY t.employee_number
+            ),
+            alle_mechaniker AS (
+                SELECT DISTINCT
+                    eh.employee_number,
+                    eh.name,
+                    eh.subsidiary,
+                    CASE eh.subsidiary
+                        WHEN 1 THEN 'Deggendorf'
+                        WHEN 2 THEN 'Hyundai'
+                        WHEN 3 THEN 'Landau'
+                    END as betrieb
+                FROM employees_history eh
+                WHERE eh.is_latest_record = true
+                  AND eh.employee_number BETWEEN 5000 AND 5999
+                  AND (eh.leave_date IS NULL OR eh.leave_date > %s::date)
+                  AND eh.subsidiary IN (1, 2, 3)
+            ),
+            abwesenheiten AS (
+                SELECT
+                    ac.employee_number,
+                    ac.reason,
+                    ac.type as abwesenheit_typ
+                FROM absence_calendar ac
+                WHERE ac.date = %s::date
+            )
+            SELECT
+                m.employee_number,
+                m.name,
+                m.subsidiary,
+                m.betrieb,
+                s.erster_start,
+                s.letztes_ende,
+                COALESCE(s.anzahl_auftraege, 0) as anzahl_auftraege,
+                COALESCE(ROUND(s.produktiv_min::numeric), 0) as produktiv_min,
+                COALESCE(ROUND(s.leerlauf_min::numeric), 0) as leerlauf_min,
+                s.aktiver_auftrag,
+                s.aktiv_seit,
+                a.anwesend_ab,
+                a.anwesend_bis,
+                COALESCE(a.anwesend_min, 0) as anwesend_min,
+                CASE WHEN s.employee_number IS NOT NULL THEN true ELSE false END as hat_gearbeitet,
+                ab.reason as abwesenheit_grund,
+                ab.abwesenheit_typ
+            FROM alle_mechaniker m
+            LEFT JOIN stempelungen s ON m.employee_number = s.employee_number
+            LEFT JOIN anwesenheit a ON m.employee_number = a.employee_number
+            LEFT JOIN abwesenheiten ab ON m.employee_number = ab.employee_number
+            ORDER BY m.betrieb, m.name
+        ''', (datum, datum, datum, datum))
 
-        datum = None
-        if datum_str:
-            datum = datetime.strptime(datum_str, '%Y-%m-%d').date()
+        alle = cur.fetchall()
+        cur.close()
+        conn.close()
 
-        data = WerkstattData.get_anwesenheit(datum=datum, betrieb=subsidiary)
+        # Filter nach Betrieb
+        if subsidiary:
+            alle = [m for m in alle if str(m['subsidiary']) == str(subsidiary)]
+
+        # Kategorisieren
+        anwesend = []
+        abwesend = []
+        aktiv = []
+
+        for m in alle:
+            entry = {
+                'employee_number': m['employee_number'],
+                'name': m['name'],
+                'betrieb': m['betrieb'],
+                'erster_start': m['erster_start'].strftime('%H:%M') if m['erster_start'] else None,
+                'letztes_ende': m['letztes_ende'].strftime('%H:%M') if m['letztes_ende'] else None,
+                'anzahl_auftraege': m['anzahl_auftraege'],
+                'produktiv_min': int(m['produktiv_min']),
+                'produktiv_std': round(m['produktiv_min'] / 60, 1),
+                'leerlauf_min': int(m['leerlauf_min'] or 0),
+                'aktiver_auftrag': m['aktiver_auftrag'],
+                'aktiv_seit': m['aktiv_seit'].strftime('%H:%M') if m['aktiv_seit'] else None,
+                'anwesend_ab': m['anwesend_ab'].strftime('%H:%M') if m['anwesend_ab'] else None,
+                'anwesend_bis': m['anwesend_bis'].strftime('%H:%M') if m['anwesend_bis'] else None,
+                'anwesend_min': int(m['anwesend_min'] or 0),
+                'anwesend_std': round((m['anwesend_min'] or 0) / 60, 1),
+                'abwesenheit_grund': m['abwesenheit_grund'],
+                'abwesenheit_typ': m['abwesenheit_typ']
+            }
+            if m['hat_gearbeitet']:
+                anwesend.append(entry)
+                if m['aktiver_auftrag']:
+                    aktiv.append(entry)
+            else:
+                abwesend.append(entry)
+
+        total_produktiv = sum(m['produktiv_min'] for m in anwesend)
+        total_leerlauf = sum(m['leerlauf_min'] for m in anwesend)
 
         return jsonify({
             'success': True,
-            'source': 'LIVE_V2',
+            'datum': datum,
             'timestamp': datetime.now().isoformat(),
-            **data
+            'anwesend': anwesend,
+            'abwesend': abwesend,
+            'aktiv': aktiv,
+            'statistik': {
+                'total_mechaniker': len(alle),
+                'anwesend': len(anwesend),
+                'abwesend': len(abwesend),
+                'gerade_aktiv': len(aktiv),
+                'produktiv_std': round(total_produktiv / 60, 1),
+                'leerlauf_std': round(total_leerlauf / 60, 1)
+            }
         })
-
     except Exception as e:
         logger.exception("Fehler bei Anwesenheits-Report V2")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ============================================================
@@ -1828,25 +2699,126 @@ def get_anwesenheit_v2():
 @werkstatt_live_bp.route('/anwesenheit/legacy', methods=['GET'])
 def get_anwesenheit_report():
     """
-    Anwesenheits-Report Legacy: Type 1 basiert
+    Anwesenheits-Report: Wer hat eingestempelt, wer nicht?
 
-    TAG 151: Refaktoriert - nutzt WerkstattData.get_anwesenheit_legacy()
-    Vorher: 130 LOC | Nachher: 25 LOC
+    HINWEIS TAG 122: Dieser Report ist während der Arbeitszeit unzuverlässig!
+    Locosoft exportiert Type 1 Einträge erst nach Feierabend (wenn end_time gesetzt).
+
+    Karenzzeit: +5 Minuten nach Sollzeit (08:00)
+    Früh: Vor 07:50
     """
     try:
-        from api.werkstatt_data import WerkstattData
-
-        subsidiary = request.args.get('subsidiary', type=int)
-
-        data = WerkstattData.get_anwesenheit_legacy(betrieb=subsidiary)
-
+        subsidiary = request.args.get('subsidiary')
+        
+        conn = get_locosoft_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Mechaniker die HEUTE produktiv gestempelt haben (Type 2)
+        cur.execute('''
+            WITH produktiv_heute AS (
+                SELECT DISTINCT 
+                    t.employee_number,
+                    MIN(t.start_time) as erste_produktiv,
+                    MAX(COALESCE(t.end_time, NOW())) as letzte_produktiv,
+                    COUNT(DISTINCT t.order_number) as anzahl_auftraege
+                FROM times t
+                WHERE DATE(t.start_time) = CURRENT_DATE
+                  AND t.type = 2
+                  AND t.employee_number BETWEEN 5000 AND 5999
+                GROUP BY t.employee_number
+            ),
+            anwesend_heute AS (
+                SELECT DISTINCT 
+                    t.employee_number,
+                    MIN(t.start_time) as erste_anwesend,
+                    MAX(COALESCE(t.end_time, NOW())) as letzte_anwesend
+                FROM times t
+                WHERE DATE(t.start_time) = CURRENT_DATE
+                  AND t.type = 1
+                  AND t.employee_number BETWEEN 5000 AND 5999
+                GROUP BY t.employee_number
+            )
+            SELECT 
+                p.employee_number,
+                eh.name,
+                eh.subsidiary,
+                CASE eh.subsidiary 
+                    WHEN 1 THEN 'Deggendorf'
+                    WHEN 2 THEN 'Hyundai'
+                    WHEN 3 THEN 'Landau'
+                    ELSE 'Unbekannt'
+                END as betrieb_name,
+                p.erste_produktiv,
+                p.letzte_produktiv,
+                p.anzahl_auftraege,
+                a.erste_anwesend,
+                a.letzte_anwesend,
+                CASE WHEN a.employee_number IS NULL THEN true ELSE false END as vergessen
+            FROM produktiv_heute p
+            LEFT JOIN anwesend_heute a ON p.employee_number = a.employee_number
+            JOIN employees_history eh ON p.employee_number = eh.employee_number 
+                AND eh.is_latest_record = true
+            WHERE (eh.leave_date IS NULL OR eh.leave_date > CURRENT_DATE)
+        ''')
+        
+        alle = cur.fetchall()
+        
+        # Filter nach Betrieb
+        if subsidiary:
+            alle = [m for m in alle if str(m['subsidiary']) == str(subsidiary)]
+        
+        # Kategorisieren
+        vergessen = []  # Type 2 ohne Type 1
+        korrekt = []    # Type 1 + Type 2
+        frueh = []      # Type 1 vor 07:50
+        spaet = []      # Type 1 nach 08:05 (mit Karenz)
+        
+        for m in alle:
+            entry = {
+                'employee_number': m['employee_number'],
+                'name': m['name'],
+                'betrieb': m['betrieb_name'],
+                'erste_produktiv': m['erste_produktiv'].strftime('%H:%M') if m['erste_produktiv'] else None,
+                'erste_anwesend': m['erste_anwesend'].strftime('%H:%M') if m['erste_anwesend'] else None,
+                'produktiv_auftraege': m['anzahl_auftraege']
+            }
+            
+            if m['vergessen']:
+                vergessen.append(entry)
+            else:
+                korrekt.append(entry)
+                
+                # Prüfe Zeitpunkt
+                if m['erste_anwesend']:
+                    zeit = m['erste_anwesend'].time()
+                    from datetime import time as dt_time
+                    
+                    # Früh: vor 07:50
+                    if zeit < dt_time(7, 50):
+                        frueh.append(entry)
+                    # Spät: nach 08:05 (08:00 + 5 Min Karenz)
+                    elif zeit > dt_time(8, 5):
+                        spaet.append(entry)
+        
+        cur.close()
+        conn.close()
+        
         return jsonify({
             'success': True,
-            'source': 'LIVE_V2',
             'timestamp': datetime.now().isoformat(),
-            **data
+            'vergessen': vergessen,
+            'korrekt': korrekt,
+            'frueh': frueh,
+            'spaet': spaet,
+            'statistik': {
+                'total_produktiv': len(alle),
+                'vergessen': len(vergessen),
+                'korrekt': len(korrekt),
+                'frueh': len(frueh),
+                'spaet': len(spaet)
+            }
         })
-
+        
     except Exception as e:
         logger.exception("Fehler bei Anwesenheits-Report")
         return jsonify({
@@ -1865,33 +2837,161 @@ def get_kulanz_monitoring():
     """
     DRIVE Kulanz-Monitoring: Wo verlieren wir Geld?
 
-    TAG 151: Refaktoriert - nutzt WerkstattData.get_kulanz_monitoring()
-    Vorher: 160 LOC | Nachher: 25 LOC
+    Vergleicht gestempelte Zeit mit abgerechneter Zeit pro Charge Type.
+    Fokus auf Charge Type 60 (Kulanz) - größter Verlustposten!
 
     Query-Parameter:
-    - wochen: Anzahl Wochen zurueck (default: 4)
+    - wochen: Anzahl Wochen zurück (default: 4)
     - subsidiary: Betrieb filtern (optional)
     """
     try:
-        from api.werkstatt_data import WerkstattData
-
         wochen = int(request.args.get('wochen', 4))
-        subsidiary = request.args.get('subsidiary', type=int)
+        subsidiary = request.args.get('subsidiary')
 
-        data = WerkstattData.get_kulanz_monitoring(wochen=wochen, betrieb=subsidiary)
+        conn = get_locosoft_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        # Charge Type Beschreibungen
+        CHARGE_TYPES = {
+            10: 'Kunde',
+            11: 'Kunde (Rabatt)',
+            15: 'Garantie Hersteller',
+            16: 'Garantie Händler',
+            40: 'Garantie',
+            60: 'Kulanz',
+            90: 'Intern'
+        }
+
+        subsidiary_filter = "AND o.subsidiary = %s" if subsidiary else ""
+        params = [wochen]
+        if subsidiary:
+            params.append(int(subsidiary))
+
+        query = f'''
+        WITH unique_times AS (
+            SELECT DISTINCT order_number, employee_number, start_time, end_time, duration_minutes
+            FROM times
+            WHERE order_number > 0
+              AND duration_minutes > 0
+              AND start_time >= NOW() - INTERVAL '%s weeks'
+        ),
+        gestempelt AS (
+            SELECT order_number, SUM(duration_minutes) as stempel_min
+            FROM unique_times GROUP BY order_number
+        ),
+        abgerechnet AS (
+            SELECT order_number,
+                   MAX(charge_type) as charge_type,
+                   SUM(time_units * 6) as abrechn_min
+            FROM labours
+            WHERE time_units > 0 AND order_number > 0
+            GROUP BY order_number
+        )
+        SELECT
+            a.charge_type,
+            COUNT(*) as anzahl_auftraege,
+            ROUND(SUM(g.stempel_min) / 60.0, 1) as gestempelt_std,
+            ROUND(SUM(a.abrechn_min) / 60.0, 1) as abgerechnet_std,
+            ROUND((SUM(g.stempel_min) - SUM(a.abrechn_min)) / 60.0, 1) as differenz_std,
+            ROUND(100.0 * (SUM(g.stempel_min) - SUM(a.abrechn_min)) / NULLIF(SUM(a.abrechn_min), 0), 1) as differenz_pct
+        FROM gestempelt g
+        JOIN abgerechnet a ON g.order_number = a.order_number
+        JOIN orders o ON g.order_number = o.number
+        WHERE o.order_date >= NOW() - INTERVAL '%s weeks'
+        {subsidiary_filter}
+        GROUP BY a.charge_type
+        ORDER BY differenz_std DESC
+        '''
+
+        cur.execute(query, params + params[:1])
+        by_type = cur.fetchall()
+
+        # Top 20 Verlust-Aufträge (Kulanz)
+        query_top = f'''
+        WITH unique_times AS (
+            SELECT DISTINCT order_number, employee_number, start_time, end_time, duration_minutes
+            FROM times WHERE order_number > 0 AND duration_minutes > 0 AND start_time >= NOW() - INTERVAL '%s weeks'
+        ),
+        gestempelt AS (
+            SELECT order_number, SUM(duration_minutes) as stempel_min FROM unique_times GROUP BY order_number
+        ),
+        abgerechnet AS (
+            SELECT order_number, MAX(charge_type) as charge_type, SUM(time_units * 6) as abrechn_min
+            FROM labours WHERE time_units > 0 GROUP BY order_number
+        )
+        SELECT
+            g.order_number,
+            o.order_date,
+            a.charge_type,
+            v.license_plate as kennzeichen,
+            ROUND(g.stempel_min) as gestempelt_min,
+            ROUND(a.abrechn_min) as abgerechnet_min,
+            ROUND(g.stempel_min - a.abrechn_min) as verlust_min
+        FROM gestempelt g
+        JOIN abgerechnet a ON g.order_number = a.order_number
+        JOIN orders o ON g.order_number = o.number
+        LEFT JOIN vehicles v ON o.vehicle_number = v.internal_number
+        WHERE g.stempel_min > a.abrechn_min
+          AND a.charge_type = 60
+          {subsidiary_filter}
+        ORDER BY (g.stempel_min - a.abrechn_min) DESC
+        LIMIT 20
+        '''
+
+        cur.execute(query_top, params)
+        top_verluste = cur.fetchall()
+
+        cur.close()
+        conn.close()
+
+        # Statistiken berechnen
+        total_gestempelt = sum(float(r['gestempelt_std'] or 0) for r in by_type)
+        total_abgerechnet = sum(float(r['abgerechnet_std'] or 0) for r in by_type)
+        total_differenz = sum(float(r['differenz_std'] or 0) for r in by_type)
+
+        # Ergebnis formatieren
+        result_by_type = []
+        for r in by_type:
+            ct = r['charge_type']
+            result_by_type.append({
+                'charge_type': ct,
+                'charge_type_name': CHARGE_TYPES.get(ct, f'Typ {ct}'),
+                'anzahl_auftraege': r['anzahl_auftraege'],
+                'gestempelt_std': float(r['gestempelt_std'] or 0),
+                'abgerechnet_std': float(r['abgerechnet_std'] or 0),
+                'differenz_std': float(r['differenz_std'] or 0),
+                'differenz_pct': float(r['differenz_pct'] or 0),
+                'verlust_eur': round(float(r['differenz_std'] or 0) * 85, 0) if r['differenz_std'] and r['differenz_std'] > 0 else 0
+            })
 
         return jsonify({
             'success': True,
-            'source': 'LIVE_V2',
-            **data
+            'zeitraum_wochen': wochen,
+            'statistik': {
+                'gestempelt_std': round(total_gestempelt, 1),
+                'abgerechnet_std': round(total_abgerechnet, 1),
+                'differenz_std': round(total_differenz, 1),
+                'verlust_eur': round(total_differenz * 85, 0) if total_differenz > 0 else 0,
+                'stundensatz': 85
+            },
+            'by_charge_type': result_by_type,
+            'top_verluste_kulanz': [
+                {
+                    'auftrag_nr': r['order_number'],
+                    'datum': r['order_date'].isoformat() if r['order_date'] else None,
+                    'kennzeichen': r['kennzeichen'],
+                    'gestempelt_min': r['gestempelt_min'],
+                    'abgerechnet_min': r['abgerechnet_min'],
+                    'verlust_min': r['verlust_min'],
+                    'verlust_eur': round(r['verlust_min'] / 60 * 85, 0)
+                }
+                for r in top_verluste
+            ]
         })
 
     except Exception as e:
         logger.exception("Fehler bei Kulanz-Monitoring")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ============================================================
@@ -1902,22 +3002,165 @@ def get_kulanz_monitoring():
 @werkstatt_live_bp.route('/drive/briefing', methods=['GET'])
 def get_drive_briefing():
     """
-    DRIVE Tages-Briefing: 5-Minuten-Ueberblick fuer Werkstattleiter
+    DRIVE Tages-Briefing: Was erwartet uns heute?
 
-    TAG 152: Refaktoriert - nutzt WerkstattData.get_drive_briefing()
-    Vorher: 165 LOC | Nachher: 30 LOC
+    Parameter:
+    - datum: ISO-Datum (YYYY-MM-DD), default: heute
+    - subsidiary: Betrieb-Filter (optional)
+
+    Zeigt:
+    - Aufträge für gewähltes Datum mit ML-Vorhersage
+    - Unterbewertete Aufträge (ML > Vorgabe)
+    - Garantie-Aufträge mit Warnung
+    - Realistische Tagesauslastung
     """
     try:
-        from api.werkstatt_data import WerkstattData
+        import json as json_lib
+        import pickle
+        from datetime import datetime as dt
 
-        subsidiary = request.args.get('subsidiary', type=int)
+        # Datum-Parameter (default: heute)
+        datum_str = request.args.get('datum')
+        if datum_str:
+            try:
+                selected_date = dt.strptime(datum_str, '%Y-%m-%d').date()
+            except ValueError:
+                selected_date = dt.now().date()
+        else:
+            selected_date = dt.now().date()
 
-        data = WerkstattData.get_drive_briefing(betrieb=subsidiary)
+        subsidiary = request.args.get('subsidiary')
+
+        conn = get_locosoft_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        # Labour Corrections laden
+        corrections_path = "/opt/greiner-portal/data/ml/labour_corrections.json"
+        labour_corrections = {}
+        if os.path.exists(corrections_path):
+            with open(corrections_path, 'r') as f:
+                labour_corrections = json_lib.load(f)
+
+        subsidiary_filter = "AND o.subsidiary = %s" if subsidiary else ""
+        params = [selected_date, selected_date]  # Für die beiden Datum-Vergleiche
+        if subsidiary:
+            params.append(int(subsidiary))
+
+        query = f'''
+        SELECT
+            o.number as auftrag_nr,
+            o.subsidiary as betrieb,
+            o.order_date,
+            o.estimated_inbound_time,
+            o.estimated_outbound_time,
+            v.license_plate as kennzeichen,
+            m.description as marke,
+            COALESCE(cs.family_name || ', ' || cs.first_name, cs.family_name) as kunde,
+            l.total_aw as vorgabe_aw,
+            l.labour_type,
+            l.charge_type,
+            o.has_open_positions as ist_offen
+        FROM orders o
+        LEFT JOIN vehicles v ON o.vehicle_number = v.internal_number
+        LEFT JOIN makes m ON v.make_number = m.make_number
+        LEFT JOIN customers_suppliers cs ON o.order_customer = cs.customer_number
+        LEFT JOIN LATERAL (
+            SELECT
+                SUM(time_units) as total_aw,
+                MAX(labour_type) as labour_type,
+                MAX(charge_type) as charge_type
+            FROM labours WHERE order_number = o.number AND time_units > 0
+        ) l ON true
+        WHERE DATE(o.estimated_inbound_time) = %s
+           OR (DATE(o.order_date) = %s AND o.has_open_positions = true)
+        {subsidiary_filter}
+        ORDER BY o.estimated_inbound_time, o.order_date
+        '''
+
+        cur.execute(query, params)
+        auftraege_raw = cur.fetchall()
+
+        cur.close()
+        conn.close()
+
+        # ML-Vorhersagen und Kategorisierung
+        auftraege = []
+        total_vorgabe = 0
+        total_ml = 0
+        garantie_count = 0
+        unterbewertet_count = 0
+        kritisch = []
+        garantie_auftraege = []
+
+        for a in auftraege_raw:
+            vorgabe_aw = float(a['vorgabe_aw'] or 0)
+            labour_type = a['labour_type'] or 'W'
+
+            # Correction Factor
+            correction = labour_corrections.get('by_type', {}).get(labour_type, 1.0)
+
+            # ML-Vorhersage (vereinfacht: Vorgabe * Correction)
+            ml_aw = round(vorgabe_aw * correction, 1)
+            potenzial = round(ml_aw - vorgabe_aw, 1)
+
+            total_vorgabe += vorgabe_aw
+            total_ml += ml_aw
+
+            ist_garantie = labour_type == 'G'
+            ist_unterbewertet = potenzial > 1.0
+
+            if ist_garantie:
+                garantie_count += 1
+            if ist_unterbewertet:
+                unterbewertet_count += 1
+
+            auftrag = {
+                'auftrag_nr': a['auftrag_nr'],
+                'betrieb': a['betrieb'],
+                'kennzeichen': a['kennzeichen'],
+                'marke': a['marke'],
+                'kunde': a['kunde'],
+                'termin': a['estimated_inbound_time'].strftime('%H:%M') if a['estimated_inbound_time'] else None,
+                'vorgabe_aw': vorgabe_aw,
+                'ml_aw': ml_aw,
+                'potenzial_aw': potenzial,
+                'labour_type': labour_type,
+                'ist_garantie': ist_garantie,
+                'ist_unterbewertet': ist_unterbewertet,
+                'correction_factor': correction
+            }
+
+            auftraege.append(auftrag)
+
+            if ist_unterbewertet and potenzial > 2.0:
+                kritisch.append(auftrag)
+            if ist_garantie:
+                garantie_auftraege.append(auftrag)
+
+        # Sortiere kritische nach Potenzial
+        kritisch.sort(key=lambda x: x['potenzial_aw'], reverse=True)
 
         return jsonify({
             'success': True,
-            'source': 'LIVE_V2',
-            **data
+            'datum': selected_date.isoformat(),
+            'ist_heute': selected_date == dt.now().date(),
+            'uhrzeit': dt.now().strftime('%H:%M'),
+            'zusammenfassung': {
+                'anzahl_auftraege': len(auftraege),
+                'vorgabe_aw_gesamt': round(total_vorgabe, 1),
+                'ml_aw_gesamt': round(total_ml, 1),
+                'differenz_aw': round(total_ml - total_vorgabe, 1),
+                'differenz_prozent': round((total_ml - total_vorgabe) / total_vorgabe * 100, 1) if total_vorgabe > 0 else 0,
+                'garantie_auftraege': garantie_count,
+                'unterbewertet_auftraege': unterbewertet_count,
+                'kritisch_auftraege': len(kritisch)
+            },
+            'warnungen': {
+                'kritisch': kritisch[:5],  # Top 5 kritische
+                'garantie': garantie_auftraege[:5]  # Top 5 Garantie
+            },
+            'alle_auftraege': auftraege,
+            'empfehlung': f"Plane +{round(total_ml - total_vorgabe, 0)} AW mehr ein als Herstellervorgabe!" if total_ml > total_vorgabe else "Kapazität ausreichend."
         })
 
     except Exception as e:
@@ -1933,27 +3176,211 @@ def get_drive_briefing():
 @werkstatt_live_bp.route('/drive/kapazitaet', methods=['GET'])
 def get_drive_kapazitaet():
     """
-    DRIVE Kapazitaetsplanung: Realistische Auslastung
+    DRIVE Kapazitätsplanung: Realistische Auslastung
 
-    TAG 152: Refaktoriert - nutzt WerkstattData.get_drive_kapazitaet()
-    Vorher: 210 LOC | Nachher: 35 LOC
+    TAG 122: Jetzt MIT Abwesenheiten aus absence_calendar!
+
+    Zeigt Kapazität pro Tag mit:
+    - Herstellervorgabe (SOLL)
+    - DRIVE-Korrektur (realistisch)
+    - Aufteilung nach Lohnart (G/W/I)
+    - Mechaniker-Verfügbarkeit (Abwesenheiten berücksichtigt)
     """
     try:
-        from api.werkstatt_data import WerkstattData
+        import json as json_lib
 
-        wochen = int(request.args.get('wochen', 4))
-        subsidiary = request.args.get('subsidiary', type=int)
+        tage = int(request.args.get('tage', 7))
+        subsidiary = request.args.get('subsidiary')
 
-        data = WerkstattData.get_drive_kapazitaet(wochen=wochen, betrieb=subsidiary)
+        conn = get_locosoft_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        # Labour Corrections laden
+        corrections_path = "/opt/greiner-portal/data/ml/labour_corrections.json"
+        labour_corrections = {}
+        if os.path.exists(corrections_path):
+            with open(corrections_path, 'r') as f:
+                labour_corrections = json_lib.load(f)
+
+        correction_g = labour_corrections.get('by_type', {}).get('G', 1.24)
+        correction_w = labour_corrections.get('by_type', {}).get('W', 0.94)
+        correction_i = labour_corrections.get('by_type', {}).get('I', 1.08)
+
+        # =====================================================================
+        # TAG 122: Mechaniker-Kapazität mit Abwesenheiten
+        # =====================================================================
+        # 1. Aktive Mechaniker pro Betrieb (5000-5999, ohne leave_date)
+        cur.execute("""
+            SELECT
+                subsidiary as betrieb,
+                COUNT(DISTINCT employee_number) as anzahl_mechaniker
+            FROM (
+                SELECT DISTINCT ON (employee_number)
+                    employee_number, subsidiary
+                FROM employees_history
+                WHERE employee_number BETWEEN 5000 AND 5999
+                  AND leave_date IS NULL
+                ORDER BY employee_number, validity_date DESC
+            ) aktive
+            GROUP BY subsidiary
+        """)
+        mechaniker_pro_betrieb = {r['betrieb']: r['anzahl_mechaniker'] for r in cur.fetchall()}
+        logger.debug(f"DRIVE: Mechaniker pro Betrieb: {mechaniker_pro_betrieb}")
+
+        # 2. Abwesenheiten pro Tag/Betrieb (nächste X Tage)
+        cur.execute("""
+            WITH aktive_mechaniker AS (
+                SELECT DISTINCT ON (employee_number)
+                    employee_number, subsidiary
+                FROM employees_history
+                WHERE employee_number BETWEEN 5000 AND 5999
+                  AND leave_date IS NULL
+                ORDER BY employee_number, validity_date DESC
+            )
+            SELECT
+                ac.date as tag,
+                am.subsidiary as betrieb,
+                COUNT(*) as anzahl_abwesend,
+                SUM(ac.day_contingent) as tage_abwesend,
+                STRING_AGG(DISTINCT ac.reason, ', ') as gruende
+            FROM absence_calendar ac
+            JOIN aktive_mechaniker am ON ac.employee_number = am.employee_number
+            WHERE ac.date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '%s days'
+            GROUP BY ac.date, am.subsidiary
+            ORDER BY ac.date, am.subsidiary
+        """, [tage])
+        abwesenheiten_raw = cur.fetchall()
+
+        # Abwesenheiten als Dict: {(tag, betrieb): {'anzahl': X, 'tage': Y, 'gruende': 'Url, Krn'}}
+        abwesenheiten = {}
+        for r in abwesenheiten_raw:
+            key = (r['tag'].isoformat(), r['betrieb'])
+            abwesenheiten[key] = {
+                'anzahl': r['anzahl_abwesend'],
+                'tage': float(r['tage_abwesend'] or 0),
+                'gruende': r['gruende'] or ''
+            }
+
+        # AW pro Mechaniker pro Tag (Basis für Kapazitätsberechnung)
+        AW_PRO_MECHANIKER = 10  # ca. 10 AW pro Mechaniker pro Tag
+
+        subsidiary_filter = "AND o.subsidiary = %s" if subsidiary else ""
+        params = [tage]
+        if subsidiary:
+            params.append(int(subsidiary))
+
+        query = f'''
+        SELECT
+            DATE(COALESCE(o.estimated_inbound_time, o.order_date)) as tag,
+            o.subsidiary as betrieb,
+            COUNT(*) as anzahl_auftraege,
+            SUM(CASE WHEN l.labour_type = 'G' THEN l.total_aw ELSE 0 END) as aw_garantie,
+            SUM(CASE WHEN l.labour_type = 'W' THEN l.total_aw ELSE 0 END) as aw_werkstatt,
+            SUM(CASE WHEN l.labour_type = 'I' THEN l.total_aw ELSE 0 END) as aw_intern,
+            SUM(CASE WHEN l.labour_type NOT IN ('G', 'W', 'I') OR l.labour_type IS NULL THEN l.total_aw ELSE 0 END) as aw_sonstige,
+            SUM(l.total_aw) as aw_gesamt
+        FROM orders o
+        LEFT JOIN LATERAL (
+            SELECT SUM(time_units) as total_aw, MAX(labour_type) as labour_type
+            FROM labours WHERE order_number = o.number AND time_units > 0
+        ) l ON true
+        WHERE DATE(COALESCE(o.estimated_inbound_time, o.order_date)) BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '%s days'
+          AND o.has_open_positions = true
+        {subsidiary_filter}
+        GROUP BY DATE(COALESCE(o.estimated_inbound_time, o.order_date)), o.subsidiary
+        ORDER BY tag, betrieb
+        '''
+
+        cur.execute(query, params)
+        rows = cur.fetchall()
+
+        cur.close()
+        conn.close()
+
+        # Kapazität pro Betrieb (Basis ohne Abwesenheiten)
+        BETRIEB_NAMEN = {1: 'Deggendorf', 2: 'Hyundai DEG', 3: 'Landau'}
+
+        result = []
+        for r in rows:
+            aw_g = float(r['aw_garantie'] or 0)
+            aw_w = float(r['aw_werkstatt'] or 0)
+            aw_i = float(r['aw_intern'] or 0)
+            aw_s = float(r['aw_sonstige'] or 0)
+            aw_gesamt = float(r['aw_gesamt'] or 0)
+
+            # DRIVE-Korrektur anwenden
+            aw_g_korrigiert = aw_g * correction_g
+            aw_w_korrigiert = aw_w * correction_w
+            aw_i_korrigiert = aw_i * correction_i
+            aw_drive = aw_g_korrigiert + aw_w_korrigiert + aw_i_korrigiert + aw_s
+
+            betrieb = r['betrieb']
+            tag_str = r['tag'].isoformat()
+
+            # TAG 122: Dynamische Kapazität basierend auf Mechaniker-Anzahl
+            gesamt_mechaniker = mechaniker_pro_betrieb.get(betrieb, 0)
+            basis_kapazitaet = gesamt_mechaniker * AW_PRO_MECHANIKER
+
+            # Abwesenheiten für diesen Tag/Betrieb
+            abw_key = (tag_str, betrieb)
+            abw_info = abwesenheiten.get(abw_key, {'anzahl': 0, 'tage': 0, 'gruende': ''})
+            abwesend_tage = abw_info['tage']  # Summe der day_contingent (0.5 = halber Tag)
+
+            # Reduzierte Kapazität
+            verfuegbare_mechaniker = gesamt_mechaniker - abwesend_tage
+            kapazitaet = max(0, round(verfuegbare_mechaniker * AW_PRO_MECHANIKER))
+
+            # Auslastung berechnen (Division by Zero vermeiden)
+            auslastung_hersteller = round(aw_gesamt / kapazitaet * 100, 1) if kapazitaet > 0 else 0
+            auslastung_drive = round(aw_drive / kapazitaet * 100, 1) if kapazitaet > 0 else 0
+
+            result.append({
+                'tag': tag_str,
+                'wochentag': r['tag'].strftime('%A'),
+                'betrieb': betrieb,
+                'betrieb_name': BETRIEB_NAMEN.get(betrieb, '?'),
+                'anzahl_auftraege': r['anzahl_auftraege'],
+                'kapazitaet_aw': kapazitaet,
+                'kapazitaet_basis_aw': basis_kapazitaet,  # Ohne Abwesenheiten
+                'mechaniker': {
+                    'gesamt': gesamt_mechaniker,
+                    'abwesend': abw_info['anzahl'],
+                    'abwesend_tage': round(abwesend_tage, 1),
+                    'verfuegbar': round(verfuegbare_mechaniker, 1),
+                    'gruende': abw_info['gruende']
+                },
+                'hersteller': {
+                    'gesamt_aw': round(aw_gesamt, 1),
+                    'garantie_aw': round(aw_g, 1),
+                    'werkstatt_aw': round(aw_w, 1),
+                    'intern_aw': round(aw_i, 1),
+                    'auslastung_pct': auslastung_hersteller
+                },
+                'drive': {
+                    'gesamt_aw': round(aw_drive, 1),
+                    'garantie_aw': round(aw_g_korrigiert, 1),
+                    'werkstatt_aw': round(aw_w_korrigiert, 1),
+                    'intern_aw': round(aw_i_korrigiert, 1),
+                    'auslastung_pct': auslastung_drive
+                },
+                'differenz_aw': round(aw_drive - aw_gesamt, 1),
+                'warnung': auslastung_drive > 90  # >90% = Warnung
+            })
 
         return jsonify({
             'success': True,
-            'source': 'LIVE_V2',
-            **data
+            'korrekturfaktoren': {
+                'G': correction_g,
+                'W': correction_w,
+                'I': correction_i
+            },
+            'mechaniker_pro_betrieb': mechaniker_pro_betrieb,
+            'aw_pro_mechaniker': AW_PRO_MECHANIKER,
+            'tage': result
         })
 
     except Exception as e:
-        logger.exception("Fehler bei DRIVE Kapazitaet")
+        logger.exception("Fehler bei DRIVE Kapazität")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -2224,19 +3651,36 @@ def get_werkstatt_liveboard():
                     'ist_fertig': not row['ist_offen']
                 }
 
-        
-        # ================================================================
-        # TAG 153: GUDAT-INTEGRATION - MIGRATION VORBEREITET
-        # Nutzt noch lokale Funktionen, später auf GudatData umstellen:
-        # - GudatData.create_mechaniker_mapping() statt match_gudat_name()
-        # - GudatData.merge_zeitbloecke() statt inline Merge-Logik
-        # Siehe: docs/GUDAT_TO_LOCOSOFT_MIGRATION.md
-        # ================================================================
         # 4b. GUDAT Disposition holen (TAG 125)
         gudat_disposition = get_gudat_disposition(datum)
 
-        # TAG 154: Gudat-Mechaniker-Mapping über GudatData (vorher ~30 LOC)
-        gudat_to_locosoft = GudatData.create_mechaniker_mapping(mechaniker_list, gudat_disposition)
+        # Name-Mapping: Gudat "Vorname Nachname" → Locosoft "Nachname, Vorname"
+        def match_gudat_name(locosoft_name, gudat_names):
+            """Findet passenden Gudat-Namen für Locosoft-Namen"""
+            if not locosoft_name:
+                return None
+            # Locosoft: "Reitmeier, Tobias" → parts = ["Reitmeier", "Tobias"]
+            parts = [p.strip() for p in locosoft_name.split(',')]
+            if len(parts) >= 2:
+                nachname, vorname = parts[0], parts[1].split()[0]  # Nur erster Vorname
+                # Gudat: "Tobias Reitmeier"
+                gudat_pattern1 = f"{vorname} {nachname}"
+                gudat_pattern2 = f"{nachname} {vorname}"
+                for gn in gudat_names:
+                    gn_lower = gn.lower()
+                    if gudat_pattern1.lower() == gn_lower or gudat_pattern2.lower() == gn_lower:
+                        return gn
+                    # Fuzzy: enthält Vor- und Nachname
+                    if vorname.lower() in gn_lower and nachname.lower() in gn_lower:
+                        return gn
+            return None
+
+        # Gudat-Mechaniker-Mapping erstellen
+        gudat_to_locosoft = {}
+        for mech in mechaniker_list:
+            matched = match_gudat_name(mech['name'], gudat_disposition.keys())
+            if matched:
+                gudat_to_locosoft[mech['employee_number']] = gudat_disposition[matched]
 
         # 5. Mechaniker-Daten zusammenführen
         result_mechaniker = []
@@ -2507,4 +3951,226 @@ def get_werkstatt_liveboard():
 
     except Exception as e:
         logger.exception("Fehler bei Werkstatt Live-Board")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@werkstatt_live_bp.route('/meine-ueberschreitungen', methods=['GET'])
+def meine_ueberschreitungen():
+    """
+    GET /api/werkstatt/live/meine-ueberschreitungen
+    
+    Prüft ob der aktuelle User (Serviceberater) betroffene Überschreitungen hat.
+    Wird für globales Modal verwendet.
+    """
+    try:
+        from flask_login import current_user
+        from api.werkstatt_data import WerkstattData
+        from datetime import date
+        
+        if not current_user.is_authenticated:
+            return jsonify({'success': False, 'error': 'Nicht angemeldet'}), 401
+        
+        # Hole Employee-Nummer des aktuellen Users
+        with db_session() as conn:
+            cursor = conn.cursor()
+            
+            # Hole LDAP-Username
+            user_id = getattr(current_user, 'id', None)
+            if not user_id:
+                return jsonify({'success': False, 'error': 'Keine User-ID gefunden'}), 401
+            
+            cursor.execute("""
+                SELECT username FROM users WHERE id = %s
+            """, (user_id,))
+            user_row = cursor.fetchone()
+            
+            if not user_row:
+                return jsonify({'success': False, 'error': 'User nicht gefunden'}), 404
+            
+            ldap_username = user_row[0].split('@')[0] if '@' in user_row[0] else user_row[0]
+            
+            # Hole Locosoft-ID aus ldap_employee_mapping
+            cursor.execute("""
+                SELECT lem.locosoft_id
+                FROM ldap_employee_mapping lem
+                JOIN employees e ON lem.employee_id = e.id
+                WHERE lem.ldap_username = %s AND e.aktiv = true
+            """, (ldap_username,))
+            
+            mapping_row = cursor.fetchone()
+            if not mapping_row or not mapping_row[0]:
+                return jsonify({
+                    'success': True,
+                    'hat_ueberschreitungen': False,
+                    'message': 'Keine Employee-Nummer zugeordnet'
+                })
+            
+            meine_employee_nr = mapping_row[0]
+            logger.info(f"Meine-Überschreitungen: User {ldap_username} hat Employee-Nr {meine_employee_nr}")
+        
+        # Fallback-User Mapping
+        FALLBACK_USER_BY_BETRIEB = {
+            1: [3007],  # Deggendorf: Matthias König
+            2: [3007],  # Deggendorf Hyundai: Matthias König
+            3: [1003, 4002]  # Landau: Rolf Sterr + Leonhard Keidl
+        }
+        
+        # Stempeluhr-Daten holen (nur heute, alle Betriebe)
+        stempeluhr_data = WerkstattData.get_stempeluhr(
+            datum=date.today(),
+            subsidiaries=None  # Alle Betriebe
+        )
+        
+        # ZUSÄTZLICH: Prüfe auch abgeschlossene Aufträge von heute mit Überschreitungen
+        # (get_stempeluhr zeigt nur aktive Stempelungen)
+        ueberschritten_abgeschlossen = []
+        with locosoft_session() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            # Hole alle Aufträge von heute, die überschritten sind (auch abgeschlossene)
+            cursor.execute("""
+                WITH gestempelt_heute AS (
+                    SELECT 
+                        t.order_number,
+                        SUM(EXTRACT(EPOCH FROM (COALESCE(t.end_time, NOW()) - t.start_time)) / 60) as gestempelt_min
+                    FROM times t
+                    WHERE DATE(t.start_time) = CURRENT_DATE
+                      AND t.order_number > 0
+                      AND t.type = 2
+                    GROUP BY t.order_number
+                ),
+                vorgabe_aw AS (
+                    SELECT 
+                        l.order_number,
+                        SUM(l.time_units) as vorgabe_aw
+                    FROM labours l
+                    WHERE l.time_units > 0
+                    GROUP BY l.order_number
+                )
+                SELECT 
+                    g.order_number,
+                    g.gestempelt_min,
+                    v.vorgabe_aw,
+                    (g.gestempelt_min / (v.vorgabe_aw * 6) * 100) as fortschritt_prozent,
+                    o.order_taking_employee_no as serviceberater_nr
+                FROM gestempelt_heute g
+                JOIN vorgabe_aw v ON g.order_number = v.order_number
+                JOIN orders o ON g.order_number = o.number
+                WHERE v.vorgabe_aw > 0
+                  AND (g.gestempelt_min / (v.vorgabe_aw * 6) * 100) > 100
+            """)
+            
+            for row in cursor.fetchall():
+                ueberschritten_abgeschlossen.append({
+                    'order_number': row['order_number'],
+                    'fortschritt_prozent': row['fortschritt_prozent'],
+                    'serviceberater_nr': row['serviceberater_nr']
+                })
+        
+        if not stempeluhr_data.get('success'):
+            # Wenn Stempeluhr-Daten nicht verfügbar, nutze nur abgeschlossene
+            ueberschritten = ueberschritten_abgeschlossen
+        else:
+            aktive_mechaniker = stempeluhr_data.get('aktive_mechaniker', [])
+            ueberschritten_aktiv = [m for m in aktive_mechaniker if m.get('fortschritt_prozent', 0) > 100]
+            
+            # Kombiniere aktive und abgeschlossene Überschreitungen
+            auftrag_nrs_aktiv = {m.get('order_number') for m in ueberschritten_aktiv}
+            ueberschritten = ueberschritten_aktiv + [
+                u for u in ueberschritten_abgeschlossen 
+                if u['order_number'] not in auftrag_nrs_aktiv
+            ]
+        
+        logger.info(f"Meine-Überschreitungen: {len(ueberschritten)} Überschreitungen gefunden ({len(ueberschritten_abgeschlossen)} abgeschlossen)")
+        
+        if not ueberschritten:
+            return jsonify({
+                'success': True,
+                'hat_ueberschreitungen': False,
+                'message': 'Keine Überschreitungen gefunden'
+            })
+        
+        # Prüfe ob aktuelle User betroffen ist
+        betroffene_auftraege = []
+        
+        for ueberschritt in ueberschritten:
+            auftrag_nr = ueberschritt.get('order_number')
+            if not auftrag_nr:
+                continue
+            
+            try:
+                auftrag_detail = WerkstattData.get_auftrag_detail(auftrag_nr)
+                if not auftrag_detail.get('success'):
+                    continue
+                
+                auftrag = auftrag_detail['auftrag']
+                serviceberater_nr = auftrag.get('serviceberater_nr')
+                betrieb = auftrag.get('betrieb')
+                
+                # Konvertiere zu int für Vergleich (falls None oder String)
+                serviceberater_nr_int = int(serviceberater_nr) if serviceberater_nr else None
+                meine_employee_nr_int = int(meine_employee_nr) if meine_employee_nr else None
+                
+                ist_betroffen = False
+                
+                # Fall 1: Serviceberater zugeordnet → Prüfe ob aktueller User = Serviceberater
+                if serviceberater_nr_int and meine_employee_nr_int and serviceberater_nr_int == meine_employee_nr_int:
+                    ist_betroffen = True
+                    logger.info(f"Auftrag {auftrag_nr}: Serviceberater {serviceberater_nr_int} = User {meine_employee_nr_int} → BETROFFEN")
+                # Fall 2: Kein Serviceberater → Prüfe ob aktueller User = Fallback-User
+                elif not serviceberater_nr_int and betrieb and meine_employee_nr_int:
+                    fallback_users = FALLBACK_USER_BY_BETRIEB.get(betrieb, [])
+                    if meine_employee_nr_int in fallback_users:
+                        ist_betroffen = True
+                        logger.info(f"Auftrag {auftrag_nr}: Kein SB, User {meine_employee_nr_int} ist Fallback für Betrieb {betrieb} → BETROFFEN")
+                else:
+                    logger.debug(f"Auftrag {auftrag_nr}: SB={serviceberater_nr_int}, User={meine_employee_nr_int}, Betrieb={betrieb} → NICHT betroffen")
+                
+                if ist_betroffen:
+                    s = auftrag.get('summen', {})
+                    f = auftrag.get('fahrzeug', {})
+                    
+                    gestempelt_min = s.get('gestempelt_min', 0)
+                    vorgabe_min = (s.get('total_aw', 0) * 6)
+                    diff_min = gestempelt_min - vorgabe_min
+                    diff_prozent = (gestempelt_min / vorgabe_min * 100) if vorgabe_min > 0 else 0
+                    
+                    betroffene_auftraege.append({
+                        'auftrag_nr': auftrag_nr,
+                        'fahrzeug': {
+                            'kennzeichen': f.get('kennzeichen', '-'),
+                            'marke': f.get('marke', ''),
+                            'modell': f.get('modell', '')
+                        },
+                        'betrieb': betrieb,
+                        'betrieb_name': BETRIEB_NAMEN.get(betrieb, 'Unbekannt'),
+                        'gestempelt_min': gestempelt_min,
+                        'vorgabe_min': vorgabe_min,
+                        'diff_min': diff_min,
+                        'diff_prozent': diff_prozent,
+                        'hat_serviceberater': bool(serviceberater_nr and serviceberater_nr > 0)
+                    })
+                    
+                    # Nur ersten betroffenen Auftrag zurückgeben (Modal zeigt nur einen)
+                    break
+                    
+            except Exception as e:
+                logger.warning(f"Fehler beim Prüfen von Auftrag {auftrag_nr}: {e}")
+                continue
+        
+        if betroffene_auftraege:
+            return jsonify({
+                'success': True,
+                'hat_ueberschreitungen': True,
+                'auftrag': betroffene_auftraege[0]  # Erster betroffener Auftrag
+            })
+        else:
+            return jsonify({
+                'success': True,
+                'hat_ueberschreitungen': False,
+                'message': 'Keine Überschreitungen für Sie gefunden'
+            })
+    
+    except Exception as e:
+        logger.exception("Fehler bei meine-ueberschreitungen")
         return jsonify({'success': False, 'error': str(e)}), 500

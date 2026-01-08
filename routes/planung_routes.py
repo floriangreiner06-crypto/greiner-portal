@@ -202,6 +202,14 @@ def uebersicht():
                     standort_key = 1  # Hyundai DEG -> Deggendorf
                 
                 key = f"{bereich_key}_{standort_key}"
+                row_dict = row_to_dict(row)
+                
+                # datetime-Objekte zu Strings konvertieren (für Jinja2)
+                if row_dict.get('erstellt_am') and hasattr(row_dict['erstellt_am'], 'strftime'):
+                    row_dict['erstellt_am'] = row_dict['erstellt_am'].strftime('%Y-%m-%d')
+                if row_dict.get('freigegeben_am') and hasattr(row_dict['freigegeben_am'], 'strftime'):
+                    row_dict['freigegeben_am'] = row_dict['freigegeben_am'].strftime('%Y-%m-%d')
+                
                 # Wenn bereits eine Planung für Standort 1 existiert, Werte zusammenfassen
                 if key in planungen:
                     # Werte zusammenfassen (falls beide existieren)
@@ -210,18 +218,18 @@ def uebersicht():
                         'id': existing.get('id'),  # Behalte erste ID
                         'bereich': bereich_key,
                         'standort': standort_key,
-                        'status': existing.get('status') or row_to_dict(row).get('status'),
-                        'umsatz_basis': (existing.get('umsatz_basis') or 0) + (row_to_dict(row).get('umsatz_basis') or 0),
-                        'db1_basis': (existing.get('db1_basis') or 0) + (row_to_dict(row).get('db1_basis') or 0),
-                        'umsatz_ziel': (existing.get('umsatz_ziel') or 0) + (row_to_dict(row).get('umsatz_ziel') or 0),
-                        'db1_ziel': (existing.get('db1_ziel') or 0) + (row_to_dict(row).get('db1_ziel') or 0),
-                        'erstellt_von': existing.get('erstellt_von') or row_to_dict(row).get('erstellt_von'),
-                        'erstellt_am': existing.get('erstellt_am') or row_to_dict(row).get('erstellt_am'),
-                        'freigegeben_von': existing.get('freigegeben_von') or row_to_dict(row).get('freigegeben_von'),
-                        'freigegeben_am': existing.get('freigegeben_am') or row_to_dict(row).get('freigegeben_am')
+                        'status': existing.get('status') or row_dict.get('status'),
+                        'umsatz_basis': (existing.get('umsatz_basis') or 0) + (row_dict.get('umsatz_basis') or 0),
+                        'db1_basis': (existing.get('db1_basis') or 0) + (row_dict.get('db1_basis') or 0),
+                        'umsatz_ziel': (existing.get('umsatz_ziel') or 0) + (row_dict.get('umsatz_ziel') or 0),
+                        'db1_ziel': (existing.get('db1_ziel') or 0) + (row_dict.get('db1_ziel') or 0),
+                        'erstellt_von': existing.get('erstellt_von') or row_dict.get('erstellt_von'),
+                        'erstellt_am': existing.get('erstellt_am') or row_dict.get('erstellt_am'),
+                        'freigegeben_von': existing.get('freigegeben_von') or row_dict.get('freigegeben_von'),
+                        'freigegeben_am': existing.get('freigegeben_am') or row_dict.get('freigegeben_am')
                     }
                 else:
-                    planungen[key] = row_to_dict(row)
+                    planungen[key] = row_dict
                     planungen[key]['standort'] = standort_key  # Standort auf 1 mappen
     
     except Exception as e:
@@ -305,14 +313,72 @@ def planungsformular(bereich: str, standort: int):
         flash(f'Fehler beim Laden der Planung: {str(e)}', 'danger')
     
     # Vorjahres-Referenz laden
+    # TAG 169: Für NW/GW auch Jahreswerte laden (ganzes Geschäftsjahr)
     vorjahr = None
+    vorjahr_jahr = None  # Vorjahreswerte für ganzes Geschäftsjahr
     try:
         if AbteilungsleiterPlanungData:
+            # Monatswerte laden (für Vergleich)
             vorjahr = AbteilungsleiterPlanungData._lade_vorjahr_referenz(
                 bereich, standort, monat, geschaeftsjahr
             )
+            
+            # Für NW/GW: Auch Jahreswerte laden (ganzes Geschäftsjahr)
+            if bereich in ['NW', 'GW']:
+                vorjahr_jahr = AbteilungsleiterPlanungData._lade_vorjahr_referenz(
+                    bereich, standort, None, geschaeftsjahr  # monat=None = ganzes Jahr
+                )
+            
+            # Vorjahreswerte in Planung-Objekt übernehmen (für Template)
+            # WICHTIG: Auch wenn keine Planung existiert, Vorjahreswerte für Template verfügbar machen
+            # Planung-Objekt erstellen falls nicht vorhanden
+            if not planung:
+                planung = {}
+            
+            if vorjahr:
+                # Gemeinsame Vorjahreswerte für alle Bereiche (Monat)
+                planung['vj_umsatz'] = vorjahr.get('umsatz', 0)
+                planung['vj_db1'] = vorjahr.get('db1', 0)
+                planung['vj_db2'] = vorjahr.get('db2', 0)
+                
+                # Bereichs-spezifische Vorjahreswerte
+                if bereich in ['NW', 'GW']:
+                    planung['vj_stueck'] = vorjahr.get('stueck', 0)
+                    planung['vj_standzeit'] = vorjahr.get('standzeit', 0)
+            
+            # Jahreswerte (ganzes Geschäftsjahr) - IMMER für NW/GW laden
+            if bereich in ['NW', 'GW']:
+                if vorjahr_jahr:
+                    planung['vj_umsatz_jahr'] = vorjahr_jahr.get('umsatz', 0)
+                    planung['vj_db1_jahr'] = vorjahr_jahr.get('db1', 0)
+                    planung['vj_db2_jahr'] = vorjahr_jahr.get('db2', 0)
+                    planung['vj_stueck_jahr'] = vorjahr_jahr.get('stueck', 0)
+                    planung['vj_standzeit_jahr'] = vorjahr_jahr.get('standzeit', 0)
+                else:
+                    # Fallback: Wenn vorjahr_jahr None ist, setze auf 0
+                    planung['vj_umsatz_jahr'] = 0
+                    planung['vj_db1_jahr'] = 0
+                    planung['vj_db2_jahr'] = 0
+                    planung['vj_stueck_jahr'] = 0
+                    planung['vj_standzeit_jahr'] = 0
+            
+            if vorjahr:
+                if bereich == 'Werkstatt':
+                    planung['vj_anzahl_mechaniker'] = vorjahr.get('anzahl_mechaniker', 0)
+                    planung['vj_avg_aw_pro_auftrag'] = vorjahr.get('avg_aw_pro_auftrag', 0)
+                    planung['vj_durchlaufzeit_tage'] = vorjahr.get('durchlaufzeit_tage', 0)
+                    planung['vj_wiederkehrrate'] = vorjahr.get('wiederkehrrate', 0)
+                    planung['vj_produktivitaet'] = vorjahr.get('produktivitaet', 0)
+                    planung['vj_leistungsgrad'] = vorjahr.get('leistungsgrad', 0)
+                    planung['vj_stundensatz'] = vorjahr.get('stundensatz', 0)
+                elif bereich == 'Teile':
+                    planung['vj_lagerumschlag'] = vorjahr.get('lagerumschlag', 0)
+                    planung['vj_penner_quote'] = vorjahr.get('penner_quote', 0)
+                    planung['vj_servicegrad'] = vorjahr.get('servicegrad', 0)
     except Exception as e:
         flash(f'Fehler beim Laden der Vorjahres-Referenz: {str(e)}', 'warning')
+        import traceback
+        traceback.print_exc()
     
     # Standort-Name
     standort_namen = {
@@ -334,7 +400,7 @@ def planungsformular(bereich: str, standort: int):
         standort_name=standort_namen.get(standort, f'Standort {standort}'),
         planung=planung,
         ist_werte=ist_werte,
-        vorjahr=vorjahr,
+        vorjahr=vorjahr if vorjahr else {},  # Leeres Dict falls None
         monat_abgelaufen=monat_abgelaufen
     )
 
@@ -461,6 +527,31 @@ def jahresplanung(bereich: str, standort: int):
         standort=standort,
         standort_name=standort_namen.get(standort, f'Standort {standort}'),
         jahresplanung=jahresplanung_data
+    )
+
+
+@planung_routes.route('/stundensatz-kalkulation')
+@login_required
+def stundensatz_kalkulation():
+    """
+    Stundensatz-Kalkulation Ansicht.
+    
+    Zeigt BWA-Daten für Werkstatt-Stundensatz-Kalkulation.
+    """
+    geschaeftsjahr = request.args.get('geschaeftsjahr')
+    standort = request.args.get('standort', type=int)
+    
+    standort_namen = {
+        1: 'Deggendorf',
+        2: 'Hyundai DEG',
+        3: 'Landau'
+    }
+    
+    return render_template(
+        'planung/stundensatz_kalkulation.html',
+        geschaeftsjahr=geschaeftsjahr,
+        standort=standort,
+        standort_namen=standort_namen
     )
 
 
