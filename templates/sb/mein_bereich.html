@@ -270,7 +270,7 @@
                     <i class="bi bi-rocket-takeoff"></i> Auf Kurs
                 </span>
             </div>
-            <div class="progress">
+            <div class="progress" style="height: 1.5rem;">
                 <div class="progress-bar bg-success" role="progressbar" id="umsatzProgress"
                      style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
                     0%
@@ -303,7 +303,7 @@
                 </a>
             </div>
             <div class="col-6 col-md-4 col-lg-3">
-                <a href="/aftersales/teile" class="quick-link">
+                <a href="/aftersales/teile/bestellungen" class="quick-link">
                     <i class="bi bi-box-seam text-warning"></i>
                     <div class="link-title">Teilebestellungen</div>
                     <div class="link-desc">Status & Rückstände</div>
@@ -438,7 +438,7 @@ function renderDashboard(data) {
             badge.innerHTML = '<i class="bi bi-rocket-takeoff"></i> Auf Kurs';
         } else {
             badge.className = 'trend-badge negative';
-            badge.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Aufholen!';
+            badge.innerHTML = '<i class="bi bi-arrow-up"></i> Aufholen!';
         }
     } else {
         document.getElementById('kpiPrognose').textContent = '-';
@@ -466,6 +466,16 @@ function renderDashboard(data) {
                 progressBar.style.width = `${Math.min(percent, 100)}%`;
                 progressBar.textContent = `${percent.toFixed(0)}%`;
                 progressBar.className = `progress-bar ${percent >= 100 ? 'bg-success' : percent >= 80 ? 'bg-warning' : 'bg-danger'}`;
+                
+                // Trend Badge basierend auf Umsatz-Progress
+                const badge = document.getElementById('trendBadge');
+                if (percent >= 100) {
+                    badge.className = 'trend-badge positive';
+                    badge.innerHTML = '<i class="bi bi-rocket-takeoff"></i> Auf Kurs';
+                } else {
+                    badge.className = 'trend-badge negative';
+                    badge.innerHTML = '<i class="bi bi-arrow-up"></i> Aufholen!';
+                }
             }
         })
         .catch(err => {
@@ -480,6 +490,16 @@ function renderDashboard(data) {
             progressBar.style.width = `${Math.min(percent, 100)}%`;
             progressBar.textContent = `${percent.toFixed(0)}%`;
             progressBar.className = `progress-bar ${percent >= 100 ? 'bg-success' : percent >= 80 ? 'bg-warning' : 'bg-danger'}`;
+            
+            // Trend Badge basierend auf Umsatz-Progress (Fallback)
+            const badge = document.getElementById('trendBadge');
+            if (percent >= 100) {
+                badge.className = 'trend-badge positive';
+                badge.innerHTML = '<i class="bi bi-rocket-takeoff"></i> Auf Kurs';
+            } else {
+                badge.className = 'trend-badge negative';
+                badge.innerHTML = '<i class="bi bi-arrow-up"></i> Aufholen!';
+            }
         });
 
     // Update ranking link with standort filter
@@ -495,17 +515,37 @@ async function loadTagesziel() {
     const heute = new Date().toISOString().split('T')[0];
     
     try {
-        // Lade alle Tagesziele und filtere nach dem aktuellen User
-        const response = await fetch(`/api/serviceberater/tagesziel?datum=${heute}`);
+        // TAG 171: Lade Tagesziel für aktuellen User (via ma_id oder ldap_cn)
+        let url = `/api/serviceberater/tagesziel?datum=${heute}`;
+        
+        {% if ma_id_param %}
+        // Wenn ma_id_param vorhanden (Geschäfts-/Serviceleitung), nutze diesen
+        const maId = {{ ma_id_param }};
+        url += `&ma_id=${maId}`;
+        {% else %}
+        // Normale Logik: Ermittle ma_id aus ldap_cn
+        const ldapCn = '{{ current_user.display_name | default("") }}';
+        if (ldapCn) {
+            // Hole ma_id aus SB-Config
+            const configResponse = await fetch('/api/serviceberater/sb-config');
+            const configData = await configResponse.json();
+            if (configData.success) {
+                const sbConfig = configData.serviceberater.find(sb => sb.ldap_cn === ldapCn);
+                if (sbConfig && sbConfig.ma_id) {
+                    url += `&ma_id=${sbConfig.ma_id}`;
+                }
+            }
+        }
+        {% endif %}
+        
+        const response = await fetch(url);
         const data = await response.json();
         
         if (data.success && data.data) {
-            const tagesziele = Array.isArray(data.data) ? data.data : [data.data];
-            
-            // Finde den passenden Serviceberater (basierend auf ldap_cn)
-            // Da wir keine ma_id haben, nehmen wir den ersten (später verbessern)
-            if (tagesziele.length > 0) {
-                renderTagesziel(tagesziele[0]);
+            // data.data ist jetzt ein einzelnes Objekt (wenn ma_id übergeben) oder Array
+            const tagesziel = Array.isArray(data.data) ? data.data[0] : data.data;
+            if (tagesziel) {
+                renderTagesziel(tagesziel);
             } else {
                 document.getElementById('tageszielCard').style.display = 'none';
             }
@@ -531,8 +571,8 @@ function renderTagesziel(tz) {
     // Status
     const statusClass = tz.erfuellung.status === 'ok' ? 'success' : 
                        tz.erfuellung.status === 'warnung' ? 'warning' : 'danger';
-    const statusText = tz.erfuellung.status === 'ok' ? 'Auf Kurs ✅' : 
-                      tz.erfuellung.status === 'warnung' ? 'Knapp ⚠️' : 'Kritisch ❌';
+    const statusText = tz.erfuellung.status === 'ok' ? 'Auf Kurs' : 
+                      tz.erfuellung.status === 'warnung' ? 'Knapp' : 'Kritisch X';
     
     document.getElementById('tageszielStatus').className = `badge bg-${statusClass}`;
     document.getElementById('tageszielStatus').textContent = statusText;

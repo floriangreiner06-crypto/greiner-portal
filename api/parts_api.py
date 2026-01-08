@@ -113,8 +113,14 @@ def get_bestellungen():
     """
     Hole alle Bestellungen mit optionalen Filtern
     TAG 136: PostgreSQL-kompatibel
+    TAG 171: Filter nach Serviceberater (ma_id) - zeigt nur Bestellungen für Aufträge des Serviceberaters
     """
     try:
+        from flask_login import current_user
+        from api.serviceberater_api import get_sb_config_from_ldap
+        from api.db_utils import get_locosoft_connection as get_loco_conn
+        from psycopg2.extras import RealDictCursor
+        
         # Query-Parameter
         datum_von = request.args.get('datum_von', (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'))
         datum_bis = request.args.get('datum_bis', datetime.now().strftime('%Y-%m-%d'))
@@ -122,8 +128,37 @@ def get_bestellungen():
         absender_code = request.args.get('absender_code')
         teilenummer = request.args.get('teilenummer')
         suche = request.args.get('suche')
+        ma_id_param = request.args.get('ma_id', type=int)  # TAG 171: Optional ma_id Parameter
         limit = int(request.args.get('limit', 100))
         offset = int(request.args.get('offset', 0))
+        
+        # TAG 171: Prüfe ob User Serviceberater ist und hole ma_id
+        serviceberater_auftrag_nrs = None
+        if not ma_id_param and current_user.is_authenticated:
+            display_name = getattr(current_user, 'display_name', '')
+            if display_name:
+                sb_config = get_sb_config_from_ldap(display_name)
+                if sb_config:
+                    ma_id_param = sb_config.get('ma_id')
+        
+        # TAG 171: Wenn ma_id vorhanden, hole alle Auftragsnummern dieses Serviceberaters
+        if ma_id_param:
+            try:
+                conn_loco = get_loco_conn()
+                cursor_loco = conn_loco.cursor(cursor_factory=RealDictCursor)
+                cursor_loco.execute("""
+                    SELECT DISTINCT o.number as auftrag_nr
+                    FROM orders o
+                    WHERE o.order_taking_employee_no = %s
+                      AND o.order_date >= %s::date - INTERVAL '90 days'
+                """, (ma_id_param, datum_bis))
+                auftraege = cursor_loco.fetchall()
+                serviceberater_auftrag_nrs = [str(a['auftrag_nr']) for a in auftraege]
+                cursor_loco.close()
+                conn_loco.close()
+            except Exception as e:
+                print(f"⚠️ Fehler beim Holen der Aufträge für Serviceberater {ma_id_param}: {e}")
+                serviceberater_auftrag_nrs = None
 
         ph = sql_placeholder()
 
@@ -150,6 +185,19 @@ def get_bestellungen():
             if suche:
                 where_conditions.append(f"(b.bestellnummer LIKE {ph} OR b.lokale_nr LIKE {ph} OR b.parsed_kundennummer LIKE {ph} OR b.match_kunde_name LIKE {ph} OR EXISTS (SELECT 1 FROM stellantis_positionen p WHERE p.bestellung_id = b.id AND p.teilenummer LIKE {ph}))")
                 params.extend([f"%{suche}%", f"%{suche}%", f"%{suche}%", f"%{suche}%", f"%{suche}%"])
+            
+            # TAG 171: Filter nach Serviceberater-Aufträgen (lokale_nr = Auftragsnummer)
+            if serviceberater_auftrag_nrs and len(serviceberater_auftrag_nrs) > 0:
+                # PostgreSQL: ANY() für Array-Vergleich
+                if get_db_type() == 'postgresql':
+                    placeholders = ','.join([ph] * len(serviceberater_auftrag_nrs))
+                    where_conditions.append(f"b.lokale_nr = ANY(ARRAY[{placeholders}])")
+                    params.extend(serviceberater_auftrag_nrs)
+                else:
+                    # SQLite: IN() für Liste
+                    placeholders = ','.join([ph] * len(serviceberater_auftrag_nrs))
+                    where_conditions.append(f"b.lokale_nr IN ({placeholders})")
+                    params.extend(serviceberater_auftrag_nrs)
 
             where_clause = " AND ".join(where_conditions)
 

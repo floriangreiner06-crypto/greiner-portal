@@ -4063,6 +4063,8 @@ def meine_ueberschreitungen():
             for row in cursor.fetchall():
                 ueberschritten_abgeschlossen.append({
                     'order_number': row['order_number'],
+                    'gestempelt_min': row['gestempelt_min'],
+                    'vorgabe_aw': row['vorgabe_aw'],
                     'fortschritt_prozent': row['fortschritt_prozent'],
                     'serviceberater_nr': row['serviceberater_nr']
                 })
@@ -4072,7 +4074,17 @@ def meine_ueberschreitungen():
             ueberschritten = ueberschritten_abgeschlossen
         else:
             aktive_mechaniker = stempeluhr_data.get('aktive_mechaniker', [])
-            ueberschritten_aktiv = [m for m in aktive_mechaniker if m.get('fortschritt_prozent', 0) > 100]
+            ueberschritten_aktiv = []
+            for m in aktive_mechaniker:
+                fortschritt = m.get('fortschritt_prozent', 0)
+                if fortschritt > 100:
+                    ueberschritten_aktiv.append({
+                        'order_number': m.get('order_number'),
+                        'gestempelt_min': m.get('laufzeit_min', 0),
+                        'vorgabe_aw': m.get('vorgabe_aw', 0),
+                        'fortschritt_prozent': fortschritt,
+                        'serviceberater_nr': m.get('serviceberater_nr')
+                    })
             
             # Kombiniere aktive und abgeschlossene Überschreitungen
             auftrag_nrs_aktiv = {m.get('order_number') for m in ueberschritten_aktiv}
@@ -4130,10 +4142,46 @@ def meine_ueberschreitungen():
                     s = auftrag.get('summen', {})
                     f = auftrag.get('fahrzeug', {})
                     
-                    gestempelt_min = s.get('gestempelt_min', 0)
-                    vorgabe_min = (s.get('total_aw', 0) * 6)
-                    diff_min = gestempelt_min - vorgabe_min
-                    diff_prozent = (gestempelt_min / vorgabe_min * 100) if vorgabe_min > 0 else 0
+                    # WICHTIG: Verwende die gestempelte Zeit von HEUTE (aus ueberschritt), nicht aus get_auftrag_detail
+                    # get_auftrag_detail summiert ALLE Stempelungen (auch von anderen Tagen)
+                    gestempelt_min_heute = ueberschritt.get('gestempelt_min', 0)
+                    vorgabe_aw = ueberschritt.get('vorgabe_aw', 0)
+                    vorgabe_min = vorgabe_aw * 6
+                    
+                    # Falls nicht in ueberschritt vorhanden, nutze get_auftrag_detail als Fallback
+                    if gestempelt_min_heute == 0:
+                        gestempelt_min_heute = s.get('gestempelt_min', 0)
+                    if vorgabe_aw == 0:
+                        vorgabe_aw = s.get('total_aw', 0)
+                        vorgabe_min = vorgabe_aw * 6
+                    
+                    diff_min = gestempelt_min_heute - vorgabe_min
+                    diff_prozent = (gestempelt_min_heute / vorgabe_min * 100) if vorgabe_min > 0 else 0
+                    
+                    # NUR wenn tatsächlich überschritten (>100%), dann hinzufügen
+                    if diff_prozent <= 100:
+                        logger.debug(f"Auftrag {auftrag_nr}: {diff_prozent:.1f}% ist KEINE Überschreitung - überspringe")
+                        continue
+                    
+                    # Hole Mechaniker-Namen für diesen Auftrag (von heute)
+                    mechaniker_namen = []
+                    with locosoft_session() as conn_mech:
+                        cursor_mech = conn_mech.cursor(cursor_factory=RealDictCursor)
+                        cursor_mech.execute("""
+                            SELECT DISTINCT e.name
+                            FROM times t
+                            JOIN employees_history e ON t.employee_number = e.employee_number
+                                AND e.is_latest_record = true
+                            WHERE t.order_number = %s
+                              AND DATE(t.start_time) = CURRENT_DATE
+                              AND t.type = 2
+                            ORDER BY e.name
+                        """, (auftrag_nr,))
+                        mechaniker_rows = cursor_mech.fetchall()
+                        mechaniker_namen = [r['name'] for r in mechaniker_rows]
+                    
+                    # Formatiere Auftragsdatum
+                    auftragsdatum_str = auftrag.get('datum', '')  # get_auftrag_detail gibt 'datum' zurück
                     
                     betroffene_auftraege.append({
                         'auftrag_nr': auftrag_nr,
@@ -4144,11 +4192,15 @@ def meine_ueberschreitungen():
                         },
                         'betrieb': betrieb,
                         'betrieb_name': BETRIEB_NAMEN.get(betrieb, 'Unbekannt'),
-                        'gestempelt_min': gestempelt_min,
+                        'gestempelt_min': gestempelt_min_heute,
                         'vorgabe_min': vorgabe_min,
                         'diff_min': diff_min,
                         'diff_prozent': diff_prozent,
-                        'hat_serviceberater': bool(serviceberater_nr and serviceberater_nr > 0)
+                        'hat_serviceberater': bool(serviceberater_nr and serviceberater_nr > 0),
+                        'serviceberater_nr': serviceberater_nr,
+                        'serviceberater_name': auftrag.get('serviceberater_name', ''),
+                        'auftragsdatum': auftragsdatum_str,
+                        'mechaniker': mechaniker_namen
                     })
                     
                     # Nur ersten betroffenen Auftrag zurückgeben (Modal zeigt nur einen)

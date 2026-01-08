@@ -43,44 +43,61 @@ def benachrichtige_serviceberater_ueberschreitungen():
             subsidiaries=None  # Alle Betriebe
         )
         
-        # TEST-MODUS: Wenn Stempeluhr-Daten nicht verfügbar, trotzdem Test-Mail senden
+        # ZUSÄTZLICH: Hole alle Aufträge von heute, die überschritten sind (auch abgeschlossene)
+        ueberschritten_abgeschlossen = []
+        with locosoft_session() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                WITH gestempelt_heute AS (
+                    SELECT
+                        t.order_number,
+                        SUM(EXTRACT(EPOCH FROM (COALESCE(t.end_time, NOW()) - t.start_time)) / 60) as gestempelt_min
+                    FROM times t
+                    WHERE DATE(t.start_time) = CURRENT_DATE
+                      AND t.order_number > 0
+                      AND t.type = 2
+                    GROUP BY t.order_number
+                ),
+                vorgabe_aw AS (
+                    SELECT
+                        l.order_number,
+                        SUM(l.time_units) as vorgabe_aw
+                    FROM labours l
+                    WHERE l.time_units > 0
+                    GROUP BY l.order_number
+                )
+                SELECT
+                    g.order_number,
+                    g.gestempelt_min,
+                    v.vorgabe_aw,
+                    (g.gestempelt_min / (v.vorgabe_aw * 6) * 100) as fortschritt_prozent,
+                    o.order_taking_employee_no as serviceberater_nr
+                FROM gestempelt_heute g
+                JOIN vorgabe_aw v ON g.order_number = v.order_number
+                JOIN orders o ON g.order_number = o.number
+                WHERE v.vorgabe_aw > 0
+                  AND (g.gestempelt_min / (v.vorgabe_aw * 6) * 100) > 100
+            """)
+            ueberschritten_abgeschlossen = cursor.fetchall()
+        
         if not stempeluhr_data.get('success'):
-            logger.warning("Stempeluhr-Daten nicht verfügbar - Test-Mail wird trotzdem gesendet")
-            # Erstelle Dummy-Daten für Test-Mail
-            aktive_mechaniker = []
-            ueberschritten = [{
-                'order_number': 'TEST-12345',
-                'fortschritt_prozent': 120,
-                'name': 'Test-Mechaniker'
-            }]
-            TEST_MODE = True
+            # Wenn Stempeluhr-Daten nicht verfügbar, nutze nur abgeschlossene
+            ueberschritten = ueberschritten_abgeschlossen
         else:
             aktive_mechaniker = stempeluhr_data.get('aktive_mechaniker', [])
-            ueberschritten = [m for m in aktive_mechaniker if m.get('fortschritt_prozent', 0) > 100]
+            ueberschritten_aktiv = [m for m in aktive_mechaniker if m.get('fortschritt_prozent', 0) > 100]
             
-            # TEST-MODUS: Wenn keine Überschreitungen, trotzdem Test-Mail an Florian senden
-            TEST_MODE = len(ueberschritten) == 0
+            # Kombiniere aktive und abgeschlossene Überschreitungen
+            auftrag_nrs_aktiv = {m.get('order_number') for m in ueberschritten_aktiv}
+            ueberschritten = ueberschritten_aktiv + [
+                u for u in ueberschritten_abgeschlossen
+                if u['order_number'] not in auftrag_nrs_aktiv
+            ]
+        
+        logger.info(f"{len(ueberschritten)} Überschreitungen gefunden")
         
         if not ueberschritten:
-            logger.info("Keine Überschreitungen gefunden - Test-Mail wird trotzdem gesendet")
-            # Erstelle Dummy-Überschreitung für Test-Mail
-            if aktive_mechaniker:
-                # Nimm ersten aktiven Mechaniker als Beispiel
-                dummy_mech = aktive_mechaniker[0]
-                ueberschritten = [{
-                    'order_number': dummy_mech.get('order_number', 'TEST-12345'),
-                    'fortschritt_prozent': 120,  # Dummy-Wert
-                    'name': dummy_mech.get('name', 'Test-Mechaniker')
-                }]
-            else:
-                # Fallback: Erstelle komplett Dummy-Daten
-                ueberschritten = [{
-                    'order_number': 'TEST-12345',
-                    'fortschritt_prozent': 120,
-                    'name': 'Test-Mechaniker'
-                }]
-        
-        logger.info(f"{len(ueberschritten)} Überschreitungen gefunden (TEST_MODE={TEST_MODE})")
+            return {'success': True, 'message': 'Keine Überschreitungen gefunden'}
         
         # Fallback-User Mapping
         FALLBACK_USER_BY_BETRIEB = {
@@ -100,16 +117,6 @@ def benachrichtige_serviceberater_ueberschreitungen():
             for ueberschritt in ueberschritten:
                 auftrag_nr = ueberschritt.get('order_number')
                 if not auftrag_nr:
-                    continue
-                
-                # Im TEST_MODE mit Dummy-Daten: Verwende Fallback-Betrieb
-                if TEST_MODE and auftrag_nr.startswith('TEST-'):
-                    # Verwende Betrieb 1 (Deggendorf) als Fallback für Test
-                    auftraege_mit_sb[auftrag_nr] = (None, 1)
-                    # Füge Fallback-User hinzu
-                    if 1 in FALLBACK_USER_BY_BETRIEB:
-                        for fallback_nr in FALLBACK_USER_BY_BETRIEB[1]:
-                            alle_employee_nrs.add(fallback_nr)
                     continue
                 
                 # Auftrag-Details holen für Serviceberater-Nr
@@ -133,8 +140,7 @@ def benachrichtige_serviceberater_ueberschreitungen():
                     logger.warning(f"Fehler beim Holen von Auftrag {auftrag_nr}: {e}")
                     continue
             
-            # Im TEST_MODE: Auch ohne Employee-Nummern weiter machen (Test-Mail wird trotzdem gesendet)
-            if not alle_employee_nrs and not TEST_MODE:
+            if not alle_employee_nrs:
                 return {'success': True, 'message': 'Keine relevanten Employee-Nummern gefunden'}
             
             # E-Mail-Adressen aus employees-Tabelle holen
@@ -167,25 +173,13 @@ def benachrichtige_serviceberater_ueberschreitungen():
         
         for auftrag_nr, (serviceberater_nr, betrieb) in auftraege_mit_sb.items():
             try:
-                # Im TEST_MODE mit Dummy-Daten: Verwende Dummy-Werte
-                if TEST_MODE and auftrag_nr.startswith('TEST-'):
-                    auftrag = {
-                        'auftrag_nr': auftrag_nr,
-                        'summen': {'gestempelt_min': 120, 'total_aw': 10},
-                        'fahrzeug': {'kennzeichen': 'TEST-XX', 'marke': 'Test', 'modell': 'Fahrzeug'},
-                        'serviceberater_nr': None,
-                        'betrieb': betrieb or 1
-                    }
-                    s = auftrag.get('summen', {})
-                    f = auftrag.get('fahrzeug', {})
-                else:
-                    auftrag_detail = WerkstattData.get_auftrag_detail(auftrag_nr)
-                    if not auftrag_detail.get('success'):
-                        continue
-                    
-                    auftrag = auftrag_detail['auftrag']
-                    s = auftrag.get('summen', {})
-                    f = auftrag.get('fahrzeug', {})
+                auftrag_detail = WerkstattData.get_auftrag_detail(auftrag_nr)
+                if not auftrag_detail.get('success'):
+                    continue
+                
+                auftrag = auftrag_detail['auftrag']
+                s = auftrag.get('summen', {})
+                f = auftrag.get('fahrzeug', {})
                 
                 # Berechne Überschreitung
                 gestempelt_min = s.get('gestempelt_min', 0)
@@ -206,8 +200,7 @@ def benachrichtige_serviceberater_ueberschreitungen():
                         if fallback_nr in employee_emails:
                             empfaenger.append(employee_emails[fallback_nr])
                 
-                # Im TEST_MODE: Auch ohne Empfänger weiter machen (Test-Mail wird trotzdem gesendet)
-                if not empfaenger and not TEST_MODE:
+                if not empfaenger:
                     continue
                 
                 # E-Mail-Inhalt
@@ -286,20 +279,6 @@ def benachrichtige_serviceberater_ueberschreitungen():
                         logger.info(f"E-Mail gesendet an {emp['name']} ({emp['email']}) für Auftrag {auftrag_nr}")
                     except Exception as e:
                         logger.error(f"Fehler beim Senden an {emp['email']}: {e}")
-                
-                # TEST: Zusätzlich Test-Mail an Florian Greiner senden
-                test_subject = f"[TEST] {subject}" if TEST_MODE else f"[KOPIE] {subject}"
-                test_body = f"<div style='background: #fff3cd; padding: 10px; border-left: 4px solid #ffc107; margin-bottom: 20px;'><strong>⚠️ {'TEST-MAIL' if TEST_MODE else 'KOPIE'}:</strong> Diese E-Mail wurde {'als Test gesendet (keine echten Überschreitungen gefunden)' if TEST_MODE else 'als Kopie an Florian gesendet'}.</div>{body_html}"
-                try:
-                    connector.send_mail(
-                        sender_email='drive@auto-greiner.de',
-                        to_emails=['florian.greiner@auto-greiner.de'],
-                        subject=test_subject,
-                        body_html=test_body
-                    )
-                    logger.info(f"Test-E-Mail gesendet an florian.greiner@auto-greiner.de für Auftrag {auftrag_nr} (TEST_MODE={TEST_MODE})")
-                except Exception as e:
-                    logger.error(f"Fehler beim Senden der Test-Mail an Florian: {e}")
             
             except Exception as e:
                 logger.error(f"Fehler bei Auftrag {auftrag_nr}: {e}")
@@ -313,4 +292,164 @@ def benachrichtige_serviceberater_ueberschreitungen():
     
     except Exception as e:
         logger.exception("Fehler bei Serviceberater-Benachrichtigungen")
+        return {'success': False, 'error': str(e)}
+
+
+# =============================================================================
+# SERVICEBOX SCRAPER TASKS (TAG 171)
+# =============================================================================
+
+@shared_task(soft_time_limit=1800, name='celery_app.tasks.servicebox_scraper')
+def servicebox_scraper():
+    """
+    ServiceBox Detail-Scraper - Holt Bestellungen aus ServiceBox
+    Läuft 3x täglich (09:30, 12:30, 16:30)
+    """
+    import subprocess
+    import os
+    
+    try:
+        script_path = '/opt/greiner-portal/tools/scrapers/servicebox_detail_scraper_final.py'
+        if not os.path.exists(script_path):
+            logger.error(f"ServiceBox Scraper-Script nicht gefunden: {script_path}")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte ServiceBox Scraper...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=1800
+        )
+        
+        if result.returncode == 0:
+            logger.info("ServiceBox Scraper erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}  # Letzte 500 Zeichen
+        else:
+            logger.error(f"ServiceBox Scraper fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("ServiceBox Scraper: Timeout nach 30 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei ServiceBox Scraper")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=300, name='celery_app.tasks.servicebox_matcher')
+def servicebox_matcher():
+    """
+    ServiceBox Matcher - Verknüpft Bestellungen mit Locosoft-Aufträgen
+    Läuft nach Scraper (10:00, 13:00, 17:00)
+    """
+    import subprocess
+    import os
+    
+    try:
+        script_path = '/opt/greiner-portal/scripts/scrapers/match_servicebox.py'
+        if not os.path.exists(script_path):
+            logger.error(f"ServiceBox Matcher-Script nicht gefunden: {script_path}")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte ServiceBox Matcher...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        if result.returncode == 0:
+            logger.info("ServiceBox Matcher erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"ServiceBox Matcher fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("ServiceBox Matcher: Timeout nach 5 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei ServiceBox Matcher")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=120, name='celery_app.tasks.servicebox_import')
+def servicebox_import():
+    """
+    ServiceBox Import - Importiert gematchte Bestellungen in DB
+    Läuft nach Matcher (10:05, 13:05, 17:05)
+    """
+    import subprocess
+    import os
+    
+    try:
+        script_path = '/opt/greiner-portal/scripts/imports/import_servicebox_to_db.py'
+        if not os.path.exists(script_path):
+            logger.error(f"ServiceBox Import-Script nicht gefunden: {script_path}")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte ServiceBox Import...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+        
+        if result.returncode == 0:
+            logger.info("ServiceBox Import erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"ServiceBox Import fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("ServiceBox Import: Timeout nach 2 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei ServiceBox Import")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=3600, name='celery_app.tasks.servicebox_master')
+def servicebox_master():
+    """
+    ServiceBox Master - Komplett neu laden (alle Bestellungen)
+    Läuft täglich um 20:00
+    """
+    import subprocess
+    import os
+    
+    try:
+        script_path = '/opt/greiner-portal/tools/scrapers/servicebox_scraper_complete.py'
+        if not os.path.exists(script_path):
+            logger.error(f"ServiceBox Master-Script nicht gefunden: {script_path}")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte ServiceBox Master (komplett neu laden)...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=3600
+        )
+        
+        if result.returncode == 0:
+            logger.info("ServiceBox Master erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"ServiceBox Master fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("ServiceBox Master: Timeout nach 60 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei ServiceBox Master")
         return {'success': False, 'error': str(e)}

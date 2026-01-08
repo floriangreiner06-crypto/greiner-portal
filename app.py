@@ -384,7 +384,26 @@ def start():
     standort = getattr(current_user, 'standort', 'deggendorf')
 
     # Serviceberater → Persönlicher Bereich mit Badges
+    # Prüfe sowohl portal_role als auch Serviceberater-Konfiguration (TAG 171)
+    is_serviceberater = False
     if role == 'serviceberater':
+        is_serviceberater = True
+        print(f"🔍 [start()] User {current_user.display_name}: portal_role='serviceberater' → Weiterleitung zu mein_bereich")
+    else:
+        # Fallback: Prüfe ob User in SERVICEBERATER_CONFIG ist
+        from api.serviceberater_api import get_sb_config_from_ldap
+        display_name = getattr(current_user, 'display_name', '')
+        if display_name:
+            sb_config = get_sb_config_from_ldap(display_name)
+            if sb_config:
+                is_serviceberater = True
+                print(f"🔍 [start()] User {display_name}: In SERVICEBERATER_CONFIG gefunden (MA-ID {sb_config.get('ma_id')}) → Weiterleitung zu mein_bereich")
+            else:
+                print(f"🔍 [start()] User {display_name}: NICHT in SERVICEBERATER_CONFIG → Weiterleitung zu dashboard")
+        else:
+            print(f"🔍 [start()] User {current_user.username}: Kein display_name → Weiterleitung zu dashboard")
+    
+    if is_serviceberater:
         return redirect(url_for('mein_bereich'))
 
     # Werkstatt-Leitung → Werkstatt Dashboard
