@@ -25,6 +25,9 @@ from psycopg2.extras import RealDictCursor
 # Zentrale DB-Utilities (TAG117)
 from api.db_utils import get_locosoft_connection, get_db as get_sqlite_connection
 
+# SSOT für Lagerbestand (TAG 176)
+from api.teile_stock_utils import get_stock_level_for_subsidiary, is_part_available
+
 # Logging
 logger = logging.getLogger(__name__)
 
@@ -53,10 +56,13 @@ def load_lieferzeiten():
                 WHERE o.order_date >= CURRENT_DATE - INTERVAL '180 days'
             ),
             erste_lieferung AS (
-                SELECT part_number, MIN(delivery_note_date) as lieferdatum, supplier_number
+                SELECT DISTINCT ON (part_number)
+                    part_number,
+                    delivery_note_date as lieferdatum,
+                    supplier_number
                 FROM loco_parts_inbound_delivery_notes
                 WHERE delivery_note_date >= CURRENT_DATE - INTERVAL '180 days'
-                GROUP BY part_number
+                ORDER BY part_number, delivery_note_date ASC
             )
             SELECT
                 el.supplier_number,
@@ -144,17 +150,21 @@ def get_teile_status():
             WITH fehlende_teile AS (
                 -- Teile die WIRKLICH fehlen:
                 -- Nicht genug auf Lager für die benötigte Menge
+                -- TAG 176: Aggregiert über alle stock_no (SSOT)
                 SELECT 
                     p.order_number,
                     p.part_number,
                     p.text_line as bezeichnung,
                     p.amount as menge,
                     p.sum as wert,
-                    p.sum / NULLIF(p.amount, 0) as stueckpreis
+                    p.sum / NULLIF(p.amount, 0) as stueckpreis,
+                    o.subsidiary
                 FROM parts p
+                JOIN orders o ON p.order_number = o.number
                 LEFT JOIN parts_stock ps ON p.part_number = ps.part_number
                 WHERE p.amount > 0
-                AND (ps.stock_level IS NULL OR ps.stock_level < p.amount)
+                GROUP BY p.order_number, p.part_number, p.text_line, p.amount, p.sum, o.subsidiary
+                HAVING COALESCE(SUM(ps.stock_level), 0) < p.amount
             )
             SELECT 
                 o.number as auftrag_nr,
@@ -233,12 +243,13 @@ def get_teile_status():
         normal = []        # Rest
         
         for a in auftraege:
+            tage_offen = int(a['tage_offen']) if a['tage_offen'] is not None else 0  # Decimal → int
             auftrag = {
                 'auftrag_nr': a['auftrag_nr'],
                 'betrieb': a['betrieb'],
                 'betrieb_name': BETRIEB_NAMEN.get(a['betrieb'], '?'),
                 'auftragsdatum': a['auftragsdatum'].strftime('%d.%m.%Y') if a['auftragsdatum'] else None,
-                'tage_offen': a['tage_offen'],
+                'tage_offen': tage_offen,
                 'kennzeichen': a['kennzeichen'],
                 'marke': a['marke'],
                 'kunde': a['kunde'],
@@ -249,11 +260,11 @@ def get_teile_status():
             }
             
             # Kategorisierung
-            if a['tage_offen'] > 30 or float(a['teile_wert_gesamt'] or 0) > 1000:
+            if tage_offen > 30 or float(a['teile_wert_gesamt'] or 0) > 1000:
                 auftrag['status'] = 'kritisch'
                 auftrag['status_icon'] = '🔴'
                 kritisch.append(auftrag)
-            elif a['tage_offen'] > 14 or float(a['teile_wert_gesamt'] or 0) > 500:
+            elif tage_offen > 14 or float(a['teile_wert_gesamt'] or 0) > 500:
                 auftrag['status'] = 'warnung'
                 auftrag['status_icon'] = '🟡'
                 warnung.append(auftrag)
@@ -332,8 +343,8 @@ def get_auftrag_teile(auftrag_nr):
         if not auftrag:
             return jsonify({'success': False, 'error': 'Auftrag nicht gefunden'}), 404
         
-        # Fehlende Teile - MIT echtem Lagerbestand-Check
-        # Teile sind "fehlend" wenn: Nicht genug auf Lager
+        # Fehlende Teile - MIT echtem Lagerbestand-Check (SSOT)
+        # TAG 176: Aggregiert über alle stock_no
         cur.execute("""
             SELECT 
                 p.part_number,
@@ -341,13 +352,14 @@ def get_auftrag_teile(auftrag_nr):
                 p.amount as menge,
                 ROUND(p.sum::numeric, 2) as wert,
                 ROUND((p.sum / NULLIF(p.amount, 0))::numeric, 2) as stueckpreis,
-                COALESCE(ps.stock_level, 0) as lagerbestand,
+                COALESCE(SUM(ps.stock_level), 0) as lagerbestand,
                 p.parts_type
             FROM parts p
             LEFT JOIN parts_stock ps ON p.part_number = ps.part_number
             WHERE p.order_number = %s
             AND p.amount > 0
-            AND (ps.stock_level IS NULL OR ps.stock_level < p.amount)
+            GROUP BY p.part_number, p.text_line, p.amount, p.sum, p.parts_type
+            HAVING COALESCE(SUM(ps.stock_level), 0) < p.amount
             ORDER BY p.sum DESC
         """, [auftrag_nr])
         
@@ -396,7 +408,7 @@ def get_auftrag_teile(auftrag_nr):
                 
                 # Erwartete Lieferzeit
                 if supplier_nr in LIEFERZEITEN_CACHE:
-                    avg_tage = LIEFERZEITEN_CACHE[supplier_nr]['avg_tage']
+                    avg_tage = float(LIEFERZEITEN_CACHE[supplier_nr]['avg_tage'])  # Decimal → float für timedelta
                     teil_dict['lieferzeit_tage'] = avg_tage
                     teil_dict['lieferzeit_prognose'] = (datetime.now() + timedelta(days=avg_tage)).strftime('%d.%m.%Y')
                 else:
@@ -413,7 +425,7 @@ def get_auftrag_teile(auftrag_nr):
         conn_sqlite.close()
         
         # Früheste mögliche Fertigstellung
-        max_lieferzeit = max((t['lieferzeit_tage'] or 0) for t in teile_mit_prognose) if teile_mit_prognose else 0
+        max_lieferzeit = max((float(t['lieferzeit_tage'] or 0)) for t in teile_mit_prognose) if teile_mit_prognose else 0
         
         return jsonify({
             'success': True,
@@ -434,7 +446,7 @@ def get_auftrag_teile(auftrag_nr):
             'wert_gesamt': sum(t['wert'] for t in teile_mit_prognose),
             'frueheste_fertigstellung': {
                 'tage': max_lieferzeit,
-                'datum': (datetime.now() + timedelta(days=max_lieferzeit)).strftime('%d.%m.%Y') if max_lieferzeit else None
+                'datum': (datetime.now() + timedelta(days=float(max_lieferzeit))).strftime('%d.%m.%Y') if max_lieferzeit else None
             }
         })
         
@@ -466,10 +478,13 @@ def get_lieferanten_stats():
                 WHERE o.order_date >= CURRENT_DATE - INTERVAL '180 days'
             ),
             erste_lieferung AS (
-                SELECT part_number, MIN(delivery_note_date) as lieferdatum, supplier_number
+                SELECT DISTINCT ON (part_number)
+                    part_number,
+                    delivery_note_date as lieferdatum,
+                    supplier_number
                 FROM loco_parts_inbound_delivery_notes
                 WHERE delivery_note_date >= CURRENT_DATE - INTERVAL '180 days'
-                GROUP BY part_number
+                ORDER BY part_number, delivery_note_date ASC
             ),
             stats AS (
                 SELECT
@@ -609,7 +624,7 @@ def get_kritische_auftraege():
                 'betrieb': a['betrieb'],
                 'betrieb_name': BETRIEB_NAMEN.get(a['betrieb'], '?'),
                 'auftragsdatum': a['order_date'].strftime('%d.%m.%Y') if a['order_date'] else None,
-                'tage_offen': a['tage_offen'],
+                'tage_offen': int(a['tage_offen']) if a['tage_offen'] is not None else 0,  # Decimal → int
                 'kennzeichen': a['kennzeichen'],
                 'marke': a['marke'],
                 'kunde': a['kunde'],

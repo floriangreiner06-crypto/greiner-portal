@@ -27,7 +27,7 @@ else:
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 Jahr in Produktion
 
 # Globale Static-Version (ändert sich bei jedem Flask-Neustart)
-STATIC_VERSION = '20251207020000'  # TAG 100 - Teile-Status Dashboard
+STATIC_VERSION = '20260109180000'  # TAG 176 - TEK Dashboard: Zwei Tage nebeneinander mit Datum
 print(f"📦 Static Version: {STATIC_VERSION}")
 
 # Template-Kontext: Macht STATIC_VERSION in allen Templates verfügbar

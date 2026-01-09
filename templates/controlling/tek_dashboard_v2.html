@@ -243,12 +243,15 @@
                     <tr>
                         <th rowspan="2" style="width: 10%; vertical-align: middle;">Bereich</th>
                         <th rowspan="2" class="text-center" style="width: 5%; vertical-align: middle;">Stk</th>
-                        <th colspan="2" class="text-center bg-primary text-white" id="heuteHeader" style="display: none;">Vortag (<span id="heuteWochentag">-</span>)</th>
+                        <th colspan="2" class="text-center bg-info text-white" id="vortagHeader" style="display: none;"><span id="vortagDatum">-</span></th>
+                        <th colspan="2" class="text-center bg-primary text-white" id="heuteHeader" style="display: none;"><span id="heuteDatum">-</span></th>
                         <th colspan="6" class="text-center bg-secondary text-white">Monat</th>
                         <th rowspan="2" class="text-center" style="width: 6%; vertical-align: middle;">vs. VM</th>
                         <th rowspan="2" class="text-center" style="width: 6%; vertical-align: middle;">vs. VJ</th>
                     </tr>
                     <tr>
+                        <th class="text-end bg-light text-info" id="vortagUmsatzHeader" style="display: none;">Umsatz</th>
+                        <th class="text-end bg-light text-info" id="vortagDB1Header" style="display: none;">DB1</th>
                         <th class="text-end bg-light text-primary" id="heuteUmsatzHeader" style="display: none;">Umsatz</th>
                         <th class="text-end bg-light text-primary" id="heuteDB1Header" style="display: none;">DB1</th>
                         <th class="text-end">Umsatz</th>
@@ -261,7 +264,7 @@
                 </thead>
                 <tbody id="tekBody">
                     <tr>
-                        <td colspan="13" class="text-center py-4">
+                        <td colspan="14" class="text-center py-4">
                             <div class="spinner-border spinner-border-sm text-primary"></div>
                             <span class="ms-2">Lädt...</span>
                         </td>
@@ -341,7 +344,7 @@ async function loadData() {
     const monat = document.getElementById('filterMonat').value;
     const jahr = document.getElementById('filterJahr').value;
 
-    document.getElementById('tekBody').innerHTML = '<tr><td colspan="9" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr>';
+    document.getElementById('tekBody').innerHTML = '<tr><td colspan="14" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr>';
 
     try {
         // TAG173: umlage='mit' für Vergleich mit GlobalCube (Umlage wird NICHT bereinigt)
@@ -367,7 +370,7 @@ async function loadData() {
         }
     } catch (err) {
         console.error(err);
-        document.getElementById('tekBody').innerHTML = `<tr><td colspan="9" class="text-center py-4 text-danger">${err.message}</td></tr>`;
+        document.getElementById('tekBody').innerHTML = `<tr><td colspan="14" class="text-center py-4 text-danger">${err.message}</td></tr>`;
     }
 }
 
@@ -381,19 +384,33 @@ function renderAll(data) {
 
 function renderHeute(data) {
     const heute = data.heute;
+    const vortag = data.vortag;  // TAG176: Vorletzter Tag
     const showHeute = !!heute;
+    const showVortag = !!vortag;
 
-    // Header ein/ausblenden
+    // Header ein/ausblenden - Heute (neuester Tag)
     document.getElementById('heuteHeader').style.display = showHeute ? '' : 'none';
     document.getElementById('heuteUmsatzHeader').style.display = showHeute ? '' : 'none';
     document.getElementById('heuteDB1Header').style.display = showHeute ? '' : 'none';
 
     if (showHeute) {
-        document.getElementById('heuteWochentag').textContent = heute.wochentag;
+        // TAG176: Zeige Datum statt Wochentag (z.B. "09.01.")
+        document.getElementById('heuteDatum').textContent = heute.datum_formatiert || heute.datum || heute.wochentag;
+    }
+
+    // Header ein/ausblenden - Vortag (vorletzter Tag)
+    document.getElementById('vortagHeader').style.display = showVortag ? '' : 'none';
+    document.getElementById('vortagUmsatzHeader').style.display = showVortag ? '' : 'none';
+    document.getElementById('vortagDB1Header').style.display = showVortag ? '' : 'none';
+
+    if (showVortag) {
+        // TAG176: Zeige Datum statt Wochentag (z.B. "08.01.")
+        document.getElementById('vortagDatum').textContent = vortag.datum_formatiert || vortag.datum || vortag.wochentag;
     }
 
     // Flag für renderTable
     window.showHeuteColumns = showHeute;
+    window.showVortagColumns = showVortag;  // TAG176
 }
 
 function renderKPIs(data) {
@@ -517,7 +534,9 @@ function renderTable(data) {
     const tbody = document.getElementById('tekBody');
     const g = data.gesamt;
     const heute = data.heute;
+    const vortag = data.vortag;  // TAG176: Vorletzter Tag
     const showHeute = window.showHeuteColumns;
+    const showVortag = window.showVortagColumns || false;  // TAG176
     let html = '';
 
     for (const [key, b] of Object.entries(data.bereiche)) {
@@ -548,9 +567,13 @@ function renderTable(data) {
         // Anteil am Gesamt-DB1
         const anteil = g.db1 > 0 ? (db1 / g.db1 * 100) : 0;
 
-        // Heute-Spalten (falls vorhanden)
+        // TAG176: Heute-Spalten (neuester Tag)
         const heuteUmsatz = heute && b.heute_umsatz !== undefined ? b.heute_umsatz : null;
         const heuteDb1 = heute && b.heute_db1 !== undefined ? b.heute_db1 : null;
+        
+        // TAG176: Vortag-Spalten (vorletzter Tag)
+        const vortagUmsatz = vortag && b.vortag_umsatz !== undefined ? b.vortag_umsatz : null;
+        const vortagDb1 = vortag && b.vortag_db1 !== undefined ? b.vortag_db1 : null;
 
         html += `
             <tr class="bereich-row ${cfg.class}" onclick="showDrill('${key}')">
@@ -559,6 +582,10 @@ function renderTable(data) {
                     ${b.produktivitaet ? `<small class="text-info ms-1">(EW: ${b.produktivitaet}%)</small>` : ''}
                 </td>
                 <td class="text-center">${stueck ? `<span class="badge bg-primary">${stueck}</span>` : '<span class="val-muted">-</span>'}</td>
+                ${showVortag ? `
+                <td class="text-end bg-light">${vortagUmsatz !== null ? fmtEuro(vortagUmsatz) : '<span class="val-muted">-</span>'}</td>
+                <td class="text-end bg-light ${vortagDb1 !== null && vortagDb1 >= 0 ? 'val-pos' : vortagDb1 !== null ? 'val-neg' : ''}">${vortagDb1 !== null ? fmtEuro(vortagDb1) : '<span class="val-muted">-</span>'}</td>
+                ` : ''}
                 ${showHeute ? `
                 <td class="text-end bg-light">${heuteUmsatz !== null ? fmtEuro(heuteUmsatz) : '<span class="val-muted">-</span>'}</td>
                 <td class="text-end bg-light ${heuteDb1 !== null && heuteDb1 >= 0 ? 'val-pos' : heuteDb1 !== null ? 'val-neg' : ''}">${heuteDb1 !== null ? fmtEuro(heuteDb1) : '<span class="val-muted">-</span>'}</td>
@@ -604,14 +631,23 @@ function renderTable(data) {
         <tr class="gesamt-row">
             <td><i class="bi bi-calculator me-2"></i>GESAMT</td>
             <td class="text-center">${totalStueck > 0 ? `<span class="badge bg-dark">${totalStueck}</span>` : '-'}</td>
+            ${showVortag ? `
+            <td class="text-end bg-light">${vortag ? fmtEuro(vortag.umsatz) : '-'}</td>
+            <td class="text-end bg-light ${vortag && vortag.db1 >= 0 ? 'val-pos' : vortag ? 'val-neg' : ''}">${vortag ? fmtEuro(vortag.db1) : '-'}</td>
+            ` : ''}
             ${showHeute ? `
             <td class="text-end bg-light">${heute ? fmtEuro(heute.umsatz) : '-'}</td>
             <td class="text-end bg-light ${heute && heute.db1 >= 0 ? 'val-pos' : heute ? 'val-neg' : ''}">${heute ? fmtEuro(heute.db1) : '-'}</td>
             ` : ''}
             <td class="text-end">${fmtEuro(g.umsatz)}</td>
             <td class="text-end">${fmtEuro(g.einsatz)}</td>
-            <td class="text-end ${g.db1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(g.db1)}</td>
-            <td class="text-center">${fmtPct(g.marge)}</td>
+            <td class="text-end fw-bold ${g.db1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(g.db1)}</td>
+            <td class="text-center">
+                <div class="d-flex align-items-center justify-content-center gap-1">
+                    <div class="marge-bar"><div class="marge-bar-fill ${g.marge >= 20 ? 'marge-ok' : (g.marge >= 14 ? 'marge-warn' : 'marge-bad')}" style="width: ${Math.min(g.marge * 2, 100)}%"></div></div>
+                    <span class="small">${fmtPct(g.marge)}</span>
+                </div>
+            </td>
             <td class="text-end">${totalDb1ProStueck !== null ? fmtEuro(totalDb1ProStueck) : '-'}</td>
             <td class="text-center">100%</td>
             <td class="text-center">

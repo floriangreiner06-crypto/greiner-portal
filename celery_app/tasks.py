@@ -1388,21 +1388,12 @@ def email_werkstatt_tagesbericht():
     import os
     
     try:
-        # Prüfe verschiedene mögliche Pfade
-        script_paths = [
-            '/opt/greiner-portal/scripts/send_daily_werkstatt_tagesbericht.py',
-            '/opt/greiner-portal/scripts/send_daily_tek.py'  # Fallback
-        ]
+        # TAG176: Fallback auf TEK-Script entfernt - war falsch!
+        script_path = '/opt/greiner-portal/scripts/send_daily_werkstatt_tagesbericht.py'
         
-        script_path = None
-        for path in script_paths:
-            if os.path.exists(path):
-                script_path = path
-                break
-        
-        if not script_path:
-            logger.error(f"Werkstatt E-Mail-Script nicht gefunden")
-            return {'success': False, 'error': 'Script nicht gefunden'}
+        if not os.path.exists(script_path):
+            logger.error(f"Werkstatt E-Mail-Script nicht gefunden: {script_path}")
+            return {'success': False, 'error': f'Script nicht gefunden: {script_path}'}
         
         logger.info("Starte Werkstatt E-Mail...")
         result = subprocess.run(
@@ -1425,6 +1416,58 @@ def email_werkstatt_tagesbericht():
         return {'success': False, 'error': 'Timeout'}
     except Exception as e:
         logger.exception("Fehler bei Werkstatt E-Mail")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=600, name='celery_app.tasks.email_tek_daily')
+def email_tek_daily():
+    """
+    TEK E-Mail - Tägliche Erfolgskontrolle per E-Mail
+    Läuft täglich um 19:30 (nach Locosoft Mirror um 19:00)
+    
+    TAG 176: Aktiviert - nach Locosoft PostgreSQL-Befüllung (19:00 Uhr)
+    """
+    import subprocess
+    import os
+    
+    try:
+        # Prüfe verschiedene mögliche Pfade
+        script_paths = [
+            '/opt/greiner-portal/scripts/send_daily_tek.py',
+            '/opt/greiner-portal/send_daily_tek.py'
+        ]
+        
+        script_path = None
+        for path in script_paths:
+            if os.path.exists(path):
+                script_path = path
+                break
+        
+        if not script_path:
+            logger.error(f"TEK E-Mail-Script nicht gefunden")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte TEK E-Mail-Versand...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=600
+        )
+        
+        if result.returncode == 0:
+            logger.info("TEK E-Mail erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"TEK E-Mail fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("TEK E-Mail: Timeout nach 10 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei TEK E-Mail")
         return {'success': False, 'error': str(e)}
 
 

@@ -853,7 +853,7 @@ def get_my_balance():
                 }
             }), 401
         
-        year = request.args.get('year', 2025, type=int)
+        year = request.args.get('year', datetime.now().year, type=int)
 
         with db_session() as conn:
             cursor = conn.cursor()
@@ -987,7 +987,7 @@ def get_my_team():
                 'hint': 'Sie sind nicht als Urlaubsgenehmiger konfiguriert'
             }), 403
         
-        year = request.args.get('year', 2025, type=int)
+        year = request.args.get('year', datetime.now().year, type=int)
         
         team_members = get_team_for_approver(ldap_username)
         
@@ -1437,7 +1437,7 @@ def get_all_balances():
     TAG 123: Erweitert um has_ad_mapping Flag für Mitarbeiter ohne AD-Zuordnung.
     """
     try:
-        year = request.args.get('year', 2025, type=int)
+        year = request.args.get('year', datetime.now().year, type=int)
         department = request.args.get('department', None)
         location = request.args.get('location', None)
 
@@ -1538,7 +1538,7 @@ def get_all_bookings():
     2. Locosoft absence_calendar (Url, BUr, ZA., Krn, etc.)
     """
     try:
-        year = request.args.get('year', 2025, type=int)
+        year = request.args.get('year', datetime.now().year, type=int)
         bookings = []
         booked_dates = {}  # {employee_id: set(dates)} - um Duplikate zu vermeiden
 
@@ -1685,7 +1685,7 @@ def get_my_bookings():
                 'error': 'Nicht angemeldet'
             }), 401
         
-        year = request.args.get('year', 2025, type=int)
+        year = request.args.get('year', datetime.now().year, type=int)
         status_filter = request.args.get('status', None)
 
         # TAG 136: PostgreSQL-kompatible Query
@@ -1809,7 +1809,7 @@ def get_requests():
                     'error': 'Keine Berechtigung'
                 }), 403
         
-        year = request.args.get('year', 2025, type=int)
+        year = request.args.get('year', datetime.now().year, type=int)
         status_filter = request.args.get('status', None)
 
         # TAG 136: PostgreSQL-kompatible Query

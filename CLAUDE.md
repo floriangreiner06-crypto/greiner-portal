@@ -151,12 +151,16 @@ Bei Session-Start lesen:
 1. Diese Datei (`CLAUDE.md`)
 2. `docs/sessions/TODO_FOR_CLAUDE_SESSION_START_TAG[X].md`
 3. `docs/sessions/SESSION_WRAP_UP_TAG[X-1].md`
+4. **Standards für neue Features beachten** (siehe `.claude/commands/session-start.md`)
 
 Bei Session-Ende erstellen:
-1. `docs/sessions/SESSION_WRAP_UP_TAG[X].md`
-2. `docs/sessions/TODO_FOR_CLAUDE_SESSION_START_TAG[X+1].md`
-3. **Git-Commit lokal** (Windows)
-4. **Git-Commit auf Server** (siehe unten)
+1. **Qualitätscheck durchführen** (Redundanzen, SSOT, Code-Duplikate)
+2. `docs/sessions/SESSION_WRAP_UP_TAG[X].md` (inkl. Qualitätscheck-Ergebnisse)
+3. `docs/sessions/TODO_FOR_CLAUDE_SESSION_START_TAG[X+1].md`
+4. **Git-Commit lokal** (Windows)
+5. **Git-Commit auf Server** (siehe unten)
+
+**Qualitätscheck-Template:** `docs/QUALITAETSCHECK_TEMPLATE.md`
 
 ### Git auf Server aktualisieren (IMMER am Session-Ende!)
 ```bash
