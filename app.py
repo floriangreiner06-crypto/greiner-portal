@@ -470,6 +470,22 @@ app.register_blueprint(admin_routes)
 print("✅ Serviceberater Routes registriert: /aftersales/serviceberater/")
 print("✅ Garantie Routes registriert: /aftersales/garantie/")
 
+# Arbeitskarte API (TAG 173)
+try:
+    from api.arbeitskarte_api import bp as arbeitskarte_bp
+    app.register_blueprint(arbeitskarte_bp)
+    print("✅ Arbeitskarte API registriert: /api/arbeitskarte/")
+except Exception as e:
+    print(f"⚠️  Arbeitskarte API nicht geladen: {e}")
+
+# Werkstatt SOAP API (TAG 173 - Stempelzeiten-Verteilung)
+try:
+    from api.werkstatt_soap_api import bp as werkstatt_soap_bp
+    app.register_blueprint(werkstatt_soap_bp)
+    print("✅ Werkstatt SOAP API registriert: /api/werkstatt/soap/")
+except Exception as e:
+    print(f"⚠️  Werkstatt SOAP API nicht geladen: {e}")
+
 # Garantie SOAP API
 try:
     from api.garantie_soap_api import bp as garantie_soap_api

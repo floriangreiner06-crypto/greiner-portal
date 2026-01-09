@@ -312,6 +312,16 @@ def start_task(task_name):
     
     result = task_map[task_name].delay()
     
+    # Speichere Task-ID -> Task-Name Mapping in Redis für Historie
+    try:
+        import redis
+        redis_client = redis.Redis(host='localhost', port=6379, db=1)
+        mapping_key = f'task-name-mapping:{result.id}'
+        full_task_name = f'celery_app.tasks.{task_name}'
+        redis_client.setex(mapping_key, 86400 * 7, full_task_name)  # 7 Tage TTL
+    except:
+        pass  # Nicht kritisch, nur für Historie
+    
     return jsonify({
         'status': 'started',
         'task_id': result.id,
@@ -407,3 +417,171 @@ def api_schedules():
     for s in schedules:
         s.pop('schedule_obj', None)
     return jsonify(schedules)
+
+
+@celery_bp.route('/api/task-history/<task_name>')
+def task_history(task_name):
+    """Holt die letzten Task-Läufe für einen Task-Namen."""
+    import redis
+    from datetime import datetime
+    import json as json_lib
+    from celery_app import app
+    
+    try:
+        # Task-Namen zu vollständigem Celery-Task-Namen mappen
+        task_map = {
+            'import_mt940': 'celery_app.tasks.import_mt940',
+            'import_hvb_pdf': 'celery_app.tasks.import_hvb_pdf',
+            'import_santander': 'celery_app.tasks.import_santander',
+            'import_hyundai': 'celery_app.tasks.import_hyundai',
+            'scrape_hyundai': 'celery_app.tasks.scrape_hyundai',
+            'leasys_cache_refresh': 'celery_app.tasks.leasys_cache_refresh',
+            'umsatz_bereinigung': 'celery_app.tasks.umsatz_bereinigung',
+            'bwa_berechnung': 'celery_app.tasks.bwa_berechnung',
+            'sync_employees': 'celery_app.tasks.sync_employees',
+            'sync_locosoft_employees': 'celery_app.tasks.sync_locosoft_employees',
+            'email_auftragseingang': 'celery_app.tasks.email_auftragseingang',
+            'db_backup': 'celery_app.tasks.db_backup',
+            'cleanup_backups': 'celery_app.tasks.cleanup_backups',
+            'servicebox_scraper': 'celery_app.tasks.servicebox_scraper',
+            'servicebox_matcher': 'celery_app.tasks.servicebox_matcher',
+            'servicebox_import': 'celery_app.tasks.servicebox_import',
+            'servicebox_master': 'celery_app.tasks.servicebox_master',
+            'sync_teile': 'celery_app.tasks.sync_teile',
+            'import_teile': 'celery_app.tasks.import_teile',
+            'werkstatt_leistung': 'celery_app.tasks.werkstatt_leistung',
+            'email_werkstatt_tagesbericht': 'celery_app.tasks.email_werkstatt_tagesbericht',
+            'sync_charge_types': 'celery_app.tasks.sync_charge_types',
+            'ml_retrain': 'celery_app.tasks.ml_retrain',
+            'sync_sales': 'celery_app.tasks.sync_sales',
+            'import_stellantis': 'celery_app.tasks.import_stellantis',
+            'sync_stammdaten': 'celery_app.tasks.sync_stammdaten',
+            'locosoft_mirror': 'celery_app.tasks.locosoft_mirror',
+            'sync_ad_departments': 'celery_app.tasks.sync_ad_departments',
+            'update_penner_marktpreise': 'celery_app.tasks.update_penner_marktpreise',
+            'email_penner_weekly': 'celery_app.tasks.email_penner_weekly',
+            'sync_eautoseller_data': 'celery_app.tasks.sync_eautoseller_data',
+            'benachrichtige_serviceberater_ueberschreitungen': 'celery_app.tasks.benachrichtige_serviceberater_ueberschreitungen',
+        }
+        
+        full_task_name = task_map.get(task_name)
+        if not full_task_name:
+            return jsonify({'error': 'Task nicht gefunden'}), 404
+        
+        # Redis Client für Result Backend (DB 1)
+        redis_client = redis.Redis(host='localhost', port=6379, db=1, decode_responses=False)
+        
+        # Suche nach allen Task-Metadaten-Keys
+        pattern = 'celery-task-meta-*'
+        keys = redis_client.keys(pattern)
+        
+        if not keys:
+            return jsonify({
+                'task_name': task_name,
+                'last_run': None,
+                'history': []
+            })
+        
+        # Durchsuche die letzten Keys (für Performance)
+        history = []
+        checked = 0
+        max_checks = min(500, len(keys))  # Maximal 500 Keys prüfen
+        
+        # Sortiere Keys nach Timestamp (neueste zuerst)
+        for key in reversed(keys):
+            if checked >= max_checks:
+                break
+            checked += 1
+            
+            try:
+                # Extrahiere Task-ID aus Key
+                task_id = key.decode('utf-8') if isinstance(key, bytes) else str(key)
+                task_id = task_id.replace('celery-task-meta-', '')
+                
+                # Hole Task-Name aus Redis-Mapping (wenn vorhanden)
+                mapping_key = f'task-name-mapping:{task_id}'
+                stored_task_name = redis_client.get(mapping_key)
+                
+                if stored_task_name:
+                    # Decode bytes to string
+                    if isinstance(stored_task_name, bytes):
+                        stored_task_name = stored_task_name.decode('utf-8')
+                    if stored_task_name != full_task_name:
+                        continue
+                else:
+                    # Fallback: Versuche über AsyncResult (funktioniert oft nicht)
+                    try:
+                        from celery.result import AsyncResult
+                        result = AsyncResult(task_id, app=app)
+                        result_name = result.name
+                        if not result_name or result_name != full_task_name:
+                            continue
+                    except:
+                        # Wenn kein Mapping und AsyncResult fehlschlägt, überspringe
+                        continue
+                
+                # Hole Metadaten für Status und Dauer
+                meta_data = redis_client.get(key)
+                if not meta_data:
+                    continue
+                
+                try:
+                    if isinstance(meta_data, bytes):
+                        meta_data = meta_data.decode('utf-8')
+                    data = json_lib.loads(meta_data)
+                except (json_lib.JSONDecodeError, UnicodeDecodeError):
+                    continue
+                
+                # Berechne Dauer
+                date_done = data.get('date_done')
+                started = None
+                
+                # Versuche started aus result.info zu holen
+                try:
+                    if hasattr(result, 'info') and result.info:
+                        if isinstance(result.info, dict):
+                            started = result.info.get('started')
+                except:
+                    pass
+                
+                duration = None
+                if date_done and started:
+                    try:
+                        date_done_str = date_done.replace('Z', '+00:00') if 'Z' in date_done else date_done
+                        started_str = started.replace('Z', '+00:00') if 'Z' in started else started
+                        date_done_ts = datetime.fromisoformat(date_done_str)
+                        started_ts = datetime.fromisoformat(started_str)
+                        duration = (date_done_ts - started_ts).total_seconds()
+                    except (ValueError, AttributeError, TypeError):
+                        pass
+                
+                history.append({
+                    'task_id': task_id,
+                    'status': data.get('status', 'UNKNOWN'),
+                    'date_done': date_done,
+                    'started': started,
+                    'duration': duration,
+                    'success': data.get('status') == 'SUCCESS'
+                })
+                
+                # Nur die letzten 5 Einträge
+                if len(history) >= 5:
+                    break
+            except Exception as e:
+                continue
+        
+        # Sortiere nach Datum (neueste zuerst)
+        history.sort(key=lambda x: x.get('date_done') or '', reverse=True)
+        
+        # Hole den letzten Eintrag
+        last_run = history[0] if history else None
+        
+        return jsonify({
+            'task_name': task_name,
+            'last_run': last_run,
+            'history': history[:5]  # Maximal 5 Einträge
+        })
+        
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500

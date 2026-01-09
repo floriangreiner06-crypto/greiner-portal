@@ -31,6 +31,22 @@
     .task-info { flex: 1; }
     .task-name { font-weight: 600; color: #333; }
     .task-desc { font-size: 0.85rem; color: #666; }
+    .task-history {
+        font-size: 0.75rem;
+        color: #888;
+        margin-top: 0.25rem;
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+    .task-history-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+    .task-history-item i {
+        font-size: 0.7rem;
+    }
     .btn-start { min-width: 80px; }
     .btn-start.running { pointer-events: none; }
     .category-icon { font-size: 1.5rem; margin-right: 0.5rem; }
@@ -115,6 +131,9 @@
                                 <div class="task-info">
                                     <div class="task-name">{{ task_name }}</div>
                                     <div class="task-desc">{{ task_desc }}</div>
+                                    <div class="task-history" id="history-{{ task_id }}">
+                                        <span class="text-muted"><i class="bi bi-hourglass-split"></i> Lade...</span>
+                                    </div>
                                 </div>
                                 <button class="btn btn-sm btn-primary btn-start" 
                                         onclick="startTask('{{ task_id }}', this)"
@@ -266,6 +285,76 @@
 
 {% block extra_js %}
 <script>
+// Lade Task-Historie für alle Tasks
+function loadTaskHistory() {
+    const taskItems = document.querySelectorAll('.task-item');
+    taskItems.forEach(item => {
+        const taskId = item.id.replace('task-', '');
+        const historyDiv = document.getElementById(`history-${taskId}`);
+        if (!historyDiv) return;
+        
+        fetch(`/admin/celery/api/task-history/${taskId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.last_run) {
+                    renderTaskHistory(historyDiv, data.last_run);
+                } else {
+                    historyDiv.innerHTML = '<span class="text-muted"><i class="bi bi-info-circle"></i> Noch nicht gelaufen</span>';
+                }
+            })
+            .catch(error => {
+                historyDiv.innerHTML = '<span class="text-muted"><i class="bi bi-exclamation-triangle"></i> Fehler</span>';
+            });
+    });
+}
+
+// Rendere Task-Historie
+function renderTaskHistory(container, lastRun) {
+    const items = [];
+    
+    // Letzte Laufzeit
+    if (lastRun.date_done) {
+        const date = new Date(lastRun.date_done);
+        const timeAgo = getTimeAgo(date);
+        items.push(`<span class="task-history-item"><i class="bi bi-clock"></i> ${timeAgo}</span>`);
+    }
+    
+    // Dauer
+    if (lastRun.duration !== null && lastRun.duration !== undefined) {
+        const duration = formatDuration(lastRun.duration);
+        const statusIcon = lastRun.success ? 'bi-check-circle text-success' : 'bi-x-circle text-danger';
+        items.push(`<span class="task-history-item"><i class="bi ${statusIcon}"></i> ${duration}</span>`);
+    }
+    
+    container.innerHTML = items.join('');
+}
+
+// Formatiere Zeitdifferenz
+function getTimeAgo(date) {
+    const now = new Date();
+    const diff = Math.floor((now - date) / 1000); // Sekunden
+    
+    if (diff < 60) return `vor ${diff}s`;
+    if (diff < 3600) return `vor ${Math.floor(diff / 60)}m`;
+    if (diff < 86400) return `vor ${Math.floor(diff / 3600)}h`;
+    if (diff < 604800) return `vor ${Math.floor(diff / 86400)}d`;
+    return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+}
+
+// Formatiere Dauer
+function formatDuration(seconds) {
+    if (seconds < 60) return `${Math.round(seconds)}s`;
+    if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+    return `${Math.round(seconds / 3600 * 10) / 10}h`;
+}
+
+// Lade Historie beim Seitenaufruf
+document.addEventListener('DOMContentLoaded', function() {
+    loadTaskHistory();
+    // Aktualisiere alle 30 Sekunden
+    setInterval(loadTaskHistory, 30000);
+});
+
 // Task manuell starten
 function startTask(taskId, button) {
     const originalHtml = button.innerHTML;
@@ -292,23 +381,49 @@ function startTask(taskId, button) {
 function pollTaskStatus(taskId, button, originalHtml) {
     const checkStatus = () => {
         fetch(`/admin/celery/status/${taskId}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.ready) {
-                if (data.status === 'SUCCESS') {
-                    button.innerHTML = '<i class="bi bi-check-lg"></i> Fertig!';
-                    button.classList.remove('btn-warning');
-                    button.classList.add('btn-success');
-                    setTimeout(() => resetButton(button, originalHtml), 3000);
+            .then(response => response.json())
+            .then(data => {
+                if (data.ready) {
+                    if (data.status === 'SUCCESS') {
+                        button.innerHTML = '<i class="bi bi-check-lg"></i> Fertig!';
+                        button.classList.remove('btn-warning');
+                        button.classList.add('btn-success');
+                        setTimeout(() => resetButton(button, originalHtml), 3000);
+                        
+                        // Aktualisiere Historie nach erfolgreichem Abschluss
+                        const taskItem = button.closest('.task-item');
+                        if (taskItem) {
+                            const taskIdFromItem = taskItem.id.replace('task-', '');
+                            updateTaskHistory(taskIdFromItem);
+                        }
+                    } else {
+                        showError(button, originalHtml, data.error || 'Task fehlgeschlagen');
+                    }
                 } else {
-                    showError(button, originalHtml, data.error || 'Task fehlgeschlagen');
+                    setTimeout(checkStatus, 2000);
                 }
-            } else {
-                setTimeout(checkStatus, 2000);
-            }
-        });
+            });
     };
     checkStatus();
+}
+
+// Aktualisiere Historie für einen einzelnen Task
+function updateTaskHistory(taskId) {
+    const historyDiv = document.getElementById(`history-${taskId}`);
+    if (!historyDiv) return;
+    
+    fetch(`/admin/celery/api/task-history/${taskId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.last_run) {
+                renderTaskHistory(historyDiv, data.last_run);
+            } else {
+                historyDiv.innerHTML = '<span class="text-muted"><i class="bi bi-info-circle"></i> Noch nicht gelaufen</span>';
+            }
+        })
+        .catch(error => {
+            console.error('Fehler beim Laden der Historie:', error);
+        });
 }
 
 function showError(button, originalHtml, message) {

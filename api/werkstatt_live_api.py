@@ -2156,17 +2156,20 @@ def get_auftraege_enriched():
                     with open(encoder_path, 'rb') as f:
                         encoders = pickle.load(f)
 
+                    # Prüfe welche Features das Modell erwartet
+                    model_features = list(model.feature_names_in_) if hasattr(model, 'feature_names_in_') else []
+                    logger.debug(f"DRIVE: Modell erwartet {len(model_features)} Features: {model_features}")
+                    
                     # Vorhersage für jeden Auftrag
                     for auftrag in auftraege_raw:
                         if auftrag['vorgabe_aw'] and auftrag['vorgabe_aw'] > 0:
                             try:
-                                # === DRIVE V5 Feature-Vektor (21 Features) ===
                                 vorgabe_aw = float(auftrag['vorgabe_aw'])
-                                soll_dauer_min = vorgabe_aw * 6  # 1 AW = 6 Minuten
                                 betrieb = auftrag['betrieb'] or 1
                                 marke = auftrag['marke'] or 'Opel'
                                 km_stand = float(auftrag['km_stand'] or 50000)
                                 fahrzeug_alter = float(auftrag['fahrzeug_alter'] or 3)
+                                mech_nr = auftrag.get('mechaniker_nr') or auftrag.get('aktiv_mechaniker_nr')
 
                                 # Datum-Features
                                 auftrag_datum = auftrag['auftrag_datum']
@@ -2174,9 +2177,8 @@ def get_auftraege_enriched():
                                     wochentag = auftrag_datum.weekday()
                                     monat = auftrag_datum.month
                                     start_stunde = auftrag_datum.hour if auftrag_datum.hour > 0 else 8
-                                    kalenderwoche = auftrag_datum.isocalendar()[1]
                                 else:
-                                    wochentag, monat, start_stunde, kalenderwoche = 1, 6, 8, 25
+                                    wochentag, monat, start_stunde = 1, 6, 8
 
                                 # Kategorische Features encodieren
                                 try:
@@ -2184,59 +2186,81 @@ def get_auftraege_enriched():
                                 except:
                                     marke_encoded = 0
 
+                                # Mechaniker encodieren (falls Encoder vorhanden)
                                 try:
-                                    auftragstyp = auftrag.get('auftragstyp', 'X') or 'X'
-                                    auftragstyp_encoded = encoders['auftragstyp'].transform([auftragstyp])[0]
+                                    if 'mechaniker' in encoders and mech_nr:
+                                        mechaniker_encoded = encoders['mechaniker'].transform([mech_nr])[0]
+                                    else:
+                                        mechaniker_encoded = 0
                                 except:
-                                    auftragstyp_encoded = 0
+                                    mechaniker_encoded = 0
 
-                                try:
-                                    labour_type = auftrag.get('labour_type', 'W') or 'W'
-                                    labour_type_encoded = encoders['labour_type'].transform([labour_type])[0]
-                                except:
-                                    labour_type_encoded = 0
-
-                                # Defaults für Features die nicht live verfügbar sind
-                                anzahl_positionen = int(auftrag.get('anzahl_positionen', 1) or 1)
-                                anzahl_teile = int(auftrag.get('anzahl_teile', 0) or 0)
-                                charge_type = int(auftrag.get('charge_type', 10) or 10)
-                                urgency = int(auftrag.get('urgency', 0) or 0)
-                                power_kw = float(auftrag.get('power_kw', 74) or 74)
-                                cubic_capacity = float(auftrag.get('cubic_capacity', 1200) or 1200)
-                                productivity_factor = 1.0  # Default
-                                years_experience = 10.0    # Default
-                                meister = 0                # Default
-
-                                # === DRIVE V5 Feature-Vektor (21 Features, exakte Reihenfolge!) ===
-                                features = pd.DataFrame([[
-                                    soll_dauer_min,        # 1. soll_dauer_min
-                                    vorgabe_aw,            # 2. soll_aw
-                                    betrieb,               # 3. betrieb
-                                    anzahl_positionen,     # 4. anzahl_positionen
-                                    anzahl_teile,          # 5. anzahl_teile
-                                    charge_type,           # 6. charge_type
-                                    urgency,               # 7. urgency
-                                    wochentag,             # 8. wochentag
-                                    monat,                 # 9. monat
-                                    start_stunde,          # 10. start_stunde
-                                    kalenderwoche,         # 11. kalenderwoche
-                                    power_kw,              # 12. power_kw
-                                    cubic_capacity,        # 13. cubic_capacity
-                                    km_stand,              # 14. km_stand
-                                    fahrzeug_alter,        # 15. fahrzeug_alter_jahre
-                                    productivity_factor,   # 16. productivity_factor
-                                    years_experience,      # 17. years_experience
-                                    meister,               # 18. meister
-                                    marke_encoded,         # 19. marke_encoded
-                                    auftragstyp_encoded,   # 20. auftragstyp_encoded
-                                    labour_type_encoded    # 21. labour_type_encoded
-                                ]], columns=[
-                                    'soll_dauer_min', 'soll_aw', 'betrieb', 'anzahl_positionen', 'anzahl_teile',
-                                    'charge_type', 'urgency', 'wochentag', 'monat', 'start_stunde', 'kalenderwoche',
-                                    'power_kw', 'cubic_capacity', 'km_stand', 'fahrzeug_alter_jahre',
-                                    'productivity_factor', 'years_experience', 'meister',
-                                    'marke_encoded', 'auftragstyp_encoded', 'labour_type_encoded'
-                                ])
+                                # Feature-Vektor basierend auf Modell-Anforderungen
+                                # Modell erwartet: vorgabe_aw, mechaniker_encoded, betrieb, wochentag, monat, start_stunde, marke_encoded, fahrzeug_alter_jahre, km_stand
+                                if model_features and len(model_features) == 9:
+                                    # V2 Modell (9 Features)
+                                    features = pd.DataFrame([[
+                                        vorgabe_aw,            # 1. vorgabe_aw
+                                        mechaniker_encoded,    # 2. mechaniker_encoded
+                                        betrieb,               # 3. betrieb
+                                        wochentag,             # 4. wochentag
+                                        monat,                 # 5. monat
+                                        start_stunde,          # 6. start_stunde
+                                        marke_encoded,         # 7. marke_encoded
+                                        fahrzeug_alter,        # 8. fahrzeug_alter_jahre
+                                        km_stand               # 9. km_stand
+                                    ]], columns=model_features)
+                                else:
+                                    # Fallback: V5 Modell (21 Features) - falls Modell doch mehr Features erwartet
+                                    soll_dauer_min = vorgabe_aw * 6
+                                    try:
+                                        auftragstyp = auftrag.get('auftragstyp', 'X') or 'X'
+                                        auftragstyp_encoded = encoders['auftragstyp'].transform([auftragstyp])[0]
+                                    except:
+                                        auftragstyp_encoded = 0
+                                    try:
+                                        labour_type = auftrag.get('labour_type', 'W') or 'W'
+                                        labour_type_encoded = encoders['labour_type'].transform([labour_type])[0]
+                                    except:
+                                        labour_type_encoded = 0
+                                    
+                                    kalenderwoche = auftrag_datum.isocalendar()[1] if auftrag_datum else 25
+                                    anzahl_positionen = int(auftrag.get('anzahl_positionen', 1) or 1)
+                                    anzahl_teile = int(auftrag.get('anzahl_teile', 0) or 0)
+                                    charge_type = int(auftrag.get('charge_type', 10) or 10)
+                                    urgency = int(auftrag.get('urgency', 0) or 0)
+                                    power_kw = float(auftrag.get('power_kw', 74) or 74)
+                                    cubic_capacity = float(auftrag.get('cubic_capacity', 1200) or 1200)
+                                    
+                                    features = pd.DataFrame([[
+                                        soll_dauer_min,        # 1. soll_dauer_min
+                                        vorgabe_aw,            # 2. soll_aw
+                                        betrieb,               # 3. betrieb
+                                        anzahl_positionen,     # 4. anzahl_positionen
+                                        anzahl_teile,          # 5. anzahl_teile
+                                        charge_type,           # 6. charge_type
+                                        urgency,               # 7. urgency
+                                        wochentag,             # 8. wochentag
+                                        monat,                 # 9. monat
+                                        start_stunde,          # 10. start_stunde
+                                        kalenderwoche,         # 11. kalenderwoche
+                                        power_kw,              # 12. power_kw
+                                        cubic_capacity,        # 13. cubic_capacity
+                                        km_stand,              # 14. km_stand
+                                        fahrzeug_alter,        # 15. fahrzeug_alter_jahre
+                                        1.0,                   # 16. productivity_factor
+                                        10.0,                  # 17. years_experience
+                                        0,                     # 18. meister
+                                        marke_encoded,         # 19. marke_encoded
+                                        auftragstyp_encoded,   # 20. auftragstyp_encoded
+                                        labour_type_encoded    # 21. labour_type_encoded
+                                    ]], columns=[
+                                        'soll_dauer_min', 'soll_aw', 'betrieb', 'anzahl_positionen', 'anzahl_teile',
+                                        'charge_type', 'urgency', 'wochentag', 'monat', 'start_stunde', 'kalenderwoche',
+                                        'power_kw', 'cubic_capacity', 'km_stand', 'fahrzeug_alter_jahre',
+                                        'productivity_factor', 'years_experience', 'meister',
+                                        'marke_encoded', 'auftragstyp_encoded', 'labour_type_encoded'
+                                    ])
 
                                 # DRIVE V5 Vorhersage
                                 vorhersage_min = model.predict(features)[0]
