@@ -16,6 +16,8 @@
 - ✅ Quick Wins: Urlaubsplaner Jahr-Fix, teile_status_api Bugs behoben
 - ✅ SSOT für Teile-Lagerbestand implementiert
 - ✅ Doppelte Dateien gelöscht
+- ✅ Session-Befehle erweitert (Qualitätscheck, Standards)
+- ✅ Konfigurationen gesichert (Sync-Verzeichnis)
 - ⚠️ **User-Testing steht noch aus!**
 
 **Offene Probleme:**
