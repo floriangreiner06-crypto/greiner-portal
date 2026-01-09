@@ -1281,17 +1281,26 @@ def api_tek():
         # =====================================================================
         # TAGESWERTE - Aktueller Tag (nur wenn aktueller Monat)
         # =====================================================================
+        # TAG173: Statt "heute" den Vortag (gestern) anzeigen, da Update abends läuft
+        # Aktuell sollte also der 08.01. und der 07.01. dargestellt werden
         heute = date.today()
+        vortag = heute - timedelta(days=1)  # Gestern
+        vorgestern = heute - timedelta(days=2)  # Vorgestern
+        
         heute_daten = None
+        vortag_daten = None
         heute_bereiche = {}
-        if heute.year == jahr and heute.month == monat:
-            heute_str = heute.isoformat()
-            morgen_str = (heute + timedelta(days=1)).isoformat()
+        vortag_bereiche = {}
+        
+        # Vortag-Daten holen (wenn im aktuellen Monat)
+        if vortag.year == jahr and vortag.month == monat:
+            vortag_str = vortag.isoformat()
+            heute_str = heute.isoformat()  # Morgen vom Vortag aus gesehen
 
             with locosoft_session() as loco_conn:
                 loco_cur = loco_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-                # Tagesumsatz GESAMT
+                # Tagesumsatz GESAMT (Vortag)
                 loco_cur.execute(f"""
                     SELECT
                         COALESCE(SUM(CASE WHEN debit_or_credit = 'H' THEN posted_value ELSE -posted_value END) / 100.0, 0) as umsatz
@@ -1299,10 +1308,10 @@ def api_tek():
                     WHERE accounting_date >= %s AND accounting_date < %s
                       AND nominal_account_number BETWEEN 800000 AND 899999
                       {firma_filter_umsatz}
-                """, (heute_str, morgen_str))
-                heute_umsatz = float(loco_cur.fetchone()['umsatz'] or 0)
+                """, (vortag_str, heute_str))
+                vortag_umsatz = float(loco_cur.fetchone()['umsatz'] or 0)
 
-                # Tageseinsatz GESAMT (TAG157: firma_filter_einsatz für korrekte Standort-Zuordnung!)
+                # Tageseinsatz GESAMT (Vortag) (TAG157: firma_filter_einsatz für korrekte Standort-Zuordnung!)
                 loco_cur.execute(f"""
                     SELECT
                         COALESCE(SUM(CASE WHEN debit_or_credit = 'S' THEN posted_value ELSE -posted_value END) / 100.0, 0) as einsatz
@@ -1310,10 +1319,10 @@ def api_tek():
                     WHERE accounting_date >= %s AND accounting_date < %s
                       AND nominal_account_number BETWEEN 700000 AND 799999
                       {firma_filter_einsatz}
-                """, (heute_str, morgen_str))
-                heute_einsatz = float(loco_cur.fetchone()['einsatz'] or 0)
+                """, (vortag_str, heute_str))
+                vortag_einsatz = float(loco_cur.fetchone()['einsatz'] or 0)
 
-                # Tagesumsatz PRO BEREICH
+                # Tagesumsatz PRO BEREICH (Vortag)
                 loco_cur.execute(f"""
                     SELECT
                         CASE
@@ -1330,10 +1339,10 @@ def api_tek():
                       AND nominal_account_number BETWEEN 800000 AND 899999
                       {firma_filter_umsatz}
                     GROUP BY bereich
-                """, (heute_str, morgen_str))
-                heute_umsatz_bereich = {r['bereich']: float(r['umsatz'] or 0) for r in loco_cur.fetchall()}
+                """, (vortag_str, heute_str))
+                vortag_umsatz_bereich = {r['bereich']: float(r['umsatz'] or 0) for r in loco_cur.fetchall()}
 
-                # Tageseinsatz PRO BEREICH (TAG157: firma_filter_einsatz für korrekte Standort-Zuordnung!)
+                # Tageseinsatz PRO BEREICH (Vortag) (TAG157: firma_filter_einsatz für korrekte Standort-Zuordnung!)
                 loco_cur.execute(f"""
                     SELECT
                         CASE
@@ -1350,35 +1359,42 @@ def api_tek():
                       AND nominal_account_number BETWEEN 700000 AND 799999
                       {firma_filter_einsatz}
                     GROUP BY bereich
-                """, (heute_str, morgen_str))
-                heute_einsatz_bereich = {r['bereich']: float(r['einsatz'] or 0) for r in loco_cur.fetchall()}
+                """, (vortag_str, heute_str))
+                vortag_einsatz_bereich = {r['bereich']: float(r['einsatz'] or 0) for r in loco_cur.fetchall()}
 
                 loco_cur.close()
 
-            # Pro Bereich zusammenfÃ¼hren
+            # Pro Bereich zusammenfÃ¼hren (Vortag)
             for bkey in ['1-NW', '2-GW', '3-Teile', '4-Lohn', '5-Sonst']:
-                h_umsatz = heute_umsatz_bereich.get(bkey, 0)
-                h_einsatz = heute_einsatz_bereich.get(bkey, 0)
-                heute_bereiche[bkey] = {
+                h_umsatz = vortag_umsatz_bereich.get(bkey, 0)
+                h_einsatz = vortag_einsatz_bereich.get(bkey, 0)
+                vortag_bereiche[bkey] = {
                     'umsatz': round(h_umsatz, 2),
                     'db1': round(h_umsatz - h_einsatz, 2)
                 }
 
-            heute_db1 = heute_umsatz - heute_einsatz
-            heute_daten = {
-                'datum': heute_str,
-                'wochentag': ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'][heute.weekday()],
-                'umsatz': round(heute_umsatz, 2),
-                'einsatz': round(heute_einsatz, 2),
-                'db1': round(heute_db1, 2)
+            vortag_db1 = vortag_umsatz - vortag_einsatz
+            vortag_daten = {
+                'datum': vortag_str,
+                'wochentag': ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'][vortag.weekday()],
+                'umsatz': round(vortag_umsatz, 2),
+                'einsatz': round(vortag_einsatz, 2),
+                'db1': round(vortag_db1, 2)
             }
+            
+            # TAG173: Auch Vorgestern anzeigen (falls gewünscht)
+            # Für jetzt: Nur Vortag, aber Struktur für Erweiterung vorhanden
 
-        # Heute-Daten in Bereiche einfÃ¼gen
-        if heute_bereiche:
+        # Vortag-Daten in Bereiche einfÃ¼gen (heute_* bleibt für Kompatibilität)
+        if vortag_bereiche:
             for bkey in bereiche:
-                if bkey in heute_bereiche:
-                    bereiche[bkey]['heute_umsatz'] = heute_bereiche[bkey]['umsatz']
-                    bereiche[bkey]['heute_db1'] = heute_bereiche[bkey]['db1']
+                if bkey in vortag_bereiche:
+                    bereiche[bkey]['heute_umsatz'] = vortag_bereiche[bkey]['umsatz']
+                    bereiche[bkey]['heute_db1'] = vortag_bereiche[bkey]['db1']
+        
+        # Alias für Kompatibilität
+        heute_daten = vortag_daten
+        heute_bereiche = vortag_bereiche
 
         monat_namen = ['', 'Januar', 'Februar', 'MÃ¤rz', 'April', 'Mai', 'Juni',
                        'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']

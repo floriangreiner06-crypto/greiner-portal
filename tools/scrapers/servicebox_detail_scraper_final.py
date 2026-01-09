@@ -105,20 +105,51 @@ def login_and_navigate(driver, credentials):
         return False
 
 def extract_bestellungen_from_current_page(driver):
-    log("\n📋 EXTRAHIERE BESTELLNUMMERN VON AKTUELLER SEITE")
-    log("-"*80)
-    
+    """Extrahiert Bestellungen von der aktuellen Seite"""
     try:
-        links = driver.find_elements(By.XPATH, "//a[contains(@href, 'commandeDetailRepAll.do')]")
-        bestellungen_mit_urls = []
+        # TAG173: Flexibler Pattern wie im Master-Scraper (1[A-Z]{3}[A-Z0-9]{5})
+        import re
         
+        # Methode 1: Links mit XPath finden
+        links = driver.find_elements(By.XPATH, "//a[contains(@href, 'commandeDetailRepAll.do')]")
+        
+        bestellungen_mit_urls = []
+        bestellnummer_pattern = re.compile(r'1[A-Z]{3}[A-Z0-9]{5}')
+        
+        # Methode 1a: Aus Link-Text extrahieren
         for link in links:
             text = link.text.strip()
-            if text and text.startswith('1JA') and len(text) == 9:
-                href = link.get_attribute('href')
-                bestellungen_mit_urls.append({'nummer': text, 'url': href})
-                log(f"   ✅ {text}")
+            href = link.get_attribute('href')
+            
+            # Prüfe ob Text eine Bestellnummer ist
+            match = bestellnummer_pattern.match(text)
+            if match:
+                nummer = match.group(0)
+                bestellungen_mit_urls.append({'nummer': nummer, 'url': href})
+            else:
+                # Prüfe ob Bestellnummer im href ist
+                href_match = bestellnummer_pattern.search(href)
+                if href_match:
+                    nummer = href_match.group(0)
+                    bestellungen_mit_urls.append({'nummer': nummer, 'url': href})
         
+        # Methode 2: Fallback - Regex auf gesamter Seite (wie Master-Scraper)
+        if len(bestellungen_mit_urls) == 0:
+            html = driver.page_source
+            all_matches = bestellnummer_pattern.findall(html)
+            unique_numbers = list(set(all_matches))
+            
+            # Versuche URLs für jede Bestellnummer zu finden
+            for nummer in unique_numbers:
+                try:
+                    link = driver.find_element(By.XPATH, f"//a[contains(@href, '{nummer}') or contains(text(), '{nummer}')]")
+                    href = link.get_attribute('href')
+                    if href and 'commandeDetailRepAll.do' in href:
+                        bestellungen_mit_urls.append({'nummer': nummer, 'url': href})
+                except:
+                    pass
+        
+        # Deduplizieren
         seen = set()
         unique = []
         for item in bestellungen_mit_urls:
@@ -126,12 +157,74 @@ def extract_bestellungen_from_current_page(driver):
                 seen.add(item['nummer'])
                 unique.append(item)
         
-        log(f"\n📊 {len(unique)} eindeutige Bestellungen gefunden")
         return unique
         
     except Exception as e:
         log(f"❌ Fehler beim Extrahieren: {e}")
         return []
+
+
+def scrape_all_pages(driver):
+    """TAG173: Iteriert durch alle Pagination-Seiten (wie Master-Scraper)"""
+    log("\n📄 SCRAPE ALLE SEITEN MIT PAGINATION")
+    log("="*80)
+    
+    all_bestellungen = []
+    page_num = 1
+    max_pages = 20  # Safety-Limit
+    
+    while page_num <= max_pages:
+        log(f"\n📄 Seite {page_num}")
+        log("-" * 40)
+        
+        time.sleep(2)  # Kurz warten damit Seite geladen ist
+        take_screenshot(driver, f"page_{page_num}")
+        
+        # Extrahiere Bestellungen von aktueller Seite
+        bestellungen = extract_bestellungen_from_current_page(driver)
+        log(f"   Gefunden: {len(bestellungen)} Bestellungen")
+        
+        for item in bestellungen:
+            # Prüfe ob bereits vorhanden (nach Nummer)
+            if not any(b['nummer'] == item['nummer'] for b in all_bestellungen):
+                all_bestellungen.append(item)
+                log(f"   ✅ {item['nummer']}")
+        
+        # Suche "Weiter"-Button (bt-arrow-right)
+        try:
+            next_button = driver.find_element(By.CSS_SELECTOR, "input.bt-arrow-right")
+            
+            # Prüfe ob inactive (disabled)
+            classes = next_button.get_attribute('class') or ''
+            if 'inactive' in classes:
+                log("   ℹ️  'Weiter'-Button inactive - letzte Seite erreicht")
+                break
+            
+            log("   🖱️  Klicke 'Weiter' (bt-arrow-right)...")
+            next_button.click()
+            time.sleep(3)
+            page_num += 1
+            
+        except NoSuchElementException:
+            log("   ℹ️  'Weiter'-Button nicht gefunden - letzte Seite")
+            break
+        except Exception as e:
+            log(f"   ⚠️  Fehler bei Navigation: {e}")
+            take_screenshot(driver, f"error_pagination_page_{page_num}")
+            break
+    
+    log(f"\n📊 GESAMT: {len(all_bestellungen)} eindeutige Bestellungen auf {page_num} Seiten")
+    
+    # Warnung wenn keine gefunden
+    if len(all_bestellungen) == 0:
+        log("   ⚠️  KEINE BESTELLUNGEN GEFUNDEN!")
+        log("   💡 Mögliche Ursachen:")
+        log("      - Keine neuen Bestellungen vorhanden")
+        log("      - Seitenstruktur geändert")
+        log("      - Filter aktiv (z.B. Datum)")
+        take_screenshot(driver, "debug_no_orders")
+    
+    return all_bestellungen
 
 def safe_get_text(element):
     try:
@@ -141,7 +234,7 @@ def safe_get_text(element):
 
 def extract_bestellung_details(driver, bestellung_info):
     bestellnummer = bestellung_info['nummer']
-    detail_url = bestellung_info['url']
+    detail_url = bestellung_info.get('url')
     
     log(f"\n   🔍 Extrahiere Details für {bestellnummer}")
     
@@ -157,6 +250,21 @@ def extract_bestellung_details(driver, bestellung_info):
     }
 
     try:
+        # TAG173: Wenn keine URL vorhanden, versuche Link zu finden
+        if not detail_url:
+            log(f"      ⚠️  Keine URL vorhanden, suche Link für {bestellnummer}...")
+            try:
+                link = driver.find_element(By.XPATH, f"//a[contains(@href, '{bestellnummer}') or contains(text(), '{bestellnummer}')]")
+                detail_url = link.get_attribute('href')
+                if detail_url:
+                    log(f"      ✅ Link gefunden: {detail_url[:80]}...")
+                else:
+                    log(f"      ❌ Kein Link für {bestellnummer} gefunden, überspringe")
+                    return details
+            except:
+                log(f"      ❌ Kein Link für {bestellnummer} gefunden, überspringe")
+                return details
+        
         log(f"      🔗 Navigiere zu Detail-Seite...")
         driver.get(detail_url)
         time.sleep(5)
@@ -251,14 +359,115 @@ def extract_bestellung_details(driver, bestellung_info):
         except Exception as e:
             log(f"      ⚠️  Summen: {e}")
         
-        # Kommentare
+        # Kommentare & Parsed-Daten
         try:
-            kommentar_match = re.search(r'Lokale Bestell-Nr\.\s*:\s*</td>\s*<td[^>]*>\s*([^<]+)', page_text)
-            if kommentar_match:
-                details['kommentare']['lokale_nr'] = kommentar_match.group(1).strip()
-                log(f"      ✅ Lokale Nr: {details['kommentare']['lokale_nr']}")
+            # TAG173: Kommentar-Feld extrahieren (enthält Kunden-Info)
+            kommentar_full = None
+            kommentar_patterns = [
+                r'<td[^>]*>Kommentar</td>\s*<td[^>]*>\s*([^<]+)',  # <td>Kommentar</td><td>Wert</td>
+                r'Kommentar[^<]*</td>\s*<td[^>]*>\s*([^<]+)',  # Kommentar</td><td>Wert</td>
+                r'Kommentar\s*:\s*</td>\s*<td[^>]*>\s*([^<]+)',  # Mit Doppelpunkt
+                r'Kommentare[^<]*</td>\s*<td[^>]*>\s*([^<]+)',
+                r'Bemerkung[^<]*</td>\s*<td[^>]*>\s*([^<]+)',
+            ]
+            
+            for pattern in kommentar_patterns:
+                kommentar_match = re.search(pattern, page_text, re.IGNORECASE | re.DOTALL)
+                if kommentar_match:
+                    kommentar_full = kommentar_match.group(1).strip()
+                    # Entferne HTML-Tags und Whitespace
+                    kommentar_full = re.sub(r'<[^>]+>', '', kommentar_full).strip()
+                    # Entferne &nbsp; und andere HTML-Entities
+                    kommentar_full = kommentar_full.replace('&nbsp;', ' ').strip()
+                    if kommentar_full and len(kommentar_full) > 2:
+                        details['kommentare']['kommentar'] = kommentar_full
+                        log(f"      ✅ Kommentar gefunden: {kommentar_full[:80]}...")
+                        break
+            
+            # Fallback: Suche nach "Kommentar" im gesamten Text
+            if not kommentar_full:
+                kommentar_section = re.search(r'Kommentar[^>]*>([^<]+)', page_text, re.IGNORECASE)
+                if kommentar_section:
+                    kommentar_full = kommentar_section.group(1).strip()
+                    kommentar_full = re.sub(r'<[^>]+>', '', kommentar_full).strip()
+                    if kommentar_full and len(kommentar_full) > 2:
+                        details['kommentare']['kommentar'] = kommentar_full
+                        log(f"      ✅ Kommentar gefunden (Fallback): {kommentar_full[:80]}...")
+            
+            # Lokale Bestell-Nr extrahieren
+            lokale_nr = None
+            lokale_match = re.search(r'Lokale Bestell-Nr\.\s*:\s*</td>\s*<td[^>]*>\s*([^<]+)', page_text)
+            if lokale_match:
+                lokale_nr = lokale_match.group(1).strip()
+                details['kommentare']['lokale_nr'] = lokale_nr
+                log(f"      ✅ Lokale Nr: {lokale_nr}")
+            
+            # TAG173: Parse Daten aus Kommentar-Feld (Kunde wird hier gespeichert)
+            # Format: "A39915 Rose ber.ber W0L0AHL35A2036973" oder "LokaleNr Kundenname VIN"
+            if kommentar_full:
+                # Entferne VIN (17 Zeichen) und lokale_nr (A + Zahlen) am Anfang
+                kommentar_clean = kommentar_full.strip()
+                
+                # Entferne VIN am Ende (falls vorhanden)
+                vin_at_end = re.search(r'\b([A-HJ-NPR-Z0-9]{17})\s*$', kommentar_clean)
+                if vin_at_end:
+                    kommentar_clean = kommentar_clean[:vin_at_end.start()].strip()
+                
+                # Entferne lokale_nr am Anfang (A + Zahlen oder nur Zahlen)
+                lokale_at_start = re.match(r'^(A?\d{4,7})\s+', kommentar_clean)
+                if lokale_at_start:
+                    kommentar_clean = kommentar_clean[lokale_at_start.end():].strip()
+                
+                # Was übrig bleibt ist der Kundenname
+                if kommentar_clean and len(kommentar_clean) > 2:
+                    details['parsed'] = details.get('parsed', {})
+                    details['parsed']['kunde_name'] = kommentar_clean
+                    log(f"      ✅ Kundenname gefunden: {kommentar_clean}")
+            
+            # VIN extrahieren (17 Zeichen, alphanumerisch)
+            vin_pattern = re.compile(r'\b([A-HJ-NPR-Z0-9]{17})\b')
+            vin_match = vin_pattern.search(page_text)
+            if vin_match:
+                details['parsed'] = details.get('parsed', {})
+                details['parsed']['vin'] = vin_match.group(1)
+                log(f"      ✅ VIN gefunden: {details['parsed']['vin']}")
+            
+            # Kundennummer extrahieren (aus Kommentar oder Seite)
+            kdnr_found = False
+            if kommentar_full:
+                # Suche nach Kundennummer im Kommentar (4-6 stellige Zahl)
+                kdnr_pattern = re.compile(r'\b(\d{4,6})\b')
+                kdnr_matches = kdnr_pattern.findall(kommentar_full)
+                for match in kdnr_matches:
+                    kdnr = int(match)
+                    if 1000 <= kdnr <= 999999:
+                        details['parsed'] = details.get('parsed', {})
+                        details['parsed']['kundennummer'] = match
+                        log(f"      ✅ Kundennummer gefunden (aus Kommentar): {match}")
+                        kdnr_found = True
+                        break
+            
+            # Fallback: Suche auf gesamter Seite
+            if not kdnr_found:
+                kdnr_pattern = re.compile(r'\b(\d{4,6})\b')
+                kdnr_matches = kdnr_pattern.findall(page_text)
+                for match in kdnr_matches:
+                    kdnr = int(match)
+                    if 1000 <= kdnr <= 999999:
+                        details['parsed'] = details.get('parsed', {})
+                        details['parsed']['kundennummer'] = match
+                        log(f"      ✅ Kundennummer gefunden: {match}")
+                        break
+            
+            # Werkstattauftrag = lokale_nr (wenn es eine Nummer ist)
+            if lokale_nr:
+                auftrag_pattern = re.compile(r'^A?\d{4,7}$')
+                if auftrag_pattern.match(lokale_nr):
+                    details['parsed'] = details.get('parsed', {})
+                    details['parsed']['werkstattauftrag'] = lokale_nr
+                    log(f"      ✅ Werkstattauftrag: {lokale_nr}")
         except Exception as e:
-            log(f"      ⚠️  Kommentare: {e}")
+            log(f"      ⚠️  Kommentare/Parsing: {e}")
         
         return details
 
@@ -322,7 +531,7 @@ def main():
     log("="*80)
 
     driver = None
-    TEST_MODE = True
+    TEST_MODE = False  # TAG 173: Deaktiviert für Produktion
     MAX_ORDERS = 5 if TEST_MODE else None
 
     try:
@@ -333,7 +542,8 @@ def main():
             log("\n❌ Login/Navigation fehlgeschlagen!")
             return False
 
-        bestellungen = extract_bestellungen_from_current_page(driver)
+        # TAG173: Scrape alle Seiten mit Pagination
+        bestellungen = scrape_all_pages(driver)
         
         if not bestellungen:
             log("❌ Keine Bestellnummern gefunden!")

@@ -1,28 +1,30 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ServiceBox → SQLite Matching Script
-Version: TAG83 v2
+ServiceBox → PostgreSQL Matching Script
+Version: TAG173 - PostgreSQL Migration
 
-Gleicht ServiceBox-Bestellungen mit LOKALER SQLite-DB ab:
+Gleicht ServiceBox-Bestellungen mit PostgreSQL-DB ab:
 - Kundennummer → customers_suppliers (Name, Adresse)
 - VIN → sales (Fahrzeug-Details)
 
 USAGE:
-    python3 servicebox_locosoft_matcher.py
-    python3 servicebox_locosoft_matcher.py --dry-run
+    python3 match_servicebox.py
+    python3 match_servicebox.py --dry-run
 """
 
 import os
 import sys
 import json
-import sqlite3
 import argparse
 from datetime import datetime
 
+# PostgreSQL Connection
+sys.path.insert(0, '/opt/greiner-portal')
+from api.db_connection import get_db, sql_placeholder
+
 BASE_DIR = "/opt/greiner-portal"
-SQLITE_PATH = f"{BASE_DIR}/data/greiner_controlling.db"
-INPUT_FILE = f"{BASE_DIR}/logs/servicebox_bestellungen_v3.json"
+INPUT_FILE = f"{BASE_DIR}/logs/servicebox_bestellungen_details_final.json"  # TAG173: Korrigierter Pfad
 OUTPUT_FILE = f"{BASE_DIR}/logs/servicebox_matched.json"
 LOG_FILE = f"{BASE_DIR}/logs/servicebox_matcher.log"
 
@@ -34,23 +36,22 @@ def log(message):
         f.write(log_msg + '\n')
 
 # ============================================================================
-# SQLITE-ABFRAGEN
+# POSTGRESQL-ABFRAGEN
 # ============================================================================
 
-def get_sqlite_connection():
-    """SQLite-Verbindung"""
+def get_db_connection():
+    """PostgreSQL-Verbindung"""
     try:
-        conn = sqlite3.connect(SQLITE_PATH)
-        conn.row_factory = sqlite3.Row
-        log(f"✅ SQLite-Verbindung: {SQLITE_PATH}")
+        conn = get_db()
+        log(f"✅ PostgreSQL-Verbindung hergestellt")
         return conn
     except Exception as e:
-        log(f"❌ SQLite-Fehler: {e}")
+        log(f"❌ PostgreSQL-Fehler: {e}")
         return None
 
 def lookup_kunde(conn, kundennummer):
     """
-    Sucht Kunden in SQLite nach Kundennummer.
+    Sucht Kunden in PostgreSQL nach Kundennummer.
     Tabelle: customers_suppliers
     """
     if not kundennummer:
@@ -58,14 +59,15 @@ def lookup_kunde(conn, kundennummer):
     
     try:
         cursor = conn.cursor()
+        ph = sql_placeholder()
         
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT 
                 customer_no,
                 short_name,
                 long_name
             FROM customers_suppliers
-            WHERE customer_no = ?
+            WHERE customer_no = {ph}
             LIMIT 1
         """, (int(kundennummer),))
         
@@ -87,7 +89,7 @@ def lookup_kunde(conn, kundennummer):
 
 def lookup_fahrzeug_by_vin(conn, vin):
     """
-    Sucht Fahrzeug in SQLite nach VIN.
+    Sucht Fahrzeug in PostgreSQL nach VIN.
     Tabelle: sales (enthält VIN, Modell, Kunde)
     """
     if not vin:
@@ -95,8 +97,9 @@ def lookup_fahrzeug_by_vin(conn, vin):
     
     try:
         cursor = conn.cursor()
+        ph = sql_placeholder()
         
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT 
                 vin,
                 model_description,
@@ -108,8 +111,8 @@ def lookup_fahrzeug_by_vin(conn, vin):
                 salesman_number,
                 mileage_km
             FROM sales
-            WHERE UPPER(vin) = UPPER(?)
-            ORDER BY out_sales_contract_date DESC
+            WHERE UPPER(vin) = UPPER({ph})
+            ORDER BY out_sales_contract_date DESC NULLS LAST
             LIMIT 1
         """, (vin,))
         
@@ -151,8 +154,8 @@ def check_tables_exist(conn):
     
     for table in tables_needed:
         cursor.execute("""
-            SELECT name FROM sqlite_master 
-            WHERE type='table' AND name=?
+            SELECT table_name FROM information_schema.tables 
+            WHERE table_schema = 'public' AND table_name = %s
         """, (table,))
         if cursor.fetchone():
             tables_found.append(table)
@@ -165,7 +168,7 @@ def check_tables_exist(conn):
 
 def match_bestellung(conn, bestellung):
     """
-    Matcht eine ServiceBox-Bestellung mit SQLite.
+    Matcht eine ServiceBox-Bestellung mit PostgreSQL.
     
     Priorität:
     1. VIN → Fahrzeug + Kunde
@@ -226,7 +229,7 @@ def main():
     args = parser.parse_args()
     
     log("\n" + "="*80)
-    log("🔗 SERVICEBOX → SQLITE MATCHER (lokal)")
+    log("🔗 SERVICEBOX → POSTGRESQL MATCHER")
     log("="*80)
     
     # Input laden
@@ -244,8 +247,8 @@ def main():
         log(f"   ❌ Fehler: {e}")
         return False
     
-    # SQLite-Verbindung
-    conn = get_sqlite_connection()
+    # PostgreSQL-Verbindung
+    conn = get_db_connection()
     if not conn:
         return False
     
@@ -283,7 +286,8 @@ def main():
     matched_bestellungen = []
     
     for idx, bestellung in enumerate(bestellungen, 1):
-        best_nr = bestellung.get('bestellnummer', 'UNKNOWN')
+        # TAG173: Unterstütze beide Formate (nummer oder bestellnummer)
+        best_nr = bestellung.get('bestellnummer') or bestellung.get('nummer', 'UNKNOWN')
         
         if not args.dry_run:
             match = match_bestellung(conn, bestellung)
@@ -320,7 +324,7 @@ def main():
     # Ergebnisse speichern
     output_data = {
         'timestamp': datetime.now().isoformat(),
-        'version': 'v2_sqlite_matched',
+        'version': 'v3_postgresql_matched',  # TAG173: PostgreSQL
         'statistik': stats,
         'bestellungen': matched_bestellungen
     }

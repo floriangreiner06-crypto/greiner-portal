@@ -111,11 +111,11 @@ def werkstatt_teilebestellungen():
     return render_template('aftersales/teilebestellungen.html')
 
 
-@werkstatt_routes.route('/werkstatt/bestellung/<int:bestellung_id>')
+@werkstatt_routes.route('/werkstatt/bestellung/<bestellnummer>')
 @login_required
-def werkstatt_bestellung_detail(bestellung_id):
-    """Bestellungs-Detail"""
-    return render_template('aftersales/bestellung_detail.html', bestellung_id=bestellung_id)
+def werkstatt_bestellung_detail(bestellnummer):
+    """Bestellungs-Detail - TAG173: Verwendet Bestellnummer statt ID"""
+    return render_template('aftersales/bestellung_detail.html', bestellnummer=bestellnummer)
 
 
 @werkstatt_routes.route('/werkstatt/preisradar')

@@ -524,9 +524,27 @@ async function loadCockpit() {
     try {
         // Parallel laden
         const [stempelData, heuteData, kapazitaetData] = await Promise.all([
-            fetch(`/api/werkstatt/live/stempeluhr${params}`).then(r => r.json()),
-            fetch(`/api/werkstatt/live/heute${params}`).then(r => r.json()),
-            fetch(`/api/werkstatt/live/kapazitaet${params}`).then(r => r.json())
+            fetch(`/api/werkstatt/live/stempeluhr${params}`).then(r => {
+                if (!r.ok) {
+                    console.error('stempeluhr API Fehler:', r.status, r.statusText);
+                    return {success: false, error: r.statusText};
+                }
+                return r.json();
+            }),
+            fetch(`/api/werkstatt/live/heute${params}`).then(r => {
+                if (!r.ok) {
+                    console.error('heute API Fehler:', r.status, r.statusText);
+                    return {success: false, error: r.statusText};
+                }
+                return r.json();
+            }),
+            fetch(`/api/werkstatt/live/kapazitaet${params}`).then(r => {
+                if (!r.ok) {
+                    console.error('kapazitaet API Fehler:', r.status, r.statusText);
+                    return {success: false, error: r.statusText};
+                }
+                return r.json();
+            })
         ]);
         
         // Daten verarbeiten
@@ -567,11 +585,18 @@ async function loadCockpit() {
             });
         });
         
-        // 5. Kapazität prüfen
-        if (kapazitaetData.success) {
-            const auslastung = kapazitaetData.auslastung || {};
-            const offenAW = auslastung.heute_aw || 0;
-            const kapAW = kapazitaetData.kapazitaet?.aw_verfuegbar || 0;
+        // 5. Kapazität prüfen (für Problem-Erkennung)
+        if (kapazitaetData && kapazitaetData.success) {
+            const arbeit = kapazitaetData.arbeit || {};
+            const offenAW = parseFloat(arbeit.heute_aw) || 0;
+            // Kapazität: Wenn Betrieb gefiltert, nur diesen Betrieb verwenden
+            let kapAW = parseFloat(kapazitaetData.kapazitaet?.aw_verfuegbar) || 0;
+            if (betrieb && kapazitaetData.kapazitaet?.pro_betrieb) {
+                const betriebData = kapazitaetData.kapazitaet.pro_betrieb.find(b => b.subsidiary == betrieb);
+                if (betriebData && betriebData.kapazitaet_aw) {
+                    kapAW = parseFloat(betriebData.kapazitaet_aw) || kapAW;
+                }
+            }
             
             if (kapAW > 0 && offenAW > kapAW * 1.3) {
                 if (status !== 'rot') status = 'gelb';
@@ -587,7 +612,77 @@ async function loadCockpit() {
         
         // UI aktualisieren
         updateAmpel(status, probleme, aktive.length, leerlauf.length);
-        updateInfoZeile(heuteData, kapazitaetData);
+        
+        // DIREKTE KAPAZITÄTS-ANZEIGE (setzt alle Werte direkt, umgeht updateInfoZeile)
+        try {
+            if (kapazitaetData && kapazitaetData.success) {
+                const arbeit = kapazitaetData.arbeit || {};
+                const offenAW = parseFloat(arbeit.heute_aw) || 0;
+                const offenAWEl = document.getElementById('offenAW');
+                if (offenAWEl) {
+                    offenAWEl.textContent = Math.round(offenAW) + ' AW';
+                }
+                
+                // Kapazität
+                const kapazitaet = kapazitaetData.kapazitaet || {};
+                let kapAW = parseFloat(kapazitaet.aw_verfuegbar) || 0;
+                if (betrieb && kapazitaet.pro_betrieb) {
+                    const betriebData = kapazitaet.pro_betrieb.find(b => b.subsidiary == betrieb);
+                    if (betriebData && betriebData.kapazitaet_aw) {
+                        kapAW = parseFloat(betriebData.kapazitaet_aw) || kapAW;
+                    }
+                }
+                const kapazitaetAWEl = document.getElementById('kapazitaetAW');
+                if (kapazitaetAWEl) {
+                    kapazitaetAWEl.textContent = Math.round(kapAW) + ' AW';
+                }
+                
+                // Balken
+                const prozent = kapAW > 0 ? (offenAW / kapAW) * 100 : 0;
+                const bar = document.getElementById('kapazitaetBar');
+                if (bar) {
+                    bar.style.width = Math.min(prozent, 100) + '%';
+                    bar.className = 'kapazitaet-bar-fill';
+                    if (prozent > 110) bar.classList.add('bg-danger');
+                    else if (prozent > 90) bar.classList.add('bg-warning');
+                    else bar.classList.add('bg-success');
+                }
+                
+                // Status
+                const statusEl = document.getElementById('kapazitaetStatus');
+                if (statusEl) {
+                    if (prozent > 110) {
+                        statusEl.textContent = '⚠️ Überbucht';
+                        statusEl.className = 'value danger';
+                    } else if (prozent > 90) {
+                        statusEl.textContent = '✅ Gut ausgelastet';
+                        statusEl.className = 'value success';
+                    } else if (prozent > 50) {
+                        statusEl.textContent = 'OK';
+                        statusEl.className = 'value';
+                    } else {
+                        statusEl.textContent = 'Kapazität frei';
+                        statusEl.className = 'value warning';
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('Fehler bei direkter Kapazitäts-Anzeige:', e);
+        }
+        
+        // Leistung direkt setzen (ohne updateInfoZeile)
+        if (heuteData && heuteData.success) {
+            const leistung = parseFloat(heuteData.produktivitaet?.prozent) || 0;
+            const leistungEl = document.getElementById('leistungProzent');
+            if (leistungEl) {
+                leistungEl.textContent = Math.round(leistung) + '%';
+                leistungEl.className = 'value';
+                if (leistung >= 110) leistungEl.classList.add('success');
+                else if (leistung >= 90) leistungEl.classList.add('success');
+                else if (leistung >= 70) leistungEl.classList.add('warning');
+                else leistungEl.classList.add('danger');
+            }
+        }
         updateStempeluhr(aktive, leerlauf, ueberschritten);
         
         // Serviceberater-Modal prüfen (nur bei Überschreitungen)
@@ -601,6 +696,13 @@ async function loadCockpit() {
         
     } catch (error) {
         console.error('Cockpit-Fehler:', error);
+        console.error('Error stack:', error.stack);
+        // Fallback: Zeige Fehlermeldung im UI
+        const offenAWEl = document.getElementById('offenAW');
+        if (offenAWEl) {
+            offenAWEl.textContent = 'Fehler';
+            offenAWEl.style.color = 'red';
+        }
     }
 }
 
@@ -650,49 +752,102 @@ function updateAmpel(status, probleme, aktiveCount, leerlaufCount) {
 
 // Info-Zeile aktualisieren
 function updateInfoZeile(heuteData, kapazitaetData) {
-    // Offen AW
-    const offenAW = kapazitaetData.auslastung?.heute_aw || 0;
-    document.getElementById('offenAW').textContent = Math.round(offenAW) + ' AW';
+    // DEBUG: Log für Fehleranalyse
+    console.log('=== updateInfoZeile DEBUG ===');
+    console.log('kapazitaetData:', kapazitaetData);
     
-    // Kapazität
-    const kapAW = kapazitaetData.kapazitaet?.aw_verfuegbar || 0;
-    document.getElementById('kapazitaetAW').textContent = Math.round(kapAW) + ' AW';
+    // Sicherheitsprüfung: Daten vorhanden?
+    if (!kapazitaetData) {
+        console.error('updateInfoZeile: kapazitaetData ist undefined!');
+        return;
+    }
     
-    // Balken
+    // Offen AW - KORRIGIERT: arbeit.heute_aw statt auslastung.heute_aw
+    // Direkter Zugriff mit mehreren Fallbacks
+    let offenAW = 0;
+    if (kapazitaetData.arbeit && kapazitaetData.arbeit.heute_aw !== undefined) {
+        offenAW = parseFloat(kapazitaetData.arbeit.heute_aw) || 0;
+        console.log('offenAW aus arbeit.heute_aw:', offenAW);
+    } else if (kapazitaetData.heute_aw !== undefined) {
+        offenAW = parseFloat(kapazitaetData.heute_aw) || 0;
+        console.log('offenAW aus kapazitaetData.heute_aw:', offenAW);
+    } else {
+        console.warn('offenAW nicht gefunden in kapazitaetData!');
+    }
+    
+    const offenAWEl = document.getElementById('offenAW');
+    console.log('offenAWEl gefunden:', !!offenAWEl, 'offenAW:', offenAW);
+    if (offenAWEl) {
+        offenAWEl.textContent = Math.round(offenAW) + ' AW';
+        console.log('offenAWEl.textContent gesetzt auf:', offenAWEl.textContent);
+    } else {
+        console.error('offenAWEl nicht gefunden!');
+    }
+    
+    // Kapazität - KORRIGIERT: Bei Betriebsfilter nur diesen Betrieb verwenden
+    const betriebFilter = document.getElementById('betriebFilter');
+    const betrieb = betriebFilter ? betriebFilter.value : null;
+    const kapazitaet = kapazitaetData.kapazitaet || {};
+    let kapAW = parseFloat(kapazitaet.aw_verfuegbar) || 0;
+    
+    // Wenn Betrieb gefiltert, nur diesen Betrieb verwenden
+    if (betrieb && kapazitaet.pro_betrieb && Array.isArray(kapazitaet.pro_betrieb)) {
+        // Betrieb als String oder Number vergleichen
+        const betriebNum = parseInt(betrieb);
+        const betriebData = kapazitaet.pro_betrieb.find(b => 
+            b.subsidiary == betriebNum || b.subsidiary == betrieb
+        );
+        if (betriebData && betriebData.kapazitaet_aw !== undefined) {
+            kapAW = parseFloat(betriebData.kapazitaet_aw) || kapAW;
+        }
+    }
+    
+    const kapazitaetAWEl = document.getElementById('kapazitaetAW');
+    if (kapazitaetAWEl) {
+        kapazitaetAWEl.textContent = Math.round(kapAW) + ' AW';
+    }
+    
+    // Balken - KORRIGIERT: Jetzt mit korrektem offenAW berechnet
     const prozent = kapAW > 0 ? (offenAW / kapAW) * 100 : 0;
     const bar = document.getElementById('kapazitaetBar');
-    bar.style.width = Math.min(prozent, 100) + '%';
-    bar.className = 'kapazitaet-bar-fill';
-    if (prozent > 110) bar.classList.add('bg-danger');
-    else if (prozent > 90) bar.classList.add('bg-warning');
-    else bar.classList.add('bg-success');
+    if (bar) {
+        bar.style.width = Math.min(prozent, 100) + '%';
+        bar.className = 'kapazitaet-bar-fill';
+        if (prozent > 110) bar.classList.add('bg-danger');
+        else if (prozent > 90) bar.classList.add('bg-warning');
+        else bar.classList.add('bg-success');
+    }
     
     // Status Text
     const statusEl = document.getElementById('kapazitaetStatus');
-    if (prozent > 110) {
-        statusEl.textContent = '⚠️ Überbucht';
-        statusEl.className = 'value danger';
-    } else if (prozent > 90) {
-        statusEl.textContent = '✅ Gut ausgelastet';
-        statusEl.className = 'value success';
-    } else if (prozent > 50) {
-        statusEl.textContent = 'OK';
-        statusEl.className = 'value';
-    } else {
-        statusEl.textContent = 'Kapazität frei';
-        statusEl.className = 'value warning';
+    if (statusEl) {
+        if (prozent > 110) {
+            statusEl.textContent = '⚠️ Überbucht';
+            statusEl.className = 'value danger';
+        } else if (prozent > 90) {
+            statusEl.textContent = '✅ Gut ausgelastet';
+            statusEl.className = 'value success';
+        } else if (prozent > 50) {
+            statusEl.textContent = 'OK';
+            statusEl.className = 'value';
+        } else {
+            statusEl.textContent = 'Kapazität frei';
+            statusEl.className = 'value warning';
+        }
     }
     
     // Leistung
-    if (heuteData.success) {
-        const leistung = heuteData.produktivitaet?.prozent || 0;
+    if (heuteData && heuteData.success) {
+        const leistung = parseFloat(heuteData.produktivitaet?.prozent) || 0;
         const leistungEl = document.getElementById('leistungProzent');
-        leistungEl.textContent = Math.round(leistung) + '%';
-        leistungEl.className = 'value';
-        if (leistung >= 110) leistungEl.classList.add('success');
-        else if (leistung >= 90) leistungEl.classList.add('success');
-        else if (leistung >= 70) leistungEl.classList.add('warning');
-        else leistungEl.classList.add('danger');
+        if (leistungEl) {
+            leistungEl.textContent = Math.round(leistung) + '%';
+            leistungEl.className = 'value';
+            if (leistung >= 110) leistungEl.classList.add('success');
+            else if (leistung >= 90) leistungEl.classList.add('success');
+            else if (leistung >= 70) leistungEl.classList.add('warning');
+            else leistungEl.classList.add('danger');
+        }
     }
 }
 

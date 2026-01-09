@@ -65,6 +65,16 @@ def benachrichtige_serviceberater_ueberschreitungen():
                     FROM labours l
                     WHERE l.time_units > 0
                     GROUP BY l.order_number
+                ),
+                -- Prüfe ob Auftrag noch offene (nicht fakturierte) Positionen hat
+                offene_positionen AS (
+                    SELECT
+                        l.order_number,
+                        COUNT(*) as anzahl_offen
+                    FROM labours l
+                    WHERE l.time_units > 0
+                      AND l.is_invoiced = false
+                    GROUP BY l.order_number
                 )
                 SELECT
                     g.order_number,
@@ -75,8 +85,12 @@ def benachrichtige_serviceberater_ueberschreitungen():
                 FROM gestempelt_heute g
                 JOIN vorgabe_aw v ON g.order_number = v.order_number
                 JOIN orders o ON g.order_number = o.number
+                -- WICHTIG: Nur Aufträge mit offenen Positionen (noch nicht vollständig fakturiert)
+                LEFT JOIN offene_positionen op ON g.order_number = op.order_number
                 WHERE v.vorgabe_aw > 0
                   AND (g.gestempelt_min / (v.vorgabe_aw * 6) * 100) > 100
+                  AND (op.anzahl_offen > 0 OR op.anzahl_offen IS NULL)
+                  AND o.has_open_positions = true
             """)
             ueberschritten_abgeschlossen = cursor.fetchall()
         
@@ -85,7 +99,14 @@ def benachrichtige_serviceberater_ueberschreitungen():
             ueberschritten = ueberschritten_abgeschlossen
         else:
             aktive_mechaniker = stempeluhr_data.get('aktive_mechaniker', [])
-            ueberschritten_aktiv = [m for m in aktive_mechaniker if m.get('fortschritt_prozent', 0) > 100]
+            # Filter: Nur Aufträge mit Überschreitung UND noch offenen Positionen
+            # (abgeschlossene/fakturierte Aufträge werden ausgeschlossen)
+            ueberschritten_aktiv = [
+                m for m in aktive_mechaniker 
+                if m.get('fortschritt_prozent', 0) > 100
+                # Zusätzliche Prüfung: Hole Auftrag-Details um has_open_positions zu prüfen
+                # (wird später in der Schleife gemacht, hier nur Überschreitung filtern)
+            ]
             
             # Kombiniere aktive und abgeschlossene Überschreitungen
             auftrag_nrs_aktiv = {m.get('order_number') for m in ueberschritten_aktiv}
@@ -167,25 +188,63 @@ def benachrichtige_serviceberater_ueberschreitungen():
                         'name': f"{row[1]} {row[2]}".strip()
                     }
         
+        # Erstelle Mapping: auftrag_nr -> ueberschritt (für gestempelte Zeit von HEUTE)
+        ueberschritten_map = {}
+        for ueberschritt in ueberschritten:
+            auftrag_nr = ueberschritt.get('order_number')
+            if auftrag_nr:
+                ueberschritten_map[auftrag_nr] = ueberschritt
+        
         # Für jeden betroffenen User: E-Mail senden
         connector = GraphMailConnector()
         emails_gesendet = 0
         
         for auftrag_nr, (serviceberater_nr, betrieb) in auftraege_mit_sb.items():
             try:
+                # Hole Überschreitungs-Daten (gestempelte Zeit von HEUTE)
+                ueberschritt = ueberschritten_map.get(auftrag_nr)
+                if not ueberschritt:
+                    logger.warning(f"Auftrag {auftrag_nr} nicht in ueberschritten_map gefunden - überspringe")
+                    continue
+                
+                # Verwende gestempelte Zeit von HEUTE (aus ueberschritt)
+                gestempelt_min_heute = float(ueberschritt.get('gestempelt_min', 0))
+                
+                # Vorgabe: Entweder direkt als vorgabe_min oder als vorgabe_aw * 6
+                if 'vorgabe_min' in ueberschritt:
+                    vorgabe_min = float(ueberschritt.get('vorgabe_min', 0))
+                    vorgabe_aw = vorgabe_min / 6
+                else:
+                    vorgabe_aw = float(ueberschritt.get('vorgabe_aw', 0))
+                    vorgabe_min = vorgabe_aw * 6
+                
+                # Berechne Überschreitung
+                diff_min = gestempelt_min_heute - vorgabe_min
+                diff_prozent = (gestempelt_min_heute / vorgabe_min * 100) if vorgabe_min > 0 else 0
+                
+                # WICHTIG: Nur E-Mail senden, wenn tatsächlich überschritten (>100%)
+                if diff_prozent <= 100:
+                    logger.debug(f"Auftrag {auftrag_nr}: {diff_prozent:.1f}% ist KEINE Überschreitung - überspringe")
+                    continue
+                
+                # Hole Auftrag-Details für Fahrzeug-Info
                 auftrag_detail = WerkstattData.get_auftrag_detail(auftrag_nr)
                 if not auftrag_detail.get('success'):
                     continue
                 
                 auftrag = auftrag_detail['auftrag']
-                s = auftrag.get('summen', {})
+                
+                # WICHTIG: Prüfe ob Auftrag noch offene Positionen hat
+                # (abgeschlossene/fakturierte Aufträge bekommen keine Warn-Email)
+                status = auftrag.get('status', {})
+                if not status.get('ist_offen', True):
+                    logger.debug(f"Auftrag {auftrag_nr} hat keine offenen Positionen mehr - überspringe")
+                    continue
+                
                 f = auftrag.get('fahrzeug', {})
                 
-                # Berechne Überschreitung
-                gestempelt_min = s.get('gestempelt_min', 0)
-                vorgabe_min = (s.get('total_aw', 0) * 6)
-                diff_min = gestempelt_min - vorgabe_min
-                diff_prozent = (gestempelt_min / vorgabe_min * 100) if vorgabe_min > 0 else 0
+                # Verwende gestempelt_min_heute für E-Mail
+                gestempelt_min = gestempelt_min_heute
                 
                 # Empfänger bestimmen
                 empfaenger = []
@@ -242,7 +301,7 @@ def benachrichtige_serviceberater_ueberschreitungen():
                         </tr>
                         <tr style="background: #fff5f5;">
                             <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold; color: #dc3545;">Überschreitung</td>
-                            <td style="padding: 10px; border: 1px solid #dee2e6; color: #dc3545; font-weight: bold;">+{int(diff_min)} min ({diff_prozent:.0f}%)</td>
+                            <td style="padding: 10px; border: 1px solid #dee2e6; color: #dc3545; font-weight: bold;">+{int(abs(diff_min))} min ({diff_prozent:.0f}%)</td>
                         </tr>
                     </table>
                     
@@ -302,19 +361,26 @@ def benachrichtige_serviceberater_ueberschreitungen():
 @shared_task(soft_time_limit=1800, name='celery_app.tasks.servicebox_scraper')
 def servicebox_scraper():
     """
-    ServiceBox Detail-Scraper - Holt Bestellungen aus ServiceBox
+    ServiceBox API-Scraper - Holt Bestellungen aus ServiceBox via API
+    TAG 173: Umgestellt auf API-Endpoint für bessere Performance
     Läuft 3x täglich (09:30, 12:30, 16:30)
     """
     import subprocess
     import os
     
     try:
-        script_path = '/opt/greiner-portal/tools/scrapers/servicebox_detail_scraper_final.py'
+        # TAG 173: Neuer API-Scraper
+        script_path = '/opt/greiner-portal/tools/scrapers/servicebox_api_scraper.py'
+        if not os.path.exists(script_path):
+            # Fallback auf alten Scraper
+            script_path = '/opt/greiner-portal/tools/scrapers/servicebox_detail_scraper_final.py'
+            logger.warning(f"API-Scraper nicht gefunden, verwende alten Scraper: {script_path}")
+        
         if not os.path.exists(script_path):
             logger.error(f"ServiceBox Scraper-Script nicht gefunden: {script_path}")
             return {'success': False, 'error': 'Script nicht gefunden'}
         
-        logger.info("Starte ServiceBox Scraper...")
+        logger.info("Starte ServiceBox API-Scraper...")
         result = subprocess.run(
             ['/opt/greiner-portal/venv/bin/python3', script_path],
             cwd='/opt/greiner-portal',
@@ -324,17 +390,17 @@ def servicebox_scraper():
         )
         
         if result.returncode == 0:
-            logger.info("ServiceBox Scraper erfolgreich abgeschlossen")
+            logger.info("ServiceBox API-Scraper erfolgreich abgeschlossen")
             return {'success': True, 'stdout': result.stdout[-500:]}  # Letzte 500 Zeichen
         else:
-            logger.error(f"ServiceBox Scraper fehlgeschlagen: {result.stderr}")
+            logger.error(f"ServiceBox API-Scraper fehlgeschlagen: {result.stderr}")
             return {'success': False, 'error': result.stderr[-500:]}
     
     except subprocess.TimeoutExpired:
-        logger.error("ServiceBox Scraper: Timeout nach 30 Minuten")
+        logger.error("ServiceBox API-Scraper: Timeout nach 30 Minuten")
         return {'success': False, 'error': 'Timeout'}
     except Exception as e:
-        logger.exception("Fehler bei ServiceBox Scraper")
+        logger.exception("Fehler bei ServiceBox API-Scraper")
         return {'success': False, 'error': str(e)}
 
 
@@ -452,4 +518,1283 @@ def servicebox_master():
         return {'success': False, 'error': 'Timeout'}
     except Exception as e:
         logger.exception("Fehler bei ServiceBox Master")
+        return {'success': False, 'error': str(e)}
+
+
+# =============================================================================
+# CONTROLLING & VERWALTUNG - IMPORT TASKS (TAG 173)
+# =============================================================================
+
+@shared_task(soft_time_limit=180, name='celery_app.tasks.import_mt940', autoretry_for=(OSError,), retry_kwargs={'max_retries': 3, 'countdown': 30})
+def import_mt940():
+    """
+    MT940 Import - Bank-Kontoauszüge importieren
+    Läuft 3x täglich (08:00, 12:00, 17:00)
+    Retry bei Mount-Problemen (OSError: Host is down)
+    Verbesserte Mount-Prüfung mit Retry-Logik
+    """
+    import subprocess
+    import os
+    import time
+    
+    mt940_dir = '/mnt/buchhaltung/Buchhaltung/Kontoauszüge/mt940/'
+    script_path = '/opt/greiner-portal/scripts/imports/import_mt940.py'
+    
+    # Prüfe Script
+    if not os.path.exists(script_path):
+        logger.error(f"MT940 Import-Script nicht gefunden: {script_path}")
+        return {'success': False, 'error': 'Script nicht gefunden'}
+    
+    # Verbesserte Mount-Prüfung mit Retry
+    mount_ok = False
+    for attempt in range(3):
+        try:
+            if os.path.exists(mt940_dir):
+                # Zusätzliche Prüfung: Versuche Verzeichnis zu lesen
+                try:
+                    os.listdir(mt940_dir)
+                    mount_ok = True
+                    break
+                except (OSError, PermissionError) as e:
+                    if attempt < 2:
+                        logger.warning(f"Mount-Prüfung fehlgeschlagen (Versuch {attempt + 1}/3): {e}, warte 2s...")
+                        time.sleep(2)
+                        continue
+                    else:
+                        logger.error(f"Mount nicht verfügbar nach 3 Versuchen: {e}")
+            else:
+                if attempt < 2:
+                    logger.warning(f"Mount-Verzeichnis nicht gefunden (Versuch {attempt + 1}/3), warte 2s...")
+                    time.sleep(2)
+                    continue
+        except Exception as e:
+            if attempt < 2:
+                logger.warning(f"Fehler bei Mount-Prüfung (Versuch {attempt + 1}/3): {e}, warte 2s...")
+                time.sleep(2)
+                continue
+    
+    if not mount_ok:
+        error_msg = f"Mount-Verzeichnis nicht verfügbar: {mt940_dir}"
+        logger.error(error_msg)
+        # Wirf OSError für automatischen Retry
+        raise OSError(112, error_msg)
+    
+    try:
+        logger.info("Starte MT940 Import...")
+        # Script hat jetzt eigene Retry-Logik (--retry 3)
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path, 
+             '--retry', '3', '--retry-delay', '2', mt940_dir],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=180  # Erhöht auf 3 Minuten
+        )
+        
+        if result.returncode == 0:
+            logger.info("MT940 Import erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            error_msg = result.stderr[-500:] if result.stderr else result.stdout[-500:]
+            logger.error(f"MT940 Import fehlgeschlagen: {error_msg}")
+            
+            # Bei Mount-Fehlern: Retry auslösen
+            if 'Host is down' in error_msg or 'Errno 112' in error_msg:
+                raise OSError(112, f"Mount-Problem: {error_msg}")
+            
+            return {'success': False, 'error': error_msg}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("MT940 Import: Timeout nach 3 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except OSError as e:
+        # Mount-Problem - wird automatisch retried
+        error_msg = f"Mount-Problem: {str(e)}"
+        logger.warning(error_msg)
+        raise  # Wird von autoretry_for behandelt
+    except Exception as e:
+        logger.exception("Fehler bei MT940 Import")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=120, name='celery_app.tasks.import_hvb_pdf')
+def import_hvb_pdf():
+    """
+    HypoVereinsbank PDF Import - HVB PDF-Auszüge importieren
+    Läuft täglich um 08:30
+    """
+    import subprocess
+    import os
+    
+    try:
+        script_path = '/opt/greiner-portal/scripts/imports/import_all_bank_pdfs.py'
+        if not os.path.exists(script_path):
+            logger.error(f"HVB PDF Import-Script nicht gefunden: {script_path}")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte HypoVereinsbank PDF Import...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path,
+             '--bank', 'hvb', '--days', '3'],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+        
+        if result.returncode == 0:
+            logger.info("HVB PDF Import erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"HVB PDF Import fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("HVB PDF Import: Timeout nach 2 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei HVB PDF Import")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=300, name='celery_app.tasks.import_santander')
+def import_santander():
+    """
+    Santander Import - Santander Bestand importieren
+    Läuft täglich um 08:15
+    """
+    import subprocess
+    import os
+    
+    try:
+        script_path = '/opt/greiner-portal/scripts/imports/import_santander_bestand.py'
+        if not os.path.exists(script_path):
+            logger.error(f"Santander Import-Script nicht gefunden: {script_path}")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte Santander Import...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        if result.returncode == 0:
+            logger.info("Santander Import erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"Santander Import fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("Santander Import: Timeout nach 5 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei Santander Import")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=300, name='celery_app.tasks.import_hyundai')
+def import_hyundai():
+    """
+    Hyundai Finance Import - Hyundai Finance CSV importieren
+    Läuft täglich um 09:00
+    """
+    import subprocess
+    import os
+    
+    try:
+        script_path = '/opt/greiner-portal/scripts/imports/import_hyundai_finance.py'
+        if not os.path.exists(script_path):
+            logger.error(f"Hyundai Import-Script nicht gefunden: {script_path}")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte Hyundai Finance Import...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        if result.returncode == 0:
+            logger.info("Hyundai Import erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"Hyundai Import fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("Hyundai Import: Timeout nach 5 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei Hyundai Import")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=180, name='celery_app.tasks.scrape_hyundai')
+def scrape_hyundai():
+    """
+    Hyundai Scraper - Hyundai Portal scrapen
+    Läuft täglich um 08:45
+    """
+    import subprocess
+    import os
+    
+    try:
+        script_path = '/opt/greiner-portal/tools/scrapers/hyundai_bestandsliste_scraper.py'
+        if not os.path.exists(script_path):
+            logger.error(f"Hyundai Scraper-Script nicht gefunden: {script_path}")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte Hyundai Scraper...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=180
+        )
+        
+        if result.returncode == 0:
+            logger.info("Hyundai Scraper erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"Hyundai Scraper fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("Hyundai Scraper: Timeout nach 3 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei Hyundai Scraper")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=60, name='celery_app.tasks.leasys_cache_refresh')
+def leasys_cache_refresh():
+    """
+    Leasys Cache Refresh - Leasys Cache aktualisieren
+    Läuft alle 30 Minuten während Arbeitszeit (7-18 Uhr)
+    """
+    import subprocess
+    import os
+    
+    try:
+        script_path = '/opt/greiner-portal/scripts/update_leasys_cache.py'
+        if not os.path.exists(script_path):
+            logger.error(f"Leasys Cache-Script nicht gefunden: {script_path}")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte Leasys Cache Refresh...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        
+        if result.returncode == 0:
+            logger.info("Leasys Cache Refresh erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"Leasys Cache Refresh fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("Leasys Cache Refresh: Timeout nach 1 Minute")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei Leasys Cache Refresh")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=300, name='celery_app.tasks.umsatz_bereinigung')
+def umsatz_bereinigung():
+    """
+    Umsatz-Bereinigung - Umsatzdaten bereinigen
+    Läuft täglich um 09:30
+    """
+    import subprocess
+    import os
+    
+    try:
+        script_path = '/opt/greiner-portal/scripts/analysis/umsatz_bereinigung_production.py'
+        if not os.path.exists(script_path):
+            logger.error(f"Umsatz-Bereinigung-Script nicht gefunden: {script_path}")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte Umsatz-Bereinigung...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        if result.returncode == 0:
+            logger.info("Umsatz-Bereinigung erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"Umsatz-Bereinigung fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("Umsatz-Bereinigung: Timeout nach 5 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei Umsatz-Bereinigung")
+        return {'success': False, 'error': str(e)}
+
+
+# =============================================================================
+# SYNC TASKS (TAG 173)
+# =============================================================================
+
+@shared_task(soft_time_limit=300, name='celery_app.tasks.sync_employees')
+def sync_employees():
+    """
+    Mitarbeiter Sync - Mitarbeiter synchronisieren
+    Läuft täglich um 06:00
+    """
+    import subprocess
+    import os
+    
+    try:
+        script_path = '/opt/greiner-portal/scripts/sync/sync_employees.py'
+        if not os.path.exists(script_path):
+            logger.error(f"Mitarbeiter Sync-Script nicht gefunden: {script_path}")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte Mitarbeiter Sync...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        if result.returncode == 0:
+            logger.info("Mitarbeiter Sync erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"Mitarbeiter Sync fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("Mitarbeiter Sync: Timeout nach 5 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei Mitarbeiter Sync")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=300, name='celery_app.tasks.sync_locosoft_employees')
+def sync_locosoft_employees():
+    """
+    Locosoft Employees Sync - Locosoft Employee Mapping
+    Läuft täglich um 06:15
+    """
+    import subprocess
+    import os
+    
+    try:
+        # Prüfe verschiedene mögliche Pfade
+        script_paths = [
+            '/opt/greiner-portal/scripts/sync/sync_ldap_employees.py',
+            '/opt/greiner-portal/scripts/sync/sync_employees.py'
+        ]
+        
+        script_path = None
+        for path in script_paths:
+            if os.path.exists(path):
+                script_path = path
+                break
+        
+        if not script_path:
+            logger.error(f"Locosoft Employees Sync-Script nicht gefunden")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte Locosoft Employees Sync...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        if result.returncode == 0:
+            logger.info("Locosoft Employees Sync erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"Locosoft Employees Sync fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("Locosoft Employees Sync: Timeout nach 5 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei Locosoft Employees Sync")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=300, name='celery_app.tasks.sync_ad_departments')
+def sync_ad_departments():
+    """
+    AD Abteilungen Sync - Abteilungen aus Active Directory
+    Läuft täglich um 06:20
+    """
+    import subprocess
+    import os
+    
+    try:
+        script_path = '/opt/greiner-portal/scripts/sync/sync_ad_departments.py'
+        if not os.path.exists(script_path):
+            logger.error(f"AD Abteilungen Sync-Script nicht gefunden: {script_path}")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte AD Abteilungen Sync...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        if result.returncode == 0:
+            logger.info("AD Abteilungen Sync erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"AD Abteilungen Sync fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("AD Abteilungen Sync: Timeout nach 5 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei AD Abteilungen Sync")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=600, name='celery_app.tasks.sync_sales')
+def sync_sales():
+    """
+    Verkauf Sync - Verkaufsdaten synchronisieren
+    Läuft stündlich während Arbeitszeit (7-18 Uhr)
+    """
+    import subprocess
+    import os
+    
+    try:
+        script_path = '/opt/greiner-portal/scripts/sync/sync_sales.py'
+        if not os.path.exists(script_path):
+            logger.error(f"Verkauf Sync-Script nicht gefunden: {script_path}")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte Verkauf Sync...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=600
+        )
+        
+        if result.returncode == 0:
+            logger.info("Verkauf Sync erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"Verkauf Sync fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("Verkauf Sync: Timeout nach 10 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei Verkauf Sync")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=300, name='celery_app.tasks.sync_stammdaten')
+def sync_stammdaten():
+    """
+    Stammdaten Sync - Fahrzeug-Stammdaten sync
+    Läuft täglich um 09:30
+    """
+    import subprocess
+    import os
+    
+    try:
+        script_paths = [
+            '/opt/greiner-portal/scripts/sync/sync_stammdaten.py',
+            '/opt/greiner-portal/scripts/sync/sync_fahrzeug_stammdaten.py'
+        ]
+        
+        script_path = None
+        for path in script_paths:
+            if os.path.exists(path):
+                script_path = path
+                break
+        
+        if not script_path:
+            logger.error(f"Stammdaten Sync-Script nicht gefunden")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte Stammdaten Sync...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        if result.returncode == 0:
+            logger.info("Stammdaten Sync erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"Stammdaten Sync fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("Stammdaten Sync: Timeout nach 5 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei Stammdaten Sync")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=3600, name='celery_app.tasks.locosoft_mirror')
+def locosoft_mirror():
+    """
+    Locosoft Mirror - Locosoft komplett spiegeln
+    Läuft täglich um 19:00
+    """
+    import subprocess
+    import os
+    
+    try:
+        script_path = '/opt/greiner-portal/scripts/sync/locosoft_mirror.py'
+        if not os.path.exists(script_path):
+            logger.error(f"Locosoft Mirror-Script nicht gefunden: {script_path}")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte Locosoft Mirror...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=3600
+        )
+        
+        if result.returncode == 0:
+            logger.info("Locosoft Mirror erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"Locosoft Mirror fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("Locosoft Mirror: Timeout nach 60 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei Locosoft Mirror")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=300, name='celery_app.tasks.sync_teile')
+def sync_teile():
+    """
+    Teile Sync - Teile synchronisieren
+    Läuft alle 30 Minuten
+    """
+    import subprocess
+    import os
+    
+    try:
+        script_paths = [
+            '/opt/greiner-portal/scripts/sync/sync_teile.py',
+            '/opt/greiner-portal/scripts/imports/sync_teile_locosoft.py'
+        ]
+        
+        script_path = None
+        for path in script_paths:
+            if os.path.exists(path):
+                script_path = path
+                break
+        
+        if not script_path:
+            logger.error(f"Teile Sync-Script nicht gefunden")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte Teile Sync...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        if result.returncode == 0:
+            logger.info("Teile Sync erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"Teile Sync fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("Teile Sync: Timeout nach 5 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei Teile Sync")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=300, name='celery_app.tasks.sync_charge_types')
+def sync_charge_types():
+    """
+    Charge Types Sync - AW-Preise synchronisieren
+    Läuft täglich um 06:05
+    WICHTIG: Script muss noch auf PostgreSQL migriert werden!
+    """
+    import subprocess
+    import os
+    
+    try:
+        script_path = '/opt/greiner-portal/scripts/imports/sync_charge_types.py'
+        if not os.path.exists(script_path):
+            logger.error(f"Charge Types Sync-Script nicht gefunden: {script_path}")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte Charge Types Sync...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        if result.returncode == 0:
+            logger.info("Charge Types Sync erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"Charge Types Sync fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("Charge Types Sync: Timeout nach 5 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei Charge Types Sync")
+        return {'success': False, 'error': str(e)}
+
+
+# =============================================================================
+# VERKAUF TASKS (TAG 173)
+# =============================================================================
+
+@shared_task(soft_time_limit=300, name='celery_app.tasks.import_stellantis')
+def import_stellantis():
+    """
+    Stellantis Import - Stellantis Fahrzeuge importieren
+    Läuft täglich um 07:30
+    """
+    import subprocess
+    import os
+    
+    try:
+        script_path = '/opt/greiner-portal/scripts/imports/import_stellantis.py'
+        if not os.path.exists(script_path):
+            logger.error(f"Stellantis Import-Script nicht gefunden: {script_path}")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte Stellantis Import...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        if result.returncode == 0:
+            logger.info("Stellantis Import erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"Stellantis Import fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("Stellantis Import: Timeout nach 5 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei Stellantis Import")
+        return {'success': False, 'error': str(e)}
+
+
+# =============================================================================
+# AFTERSALES TASKS (TAG 173)
+# =============================================================================
+
+@shared_task(soft_time_limit=300, name='celery_app.tasks.import_teile')
+def import_teile():
+    """
+    Teile Import - Teile-Lieferscheine importieren
+    Läuft alle 2 Stunden
+    """
+    import subprocess
+    import os
+    
+    try:
+        script_paths = [
+            '/opt/greiner-portal/scripts/imports/import_teile.py',
+            '/opt/greiner-portal/scripts/imports/import_teile_lieferscheine.py'
+        ]
+        
+        script_path = None
+        for path in script_paths:
+            if os.path.exists(path):
+                script_path = path
+                break
+        
+        if not script_path:
+            logger.error(f"Teile Import-Script nicht gefunden")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte Teile Import...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        if result.returncode == 0:
+            logger.info("Teile Import erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"Teile Import fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("Teile Import: Timeout nach 5 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei Teile Import")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=300, name='celery_app.tasks.werkstatt_leistung')
+def werkstatt_leistung():
+    """
+    Werkstatt Leistung - Leistungsgrade berechnen
+    Läuft täglich um 19:15
+    """
+    import subprocess
+    import os
+    
+    try:
+        script_path = '/opt/greiner-portal/scripts/sync/sync_werkstatt_zeiten.py'
+        if not os.path.exists(script_path):
+            logger.error(f"Werkstatt Leistung-Script nicht gefunden: {script_path}")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte Werkstatt Leistung...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        if result.returncode == 0:
+            logger.info("Werkstatt Leistung erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"Werkstatt Leistung fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("Werkstatt Leistung: Timeout nach 5 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei Werkstatt Leistung")
+        return {'success': False, 'error': str(e)}
+
+
+# =============================================================================
+# E-MAIL TASKS (TAG 173)
+# =============================================================================
+
+@shared_task(soft_time_limit=300, name='celery_app.tasks.email_auftragseingang')
+def email_auftragseingang():
+    """
+    E-Mail Auftragseingang - Täglichen Report senden
+    Läuft täglich um 17:15
+    """
+    import subprocess
+    import os
+    
+    try:
+        script_path = '/opt/greiner-portal/scripts/send_daily_auftragseingang.py'
+        if not os.path.exists(script_path):
+            logger.error(f"E-Mail Auftragseingang-Script nicht gefunden: {script_path}")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte E-Mail Auftragseingang...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        if result.returncode == 0:
+            logger.info("E-Mail Auftragseingang erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"E-Mail Auftragseingang fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("E-Mail Auftragseingang: Timeout nach 5 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei E-Mail Auftragseingang")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=300, name='celery_app.tasks.email_werkstatt_tagesbericht')
+def email_werkstatt_tagesbericht():
+    """
+    Werkstatt E-Mail - Tagesbericht senden
+    Läuft täglich um 17:30
+    """
+    import subprocess
+    import os
+    
+    try:
+        # Prüfe verschiedene mögliche Pfade
+        script_paths = [
+            '/opt/greiner-portal/scripts/send_daily_werkstatt_tagesbericht.py',
+            '/opt/greiner-portal/scripts/send_daily_tek.py'  # Fallback
+        ]
+        
+        script_path = None
+        for path in script_paths:
+            if os.path.exists(path):
+                script_path = path
+                break
+        
+        if not script_path:
+            logger.error(f"Werkstatt E-Mail-Script nicht gefunden")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte Werkstatt E-Mail...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        if result.returncode == 0:
+            logger.info("Werkstatt E-Mail erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"Werkstatt E-Mail fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("Werkstatt E-Mail: Timeout nach 5 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei Werkstatt E-Mail")
+        return {'success': False, 'error': str(e)}
+
+
+# =============================================================================
+# CONTROLLING TASKS (TAG 173)
+# =============================================================================
+
+@shared_task(soft_time_limit=600, name='celery_app.tasks.bwa_berechnung')
+def bwa_berechnung():
+    """
+    BWA Berechnung - BWA aus Locosoft berechnen
+    Läuft täglich um 19:30
+    """
+    import subprocess
+    import os
+    
+    try:
+        script_path = '/opt/greiner-portal/scripts/sync/bwa_berechnung.py'
+        if not os.path.exists(script_path):
+            logger.error(f"BWA Berechnung-Script nicht gefunden: {script_path}")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte BWA Berechnung...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=600
+        )
+        
+        if result.returncode == 0:
+            logger.info("BWA Berechnung erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"BWA Berechnung fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("BWA Berechnung: Timeout nach 10 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei BWA Berechnung")
+        return {'success': False, 'error': str(e)}
+
+
+# =============================================================================
+# BACKUP & WARTUNG TASKS (TAG 173)
+# =============================================================================
+
+@shared_task(soft_time_limit=3600, name='celery_app.tasks.db_backup')
+def db_backup():
+    """
+    DB Backup - Datenbank-Backup erstellen
+    Läuft täglich um 03:00
+    """
+    import subprocess
+    import os
+    
+    try:
+        # Prüfe verschiedene mögliche Pfade
+        script_paths = [
+            '/opt/greiner-portal/scripts/backup/db_backup.py',
+            '/opt/greiner-portal/scripts/db_backup.py'
+        ]
+        
+        script_path = None
+        for path in script_paths:
+            if os.path.exists(path):
+                script_path = path
+                break
+        
+        if not script_path:
+            logger.warning("DB Backup-Script nicht gefunden - verwende pg_dump direkt")
+            # Fallback: pg_dump direkt aufrufen
+            result = subprocess.run(
+                ['pg_dump', '-h', '127.0.0.1', '-U', 'drive_user', '-d', 'drive_portal',
+                 '-f', f'/opt/greiner-portal/data/backups/db_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.sql'],
+                cwd='/opt/greiner-portal',
+                capture_output=True,
+                text=True,
+                timeout=3600,
+                env={**os.environ, 'PGPASSWORD': 'DrivePortal2024'}
+            )
+            
+            if result.returncode == 0:
+                logger.info("DB Backup erfolgreich abgeschlossen (pg_dump)")
+                return {'success': True, 'stdout': result.stdout[-500:]}
+            else:
+                logger.error(f"DB Backup fehlgeschlagen: {result.stderr}")
+                return {'success': False, 'error': result.stderr[-500:]}
+        
+        logger.info("Starte DB Backup...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=3600
+        )
+        
+        if result.returncode == 0:
+            logger.info("DB Backup erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"DB Backup fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("DB Backup: Timeout nach 60 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei DB Backup")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=300, name='celery_app.tasks.cleanup_backups')
+def cleanup_backups():
+    """
+    Backup Cleanup - Alte Backups löschen
+    Läuft täglich um 03:30
+    """
+    import subprocess
+    import os
+    from pathlib import Path
+    
+    try:
+        # Prüfe verschiedene mögliche Pfade
+        script_paths = [
+            '/opt/greiner-portal/scripts/backup/cleanup_backups.py',
+            '/opt/greiner-portal/scripts/cleanup_backups.py'
+        ]
+        
+        script_path = None
+        for path in script_paths:
+            if os.path.exists(path):
+                script_path = path
+                break
+        
+        if not script_path:
+            logger.warning("Backup Cleanup-Script nicht gefunden - verwende einfache Logik")
+            # Fallback: Einfache Cleanup-Logik
+            backup_dir = Path('/opt/greiner-portal/data/backups')
+            if backup_dir.exists():
+                import time
+                now = time.time()
+                deleted = 0
+                for backup_file in backup_dir.glob('*.sql'):
+                    # Lösche Backups älter als 30 Tage
+                    if now - backup_file.stat().st_mtime > 30 * 24 * 3600:
+                        backup_file.unlink()
+                        deleted += 1
+                
+                logger.info(f"Backup Cleanup: {deleted} alte Backups gelöscht")
+                return {'success': True, 'deleted': deleted}
+            else:
+                return {'success': True, 'message': 'Backup-Verzeichnis nicht gefunden'}
+        
+        logger.info("Starte Backup Cleanup...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        if result.returncode == 0:
+            logger.info("Backup Cleanup erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"Backup Cleanup fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("Backup Cleanup: Timeout nach 5 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei Backup Cleanup")
+        return {'success': False, 'error': str(e)}
+
+
+# =============================================================================
+# WEITERE TASKS (TAG 173)
+# =============================================================================
+
+@shared_task(soft_time_limit=3600, name='celery_app.tasks.ml_retrain')
+def ml_retrain():
+    """
+    ML Training - Modell neu trainieren
+    Läuft täglich um 03:15
+    """
+    import subprocess
+    import os
+    
+    try:
+        # Prüfe verschiedene mögliche Pfade
+        script_paths = [
+            '/opt/greiner-portal/scripts/ml/retrain.py',
+            '/opt/greiner-portal/scripts/retrain_ml.py'
+        ]
+        
+        script_path = None
+        for path in script_paths:
+            if os.path.exists(path):
+                script_path = path
+                break
+        
+        if not script_path:
+            logger.warning("ML Training-Script nicht gefunden")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte ML Training...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=3600
+        )
+        
+        if result.returncode == 0:
+            logger.info("ML Training erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"ML Training fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("ML Training: Timeout nach 60 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei ML Training")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=300, name='celery_app.tasks.update_penner_marktpreise')
+def update_penner_marktpreise():
+    """
+    Penner Marktpreise - Marktpreise aktualisieren
+    Läuft täglich um 03:00
+    """
+    import subprocess
+    import os
+    
+    try:
+        # Prüfe verschiedene mögliche Pfade
+        script_paths = [
+            '/opt/greiner-portal/scripts/penner/update_marktpreise.py',
+            '/opt/greiner-portal/scripts/update_penner_marktpreise.py'
+        ]
+        
+        script_path = None
+        for path in script_paths:
+            if os.path.exists(path):
+                script_path = path
+                break
+        
+        if not script_path:
+            logger.warning("Penner Marktpreise-Script nicht gefunden")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte Penner Marktpreise Update...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        if result.returncode == 0:
+            logger.info("Penner Marktpreise Update erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"Penner Marktpreise Update fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("Penner Marktpreise Update: Timeout nach 5 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei Penner Marktpreise Update")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=300, name='celery_app.tasks.email_penner_weekly')
+def email_penner_weekly():
+    """
+    Penner Wochenreport - Wochenreport senden
+    Läuft Montag um 07:00
+    """
+    import subprocess
+    import os
+    
+    try:
+        script_path = '/opt/greiner-portal/scripts/send_weekly_penner_report.py'
+        if not os.path.exists(script_path):
+            logger.error(f"Penner Wochenreport-Script nicht gefunden: {script_path}")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte Penner Wochenreport...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        if result.returncode == 0:
+            logger.info("Penner Wochenreport erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"Penner Wochenreport fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("Penner Wochenreport: Timeout nach 5 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei Penner Wochenreport")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=300, name='celery_app.tasks.sync_eautoseller_data')
+def sync_eautoseller_data():
+    """
+    eAutoseller Sync - eAutoseller Daten synchronisieren
+    Läuft alle 15 Minuten während Arbeitszeit (7-18 Uhr)
+    """
+    import subprocess
+    import os
+    
+    try:
+        # Prüfe verschiedene mögliche Pfade
+        script_paths = [
+            '/opt/greiner-portal/scripts/sync/sync_eautoseller.py',
+            '/opt/greiner-portal/scripts/sync_eautoseller_data.py'
+        ]
+        
+        script_path = None
+        for path in script_paths:
+            if os.path.exists(path):
+                script_path = path
+                break
+        
+        if not script_path:
+            logger.warning("eAutoseller Sync-Script nicht gefunden")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte eAutoseller Sync...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        if result.returncode == 0:
+            logger.info("eAutoseller Sync erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"eAutoseller Sync fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("eAutoseller Sync: Timeout nach 5 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei eAutoseller Sync")
         return {'success': False, 'error': str(e)}

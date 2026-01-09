@@ -1,0 +1,791 @@
+{% extends "base.html" %}
+
+{% block title %}Garantie Live-Dashboard - Greiner DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* ============================================================
+       GARANTIE LIVE-DASHBOARD MOCKUP - TAG 173
+       Live-Handlungsempfehlungen für Serviceberater
+       ============================================================ */
+    
+    body {
+        background: #f8f9fa;
+    }
+    
+    .dashboard-container {
+        max-width: 1600px;
+        margin: 0 auto;
+        padding: 1.5rem;
+    }
+    
+    /* Header */
+    .dashboard-header {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+    
+    .header-left h1 {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin: 0 0 0.5rem 0;
+        color: #2c3e50;
+    }
+    
+    .header-left .subtitle {
+        color: #7f8c8d;
+        font-size: 0.9rem;
+    }
+    
+    .header-right {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+    
+    .live-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: #e74c3c;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+    
+    .live-indicator .pulse {
+        width: 10px;
+        height: 10px;
+        background: white;
+        border-radius: 50%;
+        animation: pulse 1.5s infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.5; transform: scale(0.8); }
+    }
+    
+    /* Auftrag-Info Box */
+    .auftrag-info-box {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    
+    .auftrag-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 2px solid #ecf0f1;
+    }
+    
+    .auftrag-nr {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #2c3e50;
+    }
+    
+    .auftrag-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+    
+    .status-in-arbeit {
+        background: #fff3cd;
+        color: #856404;
+    }
+    
+    .status-wartend {
+        background: #d1ecf1;
+        color: #0c5460;
+    }
+    
+    .status-fertig {
+        background: #d4edda;
+        color: #155724;
+    }
+    
+    .auftrag-details {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+    }
+    
+    .detail-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    
+    .detail-label {
+        font-size: 0.75rem;
+        color: #7f8c8d;
+        text-transform: uppercase;
+        font-weight: 600;
+    }
+    
+    .detail-value {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #2c3e50;
+    }
+    
+    /* Handlungsempfehlungen */
+    .empfehlungen-box {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    
+    .empfehlungen-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+    
+    .empfehlungen-header h2 {
+        font-size: 1.3rem;
+        font-weight: 600;
+        margin: 0;
+        color: #2c3e50;
+    }
+    
+    .potenzial-badge {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 0.9rem;
+        font-weight: 600;
+    }
+    
+    .empfehlung-item {
+        display: flex;
+        align-items: start;
+        gap: 1rem;
+        padding: 1rem;
+        background: #f8f9fa;
+        border-radius: 8px;
+        margin-bottom: 0.75rem;
+        border-left: 4px solid transparent;
+        transition: all 0.3s ease;
+    }
+    
+    .empfehlung-item:hover {
+        background: #e9ecef;
+        transform: translateX(4px);
+    }
+    
+    .empfehlung-item.kritisch {
+        border-left-color: #e74c3c;
+        background: #fff5f5;
+    }
+    
+    .empfehlung-item.wichtig {
+        border-left-color: #f39c12;
+        background: #fffbf0;
+    }
+    
+    .empfehlung-item.info {
+        border-left-color: #3498db;
+        background: #f0f8ff;
+    }
+    
+    .empfehlung-item.erledigt {
+        border-left-color: #27ae60;
+        background: #f0fff4;
+        opacity: 0.7;
+    }
+    
+    .empfehlung-icon {
+        font-size: 1.5rem;
+        flex-shrink: 0;
+    }
+    
+    .empfehlung-content {
+        flex: 1;
+    }
+    
+    .empfehlung-title {
+        font-weight: 600;
+        margin-bottom: 4px;
+        color: #2c3e50;
+    }
+    
+    .empfehlung-text {
+        font-size: 0.9rem;
+        color: #7f8c8d;
+        margin-bottom: 8px;
+    }
+    
+    .empfehlung-aktion {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+    
+    .btn-empfehlung {
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        border: none;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .btn-empfehlung-primary {
+        background: #3498db;
+        color: white;
+    }
+    
+    .btn-empfehlung-primary:hover {
+        background: #2980b9;
+    }
+    
+    .btn-empfehlung-success {
+        background: #27ae60;
+        color: white;
+    }
+    
+    .btn-empfehlung-success:hover {
+        background: #229954;
+    }
+    
+    .empfehlung-wert {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #27ae60;
+        margin-left: auto;
+    }
+    
+    /* Checkliste */
+    .checkliste-box {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    
+    .checkliste-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+    
+    .checkliste-header h2 {
+        font-size: 1.3rem;
+        font-weight: 600;
+        margin: 0;
+        color: #2c3e50;
+    }
+    
+    .fortschritt-bar {
+        width: 100%;
+        height: 8px;
+        background: #ecf0f1;
+        border-radius: 4px;
+        overflow: hidden;
+        margin-bottom: 1rem;
+    }
+    
+    .fortschritt-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #27ae60 0%, #2ecc71 100%);
+        transition: width 0.3s ease;
+    }
+    
+    .checkliste-item {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 0.75rem;
+        border-radius: 6px;
+        margin-bottom: 0.5rem;
+        transition: all 0.2s;
+    }
+    
+    .checkliste-item:hover {
+        background: #f8f9fa;
+    }
+    
+    .checkliste-item.erledigt {
+        opacity: 0.6;
+    }
+    
+    .checkliste-checkbox {
+        width: 24px;
+        height: 24px;
+        border: 2px solid #bdc3c7;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+    
+    .checkliste-item.erledigt .checkliste-checkbox {
+        background: #27ae60;
+        border-color: #27ae60;
+        color: white;
+    }
+    
+    .checkliste-text {
+        flex: 1;
+        font-size: 0.95rem;
+    }
+    
+    .checkliste-badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    
+    .badge-pflicht {
+        background: #e74c3c;
+        color: white;
+    }
+    
+    .badge-optional {
+        background: #95a5a6;
+        color: white;
+    }
+    
+    /* Vergütungs-Übersicht */
+    .verguetung-box {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        color: white;
+    }
+    
+    .verguetung-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+    
+    .verguetung-header h2 {
+        font-size: 1.3rem;
+        font-weight: 600;
+        margin: 0;
+        color: white;
+    }
+    
+    .verguetung-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 1rem;
+    }
+    
+    .verguetung-item {
+        background: rgba(255,255,255,0.2);
+        padding: 1rem;
+        border-radius: 8px;
+        backdrop-filter: blur(10px);
+    }
+    
+    .verguetung-label {
+        font-size: 0.75rem;
+        opacity: 0.9;
+        margin-bottom: 4px;
+    }
+    
+    .verguetung-wert {
+        font-size: 1.5rem;
+        font-weight: 700;
+    }
+    
+    .verguetung-potenzial {
+        font-size: 0.85rem;
+        opacity: 0.9;
+        margin-top: 4px;
+    }
+    
+    /* Mechaniker-Status */
+    .mechaniker-status {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    
+    .mechaniker-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+    
+    .mechaniker-header h2 {
+        font-size: 1.3rem;
+        font-weight: 600;
+        margin: 0;
+        color: #2c3e50;
+    }
+    
+    .mechaniker-info {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 1rem;
+        background: #f8f9fa;
+        border-radius: 8px;
+    }
+    
+    .mechaniker-avatar {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background: #3498db;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 1.5rem;
+        font-weight: 600;
+    }
+    
+    .mechaniker-details {
+        flex: 1;
+    }
+    
+    .mechaniker-name {
+        font-weight: 600;
+        font-size: 1.1rem;
+        margin-bottom: 4px;
+    }
+    
+    .mechaniker-status-text {
+        font-size: 0.85rem;
+        color: #7f8c8d;
+    }
+    
+    .zeit-info {
+        text-align: right;
+    }
+    
+    .zeit-label {
+        font-size: 0.75rem;
+        color: #7f8c8d;
+        margin-bottom: 4px;
+    }
+    
+    .zeit-wert {
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: #2c3e50;
+    }
+    
+    /* Responsive */
+    @media (max-width: 768px) {
+        .dashboard-container {
+            padding: 1rem;
+        }
+        
+        .auftrag-details {
+            grid-template-columns: 1fr;
+        }
+        
+        .verguetung-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <!-- Header -->
+    <div class="dashboard-header">
+        <div class="header-left">
+            <h1>🔧 Garantie Live-Dashboard</h1>
+            <div class="subtitle">Live-Handlungsempfehlungen für optimale Abrechnung</div>
+        </div>
+        <div class="header-right">
+            <div class="live-indicator">
+                <span class="pulse"></span>
+                <span>LIVE</span>
+            </div>
+            <button class="btn btn-primary" onclick="refreshDashboard()">
+                <i class="bi bi-arrow-clockwise"></i> Aktualisieren
+            </button>
+        </div>
+    </div>
+    
+    <!-- Auftrag-Info -->
+    <div class="auftrag-info-box">
+        <div class="auftrag-header">
+            <div>
+                <div class="auftrag-nr">#220345</div>
+                <div style="margin-top: 0.5rem; color: #7f8c8d; font-size: 0.9rem;">
+                    Hyundai IONIQ 5 • SR-YY 22E • König, Dietmar Friedrich
+                </div>
+            </div>
+            <div class="auftrag-status status-in-arbeit">
+                <i class="bi bi-gear-fill"></i>
+                In Bearbeitung
+            </div>
+        </div>
+        <div class="auftrag-details">
+            <div class="detail-item">
+                <div class="detail-label">Serviceberater</div>
+                <div class="detail-value">Salmansberger, Valentin</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Mechaniker</div>
+                <div class="detail-value">Müller, Thomas</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Datum</div>
+                <div class="detail-value">09.01.2026</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Vorgabe AW</div>
+                <div class="detail-value">3.0 AW</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Gestempelt</div>
+                <div class="detail-value">3.8 AW (23 Min)</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Aktueller Lohn</div>
+                <div class="detail-value">27.80 €</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Vergütungs-Übersicht -->
+    <div class="verguetung-box">
+        <div class="verguetung-header">
+            <h2>💰 Vergütungs-Übersicht</h2>
+        </div>
+        <div class="verguetung-grid">
+            <div class="verguetung-item">
+                <div class="verguetung-label">Aktuell</div>
+                <div class="verguetung-wert">27.80 €</div>
+            </div>
+            <div class="verguetung-item">
+                <div class="verguetung-label">Potenzial</div>
+                <div class="verguetung-wert">+15.17 €</div>
+                <div class="verguetung-potenzial">+55% mehr möglich</div>
+            </div>
+            <div class="verguetung-item">
+                <div class="verguetung-label">Optimiert</div>
+                <div class="verguetung-wert">42.97 €</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Handlungsempfehlungen -->
+    <div class="empfehlungen-box">
+        <div class="empfehlungen-header">
+            <h2>📋 Handlungsempfehlungen</h2>
+            <div class="potenzial-badge">+15.17 € möglich</div>
+        </div>
+        
+        <!-- Empfehlung 1: BASICA00 -->
+        <div class="empfehlung-item kritisch">
+            <div class="empfehlung-icon">⚠️</div>
+            <div class="empfehlung-content">
+                <div class="empfehlung-title">GDS-Grundprüfung (BASICA00) fehlt</div>
+                <div class="empfehlung-text">
+                    Die GDS-Grundprüfung wurde noch nicht eingereicht. Diese kann bei JEDEM Garantieauftrag 
+                    ohne zusätzliche Voraussetzungen eingereicht werden.
+                </div>
+                <div class="empfehlung-aktion">
+                    <button class="btn-empfehlung btn-empfehlung-primary">
+                        <i class="bi bi-plus-circle"></i> BASICA00 hinzufügen
+                    </button>
+                    <button class="btn-empfehlung btn-empfehlung-success">
+                        <i class="bi bi-info-circle"></i> Mehr Infos
+                    </button>
+                </div>
+            </div>
+            <div class="empfehlung-wert">+8.43 €</div>
+        </div>
+        
+        <!-- Empfehlung 2: TT-Zeit -->
+        <div class="empfehlung-item wichtig">
+            <div class="empfehlung-icon">⏱️</div>
+            <div class="empfehlung-content">
+                <div class="empfehlung-title">TT-Zeit möglich (0.8 AW)</div>
+                <div class="empfehlung-text">
+                    Gestempelte Zeit (3.8 AW) ist höher als Vorgabe (3.0 AW). 
+                    Die Differenz kann als TT-Zeit ohne Freigabe eingereicht werden (bis 9 AW möglich).
+                </div>
+                <div class="empfehlung-aktion">
+                    <button class="btn-empfehlung btn-empfehlung-primary">
+                        <i class="bi bi-clock-history"></i> TT-Zeit hinzufügen
+                    </button>
+                    <button class="btn-empfehlung btn-empfehlung-success">
+                        <i class="bi bi-check-circle"></i> Automatisch berechnen
+                    </button>
+                </div>
+            </div>
+            <div class="empfehlung-wert">+6.74 €</div>
+        </div>
+        
+        <!-- Empfehlung 3: RQ0 (Info) -->
+        <div class="empfehlung-item info">
+            <div class="empfehlung-icon">ℹ️</div>
+            <div class="empfehlung-content">
+                <div class="empfehlung-title">RQ0 möglich, wenn Fehlercodes gefunden</div>
+                <div class="empfehlung-text">
+                    Wenn während der Diagnose Fehlercodes gefunden wurden, kann RQ0 (3 AW) 
+                    statt BASICA00 eingereicht werden.
+                </div>
+                <div class="empfehlung-aktion">
+                    <button class="btn-empfehlung btn-empfehlung-primary">
+                        <i class="bi bi-search"></i> Fehlercodes prüfen
+                    </button>
+                </div>
+            </div>
+            <div class="empfehlung-wert">+25.29 €</div>
+        </div>
+    </div>
+    
+    <!-- Checkliste -->
+    <div class="checkliste-box">
+        <div class="checkliste-header">
+            <h2>✅ Dokumentations-Checkliste</h2>
+            <div style="font-size: 0.9rem; color: #7f8c8d;">
+                3 von 8 erledigt
+            </div>
+        </div>
+        <div class="fortschritt-bar">
+            <div class="fortschritt-fill" style="width: 37.5%;"></div>
+        </div>
+        
+        <div class="checkliste-item erledigt">
+            <div class="checkliste-checkbox">✓</div>
+            <div class="checkliste-text">Kundenangabe (O-Ton) erfasst</div>
+            <span class="checkliste-badge badge-pflicht">Pflicht</span>
+        </div>
+        
+        <div class="checkliste-item erledigt">
+            <div class="checkliste-checkbox">✓</div>
+            <div class="checkliste-text">VIN geprüft (GWMS-Vorprüfung)</div>
+            <span class="checkliste-badge badge-pflicht">Pflicht</span>
+        </div>
+        
+        <div class="checkliste-item erledigt">
+            <div class="checkliste-checkbox">✓</div>
+            <div class="checkliste-text">Auftrag angelegt</div>
+            <span class="checkliste-badge badge-pflicht">Pflicht</span>
+        </div>
+        
+        <div class="checkliste-item">
+            <div class="checkliste-checkbox"></div>
+            <div class="checkliste-text">GDS-Grundprüfung durchgeführt</div>
+            <span class="checkliste-badge badge-pflicht">Pflicht</span>
+        </div>
+        
+        <div class="checkliste-item">
+            <div class="checkliste-checkbox"></div>
+            <div class="checkliste-text">BASICA00 eingereicht</div>
+            <span class="checkliste-badge badge-pflicht">Pflicht</span>
+        </div>
+        
+        <div class="checkliste-item">
+            <div class="checkliste-checkbox"></div>
+            <div class="checkliste-text">TT-Zeit dokumentiert (wenn nötig)</div>
+            <span class="checkliste-badge badge-optional">Optional</span>
+        </div>
+        
+        <div class="checkliste-item">
+            <div class="checkliste-checkbox"></div>
+            <div class="checkliste-text">Stempelzeiten vollständig</div>
+            <span class="checkliste-badge badge-pflicht">Pflicht</span>
+        </div>
+        
+        <div class="checkliste-item">
+            <div class="checkliste-checkbox"></div>
+            <div class="checkliste-text">Garantieantrag eingereicht (21 Tage Frist)</div>
+            <span class="checkliste-badge badge-pflicht">Pflicht</span>
+        </div>
+    </div>
+    
+    <!-- Mechaniker-Status -->
+    <div class="mechaniker-status">
+        <div class="mechaniker-header">
+            <h2>👨‍🔧 Mechaniker-Status</h2>
+        </div>
+        <div class="mechaniker-info">
+            <div class="mechaniker-avatar">TM</div>
+            <div class="mechaniker-details">
+                <div class="mechaniker-name">Müller, Thomas</div>
+                <div class="mechaniker-status-text">
+                    <i class="bi bi-gear-fill"></i> Arbeitet am Auftrag
+                </div>
+            </div>
+            <div class="zeit-info">
+                <div class="zeit-label">Arbeitszeit</div>
+                <div class="zeit-wert">23 Min</div>
+                <div class="zeit-label" style="margin-top: 8px;">Vorgabe</div>
+                <div class="zeit-wert">18 Min</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Auto-Refresh alle 30 Sekunden
+let refreshInterval;
+
+function refreshDashboard() {
+    console.log('Dashboard wird aktualisiert...');
+    // Hier würde die API aufgerufen werden
+    // fetch('/api/garantie/live-dashboard/220345')
+    //     .then(r => r.json())
+    //     .then(data => updateDashboard(data));
+}
+
+function updateDashboard(data) {
+    // Dashboard mit neuen Daten aktualisieren
+    console.log('Dashboard aktualisiert:', data);
+}
+
+// Starte Auto-Refresh
+document.addEventListener('DOMContentLoaded', function() {
+    refreshInterval = setInterval(refreshDashboard, 30000); // Alle 30 Sekunden
+});
+
+// Cleanup beim Verlassen
+window.addEventListener('beforeunload', function() {
+    if (refreshInterval) {
+        clearInterval(refreshInterval);
+    }
+});
+</script>
+{% endblock %}

@@ -267,7 +267,9 @@ def start_task(task_name):
         db_backup, cleanup_backups, servicebox_scraper, servicebox_matcher,
         servicebox_import, servicebox_master, sync_teile, import_teile,
         werkstatt_leistung, email_werkstatt_tagesbericht, sync_charge_types,
-        ml_retrain, sync_sales, import_stellantis, sync_stammdaten, locosoft_mirror, sync_ad_departments
+        ml_retrain, sync_sales, import_stellantis, sync_stammdaten, locosoft_mirror, sync_ad_departments,
+        update_penner_marktpreise, email_penner_weekly, sync_eautoseller_data,
+        benachrichtige_serviceberater_ueberschreitungen
     )
     
     task_map = {
@@ -299,6 +301,10 @@ def start_task(task_name):
         'sync_stammdaten': sync_stammdaten,
         'locosoft_mirror': locosoft_mirror,
         'sync_ad_departments': sync_ad_departments,
+        'update_penner_marktpreise': update_penner_marktpreise,
+        'email_penner_weekly': email_penner_weekly,
+        'sync_eautoseller_data': sync_eautoseller_data,
+        'benachrichtige_serviceberater_ueberschreitungen': benachrichtige_serviceberater_ueberschreitungen,
     }
     
     if task_name not in task_map:

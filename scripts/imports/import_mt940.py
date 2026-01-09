@@ -320,16 +320,59 @@ class MT940Importer:
         print(f"{'='*80}\n")
 
 
+def check_mount_available(directory, max_retries=3, retry_delay=2):
+    """Prüft ob Mount verfügbar ist, mit Retry bei Problemen"""
+    import time
+    
+    for attempt in range(max_retries):
+        try:
+            if directory.exists():
+                # Zusätzliche Prüfung: Versuche ein Verzeichnis zu listen
+                try:
+                    list(directory.iterdir())
+                    return True
+                except (OSError, PermissionError) as e:
+                    if attempt < max_retries - 1:
+                        print(f"⚠️  Mount-Prüfung fehlgeschlagen (Versuch {attempt + 1}/{max_retries}): {e}")
+                        time.sleep(retry_delay)
+                        continue
+                    else:
+                        print(f"❌ Mount nicht verfügbar nach {max_retries} Versuchen: {e}")
+                        return False
+            else:
+                if attempt < max_retries - 1:
+                    print(f"⚠️  Verzeichnis nicht gefunden (Versuch {attempt + 1}/{max_retries}), warte {retry_delay}s...")
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    print(f"❌ Verzeichnis nicht gefunden nach {max_retries} Versuchen")
+                    return False
+        except Exception as e:
+            if attempt < max_retries - 1:
+                print(f"⚠️  Fehler bei Mount-Prüfung (Versuch {attempt + 1}/{max_retries}): {e}")
+                time.sleep(retry_delay)
+                continue
+            else:
+                print(f"❌ Mount-Prüfung fehlgeschlagen: {e}")
+                return False
+    
+    return False
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('directory', type=str)
+    parser.add_argument('--retry', type=int, default=3, help='Anzahl Retry-Versuche bei Mount-Problemen')
+    parser.add_argument('--retry-delay', type=int, default=2, help='Wartezeit zwischen Retries in Sekunden')
     # --db Argument wird ignoriert, db_session nutzt Umgebungsvariable
 
     args = parser.parse_args()
 
     directory = Path(args.directory)
-    if not directory.exists():
-        print(f"❌ Verzeichnis nicht gefunden")
+    
+    # Prüfe Mount mit Retry
+    if not check_mount_available(directory, max_retries=args.retry, retry_delay=args.retry_delay):
+        print(f"❌ Mount-Verzeichnis nicht verfügbar: {directory}")
         sys.exit(1)
 
     importer = MT940Importer()

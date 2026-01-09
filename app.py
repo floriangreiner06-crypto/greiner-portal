@@ -461,11 +461,22 @@ def mein_bereich():
 # After Sales Routes
 from routes.aftersales import teile_routes
 from routes.aftersales import serviceberater_routes
+from routes.aftersales import garantie_routes
 from routes.admin_routes import admin_routes
 app.register_blueprint(teile_routes.bp)
 app.register_blueprint(serviceberater_routes.bp)
+app.register_blueprint(garantie_routes.bp)
 app.register_blueprint(admin_routes)
 print("✅ Serviceberater Routes registriert: /aftersales/serviceberater/")
+print("✅ Garantie Routes registriert: /aftersales/garantie/")
+
+# Garantie SOAP API
+try:
+    from api.garantie_soap_api import bp as garantie_soap_api
+    app.register_blueprint(garantie_soap_api)
+    print("✅ Garantie SOAP API registriert: /api/garantie/soap/")
+except Exception as e:
+    print(f"⚠️  Garantie SOAP API nicht geladen: {e}")
 
 # Serviceberater API
 try:

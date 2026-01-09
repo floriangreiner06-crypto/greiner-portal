@@ -183,13 +183,45 @@
             </div>
         </div>
     </div>
+    
+    <!-- Pagination -->
+    <div class="row mt-4">
+        <div class="col-12" id="paginationContainer">
+            <!-- Wird dynamisch gefüllt -->
+        </div>
+    </div>
 
 </div>
+
+<!-- Bestellungs-Detail Modal -->
+<div class="modal fade" id="bestellungDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-box-seam"></i> 
+                    Bestellung <span id="modalBestellnummer">-</span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="bestellungDetailModalBody">
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary"></div>
+                    <div class="mt-2">Lade Bestelldetails...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
 <script>
 let bestellungenData = [];
+let currentPage = 1;
+let itemsPerPage = 20;
+let totalBestellungen = 0;
 
 // Beim Laden der Seite
 $(document).ready(function() {
@@ -259,8 +291,9 @@ function getNextSyncTime() {
     return 'morgen 9:00 Uhr';
 }
 
-// Bestellungen laden
-function loadBestellungen() {
+// Bestellungen laden (mit Pagination)
+function loadBestellungen(page = 1) {
+    currentPage = page;
     $('#loadingSpinner').show();
     $('#bestellungenBody').html('<tr><td colspan="8" class="text-center">Lade...</td></tr>');
     
@@ -277,14 +310,20 @@ function loadBestellungen() {
     if (absender) params.append('absender_code', absender);
     if (suche) params.append('suche', suche);
     
+    // Pagination-Parameter
+    params.append('limit', itemsPerPage);
+    params.append('offset', (page - 1) * itemsPerPage);
+    
     // API-Call
     $.ajax({
         url: '/api/parts/bestellungen?' + params.toString(),
         method: 'GET',
         success: function(data) {
             bestellungenData = data.bestellungen || [];
+            totalBestellungen = data.stats?.total_bestellungen || data.bestellungen?.length || 0;
             renderBestellungen(bestellungenData);
             updateStats(data.stats || {});
+            updatePagination();
             $('#loadingSpinner').hide();
         },
         error: function(xhr, status, error) {
@@ -294,6 +333,64 @@ function loadBestellungen() {
             alert('Fehler beim Laden der Bestellungen: ' + error);
         }
     });
+}
+
+// Pagination aktualisieren
+function updatePagination() {
+    const totalPages = Math.ceil(totalBestellungen / itemsPerPage);
+    const paginationHtml = $('#paginationContainer');
+    
+    if (totalPages <= 1) {
+        paginationHtml.html('');
+        return;
+    }
+    
+    let html = '<nav aria-label="Bestellungen Pagination"><ul class="pagination justify-content-center">';
+    
+    // Vorherige Seite
+    if (currentPage > 1) {
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="loadBestellungen(${currentPage - 1}); return false;">Vorherige</a></li>`;
+    } else {
+        html += `<li class="page-item disabled"><span class="page-link">Vorherige</span></li>`;
+    }
+    
+    // Seitenzahlen (max 5 anzeigen)
+    const startPage = Math.max(1, currentPage - 2);
+    const endPage = Math.min(totalPages, currentPage + 2);
+    
+    if (startPage > 1) {
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="loadBestellungen(1); return false;">1</a></li>`;
+        if (startPage > 2) {
+            html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+        }
+    }
+    
+    for (let i = startPage; i <= endPage; i++) {
+        if (i === currentPage) {
+            html += `<li class="page-item active"><span class="page-link">${i}</span></li>`;
+        } else {
+            html += `<li class="page-item"><a class="page-link" href="#" onclick="loadBestellungen(${i}); return false;">${i}</a></li>`;
+        }
+    }
+    
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+            html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+        }
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="loadBestellungen(${totalPages}); return false;">${totalPages}</a></li>`;
+    }
+    
+    // Nächste Seite
+    if (currentPage < totalPages) {
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="loadBestellungen(${currentPage + 1}); return false;">Nächste</a></li>`;
+    } else {
+        html += `<li class="page-item disabled"><span class="page-link">Nächste</span></li>`;
+    }
+    
+    html += '</ul></nav>';
+    html += `<div class="text-center text-muted mt-2">Seite ${currentPage} von ${totalPages} (${totalBestellungen} Bestellungen insgesamt)</div>`;
+    
+    paginationHtml.html(html);
 }
 
 // Status-Badge Helper für Lieferschein
@@ -318,7 +415,14 @@ function renderBestellungen(bestellungen) {
         return;
     }
     
-    $('#tableCount').text(bestellungen.length);
+    // Zeige aktuellen Bereich (nicht Gesamtzahl, da Pagination)
+    const start = (currentPage - 1) * itemsPerPage + 1;
+    const end = Math.min(start + bestellungen.length - 1, totalBestellungen);
+    if (totalBestellungen > itemsPerPage) {
+        $('#tableCount').text(`${start}-${end} von ${totalBestellungen}`);
+    } else {
+        $('#tableCount').text(bestellungen.length);
+    }
     
     bestellungen.forEach(function(b) {
         // Kunde anzeigen (gematcht oder Kundennummer)
@@ -382,9 +486,205 @@ function loadAbsenderFilter() {
     });
 }
 
-// Detail-Ansicht öffnen
+// Detail-Ansicht öffnen (Modal)
 function openDetail(bestellnummer) {
-    window.location.href = '/aftersales/teile/bestellung/' + bestellnummer;
+    const modal = new bootstrap.Modal(document.getElementById('bestellungDetailModal'));
+    document.getElementById('modalBestellnummer').textContent = bestellnummer;
+    document.getElementById('bestellungDetailModalBody').innerHTML = `
+        <div class="text-center py-4">
+            <div class="spinner-border text-primary"></div>
+            <div class="mt-2">Lade Bestelldetails...</div>
+        </div>
+    `;
+    modal.show();
+    
+    // Daten laden
+    $.ajax({
+        url: '/api/parts/bestellung/' + bestellnummer,
+        method: 'GET',
+        success: function(data) {
+            renderBestellungDetail(data);
+        },
+        error: function(xhr, status, error) {
+            console.error('Fehler beim Laden:', error);
+            document.getElementById('bestellungDetailModalBody').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle"></i> 
+                    Fehler beim Laden der Bestellung: ${error}
+                </div>
+            `;
+        }
+    });
+}
+
+// Bestelldetails im Modal rendern
+function renderBestellungDetail(bestellung) {
+    const body = document.getElementById('bestellungDetailModalBody');
+    
+    // Formatierung
+    const formatDate = (dateStr) => {
+        if (!dateStr) return '-';
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('de-DE', { 
+            day: '2-digit', 
+            month: '2-digit', 
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    };
+    
+    const formatCurrency = (value) => {
+        if (!value) return '0,00 €';
+        return parseFloat(value).toLocaleString('de-DE', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }) + ' €';
+    };
+    
+    // Kunde anzeigen
+    let kundeDisplay = '-';
+    if (bestellung.match_kunde_name) {
+        kundeDisplay = `<span class="badge bg-success">${bestellung.match_kunde_name}</span>`;
+    } else if (bestellung.kommentar_werkstatt) {
+        const kundeAusKommentar = bestellung.kommentar_werkstatt.split(',')[0].split(':')[0].trim();
+        if (kundeAusKommentar && kundeAusKommentar.length > 2) {
+            kundeDisplay = `<span class="badge bg-info">${kundeAusKommentar}</span>`;
+        } else if (bestellung.parsed_kundennummer) {
+            kundeDisplay = `<span class="badge bg-secondary">${bestellung.parsed_kundennummer}</span>`;
+        }
+    } else if (bestellung.parsed_kundennummer) {
+        kundeDisplay = `<span class="badge bg-secondary">${bestellung.parsed_kundennummer}</span>`;
+    }
+    
+    // Status Badge
+    const getStatusBadge = (status) => {
+        const statusMap = {
+            'bestellt': { class: 'bg-secondary', text: 'Bestellt' },
+            'geliefert': { class: 'bg-warning', text: 'Geliefert' },
+            'in_locosoft': { class: 'bg-info', text: 'In Locosoft' },
+            'zugebucht': { class: 'bg-success', text: 'Zugebucht' }
+        };
+        const s = statusMap[status] || { class: 'bg-secondary', text: status || 'Unbekannt' };
+        return `<span class="badge ${s.class}">${s.text}</span>`;
+    };
+    
+    let html = `
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <h6 class="text-muted mb-2">Bestellinformationen</h6>
+                <table class="table table-sm table-borderless">
+                    <tr>
+                        <td class="text-muted" style="width: 40%;">Bestellnummer:</td>
+                        <td><strong>${bestellung.bestellnummer}</strong></td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Bestelldatum:</td>
+                        <td>${formatDate(bestellung.bestelldatum)}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Kunde:</td>
+                        <td>${kundeDisplay}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Lokale Nr:</td>
+                        <td>${bestellung.lokale_nr || '-'}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Status:</td>
+                        <td>${getStatusBadge(bestellung.lieferschein_status || 'bestellt')}</td>
+                    </tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <h6 class="text-muted mb-2">Absender / Empfänger</h6>
+                <table class="table table-sm table-borderless">
+                    <tr>
+                        <td class="text-muted" style="width: 40%;">Absender:</td>
+                        <td>
+                            <span class="badge bg-info">${bestellung.absender_code || '-'}</span><br>
+                            <small>${bestellung.absender_name || '-'}</small>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Empfänger:</td>
+                        <td>${bestellung.empfaenger_code || '-'}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Positionen:</td>
+                        <td><strong>${bestellung.anzahl_positionen || 0}</strong></td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Gesamtwert:</td>
+                        <td><strong class="text-success">${formatCurrency(bestellung.gesamtwert || 0)}</strong></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    `;
+    
+    // Positionen
+    if (bestellung.positionen && bestellung.positionen.length > 0) {
+        html += `
+            <hr>
+            <h6 class="mb-3">
+                <i class="bi bi-list-ul"></i> 
+                Positionen (${bestellung.positionen.length})
+            </h6>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Teilenummer</th>
+                            <th>Beschreibung</th>
+                            <th class="text-end">Menge</th>
+                            <th class="text-end">Preis (ohne MwSt.)</th>
+                            <th class="text-end">Preis (mit MwSt.)</th>
+                            <th class="text-end">Summe</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        bestellung.positionen.forEach(function(pos) {
+            html += `
+                <tr>
+                    <td><code>${pos.teilenummer || '-'}</code></td>
+                    <td>${pos.beschreibung || '-'}</td>
+                    <td class="text-end">${parseFloat(pos.menge || 0).toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                    <td class="text-end">${formatCurrency(pos.preis_ohne_mwst || 0)}</td>
+                    <td class="text-end">${formatCurrency(pos.preis_mit_mwst || 0)}</td>
+                    <td class="text-end"><strong>${formatCurrency(pos.summe_inkl_mwst || 0)}</strong></td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+    } else {
+        html += `
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> Keine Positionen vorhanden.
+            </div>
+        `;
+    }
+    
+    // URL Link
+    if (bestellung.url) {
+        html += `
+            <hr>
+            <div class="text-end">
+                <a href="${bestellung.url}" target="_blank" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-box-arrow-up-right"></i> In ServiceBox öffnen
+                </a>
+            </div>
+        `;
+    }
+    
+    body.innerHTML = html;
 }
 
 // Filter zurücksetzen
@@ -393,7 +693,8 @@ function resetFilter() {
     $('#filterDatumBis').val('');
     $('#filterAbsender').val('');
     $('#filterSuche').val('');
-    loadBestellungen();
+    currentPage = 1;
+    loadBestellungen(1);
 }
 
 // CSV Export

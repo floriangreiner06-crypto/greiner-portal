@@ -113,6 +113,8 @@
         <div>
             <h1 class="h4 mb-0">Tägliche Erfolgskontrolle</h1>
             <small class="text-muted" id="zeitraumLabel">Dezember 2025</small>
+            <br>
+            <small class="text-muted" id="umlageInfo">Mit Konzernumlage (wie GlobalCube)</small>
         </div>
         <div class="d-flex gap-2 align-items-center">
             <select class="form-select form-select-sm" id="filterFirma" style="width: auto;" onchange="onFirmaChange()">
@@ -241,7 +243,7 @@
                     <tr>
                         <th rowspan="2" style="width: 10%; vertical-align: middle;">Bereich</th>
                         <th rowspan="2" class="text-center" style="width: 5%; vertical-align: middle;">Stk</th>
-                        <th colspan="2" class="text-center bg-primary text-white" id="heuteHeader" style="display: none;">Heute (<span id="heuteWochentag">-</span>)</th>
+                        <th colspan="2" class="text-center bg-primary text-white" id="heuteHeader" style="display: none;">Vortag (<span id="heuteWochentag">-</span>)</th>
                         <th colspan="6" class="text-center bg-secondary text-white">Monat</th>
                         <th rowspan="2" class="text-center" style="width: 6%; vertical-align: middle;">vs. VM</th>
                         <th rowspan="2" class="text-center" style="width: 6%; vertical-align: middle;">vs. VJ</th>
@@ -273,7 +275,7 @@
     <div class="mt-2 small text-muted">
         <i class="bi bi-info-circle me-1"></i>
         Klick auf Bereich für Drill-Down |
-        Stk = Fahrzeugstück (nur NW/GW) |
+        Stk = Fahrzeugstück (nur NW/GW, aus Locosoft dealer_vehicles - fakturierte Auslieferungen) |
         VM = Vormonat | VJ = Vorjahr |
         <span class="text-warning">*</span> = kalkulatorischer Einsatz
     </div>
@@ -342,7 +344,9 @@ async function loadData() {
     document.getElementById('tekBody').innerHTML = '<tr><td colspan="9" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr>';
 
     try {
-        const url = `/controlling/api/tek?firma=${firma}&standort=${standort}&monat=${monat}&jahr=${jahr}&modus=teil&umlage=ohne`;
+        // TAG173: umlage='mit' für Vergleich mit GlobalCube (Umlage wird NICHT bereinigt)
+        // GlobalCube enthält die Konzernumlage, daher muss DRIVE auch 'mit' verwenden
+        const url = `/controlling/api/tek?firma=${firma}&standort=${standort}&monat=${monat}&jahr=${jahr}&modus=teil&umlage=mit`;
         const res = await fetch(url);
         const data = await res.json();
 
@@ -351,6 +355,13 @@ async function loadData() {
             console.log('TEK Data:', data);  // Debug
             renderAll(data);
             document.getElementById('zeitraumLabel').textContent = data.filter.monat_name + ' ' + data.filter.jahr;
+            // TAG173: Umlage-Info anzeigen
+            if (data.filter && data.filter.umlage) {
+                const umlageText = data.filter.umlage === 'mit' 
+                    ? 'Mit Konzernumlage (wie GlobalCube)' 
+                    : 'Ohne Konzernumlage (bereinigt)';
+                document.getElementById('umlageInfo').textContent = umlageText;
+            }
         } else {
             throw new Error(data.error);
         }

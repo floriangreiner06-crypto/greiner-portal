@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ServiceBox JSON → SQLite Import
+ServiceBox JSON → PostgreSQL Import
 Importiert gematchte Bestellungen in die Datenbank
 
-TAG83 - Läuft nach Scraper + Matcher
+TAG173 - PostgreSQL Migration
 """
 
 import os
 import sys
 import json
-import sqlite3
 from datetime import datetime
 
+# PostgreSQL Connection
+sys.path.insert(0, '/opt/greiner-portal')
+from api.db_connection import get_db, sql_placeholder
+
 BASE_DIR = "/opt/greiner-portal"
-DB_PATH = f"{BASE_DIR}/data/greiner_controlling.db"
 MATCHED_JSON = f"{BASE_DIR}/logs/servicebox_matched.json"
 LOG_FILE = f"{BASE_DIR}/logs/servicebox_db_import.log"
 
@@ -82,14 +84,16 @@ def main():
     log(f"📋 {len(bestellungen)} Bestellungen geladen")
     
     # DB-Verbindung
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db()
     cursor = conn.cursor()
+    ph = sql_placeholder()
     
     stats = {'inserted': 0, 'updated': 0, 'errors': 0, 'matched': 0}
     
     for best in bestellungen:
         try:
-            bestellnummer = best.get('bestellnummer')
+            # TAG173: Unterstütze beide Formate (nummer oder bestellnummer)
+            bestellnummer = best.get('bestellnummer') or best.get('nummer')
             if not bestellnummer:
                 continue
             
@@ -103,72 +107,76 @@ def main():
             bestelldatum = parse_datum(historie.get('bestelldatum'))
             
             # Prüfen ob Bestellung existiert
-            cursor.execute("SELECT id FROM stellantis_bestellungen WHERE bestellnummer = ?", (bestellnummer,))
+            cursor.execute(f"SELECT id FROM stellantis_bestellungen WHERE bestellnummer = {ph}", (bestellnummer,))
             existing = cursor.fetchone()
             
             if existing:
                 # UPDATE
-                cursor.execute("""
+                cursor.execute(f"""
                     UPDATE stellantis_bestellungen SET
-                        bestelldatum = ?,
-                        absender_code = ?,
-                        absender_name = ?,
-                        empfaenger_code = ?,
-                        lokale_nr = ?,
-                        url = ?,
-                        kommentar_werkstatt = ?,
-                        parsed_kundennummer = ?,
-                        parsed_vin = ?,
-                        parsed_werkstattauftrag = ?,
-                        match_typ = ?,
-                        match_kunde_name = ?,
-                        match_confidence = ?,
-                        import_timestamp = CURRENT_TIMESTAMP
-                    WHERE bestellnummer = ?
+                        bestelldatum = {ph},
+                        absender_code = {ph},
+                        absender_name = {ph},
+                        empfaenger_code = {ph},
+                        lokale_nr = {ph},
+                        url = {ph},
+                        kommentar_werkstatt = {ph},
+                        parsed_kundennummer = {ph},
+                        parsed_vin = {ph},
+                        parsed_werkstattauftrag = {ph},
+                        match_typ = {ph},
+                        match_kunde_name = {ph},
+                        match_confidence = {ph},
+                        import_timestamp = NOW()
+                    WHERE bestellnummer = {ph}
                 """, (
                     bestelldatum,
                     absender.get('code'),
                     absender.get('name'),
                     empfaenger.get('code'),
-                    parsed.get('lokale_nr') or best.get('lokale_nr'),
+                    parsed.get('lokale_nr') or best.get('kommentare', {}).get('lokale_nr'),
                     best.get('url'),
-                    parsed.get('kommentar_werkstatt'),
+                    best.get('kommentare', {}).get('kommentar') or parsed.get('kommentar_werkstatt'),
                     parsed.get('kundennummer'),
                     parsed.get('vin'),
                     parsed.get('werkstattauftrag'),
                     match.get('match_typ'),
-                    match.get('kunde', {}).get('name') if match.get('kunde') else None,
+                    # TAG173: Kundenname aus Match ODER aus parsed.kunde_name (Kommentar-Feld)
+                    match.get('kunde', {}).get('name') if match.get('kunde') else parsed.get('kunde_name'),
                     match.get('confidence'),
                     bestellnummer
                 ))
-                bestellung_id = existing[0]
+                bestellung_id = existing['id'] if isinstance(existing, dict) else existing[0]
                 stats['updated'] += 1
             else:
-                # INSERT
-                cursor.execute("""
+                # INSERT mit RETURNING id (PostgreSQL)
+                cursor.execute(f"""
                     INSERT INTO stellantis_bestellungen (
                         bestellnummer, bestelldatum, absender_code, absender_name,
                         empfaenger_code, lokale_nr, url, kommentar_werkstatt,
                         parsed_kundennummer, parsed_vin, parsed_werkstattauftrag,
                         match_typ, match_kunde_name, match_confidence
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                    RETURNING id
                 """, (
                     bestellnummer,
                     bestelldatum,
                     absender.get('code'),
                     absender.get('name'),
                     empfaenger.get('code'),
-                    parsed.get('lokale_nr') or best.get('lokale_nr'),
+                    parsed.get('lokale_nr') or best.get('kommentare', {}).get('lokale_nr'),
                     best.get('url'),
-                    parsed.get('kommentar_werkstatt'),
+                    best.get('kommentare', {}).get('kommentar') or parsed.get('kommentar_werkstatt'),
                     parsed.get('kundennummer'),
                     parsed.get('vin'),
                     parsed.get('werkstattauftrag'),
                     match.get('match_typ'),
-                    match.get('kunde', {}).get('name') if match.get('kunde') else None,
+                    # TAG173: Kundenname aus Match ODER aus parsed.kunde_name (Kommentar-Feld)
+                    match.get('kunde', {}).get('name') if match.get('kunde') else parsed.get('kunde_name'),
                     match.get('confidence')
                 ))
-                bestellung_id = cursor.lastrowid
+                result = cursor.fetchone()
+                bestellung_id = result['id'] if isinstance(result, dict) else result[0]
                 stats['inserted'] += 1
             
             # Matching-Statistik
@@ -177,18 +185,18 @@ def main():
             
             # Positionen
             positionen = best.get('positionen', [])
-            if positionen and not existing:  # Nur bei neuen Bestellungen Positionen einfügen
+            if positionen:  # TAG173: Immer Positionen aktualisieren
                 # Alte Positionen löschen (falls Update)
-                cursor.execute("DELETE FROM stellantis_positionen WHERE bestellung_id = ?", (bestellung_id,))
+                cursor.execute(f"DELETE FROM stellantis_positionen WHERE bestellung_id = {ph}", (bestellung_id,))
                 
                 for pos in positionen:
-                    cursor.execute("""
+                    cursor.execute(f"""
                         INSERT INTO stellantis_positionen (
                             bestellung_id, teilenummer, beschreibung,
                             menge, menge_in_lieferung, menge_in_bestellung,
                             preis_ohne_mwst_text, preis_mit_mwst_text, summe_inkl_mwst_text,
                             preis_ohne_mwst, preis_mit_mwst, summe_inkl_mwst
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
                     """, (
                         bestellung_id,
                         pos.get('teilenummer'),
@@ -211,12 +219,12 @@ def main():
     conn.commit()
     
     # Sync-Status aktualisieren
-    cursor.execute("""
+    cursor.execute(f"""
         UPDATE sync_status SET
-            last_run = CURRENT_TIMESTAMP,
+            last_run = NOW(),
             status = 'success',
-            records_processed = ?,
-            records_matched = ?,
+            records_processed = {ph},
+            records_matched = {ph},
             error_message = NULL
         WHERE sync_name = 'servicebox'
     """, (stats['inserted'] + stats['updated'], stats['matched']))
@@ -236,15 +244,16 @@ def main():
 def update_sync_status(conn, status, processed, matched, error=None):
     """Aktualisiert sync_status bei Fehler"""
     if conn is None:
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("""
+    ph = sql_placeholder()
+    cursor.execute(f"""
         UPDATE sync_status SET
-            last_run = CURRENT_TIMESTAMP,
-            status = ?,
-            records_processed = ?,
-            records_matched = ?,
-            error_message = ?
+            last_run = NOW(),
+            status = {ph},
+            records_processed = {ph},
+            records_matched = {ph},
+            error_message = {ph}
         WHERE sync_name = 'servicebox'
     """, (status, processed, matched, error))
     conn.commit()

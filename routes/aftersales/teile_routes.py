@@ -21,11 +21,12 @@ def bestellungen():
     return redirect(url_for('werkstatt.werkstatt_teilebestellungen'))
 
 
-@bp.route('/bestellung/<int:bestellnummer>')
+@bp.route('/bestellung/<bestellnummer>')
 @login_required
 def bestellung_detail(bestellnummer):
-    """Redirect → /werkstatt/bestellung/<id>"""
-    return redirect(url_for('werkstatt.werkstatt_bestellung_detail', bestellung_id=bestellnummer))
+    """TAG173: Direktes Rendering statt Redirect"""
+    from flask import render_template
+    return render_template('aftersales/bestellung_detail.html', bestellnummer=bestellnummer)
 
 
 @bp.route('/preisradar')

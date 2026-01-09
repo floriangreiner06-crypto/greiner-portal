@@ -1040,11 +1040,13 @@ class WerkstattData:
                 LEFT JOIN vehicles v ON o.vehicle_number = v.internal_number
                 LEFT JOIN makes m ON v.make_number = m.make_number
                 LEFT JOIN LATERAL (
+                    -- KORRIGIERT: Verwende GESAMT-AW des Auftrags, nicht nur zugeordnete AW
+                    -- Für Fortschrittsberechnung: Mechaniker arbeitet an ALLEN AW des Auftrags
                     SELECT SUM(time_units) as vorgabe_aw,
                            MAX(labour_type) as auftrags_art
                     FROM labours
                     WHERE order_number = a.order_number
-                      AND mechanic_no = a.employee_number
+                      AND time_units > 0
                 ) l ON true
                 WHERE 1=1
             """

@@ -122,7 +122,8 @@ def get_bestellungen():
         from psycopg2.extras import RealDictCursor
         
         # Query-Parameter
-        datum_von = request.args.get('datum_von', (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'))
+        # TAG 173: Standard-Filter auf 90 Tage erhöht (statt 30)
+        datum_von = request.args.get('datum_von', (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d'))
         datum_bis = request.args.get('datum_bis', datetime.now().strftime('%Y-%m-%d'))
         lokale_nr = request.args.get('lokale_nr')
         absender_code = request.args.get('absender_code')
@@ -217,6 +218,7 @@ def get_bestellungen():
                     b.match_typ,
                     b.match_kunde_name,
                     b.match_confidence,
+                    b.kommentar_werkstatt,
                     (SELECT COUNT(*) FROM stellantis_positionen WHERE bestellung_id = b.id) as anzahl_positionen,
                     (SELECT COALESCE(ROUND(SUM(summe_inkl_mwst)::numeric, 2), 0) FROM stellantis_positionen WHERE bestellung_id = b.id) as gesamtwert,
                     b.import_timestamp
@@ -339,6 +341,13 @@ def get_bestellung_detail(bestellnummer):
             """, (bestellung['id'],))
 
             positionen = rows_to_list(cursor.fetchall())
+            
+            # TAG173: Lieferschein-Status hinzufügen (wie in get_bestellungen)
+            bestellnummern = [bestellung['bestellnummer']]
+            lieferschein_status = get_lieferschein_status_for_bestellungen(cursor, bestellnummern)
+            ls_info = lieferschein_status.get(bestellung['bestellnummer'], {})
+            bestellung['lieferschein_status'] = ls_info.get('status', 'bestellt')
+            bestellung['lieferschein_info'] = ls_info
 
         bestellung['anzahl_positionen'] = len(positionen)
         bestellung['gesamtwert'] = round(sum(p.get('summe_inkl_mwst', 0) or 0 for p in positionen), 2)
