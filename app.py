@@ -494,6 +494,14 @@ try:
 except Exception as e:
     print(f"⚠️  Garantie SOAP API nicht geladen: {e}")
 
+# Mobis Teilebezug API (TAG 175 - Über Locosoft SOAP)
+try:
+    from api.mobis_teilebezug_api import bp as mobis_teilebezug_api
+    app.register_blueprint(mobis_teilebezug_api)
+    print("✅ Mobis Teilebezug API registriert: /api/mobis/teilebezug/")
+except Exception as e:
+    print(f"⚠️  Mobis Teilebezug API nicht geladen: {e}")
+
 # Serviceberater API
 try:
     from api.serviceberater_api import serviceberater_api
