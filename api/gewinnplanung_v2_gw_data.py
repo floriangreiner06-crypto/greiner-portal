@@ -22,6 +22,9 @@ from decimal import Decimal
 from api.db_utils import db_session, locosoft_session, row_to_dict
 from api.db_connection import convert_placeholders
 
+# SSOT: Standort-Namen
+from api.standort_utils import STANDORT_NAMEN
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================
@@ -30,13 +33,6 @@ logger = logging.getLogger(__name__)
 
 # Zinssatz für Zinskosten-Berechnung (5% p.a.)
 ZINSSATZ_JAHR = 0.05
-
-# Standort-Mapping
-STANDORT_NAMEN = {
-    1: 'Deggendorf',
-    2: 'Hyundai DEG',
-    3: 'Landau'
-}
 
 # =============================================================================
 # VORJAHRESWERTE LADEN (BWA - SSOT)

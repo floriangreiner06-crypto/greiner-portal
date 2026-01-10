@@ -57,14 +57,10 @@
             <label>Jahr:</label>
             <input type="number" id="yearSelect" class="form-control" min="2020" max="2030">
         </div>
-        <div class="col-md-2">
-            <label>Standort:</label>
-            <select id="locationSelect" class="form-select">
-                <option value="">Alle Standorte</option>
-                <option value="1">Deggendorf (Opel)</option>
-                <option value="2">Deggendorf (Hyundai)</option>
-                <option value="3">Landau</option>
-            </select>
+        <!-- Standort-Filter Tabs (zentrales Component) -->
+        <div class="col-md-12 mb-3">
+            {% set current_standort = standort %}
+            {% include 'components/standort_filter_tabs.html' %}
         </div>
         <div class="col-md-2">
             <label>Verkäufer:</label>
@@ -162,7 +158,13 @@
 const now = new Date();
 let currentMonth = now.getMonth() + 1; // JavaScript months are 0-indexed
 let currentYear = now.getFullYear();
-let currentLocation = '';
+// TAG 177: Standort aus URL lesen (Tab-Navigation)
+function getStandortFromURL() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('standort') || '';
+}
+
+let currentLocation = getStandortFromURL();
 let currentVerkaufer = '';
 let currentPeriod = 'month';
 let currentDay = '';
@@ -250,7 +252,7 @@ async function loadData() {
     currentMonth = document.getElementById('monthSelect').value;
     currentYear = document.getElementById('yearSelect').value;
     currentDay = document.getElementById('daySelect').value;
-    currentLocation = document.getElementById('locationSelect').value;
+    currentLocation = getStandortFromURL();
     currentVerkaufer = document.getElementById('verkauferSelect').value;
 
     // Prognose-Zeile nur bei Monatsansicht zeigen
@@ -344,6 +346,9 @@ async function loadSummary() {
         } else {
             url += `&day=${currentDay}`;
         }
+        
+        // TAG 177: Standort-Filter hinzufügen
+        if (currentLocation) url += `&location=${encodeURIComponent(currentLocation)}`;
         
         const response = await fetch(url);
         const data = await response.json();

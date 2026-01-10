@@ -307,6 +307,11 @@ print("✅ Werkstatt Frontend registriert: /werkstatt/")
 try:
     from api.controlling_api import controlling_api
     app.register_blueprint(controlling_api)
+    
+    # Finanzreporting API (TAG 178 - Cube-Funktionalität)
+    from api.finanzreporting_api import finanzreporting_api
+    app.register_blueprint(finanzreporting_api)
+    print("✅ Finanzreporting API registriert: /api/finanzreporting/")
     print("✅ Controlling API registriert: /api/controlling/")
 except Exception as e:
     print(f"⚠️  Controlling API nicht geladen: {e}")

@@ -11,14 +11,11 @@ from datetime import datetime, date
 from typing import List, Dict, Optional
 import logging
 
-from api.db_connection import get_db as get_portal_db, convert_placeholders
+from api.db_connection import get_db, convert_placeholders
 
 logger = logging.getLogger(__name__)
 
-
-def get_db():
-    """Holt PostgreSQL DB-Connection via zentrale db_connection."""
-    return get_portal_db()
+# get_db() wird jetzt direkt aus api.db_connection importiert (SSOT)
 
 
 def init_carloop_tables():

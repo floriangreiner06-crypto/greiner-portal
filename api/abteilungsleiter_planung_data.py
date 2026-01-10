@@ -27,6 +27,9 @@ from api.db_utils import db_session, row_to_dict
 from api.aufhol_logik import apply_aufhol_auf_kst_ziel, get_aufhol_beitrag_fuer_kst
 from api.unternehmensplan_data import get_current_geschaeftsjahr
 
+# SSOT: Standort-Namen
+from api.standort_utils import STANDORT_NAMEN
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================
@@ -45,11 +48,7 @@ BEREICH_NAMEN = {
     'Sonstige': 'Sonstige'
 }
 
-STANDORT_NAMEN = {
-    1: 'Deggendorf',
-    2: 'Hyundai DEG',
-    3: 'Landau'
-}
+# STANDORT_NAMEN wird jetzt aus standort_utils importiert (SSOT)
 
 # =============================================================================
 # HILFSFUNKTIONEN: WERKSTATT-KPIs AUS werkstatt_data.py
@@ -194,7 +193,8 @@ def lade_ist_werte_fuer_monat(
     geschaeftsjahr: str,
     monat: int,
     bereich: str,
-    standort: int
+    standort: int,
+    konsolidiert: bool = False
 ) -> Dict[str, Any]:
     """
     Lädt IST-Werte aus Locosoft für einen abgelaufenen Monat.
@@ -204,6 +204,7 @@ def lade_ist_werte_fuer_monat(
         monat: GJ-Monat (1-12)
         bereich: 'NW', 'GW', 'Teile', 'Werkstatt', 'Sonstige'
         standort: 1, 2, oder 3
+        konsolidiert: True = Service Deggendorf (Standort 1+2 zusammen), False = Normal
     
     Returns:
         dict: IST-Werte für Planung (analog zu Planungsdaten)
@@ -244,18 +245,25 @@ def lade_ist_werte_fuer_monat(
         # Standort-Filter
         # WICHTIG: Für Werkstatt, Teile, Sonstige keine Marken-Unterscheidung, nur Standort!
         # WICHTIG: Hyundai hat branch_number = 2, Stellantis Deggendorf hat branch_number = 1
+        # TAG 177: Konsolidierte Ansicht unterstützen (Service Deggendorf = Standort 1+2)
         if bereich in ['Werkstatt', 'Teile', 'Sonstige']:
             # Werkstatt/Teile/Sonstige: Nur nach Standort filtern (Deggendorf oder Landau), nicht nach Marke
             if standort == 1:
-                # Deggendorf: Stellantis (branch=1, subsidiary_to_company_ref=1) + Hyundai (branch=2, subsidiary_to_company_ref=2)
-                firma_filter_umsatz = "AND ((branch_number = 1 AND SUBSTRING(nominal_account_number::TEXT, 5, 1) = '1') OR (branch_number = 2 AND subsidiary_to_company_ref = 2))"
-                firma_filter_einsatz = "AND ((SUBSTRING(nominal_account_number::TEXT, 5, 1) = '1' AND subsidiary_to_company_ref = 1) OR (SUBSTRING(nominal_account_number::TEXT, 5, 1) = '2' AND subsidiary_to_company_ref = 2))"
-                subsidiary_filter = "AND (o.subsidiary = 1 OR o.subsidiary = 2)"  # Beide Firmen (für Locosoft-Tabellen)
+                if konsolidiert:
+                    # Service Deggendorf (konsolidiert): Beide Standorte zusammen
+                    firma_filter_umsatz = "AND ((branch_number = 1 AND SUBSTRING(nominal_account_number::TEXT, 5, 1) = '1') OR (branch_number = 2 AND subsidiary_to_company_ref = 2))"
+                    firma_filter_einsatz = "AND ((SUBSTRING(nominal_account_number::TEXT, 5, 1) = '1' AND subsidiary_to_company_ref = 1) OR (SUBSTRING(nominal_account_number::TEXT, 5, 1) = '2' AND subsidiary_to_company_ref = 2))"
+                    subsidiary_filter = "AND (o.subsidiary = 1 OR o.subsidiary = 2)"  # Beide Firmen (für Locosoft-Tabellen)
+                else:
+                    # Deggendorf: Stellantis (branch=1, subsidiary_to_company_ref=1) + Hyundai (branch=2, subsidiary_to_company_ref=2)
+                    firma_filter_umsatz = "AND ((branch_number = 1 AND SUBSTRING(nominal_account_number::TEXT, 5, 1) = '1') OR (branch_number = 2 AND subsidiary_to_company_ref = 2))"
+                    firma_filter_einsatz = "AND ((SUBSTRING(nominal_account_number::TEXT, 5, 1) = '1' AND subsidiary_to_company_ref = 1) OR (SUBSTRING(nominal_account_number::TEXT, 5, 1) = '2' AND subsidiary_to_company_ref = 2))"
+                    subsidiary_filter = "AND (o.subsidiary = 1 OR o.subsidiary = 2)"  # Beide Firmen (für Locosoft-Tabellen)
             elif standort == 3:
                 # Landau: branch_number = 3 (nur Stellantis, Hyundai hat keinen Standort in Landau)
-                firma_filter_umsatz = "AND (branch_number = 3 OR (nominal_account_number BETWEEN 810000 AND 819999 AND SUBSTRING(nominal_account_number::TEXT, 5, 1) = '2'))"
-                firma_filter_einsatz = "AND (SUBSTRING(nominal_account_number::TEXT, 5, 1) = '2')"
-                subsidiary_filter = "AND o.subsidiary = 1"  # Nur Stellantis (für Locosoft-Tabellen)
+                firma_filter_umsatz = "AND branch_number = 3 AND subsidiary_to_company_ref = 1"
+                firma_filter_einsatz = "AND SUBSTRING(nominal_account_number::TEXT, 5, 1) = '2' AND subsidiary_to_company_ref = 1"
+                subsidiary_filter = "AND o.subsidiary = 3"  # Landau: subsidiary=3 (LANO location)
             else:
                 # Standort 2 (Hyundai) oder andere: Alle Werte
                 firma_filter_umsatz = ""
@@ -264,17 +272,23 @@ def lade_ist_werte_fuer_monat(
         else:
             # Andere Bereiche: Normale Standort-Filterung
             if standort == 1:
-                firma_filter_umsatz = "AND (branch_number = 1 OR (nominal_account_number BETWEEN 810000 AND 819999 AND SUBSTRING(nominal_account_number::TEXT, 5, 1) = '1'))"
-                firma_filter_einsatz = "AND (SUBSTRING(nominal_account_number::TEXT, 5, 1) = '1')"
-                subsidiary_filter = "AND subsidiary = 1"
+                if konsolidiert:
+                    # Service Deggendorf (konsolidiert): Beide Standorte zusammen
+                    firma_filter_umsatz = "AND (branch_number = 1 OR branch_number = 2 OR (nominal_account_number BETWEEN 810000 AND 819999 AND (SUBSTRING(nominal_account_number::TEXT, 5, 1) = '1' OR SUBSTRING(nominal_account_number::TEXT, 5, 1) = '2')))"
+                    firma_filter_einsatz = "AND (SUBSTRING(nominal_account_number::TEXT, 5, 1) = '1' OR SUBSTRING(nominal_account_number::TEXT, 5, 1) = '2')"
+                    subsidiary_filter = "AND (subsidiary = 1 OR subsidiary = 2)"
+                else:
+                    firma_filter_umsatz = "AND (branch_number = 1 OR (nominal_account_number BETWEEN 810000 AND 819999 AND SUBSTRING(nominal_account_number::TEXT, 5, 1) = '1'))"
+                    firma_filter_einsatz = "AND (SUBSTRING(nominal_account_number::TEXT, 5, 1) = '1')"
+                    subsidiary_filter = "AND subsidiary = 1"
             elif standort == 2:
                 firma_filter_umsatz = "AND subsidiary = 2"
                 firma_filter_einsatz = "AND subsidiary = 2"
                 subsidiary_filter = "AND subsidiary = 2"
             elif standort == 3:
-                firma_filter_umsatz = "AND (branch_number = 3 OR (nominal_account_number BETWEEN 810000 AND 819999 AND SUBSTRING(nominal_account_number::TEXT, 5, 1) = '2'))"
-                firma_filter_einsatz = "AND (SUBSTRING(nominal_account_number::TEXT, 5, 1) = '2')"
-                subsidiary_filter = "AND subsidiary = 1"
+                firma_filter_umsatz = "AND branch_number = 3 AND subsidiary_to_company_ref = 1"
+                firma_filter_einsatz = "AND SUBSTRING(nominal_account_number::TEXT, 5, 1) = '2' AND subsidiary_to_company_ref = 1"
+                subsidiary_filter = "AND subsidiary = 3"  # Landau: subsidiary=3 (LANO location)
             else:
                 firma_filter_umsatz = ""
                 firma_filter_einsatz = ""
@@ -350,15 +364,9 @@ def lade_ist_werte_fuer_monat(
                 typ_filter = "dealer_vehicle_type IN ('G', 'D')"
             
             # Standort-Filter für dealer_vehicles: out_subsidiary verwenden
-            if standort == 1:
-                # Deggendorf: Stellantis (subsidiary=1) + Hyundai (subsidiary=2)
-                standort_filter = "AND (out_subsidiary = 1 OR out_subsidiary = 2)"
-            elif standort == 2:
-                standort_filter = "AND out_subsidiary = 2"
-            elif standort == 3:
-                standort_filter = "AND out_subsidiary = 1"  # Landau ist auch subsidiary 1, aber branch 3
-            else:
-                standort_filter = ""
+            # TAG 177: Konsolidierte Ansicht unterstützen
+            from api.standort_utils import build_consolidated_filter
+            standort_filter = build_consolidated_filter(standort, konsolidiert, filter_type='verkauf')
             
             cursor_loco.execute(f"""
                 SELECT COUNT(*) as stueck
@@ -392,6 +400,9 @@ def lade_ist_werte_fuer_monat(
         
         elif bereich == 'Werkstatt':
             # Stunden verkauft (verrechnet) - über invoices JOIN
+            # TAG 177: Konsolidierte Filter für orders verwenden
+            from api.standort_utils import build_consolidated_filter
+            orders_filter = build_consolidated_filter(standort, konsolidiert, filter_type='orders')
             cursor_loco.execute(f"""
                 SELECT COALESCE(SUM(l.time_units), 0) as aw_verkauft
                 FROM labours l
@@ -401,7 +412,7 @@ def lade_ist_werte_fuer_monat(
                 WHERE i.invoice_date >= %s AND i.invoice_date < %s
                   AND l.is_invoiced = true
                   AND i.is_canceled = false
-                  {subsidiary_filter}
+                  {orders_filter}
             """, (von_datum, bis_datum))
             row = cursor_loco.fetchone()
             aw_verkauft = float(row[0] or 0) if row else 0
@@ -1133,15 +1144,9 @@ class AbteilungsleiterPlanungData:
                 subsidiary_filter = ""
         else:
             # Für NW/GW: dealer_vehicles haben out_subsidiary
-            if standort == 1:
-                # Deggendorf: Stellantis (subsidiary=1) + Hyundai (subsidiary=2)
-                subsidiary_filter = "AND (out_subsidiary = 1 OR out_subsidiary = 2)"
-            elif standort == 2:
-                subsidiary_filter = "AND out_subsidiary = 2"
-            elif standort == 3:
-                subsidiary_filter = "AND out_subsidiary = 1"  # Landau ist auch subsidiary 1
-            else:
-                subsidiary_filter = ""
+            # TAG 177: SSOT-Filter für Verkäufe (konsolidiert für Standort 1)
+            from api.standort_utils import build_locosoft_filter_verkauf
+            subsidiary_filter = build_locosoft_filter_verkauf(standort, nur_stellantis=False)
         
         result = {
             'umsatz': 0,
@@ -1261,16 +1266,9 @@ class AbteilungsleiterPlanungData:
                         else:  # GW
                             typ_filter = "dealer_vehicle_type IN ('D', 'G', 'L')"
                         
-                        # Standort-Filter für dealer_vehicles: out_subsidiary verwenden
-                        if standort == 1:
-                            # Deggendorf: Stellantis (subsidiary=1) + Hyundai (subsidiary=2)
-                            standort_filter = "AND (out_subsidiary = 1 OR out_subsidiary = 2)"
-                        elif standort == 2:
-                            standort_filter = "AND out_subsidiary = 2"
-                        elif standort == 3:
-                            standort_filter = "AND out_subsidiary = 1"  # Landau ist auch subsidiary 1, aber branch 3
-                        else:
-                            standort_filter = ""
+                        # TAG 177: SSOT-Filter für Verkäufe (konsolidiert für Standort 1)
+                        from api.standort_utils import build_locosoft_filter_verkauf
+                        standort_filter = build_locosoft_filter_verkauf(standort, nur_stellantis=False)
                         
                         # Stückzahl direkt aus Locosoft dealer_vehicles (wie bei IST-Werten)
                         cursor_loco.execute(f"""
@@ -1306,7 +1304,7 @@ class AbteilungsleiterPlanungData:
                         elif standort == 2:
                             standort_filter_standzeit = "AND out_subsidiary = 2"
                         elif standort == 3:
-                            standort_filter_standzeit = "AND out_subsidiary = 1"
+                            standort_filter_standzeit = "AND out_subsidiary = 3"  # Landau: subsidiary=3 (LANO location)
                         else:
                             standort_filter_standzeit = ""
                         
@@ -1388,7 +1386,7 @@ class AbteilungsleiterPlanungData:
                         if standort == 1:
                             werkstatt_subsidiary_filter = "AND (o.subsidiary = 1 OR o.subsidiary = 2)"
                         elif standort == 3:
-                            werkstatt_subsidiary_filter = "AND o.subsidiary = 1"
+                            werkstatt_subsidiary_filter = "AND o.subsidiary = 3"  # Landau: subsidiary=3 (LANO location)
                         else:
                             werkstatt_subsidiary_filter = ""
                         

@@ -40,17 +40,14 @@ import logging
 from api.db_utils import locosoft_session, get_locosoft_connection, row_to_dict, rows_to_list
 from psycopg2.extras import RealDictCursor
 
+# SSOT: Standort/Betriebsnamen
+from api.standort_utils import BETRIEB_NAMEN
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================
 # KONSTANTEN
 # =============================================================================
-
-BETRIEB_NAMEN = {
-    1: 'Deggendorf',
-    2: 'Hyundai DEG',
-    3: 'Landau'
-}
 
 # Mechaniker-Range (Locosoft-Standard)
 MECHANIKER_RANGE_START = 5000

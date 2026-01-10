@@ -35,10 +35,8 @@ DEFAULT_EMPFAENGER = [
 ]
 
 
-def get_db():
-    """Datenbank-Verbindung via db_connection"""
-    from api.db_connection import get_db as get_portal_db
-    return get_portal_db()
+# SSOT: DB-Verbindung
+from api.db_connection import get_db
 
 
 def get_empfaenger():

@@ -66,34 +66,30 @@
         </div>
     </div>
 
-    <!-- Filter -->
+    <!-- Zeitraum-Auswahl (kompakt) -->
     <div class="card mb-3">
-        <div class="card-body">
-            <form class="row g-3" onsubmit="ladeDaten(); return false;">
-                <div class="col-md-4">
-                    <label class="form-label">Geschäftsjahr</label>
+        <div class="card-body py-2">
+            <form class="row g-2 align-items-end" onsubmit="ladeDaten(); return false;">
+                <div class="col-auto">
+                    <label class="form-label small mb-0">Geschäftsjahr</label>
                     <input type="text" id="geschaeftsjahr" name="geschaeftsjahr" 
                            value="{{ geschaeftsjahr or '' }}" 
                            placeholder="z.B. 2024/25" 
-                           class="form-control form-control-sm">
+                           class="form-control form-control-sm" style="width: 120px;">
                 </div>
-                <div class="col-md-4">
-                    <label class="form-label">Standort</label>
-                    <select id="standort" name="standort" class="form-select form-select-sm">
-                        <option value="">Alle Standorte</option>
-                        {% for s_id, s_name in standort_namen.items() %}
-                        <option value="{{ s_id }}" {% if standort == s_id %}selected{% endif %}>{{ s_name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-md-4 d-flex align-items-end">
-                    <button type="submit" class="btn btn-primary btn-sm w-100">
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary btn-sm">
                         <i class="bi bi-funnel"></i> Filtern
                     </button>
                 </div>
             </form>
         </div>
     </div>
+
+    <!-- Standort-Filter Tabs (zentrales Component) -->
+    {% set current_standort = standort %}
+    {% set additional_params = {'geschaeftsjahr': geschaeftsjahr or ''} %}
+    {% include 'components/standort_filter_tabs.html' %}
 
     <!-- Ergebnisse -->
     <div id="ergebnisse">
@@ -109,9 +105,15 @@
 <script>
 let currentData = null;
 
+// TAG 177: Standort aus URL lesen (Tab-Navigation)
+function getStandortFromURL() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('standort') || '';
+}
+
 async function ladeDaten() {
     const geschaeftsjahr = document.getElementById('geschaeftsjahr').value;
-    const standort = document.getElementById('standort').value;
+    const standort = getStandortFromURL();
     
     const params = new URLSearchParams();
     if (geschaeftsjahr) params.append('geschaeftsjahr', geschaeftsjahr);

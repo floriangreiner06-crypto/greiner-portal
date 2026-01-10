@@ -2,8 +2,9 @@
 Verkauf Routes
 HTML-Seiten für Verkaufsbereich
 """
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, request
 from datetime import datetime
+from utils.standort_filter_helpers import parse_standort_params
 
 verkauf_bp = Blueprint('verkauf', __name__, url_prefix='/verkauf')
 
@@ -11,7 +12,13 @@ verkauf_bp = Blueprint('verkauf', __name__, url_prefix='/verkauf')
 @verkauf_bp.route('/auftragseingang')
 def auftragseingang():
     """Auftragseingang Dashboard"""
-    return render_template('verkauf_auftragseingang.html', now=datetime.now())
+    # TAG 177: Standort-Filter aus URL lesen
+    standort, konsolidiert = parse_standort_params(request)
+    
+    return render_template('verkauf_auftragseingang.html', 
+                         now=datetime.now(),
+                         standort=standort,
+                         konsolidiert=konsolidiert)
 
 
 @verkauf_bp.route('/auftragseingang/detail')
@@ -46,7 +53,13 @@ def lieferforecast():
     Zeigt geplante Kundenauslieferungen mit Umsatzprognose.
     Datenquelle: Locosoft readmission_date (geplante Lieferung an Kunden)
     """
-    return render_template('verkauf_lieferforecast.html', now=datetime.now())
+    # TAG 177: Standort-Filter aus URL lesen
+    standort, konsolidiert = parse_standort_params(request)
+    
+    return render_template('verkauf_lieferforecast.html', 
+                         now=datetime.now(),
+                         standort=standort,
+                         konsolidiert=konsolidiert)
 
 
 @verkauf_bp.route('/budget')
@@ -73,7 +86,13 @@ def budget_wizard():
     - Automatische Monatsverteilung (Saisonalisierung)
     - Gamification mit Bewertungen
     """
-    return render_template('verkauf_budget_wizard.html', now=datetime.now())
+    # TAG 177: Standort-Filter aus URL lesen
+    standort, konsolidiert = parse_standort_params(request)
+    
+    return render_template('verkauf_budget_wizard.html', 
+                         now=datetime.now(),
+                         standort=standort,
+                         konsolidiert=konsolidiert)
 
 
 @verkauf_bp.route('/eautoseller-bestand')
@@ -96,4 +115,10 @@ def gw_dashboard():
     - Fahrzeugliste mit Filter
     - Daten direkt aus Locosoft
     """
-    return render_template('verkauf_gw_dashboard.html', now=datetime.now())
+    # TAG 177: Standort-Filter aus URL lesen
+    standort, konsolidiert = parse_standort_params(request)
+    
+    return render_template('verkauf_gw_dashboard.html', 
+                         now=datetime.now(),
+                         standort=standort,
+                         konsolidiert=konsolidiert)

@@ -499,23 +499,15 @@
             </div>
         </div>
 
-        <!-- Standort-Auswahl -->
-        <div class="standort-selector fade-in" id="standortSelector">
-            <div class="standort-btn active" onclick="selectStandort(null)" id="standortBtnAlle">
-                <div class="name">Alle Standorte</div>
-                <div class="info">Gesamt-Budget</div>
-            </div>
-            <div class="standort-btn" onclick="selectStandort(1)" id="standortBtn1">
-                <div class="name">Deggendorf Opel</div>
-                <div class="info" id="standort1Info">255 NW | 295 GW</div>
-            </div>
-            <div class="standort-btn" onclick="selectStandort(2)" id="standortBtn2">
-                <div class="name">DEG Hyundai</div>
-                <div class="info" id="standort2Info">234 NW | 163 GW</div>
-            </div>
-            <div class="standort-btn" onclick="selectStandort(3)" id="standortBtn3">
-                <div class="name">Landau</div>
-                <div class="info" id="standort3Info">46 NW | 157 GW</div>
+        <!-- Standort-Filter Tabs (zentrales Component) -->
+        <div class="fade-in" id="standortSelector">
+            {% set current_standort = standort %}
+            {% set show_konsolidiert = true %}
+            {% include 'components/standort_filter_tabs.html' %}
+            
+            <!-- Standort-Infos (für Anzeige) -->
+            <div class="text-center mt-2">
+                <small class="text-muted" id="standortInfoText"></small>
             </div>
         </div>
 
@@ -749,24 +741,31 @@ let formValues = {
 
 // Init
 document.addEventListener('DOMContentLoaded', function() {
-    loadWizardData('NW');
-    updateStandortButtons();
+    loadWizardData('NW', currentStandort);
+    // TAG 177: updateStandortButtons nicht mehr nötig (keine Buttons mehr)
+    updateStandortInfo();
 });
 
-function selectStandort(standortId) {
-    currentStandort = standortId;
-
-    // UI aktualisieren
-    document.querySelectorAll('.standort-btn').forEach(btn => btn.classList.remove('active'));
-    if (standortId === null) {
-        document.getElementById('standortBtnAlle').classList.add('active');
+// Standort-Info aktualisieren (Text unter Tabs)
+function updateStandortInfo() {
+    const infoEl = document.getElementById('standortInfoText');
+    if (!infoEl) return;
+    
+    const standort = currentStandort;
+    if (standort && wizardData && wizardData.standorte) {
+        const standortData = wizardData.standorte.find(s => s.standort_id === standort);
+        if (standortData) {
+            infoEl.textContent = `${standortData.stueck} Stk | EUR ${(standortData.db1/1000).toFixed(0)}k DB1`;
+        } else {
+            infoEl.textContent = '';
+        }
     } else {
-        document.getElementById(`standortBtn${standortId}`).classList.add('active');
+        infoEl.textContent = 'Gesamt-Budget (alle Standorte)';
     }
-
-    // Daten neu laden mit Standort-Filter
-    loadWizardData(currentTyp, standortId);
 }
+
+// TAG 177: Standort wird über Tab-Navigation geändert, keine separate Funktion mehr nötig
+// Standort wird beim Laden aus URL gelesen
 
 function updateStandortButtons() {
     const typ = currentTyp;
@@ -802,6 +801,11 @@ function updateStandortButtons() {
 
 async function loadWizardData(typ, standort = null) {
     try {
+        // TAG 177: Standort aus URL lesen, falls nicht übergeben
+        if (standort === null) {
+            standort = getStandortFromURL();
+        }
+        
         let url = `/api/budget/wizard/${typ}?jahr=2026`;
         if (standort) {
             url += `&standort=${standort}`;
@@ -813,6 +817,8 @@ async function loadWizardData(typ, standort = null) {
             wizardData = result;
             updateWizardFromData(result);
             renderEmpfehlungen(result.empfehlungen);
+            // TAG 177: Standort-Info aktualisieren
+            updateStandortInfo();
         }
     } catch (error) {
         console.error('Wizard-Daten laden fehlgeschlagen:', error);

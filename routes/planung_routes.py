@@ -140,6 +140,7 @@ def uebersicht():
     """
     geschaeftsjahr = request.args.get('geschaeftsjahr', get_gj_from_date())
     monat_param = request.args.get('monat', type=int)
+    konsolidiert = request.args.get('konsolidiert', 'false').lower() == 'true'
     
     # monat_param ist jetzt immer GJ-Monat (1-12), nicht mehr Kalendermonat
     # GJ-Monat 1 = Sep, 2 = Okt, ..., 5 = Jan, ..., 12 = Aug
@@ -148,6 +149,15 @@ def uebersicht():
     else:
         monat = get_gj_monat()  # Aktueller GJ-Monat
     standort = request.args.get('standort', type=int)
+    
+    # Konsolidierte Ansicht nur für Standort 1 möglich
+    if konsolidiert and standort != 1:
+        konsolidiert = False
+    
+    # Für konsolidierte Ansicht: Standort 1 und 2 zusammenfassen
+    standorte_fuer_query = None
+    if konsolidiert and standort == 1:
+        standorte_fuer_query = [1, 2]  # Beide Standorte für Query
     
     # Bereiche
     bereiche = ['NW', 'GW', 'Teile', 'Werkstatt', 'Sonstige']
@@ -184,7 +194,11 @@ def uebersicht():
             """
             params = [geschaeftsjahr, monat]
             
-            if standort:
+            if standorte_fuer_query:
+                # Konsolidierte Ansicht: Standort 1 und 2 zusammenfassen
+                query += " AND standort = ANY(%s)"
+                params.append(standorte_fuer_query)
+            elif standort:
                 query += " AND standort = %s"
                 params.append(standort)
             
@@ -200,6 +214,10 @@ def uebersicht():
                 # Für Teile und Werkstatt: Standort 2 (Hyundai DEG) auf Standort 1 (Deggendorf) mappen
                 if bereich_key in ['Teile', 'Werkstatt'] and standort_key == 2:
                     standort_key = 1  # Hyundai DEG -> Deggendorf
+                
+                # Für konsolidierte Ansicht: Alle Planungen auf Standort 1 mappen
+                if konsolidiert and standort_key in [1, 2]:
+                    standort_key = 1  # Beide auf Standort 1 mappen für Anzeige
                 
                 key = f"{bereich_key}_{standort_key}"
                 row_dict = row_to_dict(row)
@@ -244,6 +262,7 @@ def uebersicht():
         monat=monat,
         monat_name=monat_name,
         standort=standort,
+        konsolidiert=konsolidiert,
         bereiche=bereiche,
         standorte=standorte,
         standorte_fuer_bereich=standorte_fuer_bereich,
@@ -263,6 +282,7 @@ def planungsformular(bereich: str, standort: int):
     """
     geschaeftsjahr = request.args.get('geschaeftsjahr', get_gj_from_date())
     monat_param = request.args.get('monat', type=int)
+    konsolidiert = request.args.get('konsolidiert', 'false').lower() == 'true'
     
     # monat_param ist jetzt immer GJ-Monat (1-12), nicht mehr Kalendermonat
     # GJ-Monat 1 = Sep, 2 = Okt, ..., 5 = Jan, ..., 12 = Aug
@@ -280,6 +300,10 @@ def planungsformular(bereich: str, standort: int):
         flash('Ungültiger Standort', 'danger')
         return redirect(url_for('abteilungsleiter_planung.uebersicht'))
     
+    # Konsolidierte Ansicht nur für Standort 1 (Deggendorf) möglich
+    if konsolidiert and standort != 1:
+        konsolidiert = False
+    
     # Bestehende Planung laden (falls vorhanden)
     planung = None
     ist_werte = None
@@ -294,7 +318,7 @@ def planungsformular(bereich: str, standort: int):
         # Wenn abgelaufen: IST-Werte laden
         if monat_abgelaufen:
             ist_werte = lade_ist_werte_fuer_monat(
-                geschaeftsjahr, monat, bereich, standort
+                geschaeftsjahr, monat, bereich, standort, konsolidiert=konsolidiert
             )
         
         # Bestehende Planung aus DB laden
@@ -390,6 +414,12 @@ def planungsformular(bereich: str, standort: int):
     # Monatsname für Anzeige
     monat_name = gj_monat_zu_name(monat)
     
+    # Standort-Name für konsolidierte Ansicht anpassen
+    if konsolidiert and standort == 1:
+        standort_display_name = 'Deggendorf konsolidiert'
+    else:
+        standort_display_name = standort_namen.get(standort, f'Standort {standort}')
+    
     return render_template(
         'planung/abteilungsleiter_formular.html',
         geschaeftsjahr=geschaeftsjahr,
@@ -397,7 +427,8 @@ def planungsformular(bereich: str, standort: int):
         monat_name=monat_name,
         bereich=bereich,
         standort=standort,
-        standort_name=standort_namen.get(standort, f'Standort {standort}'),
+        standort_name=standort_display_name,
+        konsolidiert=konsolidiert,
         planung=planung,
         ist_werte=ist_werte,
         vorjahr=vorjahr if vorjahr else {},  # Leeres Dict falls None
@@ -539,19 +570,15 @@ def stundensatz_kalkulation():
     Zeigt BWA-Daten für Werkstatt-Stundensatz-Kalkulation.
     """
     geschaeftsjahr = request.args.get('geschaeftsjahr')
-    standort = request.args.get('standort', type=int)
-    
-    standort_namen = {
-        1: 'Deggendorf',
-        2: 'Hyundai DEG',
-        3: 'Landau'
-    }
+    # TAG 177: Standort-Filter aus URL lesen
+    from utils.standort_filter_helpers import parse_standort_params
+    standort, konsolidiert = parse_standort_params(request)
     
     return render_template(
         'planung/stundensatz_kalkulation.html',
         geschaeftsjahr=geschaeftsjahr,
         standort=standort,
-        standort_namen=standort_namen
+        konsolidiert=konsolidiert
     )
 
 
@@ -568,7 +595,9 @@ def gesamtplanung():
     """
     geschaeftsjahr = request.args.get('geschaeftsjahr', get_gj_from_date())
     monat_param = request.args.get('monat', type=int)
-    standort_filter = request.args.get('standort', type=int)
+    # TAG 177: Standort-Filter aus URL lesen
+    from utils.standort_filter_helpers import parse_standort_params
+    standort_filter, konsolidiert = parse_standort_params(request)
     bereich_filter = request.args.get('bereich', type=str)
     
     # monat_param ist GJ-Monat (1-12)

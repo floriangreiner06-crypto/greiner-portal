@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-LOCOSOFT HELPERS - Daten aus SQLite (gesynct von Locosoft)
-==========================================================
+LOCOSOFT HELPERS - Daten aus PostgreSQL (gesynct von Locosoft)
+=============================================================
 Zentrale Funktionen für Auftragsarten, SVS und Klassifizierung.
-Daten werden aus SQLite gelesen (Sync-Tabellen).
+Daten werden aus PostgreSQL gelesen (Sync-Tabellen).
 
 Für Live-Daten (Auftragsdetails) wird Locosoft direkt abgefragt.
 
@@ -17,34 +17,24 @@ Funktionen:
 
 Author: Claude
 Date: 2025-12-09 (TAG 110)
+Updated: 2026-01-10 (TAG 177) - PostgreSQL Migration
+
+⚠️ WICHTIG: Dieses Modul verwendet jetzt PostgreSQL statt SQLite!
 """
 
 import os
-import sqlite3
 import logging
 from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime, date
 from pathlib import Path
 
+# SSOT: Standort/Betriebsnamen
+from api.standort_utils import BETRIEB_NAMEN
+
+# SSOT: DB-Verbindung (PostgreSQL)
+from api.db_connection import get_db
+
 logger = logging.getLogger(__name__)
-
-# =============================================================================
-# PFADE & VERBINDUNGEN
-# =============================================================================
-
-# Projekt-Root ermitteln
-_SCRIPT_DIR = Path(__file__).parent
-PROJECT_ROOT = _SCRIPT_DIR.parent
-
-# SQLite-Datenbank
-DB_PATH = PROJECT_ROOT / 'data' / 'greiner_controlling.db'
-
-
-def get_sqlite_connection():
-    """Verbindung zu SQLite (Hauptdatenbank)"""
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
-    return conn
 
 
 def get_locosoft_connection():
@@ -69,12 +59,7 @@ def get_locosoft_connection():
 # KONSTANTEN & MAPPINGS
 # =============================================================================
 
-# Betriebsnamen
-BETRIEB_NAMEN = {
-    1: 'Deggendorf',
-    2: 'Hyundai DEG',
-    3: 'Landau'
-}
+# BETRIEB_NAMEN wird jetzt aus api.standort_utils importiert (SSOT)
 
 # Abteilungen (department in charge_types)
 ABTEILUNG_NAMEN = {
@@ -154,12 +139,12 @@ INVOICE_TYPE_NAMEN = {
 
 
 # =============================================================================
-# SVS (STUNDENVERRECHNUNGSSÄTZE) - AUS SQLITE
+# SVS (STUNDENVERRECHNUNGSSÄTZE) - AUS POSTGRESQL
 # =============================================================================
 
 def hole_svs(betrieb: int = 1, charge_type: int = None) -> Dict[str, Any]:
     """
-    Holt Stundenverrechnungssätze (AW-Preise) aus SQLite.
+    Holt Stundenverrechnungssätze (AW-Preise) aus PostgreSQL.
     
     Daten werden aus charge_types_sync gelesen (Sync von Locosoft).
     
@@ -181,20 +166,23 @@ def hole_svs(betrieb: int = 1, charge_type: int = None) -> Dict[str, Any]:
         }
     """
     try:
-        conn = get_sqlite_connection()
+        conn = get_db()
         cursor = conn.cursor()
         
-        # Prüfen ob Sync-Tabelle existiert
+        # Prüfen ob Sync-Tabelle existiert (PostgreSQL)
         cursor.execute("""
-            SELECT name FROM sqlite_master 
-            WHERE type='table' AND name='charge_types_sync'
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = 'charge_types_sync'
+            )
         """)
-        if not cursor.fetchone():
+        if not cursor.fetchone()[0]:
             conn.close()
             logger.warning("⚠️ charge_types_sync nicht gefunden - bitte sync_charge_types.py ausführen!")
             return _get_fallback_svs()
         
-        # Daten laden
+        # Daten laden (PostgreSQL: %s statt ?)
         cursor.execute("""
             SELECT 
                 ct.type, 
@@ -206,15 +194,16 @@ def hole_svs(betrieb: int = 1, charge_type: int = None) -> Dict[str, Any]:
                 ctd.description
             FROM charge_types_sync ct
             LEFT JOIN charge_type_descriptions_sync ctd ON ct.type = ctd.type
-            WHERE ct.subsidiary = ?
+            WHERE ct.subsidiary = %s
             ORDER BY ct.type
         """, [betrieb])
         
         rows = cursor.fetchall()
         
         # Letzten Sync-Zeitpunkt holen
-        cursor.execute("SELECT MAX(synced_at) FROM charge_types_sync WHERE subsidiary = ?", [betrieb])
-        last_sync = cursor.fetchone()[0]
+        cursor.execute("SELECT MAX(synced_at) FROM charge_types_sync WHERE subsidiary = %s", [betrieb])
+        last_sync_row = cursor.fetchone()
+        last_sync = last_sync_row[0] if last_sync_row and last_sync_row[0] else None
         
         conn.close()
         
@@ -222,7 +211,7 @@ def hole_svs(betrieb: int = 1, charge_type: int = None) -> Dict[str, Any]:
             logger.warning(f"⚠️ Keine charge_types für Betrieb {betrieb} gefunden")
             return _get_fallback_svs()
         
-        # Ergebnis aufbauen
+        # Ergebnis aufbauen (PostgreSQL HybridRow unterstützt dict-like access)
         alle = {}
         for row in rows:
             type_nr = row['type']
@@ -252,7 +241,7 @@ def hole_svs(betrieb: int = 1, charge_type: int = None) -> Dict[str, Any]:
             'fremdleistung': alle.get(90, {}).get('aw_preis', 15.50),
             'alle': alle,
             'last_sync': last_sync,
-            'quelle': 'sqlite'
+            'quelle': 'postgresql'
         }
         
         # Bei Einzelabfrage
@@ -265,7 +254,7 @@ def hole_svs(betrieb: int = 1, charge_type: int = None) -> Dict[str, Any]:
         return result
         
     except Exception as e:
-        logger.exception("Fehler beim Laden der SVS aus SQLite")
+        logger.exception("Fehler beim Laden der SVS aus PostgreSQL")
         return _get_fallback_svs()
 
 
@@ -314,7 +303,7 @@ def hole_charge_type_info(charge_type: int, betrieb: int = 1) -> Dict[str, Any]:
         }
     """
     try:
-        conn = get_sqlite_connection()
+        conn = get_db()
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -328,13 +317,14 @@ def hole_charge_type_info(charge_type: int, betrieb: int = 1) -> Dict[str, Any]:
                 ct.kategorie
             FROM charge_types_sync ct
             LEFT JOIN charge_type_descriptions_sync ctd ON ct.type = ctd.type
-            WHERE ct.type = ? AND ct.subsidiary = ?
+            WHERE ct.type = %s AND ct.subsidiary = %s
         """, [charge_type, betrieb])
         
         row = cursor.fetchone()
         conn.close()
         
         if row:
+            # PostgreSQL HybridRow unterstützt dict-like access
             return {
                 'type': row['type'],
                 'beschreibung': row['description'],
@@ -522,7 +512,7 @@ def hole_auftragsdetails(order_number: int) -> Dict[str, Any]:
     """
     Holt komplette Auftragsdetails inkl. Klassifizierung aus Locosoft.
     
-    HINWEIS: Diese Funktion greift LIVE auf Locosoft zu (nicht SQLite),
+    HINWEIS: Diese Funktion greift LIVE auf Locosoft zu (nicht PostgreSQL),
     da Auftragsdetails aktuelle Daten benötigen.
     
     Returns:
@@ -618,7 +608,7 @@ def hole_auftragsdetails(order_number: int) -> Dict[str, Any]:
                 haupt_charge_type = pos[1]
                 haupt_labour_type = pos[2]
             
-            # AW-Preis aus SQLite
+            # AW-Preis aus PostgreSQL
             ct_info = hole_charge_type_info(pos[1], betrieb)
             
             positionen.append({
@@ -774,7 +764,7 @@ def hole_fremdleistungen_statistik(
             total_vk += vk
             total_ek += ek
             
-            # Beschreibung aus SQLite
+            # Beschreibung aus PostgreSQL
             ct_info = hole_charge_type_info(ct)
             
             nach_typ[ct] = {
@@ -861,10 +851,10 @@ def hole_abteilung_fuer_charge_type(charge_type: int, betrieb: int = 1) -> Tuple
 
 if __name__ == '__main__':
     print("=" * 70)
-    print("LOCOSOFT HELPERS - TESTS (SQLite-Version)")
+    print("LOCOSOFT HELPERS - TESTS (PostgreSQL-Version)")
     print("=" * 70)
     
-    print("\n1. SVS (Stundenverrechnungssätze) aus SQLite:")
+    print("\n1. SVS (Stundenverrechnungssätze) aus PostgreSQL:")
     print("-" * 50)
     svs = hole_svs(betrieb=1)
     

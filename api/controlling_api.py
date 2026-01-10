@@ -10,7 +10,7 @@ from flask import Blueprint, jsonify, request
 from datetime import datetime
 
 # Zentrale DB-Utilities (TAG117 + TAG136)
-from api.db_utils import db_session, row_to_dict, rows_to_list
+from api.db_utils import db_session, row_to_dict, rows_to_list, locosoft_session
 from api.db_connection import convert_placeholders, sql_placeholder
 
 controlling_api = Blueprint('controlling_api', __name__)
@@ -415,7 +415,7 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
             CASE WHEN debit_or_credit='H' THEN posted_value ELSE -posted_value END
         )/100.0, 0) as wert
         FROM loco_journal_accountings
-        WHERE accounting_date >= ? AND accounting_date < ?
+        WHERE accounting_date >= %s AND accounting_date < %s
           AND ((nominal_account_number BETWEEN 800000 AND 889999)
                OR (nominal_account_number BETWEEN 893200 AND 893299))
           {firma_filter_umsatz}
@@ -429,7 +429,7 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
             CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
         )/100.0, 0) as wert
         FROM loco_journal_accountings
-        WHERE accounting_date >= ? AND accounting_date < ?
+        WHERE accounting_date >= %s AND accounting_date < %s
           AND nominal_account_number BETWEEN 700000 AND 799999
           {firma_filter_einsatz}
           {guv_filter}
@@ -442,7 +442,7 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
             CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
         )/100.0, 0) as wert
         FROM loco_journal_accountings
-        WHERE accounting_date >= ? AND accounting_date < ?
+        WHERE accounting_date >= %s AND accounting_date < %s
           AND (
             nominal_account_number BETWEEN 415100 AND 415199
             OR nominal_account_number BETWEEN 435500 AND 435599
@@ -463,16 +463,19 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
             CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
         )/100.0, 0) as wert
         FROM loco_journal_accountings
-        WHERE accounting_date >= ? AND accounting_date < ?
+        WHERE accounting_date >= %s AND accounting_date < %s
           AND nominal_account_number BETWEEN 400000 AND 489999
           AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','4','5','6','7')
           AND NOT (
-            nominal_account_number BETWEEN 415100 AND 415199
+            nominal_account_number = 410021
+            OR nominal_account_number BETWEEN 411000 AND 411999
+            OR nominal_account_number BETWEEN 415100 AND 415199
             OR nominal_account_number BETWEEN 424000 AND 424999
             OR nominal_account_number BETWEEN 435500 AND 435599
             OR nominal_account_number BETWEEN 438000 AND 438999
             OR nominal_account_number BETWEEN 455000 AND 456999
             OR nominal_account_number BETWEEN 487000 AND 487099
+            OR nominal_account_number BETWEEN 489000 AND 489999
             OR nominal_account_number BETWEEN 491000 AND 497999
           )
           {firma_filter_kosten}
@@ -486,7 +489,7 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
             CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
         )/100.0, 0) as wert
         FROM loco_journal_accountings
-        WHERE accounting_date >= ? AND accounting_date < ?
+        WHERE accounting_date >= %s AND accounting_date < %s
           AND (
             (nominal_account_number BETWEEN 400000 AND 499999
              AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0')
@@ -496,7 +499,8 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
                 AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
             OR nominal_account_number BETWEEN 498000 AND 499999
             OR (nominal_account_number BETWEEN 891000 AND 896999
-                AND NOT (nominal_account_number BETWEEN 893200 AND 893299))
+                AND NOT (nominal_account_number BETWEEN 893200 AND 893299)
+                AND NOT (nominal_account_number BETWEEN 891000 AND 891099))
           )
           {firma_filter_kosten}
           {guv_filter}
@@ -509,7 +513,7 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
             CASE WHEN debit_or_credit='H' THEN posted_value ELSE -posted_value END
         )/100.0, 0) as wert
         FROM loco_journal_accountings
-        WHERE accounting_date >= ? AND accounting_date < ?
+        WHERE accounting_date >= %s AND accounting_date < %s
           AND nominal_account_number BETWEEN 200000 AND 299999
           {firma_filter_umsatz}
           {guv_filter}
@@ -536,6 +540,319 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
         'neutral': round(neutral, 2),
         'unternehmensergebnis': round(ue, 2)
     }
+
+
+def _berechne_stueckzahlen_globalcube(monat: int, jahr: int, firma: str = '0', standort: str = '0'):
+    """
+    TAG 177: Berechnet NW und GW Stückzahlen analog Globalcube-Struktur.
+    
+    Struktur wie Globalcube:
+    - Monat (aktuelles Jahr, aktueller Monat)
+    - Jahr (aktuelles Jahr, kumuliert vom WJ-Start)
+    - VJ Monat (Vorjahr, gleicher Monat)
+    - VJ Jahr (Vorjahr, kumuliert vom WJ-Start)
+    
+    NW: dealer_vehicle_type IN ('N', 'T', 'V')
+    GW: dealer_vehicle_type IN ('G', 'D', 'L')
+    
+    Args:
+        monat: int (1-12)
+        jahr: int (z.B. 2025)
+        firma: '0'=Alle, '1'=Stellantis, '2'=Hyundai
+        standort: '0'=Alle, '1'=Deggendorf, '2'=Landau, 'deg-both'=Deggendorf konsolidiert
+    
+    Returns: {
+        'nw': {'monat': int, 'jahr': int, 'vj_monat': int, 'vj_jahr': int},
+        'gw': {'monat': int, 'jahr': int, 'vj_monat': int, 'vj_jahr': int}
+    }
+    """
+    from datetime import datetime
+    from api.standort_utils import build_locosoft_filter_verkauf
+    
+    # Standort-Parameter mappen (firma/standort → standort int)
+    standort_int = 0
+    nur_stellantis = False
+    
+    if standort == 'deg-both':
+        # Deggendorf konsolidiert: beide Firmen
+        standort_int = 1
+        nur_stellantis = False
+    elif standort == '1':
+        # Deggendorf: abhängig von firma
+        standort_int = 1
+        nur_stellantis = (firma == '1')
+    elif standort == '2':
+        # Landau: immer Stellantis
+        standort_int = 3
+        nur_stellantis = True
+    elif firma == '2':
+        # Hyundai: Standort 2
+        standort_int = 2
+        nur_stellantis = False
+    elif firma == '1':
+        # Stellantis: Standort 1 (Deggendorf) oder 3 (Landau)
+        if standort == '0':
+            standort_int = 0  # Alle
+        else:
+            standort_int = 1 if standort == '1' else 3
+        nur_stellantis = True
+    else:
+        # Alle
+        standort_int = 0
+        nur_stellantis = False
+    
+    location_filter = build_locosoft_filter_verkauf(standort_int, nur_stellantis)
+    
+    # Wirtschaftsjahr-Start berechnen (1. September)
+    WJ_START_MONAT = 9
+    
+    # Aktuelles Jahr: Monat
+    monat_von = f"{jahr}-{monat:02d}-01"
+    if monat == 12:
+        monat_bis = f"{jahr+1}-01-01"
+    else:
+        monat_bis = f"{jahr}-{monat+1:02d}-01"
+    
+    # Aktuelles Jahr: Jahr (kumuliert vom WJ-Start)
+    if monat >= WJ_START_MONAT:
+        jahr_von = f"{jahr}-{WJ_START_MONAT:02d}-01"
+    else:
+        jahr_von = f"{jahr-1}-{WJ_START_MONAT:02d}-01"
+    jahr_bis = monat_bis  # Bis Ende des aktuellen Monats
+    
+    # Vorjahr: Monat (gleicher Monat)
+    vj_monat_von = f"{jahr-1}-{monat:02d}-01"
+    if monat == 12:
+        vj_monat_bis = f"{jahr}-01-01"
+    else:
+        vj_monat_bis = f"{jahr-1}-{monat+1:02d}-01"
+    
+    # Vorjahr: Jahr (kumuliert vom WJ-Start)
+    if monat >= WJ_START_MONAT:
+        vj_jahr_von = f"{jahr-1}-{WJ_START_MONAT:02d}-01"
+    else:
+        vj_jahr_von = f"{jahr-2}-{WJ_START_MONAT:02d}-01"
+    vj_jahr_bis = vj_monat_bis  # Bis Ende des VJ-Monats
+    
+    nw_monat = 0
+    nw_jahr = 0
+    nw_vj_monat = 0
+    nw_vj_jahr = 0
+    gw_monat = 0
+    gw_jahr = 0
+    gw_vj_monat = 0
+    gw_vj_jahr = 0
+    
+    try:
+        with locosoft_session() as conn_loco:
+            cursor_loco = conn_loco.cursor()
+            
+            # NW Monat (aktuell)
+            cursor_loco.execute(f"""
+                SELECT COUNT(*) as stueck
+                FROM dealer_vehicles
+                WHERE out_invoice_date >= %s AND out_invoice_date < %s
+                  AND out_invoice_date IS NOT NULL
+                  AND dealer_vehicle_type IN ('N', 'T', 'V')
+                  {location_filter}
+            """, (monat_von, monat_bis))
+            row = cursor_loco.fetchone()
+            nw_monat = int(row[0] or 0) if row else 0
+            
+            # NW Jahr (aktuell, kumuliert)
+            cursor_loco.execute(f"""
+                SELECT COUNT(*) as stueck
+                FROM dealer_vehicles
+                WHERE out_invoice_date >= %s AND out_invoice_date < %s
+                  AND out_invoice_date IS NOT NULL
+                  AND dealer_vehicle_type IN ('N', 'T', 'V')
+                  {location_filter}
+            """, (jahr_von, jahr_bis))
+            row = cursor_loco.fetchone()
+            nw_jahr = int(row[0] or 0) if row else 0
+            
+            # NW VJ Monat
+            cursor_loco.execute(f"""
+                SELECT COUNT(*) as stueck
+                FROM dealer_vehicles
+                WHERE out_invoice_date >= %s AND out_invoice_date < %s
+                  AND out_invoice_date IS NOT NULL
+                  AND dealer_vehicle_type IN ('N', 'T', 'V')
+                  {location_filter}
+            """, (vj_monat_von, vj_monat_bis))
+            row = cursor_loco.fetchone()
+            nw_vj_monat = int(row[0] or 0) if row else 0
+            
+            # NW VJ Jahr (kumuliert)
+            cursor_loco.execute(f"""
+                SELECT COUNT(*) as stueck
+                FROM dealer_vehicles
+                WHERE out_invoice_date >= %s AND out_invoice_date < %s
+                  AND out_invoice_date IS NOT NULL
+                  AND dealer_vehicle_type IN ('N', 'T', 'V')
+                  {location_filter}
+            """, (vj_jahr_von, vj_jahr_bis))
+            row = cursor_loco.fetchone()
+            nw_vj_jahr = int(row[0] or 0) if row else 0
+            
+            # GW Monat (aktuell)
+            cursor_loco.execute(f"""
+                SELECT COUNT(*) as stueck
+                FROM dealer_vehicles
+                WHERE out_invoice_date >= %s AND out_invoice_date < %s
+                  AND out_invoice_date IS NOT NULL
+                  AND dealer_vehicle_type IN ('G', 'D', 'L')
+                  {location_filter}
+            """, (monat_von, monat_bis))
+            row = cursor_loco.fetchone()
+            gw_monat = int(row[0] or 0) if row else 0
+            
+            # GW Jahr (aktuell, kumuliert)
+            cursor_loco.execute(f"""
+                SELECT COUNT(*) as stueck
+                FROM dealer_vehicles
+                WHERE out_invoice_date >= %s AND out_invoice_date < %s
+                  AND out_invoice_date IS NOT NULL
+                  AND dealer_vehicle_type IN ('G', 'D', 'L')
+                  {location_filter}
+            """, (jahr_von, jahr_bis))
+            row = cursor_loco.fetchone()
+            gw_jahr = int(row[0] or 0) if row else 0
+            
+            # GW VJ Monat
+            cursor_loco.execute(f"""
+                SELECT COUNT(*) as stueck
+                FROM dealer_vehicles
+                WHERE out_invoice_date >= %s AND out_invoice_date < %s
+                  AND out_invoice_date IS NOT NULL
+                  AND dealer_vehicle_type IN ('G', 'D', 'L')
+                  {location_filter}
+            """, (vj_monat_von, vj_monat_bis))
+            row = cursor_loco.fetchone()
+            gw_vj_monat = int(row[0] or 0) if row else 0
+            
+            # GW VJ Jahr (kumuliert)
+            cursor_loco.execute(f"""
+                SELECT COUNT(*) as stueck
+                FROM dealer_vehicles
+                WHERE out_invoice_date >= %s AND out_invoice_date < %s
+                  AND out_invoice_date IS NOT NULL
+                  AND dealer_vehicle_type IN ('G', 'D', 'L')
+                  {location_filter}
+            """, (vj_jahr_von, vj_jahr_bis))
+            row = cursor_loco.fetchone()
+            gw_vj_jahr = int(row[0] or 0) if row else 0
+            
+    except Exception as e:
+        print(f"Fehler bei Stückzahl-Berechnung: {e}")
+        import traceback
+        traceback.print_exc()
+        # Fallback: 0
+    
+    return {
+        'nw': {
+            'monat': nw_monat,
+            'jahr': nw_jahr,
+            'vj_monat': nw_vj_monat,
+            'vj_jahr': nw_vj_jahr
+        },
+        'gw': {
+            'monat': gw_monat,
+            'jahr': gw_jahr,
+            'vj_monat': gw_vj_monat,
+            'vj_jahr': gw_vj_jahr
+        }
+    }
+
+
+def _berechne_stueckzahlen(datum_von: str, datum_bis: str, firma: str = '0', standort: str = '0'):
+    """
+    TAG 177: Berechnet NW und GW Stückzahlen aus dealer_vehicles (analog Globalcube).
+    
+    NW: dealer_vehicle_type IN ('N', 'T', 'V')
+    GW: dealer_vehicle_type IN ('G', 'D', 'L')
+    
+    Args:
+        datum_von, datum_bis: Datumsbereich
+        firma: '0'=Alle, '1'=Stellantis, '2'=Hyundai
+        standort: '0'=Alle, '1'=Deggendorf, '2'=Landau, 'deg-both'=Deggendorf konsolidiert
+    
+    Returns: {'nw': int, 'gw': int}
+    """
+    from api.standort_utils import build_locosoft_filter_verkauf
+    
+    # Standort-Parameter mappen (firma/standort → standort int)
+    standort_int = 0
+    nur_stellantis = False
+    
+    if standort == 'deg-both':
+        # Deggendorf konsolidiert: beide Firmen
+        standort_int = 1
+        nur_stellantis = False
+    elif standort == '1':
+        # Deggendorf: abhängig von firma
+        standort_int = 1
+        nur_stellantis = (firma == '1')
+    elif standort == '2':
+        # Landau: immer Stellantis
+        standort_int = 3
+        nur_stellantis = True
+    elif firma == '2':
+        # Hyundai: Standort 2
+        standort_int = 2
+        nur_stellantis = False
+    elif firma == '1':
+        # Stellantis: Standort 1 (Deggendorf) oder 3 (Landau)
+        if standort == '0':
+            standort_int = 0  # Alle
+        else:
+            standort_int = 1 if standort == '1' else 3
+        nur_stellantis = True
+    else:
+        # Alle
+        standort_int = 0
+        nur_stellantis = False
+    
+    location_filter = build_locosoft_filter_verkauf(standort_int, nur_stellantis)
+    
+    nw_stueck = 0
+    gw_stueck = 0
+    
+    try:
+        with locosoft_session() as conn_loco:
+            cursor_loco = conn_loco.cursor()
+            
+            # NW Stückzahl: N, T, V (analog Globalcube)
+            cursor_loco.execute(f"""
+                SELECT COUNT(*) as stueck
+                FROM dealer_vehicles
+                WHERE out_invoice_date >= %s AND out_invoice_date < %s
+                  AND out_invoice_date IS NOT NULL
+                  AND dealer_vehicle_type IN ('N', 'T', 'V')
+                  {location_filter}
+            """, (datum_von, datum_bis))
+            row = cursor_loco.fetchone()
+            nw_stueck = int(row[0] or 0) if row else 0
+            
+            # GW Stückzahl: G, D, L (analog Globalcube)
+            cursor_loco.execute(f"""
+                SELECT COUNT(*) as stueck
+                FROM dealer_vehicles
+                WHERE out_invoice_date >= %s AND out_invoice_date < %s
+                  AND out_invoice_date IS NOT NULL
+                  AND dealer_vehicle_type IN ('G', 'D', 'L')
+                  {location_filter}
+            """, (datum_von, datum_bis))
+            row = cursor_loco.fetchone()
+            gw_stueck = int(row[0] or 0) if row else 0
+            
+    except Exception as e:
+        print(f"Fehler bei Stückzahl-Berechnung: {e}")
+        import traceback
+        traceback.print_exc()
+        # Fallback: 0
+    
+    return {'nw': nw_stueck, 'gw': gw_stueck}
 
 
 def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', standort: str = '0'):
@@ -579,7 +896,7 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
             CASE WHEN debit_or_credit='H' THEN posted_value ELSE -posted_value END
         )/100.0, 0) as wert
         FROM loco_journal_accountings
-        WHERE accounting_date >= ? AND accounting_date < ?
+        WHERE accounting_date >= %s AND accounting_date < %s
           AND ((nominal_account_number BETWEEN 800000 AND 889999)
                OR (nominal_account_number BETWEEN 893200 AND 893299))
           {firma_filter_umsatz}
@@ -593,7 +910,7 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
             CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
         )/100.0, 0) as wert
         FROM loco_journal_accountings
-        WHERE accounting_date >= ? AND accounting_date < ?
+        WHERE accounting_date >= %s AND accounting_date < %s
           AND nominal_account_number BETWEEN 700000 AND 799999
           {firma_filter_einsatz}
           {guv_filter}
@@ -606,7 +923,7 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
             CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
         )/100.0, 0) as wert
         FROM loco_journal_accountings
-        WHERE accounting_date >= ? AND accounting_date < ?
+        WHERE accounting_date >= %s AND accounting_date < %s
           AND (
             nominal_account_number BETWEEN 415100 AND 415199
             OR nominal_account_number BETWEEN 435500 AND 435599
@@ -627,16 +944,19 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
             CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
         )/100.0, 0) as wert
         FROM loco_journal_accountings
-        WHERE accounting_date >= ? AND accounting_date < ?
+        WHERE accounting_date >= %s AND accounting_date < %s
           AND nominal_account_number BETWEEN 400000 AND 489999
           AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','4','5','6','7')
           AND NOT (
-            nominal_account_number BETWEEN 415100 AND 415199
+            nominal_account_number = 410021
+            OR nominal_account_number BETWEEN 411000 AND 411999
+            OR nominal_account_number BETWEEN 415100 AND 415199
             OR nominal_account_number BETWEEN 424000 AND 424999
             OR nominal_account_number BETWEEN 435500 AND 435599
             OR nominal_account_number BETWEEN 438000 AND 438999
             OR nominal_account_number BETWEEN 455000 AND 456999
             OR nominal_account_number BETWEEN 487000 AND 487099
+            OR nominal_account_number BETWEEN 489000 AND 489999
             OR nominal_account_number BETWEEN 491000 AND 497999
           )
           {firma_filter_kosten}
@@ -650,7 +970,7 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
             CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
         )/100.0, 0) as wert
         FROM loco_journal_accountings
-        WHERE accounting_date >= ? AND accounting_date < ?
+        WHERE accounting_date >= %s AND accounting_date < %s
           AND (
             (nominal_account_number BETWEEN 400000 AND 499999
              AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0')
@@ -660,7 +980,8 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
                 AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
             OR nominal_account_number BETWEEN 498000 AND 499999
             OR (nominal_account_number BETWEEN 891000 AND 896999
-                AND NOT (nominal_account_number BETWEEN 893200 AND 893299))
+                AND NOT (nominal_account_number BETWEEN 893200 AND 893299)
+                AND NOT (nominal_account_number BETWEEN 891000 AND 891099))
           )
           {firma_filter_kosten}
           {guv_filter}
@@ -673,7 +994,7 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
             CASE WHEN debit_or_credit='H' THEN posted_value ELSE -posted_value END
         )/100.0, 0) as wert
         FROM loco_journal_accountings
-        WHERE accounting_date >= ? AND accounting_date < ?
+        WHERE accounting_date >= %s AND accounting_date < %s
           AND nominal_account_number BETWEEN 200000 AND 299999
           {firma_filter_umsatz}
           {guv_filter}
@@ -687,17 +1008,42 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
     be = db3 - indirekte
     ue = be + neutral
 
+    # TAG 177: Bereiche für YTD berechnen (wie in get_bwa_v2)
+    bereiche = []
+    for bereich_key, config in sorted(BEREICHE_CONFIG.items(), key=lambda x: x[1]['order']):
+        werte = _berechne_bereich_werte(
+            cursor, bereich_key, config, datum_von, datum_bis,
+            firma_filter_umsatz, guv_filter, firma_filter_einsatz
+        )
+        bereiche.append({
+            'key': bereich_key,
+            'name': config['name'],
+            **werte
+        })
+    
+    # TAG 177: Stückzahlen für YTD Vorjahr berechnen
+    stueckzahlen_ytd_vj = _berechne_stueckzahlen(datum_von, datum_bis, firma, standort)
+    # Stückzahlen zu NW und GW Bereichen hinzufügen
+    for bereich in bereiche:
+        if bereich['key'] == 'NW':
+            bereich['stueck'] = stueckzahlen_ytd_vj['nw']
+        elif bereich['key'] == 'GW':
+            bereich['stueck'] = stueckzahlen_ytd_vj['gw']
+        else:
+            bereich['stueck'] = 0
+
     return {
         'umsatz': round(umsatz, 2),
         'einsatz': round(einsatz, 2),
         'db1': round(db1, 2),
-        'variable': round(variable, 2),
+        'bereiche': bereiche,
+        'variable_kosten': round(variable, 2),
         'db2': round(db2, 2),
-        'direkte': round(direkte, 2),
+        'direkte_kosten': round(direkte, 2),
         'db3': round(db3, 2),
-        'indirekte': round(indirekte, 2),
+        'indirekte_kosten': round(indirekte, 2),
         'betriebsergebnis': round(be, 2),
-        'neutral': round(neutral, 2),
+        'neutrales_ergebnis': round(neutral, 2),
         'unternehmensergebnis': round(ue, 2)
     }
 
@@ -967,7 +1313,7 @@ def get_bwa_detail():
                         customer_number as kunden_nr,
                         invoice_number as rechnung_nr
                     FROM loco_journal_accountings
-                    WHERE accounting_date >= ? AND accounting_date < ?
+                    WHERE accounting_date >= %s AND accounting_date < %s
                       AND nominal_account_number = %s
                       {aktiver_filter}
                     ORDER BY accounting_date, document_number
@@ -1014,7 +1360,7 @@ def get_bwa_detail():
                         SUM({pf['vorzeichen']}) / 100.0 as betrag,
                         COUNT(*) as buchungen_anzahl
                     FROM loco_journal_accountings
-                    WHERE accounting_date >= ? AND accounting_date < ?
+                    WHERE accounting_date >= %s AND accounting_date < %s
                       AND {pf['where']}
                       AND {konto_filter}
                       {aktiver_filter}
@@ -1059,7 +1405,7 @@ def get_bwa_detail():
                     COUNT(DISTINCT nominal_account_number) as anzahl_konten,
                     COUNT(*) as buchungen_anzahl
                 FROM loco_journal_accountings
-                WHERE accounting_date >= ? AND accounting_date < ?
+                WHERE accounting_date >= %s AND accounting_date < %s
                   AND {pf['where']}
                   {aktiver_filter}
                 GROUP BY substr(CAST(nominal_account_number AS TEXT), 1, 2)
@@ -1239,8 +1585,16 @@ def get_bwa_v2():
         standort: 0=Alle, 1=Deggendorf, 2=Landau (nur bei Firma 1)
     """
     try:
-        monat = request.args.get('monat', type=int)
-        jahr = request.args.get('jahr', type=int)
+        # TAG 177: Monat/Jahr als String parsen (kann von Select kommen)
+        monat_str = request.args.get('monat', '')
+        jahr_str = request.args.get('jahr', '')
+        try:
+            monat = int(monat_str) if monat_str else None
+            jahr = int(jahr_str) if jahr_str else None
+        except (ValueError, TypeError):
+            monat = None
+            jahr = None
+        
         firma = request.args.get('firma', '0')
         standort = request.args.get('standort', '0')
 
@@ -1303,6 +1657,17 @@ def get_bwa_v2():
                     'name': config['name'],
                     **werte
                 })
+            
+            # TAG 177: Stückzahlen analog Globalcube berechnen (Monat, Jahr, VJ Monat, VJ Jahr)
+            stueckzahlen = _berechne_stueckzahlen_globalcube(monat, jahr, firma, standort)
+            # Stückzahlen zu NW und GW Bereichen hinzufügen
+            for bereich in bereiche:
+                if bereich['key'] == 'NW':
+                    bereich['stueck'] = stueckzahlen['nw']
+                elif bereich['key'] == 'GW':
+                    bereich['stueck'] = stueckzahlen['gw']
+                else:
+                    bereich['stueck'] = {'monat': 0, 'jahr': 0, 'vj_monat': 0, 'vj_jahr': 0}
 
             # Variable Kosten
             cursor.execute(convert_placeholders(f"""
@@ -1337,12 +1702,15 @@ def get_bwa_v2():
                   AND nominal_account_number BETWEEN 400000 AND 489999
                   AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','4','5','6','7')
                   AND NOT (
-                    nominal_account_number BETWEEN 415100 AND 415199
+                    nominal_account_number = 410021
+                    OR nominal_account_number BETWEEN 411000 AND 411999
+                    OR nominal_account_number BETWEEN 415100 AND 415199
                     OR nominal_account_number BETWEEN 424000 AND 424999
                     OR nominal_account_number BETWEEN 435500 AND 435599
                     OR nominal_account_number BETWEEN 438000 AND 438999
                     OR nominal_account_number BETWEEN 455000 AND 456999
                     OR nominal_account_number BETWEEN 487000 AND 487099
+                    OR nominal_account_number BETWEEN 489000 AND 489999
                     OR nominal_account_number BETWEEN 491000 AND 497999
                   )
                   {firma_filter_kosten}
@@ -1368,7 +1736,8 @@ def get_bwa_v2():
                         AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
                     OR nominal_account_number BETWEEN 498000 AND 499999
                     OR (nominal_account_number BETWEEN 891000 AND 896999
-                        AND NOT (nominal_account_number BETWEEN 893200 AND 893299))
+                        AND NOT (nominal_account_number BETWEEN 893200 AND 893299)
+                        AND NOT (nominal_account_number BETWEEN 891000 AND 891099))
                   )
                   {firma_filter_kosten}
                   {guv_filter}
@@ -1440,6 +1809,17 @@ def get_bwa_v2():
                     'name': config['name'],
                     **werte
                 })
+            
+            # TAG 177: Stückzahlen für Vorjahr berechnen
+            stueckzahlen_vorjahr = _berechne_stueckzahlen(vorjahr_datum_von, vorjahr_datum_bis, firma, standort)
+            # Stückzahlen zu NW und GW Bereichen hinzufügen
+            for bereich in vj_bereiche:
+                if bereich['key'] == 'NW':
+                    bereich['stueck'] = stueckzahlen_vorjahr['nw']
+                elif bereich['key'] == 'GW':
+                    bereich['stueck'] = stueckzahlen_vorjahr['gw']
+                else:
+                    bereich['stueck'] = 0
 
             # Vorjahr Variable Kosten
             cursor.execute(convert_placeholders(f"""
@@ -1601,6 +1981,17 @@ def get_bwa_v2():
             ytd_variable = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
             ytd_db2 = ytd_db1 - ytd_variable
+            
+            # TAG 177: Stückzahlen für YTD berechnen
+            stueckzahlen_ytd = _berechne_stueckzahlen(ytd_datum_von, datum_bis, firma, standort)
+            # Stückzahlen zu NW und GW Bereichen hinzufügen
+            for bereich in ytd_bereiche:
+                if bereich['key'] == 'NW':
+                    bereich['stueck'] = stueckzahlen_ytd['nw']
+                elif bereich['key'] == 'GW':
+                    bereich['stueck'] = stueckzahlen_ytd['gw']
+                else:
+                    bereich['stueck'] = 0
 
             # YTD Direkte Kosten
             cursor.execute(convert_placeholders(f"""
@@ -1667,6 +2058,21 @@ def get_bwa_v2():
 
             ytd_ue = ytd_be + ytd_neutral
 
+            # TAG 177: YTD Vorjahr berechnen (für Vergleich)
+            ytd_vorjahr_daten = _berechne_bwa_ytd(cursor, monat, jahr - 1, firma, standort)
+            ytd_vorjahr_umsatz = ytd_vorjahr_daten.get('umsatz', 0)
+            ytd_vorjahr_einsatz = ytd_vorjahr_daten.get('einsatz', 0)
+            ytd_vorjahr_db1 = ytd_vorjahr_daten.get('db1', 0)
+            ytd_vorjahr_bereiche = ytd_vorjahr_daten.get('bereiche', [])
+            ytd_vorjahr_variable = ytd_vorjahr_daten.get('variable_kosten', 0)
+            ytd_vorjahr_db2 = ytd_vorjahr_daten.get('db2', 0)
+            ytd_vorjahr_direkte = ytd_vorjahr_daten.get('direkte_kosten', 0)
+            ytd_vorjahr_db3 = ytd_vorjahr_daten.get('db3', 0)
+            ytd_vorjahr_indirekte = ytd_vorjahr_daten.get('indirekte_kosten', 0)
+            ytd_vorjahr_be = ytd_vorjahr_daten.get('betriebsergebnis', 0)
+            ytd_vorjahr_neutral = ytd_vorjahr_daten.get('neutrales_ergebnis', 0)
+            ytd_vorjahr_ue = ytd_vorjahr_daten.get('unternehmensergebnis', 0)
+
             # Wirtschaftsjahr-Fortschritt berechnen (Sep-Aug = 12 Monate)
             if monat >= WJ_START_MONAT:
                 wj_monat = monat - WJ_START_MONAT + 1  # Sep=1, Okt=2, ...
@@ -1723,6 +2129,20 @@ def get_bwa_v2():
                     'betriebsergebnis': round(ytd_be, 2),
                     'neutrales_ergebnis': round(ytd_neutral, 2),
                     'unternehmensergebnis': round(ytd_ue, 2)
+                },
+                'ytd_vorjahr': {
+                    'umsatz': round(ytd_vorjahr_umsatz, 2),
+                    'einsatz': round(ytd_vorjahr_einsatz, 2),
+                    'db1': round(ytd_vorjahr_db1, 2),
+                    'bereiche': ytd_vorjahr_bereiche,
+                    'variable_kosten': round(ytd_vorjahr_variable, 2),
+                    'db2': round(ytd_vorjahr_db2, 2),
+                    'direkte_kosten': round(ytd_vorjahr_direkte, 2),
+                    'db3': round(ytd_vorjahr_db3, 2),
+                    'indirekte_kosten': round(ytd_vorjahr_indirekte, 2),
+                    'betriebsergebnis': round(ytd_vorjahr_be, 2),
+                    'neutrales_ergebnis': round(ytd_vorjahr_neutral, 2),
+                    'unternehmensergebnis': round(ytd_vorjahr_ue, 2)
                 },
                 'filter': {
                     'firma': firma,
@@ -2106,12 +2526,15 @@ def get_bwa_v2_drilldown():
                       AND nominal_account_number BETWEEN 400000 AND 489999
                       AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','4','5','6','7')
                       AND NOT (
-                        nominal_account_number BETWEEN 415100 AND 415199
+                        nominal_account_number = 410021
+                        OR nominal_account_number BETWEEN 411000 AND 411999
+                        OR nominal_account_number BETWEEN 415100 AND 415199
                         OR nominal_account_number BETWEEN 424000 AND 424999
                         OR nominal_account_number BETWEEN 435500 AND 435599
                         OR nominal_account_number BETWEEN 438000 AND 438999
                         OR nominal_account_number BETWEEN 455000 AND 456999
                         OR nominal_account_number BETWEEN 487000 AND 487099
+                        OR nominal_account_number BETWEEN 489000 AND 489999
                         OR nominal_account_number BETWEEN 491000 AND 497999
                       )
                       {firma_filter_kosten}
@@ -2150,7 +2573,8 @@ def get_bwa_v2_drilldown():
                             AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
                         OR nominal_account_number BETWEEN 498000 AND 499999
                         OR (nominal_account_number BETWEEN 891000 AND 896999
-                            AND NOT (nominal_account_number BETWEEN 893200 AND 893299))
+                            AND NOT (nominal_account_number BETWEEN 893200 AND 893299)
+                            AND NOT (nominal_account_number BETWEEN 891000 AND 891099))
                       )
                       {firma_filter_kosten}
                       {guv_filter}

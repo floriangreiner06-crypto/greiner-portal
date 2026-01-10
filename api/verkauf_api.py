@@ -266,16 +266,18 @@ def get_interne_auftraege_bulk():
 @verkauf_api.route('/auftragseingang', methods=['GET'])
 def get_auftragseingang():
     """
-    GET /api/verkauf/auftragseingang?month=11&year=2025
+    GET /api/verkauf/auftragseingang?month=11&year=2025&location=1
 
     Liefert Auftragseingang nach Verkäufern
     - heute: Aufträge vom aktuellen Tag
     - periode: Kumuliert für gewählten Monat
+    - location: Standort-Filter (1, 2, 3)
     """
     month = request.args.get('month', datetime.now().month, type=int)
     year = request.args.get('year', datetime.now().year, type=int)
+    location = request.args.get('location', type=int)
 
-    result = VerkaufData.get_auftragseingang(month=month, year=year)
+    result = VerkaufData.get_auftragseingang(month=month, year=year, location=location)
 
     if result['success']:
         return jsonify(result)
@@ -290,16 +292,18 @@ def get_auftragseingang():
 @verkauf_api.route('/auftragseingang/summary', methods=['GET'])
 def get_auftragseingang_summary():
     """
-    GET /api/verkauf/auftragseingang/summary?month=11&year=2025
-    GET /api/verkauf/auftragseingang/summary?day=2025-11-11
+    GET /api/verkauf/auftragseingang/summary?month=11&year=2025&location=1
+    GET /api/verkauf/auftragseingang/summary?day=2025-11-11&location=1
 
     Liefert Zusammenfassung nach Marke und Fahrzeugtyp für Auftragseingang
+    - location: Standort-Filter (1, 2, 3)
     """
     day = request.args.get('day', '') or None
     month = request.args.get('month', datetime.now().month, type=int)
     year = request.args.get('year', datetime.now().year, type=int)
+    location = request.args.get('location', type=int)
 
-    result = VerkaufData.get_auftragseingang_summary(day=day, month=month, year=year)
+    result = VerkaufData.get_auftragseingang_summary(day=day, month=month, year=year, location=location)
 
     if result['success']:
         return jsonify(result)
@@ -445,7 +449,24 @@ def get_lieferforecast():
     """
     von = request.args.get('von', date.today().strftime('%Y-%m-%d'))
     bis = request.args.get('bis')
-    standort = request.args.get('standort', 'all')
+    # TAG 177: Standort-ID (1, 2, 3) statt 'all', 'DEG', 'LAN'
+    standort_param = request.args.get('standort', type=int)
+    konsolidiert = request.args.get('konsolidiert', 'false').lower() == 'true'
+    
+    # Mapping: Standort-ID -> Legacy-Format
+    # DEG = Deggendorf (Standort 1+2 zusammen, konsolidiert)
+    # LAN = Landau (Standort 3)
+    if standort_param == 1:
+        if konsolidiert:
+            standort = 'DEG'  # Service Deggendorf (konsolidiert: 1+2)
+        else:
+            standort = 'DEG'  # Deggendorf Opel (auch DEG für API)
+    elif standort_param == 2:
+        standort = 'DEG'  # Hyundai DEG (auch DEG)
+    elif standort_param == 3:
+        standort = 'LAN'
+    else:
+        standort = 'all'
 
     result = VerkaufData.get_lieferforecast(von=von, bis=bis, standort=standort)
 

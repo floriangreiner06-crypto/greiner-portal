@@ -28,6 +28,9 @@ from flask import Blueprint, jsonify, request, Response
 import logging
 from psycopg2.extras import RealDictCursor
 import csv
+
+# SSOT: Standort/Betriebsnamen
+from api.standort_utils import BETRIEB_NAMEN
 import io
 
 # Zentrale DB-Utilities
@@ -52,12 +55,7 @@ PARTS_TYPE_NAMES = {
     65: 'Hyundai (AT)'
 }
 
-# Betriebe
-BETRIEB_NAMEN = {
-    1: 'Deggendorf',
-    2: 'Hyundai DEG',
-    3: 'Landau'
-}
+# BETRIEB_NAMEN wird jetzt aus standort_utils importiert (SSOT)
 
 
 def kategorisiere_teil(row):

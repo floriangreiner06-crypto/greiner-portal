@@ -117,16 +117,11 @@
             <small class="text-muted" id="umlageInfo">Mit Konzernumlage (wie GlobalCube)</small>
         </div>
         <div class="d-flex gap-2 align-items-center">
-            <select class="form-select form-select-sm" id="filterFirma" style="width: auto;" onchange="onFirmaChange()">
-                <option value="0">Alle Firmen</option>
-                <option value="1">Stellantis</option>
-                <option value="2">Hyundai</option>
-            </select>
-            <select class="form-select form-select-sm" id="filterStandort" style="width: auto; display: none;" onchange="loadData()">
-                <option value="0">Alle Standorte</option>
-                <option value="1">Deggendorf</option>
-                <option value="2">Landau</option>
-            </select>
+            <!-- Standort-Filter Tabs (zentrales Component) - setzt automatisch Firma -->
+            {% set current_standort = standort %}
+            {% set show_konsolidiert = false %}
+            {% set additional_params = {'monat': request.args.get('monat', ''), 'jahr': request.args.get('jahr', '')} %}
+            {% include 'components/standort_filter_tabs.html' %}
             <div class="btn-group btn-group-sm">
                 <button class="btn btn-outline-secondary" onclick="changeMonth(-1)"><i class="bi bi-chevron-left"></i></button>
                 <select class="form-select form-select-sm" id="filterMonat" style="width: 100px; border-radius: 0;" onchange="loadData()">
@@ -331,25 +326,44 @@ function changeMonth(delta) {
     loadData();
 }
 
-function onFirmaChange() {
-    const firma = document.getElementById('filterFirma').value;
-    document.getElementById('filterStandort').style.display = firma === '1' ? 'inline-block' : 'none';
-    if (firma !== '1') document.getElementById('filterStandort').value = '0';
-    loadData();
+// TAG 177: Standort aus URL lesen (Tab-Navigation)
+function getStandortFromURL() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('standort') || '0';
+}
+
+// TAG 177: Firma automatisch aus Standort ableiten
+function getFirmaFromStandort(standort) {
+    // Standort 1 (Deggendorf Opel) oder 3 (Landau) → Firma 1 (Stellantis)
+    // Standort 2 (Hyundai DEG) → Firma 2 (Hyundai)
+    // Standort 0 (Alle) → Firma 0 (Alle)
+    if (standort === '1' || standort === '3') {
+        return '1'; // Stellantis
+    } else if (standort === '2') {
+        return '2'; // Hyundai
+    }
+    return '0'; // Alle
 }
 
 async function loadData() {
-    const firma = document.getElementById('filterFirma').value;
-    const standort = document.getElementById('filterStandort').value;
+    let standort = getStandortFromURL();
+    const firma = getFirmaFromStandort(standort);
     const monat = document.getElementById('filterMonat').value;
     const jahr = document.getElementById('filterJahr').value;
+
+    // TEK-API: Standort 3 (Landau) muss auf standort=2 gemappt werden
+    // (weil Landau branch=3 ist, aber standort-Parameter ist '2' für Konto-Endziffer)
+    let apiStandort = standort;
+    if (standort === '3') {
+        apiStandort = '2'; // Landau → standort=2 für TEK-API
+    }
 
     document.getElementById('tekBody').innerHTML = '<tr><td colspan="14" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr>';
 
     try {
         // TAG173: umlage='mit' für Vergleich mit GlobalCube (Umlage wird NICHT bereinigt)
         // GlobalCube enthält die Konzernumlage, daher muss DRIVE auch 'mit' verwenden
-        const url = `/controlling/api/tek?firma=${firma}&standort=${standort}&monat=${monat}&jahr=${jahr}&modus=teil&umlage=mit`;
+        const url = `/controlling/api/tek?firma=${firma}&standort=${apiStandort}&monat=${monat}&jahr=${jahr}&modus=teil&umlage=mit`;
         const res = await fetch(url);
         const data = await res.json();
 

@@ -28,6 +28,9 @@ from api.db_utils import get_locosoft_connection, get_db as get_sqlite_connectio
 # SSOT für Lagerbestand (TAG 176)
 from api.teile_stock_utils import get_stock_level_for_subsidiary, is_part_available
 
+# SSOT: Standort/Betriebsnamen
+from api.standort_utils import BETRIEB_NAMEN
+
 # Logging
 logger = logging.getLogger(__name__)
 
@@ -98,13 +101,6 @@ def load_lieferzeiten():
 
 # Beim Import laden
 load_lieferzeiten()
-
-
-BETRIEB_NAMEN = {
-    1: 'Deggendorf',
-    2: 'Hyundai DEG', 
-    3: 'Landau'
-}
 
 
 # =============================================================================

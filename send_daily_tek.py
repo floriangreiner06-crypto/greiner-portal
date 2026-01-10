@@ -49,10 +49,8 @@ MONATE = ['', 'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
           'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
 
 
-def get_db():
-    """Datenbank-Verbindung via db_connection (TAG 136/140)"""
-    from api.db_connection import get_db as get_portal_db
-    return get_portal_db()
+# SSOT: DB-Verbindung
+from api.db_connection import get_db
 
 
 def is_holiday(check_date=None):

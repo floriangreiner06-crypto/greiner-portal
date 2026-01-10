@@ -147,15 +147,9 @@
                 <option value="11">Jul</option>
                 <option value="12">Aug</option>
             </select>
-            <select id="standort-select" class="form-select form-select-sm" style="width: auto;">
-                <option value="0">Alle Standorte</option>
-                <option value="1">DEG Opel</option>
-                <option value="2">DEG Hyundai</option>
-                <option value="3">Landau</option>
-            </select>
-            <button class="btn btn-outline-secondary btn-sm" onclick="loadDashboard()">
-                <i class="bi bi-arrow-clockwise"></i>
-            </button>
+            <!-- Standort-Filter Tabs (zentrales Component) -->
+            {% set current_standort = standort %}
+            {% include 'components/standort_filter_tabs.html' %}
         </div>
     </div>
 
@@ -309,14 +303,20 @@ function formatProzent(val) {
     return parseFloat(val).toFixed(0) + '%';
 }
 
+// TAG 177: Standort aus URL lesen (Tab-Navigation)
+function getStandortFromURL() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('standort') || '0';
+}
+
 // Dashboard laden
 async function loadDashboard() {
     const monat = document.getElementById('monat-select').value;
-    const standort = document.getElementById('standort-select').value;
+    const standort = getStandortFromURL();
 
     const params = new URLSearchParams();
     if (monat) params.append('monat', monat);
-    if (standort) params.append('standort', standort);
+    if (standort && standort !== '0') params.append('standort', standort);
 
     try {
         const response = await fetch(`${API_BASE}/dashboard?${params}`);
@@ -355,12 +355,12 @@ async function loadDashboard() {
 // Planungsübersicht laden (TAG 165)
 async function loadPlanung() {
     const monat = document.getElementById('monat-select').value;
-    const standortSelect = document.getElementById('standort-select').value || '1';
-    let standort = standortSelect;
+    // TAG 177: Standort aus URL lesen
+    let standort = getStandortFromURL() || '1';
     
     // Bei "Alle Standorte" (0) verwenden wir Deggendorf als Default
     const hinweisEl = document.getElementById('planung-standort-hinweis');
-    if (standortSelect === '0') {
+    if (standort === '0') {
         standort = '1'; // DEG Opel als Default
         hinweisEl.textContent = 'Hinweis: Planung für Deggendorf (bei "Alle" ausgewählt)';
         hinweisEl.classList.remove('d-none');
@@ -725,6 +725,6 @@ document.addEventListener('DOMContentLoaded', loadDashboard);
 
 // Filter-Events
 document.getElementById('monat-select').addEventListener('change', loadDashboard);
-document.getElementById('standort-select').addEventListener('change', loadDashboard);
+// TAG 177: Tab-Navigation - keine Event Listener nötig, Tabs navigieren direkt
 </script>
 {% endblock %}

@@ -21,7 +21,7 @@ import os
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
-from api.db_connection import get_db as get_portal_db, convert_placeholders
+from api.db_connection import get_db, convert_placeholders
 
 # ============================================================================
 # REPORT REGISTRY - Alle verfügbaren Reports
@@ -189,9 +189,7 @@ def report_exists(report_id: str) -> bool:
 # TAG142: Umgestellt auf PostgreSQL via get_db()
 # ============================================================================
 
-def get_db():
-    """PostgreSQL Datenbank-Verbindung via zentrale db_connection"""
-    return get_portal_db()
+# get_db() wird jetzt direkt aus api.db_connection importiert (SSOT)
 
 
 def init_subscriptions_table():

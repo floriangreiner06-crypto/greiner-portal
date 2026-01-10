@@ -26,6 +26,9 @@ from decimal import Decimal
 from api.db_utils import get_locosoft_connection
 from psycopg2.extras import RealDictCursor
 
+# SSOT: Standort/Betriebsnamen
+from api.standort_utils import BETRIEB_NAMEN
+
 logger = logging.getLogger(__name__)
 
 
@@ -44,11 +47,7 @@ PARTS_TYPE_NAMES = {
     65: 'Hyundai (AT)'
 }
 
-BETRIEB_NAMEN = {
-    1: 'Deggendorf',
-    2: 'Hyundai DEG',
-    3: 'Landau'
-}
+# BETRIEB_NAMEN wird jetzt aus standort_utils importiert (SSOT)
 
 # Ausgeschlossene Teile-Typen (Garantie, Kautionen etc.)
 EXCLUDE_TYPES = {1, 60, 65}  # AT-Teile (Austauschteile)

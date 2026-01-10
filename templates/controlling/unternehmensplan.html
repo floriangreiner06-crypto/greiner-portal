@@ -134,12 +134,10 @@
             <small class="text-muted">Ziel: 1% Gesamtrendite | Geschäftsjahr <span id="gj-label">2025/26</span></small>
         </div>
         <div class="d-flex gap-2">
-            <select id="standort-select" class="form-select form-select-sm" style="width: auto;">
-                <option value="0">Alle Standorte</option>
-                <option value="1">DEG Opel</option>
-                <option value="2">DEG Hyundai</option>
-                <option value="3">Landau</option>
-            </select>
+            <!-- Standort-Filter Tabs (zentrales Component) -->
+            {% set current_standort = standort %}
+            {% set show_konsolidiert = true %}
+            {% include 'components/standort_filter_tabs.html' %}
             <button class="btn btn-outline-secondary btn-sm" onclick="loadDashboard()">
                 <i class="bi bi-arrow-clockwise"></i>
             </button>
@@ -394,8 +392,14 @@ function formatProzent(val) {
 let ytdChart = null;
 
 // Dashboard laden
+// TAG 177: Standort aus URL lesen (Tab-Navigation)
+function getStandortFromURL() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('standort') || '0';
+}
+
 async function loadDashboard() {
-    const standort = document.getElementById('standort-select').value;
+    const standort = getStandortFromURL();
 
     try {
         // Dashboard-Daten laden
@@ -750,6 +754,6 @@ function updateMonatsverlauf(data) {
 
 // Init
 document.addEventListener('DOMContentLoaded', loadDashboard);
-document.getElementById('standort-select').addEventListener('change', loadDashboard);
+// TAG 177: Tab-Navigation - keine Event Listener nötig, Tabs navigieren direkt
 </script>
 {% endblock %}

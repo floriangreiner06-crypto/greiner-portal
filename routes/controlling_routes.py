@@ -7,7 +7,7 @@ import psycopg2.extras
 
 # TAG 136: PostgreSQL-Migration - Nutze db_utils fÃ¼r Portal-DB
 from api.db_utils import db_session, row_to_dict, rows_to_list, locosoft_session
-from api.db_connection import convert_placeholders, sql_placeholder, get_db_type
+from api.db_connection import convert_placeholders, sql_placeholder, get_db_type, get_db, get_db
 
 # TAG 146: Wiederverwendbares TEK-Datenmodul (100% Konsistenz mit Reports!)
 from api.controlling_data import get_tek_data
@@ -81,14 +81,9 @@ def get_werktage_monat(jahr, monat):
     }
 
 
-def get_db():
-    """
-    TAG 136: Portal-DB Verbindung via db_utils (SQLite oder PostgreSQL).
-    Gibt direkte Connection zurÃ¼ck (MUSS manuell geschlossen werden!).
-    FÃ¼r neue Code: Bevorzuge db_session() Context Manager.
-    """
-    from api.db_connection import get_db as get_portal_db
-    return get_portal_db()
+
+# get_db() wird jetzt direkt aus api.db_connection importiert (SSOT)
+
 
 
 def get_locosoft_db():
@@ -389,13 +384,40 @@ def dashboard():
                          page_title='Controlling Dashboard',
                          active_page='controlling')
 
+@controlling_bp.route('/finanzreporting')
+@login_required
+def finanzreporting():
+    """Finanzreporting Cube Dashboard"""
+    return render_template('controlling/finanzreporting_cube.html')
+
 @controlling_bp.route('/bwa')
 @login_required
 def bwa():
     """BWA Dashboard - Hauptversion (TAG144: v2 ist jetzt Standard)"""
+    # TAG 177: Standort-Filter aus URL lesen
+    from utils.standort_filter_helpers import parse_standort_params
+    standort, konsolidiert = parse_standort_params(request)
+    
+    # Firma automatisch aus Standort ableiten (wenn nicht explizit gesetzt)
+    firma = request.args.get('firma')
+    if not firma and standort:
+        # Standort 1 (Deggendorf Opel) oder 3 (Landau Opel) → Firma 1 (Stellantis)
+        # Standort 2 (Deggendorf Hyundai) → Firma 2 (Hyundai)
+        if standort in [1, 3]:
+            firma = '1'  # Stellantis
+        elif standort == 2:
+            firma = '2'  # Hyundai
+        else:
+            firma = '0'  # Alle
+    elif not firma:
+        firma = '0'  # Alle
+    
     return render_template('controlling/bwa_v2.html',
                          page_title='BWA',
-                         active_page='controlling')
+                         active_page='controlling',
+                         standort=standort,
+                         konsolidiert=konsolidiert,
+                         firma=firma)
 
 
 @controlling_bp.route('/bwa/archiv')
@@ -410,9 +432,30 @@ def bwa_archiv():
 @login_required
 def tek_dashboard():
     """TEK Dashboard - Hauptversion (TAG140: v2 ist jetzt Standard)"""
+    # TAG 177: Standort-Filter aus URL lesen
+    from utils.standort_filter_helpers import parse_standort_params
+    standort, konsolidiert = parse_standort_params(request)
+    
+    # Firma automatisch aus Standort ableiten (wenn nicht explizit gesetzt)
+    firma = request.args.get('firma')
+    if not firma and standort:
+        # Standort 1 (Deggendorf Opel) oder 3 (Landau) → Firma 1 (Stellantis)
+        # Standort 2 (Hyundai DEG) → Firma 2 (Hyundai)
+        if standort in [1, 3]:
+            firma = '1'  # Stellantis
+        elif standort == 2:
+            firma = '2'  # Hyundai
+        else:
+            firma = '0'  # Alle
+    elif not firma:
+        firma = '0'  # Alle
+    
     return render_template('controlling/tek_dashboard_v2.html',
                          page_title='Tägliche Erfolgskontrolle',
-                         active_page='controlling')
+                         active_page='controlling',
+                         standort=standort,
+                         konsolidiert=konsolidiert,
+                         firma=firma)
 
 
 @controlling_bp.route('/tek/archiv')
@@ -436,9 +479,30 @@ def unternehmensplan_dashboard():
     - Prognose bis Geschäftsjahresende
     - Handlungsempfehlungen pro Bereich
     """
+    # TAG 177: Standort-Filter aus URL lesen
+    from utils.standort_filter_helpers import parse_standort_params
+    standort, konsolidiert = parse_standort_params(request)
+    
+    # Firma automatisch aus Standort ableiten (wenn nicht explizit gesetzt)
+    firma = request.args.get('firma')
+    if not firma and standort:
+        # Standort 1 (Deggendorf Opel) oder 3 (Landau Opel) → Firma 1 (Stellantis)
+        # Standort 2 (Deggendorf Hyundai) → Firma 2 (Hyundai)
+        if standort in [1, 3]:
+            firma = '1'  # Stellantis
+        elif standort == 2:
+            firma = '2'  # Hyundai
+        else:
+            firma = '0'  # Alle
+    elif not firma:
+        firma = '0'  # Alle
+    
     return render_template('controlling/unternehmensplan.html',
                          page_title='Unternehmensplan - 1% Rendite',
-                         active_page='controlling')
+                         active_page='controlling',
+                         standort=standort,
+                         konsolidiert=konsolidiert,
+                         firma=firma)
 
 
 @controlling_bp.route('/kundenzentrale')
@@ -467,9 +531,15 @@ def kst_ziele_dashboard():
     - Daumen hoch/runter Status
     - Handlungsempfehlungen
     """
+    # TAG 177: Standort-Filter aus URL lesen
+    from utils.standort_filter_helpers import parse_standort_params
+    standort, konsolidiert = parse_standort_params(request)
+    
     return render_template('controlling/kst_ziele.html',
                          page_title='KST-Ziele Tagesstatus',
-                         active_page='controlling')
+                         active_page='controlling',
+                         standort=standort,
+                         konsolidiert=konsolidiert)
 
 
 # =============================================================================

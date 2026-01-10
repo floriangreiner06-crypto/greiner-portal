@@ -47,7 +47,13 @@ logger = logging.getLogger(__name__)
 
 REPORT_TYPE = 'werkstatt_tagesbericht'  # ID in der Report-Registry
 ABSENDER = 'drive@auto-greiner.de'
-BETRIEB_NAMEN = {1: 'Deggendorf', 2: 'Hyundai DEG', 3: 'Landau'}
+
+# SSOT: Standort/Betriebsnamen
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from api.standort_utils import BETRIEB_NAMEN
+
 STANDORT_BETRIEB_MAP = {'DEG': 1, 'LAN': 3}  # Mapping für DB-Subscriptions
 
 # API Base URL (lokal)

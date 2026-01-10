@@ -1,0 +1,609 @@
+{% extends "base.html" %}
+
+{% block title %}Finanzreporting Cube - BWA Analyse{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.css" rel="stylesheet">
+<style>
+    /* =========================================
+       Finanzreporting Cube Dashboard
+       ========================================= */
+    
+    .cube-filter-panel {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .filter-group {
+        margin-bottom: 1rem;
+    }
+    
+    .filter-group label {
+        font-weight: 600;
+        font-size: 0.85rem;
+        color: #495057;
+        margin-bottom: 0.5rem;
+        display: block;
+    }
+    
+    .filter-group select,
+    .filter-group input {
+        width: 100%;
+        padding: 0.5rem;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        font-size: 0.9rem;
+    }
+    
+    .dimension-checkbox {
+        display: inline-block;
+        margin-right: 1rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    .dimension-checkbox input[type="checkbox"] {
+        margin-right: 0.5rem;
+    }
+    
+    .chart-container {
+        background: #fff;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .chart-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        color: #343a40;
+    }
+    
+    .data-table {
+        background: #fff;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .data-table table {
+        width: 100%;
+        font-size: 0.9rem;
+    }
+    
+    .data-table th {
+        background: #343a40;
+        color: #fff;
+        padding: 0.75rem;
+        text-align: left;
+        font-weight: 600;
+    }
+    
+    .data-table td {
+        padding: 0.75rem;
+        border-bottom: 1px solid #dee2e6;
+    }
+    
+    .data-table tr:hover {
+        background: #f8f9fa;
+    }
+    
+    .kpi-card {
+        background: #fff;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        text-align: center;
+    }
+    
+    .kpi-label {
+        font-size: 0.75rem;
+        color: #6c757d;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 0.5rem;
+    }
+    
+    .kpi-value {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #343a40;
+    }
+    
+    .btn-refresh {
+        background: #0d6efd;
+        color: #fff;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 600;
+    }
+    
+    .btn-refresh:hover {
+        background: #0b5ed7;
+    }
+    
+    .loading {
+        text-align: center;
+        padding: 2rem;
+        color: #6c757d;
+    }
+    
+    .error {
+        background: #f8d7da;
+        color: #721c24;
+        padding: 1rem;
+        border-radius: 4px;
+        margin-bottom: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1><i class="fas fa-cube me-2"></i>Finanzreporting Cube</h1>
+            <p class="text-muted">Multidimensionale BWA-Analyse mit Materialized Views</p>
+        </div>
+    </div>
+    
+    <!-- Filter-Panel -->
+    <div class="cube-filter-panel">
+        <h5 class="mb-3"><i class="fas fa-filter me-2"></i>Filter & Dimensionen</h5>
+        
+        <div class="row">
+            <div class="col-md-3">
+                <div class="filter-group">
+                    <label>Zeitraum von:</label>
+                    <input type="date" id="filterVon" class="form-control" value="2024-09-01">
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="filter-group">
+                    <label>Zeitraum bis:</label>
+                    <input type="date" id="filterBis" class="form-control" value="2025-08-31">
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="filter-group">
+                    <label>Standort:</label>
+                    <select id="filterStandort" class="form-control">
+                        <option value="">Alle</option>
+                        <option value="DEG">Deggendorf Opel</option>
+                        <option value="HYU">Deggendorf Hyundai</option>
+                        <option value="LAN">Landau</option>
+                    </select>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="filter-group">
+                    <label>Konto-Ebene 3:</label>
+                    <select id="filterKontoEbene" class="form-control">
+                        <option value="">Alle</option>
+                        <option value="400">Kosten (400xxx)</option>
+                        <option value="700">Einsatz (700xxx)</option>
+                        <option value="800">Umsatz (800xxx)</option>
+                        <option value="830">Umsatz Service (830xxx)</option>
+                        <option value="840">Umsatz Service (840xxx)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mt-3">
+            <div class="col-md-6">
+                <div class="filter-group">
+                    <label>Dimensionen (für Gruppierung):</label>
+                    <div>
+                        <label class="dimension-checkbox">
+                            <input type="checkbox" id="dimZeit" checked> Zeit
+                        </label>
+                        <label class="dimension-checkbox">
+                            <input type="checkbox" id="dimStandort"> Standort
+                        </label>
+                        <label class="dimension-checkbox">
+                            <input type="checkbox" id="dimKst"> KST
+                        </label>
+                        <label class="dimension-checkbox">
+                            <input type="checkbox" id="dimKonto"> Konto
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="filter-group">
+                    <label>Measures (Werte):</label>
+                    <div>
+                        <label class="dimension-checkbox">
+                            <input type="checkbox" id="measureBetrag" checked> Betrag
+                        </label>
+                        <label class="dimension-checkbox">
+                            <input type="checkbox" id="measureMenge"> Menge
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mt-3">
+            <div class="col-12">
+                <button class="btn btn-primary" onclick="loadCubeData()">
+                    <i class="fas fa-sync me-2"></i>Daten laden
+                </button>
+                <button class="btn btn-secondary ms-2" onclick="refreshCube()">
+                    <i class="fas fa-refresh me-2"></i>Cube aktualisieren
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Loading -->
+    <div id="loading" class="loading d-none">
+        <i class="fas fa-spinner fa-spin fa-2x"></i>
+        <p class="mt-2">Daten werden geladen...</p>
+    </div>
+    
+    <!-- Error -->
+    <div id="error" class="error d-none"></div>
+    
+    <!-- KPI-Karten -->
+    <div class="row mb-4" id="kpiCards" style="display: none;">
+        <div class="col-md-3">
+            <div class="kpi-card">
+                <div class="kpi-label">Total Betrag</div>
+                <div class="kpi-value" id="kpiBetrag">0,00 €</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-card">
+                <div class="kpi-label">Total Menge</div>
+                <div class="kpi-value" id="kpiMenge">0,00</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-card">
+                <div class="kpi-label">Anzahl Datensätze</div>
+                <div class="kpi-value" id="kpiCount">0</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-card">
+                <div class="kpi-label">Abfrage-Zeit</div>
+                <div class="kpi-value" id="kpiTime">0,00s</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Chart -->
+    <div class="chart-container" id="chartContainer" style="display: none;">
+        <div class="chart-title">Visualisierung</div>
+        <canvas id="cubeChart"></canvas>
+    </div>
+    
+    <!-- Daten-Tabelle -->
+    <div class="data-table" id="dataTable" style="display: none;">
+        <div class="chart-title">Daten-Tabelle</div>
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead id="tableHead"></thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+    'use strict';
+    
+    let cubeChart = null;
+    
+    // Formatierung
+    function fmtEuro(val) {
+        if (val === null || val === undefined) return '0,00 €';
+        return new Intl.NumberFormat('de-DE', {
+            style: 'currency',
+            currency: 'EUR',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(val);
+    }
+    
+    function fmtNumber(val) {
+        if (val === null || val === undefined) return '0,00';
+        return new Intl.NumberFormat('de-DE', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(val);
+    }
+    
+    // Dimensionen und Measures sammeln
+    function getDimensions() {
+        const dims = [];
+        if (document.getElementById('dimZeit').checked) dims.push('zeit');
+        if (document.getElementById('dimStandort').checked) dims.push('standort');
+        if (document.getElementById('dimKst').checked) dims.push('kst');
+        if (document.getElementById('dimKonto').checked) dims.push('konto');
+        return dims.length > 0 ? dims : ['zeit']; // Fallback: mindestens Zeit
+    }
+    
+    function getMeasures() {
+        const measures = [];
+        if (document.getElementById('measureBetrag').checked) measures.push('betrag');
+        if (document.getElementById('measureMenge').checked) measures.push('menge');
+        return measures.length > 0 ? measures : ['betrag']; // Fallback: mindestens Betrag
+    }
+    
+    // Cube-Daten laden
+    async function loadCubeData() {
+        const loading = document.getElementById('loading');
+        const error = document.getElementById('error');
+        const kpiCards = document.getElementById('kpiCards');
+        const chartContainer = document.getElementById('chartContainer');
+        const dataTable = document.getElementById('dataTable');
+        
+        // UI zurücksetzen
+        loading.classList.remove('d-none');
+        error.classList.add('d-none');
+        kpiCards.style.display = 'none';
+        chartContainer.style.display = 'none';
+        dataTable.style.display = 'none';
+        
+        // Parameter sammeln
+        const dimensions = getDimensions();
+        const measures = getMeasures();
+        const von = document.getElementById('filterVon').value;
+        const bis = document.getElementById('filterBis').value;
+        const standort = document.getElementById('filterStandort').value;
+        const kontoEbene = document.getElementById('filterKontoEbene').value;
+        
+        // URL bauen
+        const params = new URLSearchParams();
+        params.append('dimensionen', dimensions.join(','));
+        params.append('measures', measures.join(','));
+        if (von) params.append('von', von);
+        if (bis) params.append('bis', bis);
+        if (standort) params.append('standort', standort);
+        if (kontoEbene) params.append('konto_ebene3', kontoEbene);
+        
+        const startTime = performance.now();
+        
+        try {
+            const response = await fetch(`/api/finanzreporting/cube?${params}`);
+            const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const result = await response.json();
+            
+            if (result.error) {
+                throw new Error(result.error);
+            }
+            
+            // UI aktualisieren
+            loading.classList.add('d-none');
+            kpiCards.style.display = 'flex';
+            chartContainer.style.display = 'block';
+            dataTable.style.display = 'block';
+            
+            // KPIs aktualisieren
+            document.getElementById('kpiBetrag').textContent = fmtEuro(result.total?.betrag || 0);
+            document.getElementById('kpiMenge').textContent = fmtNumber(result.total?.menge || 0);
+            document.getElementById('kpiCount').textContent = result.count || 0;
+            document.getElementById('kpiTime').textContent = `${elapsed}s`;
+            
+            // Chart rendern
+            renderChart(result);
+            
+            // Tabelle rendern
+            renderTable(result);
+            
+        } catch (err) {
+            console.error('Fehler:', err);
+            loading.classList.add('d-none');
+            error.classList.remove('d-none');
+            error.textContent = `Fehler: ${err.message}`;
+        }
+    }
+    
+    // Chart rendern
+    function renderChart(data) {
+        const ctx = document.getElementById('cubeChart').getContext('2d');
+        
+        // Alten Chart zerstören
+        if (cubeChart) {
+            cubeChart.destroy();
+        }
+        
+        // Daten für Chart vorbereiten
+        const labels = [];
+        const betragData = [];
+        const mengeData = [];
+        
+        data.data.forEach(row => {
+            // Label bauen (erste Dimension)
+            let label = '';
+            if (row.zeit) label += row.zeit;
+            if (row.standort) label += (label ? ' - ' : '') + row.standort;
+            if (row.kst !== null && row.kst !== undefined) label += (label ? ' - ' : '') + `KST ${row.kst}`;
+            if (row.konto) label += (label ? ' - ' : '') + row.konto;
+            labels.push(label || 'Unbekannt');
+            
+            betragData.push(row.betrag || 0);
+            mengeData.push(row.menge || 0);
+        });
+        
+        // Chart erstellen
+        const datasets = [];
+        if (data.measures.includes('betrag')) {
+            datasets.push({
+                label: 'Betrag (€)',
+                data: betragData,
+                backgroundColor: 'rgba(13, 110, 253, 0.5)',
+                borderColor: 'rgba(13, 110, 253, 1)',
+                borderWidth: 2,
+                yAxisID: 'y'
+            });
+        }
+        if (data.measures.includes('menge')) {
+            datasets.push({
+                label: 'Menge',
+                data: mengeData,
+                backgroundColor: 'rgba(255, 193, 7, 0.5)',
+                borderColor: 'rgba(255, 193, 7, 1)',
+                borderWidth: 2,
+                yAxisID: 'y1'
+            });
+        }
+        
+        cubeChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: {
+                    y: {
+                        type: 'linear',
+                        position: 'left',
+                        title: {
+                            display: true,
+                            text: 'Betrag (€)'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return fmtEuro(value);
+                            }
+                        }
+                    },
+                    y1: {
+                        type: 'linear',
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'Menge'
+                        },
+                        grid: {
+                            drawOnChartArea: false
+                        }
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                if (context.dataset.label === 'Betrag (€)') {
+                                    return fmtEuro(context.parsed.y);
+                                } else {
+                                    return fmtNumber(context.parsed.y);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    // Tabelle rendern
+    function renderTable(data) {
+        const thead = document.getElementById('tableHead');
+        const tbody = document.getElementById('tableBody');
+        
+        // Header bauen
+        let headerHtml = '<tr>';
+        data.dimensionen.forEach(dim => {
+            const labels = {
+                'zeit': 'Zeit',
+                'standort': 'Standort',
+                'kst': 'KST',
+                'konto': 'Konto'
+            };
+            headerHtml += `<th>${labels[dim] || dim}</th>`;
+        });
+        data.measures.forEach(measure => {
+            const labels = {
+                'betrag': 'Betrag (€)',
+                'menge': 'Menge'
+            };
+            headerHtml += `<th class="text-end">${labels[measure] || measure}</th>`;
+        });
+        headerHtml += '</tr>';
+        thead.innerHTML = headerHtml;
+        
+        // Body bauen
+        let bodyHtml = '';
+        data.data.forEach(row => {
+            bodyHtml += '<tr>';
+            data.dimensionen.forEach(dim => {
+                bodyHtml += `<td>${row[dim] || '-'}</td>`;
+            });
+            data.measures.forEach(measure => {
+                const value = row[measure] || 0;
+                if (measure === 'betrag') {
+                    bodyHtml += `<td class="text-end">${fmtEuro(value)}</td>`;
+                } else {
+                    bodyHtml += `<td class="text-end">${fmtNumber(value)}</td>`;
+                }
+            });
+            bodyHtml += '</tr>';
+        });
+        tbody.innerHTML = bodyHtml;
+    }
+    
+    // Cube aktualisieren
+    async function refreshCube() {
+        if (!confirm('Möchten Sie den Cube wirklich aktualisieren? Dies kann einige Sekunden dauern.')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch('/api/finanzreporting/refresh', {
+                method: 'POST'
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                alert('Cube erfolgreich aktualisiert!');
+            } else {
+                alert('Fehler: ' + (result.error || 'Unbekannter Fehler'));
+            }
+        } catch (err) {
+            console.error('Fehler:', err);
+            alert('Fehler beim Aktualisieren des Cubes');
+        }
+    }
+    
+    // Init
+    document.addEventListener('DOMContentLoaded', function() {
+        // Heute als Standard setzen
+        const heute = new Date();
+        const vorJahr = new Date(heute);
+        vorJahr.setFullYear(heute.getFullYear() - 1);
+        vorJahr.setMonth(8); // September
+        vorJahr.setDate(1);
+        
+        document.getElementById('filterVon').value = vorJahr.toISOString().split('T')[0];
+        document.getElementById('filterBis').value = heute.toISOString().split('T')[0];
+        
+        // Initial laden
+        // loadCubeData(); // Auskommentiert, damit User explizit laden muss
+    });
+})();
+</script>
+{% endblock %}

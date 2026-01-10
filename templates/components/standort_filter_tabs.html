@@ -1,0 +1,153 @@
+{#
+Standort-Filter Tabs Component - Wiederverwendbar
+==================================================
+Zentrale Komponente für Standort-Navigation mit Tabs.
+
+Verwendung:
+{% set current_standort = standort %}
+{% set konsolidiert = konsolidiert | default(false) %}
+{% include 'components/standort_filter_tabs.html' %}
+
+Parameter (via context):
+- current_standort: Aktuell ausgewählter Standort (1, 2, 3 oder None)
+- konsolidiert: True wenn konsolidierte Ansicht aktiv (optional, default: False)
+- show_konsolidiert: True wenn konsolidierte Ansicht verfügbar sein soll (optional, default: True)
+- additional_params: Dict mit zusätzlichen URL-Parametern (optional, z.B. {'geschaeftsjahr': '2025/26', 'monat': 5})
+
+TAG 177: Erstellt für einheitliche Standort-Filter-Navigation
+#}
+
+{% set show_konsolidiert = show_konsolidiert | default(true) %}
+{% set additional_params = additional_params or {} %}
+
+{# URL-Parameter aus current request extrahieren (außer standort/konsolidiert) #}
+{% set url_params = {} %}
+{% for key, value in request.args.items() %}
+    {% if key not in ['standort', 'konsolidiert'] %}
+        {% set _ = url_params.update({key: value}) %}
+    {% endif %}
+{% endfor %}
+{% set _ = url_params.update(additional_params) %}
+
+{# Standort-Namen aus SSOT - konsistent: Deggendorf Opel, Deggendorf Hyundai, Landau Opel #}
+{% set standort_namen = {
+    1: 'Deggendorf Opel',
+    2: 'Deggendorf Hyundai',
+    3: 'Landau Opel'
+} %}
+
+{# Kein verstecktes Formular nötig - JavaScript baut URL direkt #}
+
+<style>
+    /* Aktive Tab deutlicher hervorheben */
+    .nav-tabs .nav-link.active {
+        background-color: #0d6efd !important;
+        color: white !important;
+        font-weight: 600 !important;
+        border-color: #0d6efd #0d6efd #0d6efd !important;
+    }
+    .nav-tabs .nav-link.active:hover {
+        background-color: #0b5ed7 !important;
+        color: white !important;
+    }
+    .nav-tabs .nav-link:not(.active) {
+        color: #495057;
+    }
+    .nav-tabs .nav-link:not(.active):hover {
+        background-color: #f8f9fa;
+        border-color: #dee2e6 #dee2e6 #dee2e6;
+    }
+</style>
+
+<ul class="nav nav-tabs mb-3" role="tablist">
+    <li class="nav-item" role="presentation">
+        <a class="nav-link {% if not current_standort %}active{% endif %}" 
+           href="#" 
+           onclick="setStandortFilter('', false); return false;">
+            <i class="bi bi-grid"></i> Alle Standorte
+        </a>
+    </li>
+    {% if show_konsolidiert %}
+    <li class="nav-item" role="presentation">
+        <a class="nav-link {% if current_standort == 1 and konsolidiert %}active{% endif %}" 
+           href="#" 
+           onclick="setStandortFilter(1, true); return false;">
+            <i class="bi bi-diagram-3"></i> Deggendorf konsolidiert
+        </a>
+    </li>
+    {% endif %}
+    <li class="nav-item" role="presentation">
+        <a class="nav-link {% if current_standort == 1 and not konsolidiert %}active{% endif %}" 
+           href="#" 
+           onclick="setStandortFilter(1, false); return false;">
+            <i class="bi bi-building"></i> {{ standort_namen[1] }}
+        </a>
+    </li>
+    <li class="nav-item" role="presentation">
+        <a class="nav-link {% if current_standort == 2 %}active{% endif %}" 
+           href="#" 
+           onclick="setStandortFilter(2, false); return false;">
+            <i class="bi bi-building"></i> {{ standort_namen[2] }}
+        </a>
+    </li>
+    <li class="nav-item" role="presentation">
+        <a class="nav-link {% if current_standort == 3 %}active{% endif %}" 
+           href="#" 
+           onclick="setStandortFilter(3, false); return false;">
+            <i class="bi bi-building"></i> {{ standort_namen[3] }}
+        </a>
+    </li>
+</ul>
+</ul>
+
+<script>
+// TAG 177: Standort-Filter Funktion (zentral im Component)
+function setStandortFilter(standortId, isKonsolidiert) {
+    // Zuerst prüfen ob bereits ein Formular mit standort-input existiert (z.B. in abteilungsleiter_uebersicht)
+    let standortInput = document.getElementById('standort-input');
+    let konsolidiertInput = document.getElementById('konsolidiert-input');
+    let form = document.getElementById('zeitraum-form');
+    
+    // Wenn Formular vorhanden, Inputs aktualisieren und absenden
+    if (form && standortInput) {
+        standortInput.value = standortId || '';
+        if (konsolidiertInput) {
+            konsolidiertInput.value = isKonsolidiert ? 'true' : '';
+        }
+        form.submit();
+        return;
+    }
+    
+    // Sonst URL direkt aktualisieren
+    const url = new URL(window.location.href);
+    
+    // Alle bestehenden Parameter behalten (außer standort/konsolidiert)
+    const currentParams = new URLSearchParams(window.location.search);
+    for (const [key, value] of currentParams.entries()) {
+        if (key !== 'standort' && key !== 'konsolidiert') {
+            url.searchParams.set(key, value);
+        }
+    }
+    
+    // Zusätzliche Parameter aus additional_params
+    {% for key, value in url_params.items() %}
+        {% if value and key not in ['standort', 'konsolidiert'] %}
+        url.searchParams.set('{{ key }}', '{{ value }}');
+        {% endif %}
+    {% endfor %}
+    
+    // Standort-Parameter setzen
+    if (standortId) {
+        url.searchParams.set('standort', standortId);
+    } else {
+        url.searchParams.delete('standort');
+    }
+    if (isKonsolidiert) {
+        url.searchParams.set('konsolidiert', 'true');
+    } else {
+        url.searchParams.delete('konsolidiert');
+    }
+    
+    window.location.href = url.toString();
+}
+</script>

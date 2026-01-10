@@ -26,6 +26,8 @@ from decimal import Decimal
 
 from api.db_utils import db_session, locosoft_session
 from api.db_connection import sql_placeholder
+# SSOT: Standort-Filter
+from api.standort_utils import build_locosoft_filter_verkauf
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +138,8 @@ class VerkaufData:
     @staticmethod
     def get_auftragseingang(
         month: int = None,
-        year: int = None
+        year: int = None,
+        location: int = None
     ) -> Dict[str, Any]:
         """
         Holt Auftragseingang nach Verkäufern für heute und Periode.
@@ -254,7 +257,8 @@ class VerkaufData:
     def get_auftragseingang_summary(
         day: str = None,
         month: int = None,
-        year: int = None
+        year: int = None,
+        location: int = None
     ) -> Dict[str, Any]:
         """
         Holt Auftragseingang-Summary nach Marke und Fahrzeugtyp.
@@ -276,13 +280,22 @@ class VerkaufData:
             with db_session() as conn:
                 cursor = conn.cursor()
 
+                # TAG 177: Standort-Filter bauen
+                standort_filter = ""
+                if location:
+                    standort_filter_sql = build_locosoft_filter_verkauf(int(location), nur_stellantis=False)
+                    if standort_filter_sql:
+                        # Filter-String anpassen: "AND out_subsidiary = X" -> "AND s.out_subsidiary = X"
+                        standort_filter = standort_filter_sql.replace("out_subsidiary", "s.out_subsidiary")
+
                 if day:
-                    where_clause = f"WHERE DATE(s.out_sales_contract_date) = %s {DEDUP_FILTER}"
+                    where_clause = f"WHERE DATE(s.out_sales_contract_date) = %s {standort_filter} {DEDUP_FILTER}"
                     params = [day]
                 else:
                     where_clause = f"""
                         WHERE EXTRACT(YEAR FROM s.out_sales_contract_date) = %s
                           AND EXTRACT(MONTH FROM s.out_sales_contract_date) = %s
+                          {standort_filter}
                           {DEDUP_FILTER}
                     """
                     params = [str(year), f"{month:02d}"]
@@ -365,9 +378,13 @@ class VerkaufData:
                     where_clauses.append("EXTRACT(MONTH FROM s.out_sales_contract_date) = %s")
                     params.extend([str(year), f"{month:02d}"])
 
+                # TAG 177: SSOT-Filter für Verkäufe (konsolidiert für Standort 1)
                 if location:
-                    where_clauses.append("s.out_subsidiary = %s")
-                    params.append(int(location))
+                    standort_filter = build_locosoft_filter_verkauf(int(location), nur_stellantis=False)
+                    if standort_filter:
+                        # Filter-String anpassen: "AND out_subsidiary = X" -> "s.out_subsidiary = X"
+                        filter_sql = standort_filter.replace("AND ", "").replace("out_subsidiary", "s.out_subsidiary")
+                        where_clauses.append(filter_sql)
 
                 if verkaufer:
                     where_clauses.append("s.salesman_number = %s")
@@ -576,9 +593,13 @@ class VerkaufData:
                     where_clauses.append("EXTRACT(MONTH FROM s.out_invoice_date) = %s")
                     params.extend([str(year), f"{month:02d}"])
 
+                # TAG 177: SSOT-Filter für Verkäufe (konsolidiert für Standort 1)
                 if location:
-                    where_clauses.append("s.out_subsidiary = %s")
-                    params.append(int(location))
+                    standort_filter = build_locosoft_filter_verkauf(int(location), nur_stellantis=False)
+                    if standort_filter:
+                        # Filter-String anpassen: "AND out_subsidiary = X" -> "s.out_subsidiary = X"
+                        filter_sql = standort_filter.replace("AND ", "").replace("out_subsidiary", "s.out_subsidiary")
+                        where_clauses.append(filter_sql)
 
                 if verkaufer:
                     where_clauses.append("s.salesman_number = %s")

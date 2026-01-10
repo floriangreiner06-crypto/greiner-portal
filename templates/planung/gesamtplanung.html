@@ -72,15 +72,6 @@
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label">Standort</label>
-                    <select name="standort" class="form-select form-select-sm">
-                        <option value="">Alle</option>
-                        {% for s_id, s_name in standort_namen.items() %}
-                        <option value="{{ s_id }}" {% if standort_filter == s_id %}selected{% endif %}>{{ s_name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-md-2">
                     <label class="form-label">Bereich</label>
                     <select name="bereich" class="form-select form-select-sm">
                         <option value="">Alle</option>
@@ -89,7 +80,7 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-3 d-flex align-items-end">
+                <div class="col-md-2 d-flex align-items-end">
                     <button type="submit" class="btn btn-primary btn-sm w-100">
                         <i class="bi bi-funnel"></i> Filtern
                     </button>
@@ -97,6 +88,11 @@
             </form>
         </div>
     </div>
+
+    <!-- Standort-Filter Tabs (zentrales Component) -->
+    {% set current_standort = standort_filter %}
+    {% set additional_params = {'geschaeftsjahr': geschaeftsjahr, 'monat': monat, 'bereich': bereich_filter or ''} %}
+    {% include 'components/standort_filter_tabs.html' %}
 
     <!-- Gesamtwerte -->
     <div class="gesamtplanung-card">

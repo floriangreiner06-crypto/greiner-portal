@@ -190,22 +190,12 @@
                     <option value="2023">2023</option>
                 </select>
             </div>
+            <!-- Standort-Filter Tabs (zentrales Component) - setzt automatisch Firma -->
             <div class="col-auto">
-                <label class="form-label mb-1 small">Firma</label>
-                <select id="filterFirma" class="form-select form-select-sm" style="width: 150px;">
-                    <option value="0">Alle</option>
-                    <option value="1">Stellantis</option>
-                    <option value="2">Hyundai</option>
-                </select>
-            </div>
-            <div class="col-auto">
-                <label class="form-label mb-1 small">Standort</label>
-                <select id="filterStandort" class="form-select form-select-sm" style="width: 200px;">
-                    <option value="0">Alle</option>
-                    <option value="deg-both">Deggendorf (Stellantis+Hyundai)</option>
-                    <option value="1">Deggendorf (Stellantis)</option>
-                    <option value="2">Landau</option>
-                </select>
+                {% set current_standort = standort %}
+                {% set show_konsolidiert = true %}
+                {% set additional_params = {'monat': request.args.get('monat', ''), 'jahr': request.args.get('jahr', '')} %}
+                {% include 'components/standort_filter_tabs.html' %}
             </div>
             <div class="col-auto">
                 <button id="btnLaden" class="btn btn-primary btn-sm">
@@ -280,12 +270,14 @@
                 <table class="table table-bordered bwa-table mb-0">
                     <thead>
                         <tr>
-                            <th style="width: 35%">Position</th>
-                            <th class="text-end" style="width: 13%">Monat</th>
-                            <th class="text-end" style="width: 13%">Vorjahr</th>
-                            <th class="text-center" style="width: 8%">Abw.</th>
-                            <th class="text-end" style="width: 15%">YTD</th>
-                            <th class="text-center" style="width: 8%">%Umsatz</th>
+                            <th style="width: 28%">Position</th>
+                            <th class="text-center" style="width: 5%">Stk.<br>Monat</th>
+                            <th class="text-end" style="width: 10%">Monat</th>
+                            <th class="text-end" style="width: 10%">Vorjahr</th>
+                            <th class="text-center" style="width: 6%">Abw.</th>
+                            <th class="text-end" style="width: 9%">YTD</th>
+                            <th class="text-end" style="width: 9%">YTD Vorjahr</th>
+                            <th class="text-center" style="width: 6%">Abw. YTD</th>
                         </tr>
                     </thead>
                     <tbody id="bwa-body">
@@ -404,20 +396,63 @@
         'SO': '<span class="bereich-icon so">SO</span>'
     };
 
+    // TAG 177: Standort aus URL lesen (Tab-Navigation)
+    function getStandortFromURL() {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get('standort') || '0';
+    }
+    
+    function getKonsolidiertFromURL() {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get('konsolidiert') === 'true';
+    }
+    
+    // TAG 177: Firma automatisch aus Standort ableiten
+    function getFirmaFromStandort(standort, konsolidiert) {
+        // Standort 1 (Deggendorf Opel) oder 3 (Landau Opel) → Firma 1 (Stellantis)
+        // Standort 2 (Deggendorf Hyundai) → Firma 2 (Hyundai)
+        // Standort 0 (Alle) → Firma 0 (Alle)
+        if (standort === '1' || standort === '3') {
+            return '1'; // Stellantis
+        } else if (standort === '2') {
+            return '2'; // Hyundai
+        }
+        return '0'; // Alle
+    }
+    
+    // TAG 177: Standort für BWA-API mappen (deg-both für konsolidiert, 2→3 für Landau)
+    function mapStandortForBWA(standort, konsolidiert) {
+        if (konsolidiert && standort === '1') {
+            return 'deg-both'; // Deggendorf konsolidiert (Stellantis+Hyundai)
+        }
+        // BWA verwendet standort=2 für Landau, wir verwenden standort=3
+        if (standort === '3') {
+            return '2'; // Landau
+        }
+        if (standort === '1') {
+            return '1'; // Deggendorf (Stellantis)
+        }
+        return standort || '0'; // Alle oder wie übergeben
+    }
+
     // Daten laden
     async function loadData() {
         const monat = document.getElementById('filterMonat').value;
         const jahr = document.getElementById('filterJahr').value;
-        const firma = document.getElementById('filterFirma').value;
-        const standort = document.getElementById('filterStandort').value;
+        const standort = getStandortFromURL();
+        const konsolidiert = getKonsolidiertFromURL();
+        const firma = getFirmaFromStandort(standort, konsolidiert);
+        const bwaStandort = mapStandortForBWA(standort, konsolidiert);
 
         const loading = document.getElementById('loading');
         loading.classList.remove('d-none');
 
         try {
-            const url = `/api/controlling/bwa/v2?monat=${monat}&jahr=${jahr}&firma=${firma}&standort=${standort}`;
+            const url = `/api/controlling/bwa/v2?monat=${monat}&jahr=${jahr}&firma=${firma}&standort=${bwaStandort}`;
+            console.log('BWA API Call:', url);
             const response = await fetch(url);
             const result = await response.json();
+            console.log('BWA API Response:', result);
 
             if (result.status === 'ok') {
                 renderBWA(result);
@@ -438,6 +473,20 @@
         const aktuell = data.aktuell;
         const vorjahr = data.vorjahr;
         const ytd = data.ytd;
+        const ytd_vorjahr = data.ytd_vorjahr || {
+            umsatz: 0,
+            einsatz: 0,
+            db1: 0,
+            bereiche: [],
+            variable_kosten: 0,
+            db2: 0,
+            direkte_kosten: 0,
+            db3: 0,
+            indirekte_kosten: 0,
+            betriebsergebnis: 0,
+            neutrales_ergebnis: 0,
+            unternehmensergebnis: 0
+        };
 
         // Subtitle aktualisieren
         document.getElementById('bwa-subtitle').textContent =
@@ -467,26 +516,30 @@
         // 1. Umsatzerlöse - klickbar
         html += `<tr class="row-sum row-bereich" data-drilldown="umsatz" title="Klicken für Details">
             <td><i class="fas fa-arrow-up text-success me-2"></i><strong>Umsatzerlöse</strong></td>
+            <td class="text-center">-</td>
             <td class="text-end">${renderValue(aktuell.umsatz)}</td>
             <td class="text-end">${renderValue(vorjahr.umsatz)}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.umsatz, vorjahr.umsatz))}</td>
             <td class="text-end">${renderValue(ytd.umsatz)}</td>
-            <td class="text-center">100%</td>
+            <td class="text-end">${renderValue(ytd_vorjahr.umsatz || 0)}</td>
+            <td class="text-center">${renderDelta(calcDelta(ytd.umsatz, ytd_vorjahr.umsatz || 0))}</td>
         </tr>`;
 
         // 2. Einsatzwerte - klickbar
         html += `<tr class="row-sum row-bereich" data-drilldown="einsatz" title="Klicken für Details">
             <td><i class="fas fa-arrow-down text-danger me-2"></i><strong>Einsatzwerte</strong></td>
+            <td class="text-center">-</td>
             <td class="text-end">${renderValue(-aktuell.einsatz)}</td>
             <td class="text-end">${renderValue(-vorjahr.einsatz)}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.einsatz, vorjahr.einsatz), true)}</td>
             <td class="text-end">${renderValue(-ytd.einsatz)}</td>
-            <td class="text-center">${fmtProzent(aktuell.umsatz ? (aktuell.einsatz / aktuell.umsatz * 100) : 0)}</td>
+            <td class="text-end">${renderValue(-(ytd_vorjahr.einsatz || 0))}</td>
+            <td class="text-center">${renderDelta(calcDelta(ytd.einsatz, ytd_vorjahr.einsatz || 0), true)}</td>
         </tr>`;
 
         // 3. Bruttoertrag (DB1) Gesamt
         html += `<tr class="row-header">
-            <td colspan="6"><strong>Bruttoerträge nach Bereichen (DB1)</strong></td>
+            <td colspan="7"><strong>Bruttoerträge nach Bereichen (DB1)</strong></td>
         </tr>`;
 
         // 4. Bereiche
@@ -494,111 +547,139 @@
             const b = aktuell.bereiche[i];
             const vj = vorjahr.bereiche[i];
             const y = ytd.bereiche[i];
-            const pctUmsatz = aktuell.umsatz ? (b.bruttoertrag / aktuell.umsatz * 100) : 0;
+            const y_vj = (ytd_vorjahr.bereiche && ytd_vorjahr.bereiche[i]) ? ytd_vorjahr.bereiche[i] : { bruttoertrag: 0, stueck: { monat: 0, jahr: 0, vj_monat: 0, vj_jahr: 0 } };
+            
+            // Stückzahlen nur für NW und GW anzeigen (analog Globalcube: Monat, Jahr, VJ Monat, VJ Jahr)
+            let stueck_monat = '-';
+            let stueck_vj_monat = '-';
+            let stueck_jahr = '-';
+            let stueck_vj_jahr = '-';
+            
+            if (b.key === 'NW' || b.key === 'GW') {
+                const stueck = b.stueck || { monat: 0, jahr: 0, vj_monat: 0, vj_jahr: 0 };
+                stueck_monat = stueck.monat || 0;
+                stueck_jahr = stueck.jahr || 0;
+                stueck_vj_monat = stueck.vj_monat || 0;
+                stueck_vj_jahr = stueck.vj_jahr || 0;
+            }
 
             html += `<tr class="row-bereich" data-drilldown="bereich" data-bereich="${b.key}" title="Klicken für Details">
                 <td>${bereichIcons[b.key] || ''} Bruttoertrag ${b.name}</td>
+                <td class="text-center">${stueck_monat}</td>
                 <td class="text-end">${renderValue(b.bruttoertrag)}</td>
                 <td class="text-end">${renderValue(vj.bruttoertrag)}</td>
                 <td class="text-center">${renderDelta(calcDelta(b.bruttoertrag, vj.bruttoertrag))}</td>
                 <td class="text-end">${renderValue(y.bruttoertrag)}</td>
-                <td class="text-center">${fmtProzent(pctUmsatz)}</td>
+                <td class="text-end">${renderValue(y_vj.bruttoertrag || 0)}</td>
+                <td class="text-center">${renderDelta(calcDelta(y.bruttoertrag, y_vj.bruttoertrag || 0))}</td>
             </tr>`;
         }
 
         // 5. DB1 Summe
-        const db1PctUmsatz = aktuell.umsatz ? (aktuell.db1 / aktuell.umsatz * 100) : 0;
         html += `<tr class="row-sum">
             <td><strong>Bruttoertrag Gesamt (DB1)</strong></td>
             <td class="text-end"><strong>${renderValue(aktuell.db1)}</strong></td>
             <td class="text-end">${renderValue(vorjahr.db1)}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.db1, vorjahr.db1))}</td>
             <td class="text-end">${renderValue(ytd.db1)}</td>
-            <td class="text-center"><strong>${fmtProzent(db1PctUmsatz)}</strong></td>
+            <td class="text-end">${renderValue(ytd_vorjahr.db1 || 0)}</td>
+            <td class="text-center"><strong>${renderDelta(calcDelta(ytd.db1, ytd_vorjahr.db1 || 0))}</strong></td>
         </tr>`;
 
         // 6. Variable Kosten
         html += `<tr class="row-bereich" data-drilldown="variable" title="Klicken für Details">
             <td><i class="fas fa-minus-circle text-warning me-2"></i> Variable Kosten</td>
+            <td class="text-center">-</td>
             <td class="text-end">${renderValue(-aktuell.variable_kosten)}</td>
             <td class="text-end">${renderValue(-vorjahr.variable_kosten)}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.variable_kosten, vorjahr.variable_kosten), true)}</td>
             <td class="text-end">${renderValue(-ytd.variable_kosten)}</td>
-            <td class="text-center">${fmtProzent(aktuell.umsatz ? (aktuell.variable_kosten / aktuell.umsatz * 100) : 0)}</td>
+            <td class="text-end">${renderValue(-(ytd_vorjahr.variable_kosten || 0))}</td>
+            <td class="text-center">${renderDelta(calcDelta(ytd.variable_kosten, ytd_vorjahr.variable_kosten || 0), true)}</td>
         </tr>`;
 
         // 7. DB2 Ergebnis
-        const db2PctUmsatz = aktuell.umsatz ? (aktuell.db2 / aktuell.umsatz * 100) : 0;
         html += `<tr class="row-sum">
             <td><strong>Deckungsbeitrag 2 (DB2)</strong></td>
+            <td class="text-center">-</td>
             <td class="text-end"><strong>${renderValue(aktuell.db2)}</strong></td>
             <td class="text-end">${renderValue(vorjahr.db2)}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.db2, vorjahr.db2))}</td>
             <td class="text-end"><strong>${renderValue(ytd.db2)}</strong></td>
-            <td class="text-center"><strong>${fmtProzent(db2PctUmsatz)}</strong></td>
+            <td class="text-end">${renderValue(ytd_vorjahr.db2 || 0)}</td>
+            <td class="text-center"><strong>${renderDelta(calcDelta(ytd.db2, ytd_vorjahr.db2 || 0))}</strong></td>
         </tr>`;
 
         // 8. Direkte Kosten
         html += `<tr class="row-bereich" data-drilldown="direkte" title="Klicken für Details">
             <td><i class="fas fa-minus-circle text-info me-2"></i> Direkte Kosten</td>
+            <td class="text-center">-</td>
             <td class="text-end">${renderValue(-aktuell.direkte_kosten)}</td>
             <td class="text-end">${renderValue(-vorjahr.direkte_kosten)}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.direkte_kosten, vorjahr.direkte_kosten), true)}</td>
             <td class="text-end">${renderValue(-ytd.direkte_kosten)}</td>
-            <td class="text-center">${fmtProzent(aktuell.umsatz ? (aktuell.direkte_kosten / aktuell.umsatz * 100) : 0)}</td>
+            <td class="text-end">${renderValue(-(ytd_vorjahr.direkte_kosten || 0))}</td>
+            <td class="text-center">${renderDelta(calcDelta(ytd.direkte_kosten, ytd_vorjahr.direkte_kosten || 0), true)}</td>
         </tr>`;
 
         // 9. DB3 Ergebnis
-        const db3PctUmsatz = aktuell.umsatz ? (aktuell.db3 / aktuell.umsatz * 100) : 0;
         html += `<tr class="row-sum">
             <td><strong>Deckungsbeitrag 3 (DB3)</strong></td>
+            <td class="text-center">-</td>
             <td class="text-end"><strong>${renderValue(aktuell.db3)}</strong></td>
             <td class="text-end">${renderValue(vorjahr.db3)}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.db3, vorjahr.db3))}</td>
             <td class="text-end"><strong>${renderValue(ytd.db3)}</strong></td>
-            <td class="text-center"><strong>${fmtProzent(db3PctUmsatz)}</strong></td>
+            <td class="text-end">${renderValue(ytd_vorjahr.db3 || 0)}</td>
+            <td class="text-center"><strong>${renderDelta(calcDelta(ytd.db3, ytd_vorjahr.db3 || 0))}</strong></td>
         </tr>`;
 
         // 10. Indirekte Kosten
         html += `<tr class="row-bereich" data-drilldown="indirekte" title="Klicken für Details">
             <td><i class="fas fa-minus-circle text-secondary me-2"></i> Indirekte Kosten</td>
+            <td class="text-center">-</td>
             <td class="text-end">${renderValue(-aktuell.indirekte_kosten)}</td>
             <td class="text-end">${renderValue(-vorjahr.indirekte_kosten)}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.indirekte_kosten, vorjahr.indirekte_kosten), true)}</td>
             <td class="text-end">${renderValue(-ytd.indirekte_kosten)}</td>
-            <td class="text-center">${fmtProzent(aktuell.umsatz ? (aktuell.indirekte_kosten / aktuell.umsatz * 100) : 0)}</td>
+            <td class="text-end">${renderValue(-(ytd_vorjahr.indirekte_kosten || 0))}</td>
+            <td class="text-center">${renderDelta(calcDelta(ytd.indirekte_kosten, ytd_vorjahr.indirekte_kosten || 0), true)}</td>
         </tr>`;
 
         // 11. Betriebsergebnis
-        const bePctUmsatz = aktuell.umsatz ? (aktuell.betriebsergebnis / aktuell.umsatz * 100) : 0;
         html += `<tr class="row-sum" style="background: #fff3cd;">
             <td><i class="fas fa-building text-warning me-2"></i> <strong>Betriebsergebnis (BE)</strong></td>
+            <td class="text-center">-</td>
             <td class="text-end"><strong>${renderValue(aktuell.betriebsergebnis)}</strong></td>
             <td class="text-end">${renderValue(vorjahr.betriebsergebnis)}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.betriebsergebnis, vorjahr.betriebsergebnis))}</td>
             <td class="text-end"><strong>${renderValue(ytd.betriebsergebnis)}</strong></td>
-            <td class="text-center"><strong>${fmtProzent(bePctUmsatz)}</strong></td>
+            <td class="text-end">${renderValue(ytd_vorjahr.betriebsergebnis || 0)}</td>
+            <td class="text-center"><strong>${renderDelta(calcDelta(ytd.betriebsergebnis, ytd_vorjahr.betriebsergebnis || 0))}</strong></td>
         </tr>`;
 
         // 12. Neutrales Ergebnis
         html += `<tr class="row-bereich" data-drilldown="neutral" title="Klicken für Details">
             <td><i class="fas fa-plus-minus text-muted me-2"></i> Neutrales Ergebnis</td>
+            <td class="text-center">-</td>
             <td class="text-end">${renderValue(aktuell.neutrales_ergebnis)}</td>
             <td class="text-end">${renderValue(vorjahr.neutrales_ergebnis)}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.neutrales_ergebnis, vorjahr.neutrales_ergebnis))}</td>
             <td class="text-end">${renderValue(ytd.neutrales_ergebnis)}</td>
-            <td class="text-center">${fmtProzent(aktuell.umsatz ? (aktuell.neutrales_ergebnis / aktuell.umsatz * 100) : 0)}</td>
+            <td class="text-end">${renderValue(ytd_vorjahr.neutrales_ergebnis || 0)}</td>
+            <td class="text-center">${renderDelta(calcDelta(ytd.neutrales_ergebnis, ytd_vorjahr.neutrales_ergebnis || 0))}</td>
         </tr>`;
 
         // 13. Unternehmensergebnis - FINAL
-        const uePctUmsatz = aktuell.umsatz ? (aktuell.unternehmensergebnis / aktuell.umsatz * 100) : 0;
         html += `<tr class="row-result">
             <td><i class="fas fa-trophy text-success me-2"></i> <strong>Unternehmensergebnis (UE)</strong></td>
+            <td class="text-center">-</td>
             <td class="text-end"><strong>${renderValue(aktuell.unternehmensergebnis)}</strong></td>
             <td class="text-end">${renderValue(vorjahr.unternehmensergebnis)}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.unternehmensergebnis, vorjahr.unternehmensergebnis))}</td>
             <td class="text-end"><strong>${renderValue(ytd.unternehmensergebnis)}</strong></td>
-            <td class="text-center"><strong>${fmtProzent(uePctUmsatz)}</strong></td>
+            <td class="text-end">${renderValue(ytd_vorjahr.unternehmensergebnis || 0)}</td>
+            <td class="text-center"><strong>${renderDelta(calcDelta(ytd.unternehmensergebnis, ytd_vorjahr.unternehmensergebnis || 0))}</strong></td>
         </tr>`;
 
         tbody.innerHTML = html;
@@ -614,15 +695,7 @@
     document.getElementById('btnLaden').addEventListener('click', loadData);
 
     // Filter-Change-Handler
-    document.getElementById('filterFirma').addEventListener('change', function() {
-        const standortSelect = document.getElementById('filterStandort');
-        // Standort bei Stellantis (Firma 1) oder Alle (Firma 0) aktivieren
-        // Bei Hyundai (Firma 2) deaktivieren, da Hyundai keinen Standort-Filter hat
-        standortSelect.disabled = this.value === '2';
-        if (this.value === '2') {
-            standortSelect.value = '0';
-        }
-    });
+    // TAG 177: Firma-Dropdown entfernt, Standort-Tabs übernehmen die Navigation
 
     // Drill-Down Modal
     const drilldownModal = new bootstrap.Modal(document.getElementById('drilldownModal'));
@@ -630,8 +703,10 @@
     async function openDrilldown(typ, bereich = null) {
         const monat = document.getElementById('filterMonat').value;
         const jahr = document.getElementById('filterJahr').value;
-        const firma = document.getElementById('filterFirma').value;
-        const standort = document.getElementById('filterStandort').value;
+        const standort = getStandortFromURL();
+        const konsolidiert = getKonsolidiertFromURL();
+        const firma = getFirmaFromStandort(standort, konsolidiert);
+        const bwaStandort = mapStandortForBWA(standort, konsolidiert);
 
         // Modal öffnen und Ladezustand zeigen
         document.getElementById('drilldown-loading').classList.remove('d-none');
@@ -640,7 +715,7 @@
         drilldownModal.show();
 
         try {
-            let url = `/api/controlling/bwa/v2/drilldown?typ=${typ}&monat=${monat}&jahr=${jahr}&firma=${firma}&standort=${standort}`;
+            let url = `/api/controlling/bwa/v2/drilldown?typ=${typ}&monat=${monat}&jahr=${jahr}&firma=${firma}&standort=${bwaStandort}`;
             if (bereich) {
                 url += `&bereich=${bereich}`;
             }

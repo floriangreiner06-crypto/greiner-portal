@@ -17,7 +17,7 @@ os.chdir('/opt/greiner-portal')
 
 from datetime import datetime, date
 from api.db_utils import db_session, row_to_dict, get_locosoft_connection
-from api.db_connection import sql_placeholder, get_db_type
+from api.db_connection import sql_placeholder, get_db_type, get_db
 
 # ============================================================================
 # KONFIGURATION
@@ -31,10 +31,7 @@ MONATE = ['', 'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
           'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
 
 
-def get_db():
-    """Datenbank-Verbindung (TAG 146 PostgreSQL Fix)"""
-    from api.db_connection import get_db as get_db_conn
-    return get_db_conn()
+# get_db() wird jetzt direkt aus api.db_connection importiert (SSOT)
 
 
 def is_holiday(check_date=None):

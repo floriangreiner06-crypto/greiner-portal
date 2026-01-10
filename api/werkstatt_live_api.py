@@ -24,6 +24,9 @@ import logging
 from api.db_utils import locosoft_session, get_locosoft_connection, get_portal_absences, db_session, row_to_dict
 from api.db_connection import get_db_type
 
+# SSOT: Standort/Betriebsnamen
+from api.standort_utils import BETRIEB_NAMEN
+
 # Für RealDictCursor
 from psycopg2.extras import RealDictCursor
 
@@ -53,13 +56,6 @@ def format_datetime(dt):
     if dt is None:
         return None
     return dt.isoformat() if hasattr(dt, 'isoformat') else str(dt)
-
-
-BETRIEB_NAMEN = {
-    1: 'Deggendorf',
-    2: 'Hyundai DEG',
-    3: 'Landau'
-}
 
 # Gudat Credentials (TAG 125)
 GUDAT_CONFIG = {
@@ -3322,7 +3318,7 @@ def get_drive_kapazitaet():
         conn.close()
 
         # Kapazität pro Betrieb (Basis ohne Abwesenheiten)
-        BETRIEB_NAMEN = {1: 'Deggendorf', 2: 'Hyundai DEG', 3: 'Landau'}
+        # BETRIEB_NAMEN wird jetzt aus standort_utils importiert (SSOT)
 
         result = []
         for r in rows:

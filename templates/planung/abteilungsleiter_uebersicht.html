@@ -37,10 +37,10 @@
 
 {% block content %}
 <div class="container-fluid py-3">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
             <h4 class="mb-0"><i class="bi bi-clipboard-data"></i> Abteilungsleiter-Planung</h4>
-            <small class="text-muted">Bottom-Up Planung (10 Fragen pro KST) | GJ {{ geschaeftsjahr }} | {{ monat_name }}</small>
+            <small class="text-muted">Bottom-Up Planung (10 Fragen pro KST)</small>
         </div>
         <div class="btn-group">
             <a href="{{ url_for('abteilungsleiter_planung.gesamtplanung', geschaeftsjahr=geschaeftsjahr, monat=monat) }}" class="btn btn-primary btn-sm">
@@ -52,17 +52,17 @@
         </div>
     </div>
 
-    <!-- Filter -->
+    <!-- Zeitraum-Auswahl (kompakt) -->
     <div class="card mb-3">
-        <div class="card-body">
-            <form method="GET" class="row g-3">
-                <div class="col-md-3">
-                    <label class="form-label">Geschäftsjahr</label>
-                    <input type="text" name="geschaeftsjahr" value="{{ geschaeftsjahr }}" class="form-control form-control-sm">
+        <div class="card-body py-2">
+            <form method="GET" class="row g-2 align-items-end" id="zeitraum-form">
+                <div class="col-auto">
+                    <label class="form-label small mb-0">Geschäftsjahr</label>
+                    <input type="text" name="geschaeftsjahr" value="{{ geschaeftsjahr }}" class="form-control form-control-sm" style="width: 100px;" onchange="updateTabs()">
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label">Monat (GJ)</label>
-                    <select name="monat" class="form-select form-select-sm">
+                <div class="col-auto">
+                    <label class="form-label small mb-0">Monat (GJ)</label>
+                    <select name="monat" class="form-select form-select-sm" style="width: 120px;" onchange="updateTabs()">
                         {% for m in range(1, 13) %}
                         <option value="{{ m }}" {% if monat == m %}selected{% endif %}>
                             {{ ['Sep', 'Okt', 'Nov', 'Dez', 'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug'][m-1] }}
@@ -70,23 +70,16 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label">Standort</label>
-                    <select name="standort" class="form-select form-select-sm">
-                        <option value="">Alle</option>
-                        {% for s_id, s_name in standorte.items() %}
-                        <option value="{{ s_id }}" {% if standort == s_id %}selected{% endif %}>{{ s_name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-md-3 d-flex align-items-end">
-                    <button type="submit" class="btn btn-primary btn-sm w-100">
-                        <i class="bi bi-funnel"></i> Filtern
-                    </button>
-                </div>
+                <input type="hidden" name="standort" id="standort-input" value="{{ standort or '' }}">
+                <input type="hidden" name="konsolidiert" id="konsolidiert-input" value="{{ 'true' if konsolidiert else '' }}">
             </form>
         </div>
     </div>
+
+    <!-- Standort-Tabs (zentrales Component) -->
+    {% set current_standort = standort %}
+    {% set additional_params = {'geschaeftsjahr': geschaeftsjahr, 'monat': monat} %}
+    {% include 'components/standort_filter_tabs.html' %}
 
     <!-- Planungen -->
     <div class="row">
@@ -99,11 +92,11 @@
                     {% for s_id, s_name in bereich_standorte.items() %}
                         {% if not standort or standort == s_id %}
                         <div class="btn-group">
-                            <a href="{{ url_for('abteilungsleiter_planung.jahresplanung', bereich=bereich, standort=s_id, geschaeftsjahr=geschaeftsjahr) }}" 
+                            <a href="{{ url_for('abteilungsleiter_planung.jahresplanung', bereich=bereich, standort=s_id, geschaeftsjahr=geschaeftsjahr) }}{% if konsolidiert and s_id == 1 %}?konsolidiert=true{% endif %}" 
                                class="btn btn-sm btn-outline-info" title="Jahresplanung">
                                 <i class="bi bi-calendar-range"></i>
                             </a>
-                            <a href="{{ url_for('abteilungsleiter_planung.planungsformular', bereich=bereich, standort=s_id, geschaeftsjahr=geschaeftsjahr, monat=monat) }}" 
+                            <a href="{{ url_for('abteilungsleiter_planung.planungsformular', bereich=bereich, standort=s_id, geschaeftsjahr=geschaeftsjahr, monat=monat) }}{% if konsolidiert and s_id == 1 %}?konsolidiert=true{% endif %}" 
                                class="btn btn-sm btn-outline-primary" title="Monatsplanung">
                                 <i class="bi bi-pencil"></i>
                             </a>
@@ -113,8 +106,10 @@
                 </div>
                 <div class="card-body">
                     {% set bereich_standorte = standorte_fuer_bereich.get(bereich, standorte) %}
-                    {% for s_id, s_name in bereich_standorte.items() %}
-                        {% if not standort or standort == s_id %}
+                    {% if konsolidiert and standort == 1 %}
+                        {# Konsolidierte Ansicht: Nur Standort 1 anzeigen (enthält bereits zusammengefasste Werte) #}
+                        {% set s_id = 1 %}
+                        {% set s_name = 'Deggendorf konsolidiert' %}
                         {% set key = bereich ~ '_' ~ s_id %}
                         {% if planungen.get(key) %}
                         {% set p = planungen[key] %}
@@ -139,13 +134,62 @@
                             <small>{{ s_name }}: Noch nicht geplant</small>
                         </div>
                         {% endif %}
-                        {% endif %}
-                    {% endfor %}
+                    {% else %}
+                        {# Normale Ansicht: Alle Standorte des Bereichs anzeigen #}
+                        {% for s_id, s_name in bereich_standorte.items() %}
+                            {% if not standort or standort == s_id %}
+                            {% set key = bereich ~ '_' ~ s_id %}
+                            {% if planungen.get(key) %}
+                            {% set p = planungen[key] %}
+                            <div class="planung-card">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span class="fw-bold">{{ s_name }}</span>
+                                    <span class="status-badge status-{{ p.status }}">
+                                        {{ p.status }}
+                                    </span>
+                                </div>
+                                <div class="small">
+                                    <div>Umsatz Basis: <strong>{{ "%.2f"|format(p.umsatz_basis or 0) }} €</strong></div>
+                                    <div>DB1 Basis: <strong>{{ "%.2f"|format(p.db1_basis or 0) }} €</strong></div>
+                                    <div>Umsatz Ziel: <strong>{{ "%.2f"|format(p.umsatz_ziel or 0) }} €</strong></div>
+                                    <div class="text-muted mt-1">
+                                        <small>Erstellt: {{ p.erstellt_von }} am {{ p.erstellt_am if p.erstellt_am else '' }}</small>
+                                    </div>
+                                </div>
+                            </div>
+                            {% else %}
+                            <div class="planung-card text-muted text-center">
+                                <small>{{ s_name }}: Noch nicht geplant</small>
+                            </div>
+                            {% endif %}
+                            {% endif %}
+                        {% endfor %}
+                    {% endif %}
                 </div>
             </div>
         </div>
         {% endfor %}
     </div>
 </div>
+
+<script>
+// Zeitraum-Änderung: Standort-Parameter beibehalten
+function updateTabs() {
+    const form = document.getElementById('zeitraum-form');
+    const standortInput = document.getElementById('standort-input');
+    const konsolidiertInput = document.getElementById('konsolidiert-input');
+    
+    // Aktuelle Standort-Parameter aus URL holen
+    const urlParams = new URLSearchParams(window.location.search);
+    const standort = urlParams.get('standort') || '';
+    const konsolidiert = urlParams.get('konsolidiert') || '';
+    
+    standortInput.value = standort;
+    konsolidiertInput.value = konsolidiert;
+    
+    // Formular absenden (hält Standort-Parameter)
+    form.submit();
+}
+</script>
 {% endblock %}
 

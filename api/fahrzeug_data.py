@@ -40,17 +40,14 @@ import logging
 from api.db_utils import locosoft_session, db_session, row_to_dict, rows_to_list
 from psycopg2.extras import RealDictCursor
 
+# SSOT: Standort-Namen und Filter-Funktionen
+from api.standort_utils import STANDORT_NAMEN, build_locosoft_filter_bestand, build_locosoft_filter_verkauf
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================
 # KONSTANTEN
 # =============================================================================
-
-STANDORT_NAMEN = {
-    1: 'DEG Opel',
-    2: 'DEG Hyundai',
-    3: 'Landau'
-}
 
 FAHRZEUGTYP_NAMEN = {
     'N': 'Neuwagen',
@@ -137,9 +134,13 @@ class FahrzeugData:
             ]
             params = []
 
+            # TAG 177: SSOT-Filter für Bestand (konsolidiert für Standort 1)
             if standort:
-                where_parts.append("dv.in_subsidiary = %s")
-                params.append(standort)
+                standort_filter = build_locosoft_filter_bestand(standort, nur_stellantis=False)
+                if standort_filter:
+                    # Filter-String anpassen: "AND in_subsidiary = X" -> "dv.in_subsidiary = X"
+                    filter_sql = standort_filter.replace("AND ", "").replace("in_subsidiary", "dv.in_subsidiary")
+                    where_parts.append(filter_sql)
 
             # Standzeit-Kategorie-Filter
             if kategorie and kategorie in STANDZEIT_KATEGORIEN:
@@ -288,9 +289,13 @@ class FahrzeugData:
             ]
             params = []
 
+            # TAG 177: SSOT-Filter für Bestand (konsolidiert für Standort 1)
             if standort:
-                where_parts.append("dv.in_subsidiary = %s")
-                params.append(standort)
+                standort_filter = build_locosoft_filter_bestand(standort, nur_stellantis=False)
+                if standort_filter:
+                    # Filter-String anpassen: "AND in_subsidiary = X" -> "dv.in_subsidiary = X"
+                    filter_sql = standort_filter.replace("AND ", "").replace("in_subsidiary", "dv.in_subsidiary")
+                    where_parts.append(filter_sql)
 
             if nur_mit_vertrag:
                 where_parts.append("dv.out_sales_contract_number IS NOT NULL")
@@ -376,9 +381,13 @@ class FahrzeugData:
             ]
             params = []
 
+            # TAG 177: SSOT-Filter für Bestand (konsolidiert für Standort 1)
             if standort:
-                where_parts.append("dv.in_subsidiary = %s")
-                params.append(standort)
+                standort_filter = build_locosoft_filter_bestand(standort, nur_stellantis=False)
+                if standort_filter:
+                    # Filter-String anpassen: "AND in_subsidiary = X" -> "dv.in_subsidiary = X"
+                    filter_sql = standort_filter.replace("AND ", "").replace("in_subsidiary", "dv.in_subsidiary")
+                    where_parts.append(filter_sql)
 
             where_clause = " AND ".join(where_parts)
 
