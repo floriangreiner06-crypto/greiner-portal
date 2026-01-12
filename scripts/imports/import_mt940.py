@@ -15,6 +15,7 @@ import re
 sys.path.insert(0, '/opt/greiner-portal')
 from api.db_utils import db_session, row_to_dict
 from api.db_connection import sql_placeholder, get_db_type, get_db
+from api.bankenspiegel_utils import create_snapshot_from_saldo
 
 class MT940Importer:
     def __init__(self):
@@ -166,6 +167,8 @@ class MT940Importer:
                         (konto_id, datum, saldo, file_path.name)
                     )
                     salden_imported += 1
+                    # TAG 180: Automatisch Snapshot erstellen
+                    create_snapshot_from_saldo(konto_id, datum, saldo, cursor=self.cursor)
                 else:
                     # Update wenn 62F (Schlusssaldo)
                     if typ == '62F':
@@ -175,6 +178,8 @@ class MT940Importer:
                             (saldo, file_path.name, konto_id, datum)
                         )
                         salden_updated += 1
+                        # TAG 180: Snapshot aktualisieren
+                        create_snapshot_from_saldo(konto_id, datum, saldo, cursor=self.cursor)
                     else:
                         self.stats['salden_duplicates'] += 1
 

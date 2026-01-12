@@ -9,11 +9,24 @@ Updated: TAG 117 - Migration auf db_session
 from flask import Blueprint, jsonify, request
 from datetime import datetime
 
-# Zentrale DB-Utilities (TAG117 + TAG136)
-from api.db_utils import db_session, row_to_dict, rows_to_list, locosoft_session
+# Zentrale DB-Utilities (TAG117 + TAG136 + TAG179)
+from api.db_utils import db_session, row_to_dict, rows_to_list, locosoft_session, get_guv_filter
 from api.db_connection import convert_placeholders, sql_placeholder
 
 controlling_api = Blueprint('controlling_api', __name__)
+
+# =============================================================================
+# KONTEN-RANGES (TAG 179: Zentrale Definitionen)
+# =============================================================================
+
+# Konten-Bereiche für BWA-Berechnungen
+KONTO_RANGES = {
+    'umsatz': (800000, 889999),
+    'umsatz_sonder': (893200, 893299),  # Sonderumsatz (z.B. 8932xx)
+    'einsatz': (700000, 799999),
+    'kosten': (400000, 499999),
+    'neutral': (200000, 299999),  # Neutrales Ergebnis
+}
 
 # =============================================================================
 # SKR51-Kontobezeichnungen (Autohaus-Kontenrahmen)
@@ -406,31 +419,37 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
     firma_filter_umsatz, firma_filter_einsatz, firma_filter_kosten, standort_name = build_firma_standort_filter(firma, standort)
 
     # WICHTIG: G&V-Abschlussbuchungen ausschließen (verfälschen BWA!)
-    # TAG136: %% escaped für PostgreSQL (sonst als Placeholder interpretiert)
-    guv_filter = "AND (posting_text IS NULL OR posting_text NOT LIKE '%%G&V-Abschluss%%')"
+    # TAG 179: Zentrale Funktion verwenden
+    from api.db_utils import get_guv_filter
+    guv_filter = get_guv_filter()
 
     # Umsatz
+    # TAG 179: Konten-Ranges zentral verwenden
+    umsatz_range = KONTO_RANGES['umsatz']
+    umsatz_sonder_range = KONTO_RANGES['umsatz_sonder']
     cursor.execute(convert_placeholders(f"""
         SELECT COALESCE(SUM(
             CASE WHEN debit_or_credit='H' THEN posted_value ELSE -posted_value END
         )/100.0, 0) as wert
         FROM loco_journal_accountings
         WHERE accounting_date >= %s AND accounting_date < %s
-          AND ((nominal_account_number BETWEEN 800000 AND 889999)
-               OR (nominal_account_number BETWEEN 893200 AND 893299))
+          AND ((nominal_account_number BETWEEN {umsatz_range[0]} AND {umsatz_range[1]})
+               OR (nominal_account_number BETWEEN {umsatz_sonder_range[0]} AND {umsatz_sonder_range[1]}))
           {firma_filter_umsatz}
           {guv_filter}
     """), (datum_von, datum_bis))
     umsatz = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
     # Einsatz (TAG157: firma_filter_einsatz für korrekte Standort-Zuordnung!)
+    # TAG 179: Konten-Ranges zentral verwenden
+    einsatz_range = KONTO_RANGES['einsatz']
     cursor.execute(convert_placeholders(f"""
         SELECT COALESCE(SUM(
             CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
         )/100.0, 0) as wert
         FROM loco_journal_accountings
         WHERE accounting_date >= %s AND accounting_date < %s
-          AND nominal_account_number BETWEEN 700000 AND 799999
+          AND nominal_account_number BETWEEN {einsatz_range[0]} AND {einsatz_range[1]}
           {firma_filter_einsatz}
           {guv_filter}
     """), (datum_von, datum_bis))
@@ -508,13 +527,15 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
     indirekte = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
     # Neutrales Ergebnis
+    # TAG 179: Konten-Ranges zentral verwenden
+    neutral_range = KONTO_RANGES['neutral']
     cursor.execute(convert_placeholders(f"""
         SELECT COALESCE(SUM(
             CASE WHEN debit_or_credit='H' THEN posted_value ELSE -posted_value END
         )/100.0, 0) as wert
         FROM loco_journal_accountings
         WHERE accounting_date >= %s AND accounting_date < %s
-          AND nominal_account_number BETWEEN 200000 AND 299999
+          AND nominal_account_number BETWEEN {neutral_range[0]} AND {neutral_range[1]}
           {firma_filter_umsatz}
           {guv_filter}
     """), (datum_von, datum_bis))
@@ -887,8 +908,9 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
     firma_filter_umsatz, firma_filter_einsatz, firma_filter_kosten, _ = build_firma_standort_filter(firma, standort)
 
     # WICHTIG: G&V-Abschlussbuchungen ausschließen (verfälschen BWA!)
-    # TAG136: %% escaped für PostgreSQL (sonst als Placeholder interpretiert)
-    guv_filter = "AND (posting_text IS NULL OR posting_text NOT LIKE '%%G&V-Abschluss%%')"
+    # TAG 179: Zentrale Funktion verwenden
+    from api.db_utils import get_guv_filter
+    guv_filter = get_guv_filter()
 
     # Umsatz YTD
     cursor.execute(convert_placeholders(f"""
@@ -905,13 +927,15 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
     umsatz = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
     # Einsatz YTD (TAG157: firma_filter_einsatz für korrekte Standort-Zuordnung!)
+    # TAG 179: Konten-Ranges zentral verwenden
+    einsatz_range = KONTO_RANGES['einsatz']
     cursor.execute(convert_placeholders(f"""
         SELECT COALESCE(SUM(
             CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
         )/100.0, 0) as wert
         FROM loco_journal_accountings
         WHERE accounting_date >= %s AND accounting_date < %s
-          AND nominal_account_number BETWEEN 700000 AND 799999
+          AND nominal_account_number BETWEEN {einsatz_range[0]} AND {einsatz_range[1]}
           {firma_filter_einsatz}
           {guv_filter}
     """), (datum_von, datum_bis))
@@ -989,13 +1013,15 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
     indirekte = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
     # Neutrales Ergebnis YTD
+    # TAG 179: Konten-Ranges zentral verwenden
+    neutral_range = KONTO_RANGES['neutral']
     cursor.execute(convert_placeholders(f"""
         SELECT COALESCE(SUM(
             CASE WHEN debit_or_credit='H' THEN posted_value ELSE -posted_value END
         )/100.0, 0) as wert
         FROM loco_journal_accountings
         WHERE accounting_date >= %s AND accounting_date < %s
-          AND nominal_account_number BETWEEN 200000 AND 299999
+          AND nominal_account_number BETWEEN {neutral_range[0]} AND {neutral_range[1]}
           {firma_filter_umsatz}
           {guv_filter}
     """), (datum_von, datum_bis))
@@ -1611,7 +1637,9 @@ def get_bwa_v2():
 
         # Filter bauen (TAG157: Jetzt mit separatem Einsatz-Filter!)
         firma_filter_umsatz, firma_filter_einsatz, firma_filter_kosten, standort_name = build_firma_standort_filter(firma, standort)
-        guv_filter = "AND (posting_text IS NULL OR posting_text NOT LIKE '%%G&V-Abschluss%%')"
+        # TAG 179: Zentrale Funktion verwenden
+        from api.db_utils import get_guv_filter
+        guv_filter = get_guv_filter()
 
         with db_session() as conn:
             cursor = conn.cursor()
@@ -2281,7 +2309,8 @@ def get_bwa_v2_drilldown():
 
         # TAG157: Jetzt mit separatem Einsatz-Filter!
         firma_filter_umsatz, firma_filter_einsatz, firma_filter_kosten, standort_name = build_firma_standort_filter(firma, standort)
-        guv_filter = "AND (posting_text IS NULL OR posting_text NOT LIKE '%%G&V-Abschluss%%')"
+        # TAG 179: Zentrale Funktion verwenden
+        guv_filter = get_guv_filter()
 
         # Subsidiary für Kontobezeichnungen: 1=Stellantis, 2=Hyundai
         subsidiary = 2 if firma == '2' else 1

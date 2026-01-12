@@ -115,7 +115,9 @@ def lade_vorjahr_gw(
                 firma_filter_umsatz, firma_filter_einsatz, _, _ = build_bwa_filter('0', '0')
             
             # G&V-Abschlussbuchungen ausschließen
-            guv_filter = "AND (posting_text IS NULL OR posting_text NOT LIKE '%%G&V-Abschluss%%')"
+            # TAG 179: Zentrale Funktion verwenden
+            from api.db_utils import get_guv_filter
+            guv_filter = get_guv_filter()
             
             # Umsatz (820000-829999) - identisch zu BWA v2 API
             # WICHTIG: Nutze die gleiche Logik wie _berechne_bereich_werte in controlling_api.py

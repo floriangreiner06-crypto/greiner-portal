@@ -151,7 +151,7 @@
     <div class="row mb-4">
         <div class="col-12">
             <h1><i class="fas fa-cube me-2"></i>Finanzreporting Cube</h1>
-            <p class="text-muted">Multidimensionale BWA-Analyse mit Materialized Views</p>
+            <p class="text-muted">BWA-Analyse mit erweiterten Visualisierungen und Export-Funktionen</p>
         </div>
     </div>
     
@@ -241,6 +241,12 @@
                 <button class="btn btn-secondary ms-2" onclick="refreshCube()">
                     <i class="fas fa-refresh me-2"></i>Cube aktualisieren
                 </button>
+                <button class="btn btn-success ms-2" onclick="exportData('csv')" id="btnExportCsv" disabled>
+                    <i class="fas fa-file-csv me-2"></i>CSV exportieren
+                </button>
+                <button class="btn btn-success ms-2" onclick="exportData('excel')" id="btnExportExcel" disabled>
+                    <i class="fas fa-file-excel me-2"></i>Excel exportieren
+                </button>
             </div>
         </div>
     </div>
@@ -258,20 +264,20 @@
     <div class="row mb-4" id="kpiCards" style="display: none;">
         <div class="col-md-3">
             <div class="kpi-card">
-                <div class="kpi-label">Total Betrag</div>
+                <div class="kpi-label">Umsatzerlöse</div>
                 <div class="kpi-value" id="kpiBetrag">0,00 €</div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="kpi-card">
-                <div class="kpi-label">Total Menge</div>
-                <div class="kpi-value" id="kpiMenge">0,00</div>
+                <div class="kpi-label">Deckungsbeitrag 1 (DB1)</div>
+                <div class="kpi-value" id="kpiMenge">0,00 €</div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="kpi-card">
-                <div class="kpi-label">Anzahl Datensätze</div>
-                <div class="kpi-value" id="kpiCount">0</div>
+                <div class="kpi-label">Betriebsergebnis</div>
+                <div class="kpi-value" id="kpiCount">0,00 €</div>
             </div>
         </div>
         <div class="col-md-3">
@@ -306,6 +312,7 @@
     'use strict';
     
     let cubeChart = null;
+    let currentCubeData = null; // Aktuelle Daten für Export
     
     // Formatierung
     function fmtEuro(val) {
@@ -343,7 +350,7 @@
         return measures.length > 0 ? measures : ['betrag']; // Fallback: mindestens Betrag
     }
     
-    // Cube-Daten laden
+    // BWA-Daten laden (nutzt bestehende BWA-API)
     async function loadCubeData() {
         const loading = document.getElementById('loading');
         const error = document.getElementById('error');
@@ -359,26 +366,38 @@
         dataTable.style.display = 'none';
         
         // Parameter sammeln
-        const dimensions = getDimensions();
-        const measures = getMeasures();
         const von = document.getElementById('filterVon').value;
         const bis = document.getElementById('filterBis').value;
         const standort = document.getElementById('filterStandort').value;
-        const kontoEbene = document.getElementById('filterKontoEbene').value;
         
-        // URL bauen
+        // Datum parsen
+        const vonDate = new Date(von);
+        const bisDate = new Date(bis);
+        const monat = vonDate.getMonth() + 1;
+        const jahr = vonDate.getFullYear();
+        
+        // Standort-Mapping (DEG=1, HYU=2, LAN=3)
+        let standortId = '0';
+        if (standort === 'DEG') standortId = '1';
+        else if (standort === 'HYU') standortId = '2';
+        else if (standort === 'LAN') standortId = '3';
+        
+        // Firma automatisch ableiten
+        let firma = '0';
+        if (standortId === '2') firma = '2'; // Hyundai
+        else if (standortId === '1' || standortId === '3') firma = '1'; // Stellantis
+        
+        // URL bauen (nutzt bestehende BWA-API)
         const params = new URLSearchParams();
-        params.append('dimensionen', dimensions.join(','));
-        params.append('measures', measures.join(','));
-        if (von) params.append('von', von);
-        if (bis) params.append('bis', bis);
-        if (standort) params.append('standort', standort);
-        if (kontoEbene) params.append('konto_ebene3', kontoEbene);
+        params.append('monat', monat);
+        params.append('jahr', jahr);
+        params.append('firma', firma);
+        params.append('standort', standortId);
         
         const startTime = performance.now();
         
         try {
-            const response = await fetch(`/api/finanzreporting/cube?${params}`);
+            const response = await fetch(`/api/controlling/bwa?${params}`);
             const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
             
             if (!response.ok) {
@@ -397,17 +416,26 @@
             chartContainer.style.display = 'block';
             dataTable.style.display = 'block';
             
-            // KPIs aktualisieren
-            document.getElementById('kpiBetrag').textContent = fmtEuro(result.total?.betrag || 0);
-            document.getElementById('kpiMenge').textContent = fmtNumber(result.total?.menge || 0);
-            document.getElementById('kpiCount').textContent = result.count || 0;
+            // Aktuelle Daten speichern für Export
+            currentCubeData = result;
+            
+            // Export-Buttons aktivieren
+            document.getElementById('btnExportCsv').disabled = false;
+            document.getElementById('btnExportExcel').disabled = false;
+            
+            // KPIs aktualisieren (BWA-spezifisch)
+            // BWA-API gibt Werte in result.data zurück, Werte sind bereits in Euro
+            const bwaData = result.data || {};
+            document.getElementById('kpiBetrag').textContent = fmtEuro(bwaData.umsatz || 0);
+            document.getElementById('kpiMenge').textContent = fmtEuro(bwaData.db1 || 0);
+            document.getElementById('kpiCount').textContent = fmtEuro(bwaData.betriebsergebnis || 0);
             document.getElementById('kpiTime').textContent = `${elapsed}s`;
             
-            // Chart rendern
-            renderChart(result);
+            // Chart rendern (BWA-Daten)
+            renderBWAChart(result);
             
-            // Tabelle rendern
-            renderTable(result);
+            // Tabelle rendern (BWA-Daten)
+            renderBWATable(result);
             
         } catch (err) {
             console.error('Fehler:', err);
@@ -417,7 +445,85 @@
         }
     }
     
-    // Chart rendern
+    // BWA-Chart rendern
+    function renderBWAChart(data) {
+        const ctx = document.getElementById('cubeChart').getContext('2d');
+        
+        // Alten Chart zerstören
+        if (cubeChart) {
+            cubeChart.destroy();
+        }
+        
+        // BWA-Daten aus result.data holen
+        const bwaData = data.data || {};
+        
+        // BWA-Positionen für Chart (Werte sind bereits in Euro)
+        const labels = ['Umsatz', 'Einsatz', 'DB1', 'Variable Kosten', 'DB2', 'Betriebsergebnis'];
+        const values = [
+            bwaData.umsatz || 0,
+            bwaData.einsatz || 0,
+            bwaData.db1 || 0,
+            bwaData.variable || 0,
+            bwaData.db2 || 0,
+            bwaData.betriebsergebnis || 0
+        ];
+        
+        cubeChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Betrag (€)',
+                    data: values,
+                    backgroundColor: [
+                        'rgba(25, 135, 84, 0.5)',   // Umsatz - grün
+                        'rgba(108, 117, 125, 0.5)', // Einsatz - grau
+                        'rgba(13, 110, 253, 0.5)',  // DB1 - blau
+                        'rgba(253, 126, 20, 0.5)',  // Variable - orange
+                        'rgba(111, 66, 193, 0.5)',  // DB2 - lila
+                        'rgba(220, 53, 69, 0.5)'    // BE - rot
+                    ],
+                    borderColor: [
+                        'rgba(25, 135, 84, 1)',
+                        'rgba(108, 117, 125, 1)',
+                        'rgba(13, 110, 253, 1)',
+                        'rgba(253, 126, 20, 1)',
+                        'rgba(111, 66, 193, 1)',
+                        'rgba(220, 53, 69, 1)'
+                    ],
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: {
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Betrag (€)'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return fmtEuro(value);
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return fmtEuro(context.parsed.y);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    // Chart rendern (alte Funktion - für Cube-Daten)
     function renderChart(data) {
         const ctx = document.getElementById('cubeChart').getContext('2d');
         
@@ -519,7 +625,64 @@
         });
     }
     
-    // Tabelle rendern
+    // BWA-Tabelle rendern
+    function renderBWATable(data) {
+        const thead = document.getElementById('tableHead');
+        const tbody = document.getElementById('tableBody');
+        
+        // BWA-Daten aus result.data holen
+        const bwaData = data.data || {};
+        const vorjahrData = data.vorjahr || {};
+        const abweichungen = data.abweichungen || {};
+        
+        // Header
+        thead.innerHTML = `
+            <tr>
+                <th>Position</th>
+                <th class="text-end">Betrag (€)</th>
+                <th class="text-end">Vorjahr (€)</th>
+                <th class="text-end">Abweichung (%)</th>
+            </tr>
+        `;
+        
+        // Body - BWA-Positionen
+        const positions = [
+            { key: 'umsatz', label: 'Umsatzerlöse' },
+            { key: 'einsatz', label: 'Einsatzwerte' },
+            { key: 'db1', label: 'Deckungsbeitrag 1 (DB1)' },
+            { key: 'variable', label: 'Variable Kosten' },
+            { key: 'db2', label: 'Deckungsbeitrag 2 (DB2)' },
+            { key: 'direkte', label: 'Direkte Kosten' },
+            { key: 'indirekte', label: 'Indirekte Kosten' },
+            { key: 'db3', label: 'Deckungsbeitrag 3 (DB3)' },
+            { key: 'betriebsergebnis', label: 'Betriebsergebnis' },
+            { key: 'neutral', label: 'Neutrale Erträge/Aufwendungen' },
+            { key: 'unternehmensergebnis', label: 'Unternehmensergebnis' }
+        ];
+        
+        let bodyHtml = '';
+        positions.forEach(pos => {
+            // BWA-API gibt Werte bereits in Euro zurück
+            const wert = bwaData[pos.key] || 0;
+            const vorjahr = vorjahrData[pos.key] || 0;
+            const abweichung = abweichungen[pos.key] || 0;
+            
+            bodyHtml += `
+                <tr>
+                    <td>${pos.label}</td>
+                    <td class="text-end">${fmtEuro(wert)}</td>
+                    <td class="text-end">${fmtEuro(vorjahr)}</td>
+                    <td class="text-end ${abweichung >= 0 ? 'val-pos' : 'val-neg'}">
+                        ${abweichung > 0 ? '+' : ''}${abweichung.toFixed(1)}%
+                    </td>
+                </tr>
+            `;
+        });
+        
+        tbody.innerHTML = bodyHtml;
+    }
+    
+    // Tabelle rendern (alte Funktion - für Cube-Daten)
     function renderTable(data) {
         const thead = document.getElementById('tableHead');
         const tbody = document.getElementById('tableBody');
@@ -589,6 +752,165 @@
         }
     }
     
+    // Export-Funktion
+    async function exportData(format) {
+        if (!currentCubeData) {
+            alert('Bitte laden Sie zuerst Daten!');
+            return;
+        }
+        
+        // Parameter sammeln (BWA-API)
+        const von = document.getElementById('filterVon').value;
+        const bis = document.getElementById('filterBis').value;
+        const standort = document.getElementById('filterStandort').value;
+        
+        // Datum parsen
+        const vonDate = new Date(von);
+        const monat = vonDate.getMonth() + 1;
+        const jahr = vonDate.getFullYear();
+        
+        // Standort-Mapping
+        let standortId = '0';
+        if (standort === 'DEG') standortId = '1';
+        else if (standort === 'HYU') standortId = '2';
+        else if (standort === 'LAN') standortId = '3';
+        
+        // Firma automatisch ableiten
+        let firma = '0';
+        if (standortId === '2') firma = '2';
+        else if (standortId === '1' || standortId === '3') firma = '1';
+        
+        // URL bauen (BWA-API)
+        const params = new URLSearchParams();
+        params.append('format', format);
+        params.append('monat', monat);
+        params.append('jahr', jahr);
+        params.append('firma', firma);
+        params.append('standort', standortId);
+        
+        try {
+            // BWA-Daten laden
+            const params2 = new URLSearchParams();
+            params2.append('monat', monat);
+            params2.append('jahr', jahr);
+            params2.append('firma', firma);
+            params2.append('standort', standortId);
+            
+            const response = await fetch(`/api/controlling/bwa?${params2}`);
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || `HTTP ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            // CSV/Excel im Frontend generieren
+            if (format === 'csv') {
+                // CSV generieren
+                const csvRows = [];
+                
+                // Header
+                csvRows.push('Position;Betrag (€);Vorjahr (€);Abweichung (%)');
+                
+                // BWA-Positionen
+                const positions = [
+                    { key: 'umsatz', label: 'Umsatzerlöse' },
+                    { key: 'einsatz', label: 'Einsatzwerte' },
+                    { key: 'db1', label: 'Deckungsbeitrag 1 (DB1)' },
+                    { key: 'variable', label: 'Variable Kosten' },
+                    { key: 'db2', label: 'Deckungsbeitrag 2 (DB2)' },
+                    { key: 'direkte', label: 'Direkte Kosten' },
+                    { key: 'indirekte', label: 'Indirekte Kosten' },
+                    { key: 'db3', label: 'Deckungsbeitrag 3 (DB3)' },
+                    { key: 'betriebsergebnis', label: 'Betriebsergebnis' },
+                    { key: 'neutral', label: 'Neutrale Erträge/Aufwendungen' },
+                    { key: 'unternehmensergebnis', label: 'Unternehmensergebnis' }
+                ];
+                
+                const bwaData = data.data || {};
+                const vorjahrData = data.vorjahr || {};
+                const abweichungen = data.abweichungen || {};
+                
+                positions.forEach(pos => {
+                    const wert = bwaData[pos.key] || 0;
+                    const vorjahr = vorjahrData[pos.key] || 0;
+                    const abweichung = abweichungen[pos.key] || 0;
+                    csvRows.push(`${pos.label};${wert.toFixed(2).replace('.', ',')};${vorjahr.toFixed(2).replace('.', ',')};${abweichung.toFixed(1).replace('.', ',')}`);
+                });
+                
+                // Download
+                const csvContent = csvRows.join('\n');
+                const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `bwa_${jahr}_${String(monat).padStart(2, '0')}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+            } else if (format === 'excel') {
+                // Excel generieren (vereinfacht als CSV mit .xlsx-Endung)
+                alert('Excel-Export wird als CSV mit .xlsx-Endung gespeichert. Für vollständigen Excel-Export bitte CSV verwenden und in Excel öffnen.');
+                exportData('csv'); // Fallback auf CSV
+            }
+            
+        } catch (err) {
+            console.error('Export-Fehler:', err);
+            alert('Fehler beim Export: ' + err.message);
+        }
+    }
+    
+    // Metadaten laden (für Dropdowns)
+    async function loadMetadata() {
+        try {
+            const response = await fetch('/api/finanzreporting/cube/metadata');
+            if (!response.ok) {
+                console.warn('Metadaten konnten nicht geladen werden');
+                return;
+            }
+            
+            const metadata = await response.json();
+            
+            // Standorte-Dropdown befüllen
+            const standortSelect = document.getElementById('filterStandort');
+            if (metadata.standorte && metadata.standorte.length > 0) {
+                // "Alle" Option behalten, dann Standorte hinzufügen
+                standortSelect.innerHTML = '<option value="">Alle</option>';
+                metadata.standorte.forEach(standort => {
+                    const option = document.createElement('option');
+                    option.value = standort.code;
+                    option.textContent = `${standort.code} - ${standort.name}`;
+                    standortSelect.appendChild(option);
+                });
+            }
+            
+            // Konto-Ebenen-Dropdown befüllen
+            const kontoEbeneSelect = document.getElementById('filterKontoEbene');
+            if (metadata.konto_ebenen && metadata.konto_ebenen.length > 0) {
+                // "Alle" Option behalten, dann Ebenen hinzufügen
+                kontoEbeneSelect.innerHTML = '<option value="">Alle</option>';
+                metadata.konto_ebenen.forEach(ebene => {
+                    const option = document.createElement('option');
+                    option.value = ebene.id;
+                    option.textContent = `${ebene.name} (${ebene.id}xxx)`;
+                    kontoEbeneSelect.appendChild(option);
+                });
+            }
+            
+        } catch (err) {
+            console.warn('Fehler beim Laden der Metadaten:', err);
+            // Fallback: Dropdowns bleiben mit Hardcoded-Werten
+        }
+    }
+    
+    // Funktionen global verfügbar machen (für onclick-Handler)
+    window.loadCubeData = loadCubeData;
+    window.refreshCube = refreshCube;
+    window.exportData = exportData;
+    
     // Init
     document.addEventListener('DOMContentLoaded', function() {
         // Heute als Standard setzen
@@ -600,6 +922,9 @@
         
         document.getElementById('filterVon').value = vorJahr.toISOString().split('T')[0];
         document.getElementById('filterBis').value = heute.toISOString().split('T')[0];
+        
+        // Metadaten laden (für Dropdowns)
+        loadMetadata();
         
         // Initial laden
         // loadCubeData(); // Auskommentiert, damit User explizit laden muss

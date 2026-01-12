@@ -5,134 +5,337 @@
 {% block extra_css %}
 <style>
     /* =========================================
-       BWA v2 - GlobalCube-Struktur
-       Bruttoerträge nach Bereichen
+       BWA v2 - Compact Design (Excel-ähnlich)
+       Maximale Informationsdichte, Fokus auf Zahlen
        ========================================= */
-
-    /* KPI-Karten oben */
-    .kpi-row { margin-bottom: 1rem; }
-    .kpi-card {
-        background: #fff;
-        border-radius: 8px;
+    
+    body {
+        background: #ffffff;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        font-size: 13px;
+    }
+    
+    .container-fluid {
+        padding: 1rem;
+        max-width: 1800px;
+        margin: 0 auto;
+    }
+    
+    /* =========================================
+       HEADER - Kompakt
+       ========================================= */
+    .header-compact {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
         padding: 0.75rem 1rem;
-        border-left: 4px solid;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        height: 100%;
+        border-bottom: 2px solid #0d6efd;
+        margin-bottom: 0.75rem;
     }
-    .kpi-card.kpi-umsatz { border-left-color: #198754; }
-    .kpi-card.kpi-einsatz { border-left-color: #6c757d; }
-    .kpi-card.kpi-db1 { border-left-color: #0d6efd; }
-    .kpi-card.kpi-variable { border-left-color: #fd7e14; }
-    .kpi-card.kpi-db2 { border-left-color: #6f42c1; }
-    .kpi-card.kpi-be { border-left-color: #dc3545; }
-    .kpi-card.kpi-ue { border-left-color: #20c997; }
-    .kpi-label { font-size: 0.7rem; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px; }
-    .kpi-value { font-size: 1.3rem; font-weight: 700; line-height: 1.2; }
-    .kpi-delta { font-size: 0.75rem; }
-
-    /* WJ-Fortschritt */
-    .wj-bar {
-        background: #f8f9fa;
-        border-radius: 8px;
+    
+    .header-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #212529;
+        margin: 0;
+    }
+    
+    .header-meta {
+        font-size: 0.85rem;
+        color: #6c757d;
+        margin-top: 0.25rem;
+    }
+    
+    /* =========================================
+       FILTER - Inline, kompakt
+       ========================================= */
+    .filter-inline {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
         padding: 0.5rem 1rem;
-        margin-bottom: 1rem;
+        background: #f8f9fa;
+        border-bottom: 1px solid #dee2e6;
+        margin-bottom: 0.5rem;
+        flex-wrap: wrap;
     }
-    .wj-progress {
-        height: 8px;
-        background: #e9ecef;
-        border-radius: 4px;
-        overflow: hidden;
-        margin: 0.5rem 0;
+    
+    .filter-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
     }
-    .wj-progress-fill {
-        height: 100%;
-        background: linear-gradient(90deg, #0d6efd, #198754);
-        transition: width 0.5s;
-    }
-
-    /* Haupttabelle */
-    .bwa-table { font-size: 0.9rem; margin-bottom: 0; }
-    .bwa-table th {
-        background: #343a40;
-        color: #fff;
-        font-weight: 500;
-        padding: 0.5rem;
+    
+    .filter-item label {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #495057;
+        margin: 0;
         white-space: nowrap;
     }
-    .bwa-table td { padding: 0.5rem 0.75rem; vertical-align: middle; }
-    .bwa-table .text-end { text-align: right; }
-
-    /* Zeilen-Typen */
-    .row-header {
+    
+    /* =========================================
+       KPI-ROW - Kompakt, horizontal
+       ========================================= */
+    .kpi-compact-row {
+        display: flex;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+        background: #f8f9fa;
+        border-bottom: 1px solid #dee2e6;
+        margin-bottom: 0.5rem;
+        flex-wrap: wrap;
+    }
+    
+    .kpi-item {
+        display: flex;
+        flex-direction: column;
+        min-width: 140px;
+        padding-right: 0.75rem;
+        border-right: 1px solid #dee2e6;
+    }
+    
+    .kpi-item:last-child {
+        border-right: none;
+    }
+    
+    .kpi-label-small {
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: #6c757d;
+        text-transform: uppercase;
+        margin-bottom: 0.25rem;
+    }
+    
+    .kpi-value-compact {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #212529;
+        line-height: 1.2;
+    }
+    
+    .kpi-delta-small {
+        font-size: 0.75rem;
+        color: #6c757d;
+        margin-top: 0.15rem;
+    }
+    
+    .kpi-delta-small.positive { color: #198754; }
+    .kpi-delta-small.negative { color: #dc3545; }
+    
+    /* =========================================
+       WJ-Info kompakt
+       ========================================= */
+    .wj-compact {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem 1rem;
+        background: #f8f9fa;
+        border-bottom: 1px solid #dee2e6;
+        margin-bottom: 0.5rem;
+        font-size: 0.85rem;
+    }
+    
+    .wj-progress-mini {
+        width: 150px;
+        height: 4px;
+        background: #e9ecef;
+        border-radius: 2px;
+        overflow: hidden;
+    }
+    
+    .wj-progress-mini-fill {
+        height: 100%;
+        background: #0d6efd;
+        transition: width 0.3s;
+    }
+    
+    /* =========================================
+       TABELLE - Excel-ähnlich, kompakt
+       ========================================= */
+    .table-wrapper {
+        background: white;
+        border: 1px solid #dee2e6;
+        position: relative;
+    }
+    
+    .table-compact {
+        margin: 0;
+        font-size: 0.85rem;
+        border-collapse: collapse;
+    }
+    
+    .table-compact thead th {
+        background: #343a40;
+        color: white;
+        font-weight: 600;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid #495057;
+        white-space: nowrap;
+        font-size: 0.8rem;
+        text-align: center;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+    
+    .table-compact thead th.text-start {
+        text-align: left;
+    }
+    
+    .table-compact thead th.text-end {
+        text-align: right;
+    }
+    
+    .table-compact tbody td {
+        padding: 0.5rem 0.75rem;
+        border: 1px solid #e9ecef;
+        vertical-align: middle;
+    }
+    
+    .table-compact tbody tr:hover {
+        background: #f8f9fa;
+    }
+    
+    .table-compact tbody tr.row-header {
         background: #495057;
-        color: #fff;
+        color: white;
         font-weight: 600;
     }
-    .row-sum {
+    
+    .table-compact tbody tr.row-sum {
         background: #e9ecef;
         font-weight: 600;
     }
-    .row-bereich {
+    
+    .table-compact tbody tr.row-bereich {
         cursor: pointer;
-        transition: background 0.15s;
     }
-    .row-bereich:hover { background: #e3f2fd !important; }
-    .row-bereich td:first-child { padding-left: 2rem; }
-    .row-result {
-        background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+    
+    .table-compact tbody tr.row-bereich:hover {
+        background: #e3f2fd;
+    }
+    
+    .table-compact tbody tr.row-result {
+        background: #d4edda;
         font-weight: 700;
     }
-
-    /* Werte-Formatierung */
-    .val-pos { color: #198754; }
-    .val-neg { color: #dc3545; }
-    .val-muted { color: #6c757d; }
-
-    /* Delta-Badges */
-    .delta {
-        font-size: 0.7rem;
-        padding: 0.1rem 0.4rem;
-        border-radius: 3px;
-        display: inline-flex;
-        align-items: center;
-        gap: 2px;
+    
+    .table-compact tbody tr.row-highlight {
+        background: #fff3cd;
     }
-    .delta-pos { background: #d1e7dd; color: #0f5132; }
-    .delta-neg { background: #f8d7da; color: #842029; }
-    .delta-neutral { background: #e9ecef; color: #6c757d; }
-
-    /* Bereichs-Icons */
-    .bereich-icon {
-        display: inline-flex;
-        width: 24px;
-        height: 24px;
-        border-radius: 4px;
-        align-items: center;
-        justify-content: center;
+    
+    /* Zahlen-Formatierung - Monospace */
+    .number {
+        font-family: 'Courier New', monospace;
+        font-weight: 600;
+        text-align: right;
+    }
+    
+    .number.positive {
+        color: #198754;
+    }
+    
+    .number.negative {
+        color: #dc3545;
+    }
+    
+    .number.large {
+        font-size: 0.95rem;
+    }
+    
+    .number.medium {
+        font-size: 0.9rem;
+    }
+    
+    /* Bereich-Icons kompakt */
+    .icon-small {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border-radius: 2px;
+        text-align: center;
+        line-height: 20px;
+        font-size: 0.65rem;
+        font-weight: 700;
+        color: white;
+        margin-right: 0.4rem;
+    }
+    
+    .icon-small.nw { background: #0d6efd; }
+    .icon-small.gw { background: #fd7e14; }
+    .icon-small.me { background: #6f42c1; }
+    .icon-small.tz { background: #20c997; }
+    .icon-small.mw { background: #6c757d; }
+    .icon-small.so { background: #adb5bd; }
+    
+    /* Delta kompakt */
+    .delta-inline {
         font-size: 0.75rem;
-        font-weight: 700;
-        color: #fff;
-        margin-right: 0.5rem;
+        font-weight: 600;
+        padding: 0.1rem 0.4rem;
+        border-radius: 2px;
+        display: inline-block;
     }
-    .bereich-icon.nw { background: #0d6efd; }
-    .bereich-icon.gw { background: #fd7e14; }
-    .bereich-icon.me { background: #6f42c1; }
-    .bereich-icon.tz { background: #20c997; }
-    .bereich-icon.mw { background: #6c757d; }
-    .bereich-icon.so { background: #adb5bd; }
-
-    /* Klappbare Bereich-Header im Modal */
-    .bereich-header:hover { filter: brightness(0.95); }
-    .bereich-chevron { transition: transform 0.2s; width: 12px; }
-
-    /* Filter-Bereich */
-    .filter-row {
+    
+    .delta-inline.positive {
+        background: #d1e7dd;
+        color: #0f5132;
+    }
+    
+    .delta-inline.negative {
+        background: #f8d7da;
+        color: #842029;
+    }
+    
+    .delta-inline.neutral {
+        background: #e9ecef;
+        color: #6c757d;
+    }
+    
+    /* Scrollbar für große Tabellen */
+    .table-scroll {
+        max-height: calc(100vh - 350px);
+        overflow-y: auto;
+        overflow-x: auto;
+    }
+    
+    .table-scroll::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    
+    .table-scroll::-webkit-scrollbar-track {
+        background: #f1f1f1;
+    }
+    
+    .table-scroll::-webkit-scrollbar-thumb {
+        background: #888;
+        border-radius: 4px;
+    }
+    
+    .table-scroll::-webkit-scrollbar-thumb:hover {
+        background: #555;
+    }
+    
+    /* Legende kompakt */
+    .legend-compact {
+        display: flex;
+        gap: 1rem;
+        padding: 0.5rem 1rem;
         background: #f8f9fa;
-        border-radius: 8px;
-        padding: 1rem;
-        margin-bottom: 1rem;
+        border-top: 1px solid #dee2e6;
+        font-size: 0.75rem;
+        flex-wrap: wrap;
     }
-
+    
+    .legend-item-compact {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+    
     /* Loading */
     .loading-overlay {
         position: absolute;
@@ -143,160 +346,192 @@
         justify-content: center;
         z-index: 10;
     }
+    
+    /* Alte Klassen für Kompatibilität */
+    .val-pos { color: #198754; font-weight: 600; }
+    .val-neg { color: #dc3545; font-weight: 600; }
+    .val-muted { color: #6c757d; }
+    
+    /* Bereich-Icons (alte Klasse für Kompatibilität) */
+    .bereich-icon {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border-radius: 2px;
+        text-align: center;
+        line-height: 20px;
+        font-size: 0.65rem;
+        font-weight: 700;
+        color: white;
+        margin-right: 0.4rem;
+    }
+    .bereich-icon.nw { background: #0d6efd; }
+    .bereich-icon.gw { background: #fd7e14; }
+    .bereich-icon.me { background: #6f42c1; }
+    .bereich-icon.tz { background: #20c997; }
+    .bereich-icon.mw { background: #6c757d; }
+    .bereich-icon.so { background: #adb5bd; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid py-3">
+<div class="container-fluid py-2">
     <!-- Header -->
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h4 class="mb-0">
-            <i class="fas fa-chart-line me-2"></i>BWA - Betriebswirtschaftliche Auswertung
-            <small class="text-muted fs-6 ms-2" id="bwa-subtitle"></small>
-        </h4>
-        <div class="btn-group btn-group-sm">
-            <a href="/controlling/bwa/archiv" class="btn btn-outline-secondary" title="Alte BWA Version">
-                <i class="fas fa-archive"></i>
+    <div class="header-compact">
+        <div>
+            <h5 class="header-title">
+                <i class="bi bi-table me-2"></i>
+                BWA - Betriebswirtschaftliche Auswertung
+            </h5>
+            <div class="header-meta" id="bwa-subtitle"></div>
+        </div>
+        <div>
+            <a href="/controlling/bwa/archiv" class="btn btn-sm btn-outline-secondary me-1" title="Alte BWA Version">
+                <i class="bi bi-archive"></i>
             </a>
+            <button class="btn btn-sm btn-outline-secondary me-1">
+                <i class="bi bi-download"></i> Export
+            </button>
+            <button class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-printer"></i> Drucken
+            </button>
         </div>
     </div>
-
-    <!-- Filter -->
-    <div class="filter-row">
-        <div class="row g-2 align-items-end">
-            <div class="col-auto">
-                <label class="form-label mb-1 small">Monat</label>
-                <select id="filterMonat" class="form-select form-select-sm" style="width: 120px;">
-                    <option value="1">Januar</option>
-                    <option value="2">Februar</option>
-                    <option value="3">März</option>
-                    <option value="4">April</option>
-                    <option value="5">Mai</option>
-                    <option value="6">Juni</option>
-                    <option value="7">Juli</option>
-                    <option value="8">August</option>
-                    <option value="9">September</option>
-                    <option value="10">Oktober</option>
-                    <option value="11">November</option>
-                    <option value="12">Dezember</option>
-                </select>
-            </div>
-            <div class="col-auto">
-                <label class="form-label mb-1 small">Jahr</label>
-                <select id="filterJahr" class="form-select form-select-sm" style="width: 100px;">
-                    <option value="2026">2026</option>
-                    <option value="2025">2025</option>
-                    <option value="2024">2024</option>
-                    <option value="2023">2023</option>
-                </select>
-            </div>
-            <!-- Standort-Filter Tabs (zentrales Component) - setzt automatisch Firma -->
-            <div class="col-auto">
-                {% set current_standort = standort %}
-                {% set show_konsolidiert = true %}
-                {% set additional_params = {'monat': request.args.get('monat', ''), 'jahr': request.args.get('jahr', '')} %}
-                {% include 'components/standort_filter_tabs.html' %}
-            </div>
-            <div class="col-auto">
-                <button id="btnLaden" class="btn btn-primary btn-sm">
-                    <i class="fas fa-sync-alt me-1"></i>Laden
-                </button>
-            </div>
+    
+    <!-- Filter Inline -->
+    <div class="filter-inline">
+        <div class="filter-item">
+            <label>Monat:</label>
+            <select id="filterMonat" class="form-select form-select-sm" style="width: 120px;">
+                <option value="1">Januar</option>
+                <option value="2">Februar</option>
+                <option value="3">März</option>
+                <option value="4">April</option>
+                <option value="5">Mai</option>
+                <option value="6">Juni</option>
+                <option value="7">Juli</option>
+                <option value="8">August</option>
+                <option value="9">September</option>
+                <option value="10">Oktober</option>
+                <option value="11">November</option>
+                <option value="12">Dezember</option>
+            </select>
+        </div>
+        <div class="filter-item">
+            <label>Jahr:</label>
+            <select id="filterJahr" class="form-select form-select-sm" style="width: 90px;">
+                <option value="2026">2026</option>
+                <option value="2025">2025</option>
+                <option value="2024">2024</option>
+                <option value="2023">2023</option>
+            </select>
+        </div>
+        <div class="filter-item">
+            <label>Standort:</label>
+            {% set current_standort = standort %}
+            {% set show_konsolidiert = true %}
+            {% set additional_params = {'monat': request.args.get('monat', ''), 'jahr': request.args.get('jahr', '')} %}
+            {% include 'components/standort_filter_tabs.html' %}
+        </div>
+        <div class="filter-item">
+            <button id="btnLaden" class="btn btn-primary btn-sm">
+                <i class="bi bi-arrow-clockwise me-1"></i>Laden
+            </button>
         </div>
     </div>
-
-    <!-- WJ-Fortschritt -->
-    <div class="wj-bar">
-        <div class="d-flex justify-content-between align-items-center">
-            <span class="small">
-                <strong>Wirtschaftsjahr 2025/26</strong>
-                <span class="text-muted ms-2" id="wj-range">(Sep 2025 - Aug 2026)</span>
-            </span>
-            <span class="small text-muted" id="wj-monat-label">Monat 2 von 12</span>
+    
+    <!-- WJ-Info kompakt -->
+    <div class="wj-compact">
+        <div>
+            <strong>Wirtschaftsjahr <span id="wj-year">2025/26</span></strong> <span class="text-muted" id="wj-range">(Sep 2025 - Aug 2026)</span> | <span class="text-muted" id="wj-monat-label">Monat 2 von 12</span>
         </div>
-        <div class="wj-progress">
-            <div class="wj-progress-fill" id="wj-progress-bar" style="width: 16.7%"></div>
+        <div class="wj-progress-mini">
+            <div class="wj-progress-mini-fill" id="wj-progress-bar" style="width: 16.7%"></div>
         </div>
     </div>
-
-    <!-- KPI-Karten -->
-    <div class="row kpi-row g-2 mb-3">
-        <div class="col">
-            <div class="kpi-card kpi-umsatz">
-                <div class="kpi-label">Umsatzerlöse</div>
-                <div class="kpi-value" id="kpi-umsatz">-</div>
-                <div class="kpi-delta" id="kpi-umsatz-delta"></div>
-            </div>
+    
+    <!-- KPI-Row kompakt -->
+    <div class="kpi-compact-row">
+        <div class="kpi-item">
+            <div class="kpi-label-small">Umsatzerlöse</div>
+            <div class="kpi-value-compact" id="kpi-umsatz">-</div>
+            <div class="kpi-delta-small" id="kpi-umsatz-delta"></div>
         </div>
-        <div class="col">
-            <div class="kpi-card kpi-db1">
-                <div class="kpi-label">Bruttoertrag (DB1)</div>
-                <div class="kpi-value" id="kpi-db1">-</div>
-                <div class="kpi-delta" id="kpi-db1-delta"></div>
-            </div>
+        <div class="kpi-item">
+            <div class="kpi-label-small">Bruttoertrag (DB1)</div>
+            <div class="kpi-value-compact" id="kpi-db1">-</div>
+            <div class="kpi-delta-small" id="kpi-db1-delta"></div>
         </div>
-        <div class="col">
-            <div class="kpi-card kpi-db2">
-                <div class="kpi-label">Deckungsbeitrag 2</div>
-                <div class="kpi-value" id="kpi-db2">-</div>
-                <div class="kpi-delta" id="kpi-db2-delta"></div>
-            </div>
+        <div class="kpi-item">
+            <div class="kpi-label-small">Deckungsbeitrag 2</div>
+            <div class="kpi-value-compact" id="kpi-db2">-</div>
+            <div class="kpi-delta-small" id="kpi-db2-delta"></div>
         </div>
-        <div class="col">
-            <div class="kpi-card kpi-be">
-                <div class="kpi-label">Betriebsergebnis</div>
-                <div class="kpi-value" id="kpi-be">-</div>
-                <div class="kpi-delta" id="kpi-be-delta"></div>
-            </div>
+        <div class="kpi-item">
+            <div class="kpi-label-small">Betriebsergebnis</div>
+            <div class="kpi-value-compact" id="kpi-be">-</div>
+            <div class="kpi-delta-small" id="kpi-be-delta"></div>
         </div>
-        <div class="col">
-            <div class="kpi-card kpi-ue">
-                <div class="kpi-label">Unternehmensergebnis</div>
-                <div class="kpi-value" id="kpi-ue">-</div>
-                <div class="kpi-delta" id="kpi-ue-delta"></div>
-            </div>
+        <div class="kpi-item">
+            <div class="kpi-label-small">Unternehmensergebnis</div>
+            <div class="kpi-value-compact" id="kpi-ue">-</div>
+            <div class="kpi-delta-small" id="kpi-ue-delta"></div>
         </div>
     </div>
-
-    <!-- Haupttabelle - GlobalCube Struktur -->
-    <div class="card shadow-sm">
-        <div class="card-body p-0 position-relative">
+    
+    <!-- Haupttabelle - Excel-ähnlich -->
+    <div class="table-wrapper">
+        <div class="table-scroll position-relative">
             <div class="loading-overlay d-none" id="loading">
                 <div class="spinner-border text-primary" role="status">
                     <span class="visually-hidden">Laden...</span>
                 </div>
             </div>
-            <div class="table-responsive">
-                <table class="table table-bordered bwa-table mb-0">
-                    <thead>
-                        <tr>
-                            <th style="width: 28%">Position</th>
-                            <th class="text-center" style="width: 5%">Stk.<br>Monat</th>
-                            <th class="text-end" style="width: 10%">Monat</th>
-                            <th class="text-end" style="width: 10%">Vorjahr</th>
-                            <th class="text-center" style="width: 6%">Abw.</th>
-                            <th class="text-end" style="width: 9%">YTD</th>
-                            <th class="text-end" style="width: 9%">YTD Vorjahr</th>
-                            <th class="text-center" style="width: 6%">Abw. YTD</th>
-                        </tr>
-                    </thead>
-                    <tbody id="bwa-body">
-                        <!-- Wird per JavaScript gefüllt -->
-                    </tbody>
-                </table>
-            </div>
+            <table class="table table-compact mb-0">
+                <thead>
+                    <tr>
+                        <th class="text-start" style="width: 25%">Position</th>
+                        <th style="width: 5%">Stk.<br>Monat</th>
+                        <th class="text-end" style="width: 9%">Monat</th>
+                        <th class="text-end" style="width: 9%">Vorjahr</th>
+                        <th style="width: 6%">Abw.</th>
+                        <th class="text-end" style="width: 9%">YTD</th>
+                        <th class="text-end" style="width: 9%">YTD Vorjahr</th>
+                        <th style="width: 6%">Abw. YTD</th>
+                    </tr>
+                </thead>
+                <tbody id="bwa-body">
+                    <!-- Wird per JavaScript gefüllt -->
+                </tbody>
+            </table>
         </div>
     </div>
-
-    <!-- Legende -->
-    <div class="mt-3 small text-muted">
-        <div class="d-flex gap-4 flex-wrap">
-            <span><span class="bereich-icon nw">NW</span> Neuwagen</span>
-            <span><span class="bereich-icon gw">GW</span> Gebrauchtwagen</span>
-            <span><span class="bereich-icon me">ME</span> Mechanik/Lohn</span>
-            <span><span class="bereich-icon tz">TZ</span> Teile & Zubehör</span>
-            <span><span class="bereich-icon mw">MW</span> Mietwagen</span>
-            <span><span class="bereich-icon so">SO</span> Sonstige</span>
+    
+    <!-- Legende kompakt -->
+    <div class="legend-compact">
+        <div class="legend-item-compact">
+            <span class="icon-small nw">NW</span>
+            <span>Neuwagen</span>
+        </div>
+        <div class="legend-item-compact">
+            <span class="icon-small gw">GW</span>
+            <span>Gebrauchtwagen</span>
+        </div>
+        <div class="legend-item-compact">
+            <span class="icon-small me">ME</span>
+            <span>Mechanik/Lohn</span>
+        </div>
+        <div class="legend-item-compact">
+            <span class="icon-small tz">TZ</span>
+            <span>Teile & Zubehör</span>
+        </div>
+        <div class="legend-item-compact">
+            <span class="icon-small mw">MW</span>
+            <span>Mietwagen</span>
+        </div>
+        <div class="legend-item-compact">
+            <span class="icon-small so">SO</span>
+            <span>Sonstige</span>
         </div>
     </div>
 </div>
@@ -375,25 +610,26 @@
     function renderDelta(delta, invert = false) {
         if (delta === null || delta === undefined) return '';
         const isPositive = invert ? delta < 0 : delta > 0;
-        const cls = Math.abs(delta) < 1 ? 'delta-neutral' : (isPositive ? 'delta-pos' : 'delta-neg');
+        const cls = Math.abs(delta) < 1 ? 'delta-inline neutral' : (isPositive ? 'delta-inline positive' : 'delta-inline negative');
         const icon = isPositive ? '↑' : (delta < 0 ? '↓' : '→');
-        return `<span class="delta ${cls}">${icon} ${Math.abs(delta).toFixed(1)}%</span>`;
+        return `<span class="${cls}">${icon} ${Math.abs(delta).toFixed(1)}%</span>`;
     }
 
-    function renderValue(val, addClass = '') {
+    function renderValue(val, addClass = '', size = 'large') {
         if (val === null || val === undefined) return '<span class="val-muted">-</span>';
-        const cls = val > 0 ? 'val-pos' : (val < 0 ? 'val-neg' : 'val-muted');
-        return `<span class="${cls} ${addClass}">${fmtEuro(val)}</span>`;
+        const cls = val > 0 ? 'number positive' : (val < 0 ? 'number negative' : 'val-muted');
+        const sizeClass = size === 'large' ? 'large' : 'medium';
+        return `<span class="${cls} ${sizeClass}">${fmtEuro(val)}</span>`;
     }
 
-    // Bereichs-Icons
+    // Bereichs-Icons (kompakt)
     const bereichIcons = {
-        'NW': '<span class="bereich-icon nw">NW</span>',
-        'GW': '<span class="bereich-icon gw">GW</span>',
-        'ME': '<span class="bereich-icon me">ME</span>',
-        'TZ': '<span class="bereich-icon tz">TZ</span>',
-        'MW': '<span class="bereich-icon mw">MW</span>',
-        'SO': '<span class="bereich-icon so">SO</span>'
+        'NW': '<span class="icon-small nw">NW</span>',
+        'GW': '<span class="icon-small gw">GW</span>',
+        'ME': '<span class="icon-small me">ME</span>',
+        'TZ': '<span class="icon-small tz">TZ</span>',
+        'MW': '<span class="icon-small mw">MW</span>',
+        'SO': '<span class="icon-small so">SO</span>'
     };
 
     // TAG 177: Standort aus URL lesen (Tab-Navigation)
@@ -500,6 +736,7 @@
         const monat = parseInt(document.getElementById('filterMonat').value);
         const jahr = parseInt(document.getElementById('filterJahr').value);
         const wjStart = monat >= 9 ? jahr : jahr - 1;
+        document.getElementById('wj-year').textContent = `${wjStart}/${wjStart + 1}`;
         document.getElementById('wj-range').textContent = `(Sep ${wjStart} - Aug ${wjStart + 1})`;
 
         // KPI-Karten
@@ -515,31 +752,31 @@
 
         // 1. Umsatzerlöse - klickbar
         html += `<tr class="row-sum row-bereich" data-drilldown="umsatz" title="Klicken für Details">
-            <td><i class="fas fa-arrow-up text-success me-2"></i><strong>Umsatzerlöse</strong></td>
+            <td><strong>Umsatzerlöse</strong></td>
             <td class="text-center">-</td>
-            <td class="text-end">${renderValue(aktuell.umsatz)}</td>
-            <td class="text-end">${renderValue(vorjahr.umsatz)}</td>
+            <td class="text-end">${renderValue(aktuell.umsatz, '', 'large')}</td>
+            <td class="text-end">${renderValue(vorjahr.umsatz, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.umsatz, vorjahr.umsatz))}</td>
-            <td class="text-end">${renderValue(ytd.umsatz)}</td>
-            <td class="text-end">${renderValue(ytd_vorjahr.umsatz || 0)}</td>
+            <td class="text-end">${renderValue(ytd.umsatz, '', 'large')}</td>
+            <td class="text-end">${renderValue(ytd_vorjahr.umsatz || 0, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(ytd.umsatz, ytd_vorjahr.umsatz || 0))}</td>
         </tr>`;
 
         // 2. Einsatzwerte - klickbar
         html += `<tr class="row-sum row-bereich" data-drilldown="einsatz" title="Klicken für Details">
-            <td><i class="fas fa-arrow-down text-danger me-2"></i><strong>Einsatzwerte</strong></td>
+            <td><strong>Einsatzwerte</strong></td>
             <td class="text-center">-</td>
-            <td class="text-end">${renderValue(-aktuell.einsatz)}</td>
-            <td class="text-end">${renderValue(-vorjahr.einsatz)}</td>
+            <td class="text-end">${renderValue(-aktuell.einsatz, '', 'large')}</td>
+            <td class="text-end">${renderValue(-vorjahr.einsatz, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.einsatz, vorjahr.einsatz), true)}</td>
-            <td class="text-end">${renderValue(-ytd.einsatz)}</td>
-            <td class="text-end">${renderValue(-(ytd_vorjahr.einsatz || 0))}</td>
+            <td class="text-end">${renderValue(-ytd.einsatz, '', 'large')}</td>
+            <td class="text-end">${renderValue(-(ytd_vorjahr.einsatz || 0), '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(ytd.einsatz, ytd_vorjahr.einsatz || 0), true)}</td>
         </tr>`;
 
         // 3. Bruttoertrag (DB1) Gesamt
         html += `<tr class="row-header">
-            <td colspan="7"><strong>Bruttoerträge nach Bereichen (DB1)</strong></td>
+            <td colspan="8"><strong>Bruttoerträge nach Bereichen (DB1)</strong></td>
         </tr>`;
 
         // 4. Bereiche
@@ -565,12 +802,12 @@
 
             html += `<tr class="row-bereich" data-drilldown="bereich" data-bereich="${b.key}" title="Klicken für Details">
                 <td>${bereichIcons[b.key] || ''} Bruttoertrag ${b.name}</td>
-                <td class="text-center">${stueck_monat}</td>
-                <td class="text-end">${renderValue(b.bruttoertrag)}</td>
-                <td class="text-end">${renderValue(vj.bruttoertrag)}</td>
+                <td class="text-center"><strong>${stueck_monat}</strong></td>
+                <td class="text-end">${renderValue(b.bruttoertrag, '', 'large')}</td>
+                <td class="text-end">${renderValue(vj.bruttoertrag, '', 'medium')}</td>
                 <td class="text-center">${renderDelta(calcDelta(b.bruttoertrag, vj.bruttoertrag))}</td>
-                <td class="text-end">${renderValue(y.bruttoertrag)}</td>
-                <td class="text-end">${renderValue(y_vj.bruttoertrag || 0)}</td>
+                <td class="text-end">${renderValue(y.bruttoertrag, '', 'large')}</td>
+                <td class="text-end">${renderValue(y_vj.bruttoertrag || 0, '', 'medium')}</td>
                 <td class="text-center">${renderDelta(calcDelta(y.bruttoertrag, y_vj.bruttoertrag || 0))}</td>
             </tr>`;
         }
@@ -578,23 +815,24 @@
         // 5. DB1 Summe
         html += `<tr class="row-sum">
             <td><strong>Bruttoertrag Gesamt (DB1)</strong></td>
-            <td class="text-end"><strong>${renderValue(aktuell.db1)}</strong></td>
-            <td class="text-end">${renderValue(vorjahr.db1)}</td>
+            <td class="text-center">-</td>
+            <td class="text-end"><strong>${renderValue(aktuell.db1, '', 'large')}</strong></td>
+            <td class="text-end">${renderValue(vorjahr.db1, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.db1, vorjahr.db1))}</td>
-            <td class="text-end">${renderValue(ytd.db1)}</td>
-            <td class="text-end">${renderValue(ytd_vorjahr.db1 || 0)}</td>
+            <td class="text-end"><strong>${renderValue(ytd.db1, '', 'large')}</strong></td>
+            <td class="text-end">${renderValue(ytd_vorjahr.db1 || 0, '', 'medium')}</td>
             <td class="text-center"><strong>${renderDelta(calcDelta(ytd.db1, ytd_vorjahr.db1 || 0))}</strong></td>
         </tr>`;
 
         // 6. Variable Kosten
         html += `<tr class="row-bereich" data-drilldown="variable" title="Klicken für Details">
-            <td><i class="fas fa-minus-circle text-warning me-2"></i> Variable Kosten</td>
+            <td>Variable Kosten</td>
             <td class="text-center">-</td>
-            <td class="text-end">${renderValue(-aktuell.variable_kosten)}</td>
-            <td class="text-end">${renderValue(-vorjahr.variable_kosten)}</td>
+            <td class="text-end">${renderValue(-aktuell.variable_kosten, '', 'large')}</td>
+            <td class="text-end">${renderValue(-vorjahr.variable_kosten, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.variable_kosten, vorjahr.variable_kosten), true)}</td>
-            <td class="text-end">${renderValue(-ytd.variable_kosten)}</td>
-            <td class="text-end">${renderValue(-(ytd_vorjahr.variable_kosten || 0))}</td>
+            <td class="text-end">${renderValue(-ytd.variable_kosten, '', 'large')}</td>
+            <td class="text-end">${renderValue(-(ytd_vorjahr.variable_kosten || 0), '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(ytd.variable_kosten, ytd_vorjahr.variable_kosten || 0), true)}</td>
         </tr>`;
 
@@ -602,23 +840,23 @@
         html += `<tr class="row-sum">
             <td><strong>Deckungsbeitrag 2 (DB2)</strong></td>
             <td class="text-center">-</td>
-            <td class="text-end"><strong>${renderValue(aktuell.db2)}</strong></td>
-            <td class="text-end">${renderValue(vorjahr.db2)}</td>
+            <td class="text-end"><strong>${renderValue(aktuell.db2, '', 'large')}</strong></td>
+            <td class="text-end">${renderValue(vorjahr.db2, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.db2, vorjahr.db2))}</td>
-            <td class="text-end"><strong>${renderValue(ytd.db2)}</strong></td>
-            <td class="text-end">${renderValue(ytd_vorjahr.db2 || 0)}</td>
+            <td class="text-end"><strong>${renderValue(ytd.db2, '', 'large')}</strong></td>
+            <td class="text-end">${renderValue(ytd_vorjahr.db2 || 0, '', 'medium')}</td>
             <td class="text-center"><strong>${renderDelta(calcDelta(ytd.db2, ytd_vorjahr.db2 || 0))}</strong></td>
         </tr>`;
 
         // 8. Direkte Kosten
         html += `<tr class="row-bereich" data-drilldown="direkte" title="Klicken für Details">
-            <td><i class="fas fa-minus-circle text-info me-2"></i> Direkte Kosten</td>
+            <td>Direkte Kosten</td>
             <td class="text-center">-</td>
-            <td class="text-end">${renderValue(-aktuell.direkte_kosten)}</td>
-            <td class="text-end">${renderValue(-vorjahr.direkte_kosten)}</td>
+            <td class="text-end">${renderValue(-aktuell.direkte_kosten, '', 'large')}</td>
+            <td class="text-end">${renderValue(-vorjahr.direkte_kosten, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.direkte_kosten, vorjahr.direkte_kosten), true)}</td>
-            <td class="text-end">${renderValue(-ytd.direkte_kosten)}</td>
-            <td class="text-end">${renderValue(-(ytd_vorjahr.direkte_kosten || 0))}</td>
+            <td class="text-end">${renderValue(-ytd.direkte_kosten, '', 'large')}</td>
+            <td class="text-end">${renderValue(-(ytd_vorjahr.direkte_kosten || 0), '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(ytd.direkte_kosten, ytd_vorjahr.direkte_kosten || 0), true)}</td>
         </tr>`;
 
@@ -626,59 +864,59 @@
         html += `<tr class="row-sum">
             <td><strong>Deckungsbeitrag 3 (DB3)</strong></td>
             <td class="text-center">-</td>
-            <td class="text-end"><strong>${renderValue(aktuell.db3)}</strong></td>
-            <td class="text-end">${renderValue(vorjahr.db3)}</td>
+            <td class="text-end"><strong>${renderValue(aktuell.db3, '', 'large')}</strong></td>
+            <td class="text-end">${renderValue(vorjahr.db3, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.db3, vorjahr.db3))}</td>
-            <td class="text-end"><strong>${renderValue(ytd.db3)}</strong></td>
-            <td class="text-end">${renderValue(ytd_vorjahr.db3 || 0)}</td>
+            <td class="text-end"><strong>${renderValue(ytd.db3, '', 'large')}</strong></td>
+            <td class="text-end">${renderValue(ytd_vorjahr.db3 || 0, '', 'medium')}</td>
             <td class="text-center"><strong>${renderDelta(calcDelta(ytd.db3, ytd_vorjahr.db3 || 0))}</strong></td>
         </tr>`;
 
         // 10. Indirekte Kosten
         html += `<tr class="row-bereich" data-drilldown="indirekte" title="Klicken für Details">
-            <td><i class="fas fa-minus-circle text-secondary me-2"></i> Indirekte Kosten</td>
+            <td>Indirekte Kosten</td>
             <td class="text-center">-</td>
-            <td class="text-end">${renderValue(-aktuell.indirekte_kosten)}</td>
-            <td class="text-end">${renderValue(-vorjahr.indirekte_kosten)}</td>
+            <td class="text-end">${renderValue(-aktuell.indirekte_kosten, '', 'large')}</td>
+            <td class="text-end">${renderValue(-vorjahr.indirekte_kosten, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.indirekte_kosten, vorjahr.indirekte_kosten), true)}</td>
-            <td class="text-end">${renderValue(-ytd.indirekte_kosten)}</td>
-            <td class="text-end">${renderValue(-(ytd_vorjahr.indirekte_kosten || 0))}</td>
+            <td class="text-end">${renderValue(-ytd.indirekte_kosten, '', 'large')}</td>
+            <td class="text-end">${renderValue(-(ytd_vorjahr.indirekte_kosten || 0), '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(ytd.indirekte_kosten, ytd_vorjahr.indirekte_kosten || 0), true)}</td>
         </tr>`;
 
         // 11. Betriebsergebnis
-        html += `<tr class="row-sum" style="background: #fff3cd;">
-            <td><i class="fas fa-building text-warning me-2"></i> <strong>Betriebsergebnis (BE)</strong></td>
+        html += `<tr class="row-sum row-highlight">
+            <td><strong>Betriebsergebnis (BE)</strong></td>
             <td class="text-center">-</td>
-            <td class="text-end"><strong>${renderValue(aktuell.betriebsergebnis)}</strong></td>
-            <td class="text-end">${renderValue(vorjahr.betriebsergebnis)}</td>
+            <td class="text-end"><strong>${renderValue(aktuell.betriebsergebnis, '', 'large')}</strong></td>
+            <td class="text-end">${renderValue(vorjahr.betriebsergebnis, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.betriebsergebnis, vorjahr.betriebsergebnis))}</td>
-            <td class="text-end"><strong>${renderValue(ytd.betriebsergebnis)}</strong></td>
-            <td class="text-end">${renderValue(ytd_vorjahr.betriebsergebnis || 0)}</td>
+            <td class="text-end"><strong>${renderValue(ytd.betriebsergebnis, '', 'large')}</strong></td>
+            <td class="text-end">${renderValue(ytd_vorjahr.betriebsergebnis || 0, '', 'medium')}</td>
             <td class="text-center"><strong>${renderDelta(calcDelta(ytd.betriebsergebnis, ytd_vorjahr.betriebsergebnis || 0))}</strong></td>
         </tr>`;
 
         // 12. Neutrales Ergebnis
         html += `<tr class="row-bereich" data-drilldown="neutral" title="Klicken für Details">
-            <td><i class="fas fa-plus-minus text-muted me-2"></i> Neutrales Ergebnis</td>
+            <td>Neutrales Ergebnis</td>
             <td class="text-center">-</td>
-            <td class="text-end">${renderValue(aktuell.neutrales_ergebnis)}</td>
-            <td class="text-end">${renderValue(vorjahr.neutrales_ergebnis)}</td>
+            <td class="text-end">${renderValue(aktuell.neutrales_ergebnis, '', 'large')}</td>
+            <td class="text-end">${renderValue(vorjahr.neutrales_ergebnis, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.neutrales_ergebnis, vorjahr.neutrales_ergebnis))}</td>
-            <td class="text-end">${renderValue(ytd.neutrales_ergebnis)}</td>
-            <td class="text-end">${renderValue(ytd_vorjahr.neutrales_ergebnis || 0)}</td>
+            <td class="text-end">${renderValue(ytd.neutrales_ergebnis, '', 'large')}</td>
+            <td class="text-end">${renderValue(ytd_vorjahr.neutrales_ergebnis || 0, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(ytd.neutrales_ergebnis, ytd_vorjahr.neutrales_ergebnis || 0))}</td>
         </tr>`;
 
         // 13. Unternehmensergebnis - FINAL
         html += `<tr class="row-result">
-            <td><i class="fas fa-trophy text-success me-2"></i> <strong>Unternehmensergebnis (UE)</strong></td>
+            <td><strong>Unternehmensergebnis (UE)</strong></td>
             <td class="text-center">-</td>
-            <td class="text-end"><strong>${renderValue(aktuell.unternehmensergebnis)}</strong></td>
-            <td class="text-end">${renderValue(vorjahr.unternehmensergebnis)}</td>
+            <td class="text-end"><strong>${renderValue(aktuell.unternehmensergebnis, '', 'large')}</strong></td>
+            <td class="text-end">${renderValue(vorjahr.unternehmensergebnis, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.unternehmensergebnis, vorjahr.unternehmensergebnis))}</td>
-            <td class="text-end"><strong>${renderValue(ytd.unternehmensergebnis)}</strong></td>
-            <td class="text-end">${renderValue(ytd_vorjahr.unternehmensergebnis || 0)}</td>
+            <td class="text-end"><strong>${renderValue(ytd.unternehmensergebnis, '', 'large')}</strong></td>
+            <td class="text-end">${renderValue(ytd_vorjahr.unternehmensergebnis || 0, '', 'medium')}</td>
             <td class="text-center"><strong>${renderDelta(calcDelta(ytd.unternehmensergebnis, ytd_vorjahr.unternehmensergebnis || 0))}</strong></td>
         </tr>`;
 
@@ -688,7 +926,9 @@
     function updateKPI(id, aktuell, vorjahr, invertDelta = false) {
         document.getElementById(id).textContent = fmtEuroCompact(aktuell);
         const delta = calcDelta(aktuell, vorjahr);
-        document.getElementById(id + '-delta').innerHTML = renderDelta(delta, invertDelta);
+        const deltaClass = Math.abs(delta) < 1 ? 'neutral' : (invertDelta ? (delta < 0 ? 'positive' : 'negative') : (delta > 0 ? 'positive' : 'negative'));
+        const deltaIcon = delta > 0 ? '↑' : (delta < 0 ? '↓' : '→');
+        document.getElementById(id + '-delta').innerHTML = `<span class="kpi-delta-small ${deltaClass}">${deltaIcon} ${Math.abs(delta).toFixed(1)}% vs. VJ</span>`;
     }
 
     // Event-Listener

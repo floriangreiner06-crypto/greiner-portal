@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BWA v2 - Professional Mockup</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    
+    <style>
+        /* =========================================
+           BWA v2 PROFESSIONAL MOCKUP
+           Fokus: Zahlen, Daten, Klarheit
+           ========================================= */
+        
+        body {
+            background: #f8f9fa;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-size: 14px;
+        }
+        
+        .container-fluid {
+            padding: 1.5rem;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        
+        /* =========================================
+           HEADER - Nüchtern & Professionell
+           ========================================= */
+        .dashboard-header {
+            background: white;
+            border-bottom: 2px solid #0d6efd;
+            padding: 1rem 1.5rem;
+            margin-bottom: 1.5rem;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .dashboard-header h4 {
+            margin: 0;
+            font-weight: 600;
+            color: #212529;
+            font-size: 1.25rem;
+        }
+        
+        .dashboard-header .subtitle {
+            color: #6c757d;
+            font-size: 0.9rem;
+            margin-top: 0.25rem;
+        }
+        
+        /* =========================================
+           FILTER - Kompakt & Funktional
+           ========================================= */
+        .filter-bar {
+            background: white;
+            padding: 1rem 1.5rem;
+            margin-bottom: 1rem;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 1.5rem;
+            align-items: flex-end;
+            flex-wrap: wrap;
+        }
+        
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        
+        .filter-group label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #495057;
+            margin: 0;
+        }
+        
+        /* =========================================
+           WJ-FORTSCHRITT - Minimalistisch
+           ========================================= */
+        .wj-info {
+            background: white;
+            padding: 0.75rem 1.5rem;
+            margin-bottom: 1rem;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .wj-title {
+            font-weight: 600;
+            color: #212529;
+            margin: 0;
+        }
+        
+        .wj-progress-simple {
+            height: 6px;
+            background: #e9ecef;
+            border-radius: 3px;
+            width: 200px;
+            overflow: hidden;
+        }
+        
+        .wj-progress-fill {
+            height: 100%;
+            background: #0d6efd;
+            transition: width 0.3s;
+        }
+        
+        /* =========================================
+           KPI-KARTEN - Nüchtern & Zahlenfokussiert
+           ========================================= */
+        .kpi-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .kpi-card-simple {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-left: 3px solid;
+            border-radius: 4px;
+            padding: 1rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .kpi-card-simple.kpi-umsatz { border-left-color: #198754; }
+        .kpi-card-simple.kpi-db1 { border-left-color: #0d6efd; }
+        .kpi-card-simple.kpi-db2 { border-left-color: #6f42c1; }
+        .kpi-card-simple.kpi-be { border-left-color: #dc3545; }
+        .kpi-card-simple.kpi-ue { border-left-color: #20c997; }
+        
+        .kpi-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+        
+        .kpi-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #212529;
+            line-height: 1.2;
+            margin-bottom: 0.25rem;
+        }
+        
+        .kpi-delta {
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        
+        .kpi-delta.positive { color: #198754; }
+        .kpi-delta.negative { color: #dc3545; }
+        .kpi-delta.neutral { color: #6c757d; }
+        
+        /* =========================================
+           TABELLE - Hauptfokus auf Daten
+           ========================================= */
+        .table-container {
+            background: white;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .table-header-bar {
+            background: #f8f9fa;
+            border-bottom: 2px solid #dee2e6;
+            padding: 0.75rem 1.25rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .table-title {
+            font-weight: 600;
+            color: #212529;
+            margin: 0;
+            font-size: 0.95rem;
+        }
+        
+        .table-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .table-responsive {
+            max-height: 700px;
+            overflow-y: auto;
+        }
+        
+        .bwa-table {
+            margin: 0;
+            font-size: 0.9rem;
+        }
+        
+        .bwa-table thead th {
+            background: #343a40;
+            color: white;
+            font-weight: 600;
+            padding: 0.75rem 1rem;
+            border-bottom: 2px solid #495057;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            white-space: nowrap;
+            font-size: 0.85rem;
+        }
+        
+        .bwa-table tbody tr {
+            transition: background 0.1s;
+        }
+        
+        .bwa-table tbody tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .bwa-table tbody td {
+            padding: 0.75rem 1rem;
+            vertical-align: middle;
+            border-bottom: 1px solid #f1f1f1;
+        }
+        
+        .row-header {
+            background: #495057;
+            color: white;
+            font-weight: 600;
+        }
+        
+        .row-sum {
+            background: #f8f9fa;
+            font-weight: 600;
+        }
+        
+        .row-bereich {
+            cursor: pointer;
+        }
+        
+        .row-bereich:hover {
+            background: #e9ecef !important;
+        }
+        
+        .row-result {
+            background: #d4edda;
+            font-weight: 700;
+        }
+        
+        .bereich-icon {
+            display: inline-flex;
+            width: 24px;
+            height: 24px;
+            border-radius: 3px;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: white;
+            margin-right: 0.5rem;
+        }
+        
+        .bereich-icon.nw { background: #0d6efd; }
+        .bereich-icon.gw { background: #fd7e14; }
+        .bereich-icon.me { background: #6f42c1; }
+        .bereich-icon.tz { background: #20c997; }
+        .bereich-icon.mw { background: #6c757d; }
+        .bereich-icon.so { background: #adb5bd; }
+        
+        .val-pos { color: #198754; font-weight: 600; }
+        .val-neg { color: #dc3545; font-weight: 600; }
+        .val-muted { color: #6c757d; }
+        
+        .delta-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
+            padding: 0.15rem 0.5rem;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        
+        .delta-badge.positive {
+            background: #d1e7dd;
+            color: #0f5132;
+        }
+        
+        .delta-badge.negative {
+            background: #f8d7da;
+            color: #842029;
+        }
+        
+        .delta-badge.neutral {
+            background: #e9ecef;
+            color: #6c757d;
+        }
+        
+        /* =========================================
+           LEGENDE - Minimalistisch
+           ========================================= */
+        .legend {
+            background: white;
+            padding: 0.75rem 1.5rem;
+            margin-top: 1rem;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .legend-items {
+            display: flex;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            color: #495057;
+        }
+        
+        /* =========================================
+           ZAHLEN-FORMATIERUNG
+           ========================================= */
+        .number-large {
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+        
+        .number-medium {
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid py-3">
+        
+        <!-- Header -->
+        <div class="dashboard-header">
+            <h4>
+                <i class="bi bi-graph-up me-2"></i>
+                BWA - Betriebswirtschaftliche Auswertung
+            </h4>
+            <div class="subtitle">
+                Oktober 2025 | Deggendorf Opel
+            </div>
+        </div>
+        
+        <!-- Filter -->
+        <div class="filter-bar">
+            <div class="filter-group">
+                <label>Monat</label>
+                <select class="form-select form-select-sm" style="width: 140px;">
+                    <option>Oktober</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Jahr</label>
+                <select class="form-select form-select-sm" style="width: 100px;">
+                    <option>2025</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Standort</label>
+                <div class="btn-group btn-group-sm" role="group">
+                    <input type="radio" class="btn-check" name="standort" id="deg" checked>
+                    <label class="btn btn-outline-primary" for="deg">Deggendorf</label>
+                    <input type="radio" class="btn-check" name="standort" id="lan">
+                    <label class="btn btn-outline-primary" for="lan">Landau</label>
+                    <input type="radio" class="btn-check" name="standort" id="all">
+                    <label class="btn btn-outline-primary" for="all">Alle</label>
+                </div>
+            </div>
+            <div class="filter-group">
+                <button class="btn btn-primary btn-sm">
+                    <i class="bi bi-arrow-clockwise me-1"></i>Laden
+                </button>
+            </div>
+        </div>
+        
+        <!-- WJ-Fortschritt -->
+        <div class="wj-info">
+            <div>
+                <h6 class="wj-title mb-1">Wirtschaftsjahr 2025/26</h6>
+                <small class="text-muted">(Sep 2025 - Aug 2026) | Monat 2 von 12</small>
+            </div>
+            <div class="wj-progress-simple">
+                <div class="wj-progress-fill" style="width: 16.7%"></div>
+            </div>
+        </div>
+        
+        <!-- KPI-Karten - Minimalistisch -->
+        <div class="kpi-row">
+            <div class="kpi-card-simple kpi-umsatz">
+                <div class="kpi-label">Umsatzerlöse</div>
+                <div class="kpi-value">2.450.000 €</div>
+                <div class="kpi-delta positive">
+                    <i class="bi bi-arrow-up"></i>
+                    <span>+12,3% vs. Vorjahr</span>
+                </div>
+            </div>
+            
+            <div class="kpi-card-simple kpi-db1">
+                <div class="kpi-label">Bruttoertrag (DB1)</div>
+                <div class="kpi-value">485.000 €</div>
+                <div class="kpi-delta positive">
+                    <i class="bi bi-arrow-up"></i>
+                    <span>+8,7% vs. Vorjahr</span>
+                </div>
+            </div>
+            
+            <div class="kpi-card-simple kpi-db2">
+                <div class="kpi-label">Deckungsbeitrag 2</div>
+                <div class="kpi-value">312.000 €</div>
+                <div class="kpi-delta positive">
+                    <i class="bi bi-arrow-up"></i>
+                    <span>+5,2% vs. Vorjahr</span>
+                </div>
+            </div>
+            
+            <div class="kpi-card-simple kpi-be">
+                <div class="kpi-label">Betriebsergebnis</div>
+                <div class="kpi-value">185.000 €</div>
+                <div class="kpi-delta negative">
+                    <i class="bi bi-arrow-down"></i>
+                    <span>-2,1% vs. Vorjahr</span>
+                </div>
+            </div>
+            
+            <div class="kpi-card-simple kpi-ue">
+                <div class="kpi-label">Unternehmensergebnis</div>
+                <div class="kpi-value">198.000 €</div>
+                <div class="kpi-delta positive">
+                    <i class="bi bi-arrow-up"></i>
+                    <span>+3,4% vs. Vorjahr</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Haupttabelle - Fokus auf Daten -->
+        <div class="table-container">
+            <div class="table-header-bar">
+                <h6 class="table-title">Detaillierte Auswertung</h6>
+                <div class="table-actions">
+                    <button class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-download me-1"></i>Export
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-printer me-1"></i>Drucken
+                    </button>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table bwa-table mb-0">
+                    <thead>
+                        <tr>
+                            <th style="width: 28%">Position</th>
+                            <th class="text-center" style="width: 5%">Stk.<br>Monat</th>
+                            <th class="text-end" style="width: 10%">Monat</th>
+                            <th class="text-end" style="width: 10%">Vorjahr</th>
+                            <th class="text-center" style="width: 6%">Abw.</th>
+                            <th class="text-end" style="width: 9%">YTD</th>
+                            <th class="text-end" style="width: 9%">YTD Vorjahr</th>
+                            <th class="text-center" style="width: 6%">Abw. YTD</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="row-sum row-bereich">
+                            <td><i class="bi bi-arrow-up text-success me-2"></i><strong>Umsatzerlöse</strong></td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><span class="val-pos number-large">2.450.000 €</span></td>
+                            <td class="text-end"><span class="val-pos number-medium">2.180.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 12,3%</span></td>
+                            <td class="text-end"><span class="val-pos number-large">4.890.000 €</span></td>
+                            <td class="text-end"><span class="val-pos number-medium">4.320.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 13,2%</span></td>
+                        </tr>
+                        <tr class="row-sum row-bereich">
+                            <td><i class="bi bi-arrow-down text-danger me-2"></i><strong>Einsatzwerte</strong></td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><span class="val-neg number-large">-1.965.000 €</span></td>
+                            <td class="text-end"><span class="val-neg number-medium">-1.750.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge negative">↓ 12,3%</span></td>
+                            <td class="text-end"><span class="val-neg number-large">-3.920.000 €</span></td>
+                            <td class="text-end"><span class="val-neg number-medium">-3.460.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge negative">↓ 13,3%</span></td>
+                        </tr>
+                        <tr class="row-header">
+                            <td colspan="8"><strong>Bruttoerträge nach Bereichen (DB1)</strong></td>
+                        </tr>
+                        <tr class="row-bereich">
+                            <td>
+                                <span class="bereich-icon nw">NW</span>
+                                Bruttoertrag Neuwagen
+                            </td>
+                            <td class="text-center"><strong>42</strong></td>
+                            <td class="text-end"><span class="val-pos number-large">285.000 €</span></td>
+                            <td class="text-end"><span class="val-pos number-medium">260.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 9,6%</span></td>
+                            <td class="text-end"><span class="val-pos number-large">570.000 €</span></td>
+                            <td class="text-end"><span class="val-pos number-medium">520.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 9,6%</span></td>
+                        </tr>
+                        <tr class="row-bereich">
+                            <td>
+                                <span class="bereich-icon gw">GW</span>
+                                Bruttoertrag Gebrauchtwagen
+                            </td>
+                            <td class="text-center"><strong>28</strong></td>
+                            <td class="text-end"><span class="val-pos number-large">125.000 €</span></td>
+                            <td class="text-end"><span class="val-pos number-medium">115.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 8,7%</span></td>
+                            <td class="text-end"><span class="val-pos number-large">250.000 €</span></td>
+                            <td class="text-end"><span class="val-pos number-medium">230.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 8,7%</span></td>
+                        </tr>
+                        <tr class="row-bereich">
+                            <td>
+                                <span class="bereich-icon me">ME</span>
+                                Bruttoertrag Mechanik/Lohn
+                            </td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><span class="val-pos number-large">45.000 €</span></td>
+                            <td class="text-end"><span class="val-pos number-medium">42.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 7,1%</span></td>
+                            <td class="text-end"><span class="val-pos number-large">90.000 €</span></td>
+                            <td class="text-end"><span class="val-pos number-medium">84.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 7,1%</span></td>
+                        </tr>
+                        <tr class="row-bereich">
+                            <td>
+                                <span class="bereich-icon tz">TZ</span>
+                                Bruttoertrag Teile & Zubehör
+                            </td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><span class="val-pos number-large">30.000 €</span></td>
+                            <td class="text-end"><span class="val-pos number-medium">28.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 7,1%</span></td>
+                            <td class="text-end"><span class="val-pos number-large">60.000 €</span></td>
+                            <td class="text-end"><span class="val-pos number-medium">56.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 7,1%</span></td>
+                        </tr>
+                        <tr class="row-sum">
+                            <td><strong>Bruttoertrag Gesamt (DB1)</strong></td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><strong><span class="val-pos number-large">485.000 €</span></strong></td>
+                            <td class="text-end"><span class="val-pos number-medium">445.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 9,0%</span></td>
+                            <td class="text-end"><strong><span class="val-pos number-large">970.000 €</span></strong></td>
+                            <td class="text-end"><span class="val-pos number-medium">890.000 €</span></td>
+                            <td class="text-center"><strong><span class="delta-badge positive">↑ 9,0%</span></strong></td>
+                        </tr>
+                        <tr class="row-bereich">
+                            <td><i class="bi bi-dash-circle text-warning me-2"></i> Variable Kosten</td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><span class="val-neg number-large">-173.000 €</span></td>
+                            <td class="text-end"><span class="val-neg number-medium">-160.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge negative">↓ 8,1%</span></td>
+                            <td class="text-end"><span class="val-neg number-large">-346.000 €</span></td>
+                            <td class="text-end"><span class="val-neg number-medium">-320.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge negative">↓ 8,1%</span></td>
+                        </tr>
+                        <tr class="row-sum">
+                            <td><strong>Deckungsbeitrag 2 (DB2)</strong></td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><strong><span class="val-pos number-large">312.000 €</span></strong></td>
+                            <td class="text-end"><span class="val-pos number-medium">285.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 9,5%</span></td>
+                            <td class="text-end"><strong><span class="val-pos number-large">624.000 €</span></strong></td>
+                            <td class="text-end"><span class="val-pos number-medium">570.000 €</span></td>
+                            <td class="text-center"><strong><span class="delta-badge positive">↑ 9,5%</span></strong></td>
+                        </tr>
+                        <tr class="row-bereich">
+                            <td><i class="bi bi-dash-circle text-info me-2"></i> Direkte Kosten</td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><span class="val-neg number-large">-95.000 €</span></td>
+                            <td class="text-end"><span class="val-neg number-medium">-88.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge negative">↓ 8,0%</span></td>
+                            <td class="text-end"><span class="val-neg number-large">-190.000 €</span></td>
+                            <td class="text-end"><span class="val-neg number-medium">-176.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge negative">↓ 8,0%</span></td>
+                        </tr>
+                        <tr class="row-sum">
+                            <td><strong>Deckungsbeitrag 3 (DB3)</strong></td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><strong><span class="val-pos number-large">217.000 €</span></strong></td>
+                            <td class="text-end"><span class="val-pos number-medium">197.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 10,2%</span></td>
+                            <td class="text-end"><strong><span class="val-pos number-large">434.000 €</span></strong></td>
+                            <td class="text-end"><span class="val-pos number-medium">394.000 €</span></td>
+                            <td class="text-center"><strong><span class="delta-badge positive">↑ 10,2%</span></strong></td>
+                        </tr>
+                        <tr class="row-bereich">
+                            <td><i class="bi bi-dash-circle text-secondary me-2"></i> Indirekte Kosten</td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><span class="val-neg number-large">-32.000 €</span></td>
+                            <td class="text-end"><span class="val-neg number-medium">-30.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge negative">↓ 6,7%</span></td>
+                            <td class="text-end"><span class="val-neg number-large">-64.000 €</span></td>
+                            <td class="text-end"><span class="val-neg number-medium">-60.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge negative">↓ 6,7%</span></td>
+                        </tr>
+                        <tr class="row-sum" style="background: #fff3cd;">
+                            <td><i class="bi bi-building text-warning me-2"></i> <strong>Betriebsergebnis (BE)</strong></td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><strong><span class="val-pos number-large">185.000 €</span></strong></td>
+                            <td class="text-end"><span class="val-pos number-medium">167.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge negative">↓ 10,8%</span></td>
+                            <td class="text-end"><strong><span class="val-pos number-large">370.000 €</span></strong></td>
+                            <td class="text-end"><span class="val-pos number-medium">334.000 €</span></td>
+                            <td class="text-center"><strong><span class="delta-badge positive">↑ 10,8%</span></strong></td>
+                        </tr>
+                        <tr class="row-bereich">
+                            <td><i class="bi bi-plus-minus text-muted me-2"></i> Neutrales Ergebnis</td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><span class="val-pos number-large">13.000 €</span></td>
+                            <td class="text-end"><span class="val-pos number-medium">12.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 8,3%</span></td>
+                            <td class="text-end"><span class="val-pos number-large">26.000 €</span></td>
+                            <td class="text-end"><span class="val-pos number-medium">24.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 8,3%</span></td>
+                        </tr>
+                        <tr class="row-result">
+                            <td><i class="bi bi-trophy text-success me-2"></i> <strong>Unternehmensergebnis (UE)</strong></td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><strong><span class="val-pos number-large">198.000 €</span></strong></td>
+                            <td class="text-end"><span class="val-pos number-medium">179.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 10,6%</span></td>
+                            <td class="text-end"><strong><span class="val-pos number-large">396.000 €</span></strong></td>
+                            <td class="text-end"><span class="val-pos number-medium">358.000 €</span></td>
+                            <td class="text-center"><strong><span class="delta-badge positive">↑ 10,6%</span></strong></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Legende -->
+        <div class="legend">
+            <div class="legend-items">
+                <div class="legend-item">
+                    <span class="bereich-icon nw">NW</span>
+                    <span>Neuwagen</span>
+                </div>
+                <div class="legend-item">
+                    <span class="bereich-icon gw">GW</span>
+                    <span>Gebrauchtwagen</span>
+                </div>
+                <div class="legend-item">
+                    <span class="bereich-icon me">ME</span>
+                    <span>Mechanik/Lohn</span>
+                </div>
+                <div class="legend-item">
+                    <span class="bereich-icon tz">TZ</span>
+                    <span>Teile & Zubehör</span>
+                </div>
+                <div class="legend-item">
+                    <span class="bereich-icon mw">MW</span>
+                    <span>Mietwagen</span>
+                </div>
+                <div class="legend-item">
+                    <span class="bereich-icon so">SO</span>
+                    <span>Sonstige</span>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+    
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

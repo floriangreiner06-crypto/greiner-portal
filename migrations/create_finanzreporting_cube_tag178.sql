@@ -218,6 +218,7 @@ CREATE INDEX idx_fact_bwa_zeit_konto ON fact_bwa (zeit_id, konto_id);
 -- ============================================================================
 
 -- Funktion zum Aktualisieren aller Materialized Views
+-- TAG 179: CONCURRENTLY entfernt für fact_bwa (hat Duplikate, kein UNIQUE Index möglich)
 CREATE OR REPLACE FUNCTION refresh_finanzreporting_cube()
 RETURNS void AS $$
 BEGIN
@@ -225,7 +226,8 @@ BEGIN
     REFRESH MATERIALIZED VIEW CONCURRENTLY dim_standort;
     REFRESH MATERIALIZED VIEW CONCURRENTLY dim_kostenstelle;
     REFRESH MATERIALIZED VIEW CONCURRENTLY dim_konto;
-    REFRESH MATERIALIZED VIEW CONCURRENTLY fact_bwa;
+    -- fact_bwa: Normal refresh (ohne CONCURRENTLY), da Duplikate vorhanden
+    REFRESH MATERIALIZED VIEW fact_bwa;
 END;
 $$ LANGUAGE plpgsql;
 

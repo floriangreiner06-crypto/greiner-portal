@@ -101,7 +101,7 @@ function updateKontenTable() {
     if (gefiltert.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="6" class="text-center py-5 text-muted">
+                <td colspan="8" class="text-center py-5 text-muted">
                     <i class="bi bi-inbox me-2"></i>Keine Konten gefunden
                 </td>
             </tr>
@@ -117,6 +117,13 @@ function updateKontenTable() {
         const statusBadge = konto.aktiv 
             ? '<span class="badge bg-success">Aktiv</span>'
             : '<span class="badge bg-secondary">Inaktiv</span>';
+        
+        // Kreditlinie und verfügbar
+        const kreditlinie = konto.kreditlinie || 0;
+        const verfuegbar = konto.verfuegbar;
+        const verfuegbarClass = verfuegbar !== null && verfuegbar !== undefined 
+            ? (verfuegbar >= 0 ? 'text-success' : 'text-warning')
+            : 'text-muted';
         
         return `
             <tr>
@@ -134,6 +141,12 @@ function updateKontenTable() {
                 </td>
                 <td class="text-end ${saldoClass} fw-bold">
                     ${formatBetrag(saldo)}
+                </td>
+                <td class="text-end">
+                    ${kreditlinie > 0 ? formatBetrag(kreditlinie) : '<span class="text-muted">-</span>'}
+                </td>
+                <td class="text-end ${verfuegbarClass} fw-bold">
+                    ${verfuegbar !== null && verfuegbar !== undefined ? formatBetrag(verfuegbar) : '<span class="text-muted">-</span>'}
                 </td>
                 <td class="text-center">
                     <button class="btn btn-sm btn-outline-primary" onclick="showTransaktionen(${konto.id})">

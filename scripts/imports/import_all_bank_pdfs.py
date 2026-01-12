@@ -29,6 +29,7 @@ sys.path.insert(0, '/opt/greiner-portal')
 
 # PostgreSQL DB-Connection (TAG 165)
 from api.db_connection import get_db, sql_placeholder, convert_placeholders, get_db_type
+from api.bankenspiegel_utils import create_snapshot_from_saldo
 
 # ============================================================================
 # KONFIGURATION
@@ -250,6 +251,11 @@ def import_single_pdf(pdf_path, bank_key, bank_config):
                     """
                     cursor.execute(query, (konto_id, saldo_datum, endsaldo, 'PDF', filename))
                     saldo_imported = True
+                    # TAG 180: Automatisch Snapshot erstellen
+                    create_snapshot_from_saldo(konto_id, saldo_datum, endsaldo, cursor=cursor)
+                else:
+                    # Saldo existiert bereits - Snapshot trotzdem aktualisieren (falls PDF neuer)
+                    create_snapshot_from_saldo(konto_id, saldo_datum, endsaldo, cursor=cursor)
             
             conn.commit()
         finally:

@@ -1475,6 +1475,40 @@ def email_tek_daily():
 # CONTROLLING TASKS (TAG 173)
 # =============================================================================
 
+@shared_task(soft_time_limit=600, name='celery_app.tasks.refresh_finanzreporting_cube')
+def refresh_finanzreporting_cube():
+    """
+    Finanzreporting Cube Refresh - Materialized Views aktualisieren
+    Läuft täglich um 19:20 (nach Locosoft Mirror um 19:00)
+    
+    TAG 179: Automatischer Refresh nach Locosoft-Sync
+    """
+    try:
+        from api.db_utils import db_session
+        
+        logger.info("Starte Finanzreporting Cube Refresh...")
+        start_time = datetime.now()
+        
+        with db_session() as conn:
+            cursor = conn.cursor()
+            # Rufe PostgreSQL-Funktion auf, die alle Materialized Views aktualisiert
+            cursor.execute("SELECT refresh_finanzreporting_cube()")
+            conn.commit()
+        
+        duration = (datetime.now() - start_time).total_seconds()
+        logger.info(f"Finanzreporting Cube Refresh erfolgreich abgeschlossen (Dauer: {duration:.1f}s)")
+        
+        return {
+            'success': True,
+            'message': 'Cube erfolgreich aktualisiert',
+            'duration_seconds': duration
+        }
+    
+    except Exception as e:
+        logger.exception("Fehler bei Finanzreporting Cube Refresh")
+        return {'success': False, 'error': str(e)}
+
+
 @shared_task(soft_time_limit=600, name='celery_app.tasks.bwa_berechnung')
 def bwa_berechnung():
     """

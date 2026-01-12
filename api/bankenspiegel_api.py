@@ -187,37 +187,66 @@ def get_konten():
     """
     try:
         bank_id = request.args.get('bank_id', type=int)
-        ph = sql_placeholder()
 
         with db_session() as conn:
             cursor = conn.cursor()
 
-            # Query - verwendet v_aktuelle_kontostaende mit ECHTEN Spaltennamen
+            # Query - direkt auf konten mit JOIN zu salden für Sortierung nach kontoinhaber
+            # TAG 180: Kreditlinie und verfügbare Kreditlinie hinzugefügt, Sortierung nach Kontoinhaber
             query = """
                 SELECT
-                    id,
-                    bank_name,
-                    kontoname,
-                    iban,
-                    kontotyp,
+                    k.id,
+                    b.bank_name,
+                    k.kontoname,
+                    k.iban,
+                    k.kontotyp,
                     'EUR' as waehrung,
-                    saldo,
-                    letztes_update as stand_datum,
-                    1 as aktiv
-                FROM v_aktuelle_kontostaende
-                WHERE 1=1
+                    COALESCE(s.saldo, 0) as saldo,
+                    s.datum as stand_datum,
+                    1 as aktiv,
+                    COALESCE(k.kreditlinie, 0) as kreditlinie,
+                    CASE 
+                        WHEN k.kreditlinie IS NOT NULL AND k.kreditlinie > 0 THEN
+                            k.kreditlinie + COALESCE(s.saldo, 0)
+                        ELSE NULL
+                    END as verfuegbar,
+                    k.kontoinhaber
+                FROM konten k
+                LEFT JOIN banken b ON k.bank_id = b.id
+                LEFT JOIN (
+                    SELECT konto_id, saldo, datum
+                    FROM salden
+                    WHERE (konto_id, datum) IN (
+                        SELECT konto_id, MAX(datum)
+                        FROM salden
+                        GROUP BY konto_id
+                    )
+                ) s ON k.id = s.konto_id
+                WHERE k.aktiv = true
             """
 
             params = []
 
             # Filter nach Bank - TAG 136: dynamischer Placeholder
             if bank_id:
-                query += f" AND bank_id = {ph}"
+                query += " AND k.bank_id = %s"
                 params.append(bank_id)
 
-            query += " ORDER BY sort_order, kontoname"
+            # TAG 180: Sortierung nach Kontoinhaber (Autohaus Greiner zuerst, dann Auto Greiner, dann Rest)
+            query += """
+                ORDER BY 
+                    CASE 
+                        WHEN LOWER(COALESCE(k.kontoinhaber, '')) LIKE '%autohaus greiner%' THEN 1
+                        WHEN LOWER(COALESCE(k.kontoinhaber, '')) LIKE '%auto greiner%' THEN 2
+                        ELSE 3
+                    END,
+                    k.sort_order,
+                    k.kontoname
+            """
 
-            cursor.execute(query, params)
+            # TAG 180: Query ist bereits PostgreSQL-kompatibel (%s), kein convert_placeholders nötig
+            # WICHTIG: psycopg2 wirft Fehler wenn params=[] - verwende None statt leerer Liste
+            cursor.execute(query, params if params else None)
             konten = rows_to_list(cursor.fetchall())
 
             # Statistik - TAG 136: float() für PostgreSQL Decimal
@@ -827,6 +856,139 @@ def health_check():
             'error': str(e)
         }), 500
 
+
+# ============================================================================
+# ENDPOINT: ZEITVERLAUF (TAG 180)
+# ============================================================================
+
+@bankenspiegel_api.route('/zeitverlauf', methods=['GET'])
+def get_zeitverlauf():
+    """
+    GET /api/bankenspiegel/zeitverlauf?tage=6
+    Zeitverlauf-Ansicht mit mehreren Tagen nebeneinander
+    
+    Returns:
+    - Liste von Konten mit historischen Daten
+    - Für jeden Tag: Guthaben, Darl.-Stand, Freie Linie
+    """
+    try:
+        tage = request.args.get('tage', default=6, type=int)
+        tage = min(max(tage, 1), 30)  # Limit: 1-30 Tage
+        
+        ph = sql_placeholder()
+        
+        with db_session() as conn:
+            cursor = conn.cursor()
+            
+            # Letzte N Tage mit Snapshots finden
+            cursor.execute(f"""
+                SELECT DISTINCT stichtag
+                FROM konto_snapshots
+                WHERE stichtag >= CURRENT_DATE - INTERVAL '{tage} days'
+                ORDER BY stichtag DESC
+                LIMIT {tage}
+            """)
+            
+            stichtage = [row[0] for row in cursor.fetchall()]
+            
+            if not stichtage:
+                return jsonify({
+                    'success': True,
+                    'stichtage': [],
+                    'konten': [],
+                    'message': 'Keine historischen Daten gefunden'
+                }), 200
+            
+            # Alle Konten mit Kreditlinien holen
+            # TAG 180: Sortierung nach Kontoinhaber
+            cursor.execute("""
+                SELECT 
+                    k.id,
+                    k.kontoname,
+                    k.iban,
+                    k.kreditlinie,
+                    b.bank_name,
+                    k.kontotyp
+                FROM konten k
+                JOIN banken b ON k.bank_id = b.id
+                WHERE k.aktiv = true
+                ORDER BY 
+                    CASE 
+                        WHEN LOWER(COALESCE(k.kontoinhaber, '')) LIKE '%autohaus greiner%' THEN 1
+                        WHEN LOWER(COALESCE(k.kontoinhaber, '')) LIKE '%auto greiner%' THEN 2
+                        ELSE 3
+                    END,
+                    k.sort_order,
+                    k.kontoname
+            """)
+            
+            konten = rows_to_list(cursor.fetchall())
+            
+            # Für jedes Konto: Snapshots für alle Stichtage holen
+            result_konten = []
+            for konto in konten:
+                konto_id = konto['id']
+                konto_data = {
+                    'id': konto_id,
+                    'kontoname': konto['kontoname'],
+                    'iban': konto['iban'],
+                    'bank_name': konto['bank_name'],
+                    'kontotyp': konto['kontotyp'],
+                    'kreditlinie': float(konto['kreditlinie'] or 0),
+                    'tage': {}
+                }
+                
+                # Snapshots für alle Stichtage holen
+                for stichtag in stichtage:
+                    cursor.execute(f"""
+                        SELECT 
+                            kapitalsaldo,
+                            kreditlinie
+                        FROM konto_snapshots
+                        WHERE konto_id = {ph} AND stichtag = {ph}
+                        ORDER BY stichtag DESC
+                        LIMIT 1
+                    """, (konto_id, stichtag))
+                    
+                    snapshot = cursor.fetchone()
+                    if snapshot:
+                        snap_dict = row_to_dict(snapshot)
+                        kapitalsaldo = float(snap_dict['kapitalsaldo'] or 0)
+                        kreditlinie_snap = float(snap_dict['kreditlinie'] or konto['kreditlinie'] or 0)
+                        
+                        # Berechnungen
+                        guthaben = kapitalsaldo if kapitalsaldo > 0 else 0
+                        darlehen_stand = abs(kapitalsaldo) if kapitalsaldo < 0 else 0
+                        freie_linie = kreditlinie_snap + kapitalsaldo if kreditlinie_snap > 0 else None
+                        
+                        konto_data['tage'][stichtag.strftime('%Y-%m-%d')] = {
+                            'guthaben': round(guthaben, 2),
+                            'darlehen_stand': round(darlehen_stand, 2),
+                            'freie_linie': round(freie_linie, 2) if freie_linie is not None else None,
+                            'kapitalsaldo': round(kapitalsaldo, 2),
+                            'kreditlinie': round(kreditlinie_snap, 2)
+                        }
+                    else:
+                        # Kein Snapshot für diesen Tag
+                        konto_data['tage'][stichtag.strftime('%Y-%m-%d')] = None
+                
+                result_konten.append(konto_data)
+            
+            # Stichtage als Strings formatieren
+            stichtage_str = [d.strftime('%Y-%m-%d') for d in stichtage]
+            
+        return jsonify({
+            'success': True,
+            'stichtage': stichtage_str,
+            'konten': result_konten,
+            'count': len(result_konten)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 # ============================================================================
 # ENDPOINT: DATENSTAND

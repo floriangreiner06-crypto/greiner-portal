@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Bankenspiegel - Zeitverlauf{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h2 mb-0">
+                <i class="bi bi-graph-up me-2"></i>Bankenspiegel - Zeitverlauf
+            </h1>
+            <p class="text-muted mb-0">Historische Entwicklung der Konten über mehrere Tage</p>
+        </div>
+        <div class="col-auto d-flex align-items-center gap-2">
+            <label class="form-label mb-0 me-2">Tage:</label>
+            <select class="form-select form-select-sm" id="tageFilter" style="width: auto;">
+                <option value="3">3 Tage</option>
+                <option value="6" selected>6 Tage</option>
+                <option value="10">10 Tage</option>
+                <option value="14">14 Tage</option>
+                <option value="30">30 Tage</option>
+            </select>
+            <a href="/bankenspiegel/konten" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left me-1"></i>Zurück
+            </a>
+            <button class="btn btn-outline-primary" onclick="loadZeitverlauf()">
+                <i class="bi bi-arrow-clockwise me-1"></i>Aktualisieren
+            </button>
+        </div>
+    </div>
+
+    <!-- Info -->
+    <div class="row mb-3">
+        <div class="col">
+            <div class="alert alert-info mb-0">
+                <i class="bi bi-info-circle me-2"></i>
+                Diese Ansicht zeigt die historische Entwicklung der Konten basierend auf den importierten Snapshots.
+                <strong>Guthaben</strong> = positiver Saldo, <strong>Darl.-Stand</strong> = negativer Saldo (Darlehen),
+                <strong>Freie Linie</strong> = verfügbare Kreditlinie (Kreditlinie + Saldo).
+            </div>
+        </div>
+    </div>
+
+    <!-- Zeitverlauf-Tabelle -->
+    <div class="row">
+        <div class="col">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-0">
+                    <div class="table-responsive" style="max-height: 80vh; overflow-y: auto;">
+                        <table class="table table-bordered table-sm mb-0" id="zeitverlaufTable" style="font-size: 0.85rem;">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th rowspan="2" class="align-middle" style="min-width: 200px;">Bank / Konto</th>
+                                    <th rowspan="2" class="align-middle text-end" style="min-width: 100px;">Linie €</th>
+                                    <th colspan="3" class="text-center" id="stichtageHeader">Lade Daten...</th>
+                                </tr>
+                                <tr id="stichtageSubHeader">
+                                    <!-- Wird dynamisch befüllt -->
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="100" class="text-center py-5">
+                                        <span class="spinner-border spinner-border-sm me-2"></span>
+                                        Lade Zeitverlauf...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="card-footer bg-white border-0">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <small class="text-muted" id="zeitverlaufInfo">Lade Daten...</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/bankenspiegel_zeitverlauf.js') }}?v={{ STATIC_VERSION }}"></script>
+{% endblock %}

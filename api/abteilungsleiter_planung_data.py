@@ -1194,7 +1194,9 @@ class AbteilungsleiterPlanungData:
                     return result
                 
                 # G&V-Abschlussbuchungen ausschließen (BWA-Logik)
-                guv_filter = "AND (posting_text IS NULL OR posting_text NOT LIKE '%%G&V-Abschluss%%')"
+                # TAG 179: Zentrale Funktion verwenden
+                from api.db_utils import get_guv_filter
+                guv_filter = get_guv_filter()
                 
                 # Umsatz (BWA-Logik: H-S)
                 cursor.execute(convert_placeholders(f"""
@@ -1572,7 +1574,9 @@ class AbteilungsleiterPlanungData:
                 firma_filter_einsatz = ""
                 firma_filter_kosten = ""
         
-        guv_filter = "AND (posting_text IS NULL OR posting_text NOT LIKE '%%G&V-Abschluss%%')"
+        # TAG 179: Zentrale Funktion verwenden
+        from api.db_utils import get_guv_filter
+        guv_filter = get_guv_filter()
         
         # Bereichs-spezifische Konten
         if bereich == 'NW':

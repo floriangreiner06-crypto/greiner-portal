@@ -3,13 +3,14 @@ Zentrale Datenbank-Utilities für Greiner Portal
 ================================================
 Erstellt: TAG 117 - Code-Qualitäts-Refactoring
 Aktualisiert: TAG 136 - PostgreSQL Migration (nutzt db_connection.py)
+Aktualisiert: TAG 179 - G&V-Filter zentralisiert
 
 ARCHITEKTUR:
 - db_connection.py: Niedrig-Level (Verbindungen, SQL-Helpers, Placeholders)
 - db_utils.py: Hoch-Level (Business-Logik, KPI-Queries, Query-Helpers)
 
 Verwendung:
-    from api.db_utils import db_session, locosoft_session, row_to_dict, rows_to_list
+    from api.db_utils import db_session, locosoft_session, row_to_dict, rows_to_list, get_guv_filter
 
     # Portal-Datenbank (SQLite oder PostgreSQL je nach Konfiguration)
     with db_session() as conn:
@@ -48,9 +49,6 @@ def get_db():
     TAG 136: Nutzt jetzt db_connection.py für Dual-Mode Support.
 
     WARNUNG: Bevorzuge db_session() Context Manager für automatisches Cleanup!
-
-    Returns:
-        Connection-Objekt (sqlite3.Connection oder psycopg2.connection)
     """
     return get_portal_db()
 
@@ -58,209 +56,143 @@ def get_db():
 @contextmanager
 def db_session():
     """
-    Context Manager für sichere Portal-Datenbankverbindung.
+    Context Manager für Portal-Datenbankverbindungen.
 
-    TAG 136: Nutzt jetzt db_connection.py - funktioniert mit SQLite UND PostgreSQL.
+    Automatisches Cleanup (commit/rollback/close).
 
-    Schließt Connection automatisch, auch bei Exceptions.
-
-    Usage:
+    Beispiel:
         with db_session() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM users")
-            data = cursor.fetchall()
-        # Connection ist hier garantiert geschlossen
-
-    Yields:
-        Connection-Objekt (sqlite3.Connection oder psycopg2.connection)
+            cursor.execute("SELECT ...")
+            conn.commit()
     """
     with get_db_context() as conn:
         yield conn
 
 
 # =============================================================================
-# LOCOSOFT POSTGRESQL (EXTERNE Datenbank - 10.80.80.8)
+# LOCOSOFT DATENBANK VERBINDUNGEN (EXTERNE PostgreSQL)
 # =============================================================================
 
 def get_locosoft_connection():
     """
-    Erstellt PostgreSQL-Verbindung zu Locosoft (EXTERNE Datenbank).
-
-    Dies ist NICHT unsere Portal-DB, sondern die externe Locosoft-DB!
+    Erstellt Verbindung zur externen Locosoft PostgreSQL-Datenbank.
 
     WARNUNG: Bevorzuge locosoft_session() Context Manager für automatisches Cleanup!
 
-    Liest Credentials aus /opt/greiner-portal/config/.env
-
-    Returns:
-        psycopg2.connection
-
-    Raises:
-        FileNotFoundError: Wenn .env nicht gefunden
-        KeyError: Wenn Credentials fehlen
-        psycopg2.OperationalError: Bei Verbindungsfehler
+    Konfiguration:
+    - Host: 10.80.80.8:5432
+    - Database: loco_auswertung_db
+    - User: loco_auswertung_benutzer
+    - Password: loco (aus credentials.json)
     """
     import psycopg2
+    import json
 
-    # .env Pfad ermitteln
-    env_path = os.getenv('GREINER_ENV_PATH', '/opt/greiner-portal/config/.env')
-
-    # Für lokale Entwicklung
-    if os.name == 'nt' or not os.path.exists(env_path):
-        _base = os.path.dirname(os.path.dirname(__file__))
-        env_path = os.path.join(_base, 'config', '.env')
-
-    if not os.path.exists(env_path):
-        raise FileNotFoundError(f".env nicht gefunden: {env_path}")
-
-    # .env parsen
-    env = {}
-    with open(env_path, 'r') as f:
-        for line in f:
-            line = line.strip()
-            if '=' in line and not line.startswith('#'):
-                key, value = line.split('=', 1)
-                env[key.strip()] = value.strip()
-
-    # Pflichtfelder prüfen
-    required = ['LOCOSOFT_HOST', 'LOCOSOFT_PORT', 'LOCOSOFT_DATABASE',
-                'LOCOSOFT_USER', 'LOCOSOFT_PASSWORD']
-    missing = [k for k in required if k not in env]
-    if missing:
-        raise KeyError(f"Fehlende .env Einträge: {missing}")
+    credentials_path = '/opt/greiner-portal/config/credentials.json'
+    if os.path.exists(credentials_path):
+        with open(credentials_path, 'r') as f:
+            creds = json.load(f)
+            locosoft_creds = creds.get('locosoft_postgresql', {})
+    else:
+        # Fallback
+        locosoft_creds = {
+            'host': '10.80.80.8',
+            'port': 5432,
+            'database': 'loco_auswertung_db',
+            'user': 'loco_auswertung_benutzer',
+            'password': 'loco'
+        }
 
     return psycopg2.connect(
-        host=env['LOCOSOFT_HOST'],
-        port=int(env['LOCOSOFT_PORT']),
-        database=env['LOCOSOFT_DATABASE'],
-        user=env['LOCOSOFT_USER'],
-        password=env['LOCOSOFT_PASSWORD'],
-        connect_timeout=10,
-        options='-c statement_timeout=60000'
+        host=locosoft_creds.get('host', '10.80.80.8'),
+        port=locosoft_creds.get('port', 5432),
+        database=locosoft_creds.get('database', 'loco_auswertung_db'),
+        user=locosoft_creds.get('user', 'loco_auswertung_benutzer'),
+        password=locosoft_creds.get('password', 'loco')
     )
 
 
 @contextmanager
 def locosoft_session():
     """
-    Context Manager für sichere Locosoft PostgreSQL-Verbindung.
+    Context Manager für Locosoft-Datenbankverbindungen.
 
-    Schließt Connection automatisch, auch bei Exceptions.
+    Automatisches Cleanup (commit/rollback/close).
 
-    Usage:
+    Beispiel:
         with locosoft_session() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM mitarbeiter")
-            data = cursor.fetchall()
-        # Connection ist hier garantiert geschlossen
-
-    Yields:
-        psycopg2.connection
+            cursor.execute("SELECT ... FROM journal_accountings ...")
     """
     conn = None
     try:
         conn = get_locosoft_connection()
         yield conn
+        conn.commit()
+    except Exception:
+        if conn:
+            conn.rollback()
+        raise
     finally:
         if conn:
             conn.close()
 
 
 # =============================================================================
-# ROW CONVERTER UTILITIES
+# ROW CONVERSION HELPERS
 # =============================================================================
 
 def row_to_dict(row, cursor=None) -> Optional[Dict[str, Any]]:
     """
-    Konvertiert DB-Row zu Dictionary.
+    Konvertiert Datenbank-Row zu Dictionary.
 
-    TAG 139: Funktioniert jetzt mit allen Row-Typen:
-    - HybridRow (hat keys() und items())
-    - sqlite3.Row (hat dict() Support)
-    - psycopg2 RealDictRow (ist dict-like)
-    - psycopg2 tuple (braucht cursor.description)
+    Unterstützt sowohl SQLite (Row) als auch PostgreSQL (RealDictRow/HybridRow).
 
-    Args:
-        row: Row-Objekt oder None
-        cursor: Optional - Cursor für Spaltennamen bei Tuples
-
-    Returns:
-        Dictionary mit Spalten als Keys, oder None wenn row None ist
+    TAG 136: PostgreSQL HybridRow unterstützt sowohl row[0] als auch row['name'].
     """
     if row is None:
         return None
 
-    # Bereits ein dict
-    if isinstance(row, dict):
-        return dict(row)
-
-    # HybridRow, sqlite3.Row - unterstützen keys() und items()
-    if hasattr(row, 'keys') and hasattr(row, 'items'):
-        return dict(row.items())
-
-    # sqlite3.Row mit nur keys()
+    # PostgreSQL RealDictRow oder HybridRow
     if hasattr(row, 'keys'):
-        return {k: row[k] for k in row.keys()}
-
-    # Tuple - braucht cursor.description für Spaltennamen
-    if isinstance(row, tuple) and cursor is not None:
-        columns = [desc[0] for desc in cursor.description]
-        return dict(zip(columns, row))
-
-    # Fallback: Wenn tuple ohne cursor, versuche keys() zu erzwingen
-    # (Kann bei NamedTuple funktionieren)
-    if hasattr(row, '_asdict'):
-        return row._asdict()
-
-    # Letzter Fallback: Als dict casten (für unbekannte Row-Typen)
-    try:
         return dict(row)
-    except (TypeError, ValueError):
-        # Kann nicht konvertiert werden - als None zurückgeben
-        return None
+
+    # SQLite Row oder Tuple
+    if cursor and hasattr(cursor, 'description') and cursor.description:
+        return {desc[0]: row[i] for i, desc in enumerate(cursor.description)}
+    elif isinstance(row, (tuple, list)):
+        # Fallback: Numerische Keys
+        return {i: val for i, val in enumerate(row)}
+
+    return row
 
 
 def rows_to_list(rows: List, cursor=None) -> List[Dict[str, Any]]:
     """
-    Konvertiert Liste von DB-Rows zu Liste von Dictionaries.
+    Konvertiert Liste von Rows zu Liste von Dictionaries.
 
-    TAG 139: Unterstützt jetzt auch cursor für Tuple-Rows.
-
-    Args:
-        rows: Liste von Row-Objekten
-        cursor: Optional - Cursor für Spaltennamen bei Tuples
-
-    Returns:
-        Liste von Dictionaries
+    Beispiel:
+        rows = cursor.fetchall()
+        data = rows_to_list(rows, cursor)
     """
-    if not rows:
-        return []
-    return [row_to_dict(row, cursor) for row in rows]
+    return [row_to_dict(row, cursor) for row in rows if row is not None]
 
 
 # =============================================================================
-# QUERY HELPERS (mit PostgreSQL-Kompatibilität)
+# QUERY HELPERS
 # =============================================================================
 
 def execute_query(query: str, params: tuple = (), fetchone: bool = False) -> Any:
     """
     Führt SELECT-Query aus und gibt Ergebnis zurück.
 
-    TAG 136: Konvertiert ? zu %s für PostgreSQL automatisch.
-    TAG 139: Übergibt cursor für Tuple-zu-Dict Konvertierung.
-
-    Args:
-        query: SQL Query String (kann ? als Placeholder nutzen)
-        params: Query-Parameter (Tuple)
-        fetchone: True für einzelnes Ergebnis, False für Liste
-
-    Returns:
-        Dict (fetchone=True) oder List[Dict] (fetchone=False)
+    Beispiel:
+        result = execute_query("SELECT * FROM employees WHERE id = %s", (1,), fetchone=True)
     """
-    query = convert_placeholders(query)
     with db_session() as conn:
         cursor = conn.cursor()
-        cursor.execute(query, params)
+        cursor.execute(convert_placeholders(query), params)
         if fetchone:
             return row_to_dict(cursor.fetchone(), cursor)
         return rows_to_list(cursor.fetchall(), cursor)
@@ -268,89 +200,58 @@ def execute_query(query: str, params: tuple = (), fetchone: bool = False) -> Any
 
 def execute_write(query: str, params: tuple = ()) -> int:
     """
-    Führt INSERT/UPDATE/DELETE aus und committed.
+    Führt INSERT/UPDATE/DELETE-Query aus und gibt Anzahl betroffener Zeilen zurück.
 
-    TAG 136: Konvertiert ? zu %s für PostgreSQL automatisch.
-
-    Args:
-        query: SQL Query String (kann ? als Placeholder nutzen)
-        params: Query-Parameter (Tuple)
-
-    Returns:
-        Anzahl betroffener Zeilen (rowcount)
+    Beispiel:
+        affected = execute_write("UPDATE employees SET active = true WHERE id = %s", (1,))
     """
-    query = convert_placeholders(query)
     with db_session() as conn:
         cursor = conn.cursor()
-        cursor.execute(query, params)
+        cursor.execute(convert_placeholders(query), params)
         conn.commit()
         return cursor.rowcount
 
 
 # =============================================================================
-# PORTAL ABWESENHEITEN (TAG 127 - Business Logik)
+# PORTAL ABWESENHEITEN (Urlaubsplaner)
 # =============================================================================
-
-# Mapping vacation_type_id -> Locosoft absence reason
-VACATION_TYPE_TO_REASON = {
-    1: 'Url',   # Urlaubstag (beantragt)
-    2: 'Url',   # Urlaubstag (genehmigt)
-    5: 'Krn',   # Krankheit
-    6: 'ZA.',   # Ausgleichstag (Zeitausgleich)
-    7: 'Elt',   # Elternzeit
-    9: 'Sem',   # Schulung
-    11: 'Snd',  # Sonderurlaub
-    12: 'Sem',  # Seminar
-}
-
 
 def get_portal_absences(datum: str = None) -> dict:
     """
-    Holt Abwesenheiten aus dem Portal (vacation_bookings).
-
-    TAG 127: Diese Funktion wird von Werkstatt-APIs genutzt um
-    Portal-Abwesenheiten (ZA, Krank, etc.) mit Locosoft-Daten zu kombinieren.
-    TAG 136: PostgreSQL-kompatibel.
-
-    Args:
-        datum: Datum im Format 'YYYY-MM-DD', Default: heute
+    Holt Abwesenheiten aus Portal-DB für ein bestimmtes Datum.
 
     Returns:
-        Dict mit locosoft_id als Key:
-        {
-            5008: {
-                'employee_id': 123,
-                'name': 'Ebner, Patrick',
-                'locosoft_id': 5008,
-                'reason': 'ZA.',
-                'vacation_type': 'Ausgleichstag',
-                'day_part': 'full',
-                'source': 'portal'
-            },
-            ...
-        }
+        dict: {(datum, locosoft_id): {employee_id, name, reason, ...}}
     """
-    from datetime import date
+    from datetime import date, datetime
+    from api.db_connection import convert_placeholders
 
     if datum is None:
         datum = date.today().isoformat()
 
     result = {}
-    ph = sql_placeholder()  # ? oder %s je nach DB
+    VACATION_TYPE_TO_REASON = {
+        1: 'vac',  # Urlaub
+        2: 'ill',  # Krank
+        3: 'edu',  # Fortbildung
+        4: 'oth'   # Sonstiges
+    }
+
     # TAG 136: PostgreSQL verwendet BOOLEAN, SQLite verwendet 1/0
     aktiv_check = "e.aktiv = true" if get_db_type() == 'postgresql' else "e.aktiv = true"
 
     with db_session() as conn:
         cursor = conn.cursor()
+        ph = sql_placeholder()
         query = f"""
             SELECT
+                vb.booking_date,
                 vb.employee_id,
                 e.first_name || ' ' || e.last_name as name,
                 lem.locosoft_id,
                 vb.vacation_type_id,
                 vt.name as vacation_type,
-                vb.day_part,
-                vb.status
+                vb.day_part
             FROM vacation_bookings vb
             JOIN employees e ON vb.employee_id = e.id
             LEFT JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
@@ -362,10 +263,11 @@ def get_portal_absences(datum: str = None) -> dict:
         cursor.execute(query, (datum,))
 
         for row in cursor.fetchall():
-            row_dict = row_to_dict(row)
+            row_dict = row_to_dict(row, cursor)
             locosoft_id = row_dict['locosoft_id']
             if locosoft_id:
-                result[locosoft_id] = {
+                key = (row_dict['booking_date'], locosoft_id)
+                result[key] = {
                     'employee_id': row_dict['employee_id'],
                     'name': row_dict['name'],
                     'locosoft_id': locosoft_id,
@@ -380,28 +282,27 @@ def get_portal_absences(datum: str = None) -> dict:
 
 def get_portal_absences_for_range(start_date: str, end_date: str) -> dict:
     """
-    Holt Portal-Abwesenheiten für einen Datumsbereich.
-
-    TAG 136: PostgreSQL-kompatibel.
-
-    Args:
-        start_date: Start-Datum 'YYYY-MM-DD'
-        end_date: End-Datum 'YYYY-MM-DD'
+    Holt Abwesenheiten aus Portal-DB für einen Zeitraum.
 
     Returns:
-        Dict mit (datum, locosoft_id) als Key:
-        {
-            ('2025-12-19', 5008): {...},
-            ...
-        }
+        dict: {(datum, locosoft_id): {employee_id, name, reason, ...}}
     """
+    from api.db_connection import convert_placeholders, sql_placeholder
+
     result = {}
-    ph = sql_placeholder()
+    VACATION_TYPE_TO_REASON = {
+        1: 'vac',  # Urlaub
+        2: 'ill',  # Krank
+        3: 'edu',  # Fortbildung
+        4: 'oth'   # Sonstiges
+    }
+
     # TAG 136: PostgreSQL verwendet BOOLEAN, SQLite verwendet 1/0
     aktiv_check = "e.aktiv = true" if get_db_type() == 'postgresql' else "e.aktiv = true"
 
     with db_session() as conn:
         cursor = conn.cursor()
+        ph = sql_placeholder()
         query = f"""
             SELECT
                 vb.booking_date,
@@ -422,7 +323,7 @@ def get_portal_absences_for_range(start_date: str, end_date: str) -> dict:
         cursor.execute(query, (start_date, end_date))
 
         for row in cursor.fetchall():
-            row_dict = row_to_dict(row)
+            row_dict = row_to_dict(row, cursor)
             locosoft_id = row_dict['locosoft_id']
             if locosoft_id:
                 key = (row_dict['booking_date'], locosoft_id)
@@ -437,3 +338,27 @@ def get_portal_absences_for_range(start_date: str, end_date: str) -> dict:
                 }
 
     return result
+
+
+# =============================================================================
+# BWA & CONTROLLING HELPER FUNCTIONS
+# =============================================================================
+
+def get_guv_filter() -> str:
+    """
+    G&V-Abschluss-Filter für BWA-Berechnungen
+    
+    Schließt G&V-Abschlussbuchungen aus, die die BWA verfälschen würden.
+    
+    TAG 179: Zentrale Funktion zur Vermeidung von Redundanzen.
+    
+    Returns:
+        SQL-Filter-String: "AND (posting_text IS NULL OR posting_text NOT LIKE '%%G&V-Abschluss%%')"
+    
+    Beispiel:
+        from api.db_utils import get_guv_filter
+        guv_filter = get_guv_filter()
+        cursor.execute(f"SELECT ... FROM loco_journal_accountings WHERE ... {guv_filter}")
+    """
+    # TAG 136: %% escaped für PostgreSQL (sonst als Placeholder interpretiert)
+    return "AND (posting_text IS NULL OR posting_text NOT LIKE '%%G&V-Abschluss%%')"

@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BWA v2 - Modern Mockup</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    
+    <style>
+        /* =========================================
+           BWA v2 MODERN MOCKUP - Design Empfehlungen
+           ========================================= */
+        
+        body {
+            background: #f5f7fa;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        }
+        
+        .container-fluid {
+            padding: 1.5rem;
+        }
+        
+        /* =========================================
+           HEADER - Modernisiert
+           ========================================= */
+        .dashboard-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1.5rem 2rem;
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .dashboard-header h4 {
+            margin: 0;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        
+        .dashboard-header .subtitle {
+            opacity: 0.9;
+            font-size: 0.9rem;
+            margin-top: 0.25rem;
+        }
+        
+        /* =========================================
+           FILTER-BEREICH - Kompakt & Modern
+           ========================================= */
+        .filter-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.25rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            border: 1px solid #e9ecef;
+        }
+        
+        .filter-row {
+            display: flex;
+            gap: 1rem;
+            align-items: flex-end;
+            flex-wrap: wrap;
+        }
+        
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        
+        .filter-group label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin: 0;
+        }
+        
+        .quick-filters {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+        
+        .quick-filter-btn {
+            font-size: 0.8rem;
+            padding: 0.35rem 0.75rem;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+            background: white;
+            color: #495057;
+            transition: all 0.2s;
+        }
+        
+        .quick-filter-btn:hover {
+            background: #f8f9fa;
+            border-color: #667eea;
+            color: #667eea;
+        }
+        
+        .quick-filter-btn.active {
+            background: #667eea;
+            border-color: #667eea;
+            color: white;
+        }
+        
+        /* =========================================
+           WJ-FORTSCHRITT - Modernisiert
+           ========================================= */
+        .wj-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.25rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        
+        .wj-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+        
+        .wj-title {
+            font-weight: 600;
+            color: #2c3e50;
+            margin: 0;
+        }
+        
+        .wj-badge {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 0.35rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        
+        .wj-progress-container {
+            position: relative;
+            height: 12px;
+            background: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 0.75rem;
+        }
+        
+        .wj-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            border-radius: 10px;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .wj-progress-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            animation: shimmer 2s infinite;
+        }
+        
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        
+        /* =========================================
+           KPI-KARTEN - Modernisiert mit Icons & Trends
+           ========================================= */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .kpi-card-modern {
+            background: white;
+            border-radius: 12px;
+            padding: 1.25rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            border-left: 4px solid;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .kpi-card-modern::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 80px;
+            height: 80px;
+            background: radial-gradient(circle, rgba(102, 126, 234, 0.1) 0%, transparent 70%);
+            border-radius: 50%;
+            transform: translate(30%, -30%);
+        }
+        
+        .kpi-card-modern:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        }
+        
+        .kpi-card-modern.kpi-umsatz { border-left-color: #198754; }
+        .kpi-card-modern.kpi-db1 { border-left-color: #0d6efd; }
+        .kpi-card-modern.kpi-db2 { border-left-color: #6f42c1; }
+        .kpi-card-modern.kpi-be { border-left-color: #dc3545; }
+        .kpi-card-modern.kpi-ue { border-left-color: #20c997; }
+        
+        .kpi-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 0.75rem;
+        }
+        
+        .kpi-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .kpi-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            color: white;
+        }
+        
+        .kpi-icon.umsatz { background: linear-gradient(135deg, #198754, #20c997); }
+        .kpi-icon.db1 { background: linear-gradient(135deg, #0d6efd, #667eea); }
+        .kpi-icon.db2 { background: linear-gradient(135deg, #6f42c1, #764ba2); }
+        .kpi-icon.be { background: linear-gradient(135deg, #dc3545, #e74c3c); }
+        .kpi-icon.ue { background: linear-gradient(135deg, #20c997, #198754); }
+        
+        .kpi-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: #2c3e50;
+            line-height: 1.2;
+            margin-bottom: 0.5rem;
+        }
+        
+        .kpi-delta-modern {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+        }
+        
+        .kpi-delta-modern.positive {
+            color: #198754;
+        }
+        
+        .kpi-delta-modern.negative {
+            color: #dc3545;
+        }
+        
+        .kpi-delta-modern.neutral {
+            color: #6c757d;
+        }
+        
+        .kpi-trend {
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+        
+        /* Mini Sparkline Container */
+        .kpi-sparkline {
+            height: 30px;
+            margin-top: 0.5rem;
+            opacity: 0.6;
+        }
+        
+        /* =========================================
+           CHARTS-BEREICH - Neu hinzugefügt
+           ========================================= */
+        .charts-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .chart-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.25rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        
+        .chart-title {
+            font-weight: 600;
+            color: #2c3e50;
+            margin: 0;
+            font-size: 0.95rem;
+        }
+        
+        /* =========================================
+           TABELLE - Modernisiert
+           ========================================= */
+        .table-card {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        
+        .table-header-modern {
+            background: linear-gradient(135deg, #343a40 0%, #495057 100%);
+            color: white;
+            padding: 1rem 1.25rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .table-title {
+            font-weight: 600;
+            margin: 0;
+            font-size: 1rem;
+        }
+        
+        .table-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .table-responsive-modern {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        
+        .table-responsive-modern::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .table-responsive-modern::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        
+        .table-responsive-modern::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        
+        .table-responsive-modern::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        
+        .bwa-table-modern {
+            margin: 0;
+            font-size: 0.9rem;
+        }
+        
+        .bwa-table-modern thead th {
+            background: #f8f9fa;
+            color: #495057;
+            font-weight: 600;
+            padding: 0.75rem 1rem;
+            border-bottom: 2px solid #dee2e6;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            white-space: nowrap;
+        }
+        
+        .bwa-table-modern tbody tr {
+            transition: all 0.15s ease;
+        }
+        
+        .bwa-table-modern tbody tr:hover {
+            background: #f8f9fa;
+            transform: scale(1.001);
+        }
+        
+        .bwa-table-modern tbody td {
+            padding: 0.75rem 1rem;
+            vertical-align: middle;
+            border-bottom: 1px solid #f1f1f1;
+        }
+        
+        .row-header-modern {
+            background: #495057;
+            color: white;
+            font-weight: 600;
+        }
+        
+        .row-sum-modern {
+            background: #f8f9fa;
+            font-weight: 600;
+        }
+        
+        .row-bereich-modern {
+            cursor: pointer;
+        }
+        
+        .row-bereich-modern:hover {
+            background: #e3f2fd !important;
+        }
+        
+        .row-result-modern {
+            background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+            font-weight: 700;
+        }
+        
+        .bereich-icon-modern {
+            display: inline-flex;
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: white;
+            margin-right: 0.5rem;
+        }
+        
+        .bereich-icon-modern.nw { background: #0d6efd; }
+        .bereich-icon-modern.gw { background: #fd7e14; }
+        .bereich-icon-modern.me { background: #6f42c1; }
+        .bereich-icon-modern.tz { background: #20c997; }
+        .bereich-icon-modern.mw { background: #6c757d; }
+        .bereich-icon-modern.so { background: #adb5bd; }
+        
+        .val-pos { color: #198754; font-weight: 600; }
+        .val-neg { color: #dc3545; font-weight: 600; }
+        .val-muted { color: #6c757d; }
+        
+        .delta-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            padding: 0.2rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        
+        .delta-badge.positive {
+            background: #d1e7dd;
+            color: #0f5132;
+        }
+        
+        .delta-badge.negative {
+            background: #f8d7da;
+            color: #842029;
+        }
+        
+        .delta-badge.neutral {
+            background: #e9ecef;
+            color: #6c757d;
+        }
+        
+        /* =========================================
+           LEGENDE - Modernisiert
+           ========================================= */
+        .legend-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1rem 1.25rem;
+            margin-top: 1rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        
+        .legend-items {
+            display: flex;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            color: #495057;
+        }
+        
+        /* =========================================
+           RESPONSIVE
+           ========================================= */
+        @media (max-width: 768px) {
+            .kpi-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .charts-section {
+                grid-template-columns: 1fr;
+            }
+            
+            .filter-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid py-3">
+        
+        <!-- Header -->
+        <div class="dashboard-header">
+            <h4>
+                <i class="bi bi-graph-up-arrow"></i>
+                BWA - Betriebswirtschaftliche Auswertung
+            </h4>
+            <div class="subtitle">
+                Oktober 2025 | Deggendorf Opel
+            </div>
+        </div>
+        
+        <!-- Filter -->
+        <div class="filter-card">
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label>Monat</label>
+                    <select class="form-select form-select-sm" style="width: 140px;">
+                        <option>Oktober</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Jahr</label>
+                    <select class="form-select form-select-sm" style="width: 100px;">
+                        <option>2025</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Standort</label>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <input type="radio" class="btn-check" name="standort" id="deg" checked>
+                        <label class="btn btn-outline-primary" for="deg">Deggendorf</label>
+                        <input type="radio" class="btn-check" name="standort" id="lan">
+                        <label class="btn btn-outline-primary" for="lan">Landau</label>
+                        <input type="radio" class="btn-check" name="standort" id="all">
+                        <label class="btn btn-outline-primary" for="all">Alle</label>
+                    </div>
+                </div>
+                <div class="filter-group">
+                    <button class="btn btn-primary btn-sm">
+                        <i class="bi bi-arrow-clockwise me-1"></i>Laden
+                    </button>
+                </div>
+            </div>
+            <div class="quick-filters">
+                <button class="quick-filter-btn active">Aktueller Monat</button>
+                <button class="quick-filter-btn">Letztes Jahr</button>
+                <button class="quick-filter-btn">YTD</button>
+                <button class="quick-filter-btn">Vergleich</button>
+            </div>
+        </div>
+        
+        <!-- WJ-Fortschritt -->
+        <div class="wj-card">
+            <div class="wj-header">
+                <div>
+                    <h6 class="wj-title">Wirtschaftsjahr 2025/26</h6>
+                    <small class="text-muted">(Sep 2025 - Aug 2026)</small>
+                </div>
+                <span class="wj-badge">Monat 2 von 12</span>
+            </div>
+            <div class="wj-progress-container">
+                <div class="wj-progress-fill" style="width: 16.7%"></div>
+            </div>
+        </div>
+        
+        <!-- KPI-Karten -->
+        <div class="kpi-grid">
+            <div class="kpi-card-modern kpi-umsatz">
+                <div class="kpi-header">
+                    <div>
+                        <div class="kpi-label">Umsatzerlöse</div>
+                        <div class="kpi-value">2,45 Mio €</div>
+                    </div>
+                    <div class="kpi-icon umsatz">
+                        <i class="bi bi-arrow-up"></i>
+                    </div>
+                </div>
+                <div class="kpi-delta-modern positive">
+                    <i class="bi bi-arrow-up"></i>
+                    <span class="kpi-trend">+12,3%</span>
+                    <span class="text-muted">vs. Vorjahr</span>
+                </div>
+                <canvas class="kpi-sparkline" id="sparkline-umsatz"></canvas>
+            </div>
+            
+            <div class="kpi-card-modern kpi-db1">
+                <div class="kpi-header">
+                    <div>
+                        <div class="kpi-label">Bruttoertrag (DB1)</div>
+                        <div class="kpi-value">485 T€</div>
+                    </div>
+                    <div class="kpi-icon db1">
+                        <i class="bi bi-graph-up"></i>
+                    </div>
+                </div>
+                <div class="kpi-delta-modern positive">
+                    <i class="bi bi-arrow-up"></i>
+                    <span class="kpi-trend">+8,7%</span>
+                    <span class="text-muted">vs. Vorjahr</span>
+                </div>
+                <canvas class="kpi-sparkline" id="sparkline-db1"></canvas>
+            </div>
+            
+            <div class="kpi-card-modern kpi-db2">
+                <div class="kpi-header">
+                    <div>
+                        <div class="kpi-label">Deckungsbeitrag 2</div>
+                        <div class="kpi-value">312 T€</div>
+                    </div>
+                    <div class="kpi-icon db2">
+                        <i class="bi bi-bar-chart"></i>
+                    </div>
+                </div>
+                <div class="kpi-delta-modern positive">
+                    <i class="bi bi-arrow-up"></i>
+                    <span class="kpi-trend">+5,2%</span>
+                    <span class="text-muted">vs. Vorjahr</span>
+                </div>
+                <canvas class="kpi-sparkline" id="sparkline-db2"></canvas>
+            </div>
+            
+            <div class="kpi-card-modern kpi-be">
+                <div class="kpi-header">
+                    <div>
+                        <div class="kpi-label">Betriebsergebnis</div>
+                        <div class="kpi-value">185 T€</div>
+                    </div>
+                    <div class="kpi-icon be">
+                        <i class="bi bi-building"></i>
+                    </div>
+                </div>
+                <div class="kpi-delta-modern negative">
+                    <i class="bi bi-arrow-down"></i>
+                    <span class="kpi-trend">-2,1%</span>
+                    <span class="text-muted">vs. Vorjahr</span>
+                </div>
+                <canvas class="kpi-sparkline" id="sparkline-be"></canvas>
+            </div>
+            
+            <div class="kpi-card-modern kpi-ue">
+                <div class="kpi-header">
+                    <div>
+                        <div class="kpi-label">Unternehmensergebnis</div>
+                        <div class="kpi-value">198 T€</div>
+                    </div>
+                    <div class="kpi-icon ue">
+                        <i class="bi bi-trophy"></i>
+                    </div>
+                </div>
+                <div class="kpi-delta-modern positive">
+                    <i class="bi bi-arrow-up"></i>
+                    <span class="kpi-trend">+3,4%</span>
+                    <span class="text-muted">vs. Vorjahr</span>
+                </div>
+                <canvas class="kpi-sparkline" id="sparkline-ue"></canvas>
+            </div>
+        </div>
+        
+        <!-- Charts -->
+        <div class="charts-section">
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h6 class="chart-title">Bereichsverteilung (DB1)</h6>
+                </div>
+                <canvas id="chart-bereiche" height="200"></canvas>
+            </div>
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h6 class="chart-title">Monatsvergleich</h6>
+                </div>
+                <canvas id="chart-vergleich" height="200"></canvas>
+            </div>
+        </div>
+        
+        <!-- Haupttabelle -->
+        <div class="table-card">
+            <div class="table-header-modern">
+                <h6 class="table-title">Detaillierte Auswertung</h6>
+                <div class="table-actions">
+                    <button class="btn btn-sm btn-light">
+                        <i class="bi bi-download"></i> Export
+                    </button>
+                    <button class="btn btn-sm btn-light">
+                        <i class="bi bi-printer"></i> Drucken
+                    </button>
+                </div>
+            </div>
+            <div class="table-responsive-modern">
+                <table class="table bwa-table-modern mb-0">
+                    <thead>
+                        <tr>
+                            <th style="width: 28%">Position</th>
+                            <th class="text-center" style="width: 5%">Stk.<br>Monat</th>
+                            <th class="text-end" style="width: 10%">Monat</th>
+                            <th class="text-end" style="width: 10%">Vorjahr</th>
+                            <th class="text-center" style="width: 6%">Abw.</th>
+                            <th class="text-end" style="width: 9%">YTD</th>
+                            <th class="text-end" style="width: 9%">YTD Vorjahr</th>
+                            <th class="text-center" style="width: 6%">Abw. YTD</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="row-sum-modern row-bereich-modern">
+                            <td><i class="bi bi-arrow-up text-success me-2"></i><strong>Umsatzerlöse</strong></td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><span class="val-pos">2.450.000 €</span></td>
+                            <td class="text-end"><span class="val-pos">2.180.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 12,3%</span></td>
+                            <td class="text-end"><span class="val-pos">4.890.000 €</span></td>
+                            <td class="text-end"><span class="val-pos">4.320.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 13,2%</span></td>
+                        </tr>
+                        <tr class="row-sum-modern row-bereich-modern">
+                            <td><i class="bi bi-arrow-down text-danger me-2"></i><strong>Einsatzwerte</strong></td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><span class="val-neg">-1.965.000 €</span></td>
+                            <td class="text-end"><span class="val-neg">-1.750.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge negative">↓ 12,3%</span></td>
+                            <td class="text-end"><span class="val-neg">-3.920.000 €</span></td>
+                            <td class="text-end"><span class="val-neg">-3.460.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge negative">↓ 13,3%</span></td>
+                        </tr>
+                        <tr class="row-header-modern">
+                            <td colspan="8"><strong>Bruttoerträge nach Bereichen (DB1)</strong></td>
+                        </tr>
+                        <tr class="row-bereich-modern">
+                            <td>
+                                <span class="bereich-icon-modern nw">NW</span>
+                                Bruttoertrag Neuwagen
+                            </td>
+                            <td class="text-center">42</td>
+                            <td class="text-end"><span class="val-pos">285.000 €</span></td>
+                            <td class="text-end"><span class="val-pos">260.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 9,6%</span></td>
+                            <td class="text-end"><span class="val-pos">570.000 €</span></td>
+                            <td class="text-end"><span class="val-pos">520.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 9,6%</span></td>
+                        </tr>
+                        <tr class="row-bereich-modern">
+                            <td>
+                                <span class="bereich-icon-modern gw">GW</span>
+                                Bruttoertrag Gebrauchtwagen
+                            </td>
+                            <td class="text-center">28</td>
+                            <td class="text-end"><span class="val-pos">125.000 €</span></td>
+                            <td class="text-end"><span class="val-pos">115.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 8,7%</span></td>
+                            <td class="text-end"><span class="val-pos">250.000 €</span></td>
+                            <td class="text-end"><span class="val-pos">230.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 8,7%</span></td>
+                        </tr>
+                        <tr class="row-bereich-modern">
+                            <td>
+                                <span class="bereich-icon-modern me">ME</span>
+                                Bruttoertrag Mechanik/Lohn
+                            </td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><span class="val-pos">45.000 €</span></td>
+                            <td class="text-end"><span class="val-pos">42.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 7,1%</span></td>
+                            <td class="text-end"><span class="val-pos">90.000 €</span></td>
+                            <td class="text-end"><span class="val-pos">84.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 7,1%</span></td>
+                        </tr>
+                        <tr class="row-bereich-modern">
+                            <td>
+                                <span class="bereich-icon-modern tz">TZ</span>
+                                Bruttoertrag Teile & Zubehör
+                            </td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><span class="val-pos">30.000 €</span></td>
+                            <td class="text-end"><span class="val-pos">28.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 7,1%</span></td>
+                            <td class="text-end"><span class="val-pos">60.000 €</span></td>
+                            <td class="text-end"><span class="val-pos">56.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 7,1%</span></td>
+                        </tr>
+                        <tr class="row-sum-modern">
+                            <td><strong>Bruttoertrag Gesamt (DB1)</strong></td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><strong><span class="val-pos">485.000 €</span></strong></td>
+                            <td class="text-end"><span class="val-pos">445.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 9,0%</span></td>
+                            <td class="text-end"><strong><span class="val-pos">970.000 €</span></strong></td>
+                            <td class="text-end"><span class="val-pos">890.000 €</span></td>
+                            <td class="text-center"><strong><span class="delta-badge positive">↑ 9,0%</span></strong></td>
+                        </tr>
+                        <tr class="row-bereich-modern">
+                            <td><i class="bi bi-dash-circle text-warning me-2"></i> Variable Kosten</td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><span class="val-neg">-173.000 €</span></td>
+                            <td class="text-end"><span class="val-neg">-160.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge negative">↓ 8,1%</span></td>
+                            <td class="text-end"><span class="val-neg">-346.000 €</span></td>
+                            <td class="text-end"><span class="val-neg">-320.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge negative">↓ 8,1%</span></td>
+                        </tr>
+                        <tr class="row-sum-modern">
+                            <td><strong>Deckungsbeitrag 2 (DB2)</strong></td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><strong><span class="val-pos">312.000 €</span></strong></td>
+                            <td class="text-end"><span class="val-pos">285.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 9,5%</span></td>
+                            <td class="text-end"><strong><span class="val-pos">624.000 €</span></strong></td>
+                            <td class="text-end"><span class="val-pos">570.000 €</span></td>
+                            <td class="text-center"><strong><span class="delta-badge positive">↑ 9,5%</span></strong></td>
+                        </tr>
+                        <tr class="row-bereich-modern">
+                            <td><i class="bi bi-dash-circle text-info me-2"></i> Direkte Kosten</td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><span class="val-neg">-95.000 €</span></td>
+                            <td class="text-end"><span class="val-neg">-88.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge negative">↓ 8,0%</span></td>
+                            <td class="text-end"><span class="val-neg">-190.000 €</span></td>
+                            <td class="text-end"><span class="val-neg">-176.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge negative">↓ 8,0%</span></td>
+                        </tr>
+                        <tr class="row-sum-modern">
+                            <td><strong>Deckungsbeitrag 3 (DB3)</strong></td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><strong><span class="val-pos">217.000 €</span></strong></td>
+                            <td class="text-end"><span class="val-pos">197.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 10,2%</span></td>
+                            <td class="text-end"><strong><span class="val-pos">434.000 €</span></strong></td>
+                            <td class="text-end"><span class="val-pos">394.000 €</span></td>
+                            <td class="text-center"><strong><span class="delta-badge positive">↑ 10,2%</span></strong></td>
+                        </tr>
+                        <tr class="row-bereich-modern">
+                            <td><i class="bi bi-dash-circle text-secondary me-2"></i> Indirekte Kosten</td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><span class="val-neg">-32.000 €</span></td>
+                            <td class="text-end"><span class="val-neg">-30.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge negative">↓ 6,7%</span></td>
+                            <td class="text-end"><span class="val-neg">-64.000 €</span></td>
+                            <td class="text-end"><span class="val-neg">-60.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge negative">↓ 6,7%</span></td>
+                        </tr>
+                        <tr class="row-sum-modern" style="background: #fff3cd;">
+                            <td><i class="bi bi-building text-warning me-2"></i> <strong>Betriebsergebnis (BE)</strong></td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><strong><span class="val-pos">185.000 €</span></strong></td>
+                            <td class="text-end"><span class="val-pos">167.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge negative">↓ 10,8%</span></td>
+                            <td class="text-end"><strong><span class="val-pos">370.000 €</span></strong></td>
+                            <td class="text-end"><span class="val-pos">334.000 €</span></td>
+                            <td class="text-center"><strong><span class="delta-badge positive">↑ 10,8%</span></strong></td>
+                        </tr>
+                        <tr class="row-bereich-modern">
+                            <td><i class="bi bi-plus-minus text-muted me-2"></i> Neutrales Ergebnis</td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><span class="val-pos">13.000 €</span></td>
+                            <td class="text-end"><span class="val-pos">12.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 8,3%</span></td>
+                            <td class="text-end"><span class="val-pos">26.000 €</span></td>
+                            <td class="text-end"><span class="val-pos">24.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 8,3%</span></td>
+                        </tr>
+                        <tr class="row-result-modern">
+                            <td><i class="bi bi-trophy text-success me-2"></i> <strong>Unternehmensergebnis (UE)</strong></td>
+                            <td class="text-center">-</td>
+                            <td class="text-end"><strong><span class="val-pos">198.000 €</span></strong></td>
+                            <td class="text-end"><span class="val-pos">179.000 €</span></td>
+                            <td class="text-center"><span class="delta-badge positive">↑ 10,6%</span></td>
+                            <td class="text-end"><strong><span class="val-pos">396.000 €</span></strong></td>
+                            <td class="text-end"><span class="val-pos">358.000 €</span></td>
+                            <td class="text-center"><strong><span class="delta-badge positive">↑ 10,6%</span></strong></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Legende -->
+        <div class="legend-card">
+            <div class="legend-items">
+                <div class="legend-item">
+                    <span class="bereich-icon-modern nw">NW</span>
+                    <span>Neuwagen</span>
+                </div>
+                <div class="legend-item">
+                    <span class="bereich-icon-modern gw">GW</span>
+                    <span>Gebrauchtwagen</span>
+                </div>
+                <div class="legend-item">
+                    <span class="bereich-icon-modern me">ME</span>
+                    <span>Mechanik/Lohn</span>
+                </div>
+                <div class="legend-item">
+                    <span class="bereich-icon-modern tz">TZ</span>
+                    <span>Teile & Zubehör</span>
+                </div>
+                <div class="legend-item">
+                    <span class="bereich-icon-modern mw">MW</span>
+                    <span>Mietwagen</span>
+                </div>
+                <div class="legend-item">
+                    <span class="bereich-icon-modern so">SO</span>
+                    <span>Sonstige</span>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+    
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // Chart.js Konfiguration
+        Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+        Chart.defaults.font.size = 11;
+        Chart.defaults.color = '#6c757d';
+        
+        // Bereichsverteilung Chart
+        const ctxBereiche = document.getElementById('chart-bereiche').getContext('2d');
+        new Chart(ctxBereiche, {
+            type: 'doughnut',
+            data: {
+                labels: ['Neuwagen', 'Gebrauchtwagen', 'Mechanik/Lohn', 'Teile & Zubehör'],
+                datasets: [{
+                    data: [285000, 125000, 45000, 30000],
+                    backgroundColor: [
+                        '#0d6efd',
+                        '#fd7e14',
+                        '#6f42c1',
+                        '#20c997'
+                    ],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            padding: 15,
+                            usePointStyle: true
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.label + ': ' + new Intl.NumberFormat('de-DE', {
+                                    style: 'currency',
+                                    currency: 'EUR',
+                                    minimumFractionDigits: 0
+                                }).format(context.parsed);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Vergleich Chart
+        const ctxVergleich = document.getElementById('chart-vergleich').getContext('2d');
+        new Chart(ctxVergleich, {
+            type: 'bar',
+            data: {
+                labels: ['Umsatz', 'DB1', 'DB2', 'BE', 'UE'],
+                datasets: [{
+                    label: 'Aktuell',
+                    data: [2450000, 485000, 312000, 185000, 198000],
+                    backgroundColor: '#667eea'
+                }, {
+                    label: 'Vorjahr',
+                    data: [2180000, 445000, 285000, 167000, 179000],
+                    backgroundColor: '#95a5a6'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                if (value >= 1000000) {
+                                    return (value / 1000000).toFixed(1) + 'M €';
+                                } else if (value >= 1000) {
+                                    return (value / 1000).toFixed(0) + 'k €';
+                                }
+                                return value + ' €';
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + new Intl.NumberFormat('de-DE', {
+                                    style: 'currency',
+                                    currency: 'EUR',
+                                    minimumFractionDigits: 0
+                                }).format(context.parsed.y);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Mini Sparklines (vereinfacht)
+        function createSparkline(canvasId, data, color) {
+            const canvas = document.getElementById(canvasId);
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width = canvas.offsetWidth;
+            const height = canvas.height = canvas.offsetHeight;
+            
+            const max = Math.max(...data);
+            const min = Math.min(...data);
+            const range = max - min || 1;
+            
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            
+            data.forEach((value, index) => {
+                const x = (index / (data.length - 1)) * width;
+                const y = height - ((value - min) / range) * height;
+                
+                if (index === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+            
+            ctx.stroke();
+        }
+        
+        // Beispiel-Daten für Sparklines
+        createSparkline('sparkline-umsatz', [2100, 2200, 2300, 2400, 2450], '#198754');
+        createSparkline('sparkline-db1', [420, 440, 460, 480, 485], '#0d6efd');
+        createSparkline('sparkline-db2', [280, 290, 300, 310, 312], '#6f42c1');
+        createSparkline('sparkline-be', [170, 175, 180, 182, 185], '#dc3545');
+        createSparkline('sparkline-ue', [175, 180, 185, 190, 198], '#20c997');
+    </script>
+</body>
+</html>

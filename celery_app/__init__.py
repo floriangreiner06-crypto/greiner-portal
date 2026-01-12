@@ -293,6 +293,14 @@ app.conf.update(
             'options': {'queue': 'verkauf'}
         },
         
+        # Finanzreporting Cube Refresh (nach Locosoft Mirror)
+        # TAG 179: Automatischer Refresh nach Locosoft-Sync (18-19 Uhr)
+        'refresh-finanzreporting-cube': {
+            'task': 'celery_app.tasks.refresh_finanzreporting_cube',
+            'schedule': crontab(minute=20, hour=19),
+            'options': {'queue': 'controlling'}
+        },
+        
         # BWA Berechnung (nach Mirror)
         'bwa-berechnung': {
             'task': 'celery_app.tasks.bwa_berechnung',

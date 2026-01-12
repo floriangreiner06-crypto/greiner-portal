@@ -23,6 +23,9 @@
             <a href="/bankenspiegel/dashboard" class="btn btn-outline-secondary">
                 <i class="bi bi-arrow-left me-1"></i>Zurück
             </a>
+            <a href="/bankenspiegel/zeitverlauf" class="btn btn-outline-info">
+                <i class="bi bi-graph-up me-1"></i>Zeitverlauf
+            </a>
             <button class="btn btn-outline-primary" onclick="loadKonten()">
                 <i class="bi bi-arrow-clockwise me-1"></i>Aktualisieren
             </button>
@@ -83,12 +86,14 @@
                                     <th>Kontoname</th>
                                     <th>IBAN</th>
                                     <th class="text-end">Saldo</th>
+                                    <th class="text-end">Kreditlinie</th>
+                                    <th class="text-end">Verfügbar</th>
                                     <th class="text-center">Aktionen</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr>
-                                    <td colspan="6" class="text-center py-5">
+                                    <td colspan="8" class="text-center py-5">
                                         <span class="spinner-border spinner-border-sm me-2"></span>
                                         Lade Konten...
                                     </td>

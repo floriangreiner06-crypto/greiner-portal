@@ -2133,7 +2133,9 @@ class WerkstattData:
             standort = '0'
         
         firma_filter_umsatz, _, _, standort_name = build_firma_standort_filter(firma, standort)
-        guv_filter = "AND (posting_text IS NULL OR posting_text NOT LIKE '%%G&V-Abschluss%%')"
+        # TAG 179: Zentrale Funktion verwenden
+        from api.db_utils import get_guv_filter
+        guv_filter = get_guv_filter()
         
         result = {
             'serviceerlöse_gesamt': 0.0,

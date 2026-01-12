@@ -77,7 +77,9 @@ def get_vorjahr(standort: int):
             with db_session() as conn:
                 cursor = conn.cursor()
                 firma_filter_umsatz, firma_filter_einsatz, _, _ = build_firma_standort_filter('0', '0')
-                guv_filter = "AND (posting_text IS NULL OR posting_text NOT LIKE '%%G&V-Abschluss%%')"
+                # TAG 179: Zentrale Funktion verwenden
+                from api.db_utils import get_guv_filter
+                guv_filter = get_guv_filter()
                 
                 gw_config = BEREICHE_CONFIG['GW']
                 gw_werte = _berechne_bereich_werte(cursor, 'GW', gw_config, vj_von, vj_bis,

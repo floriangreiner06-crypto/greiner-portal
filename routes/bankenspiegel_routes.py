@@ -382,3 +382,22 @@ def konto_detail(konto_id):
         konto_id=konto_id,
         now=datetime.now()
     )
+
+
+@bankenspiegel_bp.route('/zeitverlauf')
+def zeitverlauf():
+    """
+    Zeitverlauf-Ansicht (Bankenspiegel)
+    
+    Features:
+    - Mehrere Tage nebeneinander
+    - Guthaben, Darl.-Stand, Freie Linie pro Tag
+    - Ähnlich dem manuellen Bankenspiegel aus Excel
+    
+    Template: bankenspiegel_zeitverlauf.html
+    API: /api/bankenspiegel/zeitverlauf
+    """
+    return render_template(
+        'bankenspiegel_zeitverlauf.html',
+        now=datetime.now()
+    )
