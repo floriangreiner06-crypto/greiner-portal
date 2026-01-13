@@ -272,23 +272,19 @@ def get_leistung():
             soll_kapazitaet_aw = max(0, soll_kapazitaet_aw)
             vorgabe_aw_soll = soll_kapazitaet_aw
 
-            # SVS aus charge_types_sync
-            svs = 119.0
-            try:
-                # TAG 136: Tabellenprüfung für PostgreSQL/SQLite
-                if get_db_type() == 'postgresql':
-                    cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_name = 'charge_types_sync'")
-                else:
-                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='charge_types_sync'")
-                if cursor.fetchone():
-                    betrieb_nr = 1 if betrieb == 'alle' or betrieb == '1,2' else int(betrieb)
-                    cursor.execute(convert_placeholders("SELECT stundensatz FROM charge_types_sync WHERE type = 10 AND subsidiary = %s"), [betrieb_nr])
-                    row = cursor.fetchone()
-                    if row:
-                        r = row_to_dict(row) if row else {}
-                        svs = float(r.get('stundensatz', 119.0) or 119.0)
-            except:
-                pass
+            # SVS: Durchschnittlicher Verrechnungssatz (extern, ohne Karosserie, 6 Monate rollierend)
+            from api.werkstatt_data import berechne_durchschnittlichen_verrechnungssatz
+            
+            betrieb_nr = None
+            if betrieb and betrieb != 'alle' and betrieb != '1,2':
+                try:
+                    betrieb_nr = int(betrieb)
+                except:
+                    betrieb_nr = None
+            
+            svs_info = berechne_durchschnittlichen_verrechnungssatz(betrieb=betrieb_nr, monate=6)
+            svs = svs_info.get('svs', 119.0)
+            svs_quelle = svs_info.get('quelle', 'fallback')
 
             gesamt_effizienz = round(gesamt_leistungsgrad * gesamt_produktivitaet / 100, 1) if gesamt_leistungsgrad and gesamt_produktivitaet else 0
             gesamt_stempelzeit_std = gesamt_stempelzeit / 60 if gesamt_stempelzeit else 0
@@ -324,6 +320,8 @@ def get_leistung():
                 'aw': gesamt_aw,
                 'umsatz': round(gesamt_umsatz, 2),
                 'svs': svs,
+                'svs_quelle': svs_quelle,
+                'svs_zeitraum': svs_info.get('zeitraum', {}),
                 'realisierter_svs': realisierter_svs,
                 'bezahlt_h': round(sum(m.get('bezahlt_h', 0) for m in mechaniker), 1),  # TAG 181
                 'anwesend_h': round(sum(m.get('anwesend_h', 0) for m in mechaniker), 1),  # TAG 181

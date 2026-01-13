@@ -488,7 +488,8 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
     # TAG182: Hyundai - 8910xx AUSSCHLIESSEN (negativer Wert, reduziert Kosten fälschlicherweise)
     # TAG182: Deggendorf - Nur 6. Ziffer='1' verwenden (nicht branch=1 AND 6. Ziffer='1'), da es Variable Kosten mit branch=3 gibt!
     if standort == '2' and firma == '1':
-        variable_kosten_filter = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 1"
+        # TAG186: Landau Variable Kosten - branch_number=3 ODER 6. Ziffer='2' (Konten 497031, 497061, 497211, 497221, 497011 haben branch=3 aber 6.Ziffer='1')
+        variable_kosten_filter = "AND (branch_number = 3 OR substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2') AND subsidiary_to_company_ref = 1"
         variable_8910xx_include = True  # Landau: 8910xx einschließen
     elif standort == '1' and firma == '1':
         # Deggendorf: Nur 6. Ziffer='1' verwenden (nicht branch=1 AND 6. Ziffer='1'), da es Variable Kosten mit branch=3 gibt!
@@ -548,8 +549,7 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
           AND nominal_account_number BETWEEN 400000 AND 489999
           AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','4','5','6','7')
           AND NOT (
-            nominal_account_number = 410021
-            OR nominal_account_number BETWEEN 415100 AND 415199
+            nominal_account_number BETWEEN 415100 AND 415199
             OR nominal_account_number BETWEEN 424000 AND 424999
             OR nominal_account_number BETWEEN 435500 AND 435599
             OR nominal_account_number BETWEEN 438000 AND 438999
@@ -1038,7 +1038,8 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
         )"""
         variable_8910xx_include_ytd = True  # Gesamtsumme: 8910xx für Deggendorf+Landau einschließen, aber für Hyundai ausschließen (via Filter)
     elif standort == '2' and firma == '1':
-        variable_kosten_filter_ytd = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 1"
+        # TAG186: Landau Variable Kosten - branch_number=3 ODER 6. Ziffer='2' (Konten 497031, 497061, 497211, 497221, 497011 haben branch=3 aber 6.Ziffer='1')
+        variable_kosten_filter_ytd = "AND (branch_number = 3 OR substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2') AND subsidiary_to_company_ref = 1"
         variable_8910xx_include_ytd = True  # Landau: 8910xx einschließen
     elif standort == '1' and firma == '1':
         # Deggendorf: Nur 6. Ziffer='1' verwenden (nicht branch=1 AND 6. Ziffer='1'), da es Variable Kosten mit branch=3 gibt!
@@ -1098,8 +1099,7 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
           AND nominal_account_number BETWEEN 400000 AND 489999
           AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','4','5','6','7')
           AND NOT (
-            nominal_account_number = 410021
-            OR nominal_account_number BETWEEN 415100 AND 415199
+            nominal_account_number BETWEEN 415100 AND 415199
             OR nominal_account_number BETWEEN 424000 AND 424999
             OR nominal_account_number BETWEEN 435500 AND 435599
             OR nominal_account_number BETWEEN 438000 AND 438999
@@ -1998,7 +1998,8 @@ def get_bwa_v2():
                 )"""
                 variable_8910xx_include = True  # Gesamtsumme: 8910xx für Deggendorf+Landau einschließen, aber für Hyundai ausschließen (via Filter)
             elif standort == '2' and firma == '1':
-                variable_kosten_filter = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 1"
+                # TAG186: Landau Variable Kosten - branch_number=3 ODER 6. Ziffer='2' (Konten 497031, 497061, 497211, 497221, 497011 haben branch=3 aber 6.Ziffer='1')
+                variable_kosten_filter = "AND (branch_number = 3 OR substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2') AND subsidiary_to_company_ref = 1"
                 variable_8910xx_include = True  # Landau: 8910xx einschließen
             elif firma == '2':
                 # Hyundai: 8910xx AUSSCHLIESSEN (sollte nicht in Variablen Kosten sein)
@@ -2063,8 +2064,7 @@ def get_bwa_v2():
             OR nominal_account_number BETWEEN 438000 AND 438999
             OR nominal_account_number BETWEEN 455000 AND 456999
             OR nominal_account_number BETWEEN 487000 AND 487099
-            OR (nominal_account_number BETWEEN 489000 AND 489999
-                AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0')
+            OR nominal_account_number BETWEEN 489000 AND 489999
             OR nominal_account_number BETWEEN 491000 AND 497999
           )
                   {direkte_kosten_filter_landau}
@@ -2220,8 +2220,7 @@ def get_bwa_v2():
             OR nominal_account_number BETWEEN 438000 AND 438999
             OR nominal_account_number BETWEEN 455000 AND 456999
             OR nominal_account_number BETWEEN 487000 AND 487099
-            OR (nominal_account_number BETWEEN 489000 AND 489999
-                AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0')
+            OR nominal_account_number BETWEEN 489000 AND 489999
             OR nominal_account_number BETWEEN 491000 AND 497999
           )
                   {firma_filter_kosten}
@@ -2424,8 +2423,7 @@ def get_bwa_v2():
             OR nominal_account_number BETWEEN 438000 AND 438999
             OR nominal_account_number BETWEEN 455000 AND 456999
             OR nominal_account_number BETWEEN 487000 AND 487099
-            OR (nominal_account_number BETWEEN 489000 AND 489999
-                AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0')
+            OR nominal_account_number BETWEEN 489000 AND 489999
             OR nominal_account_number BETWEEN 491000 AND 497999
           )
                   {ytd_direkte_kosten_filter}
@@ -2969,8 +2967,7 @@ def get_bwa_v2_drilldown():
             OR nominal_account_number BETWEEN 438000 AND 438999
             OR nominal_account_number BETWEEN 455000 AND 456999
             OR nominal_account_number BETWEEN 487000 AND 487099
-            OR (nominal_account_number BETWEEN 489000 AND 489999
-                AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0')
+            OR nominal_account_number BETWEEN 489000 AND 489999
             OR nominal_account_number BETWEEN 491000 AND 497999
           )
                       {firma_filter_kosten}

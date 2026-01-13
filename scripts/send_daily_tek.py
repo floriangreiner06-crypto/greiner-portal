@@ -625,16 +625,20 @@ def main():
         return 1
 
     # TAG 181: Prüfe ob Locosoft Mirror heute erfolgreich war
+    # TAG 186: Bei Prüfungsfehler trotzdem senden (mit Warnung), nur bei explizitem Fehler blockieren
     if not args.force:
-        mirror_completed = check_locosoft_mirror_completed()
-        if not mirror_completed:
-            print(f"⚠️  WARNUNG: Locosoft Mirror wurde heute noch nicht erfolgreich abgeschlossen")
-            print(f"    TEK-Daten könnten veraltet sein!")
-            print(f"    Verwende --force um trotzdem zu senden")
-            print(f"{'='*60}\n")
-            return 1
-        else:
-            print(f"✅ Locosoft Mirror heute erfolgreich abgeschlossen - Daten sind aktuell")
+        try:
+            mirror_completed = check_locosoft_mirror_completed()
+            if not mirror_completed:
+                print(f"⚠️  WARNUNG: Locosoft Mirror wurde heute noch nicht erfolgreich abgeschlossen")
+                print(f"    TEK-Daten könnten veraltet sein!")
+                print(f"    Sende trotzdem (Prüfung könnte fehlgeschlagen sein)")
+                print(f"    Verwende --force um diese Warnung zu unterdrücken")
+            else:
+                print(f"✅ Locosoft Mirror heute erfolgreich abgeschlossen - Daten sind aktuell")
+        except Exception as e:
+            print(f"⚠️  WARNUNG: Konnte Locosoft Mirror-Status nicht prüfen: {e}")
+            print(f"    Sende trotzdem (Prüfung fehlgeschlagen)")
 
     # TAG 136: Feiertagskalender-Check
     heute = date.today()

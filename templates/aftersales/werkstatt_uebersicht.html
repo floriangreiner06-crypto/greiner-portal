@@ -486,6 +486,7 @@
                     <div class="small mt-2">
                         <span class="text-muted">bei Ø</span>
                         <span class="fw-bold" id="kpiSVS">119 €</span>
+                        <small class="text-muted d-block" id="kpiSVSQuelle" style="font-size: 0.75rem;">6M rollierend</small>
                         <span class="text-muted">/Std</span>
                     </div>
                     <div class="small text-primary mt-1" style="cursor: pointer;" onclick="event.stopPropagation(); showEntgangenerUmsatzModal();">
@@ -928,8 +929,19 @@ function updateAllKPIs(data) {
     
     // Entgangener Umsatz Card
     document.getElementById('kpiEntgangenerUmsatz').textContent = formatCurrency(entgangenerUmsatz);
-    document.getElementById('kpiVerloreneStd').textContent = verloreneStd.toFixed(1) + ' Std';
-    document.getElementById('kpiSVS').textContent = svs.toFixed(0) + ' €';
+    document.getElementById('kpiVerloreneStd').textContent = parseFloat(verloreneStd || 0).toFixed(1) + ' Std';
+    document.getElementById('kpiSVS').textContent = parseFloat(svs || SVS_DEFAULT).toFixed(0) + ' €';
+    
+    // SVS-Quelle anzeigen
+    const svsQuelle = gesamt.svs_quelle || 'fallback';
+    const svsZeitraum = gesamt.svs_zeitraum || {};
+    let quelleText = '6M rollierend';
+    if (svsZeitraum.von && svsZeitraum.bis) {
+        const von = new Date(svsZeitraum.von).toLocaleDateString('de-DE', { month: 'short', day: 'numeric' });
+        const bis = new Date(svsZeitraum.bis).toLocaleDateString('de-DE', { month: 'short', day: 'numeric' });
+        quelleText = `${von} - ${bis}`;
+    }
+    document.getElementById('kpiSVSQuelle').textContent = quelleText;
     
     // Card-Farbe basierend auf Betrag
     const lossCard = document.querySelector('.kpi-card-loss');
@@ -1008,7 +1020,7 @@ function showEntgangenerUmsatzModal() {
             <div class="col-md-6">
                 <div class="card bg-light">
                     <div class="card-body text-center">
-                        <h2 class="text-warning">${verloreneStd.toFixed(1)} Std</h2>
+                        <h2 class="text-warning">${parseFloat(verloreneStd || 0).toFixed(1)} Std</h2>
                         <p class="text-muted mb-0">Verlorene produktive Stunden</p>
                     </div>
                 </div>
@@ -1017,11 +1029,12 @@ function showEntgangenerUmsatzModal() {
         
         <h6><i class="bi bi-calculator"></i> Berechnung</h6>
         <table class="table table-sm">
-            <tr><td>Leistungsgrad aktuell:</td><td class="text-end fw-bold">${leistungsgrad.toFixed(1)}%</td></tr>
+            <tr><td>Leistungsgrad aktuell:</td><td class="text-end fw-bold">${parseFloat(leistungsgrad || 0).toFixed(1)}%</td></tr>
             <tr><td>Ziel-Leistungsgrad:</td><td class="text-end">100%</td></tr>
-            <tr><td>Differenz:</td><td class="text-end text-danger">${(100 - leistungsgrad).toFixed(1)}%</td></tr>
-            <tr class="table-light"><td>Ø Verrechnungssatz (SVS):</td><td class="text-end fw-bold">${svs.toFixed(0)} €/Std</td></tr>
-            <tr class="table-warning"><td><strong>Entgangener Umsatz:</strong></td><td class="text-end"><strong class="text-danger">${formatCurrency(entgangenerUmsatz)}</strong></td></tr>
+            <tr><td>Differenz:</td><td class="text-end text-danger">${(100 - parseFloat(leistungsgrad || 0)).toFixed(1)}%</td></tr>
+            <tr class="table-light"><td>Ø Verrechnungssatz (SVS):</td><td class="text-end fw-bold">${parseFloat(svs || SVS_DEFAULT).toFixed(0)} €/Std</td></tr>
+            <tr class="table-light"><td><small class="text-muted">Quelle:</small></td><td class="text-end"><small class="text-muted">Extern, ohne Karosserie, 6M rollierend</small></td></tr>
+            <tr class="table-warning"><td><strong>Entgangener Umsatz:</strong></td><td class="text-end"><strong class="text-danger">${formatCurrency(entgangenerUmsatz || 0)}</strong></td></tr>
         </table>
         
         <div class="alert alert-info mt-3">
@@ -1049,10 +1062,11 @@ function showEntgangenerUmsatzModal() {
                     <tbody>
             `;
             sorted.forEach(m => {
+                const leistungsgrad = parseFloat(m.leistungsgrad) || 0;
                 html += `<tr>
                     <td>${m.name || 'Unbekannt'}</td>
-                    <td class="text-end"><span class="badge ${getLGClass(m.leistungsgrad)}">${m.leistungsgrad.toFixed(1)}%</span></td>
-                    <td class="text-end text-danger">${formatCurrency(m.verlust)}</td>
+                    <td class="text-end"><span class="badge ${getLGClass(leistungsgrad)}">${leistungsgrad.toFixed(1)}%</span></td>
+                    <td class="text-end text-danger">${formatCurrency(m.verlust || 0)}</td>
                 </tr>`;
             });
             html += '</tbody></table>';

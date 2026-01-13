@@ -177,6 +177,9 @@ def benachrichtige_serviceberater_ueberschreitungen():
         if not ueberschritten:
             return {'success': True, 'message': 'Keine Überschreitungen gefunden'}
         
+        # TAG 185: Quality-Check: Matthias König (3007) erhält IMMER alle Überschreitungs-Emails
+        QUALITY_CHECK_USER = 3007  # Matthias König
+        
         # Fallback-User Mapping (TAG 182: Nur Matthias König für alle Betriebe)
         FALLBACK_USER_BY_BETRIEB = {
             1: [3007],  # Deggendorf: Matthias König
@@ -188,7 +191,7 @@ def benachrichtige_serviceberater_ueberschreitungen():
         with db_session() as conn:
             cursor = conn.cursor()
             
-            # Hole alle relevanten employee_numbers (Serviceberater + Fallback)
+            # Hole alle relevanten employee_numbers (Serviceberater + Quality-Check + Fallback)
             alle_employee_nrs = set()
             auftraege_mit_sb = {}  # auftrag_nr -> (serviceberater_nr, betrieb)
             
@@ -210,8 +213,10 @@ def benachrichtige_serviceberater_ueberschreitungen():
                         # Serviceberater hinzufügen
                         if serviceberater_nr:
                             alle_employee_nrs.add(serviceberater_nr)
-                        # Fallback-User hinzufügen
-                        if betrieb and betrieb in FALLBACK_USER_BY_BETRIEB:
+                        # TAG 185: Quality-Check - Matthias König IMMER hinzufügen
+                        alle_employee_nrs.add(QUALITY_CHECK_USER)
+                        # Fallback-User hinzufügen (falls kein Serviceberater)
+                        if not serviceberater_nr and betrieb and betrieb in FALLBACK_USER_BY_BETRIEB:
                             for fallback_nr in FALLBACK_USER_BY_BETRIEB[betrieb]:
                                 alle_employee_nrs.add(fallback_nr)
                 except Exception as e:
@@ -307,6 +312,7 @@ def benachrichtige_serviceberater_ueberschreitungen():
                 gestempelt_min = laufzeit_min
                 
                 # Empfänger bestimmen (TAG 182: Mit Deduplizierung)
+                # TAG 185: Quality-Check - Matthias König erhält IMMER alle Emails
                 empfaenger = []
                 empfaenger_ids = set()  # Verhindert Duplikate
                 
@@ -316,7 +322,13 @@ def benachrichtige_serviceberater_ueberschreitungen():
                         empfaenger.append(employee_emails[serviceberater_nr])
                         empfaenger_ids.add(serviceberater_nr)
                 
+                # TAG 185: Quality-Check - Matthias König IMMER hinzufügen (zusätzlich zu Serviceberater)
+                if QUALITY_CHECK_USER in employee_emails and QUALITY_CHECK_USER not in empfaenger_ids:
+                    empfaenger.append(employee_emails[QUALITY_CHECK_USER])
+                    empfaenger_ids.add(QUALITY_CHECK_USER)
+                
                 # Fall 2: Kein Serviceberater → Fallback-User (nur Matthias König)
+                # (Wird durch Quality-Check bereits abgedeckt, aber für Sicherheit beibehalten)
                 if not serviceberater_nr and betrieb and betrieb in FALLBACK_USER_BY_BETRIEB:
                     for fallback_nr in FALLBACK_USER_BY_BETRIEB[betrieb]:
                         if fallback_nr in employee_emails and fallback_nr not in empfaenger_ids:
@@ -1578,8 +1590,12 @@ def email_tek_daily():
             logger.info("TEK E-Mail erfolgreich abgeschlossen")
             return {'success': True, 'stdout': result.stdout[-500:]}
         else:
-            logger.error(f"TEK E-Mail fehlgeschlagen: {result.stderr}")
-            return {'success': False, 'error': result.stderr[-500:]}
+            # TAG 186: Logge sowohl stdout als auch stderr für besseres Debugging
+            error_msg = result.stderr[-500:] if result.stderr else result.stdout[-500:] if result.stdout else 'Unbekannter Fehler'
+            logger.error(f"TEK E-Mail fehlgeschlagen (Exit Code: {result.returncode}): {error_msg}")
+            if result.stdout:
+                logger.info(f"TEK Script stdout: {result.stdout[-500:]}")
+            return {'success': False, 'error': error_msg, 'exit_code': result.returncode}
     
     except subprocess.TimeoutExpired:
         logger.error("TEK E-Mail: Timeout nach 10 Minuten")

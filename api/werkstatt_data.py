@@ -59,10 +59,142 @@ MECHANIKER_RANGE_END = 5999
 # Azubis ausschließen
 MECHANIKER_EXCLUDE = [5025, 5026, 5028]
 
+# Leerlaufaufträge pro Betrieb (TAG 181)
+# Diese Aufträge werden aus der Stempelzeit-Berechnung ausgeschlossen
+LEERLAUF_AUFTRAEGE_PRO_BETRIEB = {
+    1: [31],      # Deggendorf: Order 31
+    2: [],        # Hyundai: Keine
+    3: [300014]   # Landau: Order 300014 (Serviceberater stempeln hier ihre Anwesenheit)
+}
+
 # Standard Arbeitszeiten
 ARBEITSZEIT_START = time(7, 0)   # 07:00 Uhr
 ARBEITSZEIT_ENDE = time(17, 0)   # 17:00 Uhr
 STUNDEN_PRO_TAG = 10.0           # Effektive Arbeitsstunden
+
+
+# =============================================================================
+# HILFSFUNKTIONEN (VOR KLASSE)
+# =============================================================================
+
+def berechne_durchschnittlichen_verrechnungssatz(
+    betrieb: Optional[int] = None,
+    monate: int = 6
+) -> Dict[str, Any]:
+    """
+    Berechnet den durchschnittlichen Verrechnungssatz (€/Std) aus Locosoft.
+    
+    Filter:
+    - Extern: labour_type != 'I' (nicht intern)
+    - Ohne Karosserie: charge_type NOT BETWEEN 20 AND 29
+    - Rollierend: letzte N Monate
+    - Nur verrechnete Positionen: is_invoiced = true
+    
+    Args:
+        betrieb: Betriebsnummer (1=DEG, 2=HYU, 3=LAN), None = alle
+        monate: Anzahl Monate für rollierende Berechnung (default: 6)
+    
+    Returns:
+        {
+            'svs': float,              # Durchschnittlicher Verrechnungssatz (€/Std)
+            'umsatz_gesamt': float,    # Gesamtumsatz im Zeitraum
+            'stunden_gesamt': float,   # Gesamtstunden im Zeitraum
+            'anzahl_positionen': int,  # Anzahl verrechneter Positionen
+            'zeitraum': {
+                'von': str,            # ISO-Format
+                'bis': str             # ISO-Format
+            },
+            'betrieb': int,            # Betriebsnummer (oder None)
+            'quelle': 'locosoft_6m_rollierend'
+        }
+    """
+    try:
+        bis_datum = date.today()
+        von_datum = bis_datum - timedelta(days=monate * 30)  # Ca. N Monate
+        
+        with locosoft_session() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            # Filter aufbauen
+            betrieb_filter = ""
+            params = [von_datum, bis_datum]
+            
+            if betrieb:
+                betrieb_filter = "AND i.subsidiary = %s"
+                params.append(betrieb)
+            
+            # SQL: SUM(net_price_in_order) / SUM(time_units * 6 / 60)
+            # time_units = AW, 1 AW = 6 Minuten, daher: time_units * 6 / 60 = Stunden
+            query = f"""
+                SELECT
+                    COUNT(*) as anzahl_positionen,
+                    COALESCE(SUM(l.net_price_in_order), 0) as umsatz_gesamt,
+                    COALESCE(SUM(l.time_units * 6.0 / 60.0), 0) as stunden_gesamt
+                FROM labours l
+                JOIN invoices i ON l.invoice_number = i.invoice_number 
+                    AND l.invoice_type = i.invoice_type
+                WHERE i.invoice_date >= %s 
+                  AND i.invoice_date <= %s
+                  AND l.is_invoiced = true
+                  AND l.labour_type != 'I'  -- Extern (nicht intern)
+                  AND (l.charge_type IS NULL OR l.charge_type NOT BETWEEN 20 AND 29)  -- Ohne Karosserie
+                  AND l.time_units > 0  -- Nur Positionen mit Stunden
+                  {betrieb_filter}
+            """
+            
+            cursor.execute(query, params)
+            row = cursor.fetchone()
+            
+            if not row:
+                return {
+                    'svs': 119.0,  # Fallback
+                    'umsatz_gesamt': 0.0,
+                    'stunden_gesamt': 0.0,
+                    'anzahl_positionen': 0,
+                    'zeitraum': {
+                        'von': von_datum.isoformat(),
+                        'bis': bis_datum.isoformat()
+                    },
+                    'betrieb': betrieb,
+                    'quelle': 'locosoft_6m_rollierend',
+                    'fehler': 'Keine Daten gefunden'
+                }
+            
+            umsatz_gesamt = float(row['umsatz_gesamt'] or 0)
+            stunden_gesamt = float(row['stunden_gesamt'] or 0)
+            anzahl_positionen = int(row['anzahl_positionen'] or 0)
+            
+            # SVS = Umsatz / Stunden
+            svs = round(umsatz_gesamt / stunden_gesamt, 2) if stunden_gesamt > 0 else 119.0
+            
+            return {
+                'svs': svs,
+                'umsatz_gesamt': round(umsatz_gesamt, 2),
+                'stunden_gesamt': round(stunden_gesamt, 2),
+                'anzahl_positionen': anzahl_positionen,
+                'zeitraum': {
+                    'von': von_datum.isoformat(),
+                    'bis': bis_datum.isoformat()
+                },
+                'betrieb': betrieb,
+                'quelle': 'locosoft_6m_rollierend'
+            }
+            
+    except Exception as e:
+        logger.exception(f"Fehler bei Berechnung Verrechnungssatz: {str(e)}")
+        return {
+            'svs': 119.0,  # Fallback
+            'umsatz_gesamt': 0.0,
+            'stunden_gesamt': 0.0,
+            'anzahl_positionen': 0,
+            'zeitraum': {
+                'von': (date.today() - timedelta(days=180)).isoformat(),
+                'bis': date.today().isoformat()
+            },
+            'betrieb': betrieb,
+            'quelle': 'locosoft_6m_rollierend',
+            'fehler': str(e)
+        }
 
 
 # =============================================================================
@@ -146,12 +278,31 @@ class WerkstattData:
         if bis is None:
             bis = date.today()
 
+        # Leerlaufaufträge für Filter bestimmen (TAG 181)
+        leerlauf_auftraege = []
+        if betrieb and betrieb in LEERLAUF_AUFTRAEGE_PRO_BETRIEB:
+            leerlauf_auftraege = LEERLAUF_AUFTRAEGE_PRO_BETRIEB[betrieb]
+        elif betrieb is None:
+            # Alle Betriebe: Alle Leerlaufaufträge sammeln
+            for b_leerlauf in LEERLAUF_AUFTRAEGE_PRO_BETRIEB.values():
+                leerlauf_auftraege.extend(b_leerlauf)
+            leerlauf_auftraege = list(set(leerlauf_auftraege))  # Duplikate entfernen
+        
+        # Filter für Leerlaufaufträge aufbauen
+        leerlauf_filter = ""
+        if leerlauf_auftraege:
+            leerlauf_filter = f"AND t.order_number != ALL(ARRAY[{','.join(map(str, leerlauf_auftraege))}])"
+        else:
+            # Fallback: Nur Order 31 ausschließen (wie bisher)
+            leerlauf_filter = "AND t.order_number > 31"
+
         with locosoft_session() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
 
             # SQL Query - Locosoft-kompatible Berechnung (TAG 185)
             # Locosoft-Logik: Zeit-Spanne (erste bis letzte Stempelung) - Lücken - Pausen
-            query = """
+            # TAG 181: Leerlaufaufträge werden ausgeschlossen
+            query = f"""
             WITH
             -- Stempelungen dedupliziert pro Mechaniker/Tag
             stempelungen_dedupliziert AS (
@@ -161,10 +312,11 @@ class WerkstattData:
                     start_time,
                     end_time,
                     order_number
-                FROM times
+                FROM times t
                 WHERE type = 2
                   AND end_time IS NOT NULL
-                  AND order_number > 31
+                  AND order_number > 0
+                  {leerlauf_filter}
                   AND start_time >= %s AND start_time < %s + INTERVAL '1 day'
                 ORDER BY employee_number, DATE(start_time), start_time, end_time
             ),

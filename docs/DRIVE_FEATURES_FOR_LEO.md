@@ -42,7 +42,7 @@ DRIVE Portal ist ein umfassendes Management-System für Autohäuser mit Locosoft
 - **Tagesreport** mit DB1, Marge, Breakeven
 - **Bereichs-Filter** (NW, GW, Teile, Werkstatt)
 - **Standort-Filter** (mehrere Standorte)
-- **Automatischer E-Mail-Versand** (täglich 17:30)
+- **Automatischer E-Mail-Versand** (täglich 19:30 - nach Locosoft Mirror)
 - **Abteilungsleiter-Reports** (Filiale, NW, GW, Teile)
 
 ### Kontenmapping
@@ -166,7 +166,7 @@ DRIVE Portal ist ein umfassendes Management-System für Autohäuser mit Locosoft
 ## 📊 REPORTS & AUTOMATISIERUNG
 
 ### Automatische Reports
-- **TEK Tagesreport** (täglich 17:30)
+- **TEK Tagesreport** (täglich 19:30 - nach Locosoft Mirror)
 - **TEK Filiale** (für Filialleiter)
 - **TEK Neuwagen** (für Verkaufsleiter NW)
 - **TEK Gebrauchtwagen** (für Verkaufsleiter GW)
