@@ -120,11 +120,11 @@ def benachrichtige_serviceberater_ueberschreitungen():
         if not ueberschritten:
             return {'success': True, 'message': 'Keine Überschreitungen gefunden'}
         
-        # Fallback-User Mapping
+        # Fallback-User Mapping (TAG 182: Nur Matthias König für alle Betriebe)
         FALLBACK_USER_BY_BETRIEB = {
             1: [3007],  # Deggendorf: Matthias König
             2: [3007],  # Deggendorf Hyundai: Matthias König
-            3: [1003, 4002]  # Landau: Rolf Sterr + Leonhard Keidl
+            3: [3007]    # Landau: Matthias König
         }
         
         # E-Mail-Adressen aus DB holen
@@ -246,98 +246,147 @@ def benachrichtige_serviceberater_ueberschreitungen():
                 # Verwende gestempelt_min_heute für E-Mail
                 gestempelt_min = gestempelt_min_heute
                 
-                # Empfänger bestimmen
+                # Empfänger bestimmen (TAG 182: Mit Deduplizierung)
                 empfaenger = []
+                empfaenger_ids = set()  # Verhindert Duplikate
                 
                 # Fall 1: Serviceberater zugeordnet
                 if serviceberater_nr and serviceberater_nr in employee_emails:
-                    empfaenger.append(employee_emails[serviceberater_nr])
+                    if serviceberater_nr not in empfaenger_ids:
+                        empfaenger.append(employee_emails[serviceberater_nr])
+                        empfaenger_ids.add(serviceberater_nr)
                 
-                # Fall 2: Kein Serviceberater → Fallback-User
+                # Fall 2: Kein Serviceberater → Fallback-User (nur Matthias König)
                 if not serviceberater_nr and betrieb and betrieb in FALLBACK_USER_BY_BETRIEB:
                     for fallback_nr in FALLBACK_USER_BY_BETRIEB[betrieb]:
-                        if fallback_nr in employee_emails:
+                        if fallback_nr in employee_emails and fallback_nr not in empfaenger_ids:
                             empfaenger.append(employee_emails[fallback_nr])
+                            empfaenger_ids.add(fallback_nr)
                 
                 if not empfaenger:
                     continue
                 
-                # E-Mail-Inhalt
-                betrieb_name = {1: 'Deggendorf', 2: 'Deggendorf Hyundai', 3: 'Landau'}.get(betrieb, 'Unbekannt')
-                hat_sb = serviceberater_nr and serviceberater_nr > 0
-                
-                subject = f"⚠️ Auftrag {auftrag_nr} überschreitet Vorgabe ({betrieb_name})"
-                
-                if hat_sb:
-                    body_intro = f"<p>Ihr Auftrag <strong>{auftrag_nr}</strong> liegt deutlich über der Vorgabe.</p>"
-                else:
-                    body_intro = f"<p>Auftrag <strong>{auftrag_nr}</strong> ({betrieb_name}) hat keinen zugeordneten Serviceberater und überschreitet die Vorgabe.</p>"
-                
-                body_html = f"""
-                <div style="font-family: Arial, sans-serif; max-width: 600px;">
-                    <h2 style="color: #dc3545;">⚠️ Auftrag überschreitet Vorgabe</h2>
-                    {body_intro}
+                # TAG 182: Prüfe ob bereits E-Mail für diesen Auftrag heute gesendet wurde
+                with db_session() as conn_tracking:
+                    cursor_tracking = conn_tracking.cursor()
                     
-                    <table style="border-collapse: collapse; width: 100%; margin: 20px 0;">
-                        <tr style="background: #f8f9fa;">
-                            <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Auftrag</td>
-                            <td style="padding: 10px; border: 1px solid #dee2e6;">{auftrag_nr}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Fahrzeug</td>
-                            <td style="padding: 10px; border: 1px solid #dee2e6;">{f.get('kennzeichen', '-')} - {f.get('marke', '')} {f.get('modell', '')}</td>
-                        </tr>
-                        <tr style="background: #f8f9fa;">
-                            <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Betrieb</td>
-                            <td style="padding: 10px; border: 1px solid #dee2e6;">{betrieb_name}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Gestempelt</td>
-                            <td style="padding: 10px; border: 1px solid #dee2e6;">{int(gestempelt_min)} min ({gestempelt_min/60:.1f} Std)</td>
-                        </tr>
-                        <tr style="background: #f8f9fa;">
-                            <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Vorgabe</td>
-                            <td style="padding: 10px; border: 1px solid #dee2e6;">{int(vorgabe_min)} min ({vorgabe_min/60:.1f} Std)</td>
-                        </tr>
-                        <tr style="background: #fff5f5;">
-                            <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold; color: #dc3545;">Überschreitung</td>
-                            <td style="padding: 10px; border: 1px solid #dee2e6; color: #dc3545; font-weight: bold;">+{int(abs(diff_min))} min ({diff_prozent:.0f}%)</td>
-                        </tr>
-                    </table>
+                    # Prüfe für jeden Empfänger, ob bereits gesendet
+                    empfaenger_zu_senden = []
+                    for emp in empfaenger:
+                        emp_locosoft_id = None
+                        # Finde locosoft_id für diesen Empfänger
+                        for loco_id, emp_data in employee_emails.items():
+                            if emp_data['email'] == emp['email']:
+                                emp_locosoft_id = loco_id
+                                break
+                        
+                        if not emp_locosoft_id:
+                            continue
+                        
+                        # Prüfe ob bereits gesendet
+                        cursor_tracking.execute("""
+                            SELECT 1 FROM email_notifications_sent
+                            WHERE auftrag_nr = %s
+                              AND employee_locosoft_id = %s
+                              AND notification_type = 'ueberschreitung'
+                              AND sent_date = CURRENT_DATE
+                        """, (auftrag_nr, emp_locosoft_id))
+                        
+                        if cursor_tracking.fetchone():
+                            logger.debug(f"E-Mail für Auftrag {auftrag_nr} an {emp['name']} bereits heute gesendet - überspringe")
+                        else:
+                            empfaenger_zu_senden.append((emp, emp_locosoft_id))
                     
-                    <div style="background: #cce5ff; padding: 15px; border-radius: 5px; border-left: 4px solid #007bff; margin: 20px 0;">
-                        <strong>💡 Mögliche Ursachen:</strong>
-                        <ul style="margin: 10px 0 0 0; padding-left: 20px;">
-                            <li>Teile fehlen oder verzögert?</li>
-                            <li>Unterstützung durch Kollegen nötig?</li>
-                            <li>Vorgabe zu niedrig angesetzt?</li>
-                            <li>Unvorhergesehene Probleme aufgetreten?</li>
-                        </ul>
+                    if not empfaenger_zu_senden:
+                        logger.debug(f"Alle E-Mails für Auftrag {auftrag_nr} bereits heute gesendet - überspringe")
+                        continue
+                    
+                    # E-Mail-Inhalt
+                    betrieb_name = {1: 'Deggendorf', 2: 'Deggendorf Hyundai', 3: 'Landau'}.get(betrieb, 'Unbekannt')
+                    hat_sb = serviceberater_nr and serviceberater_nr > 0
+                    
+                    subject = f"⚠️ Auftrag {auftrag_nr} überschreitet Vorgabe ({betrieb_name})"
+                    
+                    if hat_sb:
+                        body_intro = f"<p>Ihr Auftrag <strong>{auftrag_nr}</strong> liegt deutlich über der Vorgabe.</p>"
+                    else:
+                        body_intro = f"<p>Auftrag <strong>{auftrag_nr}</strong> ({betrieb_name}) hat keinen zugeordneten Serviceberater und überschreitet die Vorgabe.</p>"
+                    
+                    body_html = f"""
+                    <div style="font-family: Arial, sans-serif; max-width: 600px;">
+                        <h2 style="color: #dc3545;">⚠️ Auftrag überschreitet Vorgabe</h2>
+                        {body_intro}
+                        
+                        <table style="border-collapse: collapse; width: 100%; margin: 20px 0;">
+                            <tr style="background: #f8f9fa;">
+                                <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Auftrag</td>
+                                <td style="padding: 10px; border: 1px solid #dee2e6;">{auftrag_nr}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Fahrzeug</td>
+                                <td style="padding: 10px; border: 1px solid #dee2e6;">{f.get('kennzeichen', '-')} - {f.get('marke', '')} {f.get('modell', '')}</td>
+                            </tr>
+                            <tr style="background: #f8f9fa;">
+                                <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Betrieb</td>
+                                <td style="padding: 10px; border: 1px solid #dee2e6;">{betrieb_name}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Gestempelt</td>
+                                <td style="padding: 10px; border: 1px solid #dee2e6;">{int(gestempelt_min)} min ({gestempelt_min/60:.1f} Std)</td>
+                            </tr>
+                            <tr style="background: #f8f9fa;">
+                                <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Vorgabe</td>
+                                <td style="padding: 10px; border: 1px solid #dee2e6;">{int(vorgabe_min)} min ({vorgabe_min/60:.1f} Std)</td>
+                            </tr>
+                            <tr style="background: #fff5f5;">
+                                <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold; color: #dc3545;">Überschreitung</td>
+                                <td style="padding: 10px; border: 1px solid #dee2e6; color: #dc3545; font-weight: bold;">+{int(abs(diff_min))} min ({diff_prozent:.0f}%)</td>
+                            </tr>
+                        </table>
+                        
+                        <div style="background: #cce5ff; padding: 15px; border-radius: 5px; border-left: 4px solid #007bff; margin: 20px 0;">
+                            <strong>💡 Mögliche Ursachen:</strong>
+                            <ul style="margin: 10px 0 0 0; padding-left: 20px;">
+                                <li>Teile fehlen oder verzögert?</li>
+                                <li>Unterstützung durch Kollegen nötig?</li>
+                                <li>Vorgabe zu niedrig angesetzt?</li>
+                                <li>Unvorhergesehene Probleme aufgetreten?</li>
+                            </ul>
+                        </div>
+                        
+                        <p style="background: #fff3cd; padding: 15px; border-radius: 5px; border-left: 4px solid #ffc107; margin: 20px 0;">
+                            <strong>📋 Aktion erforderlich:</strong><br>
+                            Bitte im <a href="http://drive.auto-greiner.de/werkstatt/cockpit">Greiner DRIVE Portal</a> prüfen und Maßnahmen einleiten.
+                        </p>
+                        
+                        <hr style="border: none; border-top: 1px solid #dee2e6; margin: 20px 0;">
+                        <p style="color: #6c757d; font-size: 12px;">Diese E-Mail wurde automatisch vom Greiner DRIVE Portal gesendet.</p>
                     </div>
+                    """
                     
-                    <p style="background: #fff3cd; padding: 15px; border-radius: 5px; border-left: 4px solid #ffc107; margin: 20px 0;">
-                        <strong>📋 Aktion erforderlich:</strong><br>
-                        Bitte im <a href="http://drive.auto-greiner.de/werkstatt/cockpit">Greiner DRIVE Portal</a> prüfen und Maßnahmen einleiten.
-                    </p>
-                    
-                    <hr style="border: none; border-top: 1px solid #dee2e6; margin: 20px 0;">
-                    <p style="color: #6c757d; font-size: 12px;">Diese E-Mail wurde automatisch vom Greiner DRIVE Portal gesendet.</p>
-                </div>
-                """
-                
-                # E-Mail senden
-                for emp in empfaenger:
-                    try:
-                        connector.send_mail(
-                            sender_email='drive@auto-greiner.de',
-                            to_emails=[emp['email']],
-                            subject=subject,
-                            body_html=body_html
-                        )
-                        emails_gesendet += 1
-                        logger.info(f"E-Mail gesendet an {emp['name']} ({emp['email']}) für Auftrag {auftrag_nr}")
-                    except Exception as e:
-                        logger.error(f"Fehler beim Senden an {emp['email']}: {e}")
+                    # E-Mail senden (TAG 182: Nur an Empfänger, die noch keine E-Mail erhalten haben)
+                    for emp, emp_locosoft_id in empfaenger_zu_senden:
+                        try:
+                            connector.send_mail(
+                                sender_email='drive@auto-greiner.de',
+                                to_emails=[emp['email']],
+                                subject=subject,
+                                body_html=body_html
+                            )
+                            
+                            # TAG 182: Eintrag in Tracking-Tabelle nach erfolgreichem Versand
+                            cursor_tracking.execute("""
+                                INSERT INTO email_notifications_sent (auftrag_nr, employee_locosoft_id, notification_type, sent_date)
+                                VALUES (%s, %s, 'ueberschreitung', CURRENT_DATE)
+                                ON CONFLICT DO NOTHING
+                            """, (auftrag_nr, emp_locosoft_id))
+                            conn_tracking.commit()
+                            
+                            emails_gesendet += 1
+                            logger.info(f"E-Mail gesendet an {emp['name']} ({emp['email']}) für Auftrag {auftrag_nr}")
+                        except Exception as e:
+                            logger.error(f"Fehler beim Senden an {emp['email']}: {e}")
+                            conn_tracking.rollback()
             
             except Exception as e:
                 logger.error(f"Fehler bei Auftrag {auftrag_nr}: {e}")
@@ -1426,11 +1475,20 @@ def email_tek_daily():
     Läuft täglich um 19:30 (nach Locosoft Mirror um 19:00)
     
     TAG 176: Aktiviert - nach Locosoft PostgreSQL-Befüllung (19:00 Uhr)
+    TAG 181: Zeitprüfung hinzugefügt - verhindert Versand vor 19:00 Uhr
     """
     import subprocess
     import os
+    from datetime import datetime
     
     try:
+        # TAG 181: Zeitprüfung - TEK sollte erst nach 19:00 Uhr gesendet werden
+        jetzt = datetime.now()
+        if jetzt.hour < 19:
+            error_msg = f"TEK E-Mail: Zu früh ({jetzt.strftime('%H:%M')} Uhr) - sollte erst nach 19:00 Uhr gesendet werden (nach Locosoft PostgreSQL Update)"
+            logger.error(error_msg)
+            return {'success': False, 'error': error_msg}
+        
         # Prüfe verschiedene mögliche Pfade
         script_paths = [
             '/opt/greiner-portal/scripts/send_daily_tek.py',

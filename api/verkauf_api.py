@@ -22,6 +22,9 @@ from api.verkauf_data import VerkaufData
 # Blueprint erstellen
 verkauf_api = Blueprint('verkauf_api', __name__, url_prefix='/api/verkauf')
 
+# TAG 181: Import für NW-Pipeline
+from api.fahrzeug_data import FahrzeugData
+
 
 # Interne Kundennummern (Autohaus Greiner selbst)
 # 3000001 = Autohaus Greiner GmbH (Opel/Stellantis)
@@ -499,3 +502,36 @@ def get_verkaufer_performance():
         return jsonify(result)
     else:
         return jsonify(result), 500
+
+
+@verkauf_api.route('/nw-pipeline', methods=['GET'])
+def get_nw_pipeline():
+    """
+    GET /api/verkauf/nw-pipeline?standort=1
+    
+    TAG 181: NW-Pipeline nach Kategorien aufgeteilt für Verkaufsleitung/GL.
+    Kategorien:
+    - bestellt: Bestellt aber noch nicht eingetroffen
+    - verkauft: Mit Vertrag aber noch nicht fakturiert
+    - lager: Eingetroffen aber noch nicht verkauft
+    """
+    from flask_login import current_user
+    
+    # Prüfe Berechtigung
+    if not (current_user.can_access_feature('admin') or 
+            current_user.can_access_feature('verkauf')):
+        return jsonify({'error': 'Keine Berechtigung'}), 403
+    
+    standort = request.args.get('standort', type=int)
+    
+    try:
+        result = FahrzeugData.get_nw_pipeline_kategorisiert(standort=standort)
+        return jsonify({
+            'success': True,
+            **result
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500

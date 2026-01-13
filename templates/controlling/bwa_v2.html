@@ -90,7 +90,7 @@
     .kpi-item {
         display: flex;
         flex-direction: column;
-        min-width: 140px;
+        min-width: 180px;
         padding-right: 0.75rem;
         border-right: 1px solid #dee2e6;
     }
@@ -105,6 +105,28 @@
         color: #6c757d;
         text-transform: uppercase;
         margin-bottom: 0.25rem;
+    }
+    
+    .kpi-ytd-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.5rem;
+        margin-top: 0.25rem;
+        padding-top: 0.25rem;
+        border-top: 1px solid #e9ecef;
+    }
+    
+    .kpi-ytd-label {
+        font-size: 0.65rem;
+        color: #6c757d;
+        font-weight: 500;
+    }
+    
+    .kpi-ytd-value {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #495057;
+        font-family: 'Courier New', monospace;
     }
     
     .kpi-value-compact {
@@ -434,6 +456,71 @@
             {% include 'components/standort_filter_tabs.html' %}
         </div>
         <div class="filter-item">
+            <label>Kostenstellen:</label>
+            <div class="btn-group">
+                <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" id="kstFilterBtn" data-bs-toggle="dropdown" aria-expanded="false" style="min-width: 150px;">
+                    <span id="kstFilterText">Alle</span>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end" id="kstFilterDropdown" style="max-height: 300px; overflow-y: auto;">
+                    <li>
+                        <label class="dropdown-item-text">
+                            <input type="checkbox" id="kst-all" class="form-check-input me-2" checked>
+                            <strong>Alle Kostenstellen</strong>
+                        </label>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li>
+                        <label class="dropdown-item-text">
+                            <input type="checkbox" id="kst-0" class="form-check-input me-2 kst-checkbox" value="0">
+                            KST 0 - Gemeinkosten
+                        </label>
+                    </li>
+                    <li>
+                        <label class="dropdown-item-text">
+                            <input type="checkbox" id="kst-1" class="form-check-input me-2 kst-checkbox" value="1">
+                            KST 1 - Neuwagen
+                        </label>
+                    </li>
+                    <li>
+                        <label class="dropdown-item-text">
+                            <input type="checkbox" id="kst-2" class="form-check-input me-2 kst-checkbox" value="2">
+                            KST 2 - Gebrauchtwagen
+                        </label>
+                    </li>
+                    <li>
+                        <label class="dropdown-item-text">
+                            <input type="checkbox" id="kst-3" class="form-check-input me-2 kst-checkbox" value="3">
+                            KST 3 - Service/Werkstatt
+                        </label>
+                    </li>
+                    <li>
+                        <label class="dropdown-item-text">
+                            <input type="checkbox" id="kst-4" class="form-check-input me-2 kst-checkbox" value="4">
+                            KST 4 - Teile & Zubehör
+                        </label>
+                    </li>
+                    <li>
+                        <label class="dropdown-item-text">
+                            <input type="checkbox" id="kst-5" class="form-check-input me-2 kst-checkbox" value="5">
+                            KST 5 - Mietwagen
+                        </label>
+                    </li>
+                    <li>
+                        <label class="dropdown-item-text">
+                            <input type="checkbox" id="kst-6" class="form-check-input me-2 kst-checkbox" value="6">
+                            KST 6 - Sonstiges
+                        </label>
+                    </li>
+                    <li>
+                        <label class="dropdown-item-text">
+                            <input type="checkbox" id="kst-7" class="form-check-input me-2 kst-checkbox" value="7">
+                            KST 7 - Verwaltung
+                        </label>
+                    </li>
+                </ul>
+            </div>
+        </div>
+        <div class="filter-item">
             <button id="btnLaden" class="btn btn-primary btn-sm">
                 <i class="bi bi-arrow-clockwise me-1"></i>Laden
             </button>
@@ -456,26 +543,56 @@
             <div class="kpi-label-small">Umsatzerlöse</div>
             <div class="kpi-value-compact" id="kpi-umsatz">-</div>
             <div class="kpi-delta-small" id="kpi-umsatz-delta"></div>
+            <div class="kpi-ytd-row">
+                <span class="kpi-ytd-label">YTD:</span>
+                <span class="kpi-ytd-value" id="kpi-umsatz-ytd">-</span>
+                <span class="kpi-ytd-label">YTD VJ:</span>
+                <span class="kpi-ytd-value" id="kpi-umsatz-ytd-vj">-</span>
+            </div>
         </div>
         <div class="kpi-item">
             <div class="kpi-label-small">Bruttoertrag (DB1)</div>
             <div class="kpi-value-compact" id="kpi-db1">-</div>
             <div class="kpi-delta-small" id="kpi-db1-delta"></div>
+            <div class="kpi-ytd-row">
+                <span class="kpi-ytd-label">YTD:</span>
+                <span class="kpi-ytd-value" id="kpi-db1-ytd">-</span>
+                <span class="kpi-ytd-label">YTD VJ:</span>
+                <span class="kpi-ytd-value" id="kpi-db1-ytd-vj">-</span>
+            </div>
         </div>
         <div class="kpi-item">
             <div class="kpi-label-small">Deckungsbeitrag 2</div>
             <div class="kpi-value-compact" id="kpi-db2">-</div>
             <div class="kpi-delta-small" id="kpi-db2-delta"></div>
+            <div class="kpi-ytd-row">
+                <span class="kpi-ytd-label">YTD:</span>
+                <span class="kpi-ytd-value" id="kpi-db2-ytd">-</span>
+                <span class="kpi-ytd-label">YTD VJ:</span>
+                <span class="kpi-ytd-value" id="kpi-db2-ytd-vj">-</span>
+            </div>
         </div>
         <div class="kpi-item">
             <div class="kpi-label-small">Betriebsergebnis</div>
             <div class="kpi-value-compact" id="kpi-be">-</div>
             <div class="kpi-delta-small" id="kpi-be-delta"></div>
+            <div class="kpi-ytd-row">
+                <span class="kpi-ytd-label">YTD:</span>
+                <span class="kpi-ytd-value" id="kpi-be-ytd">-</span>
+                <span class="kpi-ytd-label">YTD VJ:</span>
+                <span class="kpi-ytd-value" id="kpi-be-ytd-vj">-</span>
+            </div>
         </div>
         <div class="kpi-item">
             <div class="kpi-label-small">Unternehmensergebnis</div>
             <div class="kpi-value-compact" id="kpi-ue">-</div>
             <div class="kpi-delta-small" id="kpi-ue-delta"></div>
+            <div class="kpi-ytd-row">
+                <span class="kpi-ytd-label">YTD:</span>
+                <span class="kpi-ytd-value" id="kpi-ue-ytd">-</span>
+                <span class="kpi-ytd-label">YTD VJ:</span>
+                <span class="kpi-ytd-value" id="kpi-ue-ytd-vj">-</span>
+            </div>
         </div>
     </div>
     
@@ -490,14 +607,17 @@
             <table class="table table-compact mb-0">
                 <thead>
                     <tr>
-                        <th class="text-start" style="width: 25%">Position</th>
-                        <th style="width: 5%">Stk.<br>Monat</th>
-                        <th class="text-end" style="width: 9%">Monat</th>
-                        <th class="text-end" style="width: 9%">Vorjahr</th>
-                        <th style="width: 6%">Abw.</th>
-                        <th class="text-end" style="width: 9%">YTD</th>
-                        <th class="text-end" style="width: 9%">YTD Vorjahr</th>
-                        <th style="width: 6%">Abw. YTD</th>
+                        <th class="text-start" style="width: 20%">Position</th>
+                        <th style="width: 4%">Stk.<br>Monat</th>
+                        <th style="width: 4%">Stk.<br>Vorjahr</th>
+                        <th class="text-end" style="width: 8%">Monat</th>
+                        <th class="text-end" style="width: 8%">Vorjahr</th>
+                        <th style="width: 5%">Abw.</th>
+                        <th style="width: 4%">Stk.<br>YTD</th>
+                        <th style="width: 4%">Stk.<br>YTD VJ</th>
+                        <th class="text-end" style="width: 8%">YTD</th>
+                        <th class="text-end" style="width: 8%">YTD Vorjahr</th>
+                        <th style="width: 5%">Abw. YTD</th>
                     </tr>
                 </thead>
                 <tbody id="bwa-body">
@@ -671,6 +791,26 @@
         return standort || '0'; // Alle oder wie übergeben
     }
 
+    // Kostenstellen-Filter Funktionen
+    function getSelectedKSTs() {
+        const checkboxes = document.querySelectorAll('.kst-checkbox:checked');
+        const ksts = Array.from(checkboxes).map(cb => cb.value);
+        return ksts.length > 0 ? ksts.join(',') : '';
+    }
+    
+    function updateKSTFilterText() {
+        const selected = getSelectedKSTs();
+        const allChecked = document.getElementById('kst-all').checked;
+        const textEl = document.getElementById('kstFilterText');
+        
+        if (allChecked || selected === '') {
+            textEl.textContent = 'Alle';
+        } else {
+            const count = selected.split(',').length;
+            textEl.textContent = count === 1 ? `KST ${selected}` : `${count} KST`;
+        }
+    }
+
     // Daten laden
     async function loadData() {
         const monat = document.getElementById('filterMonat').value;
@@ -679,12 +819,16 @@
         const konsolidiert = getKonsolidiertFromURL();
         const firma = getFirmaFromStandort(standort, konsolidiert);
         const bwaStandort = mapStandortForBWA(standort, konsolidiert);
+        const kst = getSelectedKSTs();
 
         const loading = document.getElementById('loading');
         loading.classList.remove('d-none');
 
         try {
-            const url = `/api/controlling/bwa/v2?monat=${monat}&jahr=${jahr}&firma=${firma}&standort=${bwaStandort}`;
+            let url = `/api/controlling/bwa/v2?monat=${monat}&jahr=${jahr}&firma=${firma}&standort=${bwaStandort}`;
+            if (kst) {
+                url += `&kst=${kst}`;
+            }
             console.log('BWA API Call:', url);
             const response = await fetch(url);
             const result = await response.json();
@@ -739,12 +883,21 @@
         document.getElementById('wj-year').textContent = `${wjStart}/${wjStart + 1}`;
         document.getElementById('wj-range').textContent = `(Sep ${wjStart} - Aug ${wjStart + 1})`;
 
-        // KPI-Karten
+        // KPI-Karten (Monat + YTD)
         updateKPI('kpi-umsatz', aktuell.umsatz, vorjahr.umsatz);
+        updateKPIYTD('kpi-umsatz', ytd.umsatz, ytd_vorjahr.umsatz || 0);
+        
         updateKPI('kpi-db1', aktuell.db1, vorjahr.db1);
+        updateKPIYTD('kpi-db1', ytd.db1, ytd_vorjahr.db1 || 0);
+        
         updateKPI('kpi-db2', aktuell.db2, vorjahr.db2);
+        updateKPIYTD('kpi-db2', ytd.db2, ytd_vorjahr.db2 || 0);
+        
         updateKPI('kpi-be', aktuell.betriebsergebnis, vorjahr.betriebsergebnis);
+        updateKPIYTD('kpi-be', ytd.betriebsergebnis, ytd_vorjahr.betriebsergebnis || 0);
+        
         updateKPI('kpi-ue', aktuell.unternehmensergebnis, vorjahr.unternehmensergebnis);
+        updateKPIYTD('kpi-ue', ytd.unternehmensergebnis, ytd_vorjahr.unternehmensergebnis || 0);
 
         // Tabelle rendern
         const tbody = document.getElementById('bwa-body');
@@ -754,9 +907,12 @@
         html += `<tr class="row-sum row-bereich" data-drilldown="umsatz" title="Klicken für Details">
             <td><strong>Umsatzerlöse</strong></td>
             <td class="text-center">-</td>
+            <td class="text-center">-</td>
             <td class="text-end">${renderValue(aktuell.umsatz, '', 'large')}</td>
             <td class="text-end">${renderValue(vorjahr.umsatz, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.umsatz, vorjahr.umsatz))}</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
             <td class="text-end">${renderValue(ytd.umsatz, '', 'large')}</td>
             <td class="text-end">${renderValue(ytd_vorjahr.umsatz || 0, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(ytd.umsatz, ytd_vorjahr.umsatz || 0))}</td>
@@ -766,9 +922,12 @@
         html += `<tr class="row-sum row-bereich" data-drilldown="einsatz" title="Klicken für Details">
             <td><strong>Einsatzwerte</strong></td>
             <td class="text-center">-</td>
+            <td class="text-center">-</td>
             <td class="text-end">${renderValue(-aktuell.einsatz, '', 'large')}</td>
             <td class="text-end">${renderValue(-vorjahr.einsatz, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.einsatz, vorjahr.einsatz), true)}</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
             <td class="text-end">${renderValue(-ytd.einsatz, '', 'large')}</td>
             <td class="text-end">${renderValue(-(ytd_vorjahr.einsatz || 0), '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(ytd.einsatz, ytd_vorjahr.einsatz || 0), true)}</td>
@@ -776,7 +935,7 @@
 
         // 3. Bruttoertrag (DB1) Gesamt
         html += `<tr class="row-header">
-            <td colspan="8"><strong>Bruttoerträge nach Bereichen (DB1)</strong></td>
+            <td colspan="11"><strong>Bruttoerträge nach Bereichen (DB1)</strong></td>
         </tr>`;
 
         // 4. Bereiche
@@ -784,31 +943,56 @@
             const b = aktuell.bereiche[i];
             const vj = vorjahr.bereiche[i];
             const y = ytd.bereiche[i];
-            const y_vj = (ytd_vorjahr.bereiche && ytd_vorjahr.bereiche[i]) ? ytd_vorjahr.bereiche[i] : { bruttoertrag: 0, stueck: { monat: 0, jahr: 0, vj_monat: 0, vj_jahr: 0 } };
+            const y_vj = (ytd_vorjahr.bereiche && ytd_vorjahr.bereiche[i]) ? ytd_vorjahr.bereiche[i] : { bruttoertrag: 0, stueck: 0 };
             
             // Stückzahlen nur für NW und GW anzeigen (analog Globalcube: Monat, Jahr, VJ Monat, VJ Jahr)
             let stueck_monat = '-';
             let stueck_vj_monat = '-';
             let stueck_jahr = '-';
             let stueck_vj_jahr = '-';
+            let abw_stueck_monat = '';
+            let abw_stueck_jahr = '';
             
             if (b.key === 'NW' || b.key === 'GW') {
+                // TAG182: Erweiterte Struktur für alle Variationen
+                // Monat: b.stueck enthält {monat, jahr, vj_monat, vj_jahr}
                 const stueck = b.stueck || { monat: 0, jahr: 0, vj_monat: 0, vj_jahr: 0 };
-                stueck_monat = stueck.monat || 0;
-                stueck_jahr = stueck.jahr || 0;
-                stueck_vj_monat = stueck.vj_monat || 0;
-                stueck_vj_jahr = stueck.vj_jahr || 0;
+                // YTD: y.stueck enthält {monat, jahr, vj_monat, vj_jahr} - verwende 'jahr' für YTD
+                const stueck_ytd = y.stueck || { monat: 0, jahr: 0, vj_monat: 0, vj_jahr: 0 };
+                // YTD Vorjahr: y_vj.stueck enthält {monat, jahr, vj_monat, vj_jahr} - verwende 'jahr' für YTD Vorjahr
+                const stueck_ytd_vj = y_vj.stueck || { monat: 0, jahr: 0, vj_monat: 0, vj_jahr: 0 };
+                
+                // Monat: aktuell und Vorjahr
+                stueck_monat = (typeof stueck === 'object' && stueck.monat !== undefined) ? stueck.monat : (typeof stueck === 'number' ? stueck : 0);
+                stueck_vj_monat = (typeof stueck === 'object' && stueck.vj_monat !== undefined) ? stueck.vj_monat : 0;
+                
+                // YTD: aktuell und Vorjahr (verwende 'jahr' aus der Struktur)
+                stueck_jahr = (typeof stueck_ytd === 'object' && stueck_ytd.jahr !== undefined) ? stueck_ytd.jahr : (typeof stueck_ytd === 'number' ? stueck_ytd : 0);
+                stueck_vj_jahr = (typeof stueck_ytd_vj === 'object' && stueck_ytd_vj.jahr !== undefined) ? stueck_ytd_vj.jahr : (typeof stueck_ytd_vj === 'number' ? stueck_ytd_vj : 0);
+                
+                // Abweichungen in Stück berechnen
+                const abw_monat = stueck_monat - stueck_vj_monat;
+                const abw_jahr = stueck_jahr - stueck_vj_jahr;
+                abw_stueck_monat = abw_monat !== 0 ? (abw_monat > 0 ? '+' : '') + abw_monat : '0';
+                abw_stueck_jahr = abw_jahr !== 0 ? (abw_jahr > 0 ? '+' : '') + abw_jahr : '0';
+            } else {
+                // Für andere Bereiche: einfache Zahl (nicht Globalcube-Struktur)
+                stueck_vj_monat = (typeof vj.stueck === 'object') ? 0 : (vj.stueck || 0);
+                stueck_vj_jahr = (typeof y_vj.stueck === 'object') ? 0 : (y_vj.stueck || 0);
             }
 
             html += `<tr class="row-bereich" data-drilldown="bereich" data-bereich="${b.key}" title="Klicken für Details">
                 <td>${bereichIcons[b.key] || ''} Bruttoertrag ${b.name}</td>
                 <td class="text-center"><strong>${stueck_monat}</strong></td>
+                <td class="text-center">${stueck_vj_monat}</td>
                 <td class="text-end">${renderValue(b.bruttoertrag, '', 'large')}</td>
                 <td class="text-end">${renderValue(vj.bruttoertrag, '', 'medium')}</td>
-                <td class="text-center">${renderDelta(calcDelta(b.bruttoertrag, vj.bruttoertrag))}</td>
+                <td class="text-center">${renderDelta(calcDelta(b.bruttoertrag, vj.bruttoertrag))}${abw_stueck_monat ? '<br><small class="text-muted">(' + abw_stueck_monat + ' Stk.)</small>' : ''}</td>
+                <td class="text-center"><strong>${stueck_jahr}</strong></td>
+                <td class="text-center">${stueck_vj_jahr}</td>
                 <td class="text-end">${renderValue(y.bruttoertrag, '', 'large')}</td>
                 <td class="text-end">${renderValue(y_vj.bruttoertrag || 0, '', 'medium')}</td>
-                <td class="text-center">${renderDelta(calcDelta(y.bruttoertrag, y_vj.bruttoertrag || 0))}</td>
+                <td class="text-center">${renderDelta(calcDelta(y.bruttoertrag, y_vj.bruttoertrag || 0))}${abw_stueck_jahr ? '<br><small class="text-muted">(' + abw_stueck_jahr + ' Stk.)</small>' : ''}</td>
             </tr>`;
         }
 
@@ -816,9 +1000,12 @@
         html += `<tr class="row-sum">
             <td><strong>Bruttoertrag Gesamt (DB1)</strong></td>
             <td class="text-center">-</td>
+            <td class="text-center">-</td>
             <td class="text-end"><strong>${renderValue(aktuell.db1, '', 'large')}</strong></td>
             <td class="text-end">${renderValue(vorjahr.db1, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.db1, vorjahr.db1))}</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
             <td class="text-end"><strong>${renderValue(ytd.db1, '', 'large')}</strong></td>
             <td class="text-end">${renderValue(ytd_vorjahr.db1 || 0, '', 'medium')}</td>
             <td class="text-center"><strong>${renderDelta(calcDelta(ytd.db1, ytd_vorjahr.db1 || 0))}</strong></td>
@@ -828,9 +1015,12 @@
         html += `<tr class="row-bereich" data-drilldown="variable" title="Klicken für Details">
             <td>Variable Kosten</td>
             <td class="text-center">-</td>
+            <td class="text-center">-</td>
             <td class="text-end">${renderValue(-aktuell.variable_kosten, '', 'large')}</td>
             <td class="text-end">${renderValue(-vorjahr.variable_kosten, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.variable_kosten, vorjahr.variable_kosten), true)}</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
             <td class="text-end">${renderValue(-ytd.variable_kosten, '', 'large')}</td>
             <td class="text-end">${renderValue(-(ytd_vorjahr.variable_kosten || 0), '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(ytd.variable_kosten, ytd_vorjahr.variable_kosten || 0), true)}</td>
@@ -840,9 +1030,12 @@
         html += `<tr class="row-sum">
             <td><strong>Deckungsbeitrag 2 (DB2)</strong></td>
             <td class="text-center">-</td>
+            <td class="text-center">-</td>
             <td class="text-end"><strong>${renderValue(aktuell.db2, '', 'large')}</strong></td>
             <td class="text-end">${renderValue(vorjahr.db2, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.db2, vorjahr.db2))}</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
             <td class="text-end"><strong>${renderValue(ytd.db2, '', 'large')}</strong></td>
             <td class="text-end">${renderValue(ytd_vorjahr.db2 || 0, '', 'medium')}</td>
             <td class="text-center"><strong>${renderDelta(calcDelta(ytd.db2, ytd_vorjahr.db2 || 0))}</strong></td>
@@ -852,9 +1045,12 @@
         html += `<tr class="row-bereich" data-drilldown="direkte" title="Klicken für Details">
             <td>Direkte Kosten</td>
             <td class="text-center">-</td>
+            <td class="text-center">-</td>
             <td class="text-end">${renderValue(-aktuell.direkte_kosten, '', 'large')}</td>
             <td class="text-end">${renderValue(-vorjahr.direkte_kosten, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.direkte_kosten, vorjahr.direkte_kosten), true)}</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
             <td class="text-end">${renderValue(-ytd.direkte_kosten, '', 'large')}</td>
             <td class="text-end">${renderValue(-(ytd_vorjahr.direkte_kosten || 0), '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(ytd.direkte_kosten, ytd_vorjahr.direkte_kosten || 0), true)}</td>
@@ -864,9 +1060,12 @@
         html += `<tr class="row-sum">
             <td><strong>Deckungsbeitrag 3 (DB3)</strong></td>
             <td class="text-center">-</td>
+            <td class="text-center">-</td>
             <td class="text-end"><strong>${renderValue(aktuell.db3, '', 'large')}</strong></td>
             <td class="text-end">${renderValue(vorjahr.db3, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.db3, vorjahr.db3))}</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
             <td class="text-end"><strong>${renderValue(ytd.db3, '', 'large')}</strong></td>
             <td class="text-end">${renderValue(ytd_vorjahr.db3 || 0, '', 'medium')}</td>
             <td class="text-center"><strong>${renderDelta(calcDelta(ytd.db3, ytd_vorjahr.db3 || 0))}</strong></td>
@@ -876,9 +1075,12 @@
         html += `<tr class="row-bereich" data-drilldown="indirekte" title="Klicken für Details">
             <td>Indirekte Kosten</td>
             <td class="text-center">-</td>
+            <td class="text-center">-</td>
             <td class="text-end">${renderValue(-aktuell.indirekte_kosten, '', 'large')}</td>
             <td class="text-end">${renderValue(-vorjahr.indirekte_kosten, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.indirekte_kosten, vorjahr.indirekte_kosten), true)}</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
             <td class="text-end">${renderValue(-ytd.indirekte_kosten, '', 'large')}</td>
             <td class="text-end">${renderValue(-(ytd_vorjahr.indirekte_kosten || 0), '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(ytd.indirekte_kosten, ytd_vorjahr.indirekte_kosten || 0), true)}</td>
@@ -888,9 +1090,12 @@
         html += `<tr class="row-sum row-highlight">
             <td><strong>Betriebsergebnis (BE)</strong></td>
             <td class="text-center">-</td>
+            <td class="text-center">-</td>
             <td class="text-end"><strong>${renderValue(aktuell.betriebsergebnis, '', 'large')}</strong></td>
             <td class="text-end">${renderValue(vorjahr.betriebsergebnis, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.betriebsergebnis, vorjahr.betriebsergebnis))}</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
             <td class="text-end"><strong>${renderValue(ytd.betriebsergebnis, '', 'large')}</strong></td>
             <td class="text-end">${renderValue(ytd_vorjahr.betriebsergebnis || 0, '', 'medium')}</td>
             <td class="text-center"><strong>${renderDelta(calcDelta(ytd.betriebsergebnis, ytd_vorjahr.betriebsergebnis || 0))}</strong></td>
@@ -900,9 +1105,12 @@
         html += `<tr class="row-bereich" data-drilldown="neutral" title="Klicken für Details">
             <td>Neutrales Ergebnis</td>
             <td class="text-center">-</td>
+            <td class="text-center">-</td>
             <td class="text-end">${renderValue(aktuell.neutrales_ergebnis, '', 'large')}</td>
             <td class="text-end">${renderValue(vorjahr.neutrales_ergebnis, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.neutrales_ergebnis, vorjahr.neutrales_ergebnis))}</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
             <td class="text-end">${renderValue(ytd.neutrales_ergebnis, '', 'large')}</td>
             <td class="text-end">${renderValue(ytd_vorjahr.neutrales_ergebnis || 0, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(ytd.neutrales_ergebnis, ytd_vorjahr.neutrales_ergebnis || 0))}</td>
@@ -912,9 +1120,12 @@
         html += `<tr class="row-result">
             <td><strong>Unternehmensergebnis (UE)</strong></td>
             <td class="text-center">-</td>
+            <td class="text-center">-</td>
             <td class="text-end"><strong>${renderValue(aktuell.unternehmensergebnis, '', 'large')}</strong></td>
             <td class="text-end">${renderValue(vorjahr.unternehmensergebnis, '', 'medium')}</td>
             <td class="text-center">${renderDelta(calcDelta(aktuell.unternehmensergebnis, vorjahr.unternehmensergebnis))}</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
             <td class="text-end"><strong>${renderValue(ytd.unternehmensergebnis, '', 'large')}</strong></td>
             <td class="text-end">${renderValue(ytd_vorjahr.unternehmensergebnis || 0, '', 'medium')}</td>
             <td class="text-center"><strong>${renderDelta(calcDelta(ytd.unternehmensergebnis, ytd_vorjahr.unternehmensergebnis || 0))}</strong></td>
@@ -929,6 +1140,11 @@
         const deltaClass = Math.abs(delta) < 1 ? 'neutral' : (invertDelta ? (delta < 0 ? 'positive' : 'negative') : (delta > 0 ? 'positive' : 'negative'));
         const deltaIcon = delta > 0 ? '↑' : (delta < 0 ? '↓' : '→');
         document.getElementById(id + '-delta').innerHTML = `<span class="kpi-delta-small ${deltaClass}">${deltaIcon} ${Math.abs(delta).toFixed(1)}% vs. VJ</span>`;
+    }
+    
+    function updateKPIYTD(id, ytd, ytd_vorjahr) {
+        document.getElementById(id + '-ytd').textContent = fmtEuroCompact(ytd);
+        document.getElementById(id + '-ytd-vj').textContent = fmtEuroCompact(ytd_vorjahr);
     }
 
     // Event-Listener
@@ -1218,10 +1434,75 @@
 
     // Init
     document.addEventListener('DOMContentLoaded', function() {
-        // Aktuellen Monat setzen
-        const heute = new Date();
-        document.getElementById('filterMonat').value = heute.getMonth() + 1;
-        document.getElementById('filterJahr').value = heute.getFullYear();
+        // Zeitraum aus URL-Parametern lesen (falls vorhanden)
+        const urlParams = new URLSearchParams(window.location.search);
+        const monatParam = urlParams.get('monat');
+        const jahrParam = urlParams.get('jahr');
+        
+        if (monatParam) {
+            document.getElementById('filterMonat').value = monatParam;
+        } else {
+            // TAG 181: Standard = Vormonat (BWA im laufenden Monat nur bedingt aussagefähig)
+            const heute = new Date();
+            let vormonat = heute.getMonth(); // 0-11, aktueller Monat
+            let vorjahr = heute.getFullYear();
+            
+            if (vormonat === 0) {
+                // Januar -> Dezember des Vorjahres
+                vormonat = 12;
+                vorjahr = vorjahr - 1;
+            }
+            
+            document.getElementById('filterMonat').value = vormonat;
+            document.getElementById('filterJahr').value = vorjahr;
+        }
+        
+        if (jahrParam) {
+            document.getElementById('filterJahr').value = jahrParam;
+        } else if (!monatParam) {
+            // Nur wenn nicht in URL und Monat auch nicht: Vormonat-Jahr setzen
+            const heute = new Date();
+            let vormonat = heute.getMonth();
+            let vorjahr = heute.getFullYear();
+            
+            if (vormonat === 0) {
+                vormonat = 12;
+                vorjahr = vorjahr - 1;
+            }
+            
+            document.getElementById('filterJahr').value = vorjahr;
+        }
+        
+        // TAG 181: KST-Filter initialisieren
+        // "Alle" Checkbox
+        document.getElementById('kst-all').addEventListener('change', function() {
+            const checkboxes = document.querySelectorAll('.kst-checkbox');
+            checkboxes.forEach(cb => {
+                cb.checked = this.checked;
+            });
+            updateKSTFilterText();
+        });
+        
+        // Einzelne KST-Checkboxen
+        document.querySelectorAll('.kst-checkbox').forEach(cb => {
+            cb.addEventListener('change', function() {
+                const allChecked = Array.from(document.querySelectorAll('.kst-checkbox')).every(c => c.checked);
+                document.getElementById('kst-all').checked = allChecked;
+                updateKSTFilterText();
+            });
+        });
+        
+        // KST-Filter aus URL initialisieren
+        const kstParam = urlParams.get('kst');
+        if (kstParam) {
+            const ksts = kstParam.split(',');
+            document.getElementById('kst-all').checked = false;
+            ksts.forEach(kst => {
+                const cb = document.getElementById(`kst-${kst}`);
+                if (cb) cb.checked = true;
+            });
+            updateKSTFilterText();
+        }
 
         // Initial laden
         loadData();

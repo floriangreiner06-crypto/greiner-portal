@@ -350,6 +350,7 @@ app.conf.update(
         # =====================================================================
         
         # Serviceberater-Benachrichtigungen bei Zeitüberschreitungen (alle 15 Min während Arbeitszeit)
+        # TAG 182: Reaktiviert mit Fixes (Tracking-Tabelle, Deduplizierung, Fallback nur Matthias König)
         'benachrichtige-serviceberater-ueberschreitungen': {
             'task': 'celery_app.tasks.benachrichtige_serviceberater_ueberschreitungen',
             'schedule': crontab(minute='*/15', hour='7-18', day_of_week='mon-fri'),

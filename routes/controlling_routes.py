@@ -390,6 +390,14 @@ def finanzreporting():
     """Finanzreporting Cube Dashboard"""
     return render_template('controlling/finanzreporting_cube.html')
 
+@controlling_bp.route('/kontenmapping')
+@login_required
+def kontenmapping():
+    """Kontenmapping-Export und -Bearbeitung für Buchhaltung"""
+    return render_template('controlling/kontenmapping.html',
+                         page_title='Kontenmapping',
+                         active_page='controlling')
+
 @controlling_bp.route('/bwa')
 @login_required
 def bwa():

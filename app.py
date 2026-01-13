@@ -313,6 +313,11 @@ try:
     app.register_blueprint(finanzreporting_api)
     print("✅ Finanzreporting API registriert: /api/finanzreporting/")
     print("✅ Controlling API registriert: /api/controlling/")
+    
+    # Kontenmapping API (TAG 181)
+    from api.kontenmapping_api import kontenmapping_api
+    app.register_blueprint(kontenmapping_api)
+    print("✅ Kontenmapping API registriert: /api/kontenmapping/")
 except Exception as e:
     print(f"⚠️  Controlling API nicht geladen: {e}")
 

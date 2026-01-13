@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+
+{% block title %}Kontenmapping - DRIVE Portal{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="header-compact mb-4">
+        <div>
+            <h5 class="header-title">
+                <i class="bi bi-table me-2"></i>
+                Kontenmapping - Export & Bearbeitung
+            </h5>
+            <div class="header-meta">
+                Lesbares Mapping aller Konten für die Buchhaltung
+            </div>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="card-body">
+            <h6 class="card-title mb-3">Export-Optionen</h6>
+            
+            <form id="exportForm" class="mb-4">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label">Format</label>
+                        <select id="format" class="form-select form-select-sm" name="format">
+                            <option value="csv" selected>CSV (Excel-kompatibel)</option>
+                            <option value="json">JSON</option>
+                            <option value="excel" disabled>Excel (in Entwicklung)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Firma</label>
+                        <select id="firma" class="form-select form-select-sm" name="firma">
+                            <option value="0" selected>Alle</option>
+                            <option value="1">Stellantis</option>
+                            <option value="2">Hyundai</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Konto von</label>
+                        <input type="number" id="konto_von" class="form-control form-control-sm" name="konto_von" placeholder="z.B. 400000">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Konto bis</label>
+                        <input type="number" id="konto_bis" class="form-control form-control-sm" name="konto_bis" placeholder="z.B. 499999">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">&nbsp;</label>
+                        <div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="nur_verwendet" name="nur_verwendet">
+                                <label class="form-check-label" for="nur_verwendet">
+                                    Nur verwendete
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="mit_kst" name="mit_kst" checked>
+                                <label class="form-check-label" for="mit_kst">
+                                    Mit KST-Info
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-primary btn-sm">
+                            <i class="bi bi-download me-1"></i>Export starten
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm ms-2" id="btnPreview">
+                            <i class="bi bi-eye me-1"></i>Vorschau (JSON)
+                        </button>
+                    </div>
+                </div>
+            </form>
+            
+            <div id="previewArea" class="d-none">
+                <h6 class="card-title mb-3">Vorschau</h6>
+                <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                    <table class="table table-sm table-striped" id="previewTable">
+                        <thead class="table-light sticky-top">
+                            <tr id="previewHeader"></tr>
+                        </thead>
+                        <tbody id="previewBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card mt-4">
+        <div class="card-body">
+            <h6 class="card-title mb-3">Hinweise</h6>
+            <ul class="mb-0">
+                <li><strong>CSV-Export:</strong> Semikolon-getrennt, Excel-kompatibel, UTF-8</li>
+                <li><strong>Nur verwendete Konten:</strong> Zeigt nur Konten, die tatsächlich Buchungen haben</li>
+                <li><strong>Mit KST-Info:</strong> Fügt Kostenstellen-Information hinzu (5. Stelle der Kontonummer)</li>
+                <li><strong>Konto-Filter:</strong> Optional - Filtert nach Kontonummer-Bereich</li>
+                <li><strong>Für Reporting Cube:</strong> Dieses Mapping kann als Basis für Dimensionen verwendet werden</li>
+                <li><strong>Für Grafana:</strong> JSON-Export kann direkt in Grafana importiert werden</li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    'use strict';
+    
+    const exportForm = document.getElementById('exportForm');
+    const btnPreview = document.getElementById('btnPreview');
+    const previewArea = document.getElementById('previewArea');
+    const previewTable = document.getElementById('previewTable');
+    const previewHeader = document.getElementById('previewHeader');
+    const previewBody = document.getElementById('previewBody');
+    
+    // Export-Formular
+    exportForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(exportForm);
+        const params = new URLSearchParams();
+        
+        // Alle Formular-Felder hinzufügen
+        for (const [key, value] of formData.entries()) {
+            if (value) {
+                params.append(key, value);
+            }
+        }
+        
+        // Checkboxen
+        if (document.getElementById('nur_verwendet').checked) {
+            params.set('nur_verwendet', 'true');
+        }
+        if (document.getElementById('mit_kst').checked) {
+            params.set('mit_kst', 'true');
+        }
+        
+        // Format auf CSV setzen für Download
+        params.set('format', document.getElementById('format').value);
+        
+        // Download starten
+        window.location.href = `/api/kontenmapping/export?${params.toString()}`;
+    });
+    
+    // Vorschau (JSON)
+    btnPreview.addEventListener('click', function() {
+        const formData = new FormData(exportForm);
+        const params = new URLSearchParams();
+        
+        for (const [key, value] of formData.entries()) {
+            if (value) {
+                params.append(key, value);
+            }
+        }
+        
+        if (document.getElementById('nur_verwendet').checked) {
+            params.set('nur_verwendet', 'true');
+        }
+        if (document.getElementById('mit_kst').checked) {
+            params.set('mit_kst', 'true');
+        }
+        
+        params.set('format', 'json');
+        
+        fetch(`/api/kontenmapping/export?${params.toString()}`)
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => {
+                        throw new Error(err.error || `HTTP ${response.status}`);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.status === 'ok' && data.konten && data.konten.length > 0) {
+                    renderPreview(data.konten);
+                    previewArea.classList.remove('d-none');
+                } else if (data.error) {
+                    alert('Fehler: ' + data.error);
+                } else {
+                    alert('Keine Daten gefunden');
+                }
+            })
+            .catch(err => {
+                console.error('Fehler:', err);
+                alert('Fehler beim Laden der Vorschau: ' + err.message);
+            });
+    });
+    
+    function renderPreview(konten) {
+        // Header
+        const firstKonto = konten[0];
+        const headers = Object.keys(firstKonto);
+        
+        previewHeader.innerHTML = headers.map(h => `<th>${h}</th>`).join('');
+        
+        // Body (max. 100 Zeilen)
+        const maxRows = Math.min(100, konten.length);
+        previewBody.innerHTML = konten.slice(0, maxRows).map(konto => {
+            return `<tr>${headers.map(h => `<td>${konto[h] || ''}</td>`).join('')}</tr>`;
+        }).join('');
+        
+        if (konten.length > maxRows) {
+            previewBody.innerHTML += `<tr><td colspan="${headers.length}" class="text-muted text-center">
+                ... und ${konten.length - maxRows} weitere Zeilen
+            </td></tr>`;
+        }
+    }
+})();
+</script>
+{% endblock %}

@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """
 ============================================================================
-SALES-SYNC V5: Mit korrigierter Deckungsbeitrag-Berechnung (PostgreSQL)
+SALES-SYNC V6: Mit korrigierter Deckungsbeitrag-Berechnung für §25a (PostgreSQL)
 ============================================================================
 Erstellt: 11.11.2025
-Aktualisiert: 2025-12-23 (TAG 136 - PostgreSQL Migration)
-Fix: calc_usage_value_encr_internal zum Einsatzwert addiert
-Formel: (VK-Preis/1.19) - Einsatzwert - Var.Kosten + VKU
+Aktualisiert: 2026-01-12 (TAG 181 - Differenzbesteuerung §25a)
+Fix: 
+- calc_usage_value_encr_internal zum Einsatzwert addiert
+- calc_cost_other (sonstige_kosten) synchronisiert
+- Differenzbesteuerung §25a: DB = (VK - EK) / 1.19 - Var.Kosten + VKU
+- Regelbesteuerung (F): DB = (VK / 1.19) - EK - Var.Kosten + VKU
 ============================================================================
 """
 
@@ -65,8 +68,8 @@ def load_env():
 def sync_sales():
     """Synchronisiert Sales von Locosoft nach PostgreSQL mit DB-Berechnung"""
 
-    log("=== SALES SYNC V5 MIT DECKUNGSBEITRAG (PostgreSQL) ===")
-    log("Fix TAG83: calc_usage_value_encr_internal zum Einsatzwert addiert")
+    log("=== SALES SYNC V6 MIT DECKUNGSBEITRAG §25a (PostgreSQL) ===")
+    log("Fix TAG181: Differenzbesteuerung §25a + sonstige_kosten")
 
     # 1. Credentials laden
     log("Lade Credentials...")
@@ -118,6 +121,15 @@ def sync_sales():
             -- NEU TAG83: Einsatzerhoehung interne Rechnungen
             COALESCE(dv.calc_usage_value_encr_internal, 0) as einsatz_erhoehung_intern,
 
+            -- NEU TAG181: Sonstige Kosten (Variable Verkaufskosten)
+            COALESCE(dv.calc_cost_other, 0) as sonstige_kosten,
+
+            -- NEU TAG181: Invoice Type (8 = Gebrauchtfahrzeug = immer §25a)
+            dv.out_invoice_type,
+
+            -- NEU TAG181: MwSt direkt aus invoices-Tabelle (statt berechnen)
+            COALESCE(i.full_vat_value, 0) + COALESCE(i.reduced_vat_value, 0) as mwst,
+
             -- Verkaufsunterstuetzung (claimed = gefordert)
             COALESCE(
                 (SELECT SUM(claimed_amount)
@@ -133,6 +145,9 @@ def sync_sales():
             AND dv.dealer_vehicle_type = v.dealer_vehicle_type
         LEFT JOIN models m
             ON dv.out_model_code = m.model_code
+        LEFT JOIN invoices i
+            ON dv.out_invoice_type = i.invoice_type
+            AND dv.out_invoice_number::integer = i.invoice_number
             AND dv.out_make_number = m.make_number
         WHERE dv.out_sales_contract_date IS NOT NULL
           AND dv.out_sales_contract_date >= '2020-01-01'
@@ -157,7 +172,7 @@ def sync_sales():
              out_subsidiary, out_sales_contract_date, make_number, mileage_km,
              salesman_number, buyer_customer_no, model_description,
              fahrzeuggrundpreis, zubehoer, fracht_brief_neben,
-             kosten_intern_rg, einsatz_erhoehung_intern, verkaufsunterstuetzung) = row
+             kosten_intern_rg, einsatz_erhoehung_intern, sonstige_kosten, out_invoice_type, mwst, verkaufsunterstuetzung) = row
 
             # TAG 144: dealer_vehicle_number/type sind TEXT in unserer DB, aber INTEGER in Locosoft
             dealer_vehicle_number = str(dealer_vehicle_number) if dealer_vehicle_number else None
@@ -177,18 +192,39 @@ def sync_sales():
             fracht_brief_neben = float(fracht_brief_neben) if fracht_brief_neben else 0.0
             kosten_intern_rg = float(kosten_intern_rg) if kosten_intern_rg else 0.0
             einsatz_erhoehung_intern = float(einsatz_erhoehung_intern) if einsatz_erhoehung_intern else 0.0
+            sonstige_kosten = float(sonstige_kosten) if sonstige_kosten else 0.0
+            mwst = float(mwst) if mwst else 0.0  # TAG181: MwSt direkt aus invoices
             verkaufsunterstuetzung = float(verkaufsunterstuetzung) if verkaufsunterstuetzung else 0.0
 
-            # DECKUNGSBEITRAG BERECHNEN
+            # DECKUNGSBEITRAG BERECHNEN (TAG181: Locosoft-Formel mit MwSt aus invoices)
+            # WICHTIG: Locosoft verwendet: DB = VK - MwSt - Einsatz - Var.Kosten + VKU
+            # WICHTIG: MwSt wird direkt aus invoices-Tabelle geholt (statt berechnet)
+            # WICHTIG: out_invoice_type = 8 (Gebrauchtfahrzeug) = immer §25a Differenzbesteuerung
+            # "KomNr.D" im UI = Differenzbesteuerung, unabhängig von out_sale_type
             if out_sale_price and out_sale_price > 0:
-                # Netto-VK-Preis (MwSt rausrechnen)
-                netto_vk_preis = out_sale_price / 1.19
-
-                # Einsatzwert (FIX TAG83: + einsatz_erhoehung_intern)
+                # Einsatzwert (inkl. Einsatzerhoehung)
                 einsatzwert = fahrzeuggrundpreis + zubehoer + fracht_brief_neben + einsatz_erhoehung_intern
 
-                # Deckungsbeitrag
-                deckungsbeitrag = netto_vk_preis - einsatzwert - kosten_intern_rg + verkaufsunterstuetzung
+                # Variable Verkaufskosten (intern + sonstige)
+                variable_kosten = kosten_intern_rg + sonstige_kosten
+
+                # TAG181: MwSt wird direkt aus invoices geholt (bereits im Query)
+                # WICHTIG: Wenn MwSt = 0 in invoices, berechnen wir sie als Fallback
+                # (Locosoft Screenshot zeigt, dass MwSt auch für diese Fahrzeuge berechnet wird)
+                if mwst is None or mwst == 0.0:
+                    # Fallback: MwSt berechnen wenn None oder 0
+                    is_differenzbesteuert = (out_invoice_type == 8) or (out_sale_type == 'B')
+                    if is_differenzbesteuert:  # Differenzbesteuerung §25a
+                        marge_brutto = out_sale_price - einsatzwert
+                        mwst = (marge_brutto / 1.19 * 0.19) if marge_brutto > 0 else 0.0
+                    else:  # Regelbesteuerung (F) oder andere
+                        mwst = out_sale_price / 1.19 * 0.19
+
+                # Locosoft-Formel: DB = VK - MwSt - Einsatz - Var.Kosten + VKU
+                deckungsbeitrag = out_sale_price - mwst - einsatzwert - variable_kosten + verkaufsunterstuetzung
+
+                # Netto-VK-Preis für DB%-Berechnung
+                netto_vk_preis = out_sale_price - mwst
 
                 # DB%
                 db_prozent = (deckungsbeitrag / netto_vk_preis * 100) if netto_vk_preis > 0 else 0.0
@@ -220,6 +256,7 @@ def sync_sales():
                         out_invoice_number = %s,
                         out_sale_price = %s,
                         out_sale_type = %s,
+                        out_invoice_type = %s,
                         out_subsidiary = %s,
                         out_sales_contract_date = %s,
                         make_number = %s,
@@ -235,17 +272,19 @@ def sync_sales():
                         zubehoer = %s,
                         fracht_brief_neben = %s,
                         kosten_intern_rg = %s,
+                        einsatz_erhoehung_intern = %s,
+                        sonstige_kosten = %s,
                         verkaufsunterstuetzung = %s,
                         synced_at = CURRENT_TIMESTAMP
                     WHERE dealer_vehicle_number = %s
                       AND dealer_vehicle_type = %s
                 """, (
                     vin, internal_number, out_invoice_date, out_invoice_number,
-                    out_sale_price, out_sale_type, out_subsidiary, out_sales_contract_date,
+                    out_sale_price, out_sale_type, out_invoice_type, out_subsidiary, out_sales_contract_date,
                     make_number, model_description, mileage_km, salesman_number, buyer_customer_no,
                     netto_price, netto_vk_preis, deckungsbeitrag, db_prozent,
                     fahrzeuggrundpreis, zubehoer, fracht_brief_neben,
-                    kosten_intern_rg, verkaufsunterstuetzung,
+                    kosten_intern_rg, einsatz_erhoehung_intern, sonstige_kosten, verkaufsunterstuetzung,
                     dealer_vehicle_number, dealer_vehicle_type
                 ))
                 updated += 1
@@ -254,21 +293,21 @@ def sync_sales():
                 target_cursor.execute("""
                     INSERT INTO sales (
                         dealer_vehicle_number, dealer_vehicle_type, vin, internal_number,
-                        out_invoice_date, out_invoice_number, out_sale_price, out_sale_type,
+                        out_invoice_date, out_invoice_number, out_sale_price, out_sale_type, out_invoice_type,
                         out_subsidiary, out_sales_contract_date, make_number, model_description,
                         mileage_km, salesman_number, buyer_customer_no,
                         netto_price, netto_vk_preis, deckungsbeitrag, db_prozent,
                         fahrzeuggrundpreis, zubehoer, fracht_brief_neben,
-                        kosten_intern_rg, verkaufsunterstuetzung, synced_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                        kosten_intern_rg, einsatz_erhoehung_intern, sonstige_kosten, verkaufsunterstuetzung, synced_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
                 """, (
                     dealer_vehicle_number, dealer_vehicle_type, vin, internal_number,
-                    out_invoice_date, out_invoice_number, out_sale_price, out_sale_type,
+                    out_invoice_date, out_invoice_number, out_sale_price, out_sale_type, out_invoice_type,
                     out_subsidiary, out_sales_contract_date, make_number, model_description,
                     mileage_km, salesman_number, buyer_customer_no,
                     netto_price, netto_vk_preis, deckungsbeitrag, db_prozent,
                     fahrzeuggrundpreis, zubehoer, fracht_brief_neben,
-                    kosten_intern_rg, verkaufsunterstuetzung
+                    kosten_intern_rg, einsatz_erhoehung_intern, sonstige_kosten, verkaufsunterstuetzung
                 ))
                 inserted += 1
 
@@ -321,7 +360,7 @@ def sync_sales():
     loco_conn.close()
     target_conn.close()
 
-    log("Sync V5 mit korrigiertem Deckungsbeitrag erfolgreich beendet!")
+    log("Sync V6 mit korrigiertem Deckungsbeitrag §25a erfolgreich beendet!")
     return inserted, updated, errors
 
 if __name__ == '__main__':

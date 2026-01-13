@@ -498,6 +498,7 @@ class VerkaufData:
                     where_clause = f"""
                         WHERE DATE(s.out_invoice_date) = %s
                           AND s.out_invoice_date IS NOT NULL
+                          AND s.out_invoice_date <= CURRENT_DATE
                           {DEDUP_FILTER}
                     """
                     params = [day]
@@ -506,6 +507,7 @@ class VerkaufData:
                         WHERE EXTRACT(YEAR FROM s.out_invoice_date) = %s
                           AND EXTRACT(MONTH FROM s.out_invoice_date) = %s
                           AND s.out_invoice_date IS NOT NULL
+                          AND s.out_invoice_date <= CURRENT_DATE
                           {DEDUP_FILTER}
                     """
                     params = [str(year), f"{month:02d}"]
@@ -581,7 +583,8 @@ class VerkaufData:
 
                 where_clauses = [
                     "s.salesman_number IS NOT NULL",
-                    "s.out_invoice_date IS NOT NULL"
+                    "s.out_invoice_date IS NOT NULL",
+                    "s.out_invoice_date <= CURRENT_DATE"  # TAG181: Nur bis heute, keine zukünftigen Rechnungsdaten
                 ]
                 params = []
 

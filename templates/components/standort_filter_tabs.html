@@ -129,9 +129,28 @@ function setStandortFilter(standortId, isKonsolidiert) {
         }
     }
     
+    // TAG 181: Filter-Werte aus Dropdowns lesen (falls vorhanden - für BWA)
+    const filterMonat = document.getElementById('filterMonat');
+    const filterJahr = document.getElementById('filterJahr');
+    if (filterMonat && filterMonat.value) {
+        url.searchParams.set('monat', filterMonat.value);
+    }
+    if (filterJahr && filterJahr.value) {
+        url.searchParams.set('jahr', filterJahr.value);
+    }
+    
+    // TAG 181: KST-Filter aus Checkboxen lesen (falls vorhanden)
+    const kstCheckboxes = document.querySelectorAll('.kst-checkbox:checked');
+    if (kstCheckboxes.length > 0 && !document.getElementById('kst-all')?.checked) {
+        const ksts = Array.from(kstCheckboxes).map(cb => cb.value).join(',');
+        url.searchParams.set('kst', ksts);
+    } else {
+        url.searchParams.delete('kst');
+    }
+    
     // Zusätzliche Parameter aus additional_params
     {% for key, value in url_params.items() %}
-        {% if value and key not in ['standort', 'konsolidiert'] %}
+        {% if value and key not in ['standort', 'konsolidiert', 'monat', 'jahr'] %}
         url.searchParams.set('{{ key }}', '{{ value }}');
         {% endif %}
     {% endfor %}

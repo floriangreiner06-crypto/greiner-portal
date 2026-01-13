@@ -236,7 +236,7 @@ def build_firma_standort_filter(firma: str, standort: str):
     TAG157: WICHTIG - Unterschiedliche Zuordnungslogik!
     - Umsatz (8xxxxx): via branch_number (1=DEG, 3=LAN)
     - Einsatz (7xxxxx): via Konto-Endziffer (6. Ziffer: 1=DEG, 2=LAN)
-    - Kosten (4xxxxx): via Konto-Endziffer (6. Ziffer: 1=DEG, 2=LAN)
+    - Kosten (4xxxxx): via branch_number (1=DEG, 3=LAN) - NICHT über 6. Ziffer!
     - subsidiary_to_company_ref 2 = Hyundai (separate Firma)
 
     TAG167: Neuer Filter "deg-both" für Deggendorf (Stellantis+Hyundai)
@@ -251,10 +251,11 @@ def build_firma_standort_filter(firma: str, standort: str):
     standort_name = "Alle"
 
     # TAG171: Fix - Wenn "Alle Firmen" aber spezifischer Standort, automatisch Firma setzen
-    # Landau gehört zu Stellantis, also wenn standort='2' und firma='0', dann firma='1' verwenden
-    if firma == '0' and standort == '2':
-        # Landau gehört zu Stellantis
+    # Landau gehört zu Stellantis, also wenn standort='2' oder standort='3' und firma='0', dann firma='1' verwenden
+    if firma == '0' and (standort == '2' or standort == '3'):
+        # Landau gehört zu Stellantis (standort='2' oder '3' für API-Kompatibilität)
         firma = '1'
+        standort = '2'  # Normalisiere auf '2' für interne Logik
     elif firma == '0' and standort == '1':
         # Deggendorf hat sowohl Stellantis als auch Hyundai → deg-both verwenden
         standort = 'deg-both'
@@ -276,27 +277,29 @@ def build_firma_standort_filter(firma: str, standort: str):
         standort_name = "Stellantis (DEG+LAN)"
         if standort == '1':
             # Deggendorf: branch_number=1 für Umsatz, Konto-Endziffer=1 für Einsatz
-            # TAG171: Fix - Kosten nach branch_number filtern, nicht nach 6. Ziffer!
-            # Problem: Kosten mit branch=1 aber 6. Ziffer='2' wurden nicht zugeordnet
+            # TAG182: Fix - Kosten mit branch=1 aber 6. Ziffer='2' gehören zu Landau, nicht Deggendorf!
+            # Problem: Kosten mit branch=1 UND 6. Ziffer='2' wurden doppelt gezählt
             firma_filter_umsatz += " AND branch_number = 1"
             firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
-            # Kosten: ALLE Kosten mit branch=1 gehören zu Deggendorf (unabhängig von 6. Ziffer)
-            firma_filter_kosten += " AND branch_number = 1"
+            # Kosten: branch=1 UND 6. Ziffer='1' (nicht '2', die gehören zu Landau!)
+            firma_filter_kosten += " AND branch_number = 1 AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
             standort_name = "Deggendorf"
         elif standort == '2':
-            # Landau: branch_number=3 für Umsatz, Konto-Endziffer=2 für Einsatz
-            # TAG171: Fix - Kosten nach branch_number filtern, nicht nach 6. Ziffer!
-            # Problem: Kosten mit branch=3 aber 6. Ziffer='1' wurden nicht zugeordnet
+            # Landau: branch_number=3 für Umsatz UND Einsatz (TAG182: HAR-Analyse zeigt Einsatz-Differenz!)
+            # TAG182: Fix - Einsatz-Filter auf branch_number=3 geändert (wie Umsatz)
+            # Problem: 6. Ziffer='2' Filter zeigt 15.180€ mehr als Cognos → branch_number=3 verwenden
             firma_filter_umsatz += " AND branch_number = 3"
-            firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
-            # Kosten: ALLE Kosten mit branch=3 gehören zu Landau (unabhängig von 6. Ziffer)
+            firma_filter_einsatz += " AND branch_number = 3"  # TAG182: Geändert von 6. Ziffer='2' zu branch_number=3
+            # Kosten: branch_number=3 für ALLES (konsistent mit Umsatz/Einsatz)
             firma_filter_kosten += " AND branch_number = 3"
             standort_name = "Landau"
     elif firma == '2':
         # Hyundai (Auto Greiner) - separate Firma
-        firma_filter_umsatz = "AND subsidiary_to_company_ref = 2"
-        firma_filter_einsatz = "AND subsidiary_to_company_ref = 2"
-        firma_filter_kosten = "AND subsidiary_to_company_ref = 2"
+        # TAG182: Hyundai hat branch_number=2 für Umsatz, 6. Ziffer='1' für Einsatz UND Kosten (wie Deggendorf Opel)
+        # TAG182: Fix - Kosten-Filter auf 6. Ziffer='1' geändert (nicht branch_number=2)!
+        firma_filter_umsatz = "AND branch_number = 2 AND subsidiary_to_company_ref = 2"
+        firma_filter_einsatz = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1' AND subsidiary_to_company_ref = 2"
+        firma_filter_kosten = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1' AND subsidiary_to_company_ref = 2"  # TAG182: Geändert von branch_number=2 zu 6. Ziffer='1'
         standort_name = "Hyundai"
 
     return firma_filter_umsatz, firma_filter_einsatz, firma_filter_kosten, standort_name
@@ -441,8 +444,10 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
     umsatz = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
     # Einsatz (TAG157: firma_filter_einsatz für korrekte Standort-Zuordnung!)
+    # TAG182: Landau verwendet jetzt branch_number=3 (nicht mehr 6. Ziffer='2')
     # TAG 179: Konten-Ranges zentral verwenden
     einsatz_range = KONTO_RANGES['einsatz']
+    
     cursor.execute(convert_placeholders(f"""
         SELECT COALESCE(SUM(
             CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
@@ -456,12 +461,21 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
     einsatz = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
     # Variable Kosten
-    cursor.execute(convert_placeholders(f"""
-        SELECT COALESCE(SUM(
-            CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
-        )/100.0, 0) as wert
-        FROM loco_journal_accountings
-        WHERE accounting_date >= %s AND accounting_date < %s
+    # TAG182: Landau - 6. Ziffer='2' für Kosten (nicht branch_number=3, da Kosten hauptsächlich branch=1 haben)!
+    # TAG182: Hyundai - 8910xx AUSSCHLIESSEN (negativer Wert, reduziert Kosten fälschlicherweise)
+    if standort == '2' and firma == '1':
+        variable_kosten_filter = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 1"
+        variable_8910xx_include = True  # Landau: 8910xx einschließen
+    elif firma == '2':
+        # Hyundai: 8910xx AUSSCHLIESSEN (sollte nicht in Variablen Kosten sein)
+        variable_kosten_filter = firma_filter_kosten
+        variable_8910xx_include = False
+    else:
+        variable_kosten_filter = firma_filter_kosten
+        variable_8910xx_include = True  # Stellantis/Alle: 8910xx einschließen
+    
+    # Variable Kosten Query - 8910xx bedingt einschließen
+    variable_kosten_where = """
           AND (
             nominal_account_number BETWEEN 415100 AND 415199
             OR nominal_account_number BETWEEN 435500 AND 435599
@@ -469,14 +483,34 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
                 AND substr(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
             OR (nominal_account_number BETWEEN 487000 AND 487099
                 AND substr(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
-            OR nominal_account_number BETWEEN 491000 AND 497899
-          )
-          {firma_filter_kosten}
+            OR nominal_account_number BETWEEN 491000 AND 497899"""
+    
+    if variable_8910xx_include:
+        variable_kosten_where += """
+            OR nominal_account_number BETWEEN 891000 AND 891099"""
+    
+    variable_kosten_where += """
+          )"""
+    
+    cursor.execute(convert_placeholders(f"""
+        SELECT COALESCE(SUM(
+            CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
+        )/100.0, 0) as wert
+        FROM loco_journal_accountings
+        WHERE accounting_date >= %s AND accounting_date < %s
+          {variable_kosten_where}
+          {variable_kosten_filter}
           {guv_filter}
     """), (datum_von, datum_bis))
     variable = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
     # Direkte Kosten
+    # TAG182: Landau - 6. Ziffer='2' für Kosten (nicht branch_number=3, da Kosten hauptsächlich branch=1 haben)!
+    if standort == '2' and firma == '1':
+        direkte_kosten_filter = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 1"
+    else:
+        direkte_kosten_filter = firma_filter_kosten
+    
     cursor.execute(convert_placeholders(f"""
         SELECT COALESCE(SUM(
             CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
@@ -487,7 +521,6 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
           AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','4','5','6','7')
           AND NOT (
             nominal_account_number = 410021
-            OR nominal_account_number BETWEEN 411000 AND 411999
             OR nominal_account_number BETWEEN 415100 AND 415199
             OR nominal_account_number BETWEEN 424000 AND 424999
             OR nominal_account_number BETWEEN 435500 AND 435599
@@ -497,12 +530,18 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
             OR nominal_account_number BETWEEN 489000 AND 489999
             OR nominal_account_number BETWEEN 491000 AND 497999
           )
-          {firma_filter_kosten}
+          {direkte_kosten_filter}
           {guv_filter}
     """), (datum_von, datum_bis))
     direkte = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
     # Indirekte Kosten
+    # TAG182: Landau - 6. Ziffer='2' für Kosten (nicht branch_number=3, da Kosten hauptsächlich branch=1 haben)!
+    if standort == '2' and firma == '1':
+        indirekte_kosten_filter = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 1"
+    else:
+        indirekte_kosten_filter = firma_filter_kosten
+    
     cursor.execute(convert_placeholders(f"""
         SELECT COALESCE(SUM(
             CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
@@ -521,7 +560,7 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
                 AND NOT (nominal_account_number BETWEEN 893200 AND 893299)
                 AND NOT (nominal_account_number BETWEEN 891000 AND 891099))
           )
-          {firma_filter_kosten}
+          {indirekte_kosten_filter}
           {guv_filter}
     """), (datum_von, datum_bis))
     indirekte = float(row_to_dict(cursor.fetchone())['wert'] or 0)
@@ -563,11 +602,11 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
     }
 
 
-def _berechne_stueckzahlen_globalcube(monat: int, jahr: int, firma: str = '0', standort: str = '0'):
+def _berechne_stueckzahlen_erweitert(monat: int, jahr: int, firma: str = '0', standort: str = '0'):
     """
-    TAG 177: Berechnet NW und GW Stückzahlen analog Globalcube-Struktur.
+    TAG 181: Berechnet NW und GW Stückzahlen in erweiterter Struktur.
     
-    Struktur wie Globalcube:
+    Erweiterte Struktur mit 4 Werten:
     - Monat (aktuelles Jahr, aktueller Monat)
     - Jahr (aktuelles Jahr, kumuliert vom WJ-Start)
     - VJ Monat (Vorjahr, gleicher Monat)
@@ -913,22 +952,31 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
     guv_filter = get_guv_filter()
 
     # Umsatz YTD
+    # TAG182: Hyundai verwendet 800000-899999 (inkl. 89xxxx), nicht nur bis 889999!
+    if firma == '2':
+        # Hyundai: Alle 8xxxxx (inkl. 89xxxx, außer 8932xx)
+        umsatz_range_filter = "AND ((nominal_account_number BETWEEN 800000 AND 899999) AND NOT (nominal_account_number BETWEEN 893200 AND 893299))"
+    else:
+        # Stellantis/Alle: 800000-889999 + 893200-893299
+        umsatz_range_filter = "AND ((nominal_account_number BETWEEN 800000 AND 889999) OR (nominal_account_number BETWEEN 893200 AND 893299))"
+    
     cursor.execute(convert_placeholders(f"""
         SELECT COALESCE(SUM(
             CASE WHEN debit_or_credit='H' THEN posted_value ELSE -posted_value END
         )/100.0, 0) as wert
         FROM loco_journal_accountings
         WHERE accounting_date >= %s AND accounting_date < %s
-          AND ((nominal_account_number BETWEEN 800000 AND 889999)
-               OR (nominal_account_number BETWEEN 893200 AND 893299))
+          {umsatz_range_filter}
           {firma_filter_umsatz}
           {guv_filter}
     """), (datum_von, datum_bis))
     umsatz = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
     # Einsatz YTD (TAG157: firma_filter_einsatz für korrekte Standort-Zuordnung!)
+    # TAG182: Landau verwendet jetzt branch_number=3 (nicht mehr 6. Ziffer='2')
     # TAG 179: Konten-Ranges zentral verwenden
     einsatz_range = KONTO_RANGES['einsatz']
+    
     cursor.execute(convert_placeholders(f"""
         SELECT COALESCE(SUM(
             CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
@@ -942,12 +990,21 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
     einsatz = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
     # Variable Kosten YTD
-    cursor.execute(convert_placeholders(f"""
-        SELECT COALESCE(SUM(
-            CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
-        )/100.0, 0) as wert
-        FROM loco_journal_accountings
-        WHERE accounting_date >= %s AND accounting_date < %s
+    # TAG182: Landau - 6. Ziffer='2' für Kosten (nicht branch_number=3, da Kosten hauptsächlich branch=1 haben)!
+    # TAG182: Hyundai - 8910xx AUSSCHLIESSEN (negativer Wert, reduziert Kosten fälschlicherweise)
+    if standort == '2' and firma == '1':
+        variable_kosten_filter_ytd = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 1"
+        variable_8910xx_include_ytd = True  # Landau: 8910xx einschließen
+    elif firma == '2':
+        # Hyundai: 8910xx AUSSCHLIESSEN (sollte nicht in Variablen Kosten sein)
+        variable_kosten_filter_ytd = firma_filter_kosten
+        variable_8910xx_include_ytd = False
+    else:
+        variable_kosten_filter_ytd = firma_filter_kosten
+        variable_8910xx_include_ytd = True  # Stellantis/Alle: 8910xx einschließen
+    
+    # Variable Kosten YTD Query - 8910xx bedingt einschließen
+    variable_kosten_where_ytd = """
           AND (
             nominal_account_number BETWEEN 415100 AND 415199
             OR nominal_account_number BETWEEN 435500 AND 435599
@@ -955,14 +1012,34 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
                 AND substr(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
             OR (nominal_account_number BETWEEN 487000 AND 487099
                 AND substr(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
-            OR nominal_account_number BETWEEN 491000 AND 497899
-          )
-          {firma_filter_kosten}
+            OR nominal_account_number BETWEEN 491000 AND 497899"""
+    
+    if variable_8910xx_include_ytd:
+        variable_kosten_where_ytd += """
+            OR nominal_account_number BETWEEN 891000 AND 891099"""
+    
+    variable_kosten_where_ytd += """
+          )"""
+    
+    cursor.execute(convert_placeholders(f"""
+        SELECT COALESCE(SUM(
+            CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
+        )/100.0, 0) as wert
+        FROM loco_journal_accountings
+        WHERE accounting_date >= %s AND accounting_date < %s
+          {variable_kosten_where_ytd}
+          {variable_kosten_filter_ytd}
           {guv_filter}
     """), (datum_von, datum_bis))
     variable = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
     # Direkte Kosten YTD
+    # TAG182: Landau - 6. Ziffer='2' für Kosten (nicht branch_number=3, da Kosten hauptsächlich branch=1 haben)!
+    if standort == '2' and firma == '1':
+        direkte_kosten_filter_ytd = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 1"
+    else:
+        direkte_kosten_filter_ytd = firma_filter_kosten
+    
     cursor.execute(convert_placeholders(f"""
         SELECT COALESCE(SUM(
             CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
@@ -973,7 +1050,6 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
           AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','4','5','6','7')
           AND NOT (
             nominal_account_number = 410021
-            OR nominal_account_number BETWEEN 411000 AND 411999
             OR nominal_account_number BETWEEN 415100 AND 415199
             OR nominal_account_number BETWEEN 424000 AND 424999
             OR nominal_account_number BETWEEN 435500 AND 435599
@@ -983,12 +1059,18 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
             OR nominal_account_number BETWEEN 489000 AND 489999
             OR nominal_account_number BETWEEN 491000 AND 497999
           )
-          {firma_filter_kosten}
+          {direkte_kosten_filter_ytd}
           {guv_filter}
     """), (datum_von, datum_bis))
     direkte = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
     # Indirekte Kosten YTD
+    # TAG182: Landau - 6. Ziffer='2' für Kosten (nicht branch_number=3, da Kosten hauptsächlich branch=1 haben)!
+    if standort == '2' and firma == '1':
+        indirekte_kosten_filter_ytd = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 1"
+    else:
+        indirekte_kosten_filter_ytd = firma_filter_kosten
+    
     cursor.execute(convert_placeholders(f"""
         SELECT COALESCE(SUM(
             CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
@@ -1006,8 +1088,16 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
             OR (nominal_account_number BETWEEN 891000 AND 896999
                 AND NOT (nominal_account_number BETWEEN 893200 AND 893299)
                 AND NOT (nominal_account_number BETWEEN 891000 AND 891099))
+            OR (nominal_account_number BETWEEN 489000 AND 489999
+                AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0')
           )
-          {firma_filter_kosten}
+          AND NOT (
+            nominal_account_number = 410021
+            OR nominal_account_number BETWEEN 411000 AND 411999
+            OR (nominal_account_number BETWEEN 489000 AND 489999
+                AND substr(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
+          )
+          {indirekte_kosten_filter_ytd}
           {guv_filter}
     """), (datum_von, datum_bis))
     indirekte = float(row_to_dict(cursor.fetchone())['wert'] or 0)
@@ -1483,10 +1573,10 @@ def get_bwa_detail():
 
 
 # =============================================================================
-# BWA v2 API - GlobalCube-Struktur mit Bruttoerträgen nach Bereichen
+# BWA v2 API - Erweiterte Struktur mit Bruttoerträgen nach Bereichen
 # =============================================================================
 
-# Bereichs-Konfiguration nach GlobalCube-Struktur
+# Bereichs-Konfiguration nach erweiterter Struktur
 # Jeder Bereich hat Erlös-Konten (8x) und Einsatz-Konten (7x)
 BEREICHE_CONFIG = {
     'NW': {
@@ -1590,7 +1680,7 @@ def _berechne_bereich_werte(cursor, bereich: str, config: dict, datum_von: str, 
 @controlling_api.route('/api/controlling/bwa/v2', methods=['GET'])
 def get_bwa_v2():
     """
-    BWA v2 - GlobalCube-Struktur mit Bruttoerträgen nach Bereichen.
+    BWA v2 - Erweiterte Struktur mit Bruttoerträgen nach Bereichen.
 
     Struktur wie GlobalCube:
     - Umsatzerlöse (Gesamt)
@@ -1623,6 +1713,12 @@ def get_bwa_v2():
         
         firma = request.args.get('firma', '0')
         standort = request.args.get('standort', '0')
+        kst_param = request.args.get('kst', '')  # TAG 181: KST-Filter (komma-separiert, z.B. "1,2,3")
+        
+        # TAG182: Landau-Spezialfall: standort='3' normalisieren zu standort='2'
+        if standort == '3' and firma == '0':
+            standort = '2'
+            firma = '1'
 
         if not monat or not jahr:
             heute = datetime.now()
@@ -1640,6 +1736,101 @@ def get_bwa_v2():
         # TAG 179: Zentrale Funktion verwenden
         from api.db_utils import get_guv_filter
         guv_filter = get_guv_filter()
+        
+        # TAG 181: KST-Filter bauen (nur für Kosten-Konten 4xxxxx)
+        kst_filter = ''
+        kst_params = []
+        if kst_param:
+            kst_list = [k.strip() for k in kst_param.split(',') if k.strip()]
+            if kst_list:
+                kst_filter = f"AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ({','.join(['%s'] * len(kst_list))})"
+                kst_params = kst_list
+        
+        # Direkte und indirekte KST-Filter vorbereiten
+        direkte_kst_filter = ''
+        direkte_kst_params = []
+        indirekte_kst_filter = ''
+        
+        if kst_filter:
+            # Direkte Kosten: Nur KST 1-7 aus dem Filter
+            # TAG 181: KST-Mapping korrigiert: 1=NW, 2=GW, 3=Service, 6=T+Z, 7=Mietwagen
+            kst_direkt = [k for k in kst_params if k in ['1','2','3','6','7']]  # KST 4 und 5 entfernt (nicht verwendet)
+            if kst_direkt:
+                direkte_kst_filter = f"AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ({','.join(['%s'] * len(kst_direkt))})"
+                direkte_kst_params = kst_direkt
+            else:
+                # Keine direkten KSTs ausgewählt -> 0
+                direkte_kst_filter = "AND 1=0"  # Immer false
+        else:
+            # Kein Filter -> alle KST 1-7 (KST 4 und 5 existieren nicht in Locosoft)
+            direkte_kst_filter = "AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7')"
+        
+        if kst_filter:
+            # Indirekte Kosten: Wenn KST 0 ausgewählt, dann indirekte Kosten anzeigen
+            if '0' in kst_params:
+                # Indirekte Kosten mit KST 0 oder spezielle Konten
+                indirekte_kst_filter = """AND (
+                (nominal_account_number BETWEEN 400000 AND 499999
+                 AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0')
+                OR (nominal_account_number BETWEEN 424000 AND 424999
+                    AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
+                OR (nominal_account_number BETWEEN 438000 AND 438999
+                    AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
+                OR nominal_account_number BETWEEN 498000 AND 499999
+                OR (nominal_account_number BETWEEN 891000 AND 896999
+                    AND NOT (nominal_account_number BETWEEN 893200 AND 893299)
+                    AND NOT (nominal_account_number BETWEEN 891000 AND 891099))
+                OR (nominal_account_number BETWEEN 489000 AND 489999
+                    AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0')
+              )
+              AND NOT (
+                nominal_account_number = 410021
+                OR nominal_account_number BETWEEN 411000 AND 411999
+                OR (nominal_account_number BETWEEN 489000 AND 489999
+                    AND substr(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
+              )"""
+            else:
+                # Keine KST 0 ausgewählt -> nur spezielle Konten (ohne KST 0)
+                indirekte_kst_filter = """AND (
+                    (nominal_account_number BETWEEN 424000 AND 424999
+                        AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
+                    OR (nominal_account_number BETWEEN 438000 AND 438999
+                        AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
+                    OR nominal_account_number BETWEEN 498000 AND 499999
+                    OR (nominal_account_number BETWEEN 891000 AND 896999
+                        AND NOT (nominal_account_number BETWEEN 893200 AND 893299)
+                        AND NOT (nominal_account_number BETWEEN 891000 AND 891099))
+                    OR (nominal_account_number BETWEEN 489000 AND 489999
+                        AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0')
+                  )
+                  AND NOT (
+                    nominal_account_number = 410021
+                    OR nominal_account_number BETWEEN 411000 AND 411999
+                    OR (nominal_account_number BETWEEN 489000 AND 489999
+                        AND substr(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
+                  )"""
+        else:
+            # Kein Filter -> alle indirekten Kosten
+            indirekte_kst_filter = """AND (
+                (nominal_account_number BETWEEN 400000 AND 499999
+                 AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0')
+                OR (nominal_account_number BETWEEN 424000 AND 424999
+                    AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
+                OR (nominal_account_number BETWEEN 438000 AND 438999
+                    AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
+                OR nominal_account_number BETWEEN 498000 AND 499999
+                OR (nominal_account_number BETWEEN 891000 AND 896999
+                    AND NOT (nominal_account_number BETWEEN 893200 AND 893299)
+                    AND NOT (nominal_account_number BETWEEN 891000 AND 891099))
+                OR (nominal_account_number BETWEEN 489000 AND 489999
+                    AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0')
+              )
+              AND NOT (
+                nominal_account_number = 410021
+                OR nominal_account_number BETWEEN 411000 AND 411999
+                OR (nominal_account_number BETWEEN 489000 AND 489999
+                    AND substr(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
+              )"""
 
         with db_session() as conn:
             cursor = conn.cursor()
@@ -1659,6 +1850,7 @@ def get_bwa_v2():
             umsatz_gesamt = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
             # Gesamt-Einsatz (alle 7er Konten) - TAG157: firma_filter_einsatz!
+            # TAG182: Landau verwendet jetzt branch_number=3 (nicht mehr 6. Ziffer='2')
             cursor.execute(convert_placeholders(f"""
                 SELECT COALESCE(SUM(
                     CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
@@ -1673,9 +1865,38 @@ def get_bwa_v2():
 
             db1_gesamt = umsatz_gesamt - einsatz_gesamt
 
+            # TAG 181: KST-Filter auf Bereiche anwenden
+            # KST-Mapping korrigiert nach Buchhaltung:
+            # - Für Kosten (4xxxxx): 5. Ziffer: 1=NW, 2=GW, 3=Service, 6=T+Z, 7=Mietwagen
+            # - Für Umsatz/Einsatz (7xxxxx/8xxxxx): 6. Ziffer (Filialcode = Kostenstelle)
+            #   ABER: Wir filtern Bereiche nach Präfix (81xxxx, 82xxxx), nicht nach KST!
+            #   Daher: KST-Filter für Bereiche ist nur relevant für Kosten, nicht für Umsatz/Einsatz
+            kst_zu_bereich = {
+                '1': 'NW',  # Neuwagen
+                '2': 'GW',  # Gebrauchtwagen
+                '3': 'ME',  # Service/Werkstatt
+                '6': 'TZ',  # Teile & Zubehör (KST 6, nicht 4!)
+                '7': 'MW'   # Mietwagen (KST 7, nicht 5!)
+            }
+            
+            # Wenn KST-Filter aktiv, nur relevante Bereiche anzeigen
+            relevante_bereiche = None
+            if kst_params:
+                relevante_bereiche = set()
+                for kst in kst_params:
+                    if kst in kst_zu_bereich:
+                        relevante_bereiche.add(kst_zu_bereich[kst])
+                # Wenn nur KST 0 oder 7 ausgewählt, keine Bereiche anzeigen (nur Gemeinkosten/Verwaltung)
+                if not relevante_bereiche:
+                    relevante_bereiche = set()  # Leer = keine Bereiche
+            
             # Bruttoerträge pro Bereich berechnen (TAG157: Mit separatem Einsatz-Filter!)
             bereiche = []
             for bereich_key, config in sorted(BEREICHE_CONFIG.items(), key=lambda x: x[1]['order']):
+                # TAG 181: KST-Filter - nur relevante Bereiche anzeigen
+                if relevante_bereiche is not None and bereich_key not in relevante_bereiche:
+                    continue
+                    
                 werte = _berechne_bereich_werte(
                     cursor, bereich_key, config, datum_von, datum_bis,
                     firma_filter_umsatz, guv_filter, firma_filter_einsatz
@@ -1686,8 +1907,8 @@ def get_bwa_v2():
                     **werte
                 })
             
-            # TAG 177: Stückzahlen analog Globalcube berechnen (Monat, Jahr, VJ Monat, VJ Jahr)
-            stueckzahlen = _berechne_stueckzahlen_globalcube(monat, jahr, firma, standort)
+            # TAG 181: Stückzahlen in erweiterter Struktur berechnen (Monat, Jahr, VJ Monat, VJ Jahr)
+            stueckzahlen = _berechne_stueckzahlen_erweitert(monat, jahr, firma, standort)
             # Stückzahlen zu NW und GW Bereichen hinzufügen
             for bereich in bereiche:
                 if bereich['key'] == 'NW':
@@ -1698,12 +1919,21 @@ def get_bwa_v2():
                     bereich['stueck'] = {'monat': 0, 'jahr': 0, 'vj_monat': 0, 'vj_jahr': 0}
 
             # Variable Kosten
-            cursor.execute(convert_placeholders(f"""
-                SELECT COALESCE(SUM(
-                    CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
-                )/100.0, 0) as wert
-                FROM loco_journal_accountings
-                WHERE accounting_date >= %s AND accounting_date < %s
+            # TAG182: Landau - 6. Ziffer='2' für Kosten (nicht branch_number=3, da Kosten hauptsächlich branch=1 haben)!
+            # TAG182: Hyundai - 8910xx AUSSCHLIESSEN (negativer Wert, reduziert Kosten fälschlicherweise)
+            if standort == '2' and firma == '1':
+                variable_kosten_filter = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 1"
+                variable_8910xx_include = True  # Landau: 8910xx einschließen
+            elif firma == '2':
+                # Hyundai: 8910xx AUSSCHLIESSEN (sollte nicht in Variablen Kosten sein)
+                variable_kosten_filter = firma_filter_kosten
+                variable_8910xx_include = False
+            else:
+                variable_kosten_filter = firma_filter_kosten
+                variable_8910xx_include = True  # Stellantis/Alle: 8910xx einschließen
+            
+            # Variable Kosten Query - 8910xx bedingt einschließen
+            variable_kosten_where = """
                   AND (
                     nominal_account_number BETWEEN 415100 AND 415199
                     OR nominal_account_number BETWEEN 435500 AND 435599
@@ -1711,16 +1941,37 @@ def get_bwa_v2():
                         AND substr(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
                     OR (nominal_account_number BETWEEN 487000 AND 487099
                         AND substr(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
-                    OR nominal_account_number BETWEEN 491000 AND 497899
-                  )
-                  {firma_filter_kosten}
+                    OR nominal_account_number BETWEEN 491000 AND 497899"""
+            
+            if variable_8910xx_include:
+                variable_kosten_where += """
+                    OR nominal_account_number BETWEEN 891000 AND 891099"""
+            
+            variable_kosten_where += """
+                  )"""
+            
+            cursor.execute(convert_placeholders(f"""
+                SELECT COALESCE(SUM(
+                    CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
+                )/100.0, 0) as wert
+                FROM loco_journal_accountings
+                WHERE accounting_date >= %s AND accounting_date < %s
+                  {variable_kosten_where}
+                  {variable_kosten_filter}
                   {guv_filter}
-            """), (datum_von, datum_bis))
+                  {kst_filter}
+            """), (datum_von, datum_bis) + tuple(kst_params))
             variable_kosten = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
             db2 = db1_gesamt - variable_kosten
 
             # Direkte Kosten (Abteilungsbezogen - letzte Ziffer 1-7)
+            # TAG182: Landau - 6. Ziffer='2' für Kosten (nicht branch_number=3, da Kosten hauptsächlich branch=1 haben)!
+            if standort == '2' and firma == '1':
+                direkte_kosten_filter_landau = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 1"
+            else:
+                direkte_kosten_filter_landau = firma_filter_kosten
+            
             cursor.execute(convert_placeholders(f"""
                 SELECT COALESCE(SUM(
                     CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
@@ -1728,46 +1979,46 @@ def get_bwa_v2():
                 FROM loco_journal_accountings
                 WHERE accounting_date >= %s AND accounting_date < %s
                   AND nominal_account_number BETWEEN 400000 AND 489999
-                  AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','4','5','6','7')
-                  AND NOT (
-                    nominal_account_number = 410021
-                    OR nominal_account_number BETWEEN 411000 AND 411999
-                    OR nominal_account_number BETWEEN 415100 AND 415199
-                    OR nominal_account_number BETWEEN 424000 AND 424999
-                    OR nominal_account_number BETWEEN 435500 AND 435599
-                    OR nominal_account_number BETWEEN 438000 AND 438999
-                    OR nominal_account_number BETWEEN 455000 AND 456999
-                    OR nominal_account_number BETWEEN 487000 AND 487099
-                    OR nominal_account_number BETWEEN 489000 AND 489999
-                    OR nominal_account_number BETWEEN 491000 AND 497999
-                  )
-                  {firma_filter_kosten}
+                  {direkte_kst_filter}
+          AND NOT (
+            nominal_account_number BETWEEN 415100 AND 415199
+            OR nominal_account_number BETWEEN 424000 AND 424999
+            OR nominal_account_number BETWEEN 435500 AND 435599
+            OR nominal_account_number BETWEEN 438000 AND 438999
+            OR nominal_account_number BETWEEN 455000 AND 456999
+            OR nominal_account_number BETWEEN 487000 AND 487099
+            OR (nominal_account_number BETWEEN 489000 AND 489999
+                AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0')
+            OR nominal_account_number BETWEEN 491000 AND 497999
+          )
+                  {direkte_kosten_filter_landau}
                   {guv_filter}
-            """), (datum_von, datum_bis))
+            """), (datum_von, datum_bis) + tuple(direkte_kst_params))
             direkte_kosten = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
             db3 = db2 - direkte_kosten
 
             # Indirekte Kosten (Gemeinkosten - letzte Ziffer 0 oder spezielle Konten)
+            # TAG182: Landau - 6. Ziffer='2' für Kosten (nicht branch_number=3, da Kosten hauptsächlich branch=1 haben)!
+            if standort == '2' and firma == '1':
+                indirekte_kosten_filter_landau = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 1"
+            else:
+                indirekte_kosten_filter_landau = firma_filter_kosten
+            
             cursor.execute(convert_placeholders(f"""
                 SELECT COALESCE(SUM(
                     CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
                 )/100.0, 0) as wert
                 FROM loco_journal_accountings
                 WHERE accounting_date >= %s AND accounting_date < %s
-                  AND (
-                    (nominal_account_number BETWEEN 400000 AND 499999
-                     AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0')
-                    OR (nominal_account_number BETWEEN 424000 AND 424999
-                        AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
-                    OR (nominal_account_number BETWEEN 438000 AND 438999
-                        AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
-                    OR nominal_account_number BETWEEN 498000 AND 499999
-                    OR (nominal_account_number BETWEEN 891000 AND 896999
-                        AND NOT (nominal_account_number BETWEEN 893200 AND 893299)
-                        AND NOT (nominal_account_number BETWEEN 891000 AND 891099))
+                  {indirekte_kst_filter}
+                  AND NOT (
+                    nominal_account_number = 410021
+                    OR nominal_account_number BETWEEN 411000 AND 411999
+                    OR (nominal_account_number BETWEEN 489000 AND 489999
+                        AND substr(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
                   )
-                  {firma_filter_kosten}
+                  {indirekte_kosten_filter_landau}
                   {guv_filter}
             """), (datum_von, datum_bis))
             indirekte_kosten = float(row_to_dict(cursor.fetchone())['wert'] or 0)
@@ -1828,6 +2079,10 @@ def get_bwa_v2():
             # Vorjahr Bereiche (TAG157: Mit separatem Einsatz-Filter!)
             vj_bereiche = []
             for bereich_key, config in sorted(BEREICHE_CONFIG.items(), key=lambda x: x[1]['order']):
+                # TAG 181: KST-Filter - nur relevante Bereiche anzeigen
+                if relevante_bereiche is not None and bereich_key not in relevante_bereiche:
+                    continue
+                    
                 werte = _berechne_bereich_werte(
                     cursor, bereich_key, config, vorjahr_datum_von, vorjahr_datum_bis,
                     firma_filter_umsatz, guv_filter, firma_filter_einsatz
@@ -1838,14 +2093,14 @@ def get_bwa_v2():
                     **werte
                 })
             
-            # TAG 177: Stückzahlen für Vorjahr berechnen
-            stueckzahlen_vorjahr = _berechne_stueckzahlen(vorjahr_datum_von, vorjahr_datum_bis, firma, standort)
-            # Stückzahlen zu NW und GW Bereichen hinzufügen
+            # TAG 181: Stückzahlen für Vorjahr in erweiterter Struktur berechnen
+            stueckzahlen_vorjahr = _berechne_stueckzahlen_erweitert(monat, jahr - 1, firma, standort)
+            # Stückzahlen zu NW und GW Bereichen hinzufügen (erweiterte Struktur)
             for bereich in vj_bereiche:
                 if bereich['key'] == 'NW':
-                    bereich['stueck'] = stueckzahlen_vorjahr['nw']
+                    bereich['stueck'] = stueckzahlen_vorjahr['nw']['monat']  # VJ Monat (einfache Zahl für Vorjahr)
                 elif bereich['key'] == 'GW':
-                    bereich['stueck'] = stueckzahlen_vorjahr['gw']
+                    bereich['stueck'] = stueckzahlen_vorjahr['gw']['monat']  # VJ Monat (einfache Zahl für Vorjahr)
                 else:
                     bereich['stueck'] = 0
 
@@ -1867,7 +2122,8 @@ def get_bwa_v2():
                   )
                   {firma_filter_kosten}
                   {guv_filter}
-            """), (vorjahr_datum_von, vorjahr_datum_bis))
+                  {kst_filter}
+            """), (vorjahr_datum_von, vorjahr_datum_bis) + tuple(kst_params))
             vj_variable = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
             vj_db2 = vj_db1 - vj_variable
@@ -1880,19 +2136,21 @@ def get_bwa_v2():
                 FROM loco_journal_accountings
                 WHERE accounting_date >= %s AND accounting_date < %s
                   AND nominal_account_number BETWEEN 400000 AND 489999
-                  AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','4','5','6','7')
-                  AND NOT (
-                    nominal_account_number BETWEEN 415100 AND 415199
-                    OR nominal_account_number BETWEEN 424000 AND 424999
-                    OR nominal_account_number BETWEEN 435500 AND 435599
-                    OR nominal_account_number BETWEEN 438000 AND 438999
-                    OR nominal_account_number BETWEEN 455000 AND 456999
-                    OR nominal_account_number BETWEEN 487000 AND 487099
-                    OR nominal_account_number BETWEEN 491000 AND 497999
-                  )
+                  {direkte_kst_filter}
+          AND NOT (
+            nominal_account_number BETWEEN 415100 AND 415199
+            OR nominal_account_number BETWEEN 424000 AND 424999
+            OR nominal_account_number BETWEEN 435500 AND 435599
+            OR nominal_account_number BETWEEN 438000 AND 438999
+            OR nominal_account_number BETWEEN 455000 AND 456999
+            OR nominal_account_number BETWEEN 487000 AND 487099
+            OR (nominal_account_number BETWEEN 489000 AND 489999
+                AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0')
+            OR nominal_account_number BETWEEN 491000 AND 497999
+          )
                   {firma_filter_kosten}
                   {guv_filter}
-            """), (vorjahr_datum_von, vorjahr_datum_bis))
+            """), (vorjahr_datum_von, vorjahr_datum_bis) + tuple(direkte_kst_params))
             vj_direkte = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
             vj_db3 = vj_db2 - vj_direkte
@@ -1904,17 +2162,7 @@ def get_bwa_v2():
                 )/100.0, 0) as wert
                 FROM loco_journal_accountings
                 WHERE accounting_date >= %s AND accounting_date < %s
-                  AND (
-                    (nominal_account_number BETWEEN 400000 AND 499999
-                     AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0')
-                    OR (nominal_account_number BETWEEN 424000 AND 424999
-                        AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
-                    OR (nominal_account_number BETWEEN 438000 AND 438999
-                        AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
-                    OR nominal_account_number BETWEEN 498000 AND 499999
-                    OR (nominal_account_number BETWEEN 891000 AND 896999
-                        AND NOT (nominal_account_number BETWEEN 893200 AND 893299))
-                  )
+                  {indirekte_kst_filter}
                   {firma_filter_kosten}
                   {guv_filter}
             """), (vorjahr_datum_von, vorjahr_datum_bis))
@@ -1946,14 +2194,21 @@ def get_bwa_v2():
             ytd_datum_von = f"{wj_start_jahr}-{WJ_START_MONAT:02d}-01"
 
             # YTD Umsatz
+            # TAG182: Hyundai verwendet 800000-899999 (inkl. 89xxxx), nicht nur bis 889999!
+            if firma == '2':
+                # Hyundai: Alle 8xxxxx (inkl. 89xxxx, außer 8932xx)
+                ytd_umsatz_range_filter = "AND ((nominal_account_number BETWEEN 800000 AND 899999) AND NOT (nominal_account_number BETWEEN 893200 AND 893299))"
+            else:
+                # Stellantis/Alle: 800000-889999 + 893200-893299
+                ytd_umsatz_range_filter = "AND ((nominal_account_number BETWEEN 800000 AND 889999) OR (nominal_account_number BETWEEN 893200 AND 893299))"
+            
             cursor.execute(convert_placeholders(f"""
                 SELECT COALESCE(SUM(
                     CASE WHEN debit_or_credit='H' THEN posted_value ELSE -posted_value END
                 )/100.0, 0) as wert
                 FROM loco_journal_accountings
                 WHERE accounting_date >= %s AND accounting_date < %s
-                  AND ((nominal_account_number BETWEEN 800000 AND 889999)
-                       OR (nominal_account_number BETWEEN 893200 AND 893299))
+                  {ytd_umsatz_range_filter}
                   {firma_filter_umsatz}
                   {guv_filter}
             """), (ytd_datum_von, datum_bis))
@@ -1977,6 +2232,10 @@ def get_bwa_v2():
             # YTD Bereiche (TAG157: Mit separatem Einsatz-Filter!)
             ytd_bereiche = []
             for bereich_key, config in sorted(BEREICHE_CONFIG.items(), key=lambda x: x[1]['order']):
+                # TAG 181: KST-Filter - nur relevante Bereiche anzeigen
+                if relevante_bereiche is not None and bereich_key not in relevante_bereiche:
+                    continue
+                    
                 werte = _berechne_bereich_werte(
                     cursor, bereich_key, config, ytd_datum_von, datum_bis,
                     firma_filter_umsatz, guv_filter, firma_filter_einsatz
@@ -1988,12 +2247,21 @@ def get_bwa_v2():
                 })
 
             # YTD Variable Kosten
-            cursor.execute(convert_placeholders(f"""
-                SELECT COALESCE(SUM(
-                    CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
-                )/100.0, 0) as wert
-                FROM loco_journal_accountings
-                WHERE accounting_date >= %s AND accounting_date < %s
+            # TAG182: Landau - ALLE Kosten mit 6. Ziffer='2' (nicht branch_number=3!)
+            # TAG182: Hyundai - 8910xx AUSSCHLIESSEN (negativer Wert, reduziert Kosten fälschlicherweise)
+            if standort == '2' and firma == '1':
+                ytd_variable_kosten_filter = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
+                ytd_variable_8910xx_include = True  # Landau: 8910xx einschließen
+            elif firma == '2':
+                # Hyundai: 8910xx AUSSCHLIESSEN (sollte nicht in Variablen Kosten sein)
+                ytd_variable_kosten_filter = firma_filter_kosten
+                ytd_variable_8910xx_include = False
+            else:
+                ytd_variable_kosten_filter = firma_filter_kosten
+                ytd_variable_8910xx_include = True  # Stellantis/Alle: 8910xx einschließen
+            
+            # YTD Variable Kosten Query - 8910xx bedingt einschließen
+            ytd_variable_kosten_where = """
                   AND (
                     nominal_account_number BETWEEN 415100 AND 415199
                     OR nominal_account_number BETWEEN 435500 AND 435599
@@ -2001,25 +2269,41 @@ def get_bwa_v2():
                         AND substr(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
                     OR (nominal_account_number BETWEEN 487000 AND 487099
                         AND substr(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
-                    OR nominal_account_number BETWEEN 491000 AND 497899
-                  )
-                  {firma_filter_kosten}
+                    OR nominal_account_number BETWEEN 491000 AND 497899"""
+            
+            if ytd_variable_8910xx_include:
+                ytd_variable_kosten_where += """
+                    OR nominal_account_number BETWEEN 891000 AND 891099"""
+            
+            ytd_variable_kosten_where += """
+                  )"""
+            
+            cursor.execute(convert_placeholders(f"""
+                SELECT COALESCE(SUM(
+                    CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
+                )/100.0, 0) as wert
+                FROM loco_journal_accountings
+                WHERE accounting_date >= %s AND accounting_date < %s
+                  {ytd_variable_kosten_where}
+                  {ytd_variable_kosten_filter}
                   {guv_filter}
-            """), (ytd_datum_von, datum_bis))
+                  {kst_filter}
+            """), (ytd_datum_von, datum_bis) + tuple(kst_params))
             ytd_variable = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
             ytd_db2 = ytd_db1 - ytd_variable
             
-            # TAG 177: Stückzahlen für YTD berechnen
-            stueckzahlen_ytd = _berechne_stueckzahlen(ytd_datum_von, datum_bis, firma, standort)
-            # Stückzahlen zu NW und GW Bereichen hinzufügen
+            # TAG 181: Stückzahlen für YTD in erweiterter Struktur berechnen
+            stueckzahlen_ytd = _berechne_stueckzahlen_erweitert(monat, jahr, firma, standort)
+            # Stückzahlen zu NW und GW Bereichen hinzufügen (erweiterte Struktur für YTD)
+            # TAG182: Korrektur - vollständige Struktur verwenden, nicht nur 'jahr'
             for bereich in ytd_bereiche:
                 if bereich['key'] == 'NW':
-                    bereich['stueck'] = stueckzahlen_ytd['nw']
+                    bereich['stueck'] = stueckzahlen_ytd['nw']  # Vollständige Struktur: {monat, jahr, vj_monat, vj_jahr}
                 elif bereich['key'] == 'GW':
-                    bereich['stueck'] = stueckzahlen_ytd['gw']
+                    bereich['stueck'] = stueckzahlen_ytd['gw']  # Vollständige Struktur: {monat, jahr, vj_monat, vj_jahr}
                 else:
-                    bereich['stueck'] = 0
+                    bereich['stueck'] = {'monat': 0, 'jahr': 0, 'vj_monat': 0, 'vj_jahr': 0}
 
             # YTD Direkte Kosten
             cursor.execute(convert_placeholders(f"""
@@ -2029,19 +2313,21 @@ def get_bwa_v2():
                 FROM loco_journal_accountings
                 WHERE accounting_date >= %s AND accounting_date < %s
                   AND nominal_account_number BETWEEN 400000 AND 489999
-                  AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','4','5','6','7')
-                  AND NOT (
-                    nominal_account_number BETWEEN 415100 AND 415199
-                    OR nominal_account_number BETWEEN 424000 AND 424999
-                    OR nominal_account_number BETWEEN 435500 AND 435599
-                    OR nominal_account_number BETWEEN 438000 AND 438999
-                    OR nominal_account_number BETWEEN 455000 AND 456999
-                    OR nominal_account_number BETWEEN 487000 AND 487099
-                    OR nominal_account_number BETWEEN 491000 AND 497999
-                  )
+                  {direkte_kst_filter}
+          AND NOT (
+            nominal_account_number BETWEEN 415100 AND 415199
+            OR nominal_account_number BETWEEN 424000 AND 424999
+            OR nominal_account_number BETWEEN 435500 AND 435599
+            OR nominal_account_number BETWEEN 438000 AND 438999
+            OR nominal_account_number BETWEEN 455000 AND 456999
+            OR nominal_account_number BETWEEN 487000 AND 487099
+            OR (nominal_account_number BETWEEN 489000 AND 489999
+                AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0')
+            OR nominal_account_number BETWEEN 491000 AND 497999
+          )
                   {firma_filter_kosten}
                   {guv_filter}
-            """), (ytd_datum_von, datum_bis))
+            """), (ytd_datum_von, datum_bis) + tuple(direkte_kst_params))
             ytd_direkte = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
             ytd_db3 = ytd_db2 - ytd_direkte
@@ -2053,16 +2339,12 @@ def get_bwa_v2():
                 )/100.0, 0) as wert
                 FROM loco_journal_accountings
                 WHERE accounting_date >= %s AND accounting_date < %s
-                  AND (
-                    (nominal_account_number BETWEEN 400000 AND 499999
-                     AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0')
-                    OR (nominal_account_number BETWEEN 424000 AND 424999
-                        AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
-                    OR (nominal_account_number BETWEEN 438000 AND 438999
-                        AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
-                    OR nominal_account_number BETWEEN 498000 AND 499999
-                    OR (nominal_account_number BETWEEN 891000 AND 896999
-                        AND NOT (nominal_account_number BETWEEN 893200 AND 893299))
+                  {indirekte_kst_filter}
+                  AND NOT (
+                    nominal_account_number = 410021
+                    OR nominal_account_number BETWEEN 411000 AND 411999
+                    OR (nominal_account_number BETWEEN 489000 AND 489999
+                        AND substr(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
                   )
                   {firma_filter_kosten}
                   {guv_filter}
@@ -2086,12 +2368,15 @@ def get_bwa_v2():
 
             ytd_ue = ytd_be + ytd_neutral
 
-            # TAG 177: YTD Vorjahr berechnen (für Vergleich)
+            # TAG 181: YTD Vorjahr berechnen (für Vergleich)
             ytd_vorjahr_daten = _berechne_bwa_ytd(cursor, monat, jahr - 1, firma, standort)
             ytd_vorjahr_umsatz = ytd_vorjahr_daten.get('umsatz', 0)
             ytd_vorjahr_einsatz = ytd_vorjahr_daten.get('einsatz', 0)
             ytd_vorjahr_db1 = ytd_vorjahr_daten.get('db1', 0)
             ytd_vorjahr_bereiche = ytd_vorjahr_daten.get('bereiche', [])
+            # TAG 181: KST-Filter auf YTD Vorjahr-Bereiche anwenden
+            if relevante_bereiche is not None:
+                ytd_vorjahr_bereiche = [b for b in ytd_vorjahr_bereiche if b.get('key') in relevante_bereiche]
             ytd_vorjahr_variable = ytd_vorjahr_daten.get('variable_kosten', 0)
             ytd_vorjahr_db2 = ytd_vorjahr_daten.get('db2', 0)
             ytd_vorjahr_direkte = ytd_vorjahr_daten.get('direkte_kosten', 0)
@@ -2100,6 +2385,18 @@ def get_bwa_v2():
             ytd_vorjahr_be = ytd_vorjahr_daten.get('betriebsergebnis', 0)
             ytd_vorjahr_neutral = ytd_vorjahr_daten.get('neutrales_ergebnis', 0)
             ytd_vorjahr_ue = ytd_vorjahr_daten.get('unternehmensergebnis', 0)
+            
+            # TAG 181: Stückzahlen für YTD Vorjahr in erweiterter Struktur berechnen
+            stueckzahlen_ytd_vorjahr = _berechne_stueckzahlen_erweitert(monat, jahr - 1, firma, standort)
+            # Stückzahlen zu NW und GW Bereichen hinzufügen (erweiterte Struktur für YTD Vorjahr)
+            # TAG182: Korrektur - vollständige Struktur verwenden, nicht nur 'jahr'
+            for bereich in ytd_vorjahr_bereiche:
+                if bereich['key'] == 'NW':
+                    bereich['stueck'] = stueckzahlen_ytd_vorjahr['nw']  # Vollständige Struktur: {monat, jahr, vj_monat, vj_jahr}
+                elif bereich['key'] == 'GW':
+                    bereich['stueck'] = stueckzahlen_ytd_vorjahr['gw']  # Vollständige Struktur: {monat, jahr, vj_monat, vj_jahr}
+                else:
+                    bereich['stueck'] = {'monat': 0, 'jahr': 0, 'vj_monat': 0, 'vj_jahr': 0}
 
             # Wirtschaftsjahr-Fortschritt berechnen (Sep-Aug = 12 Monate)
             if monat >= WJ_START_MONAT:
@@ -2158,6 +2455,7 @@ def get_bwa_v2():
                     'neutrales_ergebnis': round(ytd_neutral, 2),
                     'unternehmensergebnis': round(ytd_ue, 2)
                 },
+                'stueckzahlen': stueckzahlen,
                 'ytd_vorjahr': {
                     'umsatz': round(ytd_vorjahr_umsatz, 2),
                     'einsatz': round(ytd_vorjahr_einsatz, 2),
@@ -2524,6 +2822,7 @@ def get_bwa_v2_drilldown():
                         OR (nominal_account_number BETWEEN 487000 AND 487099
                             AND substr(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
                         OR nominal_account_number BETWEEN 491000 AND 497899
+                        OR nominal_account_number BETWEEN 891000 AND 891099
                       )
                       {firma_filter_kosten}
                       {guv_filter}
@@ -2554,18 +2853,17 @@ def get_bwa_v2_drilldown():
                     WHERE accounting_date >= %s AND accounting_date < %s
                       AND nominal_account_number BETWEEN 400000 AND 489999
                       AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','4','5','6','7')
-                      AND NOT (
-                        nominal_account_number = 410021
-                        OR nominal_account_number BETWEEN 411000 AND 411999
-                        OR nominal_account_number BETWEEN 415100 AND 415199
-                        OR nominal_account_number BETWEEN 424000 AND 424999
-                        OR nominal_account_number BETWEEN 435500 AND 435599
-                        OR nominal_account_number BETWEEN 438000 AND 438999
-                        OR nominal_account_number BETWEEN 455000 AND 456999
-                        OR nominal_account_number BETWEEN 487000 AND 487099
-                        OR nominal_account_number BETWEEN 489000 AND 489999
-                        OR nominal_account_number BETWEEN 491000 AND 497999
-                      )
+          AND NOT (
+            nominal_account_number BETWEEN 415100 AND 415199
+            OR nominal_account_number BETWEEN 424000 AND 424999
+            OR nominal_account_number BETWEEN 435500 AND 435599
+            OR nominal_account_number BETWEEN 438000 AND 438999
+            OR nominal_account_number BETWEEN 455000 AND 456999
+            OR nominal_account_number BETWEEN 487000 AND 487099
+            OR (nominal_account_number BETWEEN 489000 AND 489999
+                AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0')
+            OR nominal_account_number BETWEEN 491000 AND 497999
+          )
                       {firma_filter_kosten}
                       {guv_filter}
                     GROUP BY nominal_account_number

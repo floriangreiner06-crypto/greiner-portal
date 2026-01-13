@@ -1,0 +1,1332 @@
+{
+  "metadata": {
+    "quelle": "GlobalCube GCStruct",
+    "datei": "AutohausGreiner_20260109_161135.zip",
+    "datum": "2026-01-12"
+  },
+  "struktur_guv": [
+    {
+      "level": 0,
+      "name": "Struktur_GuV",
+      "struktur_id": "48",
+      "path": "Struktur_GuV",
+      "attributes": {
+        "Name": "Struktur_GuV",
+        "StrukturId": "48"
+      }
+    },
+    {
+      "level": 1,
+      "name": "GuV",
+      "struktur_id": "49",
+      "path": "Struktur_GuV/GuV",
+      "attributes": {
+        "Name": "GuV",
+        "StrukturId": "49"
+      }
+    },
+    {
+      "level": 2,
+      "name": "1. Umsatzerlöse",
+      "struktur_id": "50",
+      "path": "Struktur_GuV/GuV/1. Umsatzerlöse",
+      "attributes": {
+        "Name": "1. Umsatzerlöse",
+        "StrukturId": "50"
+      }
+    },
+    {
+      "level": 3,
+      "name": "a) Neuwagen",
+      "struktur_id": "51",
+      "path": "Struktur_GuV/GuV/1. Umsatzerlöse/a) Neuwagen",
+      "attributes": {
+        "Name": "a) Neuwagen",
+        "StrukturId": "51"
+      }
+    },
+    {
+      "level": 3,
+      "name": "b) Gebrauchtwagen",
+      "struktur_id": "52",
+      "path": "Struktur_GuV/GuV/1. Umsatzerlöse/b) Gebrauchtwagen",
+      "attributes": {
+        "Name": "b) Gebrauchtwagen",
+        "StrukturId": "52"
+      }
+    },
+    {
+      "level": 3,
+      "name": "c) Teile & Zubehör",
+      "struktur_id": "53",
+      "path": "Struktur_GuV/GuV/1. Umsatzerlöse/c) Teile & Zubehör",
+      "attributes": {
+        "Name": "c) Teile & Zubehör",
+        "StrukturId": "53"
+      }
+    },
+    {
+      "level": 3,
+      "name": "d) Service",
+      "struktur_id": "54",
+      "path": "Struktur_GuV/GuV/1. Umsatzerlöse/d) Service",
+      "attributes": {
+        "Name": "d) Service",
+        "StrukturId": "54"
+      }
+    },
+    {
+      "level": 3,
+      "name": "e) Mietwagen",
+      "struktur_id": "55",
+      "path": "Struktur_GuV/GuV/1. Umsatzerlöse/e) Mietwagen",
+      "attributes": {
+        "Name": "e) Mietwagen",
+        "StrukturId": "55"
+      }
+    },
+    {
+      "level": 3,
+      "name": "f) Tankstelle",
+      "struktur_id": "56",
+      "path": "Struktur_GuV/GuV/1. Umsatzerlöse/f) Tankstelle",
+      "attributes": {
+        "Name": "f) Tankstelle",
+        "StrukturId": "56"
+      }
+    },
+    {
+      "level": 3,
+      "name": "g) Umlagen",
+      "struktur_id": "57",
+      "path": "Struktur_GuV/GuV/1. Umsatzerlöse/g) Umlagen",
+      "attributes": {
+        "Name": "g) Umlagen",
+        "StrukturId": "57"
+      }
+    },
+    {
+      "level": 2,
+      "name": "2. Erhöhung oder Verminderung des Bestands an fertigen und unfertigen Erzeugnissen",
+      "struktur_id": "58",
+      "path": "Struktur_GuV/GuV/2. Erhöhung oder Verminderung des Bestands an fertigen und unfertigen Erzeugnissen",
+      "attributes": {
+        "Name": "2. Erhöhung oder Verminderung des Bestands an fertigen und unfertigen Erzeugnissen",
+        "StrukturId": "58"
+      }
+    },
+    {
+      "level": 2,
+      "name": "4. Sonstige betriebliche Erträge",
+      "struktur_id": "59",
+      "path": "Struktur_GuV/GuV/4. Sonstige betriebliche Erträge",
+      "attributes": {
+        "Name": "4. Sonstige betriebliche Erträge",
+        "StrukturId": "59"
+      }
+    },
+    {
+      "level": 2,
+      "name": "5. Materialaufwand",
+      "struktur_id": "60",
+      "path": "Struktur_GuV/GuV/5. Materialaufwand",
+      "attributes": {
+        "Name": "5. Materialaufwand",
+        "StrukturId": "60"
+      }
+    },
+    {
+      "level": 3,
+      "name": "a) Aufwendungen für Roh-,Hilfs- und Betriebsstoffe und für bezogene Waren",
+      "struktur_id": "61",
+      "path": "Struktur_GuV/GuV/5. Materialaufwand/a) Aufwendungen für Roh-,Hilfs- und Betriebsstoffe und für bezogene Waren",
+      "attributes": {
+        "Name": "a) Aufwendungen für Roh-,Hilfs- und Betriebsstoffe und für bezogene Waren",
+        "StrukturId": "61"
+      }
+    },
+    {
+      "level": 4,
+      "name": "aa) Neuwagen",
+      "struktur_id": "62",
+      "path": "Struktur_GuV/GuV/5. Materialaufwand/a) Aufwendungen für Roh-,Hilfs- und Betriebsstoffe und für bezogene Waren/aa) Neuwagen",
+      "attributes": {
+        "Name": "aa) Neuwagen",
+        "StrukturId": "62"
+      }
+    },
+    {
+      "level": 4,
+      "name": "ab) Gebrauchtwagen",
+      "struktur_id": "63",
+      "path": "Struktur_GuV/GuV/5. Materialaufwand/a) Aufwendungen für Roh-,Hilfs- und Betriebsstoffe und für bezogene Waren/ab) Gebrauchtwagen",
+      "attributes": {
+        "Name": "ab) Gebrauchtwagen",
+        "StrukturId": "63"
+      }
+    },
+    {
+      "level": 4,
+      "name": "ac) Teile & Zubehör",
+      "struktur_id": "64",
+      "path": "Struktur_GuV/GuV/5. Materialaufwand/a) Aufwendungen für Roh-,Hilfs- und Betriebsstoffe und für bezogene Waren/ac) Teile & Zubehör",
+      "attributes": {
+        "Name": "ac) Teile & Zubehör",
+        "StrukturId": "64"
+      }
+    },
+    {
+      "level": 4,
+      "name": "ad) Service",
+      "struktur_id": "65",
+      "path": "Struktur_GuV/GuV/5. Materialaufwand/a) Aufwendungen für Roh-,Hilfs- und Betriebsstoffe und für bezogene Waren/ad) Service",
+      "attributes": {
+        "Name": "ad) Service",
+        "StrukturId": "65"
+      }
+    },
+    {
+      "level": 4,
+      "name": "ae) Mietwagen",
+      "struktur_id": "66",
+      "path": "Struktur_GuV/GuV/5. Materialaufwand/a) Aufwendungen für Roh-,Hilfs- und Betriebsstoffe und für bezogene Waren/ae) Mietwagen",
+      "attributes": {
+        "Name": "ae) Mietwagen",
+        "StrukturId": "66"
+      }
+    },
+    {
+      "level": 4,
+      "name": "af) Tankstelle",
+      "struktur_id": "67",
+      "path": "Struktur_GuV/GuV/5. Materialaufwand/a) Aufwendungen für Roh-,Hilfs- und Betriebsstoffe und für bezogene Waren/af) Tankstelle",
+      "attributes": {
+        "Name": "af) Tankstelle",
+        "StrukturId": "67"
+      }
+    },
+    {
+      "level": 4,
+      "name": "ag) Umlagen",
+      "struktur_id": "68",
+      "path": "Struktur_GuV/GuV/5. Materialaufwand/a) Aufwendungen für Roh-,Hilfs- und Betriebsstoffe und für bezogene Waren/ag) Umlagen",
+      "attributes": {
+        "Name": "ag) Umlagen",
+        "StrukturId": "68"
+      }
+    },
+    {
+      "level": 3,
+      "name": "b) Aufwendungen für bezogene Leistungen",
+      "struktur_id": "69",
+      "path": "Struktur_GuV/GuV/5. Materialaufwand/b) Aufwendungen für bezogene Leistungen",
+      "attributes": {
+        "Name": "b) Aufwendungen für bezogene Leistungen",
+        "StrukturId": "69"
+      }
+    },
+    {
+      "level": 2,
+      "name": "6. Personalaufwand",
+      "struktur_id": "70",
+      "path": "Struktur_GuV/GuV/6. Personalaufwand",
+      "attributes": {
+        "Name": "6. Personalaufwand",
+        "StrukturId": "70"
+      }
+    },
+    {
+      "level": 3,
+      "name": "a) Löhne und Gehälter",
+      "struktur_id": "71",
+      "path": "Struktur_GuV/GuV/6. Personalaufwand/a) Löhne und Gehälter",
+      "attributes": {
+        "Name": "a) Löhne und Gehälter",
+        "StrukturId": "71"
+      }
+    },
+    {
+      "level": 4,
+      "name": "aa) Lohn",
+      "struktur_id": "72",
+      "path": "Struktur_GuV/GuV/6. Personalaufwand/a) Löhne und Gehälter/aa) Lohn",
+      "attributes": {
+        "Name": "aa) Lohn",
+        "StrukturId": "72"
+      }
+    },
+    {
+      "level": 4,
+      "name": "ab) Gehalt",
+      "struktur_id": "73",
+      "path": "Struktur_GuV/GuV/6. Personalaufwand/a) Löhne und Gehälter/ab) Gehalt",
+      "attributes": {
+        "Name": "ab) Gehalt",
+        "StrukturId": "73"
+      }
+    },
+    {
+      "level": 4,
+      "name": "ac) Urlaubsgeld",
+      "struktur_id": "74",
+      "path": "Struktur_GuV/GuV/6. Personalaufwand/a) Löhne und Gehälter/ac) Urlaubsgeld",
+      "attributes": {
+        "Name": "ac) Urlaubsgeld",
+        "StrukturId": "74"
+      }
+    },
+    {
+      "level": 4,
+      "name": "ad) Ausbildung",
+      "struktur_id": "75",
+      "path": "Struktur_GuV/GuV/6. Personalaufwand/a) Löhne und Gehälter/ad) Ausbildung",
+      "attributes": {
+        "Name": "ad) Ausbildung",
+        "StrukturId": "75"
+      }
+    },
+    {
+      "level": 4,
+      "name": "ae) Fertigungslohn",
+      "struktur_id": "76",
+      "path": "Struktur_GuV/GuV/6. Personalaufwand/a) Löhne und Gehälter/ae) Fertigungslohn",
+      "attributes": {
+        "Name": "ae) Fertigungslohn",
+        "StrukturId": "76"
+      }
+    },
+    {
+      "level": 3,
+      "name": "b) soziale Abgaben und Aufwendungen für Altersvorsorge",
+      "struktur_id": "77",
+      "path": "Struktur_GuV/GuV/6. Personalaufwand/b) soziale Abgaben und Aufwendungen für Altersvorsorge",
+      "attributes": {
+        "Name": "b) soziale Abgaben und Aufwendungen für Altersvorsorge",
+        "StrukturId": "77"
+      }
+    },
+    {
+      "level": 4,
+      "name": "ba) soziale Abgaben",
+      "struktur_id": "78",
+      "path": "Struktur_GuV/GuV/6. Personalaufwand/b) soziale Abgaben und Aufwendungen für Altersvorsorge/ba) soziale Abgaben",
+      "attributes": {
+        "Name": "ba) soziale Abgaben",
+        "StrukturId": "78"
+      }
+    },
+    {
+      "level": 4,
+      "name": "bb) Aufwendungen für Altersvorsorge",
+      "struktur_id": "79",
+      "path": "Struktur_GuV/GuV/6. Personalaufwand/b) soziale Abgaben und Aufwendungen für Altersvorsorge/bb) Aufwendungen für Altersvorsorge",
+      "attributes": {
+        "Name": "bb) Aufwendungen für Altersvorsorge",
+        "StrukturId": "79"
+      }
+    },
+    {
+      "level": 2,
+      "name": "7. Abschreibungen",
+      "struktur_id": "80",
+      "path": "Struktur_GuV/GuV/7. Abschreibungen",
+      "attributes": {
+        "Name": "7. Abschreibungen",
+        "StrukturId": "80"
+      }
+    },
+    {
+      "level": 3,
+      "name": "a. auf immaterielle Vermögensgegenstände des Anlagevermögens und Sachanlagen sowie auf aktivierte Eigenleistungen...",
+      "struktur_id": "81",
+      "path": "Struktur_GuV/GuV/7. Abschreibungen/a. auf immaterielle Vermögensgegenstände des Anlagevermögens und Sachanlagen sowie auf aktivierte Eigenleistungen...",
+      "attributes": {
+        "Name": "a. auf immaterielle Vermögensgegenstände des Anlagevermögens und Sachanlagen sowie auf aktivierte Eigenleistungen...",
+        "StrukturId": "81"
+      }
+    },
+    {
+      "level": 3,
+      "name": "b. auf Vermögensgegenstände des Umlaufvermögens...",
+      "struktur_id": "82",
+      "path": "Struktur_GuV/GuV/7. Abschreibungen/b. auf Vermögensgegenstände des Umlaufvermögens...",
+      "attributes": {
+        "Name": "b. auf Vermögensgegenstände des Umlaufvermögens...",
+        "StrukturId": "82"
+      }
+    },
+    {
+      "level": 2,
+      "name": "8. Sonstige betriebliche Aufwendungen",
+      "struktur_id": "83",
+      "path": "Struktur_GuV/GuV/8. Sonstige betriebliche Aufwendungen",
+      "attributes": {
+        "Name": "8. Sonstige betriebliche Aufwendungen",
+        "StrukturId": "83"
+      }
+    },
+    {
+      "level": 3,
+      "name": "a) Betriebsaufwendungen",
+      "struktur_id": "84",
+      "path": "Struktur_GuV/GuV/8. Sonstige betriebliche Aufwendungen/a) Betriebsaufwendungen",
+      "attributes": {
+        "Name": "a) Betriebsaufwendungen",
+        "StrukturId": "84"
+      }
+    },
+    {
+      "level": 3,
+      "name": "b) Vertriebsaufwendungen",
+      "struktur_id": "85",
+      "path": "Struktur_GuV/GuV/8. Sonstige betriebliche Aufwendungen/b) Vertriebsaufwendungen",
+      "attributes": {
+        "Name": "b) Vertriebsaufwendungen",
+        "StrukturId": "85"
+      }
+    },
+    {
+      "level": 3,
+      "name": "c) Verwaltungsaufwendungen",
+      "struktur_id": "86",
+      "path": "Struktur_GuV/GuV/8. Sonstige betriebliche Aufwendungen/c) Verwaltungsaufwendungen",
+      "attributes": {
+        "Name": "c) Verwaltungsaufwendungen",
+        "StrukturId": "86"
+      }
+    },
+    {
+      "level": 3,
+      "name": "d) Übrige Aufwendungen",
+      "struktur_id": "87",
+      "path": "Struktur_GuV/GuV/8. Sonstige betriebliche Aufwendungen/d) Übrige Aufwendungen",
+      "attributes": {
+        "Name": "d) Übrige Aufwendungen",
+        "StrukturId": "87"
+      }
+    },
+    {
+      "level": 2,
+      "name": "9. Zinsen und ähnliche Erträge",
+      "struktur_id": "88",
+      "path": "Struktur_GuV/GuV/9. Zinsen und ähnliche Erträge",
+      "attributes": {
+        "Name": "9. Zinsen und ähnliche Erträge",
+        "StrukturId": "88"
+      }
+    },
+    {
+      "level": 2,
+      "name": "10. Zinsen und ähnliche Aufwendungen",
+      "struktur_id": "89",
+      "path": "Struktur_GuV/GuV/10. Zinsen und ähnliche Aufwendungen",
+      "attributes": {
+        "Name": "10. Zinsen und ähnliche Aufwendungen",
+        "StrukturId": "89"
+      }
+    },
+    {
+      "level": 2,
+      "name": "12. Außerordentliche Erträge",
+      "struktur_id": "90",
+      "path": "Struktur_GuV/GuV/12. Außerordentliche Erträge",
+      "attributes": {
+        "Name": "12. Außerordentliche Erträge",
+        "StrukturId": "90"
+      }
+    },
+    {
+      "level": 2,
+      "name": "13. Außerordentliche Aufwendungen",
+      "struktur_id": "91",
+      "path": "Struktur_GuV/GuV/13. Außerordentliche Aufwendungen",
+      "attributes": {
+        "Name": "13. Außerordentliche Aufwendungen",
+        "StrukturId": "91"
+      }
+    },
+    {
+      "level": 2,
+      "name": "14. Steuern vom Einkommen und vom Ertrag",
+      "struktur_id": "92",
+      "path": "Struktur_GuV/GuV/14. Steuern vom Einkommen und vom Ertrag",
+      "attributes": {
+        "Name": "14. Steuern vom Einkommen und vom Ertrag",
+        "StrukturId": "92"
+      }
+    },
+    {
+      "level": 2,
+      "name": "15. sonstige Steuern",
+      "struktur_id": "93",
+      "path": "Struktur_GuV/GuV/15. sonstige Steuern",
+      "attributes": {
+        "Name": "15. sonstige Steuern",
+        "StrukturId": "93"
+      }
+    },
+    {
+      "level": 1,
+      "name": "keine Zuordnung",
+      "struktur_id": "94",
+      "path": "Struktur_GuV/keine Zuordnung",
+      "attributes": {
+        "Name": "keine Zuordnung",
+        "StrukturId": "94"
+      }
+    },
+    {
+      "level": 1,
+      "name": "nicht benötigte Konten",
+      "struktur_id": "98",
+      "path": "Struktur_GuV/nicht benötigte Konten",
+      "attributes": {
+        "Name": "nicht benötigte Konten",
+        "StrukturId": "98"
+      }
+    }
+  ],
+  "struktur_controlling": [
+    {
+      "level": 0,
+      "name": "Struktur_Controlling",
+      "struktur_id": "1",
+      "path": "Struktur_Controlling",
+      "attributes": {
+        "Name": "Struktur_Controlling",
+        "StrukturId": "1"
+      }
+    },
+    {
+      "level": 1,
+      "name": "Umsatz Opel",
+      "struktur_id": "9",
+      "path": "Struktur_Controlling/Umsatz Opel",
+      "attributes": {
+        "Name": "Umsatz Opel",
+        "StrukturId": "9"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Eigenverkauf",
+      "struktur_id": "97",
+      "path": "Struktur_Controlling/Umsatz Opel/Eigenverkauf",
+      "attributes": {
+        "Name": "Eigenverkauf",
+        "StrukturId": "97"
+      }
+    },
+    {
+      "level": 2,
+      "name": "davon AOV",
+      "struktur_id": "10",
+      "path": "Struktur_Controlling/Umsatz Opel/davon AOV",
+      "attributes": {
+        "Name": "davon AOV",
+        "StrukturId": "10"
+      }
+    },
+    {
+      "level": 1,
+      "name": "EW NW Opel",
+      "struktur_id": "11",
+      "path": "Struktur_Controlling/EW NW Opel",
+      "attributes": {
+        "Name": "EW NW Opel",
+        "StrukturId": "11"
+      }
+    },
+    {
+      "level": 1,
+      "name": "Umsatz GW",
+      "struktur_id": "12",
+      "path": "Struktur_Controlling/Umsatz GW",
+      "attributes": {
+        "Name": "Umsatz GW",
+        "StrukturId": "12"
+      }
+    },
+    {
+      "level": 1,
+      "name": "EW GW",
+      "struktur_id": "13",
+      "path": "Struktur_Controlling/EW GW",
+      "attributes": {
+        "Name": "EW GW",
+        "StrukturId": "13"
+      }
+    },
+    {
+      "level": 1,
+      "name": "Umsatz NW VW",
+      "struktur_id": "91",
+      "path": "Struktur_Controlling/Umsatz NW VW",
+      "attributes": {
+        "Name": "Umsatz NW VW",
+        "StrukturId": "91"
+      }
+    },
+    {
+      "level": 1,
+      "name": "EW NW VW",
+      "struktur_id": "93",
+      "path": "Struktur_Controlling/EW NW VW",
+      "attributes": {
+        "Name": "EW NW VW",
+        "StrukturId": "93"
+      }
+    },
+    {
+      "level": 1,
+      "name": "Umsatz NW Honda",
+      "struktur_id": "14",
+      "path": "Struktur_Controlling/Umsatz NW Honda",
+      "attributes": {
+        "Name": "Umsatz NW Honda",
+        "StrukturId": "14"
+      }
+    },
+    {
+      "level": 1,
+      "name": "EW NW Honda",
+      "struktur_id": "15",
+      "path": "Struktur_Controlling/EW NW Honda",
+      "attributes": {
+        "Name": "EW NW Honda",
+        "StrukturId": "15"
+      }
+    },
+    {
+      "level": 1,
+      "name": "Umsatz Service",
+      "struktur_id": "16",
+      "path": "Struktur_Controlling/Umsatz Service",
+      "attributes": {
+        "Name": "Umsatz Service",
+        "StrukturId": "16"
+      }
+    },
+    {
+      "level": 2,
+      "name": "davon Lohnerl.  VW",
+      "struktur_id": "17",
+      "path": "Struktur_Controlling/Umsatz Service/davon Lohnerl.  VW",
+      "attributes": {
+        "Name": "davon Lohnerl.  VW",
+        "StrukturId": "17"
+      }
+    },
+    {
+      "level": 2,
+      "name": "davon Lohnerl. and.",
+      "struktur_id": "18",
+      "path": "Struktur_Controlling/Umsatz Service/davon Lohnerl. and.",
+      "attributes": {
+        "Name": "davon Lohnerl. and.",
+        "StrukturId": "18"
+      }
+    },
+    {
+      "level": 2,
+      "name": "davon Erlöse  Fremdl.",
+      "struktur_id": "19",
+      "path": "Struktur_Controlling/Umsatz Service/davon Erlöse  Fremdl.",
+      "attributes": {
+        "Name": "davon Erlöse  Fremdl.",
+        "StrukturId": "19"
+      }
+    },
+    {
+      "level": 2,
+      "name": "davon Erlöse Sonst.",
+      "struktur_id": "21",
+      "path": "Struktur_Controlling/Umsatz Service/davon Erlöse Sonst.",
+      "attributes": {
+        "Name": "davon Erlöse Sonst.",
+        "StrukturId": "21"
+      }
+    },
+    {
+      "level": 1,
+      "name": "EW Serv. ges. (inkl. Fert.lohn)",
+      "struktur_id": "22",
+      "path": "Struktur_Controlling/EW Serv. ges. (inkl. Fert.lohn)",
+      "attributes": {
+        "Name": "EW Serv. ges. (inkl. Fert.lohn)",
+        "StrukturId": "22"
+      }
+    },
+    {
+      "level": 1,
+      "name": "Umsatz Teile gesamt",
+      "struktur_id": "25",
+      "path": "Struktur_Controlling/Umsatz Teile gesamt",
+      "attributes": {
+        "Name": "Umsatz Teile gesamt",
+        "StrukturId": "25"
+      }
+    },
+    {
+      "level": 2,
+      "name": "davon OT",
+      "struktur_id": "27",
+      "path": "Struktur_Controlling/Umsatz Teile gesamt/davon OT",
+      "attributes": {
+        "Name": "davon OT",
+        "StrukturId": "27"
+      }
+    },
+    {
+      "level": 2,
+      "name": "davon VW-Teile",
+      "struktur_id": "28",
+      "path": "Struktur_Controlling/Umsatz Teile gesamt/davon VW-Teile",
+      "attributes": {
+        "Name": "davon VW-Teile",
+        "StrukturId": "28"
+      }
+    },
+    {
+      "level": 2,
+      "name": "davon ATZ/Honda -Teile",
+      "struktur_id": "29",
+      "path": "Struktur_Controlling/Umsatz Teile gesamt/davon ATZ/Honda -Teile",
+      "attributes": {
+        "Name": "davon ATZ/Honda -Teile",
+        "StrukturId": "29"
+      }
+    },
+    {
+      "level": 1,
+      "name": "EW OT/ATZ/VW/Honda Teile",
+      "struktur_id": "30",
+      "path": "Struktur_Controlling/EW OT/ATZ/VW/Honda Teile",
+      "attributes": {
+        "Name": "EW OT/ATZ/VW/Honda Teile",
+        "StrukturId": "30"
+      }
+    },
+    {
+      "level": 1,
+      "name": "Neutraler Ertrag",
+      "struktur_id": "35",
+      "path": "Struktur_Controlling/Neutraler Ertrag",
+      "attributes": {
+        "Name": "Neutraler Ertrag",
+        "StrukturId": "35"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Sonstige Erträge betrieblich und regelm. - zahl.unwirksam",
+      "struktur_id": "32",
+      "path": "Struktur_Controlling/Neutraler Ertrag/Sonstige Erträge betrieblich und regelm. - zahl.unwirksam",
+      "attributes": {
+        "Name": "Sonstige Erträge betrieblich und regelm. - zahl.unwirksam",
+        "StrukturId": "32"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Erträge aus abgeschr.Forderungen",
+      "struktur_id": "33",
+      "path": "Struktur_Controlling/Neutraler Ertrag/Erträge aus abgeschr.Forderungen",
+      "attributes": {
+        "Name": "Erträge aus abgeschr.Forderungen",
+        "StrukturId": "33"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Periodenfr. Erträge - zahl.wirksam",
+      "struktur_id": "36",
+      "path": "Struktur_Controlling/Neutraler Ertrag/Periodenfr. Erträge - zahl.wirksam",
+      "attributes": {
+        "Name": "Periodenfr. Erträge - zahl.wirksam",
+        "StrukturId": "36"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Investitionszuschüsse (steuerpfl.)",
+      "struktur_id": "34",
+      "path": "Struktur_Controlling/Neutraler Ertrag/Investitionszuschüsse (steuerpfl.)",
+      "attributes": {
+        "Name": "Investitionszuschüsse (steuerpfl.)",
+        "StrukturId": "34"
+      }
+    },
+    {
+      "level": 1,
+      "name": "Personalaufwand",
+      "struktur_id": "37",
+      "path": "Struktur_Controlling/Personalaufwand",
+      "attributes": {
+        "Name": "Personalaufwand",
+        "StrukturId": "37"
+      }
+    },
+    {
+      "level": 1,
+      "name": "Summe betriebl. Aufwand",
+      "struktur_id": "38",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand",
+      "attributes": {
+        "Name": "Summe betriebl. Aufwand",
+        "StrukturId": "38"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Fremdarbeiten (ohne Waren-Material-Einsatz)",
+      "struktur_id": "54",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Fremdarbeiten (ohne Waren-Material-Einsatz)",
+      "attributes": {
+        "Name": "Fremdarbeiten (ohne Waren-Material-Einsatz)",
+        "StrukturId": "54"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Miete und Pacht",
+      "struktur_id": "55",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Miete und Pacht",
+      "attributes": {
+        "Name": "Miete und Pacht",
+        "StrukturId": "55"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Heizung",
+      "struktur_id": "56",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Heizung",
+      "attributes": {
+        "Name": "Heizung",
+        "StrukturId": "56"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Gas, Strom, Wasser",
+      "struktur_id": "57",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Gas, Strom, Wasser",
+      "attributes": {
+        "Name": "Gas, Strom, Wasser",
+        "StrukturId": "57"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Reinigung",
+      "struktur_id": "58",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Reinigung",
+      "attributes": {
+        "Name": "Reinigung",
+        "StrukturId": "58"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Instandhaltung betriebl. Räume",
+      "struktur_id": "59",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Instandhaltung betriebl. Räume",
+      "attributes": {
+        "Name": "Instandhaltung betriebl. Räume",
+        "StrukturId": "59"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Abgaben f. betriebl.genutzen Grundbesitz",
+      "struktur_id": "60",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Abgaben f. betriebl.genutzen Grundbesitz",
+      "attributes": {
+        "Name": "Abgaben f. betriebl.genutzen Grundbesitz",
+        "StrukturId": "60"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Sonstige Raumkosten",
+      "struktur_id": "61",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Sonstige Raumkosten",
+      "attributes": {
+        "Name": "Sonstige Raumkosten",
+        "StrukturId": "61"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Sonstige Grundstücksaufwendungen",
+      "struktur_id": "62",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Sonstige Grundstücksaufwendungen",
+      "attributes": {
+        "Name": "Sonstige Grundstücksaufwendungen",
+        "StrukturId": "62"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Spenden - steuerlich nicht abziehbar",
+      "struktur_id": "63",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Spenden - steuerlich nicht abziehbar",
+      "attributes": {
+        "Name": "Spenden - steuerlich nicht abziehbar",
+        "StrukturId": "63"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Beiträge und Spenden",
+      "struktur_id": "64",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Beiträge und Spenden",
+      "attributes": {
+        "Name": "Beiträge und Spenden",
+        "StrukturId": "64"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Versicherungen",
+      "struktur_id": "65",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Versicherungen",
+      "attributes": {
+        "Name": "Versicherungen",
+        "StrukturId": "65"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Beiträge u. sonstige Abgaben",
+      "struktur_id": "66",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Beiträge u. sonstige Abgaben",
+      "attributes": {
+        "Name": "Beiträge u. sonstige Abgaben",
+        "StrukturId": "66"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Reisekosten",
+      "struktur_id": "67",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Reisekosten",
+      "attributes": {
+        "Name": "Reisekosten",
+        "StrukturId": "67"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Kfz-Kosten",
+      "struktur_id": "68",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Kfz-Kosten",
+      "attributes": {
+        "Name": "Kfz-Kosten",
+        "StrukturId": "68"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Werbekosten",
+      "struktur_id": "69",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Werbekosten",
+      "attributes": {
+        "Name": "Werbekosten",
+        "StrukturId": "69"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Kosten d. Warenabgabe (ohne Verk.prov.)",
+      "struktur_id": "70",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Kosten d. Warenabgabe (ohne Verk.prov.)",
+      "attributes": {
+        "Name": "Kosten d. Warenabgabe (ohne Verk.prov.)",
+        "StrukturId": "70"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Verkaufsporvision",
+      "struktur_id": "71",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Verkaufsporvision",
+      "attributes": {
+        "Name": "Verkaufsporvision",
+        "StrukturId": "71"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Sonstige Dienstleistungen",
+      "struktur_id": "72",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Sonstige Dienstleistungen",
+      "attributes": {
+        "Name": "Sonstige Dienstleistungen",
+        "StrukturId": "72"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Aufwand für Gewährleistung",
+      "struktur_id": "73",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Aufwand für Gewährleistung",
+      "attributes": {
+        "Name": "Aufwand für Gewährleistung",
+        "StrukturId": "73"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Porto",
+      "struktur_id": "74",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Porto",
+      "attributes": {
+        "Name": "Porto",
+        "StrukturId": "74"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Telefon, Telefax",
+      "struktur_id": "75",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Telefon, Telefax",
+      "attributes": {
+        "Name": "Telefon, Telefax",
+        "StrukturId": "75"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Sonstiger Bürobedarf",
+      "struktur_id": "76",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Sonstiger Bürobedarf",
+      "attributes": {
+        "Name": "Sonstiger Bürobedarf",
+        "StrukturId": "76"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Fortbildungskosten",
+      "struktur_id": "77",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Fortbildungskosten",
+      "attributes": {
+        "Name": "Fortbildungskosten",
+        "StrukturId": "77"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Freiwillige Sozialleistungen",
+      "struktur_id": "78",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Freiwillige Sozialleistungen",
+      "attributes": {
+        "Name": "Freiwillige Sozialleistungen",
+        "StrukturId": "78"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Rechts-, Beratungs-, Abschluss-Prüfungskosten",
+      "struktur_id": "79",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Rechts-, Beratungs-, Abschluss-Prüfungskosten",
+      "attributes": {
+        "Name": "Rechts-, Beratungs-, Abschluss-Prüfungskosten",
+        "StrukturId": "79"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Mieten für Einrichtungen",
+      "struktur_id": "80",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Mieten für Einrichtungen",
+      "attributes": {
+        "Name": "Mieten für Einrichtungen",
+        "StrukturId": "80"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Mietleasing",
+      "struktur_id": "81",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Mietleasing",
+      "attributes": {
+        "Name": "Mietleasing",
+        "StrukturId": "81"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Werkzeuge und Kleingeräte",
+      "struktur_id": "82",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Werkzeuge und Kleingeräte",
+      "attributes": {
+        "Name": "Werkzeuge und Kleingeräte",
+        "StrukturId": "82"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Sonstiger Betriebsbedarf",
+      "struktur_id": "83",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Sonstiger Betriebsbedarf",
+      "attributes": {
+        "Name": "Sonstiger Betriebsbedarf",
+        "StrukturId": "83"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Nebenkosten des Geldverkehrs",
+      "struktur_id": "84",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Nebenkosten des Geldverkehrs",
+      "attributes": {
+        "Name": "Nebenkosten des Geldverkehrs",
+        "StrukturId": "84"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Aufwendg. für Abraum-Abfallbeseitung",
+      "struktur_id": "85",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/Aufwendg. für Abraum-Abfallbeseitung",
+      "attributes": {
+        "Name": "Aufwendg. für Abraum-Abfallbeseitung",
+        "StrukturId": "85"
+      }
+    },
+    {
+      "level": 2,
+      "name": "verrechn. kalkul. Kosten (Untern.lohn/Zinsen u.a.)",
+      "struktur_id": "86",
+      "path": "Struktur_Controlling/Summe betriebl. Aufwand/verrechn. kalkul. Kosten (Untern.lohn/Zinsen u.a.)",
+      "attributes": {
+        "Name": "verrechn. kalkul. Kosten (Untern.lohn/Zinsen u.a.)",
+        "StrukturId": "86"
+      }
+    },
+    {
+      "level": 1,
+      "name": "Neutrale Aufwendungen",
+      "struktur_id": "46",
+      "path": "Struktur_Controlling/Neutrale Aufwendungen",
+      "attributes": {
+        "Name": "Neutrale Aufwendungen",
+        "StrukturId": "46"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Planm.Abschr. auf Sachanlagen",
+      "struktur_id": "39",
+      "path": "Struktur_Controlling/Neutrale Aufwendungen/Planm.Abschr. auf Sachanlagen",
+      "attributes": {
+        "Name": "Planm.Abschr. auf Sachanlagen",
+        "StrukturId": "39"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Abschreibung auf Umlaufvermögen",
+      "struktur_id": "40",
+      "path": "Struktur_Controlling/Neutrale Aufwendungen/Abschreibung auf Umlaufvermögen",
+      "attributes": {
+        "Name": "Abschreibung auf Umlaufvermögen",
+        "StrukturId": "40"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Forderungsverluste (übliche Höhe)",
+      "struktur_id": "41",
+      "path": "Struktur_Controlling/Neutrale Aufwendungen/Forderungsverluste (übliche Höhe)",
+      "attributes": {
+        "Name": "Forderungsverluste (übliche Höhe)",
+        "StrukturId": "41"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Periodenfremde Aufw. - zahlungswirksam -",
+      "struktur_id": "42",
+      "path": "Struktur_Controlling/Neutrale Aufwendungen/Periodenfremde Aufw. - zahlungswirksam -",
+      "attributes": {
+        "Name": "Periodenfremde Aufw. - zahlungswirksam -",
+        "StrukturId": "42"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Sonst. Aufw. unregelmäßig - zahlungswirksam -",
+      "struktur_id": "43",
+      "path": "Struktur_Controlling/Neutrale Aufwendungen/Sonst. Aufw. unregelmäßig - zahlungswirksam -",
+      "attributes": {
+        "Name": "Sonst. Aufw. unregelmäßig - zahlungswirksam -",
+        "StrukturId": "43"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Sonst. Aufw. unregelmäßig -zahlungsunswirksam -",
+      "struktur_id": "44",
+      "path": "Struktur_Controlling/Neutrale Aufwendungen/Sonst. Aufw. unregelmäßig -zahlungsunswirksam -",
+      "attributes": {
+        "Name": "Sonst. Aufw. unregelmäßig -zahlungsunswirksam -",
+        "StrukturId": "44"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Kassendifferenzen",
+      "struktur_id": "45",
+      "path": "Struktur_Controlling/Neutrale Aufwendungen/Kassendifferenzen",
+      "attributes": {
+        "Name": "Kassendifferenzen",
+        "StrukturId": "45"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Verrechnete kalkulat. Kosten",
+      "struktur_id": "47",
+      "path": "Struktur_Controlling/Neutrale Aufwendungen/Verrechnete kalkulat. Kosten",
+      "attributes": {
+        "Name": "Verrechnete kalkulat. Kosten",
+        "StrukturId": "47"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Zinsaufwend. f. kurzfrist. Verbindlichkeiten",
+      "struktur_id": "48",
+      "path": "Struktur_Controlling/Neutrale Aufwendungen/Zinsaufwend. f. kurzfrist. Verbindlichkeiten",
+      "attributes": {
+        "Name": "Zinsaufwend. f. kurzfrist. Verbindlichkeiten",
+        "StrukturId": "48"
+      }
+    },
+    {
+      "level": 3,
+      "name": "dav. Zinsaufwend. Kto.korrent",
+      "struktur_id": "49",
+      "path": "Struktur_Controlling/Neutrale Aufwendungen/Zinsaufwend. f. kurzfrist. Verbindlichkeiten/dav. Zinsaufwend. Kto.korrent",
+      "attributes": {
+        "Name": "dav. Zinsaufwend. Kto.korrent",
+        "StrukturId": "49"
+      }
+    },
+    {
+      "level": 3,
+      "name": "dav. Zinsaufwend. f. Lagerwaren",
+      "struktur_id": "50",
+      "path": "Struktur_Controlling/Neutrale Aufwendungen/Zinsaufwend. f. kurzfrist. Verbindlichkeiten/dav. Zinsaufwend. f. Lagerwaren",
+      "attributes": {
+        "Name": "dav. Zinsaufwend. f. Lagerwaren",
+        "StrukturId": "50"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Zinsaufwend. f. langfrist. Verbindlichkeiten",
+      "struktur_id": "51",
+      "path": "Struktur_Controlling/Neutrale Aufwendungen/Zinsaufwend. f. langfrist. Verbindlichkeiten",
+      "attributes": {
+        "Name": "Zinsaufwend. f. langfrist. Verbindlichkeiten",
+        "StrukturId": "51"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Gewerbesteuer",
+      "struktur_id": "52",
+      "path": "Struktur_Controlling/Neutrale Aufwendungen/Gewerbesteuer",
+      "attributes": {
+        "Name": "Gewerbesteuer",
+        "StrukturId": "52"
+      }
+    },
+    {
+      "level": 2,
+      "name": "Sonstige Steuern",
+      "struktur_id": "53",
+      "path": "Struktur_Controlling/Neutrale Aufwendungen/Sonstige Steuern",
+      "attributes": {
+        "Name": "Sonstige Steuern",
+        "StrukturId": "53"
+      }
+    },
+    {
+      "level": 1,
+      "name": "Rent",
+      "struktur_id": "87",
+      "path": "Struktur_Controlling/Rent",
+      "attributes": {
+        "Name": "Rent",
+        "StrukturId": "87"
+      }
+    },
+    {
+      "level": 1,
+      "name": "Lagerkorr. Teile",
+      "struktur_id": "88",
+      "path": "Struktur_Controlling/Lagerkorr. Teile",
+      "attributes": {
+        "Name": "Lagerkorr. Teile",
+        "StrukturId": "88"
+      }
+    },
+    {
+      "level": 1,
+      "name": "Lagerkorr. Fahrzeuge",
+      "struktur_id": "89",
+      "path": "Struktur_Controlling/Lagerkorr. Fahrzeuge",
+      "attributes": {
+        "Name": "Lagerkorr. Fahrzeuge",
+        "StrukturId": "89"
+      }
+    },
+    {
+      "level": 1,
+      "name": "Einkauf Teile",
+      "struktur_id": "90",
+      "path": "Struktur_Controlling/Einkauf Teile",
+      "attributes": {
+        "Name": "Einkauf Teile",
+        "StrukturId": "90"
+      }
+    },
+    {
+      "level": 1,
+      "name": "keine Zuordnung",
+      "struktur_id": "2",
+      "path": "Struktur_Controlling/keine Zuordnung",
+      "attributes": {
+        "Name": "keine Zuordnung",
+        "StrukturId": "2"
+      }
+    },
+    {
+      "level": 1,
+      "name": "Bilanz",
+      "struktur_id": "3",
+      "path": "Struktur_Controlling/Bilanz",
+      "attributes": {
+        "Name": "Bilanz",
+        "StrukturId": "3"
+      }
+    },
+    {
+      "level": 1,
+      "name": "Im Kontenschema nicht vorhanden",
+      "struktur_id": "26",
+      "path": "Struktur_Controlling/Im Kontenschema nicht vorhanden",
+      "attributes": {
+        "Name": "Im Kontenschema nicht vorhanden",
+        "StrukturId": "26"
+      }
+    }
+  ],
+  "konten_mapping": {}
+}

@@ -538,20 +538,103 @@ def build_bereich_email_html(data, bereich_key, bereich_data):
     """
 
 
+def check_locosoft_mirror_completed():
+    """
+    Prüft ob Locosoft Mirror heute erfolgreich abgeschlossen wurde.
+    TAG 181: Sicherheitsprüfung für TEK-Versand
+    
+    Returns: True wenn Mirror heute erfolgreich war, False sonst
+    """
+    try:
+        import redis
+        from datetime import datetime, timezone
+        import json
+        
+        # Redis Client für Result Backend (DB 1)
+        redis_client = redis.Redis(host='localhost', port=6379, db=1, decode_responses=False)
+        
+        # Suche nach Locosoft Mirror Task-Ergebnissen
+        pattern = 'celery-task-meta-*'
+        keys = redis_client.keys(pattern)
+        
+        heute = date.today()
+        heute_str = heute.strftime('%Y-%m-%d')
+        
+        # Durchsuche die letzten Keys
+        for key in keys[:500]:  # Maximal 500 Keys prüfen
+            try:
+                meta_data = redis_client.get(key)
+                if not meta_data:
+                    continue
+                
+                if isinstance(meta_data, bytes):
+                    meta_data = meta_data.decode('utf-8')
+                
+                data = json.loads(meta_data)
+                
+                # Prüfe ob es der Locosoft Mirror Task ist
+                task_name = data.get('task_name', '')
+                if 'locosoft_mirror' not in task_name:
+                    continue
+                
+                # Prüfe Status
+                status = data.get('status', '')
+                if status != 'SUCCESS':
+                    continue
+                
+                # Prüfe Datum
+                date_done = data.get('date_done')
+                if date_done:
+                    # Parse ISO-Format
+                    if 'T' in date_done:
+                        task_date = date_done.split('T')[0]
+                        if task_date == heute_str:
+                            return True
+            except (json.JSONDecodeError, UnicodeDecodeError, KeyError, ValueError):
+                continue
+        
+        return False
+    except Exception as e:
+        print(f"⚠️  Warnung: Konnte Locosoft Mirror-Status nicht prüfen: {e}")
+        return False  # Im Fehlerfall erlauben (nicht blockieren)
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description='TEK Daily Reports versenden')
-    parser.add_argument('--force', action='store_true', help='Ignoriere Wochenend-/Feiertags-Check')
+    parser.add_argument('--force', action='store_true', help='Ignoriere Wochenend-/Feiertags-Check und Zeitprüfung')
     parser.add_argument('--test-email', type=str, help='Alle Reports an diese Test-Adresse senden')
     args = parser.parse_args()
 
     print(f"\n{'='*60}")
     print(f"TEK DAILY REPORTS - {datetime.now().strftime('%d.%m.%Y %H:%M')}")
     if args.force:
-        print(f"FORCE-MODUS - Ignoriere Wochenend/Feiertags-Check")
+        print(f"FORCE-MODUS - Ignoriere Wochenend/Feiertags-Check und Zeitprüfung")
     if args.test_email:
         print(f"TEST-MODUS - Alle Reports an: {args.test_email}")
     print(f"{'='*60}")
+
+    # TAG 181: Zeitprüfung - TEK sollte erst nach 19:00 Uhr gesendet werden
+    # (nach Locosoft PostgreSQL Update und Locosoft Mirror)
+    jetzt = datetime.now()
+    if not args.force and jetzt.hour < 19:
+        print(f"⚠️  WARNUNG: Es ist {jetzt.strftime('%H:%M')} Uhr - TEK sollte erst nach 19:00 Uhr gesendet werden")
+        print(f"    (nach Locosoft PostgreSQL Update und Locosoft Mirror)")
+        print(f"    Verwende --force um trotzdem zu senden")
+        print(f"{'='*60}\n")
+        return 1
+
+    # TAG 181: Prüfe ob Locosoft Mirror heute erfolgreich war
+    if not args.force:
+        mirror_completed = check_locosoft_mirror_completed()
+        if not mirror_completed:
+            print(f"⚠️  WARNUNG: Locosoft Mirror wurde heute noch nicht erfolgreich abgeschlossen")
+            print(f"    TEK-Daten könnten veraltet sein!")
+            print(f"    Verwende --force um trotzdem zu senden")
+            print(f"{'='*60}\n")
+            return 1
+        else:
+            print(f"✅ Locosoft Mirror heute erfolgreich abgeschlossen - Daten sind aktuell")
 
     # TAG 136: Feiertagskalender-Check
     heute = date.today()

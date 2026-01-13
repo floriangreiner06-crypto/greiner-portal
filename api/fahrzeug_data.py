@@ -357,6 +357,123 @@ class FahrzeugData:
                 'stand': datetime.now().isoformat()
             }
 
+    @staticmethod
+    def get_nw_pipeline_kategorisiert(
+        standort: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        TAG 181: NW-Pipeline nach Kategorien aufgeteilt:
+        - bestellt: Bestellt aber noch nicht eingetroffen (in_arrival_date IS NULL)
+        - verkauft: Mit Vertrag aber noch nicht fakturiert (out_sales_contract_number IS NOT NULL, out_invoice_date IS NULL)
+        - lager: Eingetroffen aber noch nicht verkauft (in_arrival_date IS NOT NULL, out_sales_contract_number IS NULL)
+
+        Args:
+            standort: Standort-Filter
+
+        Returns:
+            Dict mit 'bestellt', 'verkauft', 'lager' und Gesamt-Statistik
+        """
+        with locosoft_session() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+            # Standort-Filter
+            standort_filter = ""
+            params = []
+            if standort:
+                standort_filter_str = build_locosoft_filter_bestand(standort, nur_stellantis=False)
+                if standort_filter_str:
+                    filter_sql = standort_filter_str.replace("AND ", "").replace("in_subsidiary", "dv.in_subsidiary")
+                    standort_filter = f"AND {filter_sql}"
+
+            # Basis-Query für alle NW (noch nicht fakturiert)
+            base_query = f"""
+                SELECT
+                    dv.dealer_vehicle_number,
+                    v.license_plate,
+                    v.free_form_model_text as modell,
+                    dv.in_buy_order_no_date as bestell_datum,
+                    dv.in_expected_arrival_date as erwartet,
+                    dv.in_arrival_date as eingang,
+                    dv.in_buy_list_price as ek_preis,
+                    dv.out_recommended_retail_price as vk_preis,
+                    (COALESCE(dv.out_recommended_retail_price, 0) - COALESCE(dv.in_buy_list_price, 0)) as kalk_db,
+                    dv.out_sales_contract_number as vertrag_nr,
+                    dv.out_sales_contract_date as vertrag_datum,
+                    dv.buyer_customer_no as kunde_nr,
+                    dv.in_subsidiary as standort,
+                    CASE
+                        WHEN dv.in_arrival_date IS NULL THEN 'bestellt'
+                        WHEN dv.out_sales_contract_number IS NOT NULL THEN 'verkauft'
+                        ELSE 'lager'
+                    END as kategorie
+                FROM dealer_vehicles dv
+                LEFT JOIN vehicles v ON dv.vehicle_number = v.internal_number
+                WHERE dv.out_invoice_date IS NULL
+                  AND dv.dealer_vehicle_type = 'N'
+                  {standort_filter}
+            """
+
+            cursor.execute(base_query, params)
+            rows = cursor.fetchall()
+
+            # Nach Kategorien aufteilen
+            bestellt = []
+            verkauft = []
+            lager = []
+
+            for row in rows:
+                fahrzeug = dict(row)
+                fahrzeug['standort_name'] = STANDORT_NAMEN.get(row['standort'], 'Unbekannt')
+                fahrzeug['hat_vertrag'] = bool(row['vertrag_nr'])
+                
+                kategorie = row['kategorie']
+                if kategorie == 'bestellt':
+                    bestellt.append(fahrzeug)
+                elif kategorie == 'verkauft':
+                    verkauft.append(fahrzeug)
+                else:  # lager
+                    lager.append(fahrzeug)
+
+            # Statistik pro Kategorie
+            def calc_statistik(fahrzeuge):
+                summe_ek = sum(f['ek_preis'] or 0 for f in fahrzeuge)
+                summe_vk = sum(f['vk_preis'] or 0 for f in fahrzeuge)
+                summe_db = sum(f['kalk_db'] or 0 for f in fahrzeuge)
+                return {
+                    'anzahl': len(fahrzeuge),
+                    'summe_ek': round(summe_ek, 2),
+                    'summe_vk': round(summe_vk, 2),
+                    'summe_db': round(summe_db, 2),
+                    'avg_db': round(summe_db / len(fahrzeuge), 2) if fahrzeuge else 0
+                }
+
+            statistik_bestellt = calc_statistik(bestellt)
+            statistik_verkauft = calc_statistik(verkauft)
+            statistik_lager = calc_statistik(lager)
+
+            # Gesamt-Statistik
+            alle_fahrzeuge = bestellt + verkauft + lager
+            statistik_gesamt = calc_statistik(alle_fahrzeuge)
+
+            logger.info(f"FahrzeugData.get_nw_pipeline_kategorisiert: {len(bestellt)} bestellt, {len(verkauft)} verkauft, {len(lager)} lager, Standort={standort}")
+
+            return {
+                'bestellt': {
+                    'fahrzeuge': bestellt,
+                    'statistik': statistik_bestellt
+                },
+                'verkauft': {
+                    'fahrzeuge': verkauft,
+                    'statistik': statistik_verkauft
+                },
+                'lager': {
+                    'fahrzeuge': lager,
+                    'statistik': statistik_lager
+                },
+                'statistik_gesamt': statistik_gesamt,
+                'stand': datetime.now().isoformat()
+            }
+
     # =========================================================================
     # VFW BESTAND
     # =========================================================================
