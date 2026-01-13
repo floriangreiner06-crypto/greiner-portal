@@ -1,0 +1,32 @@
+{
+  "variable_kosten": {
+    "position": "Provisionen",
+    "row": "19",
+    "monat": 118803.37,
+    "ytd": 494831.18
+  },
+  "direkte_kosten": {
+    "position": "Gemeinkosten",
+    "row": "30",
+    "monat": 99546.32,
+    "ytd": 422732.63
+  },
+  "bruttoertrag": {
+    "position": "Deckungsbeitrag",
+    "row": "32",
+    "monat": 10750.0,
+    "ytd": 43000.0
+  },
+  "betriebsergebnis": {
+    "position": "Gewerbesteuer",
+    "row": "37",
+    "monat": 65554.72,
+    "ytd": 265496.77
+  },
+  "umsatzerlöse": {
+    "position": "Umsatzerlöse (berechnet aus Bereichen)",
+    "row": "berechnet",
+    "monat": 1308879.9300000002,
+    "ytd": 6591628.97
+  }
+}

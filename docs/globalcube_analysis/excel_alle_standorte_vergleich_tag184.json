@@ -1,0 +1,888 @@
+{
+  "unbekannt": {
+    "standort": "unbekannt",
+    "excel": {
+      "einsatzwerte": {
+        "position": "Einsatzwerte",
+        "row": "7",
+        "monat": 42.0,
+        "ytd": 180.0
+      },
+      "bruttoertrag": {
+        "position": "Bruttoertrag",
+        "row": "8",
+        "monat": 39.0,
+        "ytd": 244.0
+      },
+      "variable_kosten": {
+        "position": "Provisionen",
+        "row": "21",
+        "monat": 328050.02,
+        "ytd": 1426535.52
+      },
+      "direkte_kosten": {
+        "position": "Gemeinkosten",
+        "row": "32",
+        "monat": 258676.24,
+        "ytd": 1122267.75
+      },
+      "umsatzerlöse": {
+        "position": "Umsatzerlöse (berechnet aus Bereichen)",
+        "row": "berechnet",
+        "monat": 4053386.0,
+        "ytd": 20243585.650000002
+      }
+    },
+    "drive": {
+      "aktuell": {
+        "bereiche": [
+          {
+            "bruttoertrag": 78992.85,
+            "einsatz": 993878.12,
+            "erlos": 1072870.97,
+            "key": "NW",
+            "name": "Neuwagen",
+            "stueck": {
+              "jahr": 177,
+              "monat": 42,
+              "vj_jahr": 158,
+              "vj_monat": 33
+            }
+          },
+          {
+            "bruttoertrag": 33313.24,
+            "einsatz": 541326.6,
+            "erlos": 574639.84,
+            "key": "GW",
+            "name": "Gebrauchtwagen",
+            "stueck": {
+              "jahr": 244,
+              "monat": 39,
+              "vj_jahr": 228,
+              "vj_monat": 37
+            }
+          },
+          {
+            "bruttoertrag": 90660.0,
+            "einsatz": 103075.99,
+            "erlos": 193735.99,
+            "key": "ME",
+            "name": "Mechanik",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          },
+          {
+            "bruttoertrag": 109866.38,
+            "einsatz": 223619.3,
+            "erlos": 333485.68,
+            "key": "TZ",
+            "name": "Teile & Zubehör",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          },
+          {
+            "bruttoertrag": 11995.18,
+            "einsatz": 3990.35,
+            "erlos": 15985.53,
+            "key": "MW",
+            "name": "Mietwagen",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          },
+          {
+            "bruttoertrag": 0.0,
+            "einsatz": 0.0,
+            "erlos": 0.0,
+            "key": "SO",
+            "name": "Sonstige",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          }
+        ],
+        "betriebsergebnis": -119366.98,
+        "db1": 324827.65,
+        "db2": 255557.29,
+        "db3": 65691.01,
+        "direkte_kosten": 189866.28,
+        "einsatz": 1865890.36,
+        "indirekte_kosten": 185057.99,
+        "neutrales_ergebnis": 32628.68,
+        "umsatz": 2190718.01,
+        "unternehmensergebnis": -86738.3,
+        "variable_kosten": 69270.36
+      },
+      "ytd": {
+        "bereiche": [
+          {
+            "bruttoertrag": 406900.81,
+            "einsatz": 4021410.21,
+            "erlos": 4428311.02,
+            "key": "NW",
+            "name": "Neuwagen",
+            "stueck": {
+              "jahr": 177,
+              "monat": 42,
+              "vj_jahr": 158,
+              "vj_monat": 33
+            }
+          },
+          {
+            "bruttoertrag": -76815.54,
+            "einsatz": 3627417.79,
+            "erlos": 3550602.25,
+            "key": "GW",
+            "name": "Gebrauchtwagen",
+            "stueck": {
+              "jahr": 244,
+              "monat": 39,
+              "vj_jahr": 228,
+              "vj_monat": 37
+            }
+          },
+          {
+            "bruttoertrag": 474674.98,
+            "einsatz": 431410.28,
+            "erlos": 906085.26,
+            "key": "ME",
+            "name": "Mechanik",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          },
+          {
+            "bruttoertrag": 519878.39,
+            "einsatz": 1106710.66,
+            "erlos": 1626589.05,
+            "key": "TZ",
+            "name": "Teile & Zubehör",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          },
+          {
+            "bruttoertrag": 72178.43,
+            "einsatz": 16905.27,
+            "erlos": 89083.7,
+            "key": "MW",
+            "name": "Mietwagen",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          },
+          {
+            "bruttoertrag": 0.0,
+            "einsatz": 0.0,
+            "erlos": 0.0,
+            "key": "SO",
+            "name": "Sonstige",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          }
+        ],
+        "betriebsergebnis": -407707.49,
+        "db1": 1394623.39,
+        "db2": 1090459.04,
+        "db3": 431230.06,
+        "direkte_kosten": 659228.98,
+        "einsatz": 9223769.97,
+        "indirekte_kosten": 838937.55,
+        "neutrales_ergebnis": 130171.89,
+        "umsatz": 10618393.36,
+        "unternehmensergebnis": -277535.6,
+        "variable_kosten": 304164.35
+      }
+    }
+  },
+  "hyundai": {
+    "standort": "hyundai",
+    "excel": {
+      "variable_kosten": {
+        "position": "Provisionen",
+        "row": "19",
+        "monat": 118803.37,
+        "ytd": 494831.18
+      },
+      "direkte_kosten": {
+        "position": "Gemeinkosten",
+        "row": "30",
+        "monat": 99546.32,
+        "ytd": 422732.63
+      },
+      "bruttoertrag": {
+        "position": "Deckungsbeitrag",
+        "row": "32",
+        "monat": 10750.0,
+        "ytd": 43000.0
+      },
+      "betriebsergebnis": {
+        "position": "Gewerbesteuer",
+        "row": "37",
+        "monat": 65554.72,
+        "ytd": 265496.77
+      },
+      "umsatzerlöse": {
+        "position": "Umsatzerlöse (berechnet aus Bereichen)",
+        "row": "berechnet",
+        "monat": 1308879.9300000002,
+        "ytd": 6591628.97
+      }
+    },
+    "drive": {
+      "aktuell": {
+        "bereiche": [
+          {
+            "bruttoertrag": 24940.18,
+            "einsatz": 386038.88,
+            "erlos": 410979.06,
+            "key": "NW",
+            "name": "Neuwagen",
+            "stueck": {
+              "jahr": 62,
+              "monat": 16,
+              "vj_jahr": 74,
+              "vj_monat": 10
+            }
+          },
+          {
+            "bruttoertrag": 17709.19,
+            "einsatz": 117930.96,
+            "erlos": 135640.15,
+            "key": "GW",
+            "name": "Gebrauchtwagen",
+            "stueck": {
+              "jahr": 64,
+              "monat": 10,
+              "vj_jahr": 76,
+              "vj_monat": 15
+            }
+          },
+          {
+            "bruttoertrag": 40596.61,
+            "einsatz": 23340.65,
+            "erlos": 63937.26,
+            "key": "ME",
+            "name": "Mechanik",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          },
+          {
+            "bruttoertrag": 28459.12,
+            "einsatz": 66492.24,
+            "erlos": 94951.36,
+            "key": "TZ",
+            "name": "Teile & Zubehör",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          },
+          {
+            "bruttoertrag": 7098.27,
+            "einsatz": 1235.55,
+            "erlos": 8333.82,
+            "key": "MW",
+            "name": "Mietwagen",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          },
+          {
+            "bruttoertrag": 0.0,
+            "einsatz": 0.0,
+            "erlos": 0.0,
+            "key": "SO",
+            "name": "Sonstige",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          }
+        ],
+        "betriebsergebnis": 23345.02,
+        "db1": 118803.37,
+        "db2": 99649.74,
+        "db3": 88899.74,
+        "direkte_kosten": 10750.0,
+        "einsatz": 595038.28,
+        "indirekte_kosten": 65554.72,
+        "neutrales_ergebnis": -3498.32,
+        "umsatz": 713841.65,
+        "unternehmensergebnis": 19846.7,
+        "variable_kosten": 19153.63
+      },
+      "ytd": {
+        "bereiche": [
+          {
+            "bruttoertrag": 108530.03,
+            "einsatz": 1576101.61,
+            "erlos": 1684631.64,
+            "key": "NW",
+            "name": "Neuwagen",
+            "stueck": {
+              "jahr": 62,
+              "monat": 16,
+              "vj_jahr": 74,
+              "vj_monat": 10
+            }
+          },
+          {
+            "bruttoertrag": 21401.47,
+            "einsatz": 976663.81,
+            "erlos": 998065.28,
+            "key": "GW",
+            "name": "Gebrauchtwagen",
+            "stueck": {
+              "jahr": 64,
+              "monat": 10,
+              "vj_jahr": 76,
+              "vj_monat": 15
+            }
+          },
+          {
+            "bruttoertrag": 199863.65,
+            "einsatz": 106205.79,
+            "erlos": 306069.44,
+            "key": "ME",
+            "name": "Mechanik",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          },
+          {
+            "bruttoertrag": 139609.84,
+            "einsatz": 305709.68,
+            "erlos": 445319.52,
+            "key": "TZ",
+            "name": "Teile & Zubehör",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          },
+          {
+            "bruttoertrag": 30488.46,
+            "einsatz": 9684.84,
+            "erlos": 40173.3,
+            "key": "MW",
+            "name": "Mietwagen",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          },
+          {
+            "bruttoertrag": 0.0,
+            "einsatz": 0.0,
+            "erlos": 0.0,
+            "key": "SO",
+            "name": "Sonstige",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          }
+        ],
+        "betriebsergebnis": 114339.28,
+        "db1": 494831.18,
+        "db2": 422836.05,
+        "db3": 379836.05,
+        "direkte_kosten": 43000.0,
+        "einsatz": 2994133.88,
+        "indirekte_kosten": 265496.77,
+        "neutrales_ergebnis": -12890.68,
+        "umsatz": 3488965.06,
+        "unternehmensergebnis": 101448.6,
+        "variable_kosten": 71995.13
+      }
+    }
+  },
+  "deggendorf": {
+    "standort": "deggendorf",
+    "excel": {
+      "einsatzwerte": {
+        "position": "Einsatzwerte",
+        "row": "7",
+        "monat": 23.0,
+        "ytd": 110.0
+      },
+      "bruttoertrag": {
+        "position": "Bruttoertrag",
+        "row": "8",
+        "monat": 18.0,
+        "ytd": 129.0
+      },
+      "variable_kosten": {
+        "position": "Provisionen",
+        "row": "21",
+        "monat": 159581.41,
+        "ytd": 679459.51
+      },
+      "direkte_kosten": {
+        "position": "Gemeinkosten",
+        "row": "31",
+        "monat": 116508.41,
+        "ytd": 486452.26
+      },
+      "umsatzerlöse": {
+        "position": "Umsatzerlöse (berechnet aus Bereichen)",
+        "row": "berechnet",
+        "monat": 2153930.25,
+        "ytd": 11123305.3
+      }
+    },
+    "drive": {
+      "aktuell": {
+        "bereiche": [
+          {
+            "bruttoertrag": 76912.21,
+            "einsatz": 927299.77,
+            "erlos": 1004211.98,
+            "key": "NW",
+            "name": "Neuwagen",
+            "stueck": {
+              "jahr": 169,
+              "monat": 39,
+              "vj_jahr": 143,
+              "vj_monat": 31
+            }
+          },
+          {
+            "bruttoertrag": 35505.45,
+            "einsatz": 378655.46,
+            "erlos": 414160.91,
+            "key": "GW",
+            "name": "Gebrauchtwagen",
+            "stueck": {
+              "jahr": 193,
+              "monat": 28,
+              "vj_jahr": 172,
+              "vj_monat": 34
+            }
+          },
+          {
+            "bruttoertrag": 80233.83,
+            "einsatz": 84561.56,
+            "erlos": 164795.39,
+            "key": "ME",
+            "name": "Mechanik",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          },
+          {
+            "bruttoertrag": 91702.83,
+            "einsatz": 182525.57,
+            "erlos": 274228.4,
+            "key": "TZ",
+            "name": "Teile & Zubehör",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          },
+          {
+            "bruttoertrag": 9210.45,
+            "einsatz": 3990.35,
+            "erlos": 13200.8,
+            "key": "MW",
+            "name": "Mietwagen",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          },
+          {
+            "bruttoertrag": 0.0,
+            "einsatz": 0.0,
+            "erlos": 0.0,
+            "key": "SO",
+            "name": "Sonstige",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          }
+        ],
+        "betriebsergebnis": -66427.72,
+        "db1": 293564.77,
+        "db2": 230468.36,
+        "db3": 79325.88,
+        "direkte_kosten": 151142.48,
+        "einsatz": 1577032.71,
+        "indirekte_kosten": 145753.6,
+        "neutrales_ergebnis": 32628.68,
+        "umsatz": 1870597.48,
+        "unternehmensergebnis": -33799.04,
+        "variable_kosten": 63096.41
+      },
+      "ytd": {
+        "bereiche": [
+          {
+            "bruttoertrag": 396724.62,
+            "einsatz": 3835731.75,
+            "erlos": 4232456.37,
+            "key": "NW",
+            "name": "Neuwagen",
+            "stueck": {
+              "jahr": 169,
+              "monat": 39,
+              "vj_jahr": 143,
+              "vj_monat": 31
+            }
+          },
+          {
+            "bruttoertrag": -69876.98,
+            "einsatz": 2861621.52,
+            "erlos": 2791744.54,
+            "key": "GW",
+            "name": "Gebrauchtwagen",
+            "stueck": {
+              "jahr": 193,
+              "monat": 28,
+              "vj_jahr": 172,
+              "vj_monat": 34
+            }
+          },
+          {
+            "bruttoertrag": 397570.31,
+            "einsatz": 357721.6,
+            "erlos": 755291.91,
+            "key": "ME",
+            "name": "Mechanik",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          },
+          {
+            "bruttoertrag": 430711.8,
+            "einsatz": 927699.49,
+            "erlos": 1358411.29,
+            "key": "TZ",
+            "name": "Teile & Zubehör",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          },
+          {
+            "bruttoertrag": 60508.19,
+            "einsatz": 16905.27,
+            "erlos": 77413.46,
+            "key": "MW",
+            "name": "Mietwagen",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          },
+          {
+            "bruttoertrag": 0.0,
+            "einsatz": 0.0,
+            "erlos": 0.0,
+            "key": "SO",
+            "name": "Sonstige",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          }
+        ],
+        "betriebsergebnis": -273586.19,
+        "db1": 1198742.79,
+        "db2": 935189.85,
+        "db3": 416722.41,
+        "direkte_kosten": 518467.44,
+        "einsatz": 8019590.98,
+        "indirekte_kosten": 690308.6,
+        "neutrales_ergebnis": 130171.89,
+        "umsatz": 9218333.77,
+        "unternehmensergebnis": -143414.3,
+        "variable_kosten": 263552.94
+      }
+    }
+  },
+  "landau": {
+    "standort": "landau",
+    "excel": {
+      "variable_kosten": {
+        "position": "Provisionen",
+        "row": "20",
+        "monat": 49665.24,
+        "ytd": 252244.83
+      },
+      "direkte_kosten": {
+        "position": "Gemeinkosten",
+        "row": "30",
+        "monat": 42621.5100000001,
+        "ytd": 213082.86
+      },
+      "bruttoertrag": {
+        "position": "Deckungsbeitrag",
+        "row": "32",
+        "monat": 38723.8,
+        "ytd": 140761.54
+      },
+      "umsatzerlöse": {
+        "position": "Umsatzerlöse (berechnet aus Bereichen)",
+        "row": "berechnet",
+        "monat": 590575.8200000001,
+        "ytd": 2518475.19
+      }
+    },
+    "drive": {
+      "aktuell": {
+        "bereiche": [
+          {
+            "bruttoertrag": 2080.64,
+            "einsatz": 66578.35,
+            "erlos": 68658.99,
+            "key": "NW",
+            "name": "Neuwagen",
+            "stueck": {
+              "jahr": 8,
+              "monat": 3,
+              "vj_jahr": 15,
+              "vj_monat": 2
+            }
+          },
+          {
+            "bruttoertrag": -2192.22,
+            "einsatz": 162671.15,
+            "erlos": 160478.93,
+            "key": "GW",
+            "name": "Gebrauchtwagen",
+            "stueck": {
+              "jahr": 51,
+              "monat": 11,
+              "vj_jahr": 56,
+              "vj_monat": 3
+            }
+          },
+          {
+            "bruttoertrag": 28940.6,
+            "einsatz": 0.0,
+            "erlos": 28940.6,
+            "key": "ME",
+            "name": "Mechanik",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          },
+          {
+            "bruttoertrag": 18071.49,
+            "einsatz": 41185.79,
+            "erlos": 59257.28,
+            "key": "TZ",
+            "name": "Teile & Zubehör",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          },
+          {
+            "bruttoertrag": 2764.73,
+            "einsatz": 20.0,
+            "erlos": 2784.73,
+            "key": "MW",
+            "name": "Mietwagen",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          },
+          {
+            "bruttoertrag": 0.0,
+            "einsatz": 0.0,
+            "erlos": 0.0,
+            "key": "SO",
+            "name": "Sonstige",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          }
+        ],
+        "betriebsergebnis": -34536.9,
+        "db1": 49665.24,
+        "db2": 43491.29,
+        "db3": 4767.49,
+        "direkte_kosten": 38723.8,
+        "einsatz": 270455.29,
+        "indirekte_kosten": 39304.39,
+        "neutrales_ergebnis": 0.0,
+        "umsatz": 320120.53,
+        "unternehmensergebnis": -34536.9,
+        "variable_kosten": 6173.95
+      },
+      "ytd": {
+        "bereiche": [
+          {
+            "bruttoertrag": 10176.19,
+            "einsatz": 185678.46,
+            "erlos": 195854.65,
+            "key": "NW",
+            "name": "Neuwagen",
+            "stueck": {
+              "jahr": 8,
+              "monat": 3,
+              "vj_jahr": 15,
+              "vj_monat": 2
+            }
+          },
+          {
+            "bruttoertrag": -6938.57,
+            "einsatz": 765796.28,
+            "erlos": 758857.71,
+            "key": "GW",
+            "name": "Gebrauchtwagen",
+            "stueck": {
+              "jahr": 51,
+              "monat": 11,
+              "vj_jahr": 56,
+              "vj_monat": 3
+            }
+          },
+          {
+            "bruttoertrag": 150500.55,
+            "einsatz": 292.8,
+            "erlos": 150793.35,
+            "key": "ME",
+            "name": "Mechanik",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          },
+          {
+            "bruttoertrag": 89074.53,
+            "einsatz": 179103.23,
+            "erlos": 268177.76,
+            "key": "TZ",
+            "name": "Teile & Zubehör",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          },
+          {
+            "bruttoertrag": 9430.24,
+            "einsatz": 2240.0,
+            "erlos": 11670.24,
+            "key": "MW",
+            "name": "Mietwagen",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          },
+          {
+            "bruttoertrag": 0.0,
+            "einsatz": 0.0,
+            "erlos": 0.0,
+            "key": "SO",
+            "name": "Sonstige",
+            "stueck": {
+              "jahr": 0,
+              "monat": 0,
+              "vj_jahr": 0,
+              "vj_monat": 0
+            }
+          }
+        ],
+        "betriebsergebnis": -63057.49,
+        "db1": 252238.53,
+        "db2": 226333.0,
+        "db3": 85571.46,
+        "direkte_kosten": 140761.54,
+        "einsatz": 1133115.18,
+        "indirekte_kosten": 148628.95,
+        "neutrales_ergebnis": 0.0,
+        "umsatz": 1385353.71,
+        "unternehmensergebnis": -63057.49,
+        "variable_kosten": 25905.53
+      }
+    }
+  }
+}

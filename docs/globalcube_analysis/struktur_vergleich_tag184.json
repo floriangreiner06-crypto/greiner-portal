@@ -1,0 +1,1116 @@
+{
+  "guv_struktur": {
+    "48": {
+      "name": "Struktur_GuV",
+      "id": "48",
+      "level": 0,
+      "parent_id": null,
+      "children": [
+        "49",
+        "94",
+        "98"
+      ]
+    },
+    "49": {
+      "name": "GuV",
+      "id": "49",
+      "level": 1,
+      "parent_id": "48",
+      "children": [
+        "50",
+        "58",
+        "59",
+        "60",
+        "70",
+        "80",
+        "83",
+        "88",
+        "89",
+        "90",
+        "91",
+        "92",
+        "93"
+      ]
+    },
+    "50": {
+      "name": "1. Umsatzerlöse",
+      "id": "50",
+      "level": 2,
+      "parent_id": "49",
+      "children": [
+        "51",
+        "52",
+        "53",
+        "54",
+        "55",
+        "56",
+        "57"
+      ]
+    },
+    "51": {
+      "name": "a) Neuwagen",
+      "id": "51",
+      "level": 3,
+      "parent_id": "50",
+      "children": []
+    },
+    "52": {
+      "name": "b) Gebrauchtwagen",
+      "id": "52",
+      "level": 3,
+      "parent_id": "50",
+      "children": []
+    },
+    "53": {
+      "name": "c) Teile & Zubehör",
+      "id": "53",
+      "level": 3,
+      "parent_id": "50",
+      "children": []
+    },
+    "54": {
+      "name": "d) Service",
+      "id": "54",
+      "level": 3,
+      "parent_id": "50",
+      "children": []
+    },
+    "55": {
+      "name": "e) Mietwagen",
+      "id": "55",
+      "level": 3,
+      "parent_id": "50",
+      "children": []
+    },
+    "56": {
+      "name": "f) Tankstelle",
+      "id": "56",
+      "level": 3,
+      "parent_id": "50",
+      "children": []
+    },
+    "57": {
+      "name": "g) Umlagen",
+      "id": "57",
+      "level": 3,
+      "parent_id": "50",
+      "children": []
+    },
+    "58": {
+      "name": "2. Erhöhung oder Verminderung des Bestands an fertigen und unfertigen Erzeugnissen",
+      "id": "58",
+      "level": 2,
+      "parent_id": "49",
+      "children": []
+    },
+    "59": {
+      "name": "4. Sonstige betriebliche Erträge",
+      "id": "59",
+      "level": 2,
+      "parent_id": "49",
+      "children": []
+    },
+    "60": {
+      "name": "5. Materialaufwand",
+      "id": "60",
+      "level": 2,
+      "parent_id": "49",
+      "children": [
+        "61",
+        "69"
+      ]
+    },
+    "61": {
+      "name": "a) Aufwendungen für Roh-,Hilfs- und Betriebsstoffe und für bezogene Waren",
+      "id": "61",
+      "level": 3,
+      "parent_id": "60",
+      "children": [
+        "62",
+        "63",
+        "64",
+        "65",
+        "66",
+        "67",
+        "68"
+      ]
+    },
+    "62": {
+      "name": "aa) Neuwagen",
+      "id": "62",
+      "level": 4,
+      "parent_id": "61",
+      "children": []
+    },
+    "63": {
+      "name": "ab) Gebrauchtwagen",
+      "id": "63",
+      "level": 4,
+      "parent_id": "61",
+      "children": []
+    },
+    "64": {
+      "name": "ac) Teile & Zubehör",
+      "id": "64",
+      "level": 4,
+      "parent_id": "61",
+      "children": []
+    },
+    "65": {
+      "name": "ad) Service",
+      "id": "65",
+      "level": 4,
+      "parent_id": "61",
+      "children": []
+    },
+    "66": {
+      "name": "ae) Mietwagen",
+      "id": "66",
+      "level": 4,
+      "parent_id": "61",
+      "children": []
+    },
+    "67": {
+      "name": "af) Tankstelle",
+      "id": "67",
+      "level": 4,
+      "parent_id": "61",
+      "children": []
+    },
+    "68": {
+      "name": "ag) Umlagen",
+      "id": "68",
+      "level": 4,
+      "parent_id": "61",
+      "children": []
+    },
+    "69": {
+      "name": "b) Aufwendungen für bezogene Leistungen",
+      "id": "69",
+      "level": 3,
+      "parent_id": "60",
+      "children": []
+    },
+    "70": {
+      "name": "6. Personalaufwand",
+      "id": "70",
+      "level": 2,
+      "parent_id": "49",
+      "children": [
+        "71",
+        "77"
+      ]
+    },
+    "71": {
+      "name": "a) Löhne und Gehälter",
+      "id": "71",
+      "level": 3,
+      "parent_id": "70",
+      "children": [
+        "72",
+        "73",
+        "74",
+        "75",
+        "76"
+      ]
+    },
+    "72": {
+      "name": "aa) Lohn",
+      "id": "72",
+      "level": 4,
+      "parent_id": "71",
+      "children": []
+    },
+    "73": {
+      "name": "ab) Gehalt",
+      "id": "73",
+      "level": 4,
+      "parent_id": "71",
+      "children": []
+    },
+    "74": {
+      "name": "ac) Urlaubsgeld",
+      "id": "74",
+      "level": 4,
+      "parent_id": "71",
+      "children": []
+    },
+    "75": {
+      "name": "ad) Ausbildung",
+      "id": "75",
+      "level": 4,
+      "parent_id": "71",
+      "children": []
+    },
+    "76": {
+      "name": "ae) Fertigungslohn",
+      "id": "76",
+      "level": 4,
+      "parent_id": "71",
+      "children": []
+    },
+    "77": {
+      "name": "b) soziale Abgaben und Aufwendungen für Altersvorsorge",
+      "id": "77",
+      "level": 3,
+      "parent_id": "70",
+      "children": [
+        "78",
+        "79"
+      ]
+    },
+    "78": {
+      "name": "ba) soziale Abgaben",
+      "id": "78",
+      "level": 4,
+      "parent_id": "77",
+      "children": []
+    },
+    "79": {
+      "name": "bb) Aufwendungen für Altersvorsorge",
+      "id": "79",
+      "level": 4,
+      "parent_id": "77",
+      "children": []
+    },
+    "80": {
+      "name": "7. Abschreibungen",
+      "id": "80",
+      "level": 2,
+      "parent_id": "49",
+      "children": [
+        "81",
+        "82"
+      ]
+    },
+    "81": {
+      "name": "a. auf immaterielle Vermögensgegenstände des Anlagevermögens und Sachanlagen sowie auf aktivierte Eigenleistungen...",
+      "id": "81",
+      "level": 3,
+      "parent_id": "80",
+      "children": []
+    },
+    "82": {
+      "name": "b. auf Vermögensgegenstände des Umlaufvermögens...",
+      "id": "82",
+      "level": 3,
+      "parent_id": "80",
+      "children": []
+    },
+    "83": {
+      "name": "8. Sonstige betriebliche Aufwendungen",
+      "id": "83",
+      "level": 2,
+      "parent_id": "49",
+      "children": [
+        "84",
+        "85",
+        "86",
+        "87"
+      ]
+    },
+    "84": {
+      "name": "a) Betriebsaufwendungen",
+      "id": "84",
+      "level": 3,
+      "parent_id": "83",
+      "children": []
+    },
+    "85": {
+      "name": "b) Vertriebsaufwendungen",
+      "id": "85",
+      "level": 3,
+      "parent_id": "83",
+      "children": []
+    },
+    "86": {
+      "name": "c) Verwaltungsaufwendungen",
+      "id": "86",
+      "level": 3,
+      "parent_id": "83",
+      "children": []
+    },
+    "87": {
+      "name": "d) Übrige Aufwendungen",
+      "id": "87",
+      "level": 3,
+      "parent_id": "83",
+      "children": []
+    },
+    "88": {
+      "name": "9. Zinsen und ähnliche Erträge",
+      "id": "88",
+      "level": 2,
+      "parent_id": "49",
+      "children": []
+    },
+    "89": {
+      "name": "10. Zinsen und ähnliche Aufwendungen",
+      "id": "89",
+      "level": 2,
+      "parent_id": "49",
+      "children": []
+    },
+    "90": {
+      "name": "12. Außerordentliche Erträge",
+      "id": "90",
+      "level": 2,
+      "parent_id": "49",
+      "children": []
+    },
+    "91": {
+      "name": "13. Außerordentliche Aufwendungen",
+      "id": "91",
+      "level": 2,
+      "parent_id": "49",
+      "children": []
+    },
+    "92": {
+      "name": "14. Steuern vom Einkommen und vom Ertrag",
+      "id": "92",
+      "level": 2,
+      "parent_id": "49",
+      "children": []
+    },
+    "93": {
+      "name": "15. sonstige Steuern",
+      "id": "93",
+      "level": 2,
+      "parent_id": "49",
+      "children": []
+    },
+    "94": {
+      "name": "keine Zuordnung",
+      "id": "94",
+      "level": 1,
+      "parent_id": "48",
+      "children": []
+    },
+    "98": {
+      "name": "nicht benötigte Konten",
+      "id": "98",
+      "level": 1,
+      "parent_id": "48",
+      "children": []
+    }
+  },
+  "controlling_struktur": {
+    "1": {
+      "name": "Struktur_Controlling",
+      "id": "1",
+      "level": 0,
+      "parent_id": null,
+      "children": [
+        "9",
+        "11",
+        "12",
+        "13",
+        "91",
+        "93",
+        "14",
+        "15",
+        "16",
+        "22",
+        "25",
+        "30",
+        "35",
+        "37",
+        "38",
+        "46",
+        "87",
+        "88",
+        "89",
+        "90",
+        "2",
+        "3",
+        "26"
+      ]
+    },
+    "9": {
+      "name": "Umsatz Opel",
+      "id": "9",
+      "level": 1,
+      "parent_id": "1",
+      "children": [
+        "97",
+        "10"
+      ]
+    },
+    "97": {
+      "name": "Eigenverkauf",
+      "id": "97",
+      "level": 2,
+      "parent_id": "9",
+      "children": []
+    },
+    "10": {
+      "name": "davon AOV",
+      "id": "10",
+      "level": 2,
+      "parent_id": "9",
+      "children": []
+    },
+    "11": {
+      "name": "EW NW Opel",
+      "id": "11",
+      "level": 1,
+      "parent_id": "1",
+      "children": []
+    },
+    "12": {
+      "name": "Umsatz GW",
+      "id": "12",
+      "level": 1,
+      "parent_id": "1",
+      "children": []
+    },
+    "13": {
+      "name": "EW GW",
+      "id": "13",
+      "level": 1,
+      "parent_id": "1",
+      "children": []
+    },
+    "91": {
+      "name": "Umsatz NW VW",
+      "id": "91",
+      "level": 1,
+      "parent_id": "1",
+      "children": []
+    },
+    "93": {
+      "name": "EW NW VW",
+      "id": "93",
+      "level": 1,
+      "parent_id": "1",
+      "children": []
+    },
+    "14": {
+      "name": "Umsatz NW Honda",
+      "id": "14",
+      "level": 1,
+      "parent_id": "1",
+      "children": []
+    },
+    "15": {
+      "name": "EW NW Honda",
+      "id": "15",
+      "level": 1,
+      "parent_id": "1",
+      "children": []
+    },
+    "16": {
+      "name": "Umsatz Service",
+      "id": "16",
+      "level": 1,
+      "parent_id": "1",
+      "children": [
+        "17",
+        "18",
+        "19",
+        "21"
+      ]
+    },
+    "17": {
+      "name": "davon Lohnerl.  VW",
+      "id": "17",
+      "level": 2,
+      "parent_id": "16",
+      "children": []
+    },
+    "18": {
+      "name": "davon Lohnerl. and.",
+      "id": "18",
+      "level": 2,
+      "parent_id": "16",
+      "children": []
+    },
+    "19": {
+      "name": "davon Erlöse  Fremdl.",
+      "id": "19",
+      "level": 2,
+      "parent_id": "16",
+      "children": []
+    },
+    "21": {
+      "name": "davon Erlöse Sonst.",
+      "id": "21",
+      "level": 2,
+      "parent_id": "16",
+      "children": []
+    },
+    "22": {
+      "name": "EW Serv. ges. (inkl. Fert.lohn)",
+      "id": "22",
+      "level": 1,
+      "parent_id": "1",
+      "children": []
+    },
+    "25": {
+      "name": "Umsatz Teile gesamt",
+      "id": "25",
+      "level": 1,
+      "parent_id": "1",
+      "children": [
+        "27",
+        "28",
+        "29"
+      ]
+    },
+    "27": {
+      "name": "davon OT",
+      "id": "27",
+      "level": 2,
+      "parent_id": "25",
+      "children": []
+    },
+    "28": {
+      "name": "davon VW-Teile",
+      "id": "28",
+      "level": 2,
+      "parent_id": "25",
+      "children": []
+    },
+    "29": {
+      "name": "davon ATZ/Honda -Teile",
+      "id": "29",
+      "level": 2,
+      "parent_id": "25",
+      "children": []
+    },
+    "30": {
+      "name": "EW OT/ATZ/VW/Honda Teile",
+      "id": "30",
+      "level": 1,
+      "parent_id": "1",
+      "children": []
+    },
+    "35": {
+      "name": "Neutraler Ertrag",
+      "id": "35",
+      "level": 1,
+      "parent_id": "1",
+      "children": [
+        "32",
+        "33",
+        "36",
+        "34"
+      ]
+    },
+    "32": {
+      "name": "Sonstige Erträge betrieblich und regelm. - zahl.unwirksam",
+      "id": "32",
+      "level": 2,
+      "parent_id": "35",
+      "children": []
+    },
+    "33": {
+      "name": "Erträge aus abgeschr.Forderungen",
+      "id": "33",
+      "level": 2,
+      "parent_id": "35",
+      "children": []
+    },
+    "36": {
+      "name": "Periodenfr. Erträge - zahl.wirksam",
+      "id": "36",
+      "level": 2,
+      "parent_id": "35",
+      "children": []
+    },
+    "34": {
+      "name": "Investitionszuschüsse (steuerpfl.)",
+      "id": "34",
+      "level": 2,
+      "parent_id": "35",
+      "children": []
+    },
+    "37": {
+      "name": "Personalaufwand",
+      "id": "37",
+      "level": 1,
+      "parent_id": "1",
+      "children": []
+    },
+    "38": {
+      "name": "Summe betriebl. Aufwand",
+      "id": "38",
+      "level": 1,
+      "parent_id": "1",
+      "children": [
+        "54",
+        "55",
+        "56",
+        "57",
+        "58",
+        "59",
+        "60",
+        "61",
+        "62",
+        "63",
+        "64",
+        "65",
+        "66",
+        "67",
+        "68",
+        "69",
+        "70",
+        "71",
+        "72",
+        "73",
+        "74",
+        "75",
+        "76",
+        "77",
+        "78",
+        "79",
+        "80",
+        "81",
+        "82",
+        "83",
+        "84",
+        "85",
+        "86"
+      ]
+    },
+    "54": {
+      "name": "Fremdarbeiten (ohne Waren-Material-Einsatz)",
+      "id": "54",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "55": {
+      "name": "Miete und Pacht",
+      "id": "55",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "56": {
+      "name": "Heizung",
+      "id": "56",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "57": {
+      "name": "Gas, Strom, Wasser",
+      "id": "57",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "58": {
+      "name": "Reinigung",
+      "id": "58",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "59": {
+      "name": "Instandhaltung betriebl. Räume",
+      "id": "59",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "60": {
+      "name": "Abgaben f. betriebl.genutzen Grundbesitz",
+      "id": "60",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "61": {
+      "name": "Sonstige Raumkosten",
+      "id": "61",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "62": {
+      "name": "Sonstige Grundstücksaufwendungen",
+      "id": "62",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "63": {
+      "name": "Spenden - steuerlich nicht abziehbar",
+      "id": "63",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "64": {
+      "name": "Beiträge und Spenden",
+      "id": "64",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "65": {
+      "name": "Versicherungen",
+      "id": "65",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "66": {
+      "name": "Beiträge u. sonstige Abgaben",
+      "id": "66",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "67": {
+      "name": "Reisekosten",
+      "id": "67",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "68": {
+      "name": "Kfz-Kosten",
+      "id": "68",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "69": {
+      "name": "Werbekosten",
+      "id": "69",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "70": {
+      "name": "Kosten d. Warenabgabe (ohne Verk.prov.)",
+      "id": "70",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "71": {
+      "name": "Verkaufsporvision",
+      "id": "71",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "72": {
+      "name": "Sonstige Dienstleistungen",
+      "id": "72",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "73": {
+      "name": "Aufwand für Gewährleistung",
+      "id": "73",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "74": {
+      "name": "Porto",
+      "id": "74",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "75": {
+      "name": "Telefon, Telefax",
+      "id": "75",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "76": {
+      "name": "Sonstiger Bürobedarf",
+      "id": "76",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "77": {
+      "name": "Fortbildungskosten",
+      "id": "77",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "78": {
+      "name": "Freiwillige Sozialleistungen",
+      "id": "78",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "79": {
+      "name": "Rechts-, Beratungs-, Abschluss-Prüfungskosten",
+      "id": "79",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "80": {
+      "name": "Mieten für Einrichtungen",
+      "id": "80",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "81": {
+      "name": "Mietleasing",
+      "id": "81",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "82": {
+      "name": "Werkzeuge und Kleingeräte",
+      "id": "82",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "83": {
+      "name": "Sonstiger Betriebsbedarf",
+      "id": "83",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "84": {
+      "name": "Nebenkosten des Geldverkehrs",
+      "id": "84",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "85": {
+      "name": "Aufwendg. für Abraum-Abfallbeseitung",
+      "id": "85",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "86": {
+      "name": "verrechn. kalkul. Kosten (Untern.lohn/Zinsen u.a.)",
+      "id": "86",
+      "level": 2,
+      "parent_id": "38",
+      "children": []
+    },
+    "46": {
+      "name": "Neutrale Aufwendungen",
+      "id": "46",
+      "level": 1,
+      "parent_id": "1",
+      "children": [
+        "39",
+        "40",
+        "41",
+        "42",
+        "43",
+        "44",
+        "45",
+        "47",
+        "48",
+        "51",
+        "52",
+        "53"
+      ]
+    },
+    "39": {
+      "name": "Planm.Abschr. auf Sachanlagen",
+      "id": "39",
+      "level": 2,
+      "parent_id": "46",
+      "children": []
+    },
+    "40": {
+      "name": "Abschreibung auf Umlaufvermögen",
+      "id": "40",
+      "level": 2,
+      "parent_id": "46",
+      "children": []
+    },
+    "41": {
+      "name": "Forderungsverluste (übliche Höhe)",
+      "id": "41",
+      "level": 2,
+      "parent_id": "46",
+      "children": []
+    },
+    "42": {
+      "name": "Periodenfremde Aufw. - zahlungswirksam -",
+      "id": "42",
+      "level": 2,
+      "parent_id": "46",
+      "children": []
+    },
+    "43": {
+      "name": "Sonst. Aufw. unregelmäßig - zahlungswirksam -",
+      "id": "43",
+      "level": 2,
+      "parent_id": "46",
+      "children": []
+    },
+    "44": {
+      "name": "Sonst. Aufw. unregelmäßig -zahlungsunswirksam -",
+      "id": "44",
+      "level": 2,
+      "parent_id": "46",
+      "children": []
+    },
+    "45": {
+      "name": "Kassendifferenzen",
+      "id": "45",
+      "level": 2,
+      "parent_id": "46",
+      "children": []
+    },
+    "47": {
+      "name": "Verrechnete kalkulat. Kosten",
+      "id": "47",
+      "level": 2,
+      "parent_id": "46",
+      "children": []
+    },
+    "48": {
+      "name": "Zinsaufwend. f. kurzfrist. Verbindlichkeiten",
+      "id": "48",
+      "level": 2,
+      "parent_id": "46",
+      "children": [
+        "49",
+        "50"
+      ]
+    },
+    "49": {
+      "name": "dav. Zinsaufwend. Kto.korrent",
+      "id": "49",
+      "level": 3,
+      "parent_id": "48",
+      "children": []
+    },
+    "50": {
+      "name": "dav. Zinsaufwend. f. Lagerwaren",
+      "id": "50",
+      "level": 3,
+      "parent_id": "48",
+      "children": []
+    },
+    "51": {
+      "name": "Zinsaufwend. f. langfrist. Verbindlichkeiten",
+      "id": "51",
+      "level": 2,
+      "parent_id": "46",
+      "children": []
+    },
+    "52": {
+      "name": "Gewerbesteuer",
+      "id": "52",
+      "level": 2,
+      "parent_id": "46",
+      "children": []
+    },
+    "53": {
+      "name": "Sonstige Steuern",
+      "id": "53",
+      "level": 2,
+      "parent_id": "46",
+      "children": []
+    },
+    "87": {
+      "name": "Rent",
+      "id": "87",
+      "level": 1,
+      "parent_id": "1",
+      "children": []
+    },
+    "88": {
+      "name": "Lagerkorr. Teile",
+      "id": "88",
+      "level": 1,
+      "parent_id": "1",
+      "children": []
+    },
+    "89": {
+      "name": "Lagerkorr. Fahrzeuge",
+      "id": "89",
+      "level": 1,
+      "parent_id": "1",
+      "children": []
+    },
+    "90": {
+      "name": "Einkauf Teile",
+      "id": "90",
+      "level": 1,
+      "parent_id": "1",
+      "children": []
+    },
+    "2": {
+      "name": "keine Zuordnung",
+      "id": "2",
+      "level": 1,
+      "parent_id": "1",
+      "children": []
+    },
+    "3": {
+      "name": "Bilanz",
+      "id": "3",
+      "level": 1,
+      "parent_id": "1",
+      "children": []
+    },
+    "26": {
+      "name": "Im Kontenschema nicht vorhanden",
+      "id": "26",
+      "level": 1,
+      "parent_id": "1",
+      "children": []
+    }
+  },
+  "drive_bereiche": {
+    "NW": {
+      "erlos_prefix": "81",
+      "einsatz_prefix": "71"
+    },
+    "GW": {
+      "erlos_prefix": "82",
+      "einsatz_prefix": "72"
+    },
+    "Teile": {
+      "erlos_prefix": "83",
+      "einsatz_prefix": "73"
+    },
+    "Service": {
+      "erlos_prefix": "84",
+      "einsatz_prefix": "74"
+    }
+  },
+  "recommendations": [
+    {
+      "position": "Ausbildung (ID: 75)",
+      "finding": "Separate Position in GuV-Struktur gefunden",
+      "recommendation": "411xxx sollte NICHT in direkten Kosten sein (bereits korrekt in DRIVE)",
+      "status": "✅ Bestätigt"
+    },
+    {
+      "position": "Konto-Mappings",
+      "finding": "Kontenrahmen.csv enthält keine direkten BWA-Konten (7xxxxx/8xxxxx/4xxxxx)",
+      "recommendation": "Alternative Quellen nutzen: Excel-Exports, Portal-Reports, oder f_belege Cube",
+      "status": "⏳ Offen"
+    },
+    {
+      "position": "Personalaufwand (ID: 37)",
+      "finding": "Separate Position in Controlling-Struktur",
+      "recommendation": "Prüfe ob Personalaufwand-Konten korrekt zugeordnet sind",
+      "status": "⏳ Zu prüfen"
+    }
+  ]
+}

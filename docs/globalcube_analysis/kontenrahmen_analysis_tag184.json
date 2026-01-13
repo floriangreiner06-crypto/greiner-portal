@@ -1,0 +1,499 @@
+{
+  "konten_data": {
+    "total": 4221,
+    "bwa_relevant": 0,
+    "ebene_columns": [
+      "Ebene1",
+      "Ebene2",
+      "Ebene3",
+      "Ebene4",
+      "Ebene5",
+      "Ebene6",
+      "Ebene7",
+      "Ebene8",
+      "Ebene9",
+      "Ebene10",
+      "Ebene11",
+      "Ebene12",
+      "Ebene13",
+      "Ebene14",
+      "Ebene15",
+      "Ebene16",
+      "Ebene17",
+      "Ebene18",
+      "Ebene19",
+      "Ebene20",
+      "Ebene21",
+      "Ebene22",
+      "Ebene23",
+      "Ebene24",
+      "Ebene25",
+      "Ebene26",
+      "Ebene27",
+      "Ebene28",
+      "Ebene29",
+      "Ebene30",
+      "Ebene31",
+      "Ebene32",
+      "Ebene33",
+      "Ebene34",
+      "Ebene35",
+      "Ebene36",
+      "Ebene37",
+      "Ebene38",
+      "Ebene39",
+      "Ebene40",
+      "Ebene41",
+      "Ebene42",
+      "Ebene43",
+      "Ebene44",
+      "Ebene45",
+      "Ebene46",
+      "Ebene47",
+      "Ebene48",
+      "Ebene49",
+      "Ebene50",
+      "Ebene51",
+      "Ebene52",
+      "Ebene53",
+      "Ebene54",
+      "Ebene55",
+      "Ebene56",
+      "Ebene57",
+      "Ebene58",
+      "Ebene59",
+      "Ebene60",
+      "Ebene61",
+      "Ebene62",
+      "Ebene63",
+      "Ebene64",
+      "Ebene65",
+      "Ebene66",
+      "Ebene67",
+      "Ebene68",
+      "Ebene69",
+      "Ebene70",
+      "Ebene71",
+      "Ebene72",
+      "Ebene73",
+      "Ebene74",
+      "Ebene75",
+      "Ebene76",
+      "Ebene77",
+      "Ebene78",
+      "Ebene79",
+      "Ebene80",
+      "Ebene81",
+      "Ebene82",
+      "Ebene83",
+      "Ebene84",
+      "Ebene85",
+      "Ebene86",
+      "Ebene87",
+      "Ebene88",
+      "Ebene89",
+      "Ebene90"
+    ]
+  },
+  "struktur_data": {
+    "48": {
+      "name": "Struktur_GuV",
+      "id": "48",
+      "parent_id": null,
+      "level": 0,
+      "children": [
+        "49",
+        "94",
+        "98"
+      ]
+    },
+    "49": {
+      "name": "GuV",
+      "id": "49",
+      "parent_id": "48",
+      "level": 1,
+      "children": [
+        "50",
+        "58",
+        "59",
+        "60",
+        "70",
+        "80",
+        "83",
+        "88",
+        "89",
+        "90",
+        "91",
+        "92",
+        "93"
+      ]
+    },
+    "50": {
+      "name": "1. Umsatzerlöse",
+      "id": "50",
+      "parent_id": "49",
+      "level": 2,
+      "children": [
+        "51",
+        "52",
+        "53",
+        "54",
+        "55",
+        "56",
+        "57"
+      ]
+    },
+    "51": {
+      "name": "a) Neuwagen",
+      "id": "51",
+      "parent_id": "50",
+      "level": 3,
+      "children": []
+    },
+    "52": {
+      "name": "b) Gebrauchtwagen",
+      "id": "52",
+      "parent_id": "50",
+      "level": 3,
+      "children": []
+    },
+    "53": {
+      "name": "c) Teile & Zubehör",
+      "id": "53",
+      "parent_id": "50",
+      "level": 3,
+      "children": []
+    },
+    "54": {
+      "name": "d) Service",
+      "id": "54",
+      "parent_id": "50",
+      "level": 3,
+      "children": []
+    },
+    "55": {
+      "name": "e) Mietwagen",
+      "id": "55",
+      "parent_id": "50",
+      "level": 3,
+      "children": []
+    },
+    "56": {
+      "name": "f) Tankstelle",
+      "id": "56",
+      "parent_id": "50",
+      "level": 3,
+      "children": []
+    },
+    "57": {
+      "name": "g) Umlagen",
+      "id": "57",
+      "parent_id": "50",
+      "level": 3,
+      "children": []
+    },
+    "58": {
+      "name": "2. Erhöhung oder Verminderung des Bestands an fertigen und unfertigen Erzeugnissen",
+      "id": "58",
+      "parent_id": "49",
+      "level": 2,
+      "children": []
+    },
+    "59": {
+      "name": "4. Sonstige betriebliche Erträge",
+      "id": "59",
+      "parent_id": "49",
+      "level": 2,
+      "children": []
+    },
+    "60": {
+      "name": "5. Materialaufwand",
+      "id": "60",
+      "parent_id": "49",
+      "level": 2,
+      "children": [
+        "61",
+        "69"
+      ]
+    },
+    "61": {
+      "name": "a) Aufwendungen für Roh-,Hilfs- und Betriebsstoffe und für bezogene Waren",
+      "id": "61",
+      "parent_id": "60",
+      "level": 3,
+      "children": [
+        "62",
+        "63",
+        "64",
+        "65",
+        "66",
+        "67",
+        "68"
+      ]
+    },
+    "62": {
+      "name": "aa) Neuwagen",
+      "id": "62",
+      "parent_id": "61",
+      "level": 4,
+      "children": []
+    },
+    "63": {
+      "name": "ab) Gebrauchtwagen",
+      "id": "63",
+      "parent_id": "61",
+      "level": 4,
+      "children": []
+    },
+    "64": {
+      "name": "ac) Teile & Zubehör",
+      "id": "64",
+      "parent_id": "61",
+      "level": 4,
+      "children": []
+    },
+    "65": {
+      "name": "ad) Service",
+      "id": "65",
+      "parent_id": "61",
+      "level": 4,
+      "children": []
+    },
+    "66": {
+      "name": "ae) Mietwagen",
+      "id": "66",
+      "parent_id": "61",
+      "level": 4,
+      "children": []
+    },
+    "67": {
+      "name": "af) Tankstelle",
+      "id": "67",
+      "parent_id": "61",
+      "level": 4,
+      "children": []
+    },
+    "68": {
+      "name": "ag) Umlagen",
+      "id": "68",
+      "parent_id": "61",
+      "level": 4,
+      "children": []
+    },
+    "69": {
+      "name": "b) Aufwendungen für bezogene Leistungen",
+      "id": "69",
+      "parent_id": "60",
+      "level": 3,
+      "children": []
+    },
+    "70": {
+      "name": "6. Personalaufwand",
+      "id": "70",
+      "parent_id": "49",
+      "level": 2,
+      "children": [
+        "71",
+        "77"
+      ]
+    },
+    "71": {
+      "name": "a) Löhne und Gehälter",
+      "id": "71",
+      "parent_id": "70",
+      "level": 3,
+      "children": [
+        "72",
+        "73",
+        "74",
+        "75",
+        "76"
+      ]
+    },
+    "72": {
+      "name": "aa) Lohn",
+      "id": "72",
+      "parent_id": "71",
+      "level": 4,
+      "children": []
+    },
+    "73": {
+      "name": "ab) Gehalt",
+      "id": "73",
+      "parent_id": "71",
+      "level": 4,
+      "children": []
+    },
+    "74": {
+      "name": "ac) Urlaubsgeld",
+      "id": "74",
+      "parent_id": "71",
+      "level": 4,
+      "children": []
+    },
+    "75": {
+      "name": "ad) Ausbildung",
+      "id": "75",
+      "parent_id": "71",
+      "level": 4,
+      "children": []
+    },
+    "76": {
+      "name": "ae) Fertigungslohn",
+      "id": "76",
+      "parent_id": "71",
+      "level": 4,
+      "children": []
+    },
+    "77": {
+      "name": "b) soziale Abgaben und Aufwendungen für Altersvorsorge",
+      "id": "77",
+      "parent_id": "70",
+      "level": 3,
+      "children": [
+        "78",
+        "79"
+      ]
+    },
+    "78": {
+      "name": "ba) soziale Abgaben",
+      "id": "78",
+      "parent_id": "77",
+      "level": 4,
+      "children": []
+    },
+    "79": {
+      "name": "bb) Aufwendungen für Altersvorsorge",
+      "id": "79",
+      "parent_id": "77",
+      "level": 4,
+      "children": []
+    },
+    "80": {
+      "name": "7. Abschreibungen",
+      "id": "80",
+      "parent_id": "49",
+      "level": 2,
+      "children": [
+        "81",
+        "82"
+      ]
+    },
+    "81": {
+      "name": "a. auf immaterielle Vermögensgegenstände des Anlagevermögens und Sachanlagen sowie auf aktivierte Eigenleistungen...",
+      "id": "81",
+      "parent_id": "80",
+      "level": 3,
+      "children": []
+    },
+    "82": {
+      "name": "b. auf Vermögensgegenstände des Umlaufvermögens...",
+      "id": "82",
+      "parent_id": "80",
+      "level": 3,
+      "children": []
+    },
+    "83": {
+      "name": "8. Sonstige betriebliche Aufwendungen",
+      "id": "83",
+      "parent_id": "49",
+      "level": 2,
+      "children": [
+        "84",
+        "85",
+        "86",
+        "87"
+      ]
+    },
+    "84": {
+      "name": "a) Betriebsaufwendungen",
+      "id": "84",
+      "parent_id": "83",
+      "level": 3,
+      "children": []
+    },
+    "85": {
+      "name": "b) Vertriebsaufwendungen",
+      "id": "85",
+      "parent_id": "83",
+      "level": 3,
+      "children": []
+    },
+    "86": {
+      "name": "c) Verwaltungsaufwendungen",
+      "id": "86",
+      "parent_id": "83",
+      "level": 3,
+      "children": []
+    },
+    "87": {
+      "name": "d) Übrige Aufwendungen",
+      "id": "87",
+      "parent_id": "83",
+      "level": 3,
+      "children": []
+    },
+    "88": {
+      "name": "9. Zinsen und ähnliche Erträge",
+      "id": "88",
+      "parent_id": "49",
+      "level": 2,
+      "children": []
+    },
+    "89": {
+      "name": "10. Zinsen und ähnliche Aufwendungen",
+      "id": "89",
+      "parent_id": "49",
+      "level": 2,
+      "children": []
+    },
+    "90": {
+      "name": "12. Außerordentliche Erträge",
+      "id": "90",
+      "parent_id": "49",
+      "level": 2,
+      "children": []
+    },
+    "91": {
+      "name": "13. Außerordentliche Aufwendungen",
+      "id": "91",
+      "parent_id": "49",
+      "level": 2,
+      "children": []
+    },
+    "92": {
+      "name": "14. Steuern vom Einkommen und vom Ertrag",
+      "id": "92",
+      "parent_id": "49",
+      "level": 2,
+      "children": []
+    },
+    "93": {
+      "name": "15. sonstige Steuern",
+      "id": "93",
+      "parent_id": "49",
+      "level": 2,
+      "children": []
+    },
+    "94": {
+      "name": "keine Zuordnung",
+      "id": "94",
+      "parent_id": "48",
+      "level": 1,
+      "children": []
+    },
+    "98": {
+      "name": "nicht benötigte Konten",
+      "id": "98",
+      "parent_id": "48",
+      "level": 1,
+      "children": []
+    }
+  },
+  "mapping_data": {
+    "konto_to_struktur_count": 0,
+    "struktur_to_konten_count": 0,
+    "guv_ebene": "Ebene48"
+  },
+  "bwa_analyse": {}
+}

@@ -1,7 +1,7 @@
 """
 After Sales - Garantie Routes
 - Garantie Live-Dashboard mit Handlungsempfehlungen
-- TAG 173
+- Garantieaufträge-Übersicht (TAG 181)
 """
 from flask import Blueprint, render_template, jsonify, request
 from datetime import datetime
@@ -39,6 +39,15 @@ def live_dashboard_mockup(order_number=None):
     return render_template('aftersales/garantie_live_dashboard_mockup.html',
                          data=mockup_data,
                          now=datetime.now())
+
+@bp.route('/auftraege')
+@login_required
+def garantie_auftraege_uebersicht():
+    """
+    Übersicht aller offenen Garantieaufträge mit Garantieakte-Status.
+    """
+    return render_template('aftersales/garantie_auftraege_uebersicht.html')
+
 
 @bp.route('/api/live-dashboard/<int:order_number>')
 @login_required

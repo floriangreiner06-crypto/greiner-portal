@@ -407,10 +407,14 @@ def _get_arbeitskarte_anhaenge_internal(order_number):
                 'anhaenge': []
             }
         
-        from datetime import date
-        target_date = date.today().isoformat()
+        # Finde Dossier - erweiterte Suche (nicht nur heute)
+        # Versuche zuerst heute, dann erweitere Suche auf letzten 30 Tage
+        from datetime import date, timedelta
         
-        # Finde Dossier
+        dossier_id = None
+        
+        # 1. Versuche zuerst heute
+        target_date = date.today().isoformat()
         query_tasks = """
         query GetWorkshopTasks($page: Int!, $itemsPerPage: Int!, $where: QueryWorkshopTasksWhereWhereConditions) {
           workshopTasks(first: $itemsPerPage, page: $page, where: $where) {
@@ -455,13 +459,55 @@ def _get_arbeitskarte_anhaenge_internal(order_number):
         tasks = data.get('data', {}).get('workshopTasks', {}).get('data', [])
         
         # Finde dossier_id
-        dossier_id = None
         for task in tasks:
             orders = task.get('dossier', {}).get('orders', [])
             for order in orders:
                 if order.get('number') == str(order_number):
                     dossier_id = task.get('dossier', {}).get('id')
                     break
+        
+        # 2. Falls nicht gefunden, suche in letzten 30 Tagen
+        if not dossier_id:
+            logger.info(f"Dossier für Auftrag {order_number} nicht heute gefunden, suche in letzten 30 Tagen...")
+            start_date = (date.today() - timedelta(days=30)).isoformat()
+            end_date = date.today().isoformat()
+            
+            variables = {
+                "page": 1,
+                "itemsPerPage": 500,  # Mehr Ergebnisse für erweiterte Suche
+                "where": {
+                    "AND": [
+                        {"column": "START_DATE", "operator": "GTE", "value": start_date},
+                        {"column": "START_DATE", "operator": "LTE", "value": end_date}
+                    ]
+                }
+            }
+            
+            try:
+                response = client.session.post(
+                    f"{client.BASE_URL}/graphql",
+                    json={"operationName": "GetWorkshopTasks", "query": query_tasks, "variables": variables},
+                    headers={
+                        'Accept': 'application/json',
+                        'X-XSRF-TOKEN': client._get_xsrf(),
+                        'Content-Type': 'application/json'
+                    }
+                )
+                
+                data = response.json()
+                if 'errors' not in data:
+                    tasks = data.get('data', {}).get('workshopTasks', {}).get('data', [])
+                    for task in tasks:
+                        orders = task.get('dossier', {}).get('orders', [])
+                        for order in orders:
+                            if order.get('number') == str(order_number):
+                                dossier_id = task.get('dossier', {}).get('id')
+                                logger.info(f"Dossier für Auftrag {order_number} in historischen Daten gefunden")
+                                break
+                        if dossier_id:
+                            break
+            except Exception as e:
+                logger.warning(f"Fehler bei erweiterter GUDAT-Suche: {e}")
         
         if not dossier_id:
             return {
@@ -862,73 +908,94 @@ def speichere_garantieakte(order_number):
         terminblatt_data = None
         terminblatt_pdf = None
         
-        if dossier_id:
+        if dossier_id and gudat_session:
             try:
-                client = GudatClient(GUDAT_CONFIG['username'], GUDAT_CONFIG['password'])
-                if client.login():
-                    query_dossier = """
-                    query GetDossierAttachments($id: ID!) {
-                      dossier(id: $id) {
-                        id
-                        documents {
-                          id
-                          name
-                          file_type
-                        }
-                      }
+                # Verwende bereits vorhandene Session aus anhaenge_response
+                query_dossier = """
+                query GetDossierAttachments($id: ID!) {
+                  dossier(id: $id) {
+                    id
+                    documents {
+                      id
+                      name
+                      file_type
                     }
-                    """
-                    
-                    response = client.session.post(
-                        f"{client.BASE_URL}/graphql",
-                        json={"operationName": "GetDossierAttachments", "query": query_dossier, "variables": {"id": str(dossier_id)}},
-                        headers={
-                            'Accept': 'application/json',
-                            'X-XSRF-TOKEN': client._get_xsrf(),
-                            'Content-Type': 'application/json'
-                        }
-                    )
-                    
-                    data = response.json()
-                    if 'errors' not in data:
-                        dossier = data.get('data', {}).get('dossier')
-                        if dossier:
-                            documents = dossier.get('documents', [])
-                            for att in documents:
-                                if att.get('file_type') == 'application/pdf' and 'termin' in att.get('name', '').lower():
-                                    terminblatt_data = att
-                                    # TODO: Terminblatt-PDF herunterladen
-                                    break
+                  }
+                }
+                """
+                
+                # Hole Base-URL aus GUDAT-Client
+                from tools.gudat_client import GudatClient
+                client_temp = GudatClient(GUDAT_CONFIG['username'], GUDAT_CONFIG['password'])
+                base_url = client_temp.BASE_URL
+                
+                response = gudat_session.post(
+                    f"{base_url}/graphql",
+                    json={"operationName": "GetDossierAttachments", "query": query_dossier, "variables": {"id": str(dossier_id)}},
+                    headers={
+                        'Accept': 'application/json',
+                        'X-XSRF-TOKEN': client_temp._get_xsrf(),
+                        'Content-Type': 'application/json'
+                    }
+                )
+                
+                data = response.json()
+                if 'errors' not in data:
+                    dossier = data.get('data', {}).get('dossier')
+                    if dossier:
+                        documents = dossier.get('documents', [])
+                        for att in documents:
+                            if att.get('file_type') == 'application/pdf' and 'termin' in att.get('name', '').lower():
+                                terminblatt_data = att
+                                # Terminblatt-PDF herunterladen
+                                from api.arbeitskarte_vollstaendig import download_document
+                                terminblatt_pdf = download_document(att.get('id'), gudat_session)
+                                if terminblatt_pdf:
+                                    logger.info(f"Terminblatt heruntergeladen: {att.get('name')} ({len(terminblatt_pdf) / 1024:.1f} KB)")
+                                else:
+                                    logger.warning(f"Terminblatt konnte nicht heruntergeladen werden: {att.get('name')}")
+                                break
             except Exception as e:
                 logger.warning(f"Fehler beim Holen des Terminblatts: {e}")
+                import traceback
+                traceback.print_exc()
         
         # 5. Kundenname
         kunde_name = daten.get('locosoft', {}).get('kunde', {}).get('name', f'Kunde_{order_number}')
         
         # 6. Erstelle vollständige Akte
-        result = create_garantieakte_vollstaendig(
-            order_number=order_number,
-            kunde_name=kunde_name,
-            arbeitskarte_pdf=arbeitskarte_pdf,
-            anhaenge=anhaenge,
-            terminblatt_data=terminblatt_data,
-            terminblatt_pdf=terminblatt_pdf,
-            gudat_session=gudat_session
-        )
-        
-        if result.get('success'):
-            return jsonify({
-                'success': True,
-                'message': f'Garantieakte erfolgreich gespeichert',
-                'ordner_path': result.get('ordner_path'),
-                'windows_path': result.get('windows_path'),
-                'dateien': result.get('dateien'),
-                'anzahl_dateien': result.get('anzahl_dateien')
-            })
-        else:
+        try:
+            result = create_garantieakte_vollstaendig(
+                order_number=order_number,
+                kunde_name=kunde_name,
+                arbeitskarte_pdf=arbeitskarte_pdf,
+                anhaenge=anhaenge,
+                terminblatt_data=terminblatt_data,
+                terminblatt_pdf=terminblatt_pdf,
+                gudat_session=gudat_session
+            )
+            
+            if result.get('success'):
+                return jsonify({
+                    'success': True,
+                    'message': f'Garantieakte erfolgreich gespeichert',
+                    'ordner_path': result.get('ordner_path'),
+                    'windows_path': result.get('windows_path'),
+                    'dateien': result.get('dateien'),
+                    'anzahl_dateien': result.get('anzahl_dateien')
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': result.get('error', 'Unbekannter Fehler')
+                }), 500
+        except Exception as inner_e:
+            logger.error(f"Fehler beim Erstellen der Garantieakte: {inner_e}")
+            import traceback
+            traceback.print_exc()
             return jsonify({
                 'success': False,
-                'error': result.get('error', 'Unbekannter Fehler')
+                'error': f'Fehler beim Erstellen der Garantieakte: {str(inner_e)}'
             }), 500
     
     except Exception as e:

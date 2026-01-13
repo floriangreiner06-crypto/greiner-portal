@@ -498,29 +498,7 @@ def task_history(task_name):
                 task_id = key.decode('utf-8') if isinstance(key, bytes) else str(key)
                 task_id = task_id.replace('celery-task-meta-', '')
                 
-                # Hole Task-Name aus Redis-Mapping (wenn vorhanden)
-                mapping_key = f'task-name-mapping:{task_id}'
-                stored_task_name = redis_client.get(mapping_key)
-                
-                if stored_task_name:
-                    # Decode bytes to string
-                    if isinstance(stored_task_name, bytes):
-                        stored_task_name = stored_task_name.decode('utf-8')
-                    if stored_task_name != full_task_name:
-                        continue
-                else:
-                    # Fallback: Versuche über AsyncResult (funktioniert oft nicht)
-                    try:
-                        from celery.result import AsyncResult
-                        result = AsyncResult(task_id, app=app)
-                        result_name = result.name
-                        if not result_name or result_name != full_task_name:
-                            continue
-                    except:
-                        # Wenn kein Mapping und AsyncResult fehlschlägt, überspringe
-                        continue
-                
-                # Hole Metadaten für Status und Dauer
+                # Hole Metadaten ZUERST (enthält oft den Task-Namen)
                 meta_data = redis_client.get(key)
                 if not meta_data:
                     continue
@@ -532,17 +510,49 @@ def task_history(task_name):
                 except (json_lib.JSONDecodeError, UnicodeDecodeError):
                     continue
                 
-                # Berechne Dauer
-                date_done = data.get('date_done')
-                started = None
+                # Prüfe Task-Name aus Metadaten (wenn vorhanden)
+                task_name_from_meta = data.get('task_name') or data.get('name')
                 
-                # Versuche started aus result.info zu holen
-                try:
-                    if hasattr(result, 'info') and result.info:
-                        if isinstance(result.info, dict):
-                            started = result.info.get('started')
-                except:
-                    pass
+                # Hole Task-Name aus Redis-Mapping (wenn vorhanden)
+                mapping_key = f'task-name-mapping:{task_id}'
+                stored_task_name = redis_client.get(mapping_key)
+                
+                if stored_task_name:
+                    # Decode bytes to string
+                    if isinstance(stored_task_name, bytes):
+                        stored_task_name = stored_task_name.decode('utf-8')
+                    if stored_task_name != full_task_name:
+                        continue
+                elif task_name_from_meta:
+                    # Verwende Task-Name aus Metadaten
+                    if task_name_from_meta != full_task_name:
+                        continue
+                else:
+                    # Fallback: Versuche über AsyncResult
+                    try:
+                        from celery.result import AsyncResult
+                        result = AsyncResult(task_id, app=app)
+                        result_name = result.name
+                        if not result_name or result_name != full_task_name:
+                            continue
+                    except:
+                        # Wenn kein Mapping und AsyncResult fehlschlägt, überspringe
+                        continue
+                
+                # Berechne Dauer (meta_data und data sind bereits oben geladen)
+                date_done = data.get('date_done')
+                started = data.get('started') or None
+                
+                # Versuche started aus result.info zu holen (Fallback)
+                if not started:
+                    try:
+                        from celery.result import AsyncResult
+                        result = AsyncResult(task_id, app=app)
+                        if hasattr(result, 'info') and result.info:
+                            if isinstance(result.info, dict):
+                                started = result.info.get('started')
+                    except:
+                        pass
                 
                 duration = None
                 if date_done and started:

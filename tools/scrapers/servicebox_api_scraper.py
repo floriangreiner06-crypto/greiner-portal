@@ -386,9 +386,62 @@ def extract_bestellung_details(session, bestellung_info):
         if datum_match:
             details['historie']['bestelldatum'] = datum_match.group(1)
         
-        # Positionen (vereinfacht - kann erweitert werden)
-        positionen_links = soup.find_all('a', href=re.compile(r'teilenummer|part'))
-        # TODO: Detaillierte Positionen-Extraktion
+        # Positionen extrahieren (wie im alten Scraper)
+        try:
+            def safe_get_text(element):
+                """Sichere Text-Extraktion aus BeautifulSoup Element"""
+                if element is None:
+                    return ""
+                text = element.get_text(strip=True)
+                return text if text else ""
+            
+            tables = soup.find_all('table')
+            
+            for table in tables:
+                rows = table.find_all('tr')
+                
+                for row in rows:
+                    cols = row.find_all('td')
+                    
+                    if len(cols) >= 6:
+                        first_col_text = safe_get_text(cols[0])
+                        
+                        # Extrahiere Teilenummer auch wenn Zusatztext vorhanden
+                        teilenummer_match = re.search(r'^\s*(\d{7,10})', first_col_text)
+                        if teilenummer_match:
+                            teilenummer = teilenummer_match.group(1)
+                            
+                            position = {
+                                'teilenummer': teilenummer,
+                                'beschreibung': safe_get_text(cols[1]),
+                                'menge': safe_get_text(cols[2]),
+                                'menge_in_lieferung': safe_get_text(cols[3]) if len(cols) > 3 else "",
+                                'menge_in_bestellung': safe_get_text(cols[4]) if len(cols) > 4 else "",
+                                'preis_ohne_mwst': safe_get_text(cols[5]) if len(cols) > 5 else "",
+                                'preis_mit_mwst': safe_get_text(cols[6]) if len(cols) > 6 else "",
+                                'summe_inkl_mwst': safe_get_text(cols[7]) if len(cols) > 7 else ""
+                            }
+                            details['positionen'].append(position)
+            
+            log(f"      ✅ {len(details['positionen'])} Positionen extrahiert")
+            
+        except Exception as e:
+            log(f"      ⚠️  Positionen: {e}")
+        
+        # Summen extrahieren
+        try:
+            summe_zzgl_match = re.search(r'Summe zzgl\. MwSt\s*:\s*</td>\s*<td[^>]*>\s*([\d,]+)\s*EUR', page_text)
+            if summe_zzgl_match:
+                details['summen']['zzgl_mwst'] = summe_zzgl_match.group(1)
+            
+            summe_inkl_match = re.search(r'Summe inkl\. MwSt\s*:\s*</td>\s*<td[^>]*>\s*([\d,]+)\s*EUR', page_text)
+            if summe_inkl_match:
+                details['summen']['inkl_mwst'] = summe_inkl_match.group(1)
+                
+            if details['summen']:
+                log(f"      ✅ Summen extrahiert: {details['summen'].get('inkl_mwst', 'N/A')} EUR")
+        except Exception as e:
+            log(f"      ⚠️  Summen: {e}")
         
         # Kommentare & Parsed-Daten (wie im alten Scraper)
         kommentar_match = re.search(r'Kommentar[^:]*:\s*</td>\s*<td[^>]*>\s*([^<]+)', page_text, re.DOTALL)

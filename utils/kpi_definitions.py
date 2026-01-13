@@ -400,28 +400,106 @@ def berechne_gesamt_entgangener_umsatz(auftraege: list) -> float:
     return round(total, 2)
 
 
+def berechne_anwesenheitsgrad_fuer_mechaniker_liste(mechaniker_liste: list, stunden_pro_tag: float = STUNDEN_PRO_TAG) -> Tuple[Optional[float], list]:
+    """
+    Berechnet Anwesenheitsgrad für eine Liste von Mechanikern (SSOT).
+    
+    WICHTIG: Gesamt = Summe der einzelnen, nicht anzahl_tage × 8 × anzahl_mechaniker!
+    Grund: Mechaniker haben unterschiedlich viele Arbeitstage.
+    
+    Nutzt intern `berechne_mechaniker_kpis()` für jeden Mechaniker (SSOT).
+    
+    Args:
+        mechaniker_liste: Liste mit Dicts {'tage', 'anwesenheit', 'stempelzeit', 'aw', ...}
+                         (anwesenheit, stempelzeit in Minuten)
+        stunden_pro_tag: Stunden pro Arbeitstag (default: 8h)
+        
+    Returns:
+        Tuple: (gesamt_anwesenheitsgrad, aktualisierte_mechaniker_liste)
+        - gesamt_anwesenheitsgrad: Gesamt-Anwesenheitsgrad in %
+        - aktualisierte_mechaniker_liste: Liste mit erweiterten Dicts:
+          - 'anwesenheitsgrad': Anwesenheitsgrad pro Mechaniker
+          - 'bezahlt_h': Bezahlte Stunden
+          - 'anwesend_h': Anwesende Stunden
+    
+    Example:
+        >>> mechaniker = [
+        ...     {'tage': 6, 'anwesenheit': 3000, 'stempelzeit': 2700, 'aw': 45},  # 6 Tage, 50h anwesend
+        ...     {'tage': 2, 'anwesenheit': 1080, 'stempelzeit': 900, 'aw': 15}   # 2 Tage, 18h anwesend
+        ... ]
+        >>> gesamt, mechaniker = berechne_anwesenheitsgrad_fuer_mechaniker_liste(mechaniker)
+        >>> gesamt  # (50 + 18) / (48 + 16) = 68/64 = 106.25%
+        106.3
+        >>> mechaniker[0]['anwesenheitsgrad']  # 50/48 = 104.2%
+        104.2
+    """
+    gesamt_bezahlt_h_summe = 0
+    gesamt_anwesend_h_summe = 0
+    
+    for m in mechaniker_liste:
+        # WICHTIG: PostgreSQL gibt Decimal zurück, muss zu float konvertiert werden
+        tage = int(float(m.get('tage') or 0))
+        anwesenheit_min = float(m.get('anwesenheit') or 0)
+        stempelzeit_min = float(m.get('stempelzeit') or 0)
+        vorgabe_aw = float(m.get('aw') or 0)
+        
+        # Nutze zentrale KPI-Funktion (SSOT)
+        kpis = berechne_mechaniker_kpis(
+            anwesend_min=anwesenheit_min,
+            gestempelt_min=stempelzeit_min,
+            vorgabe_aw=vorgabe_aw,
+            tage=tage,
+            stunden_pro_tag=stunden_pro_tag
+        )
+        
+        # Erweitere Mechaniker-Dict mit KPI-Ergebnissen
+        m['anwesenheitsgrad'] = kpis.get('anwesenheitsgrad')
+        m['bezahlt_h'] = kpis.get('bezahlt_h', 0)
+        m['anwesend_h'] = round(kpis.get('anwesend_h', 0), 1)
+        
+        # Für Gesamt-Berechnung summieren
+        gesamt_bezahlt_h_summe += kpis.get('bezahlt_h', 0)
+        gesamt_anwesend_h_summe += kpis.get('anwesend_h', 0)
+    
+    # Gesamt-Anwesenheitsgrad = Summe Anwesend / Summe Bezahlt
+    gesamt_anwesenheitsgrad = berechne_anwesenheitsgrad(gesamt_anwesend_h_summe, gesamt_bezahlt_h_summe) if gesamt_bezahlt_h_summe > 0 else None
+    
+    return gesamt_anwesenheitsgrad, mechaniker_liste
+
+
 def berechne_mechaniker_kpis(
     anwesend_min: float,
     gestempelt_min: float,
     vorgabe_aw: float,
-    bezahlt_h: float = STUNDEN_PRO_TAG,
+    bezahlt_h: float = None,
+    tage: int = None,
+    stunden_pro_tag: float = STUNDEN_PRO_TAG,
     lohnumsatz_eur: float = None,
     anzahl_auftraege: int = None
 ) -> Dict[str, Any]:
     """
-    Berechnet alle KPIs für einen Mechaniker auf einen Schlag.
+    Berechnet alle KPIs für einen Mechaniker auf einen Schlag (SSOT).
     
     Args:
         anwesend_min: Anwesende Minuten (aus Stempelung type=1)
         gestempelt_min: Produktiv gestempelte Minuten (type=2)
         vorgabe_aw: Summe Vorgabe-AW
-        bezahlt_h: Bezahlte Stunden (default: 8h Tagesarbeitszeit)
+        bezahlt_h: Bezahlte Stunden (optional, wird aus tage berechnet falls nicht gegeben)
+        tage: Anzahl Arbeitstage (optional, wird zu bezahlt_h = tage × stunden_pro_tag)
+        stunden_pro_tag: Stunden pro Arbeitstag (default: 8h)
         lohnumsatz_eur: Lohnumsatz in € (optional)
         anzahl_auftraege: Anzahl Aufträge (optional)
         
     Returns:
         Dict mit allen KPIs und Bewertungen
     """
+    # Bezahlte Zeit berechnen (aus tage oder direkt)
+    if bezahlt_h is None:
+        if tage is not None:
+            bezahlt_h = tage * stunden_pro_tag
+        else:
+            bezahlt_h = STUNDEN_PRO_TAG  # Default: 1 Tag
+    
     anwesend_h = minuten_zu_stunden(anwesend_min)
     gestempelt_h = minuten_zu_stunden(gestempelt_min)
     gestempelt_aw = minuten_zu_aw(gestempelt_min)

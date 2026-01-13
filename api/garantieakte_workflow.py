@@ -330,6 +330,21 @@ def create_garantieakte_vollstaendig(
                     'groesse_kb': len(terminblatt_pdf) / 1024
                 })
         
+        # 5. Speichere Metadaten (Ersteller, Datum)
+        try:
+            from flask_login import current_user
+            ersteller = None
+            if current_user and hasattr(current_user, 'username'):
+                ersteller = current_user.username
+            elif current_user and hasattr(current_user, 'id'):
+                ersteller = str(current_user.id)
+            
+            if ersteller:
+                from api.garantie_auftraege_api import save_garantieakte_metadata
+                save_garantieakte_metadata(order_number, ordner_path, ersteller)
+        except Exception as e:
+            logger.warning(f"Fehler beim Speichern der Metadaten: {e}")
+        
         # Windows-Pfad für Rückgabe
         if '/hyundai-garantie' in ordner_path:
             # \\srvrdb01\Allgemein\DigitalesAutohaus\Hyundai_Garantie\{kunde}_{nummer}

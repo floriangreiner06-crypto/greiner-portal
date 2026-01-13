@@ -49,14 +49,27 @@ def benachrichtige_serviceberater_ueberschreitungen():
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             cursor.execute("""
                 WITH gestempelt_heute AS (
+                    -- TAG 182: Deduplizierung - verschobene Stempelzeiten nur einmal zählen
+                    -- Problem: Stempelzeiten können auf mehrere Positionen verschoben werden,
+                    -- aber es ist die gleiche Zeit (gleiche start_time + end_time + employee_number)
+                    -- Lösung: DISTINCT ON (order_number, employee_number, start_time, end_time)
                     SELECT
-                        t.order_number,
-                        SUM(EXTRACT(EPOCH FROM (COALESCE(t.end_time, NOW()) - t.start_time)) / 60) as gestempelt_min
-                    FROM times t
-                    WHERE DATE(t.start_time) = CURRENT_DATE
-                      AND t.order_number > 0
-                      AND t.type = 2
-                    GROUP BY t.order_number
+                        order_number,
+                        SUM(minuten) as gestempelt_min
+                    FROM (
+                        SELECT DISTINCT ON (order_number, employee_number, start_time, end_time)
+                            order_number,
+                            employee_number,
+                            start_time,
+                            end_time,
+                            EXTRACT(EPOCH FROM (COALESCE(end_time, NOW()) - start_time)) / 60 as minuten
+                        FROM times
+                        WHERE DATE(start_time) = CURRENT_DATE
+                          AND order_number > 0
+                          AND type = 2
+                        ORDER BY order_number, employee_number, start_time, end_time
+                    ) t
+                    GROUP BY order_number
                 ),
                 vorgabe_aw AS (
                     SELECT

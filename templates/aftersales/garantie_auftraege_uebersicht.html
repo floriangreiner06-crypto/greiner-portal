@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+
+{% block title %}Garantieaufträge - Greiner DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .garantie-akte-status {
+        min-width: 200px;
+    }
+    .status-badge {
+        font-size: 0.85rem;
+    }
+    .btn-create-akte {
+        white-space: nowrap;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1><i class="bi bi-shield-check text-warning"></i> Garantieaufträge</h1>
+            <p class="text-muted mb-0">Übersicht aller offenen Garantieaufträge</p>
+        </div>
+        <button class="btn btn-primary" onclick="loadAuftraege()">
+            <i class="bi bi-arrow-clockwise"></i> Aktualisieren
+        </button>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="bi bi-list-ul"></i> Offene Garantieaufträge
+                <span class="badge bg-primary ms-2" id="anzahlBadge">-</span>
+            </h5>
+        </div>
+        <div class="card-body">
+            <div id="loading" class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Lade...</span>
+                </div>
+            </div>
+            
+            <div id="error" class="alert alert-danger d-none"></div>
+            
+            <div id="tableContainer" class="d-none">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Auftrag</th>
+                                <th>Datum</th>
+                                <th>Kunde</th>
+                                <th>Fahrzeug</th>
+                                <th>Serviceberater</th>
+                                <th class="text-end">AW</th>
+                                <th class="text-end">Offen</th>
+                                <th class="garantie-akte-status">Garantieakte</th>
+                                <th>Aktion</th>
+                            </tr>
+                        </thead>
+                        <tbody id="auftraegeTableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div id="empty" class="text-center py-5 text-muted d-none">
+                <i class="bi bi-inbox fs-1"></i>
+                <p class="mt-3">Keine offenen Garantieaufträge gefunden</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let aktuellerAuftrag = null;
+
+function loadAuftraege() {
+    document.getElementById('loading').classList.remove('d-none');
+    document.getElementById('error').classList.add('d-none');
+    document.getElementById('tableContainer').classList.add('d-none');
+    document.getElementById('empty').classList.add('d-none');
+    
+    fetch('/api/garantie/auftraege/offen')
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('loading').classList.add('d-none');
+            
+            if (!data.success) {
+                document.getElementById('error').textContent = data.error || 'Fehler beim Laden der Aufträge';
+                document.getElementById('error').classList.remove('d-none');
+                return;
+            }
+            
+            const auftraege = data.auftraege || [];
+            document.getElementById('anzahlBadge').textContent = auftraege.length;
+            
+            if (auftraege.length === 0) {
+                document.getElementById('empty').classList.remove('d-none');
+                return;
+            }
+            
+            renderAuftraege(auftraege);
+            document.getElementById('tableContainer').classList.remove('d-none');
+        })
+        .catch(err => {
+            document.getElementById('loading').classList.add('d-none');
+            document.getElementById('error').textContent = 'Fehler beim Laden: ' + err.message;
+            document.getElementById('error').classList.remove('d-none');
+        });
+}
+
+function renderAuftraege(auftraege) {
+    const tbody = document.getElementById('auftraegeTableBody');
+    
+    tbody.innerHTML = auftraege.map(a => {
+        const akte = a.garantieakte || {};
+        const fahrzeug = `${a.marke || ''} ${a.modell || ''}`.trim() || '-';
+        
+        let akteStatus = '';
+        let aktion = '';
+        
+        if (akte.existiert) {
+            // Akte existiert - zeige Info
+            akteStatus = `
+                <div>
+                    <span class="badge bg-success status-badge">
+                        <i class="bi bi-check-circle"></i> Vorhanden
+                    </span>
+                    ${akte.erstelldatum ? `
+                        <div class="small text-muted mt-1">
+                            <i class="bi bi-calendar"></i> ${formatDate(akte.erstelldatum)}
+                        </div>
+                    ` : ''}
+                    ${akte.ersteller ? `
+                        <div class="small text-muted">
+                            <i class="bi bi-person"></i> ${akte.ersteller}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+            aktion = `
+                <button class="btn btn-sm btn-outline-secondary" onclick="oeffneAkte(${a.auftrag_nr})" title="Akte öffnen">
+                    <i class="bi bi-folder-open"></i>
+                </button>
+            `;
+        } else {
+            // Akte existiert nicht - zeige Button zum Erstellen
+            akteStatus = `
+                <span class="badge bg-warning text-dark status-badge">
+                    <i class="bi bi-exclamation-triangle"></i> Nicht vorhanden
+                </span>
+            `;
+            aktion = `
+                <button class="btn btn-sm btn-primary btn-create-akte" onclick="erstelleGarantieakte(${a.auftrag_nr}, '${escapeHtml(a.kunde)}')">
+                    <i class="bi bi-file-earmark-pdf"></i> Erstellen
+                </button>
+            `;
+        }
+        
+        return `
+            <tr>
+                <td><strong>${a.auftrag_nr}</strong></td>
+                <td>${a.order_date || '-'}</td>
+                <td>${a.kunde || '-'}</td>
+                <td>
+                    ${a.kennzeichen ? `<strong>${a.kennzeichen}</strong><br>` : ''}
+                    <small class="text-muted">${fahrzeug}</small>
+                </td>
+                <td>${a.serviceberater || '-'}</td>
+                <td class="text-end">${a.total_aw.toFixed(1)}</td>
+                <td class="text-end">
+                    ${a.offen_aw > 0 ? `<span class="badge bg-warning text-dark">${a.offen_aw.toFixed(1)}</span>` : '<span class="badge bg-success">0</span>'}
+                </td>
+                <td class="garantie-akte-status">${akteStatus}</td>
+                <td>${aktion}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function erstelleGarantieakte(orderNumber, kundeName) {
+    if (!confirm(`Garantieakte für Auftrag ${orderNumber} erstellen?`)) {
+        return;
+    }
+    
+    aktuellerAuftrag = orderNumber;
+    const btn = event.target.closest('button');
+    const originalHtml = btn.innerHTML;
+    
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Erstelle...';
+    
+    fetch(`/api/arbeitskarte/${orderNumber}/speichern`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Erfolg - Seite neu laden
+            loadAuftraege();
+        } else {
+            alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
+    })
+    .catch(err => {
+        alert('Fehler beim Erstellen: ' + err.message);
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+    });
+}
+
+function oeffneAkte(orderNumber) {
+    // TODO: Windows-Explorer öffnen oder Pfad anzeigen
+    alert('Funktion zum Öffnen der Akte wird noch implementiert');
+}
+
+function formatDate(dateString) {
+    if (!dateString) return '-';
+    try {
+        const date = new Date(dateString);
+        return date.toLocaleString('de-DE', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    } catch (e) {
+        return dateString;
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Beim Laden der Seite
+document.addEventListener('DOMContentLoaded', function() {
+    loadAuftraege();
+});
+</script>
+{% endblock %}

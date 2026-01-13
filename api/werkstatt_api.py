@@ -22,6 +22,9 @@ import logging
 from api.db_utils import db_session, row_to_dict, rows_to_list
 from api.db_connection import convert_placeholders, get_db_type
 
+# SSOT: KPI-Berechnungen (TAG 181)
+from utils.kpi_definitions import berechne_anwesenheitsgrad_fuer_mechaniker_liste
+
 logger = logging.getLogger(__name__)
 
 werkstatt_api = Blueprint('werkstatt_api', __name__, url_prefix='/api/werkstatt')
@@ -167,6 +170,10 @@ def get_leistung():
             tage_row = cursor.fetchone()
             anzahl_tage = (row_to_dict(tage_row) if tage_row else {}).get('count', 0) or (tage_row[0] if tage_row else 0) or 0
 
+            # Anwesenheitsgrad berechnen (TAG 181 - SSOT)
+            # Nutzt zentrale Funktion aus utils/kpi_definitions.py
+            gesamt_anwesenheitsgrad, mechaniker = berechne_anwesenheitsgrad_fuer_mechaniker_liste(mechaniker)
+
             # Trend-Daten (letzte 14 Tage)
             # TAG 136: date('now', '-14 days') -> CURRENT_DATE - INTERVAL für PostgreSQL
             if get_db_type() == 'postgresql':
@@ -309,6 +316,7 @@ def get_leistung():
             'gesamt': {
                 'leistungsgrad': gesamt_leistungsgrad,
                 'produktivitaet': gesamt_produktivitaet,
+                'anwesenheitsgrad': gesamt_anwesenheitsgrad,  # TAG 181
                 'effizienz': gesamt_effizienz,
                 'stempelzeit': gesamt_stempelzeit,
                 'anwesenheit': gesamt_anwesenheit,
@@ -317,6 +325,8 @@ def get_leistung():
                 'umsatz': round(gesamt_umsatz, 2),
                 'svs': svs,
                 'realisierter_svs': realisierter_svs,
+                'bezahlt_h': round(sum(m.get('bezahlt_h', 0) for m in mechaniker), 1),  # TAG 181
+                'anwesend_h': round(sum(m.get('anwesend_h', 0) for m in mechaniker), 1),  # TAG 181
                 'verlorene_std': round(verlorene_std, 1),
                 'entgangener_umsatz': round(entgangener_umsatz, 2),
                 'std_pro_durchgang': std_pro_durchgang,
@@ -837,6 +847,53 @@ def health_check():
                 'betrieb_filter_available': has_betrieb
             })
     except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@werkstatt_api.route('/mechaniker/<int:mechaniker_nr>/stempelzeit-analyse', methods=['GET'])
+@login_required
+def get_stempelzeit_analyse(mechaniker_nr):
+    """
+    GET /api/werkstatt/mechaniker/<nr>/stempelzeit-analyse
+    Detaillierte Tagesanalyse der Stempelzeiten für einen Mechaniker.
+    """
+    try:
+        from datetime import date
+        from api.werkstatt_data import WerkstattData
+        
+        # Zeitraum-Parameter
+        zeitraum = request.args.get('zeitraum', 'monat')
+        von_param = request.args.get('von')
+        bis_param = request.args.get('bis')
+        
+        # Datumsbereich berechnen
+        datum_von, datum_bis = get_date_range(zeitraum, von_param, bis_param)
+        von = date.fromisoformat(datum_von)
+        bis = date.fromisoformat(datum_bis)
+        
+        # Analyse holen
+        analyse = WerkstattData.get_mechaniker_stempelzeit_analyse(
+            mechaniker_nr=mechaniker_nr,
+            von=von,
+            bis=bis
+        )
+        
+        if 'error' in analyse:
+            return jsonify({
+                'status': 'error',
+                'error': analyse['error']
+            }), 404
+        
+        return jsonify({
+            'status': 'success',
+            'data': analyse
+        })
+        
+    except Exception as e:
+        logger.error(f"Fehler in get_stempelzeit_analyse: {str(e)}", exc_info=True)
         return jsonify({
             'status': 'error',
             'error': str(e)

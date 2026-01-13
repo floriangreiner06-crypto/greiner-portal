@@ -1,0 +1,32 @@
+{
+  "einsatzwerte": {
+    "position": "Einsatzwerte",
+    "row": "7",
+    "monat": 23.0,
+    "ytd": 110.0
+  },
+  "bruttoertrag": {
+    "position": "Bruttoertrag",
+    "row": "8",
+    "monat": 18.0,
+    "ytd": 129.0
+  },
+  "variable_kosten": {
+    "position": "Provisionen",
+    "row": "21",
+    "monat": 159581.41,
+    "ytd": 679459.51
+  },
+  "direkte_kosten": {
+    "position": "Gemeinkosten",
+    "row": "31",
+    "monat": 116508.41,
+    "ytd": 486452.26
+  },
+  "umsatzerlöse": {
+    "position": "Umsatzerlöse (berechnet aus Bereichen)",
+    "row": "berechnet",
+    "monat": 2153930.25,
+    "ytd": 11123305.3
+  }
+}

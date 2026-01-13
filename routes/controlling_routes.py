@@ -3643,3 +3643,69 @@ def api_overview():
 @login_required
 def api_trends():
     return jsonify({"status": "coming_soon"})
+
+
+@controlling_bp.route('/auswertung-zeiterfassung')
+@login_required
+def auswertung_zeiterfassung():
+    """Auswertung Zeiterfassung - Tabellarische Darstellung für alle Mitarbeiter"""
+    from api.werkstatt_data import WerkstattData
+    from datetime import date, timedelta
+    
+    # Zeitraum-Parameter
+    zeitraum = request.args.get('zeitraum', 'monat')
+    betrieb_param = request.args.get('betrieb', 'alle')
+    
+    # Datumsbereich berechnen
+    heute = date.today()
+    if zeitraum == 'heute':
+        datum_von = datum_bis = heute
+    elif zeitraum == 'woche':
+        datum_von = heute - timedelta(days=heute.weekday())
+        datum_bis = heute
+    elif zeitraum == 'monat':
+        datum_von = heute.replace(day=1)
+        datum_bis = heute
+    elif zeitraum == 'vormonat':
+        erster_aktuell = heute.replace(day=1)
+        letzter_vormonat = erster_aktuell - timedelta(days=1)
+        datum_von = letzter_vormonat.replace(day=1)
+        datum_bis = letzter_vormonat
+    elif zeitraum == 'quartal':
+        quartal_start_monat = ((heute.month - 1) // 3) * 3 + 1
+        datum_von = heute.replace(month=quartal_start_monat, day=1)
+        datum_bis = heute
+    elif zeitraum == 'jahr':
+        datum_von = heute.replace(month=1, day=1)
+        datum_bis = heute
+    else:
+        datum_von = heute.replace(day=1)
+        datum_bis = heute
+    
+    # Betrieb-Parameter
+    betrieb = int(betrieb_param) if betrieb_param and betrieb_param != 'alle' else None
+    
+    # Daten holen
+    try:
+        analyse = WerkstattData.get_alle_mitarbeiter_stempelzeit_analyse(
+            von=datum_von,
+            bis=datum_bis,
+            betrieb=betrieb,
+            nur_aktive=True
+        )
+        
+        return render_template(
+            'controlling/auswertung_zeiterfassung.html',
+            analyse=analyse,
+            zeitraum=zeitraum,
+            betrieb=betrieb_param,
+            datum_von=datum_von.isoformat(),
+            datum_bis=datum_bis.isoformat()
+        )
+    except Exception as e:
+        return render_template(
+            'controlling/auswertung_zeiterfassung.html',
+            error=str(e),
+            zeitraum=zeitraum,
+            betrieb=betrieb_param
+        )

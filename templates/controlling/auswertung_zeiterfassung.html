@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+
+{% block title %}Auswertung Zeiterfassung{% endblock %}
+
+{% block extra_css %}
+<style>
+    .table-responsive {
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+    .badge-anwesenheit {
+        font-size: 0.85em;
+        padding: 0.35em 0.65em;
+    }
+    .expandable-row {
+        cursor: pointer;
+    }
+    .expandable-row:hover {
+        background-color: #f8f9fa;
+    }
+    .detail-table {
+        font-size: 0.9em;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1><i class="bi bi-clock-history"></i> Auswertung Zeiterfassung</h1>
+            <p class="text-muted">Tabellarische Übersicht aller Mitarbeiter mit Anwesenheitsgrad</p>
+        </div>
+    </div>
+    
+    <!-- Filter -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <form method="GET" action="/controlling/auswertung-zeiterfassung" class="row g-3">
+                        <div class="col-md-3">
+                            <label for="zeitraum" class="form-label">Zeitraum</label>
+                            <select class="form-select" id="zeitraum" name="zeitraum">
+                                <option value="heute" {% if zeitraum == 'heute' %}selected{% endif %}>Heute</option>
+                                <option value="woche" {% if zeitraum == 'woche' %}selected{% endif %}>Diese Woche</option>
+                                <option value="monat" {% if zeitraum == 'monat' %}selected{% endif %}>Dieser Monat</option>
+                                <option value="vormonat" {% if zeitraum == 'vormonat' %}selected{% endif %}>Vormonat</option>
+                                <option value="quartal" {% if zeitraum == 'quartal' %}selected{% endif %}>Dieses Quartal</option>
+                                <option value="jahr" {% if zeitraum == 'jahr' %}selected{% endif %}>Dieses Jahr</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="betrieb" class="form-label">Betrieb</label>
+                            <select class="form-select" id="betrieb" name="betrieb">
+                                <option value="alle" {% if betrieb == 'alle' %}selected{% endif %}>Alle Betriebe</option>
+                                <option value="1" {% if betrieb == '1' %}selected{% endif %}>Deggendorf</option>
+                                <option value="2" {% if betrieb == '2' %}selected{% endif %}>Hyundai</option>
+                                <option value="3" {% if betrieb == '3' %}selected{% endif %}>Landau</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-search"></i> Anzeigen
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    {% if error %}
+    <div class="alert alert-danger">
+        <i class="bi bi-exclamation-triangle"></i> Fehler: {{ error }}
+    </div>
+    {% elif analyse %}
+    
+    <!-- Zusammenfassung -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Mitarbeiter</h6>
+                    <h3>{{ analyse.zusammenfassung.anzahl_mitarbeiter }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Gesamt Anwesend</h6>
+                    <h3>{{ "%.1f"|format(analyse.zusammenfassung.gesamt_anwesend_h) }}h</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Gesamt Bezahlt</h6>
+                    <h3>{{ "%.1f"|format(analyse.zusammenfassung.gesamt_bezahlt_h) }}h</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Anwesenheitsgrad</h6>
+                    <h3>
+                        {% if analyse.zusammenfassung.gesamt_anwesenheitsgrad %}
+                            {% set ag = analyse.zusammenfassung.gesamt_anwesenheitsgrad %}
+                            {% if ag >= 100 %}
+                                <span class="text-primary">{{ "%.1f"|format(ag) }}%</span>
+                            {% elif ag >= 75 %}
+                                <span class="text-success">{{ "%.1f"|format(ag) }}%</span>
+                            {% elif ag >= 65 %}
+                                <span class="text-warning">{{ "%.1f"|format(ag) }}%</span>
+                            {% else %}
+                                <span class="text-danger">{{ "%.1f"|format(ag) }}%</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="text-muted">-</span>
+                        {% endif %}
+                    </h3>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Tabelle -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-table"></i> Mitarbeiter-Übersicht
+                        <small class="text-muted">({{ analyse.zeitraum.von }} bis {{ analyse.zeitraum.bis }})</small>
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped mb-0">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th style="width: 40px;"></th>
+                                    <th>Mitarbeiter</th>
+                                    <th>Betrieb</th>
+                                    <th class="text-end">Tage</th>
+                                    <th class="text-end">Anwesend (h)</th>
+                                    <th class="text-end">Bezahlt (h)</th>
+                                    <th class="text-end">Differenz (h)</th>
+                                    <th class="text-end">Anwesenheitsgrad</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for ma in analyse.mitarbeiter %}
+                                <tr class="expandable-row" data-ma-id="{{ ma.employee_number }}">
+                                    <td>
+                                        <i class="bi bi-chevron-right expand-icon"></i>
+                                    </td>
+                                    <td><strong>{{ ma.name }}</strong></td>
+                                    <td>{{ ma.betrieb_name }}</td>
+                                    <td class="text-end">{{ ma.anzahl_tage }}</td>
+                                    <td class="text-end">{{ "%.2f"|format(ma.gesamt_anwesend_h) }}</td>
+                                    <td class="text-end">{{ "%.2f"|format(ma.gesamt_bezahlt_h) }}</td>
+                                    <td class="text-end">
+                                        {% if ma.gesamt_differenz_h > 0 %}
+                                            <span class="text-primary">+{{ "%.2f"|format(ma.gesamt_differenz_h) }}</span>
+                                        {% elif ma.gesamt_differenz_h < 0 %}
+                                            <span class="text-danger">{{ "%.2f"|format(ma.gesamt_differenz_h) }}</span>
+                                        {% else %}
+                                            <span class="text-muted">0.00</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">
+                                        {% if ma.anwesenheitsgrad %}
+                                            {% set ag = ma.anwesenheitsgrad %}
+                                            {% if ag >= 100 %}
+                                                <span class="badge bg-primary badge-anwesenheit">{{ "%.1f"|format(ag) }}%</span>
+                                            {% elif ag >= 75 %}
+                                                <span class="badge bg-success badge-anwesenheit">{{ "%.1f"|format(ag) }}%</span>
+                                            {% elif ag >= 65 %}
+                                                <span class="badge bg-warning text-dark badge-anwesenheit">{{ "%.1f"|format(ag) }}%</span>
+                                            {% else %}
+                                                <span class="badge bg-danger badge-anwesenheit">{{ "%.1f"|format(ag) }}%</span>
+                                            {% endif %}
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr class="detail-row" id="detail-{{ ma.employee_number }}" style="display: none;">
+                                    <td colspan="8" class="p-0">
+                                        <div class="p-3 bg-light">
+                                            <h6 class="mb-3">Tagesdetails für {{ ma.name }}</h6>
+                                            <table class="table table-sm table-bordered detail-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Datum</th>
+                                                        <th class="text-end">Anwesend (h)</th>
+                                                        <th class="text-end">Bezahlt (h)</th>
+                                                        <th class="text-end">Differenz (h)</th>
+                                                        <th class="text-end">Anwesenheitsgrad</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for tag in ma.tage %}
+                                                    <tr>
+                                                        <td>{{ tag.datum }}</td>
+                                                        <td class="text-end">{{ "%.2f"|format(tag.anwesend_h) }}</td>
+                                                        <td class="text-end">{{ "%.2f"|format(tag.bezahlt_h) }}</td>
+                                                        <td class="text-end">
+                                                            {% if tag.differenz_h > 0 %}
+                                                                <span class="text-primary">+{{ "%.2f"|format(tag.differenz_h) }}</span>
+                                                            {% elif tag.differenz_h < 0 %}
+                                                                <span class="text-danger">{{ "%.2f"|format(tag.differenz_h) }}</span>
+                                                            {% else %}
+                                                                <span class="text-muted">0.00</span>
+                                                            {% endif %}
+                                                        </td>
+                                                        <td class="text-end">
+                                                            {% if tag.anwesenheitsgrad %}
+                                                                {% set ag = tag.anwesenheitsgrad %}
+                                                                {% if ag >= 100 %}
+                                                                    <span class="badge bg-primary badge-anwesenheit">{{ "%.1f"|format(ag) }}%</span>
+                                                                {% elif ag >= 75 %}
+                                                                    <span class="badge bg-success badge-anwesenheit">{{ "%.1f"|format(ag) }}%</span>
+                                                                {% elif ag >= 65 %}
+                                                                    <span class="badge bg-warning text-dark badge-anwesenheit">{{ "%.1f"|format(ag) }}%</span>
+                                                                {% else %}
+                                                                    <span class="badge bg-danger badge-anwesenheit">{{ "%.1f"|format(ag) }}%</span>
+                                                                {% endif %}
+                                                            {% else %}
+                                                                <span class="text-muted">-</span>
+                                                            {% endif %}
+                                                        </td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    {% endif %}
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    'use strict';
+    
+    function initExpandableRows() {
+        const rows = document.querySelectorAll('.expandable-row');
+        console.log('Gefundene expandable rows:', rows.length);
+        
+        rows.forEach(row => {
+            row.style.cursor = 'pointer';
+            row.addEventListener('click', function(e) {
+                // Verhindere Klick auf Links/Buttons innerhalb der Zeile
+                if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON' || 
+                    e.target.closest('a') || e.target.closest('button') ||
+                    e.target.closest('.badge')) {
+                    return;
+                }
+                
+                const maId = this.getAttribute('data-ma-id');
+                console.log('Klick auf MA:', maId);
+                
+                const detailRow = document.getElementById('detail-' + maId);
+                const icon = this.querySelector('.expand-icon');
+                
+                if (!detailRow) {
+                    console.error('Detail-Row nicht gefunden für MA:', maId);
+                    return;
+                }
+                
+                const isHidden = detailRow.style.display === 'none' || 
+                                detailRow.style.display === '' ||
+                                window.getComputedStyle(detailRow).display === 'none';
+                
+                if (isHidden) {
+                    detailRow.style.display = 'table-row';
+                    if (icon) {
+                        icon.classList.remove('bi-chevron-right');
+                        icon.classList.add('bi-chevron-down');
+                    }
+                    console.log('Detail-Row angezeigt für MA:', maId);
+                } else {
+                    detailRow.style.display = 'none';
+                    if (icon) {
+                        icon.classList.remove('bi-chevron-down');
+                        icon.classList.add('bi-chevron-right');
+                    }
+                    console.log('Detail-Row versteckt für MA:', maId);
+                }
+            });
+        });
+    }
+    
+    // Initialisiere sofort wenn DOM bereit
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initExpandableRows);
+    } else {
+        initExpandableRows();
+    }
+})();
+</script>
+{% endblock %}

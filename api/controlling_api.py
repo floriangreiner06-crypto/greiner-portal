@@ -250,9 +250,30 @@ def build_firma_standort_filter(firma: str, standort: str):
     firma_filter_kosten = ""
     standort_name = "Alle"
 
+    # TAG182: Fix - Gesamtsumme (firma=0, standort=0) sollte Summe der drei Einzelbetriebe sein
+    # Deggendorf (Stellantis + Hyundai) + Landau (Stellantis) + Hyundai (separat)
+    # = (branch=1 AND subsidiary=1) OR (branch=2 AND subsidiary=2) OR (branch=3 AND subsidiary=1)
+    if firma == '0' and standort == '0':
+        # Gesamtsumme: Alle drei Betriebe kombinieren
+        # Umsatz: Deggendorf (branch=1, subsidiary=1) + Hyundai (branch=2, subsidiary=2) + Landau (branch=3, subsidiary=1)
+        firma_filter_umsatz = "AND ((branch_number = 1 AND subsidiary_to_company_ref = 1) OR (branch_number = 2 AND subsidiary_to_company_ref = 2) OR (branch_number = 3 AND subsidiary_to_company_ref = 1))"
+        # Einsatz: Deggendorf (6. Ziffer='1', subsidiary=1) + Hyundai (6. Ziffer='1', subsidiary=2) + Landau (branch=3, subsidiary=1)
+        # TAG182: Fix - 74xxxx Konten mit 6. Ziffer='2' und branch=1 gehören zu Deggendorf, müssen eingeschlossen werden!
+        # Deggendorf: (6. Ziffer='1' OR (74xxxx AND branch=1)) AND subsidiary=1 AND branch != 3 (um Doppelzählung mit Landau zu vermeiden)
+        # Landau: branch=3 AND subsidiary=1
+        # Hyundai: 6. Ziffer='1' AND subsidiary=2
+        firma_filter_einsatz = """AND (
+            ((substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1' OR (nominal_account_number BETWEEN 740000 AND 749999 AND branch_number = 1)) AND subsidiary_to_company_ref = 1 AND branch_number != 3)
+            OR (branch_number = 3 AND subsidiary_to_company_ref = 1)
+            OR (substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1' AND subsidiary_to_company_ref = 2)
+        )"""
+        # Kosten: Deggendorf (6. Ziffer='1', subsidiary=1) + Hyundai (6. Ziffer='1', subsidiary=2) + Landau (6. Ziffer='2', subsidiary=1)
+        # TAG182: Landau Kosten verwenden 6. Ziffer='2', nicht branch_number=3!
+        firma_filter_kosten = "AND ((substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1' AND subsidiary_to_company_ref IN (1, 2)) OR (substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 1))"
+        standort_name = "Gesamtsumme (Deggendorf + Landau + Hyundai)"
     # TAG171: Fix - Wenn "Alle Firmen" aber spezifischer Standort, automatisch Firma setzen
     # Landau gehört zu Stellantis, also wenn standort='2' oder standort='3' und firma='0', dann firma='1' verwenden
-    if firma == '0' and (standort == '2' or standort == '3'):
+    elif firma == '0' and (standort == '2' or standort == '3'):
         # Landau gehört zu Stellantis (standort='2' oder '3' für API-Kompatibilität)
         firma = '1'
         standort = '2'  # Normalisiere auf '2' für interne Logik
@@ -279,8 +300,10 @@ def build_firma_standort_filter(firma: str, standort: str):
             # Deggendorf: branch_number=1 für Umsatz, Konto-Endziffer=1 für Einsatz
             # TAG182: Fix - Kosten mit branch=1 aber 6. Ziffer='2' gehören zu Landau, nicht Deggendorf!
             # Problem: Kosten mit branch=1 UND 6. Ziffer='2' wurden doppelt gezählt
+            # TAG182: Fix - Einsatz muss auch 74xxxx Konten mit branch=1 einschließen!
+            # TAG182: Fix - Konten mit branch=3 müssen ausgeschlossen werden (gehören zu Landau)!
             firma_filter_umsatz += " AND branch_number = 1"
-            firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
+            firma_filter_einsatz += " AND (substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1' OR (nominal_account_number BETWEEN 740000 AND 749999 AND branch_number = 1)) AND branch_number != 3"
             # Kosten: branch=1 UND 6. Ziffer='1' (nicht '2', die gehören zu Landau!)
             firma_filter_kosten += " AND branch_number = 1 AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
             standort_name = "Deggendorf"
@@ -463,9 +486,14 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
     # Variable Kosten
     # TAG182: Landau - 6. Ziffer='2' für Kosten (nicht branch_number=3, da Kosten hauptsächlich branch=1 haben)!
     # TAG182: Hyundai - 8910xx AUSSCHLIESSEN (negativer Wert, reduziert Kosten fälschlicherweise)
+    # TAG182: Deggendorf - Nur 6. Ziffer='1' verwenden (nicht branch=1 AND 6. Ziffer='1'), da es Variable Kosten mit branch=3 gibt!
     if standort == '2' and firma == '1':
         variable_kosten_filter = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 1"
         variable_8910xx_include = True  # Landau: 8910xx einschließen
+    elif standort == '1' and firma == '1':
+        # Deggendorf: Nur 6. Ziffer='1' verwenden (nicht branch=1 AND 6. Ziffer='1'), da es Variable Kosten mit branch=3 gibt!
+        variable_kosten_filter = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1' AND subsidiary_to_company_ref = 1"
+        variable_8910xx_include = True  # Deggendorf: 8910xx einschließen
     elif firma == '2':
         # Hyundai: 8910xx AUSSCHLIESSEN (sollte nicht in Variablen Kosten sein)
         variable_kosten_filter = firma_filter_kosten
@@ -953,7 +981,14 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
 
     # Umsatz YTD
     # TAG182: Hyundai verwendet 800000-899999 (inkl. 89xxxx), nicht nur bis 889999!
-    if firma == '2':
+    # TAG182: Für Gesamtsumme (firma=0, standort=0) muss Hyundai's 89xxxx (außer 8932xx) eingeschlossen werden!
+    if firma == '0' and standort == '0':
+        # Gesamtsumme: Deggendorf+Landau (800000-889999 + 893200-893299) + Hyundai (800000-899999 außer 8932xx)
+        umsatz_range_filter = """AND (
+            ((nominal_account_number BETWEEN 800000 AND 889999) OR (nominal_account_number BETWEEN 893200 AND 893299))
+            OR ((nominal_account_number BETWEEN 800000 AND 899999) AND NOT (nominal_account_number BETWEEN 893200 AND 893299) AND branch_number = 2 AND subsidiary_to_company_ref = 2)
+        )"""
+    elif firma == '2':
         # Hyundai: Alle 8xxxxx (inkl. 89xxxx, außer 8932xx)
         umsatz_range_filter = "AND ((nominal_account_number BETWEEN 800000 AND 899999) AND NOT (nominal_account_number BETWEEN 893200 AND 893299))"
     else:
@@ -992,9 +1027,23 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
     # Variable Kosten YTD
     # TAG182: Landau - 6. Ziffer='2' für Kosten (nicht branch_number=3, da Kosten hauptsächlich branch=1 haben)!
     # TAG182: Hyundai - 8910xx AUSSCHLIESSEN (negativer Wert, reduziert Kosten fälschlicherweise)
-    if standort == '2' and firma == '1':
+    # TAG182: Deggendorf - Nur 6. Ziffer='1' verwenden (nicht branch=1 AND 6. Ziffer='1'), da es Variable Kosten mit branch=3 gibt!
+    # TAG182: Für Gesamtsumme (firma=0, standort=0) muss 8910xx für Hyundai ausgeschlossen werden!
+    if firma == '0' and standort == '0':
+        # Gesamtsumme: Deggendorf (6. Ziffer='1', subsidiary=1, mit 8910xx) + Landau (6. Ziffer='2', subsidiary=1, mit 8910xx) + Hyundai (6. Ziffer='1', subsidiary=2, OHNE 8910xx)
+        variable_kosten_filter_ytd = """AND (
+            (substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1' AND subsidiary_to_company_ref = 1)
+            OR (substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 1)
+            OR (substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1' AND subsidiary_to_company_ref = 2 AND NOT (nominal_account_number BETWEEN 891000 AND 891099))
+        )"""
+        variable_8910xx_include_ytd = True  # Gesamtsumme: 8910xx für Deggendorf+Landau einschließen, aber für Hyundai ausschließen (via Filter)
+    elif standort == '2' and firma == '1':
         variable_kosten_filter_ytd = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 1"
         variable_8910xx_include_ytd = True  # Landau: 8910xx einschließen
+    elif standort == '1' and firma == '1':
+        # Deggendorf: Nur 6. Ziffer='1' verwenden (nicht branch=1 AND 6. Ziffer='1'), da es Variable Kosten mit branch=3 gibt!
+        variable_kosten_filter_ytd = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1' AND subsidiary_to_company_ref = 1"
+        variable_8910xx_include_ytd = True  # Deggendorf: 8910xx einschließen
     elif firma == '2':
         # Hyundai: 8910xx AUSSCHLIESSEN (sollte nicht in Variablen Kosten sein)
         variable_kosten_filter_ytd = firma_filter_kosten
@@ -1836,14 +1885,32 @@ def get_bwa_v2():
             cursor = conn.cursor()
 
             # Gesamt-Umsatz (alle 8er Konten)
+            # TAG182: Für Gesamtsumme (firma=0, standort=0) muss Hyundai's 89xxxx (außer 8932xx) eingeschlossen werden!
+            # Deggendorf+Landau: 800000-889999 + 893200-893299
+            # Hyundai: 800000-899999 (außer 8932xx)
+            # Gesamtsumme: Kombination beider
+            if firma == '0' and standort == '0':
+                # Gesamtsumme: Deggendorf+Landau (800000-889999 + 893200-893299) + Hyundai (800000-899999 außer 8932xx)
+                umsatz_range_gesamt = """AND (
+                    ((nominal_account_number BETWEEN 800000 AND 889999) OR (nominal_account_number BETWEEN 893200 AND 893299))
+                    OR ((nominal_account_number BETWEEN 800000 AND 899999) AND NOT (nominal_account_number BETWEEN 893200 AND 893299) AND branch_number = 2 AND subsidiary_to_company_ref = 2)
+                )"""
+            else:
+                # Einzelbetrieb: Standard-Filter
+                if firma == '2':
+                    # Hyundai: Alle 8xxxxx (inkl. 89xxxx, außer 8932xx)
+                    umsatz_range_gesamt = "AND ((nominal_account_number BETWEEN 800000 AND 899999) AND NOT (nominal_account_number BETWEEN 893200 AND 893299))"
+                else:
+                    # Stellantis/Alle: 800000-889999 + 893200-893299
+                    umsatz_range_gesamt = "AND ((nominal_account_number BETWEEN 800000 AND 889999) OR (nominal_account_number BETWEEN 893200 AND 893299))"
+            
             cursor.execute(convert_placeholders(f"""
                 SELECT COALESCE(SUM(
                     CASE WHEN debit_or_credit='H' THEN posted_value ELSE -posted_value END
                 )/100.0, 0) as wert
                 FROM loco_journal_accountings
                 WHERE accounting_date >= %s AND accounting_date < %s
-                  AND ((nominal_account_number BETWEEN 800000 AND 889999)
-                       OR (nominal_account_number BETWEEN 893200 AND 893299))
+                  {umsatz_range_gesamt}
                   {firma_filter_umsatz}
                   {guv_filter}
             """), (datum_von, datum_bis))
@@ -1921,7 +1988,16 @@ def get_bwa_v2():
             # Variable Kosten
             # TAG182: Landau - 6. Ziffer='2' für Kosten (nicht branch_number=3, da Kosten hauptsächlich branch=1 haben)!
             # TAG182: Hyundai - 8910xx AUSSCHLIESSEN (negativer Wert, reduziert Kosten fälschlicherweise)
-            if standort == '2' and firma == '1':
+            # TAG182: Für Gesamtsumme (firma=0, standort=0) muss 8910xx für Hyundai ausgeschlossen werden!
+            if firma == '0' and standort == '0':
+                # Gesamtsumme: Deggendorf (6. Ziffer='1', subsidiary=1, mit 8910xx) + Landau (6. Ziffer='2', subsidiary=1, mit 8910xx) + Hyundai (6. Ziffer='1', subsidiary=2, OHNE 8910xx)
+                variable_kosten_filter = """AND (
+                    (substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1' AND subsidiary_to_company_ref = 1)
+                    OR (substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 1)
+                    OR (substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1' AND subsidiary_to_company_ref = 2 AND NOT (nominal_account_number BETWEEN 891000 AND 891099))
+                )"""
+                variable_8910xx_include = True  # Gesamtsumme: 8910xx für Deggendorf+Landau einschließen, aber für Hyundai ausschließen (via Filter)
+            elif standort == '2' and firma == '1':
                 variable_kosten_filter = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 1"
                 variable_8910xx_include = True  # Landau: 8910xx einschließen
             elif firma == '2':
@@ -2195,7 +2271,14 @@ def get_bwa_v2():
 
             # YTD Umsatz
             # TAG182: Hyundai verwendet 800000-899999 (inkl. 89xxxx), nicht nur bis 889999!
-            if firma == '2':
+            # TAG182: Für Gesamtsumme (firma=0, standort=0) muss Hyundai's 89xxxx (außer 8932xx) eingeschlossen werden!
+            if firma == '0' and standort == '0':
+                # Gesamtsumme: Deggendorf+Landau (800000-889999 + 893200-893299) + Hyundai (800000-899999 außer 8932xx)
+                ytd_umsatz_range_filter = """AND (
+                    ((nominal_account_number BETWEEN 800000 AND 889999) OR (nominal_account_number BETWEEN 893200 AND 893299))
+                    OR ((nominal_account_number BETWEEN 800000 AND 899999) AND NOT (nominal_account_number BETWEEN 893200 AND 893299) AND branch_number = 2 AND subsidiary_to_company_ref = 2)
+                )"""
+            elif firma == '2':
                 # Hyundai: Alle 8xxxxx (inkl. 89xxxx, außer 8932xx)
                 ytd_umsatz_range_filter = "AND ((nominal_account_number BETWEEN 800000 AND 899999) AND NOT (nominal_account_number BETWEEN 893200 AND 893299))"
             else:
@@ -2247,11 +2330,25 @@ def get_bwa_v2():
                 })
 
             # YTD Variable Kosten
-            # TAG182: Landau - ALLE Kosten mit 6. Ziffer='2' (nicht branch_number=3!)
+            # TAG182: Landau - ALLE Kosten mit 6. Ziffer='2' AND subsidiary_to_company_ref = 1 (nicht branch_number=3!)
             # TAG182: Hyundai - 8910xx AUSSCHLIESSEN (negativer Wert, reduziert Kosten fälschlicherweise)
-            if standort == '2' and firma == '1':
-                ytd_variable_kosten_filter = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
+            # TAG182: Deggendorf - Nur 6. Ziffer='1' verwenden (nicht branch=1 AND 6. Ziffer='1'), da es Variable Kosten mit branch=3 gibt!
+            # TAG182: Für Gesamtsumme (firma=0, standort=0) muss 8910xx für Hyundai ausgeschlossen werden!
+            if firma == '0' and standort == '0':
+                # Gesamtsumme: Deggendorf (6. Ziffer='1', subsidiary=1, mit 8910xx) + Landau (6. Ziffer='2', subsidiary=1, mit 8910xx) + Hyundai (6. Ziffer='1', subsidiary=2, OHNE 8910xx)
+                ytd_variable_kosten_filter = """AND (
+                    (substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1' AND subsidiary_to_company_ref = 1)
+                    OR (substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 1)
+                    OR (substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1' AND subsidiary_to_company_ref = 2 AND NOT (nominal_account_number BETWEEN 891000 AND 891099))
+                )"""
+                ytd_variable_8910xx_include = True  # Gesamtsumme: 8910xx für Deggendorf+Landau einschließen, aber für Hyundai ausschließen (via Filter)
+            elif standort == '2' and firma == '1':
+                ytd_variable_kosten_filter = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 1"
                 ytd_variable_8910xx_include = True  # Landau: 8910xx einschließen
+            elif standort == '1' and firma == '1':
+                # Deggendorf: Nur 6. Ziffer='1' verwenden (nicht branch=1 AND 6. Ziffer='1'), da es Variable Kosten mit branch=3 gibt!
+                ytd_variable_kosten_filter = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1' AND subsidiary_to_company_ref = 1"
+                ytd_variable_8910xx_include = True  # Deggendorf: 8910xx einschließen
             elif firma == '2':
                 # Hyundai: 8910xx AUSSCHLIESSEN (sollte nicht in Variablen Kosten sein)
                 ytd_variable_kosten_filter = firma_filter_kosten
@@ -2306,6 +2403,12 @@ def get_bwa_v2():
                     bereich['stueck'] = {'monat': 0, 'jahr': 0, 'vj_monat': 0, 'vj_jahr': 0}
 
             # YTD Direkte Kosten
+            # TAG182: Landau - 6. Ziffer='2' für Kosten (nicht branch_number=3, da Kosten hauptsächlich branch=1 haben)!
+            if standort == '2' and firma == '1':
+                ytd_direkte_kosten_filter = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 1"
+            else:
+                ytd_direkte_kosten_filter = firma_filter_kosten
+            
             cursor.execute(convert_placeholders(f"""
                 SELECT COALESCE(SUM(
                     CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
@@ -2325,7 +2428,7 @@ def get_bwa_v2():
                 AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0')
             OR nominal_account_number BETWEEN 491000 AND 497999
           )
-                  {firma_filter_kosten}
+                  {ytd_direkte_kosten_filter}
                   {guv_filter}
             """), (ytd_datum_von, datum_bis) + tuple(direkte_kst_params))
             ytd_direkte = float(row_to_dict(cursor.fetchone())['wert'] or 0)
@@ -2333,6 +2436,12 @@ def get_bwa_v2():
             ytd_db3 = ytd_db2 - ytd_direkte
 
             # YTD Indirekte Kosten
+            # TAG182: Landau - 6. Ziffer='2' für Kosten (nicht branch_number=3, da Kosten hauptsächlich branch=1 haben)!
+            if standort == '2' and firma == '1':
+                ytd_indirekte_kosten_filter = "AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 1"
+            else:
+                ytd_indirekte_kosten_filter = firma_filter_kosten
+            
             cursor.execute(convert_placeholders(f"""
                 SELECT COALESCE(SUM(
                     CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
@@ -2346,7 +2455,7 @@ def get_bwa_v2():
                     OR (nominal_account_number BETWEEN 489000 AND 489999
                         AND substr(CAST(nominal_account_number AS TEXT), 5, 1) != '0')
                   )
-                  {firma_filter_kosten}
+                  {ytd_indirekte_kosten_filter}
                   {guv_filter}
             """), (ytd_datum_von, datum_bis))
             ytd_indirekte = float(row_to_dict(cursor.fetchone())['wert'] or 0)

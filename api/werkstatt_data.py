@@ -43,6 +43,9 @@ from psycopg2.extras import RealDictCursor
 # SSOT: Standort/Betriebsnamen
 from api.standort_utils import BETRIEB_NAMEN
 
+# SSOT: KPI-Berechnungen
+from utils.kpi_definitions import berechne_anwesenheitsgrad_fuer_mechaniker_liste
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================
@@ -299,6 +302,10 @@ class WerkstattData:
             """, [von, bis])
             anzahl_tage = cursor.fetchone()['count'] or 0
 
+            # Anwesenheitsgrad berechnen (TAG 181 - SSOT)
+            # Nutzt zentrale Funktion aus utils/kpi_definitions.py
+            gesamt_anwesenheitsgrad, mechaniker_liste = berechne_anwesenheitsgrad_fuer_mechaniker_liste(mechaniker_liste)
+
             logger.info(f"WerkstattData.get_mechaniker_leistung: {len(mechaniker_liste)} Mechaniker, Zeitraum {von} - {bis}")
 
             return {
@@ -317,7 +324,10 @@ class WerkstattData:
                     'aw': round(gesamt_aw, 1),
                     'umsatz': round(gesamt_umsatz, 2),
                     'leistungsgrad': gesamt_leistungsgrad,
-                    'produktivitaet': gesamt_produktivitaet
+                    'produktivitaet': gesamt_produktivitaet,
+                    'anwesenheitsgrad': gesamt_anwesenheitsgrad,
+                    'bezahlt_h': round(sum(m.get('bezahlt_h', 0) for m in mechaniker_liste), 1),
+                    'anwesend_h': round(sum(m.get('anwesend_h', 0) for m in mechaniker_liste), 1)
                 }
             }
 
@@ -1779,6 +1789,36 @@ class WerkstattData:
             zugeordnet_aw = sum(float(p['vorgabe_aw'] or 0) for p in positionen if p['mechanic_no'])
             nicht_zugeordnet_aw = sum(float(p['vorgabe_aw'] or 0) for p in positionen if not p['mechanic_no'])
             total_teile = sum(float(p['betrag'] or 0) for p in teile)
+            
+            # Garantie-Erkennung: Prüfe Positionen und Rechnungen
+            ist_garantie = False
+            haupt_charge_type = None
+            haupt_labour_type = None
+            invoice_type = None
+            
+            # Prüfe Positionen
+            for p in positionen:
+                ct = p.get('charge_type')
+                lt = p.get('labour_type')
+                if ct == 60 or lt in ['G', 'GS']:
+                    ist_garantie = True
+                    if not haupt_charge_type:
+                        haupt_charge_type = ct
+                        haupt_labour_type = lt
+            
+            # Prüfe Rechnungen (falls vorhanden)
+            if not ist_garantie:
+                cursor.execute("""
+                    SELECT DISTINCT invoice_type
+                    FROM invoices
+                    WHERE order_number = %s
+                      AND is_canceled = false
+                    LIMIT 1
+                """, [auftrag_nr])
+                invoice_result = cursor.fetchone()
+                if invoice_result and invoice_result.get('invoice_type') == 6:
+                    ist_garantie = True
+                    invoice_type = 6
 
             def format_dt(dt):
                 return dt.strftime('%d.%m.%Y %H:%M') if dt else None
@@ -1807,6 +1847,12 @@ class WerkstattData:
                         'ist_offen': auftrag['has_open_positions'],
                         'hat_abgeschlossene': auftrag['has_closed_positions'],
                         'dringlichkeit': auftrag['urgency']
+                    },
+                    'garantie': {
+                        'ist_garantie': ist_garantie,
+                        'charge_type': haupt_charge_type,
+                        'labour_type': haupt_labour_type,
+                        'invoice_type': invoice_type
                     },
                     'planung': {
                         'eingang': format_dt(auftrag['estimated_inbound_time']),
@@ -3605,6 +3651,463 @@ class WerkstattData:
             }
         }
 
+    @staticmethod
+    def get_mechaniker_stempelzeit_analyse(
+        mechaniker_nr: int,
+        von: Optional[date] = None,
+        bis: Optional[date] = None
+    ) -> Dict[str, Any]:
+        """
+        Detaillierte Tagesanalyse der Stempelzeiten für einen Mechaniker.
+        
+        Liefert für jeden Tag im Zeitraum:
+        - Datum
+        - Anwesend (Stunden)
+        - Bezahlt (Stunden, Standard: 8h pro Tag)
+        - Differenz (Anwesend - Bezahlt)
+        - Anwesenheitsgrad (%)
+        
+        Args:
+            mechaniker_nr: Mechaniker-Nummer (z.B. 5020)
+            von: Startdatum (optional, default: 1. des aktuellen Monats)
+            bis: Enddatum (optional, default: heute)
+            
+        Returns:
+            Dict mit:
+            - mechaniker_nr: Mechaniker-Nummer
+            - mechaniker_name: Name
+            - zeitraum: {'von': str, 'bis': str}
+            - tage: Liste mit Tagesdaten
+            - zusammenfassung: Gesamtwerte
+        """
+        if von is None:
+            heute = date.today()
+            von = heute.replace(day=1)
+        if bis is None:
+            bis = date.today()
+        
+        with locosoft_session() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            # Mechaniker-Info
+            cursor.execute("""
+                SELECT name, subsidiary
+                FROM employees_history
+                WHERE employee_number = %s
+                  AND is_latest_record = true
+            """, (mechaniker_nr,))
+            mechaniker_info = cursor.fetchone()
+            
+            if not mechaniker_info:
+                return {
+                    'error': f'Mechaniker {mechaniker_nr} nicht gefunden'
+                }
+            
+            # Tagesweise Anwesenheit (type=1)
+            cursor.execute("""
+                SELECT
+                    DATE(start_time) as datum,
+                    SUM(EXTRACT(EPOCH FROM (end_time - start_time)) / 60) as anwesend_min
+                FROM times
+                WHERE employee_number = %s
+                  AND type = 1
+                  AND end_time IS NOT NULL
+                  AND DATE(start_time) >= %s
+                  AND DATE(start_time) <= %s
+                GROUP BY DATE(start_time)
+                ORDER BY DATE(start_time)
+            """, (mechaniker_nr, von, bis))
+            
+            tage_daten = cursor.fetchall()
+            
+            # Tagesweise Stempelzeit (type=2) für zusätzliche Info
+            cursor.execute("""
+                SELECT
+                    DATE(start_time) as datum,
+                    SUM(EXTRACT(EPOCH FROM (end_time - start_time)) / 60) as stempelzeit_min
+                FROM (
+                    SELECT DISTINCT ON (employee_number, start_time, end_time)
+                        employee_number,
+                        start_time,
+                        end_time,
+                        EXTRACT(EPOCH FROM (end_time - start_time)) / 60 as minuten
+                    FROM times
+                    WHERE employee_number = %s
+                      AND type = 2
+                      AND end_time IS NOT NULL
+                      AND DATE(start_time) >= %s
+                      AND DATE(start_time) <= %s
+                ) dedup
+                GROUP BY DATE(start_time)
+                ORDER BY DATE(start_time)
+            """, (mechaniker_nr, von, bis))
+            
+            stempelzeit_daten = {row['datum']: row['stempelzeit_min'] for row in cursor.fetchall()}
+            
+            # Tagesliste aufbauen
+            tage_liste = []
+            gesamt_anwesend_h = 0.0
+            gesamt_bezahlt_h = 0.0
+            
+            for tag_row in tage_daten:
+                datum = tag_row['datum']
+                anwesend_min = float(tag_row['anwesend_min'] or 0)
+                anwesend_h = anwesend_min / 60.0
+                
+                # Bezahlt: Standard 8h pro Tag
+                bezahlt_h = 8.0
+                
+                differenz_h = anwesend_h - bezahlt_h
+                anwesenheitsgrad = (anwesend_h / bezahlt_h * 100) if bezahlt_h > 0 else None
+                
+                stempelzeit_min = stempelzeit_daten.get(datum, 0)
+                stempelzeit_h = stempelzeit_min / 60.0 if stempelzeit_min else 0
+                
+                tage_liste.append({
+                    'datum': datum.isoformat() if isinstance(datum, date) else str(datum),
+                    'anwesend_h': round(anwesend_h, 2),
+                    'bezahlt_h': round(bezahlt_h, 2),
+                    'differenz_h': round(differenz_h, 2),
+                    'anwesenheitsgrad': round(anwesenheitsgrad, 1) if anwesenheitsgrad else None,
+                    'stempelzeit_h': round(stempelzeit_h, 2)
+                })
+                
+                gesamt_anwesend_h += anwesend_h
+                gesamt_bezahlt_h += bezahlt_h
+            
+            # Zusammenfassung
+            gesamt_anwesenheitsgrad = (gesamt_anwesend_h / gesamt_bezahlt_h * 100) if gesamt_bezahlt_h > 0 else None
+            
+            return {
+                'mechaniker_nr': mechaniker_nr,
+                'mechaniker_name': mechaniker_info['name'],
+                'betrieb': mechaniker_info['subsidiary'],
+                'zeitraum': {
+                    'von': von.isoformat(),
+                    'bis': bis.isoformat()
+                },
+                'tage': tage_liste,
+                'zusammenfassung': {
+                    'anzahl_tage': len(tage_liste),
+                    'gesamt_anwesend_h': round(gesamt_anwesend_h, 2),
+                    'gesamt_bezahlt_h': round(gesamt_bezahlt_h, 2),
+                    'gesamt_differenz_h': round(gesamt_anwesend_h - gesamt_bezahlt_h, 2),
+                    'gesamt_anwesenheitsgrad': round(gesamt_anwesenheitsgrad, 1) if gesamt_anwesenheitsgrad else None
+            }
+        }
+
+    @staticmethod
+    def get_mechaniker_stempelzeit_analyse(
+        mechaniker_nr: int,
+        von: Optional[date] = None,
+        bis: Optional[date] = None
+    ) -> Dict[str, Any]:
+        """
+        Detaillierte Tagesanalyse der Stempelzeiten für einen Mechaniker.
+        
+        Liefert für jeden Tag im Zeitraum:
+        - Datum
+        - Anwesend (Stunden)
+        - Bezahlt (Stunden, Standard: 8h pro Tag)
+        - Differenz (Anwesend - Bezahlt)
+        - Anwesenheitsgrad (%)
+        
+        Args:
+            mechaniker_nr: Mechaniker-Nummer (z.B. 5020)
+            von: Startdatum (optional, default: 1. des aktuellen Monats)
+            bis: Enddatum (optional, default: heute)
+            
+        Returns:
+            Dict mit:
+            - mechaniker_nr: Mechaniker-Nummer
+            - mechaniker_name: Name
+            - zeitraum: {'von': str, 'bis': str}
+            - tage: Liste mit Tagesdaten
+            - zusammenfassung: Gesamtwerte
+        """
+        if von is None:
+            heute = date.today()
+            von = heute.replace(day=1)
+        if bis is None:
+            bis = date.today()
+        
+        with locosoft_session() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            # Mechaniker-Info
+            cursor.execute("""
+                SELECT name, subsidiary
+                FROM employees_history
+                WHERE employee_number = %s
+                  AND is_latest_record = true
+            """, (mechaniker_nr,))
+            mechaniker_info = cursor.fetchone()
+            
+            if not mechaniker_info:
+                return {
+                    'error': f'Mechaniker {mechaniker_nr} nicht gefunden'
+                }
+            
+            # Tagesweise Anwesenheit (type=1)
+            cursor.execute("""
+                SELECT
+                    DATE(start_time) as datum,
+                    SUM(EXTRACT(EPOCH FROM (end_time - start_time)) / 60) as anwesend_min
+                FROM times
+                WHERE employee_number = %s
+                  AND type = 1
+                  AND end_time IS NOT NULL
+                  AND DATE(start_time) >= %s
+                  AND DATE(start_time) <= %s
+                GROUP BY DATE(start_time)
+                ORDER BY DATE(start_time)
+            """, (mechaniker_nr, von, bis))
+            
+            tage_daten = cursor.fetchall()
+            
+            # Tagesweise Stempelzeit (type=2) für zusätzliche Info
+            cursor.execute("""
+                SELECT
+                    DATE(start_time) as datum,
+                    SUM(EXTRACT(EPOCH FROM (end_time - start_time)) / 60) as stempelzeit_min
+                FROM (
+                    SELECT DISTINCT ON (employee_number, start_time, end_time)
+                        employee_number,
+                        start_time,
+                        end_time,
+                        EXTRACT(EPOCH FROM (end_time - start_time)) / 60 as minuten
+                    FROM times
+                    WHERE employee_number = %s
+                      AND type = 2
+                      AND end_time IS NOT NULL
+                      AND DATE(start_time) >= %s
+                      AND DATE(start_time) <= %s
+                ) dedup
+                GROUP BY DATE(start_time)
+                ORDER BY DATE(start_time)
+            """, (mechaniker_nr, von, bis))
+            
+            stempelzeit_daten = {row['datum']: row['stempelzeit_min'] for row in cursor.fetchall()}
+            
+            # Tagesliste aufbauen
+            tage_liste = []
+            gesamt_anwesend_h = 0.0
+            gesamt_bezahlt_h = 0.0
+            
+            for tag_row in tage_daten:
+                datum = tag_row['datum']
+                anwesend_min = float(tag_row['anwesend_min'] or 0)
+                anwesend_h = anwesend_min / 60.0
+                
+                # Bezahlt: Standard 8h pro Tag
+                bezahlt_h = 8.0
+                
+                differenz_h = anwesend_h - bezahlt_h
+                anwesenheitsgrad = (anwesend_h / bezahlt_h * 100) if bezahlt_h > 0 else None
+                
+                stempelzeit_min = stempelzeit_daten.get(datum, 0)
+                stempelzeit_h = stempelzeit_min / 60.0 if stempelzeit_min else 0
+                
+                tage_liste.append({
+                    'datum': datum.isoformat() if isinstance(datum, date) else str(datum),
+                    'anwesend_h': round(anwesend_h, 2),
+                    'bezahlt_h': round(bezahlt_h, 2),
+                    'differenz_h': round(differenz_h, 2),
+                    'anwesenheitsgrad': round(anwesenheitsgrad, 1) if anwesenheitsgrad else None,
+                    'stempelzeit_h': round(stempelzeit_h, 2)
+                })
+                
+                gesamt_anwesend_h += anwesend_h
+                gesamt_bezahlt_h += bezahlt_h
+            
+            # Zusammenfassung
+            gesamt_anwesenheitsgrad = (gesamt_anwesend_h / gesamt_bezahlt_h * 100) if gesamt_bezahlt_h > 0 else None
+            
+            return {
+                'mechaniker_nr': mechaniker_nr,
+                'mechaniker_name': mechaniker_info['name'],
+                'betrieb': mechaniker_info['subsidiary'],
+                'zeitraum': {
+                    'von': von.isoformat(),
+                    'bis': bis.isoformat()
+                },
+                'tage': tage_liste,
+                'zusammenfassung': {
+                    'anzahl_tage': len(tage_liste),
+                    'gesamt_anwesend_h': round(gesamt_anwesend_h, 2),
+                    'gesamt_bezahlt_h': round(gesamt_bezahlt_h, 2),
+                    'gesamt_differenz_h': round(gesamt_anwesend_h - gesamt_bezahlt_h, 2),
+                    'gesamt_anwesenheitsgrad': round(gesamt_anwesenheitsgrad, 1) if gesamt_anwesenheitsgrad else None
+                }
+            }
+
+
+    @staticmethod
+    def get_alle_mitarbeiter_stempelzeit_analyse(
+        von: Optional[date] = None,
+        bis: Optional[date] = None,
+        betrieb: Optional[int] = None,
+        nur_aktive: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Stempelzeit-Analyse für ALLE Mitarbeiter (nicht nur Mechaniker).
+        
+        Args:
+            von: Startdatum (optional, default: 1. des aktuellen Monats)
+            bis: Enddatum (optional, default: heute)
+            betrieb: Betrieb-ID (optional, 1=DEG, 2=HYU, 3=LAN)
+            nur_aktive: Nur aktive Mitarbeiter (default: True)
+            
+        Returns:
+            Dict mit:
+            - zeitraum: {'von': str, 'bis': str}
+            - mitarbeiter: Liste mit Mitarbeiter-Daten
+            - zusammenfassung: Gesamtwerte
+        """
+        if von is None:
+            heute = date.today()
+            von = heute.replace(day=1)
+        if bis is None:
+            bis = date.today()
+        
+        with locosoft_session() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            # Alle Mitarbeiter holen
+            query_mitarbeiter = """
+                SELECT DISTINCT
+                    eh.employee_number,
+                    eh.name,
+                    eh.subsidiary,
+                    CASE eh.subsidiary
+                        WHEN 1 THEN 'Deggendorf'
+                        WHEN 2 THEN 'Hyundai'
+                        WHEN 3 THEN 'Landau'
+                    END as betrieb_name
+                FROM employees_history eh
+                WHERE eh.is_latest_record = true
+            """
+            params_mitarbeiter = []
+            
+            if nur_aktive:
+                query_mitarbeiter += " AND (eh.leave_date IS NULL OR eh.leave_date > %s)"
+                params_mitarbeiter.append(bis)
+            
+            if betrieb:
+                query_mitarbeiter += " AND eh.subsidiary = %s"
+                params_mitarbeiter.append(betrieb)
+            
+            query_mitarbeiter += " ORDER BY eh.subsidiary, eh.name"
+            
+            cursor.execute(query_mitarbeiter, params_mitarbeiter)
+            alle_mitarbeiter = cursor.fetchall()
+            
+            # Für jeden Mitarbeiter die Stempelzeit-Analyse durchführen
+            mitarbeiter_liste = []
+            gesamt_anwesend_h = 0.0
+            gesamt_bezahlt_h = 0.0
+            
+            for ma in alle_mitarbeiter:
+                ma_nr = ma['employee_number']
+                
+                # Tagesweise Anwesenheit (type=1) MIT Pausen-Berücksichtigung
+                cursor.execute("""
+                    SELECT
+                        DATE(start_time) as datum,
+                        MIN(start_time) as erster_start,
+                        MAX(end_time) as letztes_ende,
+                        SUM(EXTRACT(EPOCH FROM (end_time - start_time)) / 60) as gestempelt_min,
+                        EXTRACT(EPOCH FROM (MAX(end_time) - MIN(start_time)) / 60) as spanne_min
+                    FROM times
+                    WHERE employee_number = %s
+                      AND type = 1
+                      AND end_time IS NOT NULL
+                      AND DATE(start_time) >= %s
+                      AND DATE(start_time) <= %s
+                    GROUP BY DATE(start_time)
+                    ORDER BY DATE(start_time)
+                """, (ma_nr, von, bis))
+                
+                tage_daten = cursor.fetchall()
+                
+                if not tage_daten:
+                    # Keine Stempelzeiten im Zeitraum
+                    continue
+                
+                # Tagesliste aufbauen
+                tage_liste = []
+                ma_anwesend_h = 0.0
+                ma_bezahlt_h = 0.0
+                
+                for tag_row in tage_daten:
+                    datum = tag_row['datum']
+                    gestempelt_min = float(tag_row['gestempelt_min'] or 0)
+                    spanne_min = float(tag_row['spanne_min'] or 0)
+                    
+                    # Pausen = Spanne - Gestempelt (Lücken zwischen Stempelungen)
+                    pause_min = max(0, spanne_min - gestempelt_min)
+                    
+                    # Anwesenheit = Gestempelt (ohne Pausen)
+                    # Alternative: Anwesenheit = Spanne - Pause (wenn Pausen explizit abgezogen werden sollen)
+                    anwesend_min = gestempelt_min
+                    anwesend_h = anwesend_min / 60.0
+                    
+                    # Bezahlt: Standard 8h pro Tag
+                    bezahlt_h = 8.0
+                    
+                    differenz_h = anwesend_h - bezahlt_h
+                    anwesenheitsgrad = (anwesend_h / bezahlt_h * 100) if bezahlt_h > 0 else None
+                    
+                    tage_liste.append({
+                        'datum': datum.isoformat() if isinstance(datum, date) else str(datum),
+                        'anwesend_h': round(anwesend_h, 2),
+                        'bezahlt_h': round(bezahlt_h, 2),
+                        'differenz_h': round(differenz_h, 2),
+                        'anwesenheitsgrad': round(anwesenheitsgrad, 1) if anwesenheitsgrad else None,
+                        'pause_min': round(pause_min, 1),
+                        'spanne_min': round(spanne_min, 1)
+                    })
+                    
+                    ma_anwesend_h += anwesend_h
+                    ma_bezahlt_h += bezahlt_h
+                
+                # Zusammenfassung pro Mitarbeiter
+                ma_anwesenheitsgrad = (ma_anwesend_h / ma_bezahlt_h * 100) if ma_bezahlt_h > 0 else None
+                
+                mitarbeiter_liste.append({
+                    'employee_number': ma_nr,
+                    'name': ma['name'],
+                    'betrieb': ma['subsidiary'],
+                    'betrieb_name': ma['betrieb_name'],
+                    'anzahl_tage': len(tage_liste),
+                    'gesamt_anwesend_h': round(ma_anwesend_h, 2),
+                    'gesamt_bezahlt_h': round(ma_bezahlt_h, 2),
+                    'gesamt_differenz_h': round(ma_anwesend_h - ma_bezahlt_h, 2),
+                    'anwesenheitsgrad': round(ma_anwesenheitsgrad, 1) if ma_anwesenheitsgrad else None,
+                    'tage': tage_liste
+                })
+                
+                gesamt_anwesend_h += ma_anwesend_h
+                gesamt_bezahlt_h += ma_bezahlt_h
+            
+            # Gesamt-Zusammenfassung
+            gesamt_anwesenheitsgrad = (gesamt_anwesend_h / gesamt_bezahlt_h * 100) if gesamt_bezahlt_h > 0 else None
+            
+            return {
+                'zeitraum': {
+                    'von': von.isoformat(),
+                    'bis': bis.isoformat()
+                },
+                'mitarbeiter': mitarbeiter_liste,
+                'zusammenfassung': {
+                    'anzahl_mitarbeiter': len(mitarbeiter_liste),
+                    'gesamt_anwesend_h': round(gesamt_anwesend_h, 2),
+                    'gesamt_bezahlt_h': round(gesamt_bezahlt_h, 2),
+                    'gesamt_differenz_h': round(gesamt_anwesend_h - gesamt_bezahlt_h, 2),
+                    'gesamt_anwesenheitsgrad': round(gesamt_anwesenheitsgrad, 1) if gesamt_anwesenheitsgrad else None
+                }
+            }
+
 
 # =============================================================================
 # CONVENIENCE FUNCTIONS (für TEK Integration)
@@ -3650,3 +4153,4 @@ def get_werkstatt_kpis_fuer_tek(monat: int, jahr: int, betrieb: Optional[int] = 
         'anzahl_mechaniker': leistung['anzahl_mechaniker'],
         'gesamt_umsatz': leistung['gesamt']['umsatz']
     }
+        

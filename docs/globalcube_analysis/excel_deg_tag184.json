@@ -1,0 +1,51 @@
+{
+  "umsatzerlöse": {
+    "position": "1 - NW",
+    "row": "10",
+    "monat": 1156755.83,
+    "ytd": 5744074.59
+  },
+  "einsatzwerte": {
+    "position": "2 - GW",
+    "row": "11",
+    "monat": 997174.42,
+    "ytd": 5064615.08
+  },
+  "bruttoertrag": {
+    "position": "Provisionen",
+    "row": "21",
+    "monat": 159581.41,
+    "ytd": 679459.51
+  },
+  "variable_kosten": {
+    "position": "Variable Kosten",
+    "row": "23",
+    "monat": 43073.0,
+    "ytd": 193007.25,
+    "details": [
+      {
+        "name": "Fertigmachen",
+        "monat": 43073.0,
+        "ytd": 193007.25
+      }
+    ]
+  },
+  "direkte_kosten": {
+    "position": "Deckungsbeitrag",
+    "row": "33",
+    "monat": 140392.48,
+    "ytd": 475467.44
+  },
+  "indirekte_kosten": {
+    "position": "Kalk. Kosten",
+    "row": "38",
+    "monat": 78730.35,
+    "ytd": 418906.31
+  },
+  "betriebsergebnis": {
+    "position": "Betriebsergebnis (berechnet)",
+    "row": "berechnet",
+    "monat": -102614.42000000001,
+    "ytd": null
+  }
+}

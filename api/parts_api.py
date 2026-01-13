@@ -489,6 +489,59 @@ def get_sync_status():
             'error': str(e)
         }), 500
 
+@parts_api.route('/api/parts/servicebox-url', methods=['GET'])
+def get_servicebox_url_with_auth():
+    """
+    Generiert ServiceBox-URL mit Credentials für automatischen Login
+    """
+    from flask import redirect, request
+    import os
+    import json
+    from urllib.parse import unquote
+    
+    try:
+        servicebox_url = request.args.get('url')
+        if not servicebox_url:
+            return jsonify({'error': 'URL-Parameter fehlt'}), 400
+        
+        # URL dekodieren
+        servicebox_url = unquote(servicebox_url)
+        
+        # Credentials laden
+        credentials_path = '/opt/greiner-portal/config/credentials.json'
+        if not os.path.exists(credentials_path):
+            return jsonify({'error': 'Credentials nicht gefunden'}), 404
+        
+        with open(credentials_path, 'r') as f:
+            creds = json.load(f)
+        
+        servicebox_creds = creds.get('external_systems', {}).get('stellantis_servicebox', {})
+        username = servicebox_creds.get('username')
+        password = servicebox_creds.get('password')
+        
+        if not username or not password:
+            return jsonify({'error': 'ServiceBox Credentials nicht gefunden'}), 404
+        
+        # URL mit Credentials bauen
+        # Format: https://username:password@host/path
+        if servicebox_url.startswith('http://') or servicebox_url.startswith('https://'):
+            # URL bereits vollständig
+            protocol, rest = servicebox_url.split('://', 1)
+            auth_url = f"{protocol}://{username}:{password}@{rest}"
+        else:
+            # Nur Pfad, füge Base-URL hinzu
+            base_url = servicebox_creds.get('portal_url', 'https://servicebox.mpsa.com')
+            protocol, rest = base_url.split('://', 1)
+            auth_url = f"{protocol}://{username}:{password}@{rest}/{servicebox_url.lstrip('/')}"
+        
+        # Redirect zur URL mit Credentials
+        return redirect(auth_url)
+        
+    except Exception as e:
+        return jsonify({
+            'error': str(e)
+        }), 500
+
 if __name__ == '__main__':
     print("Stellantis API - Standalone-Test nicht möglich")
     print("Verwende: python app.py")

@@ -353,14 +353,15 @@
         </div>
     </div>
     
-    <!-- ========== HAUPT-KPIs (4er Reihe: 3 Tachos + Entgangener Umsatz) ========== -->
+    <!-- ========== HAUPT-KPIs (5er Reihe: 4 Tachos + Entgangener Umsatz) ========== -->
     <div class="row g-3 mb-3">
         <!-- Leistungsgrad Tacho -->
-        <div class="col-lg-3 col-md-6">
+        <div class="col-lg-2 col-md-4 col-sm-6">
             <div class="card kpi-card-main h-100">
                 <div class="card-body text-center py-3">
                     <h6 class="text-muted mb-2">
                         <i class="bi bi-speedometer"></i> Leistungsgrad
+                        <i class="bi bi-info-circle kpi-help-icon text-primary ms-1" data-kpi="leistungsgrad" style="cursor: pointer; font-size: 0.9rem;" data-bs-toggle="tooltip" title="Klicken für Hilfe"></i>
                     </h6>
                     <div class="gauge-container" id="gaugeLeistung">
                         <div class="gauge-bg"></div>
@@ -384,11 +385,12 @@
         </div>
         
         <!-- Produktivität Tacho -->
-        <div class="col-lg-3 col-md-6">
+        <div class="col-lg-2 col-md-4 col-sm-6">
             <div class="card kpi-card-main h-100">
                 <div class="card-body text-center py-3">
                     <h6 class="text-muted mb-2">
                         <i class="bi bi-activity"></i> Produktivität
+                        <i class="bi bi-info-circle kpi-help-icon text-primary ms-1" data-kpi="produktivitaet" style="cursor: pointer; font-size: 0.9rem;" data-bs-toggle="tooltip" title="Klicken für Hilfe"></i>
                     </h6>
                     <div class="gauge-container" id="gaugeProduktiv">
                         <div class="gauge-bg"></div>
@@ -411,12 +413,42 @@
             </div>
         </div>
         
-        <!-- Effizienz Tacho (NEU!) -->
-        <div class="col-lg-3 col-md-6">
+        <!-- Anwesenheitsgrad Tacho (NEU - TAG 181) -->
+        <div class="col-lg-2 col-md-4 col-sm-6">
+            <div class="card kpi-card-main h-100">
+                <div class="card-body text-center py-3">
+                    <h6 class="text-muted mb-2">
+                        <i class="bi bi-person-check"></i> Anwesenheitsgrad
+                        <i class="bi bi-info-circle kpi-help-icon text-primary ms-1" data-kpi="anwesenheitsgrad" style="cursor: pointer; font-size: 0.9rem;" data-bs-toggle="tooltip" title="Klicken für Hilfe"></i>
+                    </h6>
+                    <div class="gauge-container" id="gaugeAnwesenheit">
+                        <div class="gauge-bg"></div>
+                        <div class="gauge-center"></div>
+                        <div class="gauge-needle" id="needleAnwesenheit"></div>
+                        <div class="gauge-value" id="gaugeValueAnwesenheit">-%</div>
+                    </div>
+                    <div class="gauge-labels">
+                        <span>0%</span>
+                        <span>50%</span>
+                        <span>100%</span>
+                        <span>150%</span>
+                    </div>
+                    <div class="small text-muted mt-1">Anwesend / Bezahlt</div>
+                    <div class="small mt-1">
+                        <span class="text-muted">Ziel:</span>
+                        <span class="fw-bold text-success">≥ 79%</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Effizienz Tacho -->
+        <div class="col-lg-2 col-md-4 col-sm-6">
             <div class="card kpi-card-main h-100">
                 <div class="card-body text-center py-3">
                     <h6 class="text-muted mb-2">
                         <i class="bi bi-bullseye"></i> Effizienz
+                        <i class="bi bi-info-circle kpi-help-icon text-primary ms-1" data-kpi="effizienz" style="cursor: pointer; font-size: 0.9rem;" data-bs-toggle="tooltip" title="Klicken für Hilfe"></i>
                     </h6>
                     <div class="gauge-container" id="gaugeEffizienz">
                         <div class="gauge-bg"></div>
@@ -439,12 +471,13 @@
             </div>
         </div>
         
-        <!-- Entgangener Umsatz (NEU!) -->
-        <div class="col-lg-3 col-md-6">
+        <!-- Entgangener Umsatz -->
+        <div class="col-lg-2 col-md-4 col-sm-6">
             <div class="card kpi-card-loss h-100" onclick="showEntgangenerUmsatzModal()" data-bs-toggle="tooltip" title="Klicken für Details">
                 <div class="card-body text-center py-3">
                     <h6 class="text-muted mb-2">
                         <i class="bi bi-cash-coin"></i> Entgangener Umsatz
+                        <i class="bi bi-info-circle kpi-help-icon text-primary ms-1" data-kpi="entgangener_umsatz" style="cursor: pointer; font-size: 0.9rem;" data-bs-toggle="tooltip" title="Klicken für Hilfe"></i>
                     </h6>
                     <div class="kpi-value-main text-danger" id="kpiEntgangenerUmsatz">-</div>
                     <div class="small text-muted mt-2" id="kpiEntgangenerDetail">
@@ -455,7 +488,7 @@
                         <span class="fw-bold" id="kpiSVS">119 €</span>
                         <span class="text-muted">/Std</span>
                     </div>
-                    <div class="small text-primary mt-1">
+                    <div class="small text-primary mt-1" style="cursor: pointer;" onclick="event.stopPropagation(); showEntgangenerUmsatzModal();">
                         <i class="bi bi-info-circle"></i> Details anzeigen
                     </div>
                 </div>
@@ -613,7 +646,8 @@
                                     <th class="text-end">Stempelzeit</th>
                                     <th class="text-end">AW</th>
                                     <th class="text-end">Vorgabe</th>
-                                    <th class="text-center" width="150">Leistungsgrad</th>
+                                    <th class="text-center" width="120">Leistungsgrad</th>
+                                    <th class="text-center" width="120">Anwesenheit</th>
                                     <th class="text-end">Ø/Tag</th>
                                 </tr>
                             </thead>
@@ -627,6 +661,7 @@
                                     <td class="text-end" id="sumAW">-</td>
                                     <td class="text-end" id="sumVorgabe">-</td>
                                     <td class="text-center" id="sumLG">-</td>
+                                    <td></td>
                                     <td></td>
                                 </tr>
                             </tfoot>
@@ -766,6 +801,11 @@
 
 {% endblock %}
 
+{% block extra_js %}
+<!-- KPI Help System (TAG 181) -->
+<script src="{{ url_for('static', filename='js/kpi_help.js') }}?v={{ STATIC_VERSION }}"></script>
+{% endblock %}
+
 {% block scripts %}
 <script>
 // ============================================================================
@@ -791,6 +831,13 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('filterZeitraum').addEventListener('change', handleZeitraumChange);
     document.getElementById('filterZeitraum').addEventListener('change', resetTabs);
     document.getElementById('filterBetrieb').addEventListener('change', resetTabs);
+    
+    // Tooltips initialisieren (für Help-Icons)
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+    
     loadData();
 });
 
@@ -860,6 +907,7 @@ function updateAllKPIs(data) {
     // Werte aus API oder berechnen
     const leistungsgrad = gesamt.leistungsgrad || data.gesamt_leistungsgrad || 0;
     const produktivitaet = gesamt.produktivitaet || data.gesamt_produktivitaet || 0;
+    const anwesenheitsgrad = gesamt.anwesenheitsgrad || null; // TAG 181: Neu aus API
     const effizienz = gesamt.effizienz || (leistungsgrad * produktivitaet / 100) || 0;
     
     const stempelzeitMin = data.gesamt_stempelzeit || 0;
@@ -872,9 +920,10 @@ function updateAllKPIs(data) {
     const verloreneStd = gesamt.verlorene_std || (stempelzeitStd * Math.max(0, 1 - leistungsgrad / 100));
     const entgangenerUmsatz = gesamt.entgangener_umsatz || (verloreneStd * svs);
     
-    // 3 Tachos aktualisieren
+    // 4 Tachos aktualisieren (TAG 181: Anwesenheitsgrad hinzugefügt)
     updateGauge('needleLeistung', 'gaugeValueLeistung', leistungsgrad);
     updateGauge('needleProduktiv', 'gaugeValueProduktiv', produktivitaet);
+    updateGauge('needleAnwesenheit', 'gaugeValueAnwesenheit', anwesenheitsgrad || 0);
     updateGauge('needleEffizienz', 'gaugeValueEffizienz', effizienz);
     
     // Entgangener Umsatz Card
@@ -927,13 +976,24 @@ function updateGauge(needleId, valueId, wert) {
 // ENTGANGENER UMSATZ MODAL
 // ============================================================================
 function showEntgangenerUmsatzModal() {
-    const modal = new bootstrap.Modal(document.getElementById('entgangenerUmsatzModal'));
+    console.log('showEntgangenerUmsatzModal aufgerufen');
+    
+    const modalElement = document.getElementById('entgangenerUmsatzModal');
+    if (!modalElement) {
+        console.error('Modal-Element nicht gefunden!');
+        alert('Fehler: Modal-Element nicht gefunden');
+        return;
+    }
+    
+    const modal = new bootstrap.Modal(modalElement);
     
     const gesamt = gesamtData || {};
     const svs = gesamt.svs || SVS_DEFAULT;
     const verloreneStd = gesamt.verlorene_std || 0;
     const entgangenerUmsatz = gesamt.entgangener_umsatz || 0;
     const leistungsgrad = gesamt.leistungsgrad || 0;
+    
+    console.log('Daten:', { svs, verloreneStd, entgangenerUmsatz, leistungsgrad });
     
     let html = `
         <div class="row mb-4">
@@ -1000,7 +1060,14 @@ function showEntgangenerUmsatzModal() {
     }
     
     document.getElementById('entgangenerUmsatzModalBody').innerHTML = html;
-    modal.show();
+    
+    try {
+        modal.show();
+        console.log('Modal angezeigt');
+    } catch (error) {
+        console.error('Fehler beim Anzeigen des Modals:', error);
+        alert('Fehler beim Öffnen des Modals: ' + error.message);
+    }
 }
 
 // ============================================================================
@@ -1056,6 +1123,18 @@ function updateMechanikerCards(mechaniker) {
                             <div class="small text-muted mt-1">Leistungsgrad</div>
                         </div>
                         
+                        ${m.anwesenheitsgrad !== null && m.anwesenheitsgrad !== undefined ? `
+                        <div class="mb-2 text-center">
+                            <div class="d-flex align-items-center justify-content-center gap-2">
+                                <i class="bi bi-person-check text-info" style="font-size: 0.85rem;"></i>
+                                <span class="small fw-bold ${m.anwesenheitsgrad >= 75 ? 'text-success' : m.anwesenheitsgrad >= 65 ? 'text-warning' : 'text-danger'}">
+                                    ${formatNumber(m.anwesenheitsgrad, 1)}%
+                                </span>
+                                <span class="small text-muted">Anwesenheit</span>
+                            </div>
+                        </div>
+                        ` : ''}
+                        
                         <div class="row g-2 text-center small">
                             <div class="col-4">
                                 <div class="fw-bold">${m.tage || 0}</div>
@@ -1097,7 +1176,7 @@ function updateDetailTable(mechaniker) {
     const tbody = document.getElementById('detailTableBody');
     
     if (!mechaniker || mechaniker.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center">Keine Daten</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center">Keine Daten</td></tr>';
         return;
     }
     
@@ -1131,6 +1210,13 @@ function updateDetailTable(mechaniker) {
                 <td class="text-end">${formatNumber(m.aw || 0, 1)}</td>
                 <td class="text-end">${formatNumber(vorgabe / 60, 1)} h</td>
                 <td class="text-center"><span class="badge ${lgClass} px-3">${formatNumber(m.leistungsgrad, 1)}%</span></td>
+                <td class="text-center">
+                    ${m.anwesenheitsgrad !== null && m.anwesenheitsgrad !== undefined ? `
+                        <span class="badge ${m.anwesenheitsgrad >= 75 ? 'bg-success' : m.anwesenheitsgrad >= 65 ? 'bg-warning' : 'bg-danger'} px-2">
+                            ${formatNumber(m.anwesenheitsgrad, 1)}%
+                        </span>
+                    ` : '<span class="text-muted">-</span>'}
+                </td>
                 <td class="text-end">${formatNumber((m.stempelzeit || 0) / (m.tage || 1) / 60, 1)} h</td>
             </tr>
         `;

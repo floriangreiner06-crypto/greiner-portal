@@ -27,7 +27,7 @@ else:
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 Jahr in Produktion
 
 # Globale Static-Version (ändert sich bei jedem Flask-Neustart)
-STATIC_VERSION = '20260109180000'  # TAG 176 - TEK Dashboard: Zwei Tage nebeneinander mit Datum
+STATIC_VERSION = '20260112120000'  # TAG 181 - Anwesenheitsgrad + KPI Help System
 print(f"📦 Static Version: {STATIC_VERSION}")
 
 # Template-Kontext: Macht STATIC_VERSION in allen Templates verfügbar
@@ -503,6 +503,14 @@ try:
     print("✅ Garantie SOAP API registriert: /api/garantie/soap/")
 except Exception as e:
     print(f"⚠️  Garantie SOAP API nicht geladen: {e}")
+
+# Garantie Aufträge API (TAG 181)
+try:
+    from api.garantie_auftraege_api import bp as garantie_auftraege_api
+    app.register_blueprint(garantie_auftraege_api)
+    print("✅ Garantie Aufträge API registriert: /api/garantie/auftraege/")
+except Exception as e:
+    print(f"⚠️  Garantie Aufträge API nicht geladen: {e}")
 
 # Mobis Teilebezug API (TAG 175 - Über Locosoft SOAP)
 try:

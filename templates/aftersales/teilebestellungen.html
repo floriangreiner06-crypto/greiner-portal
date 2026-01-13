@@ -672,12 +672,14 @@ function renderBestellungDetail(bestellung) {
         `;
     }
     
-    // URL Link
+    // URL Link mit Credentials
     if (bestellung.url) {
+        // URL mit Credentials über API-Endpoint generieren
+        const serviceboxUrl = encodeURIComponent(bestellung.url);
         html += `
             <hr>
             <div class="text-end">
-                <a href="${bestellung.url}" target="_blank" class="btn btn-sm btn-outline-primary">
+                <a href="/api/parts/servicebox-url?url=${serviceboxUrl}" target="_blank" class="btn btn-sm btn-outline-primary">
                     <i class="bi bi-box-arrow-up-right"></i> In ServiceBox öffnen
                 </a>
             </div>

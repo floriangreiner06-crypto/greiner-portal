@@ -19,6 +19,7 @@ from .kpi_definitions import (
     
     # Kern-Berechnungen
     berechne_anwesenheitsgrad,
+    berechne_anwesenheitsgrad_fuer_mechaniker_liste,
     berechne_auslastungsgrad,
     berechne_produktivitaet,  # Alias für Auslastungsgrad
     berechne_leistungsgrad,
@@ -97,8 +98,8 @@ __all__ = [
     'SCHWELLEN',
     
     # Berechnungen
-    'berechne_anwesenheitsgrad', 'berechne_auslastungsgrad',
-    'berechne_produktivitaet', 'berechne_leistungsgrad',
+    'berechne_anwesenheitsgrad', 'berechne_anwesenheitsgrad_fuer_mechaniker_liste',
+    'berechne_auslastungsgrad', 'berechne_produktivitaet', 'berechne_leistungsgrad',
     'berechne_effizienz', 'berechne_entgangener_umsatz',
     'berechne_stunden_pro_durchgang', 'berechne_stundenverrechnungssatz',
     'berechne_gesamt_leistungsgrad', 'berechne_gesamt_entgangener_umsatz',
