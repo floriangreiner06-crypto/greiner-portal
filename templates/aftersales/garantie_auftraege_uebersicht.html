@@ -23,9 +23,27 @@
             <h1><i class="bi bi-shield-check text-warning"></i> Garantieaufträge</h1>
             <p class="text-muted mb-0">Übersicht aller offenen Garantieaufträge</p>
         </div>
-        <button class="btn btn-primary" onclick="loadAuftraege()">
-            <i class="bi bi-arrow-clockwise"></i> Aktualisieren
-        </button>
+        <div class="d-flex gap-2 align-items-center">
+            <div class="btn-group" role="group">
+                <input type="radio" class="btn-check" name="markeFilter" id="filterAlle" value="alle" checked onchange="loadAuftraege()">
+                <label class="btn btn-outline-primary" for="filterAlle">Alle</label>
+                
+                <input type="radio" class="btn-check" name="markeFilter" id="filterOpel" value="opel" onchange="loadAuftraege()">
+                <label class="btn btn-outline-primary" for="filterOpel">Opel</label>
+                
+                <input type="radio" class="btn-check" name="markeFilter" id="filterHyundai" value="hyundai" onchange="loadAuftraege()">
+                <label class="btn btn-outline-primary" for="filterHyundai">Hyundai</label>
+            </div>
+            <div class="form-check ms-2">
+                <input class="form-check-input" type="checkbox" id="filterFertig" onchange="loadAuftraege()">
+                <label class="form-check-label" for="filterFertig">
+                    Nur fertige
+                </label>
+            </div>
+            <button class="btn btn-primary" onclick="loadAuftraege()">
+                <i class="bi bi-arrow-clockwise"></i> Aktualisieren
+            </button>
+        </div>
     </div>
 
     <div class="card">
@@ -74,6 +92,26 @@
     </div>
 </div>
 
+<!-- Auftrag Detail Modal (SSOT - wiederverwendet) -->
+<div class="modal fade" id="auftragModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-file-text"></i> Auftrag <span id="modalAuftragNr">-</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="auftragModalBody">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary"></div>
+                    <div class="mt-2">Lade Auftragsdetails...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 let aktuellerAuftrag = null;
 
@@ -83,7 +121,12 @@ function loadAuftraege() {
     document.getElementById('tableContainer').classList.add('d-none');
     document.getElementById('empty').classList.add('d-none');
     
-    fetch('/api/garantie/auftraege/offen')
+    // Filter auslesen
+    const markeFilter = document.querySelector('input[name="markeFilter"]:checked')?.value || 'alle';
+    const fertigFilter = document.getElementById('filterFertig').checked;
+    const url = `/api/garantie/auftraege/offen?marke=${markeFilter}&fertig=${fertigFilter}`;
+    
+    fetch(url)
         .then(response => response.json())
         .then(data => {
             document.getElementById('loading').classList.add('d-none');
@@ -141,10 +184,19 @@ function renderAuftraege(auftraege) {
                     ` : ''}
                 </div>
             `;
+            const windowsPath = akte.windows_path || '';
             aktion = `
-                <button class="btn btn-sm btn-outline-secondary" onclick="oeffneAkte(${a.auftrag_nr})" title="Akte öffnen">
-                    <i class="bi bi-folder-open"></i>
-                </button>
+                ${windowsPath ? `
+                    <button class="btn btn-sm btn-primary btn-open-folder" 
+                            data-path="${escapeHtml(windowsPath)}"
+                            title="Ordner im Windows Explorer öffnen: ${escapeHtml(windowsPath)}">
+                        <i class="bi bi-folder-open"></i> Öffnen
+                    </button>
+                ` : `
+                    <button class="btn btn-sm btn-outline-secondary" onclick="oeffneAkte(${a.auftrag_nr})" title="Akte öffnen">
+                        <i class="bi bi-folder-open"></i>
+                    </button>
+                `}
             `;
         } else {
             // Akte existiert nicht - zeige Button zum Erstellen
@@ -162,7 +214,9 @@ function renderAuftraege(auftraege) {
         
         return `
             <tr>
-                <td><strong>${a.auftrag_nr}</strong></td>
+                <td>
+                    <strong><a href="javascript:void(0)" onclick="showAuftragDetail(${a.auftrag_nr})" class="text-primary" title="Auftragsdetails anzeigen">${a.auftrag_nr}</a></strong>
+                </td>
                 <td>${a.order_date || '-'}</td>
                 <td>${a.kunde || '-'}</td>
                 <td>
@@ -202,7 +256,18 @@ function erstelleGarantieakte(orderNumber, kundeName) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            // Erfolg - Seite neu laden
+            // Erfolg - zeige Link zum Windows-Ordner
+            const windowsPath = data.windows_path || '';
+            if (windowsPath) {
+                const linkText = `Garantieakte erfolgreich erstellt!\n\n${data.anzahl_dateien} Dateien gespeichert\n\nPfad: ${windowsPath}\n\nOrdner im Windows Explorer öffnen?`;
+                if (confirm(linkText)) {
+                    // Windows-Explorer öffnen (UNC-Pfad: file://///server/share/path - 5 Slashes!)
+                    let path = windowsPath.replace(/^\\\\+/, '').replace(/\\/g, '/');
+                    const fileUrl = `file://///${path}`;
+                    window.open(fileUrl, '_blank');
+                }
+            }
+            // Seite neu laden
             loadAuftraege();
         } else {
             alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
@@ -217,9 +282,303 @@ function erstelleGarantieakte(orderNumber, kundeName) {
     });
 }
 
+// Auftrag Detail Modal (SSOT - wiederverwendet)
+function showAuftragDetail(auftragNr) {
+    const modal = new bootstrap.Modal(document.getElementById('auftragModal'));
+    document.getElementById('modalAuftragNr').textContent = auftragNr;
+    document.getElementById('auftragModalBody').innerHTML = `
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary"></div>
+            <div class="mt-2">Lade Auftragsdetails...</div>
+        </div>
+    `;
+    modal.show();
+    
+    fetch(`/api/werkstatt/live/auftrag/${auftragNr}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (!data.success) {
+                document.getElementById('auftragModalBody').innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle"></i> ${data.error || 'Fehler beim Laden'}
+                    </div>
+                `;
+                return;
+            }
+            renderAuftragDetail(data);
+        })
+        .catch(err => {
+            console.error('Modal Error:', err);
+            document.getElementById('auftragModalBody').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle"></i> Verbindungsfehler: ${err.message}
+                </div>
+            `;
+        });
+}
+
+function renderAuftragDetail(data) {
+    const a = data.auftrag || {};
+    const f = a.fahrzeug || {};
+    const positionen = data.positionen || [];
+    const teile = data.teile || [];
+    const summen = a.summen || {};
+    
+    // Status-Badges
+    let statusBadges = '';
+    if (a.status && a.status.ist_offen) {
+        statusBadges += '<span class="badge bg-warning text-dark me-1"><i class="bi bi-clock"></i> Offen</span>';
+    }
+    if (a.status && a.status.hat_abgeschlossene) {
+        statusBadges += '<span class="badge bg-success me-1"><i class="bi bi-check"></i> Teilweise abgeschlossen</span>';
+    }
+    if (summen && summen.vollstaendig_abgerechnet === false) {
+        statusBadges += `<span class="badge bg-warning text-dark me-1"><i class="bi bi-exclamation-triangle"></i> ${summen.offen_aw || 0} AW offen</span>`;
+    }
+    if (summen && summen.vollstaendig_zugeordnet === false) {
+        statusBadges += `<span class="badge bg-info me-1"><i class="bi bi-person-x"></i> ${summen.nicht_zugeordnet_aw || 0} AW ohne Mech.</span>`;
+    }
+    
+    let html = `
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <h6><i class="bi bi-car-front"></i> Fahrzeug</h6>
+                <table class="table table-sm table-borderless mb-0">
+                    <tr><td><strong>Kennzeichen:</strong></td><td>${f.kennzeichen || '-'}</td></tr>
+                    <tr><td><strong>Marke/Modell:</strong></td><td>${f.marke || ''} ${f.modell || ''}</td></tr>
+                    <tr><td><strong>KM-Stand:</strong></td><td>${f.km_stand ? f.km_stand.toLocaleString('de-DE') + ' km' : '-'}</td></tr>
+                    <tr><td><strong>VIN:</strong></td><td><small class="text-muted">${f.vin || '-'}</small></td></tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <h6><i class="bi bi-person"></i> Kunde & Auftrag</h6>
+                <table class="table table-sm table-borderless mb-0">
+                    <tr><td><strong>Kunde:</strong></td><td>${a.kunde || '-'}</td></tr>
+                    <tr><td><strong>Serviceberater:</strong></td><td>${a.serviceberater || '-'}</td></tr>
+                    <tr><td><strong>Datum:</strong></td><td>${a.datum ? new Date(a.datum).toLocaleDateString('de-DE') : '-'}</td></tr>
+                    <tr><td><strong>Betrieb:</strong></td><td>${a.betrieb_name || a.betrieb || '-'}</td></tr>
+                </table>
+            </div>
+        </div>
+        
+        <div class="row mb-3">
+            <div class="col-12">
+                <h6><i class="bi bi-info-circle"></i> Status</h6>
+                <div class="mb-2">${statusBadges || '<span class="badge bg-secondary">Keine Status-Info</span>'}</div>
+            </div>
+        </div>
+    `;
+    
+    // Positionen
+    if (positionen.length > 0) {
+        html += `
+            <h6><i class="bi bi-list-check"></i> Positionen (${positionen.length})</h6>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                    <thead>
+                        <tr>
+                            <th>Pos</th>
+                            <th>Beschreibung</th>
+                            <th class="text-end">Vorgabe AW</th>
+                            <th>Mechaniker</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        positionen.forEach((pos, idx) => {
+            html += `
+                <tr>
+                    <td>${pos.position || idx + 1}</td>
+                    <td><small>${pos.beschreibung || '-'}</small></td>
+                    <td class="text-end">${(pos.vorgabe_aw || 0).toFixed(1)}</td>
+                    <td><small>${pos.mechaniker || '-'}</small></td>
+                    <td>${pos.abgerechnet ? '<span class="badge bg-success">Fertig</span>' : '<span class="badge bg-warning text-dark">Offen</span>'}</td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+    
+    // Teile
+    if (teile.length > 0) {
+        html += `
+            <h6 class="mt-3"><i class="bi bi-box-seam"></i> Teile (${teile.length})</h6>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                    <thead>
+                        <tr>
+                            <th>Teilenummer</th>
+                            <th>Bezeichnung</th>
+                            <th class="text-end">Menge</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        teile.slice(0, 10).forEach(teil => {
+            html += `
+                <tr>
+                    <td><small>${teil.teilenummer || '-'}</small></td>
+                    <td><small>${teil.bezeichnung || '-'}</small></td>
+                    <td class="text-end">${teil.menge || 0}</td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+        if (teile.length > 10) {
+            html += `<p class="text-muted small">... und ${teile.length - 10} weitere Teile</p>`;
+        }
+    }
+    
+    // Summen
+    if (summen) {
+        html += `
+            <div class="row mt-3">
+                <div class="col-md-6">
+                    <h6><i class="bi bi-calculator"></i> Summen</h6>
+                    <table class="table table-sm table-borderless">
+                        <tr><td><strong>Vorgabe AW:</strong></td><td class="text-end">${(summen.total_aw || 0).toFixed(1)}</td></tr>
+                        <tr><td><strong>Offen AW:</strong></td><td class="text-end">${(summen.offen_aw || 0).toFixed(1)}</td></tr>
+                        <tr><td><strong>Positionen:</strong></td><td class="text-end">${summen.anzahl_positionen || 0}</td></tr>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
+    
+    // GUDAT-Rückfragen
+    const gudat = data.gudat || {};
+    const rueckfragen = gudat.rueckfragen || [];
+    console.log('GUDAT-Daten:', gudat);
+    console.log('Rückfragen:', rueckfragen);
+    if (rueckfragen.length > 0) {
+        html += `
+            <div class="row mt-3">
+                <div class="col-12">
+                    <h6><i class="bi bi-chat-left-text"></i> Rückfragen aus GUDAT (${rueckfragen.length})</h6>
+                    <div class="list-group">
+        `;
+        
+        rueckfragen.forEach((r, idx) => {
+            const datum = r.erstellt_am ? new Date(r.erstellt_am).toLocaleString('de-DE') : '';
+            html += `
+                        <div class="list-group-item">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">
+                                    <span class="badge bg-info me-2">${r.typ || 'Nachricht'}</span>
+                                    ${r.autor || 'Unbekannt'}
+                                </h6>
+                                <small class="text-muted">${datum}</small>
+                            </div>
+                            <p class="mb-1 mt-2">${escapeHtml(r.text || '')}</p>
+                        </div>
+            `;
+        });
+        
+        html += `
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    document.getElementById('auftragModalBody').innerHTML = html;
+}
+
 function oeffneAkte(orderNumber) {
     // TODO: Windows-Explorer öffnen oder Pfad anzeigen
     alert('Funktion zum Öffnen der Akte wird noch implementiert');
+}
+
+function oeffneWindowsOrdner(windowsPath) {
+    console.log('oeffneWindowsOrdner aufgerufen mit:', windowsPath);
+    
+    if (!windowsPath) {
+        alert('Pfad nicht verfügbar');
+        return;
+    }
+    
+    // Zeige sofort eine Bestätigung
+    const bestaetigung = confirm(
+        `Ordner im Windows Explorer öffnen?\n\nPfad: ${windowsPath}\n\nFalls der Ordner nicht automatisch geöffnet wird, können Sie den Pfad in die Zwischenablage kopieren.`
+    );
+    
+    if (!bestaetigung) {
+        return;
+    }
+    
+    // Versuche UNC-Pfad zu öffnen
+    // UNC-Pfad für Windows: file://///server/share/path (5 Slashes!)
+    let path = windowsPath.replace(/^\\\\+/, '').replace(/\\/g, '/');
+    const fileUrl = `file://///${path}`;
+    
+    console.log('Versuche zu öffnen:', fileUrl);
+    
+    try {
+        // Versuche direkt zu öffnen
+        const opened = window.open(fileUrl, '_blank');
+        
+        // Falls das nicht funktioniert (Browser blockiert), zeige Alternative
+        setTimeout(() => {
+            // Prüfe ob ein Popup-Blocker aktiv ist oder der Link blockiert wurde
+            if (!opened || opened.closed || typeof opened.closed == 'undefined') {
+                // Browser hat den Link blockiert - zeige Pfad zum Kopieren
+                const copy = confirm(
+                    `Der Ordner konnte nicht automatisch geöffnet werden (Browser blockiert file:// Links).\n\nPfad: ${windowsPath}\n\nPfad in Zwischenablage kopieren?`
+                );
+                
+                if (copy) {
+                    // Kopiere Pfad in Zwischenablage
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(windowsPath).then(() => {
+                            alert('Pfad wurde in die Zwischenablage kopiert!\n\nSie können ihn jetzt im Windows Explorer einfügen (Strg+V in der Adressleiste).');
+                        }).catch(() => {
+                            // Fallback: Zeige Pfad in Prompt
+                            prompt('Bitte kopieren Sie diesen Pfad:', windowsPath);
+                        });
+                    } else {
+                        // Fallback: Zeige Pfad in Prompt
+                        prompt('Bitte kopieren Sie diesen Pfad:', windowsPath);
+                    }
+                }
+            }
+        }, 1000);
+    } catch (e) {
+        console.error('Fehler beim Öffnen:', e);
+        // Fallback: Zeige Pfad zum Kopieren
+        const copy = confirm(
+            `Der Ordner konnte nicht automatisch geöffnet werden.\n\nFehler: ${e.message}\n\nPfad: ${windowsPath}\n\nPfad in Zwischenablage kopieren?`
+        );
+        
+        if (copy) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(windowsPath).then(() => {
+                    alert('Pfad wurde in die Zwischenablage kopiert!');
+                }).catch(() => {
+                    prompt('Bitte kopieren Sie diesen Pfad:', windowsPath);
+                });
+            } else {
+                prompt('Bitte kopieren Sie diesen Pfad:', windowsPath);
+            }
+        }
+    }
 }
 
 function formatDate(dateString) {
@@ -243,6 +602,22 @@ function escapeHtml(text) {
     div.textContent = text;
     return div.innerHTML;
 }
+
+// Event-Listener für "Öffnen"-Buttons (Event Delegation)
+document.addEventListener('click', function(e) {
+    if (e.target.closest('.btn-open-folder')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const button = e.target.closest('.btn-open-folder');
+        const windowsPath = button.getAttribute('data-path');
+        console.log('Button geklickt, Pfad:', windowsPath);
+        if (windowsPath) {
+            oeffneWindowsOrdner(windowsPath);
+        } else {
+            alert('Pfad nicht gefunden');
+        }
+    }
+});
 
 // Beim Laden der Seite
 document.addEventListener('DOMContentLoaded', function() {

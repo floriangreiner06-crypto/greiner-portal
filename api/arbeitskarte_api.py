@@ -127,9 +127,9 @@ def hole_arbeitskarte_daten(order_number: int):
     
     positionen = cursor.fetchall()
     
-    # Stempelzeiten
+    # Stempelzeiten (DEDUPLIZIERT - gleiche start_time, end_time, employee_number nur einmal)
     cursor.execute("""
-        SELECT 
+        SELECT DISTINCT ON (t.employee_number, t.start_time, t.end_time)
             t.employee_number,
             eh.name as mechaniker,
             t.start_time,
@@ -141,10 +141,25 @@ def hole_arbeitskarte_daten(order_number: int):
             AND eh.is_latest_record = true
         WHERE t.order_number = %s
           AND t.type = 2
-        ORDER BY t.start_time
+          AND t.end_time IS NOT NULL
+        ORDER BY t.employee_number, t.start_time, t.end_time, t.duration_minutes DESC
     """, [order_number])
     
     stempelzeiten = cursor.fetchall()
+    
+    # Job-Beschreibung aus Auftrag holen (erste Position mit text_line)
+    cursor.execute("""
+        SELECT l.text_line 
+        FROM labours l 
+        WHERE l.order_number = %s 
+          AND l.text_line IS NOT NULL 
+          AND l.text_line != ''
+        ORDER BY l.order_position, l.order_position_line
+        LIMIT 1
+    """, [order_number])
+    
+    job_beschreibung_row = cursor.fetchone()
+    job_beschreibung = job_beschreibung_row[0] if job_beschreibung_row and job_beschreibung_row[0] else None
     
     # Teile
     cursor.execute("""
@@ -222,7 +237,42 @@ def hole_arbeitskarte_daten(order_number: int):
                 
                 if dossier_id:
                     # Hole vollständige Dossier-Daten
+                    # Versuche zuerst mit comments, falls das fehlschlägt, verwende nur note
                     query_dossier = """
+                    query GetDossierDrawerData($id: ID!) {
+                      dossier(id: $id) {
+                        id
+                        note
+                        comments {
+                          id
+                          text
+                          created_at
+                          user {
+                            id
+                            name
+                          }
+                        }
+                        workshopTasks {
+                          id
+                          description
+                          work_load
+                          work_state
+                          comments {
+                            id
+                            text
+                            created_at
+                            user {
+                              id
+                              name
+                            }
+                          }
+                        }
+                      }
+                    }
+                    """
+                    
+                    # Fallback-Query ohne comments (falls Schema nicht unterstützt)
+                    query_dossier_fallback = """
                     query GetDossierDrawerData($id: ID!) {
                       dossier(id: $id) {
                         id
@@ -237,6 +287,7 @@ def hole_arbeitskarte_daten(order_number: int):
                     }
                     """
                     
+                    # Versuche zuerst mit comments
                     response = client.session.post(
                         f"{client.BASE_URL}/graphql",
                         json={"operationName": "GetDossierDrawerData", "query": query_dossier, "variables": {"id": str(dossier_id)}},
@@ -248,15 +299,76 @@ def hole_arbeitskarte_daten(order_number: int):
                     )
                     
                     data = response.json()
+                    use_fallback = False
+                    
+                    # Prüfe auf GraphQL-Fehler
+                    if 'errors' in data:
+                        logger.warning(f"GraphQL-Fehler beim Holen von Dossier-Daten (mit comments): {data['errors']}")
+                        use_fallback = True
+                    
+                    # Falls Fehler, versuche Fallback-Query ohne comments
+                    if use_fallback:
+                        response = client.session.post(
+                            f"{client.BASE_URL}/graphql",
+                            json={"operationName": "GetDossierDrawerData", "query": query_dossier_fallback, "variables": {"id": str(dossier_id)}},
+                            headers={
+                                'Accept': 'application/json',
+                                'X-XSRF-TOKEN': client._get_xsrf(),
+                                'Content-Type': 'application/json'
+                            }
+                        )
+                        data = response.json()
+                        if 'errors' in data:
+                            logger.error(f"GraphQL-Fehler auch bei Fallback-Query: {data['errors']}")
+                    
                     dossier = data.get('data', {}).get('dossier')
                     
                     if dossier:
                         all_tasks = dossier.get('workshopTasks', [])
                         tasks_with_desc = [t for t in all_tasks if t.get('description')]
                         
+                        # Sammle alle Rückfragen/Nachrichten
+                        rueckfragen = []
+                        
+                        if not use_fallback:
+                            # Dossier-Level Kommentare
+                            dossier_comments = dossier.get('comments', [])
+                            if dossier_comments:
+                                for comment in dossier_comments:
+                                    rueckfragen.append({
+                                        'typ': 'Dossier',
+                                        'text': comment.get('text', ''),
+                                        'erstellt_am': comment.get('created_at', ''),
+                                        'autor': comment.get('user', {}).get('name', 'Unbekannt')
+                                    })
+                            
+                            # Task-Level Kommentare
+                            for task in all_tasks:
+                                task_comments = task.get('comments', [])
+                                if task_comments:
+                                    for comment in task_comments:
+                                        rueckfragen.append({
+                                            'typ': 'Task',
+                                            'task_id': task.get('id'),
+                                            'text': comment.get('text', ''),
+                                            'erstellt_am': comment.get('created_at', ''),
+                                            'autor': comment.get('user', {}).get('name', 'Unbekannt')
+                                        })
+                        
+                        # Falls keine Kommentare, aber dossier_note vorhanden, verwende diese
+                        dossier_note = dossier.get('note')
+                        if not rueckfragen and dossier_note and dossier_note.strip():
+                            rueckfragen.append({
+                                'typ': 'Dossier',
+                                'text': dossier_note,
+                                'erstellt_am': None,
+                                'autor': 'GUDAT'
+                            })
+                        
                         gudat_daten = {
                             'dossier_id': dossier.get('id'),
-                            'dossier_note': dossier.get('note'),
+                            'dossier_note': dossier_note,
+                            'rueckfragen': rueckfragen,
                             'tasks': [
                                 {
                                     'task_id': task.get('id'),
@@ -266,6 +378,8 @@ def hole_arbeitskarte_daten(order_number: int):
                                 } for task in tasks_with_desc
                             ]
                         }
+                    else:
+                        gudat_daten = None
     except Exception as e:
         print(f"GUDAT-Fehler: {e}")
         gudat_daten = None
@@ -278,7 +392,8 @@ def hole_arbeitskarte_daten(order_number: int):
                 'nummer': auftrag[0],
                 'datum': str(auftrag[1]) if auftrag[1] else None,
                 'serviceberater': auftrag[3],
-                'serviceberater_nr': auftrag[2]
+                'serviceberater_nr': auftrag[2],
+                'job_beschreibung': job_beschreibung
             },
             'kunde': {
                 'name': f"{kunde[0]}, {kunde[1]}" if kunde and kunde[0] and kunde[1] else None,
@@ -659,6 +774,17 @@ def pruefe_unterschrift(order_number):
             'hat_unterschrift': False,
             'fehler': str(e)
         }
+
+
+def get_arbeitskarte_anhaenge(order_number):
+    """
+    Öffentliche Funktion: Holt ALLE Anhänge (Dokumente) aus GUDAT für einen Auftrag.
+    Inkl. Bilder, PDFs (z.B. Locosoft-Auftrag mit Unterschrift), etc.
+    
+    Returns:
+        Dict mit Liste aller Anhänge
+    """
+    return _get_arbeitskarte_anhaenge_internal(order_number)
 
 
 @bp.route('/<int:order_number>/anhaenge', methods=['GET'])

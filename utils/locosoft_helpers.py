@@ -36,6 +36,9 @@ from api.db_connection import get_db
 
 logger = logging.getLogger(__name__)
 
+# Projekt-Root-Pfad (basierend auf aktueller Datei)
+PROJECT_ROOT = Path(__file__).parent.parent
+
 
 def get_locosoft_connection():
     """Verbindung zu Locosoft PostgreSQL (nur für Live-Daten)"""

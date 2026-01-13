@@ -44,18 +44,18 @@ def benachrichtige_serviceberater_ueberschreitungen():
         )
         
         # ZUSÄTZLICH: Hole alle Aufträge von heute, die überschritten sind (auch abgeschlossene)
+        # TAG 185: KORRIGIERT - Verwende GESAMTE Laufzeit (laufzeit_min) statt nur HEUTE
+        # Konsistent mit Stempeluhr/Cockpit/Monitor
         ueberschritten_abgeschlossen = []
         with locosoft_session() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             cursor.execute("""
-                WITH gestempelt_heute AS (
-                    -- TAG 182: Deduplizierung - verschobene Stempelzeiten nur einmal zählen
-                    -- Problem: Stempelzeiten können auf mehrere Positionen verschoben werden,
-                    -- aber es ist die gleiche Zeit (gleiche start_time + end_time + employee_number)
-                    -- Lösung: DISTINCT ON (order_number, employee_number, start_time, end_time)
+                WITH gestempelt_gesamt AS (
+                    -- TAG 185: GESAMTE Laufzeit berechnen (alle Tage, nicht nur heute!)
+                    -- Konsistent mit werkstatt_data.py::get_stempeluhr() -> laufzeit_min
                     SELECT
                         order_number,
-                        SUM(minuten) as gestempelt_min
+                        SUM(minuten) as laufzeit_min
                     FROM (
                         SELECT DISTINCT ON (order_number, employee_number, start_time, end_time)
                             order_number,
@@ -64,11 +64,54 @@ def benachrichtige_serviceberater_ueberschreitungen():
                             end_time,
                             EXTRACT(EPOCH FROM (COALESCE(end_time, NOW()) - start_time)) / 60 as minuten
                         FROM times
-                        WHERE DATE(start_time) = CURRENT_DATE
-                          AND order_number > 0
+                        WHERE order_number > 0
                           AND type = 2
+                          AND end_time IS NOT NULL
                         ORDER BY order_number, employee_number, start_time, end_time
                     ) t
+                    GROUP BY order_number
+                ),
+                -- Für aktive Aufträge: Laufzeit = heute_session + alle abgeschlossenen
+                aktive_mit_laufzeit AS (
+                    SELECT DISTINCT ON (t.employee_number)
+                        t.order_number,
+                        EXTRACT(EPOCH FROM (NOW() - t.start_time))/60
+                        + COALESCE((
+                            SELECT SUM(dur) FROM (
+                                SELECT DISTINCT ON (start_time, end_time) duration_minutes as dur
+                                FROM times t2
+                                WHERE t2.order_number = t.order_number
+                                  AND t2.employee_number = t.employee_number
+                                  AND t2.end_time IS NOT NULL
+                                  AND t2.type = 2
+                            ) dedup
+                        ), 0) as laufzeit_min
+                    FROM times t
+                    WHERE t.end_time IS NULL
+                      AND t.type = 2
+                      AND t.order_number > 31
+                      AND DATE(t.start_time) = CURRENT_DATE
+                      AND NOT EXISTS (
+                          SELECT 1 FROM times t3
+                          WHERE t3.employee_number = t.employee_number
+                            AND t3.type = 2
+                            AND t3.end_time IS NOT NULL
+                            AND DATE(t3.start_time) = CURRENT_DATE
+                            AND t3.start_time > t.start_time
+                      )
+                    ORDER BY t.employee_number, t.start_time DESC
+                ),
+                -- Kombiniere: Aktive + Abgeschlossene
+                laufzeit_kombiniert AS (
+                    SELECT order_number, laufzeit_min FROM gestempelt_gesamt
+                    UNION ALL
+                    SELECT order_number, laufzeit_min FROM aktive_mit_laufzeit
+                ),
+                laufzeit_gesamt AS (
+                    SELECT 
+                        order_number,
+                        MAX(laufzeit_min) as laufzeit_min
+                    FROM laufzeit_kombiniert
                     GROUP BY order_number
                 ),
                 vorgabe_aw AS (
@@ -90,18 +133,19 @@ def benachrichtige_serviceberater_ueberschreitungen():
                     GROUP BY l.order_number
                 )
                 SELECT
-                    g.order_number,
-                    g.gestempelt_min,
+                    lg.order_number,
+                    lg.laufzeit_min as gestempelt_min,  -- Für Kompatibilität mit altem Code
+                    lg.laufzeit_min,  -- Neue Feld: Gesamte Laufzeit
                     v.vorgabe_aw,
-                    (g.gestempelt_min / (v.vorgabe_aw * 6) * 100) as fortschritt_prozent,
+                    (lg.laufzeit_min / (v.vorgabe_aw * 6) * 100) as fortschritt_prozent,
                     o.order_taking_employee_no as serviceberater_nr
-                FROM gestempelt_heute g
-                JOIN vorgabe_aw v ON g.order_number = v.order_number
-                JOIN orders o ON g.order_number = o.number
+                FROM laufzeit_gesamt lg
+                JOIN vorgabe_aw v ON lg.order_number = v.order_number
+                JOIN orders o ON lg.order_number = o.number
                 -- WICHTIG: Nur Aufträge mit offenen Positionen (noch nicht vollständig fakturiert)
-                LEFT JOIN offene_positionen op ON g.order_number = op.order_number
+                LEFT JOIN offene_positionen op ON lg.order_number = op.order_number
                 WHERE v.vorgabe_aw > 0
-                  AND (g.gestempelt_min / (v.vorgabe_aw * 6) * 100) > 100
+                  AND (lg.laufzeit_min / (v.vorgabe_aw * 6) * 100) > 100
                   AND (op.anzahl_offen > 0 OR op.anzahl_offen IS NULL)
                   AND o.has_open_positions = true
             """)
@@ -214,14 +258,17 @@ def benachrichtige_serviceberater_ueberschreitungen():
         
         for auftrag_nr, (serviceberater_nr, betrieb) in auftraege_mit_sb.items():
             try:
-                # Hole Überschreitungs-Daten (gestempelte Zeit von HEUTE)
+                # Hole Überschreitungs-Daten
                 ueberschritt = ueberschritten_map.get(auftrag_nr)
                 if not ueberschritt:
                     logger.warning(f"Auftrag {auftrag_nr} nicht in ueberschritten_map gefunden - überspringe")
                     continue
                 
-                # Verwende gestempelte Zeit von HEUTE (aus ueberschritt)
-                gestempelt_min_heute = float(ueberschritt.get('gestempelt_min', 0))
+                # TAG 185: Verwende GESAMTE Laufzeit (laufzeit_min) statt nur HEUTE
+                # Konsistent mit Stempeluhr/Cockpit/Monitor
+                # Für aktive Aufträge: laufzeit_min aus stempeluhr_data
+                # Für abgeschlossene Aufträge: laufzeit_min aus Query (bereits korrigiert)
+                laufzeit_min = float(ueberschritt.get('laufzeit_min', ueberschritt.get('gestempelt_min', 0)))
                 
                 # Vorgabe: Entweder direkt als vorgabe_min oder als vorgabe_aw * 6
                 if 'vorgabe_min' in ueberschritt:
@@ -231,9 +278,9 @@ def benachrichtige_serviceberater_ueberschreitungen():
                     vorgabe_aw = float(ueberschritt.get('vorgabe_aw', 0))
                     vorgabe_min = vorgabe_aw * 6
                 
-                # Berechne Überschreitung
-                diff_min = gestempelt_min_heute - vorgabe_min
-                diff_prozent = (gestempelt_min_heute / vorgabe_min * 100) if vorgabe_min > 0 else 0
+                # Berechne Überschreitung mit GESAMTER Laufzeit
+                diff_min = laufzeit_min - vorgabe_min
+                diff_prozent = (laufzeit_min / vorgabe_min * 100) if vorgabe_min > 0 else 0
                 
                 # WICHTIG: Nur E-Mail senden, wenn tatsächlich überschritten (>100%)
                 if diff_prozent <= 100:
@@ -256,8 +303,8 @@ def benachrichtige_serviceberater_ueberschreitungen():
                 
                 f = auftrag.get('fahrzeug', {})
                 
-                # Verwende gestempelt_min_heute für E-Mail
-                gestempelt_min = gestempelt_min_heute
+                # TAG 185: Verwende GESAMTE Laufzeit für E-Mail (konsistent mit Cockpit/Stempeluhr)
+                gestempelt_min = laufzeit_min
                 
                 # Empfänger bestimmen (TAG 182: Mit Deduplizierung)
                 empfaenger = []

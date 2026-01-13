@@ -262,7 +262,7 @@ def create_garantieakte_vollstaendig(
         dateien.append({
             'typ': 'Arbeitskarte',
             'pfad': arbeitskarte_path,
-            'groesse_kb': len(arbeitskarte_pdf) / 1024
+            'groesse_kb': (len(arbeitskarte_pdf) / 1024) if arbeitskarte_pdf else 0.0
         })
         
         # 3. Lade und speichere ALLE Anhänge einzeln (Bilder, PDFs, etc.)
@@ -311,7 +311,7 @@ def create_garantieakte_vollstaendig(
                 dateien.append({
                     'typ': typ_label,
                     'pfad': anhang_path,
-                    'groesse_kb': len(file_bytes) / 1024,
+                    'groesse_kb': (len(file_bytes) / 1024) if file_bytes else 0.0,
                     'name': anhang.get('name')
                 })
         
@@ -327,7 +327,7 @@ def create_garantieakte_vollstaendig(
                 dateien.append({
                     'typ': 'Terminblatt',
                     'pfad': terminblatt_path,
-                    'groesse_kb': len(terminblatt_pdf) / 1024
+                    'groesse_kb': (len(terminblatt_pdf) / 1024) if terminblatt_pdf else 0.0
                 })
         
         # 5. Speichere Metadaten (Ersteller, Datum)

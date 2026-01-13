@@ -372,6 +372,120 @@ def bewerte_produktivitaet(wert: Optional[float]) -> Dict[str, Any]:
 
 
 # =============================================================================
+# LOCOSOFT-KOMPATIBLE BERECHNUNGEN
+# =============================================================================
+
+def berechne_stempelzeit_locosoft(
+    stempelungen: list,
+    pausenzeiten: list = None
+) -> float:
+    """
+    Berechnet Stempelzeit nach Locosoft-Logik (SSOT).
+    
+    Locosoft-Berechnung:
+    1. Zeit-Spanne pro Tag = letzte Stempelung - erste Stempelung
+    2. Minus Lücken zwischen Stempelungen
+    3. Minus konfigurierte Pausenzeiten (wenn innerhalb der Zeit-Spanne)
+    
+    Args:
+        stempelungen: Liste von Dicts mit 'start_time' und 'end_time' (datetime)
+        pausenzeiten: Liste von Dicts mit 'datum' (date), 'break_start' (float Stunden), 'break_end' (float Stunden)
+        
+    Returns:
+        Stempelzeit in Minuten (nach Locosoft-Logik)
+        
+    Example:
+        >>> stempelungen = [
+        ...     {'start_time': datetime(2025, 12, 1, 7, 49), 'end_time': datetime(2025, 12, 1, 8, 29)},
+        ...     {'start_time': datetime(2025, 12, 1, 8, 30), 'end_time': datetime(2025, 12, 1, 9, 35)},
+        ...     {'start_time': datetime(2025, 12, 1, 16, 38), 'end_time': datetime(2025, 12, 1, 16, 38)}
+        ... ]
+        >>> pausenzeiten = [{'datum': date(2025, 12, 1), 'break_start': 12.0, 'break_end': 12.733}]
+        >>> berechne_stempelzeit_locosoft(stempelungen, pausenzeiten)
+        4945.0
+    """
+    if not stempelungen:
+        return 0.0
+    
+    from collections import defaultdict
+    from datetime import datetime, date, time
+    
+    # Gruppiere Stempelungen nach Tag
+    stempelungen_pro_tag = defaultdict(list)
+    for st in stempelungen:
+        if isinstance(st['start_time'], datetime):
+            tag = st['start_time'].date()
+        else:
+            tag = st['start_time']
+        stempelungen_pro_tag[tag].append(st)
+    
+    # Pausenzeiten nach Tag gruppieren
+    pausen_pro_tag = {}
+    if pausenzeiten:
+        for p in pausenzeiten:
+            if isinstance(p['datum'], date):
+                tag = p['datum']
+            else:
+                tag = p['datum']
+            pausen_pro_tag[tag] = p
+    
+    gesamt_minuten = 0.0
+    
+    # Für jeden Tag berechnen
+    for tag, stempelungen_tag in stempelungen_pro_tag.items():
+        if not stempelungen_tag:
+            continue
+        
+        # Sortiere nach start_time
+        stempelungen_tag.sort(key=lambda x: x['start_time'])
+        
+        # Erste und letzte Stempelung
+        erste = stempelungen_tag[0]['start_time']
+        letzte = stempelungen_tag[-1]['end_time']
+        
+        # Zeit-Spanne in Minuten
+        if isinstance(erste, datetime) and isinstance(letzte, datetime):
+            spanne_minuten = (letzte - erste).total_seconds() / 60
+        else:
+            # Fallback für andere Datentypen
+            spanne_minuten = 0
+        
+        # Lücken zwischen Stempelungen berechnen
+        luecken_minuten = 0.0
+        for i in range(len(stempelungen_tag) - 1):
+            ende_aktuell = stempelungen_tag[i]['end_time']
+            start_naechst = stempelungen_tag[i + 1]['start_time']
+            
+            if isinstance(ende_aktuell, datetime) and isinstance(start_naechst, datetime):
+                if start_naechst > ende_aktuell:
+                    luecke = (start_naechst - ende_aktuell).total_seconds() / 60
+                    luecken_minuten += luecke
+        
+        # Konfigurierte Pausenzeiten abziehen (wenn innerhalb der Zeit-Spanne)
+        pausen_minuten = 0.0
+        if tag in pausen_pro_tag:
+            pause = pausen_pro_tag[tag]
+            break_start_h = pause.get('break_start', 0)
+            break_end_h = pause.get('break_end', 0)
+            
+            if break_start_h and break_end_h:
+                # Konvertiere Stunden (z.B. 12.0) zu datetime
+                break_start = datetime.combine(tag, time(int(break_start_h), int((break_start_h % 1) * 60)))
+                break_end = datetime.combine(tag, time(int(break_end_h), int((break_end_h % 1) * 60)))
+                
+                # Prüfe, ob Pause innerhalb der Zeit-Spanne liegt
+                if break_start >= erste and break_end <= letzte:
+                    pause_dauer = (break_end - break_start).total_seconds() / 60
+                    pausen_minuten += pause_dauer
+        
+        # Locosoft-Berechnung: Zeit-Spanne - Lücken - Pausen
+        tag_minuten = spanne_minuten - luecken_minuten - pausen_minuten
+        gesamt_minuten += max(0, tag_minuten)  # Nicht negativ
+    
+    return round(gesamt_minuten, 0)
+
+
+# =============================================================================
 # AGGREGATIONS-FUNKTIONEN
 # =============================================================================
 

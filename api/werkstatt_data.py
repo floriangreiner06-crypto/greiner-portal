@@ -101,9 +101,13 @@ class WerkstattData:
         - labours: Verrechnete AW aus Rechnungen
         - invoices: Rechnungsdaten
         - employees_history: Mechaniker-Stammdaten
+        - employees_breaktimes: Konfigurierte Pausenzeiten
 
-        Berechnet:
-        - Stempelzeit (Minuten aus times where type=2)
+        Berechnet (TAG 185 - Locosoft-kompatible Berechnung):
+        - Stempelzeit nach Locosoft-Logik:
+          * Zeit-Spanne (erste bis letzte Stempelung pro Tag)
+          * Minus Lücken zwischen Stempelungen
+          * Minus konfigurierte Pausenzeiten (wenn innerhalb der Zeit-Spanne)
         - Anwesenheit (Minuten aus times where type=1)
         - Verrechnete AW (time_units aus labours)
         - Leistungsgrad = (AW * 6 / Stempelzeit) * 100  [6 Min = 0,1 AW]
@@ -128,6 +132,13 @@ class WerkstattData:
             ... )
             >>> data['mechaniker'][0]
             {'mechaniker_nr': 5001, 'name': 'Max Mustermann', 'leistungsgrad': 85.5, ...}
+            
+        Note (TAG 185):
+            Die Stempelzeit-Berechnung wurde an Locosoft Original angepasst:
+            - Zeit-Spanne pro Tag (erste bis letzte Stempelung)
+            - Minus Lücken zwischen Stempelungen
+            - Minus konfigurierte Pausenzeiten
+            Dies entspricht der Berechnung in Locosoft "Tages-Stempelzeiten Übersicht".
         """
         # Default Zeitraum: Aktueller Monat
         if von is None:
@@ -138,30 +149,110 @@ class WerkstattData:
         with locosoft_session() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-            # SQL Query - direkt aus werkstatt_live_api.py::get_leistung_live()
-            # aber als wiederverwendbare Funktion
+            # SQL Query - Locosoft-kompatible Berechnung (TAG 185)
+            # Locosoft-Logik: Zeit-Spanne (erste bis letzte Stempelung) - Lücken - Pausen
             query = """
             WITH
-            -- Stempelzeit pro Mechaniker/Tag (DEDUPLIZIERT!)
+            -- Stempelungen dedupliziert pro Mechaniker/Tag
+            stempelungen_dedupliziert AS (
+                SELECT DISTINCT ON (employee_number, DATE(start_time), start_time, end_time)
+                    employee_number,
+                    DATE(start_time) as datum,
+                    start_time,
+                    end_time,
+                    order_number
+                FROM times
+                WHERE type = 2
+                  AND end_time IS NOT NULL
+                  AND order_number > 31
+                  AND start_time >= %s AND start_time < %s + INTERVAL '1 day'
+                ORDER BY employee_number, DATE(start_time), start_time, end_time
+            ),
+            -- Zeit-Spanne pro Mechaniker/Tag (erste bis letzte Stempelung)
+            tages_spannen AS (
+                SELECT
+                    employee_number,
+                    datum,
+                    MIN(start_time) as erste_stempelung,
+                    MAX(end_time) as letzte_stempelung,
+                    COUNT(DISTINCT order_number) as auftraege,
+                    EXTRACT(EPOCH FROM (MAX(end_time) - MIN(start_time))) / 60 as spanne_minuten
+                FROM stempelungen_dedupliziert
+                GROUP BY employee_number, datum
+            ),
+            -- Lücken zwischen Stempelungen pro Mechaniker/Tag
+            luecken_pro_tag AS (
+                SELECT
+                    s1.employee_number,
+                    s1.datum,
+                    SUM(EXTRACT(EPOCH FROM (s2.start_time - s1.end_time)) / 60) as luecken_minuten
+                FROM stempelungen_dedupliziert s1
+                JOIN stempelungen_dedupliziert s2 
+                    ON s1.employee_number = s2.employee_number 
+                    AND s1.datum = s2.datum
+                    AND s2.start_time > s1.end_time
+                    AND NOT EXISTS (
+                        SELECT 1 FROM stempelungen_dedupliziert s3
+                        WHERE s3.employee_number = s1.employee_number
+                          AND s3.datum = s1.datum
+                          AND s3.start_time > s1.end_time
+                          AND s3.start_time < s2.start_time
+                    )
+                GROUP BY s1.employee_number, s1.datum
+            ),
+            -- Konfigurierte Pausenzeiten pro Mechaniker/Tag
+            pausenzeiten_pro_tag AS (
+                SELECT
+                    ts.employee_number,
+                    ts.datum,
+                    SUM(
+                        CASE 
+                            WHEN eb.break_start IS NOT NULL 
+                                 AND eb.break_end IS NOT NULL
+                                 AND eb.break_start < eb.break_end
+                                 -- Pause muss innerhalb der Zeit-Spanne liegen
+                                 -- break_start/break_end sind Float (Stunden, z.B. 12.0 = 12:00)
+                                 AND (eb.break_start >= EXTRACT(HOUR FROM ts.erste_stempelung)::numeric + EXTRACT(MINUTE FROM ts.erste_stempelung)::numeric / 60.0)
+                                 AND (eb.break_end <= EXTRACT(HOUR FROM ts.letzte_stempelung)::numeric + EXTRACT(MINUTE FROM ts.letzte_stempelung)::numeric / 60.0)
+                            THEN (eb.break_end - eb.break_start) * 60.0  -- Minuten
+                            ELSE 0
+                        END
+                    ) as pausen_minuten
+                FROM tages_spannen ts
+                LEFT JOIN employees_breaktimes eb 
+                    ON ts.employee_number = eb.employee_number
+                    AND EXTRACT(DOW FROM ts.datum) = eb.dayofweek
+                    AND eb.validity_date <= ts.datum
+                    AND (eb.is_latest_record IS NULL OR eb.is_latest_record = true)
+                GROUP BY ts.employee_number, ts.datum
+            ),
+            -- Stempelzeit nach Locosoft-Logik pro Mechaniker/Tag
+            stempelzeit_locosoft AS (
+                SELECT
+                    ts.employee_number,
+                    ts.datum,
+                    ts.auftraege,
+                    ROUND((ts.spanne_minuten 
+                           - COALESCE(l.luecken_minuten, 0) 
+                           - COALESCE(p.pausen_minuten, 0))::numeric, 0) as stempel_min
+                FROM tages_spannen ts
+                LEFT JOIN luecken_pro_tag l 
+                    ON ts.employee_number = l.employee_number 
+                    AND ts.datum = l.datum
+                LEFT JOIN pausenzeiten_pro_tag p 
+                    ON ts.employee_number = p.employee_number 
+                    AND ts.datum = p.datum
+            ),
+            -- Stempelzeit pro Mechaniker (aggregiert)
             stempel_dedupliziert AS (
                 SELECT
                     employee_number,
-                    DATE(start_time) as datum,
-                    SUM(minuten) as stempel_min,
-                    COUNT(DISTINCT order_number) as auftraege
-                FROM (
-                    SELECT DISTINCT ON (employee_number, start_time, end_time)
-                        employee_number,
-                        order_number,
-                        start_time,
-                        end_time,
-                        EXTRACT(EPOCH FROM (end_time - start_time)) / 60 as minuten
-                    FROM times
-                    WHERE type = 2
-                      AND end_time IS NOT NULL
-                      AND start_time >= %s AND start_time < %s + INTERVAL '1 day'
-                ) dedup
-                GROUP BY employee_number, DATE(start_time)
+                    COUNT(DISTINCT datum) as tage,
+                    SUM(auftraege) as auftraege,
+                    SUM(stempel_min) as stempel_min
+                FROM stempelzeit_locosoft
+                WHERE stempel_min > 0
+                GROUP BY employee_number
             ),
             -- Anwesenheit pro Mechaniker/Tag
             anwesenheit AS (
@@ -192,16 +283,16 @@ class WerkstattData:
             mechaniker_summen AS (
                 SELECT
                     COALESCE(s.employee_number, a.employee_number, aw.employee_number) as employee_number,
-                    COUNT(DISTINCT COALESCE(s.datum, a.datum)) as tage,
-                    COALESCE(SUM(s.auftraege), 0) as auftraege,
-                    COALESCE(SUM(s.stempel_min), 0) as stempelzeit,
+                    COALESCE(s.tage, COUNT(DISTINCT a.datum), 0) as tage,
+                    COALESCE(s.auftraege, 0) as auftraege,
+                    COALESCE(s.stempel_min, 0) as stempelzeit,
                     COALESCE(SUM(a.anwesend_min), 0) as anwesenheit,
                     COALESCE(MAX(aw.aw), 0) as aw,
                     COALESCE(MAX(aw.umsatz), 0) as umsatz
                 FROM stempel_dedupliziert s
-                FULL OUTER JOIN anwesenheit a ON s.employee_number = a.employee_number AND s.datum = a.datum
+                FULL OUTER JOIN anwesenheit a ON s.employee_number = a.employee_number
                 LEFT JOIN aw_verrechnet aw ON COALESCE(s.employee_number, a.employee_number) = aw.employee_number
-                GROUP BY COALESCE(s.employee_number, a.employee_number, aw.employee_number)
+                GROUP BY COALESCE(s.employee_number, a.employee_number, aw.employee_number), s.tage, s.auftraege, s.stempel_min
             )
             SELECT
                 ms.employee_number as mechaniker_nr,
@@ -232,7 +323,7 @@ class WerkstattData:
             """
 
             params = [
-                von, bis,  # stempel_dedupliziert
+                von, bis,  # stempelungen_dedupliziert
                 von, bis,  # anwesenheit
                 von, bis,  # aw_verrechnet
                 MECHANIKER_RANGE_START, MECHANIKER_RANGE_END,

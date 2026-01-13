@@ -100,10 +100,10 @@ def generate_arbeitskarte_pdf(data: dict) -> bytes:
     )
     
     # ========================================================================
-    # VORDERSEITE: WERKSTATTauftrag
+    # VORDERSEITE: Werkstattauftrag
     # ========================================================================
     
-    elements.append(Paragraph("WERKSTATTauftrag", title_style))
+    elements.append(Paragraph("Werkstattauftrag", title_style))
     elements.append(Spacer(1, 0.5*cm))
     
     auftrag = data.get('locosoft', {}).get('auftrag', {})
@@ -121,8 +121,15 @@ def generate_arbeitskarte_pdf(data: dict) -> bytes:
          'Serviceberater:', auftrag.get('serviceberater', '')],
     ]
     
+    # Job-Beschreibung hinzufügen, falls vorhanden
+    job_beschreibung = auftrag.get('job_beschreibung')
+    if job_beschreibung:
+        # Job-Beschreibung über volle Breite (4 Spalten)
+        kopf_data.append(['Job-Beschreibung:', job_beschreibung, '', ''])
+    
     kopf_table = Table(kopf_data, colWidths=[4*cm, 6*cm, 4*cm, 3*cm])
-    kopf_table.setStyle(TableStyle([
+    # Style für Kopf-Tabelle
+    style_list = [
         ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f0f0')),
         ('BACKGROUND', (2, 0), (2, -1), colors.HexColor('#f0f0f0')),
         ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#666666')),
@@ -137,7 +144,14 @@ def generate_arbeitskarte_pdf(data: dict) -> bytes:
         ('RIGHTPADDING', (0, 0), (-1, -1), 5),
         ('TOPPADDING', (0, 0), (-1, -1), 5),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-    ]))
+    ]
+    
+    # Job-Beschreibung über volle Breite (falls vorhanden)
+    if job_beschreibung:
+        job_row_idx = len(kopf_data) - 1
+        style_list.append(('SPAN', (1, job_row_idx), (3, job_row_idx)))  # Job-Beschreibung über Spalten 1-3
+    
+    kopf_table.setStyle(TableStyle(style_list))
     
     elements.append(kopf_table)
     elements.append(Spacer(1, 0.5*cm))
@@ -277,8 +291,19 @@ def generate_arbeitskarte_pdf(data: dict) -> bytes:
                 total_min += dauer_min
                 zeit_data.append([start, ende, str(dauer_min), f"{dauer_aw:.2f}"])
             
-            # Gesamt
-            zeit_data.append(['', '', f"<b>{total_min}</b>", f"<b>{total_min/6.0:.2f}</b>"])
+            # Gesamt - verwende Paragraph für fette Formatierung
+            bold_style = ParagraphStyle(
+                'Bold',
+                parent=normal_style,
+                fontName='Helvetica-Bold'
+            )
+            total_aw = total_min / 6.0
+            zeit_data.append([
+                '', 
+                '', 
+                Paragraph(f"<b>{total_min}</b>", bold_style), 
+                Paragraph(f"<b>{total_aw:.2f}</b>", bold_style)
+            ])
             
             zeit_table = Table(zeit_data, colWidths=[4*cm, 4*cm, 3*cm, 3*cm])
             zeit_table.setStyle(TableStyle([

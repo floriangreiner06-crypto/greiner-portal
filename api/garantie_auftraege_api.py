@@ -28,7 +28,8 @@ def get_garantieakte_metadata(order_number: int, kunde_name: str) -> dict:
             'existiert': bool,
             'erstelldatum': str oder None,
             'ersteller': str oder None,
-            'ordner_path': str oder None
+            'ordner_path': str oder None,
+            'windows_path': str oder None
         }
     """
     from api.garantieakte_workflow import BASE_PATH_OPTIONS, FALLBACK_PATH, sanitize_filename
@@ -54,8 +55,26 @@ def get_garantieakte_metadata(order_number: int, kunde_name: str) -> dict:
             'existiert': False,
             'erstelldatum': None,
             'ersteller': None,
-            'ordner_path': None
+            'ordner_path': None,
+            'windows_path': None
         }
+    
+    # Windows-Pfad generieren
+    windows_path = None
+    if '/hyundai-garantie' in ordner_path:
+        windows_path = ordner_path.replace('/mnt/hyundai-garantie', r'\\srvrdb01\Allgemein\DigitalesAutohaus\Hyundai_Garantie')
+        windows_path = windows_path.replace('/', '\\')
+    elif '/buchhaltung/DigitalesAutohaus' in ordner_path:
+        windows_path = ordner_path.replace('/mnt/buchhaltung/DigitalesAutohaus', r'\\srvrdb01\Allgemein\DigitalesAutohaus')
+        windows_path = windows_path.replace('/', '\\')
+    elif '/DigitalesAutohaus' in ordner_path:
+        windows_path = ordner_path.replace('/mnt/DigitalesAutohaus', r'\\srvrdb01\Allgemein\DigitalesAutohaus')
+        windows_path = windows_path.replace('/', '\\')
+    elif '/greiner-portal-sync' in ordner_path:
+        windows_path = ordner_path.replace('/mnt/greiner-portal-sync', r'\\Srvrdb01\Allgemein\Greiner Portal\Greiner_Portal_NEU\Server')
+        windows_path = windows_path.replace('/', '\\')
+    else:
+        windows_path = ordner_path.replace('/', '\\')
     
     # Prüfe Metadaten-Datei
     metadata_file = os.path.join(ordner_path, '.metadata.json')
@@ -68,7 +87,8 @@ def get_garantieakte_metadata(order_number: int, kunde_name: str) -> dict:
                     'existiert': True,
                     'erstelldatum': metadata.get('erstelldatum'),
                     'ersteller': metadata.get('ersteller'),
-                    'ordner_path': ordner_path
+                    'ordner_path': ordner_path,
+                    'windows_path': windows_path
                 }
         except Exception as e:
             logger.warning(f"Fehler beim Lesen der Metadaten für Auftrag {order_number}: {e}")
@@ -80,7 +100,8 @@ def get_garantieakte_metadata(order_number: int, kunde_name: str) -> dict:
             'existiert': True,
             'erstelldatum': erstelldatum,
             'ersteller': None,  # Nicht verfügbar
-            'ordner_path': ordner_path
+            'ordner_path': ordner_path,
+            'windows_path': windows_path
         }
     except Exception as e:
         logger.warning(f"Fehler beim Lesen des Ordner-Datums für Auftrag {order_number}: {e}")
@@ -88,7 +109,8 @@ def get_garantieakte_metadata(order_number: int, kunde_name: str) -> dict:
             'existiert': True,
             'erstelldatum': None,
             'ersteller': None,
-            'ordner_path': ordner_path
+            'ordner_path': ordner_path,
+            'windows_path': windows_path
         }
 
 
@@ -118,17 +140,37 @@ def get_offene_garantieauftraege():
     """
     Holt alle offenen Garantieaufträge mit Garantieakte-Status.
     
+    Query-Parameter:
+        - marke: Filter nach Marke ('opel', 'hyundai', 'alle') - default: 'alle'
+        - fertig: Filter nach fertigen Aufträgen ('true'/'false') - default: 'false'
+                     'true' = nur komplett gestempelte (offen_aw = 0)
+                     'false' = alle (auch noch nicht fertige)
+    
     Returns:
         Liste von Aufträgen mit:
         - Auftragsdaten (Nummer, Kunde, Fahrzeug, etc.)
         - Garantieakte-Status (existiert, erstelldatum, ersteller)
     """
     try:
+        from flask import request
+        marke_filter = request.args.get('marke', 'alle').lower()
+        fertig_filter = request.args.get('fertig', 'false').lower() == 'true'
+        
+        # Betriebs-Filter basierend auf Marke
+        # Opel = Betrieb 1 (Deggendorf Opel) + 3 (Landau Opel)
+        # Hyundai = Betrieb 2 (Deggendorf Hyundai)
+        if marke_filter == 'opel':
+            betriebe_filter = [1, 3]
+        elif marke_filter == 'hyundai':
+            betriebe_filter = [2]
+        else:
+            betriebe_filter = [1, 2, 3]  # Alle
         with locosoft_session() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             
             # Offene Garantieaufträge finden
             # Garantie = charge_type 60 ODER labour_type G/GS ODER invoice_type 6
+            # Nur Aufträge die bereits bearbeitet werden (Stempelzeiten ODER zugeordnete Positionen)
             query = """
                 WITH garantie_auftraege AS (
                     SELECT DISTINCT
@@ -157,7 +199,21 @@ def get_offene_garantieauftraege():
                                   AND i.is_canceled = false
                             ) THEN true
                             ELSE false
-                        END as ist_garantie
+                        END as ist_garantie,
+                        -- Prüfe ob Auftrag bereits bearbeitet wird
+                        CASE 
+                            WHEN EXISTS (
+                                SELECT 1 FROM times t 
+                                WHERE t.order_number = o.number 
+                                  AND t.type = 2
+                            ) THEN true
+                            WHEN EXISTS (
+                                SELECT 1 FROM labours l 
+                                WHERE l.order_number = o.number 
+                                  AND l.mechanic_no IS NOT NULL
+                            ) THEN true
+                            ELSE false
+                        END as wird_bearbeitet
                     FROM orders o
                     LEFT JOIN employees_history sb ON o.order_taking_employee_no = sb.employee_number
                         AND sb.is_latest_record = true
@@ -176,6 +232,22 @@ def get_offene_garantieauftraege():
                     FROM labours l
                     WHERE l.order_number IN (SELECT auftrag_nr FROM garantie_auftraege)
                     GROUP BY l.order_number
+                ),
+                -- Stempelzeiten pro Auftrag (DEDUPLIZIERT - wie in anderen Queries)
+                stempel_summen AS (
+                    SELECT
+                        order_number,
+                        SUM(minuten) as gestempelt_min
+                    FROM (
+                        SELECT DISTINCT ON (order_number, employee_number, start_time, end_time)
+                            order_number,
+                            EXTRACT(EPOCH FROM (COALESCE(end_time, NOW()) - start_time)) / 60 as minuten
+                        FROM times
+                        WHERE type = 2
+                          AND order_number IN (SELECT auftrag_nr FROM garantie_auftraege)
+                        ORDER BY order_number, employee_number, start_time, end_time
+                    ) dedup
+                    GROUP BY order_number
                 )
                 SELECT
                     g.auftrag_nr,
@@ -188,14 +260,37 @@ def get_offene_garantieauftraege():
                     g.kunde,
                     g.kunden_nr,
                     COALESCE(s.total_aw, 0) as total_aw,
-                    COALESCE(s.offen_aw, 0) as offen_aw
+                    COALESCE(s.offen_aw, 0) as offen_aw,
+                    CASE 
+                        WHEN st.gestempelt_min IS NULL THEN 0.0
+                        ELSE st.gestempelt_min / 6.0
+                    END as gestempelt_aw
                 FROM garantie_auftraege g
                 LEFT JOIN auftrag_summen s ON g.auftrag_nr = s.order_number
+                LEFT JOIN stempel_summen st ON g.auftrag_nr = st.order_number
                 WHERE g.ist_garantie = true
-                ORDER BY g.order_date DESC
+                  AND g.wird_bearbeitet = true
             """
             
-            cursor.execute(query)
+            # Filter nach Betrieb hinzufügen
+            if betriebe_filter:
+                placeholders = ','.join(['%s'] * len(betriebe_filter))
+                query += f" AND g.betrieb IN ({placeholders})"
+            
+            # Filter nach "fertig" hinzufügen (komplett gestempelt = gestempelt_aw >= total_aw)
+            # Toleranz: 95% reicht (wegen Rundungen)
+            if fertig_filter:
+                query += """ AND CASE 
+                        WHEN st.gestempelt_min IS NULL THEN 0.0
+                        ELSE st.gestempelt_min / 6.0
+                    END >= COALESCE(s.total_aw, 0) * 0.95"""
+            
+            query += " ORDER BY g.order_date DESC"
+            
+            if betriebe_filter:
+                cursor.execute(query, betriebe_filter)
+            else:
+                cursor.execute(query)
             auftraege = cursor.fetchall()
             
             # Für jeden Auftrag: Prüfe Garantieakte-Status
@@ -219,17 +314,24 @@ def get_offene_garantieauftraege():
                     'kunde': auftrag['kunde'],
                     'total_aw': float(auftrag['total_aw'] or 0),
                     'offen_aw': float(auftrag['offen_aw'] or 0),
+                    'gestempelt_aw': float(auftrag.get('gestempelt_aw', 0) or 0),
                     'garantieakte': {
                         'existiert': akte_info['existiert'],
                         'erstelldatum': akte_info['erstelldatum'],
-                        'ersteller': akte_info['ersteller']
+                        'ersteller': akte_info['ersteller'],
+                        'windows_path': akte_info.get('windows_path')
                     }
                 })
             
             return jsonify({
                 'success': True,
                 'auftraege': result,
-                'anzahl': len(result)
+                'anzahl': len(result),
+                'filter': {
+                    'marke': marke_filter,
+                    'betriebe': betriebe_filter,
+                    'fertig': fertig_filter
+                }
             })
             
     except Exception as e:

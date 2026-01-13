@@ -858,9 +858,11 @@ def get_auftrag_detail(auftrag_nr):
 
     TAG 150: Refaktoriert - nutzt WerkstattData.get_auftrag_detail()
     Vorher: 165 LOC | Nachher: 30 LOC
+    TAG 181: GUDAT-Rückfragen hinzugefügt
     """
     try:
         from api.werkstatt_data import WerkstattData
+        from api.arbeitskarte_api import hole_arbeitskarte_daten
 
         data = WerkstattData.get_auftrag_detail(auftrag_nr)
 
@@ -870,6 +872,22 @@ def get_auftrag_detail(auftrag_nr):
                 'success': False,
                 'error': data.get('error', f'Auftrag {auftrag_nr} nicht gefunden')
             }), 404
+
+        # Hole GUDAT-Daten (inkl. Rückfragen)
+        try:
+            gudat_daten = hole_arbeitskarte_daten(auftrag_nr)
+            if gudat_daten and gudat_daten.get('gudat'):
+                gudat = gudat_daten.get('gudat')
+                rueckfragen = gudat.get('rueckfragen', [])
+                logger.info(f"GUDAT-Daten für Auftrag {auftrag_nr}: {len(rueckfragen)} Rückfragen gefunden")
+                data['gudat'] = gudat
+            else:
+                logger.debug(f"Keine GUDAT-Daten für Auftrag {auftrag_nr}")
+        except Exception as e:
+            logger.warning(f"Fehler beim Holen von GUDAT-Daten für Auftrag {auftrag_nr}: {e}")
+            import traceback
+            traceback.print_exc()
+            # Nicht kritisch - Auftrag-Daten trotzdem zurückgeben
 
         return jsonify({
             'success': True,
