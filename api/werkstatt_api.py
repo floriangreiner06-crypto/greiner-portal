@@ -370,21 +370,29 @@ def get_mechaniker_detail(mechaniker_nr):
             """), [mechaniker_nr, datum_von, datum_bis])
             tage = rows_to_list(cursor.fetchall())
 
+            # TAG 188: Aufträge nach Mechaniker-Nr filtern (JOIN mit loco_labours)
+            # WICHTIG: Nur Aufträge mit Stempelzeit > 0 anzeigen
+            # Nur Aufträge, bei denen dieser Mechaniker tatsächlich gearbeitet hat (via loco_labours)
             cursor.execute(convert_placeholders("""
-                SELECT
-                    rechnungs_datum,
-                    rechnungs_nr,
-                    auftrags_nr,
-                    kennzeichen,
-                    summe_aw,
-                    summe_stempelzeit_min,
-                    leistungsgrad,
-                    lohn_netto
-                FROM werkstatt_auftraege_abgerechnet
-                WHERE rechnungs_datum >= ? AND rechnungs_datum <= ?
-                ORDER BY rechnungs_datum DESC
-                LIMIT 50
-            """), [datum_von, datum_bis])
+                SELECT DISTINCT
+                    a.rechnungs_datum,
+                    a.rechnungs_nr,
+                    a.auftrags_nr,
+                    a.kennzeichen,
+                    a.summe_aw,
+                    a.summe_stempelzeit_min,
+                    a.leistungsgrad,
+                    a.lohn_netto
+                FROM werkstatt_auftraege_abgerechnet a
+                INNER JOIN loco_labours l ON a.rechnungs_nr = l.invoice_number
+                    AND a.rechnungs_typ = l.invoice_type
+                    AND l.mechanic_no = %s
+                    AND l.mechanic_no IS NOT NULL
+                WHERE a.rechnungs_datum >= ? AND a.rechnungs_datum <= ?
+                    AND a.summe_stempelzeit_min > 0
+                ORDER BY a.rechnungs_datum DESC
+                LIMIT 200
+            """), [mechaniker_nr, datum_von, datum_bis])
             auftraege = rows_to_list(cursor.fetchall())
 
             return jsonify({
