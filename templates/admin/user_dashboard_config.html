@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+
+{% block title %}Meine Startseite konfigurieren - DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .dashboard-card {
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+        transition: all 0.2s;
+        cursor: pointer;
+    }
+    .dashboard-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        transform: translateY(-2px);
+    }
+    .dashboard-card.selected {
+        border-color: #0d6efd;
+        background: #f0f7ff;
+        box-shadow: 0 0 0 3px rgba(13,110,253,0.25);
+    }
+    .dashboard-icon {
+        font-size: 2.5rem;
+        margin-bottom: 0.5rem;
+    }
+    .dashboard-category {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: #6c757d;
+    }
+    .preview-box {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 1rem;
+        margin-top: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <!-- Header -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2><i class="bi bi-house-door me-2"></i>Meine Startseite konfigurieren</h2>
+                    <p class="text-muted mb-0">Wähle deine persönliche Startseite nach dem Login</p>
+                </div>
+                <a href="/" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left me-1"></i>Zurück
+                </a>
+            </div>
+
+            <!-- Aktuelle Konfiguration -->
+            <div class="card mb-4" id="currentConfigCard" style="display: none;">
+                <div class="card-header bg-light">
+                    <i class="bi bi-info-circle me-2"></i>Aktuelle Konfiguration
+                </div>
+                <div class="card-body">
+                    <p class="mb-2"><strong>Startseite:</strong> <span id="currentDashboardName">-</span></p>
+                    <p class="mb-0 text-muted small"><strong>URL:</strong> <code id="currentDashboardUrl">-</code></p>
+                </div>
+            </div>
+
+            <!-- Verfügbare Dashboards -->
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-grid me-2"></i>Verfügbare Startseiten
+                </div>
+                <div class="card-body">
+                    <div class="row" id="dashboardsGrid">
+                        <div class="col-12 text-center py-4">
+                            <div class="spinner-border text-primary" role="status"></div>
+                            <div class="mt-2">Lade Dashboards...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Vorschau -->
+            <div class="preview-box mt-4" id="previewBox" style="display: none;">
+                <h6 class="mb-2"><i class="bi bi-eye me-1"></i>Vorschau</h6>
+                <p class="mb-1"><strong>Nach dem Login wirst du weitergeleitet zu:</strong></p>
+                <p class="mb-0"><code id="previewUrl">-</code></p>
+            </div>
+
+            <!-- Buttons -->
+            <div class="d-flex justify-content-between mt-4">
+                <button class="btn btn-outline-danger" id="resetBtn" onclick="resetDashboard()" style="display: none;">
+                    <i class="bi bi-arrow-counterclockwise me-1"></i>Zurücksetzen
+                </button>
+                <div>
+                    <button class="btn btn-secondary me-2" onclick="window.location.href='/'">
+                        Abbrechen
+                    </button>
+                    <button class="btn btn-primary" id="saveBtn" onclick="saveDashboard()" disabled>
+                        <i class="bi bi-check me-1"></i>Speichern
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let availableDashboards = [];
+let currentConfig = null;
+let selectedDashboard = null;
+
+// Laden beim Start
+document.addEventListener('DOMContentLoaded', function() {
+    loadDashboards();
+    loadCurrentConfig();
+});
+
+// Verfügbare Dashboards laden
+async function loadDashboards() {
+    try {
+        const response = await fetch('/api/admin/dashboards');
+        const data = await response.json();
+        
+        if (data.error) {
+            console.error('Fehler:', data.error);
+            document.getElementById('dashboardsGrid').innerHTML = 
+                '<div class="col-12 text-danger text-center">Fehler beim Laden der Dashboards</div>';
+            return;
+        }
+        
+        availableDashboards = data.dashboards || [];
+        renderDashboards();
+    } catch (error) {
+        console.error('Fehler:', error);
+        document.getElementById('dashboardsGrid').innerHTML = 
+            '<div class="col-12 text-danger text-center">Fehler beim Laden</div>';
+    }
+}
+
+// Aktuelle Konfiguration laden
+async function loadCurrentConfig() {
+    try {
+        const userId = {{ current_user.id }};
+        const response = await fetch(`/api/admin/user/${userId}/dashboard`);
+        const data = await response.json();
+        
+        if (data.config) {
+            currentConfig = data.config;
+            selectedDashboard = availableDashboards.find(d => d.url === data.config.target_url);
+            
+            // Aktuelle Konfiguration anzeigen
+            if (selectedDashboard) {
+                document.getElementById('currentDashboardName').textContent = selectedDashboard.name;
+                document.getElementById('currentDashboardUrl').textContent = selectedDashboard.url;
+                document.getElementById('currentConfigCard').style.display = 'block';
+                document.getElementById('resetBtn').style.display = 'block';
+            }
+        }
+    } catch (error) {
+        console.error('Fehler beim Laden der Konfiguration:', error);
+    }
+}
+
+// Dashboards rendern
+function renderDashboards() {
+    const grid = document.getElementById('dashboardsGrid');
+    
+    if (availableDashboards.length === 0) {
+        grid.innerHTML = '<div class="col-12 text-muted text-center">Keine Dashboards verfügbar</div>';
+        return;
+    }
+    
+    // Nach Kategorie gruppieren
+    const byCategory = {};
+    availableDashboards.forEach(dashboard => {
+        const cat = dashboard.category || 'sonstige';
+        if (!byCategory[cat]) {
+            byCategory[cat] = [];
+        }
+        byCategory[cat].push(dashboard);
+    });
+    
+    let html = '';
+    
+    for (const [category, dashboards] of Object.entries(byCategory)) {
+        html += `<div class="col-12"><h6 class="text-muted mb-3 mt-3">${category.charAt(0).toUpperCase() + category.slice(1)}</h6></div>`;
+        
+        dashboards.forEach(dashboard => {
+            const isSelected = selectedDashboard && selectedDashboard.url === dashboard.url;
+            const icon = dashboard.icon || 'bi-speedometer2';
+            
+            html += `
+                <div class="col-md-6 col-lg-4">
+                    <div class="dashboard-card ${isSelected ? 'selected' : ''}" 
+                         onclick="selectDashboard('${dashboard.url}', '${dashboard.name.replace(/'/g, "\\'")}')">
+                        <div class="text-center">
+                            <div class="dashboard-icon"><i class="bi ${icon}"></i></div>
+                            <h5 class="mb-1">${dashboard.name}</h5>
+                            <p class="text-muted small mb-2">${dashboard.description || ''}</p>
+                            <span class="badge bg-secondary dashboard-category">${category}</span>
+                            ${isSelected ? '<div class="mt-2"><i class="bi bi-check-circle-fill text-success"></i> Aktuell</div>' : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+    }
+    
+    grid.innerHTML = html;
+}
+
+// Dashboard auswählen
+function selectDashboard(url, name) {
+    selectedDashboard = availableDashboards.find(d => d.url === url);
+    
+    // UI aktualisieren
+    document.querySelectorAll('.dashboard-card').forEach(card => {
+        card.classList.remove('selected');
+    });
+    
+    event.currentTarget.classList.add('selected');
+    
+    // Vorschau anzeigen
+    document.getElementById('previewUrl').textContent = url;
+    document.getElementById('previewBox').style.display = 'block';
+    
+    // Speichern-Button aktivieren
+    document.getElementById('saveBtn').disabled = false;
+}
+
+// Dashboard speichern
+async function saveDashboard() {
+    if (!selectedDashboard) {
+        alert('Bitte wähle ein Dashboard aus');
+        return;
+    }
+    
+    try {
+        const userId = {{ current_user.id }};
+        const response = await fetch(`/api/admin/user/${userId}/dashboard`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                dashboard_type: 'redirect',
+                target_url: selectedDashboard.url
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('Startseite erfolgreich gespeichert! Beim nächsten Login wirst du zu dieser Seite weitergeleitet.');
+            await loadCurrentConfig();
+            renderDashboards();
+        } else {
+            alert('Fehler: ' + (result.error || result.message));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Fehler beim Speichern');
+    }
+}
+
+// Dashboard zurücksetzen
+async function resetDashboard() {
+    if (!confirm('Wirklich zurücksetzen? Du wirst dann wieder zur Standard-Startseite weitergeleitet.')) {
+        return;
+    }
+    
+    try {
+        const userId = {{ current_user.id }};
+        const response = await fetch(`/api/admin/user/${userId}/dashboard`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('Startseite zurückgesetzt!');
+            currentConfig = null;
+            selectedDashboard = null;
+            document.getElementById('currentConfigCard').style.display = 'none';
+            document.getElementById('resetBtn').style.display = 'none';
+            document.getElementById('previewBox').style.display = 'none';
+            document.getElementById('saveBtn').disabled = true;
+            renderDashboards();
+        } else {
+            alert('Fehler: ' + (result.error || result.message));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Fehler beim Zurücksetzen');
+    }
+}
+</script>
+{% endblock %}

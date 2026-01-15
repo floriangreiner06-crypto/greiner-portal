@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+
+{% block title %}Bug-Übersicht - DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .bug-card {
+        border-left: 4px solid #dee2e6;
+        margin-bottom: 1rem;
+        transition: box-shadow 0.2s;
+    }
+    .bug-card:hover {
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .bug-card.severity-critical {
+        border-left-color: #dc3545;
+    }
+    .bug-card.severity-high {
+        border-left-color: #fd7e14;
+    }
+    .bug-card.severity-medium {
+        border-left-color: #ffc107;
+    }
+    .bug-card.severity-low {
+        border-left-color: #6c757d;
+    }
+    .severity-badge {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-weight: 500;
+    }
+    .severity-critical { background: #dc3545; color: white; }
+    .severity-high { background: #fd7e14; color: white; }
+    .severity-medium { background: #ffc107; color: #000; }
+    .severity-low { background: #6c757d; color: white; }
+    .status-badge {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+    }
+    .status-open { background: #dc3545; color: white; }
+    .status-analyzing { background: #0dcaf0; color: #000; }
+    .status-in_progress { background: #0d6efd; color: white; }
+    .status-fixed { background: #198754; color: white; }
+    .status-closed { background: #6c757d; color: white; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mb-4">
+                <i class="bi bi-bug me-2"></i>
+                Bug-Übersicht
+            </h1>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Status:</label>
+                            <select class="form-select" id="filter-status" onchange="loadBugs()">
+                                <option value="">Alle</option>
+                                <option value="open">Offen</option>
+                                <option value="analyzing">Claude analysiert</option>
+                                <option value="in_progress">In Bearbeitung</option>
+                                <option value="fixed">Behoben</option>
+                                <option value="closed">Geschlossen</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Schweregrad:</label>
+                            <select class="form-select" id="filter-severity" onchange="loadBugs()">
+                                <option value="">Alle</option>
+                                <option value="critical">Kritisch</option>
+                                <option value="high">Hoch</option>
+                                <option value="medium">Mittel</option>
+                                <option value="low">Niedrig</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Feature:</label>
+                            <select class="form-select" id="filter-feature" onchange="loadBugs()">
+                                <option value="">Alle</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button class="btn btn-primary w-100" onclick="loadBugs()">
+                                <i class="bi bi-arrow-clockwise"></i> Aktualisieren
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bug-Liste -->
+    <div class="row">
+        <div class="col-12">
+            <div id="bugs-list">
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Lädt...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let isAdmin = {{ 'true' if current_user.role == 'admin' else 'false' }};
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadFeatures();
+    loadBugs();
+});
+
+function loadFeatures() {
+    fetch('/api/qa/features')
+        .then(response => response.json())
+        .then(data => {
+            if (data.features) {
+                const select = document.getElementById('filter-feature');
+                data.features.forEach(feature => {
+                    const option = document.createElement('option');
+                    option.value = feature.name;
+                    option.textContent = feature.display_name;
+                    select.appendChild(option);
+                });
+            }
+        });
+}
+
+function loadBugs() {
+    const status = document.getElementById('filter-status').value;
+    const severity = document.getElementById('filter-severity').value;
+    const feature = document.getElementById('filter-feature').value;
+    
+    let url = '/api/qa/bugs?';
+    if (status) url += 'status=' + status + '&';
+    if (severity) url += 'severity=' + severity + '&';
+    if (feature) url += 'feature=' + feature + '&';
+    
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('bugs-list').innerHTML = '<div class="alert alert-danger">Fehler: ' + data.error + '</div>';
+                return;
+            }
+            
+            displayBugs(data.bugs || []);
+        })
+        .catch(error => {
+            console.error('Fehler:', error);
+            document.getElementById('bugs-list').innerHTML = '<div class="alert alert-danger">Fehler beim Laden der Bugs</div>';
+        });
+}
+
+function displayBugs(bugs) {
+    if (bugs.length === 0) {
+        document.getElementById('bugs-list').innerHTML = '<div class="alert alert-info">Keine Bugs gefunden</div>';
+        return;
+    }
+    
+    let html = '';
+    bugs.forEach(bug => {
+        const severityClass = 'severity-' + bug.severity;
+        const statusClass = 'status-' + bug.status;
+        const severityText = {
+            'critical': '🔴 Kritisch',
+            'high': '🟠 Hoch',
+            'medium': '🟡 Mittel',
+            'low': '⚪ Niedrig'
+        }[bug.severity] || bug.severity;
+        
+        const statusText = {
+            'open': 'Offen',
+            'analyzing': 'Claude analysiert',
+            'in_progress': 'In Bearbeitung',
+            'fixed': 'Behoben',
+            'closed': 'Geschlossen',
+            'duplicate': 'Duplikat'
+        }[bug.status] || bug.status;
+        
+        const createdDate = new Date(bug.created_at).toLocaleString('de-DE');
+        
+        html += `
+            <div class="bug-card card ${severityClass}">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <h6 class="mb-0">#${bug.id} - ${bug.title}</h6>
+                                <span class="severity-badge ${severityClass}">${severityText}</span>
+                                <span class="status-badge ${statusClass}">${statusText}</span>
+                            </div>
+                            <p class="text-muted mb-2">${bug.description.substring(0, 200)}${bug.description.length > 200 ? '...' : ''}</p>
+                            <div class="small text-muted">
+                                <strong>Feature:</strong> ${bug.feature_name} | 
+                                <strong>Reporter:</strong> ${bug.reporter_name || 'Unbekannt'} | 
+                                <strong>Erstellt:</strong> ${createdDate}
+                            </div>
+                        </div>
+                        <div>
+                            <a href="/qa/bugs/${bug.id}" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-eye"></i> Details
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    document.getElementById('bugs-list').innerHTML = html;
+}
+</script>
+{% endblock %}

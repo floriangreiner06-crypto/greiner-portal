@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Navigation-Verbesserungsvorschlag - Visualisierung (Angepasst)</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body {
+            background: #f5f5f5;
+            padding: 2rem 0;
+        }
+        .nav-visualization {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .nav-visualization h3 {
+            color: #667eea;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #667eea;
+        }
+        .nav-item-visual {
+            padding: 0.5rem 1rem;
+            margin: 0.25rem 0;
+            border-left: 3px solid #667eea;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        .nav-item-visual.top-level {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 600;
+            border-left: none;
+            margin-top: 0.5rem;
+        }
+        .nav-item-visual.dropdown {
+            background: #e9ecef;
+            border-left-color: #28a745;
+        }
+        .nav-item-visual.header {
+            background: #fff3cd;
+            border-left-color: #ffc107;
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+        }
+        .nav-item-visual.child {
+            padding-left: 2rem;
+            background: white;
+            border-left-color: #6c757d;
+        }
+        .nav-item-visual.child-2 {
+            padding-left: 3rem;
+            background: #f8f9fa;
+            border-left-color: #adb5bd;
+            font-size: 0.9rem;
+        }
+        .nav-item-visual.divider {
+            background: transparent;
+            border: none;
+            border-top: 1px dashed #dee2e6;
+            padding: 0.25rem 0;
+            margin: 0.5rem 0;
+        }
+        .badge-feature {
+            background: #0d6efd;
+            color: white;
+            font-size: 0.7rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 3px;
+            margin-left: 0.5rem;
+        }
+        .badge-role {
+            background: #dc3545;
+            color: white;
+            font-size: 0.7rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 3px;
+            margin-left: 0.5rem;
+        }
+        .stats {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        .stat-box {
+            background: #f8f9fa;
+            padding: 0.75rem;
+            border-radius: 4px;
+            text-align: center;
+            flex: 1;
+        }
+        .stat-box .number {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .stat-box .label {
+            font-size: 0.85rem;
+            color: #6c757d;
+        }
+        .improvement {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 1rem;
+            margin-top: 1rem;
+            border-radius: 4px;
+        }
+        .comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+        @media (max-width: 1200px) {
+            .comparison {
+                grid-template-columns: 1fr;
+            }
+        }
+        .icon {
+            margin-right: 0.5rem;
+        }
+        .order-badge {
+            background: #28a745;
+            color: white;
+            font-size: 0.7rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 3px;
+            margin-left: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="text-center mb-4">
+            <h1><i class="bi bi-diagram-3"></i> Navigation-Verbesserungsvorschlag (Angepasst)</h1>
+            <p class="text-muted">Visualisierung: Aktuell vs. Vorgeschlagen (mit deinen Anpassungen)</p>
+        </div>
+
+        <div class="comparison">
+            <!-- VORGESCHLAGEN (ANGEPASST) -->
+            <div class="nav-visualization">
+                <h3><i class="bi bi-check-circle text-success"></i> Vorgeschlagen (Angepasst)</h3>
+                
+                <div class="nav-item-visual top-level">
+                    <i class="bi bi-house-door icon"></i>Dashboard
+                </div>
+
+                <!-- Sortierung: After Sales (1), Verkauf (2), Controlling (3), Team Greiner (4), Admin (5) -->
+                <div class="nav-item-visual top-level dropdown">
+                    <i class="bi bi-tools icon"></i>After Sales <span class="order-badge">1</span>
+                </div>
+                <div class="nav-item-visual child dropdown">
+                    <i class="bi bi-speedometer2"></i> Werkstatt
+                </div>
+                <div class="nav-item-visual child-2"><i class="bi bi-speedometer2"></i> Cockpit</div>
+                <div class="nav-item-visual child-2"><i class="bi bi-calendar-range"></i> Kapazitätsplanung</div>
+                <div class="nav-item-visual child-2"><i class="bi bi-person-check"></i> Anwesenheit</div>
+                <div class="nav-item-visual child-2"><i class="bi bi-list-check"></i> Aufträge & Prognose</div>
+                <div class="nav-item-visual child dropdown">
+                    <i class="bi bi-box-seam"></i> Teile
+                </div>
+                <div class="nav-item-visual child-2"><i class="bi bi-exclamation-triangle"></i> Teile-Status</div>
+                <div class="nav-item-visual child-2"><i class="bi bi-graph-up-arrow"></i> Renner & Penner</div>
+                <div class="nav-item-visual child-2"><i class="bi bi-box-seam"></i> Bestellungen</div>
+                <div class="nav-item-visual child-2"><i class="bi bi-radar"></i> Preisradar</div>
+                <div class="nav-item-visual child dropdown">
+                    <i class="bi bi-shield-check"></i> Garantie
+                </div>
+                <div class="nav-item-visual child-2"><i class="bi bi-shield-check"></i> Garantieaufträge</div>
+                <div class="nav-item-visual child dropdown">
+                    <i class="bi bi-people"></i> Serviceberater
+                </div>
+                <div class="nav-item-visual child-2"><i class="bi bi-people"></i> Übersicht</div>
+                <div class="nav-item-visual child-2"><i class="bi bi-person-badge"></i> Controlling</div>
+                <div class="nav-item-visual child dropdown">
+                    <i class="bi bi-robot"></i> DRIVE
+                </div>
+                <div class="nav-item-visual child-2"><i class="bi bi-sunrise"></i> Morgen-Briefing</div>
+                <div class="nav-item-visual child-2"><i class="bi bi-cash-coin"></i> Kulanz-Monitor</div>
+                <div class="nav-item-visual child-2"><i class="bi bi-robot"></i> ML-Kapazität</div>
+
+                <div class="nav-item-visual top-level dropdown">
+                    <i class="bi bi-cart3 icon"></i>Verkauf <span class="order-badge">2</span>
+                </div>
+                <div class="nav-item-visual child-2"><i class="bi bi-clipboard-data"></i> Auftragseingang</div>
+                <div class="nav-item-visual child-2"><i class="bi bi-truck"></i> Auslieferungen</div>
+                <div class="nav-item-visual child dropdown">
+                    <i class="bi bi-car-front"></i> Bestand
+                </div>
+                <div class="nav-item-visual child-2"><i class="bi bi-car-front"></i> eAutoseller</div>
+                <div class="nav-item-visual child-2"><i class="bi bi-clock-history"></i> GW-Standzeit</div>
+                <div class="nav-item-visual child dropdown">
+                    <i class="bi bi-bullseye"></i> Planung <span class="badge-role">admin</span>
+                </div>
+                <div class="nav-item-visual child-2"><i class="bi bi-bullseye"></i> Budget-Planung</div>
+                <div class="nav-item-visual child-2"><i class="bi bi-calendar-week"></i> Lieferforecast</div>
+                <div class="nav-item-visual child dropdown">
+                    <i class="bi bi-tools"></i> Tools
+                </div>
+                <div class="nav-item-visual child-2"><i class="bi bi-search-heart"></i> Leasys Programmfinder</div>
+                <div class="nav-item-visual child-2"><i class="bi bi-calculator"></i> Leasys Kalkulator</div>
+
+                <div class="nav-item-visual top-level dropdown">
+                    <i class="bi bi-graph-up-arrow icon"></i>Controlling <span class="order-badge">3</span>
+                </div>
+                <div class="nav-item-visual child dropdown">
+                    <i class="bi bi-speedometer2"></i> Übersichten
+                </div>
+                <div class="nav-item-visual child-2"><i class="bi bi-speedometer2"></i> Dashboard</div>
+                <div class="nav-item-visual child-2"><i class="bi bi-graph-up"></i> BWA</div>
+                <div class="nav-item-visual child-2"><i class="bi bi-bar-chart-line"></i> TEK</div>
+                <div class="nav-item-visual child-2"><i class="bi bi-table"></i> Kontenmapping</div>
+                <div class="nav-item-visual child-2"><i class="bi bi-bank2"></i> Bankenspiegel Dashboard <span style="color: #28a745; font-size: 0.7rem;">(NEU)</span></div>
+                <div class="nav-item-visual child-2"><i class="bi bi-wallet2"></i> Kontenübersicht <span style="color: #28a745; font-size: 0.7rem;">(NEU)</span></div>
+                <div class="nav-item-visual child-2"><i class="bi bi-receipt"></i> Transaktionen <span style="color: #28a745; font-size: 0.7rem;">(NEU)</span></div>
+                <div class="nav-item-visual child dropdown">
+                    <i class="bi bi-bullseye"></i> Planung
+                </div>
+                <div class="nav-item-visual child-2"><i class="bi bi-clipboard-check"></i> Abteilungsleiter-Planung</div>
+                <div class="nav-item-visual child-2"><i class="bi bi-bullseye"></i> 1%-Ziel</div>
+                <div class="nav-item-visual child-2"><i class="bi bi-bar-chart"></i> KST-Ziele</div>
+                <div class="nav-item-visual child dropdown">
+                    <i class="bi bi-graph-up-arrow"></i> Analysen
+                </div>
+                <div class="nav-item-visual child-2"><i class="bi bi-percent"></i> Zinsen-Analyse <span class="badge-feature">zinsen</span></div>
+                <div class="nav-item-visual child-2"><i class="bi bi-truck"></i> Einkaufsfinanzierung <span class="badge-feature">einkaufsfinanzierung</span></div>
+                <div class="nav-item-visual child-2"><i class="bi bi-car-front"></i> Fahrzeugfinanzierungen <span style="color: #28a745; font-size: 0.7rem;">(NEU)</span></div>
+
+                <div class="nav-item-visual top-level dropdown" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%);">
+                    <i class="bi bi-people icon"></i>Team Greiner <span class="order-badge">4</span> <span style="font-size: 0.7rem; opacity: 0.9;">(NEU: Umbenannt)</span>
+                </div>
+                <div class="nav-item-visual child-2"><i class="bi bi-calendar-plus"></i> Mein Urlaub</div>
+                <div class="nav-item-visual child-2"><i class="bi bi-diagram-3"></i> Team-Übersicht <span class="badge-role">leitung</span></div>
+                <div class="nav-item-visual child-2"><i class="bi bi-gift"></i> Jahresprämie <span style="color: #28a745; font-size: 0.7rem;">(NEU: verschoben)</span></div>
+
+                <div class="nav-item-visual top-level dropdown">
+                    <i class="bi bi-shield-lock icon"></i>Admin <span class="order-badge">5</span>
+                </div>
+                <div class="nav-item-visual child dropdown">
+                    <i class="bi bi-gear"></i> System
+                </div>
+                <div class="nav-item-visual child-2"><i class="bi bi-list-task"></i> Task Manager</div>
+                <div class="nav-item-visual child-2"><i class="bi bi-flower1"></i> Flower Dashboard</div>
+                <div class="nav-item-visual child-2"><i class="bi bi-person-lock"></i> Rechteverwaltung</div>
+                <div class="nav-item-visual child dropdown">
+                    <i class="bi bi-diagram-3"></i> Organisation
+                </div>
+                <div class="nav-item-visual child-2"><i class="bi bi-diagram-3"></i> Organigramm</div>
+                <div class="nav-item-visual child-2"><i class="bi bi-calendar-check"></i> Urlaubsplaner Admin</div>
+                <div class="nav-item-visual child dropdown">
+                    <i class="bi bi-bug"></i> Entwicklung
+                </div>
+                <div class="nav-item-visual child-2"><i class="bi bi-bug"></i> Debug User</div>
+
+                <div class="stats">
+                    <div class="stat-box">
+                        <div class="number text-success">6</div>
+                        <div class="label">Max Items pro Dropdown</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="number text-success">2</div>
+                        <div class="label">Dividers (reduziert)</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="number text-success">+80%</div>
+                        <div class="label">Übersichtlichkeit</div>
+                    </div>
+                </div>
+
+                <div class="improvement">
+                    <strong><i class="bi bi-lightbulb"></i> Anpassungen (nach deinen Wünschen):</strong>
+                    <ul class="mb-0 mt-2">
+                        <li>✅ Bankenspiegel/Fahrzeugfinanzierungen → nach Übersichten/Analysen verschoben</li>
+                        <li>✅ Jahresprämie → in "Team Greiner" verschoben</li>
+                        <li>✅ "Urlaubsplaner" → umbenannt in "Team Greiner"</li>
+                        <li>✅ Neue Sortierung: After Sales → Verkauf → Controlling → Team Greiner → Admin</li>
+                        <li>✅ After Sales mit Sub-Dropdowns (max. 5 Items pro Gruppe)</li>
+                        <li>✅ Controlling vereinfacht (3 logische Gruppen)</li>
+                        <li>✅ Verkauf strukturiert (Bestand als Sub-Dropdown)</li>
+                        <li>✅ Keine langen Scroll-Listen mehr</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

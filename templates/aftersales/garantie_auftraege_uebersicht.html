@@ -247,11 +247,19 @@ function erstelleGarantieakte(orderNumber, kundeName) {
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Erstelle...';
     
+    // Erste Anfrage ohne Dossier-ID
+    erstelleGarantieakteInternal(orderNumber, null, btn, originalHtml);
+}
+
+function erstelleGarantieakteInternal(orderNumber, dossierId, btn, originalHtml) {
+    const requestBody = dossierId ? { dossier_id: dossierId } : {};
+    
     fetch(`/api/arbeitskarte/${orderNumber}/speichern`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
-        }
+        },
+        body: JSON.stringify(requestBody)
     })
     .then(response => response.json())
     .then(data => {
@@ -269,6 +277,30 @@ function erstelleGarantieakte(orderNumber, kundeName) {
             }
             // Seite neu laden
             loadAuftraege();
+        } else if (data.dossier_not_found) {
+            // Dossier nicht gefunden - zeige Anleitung
+            const anleitung = `Kein Dossier in GUDAT für Auftrag ${orderNumber} gefunden.\n\n` +
+                `So finden Sie die Dossier-ID:\n` +
+                `1. Öffnen Sie das Dossier in GUDAT\n` +
+                `2. Schauen Sie in die Browser-Adresszeile\n` +
+                `3. Die Dossier-ID steht nach "/dossier/" oder "/dossiers/"\n` +
+                `   Beispiel: .../dossier/20472 → Dossier-ID ist "20472"\n\n` +
+                `Kennzeichen: ${data.license_plate || '-'}\n` +
+                `VIN: ${data.vin || '-'}\n\n` +
+                `Bitte geben Sie die Dossier-ID ein:`;
+            
+            const dossierId = prompt(anleitung, '');
+            
+            if (dossierId && dossierId.trim()) {
+                // Erneute Anfrage mit manueller Dossier-ID
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Erstelle mit Dossier-ID ' + dossierId.trim() + '...';
+                erstelleGarantieakteInternal(orderNumber, dossierId.trim(), btn, originalHtml);
+            } else {
+                // Abgebrochen
+                alert('Garantieakte-Erstellung abgebrochen. Dossier-ID erforderlich.');
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
+            }
         } else {
             alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
             btn.disabled = false;

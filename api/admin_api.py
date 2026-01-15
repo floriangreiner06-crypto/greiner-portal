@@ -72,6 +72,24 @@ def get_users_roles():
         with db_session() as conn:
             cursor = conn.cursor()
 
+            # Dashboard-Konfigurationen zuerst laden
+            cursor.execute('''
+                SELECT 
+                    udc.user_id,
+                    udc.target_url,
+                    ad.name as dashboard_name
+                FROM user_dashboard_config udc
+                LEFT JOIN available_dashboards ad ON udc.target_url = ad.url
+            ''')
+            
+            dashboard_configs = {}
+            for row in cursor.fetchall():
+                row_dict = row_to_dict(row)
+                dashboard_configs[row_dict['user_id']] = {
+                    'url': row_dict['target_url'],
+                    'name': row_dict['dashboard_name']
+                }
+
             # User mit Rollen laden
             cursor.execute(f'''
                 SELECT
@@ -92,14 +110,19 @@ def get_users_roles():
             users = []
             for row in cursor.fetchall():
                 row_dict = row_to_dict(row)
+                user_id = row_dict['id']
+                dashboard_config = dashboard_configs.get(user_id, {})
+                
                 users.append({
-                    'id': row_dict['id'],
+                    'id': user_id,
                     'username': row_dict['username'],
                     'display_name': row_dict['display_name'],
                     'ou': row_dict['ou'],
                     'title': row_dict['title'],
                     'last_login': row_dict['last_login'],
-                    'roles': row_dict['roles'] or 'keine'
+                    'roles': row_dict['roles'] or 'keine',
+                    'dashboard_url': dashboard_config.get('url'),
+                    'dashboard_name': dashboard_config.get('name')
                 })
 
             # Verfügbare Rollen
@@ -206,15 +229,144 @@ def remove_role(user_id):
 
 @admin_api.route('/api/admin/feature-access', methods=['GET'])
 def get_feature_access():
-    """Feature-Zugriffs-Matrix laden"""
+    """Feature-Zugriffs-Matrix laden (DB + Config-Fallback)
+    TAG 190: Erweitert um DB-basierte Verwaltung
+    """
     try:
-        from config.roles_config import FEATURE_ACCESS, TITLE_TO_ROLE
+        from config.roles_config import get_feature_access_from_db, TITLE_TO_ROLE
+        
+        # DB-basierte Feature-Zugriffe laden (mit Fallback auf Config)
+        feature_access = get_feature_access_from_db()
 
         return jsonify({
-            'feature_access': FEATURE_ACCESS,
+            'feature_access': feature_access,
             'title_to_role': TITLE_TO_ROLE
         })
 
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_api.route('/api/admin/feature-access/<feature>/role/<role>', methods=['POST'])
+def add_feature_access(feature, role):
+    """Rolle zu Feature hinzufügen
+    TAG 190: Speichert in DB
+    """
+    try:
+        # Prüfe ob User Admin-Rechte hat
+        if not (current_user.can_access_feature('admin') if hasattr(current_user, 'can_access_feature') else False):
+            return jsonify({'error': 'Keine Berechtigung'}), 403
+        
+        ph = sql_placeholder()
+        created_by = current_user.username if hasattr(current_user, 'username') else 'admin'
+        
+        with db_session() as conn:
+            cursor = conn.cursor()
+            
+            # Prüfe ob bereits vorhanden
+            cursor.execute(f'''
+                SELECT 1 FROM feature_access 
+                WHERE feature_name = {ph} AND role_name = {ph}
+            ''', (feature, role))
+            
+            if cursor.fetchone():
+                return jsonify({'message': 'Zugriff bereits vorhanden', 'success': True}), 200
+            
+            # Hinzufügen
+            cursor.execute(f'''
+                INSERT INTO feature_access (feature_name, role_name, created_by, created_at)
+                VALUES ({ph}, {ph}, {ph}, {ph})
+            ''', (feature, role, created_by, datetime.now().isoformat()))
+            
+            conn.commit()
+        
+        return jsonify({
+            'message': f'Rolle "{role}" zu Feature "{feature}" hinzugefügt',
+            'success': True
+        })
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_api.route('/api/admin/feature-access/<feature>/role/<role>', methods=['DELETE'])
+def remove_feature_access(feature, role):
+    """Rolle von Feature entfernen
+    TAG 190: Entfernt aus DB
+    """
+    try:
+        # Prüfe ob User Admin-Rechte hat
+        if not (current_user.can_access_feature('admin') if hasattr(current_user, 'can_access_feature') else False):
+            return jsonify({'error': 'Keine Berechtigung'}), 403
+        
+        ph = sql_placeholder()
+        
+        with db_session() as conn:
+            cursor = conn.cursor()
+            
+            # Entfernen
+            cursor.execute(f'''
+                DELETE FROM feature_access 
+                WHERE feature_name = {ph} AND role_name = {ph}
+            ''', (feature, role))
+            
+            if cursor.rowcount == 0:
+                return jsonify({'error': 'Zugriff nicht gefunden'}), 404
+            
+            conn.commit()
+        
+        return jsonify({
+            'message': f'Rolle "{role}" von Feature "{feature}" entfernt',
+            'success': True
+        })
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_api.route('/api/admin/feature-access/<feature>', methods=['POST'])
+def update_feature_access(feature):
+    """Feature-Zugriff komplett aktualisieren (alle Rollen)
+    TAG 190: Ersetzt alle Rollen für ein Feature
+    """
+    try:
+        # Prüfe ob User Admin-Rechte hat
+        if not (current_user.can_access_feature('admin') if hasattr(current_user, 'can_access_feature') else False):
+            return jsonify({'error': 'Keine Berechtigung'}), 403
+        
+        data = request.get_json()
+        roles = data.get('roles', [])
+        
+        if not isinstance(roles, list):
+            return jsonify({'error': 'roles muss eine Liste sein'}), 400
+        
+        ph = sql_placeholder()
+        created_by = current_user.username if hasattr(current_user, 'username') else 'admin'
+        
+        with db_session() as conn:
+            cursor = conn.cursor()
+            
+            # Alte Rollen entfernen
+            cursor.execute(f'''
+                DELETE FROM feature_access WHERE feature_name = {ph}
+            ''', (feature,))
+            
+            # Neue Rollen hinzufügen
+            for role in roles:
+                if role:  # Ignoriere leere Strings
+                    cursor.execute(f'''
+                        INSERT INTO feature_access (feature_name, role_name, created_by, created_at)
+                        VALUES ({ph}, {ph}, {ph}, {ph})
+                        ON CONFLICT (feature_name, role_name) DO NOTHING
+                    ''', (feature, role, created_by, datetime.now().isoformat()))
+            
+            conn.commit()
+        
+        return jsonify({
+            'message': f'Feature "{feature}" aktualisiert',
+            'success': True
+        })
+    
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -435,5 +587,519 @@ def get_employees_for_reports():
 
         return jsonify({'employees': employees})
 
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# =============================================================================
+# USER DASHBOARD CONFIGURATION - TAG 190
+# =============================================================================
+
+@admin_api.route('/api/admin/dashboards', methods=['GET'])
+def get_available_dashboards():
+    """Verfügbare Dashboards laden
+    TAG 190: Für Admin-Seite - gibt alle Dashboards zurück (Filterung erfolgt im Frontend)
+    """
+    try:
+        ph = sql_placeholder()
+        
+        with db_session() as conn:
+            cursor = conn.cursor()
+            
+            # Alle aktiven Dashboards laden
+            cursor.execute(f'''
+                SELECT 
+                    dashboard_key,
+                    name,
+                    description,
+                    url,
+                    icon,
+                    category,
+                    requires_feature,
+                    role_restriction,
+                    display_order
+                FROM available_dashboards
+                WHERE active = true
+                ORDER BY display_order, name
+            ''')
+            
+            all_dashboards = rows_to_list(cursor.fetchall())
+        
+        # Für Admin-Seite: Alle Dashboards zurückgeben
+        # Filterung nach User-Rollen erfolgt im Frontend
+        return jsonify({'dashboards': all_dashboards})
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_api.route('/api/admin/user/<int:user_id>/dashboard', methods=['GET'])
+def get_user_dashboard_config(user_id):
+    """User-Dashboard-Konfiguration laden
+    TAG 190: Nur für eigenen User oder Admin
+    """
+    try:
+        # Prüfe Berechtigung: Nur eigener User oder Admin
+        if user_id != current_user.id:
+            # Prüfe Admin-Zugriff: portal_role, can_access_feature oder DB-Rolle
+            is_admin = False
+            if hasattr(current_user, 'portal_role') and current_user.portal_role == 'admin':
+                is_admin = True
+            elif hasattr(current_user, 'can_access_feature') and current_user.can_access_feature('admin'):
+                is_admin = True
+            else:
+                # Prüfe DB-Rolle direkt
+                ph = sql_placeholder()
+                with db_session() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(f'''
+                        SELECT 1 FROM user_roles ur
+                        JOIN roles r ON ur.role_id = r.id
+                        WHERE ur.user_id = {ph} AND r.name = 'admin'
+                    ''', (current_user.id,))
+                    if cursor.fetchone():
+                        is_admin = True
+            
+            if not is_admin:
+                return jsonify({'error': 'Keine Berechtigung'}), 403
+        
+        ph = sql_placeholder()
+        
+        with db_session() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute(f'''
+                SELECT 
+                    id,
+                    user_id,
+                    dashboard_type,
+                    target_url,
+                    widget_config,
+                    layout_config,
+                    created_at,
+                    updated_at
+                FROM user_dashboard_config
+                WHERE user_id = {ph}
+            ''', (user_id,))
+            
+            row = cursor.fetchone()
+            
+            if row:
+                config = row_to_dict(row)
+                return jsonify({'config': config})
+            else:
+                return jsonify({'config': None})
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_api.route('/api/admin/user/<int:user_id>/dashboard', methods=['POST'])
+def set_user_dashboard_config(user_id):
+    """User-Dashboard-Konfiguration speichern
+    TAG 190: Nur für eigenen User oder Admin
+    """
+    try:
+        # Prüfe Berechtigung: Nur eigener User oder Admin
+        if user_id != current_user.id:
+            # Prüfe Admin-Zugriff: portal_role, can_access_feature oder DB-Rolle
+            is_admin = False
+            if hasattr(current_user, 'portal_role') and current_user.portal_role == 'admin':
+                is_admin = True
+            elif hasattr(current_user, 'can_access_feature') and current_user.can_access_feature('admin'):
+                is_admin = True
+            else:
+                # Prüfe DB-Rolle direkt
+                ph = sql_placeholder()
+                with db_session() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(f'''
+                        SELECT 1 FROM user_roles ur
+                        JOIN roles r ON ur.role_id = r.id
+                        WHERE ur.user_id = {ph} AND r.name = 'admin'
+                    ''', (current_user.id,))
+                    if cursor.fetchone():
+                        is_admin = True
+            
+            if not is_admin:
+                return jsonify({'error': 'Keine Berechtigung'}), 403
+        
+        data = request.get_json()
+        dashboard_type = data.get('dashboard_type', 'redirect')
+        target_url = data.get('target_url')
+        
+        if not target_url:
+            return jsonify({'error': 'target_url erforderlich'}), 400
+        
+        ph = sql_placeholder()
+        
+        with db_session() as conn:
+            cursor = conn.cursor()
+            
+            # Prüfe ob Konfiguration existiert
+            cursor.execute(f'''
+                SELECT id FROM user_dashboard_config WHERE user_id = {ph}
+            ''', (user_id,))
+            
+            existing = cursor.fetchone()
+            
+            widget_config = json.dumps(data.get('widget_config', {}))
+            layout_config = json.dumps(data.get('layout_config', {}))
+            
+            if existing:
+                # Update
+                cursor.execute(f'''
+                    UPDATE user_dashboard_config
+                    SET dashboard_type = {ph},
+                        target_url = {ph},
+                        widget_config = {ph}::jsonb,
+                        layout_config = {ph}::jsonb,
+                        updated_at = {ph}
+                    WHERE user_id = {ph}
+                ''', (dashboard_type, target_url, widget_config, layout_config, 
+                      datetime.now().isoformat(), user_id))
+            else:
+                # Insert
+                cursor.execute(f'''
+                    INSERT INTO user_dashboard_config 
+                        (user_id, dashboard_type, target_url, widget_config, layout_config, created_at, updated_at)
+                    VALUES ({ph}, {ph}, {ph}, {ph}::jsonb, {ph}::jsonb, {ph}, {ph})
+                ''', (user_id, dashboard_type, target_url, widget_config, layout_config,
+                      datetime.now().isoformat(), datetime.now().isoformat()))
+            
+            conn.commit()
+        
+        return jsonify({
+            'message': 'Dashboard-Konfiguration gespeichert',
+            'success': True
+        })
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# =============================================================================
+# NAVIGATION MANAGEMENT - TAG 190
+# =============================================================================
+
+@admin_api.route('/api/admin/navigation', methods=['GET'])
+def get_navigation_items():
+    """Navigation-Items für aktuellen User laden
+    TAG 190: Gefiltert nach Feature-Zugriff und Rollen
+    """
+    try:
+        ph = sql_placeholder()
+        
+        with db_session() as conn:
+            cursor = conn.cursor()
+            
+            # Alle aktiven Items laden
+            cursor.execute(f'''
+                SELECT 
+                    id,
+                    parent_id,
+                    label,
+                    url,
+                    icon,
+                    order_index,
+                    requires_feature,
+                    role_restriction,
+                    is_dropdown,
+                    is_header,
+                    is_divider,
+                    active,
+                    category
+                FROM navigation_items
+                WHERE active = true
+                ORDER BY order_index, label
+            ''')
+            
+            all_items = rows_to_list(cursor.fetchall())
+        
+        # Filter: Nur Items auf die User Zugriff hat
+        filtered_items = []
+        user_role = getattr(current_user, 'portal_role', 'mitarbeiter') if hasattr(current_user, 'portal_role') else 'mitarbeiter'
+        
+        for item in all_items:
+            # Prüfe Feature-Zugriff
+            if item.get('requires_feature'):
+                if not (hasattr(current_user, 'can_access_feature') and 
+                        current_user.can_access_feature(item['requires_feature'])):
+                    continue
+            
+            # Prüfe Rollen-Restriktion
+            if item.get('role_restriction'):
+                if user_role != item['role_restriction']:
+                    # Prüfe auch ob User admin ist (admin sieht alles)
+                    if not (hasattr(current_user, 'can_access_feature') and 
+                            current_user.can_access_feature('admin')):
+                        continue
+            
+            filtered_items.append(item)
+        
+        # Struktur als Baum aufbauen
+        items_by_id = {item['id']: item for item in filtered_items}
+        root_items = []
+        
+        for item in filtered_items:
+            if item['parent_id']:
+                parent = items_by_id.get(item['parent_id'])
+                if parent:
+                    if 'children' not in parent:
+                        parent['children'] = []
+                    parent['children'].append(item)
+            else:
+                root_items.append(item)
+        
+        return jsonify({'items': root_items})
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_api.route('/api/admin/navigation/all', methods=['GET'])
+def get_all_navigation_items():
+    """Alle Navigation-Items laden (für Admin-UI)
+    TAG 190: Nur für Admins
+    """
+    try:
+        # Prüfe Admin-Zugriff
+        is_admin = False
+        if hasattr(current_user, 'portal_role') and current_user.portal_role == 'admin':
+            is_admin = True
+        elif hasattr(current_user, 'can_access_feature') and current_user.can_access_feature('admin'):
+            is_admin = True
+        
+        if not is_admin:
+            return jsonify({'error': 'Keine Berechtigung'}), 403
+        
+        ph = sql_placeholder()
+        
+        with db_session() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute(f'''
+                SELECT 
+                    id,
+                    parent_id,
+                    label,
+                    url,
+                    icon,
+                    order_index,
+                    requires_feature,
+                    role_restriction,
+                    is_dropdown,
+                    is_header,
+                    is_divider,
+                    active,
+                    category
+                FROM navigation_items
+                ORDER BY order_index, label
+            ''')
+            
+            items = rows_to_list(cursor.fetchall())
+        
+        return jsonify({'items': items})
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_api.route('/api/admin/navigation/<int:item_id>', methods=['POST'])
+def update_navigation_item(item_id):
+    """Navigation-Item aktualisieren
+    TAG 190: Nur für Admins
+    """
+    try:
+        # Prüfe Admin-Zugriff
+        is_admin = False
+        if hasattr(current_user, 'portal_role') and current_user.portal_role == 'admin':
+            is_admin = True
+        elif hasattr(current_user, 'can_access_feature') and current_user.can_access_feature('admin'):
+            is_admin = True
+        
+        if not is_admin:
+            return jsonify({'error': 'Keine Berechtigung'}), 403
+        
+        data = request.get_json()
+        
+        ph = sql_placeholder()
+        
+        with db_session() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute(f'''
+                UPDATE navigation_items
+                SET label = {ph},
+                    url = {ph},
+                    icon = {ph},
+                    order_index = {ph},
+                    requires_feature = {ph},
+                    role_restriction = {ph},
+                    is_dropdown = {ph},
+                    is_header = {ph},
+                    is_divider = {ph},
+                    active = {ph},
+                    category = {ph},
+                    updated_at = {ph}
+                WHERE id = {ph}
+            ''', (
+                data.get('label'),
+                data.get('url'),
+                data.get('icon'),
+                data.get('order_index', 0),
+                data.get('requires_feature'),
+                data.get('role_restriction'),
+                data.get('is_dropdown', False),
+                data.get('is_header', False),
+                data.get('is_divider', False),
+                data.get('active', True),
+                data.get('category', 'main'),
+                datetime.now().isoformat(),
+                item_id
+            ))
+            
+            conn.commit()
+        
+        return jsonify({'message': 'Navigation-Item aktualisiert', 'success': True})
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_api.route('/api/admin/navigation', methods=['POST'])
+def create_navigation_item():
+    """Neues Navigation-Item erstellen
+    TAG 190: Nur für Admins
+    """
+    try:
+        # Prüfe Admin-Zugriff
+        is_admin = False
+        if hasattr(current_user, 'portal_role') and current_user.portal_role == 'admin':
+            is_admin = True
+        elif hasattr(current_user, 'can_access_feature') and current_user.can_access_feature('admin'):
+            is_admin = True
+        
+        if not is_admin:
+            return jsonify({'error': 'Keine Berechtigung'}), 403
+        
+        data = request.get_json()
+        
+        ph = sql_placeholder()
+        
+        with db_session() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute(f'''
+                INSERT INTO navigation_items 
+                    (parent_id, label, url, icon, order_index, requires_feature, role_restriction,
+                     is_dropdown, is_header, is_divider, active, category, created_at, updated_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                RETURNING id
+            ''', (
+                data.get('parent_id'),
+                data.get('label'),
+                data.get('url'),
+                data.get('icon'),
+                data.get('order_index', 0),
+                data.get('requires_feature'),
+                data.get('role_restriction'),
+                data.get('is_dropdown', False),
+                data.get('is_header', False),
+                data.get('is_divider', False),
+                data.get('active', True),
+                data.get('category', 'main'),
+                datetime.now().isoformat(),
+                datetime.now().isoformat()
+            ))
+            
+            new_id = cursor.fetchone()[0]
+            conn.commit()
+        
+        return jsonify({'message': 'Navigation-Item erstellt', 'id': new_id, 'success': True})
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_api.route('/api/admin/navigation/<int:item_id>', methods=['DELETE'])
+def delete_navigation_item(item_id):
+    """Navigation-Item löschen
+    TAG 190: Nur für Admins
+    """
+    try:
+        # Prüfe Admin-Zugriff
+        is_admin = False
+        if hasattr(current_user, 'portal_role') and current_user.portal_role == 'admin':
+            is_admin = True
+        elif hasattr(current_user, 'can_access_feature') and current_user.can_access_feature('admin'):
+            is_admin = True
+        
+        if not is_admin:
+            return jsonify({'error': 'Keine Berechtigung'}), 403
+        
+        ph = sql_placeholder()
+        
+        with db_session() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute(f'''
+                DELETE FROM navigation_items WHERE id = {ph}
+            ''', (item_id,))
+            
+            conn.commit()
+        
+        return jsonify({'message': 'Navigation-Item gelöscht', 'success': True})
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_api.route('/api/admin/user/<int:user_id>/dashboard', methods=['DELETE'])
+def reset_user_dashboard_config(user_id):
+    """User-Dashboard-Konfiguration zurücksetzen
+    TAG 190: Zurück zu rollenbasierter Weiterleitung
+    """
+    try:
+        # Prüfe Berechtigung: Nur eigener User oder Admin
+        if user_id != current_user.id:
+            # Prüfe Admin-Zugriff: portal_role, can_access_feature oder DB-Rolle
+            is_admin = False
+            if hasattr(current_user, 'portal_role') and current_user.portal_role == 'admin':
+                is_admin = True
+            elif hasattr(current_user, 'can_access_feature') and current_user.can_access_feature('admin'):
+                is_admin = True
+            else:
+                # Prüfe DB-Rolle direkt
+                ph = sql_placeholder()
+                with db_session() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(f'''
+                        SELECT 1 FROM user_roles ur
+                        JOIN roles r ON ur.role_id = r.id
+                        WHERE ur.user_id = {ph} AND r.name = 'admin'
+                    ''', (current_user.id,))
+                    if cursor.fetchone():
+                        is_admin = True
+            
+            if not is_admin:
+                return jsonify({'error': 'Keine Berechtigung'}), 403
+        
+        ph = sql_placeholder()
+        
+        with db_session() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute(f'''
+                DELETE FROM user_dashboard_config WHERE user_id = {ph}
+            ''', (user_id,))
+            
+            conn.commit()
+        
+        return jsonify({
+            'message': 'Dashboard-Konfiguration zurückgesetzt',
+            'success': True
+        })
+    
     except Exception as e:
         return jsonify({'error': str(e)}), 500

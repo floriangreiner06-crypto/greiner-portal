@@ -111,21 +111,22 @@ def generate_arbeitskarte_pdf(data: dict) -> bytes:
     fahrzeug = data.get('locosoft', {}).get('fahrzeug', {})
     
     # Kopf-Daten
+    # TAG 189: Verwende Paragraph für lange Texte (automatische Umbrüche)
     kopf_data = [
         ['Auftragsnummer:', str(auftrag.get('nummer', '')), 'Auftragseröffnungsdatum:', format_date(auftrag.get('datum'))],
-        ['Kunde:', kunde.get('name', ''), 'Telefon:', kunde.get('telefon', '')],
-        ['Adresse:', kunde.get('adresse', ''), 'E-Mail:', kunde.get('email', '') or ''],
+        ['Kunde:', Paragraph(kunde.get('name', ''), normal_style), 'Telefon:', kunde.get('telefon', '')],
+        ['Adresse:', Paragraph(kunde.get('adresse', ''), normal_style), 'E-Mail:', Paragraph(kunde.get('email', '') or '', normal_style)],
         ['Kennzeichen:', fahrzeug.get('kennzeichen', ''), 'VIN:', fahrzeug.get('vin', '')],
-        ['Fahrzeugtyp:', fahrzeug.get('marke_modell', ''), 'Erstzulassung:', format_date(fahrzeug.get('erstzulassung'))],
+        ['Fahrzeugtyp:', Paragraph(fahrzeug.get('marke_modell', ''), normal_style), 'Erstzulassung:', format_date(fahrzeug.get('erstzulassung'))],
         ['Kilometerstand:', f"{fahrzeug.get('kilometerstand', 0):,} km" if fahrzeug.get('kilometerstand') else '', 
-         'Serviceberater:', auftrag.get('serviceberater', '')],
+         'Serviceberater:', Paragraph(auftrag.get('serviceberater', ''), normal_style)],
     ]
     
     # Job-Beschreibung hinzufügen, falls vorhanden
     job_beschreibung = auftrag.get('job_beschreibung')
     if job_beschreibung:
-        # Job-Beschreibung über volle Breite (4 Spalten)
-        kopf_data.append(['Job-Beschreibung:', job_beschreibung, '', ''])
+        # Job-Beschreibung über volle Breite (4 Spalten) - mit Paragraph für Umbrüche
+        kopf_data.append(['Job-Beschreibung:', Paragraph(job_beschreibung, normal_style), '', ''])
     
     kopf_table = Table(kopf_data, colWidths=[4*cm, 6*cm, 4*cm, 3*cm])
     # Style für Kopf-Tabelle
@@ -163,10 +164,14 @@ def generate_arbeitskarte_pdf(data: dict) -> bytes:
         
         pos_data = [['Pos.', 'Arbeitsnummer', 'Beschreibung', 'AW', 'Mechaniker']]
         for pos in positionen:
+            text_line = pos.get('text_line', '')
+            # TAG 189: Verwende Paragraph für automatische Umbrüche (keine Längenbegrenzung)
+            text_para = Paragraph(text_line, normal_style) if text_line else ''
+            
             pos_data.append([
                 str(pos.get('position', '')),
                 pos.get('operation', '') or '',
-                pos.get('text_line', '')[:60] + '...' if pos.get('text_line') and len(pos.get('text_line', '')) > 60 else pos.get('text_line', ''),
+                text_para,
                 f"{pos.get('aw', 0):.1f}" if pos.get('aw') else '0.0',
                 pos.get('mechaniker', '') or ''
             ])
@@ -234,13 +239,26 @@ def generate_arbeitskarte_pdf(data: dict) -> bytes:
     # Verwendete Teile
     teile = data.get('locosoft', {}).get('teile', [])
     if teile:
-        elements.append(Paragraph("Verwendete Hyundai Original-Teile", heading_style))
+        # TAG 189: Marke dynamisch aus data holen
+        brand = data.get('brand', 'hyundai')
+        if brand == 'hyundai':
+            teile_ueberschrift = "Verwendete Hyundai Original-Teile"
+        elif brand == 'stellantis':
+            teile_ueberschrift = "Verwendete Original-Teile"
+        else:
+            teile_ueberschrift = "Verwendete Original-Teile"
+        
+        elements.append(Paragraph(teile_ueberschrift, heading_style))
         
         teile_data = [['Teilenummer', 'Beschreibung', 'Menge', 'Preis']]
         for teil in teile:
+            beschreibung = teil.get('beschreibung', '')
+            # TAG 189: Bessere Formatierung - verwende Paragraph für automatische Umbrüche (keine Längenbegrenzung)
+            beschreibung_para = Paragraph(beschreibung, normal_style) if beschreibung else ''
+            
             teile_data.append([
                 teil.get('teilenummer', ''),
-                teil.get('beschreibung', '')[:50] + '...' if teil.get('beschreibung') and len(teil.get('beschreibung', '')) > 50 else teil.get('beschreibung', ''),
+                beschreibung_para,
                 f"{teil.get('menge', 0):.2f}",
                 f"{teil.get('preis', 0):.2f} €"
             ])
@@ -260,6 +278,8 @@ def generate_arbeitskarte_pdf(data: dict) -> bytes:
             ('TOPPADDING', (0, 0), (-1, -1), 5),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f9f9f9')]),
+            # TAG 189: Bessere Zeilenhöhe für Paragraphs
+            ('WORDWRAP', (1, 1), (1, -1)),  # Beschreibung umbrechen
         ]))
         
         elements.append(teile_table)

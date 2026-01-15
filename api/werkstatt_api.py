@@ -73,106 +73,71 @@ def get_leistung():
         inkl_ehemalige = request.args.get('inkl_ehemalige', '0') == '1'
 
         datum_von, datum_bis = get_date_range(zeitraum, von, bis)
+        
+        # TAG 190: Verwende WerkstattData.get_mechaniker_leistung() für Locosoft-konforme Berechnung
+        from api.werkstatt_data import WerkstattData
+        from datetime import datetime
+        
+        betrieb_nr = None
+        if betrieb and betrieb != 'alle':
+            betrieb_nr = int(betrieb)
+        
+        von_date = datetime.fromisoformat(datum_von).date()
+        bis_date = datetime.fromisoformat(datum_bis).date()
+        
+        data = WerkstattData.get_mechaniker_leistung(
+            von=von_date,
+            bis=bis_date,
+            betrieb=betrieb_nr,
+            inkl_ehemalige=inkl_ehemalige,
+            sort_by=sort
+        )
+        
+        # Konvertiere zu altem Format für Frontend-Kompatibilität
+        mechaniker = []
+        for m in data['mechaniker']:
+            mechaniker.append({
+                'mechaniker_nr': m['mechaniker_nr'],
+                'name': m['name'],
+                'ist_aktiv': m['ist_aktiv'],
+                'tage': m['tage'],
+                'auftraege': m['auftraege'],
+                'stempelzeit': m['stempelzeit'],
+                'anwesenheit': m['anwesenheit'],
+                'aw': m['aw'],
+                'umsatz': m['umsatz'],
+                'leistungsgrad': m['leistungsgrad'],
+                'produktivitaet': m['produktivitaet']
+            })
+        
+        # Sortierung (falls nicht bereits sortiert)
+        if sort == 'leistungsgrad':
+            mechaniker.sort(key=lambda x: x['leistungsgrad'] or 0, reverse=True)
+        elif sort == 'stempelzeit':
+            mechaniker.sort(key=lambda x: x['stempelzeit'] or 0, reverse=True)
+        elif sort == 'aw':
+            mechaniker.sort(key=lambda x: x['aw'] or 0, reverse=True)
+        elif sort == 'auftraege':
+            mechaniker.sort(key=lambda x: x['auftraege'] or 0, reverse=True)
+
+        # Gesamt-KPIs aus data verwenden
+        gesamt = data.get('gesamt', {})
+        gesamt_auftraege = gesamt.get('auftraege', 0)
+        gesamt_stempelzeit = gesamt.get('stempelzeit', 0)
+        gesamt_anwesenheit = gesamt.get('anwesenheit', 0)
+        gesamt_aw = gesamt.get('aw', 0)
+        gesamt_umsatz = gesamt.get('umsatz', 0)
+        gesamt_leistungsgrad = gesamt.get('leistungsgrad', 0)
+        gesamt_produktivitaet = gesamt.get('produktivitaet', 0)
+        gesamt_anwesenheitsgrad = gesamt.get('anwesenheitsgrad', 0)
+        anzahl_tage = data.get('anzahl_tage', 0)
+
+        # Anwesenheitsgrad für Mechaniker-Liste berechnen (TAG 181 - SSOT)
+        from utils.kpi_definitions import berechne_anwesenheitsgrad_fuer_mechaniker_liste
+        gesamt_anwesenheitsgrad, mechaniker = berechne_anwesenheitsgrad_fuer_mechaniker_liste(mechaniker)
 
         with db_session() as conn:
             cursor = conn.cursor()
-
-            # Mechaniker-Aggregation aus werkstatt_leistung_daily
-            query = """
-                SELECT
-                    w.mechaniker_nr,
-                    w.mechaniker_name as name,
-                    MAX(w.ist_aktiv) as ist_aktiv,
-                    COUNT(DISTINCT w.datum) as tage,
-                    SUM(w.anzahl_auftraege) as auftraege,
-                    SUM(w.stempelzeit_min) as stempelzeit,
-                    SUM(w.anwesenheit_min) as anwesenheit,
-                    SUM(w.vorgabezeit_aw) as aw,
-                    SUM(w.umsatz) as umsatz,
-                    CASE
-                        WHEN SUM(w.stempelzeit_min) > 0 AND SUM(w.vorgabezeit_aw) > 0
-                        THEN ROUND(SUM(w.vorgabezeit_aw) * 6.0 / SUM(w.stempelzeit_min) * 100, 1)
-                        ELSE NULL
-                    END as leistungsgrad,
-                    CASE
-                        WHEN SUM(w.anwesenheit_min) > 0 AND SUM(w.stempelzeit_min) > 0
-                        THEN ROUND(SUM(w.stempelzeit_min) / SUM(w.anwesenheit_min) * 100, 1)
-                        ELSE NULL
-                    END as produktivitaet
-                FROM werkstatt_leistung_daily w
-                JOIN loco_employees_group_mapping g ON w.mechaniker_nr = g.employee_number
-                WHERE w.datum >= ? AND w.datum <= ?
-                AND w.mechaniker_nr IS NOT NULL
-                AND w.mechaniker_name IS NOT NULL
-                AND w.stempelzeit_min > 0
-                AND g.grp_code = 'MON'
-                AND w.mechaniker_nr NOT IN (
-                    SELECT employee_number FROM loco_employees_group_mapping
-                    WHERE grp_code IN ('A-W', 'A-L', 'A-K')
-                )
-            """
-            params = [datum_von, datum_bis]
-
-            if betrieb and betrieb != 'alle':
-                betrieb_nr = int(betrieb)
-                if betrieb_nr == 1:
-                    query += " AND (w.betrieb_nr = 1 OR w.betrieb_nr IS NULL OR w.betrieb_nr = 0)"
-                else:
-                    query += " AND w.betrieb_nr = %s"
-                    params.append(betrieb_nr)
-
-            if not inkl_ehemalige:
-                query += " AND w.ist_aktiv = 1"
-
-            query += " GROUP BY w.mechaniker_nr, w.mechaniker_name"
-
-            if sort == 'leistungsgrad':
-                query += " ORDER BY leistungsgrad DESC NULLS LAST"
-            elif sort == 'stempelzeit':
-                query += " ORDER BY stempelzeit DESC"
-            elif sort == 'aw':
-                query += " ORDER BY aw DESC"
-            elif sort == 'auftraege':
-                query += " ORDER BY auftraege DESC"
-            else:
-                query += " ORDER BY leistungsgrad DESC NULLS LAST"
-
-            # TAG 136: PostgreSQL-Kompatibilität
-            cursor.execute(convert_placeholders(query), params)
-            mechaniker = rows_to_list(cursor.fetchall())
-
-            # Gesamt-KPIs berechnen - TAG 136: float() für PostgreSQL Decimal-Werte
-            gesamt_auftraege = sum(float(m['auftraege'] or 0) for m in mechaniker)
-            gesamt_stempelzeit = sum(float(m['stempelzeit'] or 0) for m in mechaniker)
-            gesamt_anwesenheit = sum(float(m['anwesenheit'] or 0) for m in mechaniker)
-            gesamt_aw = sum(float(m['aw'] or 0) for m in mechaniker)
-            gesamt_umsatz = sum(float(m['umsatz'] or 0) for m in mechaniker)
-            gesamt_vorgabe = gesamt_aw * 6
-            gesamt_leistungsgrad = round(gesamt_vorgabe / gesamt_stempelzeit * 100, 1) if gesamt_stempelzeit > 0 else 0
-            gesamt_produktivitaet = round(gesamt_stempelzeit / gesamt_anwesenheit * 100, 1) if gesamt_anwesenheit > 0 else 0
-
-            # Anzahl Tage
-            tage_query = """
-                SELECT COUNT(DISTINCT datum)
-                FROM werkstatt_leistung_daily
-                WHERE datum >= ? AND datum <= ?
-            """
-            tage_params = [datum_von, datum_bis]
-            if betrieb and betrieb != 'alle':
-                betrieb_nr = int(betrieb)
-                if betrieb_nr == 1:
-                    tage_query += " AND (betrieb_nr = 1 OR betrieb_nr IS NULL OR betrieb_nr = 0)"
-                else:
-                    tage_query += " AND betrieb_nr = %s"
-                    tage_params.append(betrieb_nr)
-
-            cursor.execute(convert_placeholders(tage_query), tage_params)
-            tage_row = cursor.fetchone()
-            anzahl_tage = (row_to_dict(tage_row) if tage_row else {}).get('count', 0) or (tage_row[0] if tage_row else 0) or 0
-
-            # Anwesenheitsgrad berechnen (TAG 181 - SSOT)
-            # Nutzt zentrale Funktion aus utils/kpi_definitions.py
-            gesamt_anwesenheitsgrad, mechaniker = berechne_anwesenheitsgrad_fuer_mechaniker_liste(mechaniker)
 
             # Trend-Daten (letzte 14 Tage)
             # TAG 136: date('now', '-14 days') -> CURRENT_DATE - INTERVAL für PostgreSQL

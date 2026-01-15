@@ -30,11 +30,18 @@
         border: 1px solid #dee2e6;
         border-radius: 8px;
         margin-bottom: 1rem;
+        transition: box-shadow 0.2s;
+    }
+    .feature-card:hover {
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
     .feature-card .card-header {
         background: #f8f9fa;
         font-weight: 600;
         font-size: 0.9rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
     }
     .feature-roles {
         display: flex;
@@ -46,9 +53,33 @@
         padding: 0.2rem 0.5rem;
         border-radius: 4px;
         background: #e9ecef;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .feature-role:hover {
+        transform: scale(1.05);
     }
     .feature-role.admin { background: #f8d7da; }
     .feature-role.buchhaltung { background: #d4edda; }
+    .feature-role-toggle {
+        cursor: pointer;
+        padding: 0.3rem 0.6rem;
+        border-radius: 4px;
+        margin: 0.2rem;
+        display: inline-block;
+        transition: all 0.2s;
+        border: 2px solid #dee2e6;
+        background: white;
+    }
+    .feature-role-toggle:hover {
+        transform: scale(1.05);
+        border-color: #0d6efd;
+    }
+    .feature-role-toggle.active {
+        background: #0d6efd;
+        color: white;
+        border-color: #0d6efd;
+    }
 
     .title-mapping {
         font-size: 0.85rem;
@@ -162,6 +193,11 @@
                 <i class="bi bi-card-text me-1"></i>Title-Mapping
             </a>
         </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#navigation-tab">
+                <i class="bi bi-list-ul me-1"></i>Navigation
+            </a>
+        </li>
     </ul>
 
     <div class="tab-content">
@@ -182,13 +218,14 @@
                                     <th>OU (AD)</th>
                                     <th>Title (AD)</th>
                                     <th>DB-Rollen</th>
+                                    <th>Startseite</th>
                                     <th>Letzter Login</th>
                                     <th class="text-center">Aktion</th>
                                 </tr>
                             </thead>
                             <tbody id="usersBody">
                                 <tr>
-                                    <td colspan="6" class="text-center py-4">
+                                    <td colspan="7" class="text-center py-4">
                                         <div class="spinner-border text-primary" role="status"></div>
                                         <div class="mt-2">Lade User...</div>
                                     </td>
@@ -268,6 +305,30 @@
                 Zum Hinzufuegen neuer Titles muss die Datei bearbeitet werden.
             </div>
         </div>
+
+        <!-- TAB 5: Navigation -->
+        <div class="tab-pane fade" id="navigation-tab">
+            <div class="card mb-3">
+                <div class="card-header card-header-admin d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-list-ul me-2"></i>Navigation verwalten</span>
+                    <button class="btn btn-sm btn-light" onclick="loadNavigationItems()">
+                        <i class="bi bi-arrow-clockwise me-1"></i>Aktualisieren
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>TAG 190:</strong> Navigation-Items werden aus der Datenbank geladen.
+                        Änderungen werden sofort wirksam (nach Browser-Refresh).
+                    </div>
+                    <div id="navigationTree" class="mt-3">
+                        <div class="text-center py-4">
+                            <div class="spinner-border text-primary" role="status"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -288,6 +349,64 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schliessen</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Startseite konfigurieren -->
+<div class="modal fade" id="dashboardModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-house-door me-2"></i>Startseite konfigurieren
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h6 id="dashboardModalUserName" class="mb-3"></h6>
+                <p class="text-muted small mb-3">Wähle die Startseite für diesen User:</p>
+                <select class="form-select" id="dashboardSelect">
+                    <option value="">Standard (rollenbasiert)</option>
+                </select>
+                <div class="mt-3">
+                    <small class="text-muted" id="dashboardPreview"></small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-danger" id="resetDashboardBtn" onclick="resetUserDashboard()" style="display: none;">
+                    <i class="bi bi-arrow-counterclockwise me-1"></i>Zurücksetzen
+                </button>
+                <button type="button" class="btn btn-primary" onclick="saveUserDashboard()">
+                    <i class="bi bi-check me-1"></i>Speichern
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Feature-Zugriff bearbeiten -->
+<div class="modal fade" id="featureModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-key me-2"></i>Feature-Zugriff bearbeiten
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h6 id="featureModalName" class="mb-3"></h6>
+                <p class="text-muted small mb-3">Klicke auf eine Rolle um sie zuzuweisen/zu entfernen:</p>
+                <div id="featureRoleToggles" class="text-center"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>
+                <button type="button" class="btn btn-primary" onclick="saveFeatureAccess()">
+                    <i class="bi bi-check me-1"></i>Speichern
+                </button>
             </div>
         </div>
     </div>
@@ -365,6 +484,8 @@ let titleData = {};
 let reportsData = {};
 let currentReportId = null;
 let employeesData = [];
+let availableDashboards = [];
+let currentDashboardUserId = null;
 
 // Laden beim Start
 document.addEventListener('DOMContentLoaded', function() {
@@ -372,6 +493,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadFeatureAccess();
     loadReports();
     loadEmployees();
+    loadDashboards();
 });
 
 // User & Rollen laden
@@ -412,7 +534,7 @@ function renderUsersTable() {
     const tbody = document.getElementById('usersBody');
 
     if (usersData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center">Keine User gefunden</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center">Keine User gefunden</td></tr>';
         return;
     }
 
@@ -424,6 +546,10 @@ function renderUsersTable() {
 
         const lastLogin = user.last_login ?
             new Date(user.last_login).toLocaleString('de-DE') : '-';
+        
+        const dashboardDisplay = user.dashboard_name 
+            ? `<span class="badge bg-info">${user.dashboard_name}</span>`
+            : '<span class="text-muted small">Standard</span>';
 
         return `
             <tr class="user-row" data-user-id="${user.id}">
@@ -431,11 +557,18 @@ function renderUsersTable() {
                 <td><span class="text-muted">${user.ou || '-'}</span></td>
                 <td><span class="small">${user.title || '-'}</span></td>
                 <td>${roles}</td>
+                <td>${dashboardDisplay}</td>
                 <td class="small text-muted">${lastLogin}</td>
                 <td class="text-center">
-                    <button class="btn btn-sm btn-outline-primary"
-                            onclick="openRoleModal(${user.id}, '${user.display_name}', '${user.roles}')">
+                    <button class="btn btn-sm btn-outline-primary me-1"
+                            onclick="openRoleModal(${user.id}, '${user.display_name}', '${user.roles}')"
+                            title="Rollen bearbeiten">
                         <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-success"
+                            onclick="openDashboardModal(${user.id}, '${user.display_name}', '${user.dashboard_url || ''}')"
+                            title="Startseite konfigurieren">
+                        <i class="bi bi-house-door"></i>
                     </button>
                 </td>
             </tr>
@@ -466,7 +599,12 @@ function renderFeaturesGrid() {
             <div class="col-md-4 col-lg-3">
                 <div class="feature-card">
                     <div class="card-header">
-                        <i class="bi bi-key me-1"></i>${feature}
+                        <span><i class="bi bi-key me-1"></i>${feature}</span>
+                        <button class="btn btn-sm btn-outline-primary" 
+                                onclick="openFeatureModal('${feature}')"
+                                title="Bearbeiten">
+                            <i class="bi bi-pencil"></i>
+                        </button>
                     </div>
                     <div class="card-body">
                         <div class="feature-roles">${rolesList}</div>
@@ -831,5 +969,407 @@ async function migrateSubscribers() {
         alert('Fehler bei der Migration');
     }
 }
+
+// =============================================================================
+// DASHBOARD-KONFIGURATION FÜR USER (TAG 190 - Admin-only)
+// =============================================================================
+
+async function loadDashboards() {
+    try {
+        const response = await fetch('/api/admin/dashboards');
+        const data = await response.json();
+        availableDashboards = data.dashboards || [];
+    } catch (error) {
+        console.error('Fehler beim Laden der Dashboards:', error);
+    }
+}
+
+async function openDashboardModal(userId, userName, currentUrl) {
+    currentDashboardUserId = userId;
+    document.getElementById('dashboardModalUserName').textContent = userName;
+    
+    const select = document.getElementById('dashboardSelect');
+    const preview = document.getElementById('dashboardPreview');
+    const resetBtn = document.getElementById('resetDashboardBtn');
+    
+    // User-Daten laden um verfügbare Dashboards zu filtern
+    const user = usersData.find(u => u.id === userId);
+    if (!user) {
+        alert('User nicht gefunden');
+        return;
+    }
+    
+    // User-Rollen ermitteln
+    const userRoles = user.roles.split(', ').filter(r => r.trim() && r.trim() !== 'keine');
+    
+    // Verfügbare Dashboards filtern (basierend auf User-Rollen/Features)
+    // Für Admin: Alle Dashboards anzeigen
+    const isAdmin = userRoles.includes('admin');
+    
+    let filteredDashboards = availableDashboards;
+    if (!isAdmin) {
+        // Filter: Nur Dashboards auf die User Zugriff hat
+        filteredDashboards = availableDashboards.filter(dashboard => {
+            // Prüfe Feature-Zugriff
+            if (dashboard.requires_feature) {
+                // Prüfe ob User-Rolle Zugriff auf Feature hat
+                const featureRoles = featureData[dashboard.requires_feature] || [];
+                return userRoles.some(role => featureRoles.includes(role) || featureRoles.includes('*'));
+            }
+            
+            // Prüfe Rollen-Restriktion
+            if (dashboard.role_restriction) {
+                return userRoles.includes(dashboard.role_restriction);
+            }
+            
+            // Keine Restriktion = verfügbar
+            return true;
+        });
+    }
+    
+    // Dropdown füllen
+    select.innerHTML = '<option value="">Standard (rollenbasiert)</option>';
+    filteredDashboards.forEach(dashboard => {
+        const selected = currentUrl === dashboard.url ? 'selected' : '';
+        select.innerHTML += `<option value="${dashboard.url}" ${selected}>${dashboard.name}</option>`;
+    });
+    
+    // Vorschau aktualisieren
+    updateDashboardPreview();
+    select.addEventListener('change', updateDashboardPreview);
+    
+    // Reset-Button anzeigen wenn Konfiguration vorhanden
+    resetBtn.style.display = currentUrl ? 'block' : 'none';
+    
+    new bootstrap.Modal(document.getElementById('dashboardModal')).show();
+}
+
+function updateDashboardPreview() {
+    const select = document.getElementById('dashboardSelect');
+    const preview = document.getElementById('dashboardPreview');
+    const selectedUrl = select.value;
+    
+    if (selectedUrl) {
+        const dashboard = availableDashboards.find(d => d.url === selectedUrl);
+        if (dashboard) {
+            preview.innerHTML = `<i class="bi bi-info-circle me-1"></i>Nach Login: <code>${dashboard.url}</code>`;
+        }
+    } else {
+        preview.innerHTML = '<i class="bi bi-info-circle me-1"></i>Standard-Weiterleitung basierend auf Rolle';
+    }
+}
+
+async function saveUserDashboard() {
+    if (!currentDashboardUserId) {
+        alert('Kein User ausgewählt');
+        return;
+    }
+    
+    const select = document.getElementById('dashboardSelect');
+    const targetUrl = select.value;
+    
+    try {
+        const method = targetUrl ? 'POST' : 'DELETE';
+        const url = `/api/admin/user/${currentDashboardUserId}/dashboard`;
+        
+        const response = await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: targetUrl ? JSON.stringify({
+                dashboard_type: 'redirect',
+                target_url: targetUrl
+            }) : null
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Modal schließen
+            const modal = bootstrap.Modal.getInstance(document.getElementById('dashboardModal'));
+            modal.hide();
+            
+            // Tabelle neu laden
+            await loadUsersRoles();
+            
+            alert('Startseite erfolgreich gespeichert!');
+        } else {
+            alert('Fehler: ' + (result.error || result.message));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Fehler beim Speichern');
+    }
+}
+
+async function resetUserDashboard() {
+    if (!currentDashboardUserId) {
+        return;
+    }
+    
+    if (!confirm('Wirklich zurücksetzen? User wird dann zur Standard-Startseite weitergeleitet.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/admin/user/${currentDashboardUserId}/dashboard`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Modal schließen
+            const modal = bootstrap.Modal.getInstance(document.getElementById('dashboardModal'));
+            modal.hide();
+            
+            // Tabelle neu laden
+            await loadUsersRoles();
+            
+            alert('Startseite zurückgesetzt!');
+        } else {
+            alert('Fehler: ' + (result.error || result.message));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Fehler beim Zurücksetzen');
+    }
+}
+
+// =============================================================================
+// FEATURE-ZUGRIFF VERWALTUNG (TAG 190)
+// =============================================================================
+
+let currentFeature = null;
+
+async function openFeatureModal(feature) {
+    currentFeature = feature;
+    document.getElementById('featureModalName').textContent = `Feature: ${feature}`;
+    
+    // Aktuelle Rollen für dieses Feature
+    const currentRoles = featureData[feature] || [];
+    
+    // Verfügbare Rollen aus rolesData (bereits geladen) oder Fallback
+    const availableRoles = rolesData.length > 0 
+        ? rolesData.map(r => r.name)
+        : ['admin', 'buchhaltung', 'verkauf_leitung', 'verkauf', 'werkstatt_leitung', 
+           'werkstatt', 'service_leitung', 'service', 'serviceberater', 'disposition', 
+           'lager', 'callcenter', 'marketing', 'mitarbeiter'];
+    
+    // Alle verfügbaren Rollen als Toggles rendern
+    const togglesHtml = availableRoles.map(role => {
+        const isActive = currentRoles.includes(role);
+        const cls = getRoleClass(role);
+        return `
+            <div class="feature-role-toggle ${cls} ${isActive ? 'active' : ''}"
+                 data-role="${role}"
+                 onclick="toggleFeatureRole('${role}', this)">
+                ${role}
+                ${isActive ? ' <i class="bi bi-check-circle ms-1"></i>' : ''}
+            </div>
+        `;
+    }).join('');
+    
+    document.getElementById('featureRoleToggles').innerHTML = togglesHtml;
+    
+    new bootstrap.Modal(document.getElementById('featureModal')).show();
+}
+
+function toggleFeatureRole(role, element) {
+    element.classList.toggle('active');
+    if (element.classList.contains('active')) {
+        element.innerHTML = `${role} <i class="bi bi-check-circle ms-1"></i>`;
+    } else {
+        element.innerHTML = role;
+    }
+}
+
+async function saveFeatureAccess() {
+    if (!currentFeature) {
+        alert('Kein Feature ausgewählt');
+        return;
+    }
+    
+    // Aktive Rollen sammeln
+    const activeRoles = [];
+    document.querySelectorAll('#featureRoleToggles .feature-role-toggle.active').forEach(el => {
+        activeRoles.push(el.dataset.role);
+    });
+    
+    try {
+        const response = await fetch(`/api/admin/feature-access/${currentFeature}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ roles: activeRoles })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Feature-Daten neu laden
+            await loadFeatureAccess();
+            
+            // Modal schließen
+            const modal = bootstrap.Modal.getInstance(document.getElementById('featureModal'));
+            modal.hide();
+            
+            // Erfolgs-Meldung
+            alert('Feature-Zugriff erfolgreich gespeichert!');
+        } else {
+            alert('Fehler: ' + (result.error || result.message));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Fehler beim Speichern');
+    }
+}
+
+// ============================================================================
+// NAVIGATION MANAGEMENT - TAG 190
+// ============================================================================
+
+let navigationItems = [];
+
+async function loadNavigationItems() {
+    try {
+        const response = await fetch('/api/admin/navigation/all');
+        const data = await response.json();
+        
+        if (data.error) {
+            document.getElementById('navigationTree').innerHTML = 
+                `<div class="alert alert-danger">Fehler: ${data.error}</div>`;
+            return;
+        }
+        
+        navigationItems = data.items || [];
+        renderNavigationTree();
+    } catch (error) {
+        console.error('Fehler beim Laden der Navigation:', error);
+        document.getElementById('navigationTree').innerHTML = 
+            '<div class="alert alert-danger">Fehler beim Laden der Navigation</div>';
+    }
+}
+
+function renderNavigationTree() {
+    const container = document.getElementById('navigationTree');
+    
+    if (navigationItems.length === 0) {
+        container.innerHTML = '<div class="alert alert-info">Keine Navigation-Items gefunden</div>';
+        return;
+    }
+    
+    // Struktur als Baum aufbauen
+    const itemsById = {};
+    const rootItems = [];
+    
+    navigationItems.forEach(item => {
+        itemsById[item.id] = { ...item, children: [] };
+    });
+    
+    navigationItems.forEach(item => {
+        if (item.parent_id) {
+            const parent = itemsById[item.parent_id];
+            if (parent) {
+                parent.children.push(itemsById[item.id]);
+            }
+        } else {
+            rootItems.push(itemsById[item.id]);
+        }
+    });
+    
+    // HTML rendern
+    let html = '<div class="list-group">';
+    rootItems.forEach(item => {
+        html += renderNavigationItem(item, 0);
+    });
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+function renderNavigationItem(item, level) {
+    const indent = level * 20;
+    const badgeClass = item.active ? 'bg-success' : 'bg-secondary';
+    const icon = item.icon ? `<i class="bi ${item.icon} me-1"></i>` : '';
+    
+    let html = `
+        <div class="list-group-item" style="padding-left: ${indent + 10}px;">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    ${icon}
+                    <strong>${item.label || '(Kein Label)'}</strong>
+                    ${item.is_dropdown ? '<span class="badge bg-info ms-2">Dropdown</span>' : ''}
+                    ${item.is_header ? '<span class="badge bg-warning ms-2">Header</span>' : ''}
+                    ${item.is_divider ? '<span class="badge bg-secondary ms-2">Divider</span>' : ''}
+                    ${item.url ? `<small class="text-muted ms-2">${item.url}</small>` : ''}
+                    ${item.requires_feature ? `<span class="badge bg-primary ms-1">Feature: ${item.requires_feature}</span>` : ''}
+                    ${item.role_restriction ? `<span class="badge bg-danger ms-1">Rolle: ${item.role_restriction}</span>` : ''}
+                    <span class="badge ${badgeClass} ms-2">${item.active ? 'Aktiv' : 'Inaktiv'}</span>
+                </div>
+                <div>
+                    <button class="btn btn-sm btn-outline-primary" onclick="editNavigationItem(${item.id})">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteNavigationItem(${item.id})">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Children rendern
+    if (item.children && item.children.length > 0) {
+        item.children.forEach(child => {
+            html += renderNavigationItem(child, level + 1);
+        });
+    }
+    
+    return html;
+}
+
+function editNavigationItem(itemId) {
+    const item = navigationItems.find(i => i.id === itemId);
+    if (!item) {
+        alert('Item nicht gefunden');
+        return;
+    }
+    
+    // TODO: Modal für Bearbeitung öffnen
+    alert(`Bearbeiten: ${item.label}\n\nDiese Funktion wird noch implementiert.`);
+}
+
+async function deleteNavigationItem(itemId) {
+    if (!confirm('Navigation-Item wirklich löschen?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/admin/navigation/${itemId}`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            await loadNavigationItems();
+            alert('Navigation-Item gelöscht');
+        } else {
+            alert('Fehler: ' + (result.error || result.message));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Fehler beim Löschen');
+    }
+}
+
+// Navigation beim Tab-Wechsel laden
+document.addEventListener('DOMContentLoaded', function() {
+    const navTab = document.querySelector('a[href="#navigation-tab"]');
+    if (navTab) {
+        navTab.addEventListener('shown.bs.tab', function() {
+            loadNavigationItems();
+        });
+    }
+});
 </script>
 {% endblock %}

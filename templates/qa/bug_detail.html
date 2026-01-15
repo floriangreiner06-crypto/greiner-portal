@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}Bug-Details - DRIVE{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <a href="/qa/bugs" class="btn btn-outline-secondary mb-3">
+                <i class="bi bi-arrow-left"></i> Zurück zur Übersicht
+            </a>
+            <h1 class="mb-4">Bug-Details</h1>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <div id="bug-detail">
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Lädt...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const bugId = {{ bug_id }};
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadBugDetail();
+});
+
+function loadBugDetail() {
+    fetch(`/api/qa/bugs/${bugId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('bug-detail').innerHTML = '<div class="alert alert-danger">Fehler: ' + data.error + '</div>';
+                return;
+            }
+            
+            displayBugDetail(data.bug);
+        })
+        .catch(error => {
+            console.error('Fehler:', error);
+            document.getElementById('bug-detail').innerHTML = '<div class="alert alert-danger">Fehler beim Laden des Bugs</div>';
+        });
+}
+
+function displayBugDetail(bug) {
+    const severityText = {
+        'critical': '🔴 Kritisch',
+        'high': '🟠 Hoch',
+        'medium': '🟡 Mittel',
+        'low': '⚪ Niedrig'
+    }[bug.severity] || bug.severity;
+    
+    const statusText = {
+        'open': 'Offen',
+        'analyzing': 'Claude analysiert',
+        'in_progress': 'In Bearbeitung',
+        'fixed': 'Behoben',
+        'closed': 'Geschlossen',
+        'duplicate': 'Duplikat'
+    }[bug.status] || bug.status;
+    
+    const createdDate = new Date(bug.created_at).toLocaleString('de-DE');
+    const updatedDate = new Date(bug.updated_at).toLocaleString('de-DE');
+    
+    let html = `
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">#${bug.id} - ${bug.title}</h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <strong>Feature:</strong> ${bug.feature_name}<br>
+                        <strong>Reporter:</strong> ${bug.reporter_name || 'Unbekannt'}<br>
+                        <strong>Erstellt:</strong> ${createdDate}<br>
+                        <strong>Aktualisiert:</strong> ${updatedDate}
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Schweregrad:</strong> ${severityText}<br>
+                        <strong>Status:</strong> ${statusText}<br>
+                        <strong>Priorität:</strong> ${bug.priority || 'Nicht gesetzt'}
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <h6>Beschreibung:</h6>
+                <p>${bug.description.replace(/\n/g, '<br>')}</p>
+                
+                ${bug.steps_to_reproduce ? `
+                    <h6 class="mt-3">Schritte zur Reproduktion:</h6>
+                    <pre class="bg-light p-3">${bug.steps_to_reproduce}</pre>
+                ` : ''}
+                
+                ${bug.expected_behavior ? `
+                    <h6 class="mt-3">Erwartetes Verhalten:</h6>
+                    <p>${bug.expected_behavior.replace(/\n/g, '<br>')}</p>
+                ` : ''}
+                
+                ${bug.actual_behavior ? `
+                    <h6 class="mt-3">Tatsächliches Verhalten:</h6>
+                    <p>${bug.actual_behavior.replace(/\n/g, '<br>')}</p>
+                ` : ''}
+                
+                ${bug.resolution_notes ? `
+                    <hr>
+                    <h6>Lösungsnotizen:</h6>
+                    <p>${bug.resolution_notes.replace(/\n/g, '<br>')}</p>
+                ` : ''}
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('bug-detail').innerHTML = html;
+}
+</script>
+{% endblock %}

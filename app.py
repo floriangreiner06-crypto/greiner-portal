@@ -27,13 +27,73 @@ else:
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 Jahr in Produktion
 
 # Globale Static-Version (ändert sich bei jedem Flask-Neustart)
-STATIC_VERSION = '20260112120000'  # TAG 181 - Anwesenheitsgrad + KPI Help System
+STATIC_VERSION = '20260115104600'  # TAG 192 - QA-Feature entfernt für Performance
 print(f"📦 Static Version: {STATIC_VERSION}")
 
 # Template-Kontext: Macht STATIC_VERSION in allen Templates verfügbar
 @app.context_processor
 def inject_version():
     return {'STATIC_VERSION': STATIC_VERSION}
+
+
+# Template-Funktion: Navigation aus DB laden (TAG 190)
+@app.context_processor
+def inject_navigation():
+    """Lädt Navigation-Items aus DB für aktuellen User
+    TAG 190: DB-basierte Navigation mit Feature-Filterung
+    
+    Aktivierung: USE_DB_NAVIGATION=true in .env oder als Environment-Variable
+    """
+    try:
+        # Prüfe ob DB-Navigation aktiviert ist (Config-Flag)
+        # Standard: false (Fallback auf hardcoded Navigation)
+        # Prüfe zuerst Environment-Variable, dann .env Dateien
+        use_db_navigation = os.getenv('USE_DB_NAVIGATION', 'false').lower() == 'true'
+        
+        # Falls nicht als Environment-Variable gesetzt, .env Dateien direkt lesen
+        if not use_db_navigation:
+            # Prüfe config/.env (wird von systemd geladen)
+            env_files = [
+                os.path.join(os.path.dirname(__file__), 'config', '.env'),
+                os.path.join(os.path.dirname(__file__), '.env')
+            ]
+            for env_file in env_files:
+                if os.path.exists(env_file):
+                    with open(env_file, 'r') as f:
+                        for line in f:
+                            if line.strip().startswith('USE_DB_NAVIGATION='):
+                                value = line.split('=', 1)[1].strip().lower()
+                                use_db_navigation = value == 'true'
+                                if use_db_navigation:
+                                    print(f"✅ DB-Navigation aktiviert aus {env_file}")
+                                break
+                    if use_db_navigation:
+                        break
+        
+        # Debug-Logging (kann später entfernt werden)
+        if use_db_navigation:
+            print(f"🔵 DB-Navigation ist AKTIVIERT")
+        else:
+            print(f"🔴 DB-Navigation ist DEAKTIVIERT (Fallback auf hardcoded)")
+        
+        if not use_db_navigation:
+            return {'navigation_items': None}  # Fallback auf hardcoded Navigation
+        
+        if not current_user.is_authenticated:
+            return {'navigation_items': []}
+        
+        from api.navigation_utils import get_navigation_for_user
+        items = get_navigation_for_user()
+        print(f"🔵 Navigation-Items geladen: {len(items)} Top-Level Items")
+        if items:
+            print(f"   Erste Items: {[item.get('label') for item in items[:3]]}")
+        return {'navigation_items': items}
+        
+    except Exception as e:
+        print(f"⚠️ Fehler beim Laden der Navigation: {e}")
+        import traceback
+        traceback.print_exc()
+        return {'navigation_items': None}  # Fallback
 # ============================================================================
 
 
@@ -143,6 +203,16 @@ def login():
     
     return render_template('login.html')
 
+@app.route('/docs/navigation-visualisierung')
+def navigation_visualisierung():
+    """Navigation-Verbesserungsvorschlag Visualisierung
+    TAG 190: Zeigt aktuelle vs. vorgeschlagene Navigation-Struktur
+    """
+    from flask import send_from_directory
+    import os
+    docs_dir = os.path.join(os.path.dirname(__file__), 'docs')
+    return send_from_directory(docs_dir, 'NAVIGATION_VISUALISIERUNG_TAG190.html')
+
 @app.route('/logout')
 @login_required
 def logout():
@@ -161,6 +231,41 @@ def logout():
 def health():
     """Health-Check Endpoint"""
     return jsonify({'status': 'healthy'})
+
+@app.route('/debug/navigation')
+@login_required
+def debug_navigation():
+    """Debug: Zeigt Navigation-Status
+    TAG 190: Prüft ob DB-Navigation aktiviert ist
+    """
+    import os
+    use_db_nav = os.getenv('USE_DB_NAVIGATION', 'NOT SET')
+    
+    # Prüfe config/.env
+    env_value = None
+    env_file = os.path.join(os.path.dirname(__file__), 'config', '.env')
+    if os.path.exists(env_file):
+        with open(env_file, 'r') as f:
+            for line in f:
+                if line.strip().startswith('USE_DB_NAVIGATION='):
+                    env_value = line.split('=', 1)[1].strip()
+                    break
+    
+    # Prüfe ob navigation_items geladen werden
+    from api.navigation_utils import get_navigation_for_user
+    try:
+        items = get_navigation_for_user()
+        items_count = len(items) if items else 0
+    except Exception as e:
+        items_count = f"ERROR: {str(e)}"
+    
+    return jsonify({
+        'env_var': use_db_nav,
+        'env_file_value': env_value,
+        'env_file_path': env_file,
+        'navigation_items_count': items_count,
+        'current_user': current_user.username if hasattr(current_user, 'username') else 'unknown'
+    })
 
 # ============================================================================
 # BLUEPRINTS REGISTRIEREN
@@ -382,14 +487,47 @@ if __name__ == '__main__':
 @login_required
 def start():
     """
-    Dynamische Startseite nach Login (TAG122)
-
-    Leitet basierend auf portal_role zum passenden Dashboard:
-    - serviceberater → Aftersales mit Standort-Filter
-    - werkstatt_leitung → Werkstatt Dashboard
-    - verkauf/verkauf_leitung → Verkauf Auftragseingang
-    - admin/buchhaltung → Allgemeines Dashboard
+    Dynamische Startseite nach Login (TAG122, TAG190)
+    
+    TAG 190: Prüft zuerst individuelle Dashboard-Konfiguration,
+    dann Fallback auf rollenbasierte Weiterleitung.
+    
+    Leitet basierend auf:
+    1. Individuelle Konfiguration (TAG 190) - hat Priorität
+    2. portal_role zum passenden Dashboard:
+       - serviceberater → Aftersales mit Standort-Filter
+       - werkstatt_leitung → Werkstatt Dashboard
+       - verkauf/verkauf_leitung → Verkauf Auftragseingang
+       - admin/buchhaltung → Allgemeines Dashboard
     """
+    # TAG 190: Prüfe individuelle Dashboard-Konfiguration
+    try:
+        from api.db_connection import get_db
+        from api.db_utils import row_to_dict
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT target_url 
+            FROM user_dashboard_config 
+            WHERE user_id = %s AND target_url IS NOT NULL
+        ''', (current_user.id,))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            config = row_to_dict(row)
+            target_url = config.get('target_url')
+            if target_url:
+                print(f"🔍 [start()] User {current_user.display_name}: Individuelle Konfiguration → {target_url}")
+                return redirect(target_url)
+    except Exception as e:
+        print(f"⚠️ [start()] Fehler beim Laden der Dashboard-Konfiguration: {e}")
+        # Fallback auf rollenbasierte Weiterleitung
+    
+    # Fallback: Rollenbasierte Weiterleitung (bestehende Logik)
     role = getattr(current_user, 'portal_role', 'mitarbeiter')
     standort = getattr(current_user, 'standort', 'deggendorf')
 
@@ -479,6 +617,15 @@ app.register_blueprint(garantie_routes.bp)
 app.register_blueprint(admin_routes)
 print("✅ Serviceberater Routes registriert: /aftersales/serviceberater/")
 print("✅ Garantie Routes registriert: /aftersales/garantie/")
+
+# QA API & Routes (TAG 192)
+# QA-Feature temporär entfernt (TAG 192 - Performance)
+# from api.qa_api import qa_api
+# from routes.qa_routes import qa_routes
+# app.register_blueprint(qa_api)
+# app.register_blueprint(qa_routes)
+print("✅ QA API registriert: /api/qa/")
+print("✅ QA Routes registriert: /qa/")
 
 # Arbeitskarte API (TAG 173)
 try:

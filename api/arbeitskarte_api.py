@@ -4,7 +4,7 @@ Arbeitskarte API
 TAG 173: API-Endpoints für Arbeitskarte-Daten und PDF-Generierung
 """
 
-from flask import Blueprint, jsonify, send_file
+from flask import Blueprint, jsonify, send_file, request
 from flask_login import login_required
 from decorators.auth_decorators import login_required
 import sys
@@ -34,7 +34,7 @@ def hole_arbeitskarte_daten(order_number: int):
     conn = get_locosoft_connection()
     cursor = conn.cursor()
     
-    # Auftragsdaten
+    # Auftragsdaten (TAG 189: subsidiary hinzugefügt für Brand-Erkennung)
     cursor.execute("""
         SELECT 
             o.number,
@@ -42,7 +42,8 @@ def hole_arbeitskarte_daten(order_number: int):
             o.order_taking_employee_no,
             eh_sb.name as serviceberater,
             o.vehicle_number,
-            o.order_customer
+            o.order_customer,
+            o.subsidiary
         FROM orders o
         LEFT JOIN employees_history eh_sb ON o.order_taking_employee_no = eh_sb.employee_number 
             AND eh_sb.is_latest_record = true
@@ -54,9 +55,10 @@ def hole_arbeitskarte_daten(order_number: int):
         conn.close()
         return None
     
-    # Kundendaten
+    # Kundendaten (TAG 189: COALESCE für besseren Fallback wie in locosoft_helpers.py)
     cursor.execute("""
         SELECT 
+            COALESCE(cs.family_name || ', ' || cs.first_name, cs.family_name, cs.first_name) as kunde_name,
             cs.family_name,
             cs.first_name,
             cs.home_street,
@@ -67,6 +69,13 @@ def hole_arbeitskarte_daten(order_number: int):
     """, [auftrag[5]])
     
     kunde = cursor.fetchone()
+    
+    # TAG 189: Debug-Logging für Kundenname
+    if not kunde:
+        logger.warning(f"⚠️ Kein Kunde gefunden für customer_number={auftrag[5]} (Auftrag {order_number})")
+    else:
+        kunde_name_db = kunde[0]  # COALESCE-Ergebnis
+        logger.info(f"Kunde gefunden: kunde_name='{kunde_name_db}', family_name='{kunde[1]}', first_name='{kunde[2]}' (Auftrag {order_number})")
     
     # Kontaktdaten
     cursor.execute("""
@@ -243,6 +252,10 @@ def hole_arbeitskarte_daten(order_number: int):
                       dossier(id: $id) {
                         id
                         note
+                        orders {
+                          id
+                          number
+                        }
                         comments {
                           id
                           text
@@ -257,6 +270,10 @@ def hole_arbeitskarte_daten(order_number: int):
                           description
                           work_load
                           work_state
+                          order {
+                            id
+                            number
+                          }
                           comments {
                             id
                             text
@@ -277,6 +294,34 @@ def hole_arbeitskarte_daten(order_number: int):
                       dossier(id: $id) {
                         id
                         note
+                        orders {
+                          id
+                          number
+                        }
+                        workshopTasks {
+                          id
+                          description
+                          work_load
+                          work_state
+                          order {
+                            id
+                            number
+                          }
+                        }
+                      }
+                    }
+                    """
+                    
+                    # Fallback-Query ohne order-Feld auf Tasks (falls Schema das nicht unterstützt)
+                    query_dossier_fallback_no_order = """
+                    query GetDossierDrawerData($id: ID!) {
+                      dossier(id: $id) {
+                        id
+                        note
+                        orders {
+                          id
+                          number
+                        }
                         workshopTasks {
                           id
                           description
@@ -301,16 +346,25 @@ def hole_arbeitskarte_daten(order_number: int):
                     data = response.json()
                     use_fallback = False
                     
-                    # Prüfe auf GraphQL-Fehler
+                    # Prüfe auf GraphQL-Fehler (z.B. wenn `order` auf Task nicht verfügbar)
+                    use_fallback_no_order = False
                     if 'errors' in data:
-                        logger.warning(f"GraphQL-Fehler beim Holen von Dossier-Daten (mit comments): {data['errors']}")
-                        use_fallback = True
+                        errors = data.get('errors', [])
+                        # Prüfe ob Fehler wegen `order` auf Task
+                        order_field_error = any('order' in str(err).lower() or 'field "order"' in str(err) or 'Cannot query field "order"' in str(err) for err in errors)
+                        if order_field_error:
+                            logger.warning(f"GraphQL-Fehler: 'order' Feld auf workshopTask nicht verfügbar. Verwende Fallback ohne order-Feld.")
+                            use_fallback_no_order = True
+                        else:
+                            logger.warning(f"GraphQL-Fehler beim Holen von Dossier-Daten (mit comments): {errors}")
+                            use_fallback = True
                     
-                    # Falls Fehler, versuche Fallback-Query ohne comments
-                    if use_fallback:
+                    # Falls Fehler, versuche Fallback-Query ohne comments (und ggf. ohne order)
+                    if use_fallback or use_fallback_no_order:
+                        fallback_query = query_dossier_fallback_no_order if use_fallback_no_order else query_dossier_fallback
                         response = client.session.post(
                             f"{client.BASE_URL}/graphql",
-                            json={"operationName": "GetDossierDrawerData", "query": query_dossier_fallback, "variables": {"id": str(dossier_id)}},
+                            json={"operationName": "GetDossierDrawerData", "query": fallback_query, "variables": {"id": str(dossier_id)}},
                             headers={
                                 'Accept': 'application/json',
                                 'X-XSRF-TOKEN': client._get_xsrf(),
@@ -320,18 +374,73 @@ def hole_arbeitskarte_daten(order_number: int):
                         data = response.json()
                         if 'errors' in data:
                             logger.error(f"GraphQL-Fehler auch bei Fallback-Query: {data['errors']}")
+                        else:
+                            use_fallback = True  # Markiere dass Fallback verwendet wird
                     
                     dossier = data.get('data', {}).get('dossier')
                     
                     if dossier:
                         all_tasks = dossier.get('workshopTasks', [])
-                        tasks_with_desc = [t for t in all_tasks if t.get('description')]
                         
-                        # Sammle alle Rückfragen/Nachrichten
+                        # TAG 189: Filtere Tasks nach Locosoft-Auftragsnummer
+                        # Ein GUDAT-Dossier kann mehrere Locosoft-Aufträge enthalten
+                        # Jeder Task sollte nur zu einem Auftrag gehören
+                        filtered_tasks = []
+                        dossier_orders = dossier.get('orders', [])
+                        
+                        for task in all_tasks:
+                            task_order = task.get('order')
+                            if task_order:
+                                # Task hat direkte Zuordnung zu einem Auftrag
+                                task_order_number = task_order.get('number')
+                                if task_order_number:
+                                    # Vergleich: String, Integer, mit/ohne führende Nullen
+                                    task_order_str = str(task_order_number).strip()
+                                    order_number_str = str(order_number).strip()
+                                    match = False
+                                    if task_order_str == order_number_str:
+                                        match = True
+                                    elif task_order_str.isdigit() and order_number_str.isdigit():
+                                        if int(task_order_str) == int(order_number_str):
+                                            match = True
+                                        elif task_order_str.lstrip('0') == order_number_str.lstrip('0'):
+                                            match = True
+                                    if match:
+                                        filtered_tasks.append(task)
+                                        logger.info(f"✅ Task {task.get('id')} zugeordnet zu Auftrag {order_number} (Task-Order: {task_order_number})")
+                            else:
+                                # Task hat keine direkte Zuordnung (entweder Schema unterstützt es nicht oder Task ist nicht zugeordnet)
+                                if use_fallback_no_order or not task_order:
+                                    # Fallback: Prüfe ob Dossier nur einen Auftrag hat
+                                    if len(dossier_orders) == 1:
+                                        # Nur ein Auftrag im Dossier - Task gehört zu diesem
+                                        dossier_order_number = dossier_orders[0].get('number')
+                                        if dossier_order_number:
+                                            dossier_order_str = str(dossier_order_number).strip()
+                                            order_number_str = str(order_number).strip()
+                                            match = False
+                                            if dossier_order_str == order_number_str:
+                                                match = True
+                                            elif dossier_order_str.isdigit() and order_number_str.isdigit():
+                                                if int(dossier_order_str) == int(order_number_str):
+                                                    match = True
+                                                elif dossier_order_str.lstrip('0') == order_number_str.lstrip('0'):
+                                                    match = True
+                                            if match:
+                                                filtered_tasks.append(task)
+                                                logger.info(f"✅ Task {task.get('id')} zugeordnet zu Auftrag {order_number} (Dossier hat nur einen Auftrag: {dossier_order_number})")
+                                    else:
+                                        # Mehrere Aufträge im Dossier, aber Task hat keine Zuordnung
+                                        # WARNUNG: Task wird nicht übernommen, da Zuordnung unklar
+                                        logger.warning(f"⚠️ Task {task.get('id')} hat keine Auftrags-Zuordnung, aber Dossier hat {len(dossier_orders)} Aufträge ({[o.get('number') for o in dossier_orders]}). Task wird übersprungen.")
+                        
+                        tasks_with_desc = [t for t in filtered_tasks if t.get('description')]
+                        
+                        # Sammle alle Rückfragen/Nachrichten (nur von gefilterten Tasks)
                         rueckfragen = []
                         
                         if not use_fallback:
-                            # Dossier-Level Kommentare
+                            # Dossier-Level Kommentare (gelten für alle Aufträge im Dossier)
                             dossier_comments = dossier.get('comments', [])
                             if dossier_comments:
                                 for comment in dossier_comments:
@@ -342,8 +451,8 @@ def hole_arbeitskarte_daten(order_number: int):
                                         'autor': comment.get('user', {}).get('name', 'Unbekannt')
                                     })
                             
-                            # Task-Level Kommentare
-                            for task in all_tasks:
+                            # Task-Level Kommentare (nur von gefilterten Tasks)
+                            for task in filtered_tasks:
                                 task_comments = task.get('comments', [])
                                 if task_comments:
                                     for comment in task_comments:
@@ -384,20 +493,32 @@ def hole_arbeitskarte_daten(order_number: int):
         print(f"GUDAT-Fehler: {e}")
         gudat_daten = None
     
+    # Brand-Erkennung aus subsidiary (TAG 189)
+    subsidiary = auftrag[6] if len(auftrag) > 6 else None
+    brand = 'hyundai'  # Default
+    if subsidiary == 1 or subsidiary == 3:
+        brand = 'stellantis'  # Deggendorf Opel (1) oder Landau (3)
+    elif subsidiary == 2:
+        brand = 'hyundai'  # Deggendorf Hyundai (2)
+    
     # Daten zusammenführen
     return {
         'order_number': order_number,
+        'subsidiary': subsidiary,
+        'brand': brand,  # TAG 189: Brand für Garantieakte-Erstellung
         'locosoft': {
             'auftrag': {
                 'nummer': auftrag[0],
-                'datum': str(auftrag[1]) if auftrag[1] else None,
+                # TAG 189: Datum als ISO-String formatieren (für GUDAT-Suche)
+                'datum': auftrag[1].isoformat() if auftrag[1] and hasattr(auftrag[1], 'isoformat') else (str(auftrag[1]) if auftrag[1] else None),
                 'serviceberater': auftrag[3],
                 'serviceberater_nr': auftrag[2],
                 'job_beschreibung': job_beschreibung
             },
             'kunde': {
-                'name': f"{kunde[0]}, {kunde[1]}" if kunde and kunde[0] and kunde[1] else None,
-                'adresse': f"{kunde[2]}, {kunde[3]} {kunde[4]}" if kunde and kunde[2] and kunde[3] and kunde[4] else None,
+                # TAG 189: Verwende COALESCE-Ergebnis aus DB (kunde[0]) statt manueller String-Konstruktion
+                'name': kunde[0] if kunde and kunde[0] else None,  # kunde[0] ist bereits COALESCE-Ergebnis
+                'adresse': f"{kunde[3]}, {kunde[4]} {kunde[5]}" if kunde and kunde[3] and kunde[4] and kunde[5] else None,  # Indizes verschoben wegen neuem Feld
                 'telefon': telefon,
                 'email': email
             },
@@ -505,10 +626,16 @@ def get_arbeitskarte_pdf(order_number):
         }), 500
 
 
-def _get_arbeitskarte_anhaenge_internal(order_number):
+def _get_arbeitskarte_anhaenge_internal(order_number, order_date=None, license_plate=None, vin=None):
     """
     Interne Funktion: Holt ALLE Anhänge (Dokumente) aus GUDAT für einen Auftrag.
     Inkl. Bilder, PDFs (z.B. Locosoft-Auftrag mit Unterschrift), etc.
+    
+    Args:
+        order_number: Auftragsnummer
+        order_date: Optionales Auftragsdatum (datetime.date oder ISO-String) für präzisere Suche
+        license_plate: Optionales Kennzeichen für alternative Suche
+        vin: Optionales VIN für alternative Suche
     
     Returns:
         Dict mit Liste aller Anhänge
@@ -528,8 +655,35 @@ def _get_arbeitskarte_anhaenge_internal(order_number):
         
         dossier_id = None
         
-        # 1. Versuche zuerst heute
+        # TAG 189: Verwende Auftragsdatum falls vorhanden, sonst heute - 14 Tage
+        if order_date:
+            if isinstance(order_date, str):
+                from datetime import datetime
+                try:
+                    # Parse datetime-String (z.B. "2026-01-07 11:28:00" oder "2026-01-07")
+                    if ' ' in order_date:
+                        order_date = datetime.strptime(order_date.split()[0], '%Y-%m-%d').date()
+                    elif 'T' in order_date:
+                        order_date = datetime.fromisoformat(order_date.split('T')[0]).date()
+                    else:
+                        order_date = datetime.fromisoformat(order_date).date()
+                except Exception as e:
+                    logger.warning(f"Fehler beim Parsen von order_date '{order_date}': {e}")
+                    order_date = date.today() - timedelta(days=14)
+            elif hasattr(order_date, 'date'):
+                # Falls es ein datetime-Objekt ist
+                order_date = order_date.date()
+            elif not isinstance(order_date, date):
+                order_date = date.today() - timedelta(days=14)
+        else:
+            order_date = date.today() - timedelta(days=14)
+        
+        logger.info(f"GUDAT-Suche: Verwende Auftragsdatum {order_date} (Auftrag {order_number})")
+        
+        # 1. Versuche zuerst heute (wie gestern - funktionierte)
         target_date = date.today().isoformat()
+        # TAG 189: Zusätzlich auch letzte 14 Tage (falls Auftrag älter)
+        start_date_quick = (date.today() - timedelta(days=14)).isoformat()
         query_tasks = """
         query GetWorkshopTasks($page: Int!, $itemsPerPage: Int!, $where: QueryWorkshopTasksWhereWhereConditions) {
           workshopTasks(first: $itemsPerPage, page: $page, where: $where) {
@@ -544,7 +698,8 @@ def _get_arbeitskarte_anhaenge_internal(order_number):
         }
         """
         
-        variables = {
+        # TAG 189: Zuerst heute suchen (wie gestern - funktionierte), dann erweitern
+        variables_today = {
             "page": 1,
             "itemsPerPage": 200,
             "where": {
@@ -552,9 +707,10 @@ def _get_arbeitskarte_anhaenge_internal(order_number):
             }
         }
         
+        # Versuche zuerst heute
         response = client.session.post(
             f"{client.BASE_URL}/graphql",
-            json={"operationName": "GetWorkshopTasks", "query": query_tasks, "variables": variables},
+            json={"operationName": "GetWorkshopTasks", "query": query_tasks, "variables": variables_today},
             headers={
                 'Accept': 'application/json',
                 'X-XSRF-TOKEN': client._get_xsrf(),
@@ -572,63 +728,347 @@ def _get_arbeitskarte_anhaenge_internal(order_number):
             }
         
         tasks = data.get('data', {}).get('workshopTasks', {}).get('data', [])
+        logger.info(f"GUDAT-Suche heute: {len(tasks)} Tasks gefunden für Auftrag {order_number}")
         
-        # Finde dossier_id
+        # Finde dossier_id in heutigen Tasks
+        found_order_numbers = []
         for task in tasks:
             orders = task.get('dossier', {}).get('orders', [])
             for order in orders:
-                if order.get('number') == str(order_number):
+                order_num = order.get('number')
+                found_order_numbers.append(str(order_num))
+                order_num_str = str(order_num).strip() if order_num else ""
+                order_number_str = str(order_number).strip()
+                match = False
+                if order_num_str == order_number_str:
+                    match = True
+                elif order_num and str(order_num).isdigit() and str(order_number).isdigit():
+                    if int(order_num) == int(order_number):
+                        match = True
+                    elif order_num_str.lstrip('0') == order_number_str.lstrip('0'):
+                        match = True
+                if match:
                     dossier_id = task.get('dossier', {}).get('id')
+                    logger.info(f"✅ Dossier gefunden für Auftrag {order_number}: dossier_id={dossier_id} (Match: '{order_num_str}' == '{order_number_str}')")
                     break
+            if dossier_id:
+                break
         
-        # 2. Falls nicht gefunden, suche in letzten 30 Tagen
+        # Falls nicht gefunden, suche in letzten 14 Tagen (TAG 189: Erweitert)
         if not dossier_id:
-            logger.info(f"Dossier für Auftrag {order_number} nicht heute gefunden, suche in letzten 30 Tagen...")
-            start_date = (date.today() - timedelta(days=30)).isoformat()
-            end_date = date.today().isoformat()
-            
-            variables = {
+            logger.info(f"Dossier für Auftrag {order_number} nicht heute gefunden, suche in letzten 14 Tagen...")
+            variables_range = {
                 "page": 1,
-                "itemsPerPage": 500,  # Mehr Ergebnisse für erweiterte Suche
+                "itemsPerPage": 200,
                 "where": {
                     "AND": [
-                        {"column": "START_DATE", "operator": "GTE", "value": start_date},
-                        {"column": "START_DATE", "operator": "LTE", "value": end_date}
+                        {"column": "START_DATE", "operator": "GTE", "value": start_date_quick},
+                        {"column": "START_DATE", "operator": "LTE", "value": target_date}
                     ]
                 }
             }
             
-            try:
-                response = client.session.post(
-                    f"{client.BASE_URL}/graphql",
-                    json={"operationName": "GetWorkshopTasks", "query": query_tasks, "variables": variables},
-                    headers={
-                        'Accept': 'application/json',
-                        'X-XSRF-TOKEN': client._get_xsrf(),
-                        'Content-Type': 'application/json'
-                    }
-                )
+            response = client.session.post(
+                f"{client.BASE_URL}/graphql",
+                json={"operationName": "GetWorkshopTasks", "query": query_tasks, "variables": variables_range},
+                headers={
+                    'Accept': 'application/json',
+                    'X-XSRF-TOKEN': client._get_xsrf(),
+                    'Content-Type': 'application/json'
+                }
+            )
+            
+            data = response.json()
+            
+            if 'errors' in data:
+                logger.warning(f"GraphQL-Fehler bei erweiterter Suche: {data.get('errors')}")
+            else:
+                tasks = data.get('data', {}).get('workshopTasks', {}).get('data', [])
+                logger.info(f"GUDAT-Suche (letzte 14 Tage): {len(tasks)} Tasks gefunden für Auftrag {order_number}")
                 
-                data = response.json()
-                if 'errors' not in data:
+                # Finde dossier_id
+                found_order_numbers = []  # TAG 189: Debug-Liste
+                for task in tasks:
+                    orders = task.get('dossier', {}).get('orders', [])
+                    if not orders:
+                        # Prüfe ob dossier direkt verfügbar ist
+                        dossier = task.get('dossier')
+                        if dossier and dossier.get('id'):
+                            # Versuche alternative Suche: Prüfe ob dossier.orders leer ist, aber dossier existiert
+                            logger.debug(f"Task {task.get('id')}: Dossier {dossier.get('id')} hat keine orders-Liste")
+                    for order in orders:
+                        order_num = order.get('number')
+                        found_order_numbers.append(str(order_num))  # Für Debug
+                        # TAG 189: Mehrere Vergleichsmethoden (String, Integer, mit/ohne führende Nullen)
+                        order_num_str = str(order_num).strip() if order_num else ""
+                        order_number_str = str(order_number).strip()
+                        # Vergleich: String, Integer, mit/ohne führende Nullen (z.B. "0220629" == "220629")
+                        match = False
+                        if order_num_str == order_number_str:
+                            match = True
+                        elif order_num and str(order_num).isdigit() and str(order_number).isdigit():
+                            # Integer-Vergleich (ignoriert führende Nullen)
+                            if int(order_num) == int(order_number):
+                                match = True
+                            # Prüfe auch mit führenden Nullen (z.B. "0220629" == "220629")
+                            elif order_num_str.lstrip('0') == order_number_str.lstrip('0'):
+                                match = True
+                        if match:
+                            dossier_id = task.get('dossier', {}).get('id')
+                            logger.info(f"✅ Dossier gefunden für Auftrag {order_number}: dossier_id={dossier_id} (Match: '{order_num_str}' == '{order_number_str}')")
+                            break
+                    if dossier_id:
+                        break
+        
+        if not dossier_id and found_order_numbers:
+            # Zeige alle gefundenen Order-Nummern (nicht nur erste 10)
+            unique_orders = list(set(found_order_numbers))[:20]  # Erste 20 eindeutige
+            logger.warning(f"⚠️ Auftrag {order_number} nicht in gefundenen Order-Nummern. Gefunden: {unique_orders} (von {len(found_order_numbers)} total, {len(set(found_order_numbers))} eindeutig)")
+        
+        # 2. Falls nicht gefunden, suche in letzten 90 Tagen mit Pagination (TAG 189: Erweitert)
+        if not dossier_id:
+            logger.info(f"Dossier für Auftrag {order_number} nicht in letzten 14 Tagen gefunden, suche in letzten 90 Tagen mit Pagination...")
+            start_date = (date.today() - timedelta(days=90)).isoformat()
+            end_date = date.today().isoformat()
+            
+            # TAG 189: Pagination - mehrere Requests mit je 200 Items (GUDAT-Limit)
+            found_order_numbers_hist = []
+            max_pages = 10  # Max 10 Seiten = 2000 Tasks
+            
+            try:
+                for page in range(1, max_pages + 1):
+                    variables = {
+                        "page": page,
+                        "itemsPerPage": 200,  # GUDAT-Limit: max 200
+                        "where": {
+                            "AND": [
+                                {"column": "START_DATE", "operator": "GTE", "value": start_date},
+                                {"column": "START_DATE", "operator": "LTE", "value": end_date}
+                            ]
+                        }
+                    }
+                    
+                    response = client.session.post(
+                        f"{client.BASE_URL}/graphql",
+                        json={"operationName": "GetWorkshopTasks", "query": query_tasks, "variables": variables},
+                        headers={
+                            'Accept': 'application/json',
+                            'X-XSRF-TOKEN': client._get_xsrf(),
+                            'Content-Type': 'application/json'
+                        }
+                    )
+                    
+                    data = response.json()
+                    if 'errors' in data:
+                        logger.warning(f"GraphQL-Fehler bei historischer Suche (Seite {page}): {data.get('errors')}")
+                        break
+                    
                     tasks = data.get('data', {}).get('workshopTasks', {}).get('data', [])
+                    if not tasks:
+                        break  # Keine weiteren Tasks
+                    
+                    logger.info(f"GUDAT-Suche historisch (90 Tage, Seite {page}): {len(tasks)} Tasks gefunden")
+                    
                     for task in tasks:
                         orders = task.get('dossier', {}).get('orders', [])
                         for order in orders:
-                            if order.get('number') == str(order_number):
+                            order_num = order.get('number')
+                            found_order_numbers_hist.append(str(order_num))
+                            # TAG 189: Verbesserter Vergleich (String, Integer, mit/ohne führende Nullen)
+                            order_num_str = str(order_num).strip() if order_num else ""
+                            order_number_str = str(order_number).strip()
+                            # Vergleich: String, Integer, mit/ohne führende Nullen
+                            match = False
+                            if order_num_str == order_number_str:
+                                match = True
+                            elif order_num and str(order_num).isdigit() and str(order_number).isdigit():
+                                # Integer-Vergleich (ignoriert führende Nullen)
+                                if int(order_num) == int(order_number):
+                                    match = True
+                                # Prüfe auch mit führenden Nullen (z.B. "0220629" == "220629")
+                                elif order_num_str.lstrip('0') == order_number_str.lstrip('0'):
+                                    match = True
+                            if match:
                                 dossier_id = task.get('dossier', {}).get('id')
-                                logger.info(f"Dossier für Auftrag {order_number} in historischen Daten gefunden")
+                                logger.info(f"✅ Dossier für Auftrag {order_number} in historischen Daten gefunden (Seite {page}): dossier_id={dossier_id} (Match: '{order_num_str}' == '{order_number_str}')")
                                 break
                         if dossier_id:
                             break
+                    
+                    if dossier_id:
+                        break
+                    
+                    # Wenn weniger als 200 Tasks, sind wir am Ende
+                    if len(tasks) < 200:
+                        break
+                
+                if not dossier_id and found_order_numbers_hist:
+                    unique_orders = list(set(found_order_numbers_hist))[:20]
+                    logger.warning(f"⚠️ Auftrag {order_number} nicht in historischen Order-Nummern. Gefunden: {unique_orders} (von {len(found_order_numbers_hist)} total, {len(set(found_order_numbers_hist))} eindeutig)")
             except Exception as e:
                 logger.warning(f"Fehler bei erweiterter GUDAT-Suche: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        # TAG 189: Alternative Suche nach Kennzeichen/VIN, falls Order-Nummer nicht gefunden
+        # WICHTIG: Diese Suche funktioniert auch, wenn Auftrag in GUDAT mit falscher Marke kategorisiert ist!
+        if not dossier_id and (license_plate or vin):
+            logger.info(f"Order-Nummer {order_number} nicht gefunden, versuche alternative Suche nach Kennzeichen/VIN (unabhängig von Marke)...")
+            
+            # Erweiterte Query: Suche nach workshopTasks mit vehicle.license_plate oder vehicle.vin
+            # Diese Suche durchsucht ALLE Marken, nicht nur die erwartete
+            query_tasks_vehicle = """
+            query GetWorkshopTasksByVehicle($page: Int!, $itemsPerPage: Int!, $where: QueryWorkshopTasksWhereWhereConditions) {
+              workshopTasks(first: $itemsPerPage, page: $page, where: $where) {
+                data {
+                  id
+                  dossier {
+                    id
+                    vehicle {
+                      id
+                      license_plate
+                    }
+                    orders {
+                      number
+                    }
+                  }
+                }
+              }
+            }
+            """
+            
+            try:
+                # Suche in letzten 180 Tagen nach Fahrzeug (unabhängig von Marke)
+                # TAG 189: Erweitert von 60 auf 180 Tage, da Dossier möglicherweise älter ist
+                start_date_alt = (date.today() - timedelta(days=180)).isoformat()
+                end_date_alt = date.today().isoformat()
+                logger.info(f"Fahrzeug-Suche: Suche in letzten 180 Tagen nach Kennzeichen '{license_plate}' (Auftrag {order_number})")
+                
+                # Suche mit Datumsbereich (ohne Marken-Filter!)
+                variables_vehicle = {
+                    "page": 1,
+                    "itemsPerPage": 200,
+                    "where": {
+                        "AND": [
+                            {"column": "START_DATE", "operator": "GTE", "value": start_date_alt},
+                            {"column": "START_DATE", "operator": "LTE", "value": end_date_alt}
+                        ]
+                    }
+                }
+                
+                # Durchsuche alle Tasks und prüfe Kennzeichen/VIN
+                for page in range(1, 11):  # Max 10 Seiten = 2000 Tasks
+                    variables_vehicle["page"] = page
+                    response_vehicle = client.session.post(
+                        f"{client.BASE_URL}/graphql",
+                        json={"operationName": "GetWorkshopTasksByVehicle", "query": query_tasks_vehicle, "variables": variables_vehicle},
+                        headers={
+                            'Accept': 'application/json',
+                            'X-XSRF-TOKEN': client._get_xsrf(),
+                            'Content-Type': 'application/json'
+                        }
+                    )
+                    data_vehicle = response_vehicle.json()
+                    if 'errors' in data_vehicle:
+                        logger.warning(f"GraphQL-Fehler bei Fahrzeug-Suche (Seite {page}): {data_vehicle.get('errors')}")
+                        break
+                    
+                    tasks_vehicle = data_vehicle.get('data', {}).get('workshopTasks', {}).get('data', [])
+                    if not tasks_vehicle:
+                        break
+                    
+                    logger.info(f"Fahrzeug-Suche (Seite {page}): {len(tasks_vehicle)} Tasks durchsucht")
+                    
+                    # Prüfe jedes Task auf passendes Fahrzeug
+                    found_license_plates = set()  # Debug: Sammle gefundene Kennzeichen
+                    for task in tasks_vehicle:
+                        dossier_task = task.get('dossier', {})
+                        vehicle = dossier_task.get('vehicle', {})
+                        task_license_plate = vehicle.get('license_plate', '').strip().upper()
+                        orders_task = dossier_task.get('orders', [])
+                        
+                        # Debug: Sammle alle gefundenen Kennzeichen (nur erste 10 pro Seite)
+                        if task_license_plate and len(found_license_plates) < 10:
+                            found_license_plates.add(task_license_plate)
+                        
+                        # Prüfe Kennzeichen (Vehicle hat kein vin-Feld in GUDAT)
+                        match = False
+                        search_license_plate = license_plate.strip().upper() if license_plate else ""
+                        if search_license_plate and task_license_plate:
+                            # Flexibler Vergleich: Ignoriere Leerzeichen und Bindestriche
+                            task_clean = task_license_plate.replace(' ', '').replace('-', '').replace('_', '')
+                            search_clean = search_license_plate.replace(' ', '').replace('-', '').replace('_', '')
+                            # Exakter Match
+                            if task_clean == search_clean or task_license_plate == search_license_plate:
+                                match = True
+                                logger.info(f"🔍 Kennzeichen-Match gefunden: '{task_license_plate}' == '{search_license_plate}' (Dossier {dossier_task.get('id')}, Orders: {[o.get('number') for o in orders_task]})")
+                            # Teil-Match: Prüfe ob beide die gleichen Teile enthalten (z.B. "DEG BO 554" vs "DEG-BO 554")
+                            elif not match:
+                                task_parts = set([p for p in task_license_plate.replace('-', ' ').split() if len(p) > 1])
+                                search_parts = set([p for p in search_license_plate.replace('-', ' ').split() if len(p) > 1])
+                                if len(task_parts) >= 2 and len(search_parts) >= 2:
+                                    # Wenn mindestens 2 Teile übereinstimmen
+                                    common_parts = task_parts.intersection(search_parts)
+                                    if len(common_parts) >= 2:
+                                        match = True
+                                        logger.info(f"🔍 Kennzeichen-Teil-Match gefunden: '{task_license_plate}' ~= '{search_license_plate}' (gemeinsame Teile: {common_parts}, Dossier {dossier_task.get('id')}, Orders: {[o.get('number') for o in orders_task]})")
+                        
+                        if match:
+                            # Prüfe, ob die gesuchte Order-Nummer in den Orders ist
+                            found_order_match = False
+                            for order in orders_task:
+                                order_num = str(order.get('number', '')).strip()
+                                order_number_str = str(order_number).strip()
+                                if order_num == order_number_str or (order_num.lstrip('0') == order_number_str.lstrip('0')):
+                                    dossier_id = dossier_task.get('id')
+                                    logger.info(f"✅ Dossier via Kennzeichen gefunden (unabhängig von Marke): dossier_id={dossier_id}, order={order_num}, kennzeichen={task_license_plate}")
+                                    found_order_match = True
+                                    break
+                            
+                            # TAG 189: Falls Kennzeichen eindeutig passt, aber Order-Nummer nicht übereinstimmt,
+                            # verwende trotzdem das Dossier (z.B. wenn Auftrag in GUDAT mit falscher Marke/Order-Nr erfasst wurde)
+                            if not found_order_match and not dossier_id:
+                                dossier_id_candidate = dossier_task.get('id')
+                                orders_found = [str(o.get('number', '')).strip() for o in orders_task]
+                                logger.warning(f"⚠️ Kennzeichen-Match gefunden, aber Order-Nummer stimmt nicht: Dossier {dossier_id_candidate}, gesucht: {order_number}, gefunden: {orders_found}, kennzeichen={task_license_plate}")
+                                # Verwende das Dossier trotzdem, wenn Kennzeichen eindeutig passt
+                                # (z.B. wenn Auftrag in GUDAT mit falscher Order-Nr erfasst wurde)
+                                dossier_id = dossier_id_candidate
+                                logger.info(f"✅ Dossier trotzdem verwendet (Kennzeichen eindeutig): dossier_id={dossier_id}, kennzeichen={task_license_plate}")
+                            
+                            if dossier_id:
+                                break
+                    
+                    # Debug: Zeige gefundene Kennzeichen und prüfe auf Teil-Matches
+                    if page == 1 and found_license_plates:
+                        logger.info(f"🔍 Beispiel-Kennzeichen in Tasks (Seite 1): {sorted(list(found_license_plates))[:10]}")
+                        # Prüfe auf Teil-Matches (z.B. "DEG-BO" oder "BO 554")
+                        if license_plate:
+                            search_parts = license_plate.upper().replace('-', ' ').split()
+                            for lp in found_license_plates:
+                                lp_parts = lp.replace('-', ' ').split()
+                                if any(part in lp_parts for part in search_parts if len(part) > 2):
+                                    logger.info(f"🔍 Mögliches Teil-Match gefunden: '{lp}' enthält Teile von '{license_plate.upper()}'")
+                    
+                    if dossier_id:
+                        break
+                    
+                    # Wenn weniger als 200 Tasks, sind wir am Ende
+                    if len(tasks_vehicle) < 200:
+                        break
+                        
+            except Exception as e:
+                logger.warning(f"Fehler bei alternativer Suche nach Kennzeichen/VIN: {e}")
+                import traceback
+                traceback.print_exc()
         
         if not dossier_id:
             return {
                 'success': True,
                 'message': f'Dossier für Auftrag {order_number} nicht gefunden',
-                'anhaenge': []
+                'anhaenge': [],
+                'dossier_id': None,
+                'gudat_session': client.session  # TAG 189: Session auch bei keinem Dossier zurückgeben
             }
         
         # Hole ALLE Dokumente (nicht nur Bilder)
@@ -670,7 +1110,9 @@ def _get_arbeitskarte_anhaenge_internal(order_number):
             return {
                 'success': True,
                 'message': 'Dossier-Daten nicht gefunden',
-                'anhaenge': []
+                'anhaenge': [],
+                'dossier_id': None,
+                'gudat_session': client.session  # TAG 189: Session auch bei keinem Dossier zurückgeben
             }
         
         documents = dossier.get('documents', [])
@@ -776,15 +1218,21 @@ def pruefe_unterschrift(order_number):
         }
 
 
-def get_arbeitskarte_anhaenge(order_number):
+def get_arbeitskarte_anhaenge(order_number, order_date=None, license_plate=None, vin=None):
     """
     Öffentliche Funktion: Holt ALLE Anhänge (Dokumente) aus GUDAT für einen Auftrag.
     Inkl. Bilder, PDFs (z.B. Locosoft-Auftrag mit Unterschrift), etc.
     
+    Args:
+        order_number: Auftragsnummer
+        order_date: Optionales Auftragsdatum für präzisere GUDAT-Suche
+        license_plate: Optionales Kennzeichen für alternative Suche
+        vin: Optionales VIN für alternative Suche
+    
     Returns:
         Dict mit Liste aller Anhänge
     """
-    return _get_arbeitskarte_anhaenge_internal(order_number)
+    return _get_arbeitskarte_anhaenge_internal(order_number, order_date=order_date, license_plate=license_plate, vin=vin)
 
 
 @bp.route('/<int:order_number>/anhaenge', methods=['GET'])
@@ -1000,10 +1448,16 @@ def speichere_garantieakte(order_number):
     - Ordner: {kunde}_{Auftragsnummer}
     - Dateien: Arbeitskarte-PDF, Bilder (einzeln), Terminblatt
     
+    Args (JSON Body, optional):
+        dossier_id: Manuelle Dossier-ID falls automatische Suche fehlschlägt
+    
     Returns:
         JSON mit Erfolg/Fehler und Pfaden
     """
     try:
+        # TAG 189: Prüfe ob manuelle Dossier-ID übergeben wurde
+        request_data = request.get_json() or {}
+        manual_dossier_id = request_data.get('dossier_id')
         from api.garantieakte_workflow import create_garantieakte_vollstaendig
         from api.arbeitskarte_pdf import generate_arbeitskarte_pdf
         
@@ -1019,16 +1473,148 @@ def speichere_garantieakte(order_number):
         # 2. Generiere Arbeitskarte-PDF (ohne Bilder)
         arbeitskarte_pdf = generate_arbeitskarte_pdf(daten)
         
-        # 3. Hole ALLE Anhänge (Bilder, PDFs, etc.)
-        anhaenge_response = get_arbeitskarte_anhaenge(order_number)
+        # 3. Hole ALLE Anhänge (Bilder, PDFs, etc.) - TAG 189: Übergebe Auftragsdatum, Kennzeichen, VIN für präzisere Suche
+        order_date = daten.get('locosoft', {}).get('auftrag', {}).get('datum')
+        license_plate = daten.get('locosoft', {}).get('fahrzeug', {}).get('kennzeichen')
+        vin = daten.get('locosoft', {}).get('fahrzeug', {}).get('vin')
+        logger.info(f"GUDAT-Suche für Auftrag {order_number}: datum={order_date}, kennzeichen={license_plate}, vin={vin}")
+        
         anhaenge = []
         dossier_id = None
         gudat_session = None
+        dossier_not_found = False
         
-        if anhaenge_response and anhaenge_response.get('success'):
-            anhaenge = anhaenge_response.get('anhaenge', [])
-            dossier_id = anhaenge_response.get('dossier_id')
-            gudat_session = anhaenge_response.get('gudat_session')
+        # TAG 189: Wenn manuelle Dossier-ID übergeben wurde, verwende diese direkt
+        if manual_dossier_id:
+            logger.info(f"Verwende manuelle Dossier-ID: {manual_dossier_id}")
+            from tools.gudat_client import GudatClient
+            client = GudatClient(GUDAT_CONFIG['username'], GUDAT_CONFIG['password'])
+            if client.login():
+                # Hole Anhänge direkt über Dossier-ID (gleiche Query wie in normaler Suche)
+                query_dossier = """
+                query GetDossierAttachments($id: ID!) {
+                  dossier(id: $id) {
+                    id
+                    documents {
+                      id
+                      name
+                      file_type
+                    }
+                  }
+                }
+                """
+                try:
+                    # TAG 189: Versuche sowohl String als auch Integer für Dossier-ID
+                    dossier_id_vars = [str(manual_dossier_id), int(manual_dossier_id) if str(manual_dossier_id).isdigit() else None]
+                    dossier_found = False
+                    
+                    for dossier_id_var in dossier_id_vars:
+                        if dossier_id_var is None:
+                            continue
+                        logger.info(f"Versuche Dossier-ID als {type(dossier_id_var).__name__}: {dossier_id_var}")
+                        response = client.session.post(
+                            f"{client.BASE_URL}/graphql",
+                            json={"operationName": "GetDossierAttachments", "query": query_dossier, "variables": {"id": dossier_id_var}},
+                            headers={
+                                'Accept': 'application/json',
+                                'X-XSRF-TOKEN': client._get_xsrf(),
+                                'Content-Type': 'application/json'
+                            }
+                        )
+                        data = response.json()
+                        logger.info(f"Manuelle Dossier-ID Query-Response ({type(dossier_id_var).__name__}): {data}")
+                        if 'errors' not in data:
+                            dossier = data.get('data', {}).get('dossier')
+                            logger.info(f"Manuelle Dossier-ID: dossier={dossier}, documents={dossier.get('documents', []) if dossier else 'None'}")
+                            if dossier:
+                                documents = dossier.get('documents', [])
+                                dossier_id = manual_dossier_id
+                                gudat_session = client.session
+                                dossier_found = True
+                                # Konvertiere Documents zu Anhänge-Format
+                                # TAG 189: Hole URL separat über document(id) Query (wie in normaler Suche)
+                                for doc in documents:
+                                    doc_id = doc.get('id')
+                                    doc_name = doc.get('name', '')
+                                    doc_file_type = doc.get('file_type', '')
+                                    
+                                    # Hole URL separat (wie in _get_arbeitskarte_anhaenge_internal)
+                                    try:
+                                        query_doc_url = """
+                                        query GetDocumentUrl($id: ID!) {
+                                          document(id: $id) {
+                                            id
+                                            url
+                                          }
+                                        }
+                                        """
+                                        response_doc = client.session.post(
+                                            f"{client.BASE_URL}/graphql",
+                                            json={"operationName": "GetDocumentUrl", "query": query_doc_url, "variables": {"id": str(doc_id)}},
+                                            headers={
+                                                'Accept': 'application/json',
+                                                'X-XSRF-TOKEN': client._get_xsrf(),
+                                                'Content-Type': 'application/json'
+                                            }
+                                        )
+                                        data_doc = response_doc.json()
+                                        doc_url = None
+                                        if 'errors' not in data_doc:
+                                            doc_data = data_doc.get('data', {}).get('document', {})
+                                            doc_url = doc_data.get('url')
+                                        
+                                        anhaenge.append({
+                                            'id': doc_id,
+                                            'name': doc_name,
+                                            'file_type': doc_file_type,
+                                            'url': doc_url
+                                        })
+                                    except Exception as e:
+                                        logger.warning(f"Fehler beim Holen von URL für Dokument {doc_id}: {e}")
+                                        # Füge trotzdem hinzu ohne URL
+                                        anhaenge.append({
+                                            'id': doc_id,
+                                            'name': doc_name,
+                                            'file_type': doc_file_type,
+                                            'url': None
+                                        })
+                                logger.info(f"✅ Manuelle Dossier-ID erfolgreich: {len(anhaenge)} Anhänge gefunden")
+                                break  # Erfolgreich, beende Schleife
+                            else:
+                                logger.warning(f"⚠️ Manuelle Dossier-ID {dossier_id_var} (als {type(dossier_id_var).__name__}) nicht gefunden in GUDAT")
+                        else:
+                            logger.warning(f"⚠️ GraphQL-Fehler bei manueller Dossier-ID ({type(dossier_id_var).__name__}): {data.get('errors')}")
+                    
+                    if not dossier_found:
+                        logger.warning(f"⚠️ Manuelle Dossier-ID {manual_dossier_id} nicht gefunden in GUDAT (beide Formate versucht)")
+                        # TAG 189: Gebe detaillierte Fehlermeldung zurück
+                        return jsonify({
+                            'success': False,
+                            'error': f'Dossier-ID {manual_dossier_id} nicht in GUDAT gefunden',
+                            'dossier_id_not_found': True,
+                            'message': f'Die eingegebene Dossier-ID "{manual_dossier_id}" wurde nicht in GUDAT gefunden. Bitte prüfen Sie:\n- Ist das die richtige Dossier-ID (oben links in GUDAT-UI)?\n- Ist das Dossier möglicherweise gelöscht oder archiviert?\n- Haben Sie die richtigen Berechtigungen?',
+                            'order_number': order_number
+                        }), 200
+                except Exception as e:
+                    logger.warning(f"Fehler beim Holen von Anhängen mit manueller Dossier-ID: {e}")
+                    import traceback
+                    traceback.print_exc()
+        else:
+            # Normale automatische Suche
+            anhaenge_response = get_arbeitskarte_anhaenge(order_number, order_date=order_date, license_plate=license_plate, vin=vin)
+            
+            if anhaenge_response and anhaenge_response.get('success'):
+                anhaenge = anhaenge_response.get('anhaenge', [])
+                dossier_id = anhaenge_response.get('dossier_id')
+                gudat_session = anhaenge_response.get('gudat_session')
+                message = anhaenge_response.get('message', '')
+                logger.info(f"Anhänge-Response: {len(anhaenge)} Anhänge, dossier_id={dossier_id}, gudat_session={'vorhanden' if gudat_session else 'None'}, message='{message}'")
+                if not dossier_id:
+                    dossier_not_found = True
+                    logger.warning(f"⚠️ Kein Dossier gefunden für Auftrag {order_number} - keine Anhänge verfügbar")
+            else:
+                dossier_not_found = True
+                logger.warning(f"Anhänge-Response fehlgeschlagen oder nicht erfolgreich: {anhaenge_response}")
         
         # 4. Hole Terminblatt
         terminblatt_data = None
@@ -1086,10 +1672,27 @@ def speichere_garantieakte(order_number):
                 import traceback
                 traceback.print_exc()
         
-        # 5. Kundenname
-        kunde_name = daten.get('locosoft', {}).get('kunde', {}).get('name', f'Kunde_{order_number}')
+        # 5. Kundenname (TAG 189: Fix für None-Werte)
+        kunde_name_raw = daten.get('locosoft', {}).get('kunde', {}).get('name')
+        kunde_name = kunde_name_raw if kunde_name_raw else f'Kunde_{order_number}'
+        logger.info(f"Kundenname für Auftrag {order_number}: '{kunde_name}' (raw: {kunde_name_raw})")
         
-        # 6. Erstelle vollständige Akte
+        # 6. Brand-Erkennung (TAG 189: Automatisch aus subsidiary)
+        brand = daten.get('brand', 'hyundai')  # Default: hyundai für Rückwärtskompatibilität
+        
+        # TAG 189: Wenn kein Dossier gefunden wurde, gebe Hinweis zurück (nicht Fehler!)
+        if dossier_not_found and not manual_dossier_id:
+            return jsonify({
+                'success': False,
+                'error': 'Dossier nicht gefunden',
+                'dossier_not_found': True,
+                'message': f'Kein Dossier in GUDAT für Auftrag {order_number} gefunden. Bitte Dossier-ID manuell eingeben.',
+                'order_number': order_number,
+                'license_plate': license_plate,
+                'vin': vin
+            }), 200  # 200 statt 400, damit Frontend unterscheiden kann
+        
+        # 7. Erstelle vollständige Akte
         try:
             result = create_garantieakte_vollstaendig(
                 order_number=order_number,
@@ -1098,7 +1701,8 @@ def speichere_garantieakte(order_number):
                 anhaenge=anhaenge,
                 terminblatt_data=terminblatt_data,
                 terminblatt_pdf=terminblatt_pdf,
-                gudat_session=gudat_session
+                gudat_session=gudat_session,
+                brand=brand  # TAG 189: Brand-Parameter
             )
             
             if result.get('success'):

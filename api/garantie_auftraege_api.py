@@ -19,9 +19,14 @@ logger = logging.getLogger(__name__)
 bp = Blueprint('garantie_auftraege_api', __name__, url_prefix='/api/garantie/auftraege')
 
 
-def get_garantieakte_metadata(order_number: int, kunde_name: str) -> dict:
+def get_garantieakte_metadata(order_number: int, kunde_name: str, subsidiary: int = None) -> dict:
     """
     Prüft ob Garantieakte existiert und holt Metadaten.
+    
+    Args:
+        order_number: Auftragsnummer
+        kunde_name: Name des Kunden
+        subsidiary: Subsidiary (1=Stellantis, 2=Hyundai, 3=Stellantis Landau) - TAG 189
     
     Returns:
         {
@@ -32,18 +37,27 @@ def get_garantieakte_metadata(order_number: int, kunde_name: str) -> dict:
             'windows_path': str oder None
         }
     """
-    from api.garantieakte_workflow import BASE_PATH_OPTIONS, FALLBACK_PATH, sanitize_filename
+    from api.garantieakte_workflow import BRAND_PATHS, sanitize_filename
     
-    # Prüfe verschiedene Pfade
+    # Brand-Erkennung aus subsidiary (TAG 189)
+    brand = 'hyundai'  # Default
+    if subsidiary == 1 or subsidiary == 3:
+        brand = 'stellantis'  # Deggendorf Opel (1) oder Landau (3)
+    elif subsidiary == 2:
+        brand = 'hyundai'  # Deggendorf Hyundai (2)
+    
+    brand_config = BRAND_PATHS.get(brand, BRAND_PATHS['hyundai'])
+    
+    # Prüfe verschiedene Pfade für diese Marke
     base_path = None
-    for path_option in BASE_PATH_OPTIONS:
+    for path_option in brand_config['base_paths']:
         base_dir = os.path.dirname(path_option)
         if os.path.exists(base_dir):
             base_path = path_option
             break
     
     if not base_path:
-        base_path = FALLBACK_PATH
+        base_path = brand_config['fallback']
     
     # Ordner-Name
     kunde_clean = sanitize_filename(kunde_name)
@@ -59,22 +73,30 @@ def get_garantieakte_metadata(order_number: int, kunde_name: str) -> dict:
             'windows_path': None
         }
     
-    # Windows-Pfad generieren
+    # Windows-Pfad generieren (TAG 189: Brand-spezifisch, None-Check hinzugefügt)
     windows_path = None
-    if '/hyundai-garantie' in ordner_path:
-        windows_path = ordner_path.replace('/mnt/hyundai-garantie', r'\\srvrdb01\Allgemein\DigitalesAutohaus\Hyundai_Garantie')
-        windows_path = windows_path.replace('/', '\\')
-    elif '/buchhaltung/DigitalesAutohaus' in ordner_path:
-        windows_path = ordner_path.replace('/mnt/buchhaltung/DigitalesAutohaus', r'\\srvrdb01\Allgemein\DigitalesAutohaus')
-        windows_path = windows_path.replace('/', '\\')
-    elif '/DigitalesAutohaus' in ordner_path:
-        windows_path = ordner_path.replace('/mnt/DigitalesAutohaus', r'\\srvrdb01\Allgemein\DigitalesAutohaus')
-        windows_path = windows_path.replace('/', '\\')
-    elif '/greiner-portal-sync' in ordner_path:
-        windows_path = ordner_path.replace('/mnt/greiner-portal-sync', r'\\Srvrdb01\Allgemein\Greiner Portal\Greiner_Portal_NEU\Server')
-        windows_path = windows_path.replace('/', '\\')
-    else:
-        windows_path = ordner_path.replace('/', '\\')
+    if ordner_path:  # None-Check
+        windows_base = brand_config['windows_base']
+        
+        if f'/{brand}-garantie' in ordner_path:
+            # Separater Mount
+            mount_name = f'{brand}-garantie'
+            windows_path = ordner_path.replace(f'/mnt/{mount_name}', windows_base)
+            windows_path = windows_path.replace('/', '\\')
+        elif '/buchhaltung/DigitalesAutohaus' in ordner_path:
+            # Über buchhaltung Mount
+            windows_path = ordner_path.replace('/mnt/buchhaltung/DigitalesAutohaus', r'\\srvrdb01\Allgemein\DigitalesAutohaus')
+            windows_path = windows_path.replace('/', '\\')
+        elif '/DigitalesAutohaus' in ordner_path:
+            # Direkt gemountet
+            windows_path = ordner_path.replace('/mnt/DigitalesAutohaus', r'\\srvrdb01\Allgemein\DigitalesAutohaus')
+            windows_path = windows_path.replace('/', '\\')
+        elif '/greiner-portal-sync' in ordner_path:
+            # Fallback
+            windows_path = ordner_path.replace('/mnt/greiner-portal-sync', r'\\Srvrdb01\Allgemein\Greiner Portal\Greiner_Portal_NEU\Server')
+            windows_path = windows_path.replace('/', '\\')
+        else:
+            windows_path = ordner_path.replace('/', '\\') if ordner_path else None
     
     # Prüfe Metadaten-Datei
     metadata_file = os.path.join(ordner_path, '.metadata.json')
@@ -300,7 +322,8 @@ def get_offene_garantieauftraege():
                 kunde = auftrag['kunde'] or f'Kunde_{auftrag_nr}'
                 
                 # Prüfe ob Garantieakte existiert
-                akte_info = get_garantieakte_metadata(auftrag_nr, kunde)
+                # TAG 189: Brand-Erkennung aus subsidiary für get_garantieakte_metadata
+                akte_info = get_garantieakte_metadata(auftrag_nr, kunde, auftrag.get('betrieb'))
                 
                 result.append({
                     'auftrag_nr': auftrag_nr,
@@ -336,6 +359,115 @@ def get_offene_garantieauftraege():
             
     except Exception as e:
         logger.error(f"Fehler beim Laden der Garantieaufträge: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@bp.route('/debug/<int:order_number>', methods=['GET'])
+@login_required
+def debug_garantieauftrag(order_number):
+    """
+    Debug-Endpoint: Prüft warum ein Garantieauftrag nicht angezeigt wird.
+    """
+    try:
+        with locosoft_session() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            query = """
+                SELECT 
+                    o.number,
+                    o.has_open_positions,
+                    o.subsidiary,
+                    o.order_date,
+                    -- Prüfe ob Garantie-Auftrag
+                    CASE 
+                        WHEN EXISTS (
+                            SELECT 1 FROM labours l 
+                            WHERE l.order_number = o.number 
+                              AND (l.charge_type = 60 OR l.labour_type IN ('G', 'GS'))
+                        ) THEN true
+                        WHEN EXISTS (
+                            SELECT 1 FROM invoices i 
+                            WHERE i.order_number = o.number 
+                              AND i.invoice_type = 6 
+                              AND i.is_canceled = false
+                        ) THEN true
+                        ELSE false
+                    END as ist_garantie,
+                    -- Prüfe ob Auftrag bereits bearbeitet wird
+                    CASE 
+                        WHEN EXISTS (
+                            SELECT 1 FROM times t 
+                            WHERE t.order_number = o.number 
+                              AND t.type = 2
+                        ) THEN true
+                        WHEN EXISTS (
+                            SELECT 1 FROM labours l 
+                            WHERE l.order_number = o.number 
+                              AND l.mechanic_no IS NOT NULL
+                        ) THEN true
+                        ELSE false
+                    END as wird_bearbeitet,
+                    -- Details
+                    (SELECT COUNT(*) FROM labours l WHERE l.order_number = o.number AND (l.charge_type = 60 OR l.labour_type IN ('G', 'GS'))) as garantie_labours,
+                    (SELECT COUNT(*) FROM invoices i WHERE i.order_number = o.number AND i.invoice_type = 6 AND i.is_canceled = false) as garantie_invoices,
+                    (SELECT COUNT(*) FROM times t WHERE t.order_number = o.number AND t.type = 2) as stempelzeiten_count,
+                    (SELECT COUNT(*) FROM labours l WHERE l.order_number = o.number AND l.mechanic_no IS NOT NULL) as zugeordnete_positionen_count
+                FROM orders o
+                WHERE o.number = %s
+            """
+            
+            cursor.execute(query, (order_number,))
+            auftrag = cursor.fetchone()
+            
+            if not auftrag:
+                return jsonify({
+                    'success': False,
+                    'error': f'Auftrag {order_number} nicht gefunden'
+                }), 404
+            
+            # Prüfe Filter-Bedingungen
+            wird_angezeigt = (
+                auftrag['has_open_positions'] and 
+                auftrag['ist_garantie'] and 
+                auftrag['wird_bearbeitet']
+            )
+            
+            # Identifiziere Gründe, warum nicht angezeigt
+            gruende = []
+            if not auftrag['has_open_positions']:
+                gruende.append('Auftrag hat keine offenen Positionen mehr (alle abgeschlossen)')
+            if not auftrag['ist_garantie']:
+                gruende.append('Auftrag ist nicht als Garantie erkannt (keine charge_type 60, labour_type G/GS, oder invoice_type 6)')
+            if not auftrag['wird_bearbeitet']:
+                gruende.append('Auftrag wird nicht bearbeitet (keine Stempelzeiten und keine zugeordneten Positionen)')
+            
+            return jsonify({
+                'success': True,
+                'auftrag': {
+                    'number': auftrag['number'],
+                    'subsidiary': auftrag['subsidiary'],
+                    'order_date': auftrag['order_date'].strftime('%Y-%m-%d') if auftrag['order_date'] else None,
+                    'has_open_positions': auftrag['has_open_positions'],
+                    'ist_garantie': auftrag['ist_garantie'],
+                    'wird_bearbeitet': auftrag['wird_bearbeitet'],
+                    'details': {
+                        'garantie_labours': auftrag['garantie_labours'],
+                        'garantie_invoices': auftrag['garantie_invoices'],
+                        'stempelzeiten_count': auftrag['stempelzeiten_count'],
+                        'zugeordnete_positionen_count': auftrag['zugeordnete_positionen_count']
+                    }
+                },
+                'wird_angezeigt': wird_angezeigt,
+                'gruende_nicht_angezeigt': gruende if not wird_angezeigt else []
+            })
+            
+    except Exception as e:
+        logger.error(f"Fehler beim Debug von Auftrag {order_number}: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({

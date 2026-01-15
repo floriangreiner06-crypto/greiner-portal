@@ -43,16 +43,19 @@ def benachrichtige_serviceberater_ueberschreitungen():
             subsidiaries=None  # Alle Betriebe
         )
         
-        # ZUSÄTZLICH: Hole alle Aufträge von heute, die überschritten sind (auch abgeschlossene)
-        # TAG 185: KORRIGIERT - Verwende GESAMTE Laufzeit (laufzeit_min) statt nur HEUTE
-        # Konsistent mit Stempeluhr/Cockpit/Monitor
+        # ZUSÄTZLICH: Hole alle Aufträge, die überschritten sind (NUR abgeschlossene, keine aktiven Mechaniker)
+        # TAG 192: KORRIGIERT - Nur abgeschlossene Aufträge, aktive werden aus stempeluhr_data geholt
+        # Problem: Wenn Mechaniker erst vor kurzem angestempelt hat, sollte nur seine Laufzeit zählen,
+        # nicht die Gesamtlaufzeit des Auftrags über alle Mechaniker hinweg
         ueberschritten_abgeschlossen = []
         with locosoft_session() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             cursor.execute("""
                 WITH gestempelt_gesamt AS (
-                    -- TAG 185: GESAMTE Laufzeit berechnen (alle Tage, nicht nur heute!)
-                    -- Konsistent mit werkstatt_data.py::get_stempeluhr() -> laufzeit_min
+                    -- TAG 192: GESAMTE Laufzeit berechnen (alle Tage, alle Mechaniker)
+                    -- Nur für abgeschlossene Aufträge (keine aktiven Mechaniker)
+                    -- TAG 192: KORRIGIERT - Nur Aufträge von HEUTE oder GESTERN
+                    -- Problem: Alte Aufträge (z.B. vom 12.12.2025) wurden noch benachrichtigt
                     SELECT
                         order_number,
                         SUM(minuten) as laufzeit_min
@@ -67,52 +70,32 @@ def benachrichtige_serviceberater_ueberschreitungen():
                         WHERE order_number > 0
                           AND type = 2
                           AND end_time IS NOT NULL
+                          -- TAG 192: Nur Stempelungen von HEUTE oder GESTERN
+                          AND DATE(start_time) >= CURRENT_DATE - INTERVAL '1 day'
                         ORDER BY order_number, employee_number, start_time, end_time
                     ) t
                     GROUP BY order_number
                 ),
-                -- Für aktive Aufträge: Laufzeit = heute_session + alle abgeschlossenen
-                aktive_mit_laufzeit AS (
-                    SELECT DISTINCT ON (t.employee_number)
-                        t.order_number,
-                        EXTRACT(EPOCH FROM (NOW() - t.start_time))/60
-                        + COALESCE((
-                            SELECT SUM(dur) FROM (
-                                SELECT DISTINCT ON (start_time, end_time) duration_minutes as dur
-                                FROM times t2
-                                WHERE t2.order_number = t.order_number
-                                  AND t2.employee_number = t.employee_number
-                                  AND t2.end_time IS NOT NULL
-                                  AND t2.type = 2
-                            ) dedup
-                        ), 0) as laufzeit_min
-                    FROM times t
-                    WHERE t.end_time IS NULL
-                      AND t.type = 2
-                      AND t.order_number > 31
-                      AND DATE(t.start_time) = CURRENT_DATE
-                      AND NOT EXISTS (
-                          SELECT 1 FROM times t3
-                          WHERE t3.employee_number = t.employee_number
-                            AND t3.type = 2
-                            AND t3.end_time IS NOT NULL
-                            AND DATE(t3.start_time) = CURRENT_DATE
-                            AND t3.start_time > t.start_time
-                      )
-                    ORDER BY t.employee_number, t.start_time DESC
-                ),
-                -- Kombiniere: Aktive + Abgeschlossene
-                laufzeit_kombiniert AS (
-                    SELECT order_number, laufzeit_min FROM gestempelt_gesamt
-                    UNION ALL
-                    SELECT order_number, laufzeit_min FROM aktive_mit_laufzeit
+                -- TAG 192: Nur Aufträge OHNE aktive Mechaniker (abgeschlossene Aufträge)
+                auftraege_ohne_aktive_mechaniker AS (
+                    SELECT DISTINCT order_number
+                    FROM gestempelt_gesamt
+                    WHERE order_number NOT IN (
+                        -- Ausschließen: Aufträge mit aktiven Mechanikern (werden aus stempeluhr_data geholt)
+                        SELECT DISTINCT order_number
+                        FROM times
+                        WHERE end_time IS NULL
+                          AND type = 2
+                          AND order_number > 31
+                          AND DATE(start_time) = CURRENT_DATE
+                    )
                 ),
                 laufzeit_gesamt AS (
                     SELECT 
-                        order_number,
-                        MAX(laufzeit_min) as laufzeit_min
-                    FROM laufzeit_kombiniert
-                    GROUP BY order_number
+                        gg.order_number,
+                        gg.laufzeit_min
+                    FROM gestempelt_gesamt gg
+                    INNER JOIN auftraege_ohne_aktive_mechaniker aom ON gg.order_number = aom.order_number
                 ),
                 vorgabe_aw AS (
                     SELECT
@@ -250,11 +233,20 @@ def benachrichtige_serviceberater_ueberschreitungen():
                         'name': f"{row[1]} {row[2]}".strip()
                     }
         
-        # Erstelle Mapping: auftrag_nr -> ueberschritt (für gestempelte Zeit von HEUTE)
+        # Erstelle Mapping: auftrag_nr -> ueberschritt
+        # WICHTIG: Aktive Aufträge zuerst, damit sie nicht von abgeschlossenen überschrieben werden
         ueberschritten_map = {}
-        for ueberschritt in ueberschritten:
+        # Zuerst aktive Aufträge (aus stempeluhr_data) - haben korrekte Laufzeit des aktiven Mechanikers
+        if stempeluhr_data.get('success'):
+            aktive_mechaniker = stempeluhr_data.get('aktive_mechaniker', [])
+            for mechaniker in aktive_mechaniker:
+                auftrag_nr = mechaniker.get('order_number')
+                if auftrag_nr and mechaniker.get('fortschritt_prozent', 0) > 100:
+                    ueberschritten_map[auftrag_nr] = mechaniker
+        # Dann abgeschlossene Aufträge (aus Query) - haben Gesamtlaufzeit
+        for ueberschritt in ueberschritten_abgeschlossen:
             auftrag_nr = ueberschritt.get('order_number')
-            if auftrag_nr:
+            if auftrag_nr and auftrag_nr not in ueberschritten_map:
                 ueberschritten_map[auftrag_nr] = ueberschritt
         
         # Für jeden betroffenen User: E-Mail senden
@@ -269,10 +261,10 @@ def benachrichtige_serviceberater_ueberschreitungen():
                     logger.warning(f"Auftrag {auftrag_nr} nicht in ueberschritten_map gefunden - überspringe")
                     continue
                 
-                # TAG 185: Verwende GESAMTE Laufzeit (laufzeit_min) statt nur HEUTE
-                # Konsistent mit Stempeluhr/Cockpit/Monitor
-                # Für aktive Aufträge: laufzeit_min aus stempeluhr_data
-                # Für abgeschlossene Aufträge: laufzeit_min aus Query (bereits korrigiert)
+                # TAG 192: KORRIGIERT - Für aktive Aufträge: Laufzeit des aktiven Mechanikers
+                # Für abgeschlossene Aufträge: Gesamtlaufzeit
+                # Problem: Wenn Mechaniker erst vor kurzem angestempelt hat, sollte nur seine Laufzeit zählen,
+                # nicht die Gesamtlaufzeit des Auftrags über alle Mechaniker hinweg
                 laufzeit_min = float(ueberschritt.get('laufzeit_min', ueberschritt.get('gestempelt_min', 0)))
                 
                 # Vorgabe: Entweder direkt als vorgabe_min oder als vorgabe_aw * 6
@@ -283,7 +275,9 @@ def benachrichtige_serviceberater_ueberschreitungen():
                     vorgabe_aw = float(ueberschritt.get('vorgabe_aw', 0))
                     vorgabe_min = vorgabe_aw * 6
                 
-                # Berechne Überschreitung mit GESAMTER Laufzeit
+                # Berechne Überschreitung
+                # TAG 192: Für aktive Aufträge: Laufzeit des aktiven Mechanikers
+                # Für abgeschlossene Aufträge: Gesamtlaufzeit
                 diff_min = laufzeit_min - vorgabe_min
                 diff_prozent = (laufzeit_min / vorgabe_min * 100) if vorgabe_min > 0 else 0
                 
@@ -308,7 +302,8 @@ def benachrichtige_serviceberater_ueberschreitungen():
                 
                 f = auftrag.get('fahrzeug', {})
                 
-                # TAG 185: Verwende GESAMTE Laufzeit für E-Mail (konsistent mit Cockpit/Stempeluhr)
+                # TAG 192: Für aktive Aufträge: Laufzeit des aktiven Mechanikers
+                # Für abgeschlossene Aufträge: Gesamtlaufzeit
                 gestempelt_min = laufzeit_min
                 
                 # Empfänger bestimmen (TAG 182: Mit Deduplizierung)

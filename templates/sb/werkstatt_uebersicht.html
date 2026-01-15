@@ -1089,14 +1089,17 @@ function updateDetailTable(mechaniker) {
     
     mechaniker.forEach((m, index) => {
         const istAzubi = m.ist_azubi === 1;
-        const vorgabe = (m.aw || 0) * 6;
+        // TAG 192: m.aw ist in Stunden gespeichert (time_units / 10.0)
+        //          Umrechnung: AW-Einheiten = m.aw * 10, Vorgabezeit = AW-Einheiten * 6 Minuten
+        const aw_einheiten = (m.aw || 0) * 10;  // AW in Einheiten
+        const vorgabe_stunden = aw_einheiten * 6 / 60;  // Vorgabezeit in Stunden
         
         if (!istAzubi) {
             sumTage += m.tage || 0;
             sumAuftraege += m.auftraege || 0;
             sumStempel += m.stempelzeit || 0;
-            sumAW += m.aw || 0;
-            sumVorgabe += vorgabe;
+            sumAW += aw_einheiten || 0;  // Summe in AW-Einheiten
+            sumVorgabe += vorgabe_stunden;
             rang++;
         }
         
@@ -1110,8 +1113,8 @@ function updateDetailTable(mechaniker) {
                 <td class="text-end">${m.tage || 0}</td>
                 <td class="text-end">${m.auftraege || 0}</td>
                 <td class="text-end">${formatNumber((m.stempelzeit || 0) / 60, 1)} h</td>
-                <td class="text-end">${formatNumber(m.aw || 0, 1)}</td>
-                <td class="text-end">${formatNumber(vorgabe / 60, 1)} h</td>
+                <td class="text-end">${formatNumber(aw_einheiten, 1)} AW</td>
+                <td class="text-end">${formatNumber(vorgabe_stunden, 1)} h</td>
                 <td class="text-center"><span class="badge ${lgClass} px-3">${formatNumber(m.leistungsgrad, 1)}%</span></td>
                 <td class="text-end">${formatNumber((m.stempelzeit || 0) / (m.tage || 1) / 60, 1)} h</td>
             </tr>
@@ -1120,12 +1123,15 @@ function updateDetailTable(mechaniker) {
     
     tbody.innerHTML = html;
     
-    const gesamtLG = sumStempel > 0 ? (sumVorgabe / sumStempel * 100) : 0;
+    // TAG 192: sumVorgabe ist in Stunden, sumStempel ist in Minuten
+    //          Leistungsgrad = (Vorgabezeit in Min / Stempelzeit in Min) * 100
+    const sumVorgabe_minuten = sumVorgabe * 60;  // Vorgabezeit in Minuten
+    const gesamtLG = sumStempel > 0 ? (sumVorgabe_minuten / sumStempel * 100) : 0;
     document.getElementById('sumTage').textContent = sumTage;
     document.getElementById('sumAuftraege').textContent = sumAuftraege;
     document.getElementById('sumStempel').textContent = formatNumber(sumStempel / 60, 1) + ' h';
-    document.getElementById('sumAW').textContent = formatNumber(sumAW, 1);
-    document.getElementById('sumVorgabe').textContent = formatNumber(sumVorgabe / 60, 1) + ' h';
+    document.getElementById('sumAW').textContent = formatNumber(sumAW, 1) + ' AW';
+    document.getElementById('sumVorgabe').textContent = formatNumber(sumVorgabe, 1) + ' h';
     document.getElementById('sumLG').innerHTML = `<span class="badge ${getLGClass(gesamtLG)}">${formatNumber(gesamtLG, 1)}%</span>`;
 }
 
@@ -1386,7 +1392,11 @@ function showMechanikerDetail(mechanikerNr) {
     const modal = new bootstrap.Modal(document.getElementById('detailModal'));
     document.getElementById('modalTitle').textContent = m.name || 'Mechaniker ' + mechanikerNr;
     
-    const vorgabe = (m.aw || 0) * 6;
+    // TAG 192: m.aw ist in Stunden gespeichert (time_units / 10.0)
+    //          Umrechnung: AW-Einheiten = m.aw * 10, Vorgabezeit = AW-Einheiten * 6 Minuten
+    const aw_einheiten = (m.aw || 0) * 10;  // AW in Einheiten (z.B. 72 AW)
+    const vorgabe_minuten = aw_einheiten * 6;  // Vorgabezeit in Minuten
+    const vorgabe_stunden = vorgabe_minuten / 60;  // Vorgabezeit in Stunden
     const lgClass = getLGClass(m.leistungsgrad);
     
     // Zeitraum-Parameter für API-Call
@@ -1411,8 +1421,8 @@ function showMechanikerDetail(mechanikerNr) {
                     <tr><td class="text-muted">Arbeitstage:</td><td class="fw-bold">${m.tage || 0}</td></tr>
                     <tr><td class="text-muted">Aufträge:</td><td class="fw-bold">${m.auftraege || 0}</td></tr>
                     <tr><td class="text-muted">Stempelzeit:</td><td class="fw-bold">${formatNumber((m.stempelzeit || 0) / 60, 1)} Stunden</td></tr>
-                    <tr><td class="text-muted">Arbeitswerte (AW):</td><td class="fw-bold">${formatNumber(m.aw || 0, 1)}</td></tr>
-                    <tr><td class="text-muted">Vorgabezeit:</td><td class="fw-bold">${formatNumber(vorgabe / 60, 1)} Stunden</td></tr>
+                    <tr><td class="text-muted">Arbeitswerte (AW):</td><td class="fw-bold">${formatNumber(aw_einheiten, 1)} AW</td></tr>
+                    <tr><td class="text-muted">Vorgabezeit:</td><td class="fw-bold">${formatNumber(vorgabe_stunden, 1)} Stunden</td></tr>
                     <tr><td class="text-muted">Leistungsgrad:</td><td class="fw-bold ${m.leistungsgrad >= 100 ? 'text-success' : 'text-warning'}">${formatNumber(m.leistungsgrad, 1)}%</td></tr>
                 </table>
             </div>

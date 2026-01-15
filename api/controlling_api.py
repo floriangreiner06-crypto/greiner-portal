@@ -469,6 +469,7 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
     # Einsatz (TAG157: firma_filter_einsatz für korrekte Standort-Zuordnung!)
     # TAG182: Landau verwendet jetzt branch_number=3 (nicht mehr 6. Ziffer='2')
     # TAG 179: Konten-Ranges zentral verwenden
+    # TAG187: 743002 ("EW Fremdleistungen für Kunden") ausschließen - gehört nicht zu normalen Einsatzwerten
     einsatz_range = KONTO_RANGES['einsatz']
     
     cursor.execute(convert_placeholders(f"""
@@ -478,6 +479,7 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
         FROM loco_journal_accountings
         WHERE accounting_date >= %s AND accounting_date < %s
           AND nominal_account_number BETWEEN {einsatz_range[0]} AND {einsatz_range[1]}
+          AND nominal_account_number != 743002
           {firma_filter_einsatz}
           {guv_filter}
     """), (datum_von, datum_bis))
@@ -487,7 +489,16 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
     # TAG182: Landau - 6. Ziffer='2' für Kosten (nicht branch_number=3, da Kosten hauptsächlich branch=1 haben)!
     # TAG182: Hyundai - 8910xx AUSSCHLIESSEN (negativer Wert, reduziert Kosten fälschlicherweise)
     # TAG182: Deggendorf - Nur 6. Ziffer='1' verwenden (nicht branch=1 AND 6. Ziffer='1'), da es Variable Kosten mit branch=3 gibt!
-    if standort == '2' and firma == '1':
+    # TAG186: Für Gesamtsumme (firma=0, standort=0) muss 8910xx für Hyundai ausgeschlossen werden!
+    if firma == '0' and standort == '0':
+        # Gesamtsumme: Deggendorf (6. Ziffer='1', subsidiary=1, mit 8910xx) + Landau (6. Ziffer='2', subsidiary=1, mit 8910xx) + Hyundai (6. Ziffer='1', subsidiary=2, OHNE 8910xx)
+        variable_kosten_filter = """AND (
+            (substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1' AND subsidiary_to_company_ref = 1)
+            OR (substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2' AND subsidiary_to_company_ref = 1)
+            OR (substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1' AND subsidiary_to_company_ref = 2 AND NOT (nominal_account_number BETWEEN 891000 AND 891099))
+        )"""
+        variable_8910xx_include = True  # Gesamtsumme: 8910xx für Deggendorf+Landau einschließen, aber für Hyundai ausschließen (via Filter)
+    elif standort == '2' and firma == '1':
         # TAG186: Landau Variable Kosten - branch_number=3 ODER 6. Ziffer='2' (Konten 497031, 497061, 497211, 497221, 497011 haben branch=3 aber 6.Ziffer='1')
         variable_kosten_filter = "AND (branch_number = 3 OR substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2') AND subsidiary_to_company_ref = 1"
         variable_8910xx_include = True  # Landau: 8910xx einschließen
@@ -1010,6 +1021,7 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
     # Einsatz YTD (TAG157: firma_filter_einsatz für korrekte Standort-Zuordnung!)
     # TAG182: Landau verwendet jetzt branch_number=3 (nicht mehr 6. Ziffer='2')
     # TAG 179: Konten-Ranges zentral verwenden
+    # TAG187: 743002 ("EW Fremdleistungen für Kunden") ausschließen - gehört nicht zu normalen Einsatzwerten
     einsatz_range = KONTO_RANGES['einsatz']
     
     cursor.execute(convert_placeholders(f"""
@@ -1019,6 +1031,7 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
         FROM loco_journal_accountings
         WHERE accounting_date >= %s AND accounting_date < %s
           AND nominal_account_number BETWEEN {einsatz_range[0]} AND {einsatz_range[1]}
+          AND nominal_account_number != 743002
           {firma_filter_einsatz}
           {guv_filter}
     """), (datum_von, datum_bis))
@@ -1918,6 +1931,7 @@ def get_bwa_v2():
 
             # Gesamt-Einsatz (alle 7er Konten) - TAG157: firma_filter_einsatz!
             # TAG182: Landau verwendet jetzt branch_number=3 (nicht mehr 6. Ziffer='2')
+            # TAG187: 743002 ("EW Fremdleistungen für Kunden") ausschließen - gehört nicht zu normalen Einsatzwerten
             cursor.execute(convert_placeholders(f"""
                 SELECT COALESCE(SUM(
                     CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
@@ -1925,6 +1939,7 @@ def get_bwa_v2():
                 FROM loco_journal_accountings
                 WHERE accounting_date >= %s AND accounting_date < %s
                   AND nominal_account_number BETWEEN 700000 AND 799999
+                  AND nominal_account_number != 743002
                   {firma_filter_einsatz}
                   {guv_filter}
             """), (datum_von, datum_bis))

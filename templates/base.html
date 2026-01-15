@@ -17,6 +17,58 @@
     <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/navbar.css') }}?v={{ STATIC_VERSION }}">
 
+    <!-- TAG 190: Sub-Dropdown CSS (fix für verschachtelte Menüs) -->
+    <style>
+        /* Sub-Dropdown Support für Bootstrap 5 - Keine Verschachtelung */
+        .dropdown-submenu {
+            position: relative;
+        }
+        .dropdown-submenu > .dropdown-menu {
+            position: absolute;
+            top: 0;
+            left: 100%;
+            margin-top: 0;
+            margin-left: 0.125rem;
+            display: none;
+            min-width: 200px;
+            z-index: 1001;
+        }
+        /* Pfeil-Icon für Sub-Dropdowns */
+        .dropdown-submenu > .dropdown-toggle .bi-chevron-right {
+            float: right;
+            margin-left: 0.5rem;
+            font-size: 0.75rem;
+            margin-top: 0.125rem;
+        }
+        /* Verhindere dass Parent-Dropdown schließt wenn Sub-Dropdown geöffnet ist */
+        .dropdown-menu.show {
+            display: block !important;
+        }
+        /* Mobile: Sub-Dropdowns als normale Liste */
+        @media (max-width: 991px) {
+            .dropdown-submenu > .dropdown-menu {
+                position: static !important;
+                margin-left: 1rem;
+                margin-top: 0.25rem;
+                display: block !important;
+                box-shadow: none;
+            }
+            .dropdown-submenu > .dropdown-toggle .bi-chevron-right {
+                display: none;
+            }
+        }
+        /* Desktop: Bessere Hover-Erfahrung */
+        @media (min-width: 992px) {
+            .dropdown-submenu > .dropdown-toggle:hover {
+                background-color: rgba(0, 0, 0, 0.05);
+            }
+            /* Verhindere dass Dropdowns sich überlappen */
+            .dropdown-menu {
+                z-index: 1000;
+            }
+        }
+    </style>
+
     {% block extra_css %}{% endblock %}
 </head>
 <body>
@@ -46,13 +98,17 @@
             <!-- Navigation Links -->
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
-
-                    <!-- Dashboard -->
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="/">
-                            <i class="bi bi-house-door"></i> Dashboard
-                        </a>
-                    </li>
+                    {# TAG 190: DB-basierte Navigation (mit Fallback) #}
+                    {% if navigation_items is not none %}
+                        {# DB-Navigation aktiviert #}
+                        {% if navigation_items %}
+                            {% from 'macros/navigation.html' import render_navigation_item %}
+                            {% for item in navigation_items %}
+                                {{ render_navigation_item(item, 0) }}
+                            {% endfor %}
+                        {% endif %}
+                    {% else %}
+                        {# Fallback: Bestehende hardcoded Navigation #}
 
                     <!-- Controlling Dropdown (inkl. Bankenspiegel) -->
                     {% if current_user.is_authenticated and (current_user.can_access_feature('bankenspiegel') or current_user.can_access_feature('zinsen') or current_user.can_access_feature('einkaufsfinanzierung')) %}
@@ -210,6 +266,7 @@
                         </ul>
                     </li>
 
+
                     <!-- After Sales Dropdown -->
                     {% if current_user.is_authenticated and current_user.can_access_feature('teilebestellungen') %}
                     <li class="nav-item dropdown">
@@ -330,6 +387,8 @@
                         </ul>
                     </li>
                     {% endif %}
+                    {% endif %}
+                    {# Ende Fallback Navigation #}
 
                 </ul>
 
@@ -348,7 +407,7 @@
 
                     <!-- User Dropdown -->
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown">
+                        <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             <div class="user-avatar me-2">
                                 <i class="bi bi-person-circle"></i>
                             </div>
@@ -369,6 +428,11 @@
                                     </div>
                                 </li>
                                 <li><hr class="dropdown-divider"></li>
+                                {% if current_user.can_access_feature('admin') %}
+                                <li><a class="dropdown-item" href="/admin/rechte">
+                                    <i class="bi bi-shield-check"></i> Rechteverwaltung
+                                </a></li>
+                                {% endif %}
                                 <li><a class="dropdown-item" href="#">
                                     <i class="bi bi-person"></i> Profil
                                 </a></li>
@@ -411,6 +475,184 @@
     
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- TAG 190: Sub-Dropdown JavaScript (vereinfacht, keine Verschachtelung) -->
+    <script>
+    // Sub-Dropdown Support für Bootstrap 5 - Vereinfachte Lösung
+    document.addEventListener('DOMContentLoaded', function() {
+        let hoverTimeouts = new Map();
+        
+        // Positionierungs-Funktion für Sub-Dropdowns (nur für Viewport-Anpassung)
+        function adjustSubmenuPosition(submenu, parentItem) {
+            // Nur prüfen ob rechts genug Platz ist, sonst links positionieren
+            const parentRect = parentItem.getBoundingClientRect();
+            const submenuRect = submenu.getBoundingClientRect();
+            const viewportWidth = window.innerWidth;
+            
+            // Prüfe ob rechts genug Platz ist
+            if (parentRect.right + submenuRect.width > viewportWidth) {
+                // Positioniere links vom Parent
+                submenu.style.left = 'auto';
+                submenu.style.right = '100%';
+                submenu.style.marginLeft = '0';
+                submenu.style.marginRight = '0.125rem';
+            } else {
+                // Standard: Rechts vom Parent
+                submenu.style.left = '100%';
+                submenu.style.right = 'auto';
+                submenu.style.marginLeft = '0.125rem';
+                submenu.style.marginRight = '0';
+            }
+        }
+        
+        // Sub-Dropdowns per Click öffnen (für Touch-Geräte)
+        document.querySelectorAll('.dropdown-submenu > .dropdown-toggle').forEach(function(toggle) {
+            toggle.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const submenu = this.nextElementSibling;
+                if (!submenu) return;
+                
+                const isOpen = submenu.style.display === 'block' || submenu.classList.contains('show');
+                
+                // Schließe alle anderen Sub-Dropdowns auf gleicher Ebene
+                const parent = this.closest('li');
+                if (parent && parent.parentElement) {
+                    parent.parentElement.querySelectorAll('.dropdown-submenu > .dropdown-menu').forEach(function(menu) {
+                        if (menu !== submenu) {
+                            menu.style.display = 'none';
+                            menu.classList.remove('show');
+                        }
+                    });
+                }
+                
+                // Toggle dieses Sub-Dropdown
+                if (isOpen) {
+                    submenu.style.display = 'none';
+                    submenu.classList.remove('show');
+                } else {
+                    submenu.style.display = 'block';
+                    submenu.classList.add('show');
+                    
+                    // Positioniere nach dem Anzeigen (für Viewport-Anpassung)
+                    if (window.innerWidth >= 992) {
+                        const parentItem = this.closest('.dropdown-submenu');
+                        if (parentItem) {
+                            setTimeout(function() {
+                                adjustSubmenuPosition(submenu, parentItem);
+                            }, 0);
+                        }
+                    }
+                }
+            });
+        });
+        
+        // Hover-Verhalten für Desktop
+        if (window.innerWidth >= 992) {
+            document.querySelectorAll('.dropdown-submenu').forEach(function(submenuItem) {
+                const submenu = submenuItem.querySelector('.dropdown-menu');
+                if (!submenu) return;
+                
+                // Mouse Enter: Öffne sofort und positioniere
+                submenuItem.addEventListener('mouseenter', function() {
+                    // Clear timeout für dieses Element
+                    const timeout = hoverTimeouts.get(submenu);
+                    if (timeout) {
+                        clearTimeout(timeout);
+                        hoverTimeouts.delete(submenu);
+                    }
+                    
+                    submenu.style.display = 'block';
+                    submenu.classList.add('show');
+                    
+                    // Positioniere nach dem Anzeigen (für Viewport-Anpassung)
+                    setTimeout(function() {
+                        adjustSubmenuPosition(submenu, submenuItem);
+                    }, 0);
+                });
+                
+                // Mouse Leave: Schließe mit Verzögerung
+                submenuItem.addEventListener('mouseleave', function(e) {
+                    const relatedTarget = e.relatedTarget;
+                    
+                    // Prüfe ob Maus zu Sub-Dropdown geht
+                    if (relatedTarget && (submenu.contains(relatedTarget) || submenuItem.contains(relatedTarget))) {
+                        return;
+                    }
+                    
+                    // Schließe mit Verzögerung
+                    const timeout = setTimeout(function() {
+                        // Prüfe nochmal ob wirklich weg
+                        if (!submenu.matches(':hover') && !submenuItem.matches(':hover')) {
+                            submenu.style.display = 'none';
+                            submenu.classList.remove('show');
+                        }
+                        hoverTimeouts.delete(submenu);
+                    }, 200);
+                    
+                    hoverTimeouts.set(submenu, timeout);
+                });
+                
+                // Auch auf Sub-Dropdown selbst hören
+                submenu.addEventListener('mouseenter', function() {
+                    const timeout = hoverTimeouts.get(submenu);
+                    if (timeout) {
+                        clearTimeout(timeout);
+                        hoverTimeouts.delete(submenu);
+                    }
+                    this.style.display = 'block';
+                    this.classList.add('show');
+                    
+                    // Positioniere neu (falls nötig)
+                    setTimeout(function() {
+                        adjustSubmenuPosition(submenu, submenuItem);
+                    }, 0);
+                });
+                
+                submenu.addEventListener('mouseleave', function(e) {
+                    const relatedTarget = e.relatedTarget;
+                    const parentSubmenu = submenuItem;
+                    
+                    // Prüfe ob Maus zu Parent geht
+                    if (relatedTarget && parentSubmenu.contains(relatedTarget)) {
+                        return;
+                    }
+                    
+                    const timeout = setTimeout(function() {
+                        if (!submenu.matches(':hover') && !parentSubmenu.matches(':hover')) {
+                            submenu.style.display = 'none';
+                            submenu.classList.remove('show');
+                        }
+                        hoverTimeouts.delete(submenu);
+                    }, 200);
+                    
+                    hoverTimeouts.set(submenu, timeout);
+                });
+            });
+            
+            // Positioniere Sub-Dropdowns neu bei Resize
+            window.addEventListener('resize', function() {
+                document.querySelectorAll('.dropdown-submenu > .dropdown-menu.show').forEach(function(submenu) {
+                    const parentItem = submenu.closest('.dropdown-submenu');
+                    if (parentItem) {
+                        adjustSubmenuPosition(submenu, parentItem);
+                    }
+                });
+            });
+        }
+        
+        // Schließe alle Sub-Dropdowns wenn außerhalb geklickt wird
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.dropdown-submenu') && !e.target.closest('.dropdown')) {
+                document.querySelectorAll('.dropdown-submenu > .dropdown-menu').forEach(function(menu) {
+                    menu.style.display = 'none';
+                    menu.classList.remove('show');
+                });
+            }
+        });
+    });
+    </script>
 
     <!-- Extra JS Block (für Template-spezifisches JavaScript) -->
     {% block extra_js %}{% endblock %}
@@ -565,5 +807,4 @@
     </script>
     {% endif %}
 
-</body>
 </html>

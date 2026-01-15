@@ -4,6 +4,8 @@ Garantieakte Workflow
 TAG 173: Speichert vollständige Garantieakte in Ordnerstruktur
 - Ordner: {kunde}_{Auftragsnummer}
 - Dateien: Arbeitskarte-PDF, Bilder (einzeln), Terminblatt
+
+TAG 189: Erweitert um Stellantis-Support (Opel)
 """
 
 import os
@@ -15,20 +17,42 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# Windows-Pfad: \\srvrdb01\Allgemein\DigitalesAutohaus\Hyundai_Garantie
-# Separater Mount-Punkt für Hyundai Garantie (TAG 173)
-BASE_PATH_OPTIONS = [
-    "/mnt/hyundai-garantie",  # Separater Mount (\\srvrdb01\Allgemein\DigitalesAutohaus\Hyundai_Garantie)
-    "/mnt/buchhaltung/DigitalesAutohaus/Hyundai_Garantie",  # Über buchhaltung Mount (Fallback)
-    "/mnt/DigitalesAutohaus/Hyundai_Garantie",  # Direkt gemountet (Fallback)
-    "/mnt/greiner-portal-sync/../DigitalesAutohaus/Hyundai_Garantie",  # Relativ zu Sync (Fallback)
-]
-# Fallback: Falls Mount nicht verfügbar, verwende Sync-Ordner
-FALLBACK_PATH = "/mnt/greiner-portal-sync/Hyundai_Garantie"
+# Brand-spezifische Pfad-Konfigurationen
+# TAG 189: Stellantis-Support hinzugefügt
+BRAND_PATHS = {
+    'hyundai': {
+        'base_paths': [
+            "/mnt/hyundai-garantie",  # Separater Mount (\\srvrdb01\Allgemein\DigitalesAutohaus\Hyundai_Garantie)
+            "/mnt/buchhaltung/DigitalesAutohaus/Hyundai_Garantie",  # Über buchhaltung Mount (Fallback)
+            "/mnt/DigitalesAutohaus/Hyundai_Garantie",  # Direkt gemountet (Fallback)
+            "/mnt/greiner-portal-sync/../DigitalesAutohaus/Hyundai_Garantie",  # Relativ zu Sync (Fallback)
+        ],
+        'fallback': "/mnt/greiner-portal-sync/Hyundai_Garantie",
+        'windows_base': r'\\srvrdb01\Allgemein\DigitalesAutohaus\Hyundai_Garantie'
+    },
+    'stellantis': {
+        'base_paths': [
+            "/mnt/stellantis-garantie",  # Separater Mount (\\srvrdb01\Allgemein\DigitalesAutohaus\Stellantis_Garantie)
+            "/mnt/buchhaltung/DigitalesAutohaus/Stellantis_Garantie",  # Über buchhaltung Mount (Fallback)
+            "/mnt/DigitalesAutohaus/Stellantis_Garantie",  # Direkt gemountet (Fallback)
+            "/mnt/greiner-portal-sync/../DigitalesAutohaus/Stellantis_Garantie",  # Relativ zu Sync (Fallback)
+        ],
+        'fallback': "/mnt/greiner-portal-sync/Stellantis_Garantie",
+        'windows_base': r'\\srvrdb01\Allgemein\DigitalesAutohaus\Stellantis_Garantie'
+    }
+}
+
+# Rückwärtskompatibilität: Legacy-Konstanten für Hyundai
+BASE_PATH_OPTIONS = BRAND_PATHS['hyundai']['base_paths']
+FALLBACK_PATH = BRAND_PATHS['hyundai']['fallback']
 
 
 def sanitize_filename(name: str) -> str:
     """Bereinigt Dateinamen für Windows"""
+    # TAG 189: None-Check hinzugefügt
+    if name is None:
+        return "Unbekannt"
+    
     # Ersetze ungültige Zeichen
     invalid_chars = '<>:"/\\|?*'
     for char in invalid_chars:
@@ -41,7 +65,8 @@ def sanitize_filename(name: str) -> str:
 def create_garantieakte_ordner(
     kunde_name: str,
     auftragsnummer: int,
-    base_path: str = None
+    base_path: str = None,
+    brand: str = 'hyundai'
 ) -> str:
     """
     Erstellt Ordner für Garantieakte.
@@ -49,17 +74,25 @@ def create_garantieakte_ordner(
     Args:
         kunde_name: Name des Kunden (z.B. "Kopra-Schäfer, Dr. Monika")
         auftragsnummer: Auftragsnummer
-        base_path: Basis-Pfad (default: BASE_PATH)
+        base_path: Basis-Pfad (optional, wird automatisch bestimmt wenn None)
+        brand: Marke ('hyundai' oder 'stellantis') - TAG 189
     
     Returns:
         Pfad zum erstellten Ordner
     """
     import subprocess
     
+    # Brand-Validierung
+    if brand not in BRAND_PATHS:
+        logger.warning(f"Unbekannte Marke '{brand}', verwende 'hyundai' als Fallback")
+        brand = 'hyundai'
+    
+    brand_config = BRAND_PATHS[brand]
+    
     if base_path is None:
-        # Prüfe verschiedene Pfade
+        # Prüfe verschiedene Pfade für diese Marke
         base_path = None
-        for path_option in BASE_PATH_OPTIONS:
+        for path_option in brand_config['base_paths']:
             # Prüfe ob Basis-Verzeichnis existiert
             base_dir = os.path.dirname(path_option)
             if os.path.exists(base_dir):
@@ -67,8 +100,8 @@ def create_garantieakte_ordner(
                 break
         
         if not base_path:
-            base_path = FALLBACK_PATH
-            logger.warning(f"DigitalesAutohaus nicht gemountet, verwende FALLBACK_PATH: {base_path}")
+            base_path = brand_config['fallback']
+            logger.warning(f"DigitalesAutohaus nicht gemountet für {brand}, verwende FALLBACK_PATH: {base_path}")
             logger.info(f"Bitte mounte: \\\\srvrdb01\\Allgemein\\DigitalesAutohaus nach /mnt/DigitalesAutohaus")
     
     # Erstelle Basis-Ordner falls nicht vorhanden
@@ -78,9 +111,13 @@ def create_garantieakte_ordner(
         logger.warning(f"Konnte Basis-Ordner nicht erstellen: {e}")
         raise
     
-    # Bereinige Kundenname für Ordner
+    # Bereinige Kundenname für Ordner (TAG 189: Fix für doppelte Auftragsnummer)
     kunde_clean = sanitize_filename(kunde_name)
-    ordner_name = f"{kunde_clean}_{auftragsnummer}"
+    # Prüfe ob Auftragsnummer bereits im Kundenname enthalten ist
+    if kunde_clean.endswith(f"_{auftragsnummer}"):
+        ordner_name = kunde_clean  # Auftragsnummer bereits enthalten
+    else:
+        ordner_name = f"{kunde_clean}_{auftragsnummer}"
     ordner_path = os.path.join(base_path, ordner_name)
     
     # Erstelle Ordner
@@ -225,7 +262,8 @@ def create_garantieakte_vollstaendig(
     terminblatt_data: Dict = None,
     terminblatt_pdf: bytes = None,
     gudat_session: requests.Session = None,
-    base_path: str = None
+    base_path: str = None,
+    brand: str = 'hyundai'
 ) -> Dict:
     """
     Erstellt vollständige Garantieakte in Ordnerstruktur.
@@ -239,6 +277,7 @@ def create_garantieakte_vollstaendig(
         terminblatt_pdf: Terminblatt als PDF-Bytes (optional)
         gudat_session: GUDAT-Session für Anhang-Downloads
         base_path: Basis-Pfad (optional)
+        brand: Marke ('hyundai' oder 'stellantis') - TAG 189
     
     Returns:
         Dict mit 'success', 'ordner_path', 'dateien'
@@ -248,7 +287,8 @@ def create_garantieakte_vollstaendig(
         ordner_path = create_garantieakte_ordner(
             kunde_name,
             order_number,
-            base_path
+            base_path,
+            brand
         )
         
         dateien = []
@@ -266,7 +306,9 @@ def create_garantieakte_vollstaendig(
         })
         
         # 3. Lade und speichere ALLE Anhänge einzeln (Bilder, PDFs, etc.)
+        logger.info(f"Anhänge-Status: anhaenge={len(anhaenge) if anhaenge else 0}, gudat_session={'vorhanden' if gudat_session else 'None'}")
         if anhaenge and gudat_session:
+            logger.info(f"Lade {len(anhaenge)} Anhänge aus GUDAT...")
             from api.arbeitskarte_vollstaendig import download_document
             
             # Sortiere Anhänge: Bilder zuerst, dann PDFs, dann andere
@@ -345,25 +387,31 @@ def create_garantieakte_vollstaendig(
         except Exception as e:
             logger.warning(f"Fehler beim Speichern der Metadaten: {e}")
         
-        # Windows-Pfad für Rückgabe
-        if '/hyundai-garantie' in ordner_path:
-            # \\srvrdb01\Allgemein\DigitalesAutohaus\Hyundai_Garantie\{kunde}_{nummer}
-            windows_path = ordner_path.replace('/mnt/hyundai-garantie', r'\\srvrdb01\Allgemein\DigitalesAutohaus\Hyundai_Garantie')
-            windows_path = windows_path.replace('/', '\\')
-        elif '/buchhaltung/DigitalesAutohaus' in ordner_path:
-            # \\srvrdb01\Allgemein\DigitalesAutohaus\Hyundai_Garantie\{kunde}_{nummer}
-            windows_path = ordner_path.replace('/mnt/buchhaltung/DigitalesAutohaus', '\\\\srvrdb01\\Allgemein\\DigitalesAutohaus')
-            windows_path = windows_path.replace('/', '\\')
-        elif '/DigitalesAutohaus' in ordner_path:
-            # \\srvrdb01\Allgemein\DigitalesAutohaus\Hyundai_Garantie\{kunde}_{nummer}
-            windows_path = ordner_path.replace('/mnt/DigitalesAutohaus', '\\\\srvrdb01\\Allgemein\\DigitalesAutohaus')
-            windows_path = windows_path.replace('/', '\\')
-        elif '/greiner-portal-sync' in ordner_path:
-            # Fallback: \\Srvrdb01\Allgemein\Greiner Portal\Greiner_Portal_NEU\Server\Hyundai_Garantie\{kunde}_{nummer}
-            windows_path = ordner_path.replace('/mnt/greiner-portal-sync', '\\\\Srvrdb01\\Allgemein\\Greiner Portal\\Greiner_Portal_NEU\\Server')
-            windows_path = windows_path.replace('/', '\\')
-        else:
-            windows_path = ordner_path.replace('/', '\\')
+        # Windows-Pfad für Rückgabe (TAG 189: Brand-spezifisch, None-Check hinzugefügt)
+        windows_path = None
+        if ordner_path:  # None-Check: Nur wenn ordner_path existiert
+            brand_config = BRAND_PATHS.get(brand, BRAND_PATHS['hyundai'])
+            windows_base = brand_config['windows_base']
+            
+            if f'/{brand}-garantie' in ordner_path or f'/{brand.replace("stellantis", "hyundai")}-garantie' in ordner_path:
+                # Separater Mount: \\srvrdb01\Allgemein\DigitalesAutohaus\{Brand}_Garantie\{kunde}_{nummer}
+                mount_name = f'{brand}-garantie'
+                windows_path = ordner_path.replace(f'/mnt/{mount_name}', windows_base)
+                windows_path = windows_path.replace('/', '\\')
+            elif '/buchhaltung/DigitalesAutohaus' in ordner_path:
+                # Über buchhaltung Mount
+                windows_path = ordner_path.replace('/mnt/buchhaltung/DigitalesAutohaus', r'\\srvrdb01\Allgemein\DigitalesAutohaus')
+                windows_path = windows_path.replace('/', '\\')
+            elif '/DigitalesAutohaus' in ordner_path:
+                # Direkt gemountet
+                windows_path = ordner_path.replace('/mnt/DigitalesAutohaus', r'\\srvrdb01\Allgemein\DigitalesAutohaus')
+                windows_path = windows_path.replace('/', '\\')
+            elif '/greiner-portal-sync' in ordner_path:
+                # Fallback: \\Srvrdb01\Allgemein\Greiner Portal\Greiner_Portal_NEU\Server\{Brand}_Garantie\{kunde}_{nummer}
+                windows_path = ordner_path.replace('/mnt/greiner-portal-sync', r'\\Srvrdb01\Allgemein\Greiner Portal\Greiner_Portal_NEU\Server')
+                windows_path = windows_path.replace('/', '\\')
+            else:
+                windows_path = ordner_path.replace('/', '\\') if ordner_path else None
         
         return {
             'success': True,

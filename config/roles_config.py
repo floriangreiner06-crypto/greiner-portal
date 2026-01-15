@@ -5,6 +5,7 @@ Mapping von LDAP-Titles zu Portal-Rollen und Feature-Zugriff
 
 Erstellt: TAG 76 (24.11.2025)
 Aktualisiert: TAG 77 (24.11.2025) - Buchhaltung + Serviceleitung hinzugefügt
+Aktualisiert: TAG 190 (14.01.2026) - DB-basierte Feature-Zugriffsverwaltung
 """
 
 # =============================================================================
@@ -47,6 +48,7 @@ TITLE_TO_ROLE = {
     'Servicemitarbeiterin': 'service',
     'Garantiesachbearbeiter': 'service',
     'Gewährleistung': 'service',
+    'Gewährleistung und Auftragsvorbereitung': 'service',  # TAG 190: David Moser
 
     # Disposition / Fahrzeuge
     'Disponentin': 'disposition',
@@ -106,6 +108,9 @@ FEATURE_ACCESS = {
 
     # Team-Genehmigungen - nur Leitungen
     'urlaub_genehmigen': ['admin', 'buchhaltung', 'verkauf_leitung', 'werkstatt_leitung', 'service_leitung'],
+    
+    # QA Dashboard (TAG 192) - alle Mitarbeiter
+    'qa_dashboard': ['*'],
 }
 
 
@@ -140,12 +145,101 @@ def has_feature_access(role: str, feature: str) -> bool:
 def get_allowed_features(role: str) -> list:
     """
     Gibt alle Features zurück, auf die eine Rolle Zugriff hat
+    
+    TAG 192: Verwendet get_feature_access_from_db() für DB-basierte Features
     """
+    # Verwende DB-basierte Feature-Zugriffe (mit Cache)
+    feature_access = get_feature_access_from_db()
+    
     allowed = []
-    for feature, roles in FEATURE_ACCESS.items():
+    for feature, roles in feature_access.items():
         if '*' in roles or role in roles:
             allowed.append(feature)
     return allowed
+
+
+# =============================================================================
+# DB-BASIERTE FEATURE-ZUGRIFFSVERWALTUNG (TAG 190)
+# =============================================================================
+
+# Cache für Feature-Zugriff (TAG 192: Performance-Optimierung)
+_feature_access_cache = None
+_cache_timestamp = None
+from datetime import datetime, timedelta
+CACHE_TTL = timedelta(minutes=5)
+
+def get_feature_access_from_db():
+    """
+    Lädt Feature-Zugriff aus Datenbank, Fallback auf FEATURE_ACCESS
+    
+    TAG 190: Hybrid-Ansatz - DB hat Priorität, Config als Fallback
+    TAG 192: Mit In-Memory-Cache (5 Min TTL) für Performance
+    """
+    global _feature_access_cache, _cache_timestamp
+    
+    # Cache prüfen
+    if _feature_access_cache and _cache_timestamp:
+        if datetime.now() - _cache_timestamp < CACHE_TTL:
+            return _feature_access_cache
+    
+    try:
+        from api.db_connection import get_db
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT feature_name, role_name 
+            FROM feature_access 
+            ORDER BY feature_name, role_name
+        ''')
+        
+        db_access = {}
+        for row in cursor.fetchall():
+            feature = row['feature_name']
+            role = row['role_name']
+            if feature not in db_access:
+                db_access[feature] = []
+            db_access[feature].append(role)
+        
+        conn.close()
+        
+        # Mit FEATURE_ACCESS zusammenführen (DB hat Priorität)
+        merged = FEATURE_ACCESS.copy()
+        merged.update(db_access)
+        
+        # Cache aktualisieren
+        _feature_access_cache = merged
+        _cache_timestamp = datetime.now()
+        
+        return merged
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Fehler beim Laden aus DB, verwende Config: {e}")
+        return FEATURE_ACCESS
+
+
+def has_feature_access_db(role: str, feature: str) -> bool:
+    """
+    Prüft ob eine Rolle Zugriff auf ein Feature hat (DB-basiert)
+    
+    TAG 190: Verwendet get_feature_access_from_db() statt FEATURE_ACCESS
+    """
+    feature_access = get_feature_access_from_db()
+    
+    if feature not in feature_access:
+        return False
+    
+    allowed_roles = feature_access[feature]
+    
+    if '*' in allowed_roles:
+        return True
+    
+    return role in allowed_roles
 
 
 # =============================================================================

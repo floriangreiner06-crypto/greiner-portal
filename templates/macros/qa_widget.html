@@ -1,0 +1,17 @@
+{# QA Widget Macro - TAG 192 #}
+{# Verwendung: {% from 'macros/qa_widget.html' import qa_widget %} {{ qa_widget('feature_name', 'Feature Display Name') }} #}
+
+{% macro qa_widget(feature_name, feature_display_name) %}
+<div class="qa-widget position-fixed" style="bottom: 20px; right: 20px; z-index: 1000;">
+    <div class="btn-group-vertical" role="group">
+        <button type="button" class="btn btn-sm btn-outline-primary mb-2" onclick="openQACheckModal('{{ feature_name }}', '{{ feature_display_name }}')" title="Feature prüfen">
+            <i class="bi bi-clipboard-check"></i> Prüfen
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-danger" onclick="openQABugModal('{{ feature_name }}', '{{ feature_display_name }}')" title="Fehler melden">
+            <i class="bi bi-bug"></i> Fehler
+        </button>
+    </div>
+</div>
+
+{# Modals werden nur einmal geladen (in base.html) #}
+{% endmacro %}

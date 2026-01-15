@@ -61,6 +61,33 @@ def parse_menge(menge_str):
     except:
         return None
 
+def dedupliziere_positionen(positionen):
+    """
+    Entfernt doppelte Positionen basierend auf eindeutiger Kombination
+    TAG 192: Fix für verdoppelte Positionen beim Scrapen
+    """
+    if not positionen:
+        return []
+    
+    seen = set()
+    dedupliziert = []
+    
+    for pos in positionen:
+        # Erstelle eindeutigen Key aus teilenummer, beschreibung, menge, preis
+        teilenummer = pos.get('teilenummer', '').strip()
+        beschreibung = pos.get('beschreibung', '').strip()
+        menge = pos.get('menge', '').strip()
+        preis_ohne = pos.get('preis_ohne_mwst', '').strip()
+        
+        # Key für Deduplizierung
+        key = (teilenummer, beschreibung, menge, preis_ohne)
+        
+        if key not in seen:
+            seen.add(key)
+            dedupliziert.append(pos)
+    
+    return dedupliziert
+
 def main():
     log("\n" + "="*80)
     log("📥 SERVICEBOX JSON → DB IMPORT")
@@ -186,6 +213,9 @@ def main():
             # Positionen
             positionen = best.get('positionen', [])
             if positionen:  # TAG173: Immer Positionen aktualisieren
+                # TAG 192: Deduplizierung - entferne doppelte Positionen
+                positionen = dedupliziere_positionen(positionen)
+                
                 # Alte Positionen löschen (falls Update)
                 cursor.execute(f"DELETE FROM stellantis_positionen WHERE bestellung_id = {ph}", (bestellung_id,))
                 

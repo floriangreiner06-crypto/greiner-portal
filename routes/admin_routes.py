@@ -23,3 +23,14 @@ def system_status():
 def rechte_verwaltung():
     """Rechteverwaltung - User-Rollen und Feature-Zugriff"""
     return render_template('admin/rechte_verwaltung.html')
+
+
+@admin_routes.route('/admin/meine-startseite')
+@admin_routes.route('/settings/dashboard')
+@login_required
+@role_required(['admin'])
+def user_dashboard_config():
+    """Individuelle Startseite konfigurieren (nur für Admin)
+    TAG 190: Nur Admin kann Startseiten konfigurieren
+    """
+    return render_template('admin/user_dashboard_config.html')
