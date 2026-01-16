@@ -444,18 +444,27 @@ def hole_arbeitskarte_daten(order_number: int):
                     
                     data = response.json()
                     use_fallback = False
+                    use_fallback_no_order = False
                     
                     # Prüfe auf GraphQL-Fehler (z.B. wenn `order` auf Task nicht verfügbar)
-                    use_fallback_no_order = False
                     if 'errors' in data:
                         errors = data.get('errors', [])
+                        error_messages = [str(err) for err in errors]
+                        logger.warning(f"GraphQL-Fehler beim Holen von Dossier-Daten: {error_messages}")
+                        
                         # Prüfe ob Fehler wegen `order` auf Task
-                        order_field_error = any('order' in str(err).lower() or 'field "order"' in str(err) or 'Cannot query field "order"' in str(err) for err in errors)
+                        order_field_error = any(
+                            'order' in str(err).lower() or 
+                            'field "order"' in str(err) or 
+                            'Cannot query field "order"' in str(err) or
+                            'Unknown field "order"' in str(err)
+                            for err in errors
+                        )
                         if order_field_error:
                             logger.warning(f"GraphQL-Fehler: 'order' Feld auf workshopTask nicht verfügbar. Verwende Fallback ohne order-Feld.")
                             use_fallback_no_order = True
                         else:
-                            logger.warning(f"GraphQL-Fehler beim Holen von Dossier-Daten (mit comments): {errors}")
+                            # Anderer Fehler (z.B. comments nicht verfügbar)
                             use_fallback = True
                     
                     # Falls Fehler, versuche Fallback-Query ohne comments (und ggf. ohne order)
@@ -473,8 +482,10 @@ def hole_arbeitskarte_daten(order_number: int):
                         data = response.json()
                         if 'errors' in data:
                             logger.error(f"GraphQL-Fehler auch bei Fallback-Query: {data['errors']}")
+                            # Auch bei Fallback-Fehler: use_fallback_no_order beibehalten wenn es so gesetzt war
                         else:
-                            use_fallback = True  # Markiere dass Fallback verwendet wird
+                            use_fallback = True  # Markiere dass Fallback verwendet wurde
+                            # use_fallback_no_order bleibt True wenn es so gesetzt war
                     
                     dossier = data.get('data', {}).get('dossier')
                     
@@ -487,51 +498,70 @@ def hole_arbeitskarte_daten(order_number: int):
                         filtered_tasks = []
                         dossier_orders = dossier.get('orders', [])
                         
-                        for task in all_tasks:
-                            task_order = task.get('order')
-                            if task_order:
-                                # Task hat direkte Zuordnung zu einem Auftrag
-                                task_order_number = task_order.get('number')
-                                if task_order_number:
-                                    # Vergleich: String, Integer, mit/ohne führende Nullen
-                                    task_order_str = str(task_order_number).strip()
-                                    order_number_str = str(order_number).strip()
-                                    match = False
-                                    if task_order_str == order_number_str:
-                                        match = True
-                                    elif task_order_str.isdigit() and order_number_str.isdigit():
-                                        if int(task_order_str) == int(order_number_str):
-                                            match = True
-                                        elif task_order_str.lstrip('0') == order_number_str.lstrip('0'):
-                                            match = True
-                                    if match:
-                                        filtered_tasks.append(task)
-                                        logger.info(f"✅ Task {task.get('id')} zugeordnet zu Auftrag {order_number} (Task-Order: {task_order_number})")
+                        # Wenn order-Feld nicht verfügbar ist (use_fallback_no_order = True), übernehme alle Tasks (wie vorher)
+                        # Dies ist der Fall wenn GraphQL-Schema order-Feld auf Tasks nicht unterstützt
+                        if use_fallback_no_order:
+                            # Fallback: Wenn order-Feld nicht verfügbar, übernehme alle Tasks
+                            # (wie vorher, da wir nicht wissen können, welcher Task zu welchem Auftrag gehört)
+                            filtered_tasks = all_tasks
+                            if len(dossier_orders) > 1:
+                                logger.warning(f"⚠️ Dossier hat {len(dossier_orders)} Aufträge ({[o.get('number') for o in dossier_orders]}), aber order-Feld auf Tasks nicht verfügbar. Übernehme alle {len(all_tasks)} Tasks (kann zu falschen Zuordnungen führen).")
                             else:
-                                # Task hat keine direkte Zuordnung (entweder Schema unterstützt es nicht oder Task ist nicht zugeordnet)
-                                if use_fallback_no_order or not task_order:
-                                    # Fallback: Prüfe ob Dossier nur einen Auftrag hat
-                                    if len(dossier_orders) == 1:
-                                        # Nur ein Auftrag im Dossier - Task gehört zu diesem
-                                        dossier_order_number = dossier_orders[0].get('number')
-                                        if dossier_order_number:
-                                            dossier_order_str = str(dossier_order_number).strip()
+                                logger.info(f"✅ order-Feld nicht verfügbar, übernehme alle {len(all_tasks)} Tasks (Dossier hat nur einen Auftrag)")
+                        else:
+                            # order-Feld ist verfügbar - prüfe ob es tatsächlich in Tasks vorhanden ist
+                            # Prüfe ob mindestens ein Task ein order-Feld hat
+                            has_any_order = any(task.get('order') for task in all_tasks)
+                            
+                            if not has_any_order:
+                                # Alle Tasks haben order: null - übernehme alle (wie vorher)
+                                filtered_tasks = all_tasks
+                                logger.info(f"✅ order-Feld vorhanden, aber alle {len(all_tasks)} Tasks haben order: null. Übernehme alle Tasks.")
+                            else:
+                                # order-Feld ist verfügbar und mindestens ein Task hat eine Zuordnung - filtere nach Auftragsnummer
+                                for task in all_tasks:
+                                    task_order = task.get('order')
+                                    if task_order:
+                                        # Task hat direkte Zuordnung zu einem Auftrag
+                                        task_order_number = task_order.get('number')
+                                        if task_order_number:
+                                            # Vergleich: String, Integer, mit/ohne führende Nullen
+                                            task_order_str = str(task_order_number).strip()
                                             order_number_str = str(order_number).strip()
                                             match = False
-                                            if dossier_order_str == order_number_str:
+                                            if task_order_str == order_number_str:
                                                 match = True
-                                            elif dossier_order_str.isdigit() and order_number_str.isdigit():
-                                                if int(dossier_order_str) == int(order_number_str):
+                                            elif task_order_str.isdigit() and order_number_str.isdigit():
+                                                if int(task_order_str) == int(order_number_str):
                                                     match = True
-                                                elif dossier_order_str.lstrip('0') == order_number_str.lstrip('0'):
+                                                elif task_order_str.lstrip('0') == order_number_str.lstrip('0'):
                                                     match = True
                                             if match:
                                                 filtered_tasks.append(task)
-                                                logger.info(f"✅ Task {task.get('id')} zugeordnet zu Auftrag {order_number} (Dossier hat nur einen Auftrag: {dossier_order_number})")
+                                                logger.info(f"✅ Task {task.get('id')} zugeordnet zu Auftrag {order_number} (Task-Order: {task_order_number})")
                                     else:
-                                        # Mehrere Aufträge im Dossier, aber Task hat keine Zuordnung
-                                        # WARNUNG: Task wird nicht übernommen, da Zuordnung unklar
-                                        logger.warning(f"⚠️ Task {task.get('id')} hat keine Auftrags-Zuordnung, aber Dossier hat {len(dossier_orders)} Aufträge ({[o.get('number') for o in dossier_orders]}). Task wird übersprungen.")
+                                        # Task hat keine direkte Zuordnung - prüfe ob Dossier nur einen Auftrag hat
+                                        if len(dossier_orders) == 1:
+                                            # Nur ein Auftrag im Dossier - Task gehört zu diesem
+                                            dossier_order_number = dossier_orders[0].get('number')
+                                            if dossier_order_number:
+                                                dossier_order_str = str(dossier_order_number).strip()
+                                                order_number_str = str(order_number).strip()
+                                                match = False
+                                                if dossier_order_str == order_number_str:
+                                                    match = True
+                                                elif dossier_order_str.isdigit() and order_number_str.isdigit():
+                                                    if int(dossier_order_str) == int(order_number_str):
+                                                        match = True
+                                                    elif dossier_order_str.lstrip('0') == order_number_str.lstrip('0'):
+                                                        match = True
+                                                if match:
+                                                    filtered_tasks.append(task)
+                                                    logger.info(f"✅ Task {task.get('id')} zugeordnet zu Auftrag {order_number} (Dossier hat nur einen Auftrag: {dossier_order_number})")
+                                        else:
+                                            # Mehrere Aufträge im Dossier, aber Task hat keine Zuordnung
+                                            # WARNUNG: Task wird nicht übernommen, da Zuordnung unklar
+                                            logger.warning(f"⚠️ Task {task.get('id')} hat keine Auftrags-Zuordnung, aber Dossier hat {len(dossier_orders)} Aufträge ({[o.get('number') for o in dossier_orders]}). Task wird übersprungen.")
                         
                         tasks_with_desc = [t for t in filtered_tasks if t.get('description')]
                         
@@ -779,10 +809,6 @@ def _get_arbeitskarte_anhaenge_internal(order_number, order_date=None, license_p
         
         logger.info(f"GUDAT-Suche: Verwende Auftragsdatum {order_date} (Auftrag {order_number})")
         
-        # 1. Versuche zuerst heute (wie gestern - funktionierte)
-        target_date = date.today().isoformat()
-        # TAG 189: Zusätzlich auch letzte 14 Tage (falls Auftrag älter)
-        start_date_quick = (date.today() - timedelta(days=14)).isoformat()
         query_tasks = """
         query GetWorkshopTasks($page: Int!, $itemsPerPage: Int!, $where: QueryWorkshopTasksWhereWhereConditions) {
           workshopTasks(first: $itemsPerPage, page: $page, where: $where) {
@@ -797,79 +823,31 @@ def _get_arbeitskarte_anhaenge_internal(order_number, order_date=None, license_p
         }
         """
         
-        # TAG 189: Zuerst heute suchen (wie gestern - funktionierte), dann erweitern
-        variables_today = {
-            "page": 1,
-            "itemsPerPage": 200,
-            "where": {
-                "AND": [{"column": "START_DATE", "operator": "EQ", "value": target_date}]
-            }
-        }
+        # TAG 193: EINFACHE Suche - suche in letzten 30 Tagen (Dossier ist max 10 Tage alt)
+        # Kleinere Zeitraum für bessere Performance, aber groß genug für alle Fälle
+        start_date = (date.today() - timedelta(days=30)).isoformat()
+        end_date = date.today().isoformat()
         
-        # Versuche zuerst heute
-        response = client.session.post(
-            f"{client.BASE_URL}/graphql",
-            json={"operationName": "GetWorkshopTasks", "query": query_tasks, "variables": variables_today},
-            headers={
-                'Accept': 'application/json',
-                'X-XSRF-TOKEN': client._get_xsrf(),
-                'Content-Type': 'application/json'
-            }
-        )
+        dossier_id = None
+        max_pages = 20  # Max 20 Seiten = 4000 Tasks (mehr als genug für 30 Tage)
         
-        data = response.json()
+        logger.info(f"GUDAT-Suche: Suche in letzten 30 Tagen nach Auftrag {order_number} (max {max_pages} Seiten)")
         
-        if 'errors' in data:
-            return {
-                'success': False,
-                'error': f"GraphQL-Fehler: {data['errors']}",
-                'anhaenge': []
-            }
-        
-        tasks = data.get('data', {}).get('workshopTasks', {}).get('data', [])
-        logger.info(f"GUDAT-Suche heute: {len(tasks)} Tasks gefunden für Auftrag {order_number}")
-        
-        # Finde dossier_id in heutigen Tasks
-        found_order_numbers = []
-        for task in tasks:
-            orders = task.get('dossier', {}).get('orders', [])
-            for order in orders:
-                order_num = order.get('number')
-                found_order_numbers.append(str(order_num))
-                order_num_str = str(order_num).strip() if order_num else ""
-                order_number_str = str(order_number).strip()
-                match = False
-                if order_num_str == order_number_str:
-                    match = True
-                elif order_num and str(order_num).isdigit() and str(order_number).isdigit():
-                    if int(order_num) == int(order_number):
-                        match = True
-                    elif order_num_str.lstrip('0') == order_number_str.lstrip('0'):
-                        match = True
-                if match:
-                    dossier_id = task.get('dossier', {}).get('id')
-                    logger.info(f"✅ Dossier gefunden für Auftrag {order_number}: dossier_id={dossier_id} (Match: '{order_num_str}' == '{order_number_str}')")
-                    break
-            if dossier_id:
-                break
-        
-        # Falls nicht gefunden, suche in letzten 14 Tagen (TAG 189: Erweitert)
-        if not dossier_id:
-            logger.info(f"Dossier für Auftrag {order_number} nicht heute gefunden, suche in letzten 14 Tagen...")
-            variables_range = {
-                "page": 1,
+        for page in range(1, max_pages + 1):
+            variables = {
+                "page": page,
                 "itemsPerPage": 200,
                 "where": {
                     "AND": [
-                        {"column": "START_DATE", "operator": "GTE", "value": start_date_quick},
-                        {"column": "START_DATE", "operator": "LTE", "value": target_date}
+                        {"column": "START_DATE", "operator": "GTE", "value": start_date},
+                        {"column": "START_DATE", "operator": "LTE", "value": end_date}
                     ]
                 }
             }
             
             response = client.session.post(
                 f"{client.BASE_URL}/graphql",
-                json={"operationName": "GetWorkshopTasks", "query": query_tasks, "variables": variables_range},
+                json={"operationName": "GetWorkshopTasks", "query": query_tasks, "variables": variables},
                 headers={
                     'Accept': 'application/json',
                     'X-XSRF-TOKEN': client._get_xsrf(),
@@ -880,134 +858,82 @@ def _get_arbeitskarte_anhaenge_internal(order_number, order_date=None, license_p
             data = response.json()
             
             if 'errors' in data:
-                logger.warning(f"GraphQL-Fehler bei erweiterter Suche: {data.get('errors')}")
-            else:
-                tasks = data.get('data', {}).get('workshopTasks', {}).get('data', [])
-                logger.info(f"GUDAT-Suche (letzte 14 Tage): {len(tasks)} Tasks gefunden für Auftrag {order_number}")
-                
-                # Finde dossier_id
-                found_order_numbers = []  # TAG 189: Debug-Liste
-                for task in tasks:
+                logger.warning(f"GraphQL-Fehler bei Suche (Seite {page}): {data.get('errors')}")
+                break
+            
+            tasks = data.get('data', {}).get('workshopTasks', {}).get('data', [])
+            if not tasks:
+                break  # Keine weiteren Tasks
+            
+            logger.info(f"GUDAT-Suche (Seite {page}): {len(tasks)} Tasks gefunden")
+            
+            # Debug: Sammle gefundene Auftragsnummern (nur erste Seite)
+            if page == 1:
+                found_order_numbers_debug = []
+                for task in tasks[:10]:  # Nur erste 10 Tasks für Debug
                     orders = task.get('dossier', {}).get('orders', [])
-                    if not orders:
-                        # Prüfe ob dossier direkt verfügbar ist
-                        dossier = task.get('dossier')
-                        if dossier and dossier.get('id'):
-                            # Versuche alternative Suche: Prüfe ob dossier.orders leer ist, aber dossier existiert
-                            logger.debug(f"Task {task.get('id')}: Dossier {dossier.get('id')} hat keine orders-Liste")
                     for order in orders:
                         order_num = order.get('number')
-                        found_order_numbers.append(str(order_num))  # Für Debug
-                        # TAG 189: Mehrere Vergleichsmethoden (String, Integer, mit/ohne führende Nullen)
-                        order_num_str = str(order_num).strip() if order_num else ""
-                        order_number_str = str(order_number).strip()
-                        # Vergleich: String, Integer, mit/ohne führende Nullen (z.B. "0220629" == "220629")
-                        match = False
-                        if order_num_str == order_number_str:
+                        if order_num:
+                            found_order_numbers_debug.append(f"{order_num} (type: {type(order_num).__name__})")
+                if found_order_numbers_debug:
+                    logger.info(f"🔍 Debug (Seite 1, erste 10 Tasks): Gefundene Auftragsnummern: {found_order_numbers_debug[:10]}")
+            
+            # Einfache Suche nach Auftragsnummer - erweiterte Vergleichslogik
+            for task in tasks:
+                orders = task.get('dossier', {}).get('orders', [])
+                for order in orders:
+                    order_num = order.get('number')
+                    if order_num is None:
+                        continue
+                    
+                    # Erweiterte Vergleichslogik: String, Integer, mit/ohne führende Nullen
+                    order_num_str = str(order_num).strip()
+                    order_number_str = str(order_number).strip()
+                    
+                    match = False
+                    # Exakter String-Vergleich
+                    if order_num_str == order_number_str:
+                        match = True
+                    # Integer-Vergleich (auch wenn einer String ist)
+                    try:
+                        if int(order_num_str) == int(order_number_str):
                             match = True
-                        elif order_num and str(order_num).isdigit() and str(order_number).isdigit():
-                            # Integer-Vergleich (ignoriert führende Nullen)
-                            if int(order_num) == int(order_number):
-                                match = True
-                            # Prüfe auch mit führenden Nullen (z.B. "0220629" == "220629")
-                            elif order_num_str.lstrip('0') == order_number_str.lstrip('0'):
-                                match = True
-                        if match:
-                            dossier_id = task.get('dossier', {}).get('id')
-                            logger.info(f"✅ Dossier gefunden für Auftrag {order_number}: dossier_id={dossier_id} (Match: '{order_num_str}' == '{order_number_str}')")
-                            break
-                    if dossier_id:
+                    except (ValueError, TypeError):
+                        pass
+                    
+                    # Prüfe auch ohne führende Nullen (z.B. "039831" == "39831")
+                    if not match:
+                        order_num_clean = order_num_str.lstrip('0') if order_num_str else ""
+                        order_number_clean = order_number_str.lstrip('0') if order_number_str else ""
+                        if order_num_clean and order_number_clean and order_num_clean == order_number_clean:
+                            match = True
+                    
+                    # Prüfe auch mit führenden Nullen (z.B. "39831" == "039831")
+                    if not match:
+                        # Versuche beide mit führenden Nullen auf gleiche Länge zu bringen
+                        max_len = max(len(order_num_str), len(order_number_str))
+                        order_num_padded = order_num_str.zfill(max_len)
+                        order_number_padded = order_number_str.zfill(max_len)
+                        if order_num_padded == order_number_padded:
+                            match = True
+                    
+                    if match:
+                        dossier_id = task.get('dossier', {}).get('id')
+                        logger.info(f"✅ Dossier gefunden für Auftrag {order_number}: dossier_id={dossier_id} (Seite {page}, Match: '{order_num_str}' == '{order_number_str}')")
                         break
+                if dossier_id:
+                    break
+            
+            if dossier_id:
+                break
+            
+            # Wenn weniger als 200 Tasks, sind wir am Ende
+            if len(tasks) < 200:
+                break
         
-        if not dossier_id and found_order_numbers:
-            # Zeige alle gefundenen Order-Nummern (nicht nur erste 10)
-            unique_orders = list(set(found_order_numbers))[:20]  # Erste 20 eindeutige
-            logger.warning(f"⚠️ Auftrag {order_number} nicht in gefundenen Order-Nummern. Gefunden: {unique_orders} (von {len(found_order_numbers)} total, {len(set(found_order_numbers))} eindeutig)")
-        
-        # 2. Falls nicht gefunden, suche in letzten 90 Tagen mit Pagination (TAG 189: Erweitert)
         if not dossier_id:
-            logger.info(f"Dossier für Auftrag {order_number} nicht in letzten 14 Tagen gefunden, suche in letzten 90 Tagen mit Pagination...")
-            start_date = (date.today() - timedelta(days=90)).isoformat()
-            end_date = date.today().isoformat()
-            
-            # TAG 189: Pagination - mehrere Requests mit je 200 Items (GUDAT-Limit)
-            found_order_numbers_hist = []
-            max_pages = 10  # Max 10 Seiten = 2000 Tasks
-            
-            try:
-                for page in range(1, max_pages + 1):
-                    variables = {
-                        "page": page,
-                        "itemsPerPage": 200,  # GUDAT-Limit: max 200
-                        "where": {
-                            "AND": [
-                                {"column": "START_DATE", "operator": "GTE", "value": start_date},
-                                {"column": "START_DATE", "operator": "LTE", "value": end_date}
-                            ]
-                        }
-                    }
-                    
-                    response = client.session.post(
-                        f"{client.BASE_URL}/graphql",
-                        json={"operationName": "GetWorkshopTasks", "query": query_tasks, "variables": variables},
-                        headers={
-                            'Accept': 'application/json',
-                            'X-XSRF-TOKEN': client._get_xsrf(),
-                            'Content-Type': 'application/json'
-                        }
-                    )
-                    
-                    data = response.json()
-                    if 'errors' in data:
-                        logger.warning(f"GraphQL-Fehler bei historischer Suche (Seite {page}): {data.get('errors')}")
-                        break
-                    
-                    tasks = data.get('data', {}).get('workshopTasks', {}).get('data', [])
-                    if not tasks:
-                        break  # Keine weiteren Tasks
-                    
-                    logger.info(f"GUDAT-Suche historisch (90 Tage, Seite {page}): {len(tasks)} Tasks gefunden")
-                    
-                    for task in tasks:
-                        orders = task.get('dossier', {}).get('orders', [])
-                        for order in orders:
-                            order_num = order.get('number')
-                            found_order_numbers_hist.append(str(order_num))
-                            # TAG 189: Verbesserter Vergleich (String, Integer, mit/ohne führende Nullen)
-                            order_num_str = str(order_num).strip() if order_num else ""
-                            order_number_str = str(order_number).strip()
-                            # Vergleich: String, Integer, mit/ohne führende Nullen
-                            match = False
-                            if order_num_str == order_number_str:
-                                match = True
-                            elif order_num and str(order_num).isdigit() and str(order_number).isdigit():
-                                # Integer-Vergleich (ignoriert führende Nullen)
-                                if int(order_num) == int(order_number):
-                                    match = True
-                                # Prüfe auch mit führenden Nullen (z.B. "0220629" == "220629")
-                                elif order_num_str.lstrip('0') == order_number_str.lstrip('0'):
-                                    match = True
-                            if match:
-                                dossier_id = task.get('dossier', {}).get('id')
-                                logger.info(f"✅ Dossier für Auftrag {order_number} in historischen Daten gefunden (Seite {page}): dossier_id={dossier_id} (Match: '{order_num_str}' == '{order_number_str}')")
-                                break
-                        if dossier_id:
-                            break
-                    
-                    if dossier_id:
-                        break
-                    
-                    # Wenn weniger als 200 Tasks, sind wir am Ende
-                    if len(tasks) < 200:
-                        break
-                
-                if not dossier_id and found_order_numbers_hist:
-                    unique_orders = list(set(found_order_numbers_hist))[:20]
-                    logger.warning(f"⚠️ Auftrag {order_number} nicht in historischen Order-Nummern. Gefunden: {unique_orders} (von {len(found_order_numbers_hist)} total, {len(set(found_order_numbers_hist))} eindeutig)")
-            except Exception as e:
-                logger.warning(f"Fehler bei erweiterter GUDAT-Suche: {e}")
-                import traceback
-                traceback.print_exc()
+            logger.warning(f"⚠️ Dossier für Auftrag {order_number} nicht in letzten 30 Tagen gefunden")
         
         # TAG 189: Alternative Suche nach Kennzeichen/VIN, falls Order-Nummer nicht gefunden
         # WICHTIG: Diese Suche funktioniert auch, wenn Auftrag in GUDAT mit falscher Marke kategorisiert ist!
@@ -1026,7 +952,6 @@ def _get_arbeitskarte_anhaenge_internal(order_number, order_date=None, license_p
                     vehicle {
                       id
                       license_plate
-                      vin
                     }
                     orders {
                       number
@@ -1094,50 +1019,19 @@ def _get_arbeitskarte_anhaenge_internal(order_number, order_date=None, license_p
                     
                     # Prüfe jedes Task auf passendes Fahrzeug
                     found_license_plates = set()  # Debug: Sammle gefundene Kennzeichen
-                    found_vins = set()  # TAG 192: Debug: Sammle gefundene VINs
                     for task in tasks_vehicle:
                         dossier_task = task.get('dossier', {})
                         vehicle = dossier_task.get('vehicle', {})
                         task_license_plate = vehicle.get('license_plate', '').strip().upper() if vehicle and vehicle.get('license_plate') else ""
-                        task_vin = vehicle.get('vin', '').strip().upper() if vehicle and vehicle.get('vin') else ""
+                        # VIN ist nicht im GUDAT Vehicle-Schema verfügbar - wird nicht abgefragt
+                        task_vin = ""
                         orders_task = dossier_task.get('orders', [])
                         
-                        # Debug: Sammle alle gefundenen Kennzeichen und VINs (nur erste 10 pro Seite)
+                        # Debug: Sammle alle gefundenen Kennzeichen (nur erste 10 pro Seite)
                         if task_license_plate and len(found_license_plates) < 10:
                             found_license_plates.add(task_license_plate)
-                        if task_vin and len(found_vins) < 10:
-                            found_vins.add(task_vin)
                         
-                        # TAG 192: Prüfe VIN-Match zuerst (eindeutiger als Kennzeichen)
-                        # WICHTIG: VIN kann 0 (Null) oder O (Buchstabe) enthalten - beide sind möglich
-                        search_vin = vin.strip().upper() if vin else ""
-                        if search_vin and task_vin:
-                            # Exakter Match
-                            if search_vin == task_vin:
-                                # VIN-Match gefunden - verwende dieses Dossier
-                                dossier_id_candidate = dossier_task.get('id')
-                                orders_found = [o.get('number') for o in orders_task]
-                                logger.info(f"🔍 VIN-Match gefunden: '{task_vin}' (Dossier {dossier_id_candidate}, Orders: {orders_found})")
-                                # Prüfe ob Order-Nummer passt
-                                order_match = False
-                                for order_task in orders_task:
-                                    order_num = order_task.get('number')
-                                    order_num_str = str(order_num).strip() if order_num else ""
-                                    order_number_str = str(order_number).strip()
-                                    if order_num_str == order_number_str or (str(order_num).isdigit() and str(order_number).isdigit() and int(order_num) == int(order_number)):
-                                        order_match = True
-                                        break
-                                if order_match:
-                                    dossier_id = dossier_id_candidate
-                                    logger.info(f"✅ Dossier via VIN gefunden: dossier_id={dossier_id}, order={order_number}, vin={task_vin}")
-                                    break
-                                else:
-                                    # VIN passt, aber Order-Nummer nicht - verwende trotzdem (VIN ist eindeutig)
-                                    dossier_id = dossier_id_candidate
-                                    logger.info(f"✅ Dossier via VIN gefunden (Order-Nummer stimmt nicht, aber VIN eindeutig): dossier_id={dossier_id}, gesucht: {order_number}, gefunden: {orders_found}, vin={task_vin}")
-                                    break
-                        
-                        # Prüfe Kennzeichen-Match (falls VIN nicht passte)
+                        # Prüfe Kennzeichen-Match (VIN ist nicht verfügbar in GUDAT)
                         match = False
                         search_license_plate = license_plate.strip().upper() if license_plate else ""
                         if not dossier_id and search_license_plate and task_license_plate:
@@ -1185,12 +1079,10 @@ def _get_arbeitskarte_anhaenge_internal(order_number, order_date=None, license_p
                             if dossier_id:
                                 break
                     
-                    # Debug: Zeige gefundene Kennzeichen und VINs
+                    # Debug: Zeige gefundene Kennzeichen
                     if page == 1:
                         if found_license_plates:
                             logger.info(f"🔍 Beispiel-Kennzeichen in Tasks (Seite 1): {sorted(list(found_license_plates))[:10]}")
-                        if found_vins:
-                            logger.info(f"🔍 Beispiel-VINs in Tasks (Seite 1): {sorted(list(found_vins))[:10]}")
                         # Prüfe auf Teil-Matches (z.B. "DEG-BO" oder "BO 554")
                         if license_plate:
                             search_parts = license_plate.upper().replace('-', ' ').split()
@@ -1198,22 +1090,11 @@ def _get_arbeitskarte_anhaenge_internal(order_number, order_date=None, license_p
                                 lp_parts = lp.replace('-', ' ').split()
                                 if any(part in lp_parts for part in search_parts if len(part) > 2):
                                     logger.info(f"🔍 Mögliches Teil-Match gefunden: '{lp}' enthält Teile von '{license_plate.upper()}'")
-                        # Prüfe auf VIN-Teil-Matches (falls VIN nicht exakt passt)
-                        if vin:
-                            search_vin_clean = vin.strip().upper()
-                            for task_vin_check in found_vins:
-                                # Prüfe ob VIN ähnlich ist (z.B. nur letzte 8 Zeichen)
-                                if len(search_vin_clean) >= 8 and len(task_vin_check) >= 8:
-                                    if search_vin_clean[-8:] == task_vin_check[-8:]:
-                                        logger.info(f"🔍 Mögliches VIN-Teil-Match gefunden: '{task_vin_check}' endet wie '{search_vin_clean}'")
-                                    # Prüfe auch auf ähnliche VINs (0 vs O Problem)
-                                    search_vin_alt = search_vin_clean.replace('0', 'O').replace('O', '0')
-                                    if search_vin_alt == task_vin_check or task_vin_check.replace('0', 'O').replace('O', '0') == search_vin_clean:
-                                        logger.info(f"🔍 Mögliches VIN-Ähnlichkeits-Match: '{task_vin_check}' ähnlich zu '{search_vin_clean}' (0/O Problem?)")
+                        # VIN ist nicht verfügbar in GUDAT - keine VIN-Suche möglich
                     
                     # TAG 192: Wenn nach Seite 1 kein Match gefunden, zeige Zusammenfassung
                     if page == 1 and not dossier_id:
-                        logger.info(f"🔍 Fahrzeug-Suche Seite 1 abgeschlossen: {len(tasks_vehicle)} Tasks durchsucht, {len(found_license_plates)} Kennzeichen, {len(found_vins)} VINs gefunden. Gesucht: Kennzeichen='{license_plate}', VIN='{vin}'")
+                        logger.info(f"🔍 Fahrzeug-Suche Seite 1 abgeschlossen: {len(tasks_vehicle)} Tasks durchsucht, {len(found_license_plates)} Kennzeichen gefunden. Gesucht: Kennzeichen='{license_plate}'")
                     
                     if dossier_id:
                         break
@@ -1752,12 +1633,36 @@ def speichere_garantieakte(order_number):
                     
                     if not dossier_found:
                         logger.warning(f"⚠️ Manuelle Dossier-ID {manual_dossier_id} nicht gefunden in GUDAT (beide Formate versucht)")
+                        # TAG 193: Prüfe ob Benutzer versehentlich Auftragsnummer eingegeben hat
+                        is_likely_order_number = False
+                        if str(manual_dossier_id).strip() == str(order_number).strip():
+                            is_likely_order_number = True
+                            logger.warning(f"⚠️ Benutzer hat wahrscheinlich Auftragsnummer {order_number} statt Dossier-ID eingegeben")
+                        
                         # TAG 189: Gebe detaillierte Fehlermeldung zurück
+                        if is_likely_order_number:
+                            error_message = f'⚠️ WICHTIG: Sie haben die Auftragsnummer "{manual_dossier_id}" eingegeben, aber das ist NICHT die GUDAT Dossier-ID!\n\n' + \
+                                          f'Die Dossier-ID ist eine separate Nummer in GUDAT (z.B. 20472), NICHT die Auftragsnummer ({order_number}).\n\n' + \
+                                          f'So finden Sie die richtige Dossier-ID:\n' + \
+                                          f'1. Öffnen Sie das Dossier in GUDAT\n' + \
+                                          f'2. Schauen Sie in die Browser-Adresszeile\n' + \
+                                          f'3. Die Dossier-ID steht nach "/dossier/" oder "/dossiers/"\n' + \
+                                          f'   Beispiel: .../dossier/20472 → Dossier-ID ist "20472"\n\n' + \
+                                          f'Bitte geben Sie die GUDAT Dossier-ID ein (nicht die Auftragsnummer).'
+                        else:
+                            error_message = f'Die eingegebene Dossier-ID "{manual_dossier_id}" wurde nicht in GUDAT gefunden.\n\n' + \
+                                          f'Bitte prüfen Sie:\n' + \
+                                          f'- Ist das die richtige Dossier-ID (oben links in GUDAT-UI oder in der Browser-Adresse nach "/dossier/")?\n' + \
+                                          f'- Ist das Dossier möglicherweise gelöscht oder archiviert?\n' + \
+                                          f'- Haben Sie die richtigen Berechtigungen?\n\n' + \
+                                          f'⚠️ WICHTIG: Die Dossier-ID ist NICHT die Auftragsnummer ({order_number}), sondern eine separate Nummer in GUDAT.'
+                        
                         return jsonify({
                             'success': False,
                             'error': f'Dossier-ID {manual_dossier_id} nicht in GUDAT gefunden',
                             'dossier_id_not_found': True,
-                            'message': f'Die eingegebene Dossier-ID "{manual_dossier_id}" wurde nicht in GUDAT gefunden. Bitte prüfen Sie:\n- Ist das die richtige Dossier-ID (oben links in GUDAT-UI)?\n- Ist das Dossier möglicherweise gelöscht oder archiviert?\n- Haben Sie die richtigen Berechtigungen?',
+                            'is_likely_order_number': is_likely_order_number,
+                            'message': error_message,
                             'order_number': order_number
                         }), 200
                 except Exception as e:

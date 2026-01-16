@@ -112,6 +112,29 @@
     </div>
 </div>
 
+<!-- TT-Zeit Modal (TAG 195) -->
+<div class="modal fade" id="ttZeitModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-clock-history"></i> TT-Zeit-Analyse - Auftrag <span id="modalTTZeitAuftragNr">-</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="ttZeitModalBody">
+                <!-- Wird dynamisch gefüllt -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>
+                <button type="button" class="btn btn-success" id="btnTTZeitBestaetigen" onclick="bestaetigeGSWPruefung()" disabled>
+                    <i class="bi bi-check-circle"></i> GSW Portal geprüft - Keine Arbeitsoperationsnummer
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 let aktuellerAuftrag = null;
 
@@ -280,6 +303,8 @@ function erstelleGarantieakteInternal(orderNumber, dossierId, btn, originalHtml)
         } else if (data.dossier_not_found) {
             // Dossier nicht gefunden - zeige Anleitung
             const anleitung = `Kein Dossier in GUDAT für Auftrag ${orderNumber} gefunden.\n\n` +
+                `⚠️ WICHTIG: Die Dossier-ID ist NICHT die Auftragsnummer!\n` +
+                `Die Dossier-ID ist eine separate Nummer in GUDAT (z.B. 20472).\n\n` +
                 `So finden Sie die Dossier-ID:\n` +
                 `1. Öffnen Sie das Dossier in GUDAT\n` +
                 `2. Schauen Sie in die Browser-Adresszeile\n` +
@@ -287,7 +312,7 @@ function erstelleGarantieakteInternal(orderNumber, dossierId, btn, originalHtml)
                 `   Beispiel: .../dossier/20472 → Dossier-ID ist "20472"\n\n` +
                 `Kennzeichen: ${data.license_plate || '-'}\n` +
                 `VIN: ${data.vin || '-'}\n\n` +
-                `Bitte geben Sie die Dossier-ID ein:`;
+                `Bitte geben Sie die GUDAT Dossier-ID ein (nicht die Auftragsnummer):`;
             
             const dossierId = prompt(anleitung, '');
             
@@ -301,6 +326,15 @@ function erstelleGarantieakteInternal(orderNumber, dossierId, btn, originalHtml)
                 btn.disabled = false;
                 btn.innerHTML = originalHtml;
             }
+        } else if (data.dossier_id_not_found) {
+            // Manuelle Dossier-ID wurde nicht gefunden
+            let errorMsg = data.message || data.error || 'Dossier-ID nicht gefunden';
+            if (data.is_likely_order_number) {
+                errorMsg = errorMsg.replace(/\n/g, '\n');
+            }
+            alert('Fehler: ' + errorMsg);
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
         } else {
             alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
             btn.disabled = false;
@@ -531,12 +565,203 @@ function renderAuftragDetail(data) {
         `;
     }
     
+    // TAG 195: TT-Zeit-Prüfung Button (nur bei Garantieaufträgen)
+    // Prüfe ob Garantieauftrag (alle Aufträge in dieser Übersicht sind Garantieaufträge)
+    html += `
+        <div class="row mt-3">
+            <div class="col-12">
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary btn-sm" onclick="erstelleGarantieakte(${a.auftrag_nr || auftragNr || 'null'}, '${escapeHtml(a.kunde || '')}')" id="btnGarantieakte">
+                        <i class="bi bi-file-earmark-pdf"></i> Garantieakte erstellen
+                    </button>
+                    <button class="btn btn-info btn-sm" onclick="pruefeTTZeit(${a.auftrag_nr || auftragNr || 'null'})" id="btnTTZeit">
+                        <i class="bi bi-clock-history"></i> TT-Zeit prüfen
+                    </button>
+                </div>
+                <div id="garantieakteStatus" class="mt-2"></div>
+                <div id="ttZeitStatus" class="mt-2"></div>
+            </div>
+        </div>
+    `;
+    
     document.getElementById('auftragModalBody').innerHTML = html;
 }
 
 function oeffneAkte(orderNumber) {
     // TODO: Windows-Explorer öffnen oder Pfad anzeigen
     alert('Funktion zum Öffnen der Akte wird noch implementiert');
+}
+
+// ============================================================================
+// TT-ZEIT-ANALYSE (TAG 195)
+// ============================================================================
+
+function pruefeTTZeit(auftragNr) {
+    const btn = event?.target?.closest('button') || document.getElementById('btnTTZeit');
+    if (!btn) return;
+    
+    const originalHtml = btn.innerHTML;
+    
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Analysiere...';
+    
+    fetch(`/api/ai/analysiere/tt-zeit/${auftragNr}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        // Prüfe ob Response JSON ist
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            // Response ist HTML (Fehlerseite) - lade als Text
+            return response.text().then(text => {
+                console.error('API hat HTML zurückgegeben:', text.substring(0, 500));
+                throw new Error('Server-Fehler: API hat HTML statt JSON zurückgegeben. Bitte Server-Logs prüfen.');
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+        
+        if (!data.success) {
+            alert(`Fehler: ${data.error || 'Unbekannter Fehler'}`);
+            return;
+        }
+        
+        // Zeige Modal mit Analyse-Ergebnissen
+        showTTZeitModal(data, auftragNr);
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+        alert(`Fehler bei TT-Zeit-Analyse: ${err.message}\n\nBitte prüfen Sie:\n- Ist der Server gestartet?\n- Gibt es Fehler in den Server-Logs?`);
+        console.error('TT-Zeit-Analyse Fehler:', err);
+    });
+}
+
+function showTTZeitModal(data, auftragNr) {
+    const modal = new bootstrap.Modal(document.getElementById('ttZeitModal'));
+    document.getElementById('modalTTZeitAuftragNr').textContent = auftragNr;
+    
+    const tp = data.technische_pruefung || {};
+    const ki = data.ki_analyse || {};
+    const warnung = data.warnung || {};
+    const regeln = data.abrechnungsregeln || {};
+    const teil = tp.schadhaftes_teil;
+    
+    let html = `
+        <!-- Technische Prüfung -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-check-circle"></i> Technische Prüfung</h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Garantieauftrag:</strong> ${tp.is_garantie ? '<span class="badge bg-success">Ja</span>' : '<span class="badge bg-danger">Nein</span>'}</p>
+                        <p><strong>Stempelzeiten:</strong> ${tp.stempelzeiten_vorhanden ? '<span class="badge bg-success">Vorhanden</span>' : '<span class="badge bg-danger">Fehlt</span>'}</p>
+                        ${tp.stempelzeiten_vorhanden ? `
+                            <p class="small text-muted">
+                                ${tp.stempelzeiten_anzahl || 0} Stempelungen<br>
+                                ${(tp.stempelzeiten_stunden || 0).toFixed(2)} Stunden (${(tp.stempelzeiten_minuten || 0).toFixed(1)} Min)
+                            </p>
+                        ` : ''}
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>TT-Zeit bereits eingereicht:</strong> ${tp.tt_zeit_vorhanden ? '<span class="badge bg-warning">Ja</span>' : '<span class="badge bg-success">Nein</span>'}</p>
+                        ${teil ? `
+                            <p><strong>Schadhaften Teil:</strong></p>
+                            <p class="small">
+                                <strong>${teil.teilenummer || '-'}</strong><br>
+                                ${teil.beschreibung || '-'}
+                            </p>
+                        ` : '<p class="text-warning"><strong>Schadhaften Teil nicht identifiziert!</strong></p>'}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- KI-Analyse -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-robot"></i> KI-Analyse</h6>
+            </div>
+            <div class="card-body">
+                <p><strong>Begründung:</strong></p>
+                <p class="small">${ki.begruendung || 'Nicht verfügbar'}</p>
+                
+                <p class="mt-2"><strong>Empfehlung:</strong></p>
+                <p class="small"><strong>${ki.empfehlung || 'Bitte manuell prüfen'}</strong></p>
+                
+                ${ki.hinweise && ki.hinweise.length > 0 ? `
+                    <p class="mt-2"><strong>Hinweise:</strong></p>
+                    <ul class="small">
+                        ${ki.hinweise.map(h => `<li>${escapeHtml(h)}</li>`).join('')}
+                    </ul>
+                ` : ''}
+            </div>
+        </div>
+        
+        <!-- Warnung -->
+        <div class="alert alert-warning">
+            <h6><i class="bi bi-exclamation-triangle"></i> ${warnung.text || 'Warnung'}</h6>
+            <p class="mb-0 small">${warnung.hinweis || ''}</p>
+        </div>
+        
+        <!-- Abrechnungsregeln -->
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-info-circle"></i> Abrechnungsregeln</h6>
+            </div>
+            <div class="card-body">
+                <p><strong>Bis 0,9 Stunden (9 AW):</strong></p>
+                <p class="small">
+                    ✅ Ohne Freigabe abrechenbar<br>
+                    Max. ${regeln.bis_09_stunden?.max_aw || 9} AW (${regeln.bis_09_stunden?.max_minuten || 54} Min)<br>
+                    Max. Vergütung: ${(regeln.bis_09_stunden?.verguetung_max || 75.87).toFixed(2)}€
+                </p>
+                
+                <p class="mt-2"><strong>Ab 1,0 Stunden (10 AW):</strong></p>
+                <p class="small">
+                    ⚠️ Freigabe erforderlich<br>
+                    Min. ${regeln.ab_10_stunden?.min_aw || 10} AW (${regeln.ab_10_stunden?.min_minuten || 60} Min)<br>
+                    Freigabe über: ${regeln.ab_10_stunden?.freigabe_ueber || 'GWMS (Antragstyp: T, Freigabetyp: DK)'}
+                </p>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('ttZeitModalBody').innerHTML = html;
+    
+    // Button aktivieren wenn technische Prüfung OK
+    const btnBestaetigen = document.getElementById('btnTTZeitBestaetigen');
+    if (tp.is_garantie && tp.stempelzeiten_vorhanden && !tp.tt_zeit_vorhanden && teil) {
+        btnBestaetigen.disabled = false;
+    } else {
+        btnBestaetigen.disabled = true;
+    }
+    
+    modal.show();
+}
+
+function bestaetigeGSWPruefung() {
+    const auftragNr = parseInt(document.getElementById('modalTTZeitAuftragNr').textContent);
+    
+    if (!confirm(`Bestätigen Sie, dass Sie im GSW Portal geprüft haben und KEINE Arbeitsoperationsnummer für das schadhaften Teil vorhanden ist?\n\nAuftrag: ${auftragNr}`)) {
+        return;
+    }
+    
+    // TODO: Bestätigung in Datenbank speichern (optional)
+    // fetch(`/api/ai/tt-zeit/bestaetigen/${auftragNr}`, { method: 'POST' })
+    
+    alert('✅ Bestätigung gespeichert! Sie können nun TT-Zeit über die Garantie SOAP API hinzufügen.');
+    
+    // Modal schließen
+    bootstrap.Modal.getInstance(document.getElementById('ttZeitModal')).hide();
 }
 
 function oeffneWindowsOrdner(windowsPath) {

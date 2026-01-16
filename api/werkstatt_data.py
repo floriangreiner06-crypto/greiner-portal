@@ -443,34 +443,96 @@ class WerkstattData:
                   AND start_time >= %s AND start_time < %s + INTERVAL '1 day'
                 GROUP BY employee_number, DATE(start_time)
             ),
-            -- TAG 192: NEUER ANSATZ - AW-Berechnung
-            --          Locosoft verwendet: Direkt aus labours (mechanic_no = employee_number)
-            --          Keine Verteilung über mehrere Mechaniker oder Tage
-            --          Filter: labour_type != 'I' (keine internen Aufträge)
+            -- TAG 194: POSITION-BASIERTE AW-BERECHNUNG (Locosoft-kompatibel)
+            --          WICHTIG: Interne Positionen (I) werden berücksichtigt!
+            --          Anteilige Verteilung bei mehreren Positionen/Mechanikern
+            stempelungen_roh AS (
+                SELECT DISTINCT ON (t.employee_number, t.order_number, t.order_position, t.order_position_line, t.start_time, t.end_time)
+                    t.employee_number,
+                    t.order_number,
+                    t.order_position,
+                    t.order_position_line,
+                    t.start_time,
+                    t.end_time,
+                    EXTRACT(EPOCH FROM (t.end_time - t.start_time)) / 60 as stempel_minuten
+                FROM times t
+                WHERE t.type = 2
+                    AND t.end_time IS NOT NULL
+                    AND t.order_number > 31
+                    AND t.order_position IS NOT NULL
+                    AND t.order_position_line IS NOT NULL
+                    AND t.start_time >= %s AND t.start_time < %s + INTERVAL '1 day'
+                ORDER BY t.employee_number, t.order_number, t.order_position, t.order_position_line, t.start_time, t.end_time
+            ),
+            stempelungen_mit_anteil AS (
+                SELECT
+                    sr.employee_number,
+                    sr.order_number,
+                    sr.order_position,
+                    sr.order_position_line,
+                    sr.start_time,
+                    sr.end_time,
+                    sr.stempel_minuten,
+                    l.time_units as aw_position,
+                    SUM(l.time_units) OVER (
+                        PARTITION BY sr.employee_number, sr.order_number, sr.start_time, sr.end_time
+                    ) as gesamt_aw_stempelung
+                FROM stempelungen_roh sr
+                JOIN labours l ON sr.order_number = l.order_number
+                    AND sr.order_position = l.order_position
+                    AND sr.order_position_line = l.order_position_line
+                WHERE l.time_units > 0
+                    -- TAG 194: KEIN Filter auf labour_type != 'I' - interne Positionen werden berücksichtigt!
+            ),
+            stempelanteil_pro_position AS (
+                SELECT
+                    employee_number,
+                    order_number,
+                    order_position,
+                    order_position_line,
+                    SUM(stempel_minuten * (aw_position / NULLIF(gesamt_aw_stempelung, 0))) as stempelanteil_minuten
+                FROM stempelungen_mit_anteil
+                GROUP BY employee_number, order_number, order_position, order_position_line
+            ),
+            gesamt_stempelzeit_pro_position AS (
+                SELECT
+                    order_number,
+                    order_position,
+                    order_position_line,
+                    SUM(stempelanteil_minuten) as gesamt_stempel_minuten
+                FROM stempelanteil_pro_position
+                GROUP BY order_number, order_position, order_position_line
+            ),
+            aw_anteil_pro_position AS (
+                SELECT
+                    sap.employee_number,
+                    sap.order_number,
+                    sap.order_position,
+                    sap.order_position_line,
+                    l.time_units * (sap.stempelanteil_minuten / NULLIF(gst.gesamt_stempel_minuten, 0)) as aw_anteil
+                FROM stempelanteil_pro_position sap
+                JOIN gesamt_stempelzeit_pro_position gst 
+                    ON sap.order_number = gst.order_number
+                    AND sap.order_position = gst.order_position
+                    AND sap.order_position_line = gst.order_position_line
+                JOIN labours l 
+                    ON sap.order_number = l.order_number
+                    AND sap.order_position = l.order_position
+                    AND sap.order_position_line = l.order_position_line
+                WHERE l.time_units > 0
+                    -- TAG 194: KEIN Filter auf labour_type != 'I' - interne Positionen werden berücksichtigt!
+            ),
             aw_verrechnet AS (
                 SELECT
-                    l.mechanic_no as employee_number,
-                    SUM(l.time_units) / 10.0 as aw,  -- In Stunden
+                    employee_number,
+                    SUM(aw_anteil) / 10.0 as aw,  -- In Stunden (1 AW = 0.1 Stunden)
                     SUM(l.net_price_in_order) as umsatz
-                FROM labours l
-                WHERE l.time_units > 0
-                    -- TAG 192: Nur Positionen, die dem Mechaniker zugeordnet sind
-                    AND l.mechanic_no IS NOT NULL
-                    -- TAG 192: Nur Auftragsarten außer 'I' (Intern)
-                    AND (l.labour_type IS NULL OR l.labour_type != 'I')
-                    -- TAG 192: Nur Aufträge, die im Zeitraum gestempelt wurden
-                    AND EXISTS (
-                        SELECT 1
-                        FROM times t
-                        WHERE t.order_number = l.order_number
-                            AND t.employee_number = l.mechanic_no
-                            AND t.type = 2
-                            AND t.end_time IS NOT NULL
-                            AND t.order_number > 31
-                            AND DATE(t.start_time) >= %s
-                            AND DATE(t.start_time) <= %s
-                    )
-                GROUP BY l.mechanic_no
+                FROM aw_anteil_pro_position aap
+                JOIN labours l 
+                    ON aap.order_number = l.order_number
+                    AND aap.order_position = l.order_position
+                    AND aap.order_position_line = l.order_position_line
+                GROUP BY employee_number
             ),
             -- Mechaniker-Aggregation
             mechaniker_summen AS (
@@ -503,10 +565,9 @@ class WerkstattData:
                 ROUND(ms.aw::numeric, 1) as aw,
                 ROUND(ms.umsatz::numeric, 2) as umsatz,
                 CASE
-                    -- TAG 192: Leistungsgrad = (AW * 6) / Stempelzeit_Leistungsgrad * 100
-                    --          AW wird in Stunden berechnet (time_units / 10.0)
-                    --          Formel: AWx6 / Stempelzeit (beide in Minuten)
-                    --          AW in Minuten = AW (Stunden) * 60 = (time_units / 10.0) * 60 = time_units * 6
+                    -- TAG 194: Leistungsgrad = (AW * 6) / Stempelzeit_Leistungsgrad * 100
+                    --          AW wird in Stunden berechnet (SUM(aw_anteil) / 10.0)
+                    --          AW in Minuten = AW (Stunden) * 60
                     --          Also: Leistungsgrad = (AW * 60) / Stempelzeit_Leistungsgrad * 100
                     WHEN ms.stempelzeit_leistungsgrad > 0 AND ms.aw > 0
                     THEN ROUND((ms.aw * 60 / ms.stempelzeit_leistungsgrad * 100)::numeric, 1)
@@ -527,10 +588,10 @@ class WerkstattData:
             """
 
             params = [
-                von, bis,  # stempelungen_dedupliziert
+                von, bis,  # stempelungen_dedupliziert (erste CTE)
                 von, bis,  # stempelungen_extern (TAG 192)
                 von, bis,  # anwesenheit
-                von, bis,  # aw_verrechnet: EXISTS-Filter für gestempelte Aufträge
+                von, bis,  # stempelungen_roh (TAG 194: position-basierte Berechnung)
                 MECHANIKER_EXCLUDE  # TAG 192: Nur Azubis ausschließen, keine Range-Filter mehr
             ]
 

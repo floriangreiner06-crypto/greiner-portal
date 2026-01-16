@@ -1,0 +1,79 @@
+Betreff: Dringend - St-Anteil Berechnung weicht ab, benötige exakte Formel
+
+Sehr geehrte Damen und Herren,
+
+wir versuchen, die St-Anteil (Stempel Anteil) Berechnung aus Locosoft in unserem DRIVE Portal nachzubilden. Trotz Zugriff auf die gleichen Rohdaten weichen unsere Ergebnisse bei bestimmten Mechanikern erheblich ab.
+
+KONKRETES BEISPIEL:
+Mechaniker 5007 (Reitmeier, Tobias), Zeitraum 01.01.2026 - 16.01.2026
+
+Locosoft UI (Zeitraum-GESAMTSUMMEN):
+- AW-Anteil: 52:35 (3155 Min) ✅
+- Stmp.Anteil: 82:51 (4971 Min) ❌
+- Leistungsgrad: 63.5%
+
+Unsere Berechnung:
+- AW-Anteil: 53:12 (3192 Min) ✅ passt sehr gut (1.2% Diff)
+- St-Anteil: 56:00 (3360 Min) ❌ Abweichung: 1611 Min (32.4%)
+
+UNSERE IMPLEMENTIERUNG:
+Wir berechnen St-Anteil position-basiert mit anteiliger Verteilung:
+- Stempelungen deduplizieren pro Mechaniker/Auftrag/Position/Zeit
+- Anteilige Verteilung bei Stempelungen auf mehrere Positionen (nach AW)
+- Aggregation pro Position und Mechaniker
+
+GETESTETE VARIANTEN (keine passt genau):
+- Position-basiert (anteilig): 3360 Min (Diff: 1611 Min)
+- OHNE anteilige Verteilung: 3602 Min (Diff: 1369 Min)
+- Zeit-Spanne (erste bis letzte Stempelung): 3691 Min (Diff: 1280 Min) ← am nächsten!
+- Zeit-Spanne MINUS Lücken: 3602 Min (Diff: 1369 Min)
+- Zeit-Spanne MINUS Lücken MINUS Pausen: 3294 Min (Diff: 1677 Min)
+
+SPEZIELLE FÄLLE BEI MECHANIKER 5007:
+- 300 Stempelungen auf 206 Positionen
+- 203 Positionen OHNE AW mit 12049 Min Stempelzeit
+- 43 von 57 Stempelungen gehen auf mehrere Positionen (75.4%)
+
+VERGLEICH MIT MECHANIKER 5014:
+Bei Mechaniker 5014 (Litwin) im gleichen Zeitraum passt unsere Berechnung:
+- Locosoft: 34:38 (2078 Min)
+- Unsere Berechnung: 34:42 (2082 Min) ✅ nur 4 Min Differenz (0.2%)
+
+KONKRETE FRAGEN:
+
+1. Wie wird "St-Anteil" (Stempel Anteil) genau berechnet?
+   - Wird die Stempelzeit anteilig verteilt, wenn eine Stempelung auf mehrere Positionen geht?
+   - Oder wird die gesamte Stempelzeit gezählt?
+
+2. Werden Positionen OHNE AW (time_units = 0) berücksichtigt?
+   - Wenn ja, wie wird die Stempelzeit für diese Positionen berechnet?
+   - Wird die gesamte Stempelzeit gezählt oder anteilig verteilt?
+
+3. Gibt es Unterschiede zwischen "St-Anteil" und "Stmp.Anteil"?
+   - Werden beide gleich berechnet?
+
+4. Wie werden Stempelungen dedupliziert?
+   - Pro Mechaniker/Auftrag/Position/Zeit?
+   - Oder gibt es eine andere Deduplizierungslogik?
+
+5. Werden bestimmte Aufträge oder Positionen ausgeschlossen?
+   - Gibt es Filter, die wir noch nicht berücksichtigen?
+
+Wir würden uns sehr über eine Klärung der Berechnungslogik freuen, damit wir die KPI-Berechnungen in DRIVE korrekt nachbilden können.
+
+Falls Sie die Berechnung nachvollziehen möchten, können wir Ihnen gerne:
+- Export der Stempelungen für Mechaniker 5007 im Zeitraum 01.01-16.01.2026
+- Detaillierte Aufschlüsselung der Positionen und AW-Werte
+- Vergleichswerte für andere Mechaniker
+zur Verfügung stellen.
+
+Mit freundlichen Grüßen
+[Ihr Name]
+Greiner Portal DRIVE
+
+---
+Technische Details:
+- Datenbank: PostgreSQL (Locosoft DB, read-only)
+- Tabellen: times, labours, orders
+- Filter: times.type = 2, times.order_number > 31, times.order_position IS NOT NULL
+- Zeitraum: 01.01.2026 - 16.01.2026

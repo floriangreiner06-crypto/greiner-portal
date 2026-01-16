@@ -725,6 +725,14 @@ except Exception as e:
 try:
     from api.ml_api import ml_api
     app.register_blueprint(ml_api)
+    
+    # AI API (LM Studio Integration) - TAG 195
+    try:
+        from api.ai_api import ai_api
+        app.register_blueprint(ai_api)
+        print("✅ AI API (LM Studio) registriert")
+    except Exception as e:
+        print(f"⚠️  AI API konnte nicht geladen werden: {e}")
     print("✅ ML API registriert: /api/ml/")
 except Exception as e:
     print(f"⚠️  ML API nicht geladen: {e}")
