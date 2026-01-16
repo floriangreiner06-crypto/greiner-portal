@@ -273,6 +273,7 @@ def benachrichtige_serviceberater_ueberschreitungen():
                 if 'heute_session_min' in ueberschritt:
                     # Aktiver Auftrag: Nur aktuelle Stempelung heute verwenden
                     laufzeit_min = float(ueberschritt.get('heute_session_min', 0))
+                    logger.info(f"Auftrag {auftrag_nr}: AKTIVER Auftrag - verwende heute_session_min={laufzeit_min:.0f} Min")
                     
                     # TAG 193: Mindestlaufzeit-Schwelle (30 Min) für aktive Aufträge
                     # Verhindert E-Mails bei sehr kurzen Stempelungen
@@ -282,6 +283,7 @@ def benachrichtige_serviceberater_ueberschreitungen():
                 else:
                     # Abgeschlossener Auftrag: Gesamtlaufzeit verwenden
                     laufzeit_min = float(ueberschritt.get('laufzeit_min', ueberschritt.get('gestempelt_min', 0)))
+                    logger.info(f"Auftrag {auftrag_nr}: ABGESCHLOSSENER Auftrag - verwende laufzeit_min={laufzeit_min:.0f} Min (Gesamtlaufzeit)")
                 
                 # Vorgabe: Entweder direkt als vorgabe_min oder als vorgabe_aw * 6
                 if 'vorgabe_min' in ueberschritt:
