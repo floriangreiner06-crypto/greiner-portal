@@ -1,155 +1,116 @@
 # TODO für Claude - Session Start TAG 193
 
-**Erstellt:** 2026-01-15 (TAG 192)  
-**Nächste Session:** TAG 193
+**Erstellt:** 2026-01-15  
+**Letzte Session:** TAG 192
 
 ---
 
-## Offene Aufgaben
+## 🔴 PRIORITÄT 1: Performance-Feedback
 
-### 1. AW-Berechnung: Locosoft-Antwort abwarten ⏳
+### 1. Performance testen
+- [ ] **WICHTIG:** Bitte Performance nach QA-Feature-Entfernung testen
+- [ ] Hard-Refresh (Strg+F5) durchführen
+- [ ] Verschiedene Seiten testen (TEK, Werkstatt-Live, Controlling)
+- [ ] Feedback geben: Besser oder immer noch langsam?
 
-**Status:** Blockiert auf Locosoft Support
-- **Support-Anfrage:** `docs/locosoft_support_anfrage_aw_anteil.md`
-- **Fragenkatalog:** `docs/locosoft_aw_anteil_fragenkatalog.md`
-- **Aktuell:** DRIVE: 9.6 AW vs. Locosoft: 10.0 AW (Differenz: 0.4 AW)
-
-**Nächste Schritte:**
-1. Auf Antwort von Locosoft warten
-2. AW-Berechnung basierend auf Antwort anpassen
-3. Exakte Übereinstimmung anstreben
-
-**Dokumentation:**
-- `docs/locosoft_support_anfrage_aw_anteil.md`
-- `docs/aw_berechnung_differenzen_analyse.md`
-
-### 2. Leistungsgrad: Abweichung klären ⏳
-
-**Status:** Abhängig von AW-Berechnung
-- **Aktuell:** DRIVE: 123.5% vs. Locosoft: 133.0% (Differenz: 9.5%)
-- **Ursache:** Direkt abhängig von AW-Berechnung
-
-**Nächste Schritte:**
-1. Wird mit AW-Berechnung geklärt
-2. Formel ggf. anpassen
-
-**Dokumentation:**
-- `docs/leistungsgrad_fairness_analyse.md`
-- `docs/leistungsgrad_berechnung_erklaerung.md`
+### 2. Entscheidung: QA-Dateien
+- [ ] **Entscheidung nötig:** Sollen QA-Dateien gelöscht werden?
+  - `api/qa_api.py`
+  - `routes/qa_routes.py`
+  - `templates/macros/qa_widget.html`
+  - `templates/qa/bugs.html`
+  - `templates/qa/bug_detail.html`
+- [ ] Oder: Für spätere Reaktivierung aufbewahren?
 
 ---
 
-## Qualitätsprobleme (keine kritischen)
+## 🟡 PRIORITÄT 2: Performance-Optimierung (falls nötig)
 
-### ✅ Keine kritischen Qualitätsprobleme
+### Falls Performance immer noch schlecht:
+1. **Navigation-Caching implementieren**
+   - Per-User-Cache (Session-basiert)
+   - Erwartete Verbesserung: 5-10ms → 0.01ms
 
-**Status:** Alle Checks bestanden
-- ✅ Keine Redundanzen
-- ✅ SSOT-konform
-- ✅ Konsistent
-- ✅ Gut dokumentiert
+2. **Werkstatt-Queries analysieren**
+   - EXPLAIN ANALYZE durchführen
+   - Indizes prüfen/erstellen
+   - Materialized Views prüfen
 
----
-
-## Wichtige Hinweise für nächste Session
-
-### 1. Email-Benachrichtigungen (TAG 192)
-
-**Korrekturen durchgeführt:**
-- ✅ Aktive Aufträge: Nur Laufzeit des aktiven Mechanikers
-- ✅ Abgeschlossene Aufträge: Nur heute/gestern
-
-**Datei:** `celery_app/tasks.py`
-
-**Status:** Funktioniert, sollte überwacht werden
-
-**Nächste Schritte:**
-- Monitoring ob weitere Probleme auftreten
-- Eventuell zusätzliche Filter oder Cooldown
-
-### 2. Locosoft Support-Anfrage
-
-**Dokumente sind vorbereitet:**
-- `docs/locosoft_support_anfrage_aw_anteil.md` (Hauptdokument)
-- `docs/locosoft_aw_anteil_fragenkatalog.md` (Referenz)
-- Alle Dokumente sind nach Windows synchronisiert
-
-**Nächste Schritte:**
-- Prüfen, ob Antwort von Locosoft eingegangen ist
-- Falls ja: AW-Berechnung anpassen
-- Falls nein: Nachfragen oder alternative Lösungsansätze prüfen
-
-### 3. AW-Berechnung (TAG 191)
-
-**Aktuelle Implementierung:**
-- Formel: `AW-Ant. = time_units_Position × (Stempelzeit_Mechaniker / Gesamt-Stempelzeit_Auftrag)`
-- Berechnung pro Position, dann Summierung
-- Wenn nur ein Mechaniker: AW-Ant. = time_units_Position
-
-**Datei:** `api/werkstatt_data.py` (CTE `aw_verrechnet`)
-
-**Status:** Funktioniert, aber kleine Abweichung zu Locosoft bleibt
-
-### 4. Leistungsgrad-Dokumentation
-
-**Erstellt für Team:**
-- `docs/leistungsgrad_berechnung_erklaerung.md` (Detaillierte Erklärung)
-- `docs/leistungsgrad_fairness_analyse.md` (Fairness-Bewertung)
-
-**Ergebnis:**
-- ✅ DRIVE-Formel ist fair und valide
-- ✅ Fairer für Team-Vergleiche
-- ⚠️ Unterschiedliche Aussage als Standard-Formel (beide sind korrekt)
+3. **API-Call-Optimierung**
+   - Batch-Requests statt einzelne Calls
+   - Lazy-Loading für nicht-kritische Daten
 
 ---
 
-## Code-Änderungen (TAG 192)
+## 🟢 PRIORITÄT 3: QA-Feature (optional)
 
-### Geänderte Dateien
+### Falls Performance OK ist:
+1. **QA-Feature neu implementieren (optimiert)**
+   - Lazy-Loading: Modals nur bei Bedarf laden
+   - Conditional Loading: Nur auf bestimmten Seiten aktivieren
+   - Kleinere JavaScript-Blöcke (nicht alles in base.html)
 
-**Backend:**
-- `celery_app/tasks.py`
-  - Email-Logik korrigiert (2 Fixes)
-  - Query für abgeschlossene Aufträge auf heute/gestern beschränkt
-  - Map-Erstellung korrigiert (aktive Aufträge zuerst)
-
-**Scripts:**
-- `scripts/test_email_ueberschreitung.py` (NEU)
-  - Test-Script für Email-Überschreitungs-Benachrichtigungen
+2. **Claude-Integration vorbereiten**
+   - Bug-Reports an Claude senden
+   - Bugfix-Vorschläge generieren
 
 ---
 
-## Git Status
+## 📋 Offene Aufgaben aus vorherigen Sessions
 
-**Nicht committet:**
-- Alle Änderungen von TAG 192
-- **Empfehlung:** Commit mit Message "TAG 192: Email-Benachrichtigungen korrigiert - aktive Aufträge und alte Aufträge"
-
----
-
-## Server-Sync
-
-**Synchronisiert:**
-- ✅ Alle Änderungen sind auf Server
-
-**Pfad:** `/opt/greiner-portal/`
+### Aus TAG 192
+- [ ] Locosoft Support-Antwort abwarten (AW-Anteil-Frage)
+- [ ] Performance-Feedback sammeln
 
 ---
 
-## Session-Kontext
+## 🔍 Qualitätsprobleme die behoben werden sollten
 
-**TAG 192 Fokus:**
-- Email-Benachrichtigungen bei Zeitüberschreitungen korrigiert
-- 2 Bugs behoben: Aktive Aufträge und alte Aufträge
-- Test-Script erstellt
+### 1. QA-Dateien aufräumen
+- [ ] Entscheidung: Löschen oder aufbewahren?
+- [ ] Falls löschen: Alle QA-Dateien entfernen
+- [ ] Falls aufbewahren: Dokumentieren wo/warum
 
-**Ergebnis:**
-- ✅ Aktive Aufträge: Korrekte Laufzeit (nur aktiver Mechaniker)
-- ✅ Abgeschlossene Aufträge: Nur heute/gestern
-- ✅ Alte Aufträge: Werden nicht mehr benachrichtigt
-- ✅ Service getestet und funktioniert
+### 2. Navigation-Optimierung
+- [ ] Alternative Optimierung prüfen (statt SQL-Filterung)
+- [ ] Navigation-Caching implementieren (falls Performance-Probleme)
 
-**Nächste Session (TAG 193):**
-- Monitoring ob weitere Probleme auftreten
-- Auf Locosoft-Antwort warten (AW-Berechnung)
-- Eventuell weitere Verbesserungen an Email-Logik
+---
+
+## 📝 Wichtige Hinweise für nächste Session
+
+### Performance
+- QA-Feature wurde entfernt wegen Performance-Problemen
+- Navigation-Optimierung wurde zurückgerollt
+- Feature-Zugriff-Caching ist aktiv (5 Min TTL)
+
+### Codebase
+- QA-Blueprints sind in `app.py` auskommentiert
+- QA-Dateien existieren noch, aber sind nicht aktiv
+- STATIC_VERSION erhöht: `20260115104600`
+
+### Testing
+- **WICHTIG:** Performance nach QA-Entfernung testen
+- Hard-Refresh erforderlich (Browser-Cache)
+
+---
+
+## 🚀 Nächste Schritte (je nach Performance-Feedback)
+
+### Szenario 1: Performance ist gut
+- QA-Feature neu implementieren (optimiert)
+- Navigation-Caching optional
+
+### Szenario 2: Performance ist immer noch schlecht
+- Navigation-Caching implementieren
+- Werkstatt-Queries analysieren
+- Weitere Performance-Analyse
+
+### Szenario 3: Performance ist katastrophal
+- Rollback auf TAG 191 prüfen
+- System-Ressourcen prüfen (CPU, Memory, DB)
+- Server-Logs analysieren
+
+---
+
+**Status:** Warte auf Performance-Feedback

@@ -480,6 +480,231 @@ def get_lieferforecast():
 
 
 # ============================================================================
+# VIN EINKAUFSINFORMATIONEN (NEU TAG193)
+# ============================================================================
+
+@verkauf_api.route('/vin-einkauf', methods=['GET'])
+def get_vin_einkauf_info():
+    """
+    GET /api/verkauf/vin-einkauf?vin=VXEYCBPFCNG019171
+    
+    Liefert für eine VIN:
+    - Einkaufender Verkäufer (in_buy_salesman_number)
+    - Kreditor/Lieferant (buyer_customer_no, falls is_supplier = true)
+    - Ex-Halter (previous_owner_number aus vehicles/dealer_vehicles)
+    - Einkaufsrechnung (in_buy_invoice_no, in_buy_invoice_no_date)
+    - Einkaufsbestellung (in_buy_order_no, in_buy_order_no_date)
+    - Einkaufspreis (in_buy_list_price)
+    
+    Direkt aus Locosoft PostgreSQL.
+    """
+    vin = request.args.get('vin', '').strip().upper()
+    
+    if not vin:
+        return jsonify({'error': 'VIN Parameter fehlt'}), 400
+    
+    try:
+        with locosoft_session() as conn:
+            cursor = conn.cursor()
+            
+            # 1. Hole Fahrzeug-Daten aus dealer_vehicles (inkl. Einkaufsrechnung und Ex-Halter)
+            cursor.execute("""
+                SELECT
+                    dv.dealer_vehicle_number,
+                    dv.dealer_vehicle_type,
+                    dv.in_buy_salesman_number,
+                    dv.buyer_customer_no,
+                    dv.in_buy_invoice_no,
+                    dv.in_buy_invoice_no_date,
+                    dv.in_buy_order_no,
+                    dv.in_buy_order_no_date,
+                    dv.in_buy_edp_order_no,
+                    dv.in_buy_edp_order_no_date,
+                    dv.in_buy_list_price,
+                    dv.in_arrival_date,
+                    COALESCE(dv.previous_owner_number, v.previous_owner_number) as previous_owner_number,
+                    v.previous_owner_counter,
+                    v.vin,
+                    v.free_form_model_text as modell
+                FROM dealer_vehicles dv
+                LEFT JOIN vehicles v
+                    ON dv.dealer_vehicle_number = v.dealer_vehicle_number
+                    AND dv.dealer_vehicle_type = v.dealer_vehicle_type
+                WHERE UPPER(v.vin) = %s
+                ORDER BY dv.created_date DESC NULLS LAST
+                LIMIT 1
+            """, (vin,))
+            
+            row = cursor.fetchone()
+            
+            if not row:
+                return jsonify({
+                    'success': False,
+                    'error': f'VIN {vin} nicht gefunden',
+                    'vin': vin
+                }), 404
+            
+            dealer_vehicle_number = row[0]
+            dealer_vehicle_type = row[1]
+            in_buy_salesman_number = row[2]
+            buyer_customer_no = row[3]
+            in_buy_invoice_no = row[4]
+            in_buy_invoice_no_date = row[5]
+            in_buy_order_no = row[6]
+            in_buy_order_no_date = row[7]
+            in_buy_edp_order_no = row[8]
+            in_buy_edp_order_no_date = row[9]
+            in_buy_list_price = row[10]
+            in_arrival_date = row[11]
+            previous_owner_number = row[12]
+            previous_owner_counter = row[13]
+            vin_found = row[14]
+            modell = row[15]
+            
+            result = {
+                'success': True,
+                'vin': vin_found,
+                'modell': modell,
+                'dealer_vehicle_number': dealer_vehicle_number,
+                'dealer_vehicle_type': dealer_vehicle_type,
+                'einkaufender_verkaeufer': None,
+                'kreditor_lieferant': None,
+                'ex_halter': None,
+                'einkaufsrechnung': None,
+                'einkaufsbestellung': None,
+                'ek_preis': float(in_buy_list_price) if in_buy_list_price else None,
+                'eingangsdatum': str(in_arrival_date) if in_arrival_date else None
+            }
+            
+            # 2. Hole einkaufenden Verkäufer (falls vorhanden)
+            if in_buy_salesman_number:
+                cursor.execute("""
+                    SELECT
+                        employee_number,
+                        name
+                    FROM employees_history
+                    WHERE employee_number = %s
+                      AND is_latest_record = true
+                    LIMIT 1
+                """, (in_buy_salesman_number,))
+                
+                verkaufer_row = cursor.fetchone()
+                if verkaufer_row:
+                    result['einkaufender_verkaeufer'] = {
+                        'nummer': verkaufer_row[0],
+                        'name': verkaufer_row[1] or f'Verkäufer #{verkaufer_row[0]}'
+                    }
+            
+            # 3. Hole Kreditor/Lieferant (falls buyer_customer_no vorhanden und is_supplier = true)
+            if buyer_customer_no:
+                cursor.execute("""
+                    SELECT
+                        customer_number,
+                        COALESCE(family_name || ', ' || first_name, family_name, first_name, 'Unbekannt') as name,
+                        is_supplier
+                    FROM customers_suppliers
+                    WHERE customer_number = %s
+                    LIMIT 1
+                """, (buyer_customer_no,))
+                
+                kreditor_row = cursor.fetchone()
+                if kreditor_row:
+                    is_supplier = kreditor_row[2]
+                    if is_supplier:
+                        result['kreditor_lieferant'] = {
+                            'kundennummer': kreditor_row[0],
+                            'name': kreditor_row[1] or f'Kreditor #{kreditor_row[0]}',
+                            'is_supplier': True
+                        }
+                    else:
+                        # buyer_customer_no ist vorhanden, aber kein Lieferant
+                        result['kreditor_lieferant'] = {
+                            'kundennummer': kreditor_row[0],
+                            'name': kreditor_row[1] or f'Kunde #{kreditor_row[0]}',
+                            'is_supplier': False,
+                            'hinweis': 'buyer_customer_no vorhanden, aber kein Lieferant (is_supplier = false)'
+                        }
+            
+            # 4. Einkaufsrechnung
+            if in_buy_invoice_no:
+                result['einkaufsrechnung'] = {
+                    'rechnungsnummer': in_buy_invoice_no,
+                    'rechnungsdatum': str(in_buy_invoice_no_date) if in_buy_invoice_no_date else None
+                }
+            
+            # 5. Einkaufsbestellung
+            if in_buy_order_no or in_buy_edp_order_no:
+                result['einkaufsbestellung'] = {
+                    'bestellnummer': in_buy_order_no,
+                    'bestelldatum': str(in_buy_order_no_date) if in_buy_order_no_date else None,
+                    'edp_bestellnummer': in_buy_edp_order_no,
+                    'edp_bestelldatum': str(in_buy_edp_order_no_date) if in_buy_edp_order_no_date else None
+                }
+            
+            # 6. Ex-Halter (previous_owner_number)
+            if previous_owner_number:
+                cursor.execute("""
+                    SELECT
+                        customer_number,
+                        COALESCE(family_name || ', ' || first_name, family_name, first_name, 'Unbekannt') as name,
+                        home_street,
+                        home_city,
+                        zip_code,
+                        country_code,
+                        is_supplier
+                    FROM customers_suppliers
+                    WHERE customer_number = %s
+                    LIMIT 1
+                """, (previous_owner_number,))
+                
+                ex_halter_row = cursor.fetchone()
+                if ex_halter_row:
+                    ex_halter_data = {
+                        'kundennummer': ex_halter_row[0],
+                        'name': ex_halter_row[1],
+                        'adresse': ex_halter_row[2],
+                        'ort': ex_halter_row[3],
+                        'plz': ex_halter_row[4],
+                        'land': ex_halter_row[5],
+                        'ist_lieferant': bool(ex_halter_row[6]),
+                        'anzahl_vorbesitzer': previous_owner_counter or 1,
+                        'telefonnummern': []
+                    }
+                    
+                    # Hole Telefonnummern
+                    cursor.execute("""
+                        SELECT
+                            com_type,
+                            phone_number,
+                            address
+                        FROM customer_com_numbers
+                        WHERE customer_number = %s
+                        ORDER BY counter
+                    """, (previous_owner_number,))
+                    
+                    telefon_rows = cursor.fetchall()
+                    for tel_row in telefon_rows:
+                        if tel_row[1]:  # phone_number vorhanden
+                            ex_halter_data['telefonnummern'].append({
+                                'typ': tel_row[0] or 't',
+                                'nummer': tel_row[1],
+                                'adresse': tel_row[2]
+                            })
+                    
+                    result['ex_halter'] = ex_halter_data
+            
+            return jsonify(result)
+    
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+
+# ============================================================================
 # VERKÄUFER PERFORMANCE (NEU TAG159)
 # ============================================================================
 

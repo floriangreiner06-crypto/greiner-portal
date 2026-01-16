@@ -3,6 +3,7 @@ Navigation Utilities - TAG 190
 Zentrale Funktionen für DB-basierte Navigation
 """
 from flask_login import current_user
+from flask import has_request_context, g
 from api.db_connection import get_db
 from api.db_utils import rows_to_list
 
@@ -13,7 +14,13 @@ def get_navigation_for_user():
     Gefiltert nach Feature-Zugriff und Rollen
     
     TAG 192: ROLLBACK - Zurück zur Python-Filterung (SQL-Filterung verursachte Performance-Probleme)
+    TAG 192: CACHING - Per-Request-Cache in Flask g (verhindert mehrfaches Laden)
     """
+    # TAG 192: Per-Request-Cache (verhindert mehrfaches Laden pro Request)
+    if has_request_context():
+        if hasattr(g, 'navigation_items'):
+            return g.navigation_items
+    
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -76,6 +83,10 @@ def get_navigation_for_user():
                     parent['children'].append(item)
             else:
                 root_items.append(item)
+        
+        # TAG 192: In Flask g speichern (Per-Request-Cache)
+        if has_request_context():
+            g.navigation_items = root_items
         
         return root_items
         

@@ -396,103 +396,29 @@ class WerkstattData:
                     ON ts.employee_number = p.employee_number 
                     AND ts.datum = p.datum
             ),
-            -- Stempelzeit für Leistungsgrad (Locosoft-Logik: erste alle bis letzte externe, minus Lücken 10-60 Min, KEINE Pausen)
-            -- TAG 190: Separate Berechnung für Leistungsgrad analog Locosoft
-            stempelungen_extern AS (
-                SELECT DISTINCT ON (employee_number, DATE(start_time), start_time, end_time)
-                    employee_number,
-                    DATE(start_time) as datum,
-                    start_time,
-                    end_time,
-                    order_number
-                FROM times t
-                WHERE type = 2
-                  AND end_time IS NOT NULL
-                  AND order_number > 31  -- Nur externe Aufträge
-                  {leerlauf_filter}
-                  AND start_time >= %s AND start_time < %s + INTERVAL '1 day'
-                ORDER BY employee_number, DATE(start_time), start_time, end_time
-            ),
-            -- Zeit-Spanne für Leistungsgrad: erste (auch intern) bis letzte externe
-            leistungsgrad_spannen AS (
-                SELECT
-                    COALESCE(s_all.employee_number, s_ext.employee_number) as employee_number,
-                    COALESCE(s_all.datum, s_ext.datum) as datum,
-                    MIN(s_all.start_time) as erste_stempelung,  -- Erste Stempelung (auch intern)
-                    MAX(s_ext.end_time) as letzte_externe,      -- Letzte externe Stempelung
-                    EXTRACT(EPOCH FROM (MAX(s_ext.end_time) - MIN(s_all.start_time))) / 60 as spanne_minuten
-                FROM stempelungen_dedupliziert s_all
-                FULL OUTER JOIN stempelungen_extern s_ext
-                    ON s_all.employee_number = s_ext.employee_number
-                    AND s_all.datum = s_ext.datum
-                GROUP BY COALESCE(s_all.employee_number, s_ext.employee_number), COALESCE(s_all.datum, s_ext.datum)
-            ),
-            -- Lücken zwischen externen Stempelungen (nur 10-60 Minuten) für Leistungsgrad
-            luecken_extern_leistungsgrad AS (
-                SELECT
-                    s1.employee_number,
-                    s1.datum,
-                    SUM(
-                        CASE 
-                            WHEN EXTRACT(EPOCH FROM (s2.start_time - s1.end_time)) / 60 BETWEEN 10 AND 60
-                            THEN EXTRACT(EPOCH FROM (s2.start_time - s1.end_time)) / 60
-                            ELSE 0
-                        END
-                    ) as luecken_minuten
-                FROM stempelungen_extern s1
-                JOIN stempelungen_extern s2 
-                    ON s1.employee_number = s2.employee_number 
-                    AND s1.datum = s2.datum
-                    AND s2.start_time > s1.end_time
-                    AND NOT EXISTS (
-                        SELECT 1 FROM stempelungen_extern s3
-                        WHERE s3.employee_number = s1.employee_number
-                          AND s3.datum = s1.datum
-                          AND s3.start_time > s1.end_time
-                          AND s3.start_time < s2.start_time
-                    )
-                GROUP BY s1.employee_number, s1.datum
-            ),
-            -- Pausenzeiten für Leistungsgrad (TAG 190: Locosoft zieht fixe Pause 12:00-12:44 auch für Leistungsgrad ab)
-            pausenzeiten_leistungsgrad AS (
-                SELECT
-                    ls.employee_number,
-                    ls.datum,
-                    SUM(
-                        CASE 
-                            WHEN eb.break_start IS NOT NULL 
-                                 AND eb.break_end IS NOT NULL
-                                 AND eb.break_start < eb.break_end
-                                 -- Pause muss innerhalb der Zeit-Spanne liegen (erste bis letzte externe)
-                                 AND (eb.break_start < EXTRACT(HOUR FROM ls.letzte_externe)::numeric + EXTRACT(MINUTE FROM ls.letzte_externe)::numeric / 60.0)
-                                 AND (eb.break_end > EXTRACT(HOUR FROM ls.erste_stempelung)::numeric + EXTRACT(MINUTE FROM ls.erste_stempelung)::numeric / 60.0)
-                            THEN (eb.break_end - eb.break_start) * 60.0  -- Minuten
-                            ELSE 0
-                        END
-                    ) as pausen_minuten
-                FROM leistungsgrad_spannen ls
-                LEFT JOIN employees_breaktimes eb 
-                    ON ls.employee_number = eb.employee_number
-                    AND EXTRACT(DOW FROM ls.datum) = eb.dayofweek
-                    AND eb.validity_date <= ls.datum
-                    AND (eb.is_latest_record IS NULL OR eb.is_latest_record = true)
-                GROUP BY ls.employee_number, ls.datum
-            ),
-            -- Stempelzeit für Leistungsgrad (Locosoft-Logik: erste alle bis letzte externe, minus Lücken 10-60 Min, minus Pause)
+            -- TAG 192: NEUER ANSATZ - Stempelzeit für Leistungsgrad
+            --          Leistungsgrad = (Vorgabezeit / Stempelzeit) * 100
+            --          Stempelzeit = Summe aller gestempelten Zeiten auf Aufträge
+            --          WICHTIG: DISTINCT ON um Duplikate zu entfernen (wie Locosoft)
             stempelzeit_leistungsgrad AS (
+                WITH stempelungen_dedupliziert AS (
+                    SELECT DISTINCT ON (t.employee_number, DATE(t.start_time), t.start_time, t.end_time)
+                        t.employee_number,
+                        t.start_time,
+                        t.end_time
+                    FROM times t
+                    WHERE t.type = 2
+                      AND t.end_time IS NOT NULL
+                      AND t.order_number > 31  -- Nur externe Aufträge
+                      {leerlauf_filter}
+                      AND t.start_time >= %s AND t.start_time < %s + INTERVAL '1 day'
+                    ORDER BY t.employee_number, DATE(t.start_time), t.start_time, t.end_time
+                )
                 SELECT
-                    ls.employee_number,
-                    ls.datum,
-                    ROUND((ls.spanne_minuten 
-                           - COALESCE(le.luecken_minuten, 0)
-                           - COALESCE(pl.pausen_minuten, 0))::numeric, 0) as stempel_min_leistungsgrad
-                FROM leistungsgrad_spannen ls
-                LEFT JOIN luecken_extern_leistungsgrad le 
-                    ON ls.employee_number = le.employee_number 
-                    AND ls.datum = le.datum
-                LEFT JOIN pausenzeiten_leistungsgrad pl
-                    ON ls.employee_number = pl.employee_number 
-                    AND ls.datum = pl.datum
+                    employee_number,
+                    SUM(EXTRACT(EPOCH FROM (end_time - start_time)) / 60) as stempel_min_leistungsgrad
+                FROM stempelungen_dedupliziert
+                GROUP BY employee_number
             ),
             -- Stempelzeit pro Mechaniker (aggregiert)
             stempel_dedupliziert AS (
@@ -503,15 +429,6 @@ class WerkstattData:
                     SUM(stempel_min) as stempel_min
                 FROM stempelzeit_locosoft
                 WHERE stempel_min > 0
-                GROUP BY employee_number
-            ),
-            -- Stempelzeit für Leistungsgrad pro Mechaniker (aggregiert)
-            stempel_leistungsgrad_agg AS (
-                SELECT
-                    employee_number,
-                    SUM(stempel_min_leistungsgrad) as stempel_min_leistungsgrad
-                FROM stempelzeit_leistungsgrad
-                WHERE stempel_min_leistungsgrad > 0
                 GROUP BY employee_number
             ),
             -- Anwesenheit pro Mechaniker/Tag
@@ -526,110 +443,34 @@ class WerkstattData:
                   AND start_time >= %s AND start_time < %s + INTERVAL '1 day'
                 GROUP BY employee_number, DATE(start_time)
             ),
-            -- Stempelzeit pro Mechaniker pro Auftrag (für AW-Anteil-Berechnung)
-            -- TAG 190: Verwende die gleiche Stempelzeit-Definition wie für Leistungsgrad
-            --          (nur externe Aufträge, dedupliziert)
-            stempelzeit_pro_auftrag AS (
-                SELECT
-                    se.employee_number,
-                    se.order_number,
-                    se.datum,
-                    SUM(EXTRACT(EPOCH FROM (se.end_time - se.start_time)) / 60) as stempelzeit_min
-                FROM stempelungen_extern se
-                GROUP BY se.employee_number, se.order_number, se.datum
-            ),
-            -- Gesamt-Stempelzeit pro Auftrag (alle Mechaniker) - nur externe Aufträge
-            stempelzeit_gesamt_pro_auftrag AS (
-                SELECT
-                    order_number,
-                    datum,
-                    SUM(stempelzeit_min) as gesamt_stempelzeit_min
-                FROM stempelzeit_pro_auftrag
-                GROUP BY order_number, datum
-            ),
-            -- AW pro Mechaniker (proportional zur Stempelzeit - Locosoft "AW-Ant." Logik)
-            -- TAG 191: Basierend auf Chef-Erklärung:
-            --          AW-Ant. = erfasste AW pro Mechaniker pro Position
-            --          AW-Ant. = time_units_Position * (Stempelzeit_Mechaniker / Gesamt-Stempelzeit_Auftrag)
-            --          Wenn nur ein Mechaniker: AW-Ant. = time_units_Position
-            --          Wenn mehrere Mechaniker: AW-Ant. = time_units_Position * (Stempelzeit_Mechaniker / Gesamt-Stempelzeit_Auftrag)
-            --          WICHTIG: Berechnung erfolgt PRO POSITION, dann Summierung!
-            -- TAG 192: FIX - Nur AW von Tagen zählen, an denen der Mechaniker tatsächlich gestempelt hat
-            --          Problem: Filter nach invoice_date zeigt Aufträge von Tagen ohne tatsächliche Arbeit
-            --          Lösung: Nur AW zählen, wenn spa.stempelzeit_min > 0 (tatsächliche Stempelung vorhanden)
-            -- TAG 192: FIX - Locosoft zählt AW aus ALLEN Positionen des Auftrags (proportional zur Stempelzeit)
-            --          Nicht nur aus Positionen, die dem Mechaniker zugeordnet sind!
-            --          Lösung: AW aus allen Positionen zählen, proportional zur Stempelzeit des Mechanikers
+            -- TAG 192: NEUER ANSATZ - AW-Berechnung
+            --          Locosoft verwendet: Direkt aus labours (mechanic_no = employee_number)
+            --          Keine Verteilung über mehrere Mechaniker oder Tage
+            --          Filter: labour_type != 'I' (keine internen Aufträge)
             aw_verrechnet AS (
                 SELECT
-                    spa.employee_number,
-                    -- TAG 192: AW aus ALLEN Positionen des Auftrags zählen (nicht nur zugeordnete)
-                    --          Proportional zur Stempelzeit des Mechanikers PRO TAG
-                    --          WICHTIG: AW-Anteil pro Tag berechnen, aber Gesamt-AW des Auftrags nur einmal verwenden
-                    --          Problem: Wenn Auftrag an mehreren Tagen gestempelt wird, wird Gesamt-AW mehrfach gezählt
-                    --          Lösung: AW-Anteil = (Gesamt-AW / Gesamt-Stempelzeit_Alle_Tage) * Stempelzeit_Mechaniker_Tag
-                    SUM(
-                        CASE 
-                            WHEN spa.stempelzeit_min IS NULL OR spa.stempelzeit_min = 0
-                            THEN 0  -- Kein AW wenn nicht gestempelt
-                            WHEN sga.gesamt_stempelzeit_min > 0 AND sga_gesamt.gesamt_stempelzeit_alle_tage > 0
-                            -- AW-Anteil = (Gesamt-AW des Auftrags / Gesamt-Stempelzeit_Alle_Tage) * Stempelzeit_Mechaniker_Tag
-                            -- Dies stellt sicher, dass die Gesamt-AW des Auftrags nur einmal verwendet wird
-                            THEN (COALESCE(l_gesamt.gesamt_aw, 0) / 10.0) * (spa.stempelzeit_min / sga_gesamt.gesamt_stempelzeit_alle_tage)
-                            WHEN sga.gesamt_stempelzeit_min > 0
-                            -- Fallback: Wenn Gesamt-Stempelzeit_Alle_Tage nicht verfügbar, pro Tag berechnen
-                            THEN (COALESCE(l_gesamt.gesamt_aw, 0) / 10.0) * (spa.stempelzeit_min / sga.gesamt_stempelzeit_min)
-                            ELSE 0  -- Kein AW wenn keine Gesamt-Stempelzeit
-                        END
-                    ) as aw,  -- In Stunden, direkt als AW verwendet
-                    SUM(
-                        CASE 
-                            WHEN spa.stempelzeit_min IS NOT NULL AND spa.stempelzeit_min > 0
-                                AND sga_gesamt.gesamt_stempelzeit_alle_tage > 0
-                            THEN COALESCE(l_gesamt.gesamt_umsatz, 0) * (spa.stempelzeit_min / sga_gesamt.gesamt_stempelzeit_alle_tage)
-                            WHEN spa.stempelzeit_min IS NOT NULL AND spa.stempelzeit_min > 0
-                            THEN COALESCE(l_gesamt.gesamt_umsatz, 0) * (spa.stempelzeit_min / sga.gesamt_stempelzeit_min)
-                            ELSE 0
-                        END
-                    ) as umsatz
-                FROM stempelzeit_pro_auftrag spa
-                -- TAG 192: JOIN mit Gesamt-AW des Auftrags (alle Positionen, alle Mechaniker)
-                --          WICHTIG: Auch noch nicht abgerechnete labours berücksichtigen!
-                --          Locosoft zeigt AW auch für nicht abgerechnete Positionen, wenn gestempelt wurde
-                LEFT JOIN (
-                    SELECT 
-                        l.order_number,
-                        -- TAG 192: Locosoft berücksichtigt alle Auftragsarten außer 'I' (Intern)
-                        --          Analyse zeigt: Locosoft verwendet alle labour_type außer 'I'
-                        --          Andere interne Auftragsarten (z.B. 'Ik', 'Is') werden berücksichtigt
-                        SUM(l.time_units) as gesamt_aw,
-                        SUM(l.net_price_in_order) as gesamt_umsatz
-                    FROM labours l
-                    WHERE l.time_units > 0
-                        -- TAG 192: Auch nicht abgerechnete labours berücksichtigen
-                        --          (is_invoiced kann true oder false sein)
-                        -- TAG 192: Nur Auftragsarten außer 'I' (Intern) berücksichtigen
-                        --          Andere interne Auftragsarten (z.B. 'Ik', 'Is') werden berücksichtigt
-                        AND (l.labour_type IS NULL OR l.labour_type != 'I')
-                    GROUP BY l.order_number
-                ) l_gesamt ON spa.order_number = l_gesamt.order_number
-                LEFT JOIN stempelzeit_gesamt_pro_auftrag sga
-                    ON spa.order_number = sga.order_number
-                    AND spa.datum = sga.datum
-                -- TAG 192: Gesamt-Stempelzeit des Auftrags über ALLE Tage (nicht nur pro Tag)
-                LEFT JOIN (
-                    SELECT
-                        order_number,
-                        SUM(stempelzeit_min) as gesamt_stempelzeit_alle_tage
-                    FROM stempelzeit_pro_auftrag
-                    WHERE datum >= %s AND datum <= %s
-                    GROUP BY order_number
-                ) sga_gesamt ON spa.order_number = sga_gesamt.order_number
-                WHERE spa.datum >= %s AND spa.datum <= %s
-                    AND spa.stempelzeit_min > 0
-                    -- TAG 192: Filter nach Stempelungsdatum (spa.datum) statt Rechnungsdatum (i.invoice_date)
-                    --          Nur AW von Tagen mit tatsächlicher Stempelung
-                GROUP BY spa.employee_number
+                    l.mechanic_no as employee_number,
+                    SUM(l.time_units) / 10.0 as aw,  -- In Stunden
+                    SUM(l.net_price_in_order) as umsatz
+                FROM labours l
+                WHERE l.time_units > 0
+                    -- TAG 192: Nur Positionen, die dem Mechaniker zugeordnet sind
+                    AND l.mechanic_no IS NOT NULL
+                    -- TAG 192: Nur Auftragsarten außer 'I' (Intern)
+                    AND (l.labour_type IS NULL OR l.labour_type != 'I')
+                    -- TAG 192: Nur Aufträge, die im Zeitraum gestempelt wurden
+                    AND EXISTS (
+                        SELECT 1
+                        FROM times t
+                        WHERE t.order_number = l.order_number
+                            AND t.employee_number = l.mechanic_no
+                            AND t.type = 2
+                            AND t.end_time IS NOT NULL
+                            AND t.order_number > 31
+                            AND DATE(t.start_time) >= %s
+                            AND DATE(t.start_time) <= %s
+                    )
+                GROUP BY l.mechanic_no
             ),
             -- Mechaniker-Aggregation
             mechaniker_summen AS (
@@ -647,7 +488,7 @@ class WerkstattData:
                 FROM stempel_dedupliziert s
                 FULL OUTER JOIN anwesenheit a ON s.employee_number = a.employee_number
                 LEFT JOIN aw_verrechnet aw ON COALESCE(s.employee_number, a.employee_number) = aw.employee_number
-                LEFT JOIN stempel_leistungsgrad_agg slg ON COALESCE(s.employee_number, a.employee_number) = slg.employee_number
+                LEFT JOIN stempelzeit_leistungsgrad slg ON COALESCE(s.employee_number, a.employee_number) = slg.employee_number
                 GROUP BY COALESCE(s.employee_number, a.employee_number, aw.employee_number), s.tage, s.auftraege, s.stempel_min, slg.stempel_min_leistungsgrad
             )
             SELECT
@@ -687,11 +528,9 @@ class WerkstattData:
 
             params = [
                 von, bis,  # stempelungen_dedupliziert
-                von, bis,  # stempelungen_extern (TAG 190)
+                von, bis,  # stempelungen_extern (TAG 192)
                 von, bis,  # anwesenheit
-                # stempelzeit_pro_auftrag verwendet stempelungen_extern (keine eigenen Parameter)
-                von, bis,  # aw_verrechnet: sga_gesamt (Gesamt-Stempelzeit über alle Tage)
-                von, bis,  # aw_verrechnet: Filter für spa.datum (TAG 192: tatsächliche Stempelungsdatum)
+                von, bis,  # aw_verrechnet: EXISTS-Filter für gestempelte Aufträge
                 MECHANIKER_EXCLUDE  # TAG 192: Nur Azubis ausschließen, keine Range-Filter mehr
             ]
 
@@ -1482,6 +1321,7 @@ class WerkstattData:
                                   AND t2.employee_number = t.employee_number
                                   AND t2.end_time IS NOT NULL
                                   AND t2.type = 2
+                                  AND DATE(t2.start_time) = %s  -- TAG 193: NUR HEUTE! (nicht alle Tage)
                             ) dedup
                         ), 0) as laufzeit_min
                     FROM times t
@@ -1537,7 +1377,7 @@ class WerkstattData:
                 WHERE 1=1
             """
 
-            produktiv_params = [datum, datum, datum]
+            produktiv_params = [datum, datum, datum, datum]  # TAG 193: 4 Parameter (heute_abgeschlossen_min, laufzeit_min, start_time, NOT EXISTS)
 
             # DUAL-FILTER LOGIK
             if subsidiaries:

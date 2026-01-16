@@ -27,7 +27,7 @@ else:
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 Jahr in Produktion
 
 # Globale Static-Version (ändert sich bei jedem Flask-Neustart)
-STATIC_VERSION = '20260115104600'  # TAG 192 - QA-Feature entfernt für Performance
+STATIC_VERSION = '20260116140000'  # TAG 193 - Navigation Click-Fix, data-bs-toggle entfernt
 print(f"📦 Static Version: {STATIC_VERSION}")
 
 # Template-Kontext: Macht STATIC_VERSION in allen Templates verfügbar
@@ -64,17 +64,11 @@ def inject_navigation():
                             if line.strip().startswith('USE_DB_NAVIGATION='):
                                 value = line.split('=', 1)[1].strip().lower()
                                 use_db_navigation = value == 'true'
-                                if use_db_navigation:
-                                    print(f"✅ DB-Navigation aktiviert aus {env_file}")
                                 break
                     if use_db_navigation:
                         break
         
-        # Debug-Logging (kann später entfernt werden)
-        if use_db_navigation:
-            print(f"🔵 DB-Navigation ist AKTIVIERT")
-        else:
-            print(f"🔴 DB-Navigation ist DEAKTIVIERT (Fallback auf hardcoded)")
+        # TAG 192: Debug-Logging entfernt (Performance)
         
         if not use_db_navigation:
             return {'navigation_items': None}  # Fallback auf hardcoded Navigation
@@ -84,9 +78,8 @@ def inject_navigation():
         
         from api.navigation_utils import get_navigation_for_user
         items = get_navigation_for_user()
-        print(f"🔵 Navigation-Items geladen: {len(items)} Top-Level Items")
-        if items:
-            print(f"   Erste Items: {[item.get('label') for item in items[:3]]}")
+        # TAG 192: Debug-Logging entfernt (Performance)
+        # print(f"🔵 Navigation-Items geladen: {len(items)} Top-Level Items")
         return {'navigation_items': items}
         
     except Exception as e:

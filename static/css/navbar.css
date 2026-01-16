@@ -170,6 +170,22 @@ footer {
     z-index: 1030;
 }
 
+/* === NAVBAR Z-INDEX FIX (TAG 193) === */
+.navbar {
+    z-index: 1030 !important;
+}
+
+/* === DROPDOWN Z-INDEX FIX (TAG 193) === */
+.navbar .dropdown-menu {
+    z-index: 1080 !important;
+    position: absolute !important;
+}
+
+.navbar .dropdown-submenu > .dropdown-menu {
+    z-index: 1100 !important;
+    position: absolute !important;
+}
+
 /* === FOOTER === */
 .footer {
     background: #f8f9fa;
@@ -198,11 +214,11 @@ footer {
     animation: slideInDown 0.4s ease-out;
 }
 
-/* === HOVER EFFECTS === */
-.navbar-nav .dropdown:hover .dropdown-menu {
+/* === HOVER EFFECTS (deaktiviert - nur Click, TAG 193) === */
+/* .navbar-nav .dropdown:hover .dropdown-menu {
     display: block;
     animation: fadeIn 0.25s ease;
-}
+} */
 
 @keyframes fadeIn {
     from {

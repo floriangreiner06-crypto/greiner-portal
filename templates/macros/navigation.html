@@ -21,9 +21,9 @@
                 </ul>
             </li>
         {% else %}
-            {# Sub-Dropdown (nested) #}
+            {# Sub-Dropdown (nested) - TAG 193: data-bs-toggle entfernt, nur Custom-Code #}
             <li class="dropdown-submenu">
-                <a class="dropdown-item dropdown-toggle" href="#" id="{{ dropdown_id }}" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <a class="dropdown-item dropdown-toggle" href="#" id="{{ dropdown_id }}" role="button" aria-expanded="false">
                     {% if item.icon %}<i class="bi {{ item.icon }}"></i> {% endif %}{{ item.label }} <i class="bi bi-chevron-right float-end"></i>
                 </a>
                 <ul class="dropdown-menu" aria-labelledby="{{ dropdown_id }}">

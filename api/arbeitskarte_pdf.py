@@ -110,23 +110,30 @@ def generate_arbeitskarte_pdf(data: dict) -> bytes:
     kunde = data.get('locosoft', {}).get('kunde', {})
     fahrzeug = data.get('locosoft', {}).get('fahrzeug', {})
     
+    # TAG 192: None-Checks für Paragraph (verhindert 'NoneType' object has no attribute 'split')
+    def safe_paragraph(text, style):
+        """Erstellt Paragraph nur wenn text nicht None ist"""
+        if text is None:
+            return ''
+        return Paragraph(str(text), style)
+    
     # Kopf-Daten
     # TAG 189: Verwende Paragraph für lange Texte (automatische Umbrüche)
     kopf_data = [
         ['Auftragsnummer:', str(auftrag.get('nummer', '')), 'Auftragseröffnungsdatum:', format_date(auftrag.get('datum'))],
-        ['Kunde:', Paragraph(kunde.get('name', ''), normal_style), 'Telefon:', kunde.get('telefon', '')],
-        ['Adresse:', Paragraph(kunde.get('adresse', ''), normal_style), 'E-Mail:', Paragraph(kunde.get('email', '') or '', normal_style)],
-        ['Kennzeichen:', fahrzeug.get('kennzeichen', ''), 'VIN:', fahrzeug.get('vin', '')],
-        ['Fahrzeugtyp:', Paragraph(fahrzeug.get('marke_modell', ''), normal_style), 'Erstzulassung:', format_date(fahrzeug.get('erstzulassung'))],
+        ['Kunde:', safe_paragraph(kunde.get('name'), normal_style), 'Telefon:', kunde.get('telefon', '') or ''],
+        ['Adresse:', safe_paragraph(kunde.get('adresse'), normal_style), 'E-Mail:', safe_paragraph(kunde.get('email'), normal_style)],
+        ['Kennzeichen:', fahrzeug.get('kennzeichen', '') or '', 'VIN:', fahrzeug.get('vin', '') or ''],
+        ['Fahrzeugtyp:', safe_paragraph(fahrzeug.get('marke_modell'), normal_style), 'Erstzulassung:', format_date(fahrzeug.get('erstzulassung'))],
         ['Kilometerstand:', f"{fahrzeug.get('kilometerstand', 0):,} km" if fahrzeug.get('kilometerstand') else '', 
-         'Serviceberater:', Paragraph(auftrag.get('serviceberater', ''), normal_style)],
+         'Serviceberater:', safe_paragraph(auftrag.get('serviceberater'), normal_style)],
     ]
     
     # Job-Beschreibung hinzufügen, falls vorhanden
     job_beschreibung = auftrag.get('job_beschreibung')
     if job_beschreibung:
         # Job-Beschreibung über volle Breite (4 Spalten) - mit Paragraph für Umbrüche
-        kopf_data.append(['Job-Beschreibung:', Paragraph(job_beschreibung, normal_style), '', ''])
+        kopf_data.append(['Job-Beschreibung:', safe_paragraph(job_beschreibung, normal_style), '', ''])
     
     kopf_table = Table(kopf_data, colWidths=[4*cm, 6*cm, 4*cm, 3*cm])
     # Style für Kopf-Tabelle
@@ -164,9 +171,9 @@ def generate_arbeitskarte_pdf(data: dict) -> bytes:
         
         pos_data = [['Pos.', 'Arbeitsnummer', 'Beschreibung', 'AW', 'Mechaniker']]
         for pos in positionen:
-            text_line = pos.get('text_line', '')
-            # TAG 189: Verwende Paragraph für automatische Umbrüche (keine Längenbegrenzung)
-            text_para = Paragraph(text_line, normal_style) if text_line else ''
+            text_line = pos.get('text_line', '') or ''
+            # TAG 192: None-Check für Paragraph (verhindert 'NoneType' object has no attribute 'split')
+            text_para = safe_paragraph(text_line, normal_style) if text_line else ''
             
             pos_data.append([
                 str(pos.get('position', '')),
@@ -213,7 +220,7 @@ def generate_arbeitskarte_pdf(data: dict) -> bytes:
         elements.append(Paragraph("Diagnose durch Arbeitsausführenden", heading_style))
         
         for task in gudat_tasks:
-            desc = task.get('description', '')
+            desc = task.get('description', '') or ''
             if desc:
                 # Ersetze Zeilenumbrüche
                 desc_lines = desc.split('\n')
@@ -227,8 +234,8 @@ def generate_arbeitskarte_pdf(data: dict) -> bytes:
         elements.append(Paragraph("Reparaturmaßnahme", heading_style))
         
         for pos in positionen:
-            text_line = pos.get('text_line', '')
-            operation = pos.get('operation', '')
+            text_line = pos.get('text_line', '') or ''
+            operation = pos.get('operation', '') or ''
             if text_line and operation:
                 elements.append(Paragraph(
                     f"<b>{operation}</b>: {text_line}",
@@ -253,8 +260,8 @@ def generate_arbeitskarte_pdf(data: dict) -> bytes:
         teile_data = [['Teilenummer', 'Beschreibung', 'Menge', 'Preis']]
         for teil in teile:
             beschreibung = teil.get('beschreibung', '')
-            # TAG 189: Bessere Formatierung - verwende Paragraph für automatische Umbrüche (keine Längenbegrenzung)
-            beschreibung_para = Paragraph(beschreibung, normal_style) if beschreibung else ''
+            # TAG 192: None-Check für Paragraph (verhindert 'NoneType' object has no attribute 'split')
+            beschreibung_para = safe_paragraph(beschreibung, normal_style) if beschreibung else ''
             
             teile_data.append([
                 teil.get('teilenummer', ''),
@@ -351,8 +358,10 @@ def generate_arbeitskarte_pdf(data: dict) -> bytes:
         schaden_teil = teile[0] if len(teile) > 0 else None
         if schaden_teil:
             elements.append(Paragraph("Schadenverursachendes Teil", heading_style))
+            teilenummer = schaden_teil.get('teilenummer', '') or ''
+            beschreibung = schaden_teil.get('beschreibung', '') or ''
             elements.append(Paragraph(
-                f"<b>{schaden_teil.get('teilenummer', '')}</b>: {schaden_teil.get('beschreibung', '')}",
+                f"<b>{teilenummer}</b>: {beschreibung}",
                 normal_style
             ))
             elements.append(Spacer(1, 0.5*cm))
@@ -361,7 +370,7 @@ def generate_arbeitskarte_pdf(data: dict) -> bytes:
     if gudat and gudat_tasks:
         elements.append(Paragraph("Weitere Feststellungen", heading_style))
         for task in gudat_tasks:
-            desc = task.get('description', '')
+            desc = task.get('description', '') or ''
             if desc and len(desc) > 100:  # Nur längere Anmerkungen
                 elements.append(Paragraph(desc.replace('\n', '<br/>'), normal_style))
                 elements.append(Spacer(1, 0.3*cm))

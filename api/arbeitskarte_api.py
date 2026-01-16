@@ -194,8 +194,25 @@ def hole_arbeitskarte_daten(order_number: int):
     try:
         client = GudatClient(GUDAT_CONFIG['username'], GUDAT_CONFIG['password'])
         if client.login():
-            from datetime import date
-            target_date = date.today().isoformat()
+            from datetime import date, timedelta
+            
+            # TAG 192: Erweiterte Suche - nicht nur heute, sondern auch letzte 90 Tage
+            # Hole Auftragsdatum aus Locosoft-Daten für präzisere Suche
+            order_date = None
+            if 'locosoft' in locals() and locosoft_daten and 'auftrag' in locosoft_daten:
+                order_date = locosoft_daten['auftrag'].get('datum')
+                if order_date:
+                    if isinstance(order_date, str):
+                        from datetime import datetime
+                        try:
+                            if ' ' in order_date:
+                                order_date = datetime.strptime(order_date.split()[0], '%Y-%m-%d').date()
+                            elif 'T' in order_date:
+                                order_date = datetime.fromisoformat(order_date.split('T')[0]).date()
+                            else:
+                                order_date = datetime.fromisoformat(order_date).date()
+                        except:
+                            order_date = None
             
             query_tasks = """
             query GetWorkshopTasks($page: Int!, $itemsPerPage: Int!, $where: QueryWorkshopTasksWhereWhereConditions) {
@@ -212,6 +229,10 @@ def hole_arbeitskarte_daten(order_number: int):
             }
             """
             
+            dossier_id = None
+            
+            # 1. Versuche zuerst heute (schnellste Suche)
+            target_date = date.today().isoformat()
             variables = {
                 "page": 1,
                 "itemsPerPage": 200,
@@ -235,13 +256,91 @@ def hole_arbeitskarte_daten(order_number: int):
             if 'errors' not in data:
                 tasks = data.get('data', {}).get('workshopTasks', {}).get('data', [])
                 
-                # Finde dossier_id
+                # Finde dossier_id - erweiterte Vergleichslogik (TAG 192)
                 dossier_id = None
                 for task in tasks:
                     orders = task.get('dossier', {}).get('orders', [])
                     for order in orders:
-                        if order.get('number') == str(order_number):
+                        order_num = order.get('number')
+                        order_num_str = str(order_num).strip() if order_num else ""
+                        order_number_str = str(order_number).strip()
+                        # Vergleich: String, Integer, mit/ohne führende Nullen
+                        match = False
+                        if order_num_str == order_number_str:
+                            match = True
+                        elif order_num and str(order_num).isdigit() and str(order_number).isdigit():
+                            if int(order_num) == int(order_number):
+                                match = True
+                            elif order_num_str.lstrip('0') == order_number_str.lstrip('0'):
+                                match = True
+                        if match:
                             dossier_id = task.get('dossier', {}).get('id')
+                            logger.info(f"✅ Dossier gefunden für Auftrag {order_number}: dossier_id={dossier_id}")
+                            break
+                    if dossier_id:
+                        break
+                
+                # TAG 192: Falls nicht heute gefunden, suche in letzten 90 Tagen
+                if not dossier_id:
+                    logger.info(f"Dossier für Auftrag {order_number} nicht heute gefunden, suche in letzten 90 Tagen...")
+                    start_date = (date.today() - timedelta(days=90)).isoformat()
+                    end_date = date.today().isoformat()
+                    
+                    # Pagination - mehrere Requests
+                    max_pages = 10  # Max 10 Seiten = 2000 Tasks
+                    for page in range(1, max_pages + 1):
+                        variables_range = {
+                            "page": page,
+                            "itemsPerPage": 200,
+                            "where": {
+                                "AND": [
+                                    {"column": "START_DATE", "operator": "GTE", "value": start_date},
+                                    {"column": "START_DATE", "operator": "LTE", "value": end_date}
+                                ]
+                            }
+                        }
+                        
+                        response = client.session.post(
+                            f"{client.BASE_URL}/graphql",
+                            json={"operationName": "GetWorkshopTasks", "query": query_tasks, "variables": variables_range},
+                            headers={
+                                'Accept': 'application/json',
+                                'X-XSRF-TOKEN': client._get_xsrf(),
+                                'Content-Type': 'application/json'
+                            }
+                        )
+                        
+                        data = response.json()
+                        if 'errors' in data:
+                            logger.warning(f"GraphQL-Fehler bei erweiterter Suche (Seite {page}): {data.get('errors')}")
+                            break
+                        
+                        tasks = data.get('data', {}).get('workshopTasks', {}).get('data', [])
+                        if not tasks:
+                            break  # Keine weiteren Tasks
+                        
+                        # Finde dossier_id
+                        for task in tasks:
+                            orders = task.get('dossier', {}).get('orders', [])
+                            for order in orders:
+                                order_num = order.get('number')
+                                order_num_str = str(order_num).strip() if order_num else ""
+                                order_number_str = str(order_number).strip()
+                                match = False
+                                if order_num_str == order_number_str:
+                                    match = True
+                                elif order_num and str(order_num).isdigit() and str(order_number).isdigit():
+                                    if int(order_num) == int(order_number):
+                                        match = True
+                                    elif order_num_str.lstrip('0') == order_number_str.lstrip('0'):
+                                        match = True
+                                if match:
+                                    dossier_id = task.get('dossier', {}).get('id')
+                                    logger.info(f"✅ Dossier gefunden für Auftrag {order_number}: dossier_id={dossier_id} (Seite {page})")
+                                    break
+                            if dossier_id:
+                                break
+                        if dossier_id:
                             break
                 
                 if dossier_id:
@@ -927,6 +1026,7 @@ def _get_arbeitskarte_anhaenge_internal(order_number, order_date=None, license_p
                     vehicle {
                       id
                       license_plate
+                      vin
                     }
                     orders {
                       number
@@ -938,11 +1038,11 @@ def _get_arbeitskarte_anhaenge_internal(order_number, order_date=None, license_p
             """
             
             try:
-                # Suche in letzten 180 Tagen nach Fahrzeug (unabhängig von Marke)
-                # TAG 189: Erweitert von 60 auf 180 Tage, da Dossier möglicherweise älter ist
-                start_date_alt = (date.today() - timedelta(days=180)).isoformat()
+                # Suche in letzten 365 Tagen nach Fahrzeug (unabhängig von Marke)
+                # TAG 192: Erweitert von 180 auf 365 Tage, da Dossier möglicherweise älter ist
+                start_date_alt = (date.today() - timedelta(days=365)).isoformat()
                 end_date_alt = date.today().isoformat()
-                logger.info(f"Fahrzeug-Suche: Suche in letzten 180 Tagen nach Kennzeichen '{license_plate}' (Auftrag {order_number})")
+                logger.info(f"Fahrzeug-Suche: Suche in letzten 365 Tagen nach Kennzeichen '{license_plate}' oder VIN '{vin}' (Auftrag {order_number})")
                 
                 # Suche mit Datumsbereich (ohne Marken-Filter!)
                 variables_vehicle = {
@@ -979,22 +1079,68 @@ def _get_arbeitskarte_anhaenge_internal(order_number, order_date=None, license_p
                     
                     logger.info(f"Fahrzeug-Suche (Seite {page}): {len(tasks_vehicle)} Tasks durchsucht")
                     
+                    # TAG 192: Debug: Prüfe ob vehicle-Objekt in Tasks vorhanden ist
+                    tasks_with_vehicle = 0
+                    tasks_without_vehicle = 0
+                    for task in tasks_vehicle:
+                        dossier_task = task.get('dossier', {})
+                        vehicle = dossier_task.get('vehicle')
+                        if vehicle:
+                            tasks_with_vehicle += 1
+                        else:
+                            tasks_without_vehicle += 1
+                    if page == 1:
+                        logger.info(f"🔍 Vehicle-Objekt-Status (Seite 1): {tasks_with_vehicle} Tasks mit vehicle, {tasks_without_vehicle} Tasks ohne vehicle")
+                    
                     # Prüfe jedes Task auf passendes Fahrzeug
                     found_license_plates = set()  # Debug: Sammle gefundene Kennzeichen
+                    found_vins = set()  # TAG 192: Debug: Sammle gefundene VINs
                     for task in tasks_vehicle:
                         dossier_task = task.get('dossier', {})
                         vehicle = dossier_task.get('vehicle', {})
-                        task_license_plate = vehicle.get('license_plate', '').strip().upper()
+                        task_license_plate = vehicle.get('license_plate', '').strip().upper() if vehicle and vehicle.get('license_plate') else ""
+                        task_vin = vehicle.get('vin', '').strip().upper() if vehicle and vehicle.get('vin') else ""
                         orders_task = dossier_task.get('orders', [])
                         
-                        # Debug: Sammle alle gefundenen Kennzeichen (nur erste 10 pro Seite)
+                        # Debug: Sammle alle gefundenen Kennzeichen und VINs (nur erste 10 pro Seite)
                         if task_license_plate and len(found_license_plates) < 10:
                             found_license_plates.add(task_license_plate)
+                        if task_vin and len(found_vins) < 10:
+                            found_vins.add(task_vin)
                         
-                        # Prüfe Kennzeichen (Vehicle hat kein vin-Feld in GUDAT)
+                        # TAG 192: Prüfe VIN-Match zuerst (eindeutiger als Kennzeichen)
+                        # WICHTIG: VIN kann 0 (Null) oder O (Buchstabe) enthalten - beide sind möglich
+                        search_vin = vin.strip().upper() if vin else ""
+                        if search_vin and task_vin:
+                            # Exakter Match
+                            if search_vin == task_vin:
+                            # VIN-Match gefunden - verwende dieses Dossier
+                            dossier_id_candidate = dossier_task.get('id')
+                            orders_found = [o.get('number') for o in orders_task]
+                            logger.info(f"🔍 VIN-Match gefunden: '{task_vin}' (Dossier {dossier_id_candidate}, Orders: {orders_found})")
+                            # Prüfe ob Order-Nummer passt
+                            order_match = False
+                            for order_task in orders_task:
+                                order_num = order_task.get('number')
+                                order_num_str = str(order_num).strip() if order_num else ""
+                                order_number_str = str(order_number).strip()
+                                if order_num_str == order_number_str or (str(order_num).isdigit() and str(order_number).isdigit() and int(order_num) == int(order_number)):
+                                    order_match = True
+                                    break
+                            if order_match:
+                                dossier_id = dossier_id_candidate
+                                logger.info(f"✅ Dossier via VIN gefunden: dossier_id={dossier_id}, order={order_number}, vin={task_vin}")
+                                break
+                            else:
+                                # VIN passt, aber Order-Nummer nicht - verwende trotzdem (VIN ist eindeutig)
+                                dossier_id = dossier_id_candidate
+                                logger.info(f"✅ Dossier via VIN gefunden (Order-Nummer stimmt nicht, aber VIN eindeutig): dossier_id={dossier_id}, gesucht: {order_number}, gefunden: {orders_found}, vin={task_vin}")
+                                break
+                        
+                        # Prüfe Kennzeichen-Match (falls VIN nicht passte)
                         match = False
                         search_license_plate = license_plate.strip().upper() if license_plate else ""
-                        if search_license_plate and task_license_plate:
+                        if not dossier_id and search_license_plate and task_license_plate:
                             # Flexibler Vergleich: Ignoriere Leerzeichen und Bindestriche
                             task_clean = task_license_plate.replace(' ', '').replace('-', '').replace('_', '')
                             search_clean = search_license_plate.replace(' ', '').replace('-', '').replace('_', '')
@@ -1039,9 +1185,12 @@ def _get_arbeitskarte_anhaenge_internal(order_number, order_date=None, license_p
                             if dossier_id:
                                 break
                     
-                    # Debug: Zeige gefundene Kennzeichen und prüfe auf Teil-Matches
-                    if page == 1 and found_license_plates:
-                        logger.info(f"🔍 Beispiel-Kennzeichen in Tasks (Seite 1): {sorted(list(found_license_plates))[:10]}")
+                    # Debug: Zeige gefundene Kennzeichen und VINs
+                    if page == 1:
+                        if found_license_plates:
+                            logger.info(f"🔍 Beispiel-Kennzeichen in Tasks (Seite 1): {sorted(list(found_license_plates))[:10]}")
+                        if found_vins:
+                            logger.info(f"🔍 Beispiel-VINs in Tasks (Seite 1): {sorted(list(found_vins))[:10]}")
                         # Prüfe auf Teil-Matches (z.B. "DEG-BO" oder "BO 554")
                         if license_plate:
                             search_parts = license_plate.upper().replace('-', ' ').split()
@@ -1049,6 +1198,22 @@ def _get_arbeitskarte_anhaenge_internal(order_number, order_date=None, license_p
                                 lp_parts = lp.replace('-', ' ').split()
                                 if any(part in lp_parts for part in search_parts if len(part) > 2):
                                     logger.info(f"🔍 Mögliches Teil-Match gefunden: '{lp}' enthält Teile von '{license_plate.upper()}'")
+                        # Prüfe auf VIN-Teil-Matches (falls VIN nicht exakt passt)
+                        if vin:
+                            search_vin_clean = vin.strip().upper()
+                            for task_vin_check in found_vins:
+                                # Prüfe ob VIN ähnlich ist (z.B. nur letzte 8 Zeichen)
+                                if len(search_vin_clean) >= 8 and len(task_vin_check) >= 8:
+                                    if search_vin_clean[-8:] == task_vin_check[-8:]:
+                                        logger.info(f"🔍 Mögliches VIN-Teil-Match gefunden: '{task_vin_check}' endet wie '{search_vin_clean}'")
+                                    # Prüfe auch auf ähnliche VINs (0 vs O Problem)
+                                    search_vin_alt = search_vin_clean.replace('0', 'O').replace('O', '0')
+                                    if search_vin_alt == task_vin_check or task_vin_check.replace('0', 'O').replace('O', '0') == search_vin_clean:
+                                        logger.info(f"🔍 Mögliches VIN-Ähnlichkeits-Match: '{task_vin_check}' ähnlich zu '{search_vin_clean}' (0/O Problem?)")
+                    
+                    # TAG 192: Wenn nach Seite 1 kein Match gefunden, zeige Zusammenfassung
+                    if page == 1 and not dossier_id:
+                        logger.info(f"🔍 Fahrzeug-Suche Seite 1 abgeschlossen: {len(tasks_vehicle)} Tasks durchsucht, {len(found_license_plates)} Kennzeichen, {len(found_vins)} VINs gefunden. Gesucht: Kennzeichen='{license_plate}', VIN='{vin}'")
                     
                     if dossier_id:
                         break

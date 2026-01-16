@@ -261,11 +261,22 @@ def benachrichtige_serviceberater_ueberschreitungen():
                     logger.warning(f"Auftrag {auftrag_nr} nicht in ueberschritten_map gefunden - überspringe")
                     continue
                 
-                # TAG 192: KORRIGIERT - Für aktive Aufträge: Laufzeit des aktiven Mechanikers
+                # TAG 193: FIX - Für aktive Aufträge: Nur heute_session_min verwenden (aktuelle Stempelung)
                 # Für abgeschlossene Aufträge: Gesamtlaufzeit
-                # Problem: Wenn Mechaniker erst vor kurzem angestempelt hat, sollte nur seine Laufzeit zählen,
-                # nicht die Gesamtlaufzeit des Auftrags über alle Mechaniker hinweg
-                laufzeit_min = float(ueberschritt.get('laufzeit_min', ueberschritt.get('gestempelt_min', 0)))
+                # Problem: Wenn Mechaniker erst vor kurzem angestempelt hat, sollte nur seine aktuelle Laufzeit zählen,
+                # nicht die Gesamtlaufzeit des Auftrags über alle Mechaniker/Stempelungen hinweg
+                if 'heute_session_min' in ueberschritt:
+                    # Aktiver Auftrag: Nur aktuelle Stempelung heute verwenden
+                    laufzeit_min = float(ueberschritt.get('heute_session_min', 0))
+                    
+                    # TAG 193: Mindestlaufzeit-Schwelle (30 Min) für aktive Aufträge
+                    # Verhindert E-Mails bei sehr kurzen Stempelungen
+                    if laufzeit_min < 30:
+                        logger.debug(f"Auftrag {auftrag_nr}: Nur {laufzeit_min:.0f} Min aktuell gestempelt (< 30 Min Schwelle) - überspringe")
+                        continue
+                else:
+                    # Abgeschlossener Auftrag: Gesamtlaufzeit verwenden
+                    laufzeit_min = float(ueberschritt.get('laufzeit_min', ueberschritt.get('gestempelt_min', 0)))
                 
                 # Vorgabe: Entweder direkt als vorgabe_min oder als vorgabe_aw * 6
                 if 'vorgabe_min' in ueberschritt:
@@ -276,7 +287,7 @@ def benachrichtige_serviceberater_ueberschreitungen():
                     vorgabe_min = vorgabe_aw * 6
                 
                 # Berechne Überschreitung
-                # TAG 192: Für aktive Aufträge: Laufzeit des aktiven Mechanikers
+                # TAG 193: Für aktive Aufträge: Nur aktuelle Stempelung (heute_session_min)
                 # Für abgeschlossene Aufträge: Gesamtlaufzeit
                 diff_min = laufzeit_min - vorgabe_min
                 diff_prozent = (laufzeit_min / vorgabe_min * 100) if vorgabe_min > 0 else 0
@@ -302,7 +313,7 @@ def benachrichtige_serviceberater_ueberschreitungen():
                 
                 f = auftrag.get('fahrzeug', {})
                 
-                # TAG 192: Für aktive Aufträge: Laufzeit des aktiven Mechanikers
+                # TAG 193: Für aktive Aufträge: Nur aktuelle Stempelung (heute_session_min)
                 # Für abgeschlossene Aufträge: Gesamtlaufzeit
                 gestempelt_min = laufzeit_min
                 

@@ -31,7 +31,7 @@
             margin-left: 0.125rem;
             display: none;
             min-width: 200px;
-            z-index: 1001;
+            z-index: 1100 !important; /* Höher als Navbar (1030) und normale Dropdowns */
         }
         /* Pfeil-Icon für Sub-Dropdowns */
         .dropdown-submenu > .dropdown-toggle .bi-chevron-right {
@@ -57,14 +57,17 @@
                 display: none;
             }
         }
-        /* Desktop: Bessere Hover-Erfahrung */
+        /* Desktop: Bessere Hover-Erfahrung (deaktiviert - nur Click) */
         @media (min-width: 992px) {
             .dropdown-submenu > .dropdown-toggle:hover {
                 background-color: rgba(0, 0, 0, 0.05);
             }
-            /* Verhindere dass Dropdowns sich überlappen */
+            /* Verhindere dass Dropdowns sich überlappen - höhere z-index für Sub-Dropdowns */
             .dropdown-menu {
-                z-index: 1000;
+                z-index: 1080 !important; /* Höher als Navbar (1030) */
+            }
+            .dropdown-submenu > .dropdown-menu {
+                z-index: 1100 !important; /* Höher als normale Dropdowns und Navbar */
             }
         }
     </style>
@@ -478,9 +481,8 @@
 
     <!-- TAG 190: Sub-Dropdown JavaScript (vereinfacht, keine Verschachtelung) -->
     <script>
-    // Sub-Dropdown Support für Bootstrap 5 - Vereinfachte Lösung
+    // Sub-Dropdown Support für Bootstrap 5 - NUR CLICK-BASIERT (Hover deaktiviert)
     document.addEventListener('DOMContentLoaded', function() {
-        let hoverTimeouts = new Map();
         
         // Positionierungs-Funktion für Sub-Dropdowns (nur für Viewport-Anpassung)
         function adjustSubmenuPosition(submenu, parentItem) {
@@ -505,14 +507,19 @@
             }
         }
         
-        // Sub-Dropdowns per Click öffnen (für Touch-Geräte)
+        // Sub-Dropdowns per Click öffnen (Hover deaktiviert - TAG 193)
         document.querySelectorAll('.dropdown-submenu > .dropdown-toggle').forEach(function(toggle) {
             toggle.addEventListener('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
                 
-                const submenu = this.nextElementSibling;
-                if (!submenu) return;
+                // Finde das Sub-Menu (nextElementSibling oder innerhalb des parent li)
+                const parentLi = this.closest('.dropdown-submenu');
+                const submenu = parentLi ? parentLi.querySelector('.dropdown-menu') : this.nextElementSibling;
+                if (!submenu) {
+                    console.warn('Sub-Menu nicht gefunden für', this);
+                    return;
+                }
                 
                 const isOpen = submenu.style.display === 'block' || submenu.classList.contains('show');
                 
@@ -523,6 +530,19 @@
                         if (menu !== submenu) {
                             menu.style.display = 'none';
                             menu.classList.remove('show');
+                        }
+                    });
+                }
+                
+                // Schließe auch alle Sub-Dropdowns in anderen Parent-Dropdowns
+                const topLevelDropdown = this.closest('.nav-item.dropdown');
+                if (topLevelDropdown) {
+                    document.querySelectorAll('.nav-item.dropdown').forEach(function(dropdown) {
+                        if (dropdown !== topLevelDropdown) {
+                            dropdown.querySelectorAll('.dropdown-submenu > .dropdown-menu').forEach(function(menu) {
+                                menu.style.display = 'none';
+                                menu.classList.remove('show');
+                            });
                         }
                     });
                 }
@@ -548,108 +568,51 @@
             });
         });
         
-        // Hover-Verhalten für Desktop
-        if (window.innerWidth >= 992) {
-            document.querySelectorAll('.dropdown-submenu').forEach(function(submenuItem) {
-                const submenu = submenuItem.querySelector('.dropdown-menu');
-                if (!submenu) return;
-                
-                // Mouse Enter: Öffne sofort und positioniere
-                submenuItem.addEventListener('mouseenter', function() {
-                    // Clear timeout für dieses Element
-                    const timeout = hoverTimeouts.get(submenu);
-                    if (timeout) {
-                        clearTimeout(timeout);
-                        hoverTimeouts.delete(submenu);
-                    }
-                    
-                    submenu.style.display = 'block';
-                    submenu.classList.add('show');
-                    
-                    // Positioniere nach dem Anzeigen (für Viewport-Anpassung)
-                    setTimeout(function() {
-                        adjustSubmenuPosition(submenu, submenuItem);
-                    }, 0);
-                });
-                
-                // Mouse Leave: Schließe mit Verzögerung
-                submenuItem.addEventListener('mouseleave', function(e) {
-                    const relatedTarget = e.relatedTarget;
-                    
-                    // Prüfe ob Maus zu Sub-Dropdown geht
-                    if (relatedTarget && (submenu.contains(relatedTarget) || submenuItem.contains(relatedTarget))) {
-                        return;
-                    }
-                    
-                    // Schließe mit Verzögerung
-                    const timeout = setTimeout(function() {
-                        // Prüfe nochmal ob wirklich weg
-                        if (!submenu.matches(':hover') && !submenuItem.matches(':hover')) {
-                            submenu.style.display = 'none';
-                            submenu.classList.remove('show');
-                        }
-                        hoverTimeouts.delete(submenu);
-                    }, 200);
-                    
-                    hoverTimeouts.set(submenu, timeout);
-                });
-                
-                // Auch auf Sub-Dropdown selbst hören
-                submenu.addEventListener('mouseenter', function() {
-                    const timeout = hoverTimeouts.get(submenu);
-                    if (timeout) {
-                        clearTimeout(timeout);
-                        hoverTimeouts.delete(submenu);
-                    }
-                    this.style.display = 'block';
-                    this.classList.add('show');
-                    
-                    // Positioniere neu (falls nötig)
-                    setTimeout(function() {
-                        adjustSubmenuPosition(submenu, submenuItem);
-                    }, 0);
-                });
-                
-                submenu.addEventListener('mouseleave', function(e) {
-                    const relatedTarget = e.relatedTarget;
-                    const parentSubmenu = submenuItem;
-                    
-                    // Prüfe ob Maus zu Parent geht
-                    if (relatedTarget && parentSubmenu.contains(relatedTarget)) {
-                        return;
-                    }
-                    
-                    const timeout = setTimeout(function() {
-                        if (!submenu.matches(':hover') && !parentSubmenu.matches(':hover')) {
-                            submenu.style.display = 'none';
-                            submenu.classList.remove('show');
-                        }
-                        hoverTimeouts.delete(submenu);
-                    }, 200);
-                    
-                    hoverTimeouts.set(submenu, timeout);
-                });
+        // Positioniere Sub-Dropdowns neu bei Resize
+        window.addEventListener('resize', function() {
+            document.querySelectorAll('.dropdown-submenu > .dropdown-menu.show').forEach(function(submenu) {
+                const parentItem = submenu.closest('.dropdown-submenu');
+                if (parentItem) {
+                    adjustSubmenuPosition(submenu, parentItem);
+                }
             });
-            
-            // Positioniere Sub-Dropdowns neu bei Resize
-            window.addEventListener('resize', function() {
-                document.querySelectorAll('.dropdown-submenu > .dropdown-menu.show').forEach(function(submenu) {
-                    const parentItem = submenu.closest('.dropdown-submenu');
-                    if (parentItem) {
-                        adjustSubmenuPosition(submenu, parentItem);
-                    }
-                });
-            });
-        }
+        });
         
         // Schließe alle Sub-Dropdowns wenn außerhalb geklickt wird
         document.addEventListener('click', function(e) {
+            // Prüfe ob Klick auf einen Link innerhalb eines Dropdowns ist (normale Navigation)
+            const clickedLink = e.target.closest('a.dropdown-item:not(.dropdown-toggle)');
+            if (clickedLink && clickedLink.href && clickedLink.href !== '#' && clickedLink.href !== window.location.href) {
+                // Normale Navigation - erlaube Standard-Verhalten
+                return;
+            }
+            
+            // Prüfe ob Klick außerhalb von Dropdowns ist
             if (!e.target.closest('.dropdown-submenu') && !e.target.closest('.dropdown')) {
                 document.querySelectorAll('.dropdown-submenu > .dropdown-menu').forEach(function(menu) {
                     menu.style.display = 'none';
                     menu.classList.remove('show');
                 });
             }
+        });
+        
+        // Schließe Sub-Dropdowns wenn Parent-Dropdown geschlossen wird
+        document.querySelectorAll('.nav-item.dropdown > .dropdown-toggle').forEach(function(toggle) {
+            toggle.addEventListener('click', function() {
+                // Wenn Parent-Dropdown geschlossen wird, schließe auch alle Sub-Dropdowns
+                setTimeout(function() {
+                    const parentDropdown = toggle.closest('.nav-item.dropdown');
+                    if (parentDropdown) {
+                        const isOpen = parentDropdown.querySelector('.dropdown-menu').classList.contains('show');
+                        if (!isOpen) {
+                            parentDropdown.querySelectorAll('.dropdown-submenu > .dropdown-menu').forEach(function(menu) {
+                                menu.style.display = 'none';
+                                menu.classList.remove('show');
+                            });
+                        }
+                    }
+                }, 100);
+            });
         });
     });
     </script>
