@@ -190,7 +190,8 @@
         </div>
         <div>
             <!-- TAG 109: Default nach LDAP-Standort (current_user.standort_subsidiaries) -->
-            <select class="form-select form-select-sm d-inline-block me-2" id="filterBetrieb" style="width: auto;" onchange="refreshData()">
+            <!-- TAG 194: Event-Listener statt inline onchange für bessere Fehlerbehandlung -->
+            <select class="form-select form-select-sm d-inline-block me-2" id="filterBetrieb" style="width: auto;">
                 <option value="">Alle Betriebe</option>
                 <option value="1,2" {% if current_user.is_authenticated and current_user.standort_subsidiaries == '1,2' %}selected{% endif %}>Deggendorf</option>
                 <option value="3" {% if current_user.is_authenticated and current_user.standort_subsidiaries == '3' %}selected{% endif %}>Landau</option>
@@ -326,6 +327,18 @@ let mlPredictions = {};  // Cache für ML-Vorhersagen
 
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Stempeluhr LIVE initialized');
+    
+    // TAG 194: Event-Listener für Betriebsfilter registrieren
+    const filterBetrieb = document.getElementById('filterBetrieb');
+    if (filterBetrieb) {
+        filterBetrieb.addEventListener('change', function() {
+            console.log('Betriebsfilter geändert:', this.value);
+            refreshData();
+        });
+    } else {
+        console.error('filterBetrieb Element nicht gefunden!');
+    }
+    
     loadMLPredictions();  // ML-Daten vorladen
     refreshData();
     startAutoRefresh();
@@ -377,12 +390,31 @@ function refreshData() {
     const badge = document.getElementById('refreshBadge');
     const icon = document.getElementById('refreshIcon');
     
+    if (!badge || !icon) {
+        console.error('Refresh-Elemente nicht gefunden!');
+        return;
+    }
+    
     badge.classList.add('refreshing');
     icon.style.animation = 'spin 0.5s linear infinite';
     
-    const subsidiary = document.getElementById('filterBetrieb').value;
+    // TAG 194: Robuste Filter-Wert-Ermittlung mit Fehlerbehandlung
+    const filterBetrieb = document.getElementById('filterBetrieb');
+    if (!filterBetrieb) {
+        console.error('filterBetrieb Element nicht gefunden!');
+        badge.classList.remove('refreshing');
+        icon.style.animation = '';
+        return;
+    }
+    
+    const subsidiary = filterBetrieb.value;
     let url = '/api/werkstatt/live/stempeluhr';
-    if (subsidiary) url += '?subsidiary=' + subsidiary;
+    if (subsidiary) {
+        url += '?subsidiary=' + encodeURIComponent(subsidiary);
+        console.log('Lade Daten mit Filter:', subsidiary);
+    } else {
+        console.log('Lade Daten ohne Filter (alle Betriebe)');
+    }
     
     fetch(url)
         .then(r => r.json())
