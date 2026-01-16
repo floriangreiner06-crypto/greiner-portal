@@ -43,7 +43,7 @@ def get_lm_studio_config():
     # Fallback: Environment Variables oder Defaults
     return {
         'api_url': os.getenv('LM_STUDIO_API_URL', 'http://46.229.10.1:4433/v1'),
-        'default_model': os.getenv('LM_STUDIO_DEFAULT_MODEL', 'allenai/olmo-3-32b-think'),
+        'default_model': os.getenv('LM_STUDIO_DEFAULT_MODEL', 'mistralai/magistral-small-2509'),  # TAG 195: Geändert von olmo-3-32b-think (Think-Modell) zu mistralai (bessere JSON-Ausgaben)
         'embedding_model': os.getenv('LM_STUDIO_EMBEDDING_MODEL', 'text-embedding-nomic-embed-text-v1.5'),
         'timeout': int(os.getenv('LM_STUDIO_TIMEOUT', '30'))
     }
@@ -59,7 +59,7 @@ class LMStudioClient:
     def __init__(self):
         self.config = get_lm_studio_config()
         self.base_url = self.config.get('api_url', 'http://46.229.10.1:4433/v1')
-        self.default_model = self.config.get('default_model', 'allenai/olmo-3-32b-think')
+        self.default_model = self.config.get('default_model', 'mistralai/magistral-small-2509')  # TAG 195: Geändert für bessere JSON-Ausgaben
         self.embedding_model = self.config.get('embedding_model', 'text-embedding-nomic-embed-text-v1.5')
         self.timeout = self.config.get('timeout', 30)
     
@@ -208,6 +208,8 @@ def chat():
         max_tokens = data.get('max_tokens', 500)
         temperature = data.get('temperature', 0.3)
         
+        # TAG 195: Verwende mistralai als Default für bessere JSON-Ausgaben
+        model = model or "mistralai/magistral-small-2509"
         response = lm_studio_client.chat_completion(
             messages=messages,
             model=model,
@@ -366,8 +368,10 @@ Antworte im JSON-Format:
             }
         ]
         
+        # TAG 195: Verwende mistralai für bessere JSON-Ausgaben
         response = lm_studio_client.chat_completion(
             messages=messages,
+            model="mistralai/magistral-small-2509",  # Explizit setzen
             max_tokens=500,
             temperature=0.3
         )
@@ -684,8 +688,10 @@ Antworte im JSON-Format:
             }
         ]
         
+        # TAG 195: Explizit mistralai-Modell für bessere JSON-Ausgaben
         ki_response = lm_studio_client.chat_completion(
             messages=messages,
+            model="mistralai/magistral-small-2509",  # Explizit setzen für strukturierte Ausgaben
             max_tokens=500,
             temperature=0.3
         )
@@ -766,6 +772,252 @@ Antworte im JSON-Format:
         
     except Exception as e:
         logger.error(f"Fehler bei TT-Zeit-Analyse für Auftrag {auftrag_id}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+# ============================================================================
+# USE CASE: FAHRZEUGBESCHREIBUNG-GENERIERUNG (VERKAUF)
+# ============================================================================
+
+def hole_fahrzeug_daten(dealer_vehicle_number: int) -> Optional[Dict]:
+    """Holt alle relevanten Fahrzeugdaten für Beschreibung aus Locosoft."""
+    from api.db_utils import locosoft_session
+    from psycopg2.extras import RealDictCursor
+    
+    try:
+        with locosoft_session() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            # Hole Fahrzeugdaten aus dealer_vehicles + vehicles
+            cursor.execute("""
+                SELECT
+                    dv.dealer_vehicle_number,
+                    dv.dealer_vehicle_type,
+                    v.vin,
+                    v.license_plate as kennzeichen,
+                    v.free_form_model_text as modell,
+                    v.first_registration_date as erstzulassung,
+                    v.mileage_km as kilometerstand,
+                    m.description as marke,
+                    mo.description as modell_detail,
+                    dv.in_arrival_date as eingang,
+                    dv.out_sale_price as verkaufspreis,
+                    dv.mileage_km as km_stand,
+                    dv.in_used_vehicle_buy_type as ankauf_typ,
+                    dv.out_sale_type as besteuerung,
+                    dv.in_subsidiary as standort,
+                    dv.location as lagerort,
+                    -- Zusatzinfos
+                    CASE 
+                        WHEN dv.dealer_vehicle_type = 'G' THEN 'Gebrauchtwagen'
+                        WHEN dv.dealer_vehicle_type = 'N' THEN 'Neuwagen'
+                        WHEN dv.dealer_vehicle_type = 'D' THEN 'Vorführwagen'
+                        WHEN dv.dealer_vehicle_type = 'V' THEN 'Vorführwagen'  -- V = Vorführwagen (nicht Vermietwagen!)
+                        WHEN dv.dealer_vehicle_type = 'T' THEN 'Tauschfahrzeug'
+                        WHEN dv.dealer_vehicle_type = 'L' THEN 'Leihgabe/Mietwagen'  -- L = Leihgabe (Mietwagen)
+                        ELSE 'Unbekannt'
+                    END as fahrzeugtyp,
+                    CURRENT_DATE - COALESCE(dv.in_arrival_date, dv.created_date) as standzeit_tage
+                FROM dealer_vehicles dv
+                LEFT JOIN vehicles v ON dv.vehicle_number = v.internal_number
+                LEFT JOIN makes m ON v.make_number = m.make_number
+                LEFT JOIN models mo ON v.make_number = mo.make_number AND v.model_code = mo.model_code
+                WHERE dv.dealer_vehicle_number = %s
+                LIMIT 1
+            """, [dealer_vehicle_number])
+            
+            row = cursor.fetchone()
+            
+            if not row:
+                return None
+            
+            return dict(row)
+            
+    except Exception as e:
+        logger.error(f"Fehler beim Holen der Fahrzeugdaten: {str(e)}")
+        return None
+
+
+@ai_api.route('/generiere/fahrzeugbeschreibung/<int:dealer_vehicle_number>', methods=['POST'])
+@login_required
+def generiere_fahrzeugbeschreibung(dealer_vehicle_number: int):
+    """
+    Generiert eine marktgerechte Fahrzeugbeschreibung für Verkaufsplattformen.
+    
+    TAG 195: Use Case für Verkauf - Fahrzeugbeschreibung-Generierung
+    
+    Args:
+        dealer_vehicle_number: Locosoft dealer_vehicle_number
+        
+    Returns:
+        JSON mit generierter Beschreibung, Verkaufsargumenten, SEO-Keywords
+    """
+    try:
+        # 1. Hole Fahrzeugdaten
+        fahrzeug = hole_fahrzeug_daten(dealer_vehicle_number)
+        
+        if not fahrzeug:
+            return jsonify({
+                'success': False,
+                'error': f'Fahrzeug {dealer_vehicle_number} nicht gefunden'
+            }), 404
+        
+        # 2. Baue Prompt für KI
+        marke = fahrzeug.get('marke', 'Unbekannt')
+        modell = fahrzeug.get('modell', fahrzeug.get('modell_detail', 'Unbekannt'))
+        fahrzeugtyp = fahrzeug.get('fahrzeugtyp', 'Fahrzeug')
+        erstzulassung = fahrzeug.get('erstzulassung')
+        kilometerstand = fahrzeug.get('kilometerstand') or fahrzeug.get('km_stand', 0)
+        verkaufspreis = fahrzeug.get('verkaufspreis', 0)
+        standzeit_tage = fahrzeug.get('standzeit_tage', 0)
+        vin = fahrzeug.get('vin', '')
+        kennzeichen = fahrzeug.get('kennzeichen', '')
+        
+        # Formatierung
+        erstzulassung_str = erstzulassung.strftime('%m/%Y') if erstzulassung else 'Unbekannt'
+        km_str = f"{int(kilometerstand):,} km" if kilometerstand else 'Unbekannt'
+        preis_str = f"{float(verkaufspreis):,.2f} €" if verkaufspreis else 'Preis auf Anfrage'
+        
+        # Elektrofahrzeug-Erkennung
+        modell_lower = (modell or '').lower()
+        is_elektro = any(keyword in modell_lower for keyword in [
+            'ioniq', 'kona electric', 'electric', 'ev', 'e-', 'elektro', 'battery', 'zero emission'
+        ])
+        
+        # Modell-Name extrahieren (z.B. "Ioniq 5" statt nur "Hyundai")
+        modell_name = modell if modell and modell != marke else fahrzeug.get('modell_detail', modell) or 'Unbekannt'
+        
+        prompt = f"""
+Generiere eine professionelle, marktgerechte Fahrzeugbeschreibung für ein {fahrzeugtyp}.
+
+FAHRZEUGDATEN:
+- Marke: {marke}
+- Modell: {modell_name}
+- Fahrzeugtyp: {fahrzeugtyp}
+- Erstzulassung: {erstzulassung_str}
+- Kilometerstand: {km_str}
+- Verkaufspreis: {preis_str}
+- Standzeit: {int(standzeit_tage)} Tage
+- VIN: {vin[-8:] if len(vin) >= 8 else vin}
+{"- Elektrofahrzeug: Ja (z.B. Ioniq 5, Ioniq 6, Kona Electric)" if is_elektro else ""}
+
+ANFORDERUNGEN:
+1. Schreibe eine ansprechende, professionelle Beschreibung (150-250 Wörter)
+2. Hebe die wichtigsten Verkaufsargumente hervor
+3. Verwende eine freundliche, vertrauenswürdige Sprache
+4. Erwähne Marke, Modell (z.B. "Hyundai Ioniq 5"), Erstzulassung und Kilometerstand
+5. Bei Gebrauchtwagen: Betone Zustand und Wartungshistorie (falls bekannt)
+6. Bei langer Standzeit: Formuliere positiv (z.B. "gut gepflegt", "selten gefahren")
+7. Keine negativen Formulierungen
+8. SEO-optimiert (natürlich, nicht übertrieben)
+{"9. Bei Elektrofahrzeugen: Erwähne Reichweite, Ladeleistung, Ausstattung (z.B. Ioniq 5: ~480 km WLTP, 800V-System, schnelles Laden)" if is_elektro else ""}
+
+FORMAT:
+- Hauptbeschreibung (2-3 Absätze)
+- Verkaufsargumente (3-5 Bullet Points)
+- SEO-Keywords (5-10 relevante Begriffe)
+
+Antworte im JSON-Format:
+{{
+  "beschreibung": "Haupttext der Beschreibung...",
+  "verkaufsargumente": ["Argument 1", "Argument 2", ...],
+  "seo_keywords": ["Keyword1", "Keyword2", ...],
+  "zusammenfassung": "Kurze Zusammenfassung (1 Satz)"
+}}
+"""
+        
+        # 3. KI-Anfrage
+        messages = [
+            {
+                "role": "system",
+                "content": "Du bist ein Experte für Fahrzeugverkauf und Autohaus-Marketing. Du schreibst professionelle, ansprechende Fahrzeugbeschreibungen für Verkaufsplattformen."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+        
+        # Verwende alternatives Modell für bessere JSON-Ausgabe (kein "think"-Modell)
+        # "think"-Modelle geben Denkprozess statt direkter Antwort aus
+        model = "mistralai/magistral-small-2509"  # Besseres Modell für strukturierte Ausgaben
+        
+        response_content = lm_studio_client.chat_completion(
+            messages=messages,
+            model=model,
+            max_tokens=800,
+            temperature=0.7  # Etwas kreativer für Beschreibungen
+        )
+        
+        if not response_content:
+            return jsonify({
+                'success': False,
+                'error': 'KI-Antwort konnte nicht generiert werden'
+            }), 500
+        
+        # 4. Parse JSON-Antwort
+        try:
+            # Entferne Markdown-Code-Blöcke falls vorhanden
+            cleaned = response_content.strip()
+            if cleaned.startswith('```'):
+                import re
+                cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned, flags=re.MULTILINE)
+                cleaned = re.sub(r'\s*```\s*$', '', cleaned, flags=re.MULTILINE)
+            else:
+                cleaned = response_content
+            
+            # Versuche JSON aus Antwort zu extrahieren
+            import re
+            json_match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+            if json_match:
+                ki_result = json.loads(json_match.group())
+            else:
+                # Fallback: Strukturierte Antwort parsen
+                ki_result = {
+                    'beschreibung': cleaned,
+                    'verkaufsargumente': [],
+                    'seo_keywords': [],
+                    'zusammenfassung': cleaned[:100] + '...' if len(cleaned) > 100 else cleaned
+                }
+        except json.JSONDecodeError:
+            # Fallback: Verwende rohe Antwort als Beschreibung
+            ki_result = {
+                'beschreibung': response_content,
+                'verkaufsargumente': [],
+                'seo_keywords': [],
+                'zusammenfassung': response_content[:100] + '...' if len(response_content) > 100 else response_content
+            }
+        
+        # 5. Rückgabe
+        return jsonify({
+            'success': True,
+            'dealer_vehicle_number': dealer_vehicle_number,
+            'fahrzeug': {
+                'marke': marke,
+                'modell': modell_name,
+                'fahrzeugtyp': fahrzeugtyp,
+                'erstzulassung': erstzulassung_str,
+                'kilometerstand': km_str,
+                'verkaufspreis': preis_str,
+                'standzeit_tage': int(standzeit_tage),
+                'is_elektro': is_elektro
+            },
+            'beschreibung': {
+                'haupttext': ki_result.get('beschreibung', ''),
+                'verkaufsargumente': ki_result.get('verkaufsargumente', []),
+                'seo_keywords': ki_result.get('seo_keywords', []),
+                'zusammenfassung': ki_result.get('zusammenfassung', ''),
+                'rohe_antwort': response_content  # Für Debugging
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Fehler bei Fahrzeugbeschreibung-Generierung: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({

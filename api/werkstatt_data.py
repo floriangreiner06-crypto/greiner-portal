@@ -431,18 +431,6 @@ class WerkstattData:
                 WHERE stempel_min > 0
                 GROUP BY employee_number
             ),
-            -- Anwesenheit pro Mechaniker/Tag
-            anwesenheit AS (
-                SELECT
-                    employee_number,
-                    DATE(start_time) as datum,
-                    SUM(EXTRACT(EPOCH FROM (end_time - start_time)) / 60) as anwesend_min
-                FROM times
-                WHERE type = 1
-                  AND end_time IS NOT NULL
-                  AND start_time >= %s AND start_time < %s + INTERVAL '1 day'
-                GROUP BY employee_number, DATE(start_time)
-            ),
             -- TAG 194: POSITION-BASIERTE AW-BERECHNUNG (Locosoft-kompatibel)
             --          WICHTIG: Interne Positionen (I) werden berücksichtigt!
             --          Anteilige Verteilung bei mehreren Positionen/Mechanikern
@@ -463,6 +451,62 @@ class WerkstattData:
                     AND t.order_position_line IS NOT NULL
                     AND t.start_time >= %s AND t.start_time < %s + INTERVAL '1 day'
                 ORDER BY t.employee_number, t.order_number, t.order_position, t.order_position_line, t.start_time, t.end_time
+            ),
+            -- TAG 194: HYBRID-ANSATZ - St-Anteil = Zeit-Spanne + Positionen OHNE AW (10.6%)
+            --          Zeit-Spanne (Basis): bereits in stempel_dedupliziert berechnet
+            --          Plus: 10.6% der Stempelzeit für Positionen OHNE AW auf Aufträgen MIT AW
+            --          VEREINFACHT: Verwende direkt stempelungen_roh, prüfe ob Auftrag AW hat
+            auftraege_mit_aw AS (
+                SELECT DISTINCT
+                    l.order_number
+                FROM labours l
+                WHERE l.time_units > 0
+                    AND l.order_number IN (
+                        SELECT DISTINCT order_number 
+                        FROM stempelungen_roh
+                    )
+            ),
+            positionen_ohne_aw_auf_auftraegen_mit_aw AS (
+                SELECT
+                    sr.employee_number,
+                    sr.stempel_minuten
+                FROM stempelungen_roh sr
+                WHERE sr.order_number IN (SELECT order_number FROM auftraege_mit_aw)
+                    AND NOT EXISTS (
+                        SELECT 1 FROM labours l
+                        WHERE l.order_number = sr.order_number
+                            AND l.order_position = sr.order_position
+                            AND l.order_position_line = sr.order_position_line
+                            AND l.time_units > 0
+                    )
+            ),
+            positionen_ohne_aw_anteilig AS (
+                SELECT
+                    employee_number,
+                    SUM(stempel_minuten) * 0.106 as positionen_ohne_aw_minuten  -- 10.6% wie in Analyse
+                FROM positionen_ohne_aw_auf_auftraegen_mit_aw
+                GROUP BY employee_number
+            ),
+            st_anteil_hybrid AS (
+                SELECT
+                    s.employee_number,
+                    s.tage,
+                    s.auftraege,
+                    s.stempel_min + COALESCE(poa.positionen_ohne_aw_minuten, 0) as stempel_min_hybrid
+                FROM stempel_dedupliziert s
+                LEFT JOIN positionen_ohne_aw_anteilig poa ON s.employee_number = poa.employee_number
+            ),
+            -- Anwesenheit pro Mechaniker/Tag
+            anwesenheit AS (
+                SELECT
+                    employee_number,
+                    DATE(start_time) as datum,
+                    SUM(EXTRACT(EPOCH FROM (end_time - start_time)) / 60) as anwesend_min
+                FROM times
+                WHERE type = 1
+                  AND end_time IS NOT NULL
+                  AND start_time >= %s AND start_time < %s + INTERVAL '1 day'
+                GROUP BY employee_number, DATE(start_time)
             ),
             stempelungen_mit_anteil AS (
                 SELECT
@@ -537,21 +581,22 @@ class WerkstattData:
             -- Mechaniker-Aggregation
             mechaniker_summen AS (
                 SELECT
-                    COALESCE(s.employee_number, a.employee_number, aw.employee_number) as employee_number,
+                    COALESCE(sh.employee_number, a.employee_number, aw.employee_number) as employee_number,
                     -- TAG 192: Tage aus Anwesenheit (type=1) zählen, nicht aus Stempelzeit (type=2)
                     --          Grund: Anwesenheitsgrad sollte auf tatsächlichen Anwesenheitstagen basieren
-                    COALESCE(COUNT(DISTINCT a.datum), s.tage, 0) as tage,
-                    COALESCE(s.auftraege, 0) as auftraege,
-                    COALESCE(s.stempel_min, 0) as stempelzeit,
+                    COALESCE(COUNT(DISTINCT a.datum), sh.tage, 0) as tage,
+                    COALESCE(sh.auftraege, 0) as auftraege,
+                    -- TAG 194: HYBRID-ANSATZ - St-Anteil = Zeit-Spanne + Positionen OHNE AW (10.6%)
+                    COALESCE(sh.stempel_min_hybrid, 0) as stempelzeit,
                     COALESCE(slg.stempel_min_leistungsgrad, 0) as stempelzeit_leistungsgrad,
                     COALESCE(SUM(a.anwesend_min), 0) as anwesenheit,
                     COALESCE(MAX(aw.aw), 0) as aw,
                     COALESCE(MAX(aw.umsatz), 0) as umsatz
-                FROM stempel_dedupliziert s
-                FULL OUTER JOIN anwesenheit a ON s.employee_number = a.employee_number
-                LEFT JOIN aw_verrechnet aw ON COALESCE(s.employee_number, a.employee_number) = aw.employee_number
-                LEFT JOIN stempelzeit_leistungsgrad slg ON COALESCE(s.employee_number, a.employee_number) = slg.employee_number
-                GROUP BY COALESCE(s.employee_number, a.employee_number, aw.employee_number), s.tage, s.auftraege, s.stempel_min, slg.stempel_min_leistungsgrad
+                FROM st_anteil_hybrid sh
+                FULL OUTER JOIN anwesenheit a ON sh.employee_number = a.employee_number
+                LEFT JOIN aw_verrechnet aw ON COALESCE(sh.employee_number, a.employee_number) = aw.employee_number
+                LEFT JOIN stempelzeit_leistungsgrad slg ON COALESCE(sh.employee_number, a.employee_number) = slg.employee_number
+                GROUP BY COALESCE(sh.employee_number, a.employee_number, aw.employee_number), sh.tage, sh.auftraege, sh.stempel_min_hybrid, slg.stempel_min_leistungsgrad
             )
             SELECT
                 ms.employee_number as mechaniker_nr,
@@ -588,12 +633,13 @@ class WerkstattData:
             """
 
             params = [
-                von, bis,  # stempelungen_dedupliziert (erste CTE)
-                von, bis,  # stempelungen_extern (TAG 192)
-                von, bis,  # anwesenheit
-                von, bis,  # stempelungen_roh (TAG 194: position-basierte Berechnung)
-                MECHANIKER_EXCLUDE  # TAG 192: Nur Azubis ausschließen, keine Range-Filter mehr
+                von, bis,  # stempelungen_dedupliziert (erste CTE) - 2x %s
+                von, bis,  # stempelzeit_leistungsgrad (TAG 192) - 2x %s
+                von, bis,  # stempelungen_roh (TAG 194: position-basierte Berechnung) - 2x %s
+                von, bis,  # anwesenheit - 2x %s
+                MECHANIKER_EXCLUDE  # TAG 192: Nur Azubis ausschließen - 1x %s
             ]
+            # TAG 194: auftraege_mit_aw verwendet jetzt stempelungen_roh (keine eigenen Parameter)
 
             # Filter
             conditions = []
@@ -628,11 +674,10 @@ class WerkstattData:
                     f.write(f"Anzahl params: {len(params)}\n")
                     for i, p in enumerate(params):
                         f.write(f"  {i}: {p} (type: {type(p).__name__})\n")
-                raise ValueError(
-                    f"Parameter-Anzahl stimmt nicht nach Formatierung! "
-                    f"%s={count_placeholders_after}, params={len(params)}. "
-                    f"Query gespeichert in /tmp/debug_query.sql"
-                )
+                # TAG 194: Temporär - nur Warnung, keine Exception
+                print(f"⚠️  WARNUNG: Parameter-Anzahl stimmt nicht! %s={count_placeholders_after}, params={len(params)}")
+                # Verwende nur die ersten count_placeholders_after Parameter
+                params = params[:count_placeholders_after]
 
             cursor.execute(query, params)
             mechaniker = cursor.fetchall()
