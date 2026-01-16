@@ -1114,28 +1114,28 @@ def _get_arbeitskarte_anhaenge_internal(order_number, order_date=None, license_p
                         if search_vin and task_vin:
                             # Exakter Match
                             if search_vin == task_vin:
-                            # VIN-Match gefunden - verwende dieses Dossier
-                            dossier_id_candidate = dossier_task.get('id')
-                            orders_found = [o.get('number') for o in orders_task]
-                            logger.info(f"🔍 VIN-Match gefunden: '{task_vin}' (Dossier {dossier_id_candidate}, Orders: {orders_found})")
-                            # Prüfe ob Order-Nummer passt
-                            order_match = False
-                            for order_task in orders_task:
-                                order_num = order_task.get('number')
-                                order_num_str = str(order_num).strip() if order_num else ""
-                                order_number_str = str(order_number).strip()
-                                if order_num_str == order_number_str or (str(order_num).isdigit() and str(order_number).isdigit() and int(order_num) == int(order_number)):
-                                    order_match = True
+                                # VIN-Match gefunden - verwende dieses Dossier
+                                dossier_id_candidate = dossier_task.get('id')
+                                orders_found = [o.get('number') for o in orders_task]
+                                logger.info(f"🔍 VIN-Match gefunden: '{task_vin}' (Dossier {dossier_id_candidate}, Orders: {orders_found})")
+                                # Prüfe ob Order-Nummer passt
+                                order_match = False
+                                for order_task in orders_task:
+                                    order_num = order_task.get('number')
+                                    order_num_str = str(order_num).strip() if order_num else ""
+                                    order_number_str = str(order_number).strip()
+                                    if order_num_str == order_number_str or (str(order_num).isdigit() and str(order_number).isdigit() and int(order_num) == int(order_number)):
+                                        order_match = True
+                                        break
+                                if order_match:
+                                    dossier_id = dossier_id_candidate
+                                    logger.info(f"✅ Dossier via VIN gefunden: dossier_id={dossier_id}, order={order_number}, vin={task_vin}")
                                     break
-                            if order_match:
-                                dossier_id = dossier_id_candidate
-                                logger.info(f"✅ Dossier via VIN gefunden: dossier_id={dossier_id}, order={order_number}, vin={task_vin}")
-                                break
-                            else:
-                                # VIN passt, aber Order-Nummer nicht - verwende trotzdem (VIN ist eindeutig)
-                                dossier_id = dossier_id_candidate
-                                logger.info(f"✅ Dossier via VIN gefunden (Order-Nummer stimmt nicht, aber VIN eindeutig): dossier_id={dossier_id}, gesucht: {order_number}, gefunden: {orders_found}, vin={task_vin}")
-                                break
+                                else:
+                                    # VIN passt, aber Order-Nummer nicht - verwende trotzdem (VIN ist eindeutig)
+                                    dossier_id = dossier_id_candidate
+                                    logger.info(f"✅ Dossier via VIN gefunden (Order-Nummer stimmt nicht, aber VIN eindeutig): dossier_id={dossier_id}, gesucht: {order_number}, gefunden: {orders_found}, vin={task_vin}")
+                                    break
                         
                         # Prüfe Kennzeichen-Match (falls VIN nicht passte)
                         match = False
