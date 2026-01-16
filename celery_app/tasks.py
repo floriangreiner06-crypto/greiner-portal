@@ -77,17 +77,20 @@ def benachrichtige_serviceberater_ueberschreitungen():
                     GROUP BY order_number
                 ),
                 -- TAG 192: Nur Aufträge OHNE aktive Mechaniker (abgeschlossene Aufträge)
+                -- TAG 194: FIX - Prüfe end_time IS NULL ohne Datums-Filter
+                -- Problem: Wenn Mechaniker gestern angestempelt hat und heute noch arbeitet,
+                -- dann ist DATE(start_time) != CURRENT_DATE und Auftrag wird fälschlicherweise als abgeschlossen erkannt
                 auftraege_ohne_aktive_mechaniker AS (
                     SELECT DISTINCT order_number
                     FROM gestempelt_gesamt
                     WHERE order_number NOT IN (
                         -- Ausschließen: Aufträge mit aktiven Mechanikern (werden aus stempeluhr_data geholt)
+                        -- WICHTIG: Kein Datums-Filter, da Mechaniker auch gestern angestempelt haben können
                         SELECT DISTINCT order_number
                         FROM times
                         WHERE end_time IS NULL
                           AND type = 2
                           AND order_number > 31
-                          AND DATE(start_time) = CURRENT_DATE
                     )
                 ),
                 laufzeit_gesamt AS (
