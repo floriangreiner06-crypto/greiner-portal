@@ -59,12 +59,13 @@ MECHANIKER_RANGE_END = 5999
 # Azubis ausschließen
 MECHANIKER_EXCLUDE = [5025, 5026, 5028]
 
-# Leerlaufaufträge pro Betrieb (TAG 181)
+# Leerlaufaufträge pro Betrieb (TAG 194 - Aktualisiert)
 # Diese Aufträge werden aus der Stempelzeit-Berechnung ausgeschlossen
+# SSOT: Single Source of Truth für Leerlaufaufträge - Warnung bei Leerlauf-Stempelungen durch Mechaniker
 LEERLAUF_AUFTRAEGE_PRO_BETRIEB = {
-    1: [31],      # Deggendorf: Order 31
-    2: [],        # Hyundai: Keine
-    3: [300014]   # Landau: Order 300014 (Serviceberater stempeln hier ihre Anwesenheit)
+    1: [39406],   # DEGO (Deggendorf Opel): Order 39406 (historisch: 31)
+    2: [220710],  # DEGH (Deggendorf Hyundai): Order 220710 (historisch: keine)
+    3: [313666]   # LANO (Landau): Order 313666 (historisch: 300014)
 }
 
 # Standard Arbeitszeiten
@@ -76,6 +77,65 @@ STUNDEN_PRO_TAG = 10.0           # Effektive Arbeitsstunden
 # =============================================================================
 # HILFSFUNKTIONEN (VOR KLASSE)
 # =============================================================================
+
+def build_leerlauf_filter(betrieb: Optional[int] = None) -> str:
+    """
+    Baut SQL-Filter für Leerlaufaufträge (SSOT - Single Source of Truth).
+    
+    ⚠️ SSOT: Dies ist die EINZIGE Funktion für Leerlaufauftrags-Filter!
+    Nutze diese Funktion IMMER, niemals hardcoded order_number = 31/300014/39406/220710/313666!
+    
+    Args:
+        betrieb: Betrieb-ID (1=DEGO, 2=DEGH, 3=LANO, None=alle)
+    
+    Returns:
+        str: SQL WHERE-Clause (z.B. "AND t.order_number != ALL(ARRAY[39406,220710,313666])")
+    
+    Beispiel:
+        >>> filter = build_leerlauf_filter(betrieb=1)
+        >>> # "AND t.order_number != ALL(ARRAY[39406])"
+    """
+    leerlauf_auftraege = []
+    if betrieb and betrieb in LEERLAUF_AUFTRAEGE_PRO_BETRIEB:
+        leerlauf_auftraege = LEERLAUF_AUFTRAEGE_PRO_BETRIEB[betrieb]
+    else:
+        # Alle Betriebe: Alle Leerlaufaufträge sammeln
+        for b_leerlauf in LEERLAUF_AUFTRAEGE_PRO_BETRIEB.values():
+            leerlauf_auftraege.extend(b_leerlauf)
+        leerlauf_auftraege = list(set(leerlauf_auftraege))  # Duplikate entfernen
+    
+    if leerlauf_auftraege:
+        return f"AND t.order_number != ALL(ARRAY[{','.join(map(str, leerlauf_auftraege))}])"
+    else:
+        # Fallback: Mindestens > 31 (historisch)
+        return "AND t.order_number > 31"
+
+def build_leerlauf_filter_equals(betrieb: Optional[int] = None) -> str:
+    """
+    Baut SQL-Filter für Leerlaufaufträge mit = (für FILTER WHERE).
+    
+    ⚠️ SSOT: Für FILTER (WHERE ...) Klauseln verwenden!
+    
+    Args:
+        betrieb: Betrieb-ID (1=DEGO, 2=DEGH, 3=LANO, None=alle)
+    
+    Returns:
+        str: SQL FILTER-Clause (z.B. "FILTER (WHERE t.order_number = ANY(ARRAY[39406,220710,313666]))")
+    """
+    leerlauf_auftraege = []
+    if betrieb and betrieb in LEERLAUF_AUFTRAEGE_PRO_BETRIEB:
+        leerlauf_auftraege = LEERLAUF_AUFTRAEGE_PRO_BETRIEB[betrieb]
+    else:
+        # Alle Betriebe: Alle Leerlaufaufträge sammeln
+        for b_leerlauf in LEERLAUF_AUFTRAEGE_PRO_BETRIEB.values():
+            leerlauf_auftraege.extend(b_leerlauf)
+        leerlauf_auftraege = list(set(leerlauf_auftraege))  # Duplikate entfernen
+    
+    if leerlauf_auftraege:
+        return f"FILTER (WHERE t.order_number = ANY(ARRAY[{','.join(map(str, leerlauf_auftraege))}]))"
+    else:
+        # Fallback: Historisch Order 31
+        return "FILTER (WHERE t.order_number = 31)"
 
 def berechne_durchschnittlichen_verrechnungssatz(
     betrieb: Optional[int] = None,
@@ -296,431 +356,141 @@ class WerkstattData:
             # Fallback: Nur Order 31 ausschließen (wie bisher)
             leerlauf_filter = "AND t.order_number > 31"
 
+        # TAG 194: REFACTORED - Nutze neue separate Funktionen
+        # Hole Rohdaten mit neuen Funktionen
+        stempelzeit_locosoft = WerkstattData.get_stempelzeit_locosoft(von, bis, leerlauf_filter)
+        stempelzeit_leistungsgrad = WerkstattData.get_stempelzeit_leistungsgrad(von, bis, leerlauf_filter)
+        stempelungen_roh = WerkstattData.get_stempelungen_roh(von, bis)
+        aw_verrechnet = WerkstattData.get_aw_verrechnet(von, bis)
+        anwesenheit = WerkstattData.get_anwesenheit_rohdaten(von, bis)
+        
+        # TAG 194: St-Anteil - Locosoft-Definition: "Summe aller Stempelungen auf Auftragspositionen"
+        # Verwende position-basierte Berechnung mit anteiliger Verteilung
+        st_anteil_position = WerkstattData.get_st_anteil_position_basiert(von, bis)
+        
+        # Aggregiere Rohdaten
+        rohdaten = {}
+        all_emps = set(list(stempelzeit_locosoft.keys()) + 
+                       list(stempelzeit_leistungsgrad.keys()) + 
+                       list(aw_verrechnet.keys()) + 
+                       list(anwesenheit.keys()) +
+                       list(st_anteil_position.keys()))
+        
+        for emp_nr in all_emps:
+            rohdaten[emp_nr] = {
+                'tage': stempelzeit_locosoft.get(emp_nr, {}).get('tage', 0),
+                'auftraege': stempelzeit_locosoft.get(emp_nr, {}).get('auftraege', 0),
+                'stempelzeit': st_anteil_position.get(emp_nr, 0),  # Position-basiert mit anteiliger Verteilung
+                'stempelzeit_leistungsgrad': stempelzeit_leistungsgrad.get(emp_nr, 0),
+                'anwesenheit': anwesenheit.get(emp_nr, {}).get('anwesend_min', 0),
+                'aw': aw_verrechnet.get(emp_nr, {}).get('aw', 0),
+                'umsatz': aw_verrechnet.get(emp_nr, {}).get('umsatz', 0)
+            }
+        
+        # Berechne KPIs
+        kpis = WerkstattData.berechne_mechaniker_kpis_aus_rohdaten(rohdaten)
+        
+        # Hole Mechaniker-Details (employees_history)
         with locosoft_session() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-            # SQL Query - Locosoft-kompatible Berechnung (TAG 185)
-            # Locosoft-Logik: Zeit-Spanne (erste bis letzte Stempelung) - Lücken - Pausen
-            # TAG 181: Leerlaufaufträge werden ausgeschlossen
+            
+            # Filter für Mechaniker
+            emp_filter = ""
+            if all_emps:
+                emp_filter = f"AND eh.employee_number = ANY(ARRAY[{','.join(map(str, all_emps))}])"
+            
             query = f"""
-            WITH
-            -- Stempelungen dedupliziert pro Mechaniker/Tag
-            stempelungen_dedupliziert AS (
-                SELECT DISTINCT ON (employee_number, DATE(start_time), start_time, end_time)
-                    employee_number,
-                    DATE(start_time) as datum,
-                    start_time,
-                    end_time,
-                    order_number
-                FROM times t
-                WHERE type = 2
-                  AND end_time IS NOT NULL
-                  AND order_number > 0
-                  {leerlauf_filter}
-                  AND start_time >= %s AND start_time < %s + INTERVAL '1 day'
-                ORDER BY employee_number, DATE(start_time), start_time, end_time
-            ),
-            -- Zeit-Spanne pro Mechaniker/Tag (erste bis letzte Stempelung)
-            tages_spannen AS (
-                SELECT
-                    employee_number,
-                    datum,
-                    MIN(start_time) as erste_stempelung,
-                    MAX(end_time) as letzte_stempelung,
-                    COUNT(DISTINCT order_number) as auftraege,
-                    EXTRACT(EPOCH FROM (MAX(end_time) - MIN(start_time))) / 60 as spanne_minuten
-                FROM stempelungen_dedupliziert
-                GROUP BY employee_number, datum
-            ),
-            -- Lücken zwischen Stempelungen pro Mechaniker/Tag
-            luecken_pro_tag AS (
-                SELECT
-                    s1.employee_number,
-                    s1.datum,
-                    SUM(EXTRACT(EPOCH FROM (s2.start_time - s1.end_time)) / 60) as luecken_minuten
-                FROM stempelungen_dedupliziert s1
-                JOIN stempelungen_dedupliziert s2 
-                    ON s1.employee_number = s2.employee_number 
-                    AND s1.datum = s2.datum
-                    AND s2.start_time > s1.end_time
-                    AND NOT EXISTS (
-                        SELECT 1 FROM stempelungen_dedupliziert s3
-                        WHERE s3.employee_number = s1.employee_number
-                          AND s3.datum = s1.datum
-                          AND s3.start_time > s1.end_time
-                          AND s3.start_time < s2.start_time
-                    )
-                GROUP BY s1.employee_number, s1.datum
-            ),
-            -- Konfigurierte Pausenzeiten pro Mechaniker/Tag
-            -- TAG 190: Locosoft zieht Pausen auch während Stempelungen ab (z.B. Mittagspause während Auftrag)
-            pausenzeiten_pro_tag AS (
-                SELECT
-                    ts.employee_number,
-                    ts.datum,
-                    SUM(
-                        CASE 
-                            WHEN eb.break_start IS NOT NULL 
-                                 AND eb.break_end IS NOT NULL
-                                 AND eb.break_start < eb.break_end
-                                 -- Pause muss innerhalb der Zeit-Spanne liegen (erste bis letzte Stempelung)
-                                 -- break_start/break_end sind Float (Stunden, z.B. 12.0 = 12:00)
-                                 AND (eb.break_start < EXTRACT(HOUR FROM ts.letzte_stempelung)::numeric + EXTRACT(MINUTE FROM ts.letzte_stempelung)::numeric / 60.0)
-                                 AND (eb.break_end > EXTRACT(HOUR FROM ts.erste_stempelung)::numeric + EXTRACT(MINUTE FROM ts.erste_stempelung)::numeric / 60.0)
-                            THEN (eb.break_end - eb.break_start) * 60.0  -- Minuten
-                            ELSE 0
-                        END
-                    ) as pausen_minuten
-                FROM tages_spannen ts
-                LEFT JOIN employees_breaktimes eb 
-                    ON ts.employee_number = eb.employee_number
-                    AND EXTRACT(DOW FROM ts.datum) = eb.dayofweek
-                    AND eb.validity_date <= ts.datum
-                    AND (eb.is_latest_record IS NULL OR eb.is_latest_record = true)
-                GROUP BY ts.employee_number, ts.datum
-            ),
-            -- Stempelzeit nach Locosoft-Logik pro Mechaniker/Tag (für Anzeige)
-            stempelzeit_locosoft AS (
-                SELECT
-                    ts.employee_number,
-                    ts.datum,
-                    ts.auftraege,
-                    ROUND((ts.spanne_minuten 
-                           - COALESCE(l.luecken_minuten, 0) 
-                           - COALESCE(p.pausen_minuten, 0))::numeric, 0) as stempel_min
-                FROM tages_spannen ts
-                LEFT JOIN luecken_pro_tag l 
-                    ON ts.employee_number = l.employee_number 
-                    AND ts.datum = l.datum
-                LEFT JOIN pausenzeiten_pro_tag p 
-                    ON ts.employee_number = p.employee_number 
-                    AND ts.datum = p.datum
-            ),
-            -- TAG 192: NEUER ANSATZ - Stempelzeit für Leistungsgrad
-            --          Leistungsgrad = (Vorgabezeit / Stempelzeit) * 100
-            --          Stempelzeit = Summe aller gestempelten Zeiten auf Aufträge
-            --          WICHTIG: DISTINCT ON um Duplikate zu entfernen (wie Locosoft)
-            stempelzeit_leistungsgrad AS (
-                WITH stempelungen_dedupliziert AS (
-                    SELECT DISTINCT ON (t.employee_number, DATE(t.start_time), t.start_time, t.end_time)
-                        t.employee_number,
-                        t.start_time,
-                        t.end_time
-                    FROM times t
-                    WHERE t.type = 2
-                      AND t.end_time IS NOT NULL
-                      AND t.order_number > 31  -- Nur externe Aufträge
-                      {leerlauf_filter}
-                      AND t.start_time >= %s AND t.start_time < %s + INTERVAL '1 day'
-                    ORDER BY t.employee_number, DATE(t.start_time), t.start_time, t.end_time
-                )
-                SELECT
-                    employee_number,
-                    SUM(EXTRACT(EPOCH FROM (end_time - start_time)) / 60) as stempel_min_leistungsgrad
-                FROM stempelungen_dedupliziert
-                GROUP BY employee_number
-            ),
-            -- Stempelzeit pro Mechaniker (aggregiert)
-            stempel_dedupliziert AS (
-                SELECT
-                    employee_number,
-                    COUNT(DISTINCT datum) as tage,
-                    SUM(auftraege) as auftraege,
-                    SUM(stempel_min) as stempel_min
-                FROM stempelzeit_locosoft
-                WHERE stempel_min > 0
-                GROUP BY employee_number
-            ),
-            -- TAG 194: POSITION-BASIERTE AW-BERECHNUNG (Locosoft-kompatibel)
-            --          WICHTIG: Interne Positionen (I) werden berücksichtigt!
-            --          Anteilige Verteilung bei mehreren Positionen/Mechanikern
-            stempelungen_roh AS (
-                SELECT DISTINCT ON (t.employee_number, t.order_number, t.order_position, t.order_position_line, t.start_time, t.end_time)
-                    t.employee_number,
-                    t.order_number,
-                    t.order_position,
-                    t.order_position_line,
-                    t.start_time,
-                    t.end_time,
-                    EXTRACT(EPOCH FROM (t.end_time - t.start_time)) / 60 as stempel_minuten
-                FROM times t
-                WHERE t.type = 2
-                    AND t.end_time IS NOT NULL
-                    AND t.order_number > 31
-                    AND t.order_position IS NOT NULL
-                    AND t.order_position_line IS NOT NULL
-                    AND t.start_time >= %s AND t.start_time < %s + INTERVAL '1 day'
-                ORDER BY t.employee_number, t.order_number, t.order_position, t.order_position_line, t.start_time, t.end_time
-            ),
-            -- TAG 194: HYBRID-ANSATZ - St-Anteil = Zeit-Spanne + Positionen OHNE AW (10.6%)
-            --          Zeit-Spanne (Basis): bereits in stempel_dedupliziert berechnet
-            --          Plus: 10.6% der Stempelzeit für Positionen OHNE AW auf Aufträgen MIT AW
-            --          VEREINFACHT: Verwende direkt stempelungen_roh, prüfe ob Auftrag AW hat
-            auftraege_mit_aw AS (
-                SELECT DISTINCT
-                    l.order_number
-                FROM labours l
-                WHERE l.time_units > 0
-                    AND l.order_number IN (
-                        SELECT DISTINCT order_number 
-                        FROM stempelungen_roh
-                    )
-            ),
-            positionen_ohne_aw_auf_auftraegen_mit_aw AS (
-                SELECT
-                    sr.employee_number,
-                    sr.stempel_minuten
-                FROM stempelungen_roh sr
-                WHERE sr.order_number IN (SELECT order_number FROM auftraege_mit_aw)
-                    AND NOT EXISTS (
-                        SELECT 1 FROM labours l
-                        WHERE l.order_number = sr.order_number
-                            AND l.order_position = sr.order_position
-                            AND l.order_position_line = sr.order_position_line
-                            AND l.time_units > 0
-                    )
-            ),
-            positionen_ohne_aw_anteilig AS (
-                SELECT
-                    employee_number,
-                    SUM(stempel_minuten) * 0.106 as positionen_ohne_aw_minuten  -- 10.6% wie in Analyse
-                FROM positionen_ohne_aw_auf_auftraegen_mit_aw
-                GROUP BY employee_number
-            ),
-            -- TAG 194: HYBRID-ANSATZ - St-Anteil = Zeit-Spanne + Positionen OHNE AW (10.6%)
-            st_anteil_hybrid AS (
-                SELECT
-                    s.employee_number,
-                    s.tage,
-                    s.auftraege,
-                    s.stempel_min + COALESCE(poa.positionen_ohne_aw_minuten, 0) as stempel_min_hybrid
-                FROM stempel_dedupliziert s
-                LEFT JOIN positionen_ohne_aw_anteilig poa ON s.employee_number = poa.employee_number
-            ),
-            -- Anwesenheit pro Mechaniker/Tag
-            anwesenheit AS (
-                SELECT
-                    employee_number,
-                    DATE(start_time) as datum,
-                    SUM(EXTRACT(EPOCH FROM (end_time - start_time)) / 60) as anwesend_min
-                FROM times
-                WHERE type = 1
-                  AND end_time IS NOT NULL
-                  AND start_time >= %s AND start_time < %s + INTERVAL '1 day'
-                GROUP BY employee_number, DATE(start_time)
-            ),
-            stempelungen_mit_anteil AS (
-                SELECT
-                    sr.employee_number,
-                    sr.order_number,
-                    sr.order_position,
-                    sr.order_position_line,
-                    sr.start_time,
-                    sr.end_time,
-                    sr.stempel_minuten,
-                    l.time_units as aw_position,
-                    SUM(l.time_units) OVER (
-                        PARTITION BY sr.employee_number, sr.order_number, sr.start_time, sr.end_time
-                    ) as gesamt_aw_stempelung
-                FROM stempelungen_roh sr
-                JOIN labours l ON sr.order_number = l.order_number
-                    AND sr.order_position = l.order_position
-                    AND sr.order_position_line = l.order_position_line
-                WHERE l.time_units > 0
-                    -- TAG 194: KEIN Filter auf labour_type != 'I' - interne Positionen werden berücksichtigt!
-            ),
-            stempelanteil_pro_position AS (
-                SELECT
-                    employee_number,
-                    order_number,
-                    order_position,
-                    order_position_line,
-                    SUM(stempel_minuten * (aw_position / NULLIF(gesamt_aw_stempelung, 0))) as stempelanteil_minuten
-                FROM stempelungen_mit_anteil
-                GROUP BY employee_number, order_number, order_position, order_position_line
-            ),
-            gesamt_stempelzeit_pro_position AS (
-                SELECT
-                    order_number,
-                    order_position,
-                    order_position_line,
-                    SUM(stempelanteil_minuten) as gesamt_stempel_minuten
-                FROM stempelanteil_pro_position
-                GROUP BY order_number, order_position, order_position_line
-            ),
-            aw_anteil_pro_position AS (
-                SELECT
-                    sap.employee_number,
-                    sap.order_number,
-                    sap.order_position,
-                    sap.order_position_line,
-                    l.time_units * (sap.stempelanteil_minuten / NULLIF(gst.gesamt_stempel_minuten, 0)) as aw_anteil
-                FROM stempelanteil_pro_position sap
-                JOIN gesamt_stempelzeit_pro_position gst 
-                    ON sap.order_number = gst.order_number
-                    AND sap.order_position = gst.order_position
-                    AND sap.order_position_line = gst.order_position_line
-                JOIN labours l 
-                    ON sap.order_number = l.order_number
-                    AND sap.order_position = l.order_position
-                    AND sap.order_position_line = l.order_position_line
-                WHERE l.time_units > 0
-                    -- TAG 194: KEIN Filter auf labour_type != 'I' - interne Positionen werden berücksichtigt!
-            ),
-            aw_verrechnet AS (
-                SELECT
-                    employee_number,
-                    SUM(aw_anteil) / 10.0 as aw,  -- In Stunden (1 AW = 0.1 Stunden)
-                    SUM(l.net_price_in_order) as umsatz
-                FROM aw_anteil_pro_position aap
-                JOIN labours l 
-                    ON aap.order_number = l.order_number
-                    AND aap.order_position = l.order_position
-                    AND aap.order_position_line = l.order_position_line
-                GROUP BY employee_number
-            ),
-            -- Mechaniker-Aggregation
-            mechaniker_summen AS (
-                SELECT
-                    COALESCE(sh.employee_number, a.employee_number, aw.employee_number) as employee_number,
-                    -- TAG 192: Tage aus Anwesenheit (type=1) zählen, nicht aus Stempelzeit (type=2)
-                    --          Grund: Anwesenheitsgrad sollte auf tatsächlichen Anwesenheitstagen basieren
-                    COALESCE(COUNT(DISTINCT a.datum), sh.tage, 0) as tage,
-                    COALESCE(sh.auftraege, 0) as auftraege,
-                    -- TAG 194: HYBRID-ANSATZ - St-Anteil = Zeit-Spanne + Positionen OHNE AW (10.6%)
-                    COALESCE(sh.stempel_min_hybrid, 0) as stempelzeit,
-                    COALESCE(slg.stempel_min_leistungsgrad, 0) as stempelzeit_leistungsgrad,
-                    COALESCE(SUM(a.anwesend_min), 0) as anwesenheit,
-                    COALESCE(MAX(aw.aw), 0) as aw,
-                    COALESCE(MAX(aw.umsatz), 0) as umsatz
-                FROM st_anteil_hybrid sh
-                FULL OUTER JOIN anwesenheit a ON sh.employee_number = a.employee_number
-                LEFT JOIN aw_verrechnet aw ON COALESCE(sh.employee_number, a.employee_number) = aw.employee_number
-                LEFT JOIN stempelzeit_leistungsgrad slg ON COALESCE(sh.employee_number, a.employee_number) = slg.employee_number
-                GROUP BY COALESCE(sh.employee_number, a.employee_number, aw.employee_number), sh.tage, sh.auftraege, sh.stempel_min_hybrid, slg.stempel_min_leistungsgrad
-            )
             SELECT
-                ms.employee_number as mechaniker_nr,
+                eh.employee_number as mechaniker_nr,
                 eh.name as name,
                 eh.subsidiary as betrieb,
-                ms.tage,
-                ms.auftraege,
-                ROUND(ms.stempelzeit::numeric, 0) as stempelzeit,
-                ROUND(ms.stempelzeit_leistungsgrad::numeric, 0) as stempelzeit_leistungsgrad,  -- TAG 192
-                ROUND(ms.anwesenheit::numeric, 0) as anwesenheit,
-                ROUND(ms.aw::numeric, 1) as aw,
-                ROUND(ms.umsatz::numeric, 2) as umsatz,
-                CASE
-                    -- TAG 194: Leistungsgrad = (AW * 6) / Stempelzeit_Leistungsgrad * 100
-                    --          AW wird in Stunden berechnet (SUM(aw_anteil) / 10.0)
-                    --          AW in Minuten = AW (Stunden) * 60
-                    --          Also: Leistungsgrad = (AW * 60) / Stempelzeit_Leistungsgrad * 100
-                    WHEN ms.stempelzeit_leistungsgrad > 0 AND ms.aw > 0
-                    THEN ROUND((ms.aw * 60 / ms.stempelzeit_leistungsgrad * 100)::numeric, 1)
-                    WHEN ms.stempelzeit > 0 AND ms.aw > 0
-                    THEN ROUND((ms.aw * 60 / ms.stempelzeit * 100)::numeric, 1)
-                    ELSE NULL
-                END as leistungsgrad,
-                CASE
-                    WHEN ms.anwesenheit > 0 AND ms.stempelzeit > 0
-                    THEN ROUND((ms.stempelzeit / ms.anwesenheit * 100)::numeric, 1)
-                    ELSE NULL
-                END as produktivitaet,
                 CASE WHEN eh.termination_date IS NULL OR eh.termination_date > CURRENT_DATE THEN true ELSE false END as ist_aktiv
-            FROM mechaniker_summen ms
-            JOIN employees_history eh ON ms.employee_number = eh.employee_number AND eh.is_latest_record = true
-            WHERE ms.employee_number != ALL(%s)  -- TAG 192: Nur Azubis ausschließen, keine Range-Filter
-              AND (ms.stempelzeit > 0 OR ms.aw > 0)  -- Nur Mechaniker, die tatsächlich gestempelt haben
+            FROM employees_history eh
+            WHERE eh.is_latest_record = true
+              {emp_filter}
+              AND eh.employee_number != ALL(ARRAY[{','.join(map(str, MECHANIKER_EXCLUDE))}])
             """
-
-            params = [
-                von, bis,  # stempelungen_dedupliziert (erste CTE) - 2x %s
-                von, bis,  # stempelzeit_leistungsgrad (TAG 192) - 2x %s (eigene CTE mit WITH)
-                von, bis,  # stempelungen_roh (TAG 194: position-basierte Berechnung) - 2x %s
-                von, bis,  # anwesenheit - 2x %s
-                MECHANIKER_EXCLUDE  # TAG 192: Nur Azubis ausschließen - 1x %s
-            ]
-            # Gesamt: 9 Parameter (2+2+2+2+1)
-            # TAG 194: auftraege_mit_aw verwendet stempelungen_roh (keine eigenen Parameter)
-
+            
             # Filter
             conditions = []
             if betrieb is not None:
                 conditions.append(f"eh.subsidiary = {int(betrieb)}")
-
+            
             if mechaniker_nr is not None:
-                conditions.append(f"ms.employee_number = {int(mechaniker_nr)}")
-
+                conditions.append(f"eh.employee_number = {int(mechaniker_nr)}")
+            
             if not inkl_ehemalige:
                 conditions.append("(eh.termination_date IS NULL OR eh.termination_date > CURRENT_DATE)")
-
+            
             if conditions:
                 query += " AND " + " AND ".join(conditions)
-
-            # Sortierung
-            sort_map = {
-                'leistungsgrad': 'leistungsgrad DESC NULLS LAST',
-                'stempelzeit': 'stempelzeit DESC',
-                'aw': 'aw DESC',
-                'auftraege': 'auftraege DESC'
-            }
-            query += f" ORDER BY {sort_map.get(sort_by, 'leistungsgrad DESC NULLS LAST')}"
-
-            # Debug: Prüfe Query nach Formatierung
-            count_placeholders_after = query.count('%s')
-            if count_placeholders_after != len(params):
-                # Speichere Query für Debugging
-                with open('/tmp/debug_query.sql', 'w') as f:
-                    f.write(query)
-                with open('/tmp/debug_params.txt', 'w') as f:
-                    f.write(f"Anzahl params: {len(params)}\n")
-                    for i, p in enumerate(params):
-                        f.write(f"  {i}: {p} (type: {type(p).__name__})\n")
-                raise ValueError(
-                    f"Parameter-Anzahl stimmt nicht nach Formatierung! "
-                    f"%s={count_placeholders_after}, params={len(params)}. "
-                    f"Query gespeichert in /tmp/debug_query.sql"
-                )
-
-            cursor.execute(query, params)
-            mechaniker = cursor.fetchall()
-
-            # Convert to list of dicts
-            mechaniker_liste = []
-            for m in mechaniker:
+            
+            cursor.execute(query)
+            mechaniker_details = {row['mechaniker_nr']: row for row in cursor.fetchall()}
+        
+        # Kombiniere Rohdaten, KPIs und Mechaniker-Details
+        mechaniker_liste = []
+        for emp_nr in all_emps:
+            # Nur Mechaniker mit Stempelzeit oder AW
+            if rohdaten[emp_nr]['stempelzeit'] > 0 or rohdaten[emp_nr]['aw'] > 0:
+                # Hole Mechaniker-Details
+                mech_detail = mechaniker_details.get(emp_nr)
+                if not mech_detail:
+                    # Wenn nicht in employees_history, überspringe (nur aktive Mechaniker)
+                    continue
+                
+                kpi_data = kpis.get(emp_nr, {})
+                roh_data = rohdaten[emp_nr]
+                
                 mechaniker_liste.append({
-                    'mechaniker_nr': m['mechaniker_nr'],
-                    'name': m['name'],
-                    'betrieb': m['betrieb'],
-                    'betrieb_name': BETRIEB_NAMEN.get(m['betrieb'], 'Unbekannt'),
-                    'ist_aktiv': m['ist_aktiv'],
-                    'tage': int(m['tage'] or 0),
-                    'auftraege': int(m['auftraege'] or 0),
-                    'stempelzeit': float(m['stempelzeit'] or 0),
-                    'stempelzeit_leistungsgrad': float(m.get('stempelzeit_leistungsgrad') or m.get('stempelzeit') or 0),  # TAG 192
-                    'anwesenheit': float(m['anwesenheit'] or 0),
-                    'aw': float(m['aw'] or 0),
-                    'umsatz': float(m['umsatz'] or 0),
-                    'leistungsgrad': float(m['leistungsgrad']) if m['leistungsgrad'] else None,
-                    'produktivitaet': float(m['produktivitaet']) if m['produktivitaet'] else None
+                    'mechaniker_nr': emp_nr,
+                    'name': mech_detail['name'],
+                    'betrieb': mech_detail['betrieb'],
+                    'betrieb_name': BETRIEB_NAMEN.get(mech_detail['betrieb'], 'Unbekannt'),
+                    'ist_aktiv': mech_detail['ist_aktiv'],
+                    'tage': roh_data['tage'],
+                    'auftraege': roh_data['auftraege'],
+                    'stempelzeit': round(roh_data['stempelzeit'], 0),
+                    'stempelzeit_leistungsgrad': round(roh_data['stempelzeit_leistungsgrad'], 0),
+                    'anwesenheit': round(roh_data['anwesenheit'], 0),
+                    'aw': round(roh_data['aw'], 1),
+                    'umsatz': round(roh_data['umsatz'], 2),
+                    'leistungsgrad': kpi_data.get('leistungsgrad'),
+                    'produktivitaet': kpi_data.get('produktivitaet')
                 })
-
-            # Gesamt-KPIs
-            gesamt_auftraege = sum(m['auftraege'] for m in mechaniker_liste)
-            gesamt_stempelzeit = sum(m['stempelzeit'] for m in mechaniker_liste)
-            # TAG 192: Gesamt-Stempelzeit für Leistungsgrad (verwendet stempelzeit_leistungsgrad)
-            gesamt_stempelzeit_leistungsgrad = sum(m.get('stempelzeit_leistungsgrad', m.get('stempelzeit', 0)) for m in mechaniker_liste)
-            gesamt_anwesenheit = sum(m['anwesenheit'] for m in mechaniker_liste)
-            gesamt_aw = sum(m['aw'] for m in mechaniker_liste)
-            gesamt_umsatz = sum(m['umsatz'] for m in mechaniker_liste)
-
-            # TAG 192: Gesamt-Leistungsgrad mit stempelzeit_leistungsgrad berechnen (wie bei einzelnen Mechanikern)
-            #          Formel: (AW * 60) / Stempelzeit_Leistungsgrad * 100
-            #          AW ist in Stunden, daher * 60 um auf Minuten zu kommen
-            gesamt_leistungsgrad = round(gesamt_aw * 60 / gesamt_stempelzeit_leistungsgrad * 100, 1) if gesamt_stempelzeit_leistungsgrad > 0 else 0
-            gesamt_produktivitaet = round(gesamt_stempelzeit / gesamt_anwesenheit * 100, 1) if gesamt_anwesenheit > 0 else 0
-
-            # Anzahl Arbeitstage
+        
+        # Sortierung
+        sort_map = {
+            'leistungsgrad': lambda x: (x['leistungsgrad'] is not None, x['leistungsgrad'] or 0),
+            'stempelzeit': lambda x: x['stempelzeit'],
+            'aw': lambda x: x['aw'],
+            'auftraege': lambda x: x['auftraege']
+        }
+        reverse_map = {
+            'leistungsgrad': True,
+            'stempelzeit': True,
+            'aw': True,
+            'auftraege': True
+        }
+        sort_key = sort_map.get(sort_by, sort_map['leistungsgrad'])
+        reverse = reverse_map.get(sort_by, True)
+        mechaniker_liste.sort(key=sort_key, reverse=reverse)
+        
+        # Gesamt-KPIs
+        gesamt_auftraege = sum(m['auftraege'] for m in mechaniker_liste)
+        gesamt_stempelzeit = sum(m['stempelzeit'] for m in mechaniker_liste)
+        gesamt_stempelzeit_leistungsgrad = sum(m['stempelzeit_leistungsgrad'] for m in mechaniker_liste)
+        gesamt_anwesenheit = sum(m['anwesenheit'] for m in mechaniker_liste)
+        gesamt_aw = sum(m['aw'] for m in mechaniker_liste)
+        gesamt_umsatz = sum(m['umsatz'] for m in mechaniker_liste)
+        
+        # Gesamt-Leistungsgrad
+        gesamt_leistungsgrad = round(gesamt_aw * 60 / gesamt_stempelzeit_leistungsgrad * 100, 1) if gesamt_stempelzeit_leistungsgrad > 0 else None
+        gesamt_produktivitaet = round(gesamt_stempelzeit / gesamt_anwesenheit * 100, 1) if gesamt_anwesenheit > 0 else None
+        
+        # Anzahl Arbeitstage
+        with locosoft_session() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
             cursor.execute("""
                 SELECT COUNT(DISTINCT DATE(start_time)) as count
                 FROM times
@@ -819,6 +589,710 @@ class WerkstattData:
                 {'datum': str(r['datum']), 'leistungsgrad': float(r['leistungsgrad'] or 0)}
                 for r in cursor.fetchall()
             ]
+
+    # =========================================================================
+    # REFACTORED KPI FUNCTIONS (TAG 194)
+    # =========================================================================
+    # Separate Funktionen für bessere Wartbarkeit und Testbarkeit
+
+    @staticmethod
+    def get_stempelungen_dedupliziert(
+        von: date,
+        bis: date,
+        leerlauf_filter: str = ""
+    ) -> List[Dict[str, Any]]:
+        """
+        Holt deduplizierte Stempelungen (type=2) für Zeitraum.
+        
+        Args:
+            von: Startdatum
+            bis: Enddatum
+            leerlauf_filter: SQL-Filter für Leerlaufaufträge (z.B. "AND t.order_number != ALL(ARRAY[...])")
+        
+        Returns:
+            List mit Dicts: {employee_number, datum, start_time, end_time, order_number}
+        """
+        with locosoft_session() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            query = f"""
+                SELECT DISTINCT ON (employee_number, DATE(start_time), start_time, end_time)
+                    employee_number,
+                    DATE(start_time) as datum,
+                    start_time,
+                    end_time,
+                    order_number
+                FROM times t
+                WHERE type = 2
+                  AND end_time IS NOT NULL
+                  AND order_number > 0
+                  {leerlauf_filter}
+                  AND start_time >= %s AND start_time < %s + INTERVAL '1 day'
+                ORDER BY employee_number, DATE(start_time), start_time, end_time
+            """
+            
+            cursor.execute(query, [von, bis])
+            return rows_to_list(cursor.fetchall())
+
+    @staticmethod
+    def get_stempelzeit_locosoft(
+        von: date,
+        bis: date,
+        leerlauf_filter: str = ""
+    ) -> Dict[int, Dict[str, Any]]:
+        """
+        Berechnet Stempelzeit nach Locosoft-Logik (Zeit-Spanne - Lücken - Pausen).
+        
+        Args:
+            von: Startdatum
+            bis: Enddatum
+            leerlauf_filter: SQL-Filter für Leerlaufaufträge
+        
+        Returns:
+            Dict: {employee_number: {tage, auftraege, stempel_min}}
+        """
+        with locosoft_session() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            query = f"""
+                WITH
+                stempelungen_dedupliziert AS (
+                    SELECT DISTINCT ON (employee_number, DATE(start_time), start_time, end_time)
+                        employee_number,
+                        DATE(start_time) as datum,
+                        start_time,
+                        end_time,
+                        order_number
+                    FROM times t
+                    WHERE type = 2
+                      AND end_time IS NOT NULL
+                      AND order_number > 0
+                      {leerlauf_filter}
+                      AND start_time >= %s AND start_time < %s + INTERVAL '1 day'
+                    ORDER BY employee_number, DATE(start_time), start_time, end_time
+                ),
+                tages_spannen AS (
+                    SELECT
+                        employee_number,
+                        datum,
+                        MIN(start_time) as erste_stempelung,
+                        MAX(end_time) as letzte_stempelung,
+                        COUNT(DISTINCT order_number) as auftraege,
+                        EXTRACT(EPOCH FROM (MAX(end_time) - MIN(start_time))) / 60 as spanne_minuten
+                    FROM stempelungen_dedupliziert
+                    GROUP BY employee_number, datum
+                ),
+                luecken_pro_tag AS (
+                    SELECT
+                        s1.employee_number,
+                        s1.datum,
+                        SUM(EXTRACT(EPOCH FROM (s2.start_time - s1.end_time)) / 60) as luecken_minuten
+                    FROM stempelungen_dedupliziert s1
+                    JOIN stempelungen_dedupliziert s2 
+                        ON s1.employee_number = s2.employee_number 
+                        AND s1.datum = s2.datum
+                        AND s2.start_time > s1.end_time
+                        AND NOT EXISTS (
+                            SELECT 1 FROM stempelungen_dedupliziert s3
+                            WHERE s3.employee_number = s1.employee_number
+                              AND s3.datum = s1.datum
+                              AND s3.start_time > s1.end_time
+                              AND s3.start_time < s2.start_time
+                        )
+                    GROUP BY s1.employee_number, s1.datum
+                ),
+                pausenzeiten_pro_tag AS (
+                    SELECT
+                        ts.employee_number,
+                        ts.datum,
+                        SUM(
+                            CASE 
+                                WHEN eb.break_start IS NOT NULL 
+                                     AND eb.break_end IS NOT NULL
+                                     AND eb.break_start < eb.break_end
+                                     AND (eb.break_start < EXTRACT(HOUR FROM ts.letzte_stempelung)::numeric + EXTRACT(MINUTE FROM ts.letzte_stempelung)::numeric / 60.0)
+                                     AND (eb.break_end > EXTRACT(HOUR FROM ts.erste_stempelung)::numeric + EXTRACT(MINUTE FROM ts.erste_stempelung)::numeric / 60.0)
+                                THEN (eb.break_end - eb.break_start) * 60.0
+                                ELSE 0
+                            END
+                        ) as pausen_minuten
+                    FROM tages_spannen ts
+                    LEFT JOIN employees_breaktimes eb 
+                        ON ts.employee_number = eb.employee_number
+                        AND EXTRACT(DOW FROM ts.datum) = eb.dayofweek
+                        AND eb.validity_date <= ts.datum
+                        AND (eb.is_latest_record IS NULL OR eb.is_latest_record = true)
+                    GROUP BY ts.employee_number, ts.datum
+                ),
+                stempelzeit_locosoft AS (
+                    SELECT
+                        ts.employee_number,
+                        ts.datum,
+                        ts.auftraege,
+                        ROUND((ts.spanne_minuten 
+                               - COALESCE(l.luecken_minuten, 0) 
+                               - COALESCE(p.pausen_minuten, 0))::numeric, 0) as stempel_min
+                    FROM tages_spannen ts
+                    LEFT JOIN luecken_pro_tag l 
+                        ON ts.employee_number = l.employee_number 
+                        AND ts.datum = l.datum
+                    LEFT JOIN pausenzeiten_pro_tag p 
+                        ON ts.employee_number = p.employee_number 
+                        AND ts.datum = p.datum
+                )
+                SELECT
+                    employee_number,
+                    COUNT(DISTINCT datum) as tage,
+                    SUM(auftraege) as auftraege,
+                    SUM(stempel_min) as stempel_min
+                FROM stempelzeit_locosoft
+                WHERE stempel_min > 0
+                GROUP BY employee_number
+            """
+            
+            cursor.execute(query, [von, bis])
+            result = {}
+            for row in cursor.fetchall():
+                result[row['employee_number']] = {
+                    'tage': int(row['tage']),
+                    'auftraege': int(row['auftraege']),
+                    'stempel_min': float(row['stempel_min'])
+                }
+            return result
+
+    @staticmethod
+    def get_stempelzeit_leistungsgrad(
+        von: date,
+        bis: date,
+        leerlauf_filter: str = ""
+    ) -> Dict[int, float]:
+        """
+        Berechnet Stempelzeit für Leistungsgrad (Summe aller gestempelten Zeiten).
+        
+        Args:
+            von: Startdatum
+            bis: Enddatum
+            leerlauf_filter: SQL-Filter für Leerlaufaufträge
+        
+        Returns:
+            Dict: {employee_number: stempel_min_leistungsgrad}
+        """
+        with locosoft_session() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            query = f"""
+                SELECT
+                    t.employee_number,
+                    SUM(EXTRACT(EPOCH FROM (t.end_time - t.start_time)) / 60) as stempel_min_leistungsgrad
+                FROM (
+                    SELECT DISTINCT ON (t.employee_number, DATE(t.start_time), t.start_time, t.end_time)
+                        t.employee_number,
+                        t.start_time,
+                        t.end_time
+                    FROM times t
+                    WHERE t.type = 2
+                      AND t.end_time IS NOT NULL
+                      AND t.order_number > 31
+                      {leerlauf_filter}
+                      AND t.start_time >= %s AND t.start_time < %s + INTERVAL '1 day'
+                    ORDER BY t.employee_number, DATE(t.start_time), t.start_time, t.end_time
+                ) t
+                GROUP BY t.employee_number
+            """
+            
+            cursor.execute(query, [von, bis])
+            result = {}
+            for row in cursor.fetchall():
+                result[row['employee_number']] = float(row['stempel_min_leistungsgrad'] or 0)
+            return result
+
+    @staticmethod
+    def get_stempelungen_roh(
+        von: date,
+        bis: date
+    ) -> List[Dict[str, Any]]:
+        """
+        Holt position-basierte Stempelungen (TAG 194).
+        
+        Args:
+            von: Startdatum
+            bis: Enddatum
+        
+        Returns:
+            List mit Dicts: {employee_number, order_number, order_position, 
+                           order_position_line, start_time, end_time, stempel_minuten}
+        """
+        with locosoft_session() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            query = """
+                SELECT DISTINCT ON (t.employee_number, t.order_number, t.order_position, t.order_position_line, t.start_time, t.end_time)
+                    t.employee_number,
+                    t.order_number,
+                    t.order_position,
+                    t.order_position_line,
+                    t.start_time,
+                    t.end_time,
+                    EXTRACT(EPOCH FROM (t.end_time - t.start_time)) / 60 as stempel_minuten
+                FROM times t
+                WHERE t.type = 2
+                    AND t.end_time IS NOT NULL
+                    AND t.order_number > 31
+                    AND t.order_position IS NOT NULL
+                    AND t.order_position_line IS NOT NULL
+                    AND t.start_time >= %s AND t.start_time < %s + INTERVAL '1 day'
+                ORDER BY t.employee_number, t.order_number, t.order_position, t.order_position_line, t.start_time, t.end_time
+            """
+            
+            cursor.execute(query, [von, bis])
+            return rows_to_list(cursor.fetchall())
+
+    @staticmethod
+    def get_anwesenheit_rohdaten(
+        von: date,
+        bis: date
+    ) -> Dict[int, Dict[str, Any]]:
+        """
+        Holt Anwesenheitsdaten (type=1) für KPI-Berechnung.
+        
+        Args:
+            von: Startdatum
+            bis: Enddatum
+        
+        Returns:
+            Dict: {employee_number: {tage, anwesend_min}}
+        """
+        with locosoft_session() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            query = """
+                SELECT
+                    employee_number,
+                    DATE(start_time) as datum,
+                    SUM(EXTRACT(EPOCH FROM (end_time - start_time)) / 60) as anwesend_min
+                FROM times
+                WHERE type = 1
+                  AND end_time IS NOT NULL
+                  AND start_time >= %s AND start_time < %s + INTERVAL '1 day'
+                GROUP BY employee_number, DATE(start_time)
+            """
+            
+            cursor.execute(query, [von, bis])
+            result = {}
+            for row in cursor.fetchall():
+                emp_nr = row['employee_number']
+                if emp_nr not in result:
+                    result[emp_nr] = {'tage': 0, 'anwesend_min': 0.0}
+                result[emp_nr]['tage'] += 1
+                result[emp_nr]['anwesend_min'] += float(row['anwesend_min'])
+            return result
+
+    @staticmethod
+    def get_st_anteil_position_basiert(
+        von: date,
+        bis: date
+    ) -> Dict[int, float]:
+        """
+        Berechnet Stmp.Anteil position-basiert mit anteiliger Verteilung (TAG 194).
+        
+        Locosoft-Definition: "Der Stmp Anteil ergibt sich aus der Summe aller 
+        Stempelungen des Monteurs auf Auftragspositionen."
+        
+        Wenn mehrere Monteure auf eine Position oder ein Monteur auf mehrere 
+        Positionen stempelt, wird dies anteilig verteilt.
+        
+        TAG 194: Positionen ohne AW werden IGNORIERT, wenn es auch Positionen 
+        mit AW gibt. Die gesamte Stempelzeit wird dann nur auf Positionen mit AW 
+        verteilt (anteilig nach AW).
+        
+        Args:
+            von: Startdatum
+            bis: Enddatum
+        
+        Returns:
+            Dict: {employee_number: stempelanteil_minuten}
+        """
+        with locosoft_session() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            # TAG 194: Positionen ohne AW - Logik noch zu klären
+            query = """
+                WITH
+                stempelungen_roh AS (
+                    SELECT DISTINCT ON (t.employee_number, t.order_number, t.order_position, t.order_position_line, t.start_time, t.end_time)
+                        t.employee_number,
+                        t.order_number,
+                        t.order_position,
+                        t.order_position_line,
+                        t.start_time,
+                        t.end_time,
+                        EXTRACT(EPOCH FROM (t.end_time - t.start_time)) / 60 as stempel_minuten,
+                        o.subsidiary as betrieb
+                    FROM times t
+                    JOIN orders o ON t.order_number = o.number
+                    WHERE t.type = 2
+                        AND t.end_time IS NOT NULL
+                        AND t.order_number > 31
+                        AND t.order_position IS NOT NULL
+                        AND t.order_position_line IS NOT NULL
+                        AND t.start_time >= %s AND t.start_time < %s + INTERVAL '1 day'
+                    ORDER BY t.employee_number, t.order_number, t.order_position, t.order_position_line, t.start_time, t.end_time
+                ),
+                stempelungen_mit_aw AS (
+                    SELECT
+                        sr.employee_number,
+                        sr.order_number,
+                        sr.order_position,
+                        sr.order_position_line,
+                        sr.start_time,
+                        sr.end_time,
+                        sr.stempel_minuten,
+                        sr.betrieb,
+                        COALESCE(l.time_units, 0) as aw_position
+                    FROM stempelungen_roh sr
+                    LEFT JOIN labours l ON sr.order_number = l.order_number
+                        AND sr.order_position = l.order_position
+                        AND sr.order_position_line = l.order_position_line
+                ),
+                gesamt_aw_pro_stempelung AS (
+                    SELECT
+                        employee_number,
+                        order_number,
+                        start_time,
+                        end_time,
+                        SUM(aw_position) as gesamt_aw_stempelung,
+                        COUNT(*) as anzahl_positionen,
+                        SUM(CASE WHEN aw_position = 0 THEN 1 ELSE 0 END) as anzahl_positionen_ohne_aw
+                    FROM stempelungen_mit_aw
+                    GROUP BY employee_number, order_number, start_time, end_time
+                ),
+                stempelungen_mit_anteil AS (
+                    SELECT
+                        sma.employee_number,
+                        sma.order_number,
+                        sma.order_position,
+                        sma.order_position_line,
+                        sma.stempel_minuten,
+                        sma.aw_position,
+                        sma.betrieb,
+                        gas.gesamt_aw_stempelung,
+                        gas.anzahl_positionen,
+                        gas.anzahl_positionen_ohne_aw
+                    FROM stempelungen_mit_aw sma
+                    JOIN gesamt_aw_pro_stempelung gas 
+                        ON sma.employee_number = gas.employee_number
+                        AND sma.order_number = gas.order_number
+                        AND sma.start_time = gas.start_time
+                        AND sma.end_time = gas.end_time
+                ),
+                stempelanteil_pro_position AS (
+                    SELECT
+                        sma.employee_number,
+                        sma.order_number,
+                        sma.order_position,
+                        sma.order_position_line,
+                        CASE
+                            WHEN sma.gesamt_aw_stempelung > 0 AND sma.aw_position > 0 THEN
+                                -- Position MIT AW: Anteilig nach AW
+                                sma.stempel_minuten * (sma.aw_position / sma.gesamt_aw_stempelung)
+                            WHEN sma.gesamt_aw_stempelung > 0 AND sma.aw_position = 0 THEN
+                                -- Position OHNE AW: IGNORIERT wenn es auch Positionen MIT AW gibt
+                                -- (Die gesamte Stempelzeit wird nur auf Positionen MIT AW verteilt)
+                                0
+                            ELSE
+                                -- Wenn ALLE Positionen 0 AW haben: Gleichmäßig auf alle Positionen verteilen
+                                sma.stempel_minuten / sma.anzahl_positionen
+                        END as stempelanteil_minuten
+                    FROM stempelungen_mit_anteil sma
+                )
+                SELECT
+                    employee_number,
+                    SUM(stempelanteil_minuten) as stempelanteil_minuten
+                FROM stempelanteil_pro_position
+                GROUP BY employee_number
+            """
+            
+            cursor.execute(query, (von, bis))
+            result = {}
+            for row in cursor.fetchall():
+                result[row['employee_number']] = float(row['stempelanteil_minuten'] or 0)
+            return result
+
+    @staticmethod
+    def get_aw_verrechnet(
+        von: date,
+        bis: date
+    ) -> Dict[int, Dict[str, float]]:
+        """
+        Berechnet AW-Anteil und Umsatz pro Mechaniker (position-basiert, TAG 194).
+        
+        Args:
+            von: Startdatum
+            bis: Enddatum
+        
+        Returns:
+            Dict: {employee_number: {aw, umsatz}}
+            - aw: In Stunden (SUM(aw_anteil) / 10.0)
+            - umsatz: In EUR
+        """
+        with locosoft_session() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            query = """
+                WITH
+                stempelungen_roh AS (
+                    SELECT DISTINCT ON (t.employee_number, t.order_number, t.order_position, t.order_position_line, t.start_time, t.end_time)
+                        t.employee_number,
+                        t.order_number,
+                        t.order_position,
+                        t.order_position_line,
+                        t.start_time,
+                        t.end_time,
+                        EXTRACT(EPOCH FROM (t.end_time - t.start_time)) / 60 as stempel_minuten
+                    FROM times t
+                    WHERE t.type = 2
+                        AND t.end_time IS NOT NULL
+                        AND t.order_number > 31
+                        AND t.order_position IS NOT NULL
+                        AND t.order_position_line IS NOT NULL
+                        AND t.start_time >= %s AND t.start_time < %s + INTERVAL '1 day'
+                    ORDER BY t.employee_number, t.order_number, t.order_position, t.order_position_line, t.start_time, t.end_time
+                ),
+                stempelungen_mit_anteil AS (
+                    SELECT
+                        sr.employee_number,
+                        sr.order_number,
+                        sr.order_position,
+                        sr.order_position_line,
+                        sr.start_time,
+                        sr.end_time,
+                        sr.stempel_minuten,
+                        l.time_units as aw_position,
+                        SUM(l.time_units) OVER (
+                            PARTITION BY sr.employee_number, sr.order_number, sr.start_time, sr.end_time
+                        ) as gesamt_aw_stempelung
+                    FROM stempelungen_roh sr
+                    JOIN labours l ON sr.order_number = l.order_number
+                        AND sr.order_position = l.order_position
+                        AND sr.order_position_line = l.order_position_line
+                    WHERE l.time_units > 0
+                ),
+                stempelanteil_pro_position AS (
+                    SELECT
+                        employee_number,
+                        order_number,
+                        order_position,
+                        order_position_line,
+                        SUM(stempel_minuten * (aw_position / NULLIF(gesamt_aw_stempelung, 0))) as stempelanteil_minuten
+                    FROM stempelungen_mit_anteil
+                    GROUP BY employee_number, order_number, order_position, order_position_line
+                ),
+                gesamt_stempelzeit_pro_position AS (
+                    SELECT
+                        order_number,
+                        order_position,
+                        order_position_line,
+                        SUM(stempelanteil_minuten) as gesamt_stempel_minuten
+                    FROM stempelanteil_pro_position
+                    GROUP BY order_number, order_position, order_position_line
+                ),
+                aw_anteil_pro_position AS (
+                    SELECT
+                        sap.employee_number,
+                        sap.order_number,
+                        sap.order_position,
+                        sap.order_position_line,
+                        l.time_units * (sap.stempelanteil_minuten / NULLIF(gst.gesamt_stempel_minuten, 0)) as aw_anteil
+                    FROM stempelanteil_pro_position sap
+                    JOIN gesamt_stempelzeit_pro_position gst 
+                        ON sap.order_number = gst.order_number
+                        AND sap.order_position = gst.order_position
+                        AND sap.order_position_line = gst.order_position_line
+                    JOIN labours l 
+                        ON sap.order_number = l.order_number
+                        AND sap.order_position = l.order_position
+                        AND sap.order_position_line = l.order_position_line
+                    WHERE l.time_units > 0
+                )
+                SELECT
+                    employee_number,
+                    SUM(aw_anteil) / 10.0 as aw,  -- In Stunden (1 AW = 0.1 Stunden)
+                    SUM(l.net_price_in_order) as umsatz
+                FROM aw_anteil_pro_position aap
+                JOIN labours l 
+                    ON aap.order_number = l.order_number
+                    AND aap.order_position = l.order_position
+                    AND aap.order_position_line = l.order_position_line
+                GROUP BY employee_number
+            """
+            
+            cursor.execute(query, [von, bis])
+            result = {}
+            for row in cursor.fetchall():
+                result[row['employee_number']] = {
+                    'aw': float(row['aw'] or 0),
+                    'umsatz': float(row['umsatz'] or 0)
+                }
+            return result
+
+    @staticmethod
+    def berechne_st_anteil_hybrid(
+        stempelzeit_locosoft: Dict[int, Dict[str, Any]],
+        stempelungen_roh: List[Dict[str, Any]]
+    ) -> Dict[int, float]:
+        """
+        Berechnet St-Anteil nach Hybrid-Ansatz (TAG 194):
+        - Basis: Zeit-Spanne (aus stempelzeit_locosoft)
+        - Plus: 10.6% der Stempelzeit für Positionen OHNE AW auf Aufträgen MIT AW
+        
+        Args:
+            stempelzeit_locosoft: {employee_number: {tage, auftraege, stempel_min}}
+            stempelungen_roh: List mit position-basierten Stempelungen
+        
+        Returns:
+            Dict: {employee_number: stempel_min_hybrid}
+        """
+        # 1. Finde Aufträge mit AW
+        auftraege_mit_aw = set()
+        for stempelung in stempelungen_roh:
+            auftraege_mit_aw.add(stempelung['order_number'])
+        
+        # 2. Prüfe welche Aufträge tatsächlich AW haben
+        with locosoft_session() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            if auftraege_mit_aw:
+                query = """
+                    SELECT DISTINCT order_number
+                    FROM labours
+                    WHERE order_number = ANY(%s)
+                      AND time_units > 0
+                """
+                cursor.execute(query, [list(auftraege_mit_aw)])
+                auftraege_mit_aw = {row['order_number'] for row in cursor.fetchall()}
+        
+        # 3. Finde Positionen OHNE AW auf Aufträgen MIT AW
+        positionen_ohne_aw = {}
+        for stempelung in stempelungen_roh:
+            if stempelung['order_number'] in auftraege_mit_aw:
+                emp_nr = stempelung['employee_number']
+                if emp_nr not in positionen_ohne_aw:
+                    positionen_ohne_aw[emp_nr] = 0.0
+                
+                # Prüfe ob Position AW hat
+                with locosoft_session() as conn:
+                    cursor = conn.cursor(cursor_factory=RealDictCursor)
+                    query = """
+                        SELECT COUNT(*) as hat_aw
+                        FROM labours
+                        WHERE order_number = %s
+                          AND order_position = %s
+                          AND order_position_line = %s
+                          AND time_units > 0
+                    """
+                    cursor.execute(query, [
+                        stempelung['order_number'],
+                        stempelung['order_position'],
+                        stempelung['order_position_line']
+                    ])
+                    hat_aw = cursor.fetchone()['hat_aw'] > 0
+                    
+                    if not hat_aw:
+                        positionen_ohne_aw[emp_nr] += float(stempelung['stempel_minuten'])
+        
+        # 4. Berechne Hybrid: Zeit-Spanne + 10.6% der Positionen ohne AW
+        result = {}
+        for emp_nr, data in stempelzeit_locosoft.items():
+            basis = data['stempel_min']
+            zusatz = positionen_ohne_aw.get(emp_nr, 0.0) * 0.106  # 10.6%
+            result[emp_nr] = basis + zusatz
+        
+        return result
+
+    @staticmethod
+    def berechne_mechaniker_kpis_aus_rohdaten(
+        rohdaten: Dict[int, Dict[str, Any]]
+    ) -> Dict[int, Dict[str, Any]]:
+        """
+        Berechnet alle KPIs für Mechaniker aus Rohdaten.
+        Nutzt utils/kpi_definitions.py (SSOT).
+        
+        Args:
+            rohdaten: {
+                employee_number: {
+                    'tage': int,
+                    'auftraege': int,
+                    'stempelzeit': float,  # Minuten (Hybrid)
+                    'stempelzeit_leistungsgrad': float,  # Minuten
+                    'anwesenheit': float,  # Minuten
+                    'aw': float,  # Stunden
+                    'umsatz': float  # EUR
+                }
+            }
+        
+        Returns:
+            {
+                employee_number: {
+                    'leistungsgrad': float,
+                    'produktivitaet': float,
+                    'anwesenheitsgrad': float,
+                    'auslastungsgrad': float,
+                    ...
+                }
+            }
+        """
+        from utils.kpi_definitions import (
+            berechne_leistungsgrad,
+            berechne_produktivitaet,
+            berechne_anwesenheitsgrad,
+            berechne_auslastungsgrad,
+            minuten_zu_aw,
+            minuten_zu_stunden,
+            aw_zu_stunden
+        )
+        
+        result = {}
+        
+        for emp_nr, data in rohdaten.items():
+            # Konvertiere Einheiten
+            stempelzeit_min = data.get('stempelzeit', 0)
+            stempelzeit_leistungsgrad_min = data.get('stempelzeit_leistungsgrad', 0)
+            anwesenheit_min = data.get('anwesenheit', 0)
+            aw_stunden = data.get('aw', 0)
+            tage = data.get('tage', 0)
+            
+            # TAG 194: Leistungsgrad-Berechnung korrigiert
+            # Locosoft-Formel: Leistungsgrad = (AW * 6) / Stempelzeit_Leistungsgrad * 100
+            # AW ist in Stunden (z.B. 90.41h)
+            # AW in Minuten = AW (Stunden) * 10 AW/h * 6 Min/AW = AW (Stunden) * 60 Min/h
+            # Also: Leistungsgrad = (AW * 60) / Stempelzeit_Leistungsgrad * 100
+            if stempelzeit_leistungsgrad_min > 0 and aw_stunden > 0:
+                leistungsgrad = round((aw_stunden * 60 / stempelzeit_leistungsgrad_min * 100), 1)
+            else:
+                leistungsgrad = None
+            
+            # Für andere KPIs: Konvertiere für KPI-Berechnung
+            stempelzeit_aw = minuten_zu_aw(stempelzeit_leistungsgrad_min)
+            vorgabe_aw = aw_stunden * 10  # Stunden zu AW (1h = 10 AW) - KORRIGIERT
+            produktivitaet = berechne_produktivitaet(stempelzeit_min, anwesenheit_min)
+            
+            # Anwesenheitsgrad: Bezahlte Zeit = tage * 8h
+            bezahlt_h = tage * 8.0
+            anwesend_h = minuten_zu_stunden(anwesenheit_min)
+            anwesenheitsgrad = berechne_anwesenheitsgrad(anwesend_h, bezahlt_h)
+            
+            # Auslastungsgrad
+            gestempelt_h = minuten_zu_stunden(stempelzeit_min)
+            auslastungsgrad = berechne_auslastungsgrad(gestempelt_h, anwesend_h)
+            
+            result[emp_nr] = {
+                'leistungsgrad': leistungsgrad,
+                'produktivitaet': produktivitaet,
+                'anwesenheitsgrad': anwesenheitsgrad,
+                'auslastungsgrad': auslastungsgrad
+            }
+        
+        return result
 
     # =========================================================================
     # AUFTRÄGE (Jobs / Orders)
@@ -1506,9 +1980,18 @@ class WerkstattData:
             produktiv_raw = cursor.fetchall()
 
             # =====================================================================
-            # 2. LEERLAUF-STEMPELUNGEN (Auftrag 31)
+            # 2. LEERLAUF-STEMPELUNGEN (TAG 194 - Dynamisch aus LEERLAUF_AUFTRAEGE_PRO_BETRIEB)
             # =====================================================================
-            leerlauf_query = """
+            # SSOT: Verwende dynamische Leerlaufaufträge-Liste
+            leerlauf_auftraege_alle = []
+            for b_leerlauf in LEERLAUF_AUFTRAEGE_PRO_BETRIEB.values():
+                leerlauf_auftraege_alle.extend(b_leerlauf)
+            leerlauf_auftraege_alle = list(set(leerlauf_auftraege_alle))
+            
+            # Baue ARRAY-String für PostgreSQL
+            leerlauf_array_str = ','.join(map(str, leerlauf_auftraege_alle))
+            
+            leerlauf_query = f"""
                 WITH leerlauf_stempelungen AS (
                     SELECT DISTINCT ON (t.employee_number)
                         t.employee_number,
@@ -1517,7 +2000,7 @@ class WerkstattData:
                     FROM times t
                     WHERE t.end_time IS NULL
                       AND t.type = 2
-                      AND t.order_number = 31
+                      AND t.order_number = ANY(ARRAY[{leerlauf_array_str}])
                       AND DATE(t.start_time) = %s
                     ORDER BY t.employee_number, t.start_time DESC
                 )
@@ -3067,21 +3550,28 @@ class WerkstattData:
             datum = date.today()
 
         datum_str = datum.strftime('%Y-%m-%d')
+        
+        # TAG 194: Leerlaufaufträge dynamisch (SSOT)
+        leerlauf_auftraege_alle = []
+        for b_leerlauf in LEERLAUF_AUFTRAEGE_PRO_BETRIEB.values():
+            leerlauf_auftraege_alle.extend(b_leerlauf)
+        leerlauf_auftraege_alle = list(set(leerlauf_auftraege_alle))
+        leerlauf_liste_str = ','.join(map(str, leerlauf_auftraege_alle)) if leerlauf_auftraege_alle else '0'
 
         with locosoft_session() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
 
-            cur.execute('''
+            cur.execute(f'''
                 WITH stempelungen AS (
                     SELECT
                         t.employee_number,
                         MIN(t.start_time) as erster_start,
                         MAX(COALESCE(t.end_time, NOW())) as letztes_ende,
-                        COUNT(DISTINCT t.order_number) FILTER (WHERE t.order_number > 31) as anzahl_auftraege,
+                        COUNT(DISTINCT t.order_number) FILTER (WHERE t.order_number != ALL(ARRAY[{leerlauf_liste_str}])) as anzahl_auftraege,
                         SUM(EXTRACT(EPOCH FROM (COALESCE(t.end_time, NOW()) - t.start_time))/60)
-                            FILTER (WHERE t.order_number > 31) as produktiv_min,
+                            FILTER (WHERE t.order_number != ALL(ARRAY[{leerlauf_liste_str}])) as produktiv_min,
                         SUM(EXTRACT(EPOCH FROM (COALESCE(t.end_time, NOW()) - t.start_time))/60)
-                            FILTER (WHERE t.order_number = 31) as leerlauf_min,
+                            FILTER (WHERE t.order_number = ANY(ARRAY[{leerlauf_liste_str}])) as leerlauf_min,
                         MAX(CASE WHEN t.end_time IS NULL THEN t.order_number END) as aktiver_auftrag,
                         MAX(CASE WHEN t.end_time IS NULL THEN t.start_time END) as aktiv_seit
                     FROM times t

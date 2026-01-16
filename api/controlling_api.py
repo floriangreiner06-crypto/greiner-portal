@@ -470,6 +470,7 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
     # TAG182: Landau verwendet jetzt branch_number=3 (nicht mehr 6. Ziffer='2')
     # TAG 179: Konten-Ranges zentral verwenden
     # TAG187: 743002 ("EW Fremdleistungen für Kunden") ausschließen - gehört nicht zu normalen Einsatzwerten
+    # TAG196: Nur 743002 ausschließen - 727001, 717001, 727501 bleiben enthalten (BE sonst zu positiv)
     einsatz_range = KONTO_RANGES['einsatz']
     
     cursor.execute(convert_placeholders(f"""
@@ -594,7 +595,8 @@ def _berechne_bwa_werte(cursor, monat: int, jahr: int, firma: str = '0', standor
                 AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
             OR (nominal_account_number BETWEEN 438000 AND 438999
                 AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
-            OR nominal_account_number BETWEEN 498000 AND 499999
+            OR (nominal_account_number BETWEEN 498000 AND 499999
+                AND NOT (nominal_account_number = 498001))
             OR (nominal_account_number BETWEEN 891000 AND 896999
                 AND NOT (nominal_account_number BETWEEN 893200 AND 893299)
                 AND NOT (nominal_account_number BETWEEN 891000 AND 891099))
@@ -1022,6 +1024,7 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
     # TAG182: Landau verwendet jetzt branch_number=3 (nicht mehr 6. Ziffer='2')
     # TAG 179: Konten-Ranges zentral verwenden
     # TAG187: 743002 ("EW Fremdleistungen für Kunden") ausschließen - gehört nicht zu normalen Einsatzwerten
+    # TAG196: Nur 743002 ausschließen - 727001, 717001, 727501 bleiben enthalten (BE sonst zu positiv)
     einsatz_range = KONTO_RANGES['einsatz']
     
     cursor.execute(convert_placeholders(f"""
@@ -1146,7 +1149,8 @@ def _berechne_bwa_ytd(cursor, bis_monat: int, jahr: int, firma: str = '0', stand
                 AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
             OR (nominal_account_number BETWEEN 438000 AND 438999
                 AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
-            OR nominal_account_number BETWEEN 498000 AND 499999
+            OR (nominal_account_number BETWEEN 498000 AND 499999
+                AND NOT (nominal_account_number = 498001))
             OR (nominal_account_number BETWEEN 891000 AND 896999
                 AND NOT (nominal_account_number BETWEEN 893200 AND 893299)
                 AND NOT (nominal_account_number BETWEEN 891000 AND 891099))
@@ -1425,7 +1429,8 @@ def get_bwa_detail():
                         AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
                     OR (nominal_account_number BETWEEN 438000 AND 438999
                         AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
-                    OR nominal_account_number BETWEEN 498000 AND 499999
+                    OR (nominal_account_number BETWEEN 498000 AND 499999
+                AND NOT (nominal_account_number = 498001))
                     OR (nominal_account_number BETWEEN 891000 AND 896999
                         AND NOT (nominal_account_number BETWEEN 893200 AND 893299))
                 )""",
@@ -1640,6 +1645,8 @@ def get_bwa_detail():
 
 # Bereichs-Konfiguration nach erweiterter Struktur
 # Jeder Bereich hat Erlös-Konten (8x) und Einsatz-Konten (7x)
+# TAG196: GlobalCube Schema - Kostenstellen-Mapping
+# 10=NW, 20=GW, 30=Mechanik, 40=Karosserie, 50=Teile, 60=Clean Park, 70=Mietwagen, 80=Sonstiges
 BEREICHE_CONFIG = {
     'NW': {
         'name': 'Neuwagen',
@@ -1655,27 +1662,42 @@ BEREICHE_CONFIG = {
     },
     'ME': {
         'name': 'Mechanik',
-        'erlos_prefix': '84',    # 84xxxx = Lohn (inkl. Mechanik, Karosserie, Lack)
-        'einsatz_prefix': '74',
+        'erlos_prefix': '84',    # 84xxxx = Lohn (ohne Karosserie 8405xx, ohne Lack 8406xx, MIT Clean Park 847xxx)
+        'einsatz_prefix': '74',  # 74xxxx = Einsatz (ohne Karosserie 745xxx, ohne Lack 746xxx, MIT Clean Park 747xxx)
         'order': 3
+    },
+    'KA': {
+        'name': 'Karosserie',
+        'erlos_ranges': [(841000, 841099), (841700, 841799), (841800, 841899)],  # TAG196: 84100, 84170, 84180 (laut GlobalCube Screenshot)
+        'einsatz_ranges': [(741000, 741099), (741700, 741799), (741800, 741899)],  # TAG196: 74100, 74170, 74180 (laut GlobalCube Screenshot)
+        'order': 4
     },
     'TZ': {
         'name': 'Teile & Zubehör',
         'erlos_prefix': '83',
         'einsatz_prefix': '73',
-        'order': 4
+        'order': 5,
+        'exclude_accounts': [837051]  # TAG196: 837051 gehört zu Clean Park, nicht Teile & Zubehör
+    },
+    'CP': {
+        'name': 'Clean Park',
+        'erlos_range': (847000, 847999),  # 847xxx = Clean Park Erlös (ABER 84705, 84708, 84709, 84720, 84700 gehören zu Mechanik!)
+        'einsatz_range': (747000, 747999),  # 747xxx = Clean Park Einsatz
+        'order': 6,
+        'exclude_accounts': [847051, 847081, 847091, 847201, 847001],  # TAG196: Diese Konten gehören zu Mechanik, nicht Clean Park
+        'include_accounts': [837051]  # TAG196: 837051 gehört zu Clean Park (laut GlobalCube Screenshot)
     },
     'MW': {
         'name': 'Mietwagen',
         'erlos_range': (860000, 869999),  # 86xxxx = Sonstige Erlöse (Mietwagen)
         'einsatz_range': (760000, 769999),
-        'order': 5
+        'order': 7
     },
     'SO': {
         'name': 'Sonstige',
         'erlos_range': (850000, 859999),  # 85xxxx = Lack, 88xxxx = Vermietung
         'einsatz_range': (750000, 759999),
-        'order': 6
+        'order': 8
     }
 }
 
@@ -1693,10 +1715,45 @@ def _berechne_bereich_werte(cursor, bereich: str, config: dict, datum_von: str, 
     # Erlöse
     if 'erlos_prefix' in config:
         prefix = config['erlos_prefix']
-        erlos_where = f"nominal_account_number BETWEEN {prefix}0000 AND {prefix}9999"
+        # TAG196: Mechanik - 8405xx (Karosserie) und 8406xx (Lackierung) ausschließen (separate Bereiche)
+        # 847xxx (Clean Park) wird separat angezeigt, ABER 84705 gehört zu Mechanik (laut GlobalCube Screenshot)
+        if bereich == 'ME':
+            # TAG196: Mechanik - 84100/84170/84180 (Karosserie) ausschließen
+            # 8406xx (Lackierung) gehört zu Mechanik (laut GlobalCube Screenshot steht 84060 unter Mechanik!)
+            # Clean Park gehört buchhalterisch zu Mechanik, wird nur fürs Controlling separat ausgewiesen
+            # 847xxx (Clean Park) gehört buchhalterisch komplett zu Mechanik
+            # 837051 gehört zu Clean Park (laut GlobalCube Screenshot) und damit zu Mechanik
+            # Clean Park gehört buchhalterisch zu Mechanik, wird aber separat ausgewiesen
+            # 84705, 84708, 84709, 84720, 84700 gehören zu Mechanik (laut GlobalCube Screenshot)
+            # 847xxx (ohne diese) gehört zu Clean Park (separat), aber buchhalterisch zu Mechanik
+            # 837051 gehört zu Clean Park (laut GlobalCube Screenshot)
+            # Für "Mechanik+Karo" Summe: Mechanik + Clean Park + Karosserie
+            erlos_where = f"nominal_account_number BETWEEN {prefix}0000 AND {prefix}9999 AND nominal_account_number NOT BETWEEN 841000 AND 841099 AND nominal_account_number NOT BETWEEN 841700 AND 841799 AND nominal_account_number NOT BETWEEN 841800 AND 841899 AND (nominal_account_number NOT BETWEEN 847000 AND 847999 OR nominal_account_number IN (847051, 847081, 847091, 847201, 847001))"
+        else:
+            erlos_where = f"nominal_account_number BETWEEN {prefix}0000 AND {prefix}9999"
+    elif 'erlos_ranges' in config:
+        # TAG196: Karosserie verwendet mehrere Ranges (84100, 84170, 84180)
+        ranges = config['erlos_ranges']
+        range_conditions = []
+        for range_start, range_end in ranges:
+            range_conditions.append(f"nominal_account_number BETWEEN {range_start} AND {range_end}")
+        erlos_where = '(' + ' OR '.join(range_conditions) + ')'
     else:
         range_start, range_end = config['erlos_range']
-        erlos_where = f"nominal_account_number BETWEEN {range_start} AND {range_end}"
+        # TAG196: 847051 gehört zu Mechanik, nicht Clean Park
+        exclude_accounts = config.get('exclude_accounts', [])
+        if exclude_accounts:
+            exclude_str = ' AND nominal_account_number NOT IN (' + ','.join(map(str, exclude_accounts)) + ')'
+        else:
+            exclude_str = ''
+        # TAG196: 837051 gehört zu Clean Park (laut GlobalCube Screenshot, obwohl 83xxxx)
+        include_accounts = config.get('include_accounts', [])
+        if include_accounts:
+            # Clean Park = (847xxx ohne 847051) ODER 837051
+            include_str = ' OR nominal_account_number IN (' + ','.join(map(str, include_accounts)) + ')'
+            erlos_where = f"((nominal_account_number BETWEEN {range_start} AND {range_end}{exclude_str}){include_str})"
+        else:
+            erlos_where = f"nominal_account_number BETWEEN {range_start} AND {range_end}{exclude_str}"
 
     cursor.execute(convert_placeholders(f"""
         SELECT COALESCE(SUM(
@@ -1711,9 +1768,25 @@ def _berechne_bereich_werte(cursor, bereich: str, config: dict, datum_von: str, 
     erlos = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
     # Einsatz (TAG157: firma_filter_einsatz für korrekte Standort-Zuordnung!)
+    # TAG187: 743002 ("EW Fremdleistungen für Kunden") ausschließen - gehört nicht zu normalen Einsatzwerten
+    # TAG196: Nur 743002 ausschließen - 727001, 717001, 727501 bleiben enthalten (BE sonst zu positiv)
+    # TAG196: Mechanik - 74100/74170/74180 (Karosserie) und 746xxx (Lackierung) ausschließen (extern vergeben)
     if 'einsatz_prefix' in config:
         prefix = config['einsatz_prefix']
-        einsatz_where = f"nominal_account_number BETWEEN {prefix}0000 AND {prefix}9999"
+        # TAG196: Mechanik - 74100/74170/74180 (Karosserie) und 746xxx (Lackierung) ausschließen (separate Bereiche)
+        # 74700x und 74720x (Clean Park Einsatz) gehören zu Mechanik (laut GlobalCube Screenshot)
+        # 747xxx (Clean Park) wird separat angezeigt, aber 74700x und 74720x gehören zu Mechanik
+        if bereich == 'ME':
+            einsatz_where = f"nominal_account_number BETWEEN {prefix}0000 AND {prefix}9999 AND nominal_account_number != 743002 AND nominal_account_number NOT BETWEEN 741000 AND 741099 AND nominal_account_number NOT BETWEEN 741700 AND 741799 AND nominal_account_number NOT BETWEEN 741800 AND 741899 AND nominal_account_number NOT BETWEEN 746000 AND 746999 AND (nominal_account_number NOT BETWEEN 747000 AND 747999 OR nominal_account_number BETWEEN 747000 AND 747099 OR nominal_account_number BETWEEN 747200 AND 747299)"
+        else:
+            einsatz_where = f"nominal_account_number BETWEEN {prefix}0000 AND {prefix}9999"
+    elif 'einsatz_ranges' in config:
+        # TAG196: Clean Park verwendet mehrere Ranges (74710x-74719x, 74730x-74799x, ohne 74700x und 74720x)
+        ranges = config['einsatz_ranges']
+        range_conditions = []
+        for range_start, range_end in ranges:
+            range_conditions.append(f"nominal_account_number BETWEEN {range_start} AND {range_end}")
+        einsatz_where = '(' + ' OR '.join(range_conditions) + ')'
     else:
         range_start, range_end = config['einsatz_range']
         einsatz_where = f"nominal_account_number BETWEEN {range_start} AND {range_end}"
@@ -1725,6 +1798,7 @@ def _berechne_bereich_werte(cursor, bereich: str, config: dict, datum_von: str, 
         FROM loco_journal_accountings
         WHERE accounting_date >= %s AND accounting_date < %s
           AND {einsatz_where}
+          AND nominal_account_number != 743002
           {firma_filter_einsatz}
           {guv_filter}
     """), (datum_von, datum_bis))
@@ -1838,7 +1912,8 @@ def get_bwa_v2():
                     AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
                 OR (nominal_account_number BETWEEN 438000 AND 438999
                     AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
-                OR nominal_account_number BETWEEN 498000 AND 499999
+                OR (nominal_account_number BETWEEN 498000 AND 499999
+                AND NOT (nominal_account_number = 498001))
                 OR (nominal_account_number BETWEEN 891000 AND 896999
                     AND NOT (nominal_account_number BETWEEN 893200 AND 893299)
                     AND NOT (nominal_account_number BETWEEN 891000 AND 891099))
@@ -1858,7 +1933,8 @@ def get_bwa_v2():
                         AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
                     OR (nominal_account_number BETWEEN 438000 AND 438999
                         AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
-                    OR nominal_account_number BETWEEN 498000 AND 499999
+                    OR (nominal_account_number BETWEEN 498000 AND 499999
+                AND NOT (nominal_account_number = 498001))
                     OR (nominal_account_number BETWEEN 891000 AND 896999
                         AND NOT (nominal_account_number BETWEEN 893200 AND 893299)
                         AND NOT (nominal_account_number BETWEEN 891000 AND 891099))
@@ -1880,7 +1956,8 @@ def get_bwa_v2():
                     AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
                 OR (nominal_account_number BETWEEN 438000 AND 438999
                     AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
-                OR nominal_account_number BETWEEN 498000 AND 499999
+                OR (nominal_account_number BETWEEN 498000 AND 499999
+                AND NOT (nominal_account_number = 498001))
                 OR (nominal_account_number BETWEEN 891000 AND 896999
                     AND NOT (nominal_account_number BETWEEN 893200 AND 893299)
                     AND NOT (nominal_account_number BETWEEN 891000 AND 891099))
@@ -1932,6 +2009,7 @@ def get_bwa_v2():
             # Gesamt-Einsatz (alle 7er Konten) - TAG157: firma_filter_einsatz!
             # TAG182: Landau verwendet jetzt branch_number=3 (nicht mehr 6. Ziffer='2')
             # TAG187: 743002 ("EW Fremdleistungen für Kunden") ausschließen - gehört nicht zu normalen Einsatzwerten
+            # TAG196: Nur 743002 ausschließen - 727001, 717001, 727501 bleiben enthalten (BE sonst zu positiv)
             cursor.execute(convert_placeholders(f"""
                 SELECT COALESCE(SUM(
                     CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
@@ -1948,17 +2026,20 @@ def get_bwa_v2():
             db1_gesamt = umsatz_gesamt - einsatz_gesamt
 
             # TAG 181: KST-Filter auf Bereiche anwenden
-            # KST-Mapping korrigiert nach Buchhaltung:
-            # - Für Kosten (4xxxxx): 5. Ziffer: 1=NW, 2=GW, 3=Service, 6=T+Z, 7=Mietwagen
+            # TAG196: GlobalCube Schema - Kostenstellen-Mapping
+            # 10=NW, 20=GW, 30=Mechanik (inkl. Clean Park), 40=Karosserie, 50=Teile, 60=Clean Park (gehört zu Mechanik), 70=Mietwagen, 80=Sonstiges
+            # - Für Kosten (4xxxxx): 5. Ziffer: 1=NW, 2=GW, 3=Service, 4=Karosserie, 5=Teile, 6=Clean Park (→ Mechanik), 7=Mietwagen
             # - Für Umsatz/Einsatz (7xxxxx/8xxxxx): 6. Ziffer (Filialcode = Kostenstelle)
             #   ABER: Wir filtern Bereiche nach Präfix (81xxxx, 82xxxx), nicht nach KST!
             #   Daher: KST-Filter für Bereiche ist nur relevant für Kosten, nicht für Umsatz/Einsatz
             kst_zu_bereich = {
-                '1': 'NW',  # Neuwagen
-                '2': 'GW',  # Gebrauchtwagen
-                '3': 'ME',  # Service/Werkstatt
-                '6': 'TZ',  # Teile & Zubehör (KST 6, nicht 4!)
-                '7': 'MW'   # Mietwagen (KST 7, nicht 5!)
+                '1': 'NW',  # 10 = Neuwagen
+                '2': 'GW',  # 20 = Gebrauchtwagen
+                '3': 'ME',  # 30 = Mechanik (inkl. Clean Park)
+                '4': 'KA',  # 40 = Karosserie
+                '5': 'TZ',  # 50 = Teile & Zubehör
+                '6': 'ME',  # 60 = Clean Park (gehört zu Mechanik)
+                '7': 'MW'   # 70 = Mietwagen
             }
             
             # Wenn KST-Filter aktiv, nur relevante Bereiche anzeigen
@@ -2312,6 +2393,8 @@ def get_bwa_v2():
             ytd_umsatz = float(row_to_dict(cursor.fetchone())['wert'] or 0)
 
             # YTD Einsatz (TAG157: firma_filter_einsatz!)
+            # TAG187: 743002 ("EW Fremdleistungen für Kunden") ausschließen - gehört nicht zu normalen Einsatzwerten
+            # TAG196: Nur 743002 ausschließen - 727001, 717001, 727501 bleiben enthalten (BE sonst zu positiv)
             cursor.execute(convert_placeholders(f"""
                 SELECT COALESCE(SUM(
                     CASE WHEN debit_or_credit='S' THEN posted_value ELSE -posted_value END
@@ -2319,6 +2402,7 @@ def get_bwa_v2():
                 FROM loco_journal_accountings
                 WHERE accounting_date >= %s AND accounting_date < %s
                   AND nominal_account_number BETWEEN 700000 AND 799999
+                  AND nominal_account_number != 743002
                   {firma_filter_einsatz}
                   {guv_filter}
             """), (ytd_datum_von, datum_bis))
@@ -3019,7 +3103,8 @@ def get_bwa_v2_drilldown():
                             AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
                         OR (nominal_account_number BETWEEN 438000 AND 438999
                             AND substr(CAST(nominal_account_number AS TEXT), 5, 1) IN ('1','2','3','6','7'))
-                        OR nominal_account_number BETWEEN 498000 AND 499999
+                        OR (nominal_account_number BETWEEN 498000 AND 499999
+                AND NOT (nominal_account_number = 498001))
                         OR (nominal_account_number BETWEEN 891000 AND 896999
                             AND NOT (nominal_account_number BETWEEN 893200 AND 893299)
                             AND NOT (nominal_account_number BETWEEN 891000 AND 891099))

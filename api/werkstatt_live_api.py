@@ -2591,11 +2591,11 @@ def get_anwesenheit_v2():
                     t.employee_number,
                     MIN(t.start_time) as erster_start,
                     MAX(COALESCE(t.end_time, NOW())) as letztes_ende,
-                    COUNT(DISTINCT t.order_number) FILTER (WHERE t.order_number > 31) as anzahl_auftraege,
+                    COUNT(DISTINCT t.order_number) FILTER (WHERE t.order_number != ALL(ARRAY[39406,220710,313666])) as anzahl_auftraege,
                     SUM(EXTRACT(EPOCH FROM (COALESCE(t.end_time, NOW()) - t.start_time))/60)
-                        FILTER (WHERE t.order_number > 31) as produktiv_min,
+                        FILTER (WHERE t.order_number != ALL(ARRAY[39406,220710,313666])) as produktiv_min,
                     SUM(EXTRACT(EPOCH FROM (COALESCE(t.end_time, NOW()) - t.start_time))/60)
-                        FILTER (WHERE t.order_number = 31) as leerlauf_min,
+                        FILTER (WHERE t.order_number = ANY(ARRAY[39406,220710,313666])) as leerlauf_min,
                     MAX(CASE WHEN t.end_time IS NULL THEN t.order_number END) as aktiver_auftrag,
                     MAX(CASE WHEN t.end_time IS NULL THEN t.start_time END) as aktiv_seit
                 FROM times t
