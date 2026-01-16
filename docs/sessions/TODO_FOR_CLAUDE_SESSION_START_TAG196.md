@@ -1,135 +1,125 @@
 # TODO für Claude - Session Start TAG 196
 
 **Erstellt:** 2026-01-16  
-**Letzte Session:** TAG 195
+**Letzte Session:** TAG 195 (Teil 2)
 
 ---
 
 ## ✅ ERFOLGREICH ABGESCHLOSSEN (TAG 195)
 
-### 1. LM Studio Integration ✅
+### 1. Fahrzeugbeschreibung-Generierung ✅
 - **Status:** ✅ Implementiert
-- **Endpoints:** `/api/ai/models`, `/api/ai/chat`, `/api/ai/embedding`
-- **Konfiguration:** `config/credentials.json` → `lm_studio`
-
-### 2. TT-Zeit-Optimierung Backend ✅
-- **Status:** ✅ Implementiert
-- **Endpoint:** `POST /api/ai/analysiere/tt-zeit/<auftrag_id>`
-- **Funktionen:**
-  - Technische Prüfung (automatisch)
-  - KI-Analyse (Begründung, Empfehlung)
-  - Warnung für manuelle Prüfung
-
-### 3. TT-Zeit-Optimierung Frontend ✅
-- **Status:** ✅ Implementiert
-- **Datei:** `templates/aftersales/garantie_auftraege_uebersicht.html`
+- **Endpoint:** `POST /api/ai/generiere/fahrzeugbeschreibung/<dealer_vehicle_number>`
 - **Features:**
-  - Button "TT-Zeit prüfen" im Modal
-  - TT-Zeit-Modal mit Analyse-Ergebnissen
-  - Bestätigungs-Button für GSW Portal-Prüfung
+  - Automatische Beschreibung (150-200 Wörter)
+  - Verkaufsargumente (3-5 Punkte)
+  - SEO-Keywords (5-10 Begriffe)
+  - Elektrofahrzeug-Erkennung
+  - Typ-Mapping korrigiert (V = Vorführwagen, L = Leihgabe/Mietwagen)
 
-### 4. SOAP/REST API Tests ✅
-- **Status:** ✅ Getestet und dokumentiert
-- **Ergebnis:** Manuelle Prüfung + KI-Unterstützung (empfohlen)
+### 2. Modell-Umstellung ✅
+- **Status:** ✅ Umgestellt
+- **Von:** `allenai/olmo-3-32b-think` (Think-Modell)
+- **Zu:** `mistralai/magistral-small-2509` (bessere JSON-Ausgaben)
+- **Alle Use Cases:** Verwenden jetzt mistralai
 
-### 5. Server-Neustart ✅
-- **Status:** ✅ Durchgeführt (12:32)
-- **Route:** Aktiv und funktionsfähig
+### 3. Modell-Vergleich & Testing ✅
+- **Status:** ✅ Getestet
+- **Ergebnis:** `qwen/qwen3-coder-30b` ist besser (41% schneller, detaillierter)
+- **Empfehlung:** Optional für Fahrzeugbeschreibung umstellen
 
----
-
-## 🔴 PRIORITÄT 1: Testing & Feedback
-
-### 1. TT-Zeit-Analyse testen
-- [ ] **WICHTIG:** Bitte TT-Zeit-Analyse mit echten Aufträgen testen
-- [ ] Test-Szenarien:
-  - Garantieauftrag mit Stempelzeiten
-  - Garantieauftrag ohne Stempelzeiten
-  - Garantieauftrag mit bereits eingereichter TT-Zeit
-  - Garantieauftrag ohne schadhaften Teil
-- [ ] Prüfen:
-  - Funktioniert der Button?
-  - Öffnet sich das Modal?
-  - Werden Analyse-Ergebnisse korrekt angezeigt?
-  - Ist die KI-Analyse hilfreich?
-
-### 2. KI-Analyse prüfen
-- [ ] **WICHTIG:** Ist die KI-Analyse hilfreich?
-- [ ] Prüfen:
-  - Begründung ist sinnvoll?
-  - Empfehlung ist hilfreich?
-  - Bewertung (hoch/mittel/niedrig) ist korrekt?
-- [ ] Feedback geben: Verbesserungsvorschläge?
-
-### 3. Frontend-Integration prüfen
-- [ ] **WICHTIG:** Funktioniert die Frontend-Integration?
-- [ ] Prüfen:
-  - Button ist sichtbar?
-  - Modal öffnet sich korrekt?
-  - Bestätigungs-Button funktioniert?
-  - Fehlerbehandlung funktioniert?
+### 4. Dokumentation ✅
+- **Status:** ✅ Vollständig dokumentiert
+- **Dateien:** 6 neue Dokumentations-Dateien
 
 ---
 
-## 🟡 PRIORITÄT 2: Optional Features
+## 🔴 PRIORITÄT 1: BWA-Fehleranalyse mit KI
 
-### 1. Bestätigung speichern (optional)
-- [ ] **Optional:** Bestätigung in Datenbank speichern
-- [ ] Datenbank-Tabelle erstellen: `tt_zeit_pruefungen`
-- [ ] API-Endpoint: `POST /api/ai/tt-zeit/bestaetigen/<auftrag_id>`
-- [ ] Frontend: Bestätigung speichern nach Button-Klick
+### 1. BWA-Fehleranalyse Use Case ✅ NEU
+- **Ziel:** Lokale KI verwenden um Fehler in DRIVE BWA im Vergleich zur Globalcube BWA zu identifizieren und beheben
+- **Datenquellen:**
+  - ✅ Umfassende Analysen vorhanden
+  - ✅ Alle Excel-Dateien aus Globalcube verfügbar
+  - ✅ Server-Laufwerkszugriff für Globalcube vorhanden
+- **Anforderungen:**
+  - KI soll Unterschiede zwischen DRIVE BWA und Globalcube BWA analysieren
+  - Fehler identifizieren
+  - Behebungsvorschläge generieren
+- **Nächste Schritte:**
+  1. [ ] Datenquellen analysieren (Excel-Dateien, Server-Zugriff)
+  2. [ ] Use Case definieren (welche Fehler sollen analysiert werden?)
+  3. [ ] API-Endpoint erstellen: `/api/ai/analysiere/bwa-fehler`
+  4. [ ] Prompt-Engineering für BWA-Analyse
+  5. [ ] Testing mit echten Daten
+  6. [ ] Behebungsvorschläge implementieren
 
-### 2. Integration in werkstatt_live.html (optional)
-- [ ] **Optional:** Gleiche Funktionalität in `templates/sb/werkstatt_live.html`
-- [ ] Button "TT-Zeit prüfen" im Auftragsdetail-Modal
-- [ ] Gleiche Modal-Funktionalität
+### 2. Datenquellen prüfen
+- [ ] **WICHTIG:** Excel-Dateien aus Globalcube analysieren
+- [ ] Struktur verstehen (welche Spalten, welche Daten?)
+- [ ] Server-Laufwerkszugriff prüfen (Pfad, Format, Zugriffsrechte)
+- [ ] DRIVE BWA-Daten strukturieren (welche Daten sind verfügbar?)
 
-### 3. Weitere KI-Use Cases (optional)
-- [ ] **Optional:** Weitere Use Cases aus `docs/KI_USE_CASES_GREINER_AUTOHAUS_TAG195.md` implementieren
-- [ ] Priorität: Werkstattauftrag-Dokumentationsprüfung (bereits Endpoint vorhanden)
-- [ ] Priorität: Garantie-Dokumentationsprüfung
+### 3. Fehlerkategorien definieren
+- [ ] **WICHTIG:** Welche Fehler sollen analysiert werden?
+- [ ] Mögliche Kategorien:
+  - Abweichungen in Kontenwerten
+  - Fehlende Buchungen
+  - Falsche Zuordnungen
+  - Zeitliche Abweichungen
+  - Berechnungsfehler
+- [ ] Prioritäten setzen (welche Fehler sind am kritischsten?)
 
 ---
 
-## 🟢 PRIORITÄT 3: API-Integration (später)
+## 🟡 PRIORITÄT 2: Modell-Optimierung (optional)
 
-### 1. REST API Integration (falls möglich)
-- [ ] **Später:** Falls Firewall-Whitelist möglich
-- [ ] Authentifizierung implementieren
-- [ ] Endpunkt für Arbeitsoperationsnummern prüfen
-- [ ] Automatische Prüfung implementieren
+### 1. Fahrzeugbeschreibung Modell wechseln (optional)
+- [ ] **Optional:** `qwen/qwen3-coder-30b` für Fahrzeugbeschreibung
+- [ ] Vorteile: 41% schneller, detaillierter, reine DE
+- [ ] Code-Änderung: `api/ai_api.py` Zeile 948
 
-### 2. SOAP Integration (falls möglich)
-- [ ] **Später:** Falls Hyundai-spezifische Methoden verfügbar
-- [ ] SOAP-Methoden testen
-- [ ] Automatische Prüfung implementieren
+### 2. Few-Shot Learning implementieren
+- [ ] Beispiel-Datenbank erstellen (`fahrzeug_beschreibung_beispiele`)
+- [ ] 10-20 Beispiele sammeln
+- [ ] API erweitern mit Beispiel-Auswahl
+- [ ] Prompt erweitern mit Beispielen
+
+---
+
+## 🟢 PRIORITÄT 3: Weitere KI-Use Cases (optional)
+
+### 1. Arbeitskarten-Dokumentationsprüfung Frontend
+- [ ] **Optional:** Frontend-Integration für Arbeitskarten-Prüfung
+- [ ] Button in Arbeitskarte-Ansicht
+- [ ] Modal mit Prüfungsergebnissen
+
+### 2. Garantie-Dokumentationsprüfung
+- [ ] **Optional:** Endpoint implementieren
+- [ ] Integration in Garantie-Workflow
+- [ ] Frontend-Integration
 
 ---
 
 ## 📋 Offene Aufgaben aus vorherigen Sessions
 
 ### Aus TAG 195
-- [x] LM Studio Integration ✅
-- [x] TT-Zeit-Optimierung Backend ✅
-- [x] TT-Zeit-Optimierung Frontend ✅
-- [x] SOAP/REST API Tests ✅
-- [ ] Testing mit echten Aufträgen ⏳
+- [x] Fahrzeugbeschreibung-Generierung ✅
+- [x] Modell-Umstellung ✅
+- [x] Modell-Vergleich ✅
+- [ ] Few-Shot Learning ⏳
+- [ ] RAG-Integration ⏳
+
+### Aus TAG 195 (Teil 1)
+- [ ] TT-Zeit-Analyse Testing ⏳
 - [ ] Feedback sammeln ⏳
-
-### Aus TAG 194
-- [ ] Alarm-E-Mail-Testing (falls noch nicht abgeschlossen)
-- [ ] Weitere Tests durchführen
-
-### Aus TAG 193
-- [ ] Navigation-Testing (falls noch nicht abgeschlossen)
-- [ ] Weitere Tests durchführen
 
 ---
 
 ## 🔍 Qualitätsprobleme die behoben werden sollten
 
 ### 1. SSOT-Verletzungen (nicht neu)
-- [ ] `BETRIEB_NAMEN` zentralisieren (siehe TAG 195 TODO)
+- [ ] `BETRIEB_NAMEN` zentralisieren
 - [ ] Weitere SSOT-Verletzungen prüfen
 
 ### 2. Code-Duplikate (nicht neu)
@@ -140,54 +130,56 @@
 
 ## 📝 Wichtige Hinweise für nächste Session
 
-### TT-Zeit-Optimierung (TAG 195)
-- **WICHTIG:** Server wurde neu gestartet (12:32)
-- Route ist aktiv: `/api/ai/analysiere/tt-zeit/<id>`
-- **Status:** ✅ Implementiert, wartet auf Testing
+### BWA-Fehleranalyse (NEU - PRIORITÄT 1)
+- **WICHTIG:** Neuer Use Case für KI-gestützte BWA-Fehleranalyse
+- **Datenquellen:**
+  - Excel-Dateien aus Globalcube verfügbar
+  - Server-Laufwerkszugriff für Globalcube vorhanden
+  - Umfassende Analysen bereits durchgeführt
+- **Ziel:** Fehler identifizieren und beheben
+- **Status:** ⏳ Zu implementieren
 
-### LM Studio Integration (TAG 195)
-- **WICHTIG:** Konfiguration in `config/credentials.json` → `lm_studio`
-- Server: `http://46.229.10.1:4433/v1`
-- **Status:** ✅ Implementiert und getestet
+### Modell-Optimierung (TAG 195)
+- **WICHTIG:** `qwen/qwen3-coder-30b` ist besser für Fahrzeugbeschreibung
+- Empfehlung: Optional umstellen (41% schneller, detaillierter)
+- **Status:** ✅ Getestet, optional umzustellen
 
-### Manuelle Prüfung (TAG 195)
-- **WICHTIG:** Automatische Prüfung nicht möglich (Firewall, 2FA)
-- Lösung: Manuelle Prüfung + KI-Unterstützung
-- **Status:** ✅ By Design, dokumentiert
+### Modell-Umstellung (TAG 195)
+- **WICHTIG:** Alle Use Cases verwenden jetzt `mistralai/magistral-small-2509`
+- Default-Modell geändert (bessere JSON-Ausgaben)
+- **Status:** ✅ Umgestellt
 
-### Rollback (TAG 195)
-- **WICHTIG:** Alle Änderungen mit `TAG 195` markiert
-- Rollback möglich: `git checkout templates/aftersales/garantie_auftraege_uebersicht.html`
-- **Dokumentation:** `docs/TT_ZEIT_ROLLBACK_TAG195.md`
+### Server-Neustart (TAG 195)
+- **WICHTIG:** Server-Neustart erforderlich nach `api/ai_api.py` Änderungen
+- Empfehlung: `sudo systemctl restart greiner-portal`
+- **Status:** ⏳ Wartet auf Neustart
 
-### Git
-- **Geänderte Dateien:**
-  - `api/ai_api.py` (NEU, 775 Zeilen)
-  - `app.py` (5 Zeilen)
-  - `templates/aftersales/garantie_auftraege_uebersicht.html` (227 Zeilen)
-  - 11 Dokumentations-Dateien
-- **Empfehlung:** Commit mit Message `feat(TAG195): TT-Zeit-Optimierung mit KI-Integration implementiert`
-
----
-
-## 🚀 Nächste Schritte (je nach Feedback)
-
-### Szenario 1: Alles funktioniert
-- Optional Features implementieren (Bestätigung speichern)
-- Weitere KI-Use Cases implementieren
-- Dokumentation aktualisieren
-
-### Szenario 2: Probleme gefunden
-- Bugs beheben
-- KI-Analyse verbessern
-- Frontend anpassen
-- Weitere Tests durchführen
-
-### Szenario 3: Verbesserungen gewünscht
-- Bestätigung speichern implementieren
-- Integration in werkstatt_live.html
-- Weitere Use Cases implementieren
+### Dokumentation (TAG 195)
+- **WICHTIG:** Umfangreiche Dokumentation erstellt
+- 6 neue Dokumentations-Dateien
+- **Status:** ✅ Vollständig dokumentiert
 
 ---
 
-**Status:** TT-Zeit-Optimierung implementiert ✅, wartet auf Testing/Feedback
+## 🚀 Nächste Schritte (je nach Priorität)
+
+### Szenario 1: BWA-Fehleranalyse (PRIORITÄT 1)
+1. Datenquellen analysieren
+2. Use Case definieren
+3. API-Endpoint erstellen
+4. Testing mit echten Daten
+5. Behebungsvorschläge implementieren
+
+### Szenario 2: Modell-Optimierung (optional)
+1. Fahrzeugbeschreibung auf `qwen3-coder` umstellen
+2. Few-Shot Learning implementieren
+3. Weitere Tests durchführen
+
+### Szenario 3: Weitere Use Cases (optional)
+1. Arbeitskarten-Prüfung Frontend
+2. Garantie-Dokumentationsprüfung
+3. Weitere KI-Use Cases
+
+---
+
+**Status:** BWA-Fehleranalyse Use Case definiert, wartet auf Implementierung ⏳

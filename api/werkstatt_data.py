@@ -487,6 +487,16 @@ class WerkstattData:
                 FROM positionen_ohne_aw_auf_auftraegen_mit_aw
                 GROUP BY employee_number
             ),
+            -- TAG 194: HYBRID-ANSATZ - St-Anteil = Zeit-Spanne + Positionen OHNE AW (10.6%)
+            st_anteil_hybrid AS (
+                SELECT
+                    s.employee_number,
+                    s.tage,
+                    s.auftraege,
+                    s.stempel_min + COALESCE(poa.positionen_ohne_aw_minuten, 0) as stempel_min_hybrid
+                FROM stempel_dedupliziert s
+                LEFT JOIN positionen_ohne_aw_anteilig poa ON s.employee_number = poa.employee_number
+            ),
             -- Anwesenheit pro Mechaniker/Tag
             anwesenheit AS (
                 SELECT
@@ -625,12 +635,13 @@ class WerkstattData:
 
             params = [
                 von, bis,  # stempelungen_dedupliziert (erste CTE) - 2x %s
-                von, bis,  # stempelzeit_leistungsgrad (TAG 192) - 2x %s
+                von, bis,  # stempelzeit_leistungsgrad (TAG 192) - 2x %s (eigene CTE mit WITH)
                 von, bis,  # stempelungen_roh (TAG 194: position-basierte Berechnung) - 2x %s
                 von, bis,  # anwesenheit - 2x %s
                 MECHANIKER_EXCLUDE  # TAG 192: Nur Azubis ausschließen - 1x %s
             ]
-            # TAG 194: auftraege_mit_aw verwendet jetzt stempelungen_roh (keine eigenen Parameter)
+            # Gesamt: 9 Parameter (2+2+2+2+1)
+            # TAG 194: auftraege_mit_aw verwendet stempelungen_roh (keine eigenen Parameter)
 
             # Filter
             conditions = []
@@ -665,10 +676,11 @@ class WerkstattData:
                     f.write(f"Anzahl params: {len(params)}\n")
                     for i, p in enumerate(params):
                         f.write(f"  {i}: {p} (type: {type(p).__name__})\n")
-                # TAG 194: Temporär - nur Warnung, keine Exception
-                print(f"⚠️  WARNUNG: Parameter-Anzahl stimmt nicht! %s={count_placeholders_after}, params={len(params)}")
-                # Verwende nur die ersten count_placeholders_after Parameter
-                params = params[:count_placeholders_after]
+                raise ValueError(
+                    f"Parameter-Anzahl stimmt nicht nach Formatierung! "
+                    f"%s={count_placeholders_after}, params={len(params)}. "
+                    f"Query gespeichert in /tmp/debug_query.sql"
+                )
 
             cursor.execute(query, params)
             mechaniker = cursor.fetchall()
