@@ -487,15 +487,6 @@ class WerkstattData:
                 FROM positionen_ohne_aw_auf_auftraegen_mit_aw
                 GROUP BY employee_number
             ),
-            st_anteil_hybrid AS (
-                SELECT
-                    s.employee_number,
-                    s.tage,
-                    s.auftraege,
-                    s.stempel_min + COALESCE(poa.positionen_ohne_aw_minuten, 0) as stempel_min_hybrid
-                FROM stempel_dedupliziert s
-                LEFT JOIN positionen_ohne_aw_anteilig poa ON s.employee_number = poa.employee_number
-            ),
             -- Anwesenheit pro Mechaniker/Tag
             anwesenheit AS (
                 SELECT
