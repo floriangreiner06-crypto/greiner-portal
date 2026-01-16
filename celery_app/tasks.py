@@ -237,11 +237,13 @@ def benachrichtige_serviceberater_ueberschreitungen():
         # WICHTIG: Aktive Aufträge zuerst, damit sie nicht von abgeschlossenen überschrieben werden
         ueberschritten_map = {}
         # Zuerst aktive Aufträge (aus stempeluhr_data) - haben korrekte Laufzeit des aktiven Mechanikers
+        # TAG 194: FIX - Alle aktiven Aufträge aufnehmen, nicht nur die mit fortschritt_prozent > 100
+        # Die Prüfung ob überschritten erfolgt später in der E-Mail-Logik basierend auf heute_session_min
         if stempeluhr_data.get('success'):
             aktive_mechaniker = stempeluhr_data.get('aktive_mechaniker', [])
             for mechaniker in aktive_mechaniker:
                 auftrag_nr = mechaniker.get('order_number')
-                if auftrag_nr and mechaniker.get('fortschritt_prozent', 0) > 100:
+                if auftrag_nr:
                     ueberschritten_map[auftrag_nr] = mechaniker
         # Dann abgeschlossene Aufträge (aus Query) - haben Gesamtlaufzeit
         for ueberschritt in ueberschritten_abgeschlossen:
@@ -261,10 +263,13 @@ def benachrichtige_serviceberater_ueberschreitungen():
                     logger.warning(f"Auftrag {auftrag_nr} nicht in ueberschritten_map gefunden - überspringe")
                     continue
                 
-                # TAG 193: FIX - Für aktive Aufträge: Nur heute_session_min verwenden (aktuelle Stempelung)
+                # TAG 194: FIX - Für aktive Aufträge: Nur heute_session_min verwenden (aktuelle Stempelung)
                 # Für abgeschlossene Aufträge: Gesamtlaufzeit
-                # Problem: Wenn Mechaniker erst vor kurzem angestempelt hat, sollte nur seine aktuelle Laufzeit zählen,
-                # nicht die Gesamtlaufzeit des Auftrags über alle Mechaniker/Stempelungen hinweg
+                # Problem: fortschritt_prozent basiert auf laufzeit_min (aktuell + abgeschlossen heute)
+                # Aber für E-Mails sollte nur die aktuelle Stempelung (heute_session_min) zählen
+                # Beispiel: Mechaniker hat heute 50 Min abgeschlossen, stempelt neu an (20 Min aktuell)
+                # - fortschritt_prozent = 70/60 = 117% (basierend auf laufzeit_min)
+                # - Aber für E-Mail: 20/60 = 33% (basierend auf heute_session_min) → KEINE E-Mail
                 if 'heute_session_min' in ueberschritt:
                     # Aktiver Auftrag: Nur aktuelle Stempelung heute verwenden
                     laufzeit_min = float(ueberschritt.get('heute_session_min', 0))
