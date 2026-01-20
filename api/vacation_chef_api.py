@@ -129,7 +129,7 @@ def get_chef_overview():
                 # Urlaubssalden für Mitglieder
                 members = []
                 if member_ids:
-                    placeholders = ','.join('?' * len(member_ids))
+                    placeholders = ','.join(['%s'] * len(member_ids))
                     cursor.execute(f"""
                         SELECT
                             employee_id,

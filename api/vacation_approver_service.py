@@ -502,7 +502,7 @@ def get_approver_summary(ldap_username: str) -> Dict:
             pending_count = 0
 
             if team_ids:
-                placeholders = ','.join('?' * len(team_ids))
+                placeholders = ','.join(['%s'] * len(team_ids))
                 cursor.execute(f"""
                     SELECT COUNT(*) as cnt
                     FROM vacation_bookings

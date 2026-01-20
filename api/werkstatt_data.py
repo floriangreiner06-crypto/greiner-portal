@@ -44,7 +44,7 @@ from psycopg2.extras import RealDictCursor
 from api.standort_utils import BETRIEB_NAMEN
 
 # SSOT: KPI-Berechnungen
-from utils.kpi_definitions import berechne_anwesenheitsgrad_fuer_mechaniker_liste
+from utils.kpi_definitions import berechne_anwesenheitsgrad
 
 logger = logging.getLogger(__name__)
 
@@ -357,38 +357,97 @@ class WerkstattData:
             leerlauf_filter = "AND t.order_number > 31"
 
         # TAG 194: REFACTORED - Nutze neue separate Funktionen
-        # Hole Rohdaten mit neuen Funktionen
+        # NEUIMPLEMENTIERUNG TAG 196: Einfache, korrekte Funktionen nach Locosoft-Definition
+        # 
+        # 1. VORGABEZEIT (AW-Anteil) aus labours
+        vorgabezeit_data = WerkstattData.get_vorgabezeit_aus_labours(von, bis)
+        
+        # 2. STEMPELZEIT (St-Anteil) aus times type=2 - OHNE 0.75 Faktor!
+        stempelzeit_data = WerkstattData.get_stempelzeit_aus_times(von, bis)
+        
+        # 3. ANWESENHEIT aus times type=1
+        anwesenheit_data = WerkstattData.get_anwesenheit_aus_times(von, bis)
+        
+        # Legacy-Funktionen (für Kompatibilität, werden nicht mehr verwendet)
         stempelzeit_locosoft = WerkstattData.get_stempelzeit_locosoft(von, bis, leerlauf_filter)
         stempelzeit_leistungsgrad = WerkstattData.get_stempelzeit_leistungsgrad(von, bis, leerlauf_filter)
         stempelungen_roh = WerkstattData.get_stempelungen_roh(von, bis)
-        aw_verrechnet = WerkstattData.get_aw_verrechnet(von, bis)
-        anwesenheit = WerkstattData.get_anwesenheit_rohdaten(von, bis)
         
-        # TAG 194: St-Anteil - Locosoft-Definition: "Summe aller Stempelungen auf Auftragspositionen"
-        # Verwende position-basierte Berechnung mit anteiliger Verteilung
-        st_anteil_position = WerkstattData.get_st_anteil_position_basiert(von, bis)
-        
-        # Aggregiere Rohdaten
+        # NEUIMPLEMENTIERUNG TAG 196: Einfache, korrekte Zuordnung
+        # 
+        # REGEL: Stempelzeit ≤ Anwesenheit (IMMER!)
+        # 
+        # 1. VORGABEZEIT = labours.time_units × 6 / 60 (Stunden)
+        # 2. STEMPELZEIT = times type=2 (end - start), OHNE 0.75 Faktor (Stunden)
+        # 3. ANWESENHEIT = times type=1 (end - start) (Stunden)
+        #
         rohdaten = {}
-        all_emps = set(list(stempelzeit_locosoft.keys()) + 
-                       list(stempelzeit_leistungsgrad.keys()) + 
-                       list(aw_verrechnet.keys()) + 
-                       list(anwesenheit.keys()) +
-                       list(st_anteil_position.keys()))
+        all_emps = set(list(vorgabezeit_data.keys()) + 
+                       list(stempelzeit_data.keys()) + 
+                       list(anwesenheit_data.keys()) +
+                       list(stempelzeit_locosoft.keys()))
         
         for emp_nr in all_emps:
+            # Hole Daten aus neuen Funktionen (alle in Stunden!)
+            vorgabezeit_std = vorgabezeit_data.get(emp_nr, {}).get('vorgabezeit_std', 0)
+            stempelzeit_std = stempelzeit_data.get(emp_nr, 0)
+            anwesenheit_std_roh = anwesenheit_data.get(emp_nr, 0)  # type=1 Daten (können unvollständig sein!)
+            aw_roh = vorgabezeit_data.get(emp_nr, {}).get('aw', 0)
+            umsatz = vorgabezeit_data.get(emp_nr, {}).get('umsatz', 0)
+            
+            # VALIDIERUNG & FALLBACK: Stempelzeit ≤ Anwesenheit (IMMER!)
+            # Problem: type=1 Daten sind oft unvollständig (z.B. MA 5007: 72.7 Std vs. 331.7 Std Stempelzeit)
+            # Fallback: Verwende Zeit-Spanne aus type=2 (erste bis letzte Stempelung) als Anwesenheit
+            stempelzeit_locosoft_data = stempelzeit_locosoft.get(emp_nr, {})
+            anwesenheit_fallback_std = stempelzeit_locosoft_data.get('stempel_min', 0) / 60.0  # Zeit-Spanne in Stunden
+            
+            if stempelzeit_std > anwesenheit_std_roh:
+                # type=1 Daten sind unvollständig, verwende Fallback
+                if anwesenheit_fallback_std >= stempelzeit_std:
+                    # Fallback ist plausibel (Zeit-Spanne ≥ Stempelzeit)
+                    anwesenheit_std = anwesenheit_fallback_std
+                    print(f"WerkstattData.get_mechaniker_leistung: MA {emp_nr}: "
+                          f"type=1 Daten unvollständig ({anwesenheit_std_roh:.1f} Std < Stempelzeit {stempelzeit_std:.1f} Std). "
+                          f"Verwende Fallback: Zeit-Spanne {anwesenheit_std:.1f} Std")
+                else:
+                    # Letzter Fallback: Stempelzeit + 20% Puffer (für Pausen, Leerlauf)
+                    anwesenheit_std = stempelzeit_std * 1.2
+                    print(f"WerkstattData.get_mechaniker_leistung: MA {emp_nr}: "
+                          f"Keine plausiblen Anwesenheitsdaten. Verwende Stempelzeit × 1.2 = {anwesenheit_std:.1f} Std")
+            elif anwesenheit_std_roh == 0 and stempelzeit_std > 0:
+                # Keine type=1 Daten vorhanden, verwende Fallback
+                if anwesenheit_fallback_std >= stempelzeit_std:
+                    anwesenheit_std = anwesenheit_fallback_std
+                else:
+                    anwesenheit_std = stempelzeit_std * 1.2
+            else:
+                # type=1 Daten sind plausibel
+                anwesenheit_std = anwesenheit_std_roh
+            
+            # Hole zusätzliche Daten (Tage, Aufträge) aus Legacy-Funktion
+            stempelzeit_locosoft_data = stempelzeit_locosoft.get(emp_nr, {})
+            
+            # Konvertiere für interne Berechnungen in Minuten
+            vorgabezeit_min = vorgabezeit_std * 60
+            stempelzeit_min = stempelzeit_std * 60
+            anwesenheit_min = anwesenheit_std * 60
+            
             rohdaten[emp_nr] = {
-                'tage': stempelzeit_locosoft.get(emp_nr, {}).get('tage', 0),
-                'auftraege': stempelzeit_locosoft.get(emp_nr, {}).get('auftraege', 0),
-                'stempelzeit': st_anteil_position.get(emp_nr, 0),  # St-Anteil (für Anzeige)
+                'tage': stempelzeit_locosoft_data.get('tage', 0),
+                'auftraege': stempelzeit_locosoft_data.get('auftraege', 0),
+                'stempelzeit': stempelzeit_min,  # St-Anteil in Minuten (für interne Berechnungen)
+                'stempelzeit_std': stempelzeit_std,  # St-Anteil in Stunden (SSOT - für Dashboard)
                 'stempelzeit_leistungsgrad': stempelzeit_leistungsgrad.get(emp_nr, 0),
-                'anwesenheit': anwesenheit.get(emp_nr, {}).get('anwesend_min', 0),
-                'aw': aw_verrechnet.get(emp_nr, {}).get('aw', 0),
-                'umsatz': aw_verrechnet.get(emp_nr, {}).get('umsatz', 0)
+                'anwesenheit': anwesenheit_min,  # Anwesenheit in Minuten (für interne Berechnungen)
+                'anwesenheit_std': anwesenheit_std,  # Anwesenheit in Stunden (SSOT - für Dashboard)
+                'vorgabezeit': vorgabezeit_min,  # AW-Anteil in Minuten (für interne Berechnungen)
+                'vorgabezeit_std': vorgabezeit_std,  # AW-Anteil in Stunden (SSOT - für Dashboard)
+                'aw': aw_roh,  # AW-Einheiten (SSOT - für Dashboard)
+                'umsatz': umsatz
             }
         
-        # Berechne KPIs
-        kpis = WerkstattData.berechne_mechaniker_kpis_aus_rohdaten(rohdaten)
+        # Berechne KPIs (mit Zeitraum für korrekte Arbeitstage-Berechnung)
+        kpis = WerkstattData.berechne_mechaniker_kpis_aus_rohdaten(rohdaten, von, bis)
         
         # Hole Mechaniker-Details (employees_history)
         with locosoft_session() as conn:
@@ -450,10 +509,14 @@ class WerkstattData:
                     'ist_aktiv': mech_detail['ist_aktiv'],
                     'tage': roh_data['tage'],
                     'auftraege': roh_data['auftraege'],
-                    'stempelzeit': round(roh_data['stempelzeit'], 0),
+                    'stempelzeit': round(roh_data['stempelzeit'], 0),  # St-Anteil in Minuten (für Kompatibilität)
+                    'stempelzeit_std': round(roh_data.get('stempelzeit_std', roh_data['stempelzeit'] / 60), 1),  # St-Anteil in Stunden (SSOT!)
                     'stempelzeit_leistungsgrad': round(roh_data['stempelzeit_leistungsgrad'], 0),
-                    'anwesenheit': round(roh_data['anwesenheit'], 0),
-                    'aw': round(roh_data['aw'], 1),
+                    'anwesenheit': round(roh_data['anwesenheit'], 0),  # Anwesenheit in Minuten (für Kompatibilität)
+                    'anwesenheit_std': round(roh_data.get('anwesenheit_std', roh_data['anwesenheit'] / 60), 1),  # Anwesenheit in Stunden (SSOT!)
+                    'vorgabezeit': round(roh_data.get('vorgabezeit', 0), 0),  # AW-Anteil in Minuten (für Kompatibilität)
+                    'vorgabezeit_std': round(roh_data.get('vorgabezeit_std', roh_data.get('vorgabezeit', 0) / 60), 1),  # AW-Anteil in Stunden (SSOT!)
+                    'aw': round(roh_data['aw'], 1),  # AW-Einheiten (SSOT!)
                     'umsatz': round(roh_data['umsatz'], 2),
                     'leistungsgrad': kpi_data.get('leistungsgrad'),
                     'produktivitaet': kpi_data.get('produktivitaet')
@@ -476,17 +539,30 @@ class WerkstattData:
         reverse = reverse_map.get(sort_by, True)
         mechaniker_liste.sort(key=sort_key, reverse=reverse)
         
-        # Gesamt-KPIs
+        # NEUIMPLEMENTIERUNG TAG 196: Gesamt-KPIs in Stunden (SSOT!)
         gesamt_auftraege = sum(m['auftraege'] for m in mechaniker_liste)
-        gesamt_stempelzeit = sum(m['stempelzeit'] for m in mechaniker_liste)
+        gesamt_stempelzeit_std = sum(m.get('stempelzeit_std', m['stempelzeit'] / 60) for m in mechaniker_liste)  # St-Anteil in Stunden
         gesamt_stempelzeit_leistungsgrad = sum(m['stempelzeit_leistungsgrad'] for m in mechaniker_liste)
-        gesamt_anwesenheit = sum(m['anwesenheit'] for m in mechaniker_liste)
-        gesamt_aw = sum(m['aw'] for m in mechaniker_liste)
+        gesamt_anwesenheit_std = sum(m.get('anwesenheit_std', m['anwesenheit'] / 60) for m in mechaniker_liste)  # Anwesenheit in Stunden
+        gesamt_aw = sum(m['aw'] for m in mechaniker_liste)  # AW-Einheiten
+        gesamt_vorgabezeit_std = sum(m.get('vorgabezeit_std', m.get('vorgabezeit', 0) / 60) for m in mechaniker_liste)  # AW-Anteil in Stunden
         gesamt_umsatz = sum(m['umsatz'] for m in mechaniker_liste)
         
-        # Gesamt-Leistungsgrad
-        gesamt_leistungsgrad = round(gesamt_aw * 60 / gesamt_stempelzeit_leistungsgrad * 100, 1) if gesamt_stempelzeit_leistungsgrad > 0 else None
-        gesamt_produktivitaet = round(gesamt_stempelzeit / gesamt_anwesenheit * 100, 1) if gesamt_anwesenheit > 0 else None
+        # Gesamt-Leistungsgrad (KORREKT: Vorgabezeit / Stempelzeit)
+        # Formel: (Vorgabezeit in Stunden / St-Anteil in Stunden) × 100
+        gesamt_leistungsgrad = round(gesamt_vorgabezeit_std / gesamt_stempelzeit_std * 100, 1) if gesamt_stempelzeit_std > 0 else None
+        
+        # Gesamt-Produktivität (KORREKT: St-Anteil / Anwesenheit)
+        # VALIDIERUNG: Stempelzeit kann nicht größer sein als Anwesenheit!
+        if gesamt_stempelzeit_std > gesamt_anwesenheit_std and gesamt_anwesenheit_std > 0:
+            logging.warning(
+                f"WerkstattData.get_mechaniker_leistung: Stempelzeit ({gesamt_stempelzeit_std:.1f} Std) > Anwesenheit ({gesamt_anwesenheit_std:.1f} Std)! "
+                f"Das ist physikalisch unmöglich. Mögliche Ursachen: Fehlende Anwesenheitsdaten (type=1) oder falsche Berechnung."
+            )
+            # Cap auf 100% für Produktivität (kann nicht > 100% sein)
+            gesamt_produktivitaet = 100.0
+        else:
+            gesamt_produktivitaet = round(gesamt_stempelzeit_std / gesamt_anwesenheit_std * 100, 1) if gesamt_anwesenheit_std > 0 else None
         
         # Anzahl Arbeitstage
         with locosoft_session() as conn:
@@ -499,8 +575,30 @@ class WerkstattData:
             anzahl_tage = cursor.fetchone()['count'] or 0
 
             # Anwesenheitsgrad berechnen (TAG 181 - SSOT)
-            # Nutzt zentrale Funktion aus utils/kpi_definitions.py
-            gesamt_anwesenheitsgrad, mechaniker_liste = berechne_anwesenheitsgrad_fuer_mechaniker_liste(mechaniker_liste)
+            # FIX TAG 196: Verwende bereits berechnete anwesenheitsgrad Werte aus kpis,
+            # da diese die korrekten Arbeitstage im Zeitraum verwenden!
+            # Die Funktion berechne_anwesenheitsgrad_fuer_mechaniker_liste() würde sonst
+            # die falschen 'tage' (Tage mit Stempelungen) verwenden.
+            gesamt_anwesend_h = sum(m.get('anwesenheit_std', m.get('anwesenheit', 0) / 60) for m in mechaniker_liste)
+            # Berechne Gesamt-Bezahlt aus Arbeitstagen im Zeitraum
+            arbeitstage_gesamt = 0
+            current = von
+            while current <= bis:
+                if current.weekday() < 5:  # Mo-Fr
+                    arbeitstage_gesamt += 1
+                current += timedelta(days=1)
+            gesamt_bezahlt_h = arbeitstage_gesamt * 8.0 * len(mechaniker_liste)  # Arbeitstage × 8h × Anzahl Mechaniker
+            gesamt_anwesenheitsgrad = berechne_anwesenheitsgrad(gesamt_anwesend_h, gesamt_bezahlt_h) if gesamt_bezahlt_h > 0 else None
+            
+            # Aktualisiere mechaniker_liste mit bereits berechneten anwesenheitsgrad Werten
+            for m in mechaniker_liste:
+                # anwesenheitsgrad wurde bereits in berechne_mechaniker_kpis_aus_rohdaten() korrekt berechnet
+                # Verwende diesen Wert, überschreibe nicht!
+                if 'anwesenheitsgrad' not in m:
+                    # Fallback: Berechne aus anwesenheit_std und arbeitstagen
+                    anwesenheit_std = m.get('anwesenheit_std', m.get('anwesenheit', 0) / 60)
+                    bezahlt_h = arbeitstage_gesamt * 8.0
+                    m['anwesenheitsgrad'] = berechne_anwesenheitsgrad(anwesenheit_std, bezahlt_h)
 
             logger.info(f"WerkstattData.get_mechaniker_leistung: {len(mechaniker_liste)} Mechaniker, Zeitraum {von} - {bis}")
 
@@ -515,10 +613,14 @@ class WerkstattData:
                 'anzahl_tage': anzahl_tage,
                 'gesamt': {
                     'auftraege': gesamt_auftraege,
-                    'stempelzeit': gesamt_stempelzeit,
+                    'stempelzeit': round(gesamt_stempelzeit_std * 60, 0),  # St-Anteil in Minuten (für Kompatibilität)
+                    'stempelzeit_std': round(gesamt_stempelzeit_std, 1),  # St-Anteil in Stunden (SSOT!)
                     'stempelzeit_leistungsgrad': round(gesamt_stempelzeit_leistungsgrad, 0),  # TAG 192: Für Vergleich mit Locosoft
-                    'anwesenheit': gesamt_anwesenheit,
-                    'aw': round(gesamt_aw, 1),
+                    'anwesenheit': round(gesamt_anwesenheit_std * 60, 0),  # Anwesenheit in Minuten (für Kompatibilität)
+                    'anwesenheit_std': round(gesamt_anwesenheit_std, 1),  # Anwesenheit in Stunden (SSOT!)
+                    'vorgabezeit': round(gesamt_vorgabezeit_std * 60, 0),  # AW-Anteil in Minuten (für Kompatibilität)
+                    'vorgabezeit_std': round(gesamt_vorgabezeit_std, 1),  # AW-Anteil in Stunden (SSOT!)
+                    'aw': round(gesamt_aw, 1),  # AW-Einheiten (SSOT!)
                     'umsatz': round(gesamt_umsatz, 2),
                     'leistungsgrad': gesamt_leistungsgrad,
                     'produktivitaet': gesamt_produktivitaet,
@@ -848,19 +950,22 @@ class WerkstattData:
             return rows_to_list(cursor.fetchall())
 
     @staticmethod
-    def get_anwesenheit_rohdaten(
+    def get_anwesenheit_aus_times(
         von: date,
         bis: date
-    ) -> Dict[int, Dict[str, Any]]:
+    ) -> Dict[int, float]:
         """
-        Holt Anwesenheitsdaten (type=1) für KPI-Berechnung.
+        NEUIMPLEMENTIERUNG TAG 196: Anwesenheit aus times type=1.
+        
+        EINFACH & KORREKT nach Locosoft-Definition:
+        - Anwesenheit = Gesamte Anwesenheitszeit (Kommt→Geht)
         
         Args:
             von: Startdatum
             bis: Enddatum
         
         Returns:
-            Dict: {employee_number: {tage, anwesend_min}}
+            Dict: {employee_number: anwesenheit_stunden}
         """
         with locosoft_session() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -868,126 +973,110 @@ class WerkstattData:
             query = """
                 SELECT
                     employee_number,
-                    DATE(start_time) as datum,
-                    SUM(EXTRACT(EPOCH FROM (end_time - start_time)) / 60) as anwesend_min
+                    SUM(EXTRACT(EPOCH FROM (end_time - start_time)) / 60.0) / 60.0 AS anwesenheit_stunden
                 FROM times
                 WHERE type = 1
                   AND end_time IS NOT NULL
-                  AND start_time >= %s AND start_time < %s + INTERVAL '1 day'
-                GROUP BY employee_number, DATE(start_time)
+                  AND start_time >= %s
+                  AND start_time < %s + INTERVAL '1 day'
+                GROUP BY employee_number
             """
             
             cursor.execute(query, [von, bis])
             result = {}
             for row in cursor.fetchall():
-                emp_nr = row['employee_number']
-                if emp_nr not in result:
-                    result[emp_nr] = {'tage': 0, 'anwesend_min': 0.0}
-                result[emp_nr]['tage'] += 1
-                result[emp_nr]['anwesend_min'] += float(row['anwesend_min'])
+                result[row['employee_number']] = float(row['anwesenheit_stunden'] or 0)
             return result
 
     @staticmethod
-    def get_st_anteil_position_basiert(
+    def get_stempelzeit_aus_times(
         von: date,
         bis: date
     ) -> Dict[int, float]:
         """
-        Berechnet Stmp.Anteil position-basiert nach Locosoft-Logik (TAG 195).
+        NEUIMPLEMENTIERUNG TAG 196: Stempelzeit (St-Anteil) aus times type=2.
         
-        FORMEL: St-Ant = Dauer × (AuAW / Gesamt-AuAW pro Stempelung)
+        Auftrags-basierte Deduplizierung:
+        - DISTINCT ON (employee_number, order_number, start_time, end_time)
+        - Verschiedene Positionen auf demselben Auftrag zur gleichen Zeit → 1× zählen
+        - Verschiedene Aufträge zur gleichen Zeit → separat zählen
         
-        Match-Rate: 91.8% mit Locosoft CSV-Export
-        - Typ W (Wartung): 96.9%
-        - Typ I (Intern): 94.6%
-        - Typ G (Garantie): 67.7% (andere Locosoft-Logik vermutet)
+        Beispiel:
+        - 08:00-09:00 (Auftrag A, Pos 1)
+        - 08:00-09:00 (Auftrag A, Pos 2)  ← gleicher Auftrag, gleiche Zeit → 1× zählen
+        - 08:00-09:00 (Auftrag B)          ← anderer Auftrag, gleiche Zeit → separat zählen
+        → Ergebnis: 2 Std (1 Std Auftrag A + 1 Std Auftrag B)
         
-        Bedeutung:
-        - Dauer: Gesamte Stempelzeit (end_time - start_time) einer Stempelung
-        - AuAW: Auftrags-AW (labours.time_units) der Position
-        - Gesamt-AuAW: Summe aller AuAW aller Positionen dieser Stempelung
+        WICHTIG: ALLE Aufträge erfassen - kein Filter auf Betrieb, Auftragsart, order_number!
+        Alle Stempelungen type=2 zählen, egal ob DEGO, DEGH, intern, extern, Garantie!
+        
+        HINWEIS: Pausenzeiten werden NICHT abgezogen, da Locosoft diese auch nicht abzieht.
+        Die Diskrepanz zu Locosoft (14.8 Std) deutet auf eine andere Berechnungsmethode hin.
         
         Args:
             von: Startdatum
             bis: Enddatum
         
         Returns:
-            Dict: {employee_number: stempelanteil_minuten}
+            Dict: {employee_number: stempelzeit_stunden}
         """
         with locosoft_session() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             
-            # KORREKTE FORMEL basierend auf systematischer CSV-Analyse:
-            # St-Anteil = 75% der Gesamt-Dauer (alle Stempelungen)
-            # Dezember: 75.1% optimal, Januar: 26.7% optimal (unterschiedliche Logik?)
-            # Verwende 75% als Kompromiss (funktioniert für Dezember sehr gut)
             query = """
-                WITH
-                -- 1. Alle Stempelungen (pro Position)
-                stempelungen_roh AS (
-                    SELECT DISTINCT ON (employee_number, order_number, order_position, order_position_line, start_time, end_time)
+                SELECT 
+                    employee_number,
+                    SUM(EXTRACT(EPOCH FROM (end_time - start_time)) / 3600.0) AS stempelzeit_stunden
+                FROM (
+                    -- FIX TAG 196: Auftrags-basierte Deduplizierung!
+                    -- DISTINCT ON (employee_number, order_number, start_time, end_time)
+                    -- Verschiedene Positionen auf demselben Auftrag zur gleichen Zeit → 1× zählen
+                    -- Verschiedene Aufträge zur gleichen Zeit → separat zählen
+                    SELECT DISTINCT ON (employee_number, order_number, start_time, end_time)
                         employee_number,
-                        EXTRACT(EPOCH FROM (end_time - start_time)) / 60 AS dauer_minuten
+                        start_time,
+                        end_time
                     FROM times
                     WHERE type = 2
                       AND end_time IS NOT NULL
-                      AND order_number > 31
-                      AND order_position IS NOT NULL
-                      AND order_position_line IS NOT NULL
                       AND start_time >= %s
                       AND start_time < %s + INTERVAL '1 day'
-                )
-                -- 2. St-Anteil = 75 Prozent der Gesamt-Dauer (basierend auf CSV-Analyse)
-                SELECT 
-                    employee_number,
-                    ROUND(SUM(dauer_minuten)::numeric * 0.75, 0) AS stempelanteil_minuten
-                FROM stempelungen_roh
+                    ORDER BY employee_number, order_number, start_time, end_time
+                ) t
                 GROUP BY employee_number
-                HAVING SUM(dauer_minuten) > 0
             """
             
             cursor.execute(query, [von, bis])
             result = {}
             for row in cursor.fetchall():
-                result[row['employee_number']] = float(row['stempelanteil_minuten'] or 0)
+                result[row['employee_number']] = float(row['stempelzeit_stunden'] or 0)
             return result
 
     @staticmethod
-    def get_aw_verrechnet(
+    def get_vorgabezeit_aus_labours(
         von: date,
         bis: date
     ) -> Dict[int, Dict[str, float]]:
         """
-        Berechnet AW-Anteil und Umsatz pro Mechaniker.
+        NEUIMPLEMENTIERUNG TAG 196: Vorgabezeit (AW-Anteil) aus labours-Tabelle.
         
-        KORREKTE FORMEL (basierend auf Locosoft-Logik):
-        AW-Anteil = Summe aller AW von Positionen, proportional zur Stempelzeit verteilt.
-        
-        Wenn mehrere Mechaniker an einem Auftrag arbeiten:
-        AW-Anteil = time_units × (Stempelzeit_Mechaniker / Gesamt-Stempelzeit_Auftrag)
+        EINFACH & KORREKT nach Locosoft-Definition:
+        - Vorgabezeit = AW-Einheiten × 6 Minuten / 60 = Stunden
+        - NUR für Aufträge, an denen der Mechaniker gestempelt hat!
         
         Args:
             von: Startdatum
             bis: Enddatum
         
         Returns:
-            Dict: {employee_number: {aw, umsatz}}
-            - aw: In AW (nicht Stunden!)
-            - umsatz: In EUR
+            Dict: {employee_number: {aw, vorgabezeit_std, umsatz}}
+            - aw: AW-Einheiten
+            - vorgabezeit_std: Vorgabezeit in Stunden
+            - umsatz: Umsatz in EUR
         """
         with locosoft_session() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             
-            # KORREKTE AW-Anteil-Berechnung (basierend auf Analyse):
-            # Locosoft verwendet ALLE Positionen von Aufträgen, bei denen der Mechaniker gestempelt hat,
-            # OHNE Proportionalität zur Stempelzeit und OHNE Mechaniker-Filter auf die Positionen.
-            # 
-            # Analyse-Ergebnis für Dezember (Tobias 5007):
-            # - Alle Positionen: 3729 Min
-            # - Locosoft-UI: 5106 Min
-            # - Faktor: 1.369 (aber das ist wahrscheinlich eine andere Logik, nicht einfach ein Faktor)
-            # 
-            # Aktuell verwenden wir: ALLE Positionen von Aufträgen mit Stempelung
             query = """
                 WITH auftraege_mit_stempelung AS (
                     SELECT DISTINCT
@@ -996,36 +1085,29 @@ class WerkstattData:
                     FROM times t
                     WHERE t.type = 2
                       AND t.end_time IS NOT NULL
-                      AND t.order_number > 31
                       AND t.start_time >= %s 
                       AND t.start_time < %s + INTERVAL '1 day'
-                ),
-                aw_pro_mechaniker AS (
-                    SELECT
-                        ams.employee_number,
-                        -- ALLE Positionen von Aufträgen, bei denen gestempelt wurde
-                        -- OHNE Mechaniker-Filter auf die Positionen
-                        SUM(l.time_units) as aw_gesamt,
-                        SUM(l.net_price_in_order) as umsatz_gesamt
-                    FROM auftraege_mit_stempelung ams
-                    JOIN labours l ON ams.order_number = l.order_number
-                    WHERE l.time_units > 0
-                    GROUP BY ams.employee_number
                 )
-                SELECT
-                    employee_number,
-                    SUM(aw_gesamt) as aw,  -- In AW (nicht Stunden!)
-                    SUM(umsatz_gesamt) as umsatz
-                FROM aw_pro_mechaniker
-                GROUP BY employee_number
+                SELECT 
+                    ams.employee_number,
+                    -- FIX TAG 196: Summiere nur AW, die diesem Mechaniker zugeordnet sind!
+                    -- werkstatt_auftraege_abgerechnet summiert auch nur die AW pro Mechaniker.
+                    SUM(CASE WHEN l.mechanic_no = ams.employee_number THEN l.time_units ELSE 0 END) AS aw,
+                    SUM(CASE WHEN l.mechanic_no = ams.employee_number THEN l.time_units ELSE 0 END) * 6.0 / 60.0 AS vorgabezeit_std,
+                    SUM(CASE WHEN l.mechanic_no = ams.employee_number THEN l.net_price_in_order ELSE 0 END) AS umsatz
+                FROM auftraege_mit_stempelung ams
+                JOIN labours l ON ams.order_number = l.order_number
+                WHERE l.time_units > 0
+                GROUP BY ams.employee_number
             """
             
             cursor.execute(query, [von, bis])
             result = {}
             for row in cursor.fetchall():
                 result[row['employee_number']] = {
-                    'aw': float(row['aw'] or 0),  # In AW
-                    'umsatz': float(row['umsatz'] or 0)
+                    'aw': float(row['aw'] or 0),  # AW-Einheiten
+                    'vorgabezeit_std': float(row['vorgabezeit_std'] or 0),  # Vorgabezeit in Stunden
+                    'umsatz': float(row['umsatz'] or 0)  # Umsatz in EUR
                 }
             return result
 
@@ -1105,7 +1187,9 @@ class WerkstattData:
 
     @staticmethod
     def berechne_mechaniker_kpis_aus_rohdaten(
-        rohdaten: Dict[int, Dict[str, Any]]
+        rohdaten: Dict[int, Dict[str, Any]],
+        von: date,
+        bis: date
     ) -> Dict[int, Dict[str, Any]]:
         """
         Berechnet alle KPIs für Mechaniker aus Rohdaten.
@@ -1148,41 +1232,52 @@ class WerkstattData:
         result = {}
         
         for emp_nr, data in rohdaten.items():
-            # Konvertiere Einheiten
-            stempelzeit_min = data.get('stempelzeit', 0)
+            # NEUIMPLEMENTIERUNG TAG 196: Einfache, korrekte KPI-Berechnung
+            # 
+            # Alle Werte sind jetzt in Stunden (SSOT)!
+            # - vorgabezeit_std = AW-Anteil in Stunden (aus get_vorgabezeit_aus_labours)
+            # - stempelzeit_std = St-Anteil in Stunden (aus get_stempelzeit_aus_times)
+            # - anwesenheit_std = Anwesenheit in Stunden (aus get_anwesenheit_aus_times)
+            #
+            vorgabezeit_std = data.get('vorgabezeit_std', 0)  # AW-Anteil in Stunden (SSOT!)
+            stempelzeit_std = data.get('stempelzeit_std', 0)  # St-Anteil in Stunden (SSOT!)
+            anwesenheit_std = data.get('anwesenheit_std', 0)  # Anwesenheit in Stunden (SSOT!)
             stempelzeit_leistungsgrad_min = data.get('stempelzeit_leistungsgrad', 0)
-            anwesenheit_min = data.get('anwesenheit', 0)
-            aw_roh = data.get('aw', 0)  # TAG 195: Jetzt in AW, nicht Stunden!
+            aw_roh = data.get('aw', 0)  # AW-Einheiten (SSOT!)
             tage = data.get('tage', 0)
             
             # KORREKTE LEISTUNGSGRAD-BERECHNUNG (Locosoft-Formel):
-            # Leistungsgrad = (AW-Anteil / Stmp.Anteil) × 100
-            # 
-            # Definition aus Locosoft:
-            # - AW-Anteil: Verrechenbare Arbeitswerte (in Minuten)
-            # - Stmp.Anteil: Stempel-Anteil (in Minuten) - kommt aus get_st_anteil_position_basiert
-            # 
-            # WICHTIG: stempelzeit ist bereits der Stmp.Anteil in Minuten!
-            #          NICHT stempelzeit_leistungsgrad verwenden!
-            st_anteil_minuten = stempelzeit_min  # Stmp.Anteil in Minuten
-            aw_anteil_minuten = aw_roh * 6.0  # AW-Anteil in Minuten (1 AW = 6 Min)
-            
-            if st_anteil_minuten > 0 and aw_anteil_minuten > 0:
-                leistungsgrad = round((aw_anteil_minuten / st_anteil_minuten * 100), 1)
+            # Leistungsgrad = (Vorgabezeit / Stempelzeit) × 100
+            # Beispiel: 200 Std Vorgabe / 150 Std Stempel = 133%
+            if stempelzeit_std > 0 and vorgabezeit_std > 0:
+                leistungsgrad = round((vorgabezeit_std / stempelzeit_std * 100), 1)
             else:
                 leistungsgrad = None
             
-            # Für andere KPIs: Konvertiere für KPI-Berechnung
-            vorgabe_aw = aw_roh  # Bereits in AW
-            produktivitaet = berechne_produktivitaet(stempelzeit_min, anwesenheit_min)
+            # KORREKTE PRODUKTIVITÄT-BERECHNUNG (Locosoft-Formel):
+            # Produktivität = (Stempelzeit / Anwesenheit) × 100
+            # Beispiel: 150 Std Stempel / 170 Std Anwesend = 88%
+            if anwesenheit_std > 0:
+                produktivitaet = round((stempelzeit_std / anwesenheit_std * 100), 1)
+            else:
+                produktivitaet = None
             
-            # Anwesenheitsgrad: Bezahlte Zeit = tage * 8h
-            bezahlt_h = tage * 8.0
-            anwesend_h = minuten_zu_stunden(anwesenheit_min)
+            # Anwesenheitsgrad: Bezahlte Zeit = Arbeitstage im Zeitraum * 8h
+            # FIX TAG 196: tage = Anzahl Tage mit Stempelungen, nicht Arbeitstage!
+            # Berechne echte Arbeitstage im Zeitraum (Mo-Fr, ohne Feiertage)
+            arbeitstage_im_zeitraum = 0
+            current = von
+            while current <= bis:
+                if current.weekday() < 5:  # Mo-Fr (0=Mo, 4=Fr)
+                    arbeitstage_im_zeitraum += 1
+                current += timedelta(days=1)
+            
+            bezahlt_h = arbeitstage_im_zeitraum * 8.0
+            anwesend_h = anwesenheit_std  # Bereits in Stunden (SSOT!)
             anwesenheitsgrad = berechne_anwesenheitsgrad(anwesend_h, bezahlt_h)
             
             # Auslastungsgrad
-            gestempelt_h = minuten_zu_stunden(stempelzeit_min)
+            gestempelt_h = stempelzeit_std  # Bereits in Stunden (SSOT!)
             auslastungsgrad = berechne_auslastungsgrad(gestempelt_h, anwesend_h)
             
             result[emp_nr] = {

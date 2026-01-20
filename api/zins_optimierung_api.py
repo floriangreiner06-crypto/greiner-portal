@@ -331,8 +331,96 @@ def zins_dashboard():
             'zinsen_monat': round(float(r.get('zinsen_monat') or 0), 2)
         }
 
-        # Gesamtzinsen INKL. Hyundai
-        total_zinsen = konten_zinsen + stellantis_ueber['zinsen_monat'] + santander['zinsen_monat'] + hyundai['zinsen_monat']
+        # === NEU: GENOBANK ===
+        # Genobank Zinssatz aus Konto 4700057908 (sollzins-Feld) - über MT940 verfügbar
+        # WICHTIG: Genobank-Finanzierungen sind im Konto 4700057908 als Soll-Saldo
+        # Die Zinsen werden bereits über "Konten Sollzinsen" erfasst!
+        # Hier zeigen wir nur die Fahrzeug-Anzahl und den Saldo für die Übersicht
+        c.execute("""
+            SELECT k.id, k.kontoname, k.sollzins, 
+                   (SELECT saldo FROM salden WHERE konto_id = k.id ORDER BY datum DESC LIMIT 1) as konto_saldo
+            FROM konten k
+            WHERE k.kontonummer = '4700057908' OR k.iban LIKE '%4700057908%'
+            LIMIT 1
+        """)
+        row = c.fetchone()
+        genobank_zins = None
+        genobank_konto_saldo = None
+        genobank_konto_id = None
+        
+        if row:
+            r = row_to_dict(row)
+            genobank_konto_id = r.get('id')
+            genobank_zins = float(r['sollzins']) if r.get('sollzins') else None
+            genobank_konto_saldo = float(r['konto_saldo'] or 0)
+        
+        # Fallback: ek_finanzierung_konditionen
+        if genobank_zins is None:
+            c.execute("SELECT zinssatz FROM ek_finanzierung_konditionen WHERE finanzinstitut = 'Genobank'")
+            row = c.fetchone()
+            if row:
+                r = row_to_dict(row)
+                genobank_zins = float(r['zinssatz']) if r['zinssatz'] else 5.5
+            else:
+                genobank_zins = 5.5  # Default
+        
+        # Genobank: Alle Fahrzeuge haben Zinsen (keine Zinsfreiheit)
+        c.execute("""
+            SELECT COUNT(*) as anzahl, SUM(aktueller_saldo) as saldo
+            FROM fahrzeugfinanzierungen 
+            WHERE finanzinstitut = 'Genobank' AND aktiv = true
+        """)
+        row = c.fetchone()
+        r = row_to_dict(row) if row else {}
+        genobank_anzahl = int(r.get('anzahl') or 0)
+        genobank_saldo = float(r.get('saldo') or 0)
+        
+        # Zinsen berechnen: Saldo * Zinssatz / 12 (monatlich)
+        # WICHTIG: Genobank-Finanzierungen sind im Konto 4700057908 als Soll-Saldo
+        # Die Zinsen werden bereits über "Konten Sollzinsen" erfasst!
+        # Hier berechnen wir nur die Zinsen für die einzelnen Fahrzeuge (falls separat benötigt)
+        genobank_zinsen_monat = (genobank_saldo * genobank_zins / 100 / 12) if genobank_saldo > 0 else 0
+        
+        # Prüfe ob Genobank-Konto bereits in "Konten Sollzinsen" enthalten ist
+        # Falls ja, sollten wir die Zinsen nicht doppelt zählen
+        genobank_in_konten_zinsen = False
+        if genobank_konto_id:
+            # Prüfe ob dieses Konto bereits in konten_zinsen enthalten ist
+            c.execute(f"""
+                SELECT COUNT(*) as count
+                FROM konten k
+                JOIN (
+                    SELECT s1.konto_id, s1.saldo
+                    FROM salden s1
+                    JOIN (SELECT konto_id, MAX(datum) as max_datum FROM salden GROUP BY konto_id) s2
+                      ON s1.konto_id = s2.konto_id AND s1.datum = s2.max_datum
+                ) s ON s.konto_id = k.id
+                WHERE k.id = {genobank_konto_id} AND {aktiv_check} AND s.saldo < 0 AND k.sollzins IS NOT NULL
+            """)
+            row = c.fetchone()
+            if row:
+                r = row_to_dict(row)
+                genobank_in_konten_zinsen = (r.get('count', 0) > 0)
+        
+        genobank = {
+            'anzahl': genobank_anzahl,
+            'saldo': genobank_saldo,
+            'zinsen_monat': round(genobank_zinsen_monat, 2),
+            'zinssatz': genobank_zins,
+            'konto_saldo': genobank_konto_saldo,  # Saldo des Kontos 4700057908
+            'konto_id': genobank_konto_id,
+            'in_konten_zinsen': genobank_in_konten_zinsen  # Flag: Bereits in "Konten Sollzinsen" enthalten
+        }
+
+        # Gesamtzinsen INKL. Hyundai + Genobank
+        # WICHTIG: Genobank-Zinsen sind bereits in konten_zinsen enthalten (Konto 4700057908)
+        # Nur hinzufügen wenn nicht bereits in konten_zinsen enthalten
+        genobank_zinsen_fuer_gesamt = 0
+        if not genobank.get('in_konten_zinsen', False):
+            # Genobank-Zinsen noch nicht in konten_zinsen enthalten, separat hinzufügen
+            genobank_zinsen_fuer_gesamt = genobank['zinsen_monat']
+        
+        total_zinsen = konten_zinsen + stellantis_ueber['zinsen_monat'] + santander['zinsen_monat'] + hyundai['zinsen_monat'] + genobank_zinsen_fuer_gesamt
 
         return jsonify({
             'zinskosten_monat': round(total_zinsen, 2),
@@ -343,6 +431,7 @@ def zins_dashboard():
             'stellantis_bald_ablaufend': stellantis_bald,
             'santander': santander,  # TAG 172: Vollständige Daten (anzahl, saldo, zinsen_monat)
             'hyundai': hyundai,
+            'genobank': genobank,  # Genobank Finanzierungen
             'handlungsbedarf': stellantis_ueber['anzahl'] + stellantis_bald['anzahl']
         })
 

@@ -399,15 +399,19 @@ async function loadDashboardData() {
     }
     
     // Kapazität (Auslastung = offene Arbeit vs. verfügbare Kapazität)
+    // TAG 200: FIX - Zeige Tages-Auslastung statt Gesamt-Auslastung
+    // Problem: prozent_gesamt vergleicht mehrere Tage Arbeit mit Tageskapazität → unrealistisch hoch (419%)
+    // Lösung: prozent_heute zeigt realistische Tages-Auslastung (wie Kapazitätsplanung)
     try {
         const data = await fetchApi('/api/werkstatt/live/kapazitaet');
         if (data?.success && data.auslastung) {
-            const auslastung = Math.round(data.auslastung.prozent_gesamt || 0);
+            // TAG 200: Verwende prozent_heute statt prozent_gesamt für realistische Werte
+            const auslastung = Math.round(data.auslastung.prozent_heute || data.auslastung.prozent_gesamt || 0);
             const el = document.getElementById('badge-kapazitaet');
             el.textContent = auslastung + '%';
             // Farbe: grün wenn unter 100%, gelb 100-150%, rot über 150%
             el.className = 'badge-value ' + (auslastung <= 100 ? 'value-ok' : auslastung <= 150 ? 'value-warning' : 'value-danger');
-            // Zusatzinfo: Tage Arbeit
+            // Zusatzinfo: Tage Arbeit (informativ, zeigt Gesamt-Backlog)
             const tage = data.auslastung.tage_arbeit || 0;
             const subEl = document.getElementById('badge-kapazitaet-sub');
             if (subEl) subEl.textContent = tage.toFixed(1) + ' Tage Arbeit';

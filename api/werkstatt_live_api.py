@@ -1128,7 +1128,9 @@ def get_kapazitaets_forecast():
         cur_loco = conn_loco.cursor(cursor_factory=RealDictCursor)
 
         # Portal-DB für Servicebox (TAG 136: PostgreSQL-kompatibel)
-        conn_portal = db_session().__enter__()
+        # FIX TAG 200: Context Manager korrekt verwenden
+        portal_context = db_session()
+        conn_portal = portal_context.__enter__()
         cur_portal = conn_portal.cursor()
         
         heute = datetime.now().date()
@@ -1591,11 +1593,25 @@ def get_kapazitaets_forecast():
 
         avg_gesamt = sum(a['anzahl'] for a in avg_statistik)
         avg_aw_gesamt = sum(a['summe_aw'] for a in avg_statistik)
+        
+        # TAG 200: Problematische AVG-Aufträge VOR dem Schließen der Connections holen
+        avg_problematisch = get_avg_problematische_auftraege_safe(cur_loco, subsidiary)
+        
+        # TAG 200: Alle offenen Aufträge VOR dem Schließen der Connections holen
+        offene_auftraege = get_alle_offene_auftraege_safe(cur_loco, subsidiary)
 
-        cur_loco.close()
-        conn_loco.close()
-        cur_portal.close()
-        conn_portal.close()
+        # FIX TAG 200: Connections korrekt schließen
+        try:
+            cur_loco.close()
+            conn_loco.close()
+        except:
+            pass
+        
+        try:
+            cur_portal.close()
+            portal_context.__exit__(None, None, None)  # Context Manager korrekt beenden
+        except:
+            pass
         
         return jsonify({
             'success': True,
@@ -1647,15 +1663,318 @@ def get_kapazitaets_forecast():
                 'gesamt_auftraege': avg_gesamt,
                 'gesamt_aw': round(avg_aw_gesamt, 1),
                 'statistik': avg_statistik
-            }
+            },
+            
+            # TAG 200: Problematische AVG-Aufträge (abgerechnet oder Termin vorbei)
+            'avg_problematisch': avg_problematisch,
+            
+            # TAG 200: Alle offenen Aufträge (zur Validierung gegen CSV)
+            'offene_auftraege': offene_auftraege
         })
         
     except Exception as e:
         logger.exception("Fehler bei Kapazitäts-Forecast")
+        # FIX TAG 200: Connections auch bei Fehler schließen
+        try:
+            if 'cur_loco' in locals():
+                cur_loco.close()
+            if 'conn_loco' in locals():
+                conn_loco.close()
+            if 'cur_portal' in locals():
+                cur_portal.close()
+            if 'conn_portal' in locals() and 'portal_context' in locals():
+                portal_context.__exit__(None, None, None)
+        except:
+            pass
         return jsonify({
             'success': False,
             'error': str(e)
         }), 500
+
+
+def get_avg_problematische_auftraege_safe(cur_loco, subsidiary=None):
+    """
+    TAG 200: Wrapper für get_avg_problematische_auftraege mit Fehlerbehandlung
+    """
+    try:
+        return get_avg_problematische_auftraege(cur_loco, subsidiary)
+    except Exception as e:
+        logger.warning(f"Fehler bei get_avg_problematische_auftraege: {e}")
+        return {
+            'abgerechnet': {'anzahl': 0, 'auftraege': []},
+            'termin_vorbei': {'anzahl': 0, 'auftraege': []},
+            'gesamt_problematisch': 0
+        }
+
+
+def get_avg_problematische_auftraege(cur_loco, subsidiary=None):
+    """
+    TAG 200: Findet problematische AVG-Aufträge
+    - Abgerechnet, aber haben noch AVG-Grund
+    - Termin vorbei, aber nicht abgerechnet
+    """
+    from datetime import date
+    heute = date.today()
+    
+    # Import BETRIEB_NAMEN (bereits oben importiert)
+    
+    # Abgerechnete Aufträge mit AVG-Grund
+    # TAG 200: has_open_positions kann true sein auch wenn abgerechnet (wenn noch offene Positionen existieren)
+    # Wir prüfen explizit ob eine Rechnung existiert
+    abgerechnet_query = """
+        SELECT DISTINCT
+            o.number as auftrag_nr,
+            o.subsidiary as betrieb,
+            o.clearing_delay_type as avg_code,
+            cdt.description as avg_text,
+            i.invoice_number,
+            i.invoice_date,
+            COALESCE(SUM(l.time_units), 0) as vorgabe_aw
+        FROM orders o
+        LEFT JOIN clearing_delay_types cdt ON o.clearing_delay_type = cdt.type
+        JOIN invoices i ON o.number = i.order_number
+        LEFT JOIN labours l ON o.number = l.order_number AND l.time_units > 0
+        WHERE o.clearing_delay_type IS NOT NULL
+          AND o.clearing_delay_type != ''
+          AND i.is_canceled = false
+          AND o.has_open_positions = true  -- Nur offene Aufträge (können trotzdem teilweise abgerechnet sein)
+    """
+    
+    if subsidiary:
+        abgerechnet_query += " AND o.subsidiary = %s"
+        cur_loco.execute(abgerechnet_query + " GROUP BY o.number, o.subsidiary, o.clearing_delay_type, cdt.description, i.invoice_number, i.invoice_date", [subsidiary])
+    else:
+        abgerechnet_query += " GROUP BY o.number, o.subsidiary, o.clearing_delay_type, cdt.description, i.invoice_number, i.invoice_date"
+        cur_loco.execute(abgerechnet_query)
+    
+    abgerechnet = cur_loco.fetchall()
+    
+    # Termin vorbei, nicht abgerechnet
+    termin_vorbei_query = """
+        SELECT DISTINCT
+            o.number as auftrag_nr,
+            o.subsidiary as betrieb,
+            o.clearing_delay_type as avg_code,
+            cdt.description as avg_text,
+            o.estimated_inbound_time as bringen_termin,
+            COALESCE(SUM(l.time_units), 0) as vorgabe_aw
+        FROM orders o
+        LEFT JOIN clearing_delay_types cdt ON o.clearing_delay_type = cdt.type
+        LEFT JOIN labours l ON o.number = l.order_number AND l.time_units > 0
+        WHERE o.has_open_positions = true
+          AND o.clearing_delay_type IS NOT NULL
+          AND o.clearing_delay_type != ''
+          AND DATE(o.estimated_inbound_time) < CURRENT_DATE
+          AND NOT EXISTS (
+              SELECT 1 FROM invoices i 
+              WHERE i.order_number = o.number 
+              AND i.is_canceled = false
+          )
+    """
+    
+    if subsidiary:
+        termin_vorbei_query += " AND o.subsidiary = %s"
+        cur_loco.execute(termin_vorbei_query + " GROUP BY o.number, o.subsidiary, o.clearing_delay_type, cdt.description, o.estimated_inbound_time", [subsidiary])
+    else:
+        termin_vorbei_query += " GROUP BY o.number, o.subsidiary, o.clearing_delay_type, cdt.description, o.estimated_inbound_time"
+        cur_loco.execute(termin_vorbei_query)
+    
+    termin_vorbei = cur_loco.fetchall()
+    
+    # Formatieren
+    abgerechnet_liste = [{
+        'auftrag_nr': a['auftrag_nr'],
+        'betrieb': a['betrieb'],
+        'betrieb_name': BETRIEB_NAMEN.get(a['betrieb'], '?'),
+        'avg_code': a['avg_code'],
+        'avg_text': a['avg_text'] or 'Unbekannt',
+        'invoice_number': a['invoice_number'],
+        'invoice_date': a['invoice_date'].strftime('%d.%m.%Y') if a['invoice_date'] else None,
+        'vorgabe_aw': float(a['vorgabe_aw'] or 0),
+        'problem': 'abgerechnet'
+    } for a in abgerechnet]
+    
+    termin_vorbei_liste = [{
+        'auftrag_nr': a['auftrag_nr'],
+        'betrieb': a['betrieb'],
+        'betrieb_name': BETRIEB_NAMEN.get(a['betrieb'], '?'),
+        'avg_code': a['avg_code'],
+        'avg_text': a['avg_text'] or 'Unbekannt',
+        'bringen_termin': a['bringen_termin'].strftime('%d.%m.%Y') if a['bringen_termin'] else None,
+        'tage_vorbei': (heute - a['bringen_termin'].date()).days if a['bringen_termin'] else 0,
+        'vorgabe_aw': float(a['vorgabe_aw'] or 0),
+        'problem': 'termin_vorbei'
+    } for a in termin_vorbei]
+    
+    # TAG 200: Abgerechnete Aufträge werden nicht mehr angezeigt
+    # (AVG-Grund bleibt nach Abrechnung erhalten, wird nicht mehr bearbeitet)
+    # Nur Aufträge mit Termin vorbei sind relevant
+    return {
+        'abgerechnet': {
+            'anzahl': len(abgerechnet_liste),
+            'auftraege': []  # Nicht mehr anzeigen
+        },
+        'termin_vorbei': {
+            'anzahl': len(termin_vorbei_liste),
+            'auftraege': termin_vorbei_liste[:50]  # Max 50
+        },
+        'gesamt_problematisch': len(termin_vorbei_liste)  # Nur Termin vorbei zählt
+    }
+
+
+def get_alle_offene_auftraege_safe(cur_loco, subsidiary=None, serviceberater_nr=None, min_alter_tage=None):
+    """
+    TAG 200: Wrapper für get_alle_offene_auftraege mit Fehlerbehandlung
+    """
+    try:
+        return get_alle_offene_auftraege(cur_loco, subsidiary, serviceberater_nr, min_alter_tage)
+    except Exception as e:
+        logger.warning(f"Fehler bei get_alle_offene_auftraege: {e}")
+        return {
+            'anzahl': 0,
+            'summe_aw': 0,
+            'summe_gesamt': 0,
+            'auftraege': []
+        }
+
+
+def get_alle_offene_auftraege(cur_loco, subsidiary=None, serviceberater_nr=None, min_alter_tage=None):
+    """
+    TAG 200: Holt alle offenen Aufträge aus Locosoft
+    Struktur entspricht der CSV-Datei zur Validierung
+    
+    Args:
+        cur_loco: Locosoft Cursor
+        subsidiary: Betrieb (optional)
+        serviceberater_nr: Serviceberater-Nummer (optional)
+        min_alter_tage: Mindestalter in Tagen (optional)
+    """
+    from datetime import date, timedelta
+    heute = date.today()
+    
+    query = """
+        SELECT
+            o.number as auftrag_nr,
+            o.subsidiary as betrieb,
+            o.order_date as auftrag_datum,
+            o.clearing_delay_type as avg_code,
+            cdt.description as avg_text,
+            o.order_taking_employee_no as serviceberater_nr,
+            sb.name as serviceberater_name,
+            cs.customer_number as kunden_nr,
+            COALESCE(cs.family_name || ', ' || cs.first_name, cs.family_name) as kunde,
+            v.license_plate as kennzeichen,
+            m.description as marke,
+            v.first_registration_date as erstzulassung,
+            v.internal_number as fahrzeug_nr,
+            v.mileage_km as km_stand,
+            o.urgency as dringlichkeit,
+            COALESCE(SUM(l.time_units), 0) as vorgabe_aw,
+            COUNT(DISTINCT CASE WHEN NOT l.is_invoiced THEN l.order_position END) as anzahl_unfakt_arbeitspositionen,
+            COUNT(DISTINCT CASE WHEN NOT l.is_invoiced AND l.labour_type IN ('P', 'PT') THEN l.order_position END) as anzahl_unfakt_fz_positionen,
+            COUNT(DISTINCT CASE WHEN NOT l.is_invoiced AND l.labour_type = 'ET' THEN l.order_position END) as anzahl_unfakt_et_positionen,
+            COALESCE(SUM(CASE WHEN NOT l.is_invoiced THEN l.net_price_in_order ELSE 0 END), 0) as summe_lohn,
+            COALESCE(SUM(CASE WHEN NOT l.is_invoiced AND l.labour_type = 'ET' THEN l.net_price_in_order ELSE 0 END), 0) as summe_et,
+            COALESCE(SUM(CASE WHEN NOT l.is_invoiced THEN l.net_price_in_order ELSE 0 END), 0) as gesamtsumme,
+            o.estimated_inbound_time as termin_bringen,
+            o.estimated_outbound_time as termin_abholen
+        FROM orders o
+        LEFT JOIN clearing_delay_types cdt ON o.clearing_delay_type = cdt.type
+        LEFT JOIN employees_history sb ON o.order_taking_employee_no = sb.employee_number
+            AND sb.is_latest_record = true
+        LEFT JOIN vehicles v ON o.vehicle_number = v.internal_number
+        LEFT JOIN makes m ON v.make_number = m.make_number
+        LEFT JOIN customers_suppliers cs ON o.order_customer = cs.customer_number
+        LEFT JOIN labours l ON o.number = l.order_number AND l.time_units > 0
+        WHERE o.has_open_positions = true
+          AND o.order_date >= CURRENT_DATE - INTERVAL '90 days'  -- Letzte 90 Tage
+    """
+    
+    params = []
+    
+    if subsidiary:
+        query += " AND o.subsidiary = %s"
+        params.append(subsidiary)
+    
+    if serviceberater_nr:
+        query += " AND o.order_taking_employee_no = %s"
+        params.append(serviceberater_nr)
+    
+    if min_alter_tage and min_alter_tage > 0:
+        min_datum = heute - timedelta(days=min_alter_tage)
+        query += " AND o.order_date <= %s"
+        params.append(min_datum)
+        query += """
+            GROUP BY o.number, o.subsidiary, o.order_date, o.clearing_delay_type, cdt.description,
+                     o.order_taking_employee_no, sb.name, cs.customer_number, cs.family_name, cs.first_name,
+                     v.license_plate, m.description, v.first_registration_date, v.internal_number, 
+                     v.mileage_km, o.urgency, o.estimated_inbound_time, o.estimated_outbound_time
+            ORDER BY o.order_date DESC, o.number DESC
+            LIMIT 200
+        """
+        cur_loco.execute(query, params)
+    else:
+        query += """
+            GROUP BY o.number, o.subsidiary, o.order_date, o.clearing_delay_type, cdt.description,
+                     o.order_taking_employee_no, sb.name, cs.customer_number, cs.family_name, cs.first_name,
+                     v.license_plate, m.description, v.first_registration_date, v.internal_number, 
+                     v.mileage_km, o.urgency, o.estimated_inbound_time, o.estimated_outbound_time
+            ORDER BY o.order_date DESC, o.number DESC
+            LIMIT 200
+        """
+        cur_loco.execute(query, params)
+    
+    auftraege_raw = cur_loco.fetchall()
+    
+    auftraege_liste = []
+    for a in auftraege_raw:
+        auftrag_datum_raw = a['auftrag_datum']
+        # Konvertiere datetime zu date falls nötig
+        if auftrag_datum_raw:
+            if hasattr(auftrag_datum_raw, 'date'):
+                auftrag_datum_date = auftrag_datum_raw.date()
+            else:
+                auftrag_datum_date = auftrag_datum_raw
+            tage_alt = (heute - auftrag_datum_date).days
+        else:
+            auftrag_datum_date = None
+            tage_alt = 0
+        
+        auftraege_liste.append({
+            'auftrag_nr': a['auftrag_nr'],
+            'betrieb': a['betrieb'],
+            'betrieb_name': BETRIEB_NAMEN.get(a['betrieb'], '?'),
+            'auftrag_datum': auftrag_datum_raw.strftime('%d.%m.%Y') if auftrag_datum_raw else None,
+            'tage_alt': tage_alt,
+            'avg_code': a['avg_code'],
+            'avg_text': a['avg_text'] or None,
+            'serviceberater_nr': a['serviceberater_nr'],
+            'serviceberater_name': a['serviceberater_name'],
+            'kunden_nr': a['kunden_nr'],
+            'kunde': a['kunde'] or 'Unbekannt',
+            'kennzeichen': a['kennzeichen'],
+            'marke': a['marke'],
+            'erstzulassung': a['erstzulassung'].strftime('%d.%m.%Y') if a['erstzulassung'] else None,
+            'fahrzeug_nr': a['fahrzeug_nr'],
+            'km_stand': int(a['km_stand'] or 0),
+            'dringlichkeit': a['dringlichkeit'],
+            'vorgabe_aw': round(float(a['vorgabe_aw'] or 0), 1),
+            'anzahl_unfakt_arbeitspositionen': int(a['anzahl_unfakt_arbeitspositionen'] or 0),
+            'anzahl_unfakt_fz_positionen': int(a['anzahl_unfakt_fz_positionen'] or 0),
+            'anzahl_unfakt_et_positionen': int(a['anzahl_unfakt_et_positionen'] or 0),
+            'summe_lohn': round(float(a['summe_lohn'] or 0), 2),
+            'summe_et': round(float(a['summe_et'] or 0), 2),
+            'gesamtsumme': round(float(a['gesamtsumme'] or 0), 2),
+            'termin_bringen': a['termin_bringen'].strftime('%d.%m.%Y %H:%M') if a['termin_bringen'] else None,
+            'termin_abholen': a['termin_abholen'].strftime('%d.%m.%Y %H:%M') if a['termin_abholen'] else None
+        })
+    
+    return {
+        'anzahl': len(auftraege_liste),
+        'summe_aw': round(sum(a['vorgabe_aw'] for a in auftraege_liste), 1),
+        'summe_gesamt': round(sum(a['gesamtsumme'] for a in auftraege_liste), 2),
+        'auftraege': auftraege_liste
+    }
 
 
 # ============================================================================

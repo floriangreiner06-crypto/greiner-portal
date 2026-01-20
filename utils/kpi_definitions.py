@@ -65,6 +65,136 @@ SCHWELLEN = {
     'produktivitaet': {'gut': 80.0, 'warnung': 60.0},  # Alias für Auslastung
 }
 
+# =============================================================================
+# MARKT-BENCHMARKS (Branchendurchschnitt - aus öffentlichen Studien)
+# =============================================================================
+# Quelle: DAT Report, IBISWorld, Auto Zeitung, Hans-Böckler-Stiftung (2023-2025)
+# TAG 199: Statische Benchmarks für Marktvergleich (Phase 1)
+# TODO: Phase 2: WESP API-Integration für dynamische Benchmarks
+
+MARKT_BENCHMARKS = {
+    # KPIs (Branchendurchschnitt)
+    'leistungsgrad': 100.0,           # Ziel: 100% (genau wie kalkuliert)
+    'auslastungsgrad': 90.0,           # Ziel: 90% der Anwesenheit produktiv
+    'anwesenheitsgrad': 79.0,          # Ziel: ~79% (wg. Urlaub, Krankheit)
+    'effizienz': 71.0,                 # Ziel: ~71% (0.79 × 0.90 × 1.00)
+    'stunden_pro_durchgang': 1.8,      # Branchenschnitt: 1,8h pro Auftrag
+    
+    # Finanz-KPIs
+    'stundensatz_durchschnitt': 148.55,  # €/h (Deutschland 2023, 20 Großstädte)
+    'stundensatz_min': 126.0,            # €/h (Leipzig - niedrigster)
+    'stundensatz_max': 174.5,            # €/h (München - höchster)
+    'bruttomarge': 45.0,                 # % (Zielwert für gesunde Werkstatt)
+    'teile_marge': 58.0,                 # % (Zielwert, aktuell 51-60% im Markt)
+    'kundenbindungsrate': 75.0,          # % (Zielwert für Erfolg)
+    
+    # Wartezeiten & Auslastung
+    'wartezeit_durchschnitt': 9.3,      # Tage (Durchschnittliche Wartezeit auf Termin)
+    'werkstattdichte_min': 1000,         # Fahrzeuge pro Werkstatt (Wuppertal)
+    'werkstattdichte_max': 2000,        # Fahrzeuge pro Werkstatt (München)
+    
+    # Quelle & Datum
+    'quelle': 'DAT Report, IBISWorld, Auto Zeitung (2023-2025)',
+    'datum': '2025-01',
+    'hinweis': 'Statische Benchmarks - Phase 1. Phase 2: WESP API für dynamische Werte geplant.'
+}
+
+
+def get_markt_benchmark(kpi_name: str) -> Optional[float]:
+    """
+    Holt Markt-Benchmark für einen KPI (SSOT).
+    
+    Args:
+        kpi_name: Name des KPIs (z.B. 'leistungsgrad', 'stundensatz_durchschnitt')
+        
+    Returns:
+        Benchmark-Wert oder None wenn nicht gefunden
+        
+    Example:
+        >>> get_markt_benchmark('leistungsgrad')
+        100.0
+        >>> get_markt_benchmark('stundensatz_durchschnitt')
+        148.55
+    """
+    return MARKT_BENCHMARKS.get(kpi_name)
+
+
+def vergleiche_mit_markt(ist_wert: Optional[float], kpi_name: str) -> Dict[str, Any]:
+    """
+    Vergleicht Ist-Wert mit Markt-Benchmark (SSOT).
+    
+    Args:
+        ist_wert: Tatsächlicher Wert
+        kpi_name: Name des KPIs
+        
+    Returns:
+        Dict mit:
+        - 'ist': Ist-Wert
+        - 'benchmark': Benchmark-Wert
+        - 'differenz': Differenz (Ist - Benchmark)
+        - 'differenz_prozent': Differenz in % (relativ zum Benchmark)
+        - 'status': 'besser', 'gleich', 'schlechter'
+        - 'icon': Emoji für Status
+        
+    Example:
+        >>> vergleiche_mit_markt(85.0, 'leistungsgrad')
+        {
+            'ist': 85.0,
+            'benchmark': 100.0,
+            'differenz': -15.0,
+            'differenz_prozent': -15.0,
+            'status': 'schlechter',
+            'icon': '📉'
+        }
+    """
+    if ist_wert is None:
+        return {
+            'ist': None,
+            'benchmark': None,
+            'differenz': None,
+            'differenz_prozent': None,
+            'status': 'unbekannt',
+            'icon': '–'
+        }
+    
+    benchmark = get_markt_benchmark(kpi_name)
+    if benchmark is None:
+        return {
+            'ist': ist_wert,
+            'benchmark': None,
+            'differenz': None,
+            'differenz_prozent': None,
+            'status': 'unbekannt',
+            'icon': '–'
+        }
+    
+    differenz = ist_wert - benchmark
+    
+    # Für Prozent-KPIs: Differenz in Prozentpunkten
+    if kpi_name in ['leistungsgrad', 'auslastungsgrad', 'anwesenheitsgrad', 'effizienz', 
+                    'bruttomarge', 'teile_marge', 'kundenbindungsrate']:
+        differenz_prozent = differenz  # Prozentpunkte
+    else:
+        # Für absolute Werte: Relativ zum Benchmark
+        differenz_prozent = (differenz / benchmark * 100) if benchmark != 0 else 0
+    
+    # Status bestimmen (Toleranz: ±2% für "gleich")
+    if abs(differenz_prozent) <= 2.0:
+        status, icon = 'gleich', '➡️'
+    elif differenz_prozent > 0:
+        status, icon = 'besser', '📈'
+    else:
+        status, icon = 'schlechter', '📉'
+    
+    return {
+        'ist': ist_wert,
+        'benchmark': benchmark,
+        'differenz': round(differenz, 2),
+        'differenz_prozent': round(differenz_prozent, 1),
+        'status': status,
+        'icon': icon
+    }
+
 
 # =============================================================================
 # KERN-BERECHNUNGEN

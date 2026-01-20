@@ -278,6 +278,16 @@
         <span class="text-warning">*</span> = kalkulatorischer Einsatz
     </div>
 
+    <!-- DB1-ENTWICKLUNG CHART -->
+    <div class="card border-0 shadow-sm mt-3">
+        <div class="card-header bg-light">
+            <h6 class="mb-0"><i class="bi bi-graph-up"></i> DB1-Entwicklung nach Bereichen (letzte 12 Monate)</h6>
+        </div>
+        <div class="card-body">
+            <canvas id="db1EntwicklungChart" height="80"></canvas>
+        </div>
+    </div>
+
 </div>
 
 <!-- Drill-Down Modal -->
@@ -394,6 +404,7 @@ function renderAll(data) {
     renderHeute(data);
     renderBreakeven(data);
     renderTable(data);
+    loadDB1Entwicklung(); // TAG 198: DB1-Entwicklung Chart laden
 }
 
 function renderHeute(data) {
@@ -1117,6 +1128,177 @@ function renderDrill(bereichKey, data) {
 
     html += '</div></div>';
     document.getElementById('drillModalBody').innerHTML = html;
+}
+
+// TAG 198: DB1-Entwicklung Chart
+let db1Chart = null;
+
+// Bereichs-Farben für Chart (TEK-Bereiche)
+const BEREICH_FARBEN = {
+    'NW': '#0d6efd',      // Blau (Neuwagen)
+    'GW': '#6c757d',      // Grau (Gebrauchtwagen)
+    'ME': '#198754',      // Grün (Werkstatt = Mechanik + Karosserie + Clean Park)
+    'TZ': '#fd7e14',      // Orange (Teile & Zubehör)
+    'SO': '#17a2b8'       // Cyan (Sonstige = Mietwagen + Sonstige)
+};
+
+async function loadDB1Entwicklung() {
+    try {
+        const standort = getStandortFromURL();
+        const firma = getFirmaFromStandort(standort);
+        
+        // TAG 198: Standort-Mapping (wie in loadData)
+        let apiStandort = standort;
+        if (standort === '3') {
+            apiStandort = '2'; // Landau → standort=2 für API
+        }
+        
+        // API-Endpoint aufrufen (controlling_api Blueprint hat keinen url_prefix, Route beginnt mit /api/controlling)
+        const url = `/api/controlling/db1-entwicklung?firma=${firma}&standort=${apiStandort}&monate=12`;
+        const res = await fetch(url);
+        const data = await res.json();
+        
+        if (data.status === 'ok') {
+            renderDB1Chart(data);
+        } else {
+            console.error('DB1-Entwicklung Fehler:', data.message);
+        }
+    } catch (err) {
+        console.error('DB1-Entwicklung Fehler:', err);
+    }
+}
+
+function renderDB1Chart(data) {
+    const ctx = document.getElementById('db1EntwicklungChart');
+    if (!ctx) return;
+    
+    // Chart zerstören falls vorhanden
+    if (db1Chart) {
+        db1Chart.destroy();
+    }
+    
+    // TAG 198: Mapping zwischen BWA-Bereichen (NW, GW, ME, etc.) und TEK-Bereichen (1-NW, 2-GW, etc.)
+    // TEK verwendet aggregierte Bereiche: 4-Lohn = ME + KA (Werkstatt)
+    const bereichMapping = {
+        'NW': 'NW',
+        'GW': 'GW',
+        'ME': 'ME',  // Mechanik
+        'KA': 'ME',  // Karosserie → zu Werkstatt (4-Lohn)
+        'TZ': 'TZ',  // Teile & Zubehör
+        'CP': 'ME',  // Clean Park → zu Werkstatt (4-Lohn)
+        'MW': 'SO',  // Mietwagen → zu Sonstige (5-Sonst)
+        'SO': 'SO'   // Sonstige
+    };
+    
+    // TEK-Bereiche aggregieren
+    const tekBereiche = {
+        'NW': { name: 'Neuwagen', daten: [] },
+        'GW': { name: 'Gebrauchtwagen', daten: [] },
+        'ME': { name: 'Werkstatt', daten: [] },  // ME + KA + CP
+        'TZ': { name: 'Teile & Zubehör', daten: [] },
+        'SO': { name: 'Sonstige', daten: [] }   // MW + SO
+    };
+    
+    // Daten aggregieren
+    for (const [bwaKey, bereichData] of Object.entries(data.bereiche)) {
+        const tekKey = bereichMapping[bwaKey] || 'SO';
+        const tekBereich = tekBereiche[tekKey];
+        
+        if (!tekBereich) continue;
+        
+        // Erste Initialisierung
+        if (tekBereich.daten.length === 0) {
+            tekBereich.daten = bereichData.daten.map(d => ({ ...d, db1: 0 }));
+        }
+        
+        // DB1-Werte addieren
+        bereichData.daten.forEach((d, i) => {
+            if (tekBereich.daten[i]) {
+                tekBereich.daten[i].db1 += d.db1;
+            }
+        });
+    }
+    
+    // Datasets für jeden TEK-Bereich erstellen
+    const datasets = [];
+    
+    for (const [tekKey, tekBereich] of Object.entries(tekBereiche)) {
+        if (tekBereich.daten.length === 0) continue;
+        
+        const farbe = BEREICH_FARBEN[tekKey] || '#6c757d';
+        
+        datasets.push({
+            label: tekBereich.name,
+            data: tekBereich.daten.map(d => d.db1),
+            borderColor: farbe,
+            backgroundColor: farbe + '20', // 20% Transparenz
+            borderWidth: 2,
+            fill: false,
+            tension: 0.4  // TAG 198: Glattere Kurven
+        });
+    }
+    
+    // Chart erstellen
+    db1Chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.labels,
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: {
+                        boxWidth: 12,
+                        padding: 8,
+                        font: {
+                            size: 11
+                        }
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return context.dataset.label + ': ' + fmtEuro(context.parsed.y);
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: false,
+                    ticks: {
+                        callback: function(value) {
+                            return fmtEuro(value);
+                        },
+                        font: {
+                            size: 10
+                        }
+                    },
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)'
+                    }
+                },
+                x: {
+                    ticks: {
+                        font: {
+                            size: 10
+                        }
+                    },
+                    grid: {
+                        display: false
+                    }
+                }
+            }
+        }
+    });
 }
 
 // Init

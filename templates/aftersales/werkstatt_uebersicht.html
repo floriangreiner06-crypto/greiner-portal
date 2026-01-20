@@ -911,14 +911,29 @@ function updateAllKPIs(data) {
     const anwesenheitsgrad = gesamt.anwesenheitsgrad || null; // TAG 181: Neu aus API
     const effizienz = gesamt.effizienz || (leistungsgrad * produktivitaet / 100) || 0;
     
-    const stempelzeitMin = data.gesamt_stempelzeit || 0;
+    // FIX TAG 196: Korrekte Zuordnung basierend auf Locosoft-Analyse
+    // 
+    // Dashboard zeigte FALSCH:
+    // - "Stempelzeit" (2.113 Std) = tatsächlich AW-Anteil (Vorgabezeit)
+    // - "Anwesenheit" (626 Std) = tatsächlich St-Anteil (Stempelzeit auf Aufträgen)
+    // - Echte Anwesenheit fehlte komplett!
+    //
+    // KORREKTE Zuordnung:
+    // - vorgabezeit_std = AW-Anteil (aus gesamt_vorgabezeit oder gesamt_aw × 6 / 60)
+    // - stempelzeit_std = St-Anteil (aus gesamt_stempelzeit)
+    // - anwesenheit_std = Echte Anwesenheit (aus gesamt_anwesenheit)
+    //
+    const vorgabezeitMin = data.gesamt_vorgabezeit || (data.gesamt_aw || 0) * 6.0;  // AW-Anteil in Minuten
+    const vorgabezeitStd = vorgabezeitMin / 60;
+    const stempelzeitMin = data.gesamt_stempelzeit || 0;  // St-Anteil in Minuten
     const stempelzeitStd = stempelzeitMin / 60;
-    const anwesenheitMin = data.gesamt_anwesenheit || 0;
+    const anwesenheitMin = data.gesamt_anwesenheit || 0;  // Echte Anwesenheit in Minuten
     const anwesenheitStd = anwesenheitMin / 60;
     
     // SVS und Entgangener Umsatz
     const svs = gesamt.svs || SVS_DEFAULT;
-    const verloreneStd = gesamt.verlorene_std || (stempelzeitStd * Math.max(0, 1 - leistungsgrad / 100));
+    // FIX TAG 196: verloreneStd basiert auf Vorgabezeit, nicht Stempelzeit
+    const verloreneStd = gesamt.verlorene_std || (vorgabezeitStd * Math.max(0, 1 - leistungsgrad / 100));
     const entgangenerUmsatz = gesamt.entgangener_umsatz || (verloreneStd * svs);
     
     // 4 Tachos aktualisieren (TAG 181: Anwesenheitsgrad hinzugefügt)
@@ -953,10 +968,20 @@ function updateAllKPIs(data) {
     }
     
     // Kontext-KPIs (2. Reihe)
+    // FIX TAG 196: BESTÄTIGT - Dashboard zeigt Werte vertauscht!
+    // 
+    // Dashboard-Analyse zeigt:
+    // - "Stempelzeit" (2.113,3 Std) = tatsächlich Vorgabezeit (AW-Anteil)
+    // - "Anwesenheit" (626,4 Std) = tatsächlich Stempelzeit (St-Anteil)
+    //
+    // DAS BEDEUTET: Die Werte müssen vertauscht angezeigt werden!
+    // - kpiStempelzeit = vorgabezeitStd (zeigt Vorgabezeit, nicht Stempelzeit!)
+    // - kpiAnwesenheit = stempelzeitStd (zeigt Stempelzeit, nicht Anwesenheit!)
+    //
     document.getElementById('kpiMechaniker').textContent = data.anzahl_mechaniker || '-';
     document.getElementById('kpiAuftraege').textContent = formatNumber(data.gesamt_auftraege || 0);
-    document.getElementById('kpiStempelzeit').textContent = formatNumber(stempelzeitStd, 1);
-    document.getElementById('kpiAnwesenheit').textContent = formatNumber(anwesenheitStd, 1);
+    document.getElementById('kpiStempelzeit').textContent = formatNumber(vorgabezeitStd, 1);  // FIX: Zeigt Vorgabezeit (war Stempelzeit)
+    document.getElementById('kpiAnwesenheit').textContent = formatNumber(stempelzeitStd, 1);  // FIX: Zeigt Stempelzeit (war Anwesenheit)
     document.getElementById('kpiAW').textContent = formatNumber(data.gesamt_aw || 0, 0);
     document.getElementById('kpiTage').textContent = data.anzahl_tage || '-';
     
@@ -1159,7 +1184,7 @@ function updateMechanikerCards(mechaniker) {
                                 <div class="text-muted">Auftr.</div>
                             </div>
                             <div class="col-4">
-                                <div class="fw-bold">${formatNumber((m.stempelzeit || 0) / 60, 1)}</div>
+                                <div class="fw-bold">${formatNumber(m.vorgabezeit_std || 0, 1)}</div>
                                 <div class="text-muted">Std.</div>
                             </div>
                         </div>
@@ -1200,10 +1225,10 @@ function updateDetailTable(mechaniker) {
     
     mechaniker.forEach((m, index) => {
         const istAzubi = m.ist_azubi === 1;
-        // TAG 192: m.aw ist in Stunden gespeichert (time_units / 10.0)
-        //          Umrechnung: AW-Einheiten = m.aw * 10, Vorgabezeit = AW-Einheiten * 6 Minuten
-        const aw_einheiten = (m.aw || 0) * 10;  // AW in Einheiten
-        const vorgabe_stunden = aw_einheiten * 6 / 60;  // Vorgabezeit in Stunden
+        // SSOT TAG 196: Alle Werte werden von der API berechnet, Dashboard zeigt nur an!
+        //              Keine Berechnungen mehr im Dashboard!
+        const aw_einheiten = m.aw || 0;  // AW-Einheiten (von API)
+        const vorgabe_stunden = m.vorgabezeit_std || 0;  // Vorgabezeit in Stunden (von API berechnet, SSOT!)
         
         if (!istAzubi) {
             sumTage += m.tage || 0;
@@ -1223,7 +1248,7 @@ function updateDetailTable(mechaniker) {
                 <td><strong>${m.name || 'Unbekannt'}</strong>${istAzubi ? ' <small class="text-muted">(aggregiert)</small>' : ''}</td>
                 <td class="text-end">${m.tage || 0}</td>
                 <td class="text-end">${m.auftraege || 0}</td>
-                <td class="text-end">${formatNumber((m.stempelzeit || 0) / 60, 1)} h</td>
+                <td class="text-end">${formatNumber(m.vorgabezeit_std || 0, 1)} h</td>
                 <td class="text-end">${formatNumber(aw_einheiten, 1)} AW</td>
                 <td class="text-end">${formatNumber(vorgabe_stunden, 1)} h</td>
                 <td class="text-center"><span class="badge ${lgClass} px-3">${formatNumber(m.leistungsgrad, 1)}%</span></td>
@@ -1510,11 +1535,10 @@ function showMechanikerDetail(mechanikerNr) {
     const modal = new bootstrap.Modal(document.getElementById('detailModal'));
     document.getElementById('modalTitle').textContent = m.name || 'Mechaniker ' + mechanikerNr;
     
-    // TAG 192: m.aw ist in Stunden gespeichert (time_units / 10.0)
-    //          Umrechnung: AW-Einheiten = m.aw * 10, Vorgabezeit = AW-Einheiten * 6 Minuten
-    const aw_einheiten = (m.aw || 0) * 10;  // AW in Einheiten (z.B. 72 AW)
-    const vorgabe_minuten = aw_einheiten * 6;  // Vorgabezeit in Minuten
-    const vorgabe_stunden = vorgabe_minuten / 60;  // Vorgabezeit in Stunden
+    // SSOT TAG 196: Alle Werte werden von der API berechnet, Dashboard zeigt nur an!
+    //              Keine Berechnungen mehr im Dashboard!
+    const aw_einheiten = m.aw || 0;  // AW-Einheiten (von API)
+    const vorgabe_stunden = m.vorgabezeit_std || 0;  // Vorgabezeit in Stunden (von API berechnet, SSOT!)
     const lgClass = getLGClass(m.leistungsgrad);
     
     // Zeitraum-Parameter für API-Call

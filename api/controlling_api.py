@@ -3173,3 +3173,134 @@ def get_bwa_v2_drilldown():
             'message': str(e),
             'traceback': traceback.format_exc()
         }), 500
+
+
+# =============================================================================
+# DB1-ENTWICKLUNG API - Zeitverlauf für alle Bereiche
+# =============================================================================
+
+@controlling_api.route('/api/controlling/db1-entwicklung', methods=['GET'])
+def get_db1_entwicklung():
+    """
+    DB1-Entwicklung über mehrere Monate für alle Bereiche.
+    
+    Query-Parameter:
+        monate: Anzahl Monate zurück (default: 12)
+        firma: 0=Alle, 1=Stellantis, 2=Hyundai
+        standort: 0=Alle, 1=Deggendorf, 2=Landau
+    """
+    try:
+        from datetime import datetime, timedelta
+        
+        monate = request.args.get('monate', type=int) or 12
+        firma = request.args.get('firma', '0')
+        standort = request.args.get('standort', '0')
+        
+        # TAG182: Landau-Spezialfall
+        if standort == '3' and firma == '0':
+            standort = '2'
+            firma = '1'
+        
+        # Filter bauen
+        firma_filter_umsatz = ""
+        firma_filter_einsatz = ""
+        if firma == '1':
+            firma_filter_umsatz = "AND subsidiary_to_company_ref = 1"
+            firma_filter_einsatz = "AND subsidiary_to_company_ref = 1"
+        elif firma == '2':
+            firma_filter_umsatz = "AND subsidiary_to_company_ref = 2"
+            firma_filter_einsatz = "AND subsidiary_to_company_ref = 2"
+        
+        if standort == '1':
+            # Deggendorf: subsidiary = 1 oder 2
+            if firma == '1':
+                firma_filter_umsatz = "AND subsidiary_to_company_ref = 1"
+                firma_filter_einsatz = "AND subsidiary_to_company_ref = 1"
+            elif firma == '2':
+                firma_filter_umsatz = "AND subsidiary_to_company_ref = 2"
+                firma_filter_einsatz = "AND subsidiary_to_company_ref = 2"
+            else:
+                firma_filter_umsatz = "AND subsidiary_to_company_ref IN (1, 2)"
+                firma_filter_einsatz = "AND subsidiary_to_company_ref IN (1, 2)"
+        elif standort == '2':
+            # Landau: subsidiary = 3
+            firma_filter_umsatz = "AND subsidiary_to_company_ref = 3"
+            firma_filter_einsatz = "AND subsidiary_to_company_ref = 3"
+        
+        guv_filter = get_guv_filter()
+        
+        # Monate berechnen (rückwärts vom aktuellen Monat)
+        heute = datetime.now()
+        monate_liste = []
+        labels = []
+        
+        for i in range(monate - 1, -1, -1):
+            # Monat berechnen
+            monat_datum = heute - timedelta(days=30 * i)
+            jahr = monat_datum.year
+            monat = monat_datum.month
+            
+            datum_von = f"{jahr}-{monat:02d}-01"
+            if monat == 12:
+                datum_bis = f"{jahr+1}-01-01"
+            else:
+                datum_bis = f"{jahr}-{monat+1:02d}-01"
+            
+            monate_liste.append({
+                'jahr': jahr,
+                'monat': monat,
+                'datum_von': datum_von,
+                'datum_bis': datum_bis,
+                'label': f"{MONAT_NAMEN.get(monat, str(monat))} {jahr}"
+            })
+            labels.append(f"{MONAT_NAMEN.get(monat, str(monat))[:3]} {str(jahr)[-2:]}")
+        
+        # DB1 für jeden Bereich und jeden Monat berechnen
+        bereiche_daten = {}
+        
+        with db_session() as conn:
+            cursor = conn.cursor()
+            
+            for bereich_key, config in sorted(BEREICHE_CONFIG.items(), key=lambda x: x[1]['order']):
+                bereich_name = config['name']
+                bereiche_daten[bereich_key] = {
+                    'name': bereich_name,
+                    'daten': []
+                }
+                
+                for monat_info in monate_liste:
+                    werte = _berechne_bereich_werte(
+                        cursor, bereich_key, config,
+                        monat_info['datum_von'], monat_info['datum_bis'],
+                        firma_filter_umsatz, guv_filter, firma_filter_einsatz
+                    )
+                    
+                    db1 = werte['erlos'] - werte['einsatz']
+                    
+                    bereiche_daten[bereich_key]['daten'].append({
+                        'jahr': monat_info['jahr'],
+                        'monat': monat_info['monat'],
+                        'label': monat_info['label'],
+                        'umsatz': round(werte['erlos'], 2),
+                        'einsatz': round(werte['einsatz'], 2),
+                        'db1': round(db1, 2)
+                    })
+        
+        return jsonify({
+            'status': 'ok',
+            'labels': labels,
+            'bereiche': bereiche_daten,
+            'filter': {
+                'firma': firma,
+                'standort': standort,
+                'monate': monate
+            }
+        })
+    
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'status': 'error',
+            'message': str(e),
+            'traceback': traceback.format_exc()
+        }), 500

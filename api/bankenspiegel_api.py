@@ -526,6 +526,22 @@ def get_einkaufsfinanzierung():
                 ORDER BY finanzinstitut
             """)
             institute_liste = [row_to_dict(row)['finanzinstitut'] for row in cursor.fetchall()]
+            
+            # === NEU: Genobank hinzufügen, auch wenn keine Fahrzeuge vorhanden ===
+            # Genobank sollte immer angezeigt werden, wenn das Konto 4700057908 existiert
+            if 'Genobank' not in institute_liste:
+                # Prüfe ob Genobank-Konto existiert
+                cursor.execute("""
+                    SELECT COUNT(*) as count
+                    FROM konten
+                    WHERE (kontonummer = '4700057908' OR iban LIKE '%4700057908%')
+                      AND aktiv = true
+                """)
+                row = cursor.fetchone()
+                if row:
+                    r = row_to_dict(row)
+                    if r.get('count', 0) > 0:
+                        institute_liste.append('Genobank')
 
             institute = []
             for institut in institute_liste:
@@ -545,42 +561,140 @@ def get_einkaufsfinanzierung():
                 stats = row_to_dict(cursor.fetchone())
 
                 # Marken-Verteilung
-                cursor.execute(f"""
-                    SELECT
-                        rrdi,
-                        COUNT(*) as anzahl,
-                        SUM(aktueller_saldo) as finanzierung
-                    FROM fahrzeugfinanzierungen
-                    WHERE finanzinstitut = {ph} AND aktiv = true
-                    GROUP BY rrdi
-                    ORDER BY anzahl DESC
-                """, (institut,))
-                marken = []
-                for row in cursor.fetchall():
-                    r = row_to_dict(row)
-                    rrdi_value = r['rrdi'] if r['rrdi'] else None
+                # Für Genobank: hersteller-Feld verwenden, sonst rrdi
+                # WICHTIG: Für Genobank müssen wir Marken aus Locosoft holen, falls hersteller leer ist
+                if institut == 'Genobank':
+                    # 1. Hole alle Genobank-Fahrzeuge mit VINs
+                    cursor.execute(f"""
+                        SELECT vin, hersteller, aktueller_saldo
+                        FROM fahrzeugfinanzierungen
+                        WHERE finanzinstitut = {ph} AND aktiv = true
+                          AND vin IS NOT NULL AND vin != ''
+                    """, (institut,))
+                    genobank_fahrzeuge = cursor.fetchall()
                     
-                    # Marken-Name bestimmen
-                    if institut == 'Stellantis':
-                        if rrdi_value and "0154X" in str(rrdi_value):
-                            marke_name = "Leapmotor"
-                        elif rrdi_value:
-                            marke_name = "Opel/Hyundai"
+                    # 2. Für Fahrzeuge mit leerem/Unbekanntem hersteller: Hole Marke aus Locosoft
+                    from api.db_utils import locosoft_session
+                    marken_dict = {}  # {marke: {'anzahl': int, 'finanzierung': float}}
+                    
+                    with locosoft_session() as loco_conn:
+                        loco_cursor = loco_conn.cursor()
+                        
+                        for row in genobank_fahrzeuge:
+                            fz = row_to_dict(row, cursor)
+                            vin = fz.get('vin')
+                            hersteller = fz.get('hersteller')
+                            saldo = float(fz.get('aktueller_saldo') or 0)
+                            
+                            # Bestimme Marke
+                            marke = None
+                            
+                            # Wenn hersteller vorhanden und nicht "Unbekannt"
+                            if hersteller and hersteller.strip() != '' and hersteller.strip().lower() != 'unbekannt':
+                                marke = hersteller.strip()
+                            else:
+                                # Hole aus Locosoft
+                                vin_upper = vin.upper().strip() if vin else ''
+                                if vin_upper:
+                                    loco_query = """
+                                        SELECT COALESCE(NULLIF(TRIM(m.description), ''), 'Unbekannt') as marke
+                                        FROM vehicles v
+                                        LEFT JOIN makes m ON v.make_number = m.make_number
+                                        WHERE (
+                                            UPPER(TRIM(v.vin)) = %s
+                                            OR (LENGTH(v.vin) >= LENGTH(%s) AND UPPER(RIGHT(TRIM(v.vin), LENGTH(%s))) = %s)
+                                            OR UPPER(TRIM(v.vin)) LIKE %s
+                                        )
+                                        LIMIT 1
+                                    """
+                                    loco_cursor.execute(loco_query, (
+                                        vin_upper, vin_upper, vin_upper, vin_upper, f'%{vin_upper}%'
+                                    ))
+                                    loco_row = loco_cursor.fetchone()
+                                    if loco_row:
+                                        loco_data = row_to_dict(loco_row, loco_cursor)
+                                        marke = loco_data.get('marke', 'Unbekannt')
+                            
+                            # Fallback
+                            if not marke:
+                                marke = 'Unbekannt'
+                            
+                            # Aggregiere
+                            if marke not in marken_dict:
+                                marken_dict[marke] = {'anzahl': 0, 'finanzierung': 0}
+                            marken_dict[marke]['anzahl'] += 1
+                            marken_dict[marke]['finanzierung'] += saldo
+                    
+                    # 3. Konvertiere zu Liste
+                    marken = []
+                    for marke_name, data in sorted(marken_dict.items(), key=lambda x: x[1]['anzahl'], reverse=True):
+                        marken.append({
+                            'name': marke_name,
+                            'anzahl': data['anzahl'],
+                            'finanzierung': data['finanzierung']
+                        })
+                else:
+                    cursor.execute(f"""
+                        SELECT
+                            rrdi,
+                            COUNT(*) as anzahl,
+                            SUM(aktueller_saldo) as finanzierung
+                        FROM fahrzeugfinanzierungen
+                        WHERE finanzinstitut = {ph} AND aktiv = true
+                        GROUP BY rrdi
+                        ORDER BY anzahl DESC
+                    """, (institut,))
+                    # Nur für Nicht-Genobank: Standard-Logik
+                    marken = []
+                    for row in cursor.fetchall():
+                        r = row_to_dict(row)
+                        
+                        # Marken-Name bestimmen
+                        if institut == 'Stellantis':
+                            rrdi_value = r.get('rrdi')
+                            if rrdi_value and "0154X" in str(rrdi_value):
+                                marke_name = "Leapmotor"
+                            elif rrdi_value:
+                                marke_name = "Opel/Hyundai"
+                            else:
+                                marke_name = "Unbekannt"
+                        elif institut == 'Santander':
+                            rrdi_value = r.get('rrdi')
+                            # Santander hat oft kein rrdi, daher "Unbekannt"
+                            marke_name = "Unbekannt" if not rrdi_value else rrdi_value
                         else:
-                            marke_name = "Unbekannt"
-                    elif institut == 'Santander':
-                        # Santander hat oft kein rrdi, daher "Unbekannt"
-                        marke_name = "Unbekannt" if not rrdi_value else rrdi_value
-                    else:
-                        # Hyundai Finance oder andere
-                        marke_name = rrdi_value if rrdi_value else "Unbekannt"
+                            # Hyundai Finance oder andere
+                            rrdi_value = r.get('rrdi')
+                            marke_name = rrdi_value if rrdi_value else "Unbekannt"
 
-                    marken.append({
-                        'name': marke_name,
-                        'anzahl': r['anzahl'],
-                        'finanzierung': float(r['finanzierung']) if r['finanzierung'] else 0
-                    })
+                        marken.append({
+                            'name': marke_name,
+                            'anzahl': r['anzahl'],
+                            'finanzierung': float(r['finanzierung']) if r['finanzierung'] else 0
+                        })
 
+                # Für Genobank: Falls keine Fahrzeuge, verwende Konto-Saldo
+                if institut == 'Genobank' and stats['anzahl'] == 0:
+                    # Hole Konto-Saldo für Genobank
+                    cursor.execute("""
+                        SELECT 
+                            (SELECT saldo FROM salden WHERE konto_id = k.id ORDER BY datum DESC LIMIT 1) as konto_saldo
+                        FROM konten k
+                        WHERE (k.kontonummer = '4700057908' OR k.iban LIKE '%4700057908%')
+                          AND k.aktiv = true
+                        LIMIT 1
+                    """)
+                    konto_row = cursor.fetchone()
+                    if konto_row:
+                        konto_r = row_to_dict(konto_row)
+                        konto_saldo = abs(float(konto_r.get('konto_saldo') or 0))
+                        if konto_saldo > 0:
+                            # Verwende Konto-Saldo als Finanzierung
+                            stats['finanzierung'] = konto_saldo
+                            stats['original'] = konto_saldo
+                            stats['durchschnitt'] = konto_saldo
+                            stats['anzahl'] = 0  # Keine Fahrzeuge, aber Konto existiert
+                
                 institute.append({
                     'name': institut,
                     'anzahl': stats['anzahl'],
@@ -1075,6 +1189,417 @@ def get_datenstand():
         })
 
     except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# ============================================================================
+# ENDPOINT 5: FAHRZEUGE NACH INSTITUT & MARKE (für Modal)
+# ============================================================================
+
+@bankenspiegel_api.route('/einkaufsfinanzierung/fahrzeuge', methods=['GET'])
+def get_fahrzeuge_by_marke():
+    """
+    GET /api/bankenspiegel/einkaufsfinanzierung/fahrzeuge?institut=Genobank&marke=Unbekannt
+    Fahrzeuge nach Institut und Marke filtern (für Modal)
+    TAG 136: PostgreSQL-kompatibel
+    """
+    try:
+        institut = request.args.get('institut', type=str)
+        marke = request.args.get('marke', type=str)
+        
+        if not institut:
+            return jsonify({
+                'success': False,
+                'error': 'Parameter "institut" fehlt'
+            }), 400
+        
+        ph = sql_placeholder()
+        
+        with db_session() as conn:
+            cursor = conn.cursor()
+            
+            # Query: Fahrzeuge nach Institut und Marke
+            # Für Genobank: hersteller-Feld verwenden, sonst rrdi
+            # WICHTIG: Modell aus Locosoft holen, falls in fahrzeugfinanzierungen leer
+            if institut == 'Genobank':
+                # Erweiterte Query mit Locosoft-JOIN für Modell-Daten
+                from api.db_utils import locosoft_session
+                
+                # 1. Hole Fahrzeuge aus fahrzeugfinanzierungen (inkl. Zinskosten)
+                query = f"""
+                    SELECT 
+                        ff.vin,
+                        ff.modell,
+                        ff.hersteller as marke,
+                        ff.aktueller_saldo,
+                        ff.original_betrag,
+                        ff.alter_tage,
+                        ff.zins_startdatum,
+                        ff.zinsen_gesamt,
+                        ff.zinsen_letzte_periode,
+                        ff.zinsfreiheit_tage
+                    FROM fahrzeugfinanzierungen ff
+                    WHERE ff.finanzinstitut = {ph} 
+                      AND ff.aktiv = true
+                """
+                params = [institut]
+                
+                # Marken-Filter nur wenn marke-Parameter vorhanden
+                if marke:
+                    if marke != 'Unbekannt':
+                        query += f" AND ff.hersteller = {ph}"
+                        params.append(marke)
+                    else:
+                        query += f" AND (ff.hersteller IS NULL OR ff.hersteller = '' OR ff.hersteller = 'Unbekannt')"
+                
+                cursor.execute(query, params if len(params) > 1 else (params[0],))
+                fahrzeuge_rows = cursor.fetchall()
+                
+                # 2. Für jede VIN: Falls modell leer, hole aus Locosoft
+                fahrzeuge = []
+                with locosoft_session() as loco_conn:
+                    loco_cursor = loco_conn.cursor()
+                    
+                    for row in fahrzeuge_rows:
+                        fz_dict = row_to_dict(row, cursor)
+                        vin = fz_dict.get('vin')
+                        modell = fz_dict.get('modell')
+                        marke = fz_dict.get('marke')
+                        
+                        vin_upper = vin.upper().strip() if vin else ''
+                        
+                        # Falls modell ODER marke leer oder "Unbekannt", hole aus Locosoft
+                        if vin_upper and (not modell or modell.strip() == '' or modell.strip().lower() == 'unbekannt' or
+                                         not marke or marke.strip() == '' or marke.strip().lower() == 'unbekannt'):
+                            loco_query = """
+                                SELECT 
+                                    COALESCE(
+                                        NULLIF(TRIM(v.free_form_model_text), ''),
+                                        NULLIF(TRIM(mo.description), ''),
+                                        ''
+                                    ) as modell,
+                                    COALESCE(NULLIF(TRIM(m.description), ''), '') as marke
+                                FROM vehicles v
+                                LEFT JOIN makes m
+                                    ON v.make_number = m.make_number
+                                LEFT JOIN models mo
+                                    ON v.make_number = mo.make_number
+                                    AND v.model_code = mo.model_code
+                                WHERE (
+                                    UPPER(TRIM(v.vin)) = %s
+                                    OR (LENGTH(v.vin) >= LENGTH(%s) AND UPPER(RIGHT(TRIM(v.vin), LENGTH(%s))) = %s)
+                                    OR UPPER(TRIM(v.vin)) LIKE %s
+                                )
+                                LIMIT 1
+                            """
+                            loco_cursor.execute(loco_query, (
+                                vin_upper, vin_upper, vin_upper, vin_upper, f'%{vin_upper}%'
+                            ))
+                            loco_row = loco_cursor.fetchone()
+                            if loco_row:
+                                loco_data = row_to_dict(loco_row, loco_cursor)
+                                
+                                # Modell aktualisieren, falls leer
+                                loco_modell = loco_data.get('modell', '')
+                                if loco_modell and (not modell or modell.strip() == '' or modell.strip().lower() == 'unbekannt'):
+                                    fz_dict['modell'] = loco_modell
+                                
+                                # Marke aktualisieren, falls leer
+                                loco_marke = loco_data.get('marke', '')
+                                if loco_marke and (not marke or marke.strip() == '' or marke.strip().lower() == 'unbekannt'):
+                                    fz_dict['marke'] = loco_marke
+                        
+                        fahrzeuge.append(fz_dict)
+                
+                # Sortiere nach Standzeit (alter_tage) absteigend
+                fahrzeuge.sort(key=lambda x: (x.get('alter_tage') or 0), reverse=True)
+                
+                return jsonify({
+                    'success': True,
+                    'institut': institut,
+                    'marke': marke,
+                    'fahrzeuge': fahrzeuge,
+                    'anzahl': len(fahrzeuge)
+                }), 200
+            else:
+                # Stellantis, Santander, Hyundai Finance: rrdi verwenden (inkl. Zinskosten)
+                query = f"""
+                    SELECT 
+                        vin,
+                        modell,
+                        CASE 
+                            WHEN rrdi IS NOT NULL AND rrdi != '' THEN rrdi
+                            ELSE 'Unbekannt'
+                        END as marke,
+                        aktueller_saldo,
+                        original_betrag,
+                        alter_tage,
+                        zins_startdatum,
+                        zinsen_gesamt,
+                        zinsen_letzte_periode,
+                        zinsfreiheit_tage
+                    FROM fahrzeugfinanzierungen
+                    WHERE finanzinstitut = {ph} 
+                      AND aktiv = true
+                """
+                params = [institut]
+                
+                if marke and marke != 'Unbekannt':
+                    # Für Stellantis: Marken-Logik
+                    if institut == 'Stellantis':
+                        if marke == 'Opel/Hyundai':
+                            query += f" AND (rrdi IS NOT NULL AND rrdi != '' AND rrdi NOT LIKE %s)"
+                            params.append('%0154X%')
+                        elif marke == 'Leapmotor':
+                            query += f" AND rrdi LIKE %s"
+                            params.append('%0154X%')
+                        else:
+                            query += f" AND rrdi = {ph}"
+                            params.append(marke)
+                    else:
+                        query += f" AND rrdi = {ph}"
+                        params.append(marke)
+                elif marke == 'Unbekannt':
+                    query += f" AND (rrdi IS NULL OR rrdi = '' OR rrdi = 'Unbekannt')"
+            
+            query += " ORDER BY alter_tage DESC NULLS LAST, vin"
+            
+            cursor.execute(query, params if len(params) > 1 else (params[0],))
+            fahrzeuge = rows_to_list(cursor.fetchall())
+            
+        return jsonify({
+            'success': True,
+            'institut': institut,
+            'marke': marke,
+            'fahrzeuge': fahrzeuge,
+            'anzahl': len(fahrzeuge)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# ============================================================================
+# ENDPOINT 6: FAHRZEUGDETAILS AUS LOCOSOFT (für Modal)
+# ============================================================================
+
+@bankenspiegel_api.route('/fahrzeug-details', methods=['GET'])
+def get_fahrzeug_details():
+    """
+    GET /api/bankenspiegel/fahrzeug-details?vin=VXKFCYHZ4R1068101
+    Fahrzeuggrunddaten aus Locosoft holen (Typ, EZ, KM, etc.)
+    """
+    try:
+        vin = request.args.get('vin', type=str)
+        
+        if not vin:
+            return jsonify({
+                'success': False,
+                'error': 'Parameter "vin" fehlt'
+            }), 400
+        
+        from api.db_utils import locosoft_session, row_to_dict
+        
+        fahrzeug = None
+        finanzierung = None
+        
+        # 1. Fahrzeugdaten aus Locosoft
+        with locosoft_session() as loco_conn:
+            loco_cursor = loco_conn.cursor()
+            
+            # VIN-Suche: Exakt, dann Teil-VIN (Ende), dann Teil-VIN (enthält)
+            # Problem: VINs in fahrzeugfinanzierungen können gekürzt sein (z.B. "T6004025")
+            # während Locosoft die vollständige VIN hat (z.B. "VXKKAHPY3T6004025")
+            vin_upper = vin.upper().strip()
+            
+            query = """
+                SELECT 
+                    dv.dealer_vehicle_number as kommissionsnummer,
+                    dv.dealer_vehicle_type,
+                    CASE 
+                        WHEN dv.dealer_vehicle_type = 'G' THEN 'Gebrauchtwagen'
+                        WHEN dv.dealer_vehicle_type = 'N' THEN 'Neuwagen'
+                        WHEN dv.dealer_vehicle_type = 'D' THEN 'Vorführwagen'
+                        WHEN dv.dealer_vehicle_type = 'V' THEN 'Vorführwagen'
+                        WHEN dv.dealer_vehicle_type = 'T' THEN 'Tauschfahrzeug'
+                        WHEN dv.dealer_vehicle_type = 'L' THEN 'Leihgabe/Mietwagen'
+                        ELSE 'Unbekannt'
+                    END as fahrzeugtyp,
+                    v.vin,
+                    v.license_plate as kennzeichen,
+                    -- Modell: Priorität: free_form_model_text > models.description > Fallback
+                    COALESCE(
+                        NULLIF(TRIM(v.free_form_model_text), ''),
+                        NULLIF(TRIM(mo.description), ''),
+                        'Unbekannt'
+                    ) as modell,
+                    -- Marke: makes.description
+                    COALESCE(NULLIF(TRIM(m.description), ''), 'Unbekannt') as marke,
+                    v.first_registration_date as erstzulassung,
+                    v.mileage_km as km_stand,
+                    dv.in_arrival_date as eingang,
+                    dv.created_date,
+                    CURRENT_DATE - COALESCE(dv.in_arrival_date, dv.created_date) as standzeit_tage,
+                    dv.in_subsidiary as standort,
+                    dv.location as lagerort,
+                    CASE 
+                        WHEN dv.out_invoice_date IS NOT NULL THEN true
+                        ELSE false
+                    END as verkauft,
+                    dv.out_invoice_date as verkauft_am
+                FROM vehicles v
+                LEFT JOIN dealer_vehicles dv
+                    ON v.dealer_vehicle_number = dv.dealer_vehicle_number
+                    AND v.dealer_vehicle_type = dv.dealer_vehicle_type
+                LEFT JOIN makes m
+                    ON v.make_number = m.make_number
+                LEFT JOIN models mo
+                    ON v.make_number = mo.make_number
+                    AND v.model_code = mo.model_code
+                WHERE (
+                    -- 1. Exakte VIN (Case-insensitive)
+                    UPPER(TRIM(v.vin)) = %s
+                    OR
+                    -- 2. VIN endet mit gesuchter VIN (für gekürzte VINs)
+                    (LENGTH(v.vin) >= LENGTH(%s) AND UPPER(RIGHT(TRIM(v.vin), LENGTH(%s))) = %s)
+                    OR
+                    -- 3. VIN enthält gesuchte VIN (Fallback)
+                    UPPER(TRIM(v.vin)) LIKE %s
+                )
+                ORDER BY 
+                    -- Priorität: Exakte Übereinstimmung zuerst
+                    CASE WHEN UPPER(TRIM(v.vin)) = %s THEN 1 ELSE 2 END,
+                    dv.created_date DESC NULLS LAST
+                LIMIT 1
+            """
+            
+            # Parameter für Query
+            vin_like = f'%{vin_upper}%'
+            loco_cursor.execute(query, (
+                vin_upper,  # Exakt
+                vin_upper,  # LENGTH für RIGHT
+                vin_upper,  # LENGTH für RIGHT
+                vin_upper,  # RIGHT Vergleich
+                vin_like,   # LIKE
+                vin_upper   # ORDER BY Priorität
+            ))
+            row = loco_cursor.fetchone()
+            
+            if row:
+                fahrzeug = row_to_dict(row, loco_cursor)
+                
+                # Standort-Name aus subsidiaries (falls vorhanden)
+                if fahrzeug.get('standort'):
+                    try:
+                        loco_cursor.execute("""
+                            SELECT description FROM subsidiaries WHERE subsidiary = %s
+                        """, (fahrzeug.get('standort'),))
+                        standort_row = loco_cursor.fetchone()
+                        if standort_row:
+                            standort_dict = row_to_dict(standort_row, loco_cursor)
+                            fahrzeug['standort_name'] = standort_dict.get('description', '')
+                    except:
+                        # Falls subsidiaries-Tabelle nicht verfügbar oder andere Struktur
+                        pass
+        
+                # 2. Finanzierungsdaten aus DRIVE Portal (inkl. Zinskosten)
+        if fahrzeug:
+            with db_session() as drive_conn:
+                drive_cursor = drive_conn.cursor()
+                
+                drive_cursor.execute("""
+                    SELECT 
+                        finanzinstitut,
+                        aktueller_saldo,
+                        original_betrag,
+                        alter_tage,
+                        zins_startdatum,
+                        zinsen_gesamt,
+                        zinsen_letzte_periode,
+                        zinsfreiheit_tage,
+                        zins_startdatum
+                    FROM fahrzeugfinanzierungen
+                    WHERE vin = %s AND aktiv = true
+                    ORDER BY aktualisiert_am DESC
+                    LIMIT 1
+                """, (vin,))
+                
+                fin_row = drive_cursor.fetchone()
+                if fin_row:
+                    finanzierung = row_to_dict(fin_row, drive_cursor)
+                    
+                    # Für Genobank: Falls keine Zinsen vorhanden, berechnen
+                    if finanzierung.get('finanzinstitut') == 'Genobank':
+                        saldo = float(finanzierung.get('aktueller_saldo') or 0)
+                        alter_tage = int(finanzierung.get('alter_tage') or 0)
+                        
+                        # Hole Zinssatz aus konten
+                        drive_cursor.execute("""
+                            SELECT sollzins FROM konten
+                            WHERE (kontonummer = '4700057908' OR iban LIKE '%4700057908%')
+                              AND aktiv = true
+                            LIMIT 1
+                        """)
+                        zins_row = drive_cursor.fetchone()
+                        zinssatz = 5.5  # Default
+                        if zins_row:
+                            zins_dict = row_to_dict(zins_row, drive_cursor)
+                            zinssatz = float(zins_dict.get('sollzins') or 5.5)
+                        
+                        # Berechne Zinsen (falls noch nicht vorhanden)
+                        if not finanzierung.get('zinsen_gesamt') or finanzierung.get('zinsen_gesamt') == 0:
+                            if alter_tage > 0 and saldo > 0:
+                                # Zinsen seit Zinsstart (oder seit Finanzierungsbeginn)
+                                zins_start = finanzierung.get('zins_startdatum')
+                                if zins_start:
+                                    from datetime import date, datetime
+                                    if isinstance(zins_start, str):
+                                        try:
+                                            # Versuche verschiedene Datumsformate
+                                            if 'T' in zins_start or ' ' in zins_start:
+                                                zins_start = datetime.fromisoformat(zins_start.replace('Z', '+00:00')).date()
+                                            else:
+                                                zins_start = datetime.strptime(zins_start, '%Y-%m-%d').date()
+                                        except:
+                                            zins_start = None
+                                    if zins_start and isinstance(zins_start, date):
+                                        tage_seit_zinsstart = (date.today() - zins_start).days
+                                    else:
+                                        tage_seit_zinsstart = alter_tage
+                                else:
+                                    tage_seit_zinsstart = alter_tage
+                                
+                                if tage_seit_zinsstart > 0:
+                                    zinsen_gesamt = round(saldo * zinssatz / 100 * tage_seit_zinsstart / 365, 2)
+                                    zinsen_monat = round(saldo * zinssatz / 100 * 30 / 365, 2)
+                                    finanzierung['zinsen_gesamt'] = zinsen_gesamt
+                                    finanzierung['zinsen_letzte_periode'] = zinsen_monat
+                        else:
+                            # Zinsen bereits vorhanden, aber monatlich berechnen falls fehlt
+                            if not finanzierung.get('zinsen_letzte_periode') or finanzierung.get('zinsen_letzte_periode') == 0:
+                                if saldo > 0:
+                                    zinsen_monat = round(saldo * zinssatz / 100 * 30 / 365, 2)
+                                    finanzierung['zinsen_letzte_periode'] = zinsen_monat
+        
+        if not fahrzeug:
+            return jsonify({
+                'success': False,
+                'error': f'Fahrzeug mit VIN {vin} nicht in Locosoft gefunden'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'fahrzeug': fahrzeug,
+            'finanzierung': finanzierung
+        }), 200
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'success': False,
             'error': str(e)

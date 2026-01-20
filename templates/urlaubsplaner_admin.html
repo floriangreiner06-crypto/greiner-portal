@@ -464,14 +464,15 @@ function updateBerechnung() {
     const anspruch = parseFloat(document.getElementById('editAnspruch').value) || 0;
     const uebertrag = parseFloat(document.getElementById('editUebertrag').value) || 0;
     const korrektur = parseFloat(document.getElementById('editKorrektur').value) || 0;
-    const verbraucht = currentEditEmployee ? currentEditEmployee.verbraucht : 0;
+    // TAG 198: Verwende 'urlaub' statt 'verbraucht' (Feld existiert im Backend-Response)
+    const verbraucht = currentEditEmployee ? (currentEditEmployee.urlaub || 0) : 0;
     
     const gesamt = anspruch + uebertrag + korrektur;
     const rest = gesamt - verbraucht;
     
     document.getElementById('editBerechnung').innerHTML = `
         ${anspruch} (Anspruch) + ${uebertrag} (Übertrag) + ${korrektur} (Korrektur) = <strong>${gesamt} Tage</strong><br>
-        Abzgl. ${verbraucht} genommen = <strong class="${rest < 0 ? 'text-danger' : 'text-success'}">${rest} verfügbar</strong>
+        Abzgl. ${verbraucht.toFixed(1)} genommen = <strong class="${rest < 0 ? 'text-danger' : 'text-success'}">${rest.toFixed(1)} verfügbar</strong>
     `;
 }
 

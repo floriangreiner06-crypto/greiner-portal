@@ -43,6 +43,7 @@ async function loadData() {
         updateTopFahrzeuge(data.top_fahrzeuge);
         updateWarnungen(data.warnungen || []);
         loadFahrzeugeMitZinsen();
+        loadZinsenAnalyse();  // Neue Funktion für Zinsen-Analyse
         
         // Timestamp
         const timestamp = new Date(data.timestamp);
@@ -89,8 +90,29 @@ function updateInstituteCards(institute) {
         const card = document.createElement('div');
         card.className = 'col-lg-6';
         
-        const color = institut.name === 'Stellantis' ? 'primary' : 'info';
-        const icon = institut.name === 'Stellantis' ? 'lightning-charge-fill' : 'bank';
+        // Farben und Icons für verschiedene Institute
+        let color, icon;
+        switch(institut.name) {
+            case 'Stellantis':
+                color = 'primary';
+                icon = 'lightning-charge-fill';
+                break;
+            case 'Santander':
+                color = 'info';
+                icon = 'bank';
+                break;
+            case 'Hyundai Finance':
+                color = 'success';
+                icon = 'car-front-fill';
+                break;
+            case 'Genobank':
+                color = 'warning';
+                icon = 'building';
+                break;
+            default:
+                color = 'secondary';
+                icon = 'bank';
+        }
         
         card.innerHTML = `
             <div class="card institut-card border-${color}">
@@ -157,7 +179,10 @@ function updateInstituteCards(institute) {
                         <p class="text-muted small mb-2"><strong>Marken:</strong></p>
                         <div class="d-flex flex-wrap gap-2">
                             ${institut.marken.map(marke => `
-                                <span class="badge bg-${color} bg-opacity-25 text-${color} border border-${color}">
+                                <span class="badge bg-${color} bg-opacity-25 text-${color} border border-${color} marke-badge" 
+                                      style="cursor: pointer;" 
+                                      onclick="showMarkeFahrzeuge('${institut.name}', '${marke.name.replace(/'/g, "\\'")}')"
+                                      title="Klicken für Details">
                                     ${marke.name}: ${marke.anzahl} Fzg.
                                 </span>
                             `).join('')}
@@ -186,18 +211,27 @@ function updateInstituteCards(institute) {
  */
 function updateCharts(institute) {
     // 1. Institute Pie Chart
+    // Farben für verschiedene Institute
+    const instituteColors = {
+        'Stellantis': 'rgba(156, 39, 176, 0.8)',      // Lila
+        'Santander': 'rgba(3, 169, 244, 0.8)',        // Blau
+        'Hyundai Finance': 'rgba(40, 167, 69, 0.8)',  // Grün
+        'Genobank': 'rgba(255, 193, 7, 0.8)'          // Gelb/Warning
+    };
+    
+    const instituteBorderColors = {
+        'Stellantis': 'rgb(156, 39, 176)',
+        'Santander': 'rgb(3, 169, 244)',
+        'Hyundai Finance': 'rgb(40, 167, 69)',
+        'Genobank': 'rgb(255, 193, 7)'
+    };
+    
     const instituteData = {
         labels: institute.map(i => i.name),
         datasets: [{
             data: institute.map(i => i.finanzierung),
-            backgroundColor: [
-                'rgba(156, 39, 176, 0.8)',  // Stellantis: Lila
-                'rgba(3, 169, 244, 0.8)'    // Santander: Blau
-            ],
-            borderColor: [
-                'rgb(156, 39, 176)',
-                'rgb(3, 169, 244)'
-            ],
+            backgroundColor: institute.map(i => instituteColors[i.name] || 'rgba(108, 117, 125, 0.8)'),
+            borderColor: institute.map(i => instituteBorderColors[i.name] || 'rgb(108, 117, 125)'),
             borderWidth: 2
         }]
     };
@@ -237,8 +271,16 @@ function updateCharts(institute) {
     const markenData = [];
     const markenColors = [];
     
+    // Farben für Marken-Chart basierend auf Institut
+    const markenChartColors = {
+        'Stellantis': 'rgba(156, 39, 176, 0.8)',
+        'Santander': 'rgba(3, 169, 244, 0.8)',
+        'Hyundai Finance': 'rgba(40, 167, 69, 0.8)',
+        'Genobank': 'rgba(255, 193, 7, 0.8)'
+    };
+    
     institute.forEach((institut, idx) => {
-        const color = idx === 0 ? 'rgba(156, 39, 176, 0.8)' : 'rgba(3, 169, 244, 0.8)';
+        const color = markenChartColors[institut.name] || `rgba(${idx * 50}, ${idx * 100}, ${idx * 150}, 0.8)`;
         
         institut.marken.forEach(marke => {
             markenLabels.push(`${marke.name} (${institut.name})`);
@@ -457,9 +499,9 @@ async function loadFahrzeugeMitZinsen() {
                     <td class="text-end">
                         <div class="progress" style="height: 8px; width: 80px; display: inline-block;">
                             <div class="progress-bar bg-success" 
-                                 style="width: ${fz.tilgung_prozent || 0}%"></div>
+                                 style="width: ${parseFloat(fz.tilgung_prozent) || 0}%"></div>
                         </div>
-                        <small class="ms-2">${(fz.tilgung_prozent || 0).toFixed(1)}%</small>
+                        <small class="ms-2">${(parseFloat(fz.tilgung_prozent) || 0).toFixed(1)}%</small>
                     </td>
                 </tr>
             `;
@@ -491,6 +533,235 @@ function formatCurrencyShort(amount) {
 }
 
 /**
+ * Modal für Marken-Fahrzeuge öffnen
+ */
+async function showMarkeFahrzeuge(institut, marke) {
+    const modal = new bootstrap.Modal(document.getElementById('markeFahrzeugeModal'));
+    const titleEl = document.getElementById('modalMarkeTitle');
+    const loadingEl = document.getElementById('markeFahrzeugeLoading');
+    const contentEl = document.getElementById('markeFahrzeugeContent');
+    const tbody = document.getElementById('markeFahrzeugeTableBody');
+    
+    // Modal-Title setzen
+    titleEl.textContent = `${institut} - ${marke}`;
+    
+    // Loading anzeigen
+    loadingEl.classList.remove('d-none');
+    contentEl.classList.add('d-none');
+    tbody.innerHTML = '';
+    
+    // Modal öffnen
+    modal.show();
+    
+    try {
+        // API-Call: Fahrzeuge nach Institut und Marke
+        const response = await fetch(`/api/bankenspiegel/einkaufsfinanzierung/fahrzeuge?institut=${encodeURIComponent(institut)}&marke=${encodeURIComponent(marke)}`);
+        const data = await response.json();
+        
+        if (!data.success) {
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">Fehler: ${data.error || 'Unbekannter Fehler'}</td></tr>`;
+            loadingEl.classList.add('d-none');
+            contentEl.classList.remove('d-none');
+            return;
+        }
+        
+        const fahrzeuge = data.fahrzeuge || [];
+        
+        if (fahrzeuge.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">Keine Fahrzeuge gefunden</td></tr>`;
+        } else {
+            // Tabelle füllen
+            let gesamtSaldo = 0;
+            let gesamtOriginal = 0;
+            let gesamtAbbezahlt = 0;
+            let gesamtStandzeitTage = 0;
+            let anzahlMitStandzeit = 0;
+            let gesamtZinsen = 0;
+            let gesamtZinsenMonat = 0;
+            
+            tbody.innerHTML = fahrzeuge.map((fz, idx) => {
+                const saldo = parseFloat(fz.aktueller_saldo || 0);
+                const original = parseFloat(fz.original_betrag || 0);
+                const abbezahlt = original - saldo;
+                const standzeitTage = parseInt(fz.alter_tage || 0);
+                const zinsenGesamt = parseFloat(fz.zinsen_gesamt || 0);
+                const zinsenMonat = parseFloat(fz.zinsen_letzte_periode || 0);
+                
+                gesamtSaldo += saldo;
+                gesamtOriginal += original;
+                gesamtAbbezahlt += abbezahlt;
+                gesamtZinsen += zinsenGesamt;
+                gesamtZinsenMonat += zinsenMonat;
+                
+                if (standzeitTage > 0) {
+                    gesamtStandzeitTage += standzeitTage;
+                    anzahlMitStandzeit++;
+                }
+                
+                return `
+                    <tr>
+                        <td>
+                            <code class="small vin-clickable" 
+                                  style="cursor: pointer; color: #0d6efd; text-decoration: underline;" 
+                                  onclick="showFahrzeugDetails('${fz.vin || ''}')" 
+                                  title="Klicken für Fahrzeugdetails">
+                                ${fz.vin || '-'}
+                            </code>
+                        </td>
+                        <td>${fz.modell || 'Unbekannt'}</td>
+                        <td>${fz.marke || fz.hersteller || 'Unbekannt'}</td>
+                        <td class="text-end text-danger fw-bold">${formatCurrency(saldo)}</td>
+                        <td class="text-end">${formatCurrency(original)}</td>
+                        <td class="text-end">${standzeitTage > 0 ? standzeitTage + ' Tage' : '-'}</td>
+                        <td class="text-end text-danger">${zinsenGesamt > 0 ? formatCurrency(zinsenGesamt) : '-'}</td>
+                        <td class="text-end text-warning">${zinsenMonat > 0 ? formatCurrency(zinsenMonat) : '-'}</td>
+                        <td class="text-end text-success">${formatCurrency(abbezahlt)}</td>
+                    </tr>
+                `;
+            }).join('');
+            
+            // Gesamt-Summen
+            document.getElementById('modalGesamtSaldo').textContent = formatCurrency(gesamtSaldo);
+            document.getElementById('modalGesamtOriginal').textContent = formatCurrency(gesamtOriginal);
+            document.getElementById('modalGesamtAbbezahlt').textContent = formatCurrency(gesamtAbbezahlt);
+            document.getElementById('modalGesamtZinsen').textContent = gesamtZinsen > 0 ? formatCurrency(gesamtZinsen) : '-';
+            document.getElementById('modalGesamtZinsenMonat').textContent = gesamtZinsenMonat > 0 ? formatCurrency(gesamtZinsenMonat) : '-';
+            
+            // Durchschnittliche Standzeit berechnen
+            const durchschnittStandzeit = anzahlMitStandzeit > 0 
+                ? Math.round(gesamtStandzeitTage / anzahlMitStandzeit) 
+                : 0;
+            document.getElementById('modalDurchschnittStandzeit').textContent = durchschnittStandzeit > 0 
+                ? `Ø ${durchschnittStandzeit} Tage` 
+                : '-';
+        }
+        
+        // Content anzeigen
+        loadingEl.classList.add('d-none');
+        contentEl.classList.remove('d-none');
+        
+    } catch (error) {
+        console.error('Fehler beim Laden der Fahrzeuge:', error);
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">Fehler beim Laden: ${error.message}</td></tr>`;
+        loadingEl.classList.add('d-none');
+        contentEl.classList.remove('d-none');
+    }
+}
+
+/**
+ * Fahrzeugdetails aus Locosoft anzeigen
+ */
+async function showFahrzeugDetails(vin) {
+    if (!vin || vin === '-') {
+        alert('Keine VIN angegeben');
+        return;
+    }
+    
+    const modal = new bootstrap.Modal(document.getElementById('fahrzeugDetailsModal'));
+    const titleEl = document.getElementById('modalFahrzeugTitle');
+    const loadingEl = document.getElementById('fahrzeugDetailsLoading');
+    const contentEl = document.getElementById('fahrzeugDetailsContent');
+    const finanzSection = document.getElementById('detailFinanzierungSection');
+    
+    // Modal-Title setzen
+    titleEl.textContent = `Fahrzeugdetails - ${vin}`;
+    
+    // Loading anzeigen
+    loadingEl.classList.remove('d-none');
+    contentEl.classList.add('d-none');
+    finanzSection.classList.add('d-none');
+    
+    // Modal öffnen
+    modal.show();
+    
+    try {
+        // API-Call: Fahrzeugdetails aus Locosoft
+        const response = await fetch(`/api/bankenspiegel/fahrzeug-details?vin=${encodeURIComponent(vin)}`);
+        const data = await response.json();
+        
+        if (!data.success) {
+            contentEl.innerHTML = `<div class="alert alert-danger">Fehler: ${data.error || 'Unbekannter Fehler'}</div>`;
+            loadingEl.classList.add('d-none');
+            contentEl.classList.remove('d-none');
+            return;
+        }
+        
+        const fz = data.fahrzeug || {};
+        const finanz = data.finanzierung || null;
+        
+        // Helper: Datum formatieren
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            try {
+                const date = new Date(dateStr);
+                if (isNaN(date.getTime())) return dateStr;
+                return date.toLocaleDateString('de-DE', { year: 'numeric', month: '2-digit', day: '2-digit' });
+            } catch {
+                return dateStr;
+            }
+        }
+        
+        // Fahrzeugdaten füllen
+        document.getElementById('detailVin').textContent = fz.vin || '-';
+        document.getElementById('detailTyp').textContent = fz.fahrzeugtyp || fz.typ || '-';
+        document.getElementById('detailModell').textContent = `${fz.marke || ''} ${fz.modell || ''}`.trim() || '-';
+        document.getElementById('detailEZ').textContent = formatDate(fz.erstzulassung || fz.ez);
+        document.getElementById('detailKM').textContent = fz.km_stand ? `${parseInt(fz.km_stand).toLocaleString('de-DE')} km` : '-';
+        document.getElementById('detailKZ').textContent = fz.kennzeichen || fz.license_plate || '-';
+        
+        // Bestandsdaten füllen
+        document.getElementById('detailEingang').textContent = formatDate(fz.eingang || fz.in_arrival_date);
+        document.getElementById('detailStandzeit').textContent = fz.standzeit_tage ? `${fz.standzeit_tage} Tage` : '-';
+        document.getElementById('detailStandort').textContent = fz.standort_name || (fz.standort ? `Standort ${fz.standort}` : '-');
+        document.getElementById('detailLagerort').textContent = fz.lagerort || fz.location || '-';
+        document.getElementById('detailKomNr').textContent = fz.kommissionsnummer || fz.dealer_vehicle_number || '-';
+        document.getElementById('detailStatus').innerHTML = fz.verkauft 
+            ? `<span class="badge bg-success">Verkauft${fz.verkauft_am ? ' (' + formatDate(fz.verkauft_am) + ')' : ''}</span>` 
+            : '<span class="badge bg-info">Im Bestand</span>';
+        
+        // Finanzierungsdaten (falls vorhanden)
+        if (finanz) {
+            document.getElementById('detailFinanzinstitut').textContent = finanz.finanzinstitut || '-';
+            document.getElementById('detailSaldo').textContent = formatCurrency(parseFloat(finanz.aktueller_saldo || 0));
+            document.getElementById('detailOriginal').textContent = formatCurrency(parseFloat(finanz.original_betrag || 0));
+            
+            // Zinskosten
+            const zinsenGesamt = parseFloat(finanz.zinsen_gesamt || 0);
+            const zinsenMonat = parseFloat(finanz.zinsen_letzte_periode || 0);
+            const zinsfreiheit = finanz.zinsfreiheit_tage;
+            
+            document.getElementById('detailZinsenGesamt').textContent = zinsenGesamt > 0 ? formatCurrency(zinsenGesamt) : '-';
+            document.getElementById('detailZinsenMonat').textContent = zinsenMonat > 0 ? formatCurrency(zinsenMonat) : '-';
+            
+            if (zinsfreiheit !== null && zinsfreiheit !== undefined) {
+                if (zinsfreiheit > 0) {
+                    document.getElementById('detailZinsfreiheit').textContent = `${zinsfreiheit} Tage übrig`;
+                } else {
+                    document.getElementById('detailZinsfreiheit').textContent = 'Zinsen laufen';
+                    document.getElementById('detailZinsfreiheit').classList.add('text-danger');
+                }
+            } else {
+                document.getElementById('detailZinsfreiheit').textContent = '-';
+            }
+            
+            finanzSection.classList.remove('d-none');
+        } else {
+            finanzSection.classList.add('d-none');
+        }
+        
+        // Content anzeigen
+        loadingEl.classList.add('d-none');
+        contentEl.classList.remove('d-none');
+        
+    } catch (error) {
+        console.error('Fehler beim Laden der Fahrzeugdetails:', error);
+        contentEl.innerHTML = `<div class="alert alert-danger">Fehler beim Laden: ${error.message}</div>`;
+        loadingEl.classList.add('d-none');
+        contentEl.classList.remove('d-none');
+    }
+}
+
+/**
  * UI Zustand: Loading
  */
 function showLoading() {
@@ -516,4 +787,174 @@ function showError(message) {
     document.getElementById('mainContent').classList.add('d-none');
     document.getElementById('errorAlert').classList.remove('d-none');
     document.getElementById('errorMessage').textContent = message;
+}
+
+/**
+ * Zinsen-Analyse laden (konsolidiert)
+ */
+async function loadZinsenAnalyse() {
+    try {
+        const [dashboard, report, empfehlungen] = await Promise.all([
+            fetch('/api/zinsen/dashboard').then(r => r.json()),
+            fetch('/api/zinsen/report').then(r => r.json()),
+            fetch('/api/zinsen/umbuchung-empfehlung').then(r => r.json())
+        ]);
+        
+        // KPIs aktualisieren
+        document.getElementById('zinsenMonatGesamt').textContent = formatCurrency(dashboard.zinskosten_monat || 0);
+        document.getElementById('zinsenJahrGesamt').textContent = formatCurrency(dashboard.zinskosten_jahr || 0);
+        document.getElementById('anzahlDringend').textContent = dashboard.stellantis_ueber_zinsfreiheit?.anzahl || 0;
+        document.getElementById('anzahlWarnung').textContent = dashboard.stellantis_bald_ablaufend?.anzahl || 0;
+        
+        // Institut-Tabelle
+        updateInstitutTabelleZinsen(dashboard);
+        
+        // Handlungsempfehlungen
+        updateEmpfehlungen(empfehlungen);
+        
+    } catch (error) {
+        console.error('Fehler beim Laden der Zinsen-Analyse:', error);
+    }
+}
+
+/**
+ * Institut-Tabelle für Zinsen-Analyse
+ */
+function updateInstitutTabelleZinsen(dashboard) {
+    const tbody = document.getElementById('institutTabelle');
+    
+    const institute = [
+        {
+            name: 'Konten Sollzinsen',
+            fahrzeuge: '-',
+            saldo: '-',
+            monat: dashboard.konten_sollzinsen || 0,
+            jahr: (dashboard.konten_sollzinsen || 0) * 12,
+            status: 'ok'
+        },
+        {
+            name: 'Stellantis',
+            fahrzeuge: dashboard.stellantis_gesamt?.anzahl || 0,
+            saldo: dashboard.stellantis_gesamt?.saldo || 0,
+            monat: dashboard.stellantis_ueber_zinsfreiheit?.zinsen_monat || 0,
+            jahr: (dashboard.stellantis_ueber_zinsfreiheit?.zinsen_monat || 0) * 12,
+            status: (dashboard.stellantis_ueber_zinsfreiheit?.anzahl || 0) > 0 ? 'danger' : 'ok'
+        },
+        {
+            name: 'Santander',
+            fahrzeuge: dashboard.santander?.anzahl || 0,
+            saldo: dashboard.santander?.saldo || 0,
+            monat: dashboard.santander?.zinsen_monat || 0,
+            jahr: (dashboard.santander?.zinsen_monat || 0) * 12,
+            status: 'ok'
+        },
+        {
+            name: 'Hyundai Finance',
+            fahrzeuge: dashboard.hyundai?.anzahl || 0,
+            saldo: dashboard.hyundai?.saldo || 0,
+            monat: dashboard.hyundai?.zinsen_monat || 0,
+            jahr: (dashboard.hyundai?.zinsen_monat || 0) * 12,
+            status: 'ok'
+        },
+        {
+            name: 'Genobank',
+            fahrzeuge: dashboard.genobank?.anzahl || 0,
+            saldo: dashboard.genobank?.saldo || 0,
+            monat: dashboard.genobank?.zinsen_monat || 0,
+            jahr: (dashboard.genobank?.zinsen_monat || 0) * 12,
+            status: 'ok'
+        }
+    ];
+    
+    let html = '';
+    let gesamtFz = 0, gesamtSaldo = 0;
+    
+    institute.forEach(inst => {
+        const statusBadge = inst.status === 'danger' 
+            ? '<span class="badge bg-danger">Handeln!</span>'
+            : '<span class="badge bg-success">OK</span>';
+        
+        html += `<tr>
+            <td><strong>${inst.name}</strong></td>
+            <td class="text-end">${inst.fahrzeuge}</td>
+            <td class="text-end">${inst.saldo !== '-' ? formatCurrency(inst.saldo) : '-'}</td>
+            <td class="text-end ${inst.monat > 500 ? 'text-danger fw-bold' : ''}">${formatCurrency(inst.monat)}</td>
+            <td class="text-end">${formatCurrency(inst.jahr)}</td>
+            <td class="text-center">${statusBadge}</td>
+        </tr>`;
+        
+        if (typeof inst.fahrzeuge === 'number') gesamtFz += inst.fahrzeuge;
+        if (typeof inst.saldo === 'number') gesamtSaldo += inst.saldo;
+    });
+    
+    tbody.innerHTML = html;
+    
+    // Footer aktualisieren
+    document.getElementById('gesamtFahrzeuge').textContent = gesamtFz;
+    document.getElementById('gesamtSaldo').textContent = formatCurrency(gesamtSaldo);
+    document.getElementById('gesamtMonat').textContent = formatCurrency(dashboard.zinskosten_monat || 0);
+    document.getElementById('gesamtJahr').textContent = formatCurrency(dashboard.zinskosten_jahr || 0);
+}
+
+/**
+ * Handlungsempfehlungen aktualisieren
+ */
+function updateEmpfehlungen(data) {
+    const container = document.getElementById('empfehlungenListe');
+    const empfehlungen = data.empfehlungen || [];
+    
+    if (empfehlungen.length === 0) {
+        document.getElementById('empfehlungenSection').classList.add('d-none');
+        return;
+    }
+    
+    document.getElementById('empfehlungenSection').classList.remove('d-none');
+    
+    let html = '<div class="list-group list-group-flush">';
+    
+    empfehlungen.forEach((emp, idx) => {
+        const priorityClass = emp.prioritaet === 1 ? "border-danger" : "border-warning";
+        const priorityBadge = emp.prioritaet === 1 
+            ? '<span class="badge bg-danger">SOFORT</span>' 
+            : '<span class="badge bg-warning text-dark">BALD</span>';
+        
+        if (emp.typ === "normale_umbuchung") {
+            html += `<div class="list-group-item ${priorityClass} border-start border-3">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="mb-1">${priorityBadge} <i class="bi bi-arrow-left-right me-1"></i>Konten-Umbuchung</h6>
+                        <p class="mb-1"><strong>${emp.von_konto}</strong> → <strong>${emp.nach_konto}</strong></p>
+                        <small class="text-muted">${emp.beschreibung} (${emp.firma})</small>
+                    </div>
+                    <div class="text-end">
+                        <div class="fs-5 fw-bold">${formatCurrency(emp.betrag)}</div>
+                        <div class="text-success"><i class="bi bi-piggy-bank me-1"></i>${formatCurrency(emp.ersparnis_monat)}/Monat</div>
+                        <small class="text-muted">${formatCurrency(emp.ersparnis_jahr)}/Jahr</small>
+                    </div>
+                </div>
+            </div>`;
+        } else if (emp.typ === "fahrzeug_umfinanzierung") {
+            html += `<div class="list-group-item ${priorityClass} border-start border-3">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="mb-1">${priorityBadge} <i class="bi bi-truck me-1"></i>Fahrzeug-Umfinanzierung</h6>
+                        <p class="mb-1"><strong>${emp.anzahl_fahrzeuge} Fahrzeuge</strong> von ${emp.von} → ${emp.nach}</p>
+                        <small class="text-muted">${emp.beschreibung}</small>
+                    </div>
+                    <div class="text-end">
+                        <div class="fs-5 fw-bold">${formatCurrency(emp.betrag)}</div>
+                        <div class="text-success"><i class="bi bi-piggy-bank me-1"></i>${formatCurrency(emp.ersparnis_monat)}/Monat</div>
+                        <small class="text-muted">${formatCurrency(emp.ersparnis_jahr)}/Jahr</small>
+                    </div>
+                </div>
+            </div>`;
+        }
+    });
+    
+    html += '</div>';
+    container.innerHTML = html;
+    
+    document.getElementById('badgeEmpfehlungen').textContent = empfehlungen.length;
+    document.getElementById('gesamtErsparnis').textContent = 
+        `Potenzielle Ersparnis: ${formatCurrency(data.gesamt_ersparnis_monat || 0)}/Monat (${formatCurrency(data.gesamt_ersparnis_jahr || 0)}/Jahr)`;
 }

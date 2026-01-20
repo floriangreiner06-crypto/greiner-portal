@@ -27,7 +27,7 @@ else:
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 Jahr in Produktion
 
 # Globale Static-Version (ändert sich bei jedem Flask-Neustart)
-STATIC_VERSION = '20260116140000'  # TAG 193 - Navigation Click-Fix, data-bs-toggle entfernt
+STATIC_VERSION = '20260120151300'  # TAG [aktuell] - Sortierung nach Standzeit in Modalen
 print(f"📦 Static Version: {STATIC_VERSION}")
 
 # Template-Kontext: Macht STATIC_VERSION in allen Templates verfügbar
@@ -688,6 +688,14 @@ except Exception as e:
 try:
     from api.werkstatt_live_api import werkstatt_live_bp
     app.register_blueprint(werkstatt_live_bp)
+    
+    # Gudat → Locosoft Sync API (TAG 200 - Test-Integration)
+    try:
+        from api.gudat_locosoft_sync_api import bp as gudat_locosoft_sync_bp
+        app.register_blueprint(gudat_locosoft_sync_bp)
+        print("✅ Gudat-Locosoft Sync API registriert: /api/gudat-locosoft/")
+    except Exception as e:
+        print(f"⚠️  Gudat-Locosoft Sync API nicht geladen: {e}")
     
     # TAG 165: Abteilungsleiter-Planung
     try:

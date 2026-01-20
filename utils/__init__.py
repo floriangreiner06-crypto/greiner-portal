@@ -16,6 +16,9 @@ from .kpi_definitions import (
     ZIEL_EFFIZIENZ,
     ZIEL_STUNDEN_PRO_DURCHGANG,
     SCHWELLEN,
+    MARKT_BENCHMARKS,
+    get_markt_benchmark,
+    vergleiche_mit_markt,
     
     # Kern-Berechnungen
     berechne_anwesenheitsgrad,
@@ -95,7 +98,7 @@ __all__ = [
     'MINUTEN_PRO_AW', 'STUNDEN_PRO_WOCHE', 'STUNDEN_PRO_TAG',
     'ZIEL_ANWESENHEITSGRAD', 'ZIEL_AUSLASTUNGSGRAD', 
     'ZIEL_LEISTUNGSGRAD', 'ZIEL_EFFIZIENZ', 'ZIEL_STUNDEN_PRO_DURCHGANG',
-    'SCHWELLEN',
+    'SCHWELLEN', 'MARKT_BENCHMARKS', 'get_markt_benchmark', 'vergleiche_mit_markt',
     
     # Berechnungen
     'berechne_anwesenheitsgrad', 'berechne_anwesenheitsgrad_fuer_mechaniker_liste',

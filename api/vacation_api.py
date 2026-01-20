@@ -855,23 +855,59 @@ def get_my_balance():
         
         year = request.args.get('year', datetime.now().year, type=int)
 
+        # TAG 198: Automatische Jahreswechsel-Logik - stelle sicher dass Jahr existiert
+        try:
+            from api.vacation_year_utils import ensure_vacation_year_setup_simple
+            ensure_vacation_year_setup_simple(year)
+        except Exception as e:
+            print(f"⚠️ Jahreswechsel-Setup fehlgeschlagen: {e}")
+
         with db_session() as conn:
             cursor = conn.cursor()
 
             # TAG 139: View hat 'department' nicht 'department_name'
-            cursor.execute(f"""
-                SELECT
-                    employee_id,
-                    name,
-                    department,
-                    location,
-                    anspruch,
-                    verbraucht,
-                    geplant,
-                    resturlaub
-                FROM v_vacation_balance_{year}
-                WHERE employee_id = %s
-            """, (employee_id,))
+            # TAG 198: Prüfe ob View existiert, sonst erstelle sie
+            try:
+                cursor.execute(f"""
+                    SELECT
+                        employee_id,
+                        name,
+                        department,
+                        location,
+                        anspruch,
+                        verbraucht,
+                        geplant,
+                        resturlaub
+                    FROM v_vacation_balance_{year}
+                    WHERE employee_id = %s
+                """, (employee_id,))
+            except Exception as view_error:
+                # View existiert nicht - erstelle sie
+                if 'does not exist' in str(view_error).lower() or 'relation' in str(view_error).lower():
+                    try:
+                        from api.vacation_year_utils import ensure_vacation_year_setup_simple
+                        ensure_vacation_year_setup_simple(year)
+                        # Retry
+                        cursor.execute(f"""
+                            SELECT
+                                employee_id,
+                                name,
+                                department,
+                                location,
+                                anspruch,
+                                verbraucht,
+                                geplant,
+                                resturlaub
+                            FROM v_vacation_balance_{year}
+                            WHERE employee_id = %s
+                        """, (employee_id,))
+                    except Exception as retry_error:
+                        return jsonify({
+                            'success': False,
+                            'error': f'View für {year} konnte nicht erstellt werden: {str(retry_error)}'
+                        }), 500
+                else:
+                    raise
 
             row = cursor.fetchone()
 
@@ -989,6 +1025,13 @@ def get_my_team():
         
         year = request.args.get('year', datetime.now().year, type=int)
         
+        # TAG 198: Automatische Jahreswechsel-Logik
+        try:
+            from api.vacation_year_utils import ensure_vacation_year_setup_simple
+            ensure_vacation_year_setup_simple(year)
+        except Exception as e:
+            print(f"⚠️ Jahreswechsel-Setup fehlgeschlagen: {e}")
+        
         team_members = get_team_for_approver(ldap_username)
         
         if not team_members:
@@ -1002,7 +1045,7 @@ def get_my_team():
             })
         
         team_ids = [m['employee_id'] for m in team_members]
-        placeholders = ','.join('?' * len(team_ids))
+        placeholders = ','.join(['%s'] * len(team_ids))
 
         with db_session() as conn:
             cursor = conn.cursor()
@@ -1125,7 +1168,11 @@ def get_pending_approvals():
                 'error': 'Nicht angemeldet'
             }), 401
         
-        if not is_approver(ldap_username):
+        # TAG 198: Admin-Bypass - Admin kann alle sehen (Prüfung VOR is_approver)
+        is_admin = is_vacation_admin(ldap_username)
+        
+        # TAG 198: Nur prüfen wenn nicht Admin (Admins sind automatisch Approver)
+        if not is_admin and not is_approver(ldap_username):
             return jsonify({
                 'success': False,
                 'error': 'Keine Genehmiger-Berechtigung'
@@ -1133,15 +1180,23 @@ def get_pending_approvals():
         
         team_members = get_team_for_approver(ldap_username)
         
-        if not team_members:
-            return jsonify({
-                'success': True,
-                'pending': [],
-                'count': 0
-            })
-        
-        team_ids = [m['employee_id'] for m in team_members]
-        placeholders = ','.join('?' * len(team_ids))
+        # TAG 198: Admin sieht alle pending Buchungen (nicht nur Team)
+        if is_admin:
+            # Admin: Alle pending Buchungen
+            query_filter = "vb.status = 'pending'"
+            query_params = []
+        else:
+            # Normaler Genehmiger: Nur Team-Mitglieder
+            if not team_members:
+                return jsonify({
+                    'success': True,
+                    'pending': [],
+                    'count': 0
+                })
+            team_ids = [m['employee_id'] for m in team_members]
+            placeholders = ','.join(['%s'] * len(team_ids))
+            query_filter = f"vb.employee_id IN ({placeholders}) AND vb.status = 'pending'"
+            query_params = team_ids
 
         with db_session() as conn:
             cursor = conn.cursor()
@@ -1160,20 +1215,27 @@ def get_pending_approvals():
                 FROM vacation_bookings vb
                 JOIN employees e ON vb.employee_id = e.id
                 LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
-                WHERE vb.employee_id IN ({placeholders})
-                  AND vb.status = 'pending'
+                WHERE {query_filter}
                 ORDER BY vb.booking_date ASC
-            """, team_ids)
+            """, query_params)
 
             pending = []
             for row in cursor.fetchall():
-                member_info = next((m for m in team_members if m['employee_id'] == row[1]), {})
+                # TAG 198: Für Admin kann member_info leer sein (kein Team-Filter)
+                member_info = next((m for m in (team_members or []) if m['employee_id'] == row[1]), {})
+                
+                # TAG 198: Datum korrekt formatieren (Date-Objekt zu String)
+                booking_date = row[3]
+                if hasattr(booking_date, 'isoformat'):
+                    booking_date = booking_date.isoformat()
+                elif not isinstance(booking_date, str):
+                    booking_date = str(booking_date)
 
                 pending.append({
                     'booking_id': row[0],
                     'employee_id': row[1],
                     'employee_name': row[2],
-                    'date': row[3],
+                    'date': booking_date,  # TAG 198: Immer String-Format
                     'day_part': row[4],
                     'type_id': row[5],
                     'type_name': row[6],
@@ -1219,7 +1281,11 @@ def approve_vacation():
         if not employee_id:
             return jsonify({'success': False, 'error': 'Nicht angemeldet'}), 401
         
-        if not is_approver(ldap_username):
+        # TAG 198: Admin-Bypass - Admin kann alle genehmigen (Prüfung VOR is_approver)
+        is_admin = is_vacation_admin(ldap_username)
+        
+        # TAG 198: Nur prüfen wenn nicht Admin (Admins sind automatisch Approver)
+        if not is_admin and not is_approver(ldap_username):
             return jsonify({'success': False, 'error': 'Keine Genehmiger-Berechtigung'}), 403
         
         data = request.get_json()
@@ -1228,7 +1294,6 @@ def approve_vacation():
         
         if not booking_id:
             return jsonify({'success': False, 'error': 'booking_id erforderlich'}), 400
-        
         team_members = get_team_for_approver(ldap_username)
         team_ids = [m['employee_id'] for m in team_members]
 
@@ -1258,8 +1323,27 @@ def approve_vacation():
             if not booking:
                 return jsonify({'success': False, 'error': 'Buchung nicht gefunden'}), 404
 
-            if booking[0] not in team_ids:
-                return jsonify({'success': False, 'error': 'Keine Berechtigung für diese Buchung'}), 403
+            # TAG 198: Team-Validierung nur für normale Genehmiger (nicht Admin)
+            if not is_admin:
+                if not team_ids:
+                    return jsonify({
+                        'success': False, 
+                        'error': 'Kein Team zugeordnet. Bitte Admin kontaktieren.',
+                        'debug': {
+                            'ldap_username': ldap_username,
+                            'team_size': len(team_members)
+                        }
+                    }), 403
+                
+                if booking[0] not in team_ids:
+                    return jsonify({
+                        'success': False, 
+                        'error': f'Keine Berechtigung für diese Buchung. Team-Größe: {len(team_ids)}',
+                        'debug': {
+                            'booking_employee_id': booking[0],
+                            'team_ids': team_ids[:5]  # Erste 5 für Debug
+                        }
+                    }), 403
 
             if booking[1] != 'pending':
                 return jsonify({'success': False, 'error': f'Buchung hat bereits Status: {booking[1]}'}), 400
@@ -1338,7 +1422,11 @@ def reject_vacation():
         if not employee_id:
             return jsonify({'success': False, 'error': 'Nicht angemeldet'}), 401
         
-        if not is_approver(ldap_username):
+        # TAG 198: Admin-Bypass - Admin kann alle ablehnen (Prüfung VOR is_approver)
+        is_admin = is_vacation_admin(ldap_username)
+        
+        # TAG 198: Nur prüfen wenn nicht Admin (Admins sind automatisch Approver)
+        if not is_admin and not is_approver(ldap_username):
             return jsonify({'success': False, 'error': 'Keine Genehmiger-Berechtigung'}), 403
         
         data = request.get_json()
@@ -1347,7 +1435,6 @@ def reject_vacation():
         
         if not booking_id:
             return jsonify({'success': False, 'error': 'booking_id erforderlich'}), 400
-        
         team_members = get_team_for_approver(ldap_username)
         team_ids = [m['employee_id'] for m in team_members]
 
@@ -1375,8 +1462,19 @@ def reject_vacation():
             if not booking:
                 return jsonify({'success': False, 'error': 'Buchung nicht gefunden'}), 404
 
-            if booking[0] not in team_ids:
-                return jsonify({'success': False, 'error': 'Keine Berechtigung für diese Buchung'}), 403
+            # TAG 198: Team-Validierung nur für normale Genehmiger (nicht Admin)
+            if not is_admin:
+                if not team_ids:
+                    return jsonify({
+                        'success': False, 
+                        'error': 'Kein Team zugeordnet. Bitte Admin kontaktieren.'
+                    }), 403
+                
+                if booking[0] not in team_ids:
+                    return jsonify({
+                        'success': False, 
+                        'error': f'Keine Berechtigung für diese Buchung. Team-Größe: {len(team_ids)}'
+                    }), 403
 
             if booking[1] != 'pending':
                 return jsonify({'success': False, 'error': f'Buchung hat bereits Status: {booking[1]}'}), 400
@@ -1440,6 +1538,13 @@ def get_all_balances():
         year = request.args.get('year', datetime.now().year, type=int)
         department = request.args.get('department', None)
         location = request.args.get('location', None)
+
+        # TAG 198: Automatische Jahreswechsel-Logik
+        try:
+            from api.vacation_year_utils import ensure_vacation_year_setup_simple
+            ensure_vacation_year_setup_simple(year)
+        except Exception as e:
+            print(f"⚠️ Jahreswechsel-Setup fehlgeschlagen: {e}")
 
         with db_session() as conn:
             cursor = conn.cursor()
@@ -1603,14 +1708,15 @@ def get_all_bookings():
                 loco_days = get_absence_days_for_employees(locosoft_ids, year)
 
                 # Vacation Type Mapping für Locosoft-Gründe
-                # Frontend CLS: {1:'urlaub', 2:'urlaub', 3:'krank', 5:'schulung', 6:'za'}
+                # TAG 198: Korrigiert - Frontend CLS: {1:'urlaub', 2:'urlaub', 3:'krank', 5:'krank', 6:'za', 9:'schulung'}
+                # Portal: type_id 3 = "Urlaubstag (abgelehnt)", type_id 5 = "Krankheit", type_id 9 = "Schulung"
                 LOCO_TYPE_MAP = {
                     'Url': 1,   # Urlaub
                     'BUr': 1,   # Bezahlter Urlaub
                     'ZA.': 6,   # Zeitausgleich
-                    'Krn': 3,   # Krank
-                    'Sch': 5,   # Schulung
-                    'Sem': 5,   # Seminar
+                    'Krn': 5,   # TAG 198: Krank → type_id 5 (Krankheit), nicht 3!
+                    'Sch': 9,   # TAG 198: Schulung → type_id 9, nicht 5!
+                    'Sem': 9,   # TAG 198: Seminar → type_id 9 (Schulung)
                 }
 
                 for loco_id, days in loco_days.items():
@@ -2230,7 +2336,7 @@ def cancel_vacation():
             is_admin = False
             cursor.execute("""
                 SELECT ad_groups FROM users
-                WHERE username LIKE ? OR username = %s
+                WHERE username LIKE %s OR username = %s
             """, (f"%{ldap_username}%", ldap_username))
             user_row = cursor.fetchone()
             if user_row and user_row[0]:
@@ -2432,6 +2538,44 @@ def book_vacation_batch():
                         pass
                 if not is_admin:
                     return jsonify({'success': False, 'error': 'Krankheitstage können nur von Admins eingetragen werden'}), 403
+
+            # TAG 198: Prüfe Urlaubssperren
+            if vacation_type_id == 1:  # Nur für Urlaub prüfen
+                # Hole Abteilung des Mitarbeiters
+                cursor.execute("""
+                    SELECT department_name FROM employees WHERE id = %s
+                """, (employee_id,))
+                emp_dept = cursor.fetchone()
+                if emp_dept and emp_dept[0]:
+                    # Prüfe ob einer der Tage gesperrt ist
+                    placeholders = ','.join(['%s'] * len(dates))
+                    cursor.execute(f"""
+                        SELECT block_date, reason FROM vacation_blocks
+                        WHERE department_name = %s AND block_date IN ({placeholders})
+                    """, [emp_dept[0]] + dates)
+                    blocked_dates = cursor.fetchall()
+                    if blocked_dates:
+                        blocked_str = ', '.join([str(bd[0]) for bd in blocked_dates])
+                        return jsonify({
+                            'success': False,
+                            'error': f'Urlaub an folgenden Tagen gesperrt: {blocked_str}',
+                            'blocked_dates': [str(bd[0]) for bd in blocked_dates]
+                        }), 400
+            
+            # TAG 198: Prüfe freie Tage (Betriebsferien)
+            placeholders = ','.join(['%s'] * len(dates))
+            cursor.execute(f"""
+                SELECT free_date, description FROM free_days
+                WHERE free_date IN ({placeholders})
+            """, dates)
+            free_dates = cursor.fetchall()
+            if free_dates:
+                free_str = ', '.join([str(fd[0]) for fd in free_dates])
+                return jsonify({
+                    'success': False,
+                    'error': f'An folgenden Tagen sind Betriebsferien: {free_str}',
+                    'free_dates': [str(fd[0]) for fd in free_dates]
+                }), 400
 
             # Resturlaub-Validierung für Urlaub (type_id=1)
             if vacation_type_id == 1:

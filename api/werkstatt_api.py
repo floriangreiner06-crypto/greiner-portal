@@ -94,17 +94,24 @@ def get_leistung():
         )
         
         # Konvertiere zu altem Format für Frontend-Kompatibilität
+        # SSOT TAG 196: Alle Werte werden von der API berechnet, Dashboard zeigt nur an!
+        #              Keine Berechnungen mehr im Dashboard - alle Werte in benötigter Einheit zurückgeben
         mechaniker = []
         for m in data['mechaniker']:
+            vorgabezeit_min = m.get('vorgabezeit', 0)  # AW-Anteil in Minuten (immer vorhanden)
             mechaniker.append({
                 'mechaniker_nr': m['mechaniker_nr'],
                 'name': m['name'],
                 'ist_aktiv': m['ist_aktiv'],
                 'tage': m['tage'],
                 'auftraege': m['auftraege'],
-                'stempelzeit': m['stempelzeit'],
-                'anwesenheit': m['anwesenheit'],
-                'aw': m['aw'],
+                'stempelzeit': m['stempelzeit'],  # St-Anteil in Minuten (für interne Berechnungen)
+                'anwesenheit': m['anwesenheit'],  # Echte Anwesenheit in Minuten (für interne Berechnungen)
+                'vorgabezeit': vorgabezeit_min,  # AW-Anteil in Minuten (für interne Berechnungen)
+                'stempelzeit_std': round(m['stempelzeit'] / 60, 1),  # St-Anteil in Stunden (SSOT - für Dashboard-Anzeige)
+                'anwesenheit_std': round(m['anwesenheit'] / 60, 1),  # Anwesenheit in Stunden (SSOT - für Dashboard-Anzeige)
+                'vorgabezeit_std': round(vorgabezeit_min / 60, 1),  # AW-Anteil in Stunden (SSOT - für Dashboard-Anzeige)
+                'aw': m['aw'],  # AW-Einheiten (SSOT - von API berechnet)
                 'umsatz': m['umsatz'],
                 'leistungsgrad': m['leistungsgrad'],
                 'produktivitaet': m['produktivitaet']
@@ -122,19 +129,35 @@ def get_leistung():
 
         # Gesamt-KPIs aus data verwenden
         gesamt = data.get('gesamt', {})
-        gesamt_auftraege = gesamt.get('auftraege', 0)
-        gesamt_stempelzeit = gesamt.get('stempelzeit', 0)
-        gesamt_anwesenheit = gesamt.get('anwesenheit', 0)
-        gesamt_aw = gesamt.get('aw', 0)
-        gesamt_umsatz = gesamt.get('umsatz', 0)
-        gesamt_leistungsgrad = gesamt.get('leistungsgrad', 0)
-        gesamt_produktivitaet = gesamt.get('produktivitaet', 0)
-        gesamt_anwesenheitsgrad = gesamt.get('anwesenheitsgrad', 0)
         anzahl_tage = data.get('anzahl_tage', 0)
 
         # Anwesenheitsgrad für Mechaniker-Liste berechnen (TAG 181 - SSOT)
         from utils.kpi_definitions import berechne_anwesenheitsgrad_fuer_mechaniker_liste
         gesamt_anwesenheitsgrad, mechaniker = berechne_anwesenheitsgrad_fuer_mechaniker_liste(mechaniker)
+        
+        # FIX TAG 196: Gesamt-KPIs für die ANGEZEIGTEN Mechaniker berechnen, nicht für alle!
+        # Das Dashboard zeigt nur die Top 10 (oder gefilterten) Mechaniker,
+        # daher müssen die Gesamtwerte für diese Mechaniker berechnet werden.
+        gesamt_auftraege = sum(m.get('auftraege', 0) for m in mechaniker)
+        gesamt_stempelzeit = sum(m.get('stempelzeit', 0) for m in mechaniker)  # St-Anteil in Minuten
+        gesamt_anwesenheit = sum(m.get('anwesenheit', 0) for m in mechaniker)  # Echte Anwesenheit in Minuten
+        gesamt_aw = sum(m.get('aw', 0) for m in mechaniker)  # AW-Einheiten
+        gesamt_vorgabezeit = sum(m.get('vorgabezeit', m.get('aw', 0) * 6.0) for m in mechaniker)  # AW-Anteil in Minuten
+        gesamt_umsatz = sum(m.get('umsatz', 0) for m in mechaniker)
+        
+        # Gesamt-Leistungsgrad und Produktivität für angezeigte Mechaniker berechnen
+        if gesamt_stempelzeit > 0 and gesamt_vorgabezeit > 0:
+            gesamt_leistungsgrad = round(gesamt_vorgabezeit / gesamt_stempelzeit * 100, 1)
+        else:
+            gesamt_leistungsgrad = None
+            
+        if gesamt_stempelzeit > 0 and gesamt_anwesenheit > 0:
+            if gesamt_stempelzeit > gesamt_anwesenheit:
+                gesamt_produktivitaet = 100.0  # Cap auf 100%
+            else:
+                gesamt_produktivitaet = round(gesamt_stempelzeit / gesamt_anwesenheit * 100, 1)
+        else:
+            gesamt_produktivitaet = None
 
         with db_session() as conn:
             cursor = conn.cursor()
@@ -253,10 +276,24 @@ def get_leistung():
 
             gesamt_effizienz = round(gesamt_leistungsgrad * gesamt_produktivitaet / 100, 1) if gesamt_leistungsgrad and gesamt_produktivitaet else 0
             gesamt_stempelzeit_std = gesamt_stempelzeit / 60 if gesamt_stempelzeit else 0
-            verlorene_std = gesamt_stempelzeit_std * (1 - gesamt_leistungsgrad / 100) if gesamt_leistungsgrad else 0
+            # FIX TAG 196: verlorene_std basiert auf Vorgabezeit, nicht Stempelzeit
+            # verlorene_std = (Vorgabezeit - Stempelzeit) wenn Leistungsgrad < 100%
+            gesamt_vorgabezeit_std = (gesamt.get('vorgabezeit', gesamt_aw * 6.0) / 60) if gesamt_aw else 0
+            verlorene_std = gesamt_vorgabezeit_std * (1 - gesamt_leistungsgrad / 100) if gesamt_leistungsgrad else 0
             entgangener_umsatz = verlorene_std * svs
             realisierter_svs = round(gesamt_umsatz / gesamt_stempelzeit_std, 2) if gesamt_stempelzeit_std > 0 and gesamt_umsatz else svs
             std_pro_durchgang = round(gesamt_stempelzeit_std / gesamt_auftraege, 2) if gesamt_auftraege > 0 else 0
+
+            # TAG 199: Benchmark-Vergleiche (SSOT: utils.kpi_definitions)
+            from utils.kpi_definitions import vergleiche_mit_markt
+            benchmarks = {
+                'leistungsgrad': vergleiche_mit_markt(gesamt_leistungsgrad, 'leistungsgrad'),
+                'produktivitaet': vergleiche_mit_markt(gesamt_produktivitaet, 'auslastungsgrad'),  # Produktivität = Auslastungsgrad
+                'anwesenheitsgrad': vergleiche_mit_markt(gesamt_anwesenheitsgrad, 'anwesenheitsgrad'),
+                'effizienz': vergleiche_mit_markt(gesamt_effizienz, 'effizienz'),
+                'stundensatz': vergleiche_mit_markt(realisierter_svs, 'stundensatz_durchschnitt'),
+                'stunden_pro_durchgang': vergleiche_mit_markt(std_pro_durchgang, 'stunden_pro_durchgang'),
+            }
 
         return jsonify({
             'success': True,
@@ -281,6 +318,7 @@ def get_leistung():
                 'effizienz': gesamt_effizienz,
                 'stempelzeit': gesamt_stempelzeit,
                 'anwesenheit': gesamt_anwesenheit,
+                'vorgabezeit': gesamt_vorgabezeit,  # FIX TAG 196: AW-Anteil in Minuten (NEU!)
                 'auftraege': gesamt_auftraege,
                 'aw': gesamt_aw,
                 'umsatz': round(gesamt_umsatz, 2),
@@ -300,6 +338,7 @@ def get_leistung():
                 'arbeitstage': arbeitstage,
                 'abwesenheitstage': abwesenheitstage
             },
+            'benchmarks': benchmarks,  # TAG 199: Marktvergleiche
             'trend': trend
         })
 

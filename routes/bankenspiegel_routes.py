@@ -133,42 +133,21 @@ def transaktionen():
     )
 
 # ============================================================================
-# ZINSEN-ANALYSE (Alle Finanzierungszinsen)
-# ============================================================================
-@bankenspiegel_bp.route("/zinsen-analyse")
-def zinsen_analyse():
-    """
-    Zinsen-Analyse Dashboard
-    Zeigt alle Zinskosten auf einen Blick:
-    - Konten Sollzinsen
-    - Stellantis (über Zinsfreiheit)
-    - Santander
-    - Hyundai Finance
-    
-    Features:
-    - KPI-Cards mit Gesamtzinsen (Monat/Jahr)
-    - Ampel-System für Handlungsbedarf
-    - Tabelle: Fahrzeuge über Zinsfreiheit (DRINGEND)
-    - Tabelle: Bald ablaufende Zinsfreiheit (WARNUNG)
-    - Export-Funktion
-    
-    Template: zinsen_analyse.html
-    API: /api/zinsen/dashboard, /api/zinsen/report
-    """
-    return render_template(
-        "zinsen_analyse.html",
-        now=datetime.now()
-    )
-
-
-# ============================================================================
-# EINKAUFSFINANZIERUNG (Stellantis & Santander)
+# EINKAUFSFINANZIERUNG (Konsolidiert: Fahrzeugfinanzierungen + Zinsen-Analyse)
 # ============================================================================
 
 @bankenspiegel_bp.route('/einkaufsfinanzierung')
 def einkaufsfinanzierung():
     """
-    Redirect zu Fahrzeugfinanzierungen (konsolidiert TAG 116)
+    Redirect zu Fahrzeugfinanzierungen (konsolidiert)
+    """
+    return redirect(url_for('bankenspiegel.fahrzeugfinanzierungen'))
+
+
+@bankenspiegel_bp.route('/zinsen-analyse')
+def zinsen_analyse():
+    """
+    Redirect zu Fahrzeugfinanzierungen (konsolidiert)
     """
     return redirect(url_for('bankenspiegel.fahrzeugfinanzierungen'))
 
@@ -176,12 +155,13 @@ def einkaufsfinanzierung():
 @bankenspiegel_bp.route('/fahrzeugfinanzierungen')
 def fahrzeugfinanzierungen():
     """
-    Fahrzeugfinanzierungen Dashboard (konsolidiert TAG 116)
+    Fahrzeugfinanzierungen Dashboard (Konsolidiert mit Zinsen-Analyse)
     
     Zeigt alle Finanzierungen:
     - Stellantis Bank
     - Santander Bank  
     - Hyundai Finance
+    - Genobank (Konto 4700057908)
     
     Features:
     - KPI-Cards mit Gesamtübersicht
@@ -189,9 +169,10 @@ def fahrzeugfinanzierungen():
     - Marken-Badges
     - Zinsen-Warnungen
     - Charts (Pie + Bar)
+    - Zinsen-Analyse (inkl. Handlungsempfehlungen)
     
-    Template: einkaufsfinanzierung.html
-    API: /api/bankenspiegel/einkaufsfinanzierung
+    Template: einkaufsfinanzierung.html (erweitert)
+    API: /api/bankenspiegel/einkaufsfinanzierung, /api/zinsen/dashboard, /api/zinsen/report
     CSS: einkaufsfinanzierung.css
     """
     return render_template(

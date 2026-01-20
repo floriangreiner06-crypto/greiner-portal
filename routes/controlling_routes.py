@@ -1372,11 +1372,29 @@ def api_tek():
             }
 
         # =====================================================================
-        # TAGESWERTE - Letzte zwei Tage nebeneinander (TAG176)
+        # TAGESWERTE - Letzte zwei Werktage nebeneinander (TAG198)
         # =====================================================================
-        # TAG176: Zeige die letzten zwei Tage nebeneinander mit Datum (08.01., 09.01.)
-        heute = date.today()
-        vortag = heute - timedelta(days=1)  # Gestern
+        # TAG198: Nur Werktage anzeigen, aktueller Tag erst nach 19:00 Uhr
+        jetzt = datetime.now()
+        aktuelle_stunde = jetzt.hour
+        
+        # TAG198: Aktueller Tag erst nach 19:00 Uhr anzeigen (nach Locosoft Update)
+        if aktuelle_stunde >= 19:
+            heute = jetzt.date()
+        else:
+            # Vor 19:00 Uhr: Zeige gestern als "heute"
+            heute = (jetzt - timedelta(days=1)).date()
+        
+        # TAG198: Nur Werktage anzeigen (Mo-Fr)
+        # Finde letzten Werktag (heute oder davor)
+        while heute.weekday() >= 5:  # 5=Samstag, 6=Sonntag
+            heute = heute - timedelta(days=1)
+        
+        # Vortag: Letzter Werktag vor "heute"
+        vortag = heute - timedelta(days=1)
+        while vortag.weekday() >= 5:  # Nur Werktage
+            vortag = vortag - timedelta(days=1)
+        
         morgen = heute + timedelta(days=1)  # Morgen (für Datumsbereich)
         
         heute_daten = None

@@ -411,7 +411,8 @@ class LocosoftSOAPClient:
     def read_appointment(self, appointment_number: int) -> Optional[Dict]:
         """Liest einen Termin mit allen Details."""
         try:
-            result = self.service.readAppointment(number=appointment_number)
+            # TAG 200: Korrektur - SOAP erwartet appointmentNumber, nicht number
+            result = self.service.readAppointment(appointmentNumber=appointment_number)
             return self._serialize(result) if result else None
         except Exception as e:
             logger.error(f"readAppointment({appointment_number}) fehlgeschlagen: {e}")
@@ -487,11 +488,28 @@ class LocosoftSOAPClient:
                 appointment['number'] = 0
 
             result = self.service.writeAppointment(appointment=appointment)
+            
+            # Debug: Log result type und Inhalt
+            logger.info(f"writeAppointment SOAP-Response: type={type(result)}, value={result}")
+            if hasattr(result, '__dict__'):
+                logger.info(f"writeAppointment SOAP-Response attributes: {dir(result)}")
+
+            # Extrahiere Termin-Nummer
+            termin_nr = None
+            if isinstance(result, int):
+                termin_nr = result
+            elif hasattr(result, 'number'):
+                termin_nr = result.number
+            elif hasattr(result, '__dict__') and 'number' in result.__dict__:
+                termin_nr = result.__dict__['number']
+            
+            logger.info(f"writeAppointment extrahierte Termin-Nr: {termin_nr}")
 
             return {
                 'success': True,
-                'number': result if isinstance(result, int) else getattr(result, 'number', None),
-                'message': 'Termin erfolgreich gespeichert'
+                'number': termin_nr,
+                'message': 'Termin erfolgreich gespeichert',
+                'raw_result': str(result)  # Debug: Raw-Result für Analyse
             }
         except Fault as e:
             logger.error(f"writeAppointment SOAP-Fault: {e}")

@@ -208,7 +208,7 @@ def update_entitlement():
 
             cursor.execute("""
                 INSERT INTO vacation_entitlements (employee_id, year, total_days, carried_over, added_manually, updated_at)
-                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
                 ON CONFLICT(employee_id, year) DO UPDATE SET
                     total_days = excluded.total_days,
                     carried_over = excluded.carried_over,
@@ -268,7 +268,7 @@ def bulk_update():
 
                 cursor.execute("""
                     INSERT INTO vacation_entitlements (employee_id, year, total_days, carried_over, added_manually, updated_at)
-                    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
                     ON CONFLICT(employee_id, year) DO UPDATE SET
                         total_days = excluded.total_days,
                         carried_over = excluded.carried_over,
@@ -282,6 +282,403 @@ def bulk_update():
 
         return jsonify({'success': True, 'updated': updated})
 
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@vacation_admin_api.route('/mass-booking', methods=['POST'])
+@login_required
+def mass_booking():
+    """
+    POST /api/vacation/admin/mass-booking
+    TAG 198: Masseneingabe für Urlaubstage pro Abteilung/alle Mitarbeiter
+    
+    Body:
+    {
+        "dates": ["2026-01-15", "2026-01-16"],
+        "vacation_type_id": 1,
+        "day_part": "full",
+        "employee_ids": [1, 2, 3],  # Optional: spezifische Mitarbeiter
+        "department": "Service",    # Optional: ganze Abteilung
+        "all_employees": false,     # Optional: alle Mitarbeiter
+        "auto_approve": false,       # Optional: automatisch genehmigen
+        "comment": "optional"
+    }
+    """
+    if not is_vacation_admin():
+        return jsonify({'success': False, 'error': 'Keine Berechtigung'}), 403
+    
+    try:
+        data = request.get_json()
+        dates = data.get('dates', [])
+        vacation_type_id = data.get('vacation_type_id', 1)
+        day_part = data.get('day_part', 'full')
+        employee_ids = data.get('employee_ids', [])
+        department = data.get('department')
+        all_employees = data.get('all_employees', False)
+        auto_approve = data.get('auto_approve', False)
+        comment = data.get('comment', '')
+        
+        if not dates:
+            return jsonify({'success': False, 'error': 'Keine Daten angegeben'}), 400
+        
+        # Bestimme Ziel-Mitarbeiter
+        target_employee_ids = []
+        
+        with db_session() as conn:
+            cursor = conn.cursor()
+            
+            if employee_ids:
+                # Spezifische Mitarbeiter
+                placeholders = ','.join(['%s'] * len(employee_ids))
+                cursor.execute(f"""
+                    SELECT id FROM employees 
+                    WHERE id IN ({placeholders}) AND aktiv = true
+                """, employee_ids)
+                target_employee_ids = [row[0] for row in cursor.fetchall()]
+            elif department:
+                # Ganze Abteilung
+                cursor.execute("""
+                    SELECT id FROM employees 
+                    WHERE department_name = %s AND aktiv = true
+                """, (department,))
+                target_employee_ids = [row[0] for row in cursor.fetchall()]
+            elif all_employees:
+                # Alle Mitarbeiter
+                cursor.execute("""
+                    SELECT id FROM employees WHERE aktiv = true
+                """)
+                target_employee_ids = [row[0] for row in cursor.fetchall()]
+            else:
+                return jsonify({'success': False, 'error': 'Keine Ziel-Mitarbeiter angegeben'}), 400
+            
+            if not target_employee_ids:
+                return jsonify({'success': False, 'error': 'Keine Mitarbeiter gefunden'}), 404
+            
+            # Buche für alle Mitarbeiter
+            created_count = 0
+            status = 'approved' if auto_approve else 'pending'
+            
+            for emp_id in target_employee_ids:
+                for date_str in dates:
+                    # Prüfe ob bereits gebucht
+                    cursor.execute("""
+                        SELECT id FROM vacation_bookings
+                        WHERE employee_id = %s AND booking_date = %s AND status != 'cancelled'
+                    """, (emp_id, date_str))
+                    
+                    if cursor.fetchone():
+                        continue  # Überspringe wenn bereits gebucht
+                    
+                    # Erstelle Buchung
+                    cursor.execute("""
+                        INSERT INTO vacation_bookings 
+                        (employee_id, booking_date, vacation_type_id, day_part, status, comment, created_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                    """, (emp_id, date_str, vacation_type_id, day_part, status, comment))
+                    created_count += 1
+            
+            conn.commit()
+        
+        return jsonify({
+            'success': True,
+            'created': created_count,
+            'employees': len(target_employee_ids),
+            'dates': len(dates),
+            'auto_approve': auto_approve
+        })
+    
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+
+@vacation_admin_api.route('/year-end-report', methods=['GET'])
+@login_required
+def year_end_report():
+    """
+    GET /api/vacation/admin/year-end-report?year=2026
+    TAG 198: Jahresend-Report - CSV Export mit genommenen/übrigen Urlaubstagen
+    """
+    if not is_vacation_admin():
+        return jsonify({'success': False, 'error': 'Keine Berechtigung'}), 403
+    
+    try:
+        year = request.args.get('year', datetime.now().year, type=int)
+        
+        with db_session() as conn:
+            cursor = conn.cursor()
+            
+            # Hole alle Urlaubssalden für das Jahr
+            # TAG 198: View hat email als 3. Spalte, daher explizit Spalten auswählen
+            cursor.execute(f"""
+                SELECT
+                    employee_id,
+                    name,
+                    email,
+                    department,
+                    location,
+                    anspruch,
+                    verbraucht,
+                    geplant,
+                    resturlaub
+                FROM v_vacation_balance_{year}
+                ORDER BY department, name
+            """)
+            
+            rows = cursor.fetchall()
+            
+            # Erstelle CSV
+            output = io.StringIO()
+            # TAG 198: UTF-8 BOM für Excel-Kompatibilität
+            output.write('\ufeff')  # UTF-8 BOM
+            writer = csv.writer(output, delimiter=';', quoting=csv.QUOTE_MINIMAL)
+            
+            # Header
+            writer.writerow([
+                'Mitarbeiter',
+                'Abteilung',
+                'Standort',
+                'Urlaubsanspruch',
+                'Genommen',
+                'Geplant',
+                'Resturlaub'
+            ])
+            
+            # Daten
+            # TAG 198: Korrekte Spaltenindizes - View hat: employee_id(0), name(1), email(2), department(3), location(4), anspruch(5), verbraucht(6), geplant(7), resturlaub(8)
+            for row in rows:
+                # Konvertiere None zu leeren Strings, runde Zahlen
+                writer.writerow([
+                    str(row[1]) if row[1] else '',  # name (Index 1)
+                    str(row[3]) if row[3] else '',  # department (Index 3, nicht 2!)
+                    str(row[4]) if row[4] else '',  # location (Index 4, nicht 3!)
+                    round(float(row[5]), 1) if row[5] is not None else 0,  # anspruch (Index 5, nicht 4!)
+                    round(float(row[6]), 1) if row[6] is not None else 0,  # verbraucht (Index 6, nicht 5!)
+                    round(float(row[7]), 1) if row[7] is not None else 0,  # geplant (Index 7, nicht 6!)
+                    round(float(row[8]), 1) if row[8] is not None else 0   # resturlaub (Index 8, nicht 7!)
+                ])
+            
+            output.seek(0)
+            csv_content = output.getvalue()
+            
+            return Response(
+                csv_content.encode('utf-8-sig'),  # UTF-8 mit BOM für Excel
+                mimetype='text/csv; charset=utf-8',
+                headers={
+                    'Content-Disposition': f'attachment; filename=urlaubsreport_{year}.csv'
+                }
+            )
+    
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+
+# ============================================================================
+# TAG 198: Urlaubssperren Management
+# ============================================================================
+
+@vacation_admin_api.route('/blocks', methods=['GET'])
+@login_required
+def get_blocks():
+    """GET /api/vacation/admin/blocks?year=2026&department=Service"""
+    if not is_vacation_admin():
+        return jsonify({'success': False, 'error': 'Keine Berechtigung'}), 403
+    
+    try:
+        year = request.args.get('year', datetime.now().year, type=int)
+        department = request.args.get('department')
+        
+        with db_session() as conn:
+            cursor = conn.cursor()
+            
+            query = """
+                SELECT id, department_name, block_date, reason, created_by, created_at
+                FROM vacation_blocks
+                WHERE EXTRACT(YEAR FROM block_date) = %s
+            """
+            params = [year]
+            
+            if department:
+                query += " AND department_name = %s"
+                params.append(department)
+            
+            query += " ORDER BY block_date, department_name"
+            
+            cursor.execute(query, params)
+            blocks = []
+            for row in cursor.fetchall():
+                blocks.append({
+                    'id': row[0],
+                    'department': row[1],
+                    'date': row[2].isoformat() if hasattr(row[2], 'isoformat') else str(row[2]),
+                    'reason': row[3],
+                    'created_by': row[4],
+                    'created_at': row[5].isoformat() if hasattr(row[5], 'isoformat') else str(row[5])
+                })
+        
+        return jsonify({'success': True, 'blocks': blocks})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@vacation_admin_api.route('/blocks', methods=['POST'])
+@login_required
+def create_block():
+    """POST /api/vacation/admin/blocks - Neue Sperre erstellen"""
+    if not is_vacation_admin():
+        return jsonify({'success': False, 'error': 'Keine Berechtigung'}), 403
+    
+    try:
+        data = request.get_json()
+        department = data.get('department')
+        date_str = data.get('date')
+        reason = data.get('reason', '')
+        created_by = getattr(current_user, 'username', 'admin')
+        
+        if not department or not date_str:
+            return jsonify({'success': False, 'error': 'department und date erforderlich'}), 400
+        
+        with db_session() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                INSERT INTO vacation_blocks (department_name, block_date, reason, created_by)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT(department_name, block_date) DO UPDATE SET
+                    reason = excluded.reason,
+                    created_by = excluded.created_by
+            """, (department, date_str, reason, created_by))
+            
+            conn.commit()
+        
+        return jsonify({'success': True, 'message': 'Sperre erstellt'})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@vacation_admin_api.route('/blocks/<int:block_id>', methods=['DELETE'])
+@login_required
+def delete_block(block_id):
+    """DELETE /api/vacation/admin/blocks/<id> - Sperre löschen"""
+    if not is_vacation_admin():
+        return jsonify({'success': False, 'error': 'Keine Berechtigung'}), 403
+    
+    try:
+        with db_session() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM vacation_blocks WHERE id = %s", (block_id,))
+            conn.commit()
+        
+        return jsonify({'success': True, 'message': 'Sperre gelöscht'})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
+# TAG 198: Freie Tage Management
+# ============================================================================
+
+@vacation_admin_api.route('/free-days', methods=['GET'])
+@login_required
+def get_free_days():
+    """GET /api/vacation/admin/free-days?year=2026"""
+    if not is_vacation_admin():
+        return jsonify({'success': False, 'error': 'Keine Berechtigung'}), 403
+    
+    try:
+        year = request.args.get('year', datetime.now().year, type=int)
+        
+        with db_session() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT id, free_date, description, affects_vacation_entitlement, created_by, created_at
+                FROM free_days
+                WHERE EXTRACT(YEAR FROM free_date) = %s
+                ORDER BY free_date
+            """, (year,))
+            
+            free_days_list = []
+            for row in cursor.fetchall():
+                free_days_list.append({
+                    'id': row[0],
+                    'date': row[1].isoformat() if hasattr(row[1], 'isoformat') else str(row[1]),
+                    'description': row[2],
+                    'affects_vacation_entitlement': row[3],
+                    'created_by': row[4],
+                    'created_at': row[5].isoformat() if hasattr(row[5], 'isoformat') else str(row[5])
+                })
+        
+        return jsonify({'success': True, 'free_days': free_days_list})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@vacation_admin_api.route('/free-days', methods=['POST'])
+@login_required
+def create_free_day():
+    """POST /api/vacation/admin/free-days - Neuen freien Tag erstellen"""
+    if not is_vacation_admin():
+        return jsonify({'success': False, 'error': 'Keine Berechtigung'}), 403
+    
+    try:
+        data = request.get_json()
+        date_str = data.get('date')
+        description = data.get('description', '')
+        affects_entitlement = data.get('affects_vacation_entitlement', True)
+        created_by = getattr(current_user, 'username', 'admin')
+        
+        if not date_str:
+            return jsonify({'success': False, 'error': 'date erforderlich'}), 400
+        
+        with db_session() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                INSERT INTO free_days (free_date, description, affects_vacation_entitlement, created_by)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT(free_date) DO UPDATE SET
+                    description = excluded.description,
+                    affects_vacation_entitlement = excluded.affects_vacation_entitlement
+            """, (date_str, description, affects_entitlement, created_by))
+            
+            conn.commit()
+        
+        return jsonify({'success': True, 'message': 'Freier Tag erstellt'})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@vacation_admin_api.route('/free-days/<int:free_day_id>', methods=['DELETE'])
+@login_required
+def delete_free_day(free_day_id):
+    """DELETE /api/vacation/admin/free-days/<id> - Freien Tag löschen"""
+    if not is_vacation_admin():
+        return jsonify({'success': False, 'error': 'Keine Berechtigung'}), 403
+    
+    try:
+        with db_session() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM free_days WHERE id = %s", (free_day_id,))
+            conn.commit()
+        
+        return jsonify({'success': True, 'message': 'Freier Tag gelöscht'})
+    
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -304,30 +701,49 @@ def export_data():
             return jsonify({'success': False, 'error': 'Daten konnten nicht geladen werden'}), 500
         
         output = io.StringIO()
-        writer = csv.writer(output, delimiter=';')
+        # TAG 198: UTF-8 BOM für Excel-Kompatibilität
+        output.write('\ufeff')  # UTF-8 BOM
+        # TAG 198: QUOTE_MINIMAL - nur wenn nötig, Zahlen ohne Anführungszeichen
+        writer = csv.writer(output, delimiter=';', quoting=csv.QUOTE_MINIMAL, lineterminator='\r\n')
         
         # Header
         writer.writerow(['Name', 'Standort', 'Gruppe', 'Anspruch', 'Übertrag', 'Urlaub', 'ZA', 'Krank', 'Sonstige', 'Verfügbar'])
         
         for emp in data['employees']:
+            # TAG 198: Konvertiere alle Werte explizit - Zahlen als float, Strings als String
+            name = str(emp.get('name', '') or '').strip()
+            standort = str(emp.get('standort', '') or '').strip()
+            gruppe = str(emp.get('grp_code', '') or '-').strip()
+            
+            # Zahlen explizit als float konvertieren und runden
+            # TAG 198: Punkt als Dezimaltrennzeichen (Standard für CSV mit Semikolon als Feldtrennzeichen)
+            anspruch = round(float(emp.get('anspruch', 0) or 0), 1)
+            uebertrag = round(float(emp.get('uebertrag', 0) or 0), 1)
+            urlaub = round(float(emp.get('urlaub', 0) or 0), 1)
+            zeitausgleich = round(float(emp.get('zeitausgleich', 0) or 0), 1)
+            krank = round(float(emp.get('krank', 0) or 0), 1)
+            sonstige = round(float(emp.get('sonstige', 0) or 0), 1)
+            verfuegbar = round(float(emp.get('verfuegbar', 0) or 0), 1)
+            
             writer.writerow([
-                emp['name'],
-                emp['standort'],
-                emp['grp_code'] or '-',
-                emp['anspruch'],
-                emp['uebertrag'],
-                emp['urlaub'],
-                emp['zeitausgleich'],
-                emp['krank'],
-                emp['sonstige'],
-                emp['verfuegbar']
+                name,
+                standort,
+                gruppe,
+                anspruch,
+                uebertrag,
+                urlaub,
+                zeitausgleich,
+                krank,
+                sonstige,
+                verfuegbar
             ])
         
         output.seek(0)
+        csv_content = output.getvalue()
         
         return Response(
-            output.getvalue(),
-            mimetype='text/csv',
+            csv_content.encode('utf-8-sig'),  # UTF-8 mit BOM für Excel
+            mimetype='text/csv; charset=utf-8',
             headers={'Content-Disposition': f'attachment; filename=urlaubsuebersicht_{year}.csv'}
         )
         

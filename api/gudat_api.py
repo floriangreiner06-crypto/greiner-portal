@@ -130,18 +130,51 @@ def get_workload_week():
     
     Query-Parameter:
         start_date: Startdatum (YYYY-MM-DD), default: heute
+        with_teams: Wenn true, werden Team-Daten pro Tag mitgeliefert (TAG 200)
     
     Returns:
         JSON mit täglichen Kapazitäts-Daten
+        Wenn with_teams=true: Enthält auch 'teams_per_day' mit Team-Daten pro Tag
     """
     try:
         start_date = request.args.get('start_date')
+        with_teams = request.args.get('with_teams', 'false').lower() == 'true'
         
         client = get_gudat_client()
         data = client.get_week_overview(start_date)
         
         if 'error' in data:
             return jsonify(data), 400
+        
+        # TAG 200: Team-Daten pro Tag hinzufügen
+        if with_teams:
+            raw_data = client.get_workload_raw(start_date, days=7)
+            if raw_data:
+                # Gruppiere nach Datum
+                teams_per_day = {}
+                for team in raw_data:
+                    team_name = team.get('name', '')
+                    team_id = team.get('id')
+                    category = team.get('category_name', '')
+                    
+                    for date, day_data in team.get('data', {}).items():
+                        if date not in teams_per_day:
+                            teams_per_day[date] = []
+                        
+                        teams_per_day[date].append({
+                            'id': team_id,
+                            'name': team_name,
+                            'category': category,
+                            'capacity': day_data.get('base_workload', 0),
+                            'planned': day_data.get('planned_workload', 0),
+                            'free': day_data.get('free_workload', 0),
+                            'absent': day_data.get('absence_workload', 0),
+                            'plannable': day_data.get('plannable_workload', 0),
+                            'utilization': round(day_data.get('planned_workload', 0) / day_data.get('base_workload', 0) * 100, 1) if day_data.get('base_workload', 0) > 0 else 0,
+                            'status': 'overloaded' if day_data.get('free_workload', 0) < 0 else ('warning' if day_data.get('free_workload', 0) < day_data.get('base_workload', 0) * 0.1 else 'ok')
+                        })
+                
+                data['teams_per_day'] = teams_per_day
         
         return jsonify(data)
         
