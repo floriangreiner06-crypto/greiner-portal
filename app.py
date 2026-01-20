@@ -27,7 +27,7 @@ else:
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 Jahr in Produktion
 
 # Globale Static-Version (ändert sich bei jedem Flask-Neustart)
-STATIC_VERSION = '20260120151300'  # TAG [aktuell] - Sortierung nach Standzeit in Modalen
+STATIC_VERSION = '20260120152000'  # TAG [aktuell] - Instituts-Historie für Zinsstartdatum (dynamischer Text)
 print(f"📦 Static Version: {STATIC_VERSION}")
 
 # Template-Kontext: Macht STATIC_VERSION in allen Templates verfügbar

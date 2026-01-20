@@ -341,7 +341,13 @@ function updateTopFahrzeuge(fahrzeuge) {
         row.innerHTML = `
             <td><strong>${index + 1}</strong></td>
             <td><span class="badge bg-${badge}">${fz.institut}</span></td>
-            <td><code>${fz.vin}</code></td>
+            <td>
+                <code class="vin-clickable" 
+                      onclick="showFahrzeugDetails('${fz.vin || ''}')" 
+                      title="Klicken für Fahrzeugdetails">
+                    ${fz.vin}
+                </code>
+            </td>
             <td>${fz.modell || '-'}</td>
             <td>${fz.marke || '-'}</td>
             <td class="text-end"><strong>${formatCurrency(fz.saldo)}</strong></td>
@@ -388,7 +394,13 @@ function updateWarnungen(warnungen) {
         
         row.innerHTML = `
             <td><span class="badge bg-primary">${warnung.institut || 'Stellantis'}</span></td>
-            <td><code>${warnung.vin}</code></td>
+            <td>
+                <code class="vin-clickable" 
+                      onclick="showFahrzeugDetails('${warnung.vin || ''}')" 
+                      title="Klicken für Fahrzeugdetails">
+                    ${warnung.vin}
+                </code>
+            </td>
             <td>${warnung.modell || '-'}</td>
             <td class="${tageClass}">
                 <i class="bi bi-exclamation-triangle-fill"></i>
@@ -483,7 +495,13 @@ async function loadFahrzeugeMitZinsen() {
             return `
                 <tr>
                     <td><span class="badge bg-${severity}">${fz.finanzinstitut}</span></td>
-                    <td><code class="small">${fz.vin}</code></td>
+                    <td>
+                        <code class="small vin-clickable" 
+                              onclick="showFahrzeugDetails('${fz.vin || ''}')" 
+                              title="Klicken für Fahrzeugdetails">
+                            ${fz.vin}
+                        </code>
+                    </td>
                     <td>${fz.modell || 'N/A'}</td>
                     <td class="text-end">
                         <span class="badge bg-${severity} px-3">
@@ -602,7 +620,6 @@ async function showMarkeFahrzeuge(institut, marke) {
                     <tr>
                         <td>
                             <code class="small vin-clickable" 
-                                  style="cursor: pointer; color: #0d6efd; text-decoration: underline;" 
                                   onclick="showFahrzeugDetails('${fz.vin || ''}')" 
                                   title="Klicken für Fahrzeugdetails">
                                 ${fz.vin || '-'}
@@ -729,6 +746,33 @@ async function showFahrzeugDetails(vin) {
             const zinsenGesamt = parseFloat(finanz.zinsen_gesamt || 0);
             const zinsenMonat = parseFloat(finanz.zinsen_letzte_periode || 0);
             const zinsfreiheit = finanz.zinsfreiheit_tage;
+            
+            // Zinsstartdatum anzeigen
+            const zinsStartdatum = finanz.zins_startdatum;
+            document.getElementById('detailZinsStartdatum').textContent = formatDate(zinsStartdatum);
+            
+            // Zinsstart-Text dynamisch anzeigen (falls vorhanden)
+            const zinsstartTextEl = document.getElementById('detailZinsStartdatumInfo');
+            if (finanz.zinsstart_text) {
+                zinsstartTextEl.textContent = finanz.zinsstart_text;
+            } else {
+                zinsstartTextEl.textContent = 'Zinsstartdatum';
+            }
+            
+            // Tage seit Zinsstart berechnen
+            let tageSeitZinsstart = '-';
+            if (zinsStartdatum) {
+                try {
+                    const zinsStart = new Date(zinsStartdatum);
+                    const heute = new Date();
+                    const diffTime = Math.abs(heute - zinsStart);
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    tageSeitZinsstart = `${diffDays} Tage`;
+                } catch (e) {
+                    tageSeitZinsstart = '-';
+                }
+            }
+            document.getElementById('detailTageSeitZinsstart').textContent = tageSeitZinsstart;
             
             document.getElementById('detailZinsenGesamt').textContent = zinsenGesamt > 0 ? formatCurrency(zinsenGesamt) : '-';
             document.getElementById('detailZinsenMonat').textContent = zinsenMonat > 0 ? formatCurrency(zinsenMonat) : '-';

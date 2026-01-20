@@ -1227,7 +1227,8 @@ def get_fahrzeuge_by_marke():
                 # Erweiterte Query mit Locosoft-JOIN für Modell-Daten
                 from api.db_utils import locosoft_session
                 
-                # 1. Hole Fahrzeuge aus fahrzeugfinanzierungen (inkl. Zinskosten)
+                # 1. Hole ALLE Genobank-Fahrzeuge (ohne Marken-Filter)
+                # WICHTIG: Marken-Filter erfolgt NACH Locosoft-Abruf, da Marke aus Locosoft kommt
                 query = f"""
                     SELECT 
                         ff.vin,
@@ -1246,18 +1247,10 @@ def get_fahrzeuge_by_marke():
                 """
                 params = [institut]
                 
-                # Marken-Filter nur wenn marke-Parameter vorhanden
-                if marke:
-                    if marke != 'Unbekannt':
-                        query += f" AND ff.hersteller = {ph}"
-                        params.append(marke)
-                    else:
-                        query += f" AND (ff.hersteller IS NULL OR ff.hersteller = '' OR ff.hersteller = 'Unbekannt')"
-                
-                cursor.execute(query, params if len(params) > 1 else (params[0],))
+                cursor.execute(query, params)
                 fahrzeuge_rows = cursor.fetchall()
                 
-                # 2. Für jede VIN: Falls modell leer, hole aus Locosoft
+                # 2. Für jede VIN: Hole Marke/Modell aus Locosoft und filtere dann
                 fahrzeuge = []
                 with locosoft_session() as loco_conn:
                     loco_cursor = loco_conn.cursor()
@@ -1266,13 +1259,12 @@ def get_fahrzeuge_by_marke():
                         fz_dict = row_to_dict(row, cursor)
                         vin = fz_dict.get('vin')
                         modell = fz_dict.get('modell')
-                        marke = fz_dict.get('marke')
+                        marke_db = fz_dict.get('marke')  # Aus DB
                         
                         vin_upper = vin.upper().strip() if vin else ''
                         
-                        # Falls modell ODER marke leer oder "Unbekannt", hole aus Locosoft
-                        if vin_upper and (not modell or modell.strip() == '' or modell.strip().lower() == 'unbekannt' or
-                                         not marke or marke.strip() == '' or marke.strip().lower() == 'unbekannt'):
+                        # Hole Marke/Modell aus Locosoft (immer, da Marke für Filterung benötigt wird)
+                        if vin_upper:
                             loco_query = """
                                 SELECT 
                                     COALESCE(
@@ -1306,10 +1298,93 @@ def get_fahrzeuge_by_marke():
                                 if loco_modell and (not modell or modell.strip() == '' or modell.strip().lower() == 'unbekannt'):
                                     fz_dict['modell'] = loco_modell
                                 
-                                # Marke aktualisieren, falls leer
+                                # Marke aus Locosoft (hat Priorität)
                                 loco_marke = loco_data.get('marke', '')
-                                if loco_marke and (not marke or marke.strip() == '' or marke.strip().lower() == 'unbekannt'):
-                                    fz_dict['marke'] = loco_marke
+                                if loco_marke:
+                                    # Leapmotor-Erkennung: Basierend auf Modell (B10, C10, T03)
+                                    modell_str = loco_modell.upper() if loco_modell else ''
+                                    if any(x in modell_str for x in ['B10', 'C10', 'T03', 'LEAPMOTOR']):
+                                        fz_dict['marke'] = 'Leapmotor'
+                                    else:
+                                        fz_dict['marke'] = loco_marke
+                                elif marke_db and marke_db.strip() != '' and marke_db.strip().lower() != 'unbekannt':
+                                    # Fallback: Marke aus DB
+                                    fz_dict['marke'] = marke_db
+                                else:
+                                    fz_dict['marke'] = 'Unbekannt'
+                            else:
+                                # VIN nicht in Locosoft gefunden, verwende DB-Werte
+                                if not modell or modell.strip() == '' or modell.strip().lower() == 'unbekannt':
+                                    fz_dict['modell'] = 'Unbekannt'
+                                if not marke_db or marke_db.strip() == '' or marke_db.strip().lower() == 'unbekannt':
+                                    fz_dict['marke'] = 'Unbekannt'
+                                else:
+                                    fz_dict['marke'] = marke_db
+                        else:
+                            # Keine VIN, verwende DB-Werte
+                            if not modell or modell.strip() == '' or modell.strip().lower() == 'unbekannt':
+                                fz_dict['modell'] = 'Unbekannt'
+                            if not marke_db or marke_db.strip() == '' or marke_db.strip().lower() == 'unbekannt':
+                                fz_dict['marke'] = 'Unbekannt'
+                            else:
+                                fz_dict['marke'] = marke_db
+                        
+                        # Marken-Filter NACH Locosoft-Abruf
+                        if marke:
+                            if marke == 'Unbekannt':
+                                if fz_dict.get('marke', '').strip().lower() not in ['unbekannt', '', None]:
+                                    continue  # Überspringe, wenn nicht "Unbekannt"
+                            else:
+                                if fz_dict.get('marke', '').strip() != marke.strip():
+                                    continue  # Überspringe, wenn Marke nicht übereinstimmt
+                        
+                        # Für Genobank: Zinsen berechnen, falls noch nicht vorhanden
+                        if institut == 'Genobank':
+                            saldo = float(fz_dict.get('aktueller_saldo') or 0)
+                            zins_start = fz_dict.get('zins_startdatum')
+                            zinsen_gesamt = fz_dict.get('zinsen_gesamt')
+                            zinsen_letzte_periode = fz_dict.get('zinsen_letzte_periode')
+                            
+                            # Nur berechnen, wenn noch nicht vorhanden
+                            if (not zinsen_gesamt or zinsen_gesamt == 0) and saldo > 0 and zins_start:
+                                from datetime import date, datetime
+                                
+                                # Hole Zinssatz aus konten
+                                cursor.execute("""
+                                    SELECT sollzins FROM konten
+                                    WHERE (kontonummer = '4700057908' OR iban LIKE '%4700057908%')
+                                      AND aktiv = true
+                                    LIMIT 1
+                                """)
+                                zins_row = cursor.fetchone()
+                                zinssatz = 5.5  # Default
+                                if zins_row and zins_row[0]:
+                                    zinssatz = float(zins_row[0])
+                                else:
+                                    # Fallback: ek_finanzierung_konditionen
+                                    cursor.execute("SELECT zinssatz FROM ek_finanzierung_konditionen WHERE finanzinstitut = 'Genobank'")
+                                    kond_row = cursor.fetchone()
+                                    if kond_row and kond_row[0]:
+                                        zinssatz = float(kond_row[0])
+                                
+                                # Parse zins_startdatum
+                                if isinstance(zins_start, str):
+                                    try:
+                                        if 'T' in zins_start or ' ' in zins_start:
+                                            zins_start = datetime.fromisoformat(zins_start.replace('Z', '+00:00')).date()
+                                        else:
+                                            zins_start = datetime.strptime(zins_start, '%Y-%m-%d').date()
+                                    except:
+                                        zins_start = None
+                                
+                                # Berechne Tage seit Zinsstart
+                                if zins_start and isinstance(zins_start, date):
+                                    tage_seit_zinsstart = (date.today() - zins_start).days
+                                    if tage_seit_zinsstart > 0:
+                                        zinsen_gesamt = round(saldo * zinssatz / 100 * tage_seit_zinsstart / 365, 2)
+                                        zinsen_monat = round(saldo * zinssatz / 100 * 30 / 365, 2)
+                                        fz_dict['zinsen_gesamt'] = zinsen_gesamt
+                                        fz_dict['zinsen_letzte_periode'] = zinsen_monat
                         
                         fahrzeuge.append(fz_dict)
                 
@@ -1425,7 +1500,7 @@ def get_fahrzeug_details():
                         WHEN dv.dealer_vehicle_type = 'N' THEN 'Neuwagen'
                         WHEN dv.dealer_vehicle_type = 'D' THEN 'Vorführwagen'
                         WHEN dv.dealer_vehicle_type = 'V' THEN 'Vorführwagen'
-                        WHEN dv.dealer_vehicle_type = 'T' THEN 'Tauschfahrzeug'
+                        WHEN dv.dealer_vehicle_type = 'T' THEN 'Tageszulassung'
                         WHEN dv.dealer_vehicle_type = 'L' THEN 'Leihgabe/Mietwagen'
                         ELSE 'Unbekannt'
                     END as fahrzeugtyp,
@@ -1511,6 +1586,7 @@ def get_fahrzeug_details():
             with db_session() as drive_conn:
                 drive_cursor = drive_conn.cursor()
                 
+                # Aktuelle Finanzierung
                 drive_cursor.execute("""
                     SELECT 
                         finanzinstitut,
@@ -1520,8 +1596,7 @@ def get_fahrzeug_details():
                         zins_startdatum,
                         zinsen_gesamt,
                         zinsen_letzte_periode,
-                        zinsfreiheit_tage,
-                        zins_startdatum
+                        zinsfreiheit_tage
                     FROM fahrzeugfinanzierungen
                     WHERE vin = %s AND aktiv = true
                     ORDER BY aktualisiert_am DESC
@@ -1531,6 +1606,71 @@ def get_fahrzeug_details():
                 fin_row = drive_cursor.fetchone()
                 if fin_row:
                     finanzierung = row_to_dict(fin_row, drive_cursor)
+                    
+                    # Historie der Finanzinstitute abrufen (alle Einträge für diese VIN, auch inaktive)
+                    drive_cursor.execute("""
+                        SELECT DISTINCT
+                            finanzinstitut,
+                            zins_startdatum,
+                            aktualisiert_am,
+                            aktiv
+                        FROM fahrzeugfinanzierungen
+                        WHERE vin = %s
+                        ORDER BY aktualisiert_am ASC
+                    """, (vin,))
+                    
+                    historie_rows = drive_cursor.fetchall()
+                    institut_historie = []
+                    for hist_row in historie_rows:
+                        hist_dict = row_to_dict(hist_row, drive_cursor)
+                        institut_historie.append({
+                            'finanzinstitut': hist_dict.get('finanzinstitut'),
+                            'zins_startdatum': hist_dict.get('zins_startdatum'),
+                            'aktualisiert_am': hist_dict.get('aktualisiert_am'),
+                            'aktiv': hist_dict.get('aktiv', True)
+                        })
+                    
+                    # Bestimme den Text für Zinsstartdatum
+                    aktuelles_institut = finanzierung.get('finanzinstitut')
+                    zins_start = finanzierung.get('zins_startdatum')
+                    zinsstart_text = None
+                    
+                    if zins_start:
+                        # Versuche vorheriges Institut zu finden
+                        # Strategie 1: Prüfe alle anderen Institute für diese VIN (auch inaktive)
+                        andere_institute = set()
+                        for hist in institut_historie:
+                            if hist.get('finanzinstitut') != aktuelles_institut:
+                                andere_institute.add(hist.get('finanzinstitut'))
+                        
+                        if andere_institute:
+                            # Es gibt andere Institute in der Historie
+                            # Nimm das erste andere Institut (chronologisch)
+                            vorheriges_institut = list(andere_institute)[0] if len(andere_institute) == 1 else None
+                            
+                            # Strategie 2: Prüfe ob es ein Institut gibt, das VOR dem zins_startdatum aktiv war
+                            # (basierend auf aktualisiert_am)
+                            if len(institut_historie) > 1:
+                                for i, hist in enumerate(institut_historie):
+                                    if hist.get('finanzinstitut') == aktuelles_institut:
+                                        # Aktuelles Institut gefunden, prüfe vorherige
+                                        if i > 0:
+                                            vorheriges_institut = institut_historie[i-1].get('finanzinstitut')
+                                        break
+                            
+                            if vorheriges_institut and vorheriges_institut != aktuelles_institut:
+                                zinsstart_text = f"Datum der Umfinanzierung von {vorheriges_institut} zu {aktuelles_institut}"
+                            else:
+                                # Mehrere andere Institute, aber nicht eindeutig
+                                zinsstart_text = f"Datum der Umfinanzierung zu {aktuelles_institut}"
+                        else:
+                            # Kein anderes Institut in Historie
+                            zinsstart_text = f"Zinsstartdatum bei {aktuelles_institut}"
+                    else:
+                        zinsstart_text = None
+                    
+                    finanzierung['zinsstart_text'] = zinsstart_text
+                    finanzierung['institut_historie'] = institut_historie
                     
                     # Für Genobank: Falls keine Zinsen vorhanden, berechnen
                     if finanzierung.get('finanzinstitut') == 'Genobank':
@@ -1553,7 +1693,9 @@ def get_fahrzeug_details():
                         # Berechne Zinsen (falls noch nicht vorhanden)
                         if not finanzierung.get('zinsen_gesamt') or finanzierung.get('zinsen_gesamt') == 0:
                             if alter_tage > 0 and saldo > 0:
-                                # Zinsen seit Zinsstart (oder seit Finanzierungsbeginn)
+                                # Zinsen seit Zinsstart (NICHT seit Standzeit!)
+                                # WICHTIG: Bei Genobank fallen Zinsen erst ab dem Datum an, 
+                                # an dem das Fahrzeug von Stellantis zu Genobank umfinanziert wurde
                                 zins_start = finanzierung.get('zins_startdatum')
                                 if zins_start:
                                     from datetime import date, datetime
@@ -1569,15 +1711,25 @@ def get_fahrzeug_details():
                                     if zins_start and isinstance(zins_start, date):
                                         tage_seit_zinsstart = (date.today() - zins_start).days
                                     else:
-                                        tage_seit_zinsstart = alter_tage
+                                        # Fallback: Wenn kein zins_startdatum vorhanden, KEINE Zinsen berechnen
+                                        # (da wir nicht wissen, ab wann Zinsen anfallen)
+                                        tage_seit_zinsstart = 0
                                 else:
-                                    tage_seit_zinsstart = alter_tage
+                                    # WICHTIG: Ohne zins_startdatum keine Zinsen berechnen!
+                                    # Das Fahrzeug könnte noch bei Stellantis sein oder 
+                                    # das Umfinanzierungsdatum ist unbekannt
+                                    tage_seit_zinsstart = 0
                                 
                                 if tage_seit_zinsstart > 0:
+                                    # Zinsen nur berechnen, wenn zins_startdatum vorhanden ist
                                     zinsen_gesamt = round(saldo * zinssatz / 100 * tage_seit_zinsstart / 365, 2)
                                     zinsen_monat = round(saldo * zinssatz / 100 * 30 / 365, 2)
                                     finanzierung['zinsen_gesamt'] = zinsen_gesamt
                                     finanzierung['zinsen_letzte_periode'] = zinsen_monat
+                                else:
+                                    # Keine Zinsen berechnen, wenn kein zins_startdatum vorhanden
+                                    finanzierung['zinsen_gesamt'] = 0
+                                    finanzierung['zinsen_letzte_periode'] = 0
                         else:
                             # Zinsen bereits vorhanden, aber monatlich berechnen falls fehlt
                             if not finanzierung.get('zinsen_letzte_periode') or finanzierung.get('zinsen_letzte_periode') == 0:
