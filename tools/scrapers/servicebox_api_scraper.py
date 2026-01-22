@@ -444,21 +444,88 @@ def extract_bestellung_details(session, bestellung_info):
             log(f"      ⚠️  Summen: {e}")
         
         # Kommentare & Parsed-Daten (wie im alten Scraper)
-        kommentar_match = re.search(r'Kommentar[^:]*:\s*</td>\s*<td[^>]*>\s*([^<]+)', page_text, re.DOTALL)
-        if kommentar_match:
-            kommentar = kommentar_match.group(1).strip()
-            details['kommentare']['werkstatt'] = kommentar
+        # TAG207: Mehrere Patterns für bessere Extraktion (wie im detail_scraper)
+        kommentar = None
+        kommentar_patterns = [
+            r'Kommentar Werkstatt[^:]*:\s*</td>\s*<td[^>]*>\s*([^<]+)',  # "Kommentar Werkstatt:"
+            r'<td[^>]*>Kommentar Werkstatt</td>\s*<td[^>]*>\s*([^<]+)',  # <td>Kommentar Werkstatt</td>
+            r'Kommentar[^:]*:\s*</td>\s*<td[^>]*>\s*([^<]+)',  # "Kommentar:"
+            r'<td[^>]*>Kommentar</td>\s*<td[^>]*>\s*([^<]+)',  # <td>Kommentar</td>
+        ]
+        
+        for pattern in kommentar_patterns:
+            kommentar_match = re.search(pattern, page_text, re.IGNORECASE | re.DOTALL)
+            if kommentar_match:
+                kommentar = kommentar_match.group(1).strip()
+                # Entferne HTML-Tags und Whitespace
+                kommentar = re.sub(r'<[^>]+>', '', kommentar).strip()
+                # Entferne &nbsp; und andere HTML-Entities
+                kommentar = kommentar.replace('&nbsp;', ' ').strip()
+                if kommentar and len(kommentar) > 0:
+                    details['kommentare']['werkstatt'] = kommentar
+                    log(f"      ✅ Kommentar gefunden: {kommentar[:80]}...")
+                    break
+        
+        if kommentar:
             
             # Parse VIN, Kundennummer, Werkstattauftrag
+            if 'parsed' not in details:
+                details['parsed'] = {}
+            
             vin_match = re.search(r'VIN[:\s]+([A-Z0-9]{17})', kommentar, re.IGNORECASE)
             if vin_match:
-                details['parsed'] = {'vin': vin_match.group(1)}
+                details['parsed']['vin'] = vin_match.group(1)
             
             kunde_match = re.search(r'Kd\.?\s*Nr\.?[:\s]+(\d+)', kommentar, re.IGNORECASE)
             if kunde_match:
-                if 'parsed' not in details:
-                    details['parsed'] = {}
                 details['parsed']['kundennummer'] = kunde_match.group(1)
+            
+            # TAG207: Kundenname aus Kommentar extrahieren
+            # Format-Beispiele:
+            # - "DE08250 Stöckl 1008603" → Kunde: "Stöckl"
+            # - "Stöckl 1008603" → Kunde: "Stöckl"
+            # - "A12345 Stöckl W0L0AHL35A2036973" → Kunde: "Stöckl"
+            # - "Stöckl" → Kunde: "Stöckl"
+            # DE08250 ist die Händlernummer, 1008603 ist die lokale Bestellnummer
+            # Der Kundenname steht im Kommentarfeld (z.B. "Stöckl")
+            if kommentar:
+                kommentar_clean = kommentar.strip()
+                
+                # Entferne VIN am Ende (falls vorhanden) - 17 Zeichen alphanumerisch
+                vin_at_end = re.search(r'\b([A-HJ-NPR-Z0-9]{17})\s*$', kommentar_clean)
+                if vin_at_end:
+                    kommentar_clean = kommentar_clean[:vin_at_end.start()].strip()
+                
+                # Entferne Empfänger-Code (Händlernummer) am Anfang (DE + 5 Zahlen)
+                # DE08250 ist die Händlernummer, nicht der Kundenname
+                empf_code_at_start = re.match(r'^(DE\d{5})\s+', kommentar_clean)
+                if empf_code_at_start:
+                    kommentar_clean = kommentar_clean[empf_code_at_start.end():].strip()
+                
+                # Entferne lokale_nr am Anfang (A + Zahlen oder nur Zahlen, 4-7 Stellen)
+                # z.B. "A12345" oder "1008603" (lokale Bestellnummer)
+                lokale_at_start = re.match(r'^(A?\d{4,7})\s+', kommentar_clean)
+                if lokale_at_start:
+                    kommentar_clean = kommentar_clean[lokale_at_start.end():].strip()
+                
+                # Entferne lokale_nr am Ende (falls vorhanden, z.B. "Stöckl 1008603")
+                # Nur wenn es am Ende steht und der Rest ein Name ist
+                lokale_at_end = re.search(r'\s+(\d{4,7})\s*$', kommentar_clean)
+                if lokale_at_end:
+                    # Prüfe ob vor der Nummer ein Name steht (nicht nur Zahlen)
+                    before_number = kommentar_clean[:lokale_at_end.start()].strip()
+                    if before_number and not re.match(r'^\d+$', before_number):
+                        kommentar_clean = before_number
+                
+                # Was übrig bleibt ist der Kundenname (wenn noch etwas da ist)
+                if kommentar_clean and len(kommentar_clean) > 1:
+                    # Prüfe ob es nicht nur ein Code ist (DE + Zahlen, A + Zahlen, oder nur Zahlen)
+                    # Wenn es nur ein Code ist, ist es kein Kundenname
+                    if not re.match(r'^(DE\d{5}|A?\d{4,7}|\d{4,7})$', kommentar_clean):
+                        details['parsed']['kunde_name'] = kommentar_clean
+                        log(f"      ✅ Kundenname gefunden: {kommentar_clean}")
+                    else:
+                        log(f"      ⚠️  Kommentar enthält nur Code, kein Kundenname: {kommentar_clean}")
         
         log(f"      ✅ Details extrahiert")
         

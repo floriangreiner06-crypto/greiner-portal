@@ -545,27 +545,33 @@ def task_history(task_name):
                 date_done = data.get('date_done')
                 started = data.get('started') or None
                 
-                # Versuche started aus result.info zu holen (Fallback)
-                if not started:
-                    try:
-                        from celery.result import AsyncResult
-                        result = AsyncResult(task_id, app=app)
-                        if hasattr(result, 'info') and result.info:
-                            if isinstance(result.info, dict):
-                                started = result.info.get('started')
-                    except:
-                        pass
-                
-                duration = None
-                if date_done and started:
-                    try:
-                        date_done_str = date_done.replace('Z', '+00:00') if 'Z' in date_done else date_done
-                        started_str = started.replace('Z', '+00:00') if 'Z' in started else started
-                        date_done_ts = datetime.fromisoformat(date_done_str)
-                        started_ts = datetime.fromisoformat(started_str)
-                        duration = (date_done_ts - started_ts).total_seconds()
-                    except (ValueError, AttributeError, TypeError):
-                        pass
+                # TAG207: Prüfe zuerst ob duration direkt in Metadaten vorhanden ist
+                duration = data.get('duration')
+                if duration is None:
+                    # Versuche started aus result.info zu holen (Fallback)
+                    if not started:
+                        try:
+                            from celery.result import AsyncResult
+                            result = AsyncResult(task_id, app=app)
+                            if hasattr(result, 'info') and result.info:
+                                if isinstance(result.info, dict):
+                                    started = result.info.get('started')
+                                    # Prüfe auch hier nach duration
+                                    if 'duration' in result.info:
+                                        duration = result.info.get('duration')
+                        except:
+                            pass
+                    
+                    # Berechne Dauer aus date_done und started
+                    if duration is None and date_done and started:
+                        try:
+                            date_done_str = date_done.replace('Z', '+00:00') if 'Z' in date_done else date_done
+                            started_str = started.replace('Z', '+00:00') if 'Z' in started else started
+                            date_done_ts = datetime.fromisoformat(date_done_str)
+                            started_ts = datetime.fromisoformat(started_str)
+                            duration = (date_done_ts - started_ts).total_seconds()
+                        except (ValueError, AttributeError, TypeError):
+                            pass
                 
                 history.append({
                     'task_id': task_id,
