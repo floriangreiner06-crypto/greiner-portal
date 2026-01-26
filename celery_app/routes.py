@@ -519,27 +519,45 @@ def task_history(task_name):
                 mapping_key = f'task-name-mapping:{task_id}'
                 stored_task_name = redis_client.get(mapping_key)
                 
+                # TAG210: Verbesserte Task-Name-Erkennung
+                # Prüfe zuerst Redis-Mapping (schnellste Methode)
+                task_matches = False
+                
                 if stored_task_name:
                     # Decode bytes to string
                     if isinstance(stored_task_name, bytes):
                         stored_task_name = stored_task_name.decode('utf-8')
-                    if stored_task_name != full_task_name:
-                        continue
-                elif task_name_from_meta:
-                    # Verwende Task-Name aus Metadaten
-                    if task_name_from_meta != full_task_name:
-                        continue
-                else:
-                    # Fallback: Versuche über AsyncResult
+                    if stored_task_name == full_task_name:
+                        task_matches = True
+                
+                # Prüfe Metadaten (Celery speichert Task-Namen hier)
+                if not task_matches and task_name_from_meta:
+                    # Exakte Übereinstimmung
+                    if task_name_from_meta == full_task_name:
+                        task_matches = True
+                    # Teilübereinstimmung (z.B. "celery_app.tasks.import_mt940" vs "import_mt940")
+                    elif full_task_name.endswith(task_name_from_meta) or task_name_from_meta.endswith(full_task_name.split('.')[-1]):
+                        task_matches = True
+                    # Prüfe ob Task-Name im Metadaten-String enthalten ist
+                    elif full_task_name.split('.')[-1] in task_name_from_meta or task_name_from_meta.split('.')[-1] in full_task_name:
+                        task_matches = True
+                
+                # Fallback: Versuche über AsyncResult
+                if not task_matches:
                     try:
                         from celery.result import AsyncResult
                         result = AsyncResult(task_id, app=app)
                         result_name = result.name
-                        if not result_name or result_name != full_task_name:
-                            continue
+                        if result_name and (result_name == full_task_name or 
+                                          result_name.endswith(full_task_name.split('.')[-1]) or
+                                          full_task_name.endswith(result_name.split('.')[-1])):
+                            task_matches = True
                     except:
-                        # Wenn kein Mapping und AsyncResult fehlschlägt, überspringe
-                        continue
+                        pass
+                
+                # Wenn kein Match gefunden, überspringe diesen Task
+                if not task_matches:
+                    continue
                 
                 # Berechne Dauer (meta_data und data sind bereits oben geladen)
                 date_done = data.get('date_done')

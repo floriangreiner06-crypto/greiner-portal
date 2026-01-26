@@ -154,6 +154,12 @@ app.conf.update(
             'schedule': crontab(minute=30, hour=17, day_of_week='mon-fri'),
             'options': {'queue': 'aftersales'}
         },
+        # TAG209: Login-Report - täglich um 17:30 Uhr
+        'email-daily-logins': {
+            'task': 'celery_app.tasks.email_daily_logins',
+            'schedule': crontab(minute=30, hour=17, day_of_week='mon-fri'),
+            'options': {'queue': 'controlling'}
+        },
         # TAG176: TEK-E-Mail-Versand aktiviert - nach Locosoft Mirror (19:00)
         'email-tek-daily': {
             'task': 'celery_app.tasks.email_tek_daily',
@@ -370,3 +376,34 @@ app.conf.update(
 
 # Autodiscover tasks
 app.autodiscover_tasks(['celery_app'])
+
+# =============================================================================
+# SIGNAL HANDLERS - Task-Name-Mapping für Historie
+# =============================================================================
+# TAG210: Speichere Task-Name in Redis bei jedem Task-Start (auch automatisch)
+# Damit funktioniert die Historie-Anzeige auch bei Schedules
+
+from celery.signals import task_prerun
+
+@task_prerun.connect
+def on_task_prerun(sender=None, task_id=None, task=None, **kwargs):
+    """Speichere Task-Name in Redis bei jedem Task-Start (auch automatisch)."""
+    try:
+        import redis
+        redis_client = redis.Redis(host='localhost', port=6379, db=1)
+        mapping_key = f'task-name-mapping:{task_id}'
+        
+        # Task-Name extrahieren
+        if task:
+            # Task-Objekt hat 'name' Attribut
+            full_task_name = task.name if hasattr(task, 'name') else str(task)
+        elif sender:
+            # Sender ist das Task-Objekt
+            full_task_name = sender.name if hasattr(sender, 'name') else str(sender)
+        else:
+            return  # Kein Task-Name verfügbar
+        
+        redis_client.setex(mapping_key, 86400 * 7, full_task_name)  # 7 Tage TTL
+    except Exception as e:
+        # Nicht kritisch, nur für Historie
+        pass
