@@ -415,7 +415,10 @@ def debug_garantieauftrag(order_number):
                     -- Details
                     (SELECT COUNT(*) FROM labours l WHERE l.order_number = o.number AND (l.charge_type = 60 OR l.labour_type IN ('G', 'GS'))) as garantie_labours,
                     (SELECT COUNT(*) FROM invoices i WHERE i.order_number = o.number AND i.invoice_type = 6 AND i.is_canceled = false) as garantie_invoices,
-                    (SELECT COUNT(*) FROM times t WHERE t.order_number = o.number AND t.type = 2) as stempelzeiten_count,
+                    -- TAG 211: Deduplizierte Anzahl - sekundengleiche Stempelzeiten desselben Mechanikers auf demselben Auftrag nur einmal
+                    (SELECT COUNT(DISTINCT (t.employee_number, t.order_number, t.start_time, t.end_time)) 
+                     FROM times t 
+                     WHERE t.order_number = o.number AND t.type = 2 AND t.end_time IS NOT NULL) as stempelzeiten_count,
                     (SELECT COUNT(*) FROM labours l WHERE l.order_number = o.number AND l.mechanic_no IS NOT NULL) as zugeordnete_positionen_count
                 FROM orders o
                 WHERE o.number = %s

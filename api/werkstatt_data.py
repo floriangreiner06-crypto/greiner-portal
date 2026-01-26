@@ -718,7 +718,8 @@ class WerkstattData:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             
             query = f"""
-                SELECT DISTINCT ON (employee_number, DATE(start_time), start_time, end_time)
+                -- TAG 211: Konsistente Deduplizierung - sekundengleiche Stempelzeiten desselben Mechanikers auf demselben Auftrag nur einmal
+                SELECT DISTINCT ON (employee_number, order_number, start_time, end_time)
                     employee_number,
                     DATE(start_time) as datum,
                     start_time,
@@ -730,7 +731,7 @@ class WerkstattData:
                   AND order_number > 0
                   {leerlauf_filter}
                   AND start_time >= %s AND start_time < %s + INTERVAL '1 day'
-                ORDER BY employee_number, DATE(start_time), start_time, end_time
+                ORDER BY employee_number, order_number, start_time, end_time
             """
             
             cursor.execute(query, [von, bis])
@@ -759,7 +760,8 @@ class WerkstattData:
             query = f"""
                 WITH
                 stempelungen_dedupliziert AS (
-                    SELECT DISTINCT ON (employee_number, DATE(start_time), start_time, end_time)
+                    -- TAG 211: Konsistente Deduplizierung - sekundengleiche Stempelzeiten desselben Mechanikers auf demselben Auftrag nur einmal
+                    SELECT DISTINCT ON (employee_number, order_number, start_time, end_time)
                         employee_number,
                         DATE(start_time) as datum,
                         start_time,
@@ -771,7 +773,7 @@ class WerkstattData:
                       AND order_number > 0
                       {leerlauf_filter}
                       AND start_time >= %s AND start_time < %s + INTERVAL '1 day'
-                    ORDER BY employee_number, DATE(start_time), start_time, end_time
+                    ORDER BY employee_number, order_number, start_time, end_time
                 ),
                 tages_spannen AS (
                     SELECT
@@ -887,7 +889,8 @@ class WerkstattData:
                     t.employee_number,
                     SUM(EXTRACT(EPOCH FROM (t.end_time - t.start_time)) / 60) as stempel_min_leistungsgrad
                 FROM (
-                    SELECT DISTINCT ON (t.employee_number, DATE(t.start_time), t.start_time, t.end_time)
+                    -- TAG 211: Konsistente Deduplizierung - sekundengleiche Stempelzeiten desselben Mechanikers auf demselben Auftrag nur einmal
+                    SELECT DISTINCT ON (t.employee_number, t.order_number, t.start_time, t.end_time)
                         t.employee_number,
                         t.start_time,
                         t.end_time
@@ -897,7 +900,7 @@ class WerkstattData:
                       AND t.order_number > 31
                       {leerlauf_filter}
                       AND t.start_time >= %s AND t.start_time < %s + INTERVAL '1 day'
-                    ORDER BY t.employee_number, DATE(t.start_time), t.start_time, t.end_time
+                    ORDER BY t.employee_number, t.order_number, t.start_time, t.end_time
                 ) t
                 GROUP BY t.employee_number
             """
@@ -928,7 +931,9 @@ class WerkstattData:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             
             query = """
-                SELECT DISTINCT ON (t.employee_number, t.order_number, t.order_position, t.order_position_line, t.start_time, t.end_time)
+                -- TAG 211: Konsistente Deduplizierung - sekundengleiche Stempelzeiten desselben Mechanikers auf demselben Auftrag nur einmal
+                -- Position-Informationen werden beibehalten (erste Position bei Duplikaten)
+                SELECT DISTINCT ON (t.employee_number, t.order_number, t.start_time, t.end_time)
                     t.employee_number,
                     t.order_number,
                     t.order_position,
@@ -943,7 +948,7 @@ class WerkstattData:
                     AND t.order_position IS NOT NULL
                     AND t.order_position_line IS NOT NULL
                     AND t.start_time >= %s AND t.start_time < %s + INTERVAL '1 day'
-                ORDER BY t.employee_number, t.order_number, t.order_position, t.order_position_line, t.start_time, t.end_time
+                ORDER BY t.employee_number, t.order_number, t.start_time, t.end_time, t.order_position, t.order_position_line
             """
             
             cursor.execute(query, [von, bis])
@@ -1831,6 +1836,52 @@ class WerkstattData:
     # ANWESENHEIT (Attendance / Stempeluhr)
     # =========================================================================
 
+    # Pausenzeiten - Mittagspause wird aus Laufzeit rausgerechnet
+    PAUSE_START = time(12, 0)   # 12:00 Uhr
+    PAUSE_ENDE = time(12, 45)    # 12:45 Uhr
+    PAUSE_DAUER_MIN = 45         # 45 Minuten
+
+    @staticmethod
+    def berechne_netto_laufzeit_mit_pause(start_time: datetime) -> int:
+        """
+        Berechnet die Netto-Arbeitszeit abzüglich Mittagspause (12:00-13:00).
+        Wenn ein Auftrag über die Mittagspause läuft, wird diese abgezogen.
+        
+        Args:
+            start_time: Startzeitpunkt der Stempelung
+            
+        Returns:
+            Netto-Laufzeit in Minuten (ohne Pause)
+        """
+        if not start_time:
+            return 0
+            
+        jetzt = datetime.now()
+        brutto_min = (jetzt - start_time).total_seconds() / 60
+        
+        # Pause heute
+        heute = jetzt.date()
+        pause_start_dt = datetime.combine(heute, WerkstattData.PAUSE_START)
+        pause_ende_dt = datetime.combine(heute, WerkstattData.PAUSE_ENDE)
+        
+        # Prüfe ob Auftrag über Pause läuft
+        if start_time < pause_start_dt and jetzt > pause_ende_dt:
+            # Auftrag lief über komplette Pause → 60 min abziehen
+            netto_min = brutto_min - WerkstattData.PAUSE_DAUER_MIN
+        elif start_time >= pause_start_dt and start_time < pause_ende_dt:
+            # Auftrag in Pause gestartet → Start auf Pause-Ende setzen
+            netto_min = (jetzt - pause_ende_dt).total_seconds() / 60
+            if netto_min < 0:
+                netto_min = 0
+        elif jetzt > pause_start_dt and jetzt <= pause_ende_dt and start_time < pause_start_dt:
+            # Jetzt ist Pause, Auftrag lief vorher → nur Zeit bis Pause-Start
+            netto_min = (pause_start_dt - start_time).total_seconds() / 60
+        else:
+            # Keine Pause-Überschneidung
+            netto_min = brutto_min
+        
+        return int(max(0, netto_min))
+
     @staticmethod
     def get_stempeluhr(
         datum: Optional[date] = None,
@@ -1874,32 +1925,81 @@ class WerkstattData:
             # =====================================================================
             produktiv_query = """
                 WITH aktuelle_stempelungen AS (
-                    SELECT DISTINCT ON (t.employee_number)
+                    -- TAG 206: FIX - Deduplizierung auch für aktive Stempelungen
+                    -- Problem: Wenn Mechaniker auf mehrere Positionen gleichzeitig stempelt,
+                    -- werden diese mehrfach gezählt. Lösung: DISTINCT ON (employee_number, order_number, start_time)
+                    SELECT DISTINCT ON (t.employee_number, t.order_number, t.start_time)
                         t.employee_number,
                         t.order_number,
                         t.start_time,
-                        EXTRACT(EPOCH FROM (NOW() - t.start_time))/60 as heute_session_min,
+                        -- TAG 211: Pause stoppt die Zeit (12:00-12:45) - Zeit läuft während Pause nicht weiter
+                        CASE
+                            -- Stempelung startet vor Pause und läuft über Pause hinaus
+                            WHEN t.start_time::time < TIME '12:00:00' AND LOCALTIME > TIME '12:45:00' THEN
+                                EXTRACT(EPOCH FROM (TIME '12:00:00' - t.start_time::time))/60
+                                + EXTRACT(EPOCH FROM (LOCALTIME - TIME '12:45:00'))/60
+                            -- Stempelung startet in Pause (12:00-12:45)
+                            WHEN t.start_time::time >= TIME '12:00:00' AND t.start_time::time < TIME '12:45:00' THEN
+                                CASE
+                                    WHEN LOCALTIME > TIME '12:45:00' THEN
+                                        EXTRACT(EPOCH FROM (LOCALTIME - TIME '12:45:00'))/60
+                                    ELSE 0
+                                END
+                            -- Stempelung startet vor Pause, jetzt ist in Pause
+                            WHEN t.start_time::time < TIME '12:00:00' AND LOCALTIME >= TIME '12:00:00' AND LOCALTIME <= TIME '12:45:00' THEN
+                                EXTRACT(EPOCH FROM (TIME '12:00:00' - t.start_time::time))/60
+                            -- Normale Berechnung (keine Pause-Überschneidung)
+                            ELSE
+                                EXTRACT(EPOCH FROM (NOW() - t.start_time))/60
+                        END as heute_session_min,
                         COALESCE((
                             SELECT SUM(dur) FROM (
-                                SELECT DISTINCT ON (start_time, end_time) duration_minutes as dur
+                                -- TAG 194: Korrekte Deduplizierung nach Locosoft-Logik
+                                -- DISTINCT ON (employee_number, order_number, start_time, end_time)
+                                -- Verschiedene Positionen auf demselben Auftrag zur gleichen Zeit → 1× zählen
+                                SELECT DISTINCT ON (employee_number, order_number, start_time, end_time) duration_minutes as dur
                                 FROM times t2
                                 WHERE t2.order_number = t.order_number
                                   AND t2.employee_number = t.employee_number
                                   AND t2.end_time IS NOT NULL
                                   AND t2.type = 2
                                   AND DATE(t2.start_time) = %s
+                                ORDER BY employee_number, order_number, start_time, end_time
                             ) dedup
                         ), 0) as heute_abgeschlossen_min,
-                        EXTRACT(EPOCH FROM (NOW() - t.start_time))/60
+                        -- TAG 211: Pause stoppt die Zeit (12:00-12:45) - Zeit läuft während Pause nicht weiter
+                        CASE
+                            -- Stempelung startet vor Pause und läuft über Pause hinaus
+                            WHEN t.start_time::time < TIME '12:00:00' AND LOCALTIME > TIME '12:45:00' THEN
+                                EXTRACT(EPOCH FROM (TIME '12:00:00' - t.start_time::time))/60
+                                + EXTRACT(EPOCH FROM (LOCALTIME - TIME '12:45:00'))/60
+                            -- Stempelung startet in Pause (12:00-12:45)
+                            WHEN t.start_time::time >= TIME '12:00:00' AND t.start_time::time < TIME '12:45:00' THEN
+                                CASE
+                                    WHEN LOCALTIME > TIME '12:45:00' THEN
+                                        EXTRACT(EPOCH FROM (LOCALTIME - TIME '12:45:00'))/60
+                                    ELSE 0
+                                END
+                            -- Stempelung startet vor Pause, jetzt ist in Pause
+                            WHEN t.start_time::time < TIME '12:00:00' AND LOCALTIME >= TIME '12:00:00' AND LOCALTIME <= TIME '12:45:00' THEN
+                                EXTRACT(EPOCH FROM (TIME '12:00:00' - t.start_time::time))/60
+                            -- Normale Berechnung (keine Pause-Überschneidung)
+                            ELSE
+                                EXTRACT(EPOCH FROM (NOW() - t.start_time))/60
+                        END
                         + COALESCE((
                             SELECT SUM(dur) FROM (
-                                SELECT DISTINCT ON (start_time, end_time) duration_minutes as dur
+                                -- TAG 194: Korrekte Deduplizierung nach Locosoft-Logik
+                                -- DISTINCT ON (employee_number, order_number, start_time, end_time)
+                                -- Verschiedene Positionen auf demselben Auftrag zur gleichen Zeit → 1× zählen
+                                SELECT DISTINCT ON (employee_number, order_number, start_time, end_time) duration_minutes as dur
                                 FROM times t2
                                 WHERE t2.order_number = t.order_number
                                   AND t2.employee_number = t.employee_number
                                   AND t2.end_time IS NOT NULL
                                   AND t2.type = 2
                                   AND DATE(t2.start_time) = %s  -- TAG 193: NUR HEUTE! (nicht alle Tage)
+                                ORDER BY employee_number, order_number, start_time, end_time
                             ) dedup
                         ), 0) as laufzeit_min
                     FROM times t
@@ -1915,7 +2015,7 @@ class WerkstattData:
                             AND DATE(t3.start_time) = %s
                             AND t3.start_time > t.start_time
                       )
-                    ORDER BY t.employee_number, t.start_time DESC
+                    ORDER BY t.employee_number, t.order_number, t.start_time DESC
                 )
                 SELECT
                     a.employee_number,
@@ -2223,6 +2323,12 @@ class WerkstattData:
                 vorgabe_min = float(r['vorgabe_min'] or 0)
                 laufzeit = float(r['laufzeit_min'] or 0)
                 fortschritt = int((laufzeit / vorgabe_min * 100) if vorgabe_min > 0 else 0)
+                
+                # TAG 211: Pause stoppt die Zeit (12:00-12:45) - Zeit läuft während Pause nicht weiter
+                # Die SQL-Berechnung berücksichtigt die Pause bereits (laufzeit_min und heute_session_min)
+                heute_session_min = int(r['heute_session_min'] or 0)
+                heute_abgeschlossen_min = int(r['heute_abgeschlossen_min'] or 0)
+                heute_gesamt_min = heute_session_min + heute_abgeschlossen_min
 
                 produktiv.append({
                     'employee_number': r['employee_number'],
@@ -2240,9 +2346,9 @@ class WerkstattData:
                     'start_time': format_datetime_str(r['start_time']),
                     'start_uhrzeit': format_time(r['start_time']),
                     'laufzeit_min': int(r['laufzeit_min'] or 0),
-                    'heute_session_min': int(r['heute_session_min'] or 0),
-                    'heute_abgeschlossen_min': int(r['heute_abgeschlossen_min'] or 0),
-                    'heute_gesamt_min': int(r['heute_gesamt_min'] or 0),
+                    'heute_session_min': heute_session_min,  # TAG 194: Brutto-Zeit (wie Locosoft Realzeit)
+                    'heute_abgeschlossen_min': heute_abgeschlossen_min,
+                    'heute_gesamt_min': heute_gesamt_min,  # TAG 194: Brutto-Zeit (wie Locosoft Realzeit)
                     'vorgabe_aw': float(r['vorgabe_aw'] or 0),
                     'vorgabe_min': int(vorgabe_min),
                     'auftrags_art': r.get('auftrags_art') or '-',
@@ -2308,6 +2414,7 @@ class WerkstattData:
             logger.info(f"WerkstattData.get_stempeluhr: {len(produktiv)} produktiv, {len(leerlauf)} leerlauf, {len(pausiert)} pausiert, {len(feierabend)} feierabend")
 
             return {
+                'success': True,  # TAG 204: Fix - success muss explizit auf True gesetzt werden
                 'datum': str(datum),
                 'subsidiaries': subsidiaries,
                 'ist_arbeitszeit': ist_arbeitszeit,
@@ -4181,8 +4288,16 @@ class WerkstattData:
             # Top 20 Verlust-Auftraege (Kulanz)
             query_top = f'''
             WITH unique_times AS (
-                SELECT DISTINCT order_number, employee_number, start_time, end_time, duration_minutes
-                FROM times WHERE order_number > 0 AND duration_minutes > 0 AND start_time >= NOW() - INTERVAL '%s weeks'
+                -- TAG 211: Konsistente Deduplizierung - sekundengleiche Stempelzeiten desselben Mechanikers auf demselben Auftrag nur einmal
+                SELECT DISTINCT ON (employee_number, order_number, start_time, end_time)
+                    order_number, employee_number, start_time, end_time, duration_minutes
+                FROM times 
+                WHERE order_number > 0 
+                  AND duration_minutes > 0 
+                  AND type = 2
+                  AND end_time IS NOT NULL
+                  AND start_time >= NOW() - INTERVAL '%s weeks'
+                ORDER BY employee_number, order_number, start_time, end_time
             ),
             gestempelt AS (
                 SELECT order_number, SUM(duration_minutes) as stempel_min FROM unique_times GROUP BY order_number
@@ -5021,6 +5136,169 @@ class WerkstattData:
                 }
             }
 
+    @staticmethod
+    def get_automatisch_verteilte_stempelungen(
+        betrieb: Optional[int] = None,
+        tage_zurueck: int = 30,
+        min_lines: int = 3
+    ) -> Dict[str, Any]:
+        """
+        Identifiziert Aufträge mit automatisch verteilten Stempelungen (Mehrfachstempelungen).
+        
+        Kriterien für automatisch verteilte Stempelungen:
+        - Mehrere order_position_line zur gleichen Zeit (gleiche start_time, end_time)
+        - Verschobene Positionen (z.B. Line 99 = Garantieposition)
+        - Mindestens min_lines verschiedene Lines zur gleichen Zeit
+        
+        Diese Aufträge sollten vom Serviceleiter geprüft und ggf. manuell korrigiert werden.
+        
+        Args:
+            betrieb: Betrieb-ID (1=DEGO, 2=DEGH, 3=LANO, None=alle)
+            tage_zurueck: Wie viele Tage zurück (default: 30)
+            min_lines: Mindestanzahl Lines für Mehrfachstempelung (default: 3)
+        
+        Returns:
+            Dict mit 'auftraege' (Liste) und Metadaten
+        
+        Example:
+            >>> data = WerkstattData.get_automatisch_verteilte_stempelungen(betrieb=1, tage_zurueck=14)
+            >>> data['auftraege'][0]
+            {'auftrag_nr': 39527, 'anzahl_mehrfachstempelungen': 1, 'max_lines': 4, ...}
+        """
+        with locosoft_session() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            # Basis-Query: Finde Aufträge mit Mehrfachstempelungen
+            query = """
+                WITH mehrfachstempelungen AS (
+                    SELECT 
+                        t.employee_number,
+                        t.order_number,
+                        t.order_position,
+                        t.start_time,
+                        t.end_time,
+                        COUNT(DISTINCT t.order_position_line) as anzahl_lines,
+                        COUNT(*) as anzahl_eintraege,
+                        EXTRACT(EPOCH FROM (t.end_time - t.start_time)) / 60.0 AS dauer_min,
+                        STRING_AGG(DISTINCT t.order_position_line::text, ', ' ORDER BY t.order_position_line::text) as lines_liste,
+                        BOOL_OR(t.order_position_line = 99) as hat_verschobene_position
+                    FROM times t
+                    WHERE t.type = 2
+                      AND t.end_time IS NOT NULL
+                      AND DATE(t.start_time) >= CURRENT_DATE - INTERVAL '%s days'
+                    GROUP BY t.employee_number, t.order_number, t.order_position, t.start_time, t.end_time
+                    HAVING COUNT(DISTINCT t.order_position_line) >= %s
+                ),
+                auftrag_aggregiert AS (
+                    SELECT 
+                        m.order_number,
+                        COUNT(DISTINCT (m.order_position, m.start_time, m.end_time)) as anzahl_mehrfachstempelungen,
+                        MAX(m.anzahl_lines) as max_lines,
+                        SUM(m.dauer_min) as gesamt_dauer_min,
+                        SUM(m.dauer_min * m.anzahl_lines) as potenzieller_st_anteil_min,
+                        BOOL_OR(m.hat_verschobene_position) as hat_verschobene_positionen,
+                        STRING_AGG(DISTINCT m.employee_number::text, ', ' ORDER BY m.employee_number::text) as mitarbeiter_liste
+                    FROM mehrfachstempelungen m
+                    GROUP BY m.order_number
+                )
+                SELECT 
+                    a.order_number as auftrag_nr,
+                    a.anzahl_mehrfachstempelungen,
+                    a.max_lines,
+                    ROUND(a.gesamt_dauer_min::numeric, 2) as gesamt_dauer_min,
+                    ROUND(a.potenzieller_st_anteil_min::numeric, 2) as potenzieller_st_anteil_min,
+                    ROUND((a.potenzieller_st_anteil_min / NULLIF(a.gesamt_dauer_min, 0))::numeric, 2) as ueberbewertungs_faktor,
+                    a.hat_verschobene_positionen,
+                    a.mitarbeiter_liste,
+                    o.subsidiary as betrieb,
+                    o.order_date as auftrag_datum,
+                    v.license_plate as kennzeichen,
+                    m.description as marke,
+                    COALESCE(cs.family_name || ', ' || cs.first_name, cs.family_name) as kunde,
+                    eh.name as serviceberater_name,
+                    o.has_open_positions as ist_offen
+                FROM auftrag_aggregiert a
+                JOIN orders o ON a.order_number = o.number
+                LEFT JOIN vehicles v ON o.vehicle_number = v.internal_number
+                LEFT JOIN makes m ON v.make_number = m.make_number
+                LEFT JOIN customers_suppliers cs ON o.order_customer = cs.customer_number
+                LEFT JOIN employees_history eh ON o.order_taking_employee_no = eh.employee_number
+                    AND eh.is_latest_record = true
+            """
+            
+            params = [tage_zurueck, min_lines]
+            
+            if betrieb is not None:
+                query += " WHERE o.subsidiary = %s"
+                params.append(int(betrieb))
+            
+            query += """
+                ORDER BY a.potenzieller_st_anteil_min DESC, o.order_date DESC
+                LIMIT 100
+            """
+            
+            cursor.execute(query, params)
+            auftraege = cursor.fetchall()
+            
+            # Für jeden Auftrag: Detail-Liste der Mehrfachstempelungen
+            auftraege_mit_details = []
+            for auftrag in auftraege:
+                auftrag_nr = auftrag['auftrag_nr']
+                
+                # Hole Details zu den Mehrfachstempelungen
+                cursor.execute("""
+                    SELECT 
+                        t.employee_number,
+                        mech.name as mechaniker_name,
+                        t.order_position,
+                        t.start_time,
+                        t.end_time,
+                        COUNT(DISTINCT t.order_position_line) as anzahl_lines,
+                        EXTRACT(EPOCH FROM (t.end_time - t.start_time)) / 60.0 AS dauer_min,
+                        STRING_AGG(DISTINCT t.order_position_line::text, ', ' ORDER BY t.order_position_line::text) as lines_liste,
+                        BOOL_OR(t.order_position_line = 99) as hat_verschobene_position
+                    FROM times t
+                    LEFT JOIN employees_history mech ON t.employee_number = mech.employee_number
+                        AND mech.is_latest_record = true
+                    WHERE t.type = 2
+                      AND t.end_time IS NOT NULL
+                      AND t.order_number = %s
+                    GROUP BY t.employee_number, mech.name, t.order_position, t.start_time, t.end_time
+                    HAVING COUNT(DISTINCT t.order_position_line) >= %s
+                    ORDER BY t.start_time DESC
+                """, [auftrag_nr, min_lines])
+                
+                stempelungen_details = cursor.fetchall()
+                
+                auftrag_dict = dict(auftrag)
+                auftrag_dict['stempelungen_details'] = [
+                    {
+                        'employee_number': s['employee_number'],
+                        'mechaniker_name': s['mechaniker_name'],
+                        'order_position': s['order_position'],
+                        'start_time': s['start_time'].isoformat() if s['start_time'] else None,
+                        'end_time': s['end_time'].isoformat() if s['end_time'] else None,
+                        'anzahl_lines': s['anzahl_lines'],
+                        'dauer_min': float(s['dauer_min']) if s['dauer_min'] else 0,
+                        'lines_liste': s['lines_liste'],
+                        'hat_verschobene_position': s['hat_verschobene_position']
+                    }
+                    for s in stempelungen_details
+                ]
+                
+                auftraege_mit_details.append(auftrag_dict)
+            
+            return {
+                'success': True,
+                'auftraege': auftraege_mit_details,
+                'anzahl': len(auftraege_mit_details),
+                'filter': {
+                    'betrieb': betrieb,
+                    'tage_zurueck': tage_zurueck,
+                    'min_lines': min_lines
+                }
+            }
+
 
 # =============================================================================
 # CONVENIENCE FUNCTIONS (für TEK Integration)
@@ -5066,4 +5344,3 @@ def get_werkstatt_kpis_fuer_tek(monat: int, jahr: int, betrieb: Optional[int] = 
         'anzahl_mechaniker': leistung['anzahl_mechaniker'],
         'gesamt_umsatz': leistung['gesamt']['umsatz']
     }
-        

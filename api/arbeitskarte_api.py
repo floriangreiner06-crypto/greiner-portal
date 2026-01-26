@@ -136,9 +136,9 @@ def hole_arbeitskarte_daten(order_number: int):
     
     positionen = cursor.fetchall()
     
-    # Stempelzeiten (DEDUPLIZIERT - gleiche start_time, end_time, employee_number nur einmal)
+    # Stempelzeiten (DEDUPLIZIERT - sekundengleiche Stempelzeiten desselben Mechanikers auf demselben Auftrag nur einmal)
     cursor.execute("""
-        SELECT DISTINCT ON (t.employee_number, t.start_time, t.end_time)
+        SELECT DISTINCT ON (t.employee_number, t.order_number, t.start_time, t.end_time)
             t.employee_number,
             eh.name as mechaniker,
             t.start_time,
@@ -151,7 +151,7 @@ def hole_arbeitskarte_daten(order_number: int):
         WHERE t.order_number = %s
           AND t.type = 2
           AND t.end_time IS NOT NULL
-        ORDER BY t.employee_number, t.start_time, t.end_time, t.duration_minutes DESC
+        ORDER BY t.employee_number, t.order_number, t.start_time, t.end_time, t.duration_minutes DESC
     """, [order_number])
     
     stempelzeiten = cursor.fetchall()

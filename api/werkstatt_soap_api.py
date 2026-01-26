@@ -173,9 +173,9 @@ def stempelzeiten_status(order_number):
         conn = get_locosoft_connection()
         cursor = conn.cursor()
         
-        # Zugeordnete Stempelzeiten
+        # Zugeordnete Stempelzeiten (DEDUPLIZIERT - sekundengleiche Stempelzeiten desselben Mechanikers nur einmal)
         cursor.execute("""
-            SELECT 
+            SELECT DISTINCT ON (t.employee_number, t.order_number, t.start_time, t.end_time)
                 t.employee_number,
                 eh.name as mechaniker,
                 t.start_time,
@@ -188,16 +188,17 @@ def stempelzeiten_status(order_number):
                 AND eh.is_latest_record = true
             WHERE t.order_number = %s
               AND t.type = 2
+              AND t.end_time IS NOT NULL
               AND t.order_position IS NOT NULL
               AND t.order_position_line IS NOT NULL
-            ORDER BY t.start_time
+            ORDER BY t.employee_number, t.order_number, t.start_time, t.end_time, t.duration_minutes DESC
         """, [order_number])
         
         zugeordnet = cursor.fetchall()
         
-        # Unzugeordnete Stempelzeiten
+        # Unzugeordnete Stempelzeiten (DEDUPLIZIERT - sekundengleiche Stempelzeiten desselben Mechanikers nur einmal)
         cursor.execute("""
-            SELECT 
+            SELECT DISTINCT ON (t.employee_number, t.order_number, t.start_time, t.end_time)
                 t.employee_number,
                 eh.name as mechaniker,
                 t.start_time,
@@ -208,8 +209,9 @@ def stempelzeiten_status(order_number):
                 AND eh.is_latest_record = true
             WHERE t.order_number = %s
               AND t.type = 2
+              AND t.end_time IS NOT NULL
               AND (t.order_position IS NULL OR t.order_position_line IS NULL)
-            ORDER BY t.start_time
+            ORDER BY t.employee_number, t.order_number, t.start_time, t.end_time, t.duration_minutes DESC
         """, [order_number])
         
         unzugeordnet = cursor.fetchall()

@@ -184,8 +184,8 @@ LEERLAUF_AUSNAHMEN = AZUBI_MA_NUMMERN + NICHT_PRODUKTIV_MA
 
 # Pausenzeiten - Mittagspause wird aus Laufzeit rausgerechnet
 PAUSE_START = time(12, 0)   # 12:00 Uhr
-PAUSE_ENDE = time(13, 0)    # 13:00 Uhr
-PAUSE_DAUER_MIN = 60        # 60 Minuten
+PAUSE_ENDE = time(12, 45)   # 12:45 Uhr
+PAUSE_DAUER_MIN = 45        # 45 Minuten
 
 # Arbeitszeiten - Außerhalb = keine Leerlauf-Warnung
 ARBEITSZEIT_START = time(6, 30)   # 06:30 Uhr
@@ -469,9 +469,9 @@ def get_stempeluhr_live():
         # HAUPTDATEN VON WERKSTATT_DATA.PY HOLEN
         data = WerkstattData.get_stempeluhr(subsidiaries=subsidiaries if subsidiaries else None)
 
-        # Pausenzeit-Check (12:00-13:00)
+        # Pausenzeit-Check (12:00-12:45)
         jetzt_zeit = datetime.now().time()
-        ist_pausenzeit = time(12, 0) <= jetzt_zeit <= time(13, 0)
+        ist_pausenzeit = time(12, 0) <= jetzt_zeit <= time(12, 45)
 
         # Filter-Modus bestimmen
         if set(subsidiaries) == {1, 2}:
@@ -3266,8 +3266,16 @@ def get_kulanz_monitoring():
         # Top 20 Verlust-Aufträge (Kulanz)
         query_top = f'''
         WITH unique_times AS (
-            SELECT DISTINCT order_number, employee_number, start_time, end_time, duration_minutes
-            FROM times WHERE order_number > 0 AND duration_minutes > 0 AND start_time >= NOW() - INTERVAL '%s weeks'
+            -- TAG 211: Konsistente Deduplizierung - sekundengleiche Stempelzeiten desselben Mechanikers auf demselben Auftrag nur einmal
+            SELECT DISTINCT ON (employee_number, order_number, start_time, end_time)
+                order_number, employee_number, start_time, end_time, duration_minutes
+            FROM times 
+            WHERE order_number > 0 
+              AND duration_minutes > 0 
+              AND type = 2
+              AND end_time IS NOT NULL
+              AND start_time >= NOW() - INTERVAL '%s weeks'
+            ORDER BY employee_number, order_number, start_time, end_time
         ),
         gestempelt AS (
             SELECT order_number, SUM(duration_minutes) as stempel_min FROM unique_times GROUP BY order_number
@@ -4582,4 +4590,39 @@ def meine_ueberschreitungen():
     
     except Exception as e:
         logger.exception("Fehler bei meine-ueberschreitungen")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@werkstatt_live_bp.route('/automatisch-verteilte-stempelungen', methods=['GET'])
+def get_automatisch_verteilte_stempelungen():
+    """
+    Identifiziert Aufträge mit automatisch verteilten Stempelungen (Mehrfachstempelungen).
+    
+    Diese Aufträge sollten vom Serviceleiter geprüft und ggf. manuell korrigiert werden.
+    
+    Query-Parameter:
+        betrieb: Betrieb-ID (1=DEGO, 2=DEGH, 3=LANO, None=alle)
+        tage_zurueck: Wie viele Tage zurück (default: 30)
+        min_lines: Mindestanzahl Lines für Mehrfachstempelung (default: 3)
+    
+    Returns:
+        JSON mit Liste der betroffenen Aufträge und Details
+    """
+    from api.werkstatt_data import WerkstattData
+    
+    try:
+        betrieb = request.args.get('betrieb', type=int)
+        tage_zurueck = request.args.get('tage_zurueck', default=30, type=int)
+        min_lines = request.args.get('min_lines', default=3, type=int)
+        
+        data = WerkstattData.get_automatisch_verteilte_stempelungen(
+            betrieb=betrieb,
+            tage_zurueck=tage_zurueck,
+            min_lines=min_lines
+        )
+        
+        return jsonify(data)
+    
+    except Exception as e:
+        logger.exception("Fehler bei automatisch-verteilte-stempelungen")
         return jsonify({'success': False, 'error': str(e)}), 500
