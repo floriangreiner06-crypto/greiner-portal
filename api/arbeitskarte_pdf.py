@@ -214,8 +214,13 @@ def generate_arbeitskarte_pdf(data: dict) -> bytes:
     elements.append(Spacer(1, 0.5*cm))
     
     # Diagnose durch Arbeitsausführenden (aus GUDAT)
+    # TAG 212: Verbesserte Diagnose-Anzeige mit Hinweis wenn keine Daten vorhanden
     gudat = data.get('gudat')
     gudat_tasks = gudat.get('tasks', []) if gudat else []
+    
+    # Prüfe ob GUDAT-Daten vorhanden sind, aber keine Tasks
+    gudat_available_but_no_tasks = gudat and not gudat_tasks
+    
     if gudat_tasks:
         elements.append(Paragraph("Diagnose durch Arbeitsausführenden", heading_style))
         
@@ -228,6 +233,11 @@ def generate_arbeitskarte_pdf(data: dict) -> bytes:
                     if line.strip():
                         elements.append(Paragraph(line.strip(), normal_style))
                 elements.append(Spacer(1, 0.3*cm))
+    elif gudat_available_but_no_tasks:
+        # TAG 212: Hinweis wenn GUDAT-Dossier gefunden, aber keine Diagnose-Informationen
+        elements.append(Paragraph("Diagnose durch Arbeitsausführenden", heading_style))
+        elements.append(Paragraph("<i>Keine Diagnose-Informationen in GUDAT vorhanden</i>", normal_style))
+        elements.append(Spacer(1, 0.3*cm))
     
     # Reparaturmaßnahme
     if positionen:

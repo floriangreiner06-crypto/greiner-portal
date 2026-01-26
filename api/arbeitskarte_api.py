@@ -35,6 +35,7 @@ def hole_arbeitskarte_daten(order_number: int):
     cursor = conn.cursor()
     
     # Auftragsdaten (TAG 189: subsidiary hinzugefügt für Brand-Erkennung)
+    # TAG 212: order_mileage hinzugefügt (Kilometerstand zum Zeitpunkt des Auftrags)
     cursor.execute("""
         SELECT 
             o.number,
@@ -43,7 +44,8 @@ def hole_arbeitskarte_daten(order_number: int):
             eh_sb.name as serviceberater,
             o.vehicle_number,
             o.order_customer,
-            o.subsidiary
+            o.subsidiary,
+            o.order_mileage
         FROM orders o
         LEFT JOIN employees_history eh_sb ON o.order_taking_employee_no = eh_sb.employee_number 
             AND eh_sb.is_latest_record = true
@@ -100,19 +102,21 @@ def hole_arbeitskarte_daten(order_number: int):
                 email = nummer
     
     # Fahrzeugdaten
+    # TAG 212: Verwende order_mileage falls vorhanden, sonst vehicles.mileage_km (Kilometerstand zum Zeitpunkt des Auftrags)
     cursor.execute("""
         SELECT 
             v.license_plate,
             v.vin,
             v.first_registration_date,
-            v.mileage_km,
+            COALESCE(o.order_mileage, v.mileage_km) as mileage_km,
             m.description as marke,
             mo.description as modell
         FROM vehicles v
         LEFT JOIN makes m ON v.make_number = m.make_number
         LEFT JOIN models mo ON v.make_number = mo.make_number AND v.model_code = mo.model_code
+        LEFT JOIN orders o ON o.vehicle_number = v.internal_number AND o.number = %s
         WHERE v.internal_number = %s
-    """, [auftrag[4]])
+    """, [order_number, auftrag[4]])
     
     fahrzeug = cursor.fetchone()
     
@@ -346,6 +350,7 @@ def hole_arbeitskarte_daten(order_number: int):
                 if dossier_id:
                     # Hole vollständige Dossier-Daten
                     # Versuche zuerst mit comments, falls das fehlschlägt, verwende nur note
+                    # TAG 212: Erweitert um workshopTaskPackages (wie in GUDAT UI)
                     query_dossier = """
                     query GetDossierDrawerData($id: ID!) {
                       dossier(id: $id) {
@@ -364,7 +369,9 @@ def hole_arbeitskarte_daten(order_number: int):
                             name
                           }
                         }
-                        workshopTasks {
+                        workshopTasks(
+                          where: {HAS: {relation: "workshopTaskPackage", amount: 0, operator: EQ, condition: {column: ID, operator: IS_NOT_NULL}}}
+                        ) {
                           id
                           description
                           work_load
@@ -383,11 +390,34 @@ def hole_arbeitskarte_daten(order_number: int):
                             }
                           }
                         }
+                        workshopTaskPackages {
+                          id
+                          workshopTasks {
+                            id
+                            description
+                            work_load
+                            work_state
+                            order {
+                              id
+                              number
+                            }
+                            comments {
+                              id
+                              text
+                              created_at
+                              user {
+                                id
+                                name
+                              }
+                            }
+                          }
+                        }
                       }
                     }
                     """
                     
                     # Fallback-Query ohne comments (falls Schema nicht unterstützt)
+                    # TAG 212: Erweitert um workshopTaskPackages
                     query_dossier_fallback = """
                     query GetDossierDrawerData($id: ID!) {
                       dossier(id: $id) {
@@ -397,7 +427,9 @@ def hole_arbeitskarte_daten(order_number: int):
                           id
                           number
                         }
-                        workshopTasks {
+                        workshopTasks(
+                          where: {HAS: {relation: "workshopTaskPackage", amount: 0, operator: EQ, condition: {column: ID, operator: IS_NOT_NULL}}}
+                        ) {
                           id
                           description
                           work_load
@@ -407,11 +439,25 @@ def hole_arbeitskarte_daten(order_number: int):
                             number
                           }
                         }
+                        workshopTaskPackages {
+                          id
+                          workshopTasks {
+                            id
+                            description
+                            work_load
+                            work_state
+                            order {
+                              id
+                              number
+                            }
+                          }
+                        }
                       }
                     }
                     """
                     
                     # Fallback-Query ohne order-Feld auf Tasks (falls Schema das nicht unterstützt)
+                    # TAG 212: Erweitert um workshopTaskPackages
                     query_dossier_fallback_no_order = """
                     query GetDossierDrawerData($id: ID!) {
                       dossier(id: $id) {
@@ -421,11 +467,22 @@ def hole_arbeitskarte_daten(order_number: int):
                           id
                           number
                         }
-                        workshopTasks {
+                        workshopTasks(
+                          where: {HAS: {relation: "workshopTaskPackage", amount: 0, operator: EQ, condition: {column: ID, operator: IS_NOT_NULL}}}
+                        ) {
                           id
                           description
                           work_load
                           work_state
+                        }
+                        workshopTaskPackages {
+                          id
+                          workshopTasks {
+                            id
+                            description
+                            work_load
+                            work_state
+                          }
                         }
                       }
                     }
@@ -490,7 +547,18 @@ def hole_arbeitskarte_daten(order_number: int):
                     dossier = data.get('data', {}).get('dossier')
                     
                     if dossier:
+                        # TAG 212: Hole Tasks aus beiden Quellen:
+                        # 1. workshopTasks (ohne Package) - mit WHERE-Filter wie in GUDAT UI
+                        # 2. workshopTaskPackages.workshopTasks (in Packages)
                         all_tasks = dossier.get('workshopTasks', [])
+                        
+                        # Hole auch Tasks aus Packages
+                        packages = dossier.get('workshopTaskPackages', [])
+                        for package in packages:
+                            package_tasks = package.get('workshopTasks', [])
+                            all_tasks.extend(package_tasks)
+                        
+                        logger.info(f"🔍 Dossier {dossier_id}: {len(dossier.get('workshopTasks', []))} Tasks ohne Package, {sum(len(p.get('workshopTasks', [])) for p in packages)} Tasks in Packages, gesamt: {len(all_tasks)} Tasks")
                         
                         # TAG 189: Filtere Tasks nach Locosoft-Auftragsnummer
                         # Ein GUDAT-Dossier kann mehrere Locosoft-Aufträge enthalten
@@ -565,6 +633,11 @@ def hole_arbeitskarte_daten(order_number: int):
                         
                         tasks_with_desc = [t for t in filtered_tasks if t.get('description')]
                         
+                        # TAG 212: Logging für Diagnose-Informationen
+                        logger.info(f"GUDAT-Daten für Auftrag {order_number}: {len(filtered_tasks)} gefilterte Tasks, {len(tasks_with_desc)} Tasks mit description")
+                        if filtered_tasks and not tasks_with_desc:
+                            logger.warning(f"⚠️ Auftrag {order_number}: {len(filtered_tasks)} Tasks gefunden, aber keine mit description - Diagnose-Informationen fehlen!")
+                        
                         # Sammle alle Rückfragen/Nachrichten (nur von gefilterten Tasks)
                         rueckfragen = []
                         
@@ -616,7 +689,11 @@ def hole_arbeitskarte_daten(order_number: int):
                                 } for task in tasks_with_desc
                             ]
                         }
+                        # TAG 212: Logging für Diagnose-Informationen
+                        if not tasks_with_desc:
+                            logger.warning(f"⚠️ Auftrag {order_number}: GUDAT-Dossier gefunden (ID: {dossier.get('id')}), aber keine Tasks mit description - Diagnose-Informationen fehlen in PDF!")
                     else:
+                        logger.warning(f"⚠️ Auftrag {order_number}: GUDAT-Dossier nicht gefunden - keine Diagnose-Informationen verfügbar")
                         gudat_daten = None
     except Exception as e:
         print(f"GUDAT-Fehler: {e}")
@@ -1516,10 +1593,11 @@ def speichere_garantieakte(order_number):
                 'error': f'Auftrag {order_number} nicht gefunden'
             }), 404
         
-        # 2. Generiere Arbeitskarte-PDF (ohne Bilder)
-        arbeitskarte_pdf = generate_arbeitskarte_pdf(daten)
+        # TAG 212: Hole Diagnose-Informationen VOR PDF-Generierung, falls Dossier in Anhänge-Suche gefunden wird
+        # (hole_arbeitskarte_daten() findet Dossier manchmal nicht, aber get_arbeitskarte_anhaenge() findet es)
+        # Wir holen die Anhänge-Suche VOR der PDF-Generierung, um Diagnose-Informationen zu bekommen
         
-        # 3. Hole ALLE Anhänge (Bilder, PDFs, etc.) - TAG 189: Übergebe Auftragsdatum, Kennzeichen, VIN für präzisere Suche
+        # 2. Hole Anhänge UND Diagnose-Informationen VOR PDF-Generierung
         order_date = daten.get('locosoft', {}).get('auftrag', {}).get('datum')
         license_plate = daten.get('locosoft', {}).get('fahrzeug', {}).get('kennzeichen')
         vin = daten.get('locosoft', {}).get('fahrzeug', {}).get('vin')
@@ -1671,20 +1749,178 @@ def speichere_garantieakte(order_number):
                     traceback.print_exc()
         else:
             # Normale automatische Suche
+            logger.info(f"🔍 Starte Anhänge-Suche für Auftrag {order_number}...")
             anhaenge_response = get_arbeitskarte_anhaenge(order_number, order_date=order_date, license_plate=license_plate, vin=vin)
+            logger.info(f"🔍 Anhänge-Response erhalten: success={anhaenge_response.get('success') if anhaenge_response else 'None'}, anhaenge_count={len(anhaenge_response.get('anhaenge', [])) if anhaenge_response else 0}")
             
             if anhaenge_response and anhaenge_response.get('success'):
                 anhaenge = anhaenge_response.get('anhaenge', [])
                 dossier_id = anhaenge_response.get('dossier_id')
                 gudat_session = anhaenge_response.get('gudat_session')
                 message = anhaenge_response.get('message', '')
-                logger.info(f"Anhänge-Response: {len(anhaenge)} Anhänge, dossier_id={dossier_id}, gudat_session={'vorhanden' if gudat_session else 'None'}, message='{message}'")
+                logger.info(f"✅ Anhänge-Response: {len(anhaenge)} Anhänge, dossier_id={dossier_id}, gudat_session={'vorhanden' if gudat_session else 'None'}, message='{message}'")
+                
+                # TAG 212: Hole Diagnose-Informationen VOR PDF-Generierung, falls Dossier gefunden wurde
+                gudat_has_tasks = daten.get('gudat') and daten.get('gudat', {}).get('tasks')
+                logger.info(f"🔍 Diagnose-Check für Auftrag {order_number}: dossier_id={dossier_id}, gudat_session={'vorhanden' if gudat_session else 'None'}, gudat_existiert={'Ja' if daten.get('gudat') else 'Nein'}, gudat_has_tasks={'Ja' if gudat_has_tasks else 'Nein'}")
+                
+                if dossier_id and gudat_session and not gudat_has_tasks:
+                    logger.info(f"⚠️ Dossier {dossier_id} in Anhänge-Suche gefunden, aber keine Diagnose-Informationen in hole_arbeitskarte_daten(). Hole nachträglich...")
+                    try:
+                        # TAG 212: Erstelle neue Session für Diagnose-Query (gudat_session kann abgelaufen sein)
+                        from tools.gudat_client import GudatClient
+                        client_diag = GudatClient(GUDAT_CONFIG['username'], GUDAT_CONFIG['password'])
+                        if not client_diag.login():
+                            logger.warning(f"⚠️ Fehler beim Login für Diagnose-Query")
+                            raise Exception("GUDAT-Login fehlgeschlagen")
+                        
+                        base_url = client_diag.BASE_URL
+                        xsrf_token = client_diag._get_xsrf()
+                        
+                        # TAG 212: Query wie in GUDAT UI - holt Tasks OHNE workshopTaskPackage
+                        # (Tasks in Packages werden separat über workshopTaskPackages geholt)
+                        query_dossier = """
+                        query GetDossierDrawerData($id: ID!) {
+                          dossier(id: $id) {
+                            id
+                            note
+                            orders {
+                              id
+                              number
+                            }
+                            workshopTasks(
+                              where: {HAS: {relation: "workshopTaskPackage", amount: 0, operator: EQ, condition: {column: ID, operator: IS_NOT_NULL}}}
+                            ) {
+                              id
+                              description
+                              work_load
+                              work_state
+                              order {
+                                id
+                                number
+                              }
+                            }
+                            workshopTaskPackages {
+                              id
+                              workshopTasks {
+                                id
+                                description
+                                work_load
+                                work_state
+                                order {
+                                  id
+                                  number
+                                }
+                              }
+                            }
+                          }
+                        }
+                        """
+                        
+                        response = client_diag.session.post(
+                            f"{base_url}/graphql",
+                            json={"operationName": "GetDossierDrawerData", "query": query_dossier, "variables": {"id": str(dossier_id)}},
+                            headers={
+                                'Accept': 'application/json',
+                                'X-XSRF-TOKEN': xsrf_token,
+                                'Content-Type': 'application/json'
+                            }
+                        )
+                        
+                        # TAG 212: Prüfe Response-Status und Content-Type vor JSON-Parsing
+                        if response.status_code != 200:
+                            logger.error(f"⚠️ GraphQL-Response Status {response.status_code} für Dossier {dossier_id}")
+                            raise Exception(f"GraphQL-Request fehlgeschlagen: Status {response.status_code}")
+                        
+                        content_type = response.headers.get('Content-Type', '')
+                        if 'application/json' not in content_type:
+                            logger.error(f"⚠️ GraphQL-Response ist nicht JSON (Content-Type: {content_type}) für Dossier {dossier_id}")
+                            logger.error(f"⚠️ Response-Text (erste 500 Zeichen): {response.text[:500]}")
+                            raise Exception(f"GraphQL-Response ist nicht JSON (Content-Type: {content_type})")
+                        
+                        try:
+                            data = response.json()
+                        except ValueError as e:
+                            logger.error(f"⚠️ JSON-Parsing-Fehler für Dossier {dossier_id}: {e}")
+                            logger.error(f"⚠️ Response-Text (erste 500 Zeichen): {response.text[:500]}")
+                            raise Exception(f"JSON-Parsing fehlgeschlagen: {e}")
+                        
+                        logger.info(f"🔍 GraphQL-Response für Dossier {dossier_id}: data.keys()={list(data.keys())}, errors={'vorhanden' if 'errors' in data else 'keine'}, error={'vorhanden' if 'error' in data else 'keine'}")
+                        
+                        # Prüfe auf Fehler (sowohl 'errors' als auch 'error')
+                        if 'errors' in data:
+                            logger.warning(f"⚠️ GraphQL-Fehler beim Holen von Diagnose-Informationen: {data.get('errors')}")
+                        elif 'error' in data:
+                            logger.warning(f"⚠️ GraphQL-Error beim Holen von Diagnose-Informationen: {data.get('error')}")
+                        elif 'data' in data:
+                            dossier = data.get('data', {}).get('dossier')
+                            logger.info(f"🔍 Dossier aus Response: {'vorhanden' if dossier else 'None'}")
+                            if dossier:
+                                # TAG 212: Hole Tasks aus beiden Quellen:
+                                # 1. workshopTasks (ohne Package)
+                                # 2. workshopTaskPackages.workshopTasks (in Packages)
+                                all_tasks = dossier.get('workshopTasks', [])
+                                
+                                # Hole auch Tasks aus Packages
+                                packages = dossier.get('workshopTaskPackages', [])
+                                for package in packages:
+                                    package_tasks = package.get('workshopTasks', [])
+                                    all_tasks.extend(package_tasks)
+                                
+                                logger.info(f"🔍 Dossier {dossier_id}: {len(dossier.get('workshopTasks', []))} Tasks ohne Package, {sum(len(p.get('workshopTasks', [])) for p in packages)} Tasks in Packages, gesamt: {len(all_tasks)} Tasks")
+                                
+                                # Filtere Tasks nach Auftragsnummer
+                                filtered_tasks = []
+                                for task in all_tasks:
+                                    task_order = task.get('order')
+                                    if task_order:
+                                        task_order_number = task_order.get('number')
+                                        if task_order_number and str(task_order_number).strip() == str(order_number).strip():
+                                            filtered_tasks.append(task)
+                                    # Fallback: Wenn kein order-Feld, übernehme alle Tasks wenn nur ein Auftrag im Dossier
+                                    elif len(dossier.get('orders', [])) == 1:
+                                        filtered_tasks.append(task)
+                                
+                                logger.info(f"🔍 Nach Filterung: {len(filtered_tasks)} Tasks für Auftrag {order_number}")
+                                
+                                tasks_with_desc = [t for t in filtered_tasks if t.get('description')]
+                                logger.info(f"🔍 Tasks mit description: {len(tasks_with_desc)} von {len(filtered_tasks)}")
+                                
+                                if tasks_with_desc:
+                                    logger.info(f"✅ Diagnose-Informationen nachträglich geholt: {len(tasks_with_desc)} Tasks mit description")
+                                    # Füge Diagnose-Informationen zu daten hinzu
+                                    if not daten.get('gudat'):
+                                        daten['gudat'] = {}
+                                    daten['gudat']['dossier_id'] = dossier.get('id')
+                                    daten['gudat']['tasks'] = [
+                                        {
+                                            'task_id': task.get('id'),
+                                            'description': task.get('description'),
+                                            'work_load': task.get('work_load'),
+                                            'work_state': task.get('work_state')
+                                        } for task in tasks_with_desc
+                                    ]
+                                    logger.info(f"✅ Diagnose-Informationen zu daten hinzugefügt, PDF wird mit Diagnose-Informationen generiert")
+                                else:
+                                    logger.warning(f"⚠️ Dossier {dossier_id} gefunden, aber keine Tasks mit description")
+                    except Exception as e:
+                        logger.error(f"⚠️ Fehler beim Nachholen von Diagnose-Informationen: {e}")
+                        import traceback
+                        logger.error(f"Traceback: {traceback.format_exc()}")
+                        traceback.print_exc()
+                        # TAG 212: Fehler beim Nachholen von Diagnose-Informationen ist nicht kritisch
+                        # - Garantieakte kann trotzdem erstellt werden (ohne Diagnose-Informationen)
+                        # - Exception wird nicht weitergeworfen, damit der Workflow fortgesetzt werden kann
+                
                 if not dossier_id:
                     dossier_not_found = True
                     logger.warning(f"⚠️ Kein Dossier gefunden für Auftrag {order_number} - keine Anhänge verfügbar")
             else:
                 dossier_not_found = True
                 logger.warning(f"Anhänge-Response fehlgeschlagen oder nicht erfolgreich: {anhaenge_response}")
+        
+        # 3. Generiere Arbeitskarte-PDF (mit Diagnose-Informationen, falls vorhanden)
+        arbeitskarte_pdf = generate_arbeitskarte_pdf(daten)
         
         # 4. Hole Terminblatt
         terminblatt_data = None
@@ -1801,11 +2037,24 @@ def speichere_garantieakte(order_number):
     except Exception as e:
         logger.error(f"Fehler beim Speichern der Garantieakte: {e}")
         import traceback
+        error_traceback = traceback.format_exc()
+        logger.error(f"Traceback: {error_traceback}")
         traceback.print_exc()
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        # TAG 212: Stelle sicher, dass immer JSON zurückgegeben wird (nicht HTML)
+        try:
+            return jsonify({
+                'success': False,
+                'error': str(e)
+            }), 500
+        except Exception as json_error:
+            # Fallback: Falls jsonify auch fehlschlägt, gebe einfache JSON-Response zurück
+            logger.error(f"Kritischer Fehler: jsonify fehlgeschlagen: {json_error}")
+            from flask import Response
+            return Response(
+                f'{{"success": false, "error": "{str(e).replace(chr(34), chr(39))}"}}',
+                mimetype='application/json',
+                status=500
+            )
 
 
 @bp.route('/<int:order_number>/vollstaendig', methods=['GET'])
