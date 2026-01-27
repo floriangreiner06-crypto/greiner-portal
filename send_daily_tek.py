@@ -24,7 +24,7 @@ import os
 sys.path.insert(0, '/opt/greiner-portal')
 os.chdir('/opt/greiner-portal')
 
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from api.db_utils import db_session, row_to_dict, get_locosoft_connection
 from api.db_connection import sql_placeholder, get_db_type
 
@@ -88,120 +88,220 @@ def is_holiday(check_date=None):
 
 def get_tek_data(monat=None, jahr=None, standort=None):
     """
-    Holt TEK-Daten über die DRIVE-API (controlling_routes.py /api/tek)
+    Holt TEK-Daten - TAG204: Direkt über controlling_data + manuelle Ergänzungen
     Nutzt die gleiche Logik wie die Web-Oberfläche - garantiert konsistente Daten!
 
-    TAG146: Geändert von DB-Query auf API-Call
+    TAG146: Ursprünglich HTTP API-Call
+    TAG204: Geändert auf controlling_data + manuelle Heute-Daten/Stückzahlen
 
     standort: None=Alle, 'DEG'=Deggendorf, 'LAN'=Landau
     """
-    import requests
-    from datetime import date
+    from datetime import date, timedelta
+    from api.controlling_data import get_tek_data as get_tek_data_direct
+    from routes.controlling_routes import get_stueckzahlen_locosoft, get_werktage_monat
+    from api.db_utils import get_locosoft_connection
+    import psycopg2.extras
 
     heute = date.today()
     if not monat:
         monat = heute.month
     if not jahr:
-        jahr = heute.jahr
-
-    # API-Parameter aufbauen (wie in DRIVE TEK-Seite)
-    # TAG167: umlage='mit' für Vergleich mit GlobalCube (Umlage wird NICHT bereinigt)
-    params = {
-        'monat': monat,
-        'jahr': jahr,
-        'modus': 'teil',  # Teilkosten/DB1
-        'umlage': 'mit'  # Mit Umlage (wie GlobalCube - keine Bereinigung)
-    }
+        jahr = heute.year
 
     # Standort-Mapping
     if standort == 'DEG':
-        params['firma'] = '1'  # Stellantis
-        params['standort'] = '1'  # Deggendorf
+        firma = '1'  # Stellantis
+        standort_api = '1'  # Deggendorf
         standort_name = 'Deggendorf'
     elif standort == 'LAN':
-        params['firma'] = '1'  # Stellantis
-        params['standort'] = '2'  # Landau
+        firma = '1'  # Stellantis
+        standort_api = '2'  # Landau
         standort_name = 'Landau'
     else:
-        params['firma'] = '0'  # Alle
-        params['standort'] = '0'  # Alle
+        firma = '0'  # Alle
+        standort_api = '0'  # Alle
         standort_name = 'Gesamt'
 
-    # API aufrufen (lokal, kein Auth nötig da intern)
-    # TAG167: SSOT-Prinzip - Nutze API-Antwort direkt, keine eigenen SQL-Queries!
+    # TAG204: Hole TEK-Daten direkt aus DB (ohne API-Auth)
     try:
-        response = requests.get('http://127.0.0.1:5000/api/tek', params=params, timeout=30)
-        response.raise_for_status()
-        api_data = response.json()
+        tek_data = get_tek_data_direct(
+            monat=monat,
+            jahr=jahr,
+            firma=firma,
+            standort=standort_api,
+            modus='teil',
+            umlage='mit'
+        )
         
-        if not api_data.get('success'):
-            raise Exception(f"API-Fehler: {api_data.get('error', 'Unbekannter Fehler')}")
+        # TAG204: Hole zusätzlich Heute-Daten (wenn im aktuellen Monat)
+        heute_bereiche = {}
+        if heute.year == jahr and heute.month == monat:
+            heute_str = heute.isoformat()
+            morgen_str = (heute + timedelta(days=1)).isoformat()
+            
+            # Firma-Filter für Locosoft
+            firma_filter_umsatz = ""
+            firma_filter_einsatz = ""
+            if firma == '1':
+                firma_filter_umsatz = "AND subsidiary_to_company_ref = 1"
+                firma_filter_einsatz = "AND subsidiary_to_company_ref = 1"
+                if standort_api == '1':
+                    firma_filter_umsatz += " AND branch_number = 1"
+                    firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
+                elif standort_api == '2':
+                    firma_filter_umsatz += " AND branch_number = 3"
+                    firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
+            elif firma == '2':
+                firma_filter_umsatz = "AND subsidiary_to_company_ref = 2"
+                firma_filter_einsatz = "AND subsidiary_to_company_ref = 2"
+            
+            with get_locosoft_connection() as loco_conn:
+                loco_cur = loco_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                
+                # Tagesumsatz PRO BEREICH (Heute)
+                loco_cur.execute(f"""
+                    SELECT
+                        CASE
+                            WHEN nominal_account_number BETWEEN 810000 AND 819999 THEN '1-NW'
+                            WHEN nominal_account_number BETWEEN 820000 AND 829999 THEN '2-GW'
+                            WHEN nominal_account_number BETWEEN 830000 AND 839999 THEN '3-Teile'
+                            WHEN nominal_account_number BETWEEN 840000 AND 849999 THEN '4-Lohn'
+                            WHEN nominal_account_number BETWEEN 860000 AND 869999 THEN '5-Sonst'
+                            ELSE '9-Andere'
+                        END as bereich,
+                        COALESCE(SUM(CASE WHEN debit_or_credit = 'H' THEN posted_value ELSE -posted_value END) / 100.0, 0) as umsatz
+                    FROM journal_accountings
+                    WHERE accounting_date >= %s AND accounting_date < %s
+                      AND nominal_account_number BETWEEN 800000 AND 899999
+                      {firma_filter_umsatz}
+                    GROUP BY bereich
+                """, (heute_str, morgen_str))
+                heute_umsatz_bereich = {r['bereich']: float(r['umsatz'] or 0) for r in loco_cur.fetchall()}
+                
+                # Tageseinsatz PRO BEREICH (Heute)
+                loco_cur.execute(f"""
+                    SELECT
+                        CASE
+                            WHEN nominal_account_number BETWEEN 710000 AND 719999 THEN '1-NW'
+                            WHEN nominal_account_number BETWEEN 720000 AND 729999 THEN '2-GW'
+                            WHEN nominal_account_number BETWEEN 730000 AND 739999 THEN '3-Teile'
+                            WHEN nominal_account_number BETWEEN 740000 AND 749999 THEN '4-Lohn'
+                            WHEN nominal_account_number BETWEEN 760000 AND 769999 THEN '5-Sonst'
+                            ELSE '9-Andere'
+                        END as bereich,
+                        COALESCE(SUM(CASE WHEN debit_or_credit = 'S' THEN posted_value ELSE -posted_value END) / 100.0, 0) as einsatz
+                    FROM journal_accountings
+                    WHERE accounting_date >= %s AND accounting_date < %s
+                      AND nominal_account_number BETWEEN 700000 AND 799999
+                      {firma_filter_einsatz}
+                    GROUP BY bereich
+                """, (heute_str, morgen_str))
+                heute_einsatz_bereich = {r['bereich']: float(r['einsatz'] or 0) for r in loco_cur.fetchall()}
+                
+                # Pro Bereich zusammenführen (Heute)
+                for bkey in ['1-NW', '2-GW', '3-Teile', '4-Lohn', '5-Sonst']:
+                    h_umsatz = heute_umsatz_bereich.get(bkey, 0)
+                    h_einsatz = heute_einsatz_bereich.get(bkey, 0)
+                    heute_bereiche[bkey] = {
+                        'umsatz': round(h_umsatz, 2),
+                        'db1': round(h_umsatz - h_einsatz, 2)
+                    }
+                
+                loco_cur.close()
+        
+        # TAG204: Stückzahlen holen
+        von = f"{jahr}-{monat:02d}-01"
+        bis = f"{jahr}-{monat+1:02d}-01" if monat < 12 else f"{jahr+1}-01-01"
+        stueck_nw = get_stueckzahlen_locosoft(von, bis, '1-NW', firma, standort_api)
+        stueck_gw = get_stueckzahlen_locosoft(von, bis, '2-GW', firma, standort_api)
+        
+        # TAG204: Werktage für Prognose
+        werktage_info = get_werktage_monat(jahr, monat)
+        
     except Exception as e:
-        print(f"❌ FEHLER beim API-Aufruf: {e}")
+        print(f"❌ FEHLER beim Abrufen der TEK-Daten: {e}")
+        import traceback
+        traceback.print_exc()
         raise
 
-    # TAG167: API-Antwort direkt nutzen (SSOT-Prinzip)
-    # Die API liefert bereits alle benötigten Daten mit korrekter Umlage-Neutralisierung
-    api_gesamt = api_data['gesamt']
-    api_bereiche = api_data['bereiche']
-    api_prognose = api_data.get('prognose', {})
-    api_vormonat = api_data.get('vormonat', {})
-    api_vorjahr = api_data.get('vorjahr', {})
-    filter_info = api_data.get('filter', {})
-    
-    # Standort-Name aus API
-    standort_name = filter_info.get('firma_name', 'Gesamt')
-    
-    # Prognose-DB1 aus API (hochrechnung_db1)
-    prognose_db1 = api_prognose.get('hochrechnung_db1') or api_gesamt.get('db1', 0)
-    
-    # Breakeven-Schwelle aus API
-    breakeven = api_prognose.get('breakeven_schwelle') or api_prognose.get('kosten_3m_schnitt', {}).get('gesamt', 0)
-    
-    # TAG167: Breakeven-Abstand auf PROGNOSE basieren (nicht aktueller DB1)!
-    # "Kritisch" bedeutet: Prognose reicht nicht für Breakeven
-    breakeven_abstand_prognose = prognose_db1 - breakeven if prognose_db1 else 0
-    
-    # Bereiche aus API konvertieren
+    # TAG204: Bereiche konvertieren - ERWEITERT mit Heute-Daten und Stückzahlen
     bereiche = []
-    for bkey in ['1-NW', '2-GW', '3-Teile', '4-Lohn', '5-Sonst']:
-        if bkey in api_bereiche:
-            b = api_bereiche[bkey]
-            bereiche.append({
-                'bereich': bkey,
-                'umsatz': round(b.get('umsatz', 0), 2),
-                'einsatz': round(b.get('einsatz', 0), 2),
-                'db1': round(b.get('db1', 0), 2),
-                'marge': round(b.get('marge', 0), 1)
-            })
-
+    bereich_mapping = {'1-NW': '1-NW', '2-GW': '2-GW', '3-Teile': '3-Teile', '4-Lohn': '4-Lohn', '5-Sonst': '5-Sonst'}
+    
+    for b in tek_data.get('bereiche', []):
+        bkey = bereich_mapping.get(b.get('id', ''), '')
+        if not bkey:
+            continue
+        
+        # Heute-Daten (immer anzeigen, auch wenn 0)
+        hb = heute_bereiche.get(bkey, {})
+        heute_umsatz = round(hb.get('umsatz', 0), 2)
+        heute_db1 = round(hb.get('db1', 0), 2)
+        
+        # Stückzahlen
+        stueck = 0
+        db1_pro_stueck = 0
+        if bkey == '1-NW':
+            stueck = stueck_nw.get('gesamt_stueck', 0)
+            if stueck > 0:
+                db1_pro_stueck = round(b.get('db1', 0) / stueck, 2)
+        elif bkey == '2-GW':
+            stueck = stueck_gw.get('gesamt_stueck', 0)
+            if stueck > 0:
+                db1_pro_stueck = round(b.get('db1', 0) / stueck, 2)
+        
+        bereich_dict = {
+            'bereich': bkey,
+            'umsatz': round(b.get('umsatz', 0), 2),
+            'einsatz': round(b.get('einsatz', 0), 2),
+            'db1': round(b.get('db1', 0), 2),
+            'marge': round(b.get('marge', 0), 1),
+            'heute_umsatz': heute_umsatz,  # TAG204: Heute-Erlöse
+            'heute_db1': heute_db1,  # TAG204: Heute-DB1
+            'stueck': stueck,  # TAG204: Stückzahlen (nur NW/GW)
+            'db1_pro_stueck': db1_pro_stueck  # TAG204: DB1/Stk
+        }
+        bereiche.append(bereich_dict)
+    
     # Monat-Anzeige
-    monat_display = f"{filter_info.get('monat_name', '')} {filter_info.get('jahr', '')}"
+    monat_namen = ['', 'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
+                   'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
+    monat_display = f"{monat_namen[monat]} {jahr}"
     if standort:
         monat_display = f"{standort_name} - {monat_display}"
+    
+    # Daten aus tek_data extrahieren
+    gesamt = tek_data.get('gesamt', {})
+    vm = tek_data.get('vm', {})
+    vj = tek_data.get('vj', {})
 
+    # TAG204: Filter-Info für Drill-Downs speichern
     return {
         'datum': heute.strftime('%d.%m.%Y'),
         'monat': monat_display,
         'standort': standort,
         'standort_name': standort_name,
+        'firma': firma,  # TAG204: Für Drill-Down APIs
+        'standort_api': standort_api,  # TAG204: Für Drill-Down APIs
+        'monat_num': monat,  # TAG204: Für Drill-Down APIs
+        'jahr_num': jahr,  # TAG204: Für Drill-Down APIs
         'gesamt': {
-            'umsatz': round(api_gesamt.get('umsatz', 0), 2),
-            'einsatz': round(api_gesamt.get('einsatz', 0), 2),
-            'db1': round(api_gesamt.get('db1', 0), 2),
-            'marge': round(api_gesamt.get('marge', 0), 1),
-            'prognose': round(prognose_db1, 2),
-            'breakeven': round(breakeven, 2),
-            'breakeven_abstand': round(breakeven_abstand_prognose, 2)  # TAG167: Auf Prognose basierend!
+            'umsatz': round(gesamt.get('umsatz', 0), 2),
+            'einsatz': round(gesamt.get('einsatz', 0), 2),
+            'db1': round(gesamt.get('db1', 0), 2),
+            'marge': round(gesamt.get('marge', 0), 1),
+            'prognose': round(gesamt.get('prognose', 0), 2),
+            'breakeven': round(gesamt.get('breakeven', 0), 2),
+            'breakeven_abstand': round(gesamt.get('breakeven_diff', 0), 2)
         },
-        'bereiche': bereiche,
+        'bereiche': bereiche,  # TAG204: Jetzt mit heute_umsatz, heute_db1, stueck, db1_pro_stueck
         'vormonat': {
-            'db1': round(api_vormonat.get('db1', 0), 2),
-            'marge': round(api_vormonat.get('marge', 0), 1)
+            'db1': round(vm.get('db1', 0), 2),
+            'marge': round(vm.get('marge', 0), 1)
         },
         'vorjahr': {
-            'db1': round(api_vorjahr.get('db1', 0), 2),
-            'marge': round(api_vorjahr.get('marge', 0), 1)
+            'db1': round(vj.get('db1', 0), 2),
+            'marge': round(vj.get('marge', 0), 1)
         }
     }
 
@@ -452,70 +552,169 @@ def send_bereich_reports(connector, heute, report_type, bereich_key, test_email=
 
 
 def build_gesamt_email_html(data):
-    """Erstellt HTML-Body für Gesamt-Report"""
+    """
+    Erstellt HTML-Body für Gesamt-Report - TAG204: OPTION A - KPI-CARDS DESIGN
+    
+    Moderne, mobile-friendly Darstellung mit:
+    - 4 KPI-Cards für Gesamt-KPIs
+    - Kompakte Abteilungsübersicht mit Farbcodierung
+    - Heute vs. Monat kumuliert klar getrennt
+    """
     gesamt = data['gesamt']
-    status_color = "#28a745" if gesamt['breakeven_abstand'] >= 0 else "#dc3545"
-    status_text = "POSITIV" if gesamt['breakeven_abstand'] >= 0 else "KRITISCH"
-    status_prefix = "+" if gesamt['breakeven_abstand'] >= 0 else ""
+    
+    # Gesamt-Summen berechnen
+    gesamt_heute_umsatz = sum(b.get('heute_umsatz', 0) for b in data['bereiche'])
+    gesamt_heute_db1 = sum(b.get('heute_db1', 0) for b in data['bereiche'])
+    gesamt_monat_umsatz = sum(b.get('umsatz', 0) for b in data['bereiche'])
+    gesamt_monat_db1 = gesamt['db1']
+    
+    # Breakeven-Status
+    breakeven_status = "POSITIV" if gesamt['breakeven_abstand'] >= 0 else "KRITISCH"
+    breakeven_color = "#28a745" if gesamt['breakeven_abstand'] >= 0 else "#dc3545"
+    breakeven_prefix = "+" if gesamt['breakeven_abstand'] >= 0 else ""
 
-    bereich_namen = {
-        '1-NW': 'Neuwagen', '2-GW': 'Gebrauchtwagen',
-        '3-Teile': 'Teile', '4-Lohn': 'Werkstatt', '5-Sonst': 'Sonstige'
+    # TAG204: KST-Mapping
+    KST_MAPPING = {
+        '1-NW': {'kst': '1', 'name': 'Neuwagen', 'order': 1, 'show_stueck': True, 'icon': '🚗'},
+        '2-GW': {'kst': '2', 'name': 'Gebrauchtwagen', 'order': 2, 'show_stueck': True, 'icon': '🚙'},
+        '4-Lohn': {'kst': '3', 'name': 'Service/Werkstatt', 'order': 3, 'show_stueck': False, 'icon': '🔧'},
+        '3-Teile': {'kst': '6', 'name': 'Teile & Zubehör', 'order': 4, 'show_stueck': False, 'icon': '📦'},
+        '5-Sonst': {'kst': '7', 'name': 'Sonstige', 'order': 5, 'show_stueck': False, 'icon': '📋'}
     }
-
-    bereiche_html = ""
-    for i, b in enumerate(data['bereiche']):
-        bg = '#f9f9f9' if i % 2 == 0 else '#ffffff'
-        bereiche_html += f"""
-        <tr style="background: {bg};">
-            <td style="padding: 8px;">{bereich_namen.get(b['bereich'], b['bereich'])}</td>
-            <td style="padding: 8px; text-align: right;">{format_euro(b['umsatz'])} EUR</td>
-            <td style="padding: 8px; text-align: right;">{format_euro(b['db1'])} EUR</td>
-            <td style="padding: 8px; text-align: center;">{b['marge']:.1f}%</td>
-        </tr>"""
+    
+    # Bereiche nach KST-Reihenfolge sortieren
+    bereiche_sorted = sorted(
+        data['bereiche'],
+        key=lambda b: KST_MAPPING.get(b['bereich'], {}).get('order', 99)
+    )
+    
+    # Abteilungen-Cards generieren
+    abteilungen_cards = ""
+    
+    for b in bereiche_sorted:
+        bkey = b['bereich']
+        cfg = KST_MAPPING.get(bkey, {'kst': '-', 'name': bkey, 'show_stueck': False, 'icon': '📊'})
+        
+        # Heute-Daten (immer anzeigen, auch wenn 0)
+        heute_umsatz = b.get('heute_umsatz', 0)
+        heute_db1 = b.get('heute_db1', 0)
+        
+        # Monat-Daten
+        monat_umsatz = b.get('umsatz', 0)
+        monat_db1 = b.get('db1', 0)
+        
+        # Stück (nur bei NW/GW)
+        stueck = b.get('stueck', 0) if cfg['show_stueck'] else None
+        stueck_info = f" | {stueck} Stück" if stueck and stueck > 0 else ""
+        
+        # Farbcodierung basierend auf DB1 (vereinfacht)
+        # Grün: DB1 > 0, Gelb: DB1 = 0, Rot: DB1 < 0
+        if monat_db1 > 0:
+            card_bg = "#d4edda"
+            card_border = "#28a745"
+            status_icon = "🟢"
+        elif monat_db1 == 0:
+            card_bg = "#fff3cd"
+            card_border = "#ffc107"
+            status_icon = "🟡"
+        else:
+            card_bg = "#f8d7da"
+            card_border = "#dc3545"
+            status_icon = "🔴"
+        
+        abteilungen_cards += f"""
+        <div style="background: {card_bg}; border-left: 4px solid {card_border}; padding: 15px; margin: 10px 0; border-radius: 4px;">
+            <div style="font-size: 18px; font-weight: bold; margin-bottom: 10px;">
+                {cfg['icon']} {cfg['name']} (KST {cfg['kst']}){stueck_info} {status_icon}
+            </div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                <tr>
+                    <td style="padding: 5px 0; color: #666;">Heute:</td>
+                    <td style="padding: 5px 0; text-align: right; font-weight: bold;">{format_euro(heute_umsatz)} € Erlöse</td>
+                    <td style="padding: 5px 0; text-align: right; font-weight: bold;">{format_euro(heute_db1)} € DB1</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px 0; color: #666;">Monat:</td>
+                    <td style="padding: 5px 0; text-align: right;">{format_euro(monat_umsatz)} € Erlöse</td>
+                    <td style="padding: 5px 0; text-align: right; font-weight: bold;">{format_euro(monat_db1)} € DB1</td>
+                </tr>
+            </table>
+        </div>"""
 
     return f"""
     <html>
-    <body style="font-family: Arial, sans-serif; color: #333; max-width: 650px;">
-        <h2 style="color: #0066cc; margin-bottom: 5px;">TEK - Tägliche Erfolgskontrolle</h2>
-        <p style="color: #666; margin-top: 0;">{data['monat']} | Stand: {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr</p>
-
-        <table style="border-collapse: collapse; width: 100%; margin: 20px 0;">
-            <tr style="background: #0066cc; color: white;">
-                <th style="padding: 12px; text-align: center;">DB1 aktuell</th>
-                <th style="padding: 12px; text-align: center;">Marge</th>
-                <th style="padding: 12px; text-align: center;">Prognose</th>
-                <th style="padding: 12px; text-align: center;">Breakeven</th>
-            </tr>
-            <tr style="background: #f5f5f5;">
-                <td style="padding: 12px; text-align: center; font-size: 18px; font-weight: bold;">{format_euro(gesamt['db1'])} EUR</td>
-                <td style="padding: 12px; text-align: center; font-size: 18px; font-weight: bold;">{gesamt['marge']:.1f}%</td>
-                <td style="padding: 12px; text-align: center; font-size: 18px; font-weight: bold;">{format_euro(gesamt['prognose'])} EUR</td>
-                <td style="padding: 12px; text-align: center; font-size: 18px; font-weight: bold;">{format_euro(gesamt['breakeven'])} EUR</td>
-            </tr>
-        </table>
-
-        <div style="background: {status_color}; color: white; padding: 15px; text-align: center; font-size: 16px; font-weight: bold; margin: 15px 0;">
-            {status_prefix}{format_euro(gesamt['breakeven_abstand'])} EUR vs. Breakeven ({status_text})
+    <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="font-family: Arial, sans-serif; color: #333; max-width: 700px; margin: 0 auto; padding: 20px; background: #f5f5f5;">
+        
+        <!-- Header -->
+        <div style="background: linear-gradient(135deg, #0066cc, #004499); color: white; padding: 20px; border-radius: 10px 10px 0 0; text-align: center;">
+            <h1 style="margin: 0; font-size: 24px;">📊 TEK - Tägliche Erfolgskontrolle</h1>
+            <p style="margin: 10px 0 0; opacity: 0.9;">{data['monat']} | Stand: {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr</p>
         </div>
 
-        <h3 style="color: #333; margin-top: 25px;">Bereiche</h3>
-        <table style="border-collapse: collapse; width: 100%; margin: 10px 0;">
-            <tr style="background: #333; color: white;">
-                <th style="padding: 8px; text-align: left;">Bereich</th>
-                <th style="padding: 8px; text-align: right;">Umsatz</th>
-                <th style="padding: 8px; text-align: right;">DB1</th>
-                <th style="padding: 8px; text-align: center;">Marge</th>
-            </tr>
-            {bereiche_html}
-        </table>
+        <!-- KPI Cards (4 Cards für Gesamt-KPIs) -->
+        <div style="background: white; padding: 20px; border-left: 1px solid #ddd; border-right: 1px solid #ddd;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    <td style="text-align: center; padding: 15px; width: 50%; border-right: 1px solid #eee;">
+                        <div style="font-size: 28px; font-weight: bold; color: #0066cc;">{format_euro(gesamt_heute_umsatz)}</div>
+                        <div style="font-size: 12px; color: #666; text-transform: uppercase; margin-top: 5px;">Erlöse Heute</div>
+                    </td>
+                    <td style="text-align: center; padding: 15px; width: 50%;">
+                        <div style="font-size: 28px; font-weight: bold; color: #28a745;">{format_euro(gesamt_heute_db1)}</div>
+                        <div style="font-size: 12px; color: #666; text-transform: uppercase; margin-top: 5px;">DB1 Heute</div>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="text-align: center; padding: 15px; border-right: 1px solid #eee; border-top: 1px solid #eee;">
+                        <div style="font-size: 28px; font-weight: bold; color: #0066cc;">{format_euro(gesamt_monat_umsatz)}</div>
+                        <div style="font-size: 12px; color: #666; text-transform: uppercase; margin-top: 5px;">Erlöse Monat</div>
+                    </td>
+                    <td style="text-align: center; padding: 15px; border-top: 1px solid #eee;">
+                        <div style="font-size: 28px; font-weight: bold; color: #28a745;">{format_euro(gesamt_monat_db1)}</div>
+                        <div style="font-size: 12px; color: #666; text-transform: uppercase; margin-top: 5px;">DB1 Monat</div>
+                    </td>
+                </tr>
+            </table>
+        </div>
 
-        <p style="margin-top: 20px;">Details im PDF-Anhang.</p>
+        <!-- Zusatz-KPIs -->
+        <div style="background: white; padding: 15px; border-left: 1px solid #ddd; border-right: 1px solid #ddd; border-top: 1px solid #ddd;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                <tr>
+                    <td style="padding: 8px; color: #666;">Marge:</td>
+                    <td style="padding: 8px; text-align: right; font-weight: bold; font-size: 16px;">{gesamt['marge']:.1f}%</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px; color: #666;">Prognose:</td>
+                    <td style="padding: 8px; text-align: right; font-weight: bold;">{format_euro(gesamt['prognose'])} €</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px; color: #666;">Breakeven-Abstand:</td>
+                    <td style="padding: 8px; text-align: right; font-weight: bold; color: {breakeven_color};">
+                        {breakeven_prefix}{format_euro(gesamt['breakeven_abstand'])} € ({breakeven_status})
+                    </td>
+                </tr>
+            </table>
+        </div>
 
-        <p style="color: #999; font-size: 11px; margin-top: 30px; border-top: 1px solid #eee; padding-top: 10px;">
-            Automatisch generiert von DRIVE<br>
-            <a href="http://drive.auto-greiner.de/controlling/tek" style="color: #0066cc;">In DRIVE öffnen</a>
-        </p>
+        <!-- Abteilungen -->
+        <div style="background: white; padding: 20px; border-left: 1px solid #ddd; border-right: 1px solid #ddd; border-top: 1px solid #ddd;">
+            <h2 style="margin: 0 0 15px 0; font-size: 18px; color: #333;">📋 Abteilungen</h2>
+            {abteilungen_cards}
+        </div>
+
+        <!-- Footer -->
+        <div style="background: white; padding: 15px; border-left: 1px solid #ddd; border-right: 1px solid #ddd; border-top: 1px solid #ddd; border-radius: 0 0 10px 10px;">
+            <p style="margin: 0 0 10px 0; color: #666; font-size: 0.9rem;">Details im PDF-Anhang.</p>
+            <p style="margin: 0; color: #999; font-size: 11px; border-top: 1px solid #eee; padding-top: 10px;">
+                Automatisch generiert von DRIVE<br>
+                <a href="http://drive.auto-greiner.de/controlling/tek" style="color: #0066cc; text-decoration: none;">→ In DRIVE öffnen</a>
+            </p>
+        </div>
+
     </body>
     </html>
     """
@@ -581,67 +780,84 @@ def build_filiale_email_html(data):
 
 
 def build_bereich_email_html(data, bereich_key, bereich_data):
-    """Erstellt HTML-Body für Bereichs-Report"""
+    """
+    Erstellt HTML-Body für Bereichs-Report - TAG204: VEREINFACHT
+    Entfernt: Status "Ziel erreicht", Ziel-Marge
+    Zeigt nur: DB1, Marge, Umsatz, Einsatz, Heute-Daten
+    """
     BEREICH_NAMEN = {
         '1-NW': 'Neuwagen', '2-GW': 'Gebrauchtwagen',
         '3-Teile': 'Teile', '4-Lohn': 'Werkstatt', '5-Sonst': 'Sonstige'
     }
-    BENCHMARKS = {
-        '1-NW': 12, '2-GW': 10, '3-Teile': 32, '4-Lohn': 50, '5-Sonst': 10
-    }
 
     bereich_name = BEREICH_NAMEN.get(bereich_key, bereich_key)
-    ziel_marge = BENCHMARKS.get(bereich_key, 10)
     marge = bereich_data.get('marge', 0)
-
-    if marge >= ziel_marge:
-        status_color = "#28a745"
-        status_text = "Ziel erreicht"
-    elif marge >= ziel_marge * 0.7:
-        status_color = "#ffc107"
-        status_text = "Warnung"
-    else:
-        status_color = "#dc3545"
-        status_text = "Unter Ziel"
+    
+    # Heute-Daten (immer anzeigen, auch wenn 0)
+    heute_umsatz = bereich_data.get('heute_umsatz', 0)
+    heute_db1 = bereich_data.get('heute_db1', 0)
+    
+    # Stück (nur bei NW/GW)
+    stueck = bereich_data.get('stueck', 0)
+    stueck_display = f" | Stück (Monat): {stueck}" if stueck > 0 else ""
+    db1_pro_stueck = bereich_data.get('db1_pro_stueck', 0)
+    db1_stk_display = f" | DB1/Stk: {format_euro(db1_pro_stueck)}" if db1_pro_stueck > 0 else ""
 
     return f"""
     <html>
-    <body style="font-family: Arial, sans-serif; color: #333; max-width: 550px;">
+    <body style="font-family: Arial, sans-serif; color: #333; max-width: 600px;">
         <h2 style="color: #0066cc; margin-bottom: 5px;">TEK {bereich_name}</h2>
         <p style="color: #666; margin-top: 0;">{data['monat']} | Stand: {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr</p>
 
+        <!-- Haupt-KPIs -->
         <table style="border-collapse: collapse; width: 100%; margin: 20px 0;">
             <tr style="background: #0066cc; color: white;">
                 <th style="padding: 15px; text-align: center;">DB1</th>
                 <th style="padding: 15px; text-align: center;">Marge</th>
-                <th style="padding: 15px; text-align: center;">Status</th>
             </tr>
             <tr style="background: #f5f5f5;">
                 <td style="padding: 15px; text-align: center; font-size: 24px; font-weight: bold;">{format_euro(bereich_data['db1'])} EUR</td>
                 <td style="padding: 15px; text-align: center; font-size: 24px; font-weight: bold;">{marge:.1f}%</td>
-                <td style="padding: 15px; text-align: center; font-size: 16px; font-weight: bold; color: {status_color};">{status_text}</td>
             </tr>
         </table>
 
-        <table style="border-collapse: collapse; width: 100%; margin: 15px 0;">
+        <!-- Heute-Daten -->
+        <h3 style="color: #333; margin-top: 25px; font-size: 16px;">📅 Heute</h3>
+        <table style="border-collapse: collapse; width: 100%; margin: 10px 0;">
+            <tr>
+                <td style="padding: 8px; background: #f0f0f0;">Erlöse:</td>
+                <td style="padding: 8px; text-align: right; font-weight: bold;">{format_euro(heute_umsatz)} EUR</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px; background: #f0f0f0;">DB1:</td>
+                <td style="padding: 8px; text-align: right; font-weight: bold;">{format_euro(heute_db1)} EUR</td>
+            </tr>
+        </table>
+
+        <!-- Monat-Daten -->
+        <h3 style="color: #333; margin-top: 25px; font-size: 16px;">📊 Monat kumuliert</h3>
+        <table style="border-collapse: collapse; width: 100%; margin: 10px 0;">
             <tr>
                 <td style="padding: 8px; background: #f0f0f0;">Umsatz:</td>
-                <td style="padding: 8px; text-align: right;">{format_euro(bereich_data['umsatz'])} EUR</td>
+                <td style="padding: 8px; text-align: right; font-weight: bold;">{format_euro(bereich_data['umsatz'])} EUR</td>
             </tr>
             <tr>
                 <td style="padding: 8px; background: #f0f0f0;">Einsatz:</td>
                 <td style="padding: 8px; text-align: right;">{format_euro(bereich_data['einsatz'])} EUR</td>
             </tr>
             <tr>
-                <td style="padding: 8px; background: #f0f0f0;">Ziel-Marge:</td>
-                <td style="padding: 8px; text-align: right;">{ziel_marge}%</td>
+                <td style="padding: 8px; background: #f0f0f0;">DB1:</td>
+                <td style="padding: 8px; text-align: right; font-weight: bold;">{format_euro(bereich_data['db1'])} EUR</td>
             </tr>
+            {f'<tr><td style="padding: 8px; background: #f0f0f0;">DB1/Stück:</td><td style="padding: 8px; text-align: right;">{format_euro(db1_pro_stueck)} EUR</td></tr>' if db1_pro_stueck > 0 else ''}
+            {f'<tr><td style="padding: 8px; background: #f0f0f0;">Stück:</td><td style="padding: 8px; text-align: right;">{stueck}</td></tr>' if stueck > 0 else ''}
         </table>
 
         <p style="margin-top: 20px;">Details im PDF-Anhang.</p>
 
         <p style="color: #999; font-size: 11px; margin-top: 30px; border-top: 1px solid #eee; padding-top: 10px;">
-            Automatisch generiert von DRIVE
+            Automatisch generiert von DRIVE<br>
+            <a href="http://drive.auto-greiner.de/controlling/tek" style="color: #0066cc;">In DRIVE öffnen</a>
         </p>
     </body>
     </html>

@@ -215,60 +215,182 @@ def import_hyundai_finance(csv_file=None, dry_run=False):
     try:
         print(f"\n💾 IMPORT IN DATENBANK...")
         
-        # Alte Hyundai-Einträge löschen
-        cursor.execute("DELETE FROM fahrzeugfinanzierungen WHERE finanzinstitut = 'Hyundai Finance'")
-        deleted = cursor.rowcount
-        print(f"   🗑️  {deleted} alte Einträge gelöscht")
+        # Alte Hyundai-Einträge auf aktiv = false setzen (Historie erhalten)
+        # TAG 203: Statt DELETE verwenden wir UPDATE, um Historie zu tracken
+        cursor.execute("""
+            UPDATE fahrzeugfinanzierungen 
+            SET aktiv = false, aktualisiert_am = NOW()
+            WHERE finanzinstitut = 'Hyundai Finance' AND aktiv = true
+        """)
+        deactivated = cursor.rowcount
+        print(f"   📝 {deactivated} alte Einträge deaktiviert (Historie erhalten)")
         
-        # Neue einfügen
+        # Neue einfügen oder aktualisieren
         insert_count = 0
+        update_count = 0
         for v in vehicles:
+            vin = v['vin']
+            
+            # Prüfe ob VIN bereits existiert (auch inaktiv oder bei anderem Institut)
             cursor.execute("""
-                INSERT INTO fahrzeugfinanzierungen (
-                    finanzinstitut,
-                    rrdi,
-                    produktfamilie,
+                SELECT id, finanzinstitut, aktiv 
+                FROM fahrzeugfinanzierungen 
+                WHERE vin = %s
+                ORDER BY aktualisiert_am DESC
+                LIMIT 1
+            """, (vin,))
+            existing_row = cursor.fetchone()
+            
+            if existing_row:
+                existing_id, existing_institut, existing_aktiv = existing_row
+                
+                # Wenn bei anderem Institut aktiv, deaktiviere alten Eintrag
+                if existing_institut != 'Hyundai Finance' and existing_aktiv:
+                    cursor.execute("""
+                        UPDATE fahrzeugfinanzierungen 
+                        SET aktiv = false, aktualisiert_am = NOW()
+                        WHERE id = %s
+                    """, (existing_id,))
+                    print(f"   📝 VIN {vin}: Alten Eintrag bei {existing_institut} deaktiviert")
+                
+                # Prüfe ob Hyundai Finance Eintrag existiert
+                cursor.execute("""
+                    SELECT id FROM fahrzeugfinanzierungen 
+                    WHERE vin = %s AND finanzinstitut = 'Hyundai Finance'
+                    LIMIT 1
+                """, (vin,))
+                hyundai_row = cursor.fetchone()
+                
+                if hyundai_row:
+                    # Update (auch wenn inaktiv, wird wieder aktiviert)
+                    cursor.execute("""
+                        UPDATE fahrzeugfinanzierungen SET
+                            rrdi = %s,
+                            produktfamilie = %s,
+                            modell = %s,
+                            alter_tage = %s,
+                            vertragsbeginn = %s,
+                            endfaelligkeit = %s,
+                            aktueller_saldo = %s,
+                            original_betrag = %s,
+                            abbezahlt = %s,
+                            finanzierungsnummer = %s,
+                            finanzierungsstatus = %s,
+                            dokumentstatus = %s,
+                            zins_startdatum = %s,
+                            zinsen_gesamt = %s,
+                            zinsen_letzte_periode = %s,
+                            datei_quelle = %s,
+                            import_datum = NOW(),
+                            aktualisiert_am = NOW(),
+                            aktiv = true
+                        WHERE vin = %s AND finanzinstitut = 'Hyundai Finance'
+                    """, (
+                        v['rrdi'], v['produktfamilie'], v['modell'],
+                        v['alter_tage'], v['vertragsbeginn'], v['endfaelligkeit'],
+                        v['aktueller_saldo'], v['original_betrag'], v['abbezahlt'],
+                        v['finanzierungsnummer'], v['finanzierungsstatus'], v['dokumentstatus'],
+                        v['zins_startdatum'], v['zinsen_gesamt'], v['zinsen_monat'],
+                        csv_path.name, vin
+                    ))
+                    update_count += 1
+                else:
+                    # Insert (neues Fahrzeug bei Hyundai Finance)
+                    cursor.execute("""
+                        INSERT INTO fahrzeugfinanzierungen (
+                            finanzinstitut,
+                            rrdi,
+                            produktfamilie,
+                            vin,
+                            modell,
+                            alter_tage,
+                            vertragsbeginn,
+                            endfaelligkeit,
+                            aktueller_saldo,
+                            original_betrag,
+                            abbezahlt,
+                            finanzierungsnummer,
+                            finanzierungsstatus,
+                            dokumentstatus,
+                            zins_startdatum,
+                            zinsen_gesamt,
+                            zinsen_letzte_periode,
+                            datei_quelle,
+                            import_datum,
+                            aktiv
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), true)
+                    """, (
+                        'Hyundai Finance',
+                        v['rrdi'],
+                        v['produktfamilie'],
+                        vin,
+                        v['modell'],
+                        v['alter_tage'],
+                        v['vertragsbeginn'],
+                        v['endfaelligkeit'],
+                        v['aktueller_saldo'],
+                        v['original_betrag'],
+                        v['abbezahlt'],
+                        v['finanzierungsnummer'],
+                        v['finanzierungsstatus'],
+                        v['dokumentstatus'],
+                        v['zins_startdatum'],
+                        v['zinsen_gesamt'],
+                        v['zinsen_monat'],
+                        csv_path.name
+                    ))
+                    insert_count += 1
+            else:
+                # Insert (komplett neues Fahrzeug)
+                cursor.execute("""
+                    INSERT INTO fahrzeugfinanzierungen (
+                        finanzinstitut,
+                        rrdi,
+                        produktfamilie,
+                        vin,
+                        modell,
+                        alter_tage,
+                        vertragsbeginn,
+                        endfaelligkeit,
+                        aktueller_saldo,
+                        original_betrag,
+                        abbezahlt,
+                        finanzierungsnummer,
+                        finanzierungsstatus,
+                        dokumentstatus,
+                        zins_startdatum,
+                        zinsen_gesamt,
+                        zinsen_letzte_periode,
+                        datei_quelle,
+                        import_datum,
+                        aktiv
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), true)
+                """, (
+                    'Hyundai Finance',
+                    v['rrdi'],
+                    v['produktfamilie'],
                     vin,
-                    modell,
-                    alter_tage,
-                    vertragsbeginn,
-                    endfaelligkeit,
-                    aktueller_saldo,
-                    original_betrag,
-                    abbezahlt,
-                    finanzierungsnummer,
-                    finanzierungsstatus,
-                    dokumentstatus,
-                    zins_startdatum,
-                    zinsen_gesamt,
-                    zinsen_letzte_periode,
-                    datei_quelle,
-                    import_datum
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
-            """, (
-                'Hyundai Finance',
-                v['rrdi'],
-                v['produktfamilie'],
-                v['vin'],
-                v['modell'],
-                v['alter_tage'],
-                v['vertragsbeginn'],
-                v['endfaelligkeit'],
-                v['aktueller_saldo'],
-                v['original_betrag'],
-                v['abbezahlt'],
-                v['finanzierungsnummer'],
-                v['finanzierungsstatus'],
-                v['dokumentstatus'],
-                v['zins_startdatum'],
-                v['zinsen_gesamt'],  # NEU
-                v['zinsen_monat'],   # NEU (als "letzte Periode" = Monatszins)
-                csv_path.name
-            ))
-            insert_count += 1
+                    v['modell'],
+                    v['alter_tage'],
+                    v['vertragsbeginn'],
+                    v['endfaelligkeit'],
+                    v['aktueller_saldo'],
+                    v['original_betrag'],
+                    v['abbezahlt'],
+                    v['finanzierungsnummer'],
+                    v['finanzierungsstatus'],
+                    v['dokumentstatus'],
+                    v['zins_startdatum'],
+                    v['zinsen_gesamt'],
+                    v['zinsen_monat'],
+                    csv_path.name
+                ))
+                insert_count += 1
         
         conn.commit()
-        print(f"   ✅ {insert_count} Fahrzeuge importiert")
+        print(f"\n✅ Import abgeschlossen:")
+        print(f"   ✓ {insert_count} neue Fahrzeuge importiert")
+        print(f"   ✓ {update_count} bestehende Fahrzeuge aktualisiert")
         
         # Verify
         cursor.execute("""

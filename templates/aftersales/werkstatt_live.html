@@ -668,7 +668,7 @@ function renderAuftragDetail(data) {
                     <span class="betrieb-badge betrieb-${a.betrieb}">${a.betrieb_name}</span>
                     <strong class="ms-2">Serviceberater:</strong> ${a.serviceberater || '-'}
                 </p>
-                <p class="mb-1"><strong>Datum:</strong> ${a.datum ? new Date(a.datum).toLocaleString('de-DE') : '-'}</p>
+                <p class="mb-1"><strong>Datum:</strong> ${a.datum || '-'}</p>
                 <p class="mb-3"><strong>Summe:</strong> ${a.summen.total_aw.toFixed(1)} AW | ${a.summen.anzahl_positionen} Positionen</p>
                 
                 <h6 class="text-muted">Status</h6>

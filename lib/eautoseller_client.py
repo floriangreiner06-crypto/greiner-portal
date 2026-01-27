@@ -445,4 +445,345 @@ class EAutosellerClient:
                 pass
         
         return kpis
+    
+    # ============================================================================
+    # SWAGGER API METHODS (Neue DMS API)
+    # ============================================================================
+    
+    def get_swagger_client(self, api_key=None, client_secret=None):
+        """
+        Erstellt einen separaten Session-Client für die Swagger API
+        
+        Args:
+            api_key: API-Key (falls nicht in Config)
+            client_secret: Client Secret (falls nicht in Config)
+            
+        Returns:
+            requests.Session: Session mit korrekten Headers
+        """
+        import os
+        import json
+        
+        # Lade Credentials
+        if not api_key or not client_secret:
+            creds_file = 'config/credentials.json'
+            if os.path.exists(creds_file):
+                try:
+                    with open(creds_file, 'r') as f:
+                        creds = json.load(f)
+                        if 'eautoseller' in creds:
+                            api_key = api_key or creds['eautoseller'].get('api_key')
+                            client_secret = client_secret or creds['eautoseller'].get('client_secret')
+                except:
+                    pass
+        
+        # Fallback zu Environment Variables
+        api_key = api_key or os.getenv('EAUTOSELLER_API_KEY')
+        client_secret = client_secret or os.getenv('EAUTOSELLER_CLIENT_SECRET')
+        
+        if not api_key or not client_secret:
+            raise Exception("API-Key und Client-Secret erforderlich für Swagger API")
+        
+        # Erstelle Session für Swagger API
+        swagger_session = requests.Session()
+        swagger_session.verify = True  # SSL-Verifizierung für API
+        swagger_session.headers.update({
+            'x-api-key': api_key,
+            'x-client-key': client_secret,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+        })
+        
+        return swagger_session
+    
+    def get_vehicles_swagger(self, offer_reference=None, vin=None, 
+                              changed_since=None, status=None, use_swagger=True):
+        """
+        Ruft Fahrzeugliste über Swagger API ab
+        
+        Args:
+            offer_reference: Angebotsreferenz (optional)
+            vin: VIN (17 Zeichen, optional)
+            changed_since: Nur geänderte seit Datum (optional)
+            status: Status-Filter (optional)
+            use_swagger: Swagger API verwenden (True) oder HTML-Parsing (False)
+            
+        Returns:
+            List[Dict]: Liste von Fahrzeugen
+        """
+        if not use_swagger:
+            # Fallback zu HTML-Parsing
+            return self.get_vehicle_list()
+        
+        try:
+            swagger_session = self.get_swagger_client()
+            api_base_url = 'https://api.eautoseller.de'
+            
+            params = {}
+            if offer_reference:
+                params['offerReference'] = offer_reference
+            if vin:
+                params['vin'] = vin
+            if changed_since:
+                if isinstance(changed_since, datetime):
+                    params['changedSince'] = changed_since.isoformat()
+                else:
+                    params['changedSince'] = changed_since
+            if status:
+                params['status'] = status
+            
+            response = swagger_session.get(
+                f"{api_base_url}/dms/vehicles",
+                params=params,
+                timeout=30
+            )
+            response.raise_for_status()
+            
+            data = response.json()
+            
+            # Konvertiere API-Response zu unserem Format
+            # API kann Liste oder Dict mit 'data' zurückgeben
+            vehicles = []
+            if isinstance(data, list):
+                vehicle_list = data
+            elif isinstance(data, dict):
+                vehicle_list = data.get('data', [])
+            else:
+                vehicle_list = []
+            
+            for vehicle in vehicle_list:
+                try:
+                    vehicle_data = self._convert_swagger_vehicle(vehicle)
+                    if vehicle_data:
+                        vehicles.append(vehicle_data)
+                except Exception as e:
+                    print(f"Fehler beim Konvertieren eines Fahrzeugs: {str(e)}")
+                    continue
+            
+            return vehicles
+            
+        except Exception as e:
+            print(f"Swagger API Fehler: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # Fallback zu HTML-Parsing
+            print("Fallback zu HTML-Parsing...")
+            return self.get_vehicle_list()
+    
+    def get_vehicle_details_swagger(self, vehicle_id, use_swagger=True):
+        """
+        Ruft Fahrzeugdetails über Swagger API ab
+        
+        Args:
+            vehicle_id: Fahrzeug-ID
+            use_swagger: Swagger API verwenden (True) oder HTML-Parsing (False)
+            
+        Returns:
+            Dict: Fahrzeugdetails
+        """
+        if not use_swagger:
+            # Fallback zu HTML-Parsing (nicht implementiert für Details)
+            return None
+        
+        try:
+            swagger_session = self.get_swagger_client()
+            api_base_url = 'https://api.eautoseller.de'
+            
+            response = swagger_session.get(
+                f"{api_base_url}/dms/vehicle/{vehicle_id}/details",
+                params={
+                    'withAdditionalInformation': True,
+                    'resolveEquipments': True
+                },
+                timeout=30
+            )
+            response.raise_for_status()
+            
+            data = response.json()
+            return self._convert_swagger_vehicle(data)
+            
+        except Exception as e:
+            print(f"Swagger API Fehler: {str(e)}")
+            return None
+    
+    def get_vehicle_prices_swagger(self, from_date=None, use_swagger=True):
+        """
+        Ruft Preise über Swagger API ab
+        
+        Args:
+            from_date: Nur Preise seit Datum (optional)
+            use_swagger: Swagger API verwenden (True) oder HTML-Parsing (False)
+            
+        Returns:
+            List[Dict]: Liste von Fahrzeugen mit Preisen
+        """
+        if not use_swagger:
+            # Fallback zu HTML-Parsing
+            vehicles = self.get_vehicle_list()
+            return [v for v in vehicles if v.get('preis')]
+        
+        try:
+            swagger_session = self.get_swagger_client()
+            api_base_url = 'https://api.eautoseller.de'
+            
+            params = {}
+            if from_date:
+                if isinstance(from_date, datetime):
+                    params['from'] = from_date.isoformat()
+                else:
+                    params['from'] = from_date
+            
+            response = swagger_session.get(
+                f"{api_base_url}/dms/vehicles/prices",
+                params=params,
+                timeout=30
+            )
+            response.raise_for_status()
+            
+            data = response.json()
+            
+            # Konvertiere API-Response zu unserem Format
+            # API kann Liste oder Dict mit 'data' zurückgeben
+            vehicles = []
+            if isinstance(data, list):
+                vehicle_list = data
+            elif isinstance(data, dict):
+                vehicle_list = data.get('data', [])
+            else:
+                vehicle_list = []
+            
+            for vehicle in vehicle_list:
+                try:
+                    vehicle_data = self._convert_swagger_vehicle(vehicle)
+                    if vehicle_data:
+                        vehicles.append(vehicle_data)
+                except Exception as e:
+                    print(f"Fehler beim Konvertieren eines Fahrzeugs: {str(e)}")
+                    continue
+            
+            return vehicles
+            
+        except Exception as e:
+            print(f"Swagger API Fehler: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # Fallback zu HTML-Parsing
+            vehicles = self.get_vehicle_list()
+            return [v for v in vehicles if v.get('preis')]
+    
+    def _convert_swagger_vehicle(self, vehicle_data):
+        """
+        Konvertiert Swagger API Vehicle-Format zu unserem Format
+        
+        Args:
+            vehicle_data: Vehicle-Daten von Swagger API
+            
+        Returns:
+            Dict: Fahrzeugdaten in unserem Format
+        """
+        try:
+            converted = {}
+            
+            # Basis-Informationen
+            converted['id'] = vehicle_data.get('id')
+            converted['offer_reference'] = vehicle_data.get('offerReference')
+            converted['vin'] = vehicle_data.get('vin')
+            
+            # Marke und Modell
+            if 'make' in vehicle_data:
+                converted['marke'] = vehicle_data['make'].get('name') if isinstance(vehicle_data['make'], dict) else vehicle_data['make']
+            elif 'makeName' in vehicle_data:
+                converted['marke'] = vehicle_data['makeName']
+            
+            if 'model' in vehicle_data:
+                converted['modell'] = vehicle_data['model'].get('name') if isinstance(vehicle_data['model'], dict) else vehicle_data['model']
+            elif 'modelName' in vehicle_data:
+                converted['modell'] = vehicle_data['modelName']
+            
+            # Preis (verschiedene Formate unterstützen)
+            if 'price' in vehicle_data:
+                price_data = vehicle_data['price']
+                if isinstance(price_data, dict):
+                    converted['preis'] = price_data.get('gross') or price_data.get('net') or price_data.get('value') or price_data.get('amount')
+                elif isinstance(price_data, (int, float)):
+                    converted['preis'] = float(price_data)
+                else:
+                    try:
+                        converted['preis'] = float(price_data)
+                    except:
+                        pass
+            
+            # Alternative Preis-Felder
+            if 'preis' not in converted or not converted['preis']:
+                for price_field in ['priceGross', 'sellingPrice', 'priceNet', 'priceValue', 'amount', 'price']:
+                    if price_field in vehicle_data:
+                        try:
+                            price_val = vehicle_data[price_field]
+                            if isinstance(price_val, (int, float)):
+                                converted['preis'] = float(price_val)
+                            elif isinstance(price_val, str):
+                                # Entferne Tausender-Trennzeichen und Komma
+                                price_clean = price_val.replace('.', '').replace(',', '.')
+                                converted['preis'] = float(price_clean)
+                            break
+                        except:
+                            pass
+            
+            # Hereinnahme-Datum (verschiedene Feldnamen unterstützen)
+            date_fields = ['dateOfEntry', 'stockEntrance', 'entryDate', 'hereinnahme', 'aufnahme']
+            for date_field in date_fields:
+                if date_field in vehicle_data:
+                    date_str = vehicle_data[date_field]
+                    if date_str:
+                        try:
+                            if isinstance(date_str, str):
+                                # Versuche verschiedene Datumsformate
+                                # Entferne Zeit-Teil falls vorhanden
+                                date_part = date_str.split('T')[0].split(' ')[0]
+                                try:
+                                    date_obj = datetime.strptime(date_part, '%Y-%m-%d')
+                                    converted['hereinnahme'] = date_obj.date().isoformat()
+                                    converted['standzeit_tage'] = (datetime.now().date() - date_obj.date()).days
+                                    break
+                                except:
+                                    # Versuche anderes Format
+                                    try:
+                                        date_obj = datetime.strptime(date_part, '%d.%m.%Y')
+                                        converted['hereinnahme'] = date_obj.date().isoformat()
+                                        converted['standzeit_tage'] = (datetime.now().date() - date_obj.date()).days
+                                        break
+                                    except:
+                                        pass
+                        except Exception as e:
+                            print(f"Fehler beim Parsen des Datums {date_field}: {str(e)}")
+                            pass
+            
+            # Kilometerstand
+            if 'mileage' in vehicle_data:
+                converted['km'] = vehicle_data['mileage']
+            elif 'kilometer' in vehicle_data:
+                converted['km'] = vehicle_data['kilometer']
+            
+            # Status
+            if 'status' in vehicle_data:
+                converted['status'] = vehicle_data['status']
+            
+            # Zusätzliche Informationen
+            if 'year' in vehicle_data:
+                converted['baujahr'] = vehicle_data['year']
+            
+            if 'fuelType' in vehicle_data:
+                converted['kraftstoff'] = vehicle_data['fuelType']
+            
+            if 'transmission' in vehicle_data:
+                converted['getriebe'] = vehicle_data['transmission']
+            
+            # Speichere auch rohe Daten für Debugging
+            converted['_raw_swagger'] = vehicle_data
+            
+            return converted
+            
+        except Exception as e:
+            print(f"Fehler beim Konvertieren der Fahrzeugdaten: {str(e)}")
+            return None
 

@@ -27,7 +27,7 @@ else:
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 Jahr in Produktion
 
 # Globale Static-Version (ändert sich bei jedem Flask-Neustart)
-STATIC_VERSION = '20260120152000'  # TAG [aktuell] - Instituts-Historie für Zinsstartdatum (dynamischer Text)
+STATIC_VERSION = '20260127160000'  # TAG 213 - Darlehen Peter Greiner: IBAN = "Sachkonto Locosoft 071101"
 print(f"📦 Static Version: {STATIC_VERSION}")
 
 # Template-Kontext: Macht STATIC_VERSION in allen Templates verfügbar
@@ -285,6 +285,14 @@ try:
 except Exception as e:
     print(f"⚠️  Vacation Chef API nicht geladen: {e}")
 
+# Employee Management API (TAG 213 - Mitarbeiterverwaltung)
+try:
+    from api.employee_management_api import employee_management_api
+    app.register_blueprint(employee_management_api)
+    print("✅ Employee Management API registriert: /api/employee-management/")
+except Exception as e:
+    print(f"⚠️  Employee Management API nicht geladen: {e}")
+
 # Urlaubsplaner V2 Route
 @app.route('/urlaubsplaner/v2')
 @login_required
@@ -305,6 +313,13 @@ def urlaubsplaner_chef():
 def urlaubsplaner_admin():
     """HR-Admin: Urlaubsansprüche verwalten"""
     return render_template('urlaubsplaner_admin.html')
+
+# Mitarbeiterverwaltung (TAG 213 - Umfassende Mitarbeiterverwaltung)
+@app.route('/admin/mitarbeiterverwaltung')
+@login_required
+def mitarbeiterverwaltung():
+    """Umfassende Mitarbeiterverwaltung nach Muster 'Digitale Personalakte'"""
+    return render_template('admin/mitarbeiterverwaltung.html')
 
 # Organigramm (TAG 113 - Organisation & Vertretungsregeln)
 @app.route('/admin/organigramm')
@@ -400,6 +415,14 @@ print("✅ Controlling registriert: /controlling/")
 from routes.werkstatt_routes import werkstatt_routes
 app.register_blueprint(werkstatt_routes)
 print("✅ Werkstatt Frontend registriert: /werkstatt/")
+
+# WhatsApp Routes (TAG 211)
+try:
+    from routes.whatsapp_routes import whatsapp_bp
+    app.register_blueprint(whatsapp_bp)
+    print("✅ WhatsApp Routes registriert: /whatsapp/")
+except Exception as e:
+    print(f"⚠️  WhatsApp Routes nicht geladen: {e}")
 
 # Controlling API (BWA)
 try:

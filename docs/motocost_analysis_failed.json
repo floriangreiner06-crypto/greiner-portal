@@ -1,0 +1,12 @@
+{
+  "timestamp": "2026-01-26T17:31:22.555730",
+  "base_url": "https://dashboard.motocost.com",
+  "analysis": {
+    "login_success": false,
+    "dashboard_urls": [],
+    "api_endpoints": [],
+    "data_structure": {},
+    "available_features": [],
+    "errors": []
+  }
+}

@@ -736,13 +736,146 @@ def generate_tek_daily_pdf(data: dict) -> bytes:
         ('TOPPADDING', (0, 0), (-1, -1), 12),
     ]))
     elements.append(be_status_table)
+    elements.append(Spacer(1, 20))
 
-    # === BEREICHE ===
-    elements.append(Paragraph("Bereiche im Detail", section_style))
-
-    # Bereichs-Tabelle
-    bereich_header = ['Bereich', 'Umsatz', 'Einsatz', 'DB1', 'Marge', 'Status']
-    bereich_data = [bereich_header]
+    # === TAG204: ABTEILUNGEN IM DETAIL (nach KST) ===
+    elements.append(Paragraph("📊 Abteilungen im Detail (nach KST)", section_style))
+    
+    # KST-Mapping
+    KST_MAPPING = {
+        '1-NW': {'kst': '1', 'name': 'Neuwagen', 'order': 1, 'show_stueck': True},
+        '2-GW': {'kst': '2', 'name': 'Gebrauchtwagen', 'order': 2, 'show_stueck': True},
+        '4-Lohn': {'kst': '3', 'name': 'Service/Werkstatt', 'order': 3, 'show_stueck': False},
+        '3-Teile': {'kst': '6', 'name': 'Teile & Zubehör', 'order': 4, 'show_stueck': False},
+        '5-Sonst': {'kst': '7', 'name': 'Sonstige', 'order': 5, 'show_stueck': False}
+    }
+    
+    # Bereiche nach KST-Reihenfolge sortieren
+    bereiche_sorted = sorted(
+        data.get('bereiche', []),
+        key=lambda b: KST_MAPPING.get(b.get('bereich', ''), {}).get('order', 99)
+    )
+    
+    # Abteilungen-Tabelle
+    abteilungen_header = ['KST', 'Abteilung', 'Stück', 'Heute', '', 'Monat kumuliert', '', '', 'Ziel', '%']
+    abteilungen_subheader = ['', '', '', 'Erlöse', 'DB1', 'Erlöse', 'DB1', 'DB1/Stk', '', '']
+    abteilungen_data = [abteilungen_header, abteilungen_subheader]
+    
+    gesamt_stueck = 0
+    gesamt_heute_umsatz = 0
+    gesamt_heute_db1 = 0
+    gesamt_monat_umsatz = 0
+    gesamt_monat_db1 = 0
+    
+    for b in bereiche_sorted:
+        bkey = b.get('bereich', '')
+        cfg = KST_MAPPING.get(bkey, {'kst': '-', 'name': bkey, 'show_stueck': False})
+        
+        # Heute-Daten (immer anzeigen, auch wenn 0)
+        heute_umsatz = b.get('heute_umsatz', 0)
+        heute_db1 = b.get('heute_db1', 0)
+        
+        # Monat-Daten
+        monat_umsatz = b.get('umsatz', 0)
+        monat_db1 = b.get('db1', 0)
+        monat_db1_pro_stueck = b.get('db1_pro_stueck', 0) if cfg['show_stueck'] else None
+        
+        # Stück (nur bei NW/GW)
+        stueck = b.get('stueck', 0) if cfg['show_stueck'] else None
+        stueck_display = str(stueck) if stueck is not None else "-"
+        
+        # DB1/Stk (nur bei NW/GW)
+        db1_stk_display = format_currency_short(monat_db1_pro_stueck) if monat_db1_pro_stueck else "-"
+        
+        # Summen für Gesamt
+        if stueck:
+            gesamt_stueck += stueck
+        gesamt_heute_umsatz += heute_umsatz
+        gesamt_heute_db1 += heute_db1
+        gesamt_monat_umsatz += monat_umsatz
+        gesamt_monat_db1 += monat_db1
+        
+        abteilungen_data.append([
+            cfg['kst'],
+            cfg['name'],
+            stueck_display,
+            format_currency_short(heute_umsatz),
+            format_currency_short(heute_db1),
+            format_currency_short(monat_umsatz),
+            format_currency_short(monat_db1),
+            db1_stk_display,
+            "-",  # Ziel (vorbereitet)
+            "-"   # Erfüllung % (vorbereitet)
+        ])
+    
+    # Gesamt-DB1/Stk berechnen (nur NW+GW)
+    nw = next((b for b in bereiche_sorted if b.get('bereich') == '1-NW'), None)
+    gw = next((b for b in bereiche_sorted if b.get('bereich') == '2-GW'), None)
+    db1_nw_gw = (nw.get('db1', 0) if nw else 0) + (gw.get('db1', 0) if gw else 0)
+    gesamt_db1_stk = round(db1_nw_gw / gesamt_stueck, 2) if gesamt_stueck > 0 else 0
+    
+    # Gesamt-Zeile
+    abteilungen_data.append([
+        '', 'GESAMT', str(gesamt_stueck),
+        format_currency_short(gesamt_heute_umsatz),
+        format_currency_short(gesamt_heute_db1),
+        format_currency_short(gesamt_monat_umsatz),
+        format_currency_short(gesamt_monat_db1),
+        format_currency_short(gesamt_db1_stk),
+        "-", "-"
+    ])
+    
+    # Abteilungen-Tabelle erstellen und einfügen
+    col_widths_abteilungen = [1*cm, 3*cm, 1.2*cm, 2*cm, 2*cm, 2.2*cm, 2*cm, 2*cm, 1.5*cm, 1*cm]
+    abteilungen_table = Table(abteilungen_data, colWidths=col_widths_abteilungen)
+    
+    # Styling für Abteilungen-Tabelle
+    abteilungen_style = [
+        # Header-Zeile (KST, Abteilung, Stück, etc.)
+        ('BACKGROUND', (0, 0), (-1, 0), DRIVE_BLUE),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+        ('TOPPADDING', (0, 0), (-1, 0), 8),
+        # Subheader-Zeile (Erlöse, DB1, etc.)
+        ('BACKGROUND', (0, 1), (-1, 1), GRAY_LIGHT),
+        ('TEXTCOLOR', (0, 1), (-1, 1), GRAY_DARK),
+        ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 1), (-1, 1), 8),
+        ('ALIGN', (3, 1), (4, 1), 'CENTER'),  # Heute-Spalten
+        ('ALIGN', (5, 1), (7, 1), 'CENTER'),  # Monat-Spalten
+        ('BOTTOMPADDING', (0, 1), (-1, 1), 6),
+        ('TOPPADDING', (0, 1), (-1, 1), 6),
+        # Daten-Zeilen
+        ('FONTSIZE', (0, 2), (-1, -2), 9),
+        ('ALIGN', (0, 2), (0, -2), 'CENTER'),  # KST
+        ('ALIGN', (1, 2), (1, -2), 'LEFT'),  # Abteilung
+        ('ALIGN', (2, 2), (2, -2), 'CENTER'),  # Stück
+        ('ALIGN', (3, 2), (4, -2), 'RIGHT'),  # Heute
+        ('ALIGN', (5, 2), (7, -2), 'RIGHT'),  # Monat
+        ('ALIGN', (8, 2), (-1, -2), 'CENTER'),  # Ziel/Erfüllung
+        ('BOTTOMPADDING', (0, 2), (-1, -2), 6),
+        ('TOPPADDING', (0, 2), (-1, -2), 6),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
+        ('ROWBACKGROUNDS', (0, 2), (-1, -2), [colors.white, colors.HexColor('#f9f9f9')]),
+        # Gesamt-Zeile
+        ('BACKGROUND', (0, -1), (-1, -1), GRAY_DARK),
+        ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, -1), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, -1), (-1, -1), 8),
+        ('TOPPADDING', (0, -1), (-1, -1), 8),
+    ]
+    
+    abteilungen_table.setStyle(TableStyle(abteilungen_style))
+    elements.append(abteilungen_table)
+    elements.append(Spacer(1, 20))
+    
+    # Alte Bereichs-Tabelle (kompakt, optional - auskommentiert)
+    # bereich_header = ['Bereich', 'Umsatz', 'Einsatz', 'DB1', 'Marge', 'Status']
+    # bereich_data = [bereich_header]
 
     # Benchmarks für Status
     BENCHMARKS = {
@@ -753,91 +886,246 @@ def generate_tek_daily_pdf(data: dict) -> bytes:
         '5-Sonst': {'ziel': 10, 'warnung': 5}
     }
 
-    BEREICH_NAMEN = {
-        '1-NW': 'Neuwagen',
-        '2-GW': 'Gebrauchtwagen',
-        '3-Teile': 'Teile',
-        '4-Lohn': 'Werkstatt',
-        '5-Sonst': 'Sonstige'
-    }
+    # Alte Bereiche-Tabelle entfernt - jetzt verwenden wir abteilungen_data (siehe oben)
 
-    for bereich in data.get('bereiche', []):
-        b_key = bereich.get('bereich', '')
-        b_name = BEREICH_NAMEN.get(b_key, b_key)
-        b_marge = bereich.get('marge', 0)
-
-        # Status-Symbol basierend auf Benchmark
-        benchmark = BENCHMARKS.get(b_key, {'ziel': 10, 'warnung': 5})
-        if b_marge >= benchmark['ziel']:
-            status = '●'  # Grün
-        elif b_marge >= benchmark['warnung']:
-            status = '●'  # Gelb
-        else:
-            status = '●'  # Rot
-
-        bereich_data.append([
-            b_name,
-            format_currency_short(bereich.get('umsatz', 0)),
-            format_currency_short(bereich.get('einsatz', 0)),
-            format_currency_short(bereich.get('db1', 0)),
-            format_percent(b_marge),
-            status
-        ])
-
-    col_widths_bereich = [3.5*cm, 3*cm, 3*cm, 3*cm, 2.3*cm, 2*cm]
-    bereich_table = Table(bereich_data, colWidths=col_widths_bereich)
-
-    # Basis-Style
-    bereich_style = [
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#333333')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-        ('ALIGN', (0, 1), (0, -1), 'LEFT'),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f9f9f9')]),
-    ]
-
-    # Farbe für Status-Spalte pro Zeile
-    for i, bereich in enumerate(data.get('bereiche', []), start=1):
-        b_key = bereich.get('bereich', '')
-        b_marge = bereich.get('marge', 0)
-        benchmark = BENCHMARKS.get(b_key, {'ziel': 10, 'warnung': 5})
-
-        if b_marge >= benchmark['ziel']:
-            color = colors.HexColor('#28a745')  # Grün
-        elif b_marge >= benchmark['warnung']:
-            color = colors.HexColor('#ffc107')  # Gelb
-        else:
-            color = colors.HexColor('#dc3545')  # Rot
-
-        bereich_style.append(('TEXTCOLOR', (-1, i), (-1, i), color))
-        bereich_style.append(('FONTNAME', (-1, i), (-1, i), 'Helvetica-Bold'))
-        bereich_style.append(('FONTSIZE', (-1, i), (-1, i), 16))
-
-    # Modernes Design mit DRIVE-Farben
-    bereich_style[0] = ('BACKGROUND', (0, 0), (-1, 0), DRIVE_BLUE)  # Header Blau
-    for i, bereich in enumerate(data.get('bereiche', []), start=1):
-        b_key = bereich.get('bereich', '')
-        b_marge = bereich.get('marge', 0)
-        benchmark = BENCHMARKS.get(b_key, {'ziel': 10, 'warnung': 5})
-
-        if b_marge >= benchmark['ziel']:
-            color = DRIVE_GREEN  # Grün
-        elif b_marge >= benchmark['warnung']:
-            color = WARNING  # Gelb
-        else:
-            color = DANGER  # Rot
-
-        bereich_style.append(('TEXTCOLOR', (-1, i), (-1, i), color))
-        bereich_style.append(('FONTNAME', (-1, i), (-1, i), 'Helvetica-Bold'))
-        bereich_style.append(('FONTSIZE', (-1, i), (-1, i), 16))
-
-    bereich_table.setStyle(TableStyle(bereich_style))
-    elements.append(bereich_table)
+    # === TAG204: DRILL-DOWNS für Verkauf (NW/GW) ===
+    elements.append(Spacer(1, 30))
+    elements.append(Paragraph("🚗 Verkauf - Drill-Down", section_style))
+    
+    # Helper-Funktionen für Drill-Down APIs
+    def get_absatzwege_drill_down(bereich, firma, standort, monat, jahr):
+        """Holt Absatzwege-Daten via API /api/tek/detail"""
+        import requests
+        try:
+            params = {
+                'bereich': bereich,
+                'firma': firma,
+                'standort': standort,
+                'monat': monat,
+                'jahr': jahr,
+                'ebene': 'gruppen'
+            }
+            response = requests.get('http://127.0.0.1:5000/api/tek/detail', params=params, timeout=30)
+            if response.status_code == 200:
+                data = response.json()
+                return data.get('absatzwege', [])
+        except Exception as e:
+            print(f"⚠️  Fehler beim Abrufen von Absatzwegen: {e}")
+        return []
+    
+    def get_modelle_drill_down(bereich, firma, standort, monat, jahr):
+        """Holt Modell-Daten via API /api/tek/modelle"""
+        import requests
+        try:
+            params = {
+                'bereich': bereich,
+                'firma': firma,
+                'standort': standort,
+                'monat': monat,
+                'jahr': jahr,
+                'gruppierung': 'modell'
+            }
+            response = requests.get('http://127.0.0.1:5000/api/tek/modelle', params=params, timeout=30)
+            if response.status_code == 200:
+                data = response.json()
+                return data.get('modelle', [])
+        except Exception as e:
+            print(f"⚠️  Fehler beim Abrufen von Modellen: {e}")
+        return []
+    
+    # Neuwagen Drill-Down
+    nw = next((b for b in bereiche_sorted if b.get('bereich') == '1-NW'), None)
+    if nw and nw.get('umsatz', 0) > 0:
+        elements.append(Paragraph("📊 Neuwagen - Nach Absatzwegen (Monat kumuliert)", styles['Heading3']))
+        
+        absatzwege_nw = get_absatzwege_drill_down(
+            bereich='1-NW',
+            firma=data.get('firma', '0'),
+            standort=data.get('standort_api', '0'),
+            monat=data.get('monat_num'),
+            jahr=data.get('jahr_num')
+        )
+        
+        if absatzwege_nw:
+            absatzwege_data = [['Absatzweg', 'Stück', 'Erlöse', 'DB1', 'DB1/Stk']]
+            for aw in sorted(absatzwege_nw, key=lambda x: x.get('umsatz', 0), reverse=True):
+                absatzwege_data.append([
+                    aw.get('absatzweg', 'Unbekannt'),
+                    str(aw.get('stueck', 0)),
+                    format_currency_short(aw.get('umsatz', 0)),
+                    format_currency_short(aw.get('db1', 0)),
+                    format_currency_short(aw.get('db1_pro_stueck', 0))
+                ])
+            # Gesamt-Zeile
+            absatzwege_data.append([
+                'GESAMT',
+                str(nw.get('stueck', 0)),
+                format_currency_short(nw.get('umsatz', 0)),
+                format_currency_short(nw.get('db1', 0)),
+                format_currency_short(nw.get('db1_pro_stueck', 0))
+            ])
+            
+            absatzwege_table = Table(absatzwege_data, colWidths=[5*cm, 2*cm, 3*cm, 3*cm, 3*cm])
+            absatzwege_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), DRIVE_BLUE),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+                ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#f9f9f9')]),
+                ('BACKGROUND', (0, -1), (-1, -1), GRAY_DARK),
+                ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
+                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ]))
+            elements.append(absatzwege_table)
+            elements.append(Spacer(1, 15))
+        
+        # Modelle
+        modelle_nw = get_modelle_drill_down(
+            bereich='1-NW',
+            firma=data.get('firma', '0'),
+            standort=data.get('standort_api', '0'),
+            monat=data.get('monat_num'),
+            jahr=data.get('jahr_num')
+        )
+        
+        if modelle_nw:
+            elements.append(Paragraph("📊 Neuwagen - Nach Modellen (Monat kumuliert)", styles['Heading3']))
+            modelle_data = [['Modell', 'Stück', 'Erlöse', 'DB1', 'DB1/Stk']]
+            for m in sorted(modelle_nw, key=lambda x: x.get('umsatz', 0), reverse=True)[:10]:  # Top 10
+                modelle_data.append([
+                    m.get('modell', 'Unbekannt'),
+                    str(m.get('stueck', 0)),
+                    format_currency_short(m.get('umsatz', 0)),
+                    format_currency_short(m.get('db1', 0)),
+                    format_currency_short(m.get('db1_pro_stueck', 0))
+                ])
+            # Gesamt-Zeile
+            modelle_data.append([
+                'GESAMT',
+                str(nw.get('stueck', 0)),
+                format_currency_short(nw.get('umsatz', 0)),
+                format_currency_short(nw.get('db1', 0)),
+                format_currency_short(nw.get('db1_pro_stueck', 0))
+            ])
+            
+            modelle_table = Table(modelle_data, colWidths=[5*cm, 2*cm, 3*cm, 3*cm, 3*cm])
+            modelle_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), DRIVE_BLUE),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+                ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#f9f9f9')]),
+                ('BACKGROUND', (0, -1), (-1, -1), GRAY_DARK),
+                ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
+                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ]))
+            elements.append(modelle_table)
+            elements.append(Spacer(1, 20))
+    
+    # Gebrauchtwagen Drill-Down
+    gw = next((b for b in bereiche_sorted if b.get('bereich') == '2-GW'), None)
+    if gw and gw.get('umsatz', 0) > 0:
+        absatzwege_gw = get_absatzwege_drill_down(
+            bereich='2-GW',
+            firma=data.get('firma', '0'),
+            standort=data.get('standort_api', '0'),
+            monat=data.get('monat_num'),
+            jahr=data.get('jahr_num')
+        )
+        
+        if absatzwege_gw:
+            elements.append(Paragraph("📊 Gebrauchtwagen - Nach Absatzwegen (Monat kumuliert)", styles['Heading3']))
+            absatzwege_data = [['Absatzweg', 'Stück', 'Erlöse', 'DB1', 'DB1/Stk']]
+            for aw in sorted(absatzwege_gw, key=lambda x: x.get('umsatz', 0), reverse=True):
+                absatzwege_data.append([
+                    aw.get('absatzweg', 'Unbekannt'),
+                    str(aw.get('stueck', 0)),
+                    format_currency_short(aw.get('umsatz', 0)),
+                    format_currency_short(aw.get('db1', 0)),
+                    format_currency_short(aw.get('db1_pro_stueck', 0))
+                ])
+            absatzwege_data.append([
+                'GESAMT',
+                str(gw.get('stueck', 0)),
+                format_currency_short(gw.get('umsatz', 0)),
+                format_currency_short(gw.get('db1', 0)),
+                format_currency_short(gw.get('db1_pro_stueck', 0))
+            ])
+            
+            absatzwege_table = Table(absatzwege_data, colWidths=[5*cm, 2*cm, 3*cm, 3*cm, 3*cm])
+            absatzwege_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), DRIVE_BLUE),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+                ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#f9f9f9')]),
+                ('BACKGROUND', (0, -1), (-1, -1), GRAY_DARK),
+                ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
+                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ]))
+            elements.append(absatzwege_table)
+            elements.append(Spacer(1, 15))
+        
+        modelle_gw = get_modelle_drill_down(
+            bereich='2-GW',
+            firma=data.get('firma', '0'),
+            standort=data.get('standort_api', '0'),
+            monat=data.get('monat_num'),
+            jahr=data.get('jahr_num')
+        )
+        
+        if modelle_gw:
+            elements.append(Paragraph("📊 Gebrauchtwagen - Nach Modellen (Monat kumuliert)", styles['Heading3']))
+            modelle_data = [['Modell', 'Stück', 'Erlöse', 'DB1', 'DB1/Stk']]
+            for m in sorted(modelle_gw, key=lambda x: x.get('umsatz', 0), reverse=True)[:10]:  # Top 10
+                modelle_data.append([
+                    m.get('modell', 'Unbekannt'),
+                    str(m.get('stueck', 0)),
+                    format_currency_short(m.get('umsatz', 0)),
+                    format_currency_short(m.get('db1', 0)),
+                    format_currency_short(m.get('db1_pro_stueck', 0))
+                ])
+            modelle_data.append([
+                'GESAMT',
+                str(gw.get('stueck', 0)),
+                format_currency_short(gw.get('umsatz', 0)),
+                format_currency_short(gw.get('db1', 0)),
+                format_currency_short(gw.get('db1_pro_stueck', 0))
+            ])
+            
+            modelle_table = Table(modelle_data, colWidths=[5*cm, 2*cm, 3*cm, 3*cm, 3*cm])
+            modelle_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), DRIVE_BLUE),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+                ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#f9f9f9')]),
+                ('BACKGROUND', (0, -1), (-1, -1), GRAY_DARK),
+                ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
+                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ]))
+            elements.append(modelle_table)
+            elements.append(Spacer(1, 20))
 
     # Footer (modern mit DRIVE Branding)
     elements.append(Spacer(1, 30))

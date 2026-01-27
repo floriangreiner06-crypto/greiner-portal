@@ -1,0 +1,1461 @@
+{% extends 'base.html' %}
+
+{% block title %}Mitarbeiterverwaltung - Greiner DRIVE{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<style>
+    body {
+        background-color: #f5f5f5;
+    }
+    
+    .main-container {
+        display: flex;
+        height: calc(100vh - 60px);
+        margin-top: 20px;
+    }
+    
+    /* Linke Sidebar */
+    .sidebar {
+        width: 350px;
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-right: 20px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    
+    .sidebar-header {
+        padding: 20px;
+        border-bottom: 1px solid #e0e0e0;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        color: white;
+    }
+    
+    .sidebar-header h2 {
+        margin: 0;
+        font-size: 1.3rem;
+    }
+    
+    .sidebar-search {
+        padding: 15px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .sidebar-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 10px 0;
+    }
+    
+    .employee-group {
+        margin-bottom: 10px;
+    }
+    
+    .employee-group-header {
+        padding: 8px 15px;
+        background: #f8f9fa;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-weight: 600;
+        border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .employee-group-header:hover {
+        background: #e9ecef;
+    }
+    
+    .employee-group-header i {
+        transition: transform 0.2s;
+    }
+    
+    .employee-group-header.collapsed i {
+        transform: rotate(-90deg);
+    }
+    
+    .employee-list {
+        display: none;
+    }
+    
+    .employee-list.expanded {
+        display: block;
+    }
+    
+    .employee-item {
+        padding: 10px 15px 10px 35px;
+        cursor: pointer;
+        border-bottom: 1px solid #f0f0f0;
+        transition: background 0.2s;
+    }
+    
+    .employee-item:hover {
+        background: #f8f9fa;
+    }
+    
+    .employee-item.active {
+        background: #fff3cd;
+        font-weight: 600;
+    }
+    
+    .employee-item-name {
+        font-size: 0.95rem;
+    }
+    
+    .sidebar-footer {
+        padding: 15px;
+        border-top: 1px solid #e0e0e0;
+        background: #f8f9fa;
+        text-align: center;
+        font-size: 0.9rem;
+        color: #666;
+    }
+    
+    /* Rechte Hauptansicht */
+    .main-content {
+        flex: 1;
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    
+    .main-header {
+        padding: 20px 30px;
+        border-bottom: 1px solid #e0e0e0;
+        background: white;
+    }
+    
+    .main-header-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+    
+    .main-header-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #333;
+    }
+    
+    .main-header-actions {
+        display: flex;
+        gap: 10px;
+    }
+    
+    .main-tabs {
+        border-bottom: 2px solid #e0e0e0;
+        padding: 0 30px;
+        background: white;
+    }
+    
+    .main-tabs .nav-link {
+        border: none;
+        border-bottom: 3px solid transparent;
+        color: #666;
+        padding: 15px 20px;
+        margin-right: 5px;
+        transition: all 0.2s;
+    }
+    
+    .main-tabs .nav-link:hover {
+        color: #007bff;
+        border-bottom-color: #007bff;
+    }
+    
+    .main-tabs .nav-link.active {
+        color: #007bff;
+        border-bottom-color: #007bff;
+        font-weight: 600;
+    }
+    
+    .tab-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 30px;
+    }
+    
+    .tab-pane {
+        display: none;
+    }
+    
+    .tab-pane.active {
+        display: block;
+    }
+    
+    .form-section {
+        margin-bottom: 30px;
+    }
+    
+    .form-section-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-bottom: 15px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #e0e0e0;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #999;
+    }
+    
+    .empty-state i {
+        font-size: 4rem;
+        margin-bottom: 20px;
+        opacity: 0.3;
+    }
+    
+    .btn-save {
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        padding: 15px 30px;
+        font-size: 1.1rem;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        z-index: 1000;
+        display: none;
+    }
+    
+    .btn-save.show {
+        display: block;
+    }
+    
+    .table-actions {
+        display: flex;
+        gap: 5px;
+    }
+    
+    .table-actions .btn {
+        padding: 2px 8px;
+        font-size: 0.85rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid main-container">
+    <!-- Linke Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h2><i class="fas fa-users"></i> Digitale Personalakte</h2>
+            <small>Mitarbeiter</small>
+        </div>
+        
+        <div class="sidebar-search">
+            <input type="text" class="form-control form-control-sm" id="searchEmployees" placeholder="Suche...">
+            <div class="mt-2 d-flex gap-2">
+                <button class="btn btn-sm btn-outline-secondary" id="btnExpandAll">
+                    <i class="fas fa-chevron-down"></i> Aufklappen
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" id="btnCollapseAll">
+                    <i class="fas fa-chevron-up"></i> Zuklappen
+                </button>
+            </div>
+        </div>
+        
+        <div class="sidebar-content" id="employeeList">
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary"></div>
+                <p class="mt-2 text-muted">Daten werden geladen...</p>
+            </div>
+        </div>
+        
+        <div class="sidebar-footer">
+            <span id="employeeCount">0 aktive Mitarbeiter</span>
+        </div>
+    </div>
+    
+    <!-- Rechte Hauptansicht -->
+    <div class="main-content">
+        <div class="main-header">
+            <div class="main-header-top">
+                <div>
+                    <h3 class="main-header-title" id="employeeName">Kein Datensatz gewählt!</h3>
+                    <small class="text-muted" id="employeeDepartment">Bitte wählen Sie einen Datensatz aus.</small>
+                </div>
+                <div class="main-header-actions">
+                    <button class="btn btn-success" id="btnNewEmployee" style="display:none;">
+                        <i class="fas fa-user-plus"></i> Neuen Mitarbeiter anlegen
+                    </button>
+                    <button class="btn btn-outline-secondary" id="btnSettings" style="display:none;">
+                        <i class="fas fa-cog"></i> Anwend.
+                    </button>
+                    <button class="btn btn-outline-secondary" id="btnReports" style="display:none;">
+                        <i class="fas fa-download"></i> Reporte
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="main-tabs" id="mainTabs" style="display:none;">
+            <ul class="nav nav-tabs">
+                <li class="nav-item">
+                    <a class="nav-link active" data-tab="deckblatt">
+                        <i class="fas fa-id-card"></i> Deckblatt
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-tab="adressdaten">
+                        <i class="fas fa-address-book"></i> Adressdaten
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-tab="mitarbeiterdaten">
+                        <i class="fas fa-user-tie"></i> Mitarbeiterdaten
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-tab="moduldaten">
+                        <i class="fas fa-puzzle-piece"></i> Moduldaten
+                    </a>
+                </li>
+            </ul>
+        </div>
+        
+        <div class="tab-content" id="tabContent">
+            <div class="empty-state">
+                <i class="fas fa-info-circle"></i>
+                <h4>Kein Datensatz gewählt!</h4>
+                <p>Bitte wählen Sie einen Datensatz aus.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Speichern Button -->
+<button class="btn btn-success btn-lg btn-save" id="btnSave">
+    <i class="fas fa-save"></i> Speichern
+</button>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+/**
+ * MITARBEITERVERWALTUNG - TAG 213
+ * Umfassende Mitarbeiterverwaltung nach Muster "Digitale Personalakte"
+ */
+
+const API_BASE = '/api/employee-management';
+let allEmployees = [];
+let currentEmployeeId = null;
+let currentEmployeeData = null;
+let hasUnsavedChanges = false;
+
+// ============================================================================
+// INIT
+// ============================================================================
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🔧 Mitarbeiterverwaltung wird geladen...');
+    loadEmployees();
+    setupEventListeners();
+});
+
+// ============================================================================
+// EVENT LISTENERS
+// ============================================================================
+function setupEventListeners() {
+    // Suche
+    document.getElementById('searchEmployees').addEventListener('input', filterEmployees);
+    
+    // Aufklappen/Zuklappen
+    document.getElementById('btnExpandAll').addEventListener('click', () => expandAllGroups(true));
+    document.getElementById('btnCollapseAll').addEventListener('click', () => expandAllGroups(false));
+    
+    // Tabs
+    document.querySelectorAll('[data-tab]').forEach(tab => {
+        tab.addEventListener('click', (e) => {
+            e.preventDefault();
+            switchTab(tab.dataset.tab);
+        });
+    });
+    
+    // Speichern
+    document.getElementById('btnSave').addEventListener('click', saveEmployee);
+    
+    // Warnung bei ungespeicherten Änderungen
+    window.addEventListener('beforeunload', (e) => {
+        if (hasUnsavedChanges) {
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    });
+}
+
+// ============================================================================
+// DATEN LADEN
+// ============================================================================
+async function loadEmployees() {
+    try {
+        const response = await fetch(`${API_BASE}/employees`);
+        const data = await response.json();
+        
+        if (data.success) {
+            allEmployees = data.employees;
+            renderEmployeeList();
+            document.getElementById('employeeCount').textContent = `${data.count} aktive Mitarbeiter`;
+        } else {
+            showError('Fehler beim Laden der Mitarbeiter: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        showError('Verbindungsfehler');
+    }
+}
+
+// ============================================================================
+// MITARBEITERLISTE RENDERN
+// ============================================================================
+function renderEmployeeList() {
+    const container = document.getElementById('employeeList');
+    
+    // Gruppiere nach Abteilung
+    const grouped = {};
+    allEmployees.forEach(emp => {
+        const dept = emp.department || 'Ohne Abteilung';
+        if (!grouped[dept]) {
+            grouped[dept] = [];
+        }
+        grouped[dept].push(emp);
+    });
+    
+    // Sortiere Abteilungen
+    const sortedDepts = Object.keys(grouped).sort();
+    
+    let html = '';
+    sortedDepts.forEach(dept => {
+        const employees = grouped[dept].sort((a, b) => a.name.localeCompare(b.name));
+        const deptId = dept.replace(/[^a-zA-Z0-9]/g, '_');
+        
+        html += `
+            <div class="employee-group">
+                <div class="employee-group-header" data-group="${deptId}">
+                    <span>${dept}</span>
+                    <i class="fas fa-chevron-down"></i>
+                </div>
+                <div class="employee-list expanded" id="group_${deptId}">
+                    ${employees.map(emp => `
+                        <div class="employee-item" data-id="${emp.id}" onclick="selectEmployee(${emp.id})">
+                            <div class="employee-item-name">${emp.name}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+    
+    // Event Listeners für Gruppen-Header
+    document.querySelectorAll('.employee-group-header').forEach(header => {
+        header.addEventListener('click', (e) => {
+            if (e.target.tagName !== 'I') {
+                toggleGroup(header.dataset.group);
+            }
+        });
+    });
+}
+
+// ============================================================================
+// MITARBEITER AUSWÄHLEN
+// ============================================================================
+async function selectEmployee(employeeId) {
+    if (hasUnsavedChanges) {
+        if (!confirm('Ungespeicherte Änderungen verwerfen?')) {
+            return;
+        }
+        hasUnsavedChanges = false;
+    }
+    
+    currentEmployeeId = employeeId;
+    
+    // Markiere in Liste
+    document.querySelectorAll('.employee-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    document.querySelector(`.employee-item[data-id="${employeeId}"]`)?.classList.add('active');
+    
+    // Lade Mitarbeiterdaten
+    try {
+        const response = await fetch(`${API_BASE}/employee/${employeeId}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            currentEmployeeData = data.employee;
+            renderEmployeeDetail(data.employee);
+        } else {
+            showError('Fehler beim Laden: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        showError('Verbindungsfehler');
+    }
+}
+
+// ============================================================================
+// MITARBEITER-DETAIL RENDERN
+// ============================================================================
+function renderEmployeeDetail(employee) {
+    // Header aktualisieren
+    document.getElementById('employeeName').textContent = `${employee.last_name} ${employee.first_name}`;
+    document.getElementById('employeeDepartment').textContent = employee.department || 'Keine Abteilung';
+    
+    // Tabs anzeigen
+    document.getElementById('mainTabs').style.display = 'block';
+    document.querySelectorAll('.main-header-actions button').forEach(btn => btn.style.display = 'inline-block');
+    
+    // Tab-Content rendern
+    renderTabDeckblatt(employee);
+    renderTabAdressdaten(employee);
+    renderTabMitarbeiterdaten(employee);
+    renderTabModuldaten(employee);
+    
+    // Ersten Tab aktivieren
+    switchTab('deckblatt');
+}
+
+// ============================================================================
+// TAB-FUNKTIONEN
+// ============================================================================
+function switchTab(tabName) {
+    // Tab-Buttons
+    document.querySelectorAll('.nav-link').forEach(link => {
+        link.classList.remove('active');
+    });
+    document.querySelector(`[data-tab="${tabName}"]`)?.classList.add('active');
+    
+    // Tab-Content
+    document.querySelectorAll('.tab-pane').forEach(pane => {
+        pane.classList.remove('active');
+    });
+    const pane = document.getElementById(`tab_${tabName}`);
+    if (pane) {
+        pane.classList.add('active');
+    }
+}
+
+function renderTabDeckblatt(employee) {
+    const container = document.getElementById('tabContent');
+    if (!document.getElementById('tab_deckblatt')) {
+        const pane = document.createElement('div');
+        pane.id = 'tab_deckblatt';
+        pane.className = 'tab-pane';
+        container.appendChild(pane);
+    }
+    
+    const pane = document.getElementById('tab_deckblatt');
+    pane.innerHTML = `
+        <div class="form-section">
+            <div class="form-section-title d-flex justify-content-between align-items-center">
+                <span>Grunddaten</span>
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-primary" onclick="syncPreview()" title="Vorschau der Sync-Änderungen">
+                        <i class="fas fa-eye"></i> Sync-Vorschau
+                    </button>
+                    <button class="btn btn-outline-success" onclick="syncFromLDAP()" title="Aus LDAP synchronisieren">
+                        <i class="fas fa-sync"></i> LDAP
+                    </button>
+                    <button class="btn btn-outline-info" onclick="syncFromLocosoft()" title="Aus Locosoft synchronisieren">
+                        <i class="fas fa-sync"></i> Locosoft
+                    </button>
+                    <button class="btn btn-success" onclick="syncFull()" title="Vollständig synchronisieren">
+                        <i class="fas fa-sync-alt"></i> Vollständig
+                    </button>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Firma</label>
+                        <input type="text" class="form-control" id="deckblatt_company" value="${employee.company || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Abteilung</label>
+                        <input type="text" class="form-control" id="deckblatt_department" value="${employee.department_name || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Gruppe</label>
+                        <input type="text" class="form-control" id="deckblatt_group" value="" onchange="markChanged()">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Letzter Login</label>
+                        <input type="text" class="form-control" value="Nicht verfügbar" disabled>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Eintritt</label>
+                        <input type="date" class="form-control" id="deckblatt_entry_date" value="${employee.entry_date || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Betriebszugehörigkeit</label>
+                        <input type="text" class="form-control" value="${calculateSeniority(employee.entry_date)}" disabled>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Geburtstag</label>
+                        <input type="date" class="form-control" id="deckblatt_birthday" value="${employee.birthday || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Alter</label>
+                        <input type="text" class="form-control" value="${calculateAge(employee.birthday)}" disabled>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderTabAdressdaten(employee) {
+    const container = document.getElementById('tabContent');
+    if (!document.getElementById('tab_adressdaten')) {
+        const pane = document.createElement('div');
+        pane.id = 'tab_adressdaten';
+        pane.className = 'tab-pane';
+        container.appendChild(pane);
+    }
+    
+    const pane = document.getElementById('tab_adressdaten');
+    pane.innerHTML = `
+        <div class="form-section">
+            <div class="form-section-title">Kontakt (privat)</div>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Straße / HausNr.</label>
+                        <input type="text" class="form-control" id="adressdaten_private_street" value="${employee.private_street || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Land</label>
+                        <input type="text" class="form-control" id="adressdaten_private_country" value="${employee.private_country || 'Deutschland'}" onchange="markChanged()">
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label class="form-label">PLZ</label>
+                        <input type="text" class="form-control" id="adressdaten_private_postal_code" value="${employee.private_postal_code || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+                <div class="col-md-8">
+                    <div class="mb-3">
+                        <label class="form-label">Ort</label>
+                        <input type="text" class="form-control" id="adressdaten_private_city" value="${employee.private_city || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label class="form-label">Telefon</label>
+                        <input type="text" class="form-control" id="adressdaten_private_phone" value="${employee.private_phone || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label class="form-label">Mobil</label>
+                        <input type="text" class="form-control" id="adressdaten_private_mobile" value="${employee.private_mobile || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label class="form-label">E-Mail</label>
+                        <input type="email" class="form-control" id="adressdaten_private_email" value="${employee.private_email || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="form-section">
+            <div class="form-section-title">Kontakt (Firma)</div>
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label class="form-label">Personal-Nr. 1</label>
+                        <input type="text" class="form-control" id="adressdaten_personal_nr_1" value="${employee.personal_nr_1 || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label class="form-label">Personal-Nr. 2</label>
+                        <input type="text" class="form-control" id="adressdaten_personal_nr_2" value="${employee.personal_nr_2 || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label class="form-label">Telefon</label>
+                        <input type="text" class="form-control" id="adressdaten_company_phone" value="${employee.company_phone || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label class="form-label">Mobil</label>
+                        <input type="text" class="form-control" id="adressdaten_company_mobile" value="${employee.company_mobile || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label class="form-label">E-Mail</label>
+                        <input type="email" class="form-control" id="adressdaten_company_email" value="${employee.company_email || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderTabMitarbeiterdaten(employee) {
+    const container = document.getElementById('tabContent');
+    if (!document.getElementById('tab_mitarbeiterdaten')) {
+        const pane = document.createElement('div');
+        pane.id = 'tab_mitarbeiterdaten';
+        pane.className = 'tab-pane';
+        container.appendChild(pane);
+    }
+    
+    const pane = document.getElementById('tab_mitarbeiterdaten');
+    pane.innerHTML = `
+        <ul class="nav nav-tabs mb-3">
+            <li class="nav-item">
+                <a class="nav-link active" data-subtab="vertrag">Vertrag</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" data-subtab="arbeitszeitmodelle">Arbeitszeitmodell</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" data-subtab="ausnahmen">Ausnahmen</a>
+            </li>
+        </ul>
+        
+        <div id="subtab_vertrag" class="subtab-content">
+            <div class="form-section">
+                <div class="form-section-title">Einsatzbereich</div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Firma</label>
+                            <input type="text" class="form-control" id="vertrag_company" value="${employee.company || ''}" onchange="markChanged()">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Abteilung</label>
+                            <input type="text" class="form-control" id="vertrag_department" value="${employee.department_name || ''}" onchange="markChanged()">
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Eingest. als</label>
+                            <input type="text" class="form-control" id="vertrag_hired_as" value="${employee.hired_as || ''}" onchange="markChanged()">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Tätigkeit</label>
+                            <input type="text" class="form-control" id="vertrag_activity" value="${employee.activity || ''}" onchange="markChanged()">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <div class="form-section-title">Betriebszugehörigkeit</div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Eintritt</label>
+                            <input type="date" class="form-control" id="vertrag_entry_date" value="${employee.entry_date || ''}" onchange="markChanged()">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Ende Probezeit</label>
+                            <input type="date" class="form-control" id="vertrag_probation_end" value="${employee.probation_end || ''}" onchange="markChanged()">
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Befristet bis</label>
+                            <input type="date" class="form-control" id="vertrag_limited_until" value="${employee.limited_until || ''}" onchange="markChanged()">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Austritt</label>
+                            <input type="date" class="form-control" id="vertrag_exit_date" value="${employee.exit_date || ''}" onchange="markChanged()">
+                        </div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="vertrag_deactivate_after_exit" ${employee.deactivate_after_exit ? 'checked' : ''} onchange="markChanged()">
+                        <label class="form-check-label" for="vertrag_deactivate_after_exit">
+                            Nach Austritt deaktivieren
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <div class="form-section-title">Ferien und Feiertage</div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Land</label>
+                            <select class="form-select" id="vertrag_country" onchange="markChanged()">
+                                <option value="Deutschland" ${employee.country === 'Deutschland' ? 'selected' : ''}>Deutschland</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Bundesland</label>
+                            <select class="form-select" id="vertrag_federal_state" onchange="markChanged()">
+                                <option value="Bayern" ${employee.federal_state === 'Bayern' ? 'selected' : ''}>Bayern</option>
+                                <option value="Rheinland-Pfalz" ${employee.federal_state === 'Rheinland-Pfalz' ? 'selected' : ''}>Rheinland-Pfalz</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <div class="form-section-title">Kündigungsfristen</div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Frist AG</label>
+                            <input type="text" class="form-control" id="vertrag_notice_period_employer" value="${employee.notice_period_employer || ''}" onchange="markChanged()">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Frist AN</label>
+                            <input type="text" class="form-control" id="vertrag_notice_period_employee" value="${employee.notice_period_employee || ''}" onchange="markChanged()">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <div class="form-section-title">Arbeitszeitmodell</div>
+                <div id="workingTimeModelsTable">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Startdatum</th>
+                                <th>Arbeitszeit</th>
+                                <th>Wochenr.</th>
+                                <th>Std.Lohn</th>
+                                <th>Bruttolohn</th>
+                                <th>Beschreibung</th>
+                                <th>Aktion</th>
+                            </tr>
+                        </thead>
+                        <tbody id="workingTimeModelsBody">
+                            ${renderWorkingTimeModels(employee.working_time_models || [])}
+                        </tbody>
+                    </table>
+                    <button class="btn btn-success btn-sm" onclick="addWorkingTimeModel()">
+                        <i class="fas fa-plus"></i> Neuen Datensatz hinzufügen
+                    </button>
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <div class="form-section-title">Ausnahmen der Arbeitszeitmodelle</div>
+                <div id="exceptionsTable">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Von</th>
+                                <th>Bis</th>
+                                <th>Typ</th>
+                                <th>Bemerkung</th>
+                                <th>Aktion</th>
+                            </tr>
+                        </thead>
+                        <tbody id="exceptionsBody">
+                            ${renderExceptions(employee.exceptions || [])}
+                        </tbody>
+                    </table>
+                    <button class="btn btn-success btn-sm" onclick="addException()">
+                        <i class="fas fa-plus"></i> Neue Ausnahme hinzufügen
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Sub-Tab Event Listeners
+    document.querySelectorAll('[data-subtab]').forEach(tab => {
+        tab.addEventListener('click', (e) => {
+            e.preventDefault();
+            switchSubTab(tab.dataset.subtab);
+        });
+    });
+}
+
+function renderTabModuldaten(employee) {
+    const container = document.getElementById('tabContent');
+    if (!document.getElementById('tab_moduldaten')) {
+        const pane = document.createElement('div');
+        pane.id = 'tab_moduldaten';
+        pane.className = 'tab-pane';
+        container.appendChild(pane);
+    }
+    
+    const settings = employee.vacation_settings || {};
+    
+    const pane = document.getElementById('tab_moduldaten');
+    pane.innerHTML = `
+        <ul class="nav nav-tabs mb-3">
+            <li class="nav-item">
+                <a class="nav-link active" data-subtab="urlaubsplaner">Urlaubsplaner</a>
+            </li>
+        </ul>
+        
+        <div id="subtab_urlaubsplaner" class="subtab-content">
+            <div class="form-section">
+                <div class="form-section-title">Einstellungen</div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="settings_show_in_planner" ${settings.show_in_planner !== false ? 'checked' : ''} onchange="markChanged()">
+                                <label class="form-check-label" for="settings_show_in_planner">
+                                    Im Urlaubsplaner anzeigen
+                                </label>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="settings_show_birthday" ${settings.show_birthday !== false ? 'checked' : ''} onchange="markChanged()">
+                                <label class="form-check-label" for="settings_show_birthday">
+                                    Geburtstag anzeigen
+                                </label>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="settings_vacation_expires" ${settings.vacation_expires ? 'checked' : ''} onchange="markChanged()">
+                                <label class="form-check-label" for="settings_vacation_expires">
+                                    Urlaub verfällt nicht
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Max. Übertrag</label>
+                            <input type="number" step="0.1" class="form-control" id="settings_max_carry_over" value="${settings.max_carry_over || 999.0}" onchange="markChanged()">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Url. WE. Grenze</label>
+                            <input type="number" class="form-control" id="settings_weekend_limit" value="${settings.weekend_limit || 0}" onchange="markChanged()">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Max. Urlaubslänge</label>
+                            <input type="number" class="form-control" id="settings_max_vacation_length" value="${settings.max_vacation_length || 14}" onchange="markChanged()">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <div class="form-section-title">Urlaubsanspruch</div>
+                <div class="mb-3">
+                    <label class="form-label">Urlaubsanspruch</label>
+                    <div class="d-flex align-items-center gap-2">
+                        <input type="text" class="form-control" value="27,0 Tage" disabled>
+                        <button class="btn btn-sm btn-outline-primary">
+                            <i class="fas fa-search"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary">
+                            <i class="fas fa-external-link-alt"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="settings_edit_adjustments">
+                        <label class="form-check-label" for="settings_edit_adjustments">
+                            Urlaubsanpassungen bearbeiten
+                        </label>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Berechnung der Urlaubswertung</label>
+                    <select class="form-select" id="settings_calculation_method" onchange="markChanged()">
+                        <option value="standard" ${settings.calculation_method === 'standard' ? 'selected' : ''}>Standard (Wertung an Arbeitstagen)</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <div class="form-section-title">Eintragungsfreigabe</div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Eintragen von</label>
+                            <input type="date" class="form-control" id="settings_entry_from" value="${settings.entry_from || ''}" onchange="markChanged()">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Eintragen bis</label>
+                            <input type="date" class="form-control" id="settings_entry_until" value="${settings.entry_until || ''}" onchange="markChanged()">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <div class="form-section-title">Zeiten ohne Urlaubsanspruch</div>
+                <div id="periodsWithoutVacationTable">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Von</th>
+                                <th>Bis</th>
+                                <th>Typ</th>
+                                <th>Bezeichnung</th>
+                                <th>Aktion</th>
+                            </tr>
+                        </thead>
+                        <tbody id="periodsWithoutVacationBody">
+                            ${renderPeriodsWithoutVacation(employee.periods_without_vacation || [])}
+                        </tbody>
+                    </table>
+                    <button class="btn btn-success btn-sm" onclick="addPeriodWithoutVacation()">
+                        <i class="fas fa-plus"></i> Neuen Zeitraum hinzufügen
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// ============================================================================
+// HELPER-FUNKTIONEN
+// ============================================================================
+function renderWorkingTimeModels(models) {
+    if (models.length === 0) {
+        return '<tr><td colspan="7" class="text-center text-muted">Keine Daten vorhanden!</td></tr>';
+    }
+    return models.map(model => `
+        <tr>
+            <td>${formatDate(model.start_date)}</td>
+            <td>${model.hours_per_week ? `Ø ${model.hours_per_week} pro Woche` : '-'}</td>
+            <td>${model.working_days_per_week || '-'}</td>
+            <td>${model.hourly_wage || '-'}</td>
+            <td>${model.gross_wage || '-'}</td>
+            <td>${model.description || ''}</td>
+            <td>
+                <div class="table-actions">
+                    <button class="btn btn-sm btn-outline-primary" onclick="editWorkingTimeModel(${model.id})">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteWorkingTimeModel(${model.id})">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function renderExceptions(exceptions) {
+    if (exceptions.length === 0) {
+        return '<tr><td colspan="5" class="text-center text-muted">Keine Daten vorhanden!</td></tr>';
+    }
+    return exceptions.map(exception => `
+        <tr>
+            <td>${formatDate(exception.from_date)}</td>
+            <td>${formatDate(exception.to_date)}</td>
+            <td>${exception.exception_type}</td>
+            <td>${exception.description || ''}</td>
+            <td>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteException(${exception.id})">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function renderPeriodsWithoutVacation(periods) {
+    if (periods.length === 0) {
+        return '<tr><td colspan="5" class="text-center text-muted">Keine Daten vorhanden!</td></tr>';
+    }
+    return periods.map(period => `
+        <tr>
+            <td>${formatDate(period.from_date)}</td>
+            <td>${formatDate(period.to_date)}</td>
+            <td>${period.period_type}</td>
+            <td>${period.description || ''}</td>
+            <td>
+                <button class="btn btn-sm btn-outline-danger" onclick="deletePeriodWithoutVacation(${period.id})">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('de-DE');
+}
+
+function calculateSeniority(entryDate) {
+    if (!entryDate) return '-';
+    const entry = new Date(entryDate);
+    const now = new Date();
+    const years = now.getFullYear() - entry.getFullYear();
+    const months = now.getMonth() - entry.getMonth();
+    return `${years} Jahre und ${months} Monate`;
+}
+
+function calculateAge(birthday) {
+    if (!birthday) return '-';
+    const birth = new Date(birthday);
+    const now = new Date();
+    return now.getFullYear() - birth.getFullYear();
+}
+
+function filterEmployees() {
+    const searchTerm = document.getElementById('searchEmployees').value.toLowerCase();
+    document.querySelectorAll('.employee-item').forEach(item => {
+        const name = item.textContent.toLowerCase();
+        item.style.display = name.includes(searchTerm) ? 'block' : 'none';
+    });
+}
+
+function toggleGroup(groupId) {
+    const list = document.getElementById(`group_${groupId}`);
+    const header = document.querySelector(`[data-group="${groupId}"]`);
+    list.classList.toggle('expanded');
+    header.classList.toggle('collapsed');
+}
+
+function expandAllGroups(expand) {
+    document.querySelectorAll('.employee-list').forEach(list => {
+        if (expand) {
+            list.classList.add('expanded');
+        } else {
+            list.classList.remove('expanded');
+        }
+    });
+    document.querySelectorAll('.employee-group-header').forEach(header => {
+        if (expand) {
+            header.classList.remove('collapsed');
+        } else {
+            header.classList.add('collapsed');
+        }
+    });
+}
+
+function switchSubTab(subTabName) {
+    document.querySelectorAll('[data-subtab]').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    document.querySelector(`[data-subtab="${subTabName}"]`)?.classList.add('active');
+    
+    document.querySelectorAll('.subtab-content').forEach(content => {
+        content.style.display = 'none';
+    });
+    document.getElementById(`subtab_${subTabName}`).style.display = 'block';
+}
+
+function markChanged() {
+    hasUnsavedChanges = true;
+    document.getElementById('btnSave').classList.add('show');
+}
+
+// ============================================================================
+// SPEICHERN
+// ============================================================================
+async function saveEmployee() {
+    if (!currentEmployeeId) return;
+    
+    const data = collectFormData();
+    
+    try {
+        const response = await fetch(`${API_BASE}/employee/${currentEmployeeId}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            hasUnsavedChanges = false;
+            document.getElementById('btnSave').classList.remove('show');
+            alert('Änderungen gespeichert!');
+            // Reload employee data
+            selectEmployee(currentEmployeeId);
+        } else {
+            alert('Fehler beim Speichern: ' + result.error);
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Verbindungsfehler');
+    }
+}
+
+function collectFormData() {
+    const data = {};
+    
+    // Deckblatt
+    data.company = document.getElementById('deckblatt_company')?.value || null;
+    data.department_name = document.getElementById('deckblatt_department')?.value || null;
+    data.entry_date = document.getElementById('deckblatt_entry_date')?.value || null;
+    data.birthday = document.getElementById('deckblatt_birthday')?.value || null;
+    
+    // Adressdaten
+    data.private_street = document.getElementById('adressdaten_private_street')?.value || null;
+    data.private_city = document.getElementById('adressdaten_private_city')?.value || null;
+    data.private_postal_code = document.getElementById('adressdaten_private_postal_code')?.value || null;
+    data.private_country = document.getElementById('adressdaten_private_country')?.value || null;
+    data.private_phone = document.getElementById('adressdaten_private_phone')?.value || null;
+    data.private_mobile = document.getElementById('adressdaten_private_mobile')?.value || null;
+    data.private_email = document.getElementById('adressdaten_private_email')?.value || null;
+    data.personal_nr_1 = document.getElementById('adressdaten_personal_nr_1')?.value || null;
+    data.personal_nr_2 = document.getElementById('adressdaten_personal_nr_2')?.value || null;
+    data.company_phone = document.getElementById('adressdaten_company_phone')?.value || null;
+    data.company_mobile = document.getElementById('adressdaten_company_mobile')?.value || null;
+    data.company_email = document.getElementById('adressdaten_company_email')?.value || null;
+    
+    // Vertrag
+    data.hired_as = document.getElementById('vertrag_hired_as')?.value || null;
+    data.activity = document.getElementById('vertrag_activity')?.value || null;
+    data.probation_end = document.getElementById('vertrag_probation_end')?.value || null;
+    data.limited_until = document.getElementById('vertrag_limited_until')?.value || null;
+    data.exit_date = document.getElementById('vertrag_exit_date')?.value || null;
+    data.deactivate_after_exit = document.getElementById('vertrag_deactivate_after_exit')?.checked || false;
+    data.country = document.getElementById('vertrag_country')?.value || null;
+    data.federal_state = document.getElementById('vertrag_federal_state')?.value || null;
+    data.notice_period_employer = document.getElementById('vertrag_notice_period_employer')?.value || null;
+    data.notice_period_employee = document.getElementById('vertrag_notice_period_employee')?.value || null;
+    
+    return data;
+}
+
+function showError(message) {
+    alert(message); // TODO: Besseres Error-Handling
+}
+
+// ============================================================================
+// SYNC-FUNKTIONEN
+// ============================================================================
+
+async function syncPreview() {
+    if (!currentEmployeeId) return;
+    
+    try {
+        const response = await fetch(`${API_BASE}/employee/${currentEmployeeId}/sync-preview`);
+        const data = await response.json();
+        
+        if (data.success) {
+            showSyncPreviewModal(data);
+        } else {
+            alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Verbindungsfehler');
+    }
+}
+
+async function syncFromLDAP(overwrite = false) {
+    if (!currentEmployeeId) return;
+    
+    if (!confirm(`Daten aus LDAP synchronisieren?${overwrite ? '\n\nACHTUNG: Vorhandene Daten werden überschrieben!' : '\n\nNur leere Felder werden gefüllt.'}`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/employee/${currentEmployeeId}/sync-from-ldap`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({overwrite: overwrite})
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert(`✅ LDAP-Sync erfolgreich!\n\n${data.count || 0} Felder aktualisiert.`);
+            // Reload employee data
+            selectEmployee(currentEmployeeId);
+        } else {
+            alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Verbindungsfehler');
+    }
+}
+
+async function syncFromLocosoft(overwrite = false) {
+    if (!currentEmployeeId) return;
+    
+    if (!confirm(`Daten aus Locosoft synchronisieren?${overwrite ? '\n\nACHTUNG: Vorhandene Daten werden überschrieben!' : '\n\nNur leere Felder werden gefüllt.'}`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/employee/${currentEmployeeId}/sync-from-locosoft`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({overwrite: overwrite})
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert(`✅ Locosoft-Sync erfolgreich!\n\n${data.count || 0} Felder aktualisiert.`);
+            // Reload employee data
+            selectEmployee(currentEmployeeId);
+        } else {
+            alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Verbindungsfehler');
+    }
+}
+
+async function syncFull(overwrite = false) {
+    if (!currentEmployeeId) return;
+    
+    if (!confirm(`Vollständig synchronisieren (LDAP + Locosoft)?${overwrite ? '\n\nACHTUNG: Vorhandene Daten werden überschrieben!' : '\n\nNur leere Felder werden gefüllt.'}`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/employee/${currentEmployeeId}/sync-full`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({overwrite: overwrite})
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            const ldapCount = Object.keys(data.ldap_changes || {}).length;
+            const locoCount = Object.keys(data.locosoft_changes || {}).length;
+            alert(`✅ Vollständiger Sync erfolgreich!\n\nLDAP: ${ldapCount} Felder\nLocosoft: ${locoCount} Felder`);
+            // Reload employee data
+            selectEmployee(currentEmployeeId);
+        } else {
+            alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Verbindungsfehler');
+    }
+}
+
+function showSyncPreviewModal(data) {
+    let html = '<div class="modal fade" id="syncPreviewModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">';
+    html += '<div class="modal-header"><h5 class="modal-title">Sync-Vorschau</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>';
+    html += '<div class="modal-body">';
+    
+    if (data.ldap_username) {
+        html += `<h6>LDAP (${data.ldap_username})</h6>`;
+        if (Object.keys(data.ldap_changes || {}).length > 0) {
+            html += '<table class="table table-sm"><thead><tr><th>Feld</th><th>Alt</th><th>Neu</th></tr></thead><tbody>';
+            for (const [field, change] of Object.entries(data.ldap_changes)) {
+                html += `<tr><td><strong>${field}</strong></td><td>${change.old || '-'}</td><td class="text-success">${change.new}</td></tr>`;
+            }
+            html += '</tbody></table>';
+        } else {
+            html += '<p class="text-muted">Keine Änderungen</p>';
+        }
+    } else {
+        html += '<p class="text-muted">Kein LDAP-Username vorhanden</p>';
+    }
+    
+    html += '<hr>';
+    
+    if (data.locosoft_id) {
+        html += `<h6>Locosoft (ID: ${data.locosoft_id})</h6>`;
+        if (Object.keys(data.locosoft_changes || {}).length > 0) {
+            html += '<table class="table table-sm"><thead><tr><th>Feld</th><th>Alt</th><th>Neu</th></tr></thead><tbody>';
+            for (const [field, change] of Object.entries(data.locosoft_changes)) {
+                html += `<tr><td><strong>${field}</strong></td><td>${change.old || '-'}</td><td class="text-success">${change.new}</td></tr>`;
+            }
+            html += '</tbody></table>';
+        } else {
+            html += '<p class="text-muted">Keine Änderungen</p>';
+        }
+    } else {
+        html += '<p class="text-muted">Keine Locosoft-ID vorhanden</p>';
+    }
+    
+    html += '</div>';
+    html += '<div class="modal-footer">';
+    html += '<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>';
+    html += '<button type="button" class="btn btn-primary" onclick="syncFull(false); bootstrap.Modal.getInstance(document.getElementById(\'syncPreviewModal\')).hide();">Synchronisieren (nur leere Felder)</button>';
+    html += '<button type="button" class="btn btn-warning" onclick="syncFull(true); bootstrap.Modal.getInstance(document.getElementById(\'syncPreviewModal\')).hide();">Synchronisieren (überschreiben)</button>';
+    html += '</div></div></div></div>';
+    
+    // Entferne existierendes Modal falls vorhanden
+    const existing = document.getElementById('syncPreviewModal');
+    if (existing) existing.remove();
+    
+    // Füge Modal hinzu
+    document.body.insertAdjacentHTML('beforeend', html);
+    
+    // Zeige Modal
+    const modal = new bootstrap.Modal(document.getElementById('syncPreviewModal'));
+    modal.show();
+}
+
+// Placeholder-Funktionen (werden später implementiert)
+function addWorkingTimeModel() { alert('Funktion wird implementiert...'); }
+function editWorkingTimeModel(id) { alert('Funktion wird implementiert...'); }
+function deleteWorkingTimeModel(id) { alert('Funktion wird implementiert...'); }
+function addException() { alert('Funktion wird implementiert...'); }
+function deleteException(id) { alert('Funktion wird implementiert...'); }
+function addPeriodWithoutVacation() { alert('Funktion wird implementiert...'); }
+function deletePeriodWithoutVacation(id) { alert('Funktion wird implementiert...'); }
+</script>
+{% endblock %}

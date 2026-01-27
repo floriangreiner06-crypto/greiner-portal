@@ -818,7 +818,7 @@ def hole_fahrzeug_daten(dealer_vehicle_number: int) -> Optional[Dict]:
                         WHEN dv.dealer_vehicle_type = 'N' THEN 'Neuwagen'
                         WHEN dv.dealer_vehicle_type = 'D' THEN 'Vorführwagen'
                         WHEN dv.dealer_vehicle_type = 'V' THEN 'Vorführwagen'  -- V = Vorführwagen (nicht Vermietwagen!)
-                        WHEN dv.dealer_vehicle_type = 'T' THEN 'Tauschfahrzeug'
+                        WHEN dv.dealer_vehicle_type = 'T' THEN 'Tageszulassung'
                         WHEN dv.dealer_vehicle_type = 'L' THEN 'Leihgabe/Mietwagen'  -- L = Leihgabe (Mietwagen)
                         ELSE 'Unbekannt'
                     END as fahrzeugtyp,

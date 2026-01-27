@@ -1,0 +1,18 @@
+Betreff: DNS-Eintrag für WhatsApp Webhook-Integration
+
+Hallo Florian Füeßl,
+
+wir benötigen einen DNS-Eintrag für eine neue Subdomain:
+
+- Subdomain: api.auto-greiner.de
+- Typ: A-Record
+- Ziel-IP: 10.80.80.20
+
+Zweck: WhatsApp Webhook-Integration für unser Teile-Handelsgeschäft. Twilio benötigt eine öffentlich erreichbare HTTPS-URL für eingehende Nachrichten.
+
+Zeitraum: Sobald möglich (kein dringender Termin)
+
+Vielen Dank!
+
+[Dein Name]
+Autohaus Greiner

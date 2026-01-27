@@ -1,0 +1,26 @@
+{
+  "login_successful": true,
+  "instance_url": "https://www.customer360psa.com",
+  "api_info": {
+    "logged_in": true,
+    "instance_url": "https://www.customer360psa.com",
+    "base_url": "https://www.customer360psa.com",
+    "rest_api_base": "https://www.customer360psa.com/services/data/v58.0",
+    "available_objects": [],
+    "api_endpoints": [
+      {
+        "endpoint": "/sobjects/",
+        "status": "error_401"
+      },
+      {
+        "endpoint": "/query/?q=SELECT Id FROM Account LIMIT 1",
+        "status": "error_401"
+      },
+      {
+        "endpoint": "/limits/",
+        "status": "error_401"
+      }
+    ]
+  },
+  "timestamp": "1768927780.4657023"
+}

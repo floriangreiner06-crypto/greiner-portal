@@ -1,0 +1,41 @@
+Betreff: DNS-Eintrag - Technische Details & Sicherheit
+
+Hallo Florian Füeßl,
+
+vielen Dank für die Rückfrage. Hier sind die technischen Details:
+
+NETZWERK:
+- Server-IP: 10.80.80.20
+- Port: 443 (HTTPS) - Standard HTTPS-Port
+- Port 80 (HTTP) - Nur für Redirect zu HTTPS
+
+VERWENDUNG:
+- Nur ein einziger Endpoint: /whatsapp/webhook
+- Nur POST-Requests (Webhook-Empfang von Twilio)
+- Alle anderen Endpoints werden blockiert (403 Forbidden)
+
+SICHERHEIT & DDOS-SCHUTZ:
+- Rate Limiting: Max. 10 Requests/Sekunde pro IP
+- Nur Webhook-Endpoint öffentlich (alle anderen blockiert)
+- Nur POST erlaubt (GET blockiert)
+- SSL-Verschlüsselung (HTTPS)
+- Firewall: Nur Port 443 erreichbar
+
+TRAFFIC:
+- Erwarteter Traffic: ~1-10 Requests/Minute (sehr gering)
+- Request-Größe: ~1-5 KB pro Request
+- Bandbreite: ~10-50 KB/Minute
+
+ZUSAMMENFASSUNG:
+- DNS-Eintrag: api.auto-greiner.de → 10.80.80.20
+- Port: 443 (HTTPS)
+- Nur ein Endpoint öffentlich
+- Rate Limiting verhindert DDoS
+- Sehr geringer Traffic
+
+Falls weitere Informationen benötigt werden, bitte melden.
+
+Vielen Dank!
+
+[Dein Name]
+Autohaus Greiner

@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}WhatsApp Kontakte - Greiner DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .contact-card {
+        background: white;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: transform 0.2s;
+    }
+    .contact-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    .contact-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+    .contact-name {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: #333;
+    }
+    .contact-details {
+        color: #6c757d;
+        font-size: 0.9rem;
+    }
+    .contact-actions {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid #eee;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2><i class="bi bi-people text-primary"></i> WhatsApp Kontakte</h2>
+                <div>
+                    <a href="{{ url_for('whatsapp.messages_list') }}" class="btn btn-outline-secondary">
+                        <i class="bi bi-chat-dots"></i> Nachrichten
+                    </a>
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addContactModal">
+                        <i class="bi bi-plus-circle"></i> Neuer Kontakt
+                    </button>
+                </div>
+            </div>
+
+            {% if error %}
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle"></i> {{ error }}
+            </div>
+            {% endif %}
+
+            {% if contacts %}
+            <div class="row">
+                {% for contact in contacts %}
+                <div class="col-md-6 col-lg-4">
+                    <div class="contact-card">
+                        <div class="contact-header">
+                            <div>
+                                <div class="contact-name">{{ contact.workshop_name }}</div>
+                                {% if contact.contact_name %}
+                                <div class="contact-details">{{ contact.contact_name }}</div>
+                                {% endif %}
+                            </div>
+                            <i class="bi bi-whatsapp text-success" style="font-size: 2rem;"></i>
+                        </div>
+                        
+                        <div class="contact-details">
+                            <div><i class="bi bi-telephone"></i> {{ contact.phone_number }}</div>
+                            {% if contact.email %}
+                            <div><i class="bi bi-envelope"></i> {{ contact.email }}</div>
+                            {% endif %}
+                        </div>
+                        
+                        {% if contact.notes %}
+                        <div class="mt-2">
+                            <small class="text-muted">{{ contact.notes }}</small>
+                        </div>
+                        {% endif %}
+                        
+                        <div class="contact-actions">
+                            <button class="btn btn-sm btn-outline-primary" onclick="sendMessage('{{ contact.phone_number }}')">
+                                <i class="bi bi-send"></i> Nachricht senden
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> Noch keine Kontakte vorhanden.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Nachricht senden -->
+<div class="modal fade" id="sendMessageModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Nachricht senden</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="sendMessageForm">
+                    <input type="hidden" id="sendToPhone" name="to">
+                    <div class="mb-3">
+                        <label for="messageText" class="form-label">Nachricht</label>
+                        <textarea class="form-control" id="messageText" name="message" rows="5" required></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-primary" onclick="submitMessage()">Senden</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function sendMessage(phone) {
+    document.getElementById('sendToPhone').value = phone;
+    const modal = new bootstrap.Modal(document.getElementById('sendMessageModal'));
+    modal.show();
+}
+
+function submitMessage() {
+    const form = document.getElementById('sendMessageForm');
+    const formData = new FormData(form);
+    const data = {
+        to: formData.get('to'),
+        message: formData.get('message'),
+        type: 'text'
+    };
+    
+    fetch('{{ url_for("whatsapp.send_message") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            alert('Nachricht erfolgreich gesendet!');
+            bootstrap.Modal.getInstance(document.getElementById('sendMessageModal')).hide();
+            form.reset();
+        } else {
+            alert('Fehler: ' + (result.error || 'Nachricht konnte nicht gesendet werden'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Fehler beim Senden der Nachricht');
+    });
+}
+</script>
+{% endblock %}

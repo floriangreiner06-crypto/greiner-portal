@@ -355,6 +355,9 @@ def mass_booking():
             if not target_employee_ids:
                 return jsonify({'success': False, 'error': 'Keine Mitarbeiter gefunden'}), 404
             
+            # TAG 213 DEBUG: Log welche Mitarbeiter gefunden wurden
+            print(f"📅 Masseneingabe: {len(target_employee_ids)} Mitarbeiter gefunden: {target_employee_ids[:5]}...")
+            
             # Buche für alle Mitarbeiter
             created_count = 0
             status = 'approved' if auto_approve else 'pending'
@@ -377,8 +380,12 @@ def mass_booking():
                         VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
                     """, (emp_id, date_str, vacation_type_id, day_part, status, comment))
                     created_count += 1
+                    # TAG 213 DEBUG: Log erste 3 Buchungen
+                    if created_count <= 3:
+                        print(f"  ✅ Buchung erstellt: employee_id={emp_id}, date={date_str}, status={status}")
             
             conn.commit()
+            print(f"📅 Masseneingabe abgeschlossen: {created_count} Buchungen für {len(target_employee_ids)} Mitarbeiter erstellt")
         
         return jsonify({
             'success': True,
@@ -535,37 +542,62 @@ def get_blocks():
 @vacation_admin_api.route('/blocks', methods=['POST'])
 @login_required
 def create_block():
-    """POST /api/vacation/admin/blocks - Neue Sperre erstellen"""
+    """
+    POST /api/vacation/admin/blocks - Neue Sperre(n) erstellen
+    TAG 213: Unterstützt jetzt mehrere Daten auf einmal (dates array)
+    """
     if not is_vacation_admin():
         return jsonify({'success': False, 'error': 'Keine Berechtigung'}), 403
     
     try:
         data = request.get_json()
         department = data.get('department')
-        date_str = data.get('date')
+        dates = data.get('dates', [])  # TAG 213: Array von Daten
+        date_str = data.get('date')  # Fallback: Einzelnes Datum
         reason = data.get('reason', '')
         created_by = getattr(current_user, 'username', 'admin')
         
-        if not department or not date_str:
-            return jsonify({'success': False, 'error': 'department und date erforderlich'}), 400
+        # TAG 213: Konvertiere einzelnes Datum zu Array
+        if date_str and not dates:
+            dates = [date_str]
+        
+        if not department or not dates:
+            return jsonify({'success': False, 'error': 'department und dates erforderlich'}), 400
+        
+        created_count = 0
         
         with db_session() as conn:
             cursor = conn.cursor()
             
-            cursor.execute("""
-                INSERT INTO vacation_blocks (department_name, block_date, reason, created_by)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT(department_name, block_date) DO UPDATE SET
-                    reason = excluded.reason,
-                    created_by = excluded.created_by
-            """, (department, date_str, reason, created_by))
+            for date_str in dates:
+                try:
+                    cursor.execute("""
+                        INSERT INTO vacation_blocks (department_name, block_date, reason, created_by)
+                        VALUES (%s, %s, %s, %s)
+                        ON CONFLICT(department_name, block_date) DO UPDATE SET
+                            reason = excluded.reason,
+                            created_by = excluded.created_by
+                    """, (department, date_str, reason, created_by))
+                    created_count += 1
+                except Exception as e:
+                    print(f"Fehler beim Erstellen der Sperre für {date_str}: {e}")
+                    continue
             
             conn.commit()
         
-        return jsonify({'success': True, 'message': 'Sperre erstellt'})
+        return jsonify({
+            'success': True,
+            'message': f'{created_count} Sperre(n) erstellt',
+            'created': created_count
+        })
     
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
 
 
 @vacation_admin_api.route('/blocks/<int:block_id>', methods=['DELETE'])

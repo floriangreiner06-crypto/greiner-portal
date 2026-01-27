@@ -66,6 +66,13 @@ def werkstatt_auftraege():
     return render_template('aftersales/werkstatt_auftraege.html')
 
 
+@werkstatt_routes.route('/werkstatt/automatisch-verteilte-stempelungen')
+@login_required
+def werkstatt_automatisch_verteilte_stempelungen():
+    """Aufträge mit automatisch verteilten Stempelungen - Serviceleiter-Prüfung"""
+    return render_template('aftersales/automatisch_verteilte_stempelungen.html')
+
+
 @werkstatt_routes.route('/werkstatt/stempeluhr')
 @login_required
 def werkstatt_stempeluhr():

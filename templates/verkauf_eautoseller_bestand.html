@@ -52,7 +52,7 @@
     <!-- Standzeit KPIs -->
     <div class="row mb-4" id="kpiRow">
         <div class="col-md-3">
-            <div class="card text-center">
+            <div class="card text-center kpi-card-clickable" data-filter="all" style="cursor: pointer;" title="Alle Fahrzeuge anzeigen">
                 <div class="card-body">
                     <h5 class="card-title text-muted">Gesamt Fahrzeuge</h5>
                     <h2 class="mb-0" id="kpiTotal">-</h2>
@@ -60,7 +60,7 @@
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card text-center border-success">
+            <div class="card text-center border-success kpi-card-clickable" data-filter="ok" style="cursor: pointer;" title="Nur OK-Fahrzeuge anzeigen">
                 <div class="card-body">
                     <h5 class="card-title text-success">OK</h5>
                     <h2 class="mb-0 text-success" id="kpiOk">-</h2>
@@ -69,7 +69,7 @@
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card text-center border-warning">
+            <div class="card text-center border-warning kpi-card-clickable" data-filter="warning" style="cursor: pointer;" title="Nur Warnung-Fahrzeuge anzeigen">
                 <div class="card-body">
                     <h5 class="card-title text-warning">Warnung</h5>
                     <h2 class="mb-0 text-warning" id="kpiWarning">-</h2>
@@ -78,7 +78,7 @@
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card text-center border-danger">
+            <div class="card text-center border-danger kpi-card-clickable" data-filter="critical" style="cursor: pointer;" title="Nur kritische Fahrzeuge anzeigen">
                 <div class="card-body">
                     <h5 class="card-title text-danger">Kritisch</h5>
                     <h2 class="mb-0 text-danger" id="kpiCritical">-</h2>
@@ -88,30 +88,128 @@
         </div>
     </div>
     
+    <!-- Erweiterte KPIs -->
+    <div class="row mb-4" id="extendedKpiRow">
+        <div class="col-md-3">
+            <div class="card text-center border-info">
+                <div class="card-body">
+                    <h5 class="card-title text-info">Ø Standzeit</h5>
+                    <h2 class="mb-0 text-info" id="kpiAvgStandzeit">-</h2>
+                    <small class="text-muted">Tage</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center border-primary">
+                <div class="card-body">
+                    <h5 class="card-title text-primary">Lagerwert</h5>
+                    <h2 class="mb-0 text-primary" id="kpiLagerwert">-</h2>
+                    <small class="text-muted">€</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center border-success">
+                <div class="card-body">
+                    <h5 class="card-title text-success">Verkaufsrate</h5>
+                    <h2 class="mb-0 text-success" id="kpiVerkaufsrate">-</h2>
+                    <small class="text-muted">%</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center border-danger">
+                <div class="card-body">
+                    <h5 class="card-title text-danger">Kritisch (Wert)</h5>
+                    <h2 class="mb-0 text-danger" id="kpiKritischWert">-</h2>
+                    <small class="text-muted">€</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Weitere erweiterte KPIs -->
+    <div class="row mb-4" id="extendedKpiRow2">
+        <div class="col-md-3">
+            <div class="card text-center border-secondary">
+                <div class="card-body">
+                    <h5 class="card-title text-secondary">Ø Preis</h5>
+                    <h2 class="mb-0 text-secondary" id="kpiAvgPreis">-</h2>
+                    <small class="text-muted">€</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center border-warning">
+                <div class="card-body">
+                    <h5 class="card-title text-warning">Pot. Abschreibung</h5>
+                    <h2 class="mb-0 text-warning" id="kpiAbschreibung">-</h2>
+                    <small class="text-muted">€ (2% p.a.)</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <!-- Platz für weitere KPIs -->
+        </div>
+    </div>
+    
     <!-- Filter -->
     <div class="row mb-3">
-        <div class="col-md-3">
-            <label>Status:</label>
-            <select id="statusFilter" class="form-select">
-                <option value="">Alle</option>
-                <option value="ok">OK (&lt; 30 Tage)</option>
-                <option value="warning">Warnung (30-60 Tage)</option>
-                <option value="critical">Kritisch (&gt; 60 Tage)</option>
-            </select>
-        </div>
-        <div class="col-md-3">
-            <label>Min. Standzeit (Tage):</label>
-            <input type="number" id="minStandzeit" class="form-control" placeholder="z.B. 60">
-        </div>
-        <div class="col-md-3">
-            <label>Max. Standzeit (Tage):</label>
-            <input type="number" id="maxStandzeit" class="form-control" placeholder="z.B. 90">
-        </div>
-        <div class="col-md-3">
-            <label>&nbsp;</label>
-            <button id="refreshBtn" class="btn btn-primary w-100">
-                <i class="bi bi-arrow-clockwise"></i> Aktualisieren
-            </button>
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">Filter & Aktionen</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-2">
+                            <label>Status:</label>
+                            <select id="statusFilter" class="form-select form-select-sm">
+                                <option value="">Alle</option>
+                                <option value="ok">OK (&lt; 30 Tage)</option>
+                                <option value="warning">Warnung (30-60 Tage)</option>
+                                <option value="critical">Kritisch (&gt; 60 Tage)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label>Marke:</label>
+                            <input type="text" id="markeFilter" class="form-control form-control-sm" placeholder="z.B. Opel">
+                        </div>
+                        <div class="col-md-2">
+                            <label>Min. Preis (€):</label>
+                            <input type="number" id="minPreis" class="form-control form-control-sm" placeholder="z.B. 10000">
+                        </div>
+                        <div class="col-md-2">
+                            <label>Max. Preis (€):</label>
+                            <input type="number" id="maxPreis" class="form-control form-control-sm" placeholder="z.B. 50000">
+                        </div>
+                        <div class="col-md-2">
+                            <label>Min. Standzeit (Tage):</label>
+                            <input type="number" id="minStandzeit" class="form-control form-control-sm" placeholder="z.B. 60">
+                        </div>
+                        <div class="col-md-2">
+                            <label>Max. Standzeit (Tage):</label>
+                            <input type="number" id="maxStandzeit" class="form-control form-control-sm" placeholder="z.B. 90">
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-md-12">
+                            <button id="refreshBtn" class="btn btn-primary btn-sm">
+                                <i class="bi bi-funnel"></i> Filter anwenden
+                            </button>
+                            <button class="btn btn-secondary btn-sm" onclick="resetFilters()">
+                                <i class="bi bi-arrow-counterclockwise"></i> Zurücksetzen
+                            </button>
+                            <button class="btn btn-success btn-sm" onclick="exportToExcel()">
+                                <i class="bi bi-file-earmark-excel"></i> Excel exportieren
+                            </button>
+                            <button class="btn btn-danger btn-sm" onclick="exportToPDF()">
+                                <i class="bi bi-file-earmark-pdf"></i> PDF exportieren
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -198,6 +296,34 @@ $(document).ready(function() {
     $('#statusFilter, #minStandzeit, #maxStandzeit').on('change', function() {
         applyFilters();
     });
+    
+    // Drill-Down: Klickbare KPI-Cards
+    $('.kpi-card-clickable').on('click', function() {
+        const filter = $(this).data('filter');
+        if (filter === 'all') {
+            $('#statusFilter').val('');
+        } else {
+            $('#statusFilter').val(filter);
+        }
+        applyFilters();
+        
+        // Visuelles Feedback
+        $('.kpi-card-clickable').removeClass('shadow-lg');
+        $(this).addClass('shadow-lg');
+        setTimeout(() => {
+            $(this).removeClass('shadow-lg');
+        }, 500);
+    });
+    
+    // Hover-Effekt für klickbare Cards
+    $('.kpi-card-clickable').hover(
+        function() {
+            $(this).addClass('shadow');
+        },
+        function() {
+            $(this).removeClass('shadow');
+        }
+    );
 });
 
 // Load KPIs from eAutoseller
@@ -289,10 +415,59 @@ function loadVehicles() {
 
 // Update KPIs
 function updateKPIs(stats) {
+    // Basis-KPIs
     $('#kpiTotal').text(stats.total || 0);
     $('#kpiOk').text(stats.ok || 0);
     $('#kpiWarning').text(stats.warning || 0);
     $('#kpiCritical').text(stats.critical || 0);
+    
+    // Erweiterte KPIs
+    if (stats.avg_standzeit_tage !== null && stats.avg_standzeit_tage !== undefined) {
+        $('#kpiAvgStandzeit').text(Math.round(stats.avg_standzeit_tage));
+    } else {
+        $('#kpiAvgStandzeit').text('-');
+    }
+    
+    if (stats.lagerwert !== null && stats.lagerwert !== undefined && stats.lagerwert > 0) {
+        $('#kpiLagerwert').text(formatCurrency(stats.lagerwert));
+    } else {
+        $('#kpiLagerwert').text('-');
+    }
+    
+    if (stats.avg_preis !== null && stats.avg_preis !== undefined) {
+        $('#kpiAvgPreis').text(formatCurrency(stats.avg_preis));
+    } else {
+        $('#kpiAvgPreis').text('-');
+    }
+    
+    if (stats.verkaufsrate !== null && stats.verkaufsrate !== undefined) {
+        $('#kpiVerkaufsrate').text(stats.verkaufsrate.toFixed(1));
+    } else {
+        $('#kpiVerkaufsrate').text('-');
+    }
+    
+    if (stats.kritische_fahrzeuge_wert !== null && stats.kritische_fahrzeuge_wert !== undefined && stats.kritische_fahrzeuge_wert > 0) {
+        $('#kpiKritischWert').text(formatCurrency(stats.kritische_fahrzeuge_wert));
+    } else {
+        $('#kpiKritischWert').text('-');
+    }
+    
+    if (stats.potenzielle_abschreibung !== null && stats.potenzielle_abschreibung !== undefined && stats.potenzielle_abschreibung > 0) {
+        $('#kpiAbschreibung').text(formatCurrency(stats.potenzielle_abschreibung));
+    } else {
+        $('#kpiAbschreibung').text('-');
+    }
+}
+
+// Format Currency
+function formatCurrency(value) {
+    if (value === null || value === undefined) return '-';
+    return new Intl.NumberFormat('de-DE', {
+        style: 'currency',
+        currency: 'EUR',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(value);
 }
 
 // Render Vehicles
@@ -357,6 +532,23 @@ function applyFilters() {
         filtered = filtered.filter(v => v.standzeit_status === statusFilter);
     }
     
+    // Marke Filter
+    const markeFilter = $('#markeFilter').val().toLowerCase();
+    if (markeFilter) {
+        filtered = filtered.filter(v => v.marke && v.marke.toLowerCase().includes(markeFilter));
+    }
+    
+    // Preis Filter
+    const minPreis = $('#minPreis').val();
+    if (minPreis) {
+        filtered = filtered.filter(v => v.preis !== null && v.preis >= parseFloat(minPreis));
+    }
+    
+    const maxPreis = $('#maxPreis').val();
+    if (maxPreis) {
+        filtered = filtered.filter(v => v.preis !== null && v.preis <= parseFloat(maxPreis));
+    }
+    
     // Min Standzeit
     const minStandzeit = $('#minStandzeit').val();
     if (minStandzeit) {
@@ -379,6 +571,139 @@ function applyFilters() {
         critical: filtered.filter(v => v.standzeit_status === 'critical').length
     };
     updateKPIs(stats);
+}
+
+// Reset Filters
+function resetFilters() {
+    $('#statusFilter').val('');
+    $('#markeFilter').val('');
+    $('#minPreis').val('');
+    $('#maxPreis').val('');
+    $('#minStandzeit').val('');
+    $('#maxStandzeit').val('');
+    applyFilters();
+}
+
+// Export to Excel
+function exportToExcel() {
+    if (!currentData || currentData.length === 0) {
+        showAlert('warning', 'Keine Daten zum Exportieren vorhanden');
+        return;
+    }
+    
+    // Filtere Daten
+    let filtered = [...currentData];
+    const statusFilter = $('#statusFilter').val();
+    if (statusFilter) {
+        filtered = filtered.filter(v => v.standzeit_status === statusFilter);
+    }
+    
+    // Erstelle CSV
+    let csv = 'Marke,Modell,Preis,Hereinnahme,Standzeit (Tage),Status\n';
+    filtered.forEach(function(vehicle) {
+        const marke = (vehicle.marke || '').replace(/,/g, ';');
+        const modell = (vehicle.modell || '').replace(/,/g, ';');
+        const preis = vehicle.preis ? vehicle.preis.toFixed(2) : '';
+        const hereinnahme = vehicle.hereinnahme || '';
+        const standzeit = vehicle.standzeit_tage !== null ? vehicle.standzeit_tage : '';
+        const status = vehicle.standzeit_status || '';
+        csv += `${marke},${modell},${preis},${hereinnahme},${standzeit},${status}\n`;
+    });
+    
+    // Download
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'eautoseller_fahrzeuge_' + new Date().toISOString().split('T')[0] + '.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    showAlert('success', 'Excel-Export erfolgreich!');
+}
+
+// Export to PDF
+function exportToPDF() {
+    if (!currentData || currentData.length === 0) {
+        showAlert('warning', 'Keine Daten zum Exportieren vorhanden');
+        return;
+    }
+    
+    showAlert('info', 'PDF-Export wird vorbereitet...');
+    
+    // Erstelle HTML für PDF
+    let html = `
+        <html>
+        <head>
+            <title>eAutoseller Fahrzeugliste</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 20px; }
+                h1 { color: #333; }
+                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th { background-color: #f2f2f2; font-weight: bold; }
+                .critical { background-color: #f8d7da; }
+                .warning { background-color: #fff3cd; }
+                .ok { background-color: #d4edda; }
+            </style>
+        </head>
+        <body>
+            <h1>eAutoseller Fahrzeugliste</h1>
+            <p>Erstellt am: ${new Date().toLocaleString('de-DE')}</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Marke</th>
+                        <th>Modell</th>
+                        <th>Preis</th>
+                        <th>Hereinnahme</th>
+                        <th>Standzeit (Tage)</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    let filtered = [...currentData];
+    const statusFilter = $('#statusFilter').val();
+    if (statusFilter) {
+        filtered = filtered.filter(v => v.standzeit_status === statusFilter);
+    }
+    
+    filtered.forEach(function(vehicle) {
+        const statusClass = vehicle.standzeit_status || 'unknown';
+        const preis = vehicle.preis ? new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(vehicle.preis) : '-';
+        const hereinnahme = vehicle.hereinnahme ? new Date(vehicle.hereinnahme).toLocaleDateString('de-DE') : '-';
+        const standzeit = vehicle.standzeit_tage !== null ? vehicle.standzeit_tage : '-';
+        
+        html += `
+            <tr class="${statusClass}">
+                <td>${vehicle.marke || '-'}</td>
+                <td>${vehicle.modell || '-'}</td>
+                <td>${preis}</td>
+                <td>${hereinnahme}</td>
+                <td>${standzeit}</td>
+                <td>${statusClass.toUpperCase()}</td>
+            </tr>
+        `;
+    });
+    
+    html += `
+                </tbody>
+            </table>
+        </body>
+        </html>
+    `;
+    
+    // Öffne in neuem Fenster für Druck/PDF
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.print();
+    
+    showAlert('success', 'PDF-Export vorbereitet! Bitte drucken Sie die Seite als PDF.');
 }
 
 // Show Alert

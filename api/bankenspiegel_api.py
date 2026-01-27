@@ -25,6 +25,135 @@ from api.db_connection import sql_placeholder, get_db_type, convert_placeholders
 bankenspiegel_api = Blueprint('bankenspiegel_api', __name__, url_prefix='/api/bankenspiegel')
 
 # ============================================================================
+# HELPER-FUNKTIONEN
+# ============================================================================
+
+def find_vehicle_by_vin(loco_cursor, vin, fields='marke_modell'):
+    """
+    Helper-Funktion: Findet Fahrzeug in Locosoft anhand VIN (flexible Suche)
+    
+    Args:
+        loco_cursor: Locosoft-DB-Cursor
+        vin: VIN (kann vollständig oder gekürzt sein)
+        fields: Welche Felder zurückgegeben werden sollen
+            - 'marke_modell': Nur Marke und Modell
+            - 'marke': Nur Marke
+            - 'all': Alle verfügbaren Felder
+    
+    Returns:
+        dict: Fahrzeugdaten oder None wenn nicht gefunden
+    
+    TAG 203: Code-Duplikat entfernt (war in get_fahrzeuge_by_marke und get_fahrzeug_details)
+    """
+    if not vin:
+        return None
+    
+    vin_upper = vin.upper().strip()
+    vin_like = f'%{vin_upper}%'
+    
+    if fields == 'marke':
+        # Nur Marke
+        query = """
+            SELECT COALESCE(NULLIF(TRIM(m.description), ''), 'Unbekannt') as marke
+            FROM vehicles v
+            LEFT JOIN makes m ON v.make_number = m.make_number
+            WHERE (
+                UPPER(TRIM(v.vin)) = %s
+                OR (LENGTH(v.vin) >= LENGTH(%s) AND UPPER(RIGHT(TRIM(v.vin), LENGTH(%s))) = %s)
+                OR UPPER(TRIM(v.vin)) LIKE %s
+            )
+            LIMIT 1
+        """
+        params = (vin_upper, vin_upper, vin_upper, vin_upper, vin_like)
+    elif fields == 'marke_modell':
+        # Marke und Modell
+        query = """
+            SELECT 
+                COALESCE(
+                    NULLIF(TRIM(v.free_form_model_text), ''),
+                    NULLIF(TRIM(mo.description), ''),
+                    ''
+                ) as modell,
+                COALESCE(NULLIF(TRIM(m.description), ''), '') as marke
+            FROM vehicles v
+            LEFT JOIN makes m
+                ON v.make_number = m.make_number
+            LEFT JOIN models mo
+                ON v.make_number = mo.make_number
+                AND v.model_code = mo.model_code
+            WHERE (
+                UPPER(TRIM(v.vin)) = %s
+                OR (LENGTH(v.vin) >= LENGTH(%s) AND UPPER(RIGHT(TRIM(v.vin), LENGTH(%s))) = %s)
+                OR UPPER(TRIM(v.vin)) LIKE %s
+            )
+            LIMIT 1
+        """
+        params = (vin_upper, vin_upper, vin_upper, vin_upper, vin_like)
+    else:
+        # Alle Felder (für get_fahrzeug_details)
+        query = """
+            SELECT 
+                dv.dealer_vehicle_number as kommissionsnummer,
+                dv.dealer_vehicle_type,
+                CASE 
+                    WHEN dv.dealer_vehicle_type = 'G' THEN 'Gebrauchtwagen'
+                    WHEN dv.dealer_vehicle_type = 'N' THEN 'Neuwagen'
+                    WHEN dv.dealer_vehicle_type = 'D' THEN 'Vorführwagen'
+                    WHEN dv.dealer_vehicle_type = 'V' THEN 'Vorführwagen'
+                    WHEN dv.dealer_vehicle_type = 'T' THEN 'Tageszulassung'
+                    WHEN dv.dealer_vehicle_type = 'L' THEN 'Leihgabe/Mietwagen'
+                    ELSE 'Unbekannt'
+                END as fahrzeugtyp,
+                v.vin,
+                v.license_plate as kennzeichen,
+                COALESCE(
+                    NULLIF(TRIM(v.free_form_model_text), ''),
+                    NULLIF(TRIM(mo.description), ''),
+                    'Unbekannt'
+                ) as modell,
+                COALESCE(NULLIF(TRIM(m.description), ''), 'Unbekannt') as marke,
+                v.first_registration_date as erstzulassung,
+                v.mileage_km as km_stand,
+                dv.in_arrival_date as eingang,
+                dv.created_date,
+                CURRENT_DATE - COALESCE(dv.in_arrival_date, dv.created_date) as standzeit_tage,
+                dv.in_subsidiary as standort,
+                dv.location as lagerort,
+                CASE 
+                    WHEN dv.out_invoice_date IS NOT NULL THEN true
+                    ELSE false
+                END as verkauft,
+                dv.out_invoice_date as verkauft_am
+            FROM vehicles v
+            LEFT JOIN dealer_vehicles dv
+                ON v.dealer_vehicle_number = dv.dealer_vehicle_number
+                AND v.dealer_vehicle_type = dv.dealer_vehicle_type
+            LEFT JOIN makes m
+                ON v.make_number = m.make_number
+            LEFT JOIN models mo
+                ON v.make_number = mo.make_number
+                AND v.model_code = mo.model_code
+            WHERE (
+                UPPER(TRIM(v.vin)) = %s
+                OR (LENGTH(v.vin) >= LENGTH(%s) AND UPPER(RIGHT(TRIM(v.vin), LENGTH(%s))) = %s)
+                OR UPPER(TRIM(v.vin)) LIKE %s
+            )
+            ORDER BY 
+                CASE WHEN UPPER(TRIM(v.vin)) = %s THEN 1 ELSE 2 END,
+                dv.created_date DESC NULLS LAST
+            LIMIT 1
+        """
+        params = (vin_upper, vin_upper, vin_upper, vin_upper, vin_like, vin_upper)
+    
+    loco_cursor.execute(query, params)
+    row = loco_cursor.fetchone()
+    
+    if row:
+        return row_to_dict(row, loco_cursor)
+    
+    return None
+
+# ============================================================================
 # ENDPOINT 1: DASHBOARD
 # ============================================================================
 
@@ -193,10 +322,14 @@ def get_konten():
 
             # Query - direkt auf konten mit JOIN zu salden für Sortierung nach kontoinhaber
             # TAG 180: Kreditlinie und verfügbare Kreditlinie hinzugefügt, Sortierung nach Kontoinhaber
+            # TAG 213: Bank-Name "Intern / Gesellschafter" ausblenden (redundant)
             query = """
                 SELECT
                     k.id,
-                    b.bank_name,
+                    CASE 
+                        WHEN b.bank_name = 'Intern / Gesellschafter' THEN NULL
+                        ELSE b.bank_name
+                    END as bank_name,
                     k.kontoname,
                     k.iban,
                     k.kontotyp,
@@ -248,6 +381,48 @@ def get_konten():
             # WICHTIG: psycopg2 wirft Fehler wenn params=[] - verwende None statt leerer Liste
             cursor.execute(query, params if params else None)
             konten = rows_to_list(cursor.fetchall())
+
+            # TAG 213: Saldo vom Sachkonto 071101 aus Loco-Soft für "Darlehen Peter Greiner" holen
+            # WICHTIG: Das Sachkonto 071101 IST das "Darlehen Peter Greiner" Konto!
+            # Der Saldo soll beim bestehenden Konto (ID 22) verwendet werden, nicht als separates Konto
+            # Saldo muss NEGATIV sein (rot), da die Gesellschaft dem Gesellschafter schuldet
+            # IBAN wird auf Sachkontonummer "071101" gesetzt
+            locosoft_saldo_071101 = None
+            try:
+                from api.db_utils import locosoft_session, row_to_dict
+                with locosoft_session() as loco_conn:
+                    loco_cursor = loco_conn.cursor()
+                    # Saldo berechnen: HABEN - SOLL (für Passivkonto/Darlehen)
+                    # Kontonummer 071101 = 71101 in Loco-Soft (Integer ohne führende Null)
+                    loco_cursor.execute("""
+                        SELECT COALESCE(SUM(
+                            CASE WHEN debit_or_credit='H' THEN posted_value 
+                                 ELSE -posted_value END
+                        )/100.0, 0) as saldo
+                        FROM journal_accountings
+                        WHERE nominal_account_number = 71101
+                    """)
+                    saldo_row = loco_cursor.fetchone()
+                    if saldo_row:
+                        # Saldo aus Loco-Soft ist positiv (41.000,00 €)
+                        # Aber: Die Gesellschaft schuldet dem Gesellschafter, also muss es NEGATIV sein
+                        locosoft_saldo_071101 = -float(row_to_dict(saldo_row, loco_cursor).get('saldo', 0) or 0)
+            except Exception as e:
+                print(f"Fehler beim Holen des Saldos vom Sachkonto 071101 aus Loco-Soft: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                # Fehler ignorieren, Saldo bleibt None
+
+            # TAG 213: Saldo und IBAN beim bestehenden "Darlehen Peter Greiner" Konto (ID 22) verwenden
+            if locosoft_saldo_071101 is not None:
+                for konto in konten:
+                    if konto.get('id') == 22:  # "Darlehen Peter Greiner"
+                        # Loco-Soft Saldo überschreibt den DB-Saldo
+                        konto['saldo'] = locosoft_saldo_071101
+                        konto['stand_datum'] = None  # Kein Stand-Datum verfügbar
+                        # IBAN auf "Sachkonto Locosoft 071101" setzen
+                        konto['iban'] = 'Sachkonto Locosoft 071101'
+                        break
 
             # Statistik - TAG 136: float() für PostgreSQL Decimal
             gesamtsaldo = sum(float(k['saldo'] or 0) for k in konten)
@@ -574,56 +749,99 @@ def get_einkaufsfinanzierung():
                     genobank_fahrzeuge = cursor.fetchall()
                     
                     # 2. Für Fahrzeuge mit leerem/Unbekanntem hersteller: Hole Marke aus Locosoft
+                    # TAG 203: Bulk-Abfrage statt N+1 Queries
                     from api.db_utils import locosoft_session
                     marken_dict = {}  # {marke: {'anzahl': int, 'finanzierung': float}}
                     
-                    with locosoft_session() as loco_conn:
-                        loco_cursor = loco_conn.cursor()
+                    # Sammle alle VINs die aus Locosoft geholt werden müssen
+                    vins_zu_pruefen = []
+                    fahrzeuge_mit_marke = {}  # {vin: {'hersteller': str, 'saldo': float}}
+                    
+                    for row in genobank_fahrzeuge:
+                        fz = row_to_dict(row, cursor)
+                        vin = fz.get('vin')
+                        hersteller = fz.get('hersteller')
+                        saldo = float(fz.get('aktueller_saldo') or 0)
                         
-                        for row in genobank_fahrzeuge:
-                            fz = row_to_dict(row, cursor)
-                            vin = fz.get('vin')
-                            hersteller = fz.get('hersteller')
-                            saldo = float(fz.get('aktueller_saldo') or 0)
-                            
-                            # Bestimme Marke
-                            marke = None
-                            
-                            # Wenn hersteller vorhanden und nicht "Unbekannt"
-                            if hersteller and hersteller.strip() != '' and hersteller.strip().lower() != 'unbekannt':
-                                marke = hersteller.strip()
-                            else:
-                                # Hole aus Locosoft
-                                vin_upper = vin.upper().strip() if vin else ''
-                                if vin_upper:
-                                    loco_query = """
-                                        SELECT COALESCE(NULLIF(TRIM(m.description), ''), 'Unbekannt') as marke
-                                        FROM vehicles v
-                                        LEFT JOIN makes m ON v.make_number = m.make_number
-                                        WHERE (
-                                            UPPER(TRIM(v.vin)) = %s
-                                            OR (LENGTH(v.vin) >= LENGTH(%s) AND UPPER(RIGHT(TRIM(v.vin), LENGTH(%s))) = %s)
-                                            OR UPPER(TRIM(v.vin)) LIKE %s
-                                        )
-                                        LIMIT 1
-                                    """
-                                    loco_cursor.execute(loco_query, (
-                                        vin_upper, vin_upper, vin_upper, vin_upper, f'%{vin_upper}%'
-                                    ))
-                                    loco_row = loco_cursor.fetchone()
-                                    if loco_row:
-                                        loco_data = row_to_dict(loco_row, loco_cursor)
-                                        marke = loco_data.get('marke', 'Unbekannt')
-                            
-                            # Fallback
-                            if not marke:
-                                marke = 'Unbekannt'
-                            
-                            # Aggregiere
+                        # Wenn hersteller vorhanden und nicht "Unbekannt", verwende direkt
+                        if hersteller and hersteller.strip() != '' and hersteller.strip().lower() != 'unbekannt':
+                            marke = hersteller.strip()
+                            # Aggregiere direkt
                             if marke not in marken_dict:
                                 marken_dict[marke] = {'anzahl': 0, 'finanzierung': 0}
                             marken_dict[marke]['anzahl'] += 1
                             marken_dict[marke]['finanzierung'] += saldo
+                        else:
+                            # Muss aus Locosoft geholt werden
+                            if vin:
+                                vins_zu_pruefen.append(vin.upper().strip())
+                                fahrzeuge_mit_marke[vin.upper().strip()] = {'saldo': saldo}
+                    
+                    # Bulk-Abfrage für alle VINs auf einmal
+                    if vins_zu_pruefen:
+                        with locosoft_session() as loco_conn:
+                            loco_cursor = loco_conn.cursor()
+                            
+                            # Erstelle WHERE-Bedingung für alle VINs
+                            # Verwende ANY() für PostgreSQL
+                            vin_conditions = []
+                            vin_params = []
+                            
+                            for vin_upper in vins_zu_pruefen:
+                                vin_conditions.append("""
+                                    (UPPER(TRIM(v.vin)) = %s
+                                     OR (LENGTH(v.vin) >= LENGTH(%s) AND UPPER(RIGHT(TRIM(v.vin), LENGTH(%s))) = %s)
+                                     OR UPPER(TRIM(v.vin)) LIKE %s)
+                                """)
+                                vin_params.extend([vin_upper, vin_upper, vin_upper, vin_upper, f'%{vin_upper}%'])
+                            
+                            # Bulk-Query: Hole Marke für alle VINs
+                            bulk_query = f"""
+                                SELECT DISTINCT
+                                    v.vin,
+                                    COALESCE(NULLIF(TRIM(m.description), ''), 'Unbekannt') as marke
+                                FROM vehicles v
+                                LEFT JOIN makes m ON v.make_number = m.make_number
+                                WHERE ({' OR '.join(vin_conditions)})
+                            """
+                            
+                            loco_cursor.execute(bulk_query, vin_params)
+                            bulk_results = loco_cursor.fetchall()
+                            
+                            # Erstelle Mapping: VIN → Marke
+                            vin_to_marke = {}
+                            for bulk_row in bulk_results:
+                                bulk_dict = row_to_dict(bulk_row, loco_cursor)
+                                vin_key = bulk_dict.get('vin', '').upper().strip()
+                                marke = bulk_dict.get('marke', 'Unbekannt')
+                                if vin_key:
+                                    vin_to_marke[vin_key] = marke
+                            
+                            # Für jede VIN: Bestimme Marke und aggregiere
+                            for vin_upper, fz_data in fahrzeuge_mit_marke.items():
+                                # Suche passende Marke (exakt, suffix, contains)
+                                marke = 'Unbekannt'
+                                
+                                # Exakte Übereinstimmung
+                                if vin_upper in vin_to_marke:
+                                    marke = vin_to_marke[vin_upper]
+                                else:
+                                    # Suche nach Suffix-Match oder Contains-Match
+                                    for loco_vin, loco_marke in vin_to_marke.items():
+                                        if (len(loco_vin) >= len(vin_upper) and 
+                                            loco_vin.endswith(vin_upper)) or vin_upper in loco_vin:
+                                            marke = loco_marke
+                                            break
+                                
+                                # Leapmotor-Erkennung (falls Modell bekannt wäre, hier vereinfacht)
+                                # Da wir nur Marke haben, können wir Leapmotor nicht direkt erkennen
+                                # Das wird später in get_fahrzeuge_by_marke gemacht
+                                
+                                # Aggregiere
+                                if marke not in marken_dict:
+                                    marken_dict[marke] = {'anzahl': 0, 'finanzierung': 0}
+                                marken_dict[marke]['anzahl'] += 1
+                                marken_dict[marke]['finanzierung'] += fz_data['saldo']
                     
                     # 3. Konvertiere zu Liste
                     marken = []
@@ -1264,35 +1482,10 @@ def get_fahrzeuge_by_marke():
                         vin_upper = vin.upper().strip() if vin else ''
                         
                         # Hole Marke/Modell aus Locosoft (immer, da Marke für Filterung benötigt wird)
+                        # TAG 203: Helper-Funktion verwendet
                         if vin_upper:
-                            loco_query = """
-                                SELECT 
-                                    COALESCE(
-                                        NULLIF(TRIM(v.free_form_model_text), ''),
-                                        NULLIF(TRIM(mo.description), ''),
-                                        ''
-                                    ) as modell,
-                                    COALESCE(NULLIF(TRIM(m.description), ''), '') as marke
-                                FROM vehicles v
-                                LEFT JOIN makes m
-                                    ON v.make_number = m.make_number
-                                LEFT JOIN models mo
-                                    ON v.make_number = mo.make_number
-                                    AND v.model_code = mo.model_code
-                                WHERE (
-                                    UPPER(TRIM(v.vin)) = %s
-                                    OR (LENGTH(v.vin) >= LENGTH(%s) AND UPPER(RIGHT(TRIM(v.vin), LENGTH(%s))) = %s)
-                                    OR UPPER(TRIM(v.vin)) LIKE %s
-                                )
-                                LIMIT 1
-                            """
-                            loco_cursor.execute(loco_query, (
-                                vin_upper, vin_upper, vin_upper, vin_upper, f'%{vin_upper}%'
-                            ))
-                            loco_row = loco_cursor.fetchone()
-                            if loco_row:
-                                loco_data = row_to_dict(loco_row, loco_cursor)
-                                
+                            loco_data = find_vehicle_by_vin(loco_cursor, vin, fields='marke_modell')
+                            if loco_data:
                                 # Modell aktualisieren, falls leer
                                 loco_modell = loco_data.get('modell', '')
                                 if loco_modell and (not modell or modell.strip() == '' or modell.strip().lower() == 'unbekannt'):
@@ -1489,83 +1682,10 @@ def get_fahrzeug_details():
             # VIN-Suche: Exakt, dann Teil-VIN (Ende), dann Teil-VIN (enthält)
             # Problem: VINs in fahrzeugfinanzierungen können gekürzt sein (z.B. "T6004025")
             # während Locosoft die vollständige VIN hat (z.B. "VXKKAHPY3T6004025")
-            vin_upper = vin.upper().strip()
+            # TAG 203: Helper-Funktion verwendet
+            fahrzeug = find_vehicle_by_vin(loco_cursor, vin, fields='all')
             
-            query = """
-                SELECT 
-                    dv.dealer_vehicle_number as kommissionsnummer,
-                    dv.dealer_vehicle_type,
-                    CASE 
-                        WHEN dv.dealer_vehicle_type = 'G' THEN 'Gebrauchtwagen'
-                        WHEN dv.dealer_vehicle_type = 'N' THEN 'Neuwagen'
-                        WHEN dv.dealer_vehicle_type = 'D' THEN 'Vorführwagen'
-                        WHEN dv.dealer_vehicle_type = 'V' THEN 'Vorführwagen'
-                        WHEN dv.dealer_vehicle_type = 'T' THEN 'Tageszulassung'
-                        WHEN dv.dealer_vehicle_type = 'L' THEN 'Leihgabe/Mietwagen'
-                        ELSE 'Unbekannt'
-                    END as fahrzeugtyp,
-                    v.vin,
-                    v.license_plate as kennzeichen,
-                    -- Modell: Priorität: free_form_model_text > models.description > Fallback
-                    COALESCE(
-                        NULLIF(TRIM(v.free_form_model_text), ''),
-                        NULLIF(TRIM(mo.description), ''),
-                        'Unbekannt'
-                    ) as modell,
-                    -- Marke: makes.description
-                    COALESCE(NULLIF(TRIM(m.description), ''), 'Unbekannt') as marke,
-                    v.first_registration_date as erstzulassung,
-                    v.mileage_km as km_stand,
-                    dv.in_arrival_date as eingang,
-                    dv.created_date,
-                    CURRENT_DATE - COALESCE(dv.in_arrival_date, dv.created_date) as standzeit_tage,
-                    dv.in_subsidiary as standort,
-                    dv.location as lagerort,
-                    CASE 
-                        WHEN dv.out_invoice_date IS NOT NULL THEN true
-                        ELSE false
-                    END as verkauft,
-                    dv.out_invoice_date as verkauft_am
-                FROM vehicles v
-                LEFT JOIN dealer_vehicles dv
-                    ON v.dealer_vehicle_number = dv.dealer_vehicle_number
-                    AND v.dealer_vehicle_type = dv.dealer_vehicle_type
-                LEFT JOIN makes m
-                    ON v.make_number = m.make_number
-                LEFT JOIN models mo
-                    ON v.make_number = mo.make_number
-                    AND v.model_code = mo.model_code
-                WHERE (
-                    -- 1. Exakte VIN (Case-insensitive)
-                    UPPER(TRIM(v.vin)) = %s
-                    OR
-                    -- 2. VIN endet mit gesuchter VIN (für gekürzte VINs)
-                    (LENGTH(v.vin) >= LENGTH(%s) AND UPPER(RIGHT(TRIM(v.vin), LENGTH(%s))) = %s)
-                    OR
-                    -- 3. VIN enthält gesuchte VIN (Fallback)
-                    UPPER(TRIM(v.vin)) LIKE %s
-                )
-                ORDER BY 
-                    -- Priorität: Exakte Übereinstimmung zuerst
-                    CASE WHEN UPPER(TRIM(v.vin)) = %s THEN 1 ELSE 2 END,
-                    dv.created_date DESC NULLS LAST
-                LIMIT 1
-            """
-            
-            # Parameter für Query
-            vin_like = f'%{vin_upper}%'
-            loco_cursor.execute(query, (
-                vin_upper,  # Exakt
-                vin_upper,  # LENGTH für RIGHT
-                vin_upper,  # LENGTH für RIGHT
-                vin_upper,  # RIGHT Vergleich
-                vin_like,   # LIKE
-                vin_upper   # ORDER BY Priorität
-            ))
-            row = loco_cursor.fetchone()
-            
-            if row:
-                fahrzeug = row_to_dict(row, loco_cursor)
+            if fahrzeug:
                 
                 # Standort-Name aus subsidiaries (falls vorhanden)
                 if fahrzeug.get('standort'):

@@ -137,6 +137,9 @@ def benachrichtige_serviceberater_ueberschreitungen():
             """)
             ueberschritten_abgeschlossen = cursor.fetchall()
         
+        # TAG 206: FIX - ueberschritten_aktiv außerhalb des if-Blocks definieren
+        ueberschritten_aktiv = []
+        
         if not stempeluhr_data.get('success'):
             # Wenn Stempeluhr-Daten nicht verfügbar, nutze nur abgeschlossene
             ueberschritten = ueberschritten_abgeschlossen
@@ -239,12 +242,13 @@ def benachrichtige_serviceberater_ueberschreitungen():
         # Erstelle Mapping: auftrag_nr -> ueberschritt
         # WICHTIG: Aktive Aufträge zuerst, damit sie nicht von abgeschlossenen überschrieben werden
         ueberschritten_map = {}
-        # Zuerst aktive Aufträge (aus stempeluhr_data) - haben korrekte Laufzeit des aktiven Mechanikers
-        # TAG 194: FIX - Alle aktiven Aufträge aufnehmen, nicht nur die mit fortschritt_prozent > 100
+        # Zuerst aktive Aufträge (aus ueberschritten_aktiv) - nur die mit fortschritt_prozent > 100
+        # TAG 206: FIX - Nur Aufträge aus ueberschritten_aktiv aufnehmen (nicht alle aktiven)
         # Die Prüfung ob überschritten erfolgt später in der E-Mail-Logik basierend auf heute_session_min
+        # ABER: ueberschritten_aktiv filtert bereits auf fortschritt_prozent > 100 (basierend auf laufzeit_min)
+        # Das ist OK, da die E-Mail-Logik dann heute_session_min prüft
         if stempeluhr_data.get('success'):
-            aktive_mechaniker = stempeluhr_data.get('aktive_mechaniker', [])
-            for mechaniker in aktive_mechaniker:
+            for mechaniker in ueberschritten_aktiv:
                 auftrag_nr = mechaniker.get('order_number')
                 if auftrag_nr:
                     ueberschritten_map[auftrag_nr] = mechaniker
@@ -1621,6 +1625,47 @@ def email_tek_daily():
         return {'success': False, 'error': str(e)}
 
 
+@shared_task(soft_time_limit=300, name='celery_app.tasks.email_daily_logins')
+def email_daily_logins():
+    """
+    Login-Report E-Mail - Tägliche Liste der eingeloggten Benutzer
+    Läuft täglich um 17:00
+    
+    TAG 209: Neu erstellt - sendet täglich Liste der Benutzer die sich heute eingeloggt haben
+    """
+    import subprocess
+    import os
+    
+    try:
+        script_path = '/opt/greiner-portal/scripts/send_daily_login_report.py'
+        if not os.path.exists(script_path):
+            logger.error(f"Login-Report-Script nicht gefunden: {script_path}")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        
+        logger.info("Starte Login-Report E-Mail...")
+        result = subprocess.run(
+            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        if result.returncode == 0:
+            logger.info("Login-Report E-Mail erfolgreich abgeschlossen")
+            return {'success': True, 'stdout': result.stdout[-500:]}
+        else:
+            logger.error(f"Login-Report E-Mail fehlgeschlagen: {result.stderr}")
+            return {'success': False, 'error': result.stderr[-500:]}
+    
+    except subprocess.TimeoutExpired:
+        logger.error("Login-Report E-Mail: Timeout nach 5 Minuten")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei Login-Report E-Mail")
+        return {'success': False, 'error': str(e)}
+
+
 # =============================================================================
 # CONTROLLING TASKS (TAG 173)
 # =============================================================================
@@ -2028,4 +2073,102 @@ def sync_eautoseller_data():
         return {'success': False, 'error': 'Timeout'}
     except Exception as e:
         logger.exception("Fehler bei eAutoseller Sync")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=60, name='celery_app.tasks.send_whatsapp_message')
+def send_whatsapp_message(to: str, message: str, message_type: str = 'text', image_url: str = None, caption: str = None):
+    """
+    Sendet WhatsApp-Nachricht asynchron.
+    
+    TAG 211: WhatsApp-Integration für Teile-Handelsgeschäft
+    
+    Args:
+        to: Telefonnummer (wird automatisch normalisiert)
+        message: Nachrichtentext (bei type=text)
+        message_type: 'text' oder 'image'
+        image_url: URL zum Bild (bei type=image)
+        caption: Optionaler Bildtext
+    
+    Returns:
+        Dict mit success, message_id, error
+    """
+    try:
+        from api.whatsapp_api import WhatsAppClient, normalize_phone_number
+        from api.db_connection import get_db
+        from datetime import datetime
+        
+        # Normalisiere Telefonnummer
+        phone_number = normalize_phone_number(to)
+        
+        client = WhatsAppClient()
+        result = None
+        
+        if message_type == 'text':
+            if not message:
+                return {'success': False, 'error': 'Nachrichtentext fehlt'}
+            result = client.send_text_message(phone_number, message)
+        
+        elif message_type == 'image':
+            if not image_url:
+                return {'success': False, 'error': 'Bild-URL fehlt'}
+            result = client.send_image_message(phone_number, image_url, caption)
+        
+        else:
+            return {'success': False, 'error': f'Unbekannter Nachrichtentyp: {message_type}'}
+        
+        if result and result.get('success'):
+            # Speichere Nachricht in DB
+            message_id = result.get('message_id')
+            if message_id:
+                try:
+                    conn = get_db()
+                    cursor = conn.cursor()
+                    
+                    # Finde Kontakt
+                    cursor.execute("""
+                        SELECT id FROM whatsapp_contacts 
+                        WHERE phone_number = %s
+                    """, (phone_number,))
+                    contact_row = cursor.fetchone()
+                    contact_id = contact_row[0] if contact_row else None
+                    
+                    # Speichere Nachricht
+                    content = message if message_type == 'text' else None
+                    media_url = image_url if message_type == 'image' else None
+                    
+                    cursor.execute("""
+                        INSERT INTO whatsapp_messages (
+                            contact_id, message_id, direction, message_type,
+                            content, media_url, caption, status, created_at
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (message_id) DO UPDATE SET
+                            status = EXCLUDED.status,
+                            updated_at = CURRENT_TIMESTAMP
+                    """, (
+                        contact_id,
+                        message_id,
+                        'outbound',
+                        message_type,
+                        content,
+                        media_url,
+                        caption,
+                        'sent',
+                        datetime.now()
+                    ))
+                    
+                    conn.commit()
+                    conn.close()
+                except Exception as db_error:
+                    logger.error(f"Fehler beim Speichern der ausgehenden Nachricht: {str(db_error)}")
+            
+            logger.info(f"WhatsApp-Nachricht erfolgreich gesendet: {message_id} an {phone_number}")
+            return result
+        else:
+            error_msg = result.get('error', 'Nachricht konnte nicht gesendet werden') if result else 'Unbekannter Fehler'
+            logger.error(f"WhatsApp-Nachricht fehlgeschlagen: {error_msg}")
+            return {'success': False, 'error': error_msg}
+    
+    except Exception as e:
+        logger.exception("Fehler beim Senden der WhatsApp-Nachricht (Celery)")
         return {'success': False, 'error': str(e)}

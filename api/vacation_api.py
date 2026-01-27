@@ -40,6 +40,7 @@ CHANGES TAG 104:
 """
 
 from flask import Blueprint, request, jsonify, session
+from flask_login import login_required
 from datetime import datetime, date, timedelta
 import json
 
@@ -1294,8 +1295,6 @@ def approve_vacation():
         
         if not booking_id:
             return jsonify({'success': False, 'error': 'booking_id erforderlich'}), 400
-        team_members = get_team_for_approver(ldap_username)
-        team_ids = [m['employee_id'] for m in team_members]
 
         with db_session() as conn:
             cursor = conn.cursor()
@@ -1323,8 +1322,12 @@ def approve_vacation():
             if not booking:
                 return jsonify({'success': False, 'error': 'Buchung nicht gefunden'}), 404
 
-            # TAG 198: Team-Validierung nur für normale Genehmiger (nicht Admin)
+            # TAG 209: Team-Validierung nur für normale Genehmiger (nicht Admin)
+            # Admins können alle Buchungen genehmigen, auch eigene
             if not is_admin:
+                team_members = get_team_for_approver(ldap_username)
+                team_ids = [m['employee_id'] for m in team_members]
+                
                 if not team_ids:
                     return jsonify({
                         'success': False, 
@@ -1666,7 +1669,8 @@ def get_all_bookings():
                 ORDER BY vb.booking_date
             """
             query = convert_placeholders(query)
-            cursor.execute(query, (str(year),))
+            # TAG 213 FIX: PostgreSQL erwartet Integer für EXTRACT(YEAR FROM ...) Vergleich
+            cursor.execute(query, (year,))
 
             for row in cursor.fetchall():
                 emp_id = row[1]
@@ -1693,6 +1697,7 @@ def get_all_bookings():
                 })
 
             # 2. Locosoft-Mapping holen (employee_id -> locosoft_id)
+            # TAG 213 FIX: PostgreSQL verwendet BOOLEAN, nicht INTEGER (aktiv = true statt aktiv = 1)
             cursor.execute("""
                 SELECT e.id, e.locosoft_id
                 FROM employees e
@@ -1768,6 +1773,76 @@ def get_all_bookings():
 
     except Exception as e:
         import traceback
+        print(f"❌ ERROR in /all-bookings: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+
+@vacation_api.route('/blocks-and-free-days', methods=['GET'])
+@login_required
+def get_blocks_and_free_days():
+    """
+    GET /api/vacation/blocks-and-free-days?year=2026
+    
+    TAG 213: Öffentlicher Endpunkt für Frontend (kombiniert Urlaubssperren und freie Tage)
+    Gibt Daten im Format zurück, das das Frontend erwartet.
+    """
+    try:
+        year = request.args.get('year', datetime.now().year, type=int)
+        
+        blocks_dict = {}  # {date: [{department, reason}]}
+        free_days_dict = {}  # {date: {description, affects_entitlement}}
+        
+        with db_session() as conn:
+            cursor = conn.cursor()
+            
+            # 1. Urlaubssperren laden
+            cursor.execute("""
+                SELECT block_date, department_name, reason
+                FROM vacation_blocks
+                WHERE EXTRACT(YEAR FROM block_date) = %s
+                ORDER BY block_date, department_name
+            """, (year,))
+            
+            for row in cursor.fetchall():
+                date_str = row[0].isoformat() if hasattr(row[0], 'isoformat') else str(row[0])
+                if date_str not in blocks_dict:
+                    blocks_dict[date_str] = []
+                blocks_dict[date_str].append({
+                    'department': row[1],
+                    'reason': row[2] or ''
+                })
+            
+            # 2. Freie Tage laden
+            cursor.execute("""
+                SELECT free_date, description, affects_vacation_entitlement
+                FROM free_days
+                WHERE EXTRACT(YEAR FROM free_date) = %s
+                ORDER BY free_date
+            """, (year,))
+            
+            for row in cursor.fetchall():
+                date_str = row[0].isoformat() if hasattr(row[0], 'isoformat') else str(row[0])
+                free_days_dict[date_str] = {
+                    'description': row[1] or '',
+                    'affects_vacation_entitlement': bool(row[2]) if row[2] is not None else True
+                }
+        
+        return jsonify({
+            'success': True,
+            'year': year,
+            'blocks': blocks_dict,
+            'free_days': free_days_dict
+        })
+    
+    except Exception as e:
+        import traceback
+        print(f"❌ ERROR in /blocks-and-free-days: {str(e)}")
+        print(traceback.format_exc())
         return jsonify({
             'success': False,
             'error': str(e),

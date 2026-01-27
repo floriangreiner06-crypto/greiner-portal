@@ -151,6 +151,12 @@
     .gantt .cell.za.half-day { background: linear-gradient(to bottom, var(--za) 50%, white 50%) !important; }
     .gantt .cell.za.half-am { background: linear-gradient(to bottom, var(--za) 50%, white 50%) !important; }
     .gantt .cell.za.half-pm { background: linear-gradient(to bottom, white 50%, var(--za) 50%) !important; }
+    .gantt .cell.krank.half-day { background: linear-gradient(to bottom, var(--krank) 50%, white 50%) !important; }
+    .gantt .cell.krank.half-am { background: linear-gradient(to bottom, var(--krank) 50%, white 50%) !important; }
+    .gantt .cell.krank.half-pm { background: linear-gradient(to bottom, white 50%, var(--krank) 50%) !important; }
+    .gantt .cell.schulung.half-day { background: linear-gradient(to bottom, var(--schulung) 50%, white 50%) !important; }
+    .gantt .cell.schulung.half-am { background: linear-gradient(to bottom, var(--schulung) 50%, white 50%) !important; }
+    .gantt .cell.schulung.half-pm { background: linear-gradient(to bottom, white 50%, var(--schulung) 50%) !important; }
     
     /* TAG 116: Locosoft-Indikator - kleiner Punkt rechts unten */
     .gantt .cell.in-locosoft::after {
@@ -377,10 +383,25 @@
     <div class="main-row">
         <div class="gantt-col">
             <div class="toolbar">
-                <div style="display:flex;align-items:center;">
-                    <button class="nav-btn" id="btnPrev" title="Vorheriger Monat">◀</button>
-                    <span class="month-title" id="titleMonth">Dezember 2025</span>
-                    <button class="nav-btn" id="btnNext" title="Nächster Monat">▶</button>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <!-- TAG 213: Kalender mit Monat- und Jahresauswahl statt Pfeile -->
+                    <select class="form-select form-select-sm" id="monthSelect" style="width:auto;font-weight:600;min-width:140px;" onchange="changeMonthYear()">
+                        <option value="0">Januar</option>
+                        <option value="1">Februar</option>
+                        <option value="2">März</option>
+                        <option value="3">April</option>
+                        <option value="4">Mai</option>
+                        <option value="5">Juni</option>
+                        <option value="6">Juli</option>
+                        <option value="7">August</option>
+                        <option value="8">September</option>
+                        <option value="9">Oktober</option>
+                        <option value="10">November</option>
+                        <option value="11">Dezember</option>
+                    </select>
+                    <select class="form-select form-select-sm" id="yearSelect" style="width:auto;font-weight:600;min-width:100px;" onchange="changeMonthYear()">
+                        <!-- Wird dynamisch befüllt -->
+                    </select>
                 </div>
                 <div style="display:flex;align-items:center;gap:10px;">
                     <button class="btn btn-primary btn-sm" id="btnToday"><i class="fas fa-calendar-day"></i> Heute</button>
@@ -418,7 +439,7 @@
             </div>
             <!-- TAG 198: Masseneingabe Button (nur für Admins) -->
             <div id="massBookingBox" style="display:none; margin-bottom: 15px;">
-                <button class="btn btn-primary btn-sm w-100" onclick="showMassBookingModal()" style="font-weight: 600;">
+                <button class="btn btn-primary btn-sm w-100" id="massBookingBtn" style="font-weight: 600;">
                     <i class="fas fa-users"></i> Masseneingabe
                 </button>
             </div>
@@ -551,6 +572,90 @@
         </div>
     </div>
 </div>
+
+<!-- TAG 198: Masseneingabe Modal -->
+<div class="modal fade" id="massBookingModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white py-2">
+                <h6 class="modal-title"><i class="fas fa-users"></i> Masseneingabe</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label"><strong>Ziel:</strong></label>
+                    <select class="form-select" id="massBookingTarget" onchange="updateMassBookingTarget()">
+                        <option value="department">Abteilung</option>
+                        <option value="employees">Spezifische Mitarbeiter</option>
+                        <option value="all">Alle Mitarbeiter</option>
+                    </select>
+                </div>
+                
+                <div id="massBookingDepartmentBox" class="mb-3">
+                    <label class="form-label"><strong>Abteilung:</strong></label>
+                    <select class="form-select" id="massBookingDepartment">
+                        <option value="">Abteilung wählen...</option>
+                    </select>
+                </div>
+                
+                <div id="massBookingEmployeesBox" class="mb-3" style="display:none;">
+                    <label class="form-label"><strong>Mitarbeiter (mehrfach auswählbar):</strong></label>
+                    <select class="form-select" id="massBookingEmployees" multiple size="8">
+                    </select>
+                    <small class="text-muted">Strg/Cmd + Klick für Mehrfachauswahl</small>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label"><strong>Datum(e):</strong></label>
+                    <div class="d-flex gap-2 mb-2">
+                        <input type="date" class="form-control" id="massBookingDateStart" style="max-width: 200px;">
+                        <span class="align-self-center">bis</span>
+                        <input type="date" class="form-control" id="massBookingDateEnd" style="max-width: 200px;">
+                    </div>
+                    <div id="massBookingSelectedDates" class="mb-2"></div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addMassBookingDate()">
+                        <i class="fas fa-plus"></i> Datum hinzufügen
+                    </button>
+                    <small class="text-muted d-block mt-1">Wählen Sie ein Datum oder einen Datumsbereich aus</small>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label"><strong>Buchungsart:</strong></label>
+                    <select class="form-select" id="massBookingType" onchange="updateMassBookingType()">
+                        <option value="1">🏖️ Urlaub</option>
+                        <option value="6">⏰ Zeitausgleich</option>
+                        <option value="5">🤒 Krank</option>
+                        <option value="9">📚 Schulung</option>
+                        <option value="block">🚫 Urlaubssperre</option>
+                    </select>
+                </div>
+                
+                <div class="mb-3" id="massBookingDayPartBox">
+                    <label class="form-label"><strong>Tag-Teil:</strong></label>
+                    <select class="form-select" id="massBookingDayPart">
+                        <option value="full">Ganzer Tag</option>
+                        <option value="half">Halber Tag</option>
+                        <option value="am">Vormittag</option>
+                        <option value="pm">Nachmittag</option>
+                    </select>
+                </div>
+                
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="massBookingAutoApprove">
+                        <label class="form-check-label" for="massBookingAutoApprove">
+                            <strong>Automatisch genehmigen</strong>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button class="btn btn-primary" onclick="submitMassBooking()"><i class="fas fa-save"></i> Erstellen</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -588,9 +693,25 @@ let lastClickPos = {x: 0, y: 0};
 let justOpenedPopup = false;
 let blocks = {};  // TAG 198: Urlaubssperren {date: [{department, reason}]}
 let freeDays = {};  // TAG 198: Freie Tage {date: {description, affects_entitlement}}
+let massBookingDatesList = [];  // TAG 213: Liste der ausgewählten Daten für Masseneingabe
 
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('📅 Urlaubsplaner V20 init...');
+    
+    // TAG 213: Jahres-Dropdown befüllen (aktuelle Jahr ± 5 Jahre)
+    const yearSelect = document.getElementById('yearSelect');
+    const currentYear = new Date().getFullYear();
+    for (let y = currentYear - 2; y <= currentYear + 3; y++) {
+        const opt = document.createElement('option');
+        opt.value = y;
+        opt.textContent = y;
+        yearSelect.appendChild(opt);
+    }
+    
+    // TAG 213: Aktuellen Monat und Jahr in Dropdowns setzen
+    document.getElementById('monthSelect').value = mon;
+    document.getElementById('yearSelect').value = yr;
+    
     await loadMe();
     await loadAllEmployees();
     await loadMyBook();
@@ -623,12 +744,14 @@ async function loadMe() {
     const b = r.balance;
     myDept = b.department || me?.department || 'Sonstige';  // NEU: Eigene Abteilung merken
     document.getElementById('userName').textContent = b.name || `${me.first_name} ${me.last_name}`;
-    document.getElementById('userRest').textContent = b.resturlaub_korrigiert ?? b.resturlaub ?? 0;
+    // TAG 209: Verwende resturlaub (aus View) statt resturlaub_korrigiert (nur Locosoft)
+    const resturlaub = b.resturlaub ?? b.resturlaub_korrigiert ?? 0;
+    document.getElementById('userRest').textContent = resturlaub;
     document.getElementById('sAnspruch').textContent = b.anspruch || 27;
     document.getElementById('sUrlaub').textContent = b.urlaub_locosoft ?? b.verbraucht ?? 0;
     document.getElementById('sZA').textContent = b.zeitausgleich ?? 0;
     document.getElementById('sKrank').textContent = b.krank ?? 0;
-    document.getElementById('sRest').textContent = b.resturlaub_korrigiert ?? b.resturlaub ?? 0;
+    document.getElementById('sRest').textContent = resturlaub;
     if (r.approver_info?.is_approver) isAppr = true;
     if (r.approver_info?.is_admin) {
         isAdmin = true;
@@ -653,6 +776,13 @@ async function loadAllEmployees() {
             resturlaub: e.resturlaub
         }));
         
+        // TAG 213 DEBUG: Log employee_ids
+        console.log(`📅 loadAllEmployees: ${allEmployees.length} Mitarbeiter geladen`);
+        if (allEmployees.length > 0) {
+            const sampleIds = allEmployees.slice(0, 5).map(e => `ID ${e.employee_id} (${e.name})`).join(', ');
+            console.log(`📅 Beispiel employee_ids: ${sampleIds}`);
+        }
+        
         // Abteilungen-Filter befüllen
         const depts = [...new Set(allEmployees.map(e => e.grp_code))].filter(d => d).sort();
         depts.forEach(d => {
@@ -668,6 +798,8 @@ async function loadAllEmployees() {
             opt.value = l; opt.textContent = l;
             document.getElementById('filterLocation').appendChild(opt);
         });
+    } else {
+        console.error('❌ loadAllEmployees fehlgeschlagen:', r.error);
     }
 }
 
@@ -680,7 +812,23 @@ async function loadMyBook() {
 async function loadAllBookings() {
     // NEU TAG 113: Lade alle Buchungen für Kollegen-Anzeige
     const r = await api('/all-bookings?year=' + yr);
-    if (r.success) allBookings = r.bookings || [];
+    if (r.success) {
+        allBookings = r.bookings || [];
+        // TAG 213 DEBUG: Log für Debugging mit employee_id-Verteilung
+        console.log(`📅 loadAllBookings: ${allBookings.length} Buchungen geladen für Jahr ${yr}`);
+        if (allBookings.length > 0) {
+            // Zeige Verteilung der employee_ids
+            const empIdCounts = {};
+            allBookings.forEach(b => {
+                const empId = typeof b.employee_id === 'string' ? parseInt(b.employee_id, 10) : b.employee_id;
+                empIdCounts[empId] = (empIdCounts[empId] || 0) + 1;
+            });
+            console.log(`📅 Buchungen pro Mitarbeiter:`, Object.entries(empIdCounts).slice(0, 10).map(([id, count]) => `ID ${id}: ${count}`).join(', '));
+        }
+    } else {
+        console.error('❌ loadAllBookings fehlgeschlagen:', r.error);
+        allBookings = [];
+    }
 }
 
 // TAG 198: Lade Urlaubssperren und freie Tage
@@ -753,8 +901,30 @@ async function loadAppr() {
     }
 }
 
+// TAG 213: Funktion zum Ändern von Monat/Jahr aus Dropdowns
+async function changeMonthYear() {
+    const newMon = parseInt(document.getElementById('monthSelect').value);
+    const newYr = parseInt(document.getElementById('yearSelect').value);
+    const oldYr = yr;
+    
+    mon = newMon;
+    yr = newYr;
+    
+    // Bei Jahreswechsel Daten neu laden
+    if (yr !== oldYr) {
+        await loadAllBookings();
+        await loadMyBook();
+    }
+    
+    render();
+    renderMy();
+}
+
 function render() {
-    document.getElementById('titleMonth').textContent = `${MONTHS[mon]} ${yr}`;
+    // TAG 213: Dropdowns aktualisieren statt titleMonth
+    document.getElementById('monthSelect').value = mon;
+    document.getElementById('yearSelect').value = yr;
+    
     const days = new Date(yr, mon+1, 0).getDate();
     const today = new Date().toISOString().split('T')[0];
     const filterDept = document.getElementById('filterDept').value;
@@ -840,7 +1010,8 @@ function render() {
                     const isFT = FT[ds];
                     const isToday = ds === today;  // TAG 198: Aktueller Tag
                     const isFreeDay = freeDays[ds];  // TAG 198: Freier Tag (Betriebsferien)
-                    const isBlocked = blocks[ds] && blocks[ds].some(b => b.department === emp.department);  // TAG 198: Urlaubssperre
+                    // TAG 213 FIX: Verwende grp_code statt department (konsistent mit allEmployees)
+                    const isBlocked = blocks[ds] && blocks[ds].some(b => b.department === emp.grp_code);  // TAG 198: Urlaubssperre
                     let c = 'cell', icon = '', bookingId = '';
                     
                     if (isFreeDay) c += ' free-day';  // TAG 198: Freier Tag
@@ -849,43 +1020,72 @@ function render() {
                     if (isToday) c += ' today-col';  // TAG 198: Aktueller Tag - gesamte Spalte
                     if (isBlocked) c += ' blocked';  // TAG 198: Urlaubssperre
                     if (!isFT && !isWE && !isFreeDay) {
-                        // NEU: Prüfe ALLE Buchungen, nicht nur eigene
-                        if (isMe) {
-                            // Eigene Buchungen aus myBook (hat mehr Details)
-                            // TAG 198: Rejected und cancelled Buchungen nicht anzeigen
-                            const bk = myBook.find(b => b.date === ds && b.status !== 'cancelled' && b.status !== 'rejected');
-                            if (bk) {
-                                c += ' booked ' + (bk.status === 'pending' ? 'pending' : (CLS[bk.type_id]||'urlaub'));
-                                // TAG 114: Halber Tag Klasse
-                                if (bk.day_part === 'am') c += ' half-am';
-                                else if (bk.day_part === 'pm') c += ' half-pm';
-                                else if (bk.day_part === 'half') c += ' half-day';
-                                // TAG 116: Locosoft-Indikator
-                                if (bk.in_locosoft && bk.status === 'approved') c += ' in-locosoft';
-                                icon = ICON[bk.type_id] || '';
-                                bookingId = bk.id;
-                            }
-                        } else {
-                            // Andere: aus allBookings
-                            // TAG 198: Explizit nach employee_id UND date filtern, nur approved/pending (nicht rejected/cancelled)
-                            const bk = allBookings.find(b => {
-                                // Explizite Typ-Prüfung für employee_id (kann number oder string sein)
-                                const empIdMatch = (typeof b.employee_id === 'number' && b.employee_id === emp.employee_id) ||
-                                                   (typeof b.employee_id === 'string' && parseInt(b.employee_id) === emp.employee_id) ||
-                                                   (b.employee_id == emp.employee_id);  // Fallback mit ==
-                                return empIdMatch && b.date === ds && b.status !== 'cancelled' && b.status !== 'rejected';
-                            });
-                            if (bk) {
-                                c += ' ' + (bk.status === 'pending' ? 'pending' : (CLS[bk.type_id]||'urlaub'));
-                                // TAG 114: Halber Tag Klasse
-                                if (bk.day_part === 'am') c += ' half-am';
-                                else if (bk.day_part === 'pm') c += ' half-pm';
-                                else if (bk.day_part === 'half') c += ' half-day';
-                                icon = ICON[bk.type_id] || '';
-                                // TAG 198: bookingId auch für andere Buchungen setzen (für Genehmigung)
-                                if (bk.id && !bk.id.toString().startsWith('loco_')) {
-                                    bookingId = bk.id;
+                        // TAG 209: Immer allBookings verwenden (enthält alle Buchungen inkl. Locosoft)
+                        // Für eigene Buchungen können wir myBook als Fallback verwenden
+                        let bk = null;
+                        
+                        // Zuerst in allBookings suchen (enthält alle Buchungen)
+                        // TAG 213 FIX: Verbesserte employee_id-Vergleiche - verwende == für flexiblen Typ-Vergleich
+                        bk = allBookings.find(b => {
+                            // Konvertiere beide employee_ids zu Number für konsistenten Vergleich
+                            const bEmpId = typeof b.employee_id === 'string' ? parseInt(b.employee_id, 10) : (b.employee_id || 0);
+                            const empEmpId = typeof emp.employee_id === 'string' ? parseInt(emp.employee_id, 10) : (emp.employee_id || 0);
+                            
+                            // TAG 213 FIX: Verwende == für flexiblen Vergleich (Number/String/undefined)
+                            // WICHTIG: Prüfe beide IDs explizit (können 0 sein wenn undefined)
+                            const empIdMatch = (bEmpId == empEmpId) && bEmpId > 0 && empEmpId > 0;
+                            
+                            // Datum-Vergleich (normalisiere beide zu String im Format YYYY-MM-DD)
+                            const bDate = typeof b.date === 'string' ? b.date : (b.date ? String(b.date).split('T')[0] : '');
+                            const dateMatch = bDate === ds;
+                            
+                            // Status-Prüfung
+                            const statusOk = b.status !== 'cancelled' && b.status !== 'rejected';
+                            
+                            // TAG 213 DEBUG: Log nur bei Problemen (erste 5 Versuche pro Mitarbeiter, nicht nur eigene)
+                            if (!bk && d <= 5 && allBookings.length > 0 && empEmpId > 0) {
+                                // Prüfe ob es Buchungen für diesen Mitarbeiter gibt
+                                const matchingBookings = allBookings.filter(b2 => {
+                                    const b2EmpId = typeof b2.employee_id === 'string' ? parseInt(b2.employee_id, 10) : (b2.employee_id || 0);
+                                    return (b2EmpId == empEmpId) && b2EmpId > 0;
+                                });
+                                if (matchingBookings.length > 0) {
+                                    // Es gibt Buchungen für diesen Mitarbeiter, aber keine für dieses Datum
+                                    const datesForEmp = matchingBookings.map(b2 => b2.date).slice(0, 5);
+                                    console.log(`⚠️ ${emp.name} (ID: ${empEmpId}) hat ${matchingBookings.length} Buchungen, aber nicht für ${ds}. Buchungen: ${datesForEmp.join(', ')}`);
+                                } else if (d === 1) {
+                                    // Keine Buchungen für diesen Mitarbeiter gefunden
+                                    console.log(`⚠️ ${emp.name} (ID: ${empEmpId}) hat keine Buchungen in allBookings. allBookings.length=${allBookings.length}`);
+                                    // Zeige erste 3 employee_ids aus allBookings
+                                    const sampleEmpIds = [...new Set(allBookings.slice(0, 10).map(b2 => {
+                                        const b2EmpId = typeof b2.employee_id === 'string' ? parseInt(b2.employee_id, 10) : (b2.employee_id || 0);
+                                        return b2EmpId;
+                                    }))];
+                                    console.log(`  → Beispiel employee_ids in allBookings: ${sampleEmpIds.join(', ')}`);
                                 }
+                            }
+                            
+                            return empIdMatch && dateMatch && statusOk;
+                        });
+                        
+                        // TAG 213 FIX: Fallback zu myBook entfernt - alle Buchungen sollten in allBookings sein
+                        // Der Fallback verursacht, dass nur eigene Buchungen angezeigt werden
+                        // if (!bk && isMe) {
+                        //     bk = myBook.find(b => b.date === ds && b.status !== 'cancelled' && b.status !== 'rejected');
+                        // }
+                        
+                        if (bk) {
+                            c += ' booked ' + (bk.status === 'pending' ? 'pending' : (CLS[bk.type_id]||'urlaub'));
+                            // TAG 114: Halber Tag Klasse
+                            if (bk.day_part === 'am') c += ' half-am';
+                            else if (bk.day_part === 'pm') c += ' half-pm';
+                            else if (bk.day_part === 'half') c += ' half-day';
+                            // TAG 116: Locosoft-Indikator
+                            if ((bk.source === 'locosoft' || bk.in_locosoft) && bk.status === 'approved') c += ' in-locosoft';
+                            icon = ICON[bk.type_id] || '';
+                            // TAG 198: bookingId auch für andere Buchungen setzen (für Genehmigung)
+                            if (bk.id && !bk.id.toString().startsWith('loco_')) {
+                                bookingId = bk.id;
                             }
                         }
                     }
@@ -1454,32 +1654,18 @@ function events() {
         halfTime.style.display = e.target.checked ? 'inline-block' : 'none';
     });
     
-    document.getElementById('btnPrev').addEventListener('click', async () => { 
-        const oldYr = yr;
-        mon--; 
-        if (mon < 0) { mon = 11; yr--; } 
-        if (yr !== oldYr) {
-            await loadAllBookings();  // Bei Jahreswechsel neu laden
-            await loadMyBook();       // TAG 116 FIX: Auch eigene Buchungen neu laden!
-        }
-        render(); 
-        renderMy();  // TAG 116 FIX: Sidebar aktualisieren
-    });
-    document.getElementById('btnNext').addEventListener('click', async () => { 
-        const oldYr = yr;
-        mon++; 
-        if (mon > 11) { mon = 0; yr++; }
-        if (yr !== oldYr) {
-            await loadAllBookings();  // Bei Jahreswechsel neu laden
-            await loadMyBook();       // TAG 116 FIX: Auch eigene Buchungen neu laden!
-        }
-        render(); 
-        renderMy();  // TAG 116 FIX: Sidebar aktualisieren
-    });
+    // TAG 213: btnPrev und btnNext entfernt - Navigation über Dropdowns
+    // Event-Listener für Monat/Jahr-Dropdowns werden über onchange im HTML gehandelt
+    
     document.getElementById('btnToday').addEventListener('click', async () => { 
         const oldYr = yr;
         mon = new Date().getMonth(); 
         yr = new Date().getFullYear(); 
+        
+        // Dropdowns aktualisieren
+        document.getElementById('monthSelect').value = mon;
+        document.getElementById('yearSelect').value = yr;
+        
         if (yr !== oldYr) {
             await loadAllBookings();  // Bei Jahreswechsel neu laden
             await loadMyBook();       // TAG 116 FIX: Auch eigene Buchungen neu laden!
@@ -1492,15 +1678,41 @@ function events() {
     document.getElementById('btnDoCancel').addEventListener('click', doCancel);
     document.getElementById('btnDoReject').addEventListener('click', doReject);
     document.getElementById('btnDoApprove').addEventListener('click', doApprove);
+    // TAG 213 FIX: Event-Listener für Masseneingabe-Button (async)
+    const massBookingBtn = document.getElementById('massBookingBtn');
+    if (massBookingBtn) {
+        massBookingBtn.addEventListener('click', async () => {
+            await showMassBookingModal();
+        });
+    }
 }
 
 // TAG 198: Masseneingabe Funktionen
-function showMassBookingModal() {
+async function showMassBookingModal() {
+    // TAG 213 FIX: Stelle sicher, dass allEmployees geladen ist
+    if (!allEmployees || allEmployees.length === 0) {
+        console.log('📅 showMassBookingModal: allEmployees leer, lade neu...');
+        await loadAllEmployees();
+        // Prüfe erneut nach dem Laden
+        if (!allEmployees || allEmployees.length === 0) {
+            console.error('❌ showMassBookingModal: allEmployees immer noch leer nach loadAllEmployees()');
+            alert('Fehler: Mitarbeiterliste konnte nicht geladen werden. Bitte Seite neu laden.');
+            return;
+        }
+    }
+    
     const modal = new bootstrap.Modal(document.getElementById('massBookingModal'));
     
     // Lade Abteilungen
     const deptSelect = document.getElementById('massBookingDepartment');
-    const departments = [...new Set(allEmployees.map(e => e.department).filter(Boolean))].sort();
+    // TAG 213 FIX: Verwende grp_code statt department (konsistent mit loadAllEmployees)
+    const departments = [...new Set(allEmployees.map(e => e.grp_code).filter(Boolean))].sort();
+    console.log(`📅 showMassBookingModal: ${allEmployees.length} Mitarbeiter, ${departments.length} Abteilungen gefunden:`, departments);
+    
+    if (departments.length === 0) {
+        console.warn('⚠️ showMassBookingModal: Keine Abteilungen gefunden in allEmployees:', allEmployees);
+    }
+    
     deptSelect.innerHTML = '<option value="">Abteilung wählen...</option>' + 
         departments.map(d => `<option value="${d}">${d}</option>`).join('');
     
@@ -1511,11 +1723,16 @@ function showMassBookingModal() {
     ).join('');
     
     // Reset Form
-    document.getElementById('massBookingDates').value = '';
+    document.getElementById('massBookingDateStart').value = '';
+    document.getElementById('massBookingDateEnd').value = '';
+    document.getElementById('massBookingSelectedDates').innerHTML = '';
+    massBookingDatesList = [];  // TAG 213: Liste der ausgewählten Daten
     document.getElementById('massBookingType').value = '1';
+    document.getElementById('massBookingDayPart').value = 'full';
     document.getElementById('massBookingTarget').value = 'department';
     document.getElementById('massBookingAutoApprove').checked = false;
     updateMassBookingTarget();
+    updateMassBookingType();  // TAG 213: Tag-Teil anzeigen/verstecken
     
     modal.show();
 }
@@ -1528,39 +1745,150 @@ function updateMassBookingTarget() {
         target === 'employees' ? 'block' : 'none';
 }
 
-async function submitMassBooking() {
-    const datesInput = document.getElementById('massBookingDates').value.trim();
-    if (!datesInput) {
-        alert('Bitte Datum(e) eingeben');
+// TAG 213: Funktion zum Anzeigen/Verstecken von Tag-Teil bei Urlaubssperre
+function updateMassBookingType() {
+    const bookingType = document.getElementById('massBookingType').value;
+    const dayPartBox = document.getElementById('massBookingDayPartBox');
+    const targetSelect = document.getElementById('massBookingTarget');
+    const autoApproveBox = document.getElementById('massBookingAutoApprove').closest('.mb-3');
+    
+    // Tag-Teil nur bei normalen Buchungen anzeigen, nicht bei Urlaubssperre
+    if (bookingType === 'block') {
+        dayPartBox.style.display = 'none';
+        autoApproveBox.style.display = 'none';
+        // Bei Urlaubssperre nur "Abteilung" erlauben
+        targetSelect.value = 'department';
+        targetSelect.disabled = true;
+        updateMassBookingTarget();
+    } else {
+        dayPartBox.style.display = 'block';
+        autoApproveBox.style.display = 'block';
+        targetSelect.disabled = false;
+    }
+}
+
+// TAG 213: Funktion zum Hinzufügen von Daten aus Kalender
+function addMassBookingDate() {
+    const startDate = document.getElementById('massBookingDateStart').value;
+    const endDate = document.getElementById('massBookingDateEnd').value;
+    
+    if (!startDate) {
+        alert('Bitte Startdatum wählen');
         return;
     }
     
-    // Parse Datum(e)
     let dates = [];
-    if (datesInput.includes(' bis ')) {
-        const [start, end] = datesInput.split(' bis ').map(s => s.trim());
-        const startDate = new Date(start);
-        const endDate = new Date(end);
-        for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+    if (endDate && endDate >= startDate) {
+        // Datumsbereich
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
             dates.push(d.toISOString().split('T')[0]);
         }
     } else {
-        dates = datesInput.split(',').map(s => s.trim()).filter(Boolean);
+        // Einzelnes Datum
+        dates.push(startDate);
     }
     
-    if (dates.length === 0) {
-        alert('Keine gültigen Daten gefunden');
+    // Füge neue Daten zur Liste hinzu (ohne Duplikate)
+    dates.forEach(date => {
+        if (!massBookingDatesList.includes(date)) {
+            massBookingDatesList.push(date);
+        }
+    });
+    
+    // Sortiere Liste
+    massBookingDatesList.sort();
+    
+    // Aktualisiere Anzeige
+    updateMassBookingDatesDisplay();
+    
+    // Reset Felder
+    document.getElementById('massBookingDateStart').value = '';
+    document.getElementById('massBookingDateEnd').value = '';
+}
+
+// TAG 213: Funktion zum Aktualisieren der Datums-Anzeige
+function updateMassBookingDatesDisplay() {
+    const container = document.getElementById('massBookingSelectedDates');
+    if (massBookingDatesList.length === 0) {
+        container.innerHTML = '';
         return;
     }
     
-    const vacation_type_id = parseInt(document.getElementById('massBookingType').value);
+    let html = '<div class="d-flex flex-wrap gap-2">';
+    massBookingDatesList.forEach(date => {
+        const dateStr = new Date(date + 'T00:00:00').toLocaleDateString('de-DE');
+        html += `<span class="badge bg-primary" style="font-size: 0.9rem;">
+            ${dateStr}
+            <button type="button" class="btn-close btn-close-white ms-1" style="font-size: 0.7rem;" onclick="removeMassBookingDate('${date}')"></button>
+        </span>`;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+// TAG 213: Funktion zum Entfernen eines Datums
+function removeMassBookingDate(date) {
+    massBookingDatesList = massBookingDatesList.filter(d => d !== date);
+    updateMassBookingDatesDisplay();
+}
+
+async function submitMassBooking() {
+    // TAG 213: Verwende massBookingDatesList statt Text-Input
+    if (massBookingDatesList.length === 0) {
+        alert('Bitte mindestens ein Datum hinzufügen');
+        return;
+    }
+    
+    const bookingType = document.getElementById('massBookingType').value;
+    const day_part = document.getElementById('massBookingDayPart').value;
     const target = document.getElementById('massBookingTarget').value;
     const auto_approve = document.getElementById('massBookingAutoApprove').checked;
     
+    // TAG 213: Prüfe ob Urlaubssperre
+    if (bookingType === 'block') {
+        // Urlaubssperre erstellen
+        const department = document.getElementById('massBookingDepartment').value;
+        if (!department) {
+            alert('Bitte Abteilung wählen für Urlaubssperre');
+            return;
+        }
+        
+        const reason = prompt('Grund für Urlaubssperre (optional):', '');
+        
+        try {
+            const r = await fetch('/api/vacation/admin/blocks', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    dates: massBookingDatesList,
+                    department: department,
+                    reason: reason || ''
+                })
+            });
+            const result = await r.json();
+            
+            if (result.success) {
+                bootstrap.Modal.getInstance(document.getElementById('massBookingModal')).hide();
+                toast(`✅ ${result.created || massBookingDatesList.length} Urlaubssperre(n) erstellt!`, 'success');
+                await loadBlocksAndFreeDays();
+                render();
+            } else {
+                toast('Fehler: ' + (result.error || ''), 'danger');
+            }
+        } catch (e) {
+            toast('Fehler: ' + e.message, 'danger');
+        }
+        return;
+    }
+    
+    // Normale Buchung
+    const vacation_type_id = parseInt(bookingType);
     const payload = {
-        dates: dates,
+        dates: massBookingDatesList,
         vacation_type_id: vacation_type_id,
-        day_part: 'full',
+        day_part: day_part,
         auto_approve: auto_approve
     };
     
@@ -1594,10 +1922,25 @@ async function submitMassBooking() {
         if (result.success) {
             bootstrap.Modal.getInstance(document.getElementById('massBookingModal')).hide();
             toast(`✅ ${result.created} Buchungen für ${result.employees} Mitarbeiter erstellt!`, 'success');
-            await loadAllBookings();
-            await loadMyBook();
-            render();
-            renderMy();
+            // TAG 213 FIX: Alle Daten neu laden nach Masseneingabe
+            await loadAllEmployees();  // Mitarbeiterliste aktualisieren
+            await loadAllBookings();   // Alle Buchungen neu laden
+            // TAG 213 DEBUG: Prüfe ob Buchungen geladen wurden
+            console.log(`📅 Nach Masseneingabe: ${allBookings.length} Buchungen geladen`);
+            if (allBookings.length > 0) {
+                console.log('📅 Erste 5 Buchungen:', allBookings.slice(0, 5).map(b => ({
+                    id: b.id,
+                    employee_id: b.employee_id,
+                    date: b.date,
+                    status: b.status,
+                    type_id: b.type_id
+                })));
+            }
+            await loadMyBook();        // Eigene Buchungen neu laden
+            await loadMe();            // Balance aktualisieren
+            await loadBlocksAndFreeDays();  // TAG 213: Urlaubssperren neu laden
+            render();                  // Kalender neu rendern
+            renderMy();                // Sidebar neu rendern
         } else {
             toast('Fehler: ' + (result.error || ''), 'danger');
         }
@@ -1605,6 +1948,13 @@ async function submitMassBooking() {
         toast('Fehler: ' + e.message, 'danger');
     }
 }
+
+// TAG 213: Globale Funktionen für Masseneingabe
+window.addMassBookingDate = addMassBookingDate;
+window.removeMassBookingDate = removeMassBookingDate;
+window.updateMassBookingDatesDisplay = updateMassBookingDatesDisplay;
+window.updateMassBookingType = updateMassBookingType;
+window.changeMonthYear = changeMonthYear;
 
 // Global functions
 window.showCancel = showCancel;
@@ -1618,6 +1968,7 @@ window.showDeleteConfirm = showDeleteConfirm;
 window.hideDeleteConfirm = hideDeleteConfirm;
 window.showMassBookingModal = showMassBookingModal;
 window.updateMassBookingTarget = updateMassBookingTarget;
+window.submitMassBooking = submitMassBooking;
 
 // TAG 198: Jahresend-Report Download
 function downloadYearEndReport() {

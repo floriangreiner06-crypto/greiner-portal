@@ -48,8 +48,18 @@ def get_client():
     """Erstellt eAutoseller Client"""
     creds = get_eautoseller_credentials()
     client = EAutosellerClient(
-        username=creds['username'],
-        password=creds['password'],
+        username=creds.get('username', 'fGreiner'),
+        password=creds.get('password', 'fGreiner12'),
+        loginbereich=creds.get('loginbereich', 'kfz')
+    )
+    return client
+
+def get_swagger_client():
+    """Erstellt eAutoseller Client für Swagger API"""
+    creds = get_eautoseller_credentials()
+    client = EAutosellerClient(
+        username=creds.get('username', 'fGreiner'),
+        password=creds.get('password', 'fGreiner12'),
         loginbereich=creds.get('loginbereich', 'kfz')
     )
     return client
@@ -101,15 +111,34 @@ def get_vehicles():
         - min_standzeit: Mindest-Standzeit in Tagen (Filter)
         - max_standzeit: Maximal-Standzeit in Tagen (Filter)
         - status: Filter nach Status (ok, warning, critical)
+        - use_swagger: Swagger API verwenden (default: true, falls verfügbar)
     """
     try:
         client = get_client()
         
+        # Prüfe ob Swagger API verwendet werden soll
+        use_swagger = request.args.get('use_swagger', 'true').lower() == 'true'
+        
         active_only = request.args.get('active_only', 'true').lower() == 'true'
-        # Hereinnahme-Datum aus Detail-Seiten abrufen (standardmäßig aktiviert)
-        # Kann langsamer sein, aber liefert vollständige Daten
-        fetch_hereinnahme = request.args.get('fetch_hereinnahme', 'true').lower() == 'true'
-        vehicles = client.get_vehicle_list(active_only=active_only, fetch_hereinnahme=fetch_hereinnahme)
+        
+        # Versuche Swagger API, fallback zu HTML-Parsing
+        if use_swagger:
+            try:
+                vehicles = client.get_vehicles_swagger(use_swagger=True)
+                if not vehicles or len(vehicles) == 0:
+                    # Fallback zu HTML-Parsing
+                    print("Swagger API lieferte keine Fahrzeuge, Fallback zu HTML...")
+                    fetch_hereinnahme = request.args.get('fetch_hereinnahme', 'true').lower() == 'true'
+                    vehicles = client.get_vehicle_list(active_only=active_only, fetch_hereinnahme=fetch_hereinnahme)
+            except Exception as e:
+                print(f"Swagger API Fehler, Fallback zu HTML: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                fetch_hereinnahme = request.args.get('fetch_hereinnahme', 'true').lower() == 'true'
+                vehicles = client.get_vehicle_list(active_only=active_only, fetch_hereinnahme=fetch_hereinnahme)
+        else:
+            fetch_hereinnahme = request.args.get('fetch_hereinnahme', 'true').lower() == 'true'
+            vehicles = client.get_vehicle_list(active_only=active_only, fetch_hereinnahme=fetch_hereinnahme)
         
         # Prüfe ob echte Fahrzeuge gefunden wurden
         # Filter-Optionen haben sehr lange Marke-Strings (>100 Zeichen)
@@ -214,10 +243,50 @@ def get_vehicles():
         warning = len([v for v in vehicles if v.get('standzeit_status') == 'warning'])
         ok = len([v for v in vehicles if v.get('standzeit_status') == 'ok'])
         
+        # Durchschnittliche Standzeit
         avg_standzeit = None
         standzeiten = [v['standzeit_tage'] for v in vehicles if v.get('standzeit_tage') is not None]
         if standzeiten:
             avg_standzeit = sum(standzeiten) / len(standzeiten)
+        
+        # Erweiterte KPIs
+        # Lagerwert (Aktive Fahrzeuge mit Preis)
+        lagerwert = 0.0
+        preise = [v['preis'] for v in vehicles if v.get('preis') is not None and v.get('preis') > 0]
+        if preise:
+            lagerwert = sum(preise)
+        
+        # Durchschnittspreis
+        avg_preis = None
+        if preise:
+            avg_preis = sum(preise) / len(preise)
+        
+        # Kritische Fahrzeuge (Wert)
+        kritische_fahrzeuge_wert = 0.0
+        kritische_preise = [v['preis'] for v in vehicles 
+                           if v.get('standzeit_status') == 'critical' 
+                           and v.get('preis') is not None 
+                           and v.get('preis') > 0]
+        if kritische_preise:
+            kritische_fahrzeuge_wert = sum(kritische_preise)
+        
+        # Potenzielle Abschreibung (2% p.a. auf kritische Fahrzeuge)
+        # Annahme: Durchschnittliche Standzeit kritischer Fahrzeuge = 289 Tage ≈ 0,79 Jahre
+        potenzielle_abschreibung = 0.0
+        if kritische_fahrzeuge_wert > 0:
+            # 2% p.a. × 0,79 Jahre ≈ 1,58%
+            potenzielle_abschreibung = kritische_fahrzeuge_wert * 0.0158
+        
+        # Verkaufsrate (benötigt Verkäufe aus KPIs)
+        verkaufsrate = None
+        try:
+            kpis = client.get_dashboard_kpis()
+            if 'widget_202' in kpis and kpis['widget_202']['values']:
+                verkaufe = int(kpis['widget_202']['values'][0]) if kpis['widget_202']['values'][0] else 0
+                if verkaufe > 0 and total > 0:
+                    verkaufsrate = (verkaufe / total) * 100
+        except:
+            pass
         
         return jsonify({
             'success': True,
@@ -227,7 +296,13 @@ def get_vehicles():
                 'critical': critical,
                 'warning': warning,
                 'ok': ok,
-                'avg_standzeit_tage': round(avg_standzeit, 1) if avg_standzeit else None
+                'avg_standzeit_tage': round(avg_standzeit, 1) if avg_standzeit else None,
+                # Erweiterte KPIs
+                'lagerwert': round(lagerwert, 2) if lagerwert else 0.0,
+                'avg_preis': round(avg_preis, 2) if avg_preis else None,
+                'kritische_fahrzeuge_wert': round(kritische_fahrzeuge_wert, 2) if kritische_fahrzeuge_wert else 0.0,
+                'potenzielle_abschreibung': round(potenzielle_abschreibung, 2) if potenzielle_abschreibung else 0.0,
+                'verkaufsrate': round(verkaufsrate, 1) if verkaufsrate else None
             },
             'timestamp': datetime.now().isoformat()
         })

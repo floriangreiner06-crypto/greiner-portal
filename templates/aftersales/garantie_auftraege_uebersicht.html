@@ -426,7 +426,7 @@ function renderAuftragDetail(data) {
                 <table class="table table-sm table-borderless mb-0">
                     <tr><td><strong>Kunde:</strong></td><td>${a.kunde || '-'}</td></tr>
                     <tr><td><strong>Serviceberater:</strong></td><td>${a.serviceberater || '-'}</td></tr>
-                    <tr><td><strong>Datum:</strong></td><td>${a.datum ? new Date(a.datum).toLocaleDateString('de-DE') : '-'}</td></tr>
+                    <tr><td><strong>Datum:</strong></td><td>${a.datum || '-'}</td></tr>
                     <tr><td><strong>Betrieb:</strong></td><td>${a.betrieb_name || a.betrieb || '-'}</td></tr>
                 </table>
             </div>

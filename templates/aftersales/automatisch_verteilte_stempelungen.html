@@ -1,0 +1,404 @@
+{% extends "base.html" %}
+
+{% block title %}Automatisch verteilte Stempelungen - {{ app_name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .filter-section {
+        background: #f8f9fa;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    
+    .auftrag-card {
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+        transition: all 0.3s;
+    }
+    
+    .auftrag-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        border-color: #007bff;
+    }
+    
+    .auftrag-card.warnung {
+        border-left: 4px solid #ffc107;
+        background: rgba(255, 193, 7, 0.05);
+    }
+    
+    .auftrag-card.kritisch {
+        border-left: 4px solid #dc3545;
+        background: rgba(220, 53, 69, 0.05);
+    }
+    
+    .stempelung-detail {
+        background: #f8f9fa;
+        border-radius: 6px;
+        padding: 10px;
+        margin-top: 10px;
+        font-size: 0.9rem;
+    }
+    
+    .badge-lines {
+        background: #6c757d;
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.85rem;
+    }
+    
+    .badge-verschoben {
+        background: #dc3545;
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.85rem;
+    }
+    
+    .faktor-badge {
+        font-weight: bold;
+        padding: 4px 8px;
+        border-radius: 4px;
+    }
+    
+    .faktor-hoch {
+        background: #dc3545;
+        color: white;
+    }
+    
+    .faktor-mittel {
+        background: #ffc107;
+        color: #000;
+    }
+    
+    .faktor-niedrig {
+        background: #28a745;
+        color: white;
+    }
+    
+    .loading-indicator {
+        text-align: center;
+        padding: 40px;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #6c757d;
+    }
+    
+    .empty-state i {
+        font-size: 4rem;
+        margin-bottom: 20px;
+        opacity: 0.3;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1">
+                <i class="bi bi-exclamation-triangle text-warning"></i>
+                Automatisch verteilte Stempelungen
+            </h2>
+            <p class="text-muted mb-0">Aufträge mit Mehrfachstempelungen - Serviceleiter-Prüfung erforderlich</p>
+        </div>
+        <div>
+            <button class="btn btn-outline-primary" onclick="loadAuftraege()">
+                <i class="bi bi-arrow-clockwise"></i> Aktualisieren
+            </button>
+            <a href="/werkstatt/auftraege" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Zurück
+            </a>
+        </div>
+    </div>
+    
+    <!-- Filter -->
+    <div class="filter-section">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">Betrieb</label>
+                <select id="filter-betrieb" class="form-select" onchange="loadAuftraege()">
+                    <option value="">Alle Betriebe</option>
+                    <option value="1">DEGO (Deggendorf Opel)</option>
+                    <option value="2">DEGH (Deggendorf Hyundai)</option>
+                    <option value="3">LANO (Landau)</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Tage zurück</label>
+                <select id="filter-tage" class="form-select" onchange="loadAuftraege()">
+                    <option value="7">7 Tage</option>
+                    <option value="14">14 Tage</option>
+                    <option value="30" selected>30 Tage</option>
+                    <option value="60">60 Tage</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Mindestanzahl Lines</label>
+                <select id="filter-min-lines" class="form-select" onchange="loadAuftraege()">
+                    <option value="3" selected>3 Lines</option>
+                    <option value="4">4 Lines</option>
+                    <option value="5">5 Lines</option>
+                    <option value="10">10 Lines</option>
+                </select>
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button class="btn btn-primary w-100" onclick="loadAuftraege()">
+                    <i class="bi bi-search"></i> Suchen
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Info Box -->
+    <div class="alert alert-info mb-4">
+        <h5 class="alert-heading"><i class="bi bi-info-circle"></i> Hinweis</h5>
+        <p class="mb-0">
+            Diese Liste zeigt Aufträge mit <strong>automatisch verteilten Stempelungen</strong>.
+            Das bedeutet, dass Locosoft mehrere Positionen (Lines) zur gleichen Zeit gestempelt hat.
+            Dies kann zu einer <strong>Überbewertung des St-Anteils</strong> führen.
+        </p>
+        <hr>
+        <p class="mb-0 small">
+            <strong>Empfehlung:</strong> Prüfen Sie diese Aufträge in Locosoft und korrigieren Sie ggf. manuell.
+            Verschobene Positionen (z.B. Line 99) deuten auf automatische Verschiebung hin.
+        </p>
+    </div>
+    
+    <!-- Loading Indicator -->
+    <div id="loading-indicator" class="loading-indicator" style="display: none;">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Lädt...</span>
+        </div>
+        <p class="mt-2 text-muted">Lade Aufträge...</p>
+    </div>
+    
+    <!-- Results -->
+    <div id="results-container">
+        <div class="empty-state">
+            <i class="bi bi-inbox"></i>
+            <p>Klicken Sie auf "Suchen", um Aufträge zu laden.</p>
+        </div>
+    </div>
+    
+</div>
+
+<script>
+let aktuellerFilter = {
+    betrieb: '',
+    tage_zurueck: 30,
+    min_lines: 3
+};
+
+function getFilter() {
+    return {
+        betrieb: document.getElementById('filter-betrieb').value,
+        tage_zurueck: parseInt(document.getElementById('filter-tage').value),
+        min_lines: parseInt(document.getElementById('filter-min-lines').value)
+    };
+}
+
+function formatZeit(minuten) {
+    if (!minuten || minuten === 0) return '0 Min';
+    const stunden = Math.floor(minuten / 60);
+    const min = Math.round(minuten % 60);
+    if (stunden > 0) {
+        return `${stunden}:${String(min).padStart(2, '0')} Std`;
+    }
+    return `${min} Min`;
+}
+
+function getFaktorKlasse(faktor) {
+    const numFaktor = parseFloat(faktor) || 1;
+    if (numFaktor >= 5) return 'faktor-hoch';
+    if (numFaktor >= 3) return 'faktor-mittel';
+    return 'faktor-niedrig';
+}
+
+function getKritikalitaetKlasse(auftrag) {
+    const faktor = parseFloat(auftrag.ueberbewertungs_faktor) || 1;
+    if (faktor >= 5) return 'kritisch';
+    if (faktor >= 3) return 'warnung';
+    return '';
+}
+
+function renderAuftraege(data) {
+    const container = document.getElementById('results-container');
+    
+    if (!data.success || !data.auftraege || data.auftraege.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="bi bi-check-circle"></i>
+                <h4>Keine Aufträge gefunden</h4>
+                <p>Für die gewählten Filter wurden keine Aufträge mit automatisch verteilten Stempelungen gefunden.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = `
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5>Gefundene Aufträge: <span class="badge bg-primary">${data.anzahl}</span></h5>
+        </div>
+    `;
+    
+    data.auftraege.forEach(auftrag => {
+        const kritikalitaet = getKritikalitaetKlasse(auftrag);
+        const faktor = parseFloat(auftrag.ueberbewertungs_faktor) || 1;
+        const faktorKlasse = getFaktorKlasse(faktor);
+        
+        html += `
+            <div class="auftrag-card ${kritikalitaet}">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <h5 class="mb-1">
+                            Auftrag <strong>${auftrag.auftrag_nr}</strong>
+                            ${auftrag.ist_offen ? '<span class="badge bg-success ms-2">Offen</span>' : '<span class="badge bg-secondary ms-2">Geschlossen</span>'}
+                        </h5>
+                        <div class="text-muted small">
+                            ${auftrag.kennzeichen || 'Kein Kennzeichen'} | 
+                            ${auftrag.marke || 'Unbekannt'} | 
+                            ${auftrag.kunde || 'Unbekannt'} | 
+                            ${new Date(auftrag.auftrag_datum).toLocaleDateString('de-DE')}
+                        </div>
+                    </div>
+                    <div class="text-end">
+                        <div class="badge bg-secondary">${BETRIEB_NAMEN[auftrag.betrieb] || 'Unbekannt'}</div>
+                    </div>
+                </div>
+                
+                <div class="row mb-2">
+                    <div class="col-md-3">
+                        <small class="text-muted">Mehrfachstempelungen</small>
+                        <div><strong>${auftrag.anzahl_mehrfachstempelungen}</strong></div>
+                    </div>
+                    <div class="col-md-3">
+                        <small class="text-muted">Max. Lines</small>
+                        <div><span class="badge-lines">${auftrag.max_lines} Lines</span></div>
+                    </div>
+                    <div class="col-md-3">
+                        <small class="text-muted">Überbewertungs-Faktor</small>
+                        <div><span class="faktor-badge ${faktorKlasse}">${parseFloat(faktor).toFixed(2)}×</span></div>
+                    </div>
+                    <div class="col-md-3">
+                        <small class="text-muted">Mitarbeiter</small>
+                        <div><small>${auftrag.mitarbeiter_liste || '-'}</small></div>
+                    </div>
+                </div>
+                
+                ${auftrag.hat_verschobene_positionen ? `
+                    <div class="alert alert-warning py-2 mb-2">
+                        <i class="bi bi-exclamation-triangle"></i> 
+                        <strong>Verschobene Positionen erkannt!</strong> 
+                        Dieser Auftrag enthält automatisch verschobene Positionen (z.B. Line 99).
+                    </div>
+                ` : ''}
+                
+                <div class="mt-2">
+                    <button class="btn btn-sm btn-outline-primary" type="button" 
+                            data-bs-toggle="collapse" 
+                            data-bs-target="#details-${auftrag.auftrag_nr}">
+                        <i class="bi bi-chevron-down"></i> Details anzeigen
+                    </button>
+                </div>
+                
+                <div class="collapse mt-2" id="details-${auftrag.auftrag_nr}">
+                    ${auftrag.stempelungen_details && auftrag.stempelungen_details.length > 0 ? `
+                        ${auftrag.stempelungen_details.map((stempelung, idx) => `
+                            <div class="stempelung-detail mb-2">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <strong>Stempelung ${idx + 1}</strong><br>
+                                        <small class="text-muted">
+                                            Position ${stempelung.order_position} | 
+                                            ${stempelung.mechaniker_name || `MA ${stempelung.employee_number}`} | 
+                                            ${new Date(stempelung.start_time).toLocaleString('de-DE')} - 
+                                            ${new Date(stempelung.end_time).toLocaleString('de-DE')}
+                                        </small>
+                                    </div>
+                                    <div class="text-end">
+                                        <span class="badge-lines">${stempelung.anzahl_lines} Lines</span>
+                                        ${stempelung.hat_verschobene_position ? '<span class="badge-verschoben ms-1">Verschoben</span>' : ''}
+                                    </div>
+                                </div>
+                                <div class="mt-2">
+                                    <small><strong>Dauer:</strong> ${formatZeit(stempelung.dauer_min)}</small><br>
+                                    <small><strong>Lines:</strong> ${stempelung.lines_liste}</small>
+                                </div>
+                            </div>
+                        `).join('')}
+                    ` : '<p class="text-muted small">Keine Details verfügbar</p>'}
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+function loadAuftraege() {
+    const filter = getFilter();
+    const container = document.getElementById('results-container');
+    const loading = document.getElementById('loading-indicator');
+    
+    // Build query string
+    const params = new URLSearchParams();
+    if (filter.betrieb) params.append('betrieb', filter.betrieb);
+    params.append('tage_zurueck', filter.tage_zurueck);
+    params.append('min_lines', filter.min_lines);
+    
+    container.style.display = 'none';
+    loading.style.display = 'block';
+    
+    fetch(`/api/werkstatt/live/automatisch-verteilte-stempelungen?${params.toString()}`)
+        .then(response => response.json())
+        .then(data => {
+            loading.style.display = 'none';
+            container.style.display = 'block';
+            
+            if (data.success) {
+                renderAuftraege(data);
+            } else {
+                container.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle"></i> 
+                        Fehler beim Laden: ${data.error || 'Unbekannter Fehler'}
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            loading.style.display = 'none';
+            container.style.display = 'block';
+            container.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle"></i> 
+                    Fehler beim Laden: ${error.message}
+                </div>
+            `;
+            console.error('Fehler:', error);
+        });
+}
+
+// BETRIEB_NAMEN für Anzeige
+const BETRIEB_NAMEN = {
+    1: 'DEGO',
+    2: 'DEGH',
+    3: 'LANO'
+};
+
+// Auto-load on page load
+document.addEventListener('DOMContentLoaded', function() {
+    // Optional: Auto-load with default filters
+    // loadAuftraege();
+});
+</script>
+{% endblock %}

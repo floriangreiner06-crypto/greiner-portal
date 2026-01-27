@@ -743,13 +743,12 @@ class VerkaufData:
                         COALESCE(
                             e.first_name || ' ' || e.last_name,
                             'Verkäufer #' || s.salesman_number || ' (nicht in LocoSoft)'
-                        ) as name
+                        ) as name,
+                        CASE WHEN e.first_name IS NOT NULL THEN 0 ELSE 1 END as sort_order
                     FROM sales s
                     LEFT JOIN employees e ON s.salesman_number = e.locosoft_id
                     WHERE s.salesman_number IS NOT NULL
-                    ORDER BY
-                        CASE WHEN e.first_name IS NOT NULL THEN 0 ELSE 1 END,
-                        name
+                    ORDER BY sort_order, name
                 """)
 
                 verkaufer = [dict(row) for row in cursor.fetchall()]
@@ -789,8 +788,9 @@ class VerkaufData:
             bis = (date.today() + timedelta(days=14)).strftime('%Y-%m-%d')
 
         try:
+            from psycopg2.extras import RealDictCursor
             with locosoft_session() as conn:
-                cursor = conn.cursor()
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
 
                 standort_filter = ""
                 if standort == 'DEG':

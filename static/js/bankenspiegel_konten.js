@@ -125,11 +125,14 @@ function updateKontenTable() {
             ? (verfuegbar >= 0 ? 'text-success' : 'text-warning')
             : 'text-muted';
         
+        // TAG 213: Bank-Name ausblenden wenn NULL (z.B. "Intern / Gesellschafter" ist redundant)
+        const bankNameDisplay = konto.bank_name ? `<strong>${konto.bank_name}</strong>` : '';
+        
         return `
             <tr>
                 <td>${statusBadge}</td>
                 <td>
-                    <strong>${konto.bank_name || '-'}</strong>
+                    ${bankNameDisplay}
                 </td>
                 <td>
                     ${konto.kontoname || '-'}
@@ -165,7 +168,8 @@ function updateKontenTable() {
 // Gesamtsaldo berechnen
 function calculateGesamtsaldo() {
     const aktiveKonten = alleKonten.filter(k => k.aktiv);
-    const gesamtsaldo = aktiveKonten.reduce((sum, k) => sum + (k.aktueller_saldo || 0), 0);
+    // TAG 213: Verwende 'saldo' statt 'aktueller_saldo' (konsistent mit API-Response)
+    const gesamtsaldo = aktiveKonten.reduce((sum, k) => sum + (k.saldo || 0), 0);
     
     const element = document.getElementById('gesamtsaldoKonten');
     element.innerHTML = formatBetrag(gesamtsaldo);
