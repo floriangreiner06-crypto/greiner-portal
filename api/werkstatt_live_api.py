@@ -44,6 +44,9 @@ logger = logging.getLogger(__name__)
 # Blueprint
 werkstatt_live_bp = Blueprint('werkstatt_live', __name__, url_prefix='/api/werkstatt/live')
 
+# TAG 213: Cache-Utilities für Performance-Optimierung
+from api.cache_utils import cache_stempeluhr
+
 # get_locosoft_connection() wird jetzt aus db_utils importiert (TAG 117)
 
 
@@ -440,6 +443,7 @@ def get_live_dashboard():
 
 
 @werkstatt_live_bp.route('/stempeluhr', methods=['GET'])
+@cache_stempeluhr(ttl=10)  # TAG 213: Cache mit 10 Sekunden TTL
 def get_stempeluhr_live():
     """
     LIVE Stempeluhr-Übersicht für Mechaniker.
@@ -4165,7 +4169,8 @@ def get_werkstatt_liveboard():
                             pass
                     continue  # Nicht nochmal hinzufügen
                 # Auch prüfen ob Kennzeichen schon drin ist
-                kz = gt.get('kennzeichen', '').replace(' ', '').replace('-', '').upper()
+                # TAG 213 FIX: None-Safe für kennzeichen
+                kz = (gt.get('kennzeichen') or '').replace(' ', '').replace('-', '').upper()
                 if kz:
                     existing_by_kz = next(
                         (z for z in zeitbloecke

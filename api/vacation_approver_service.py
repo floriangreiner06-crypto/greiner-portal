@@ -370,7 +370,7 @@ def get_team_for_approver(approver_ldap_username: str, include_self: bool = Fals
                     FROM employees e
                     JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
                     LEFT JOIN loco_employees le ON lem.locosoft_id = le.employee_number AND le.is_latest_record = 1
-                    WHERE e.aktiv = true
+                    WHERE e.aktiv = 1  -- TAG 213 FIX: aktiv ist INTEGER, nicht BOOLEAN
                     ORDER BY e.last_name, e.first_name
                 """)
 

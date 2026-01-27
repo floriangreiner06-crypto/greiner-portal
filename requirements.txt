@@ -19,3 +19,12 @@ python-dateutil==2.8.2
 # FÃ¼r Produktiv-Deployment (optional)
 gunicorn==21.2.0
 beautifulsoup4==4.12.2
+
+# HTTP Requests (für WhatsApp API, etc.)
+requests>=2.31.0
+
+# Twilio WhatsApp API (TAG 211)
+twilio>=8.0.0
+
+# Redis für Caching (TAG 213)
+redis>=5.0.0

@@ -1372,19 +1372,37 @@ class WerkstattData:
             cursor.execute(query, params)
             auftraege_raw = cursor.fetchall()
 
-            # Für jeden Auftrag die Vorgabezeiten und Mechaniker holen
-            auftraege = []
-            for auftrag in auftraege_raw:
-                # Labours (Arbeitspositionen) holen
+            # TAG 213 PERFORMANCE FIX: N+1 Query Problem behoben
+            # Statt für jeden Auftrag eine separate Query, eine Query für alle Aufträge
+            auftrag_nrs = [a['auftrag_nr'] for a in auftraege_raw]
+            
+            # Eine Query für alle Aufträge (statt N Queries)
+            labour_data = {}
+            if auftrag_nrs:
                 cursor.execute("""
                     SELECT
+                        order_number,
                         COALESCE(SUM(time_units), 0) as total_aw,
                         STRING_AGG(DISTINCT CAST(mechanic_no AS TEXT), ', ') as mechaniker
                     FROM labours
-                    WHERE order_number = %s AND time_units > 0
-                """, [auftrag['auftrag_nr']])
+                    WHERE order_number = ANY(%s) AND time_units > 0
+                    GROUP BY order_number
+                """, [auftrag_nrs])
+                
+                for row in cursor.fetchall():
+                    labour_data[row['order_number']] = {
+                        'total_aw': float(row['total_aw'] or 0),
+                        'mechaniker': row['mechaniker']
+                    }
 
-                labour_info = cursor.fetchone()
+            # Jetzt durch Aufträge iterieren und Daten zuordnen
+            auftraege = []
+            for auftrag in auftraege_raw:
+                # Hole Labour-Daten aus Dictionary (statt Query)
+                labour_info = labour_data.get(auftrag['auftrag_nr'], {
+                    'total_aw': 0,
+                    'mechaniker': None
+                })
 
                 # Datum formatieren
                 auftrag_datum = auftrag['auftrag_datum']
@@ -1408,7 +1426,7 @@ class WerkstattData:
                     'ist_offen': auftrag['ist_offen'],
                     'hat_abgeschlossene': auftrag['hat_abgeschlossene'],
                     'geplant_fertig': geplant_fertig_str,
-                    'vorgabe_aw': float(labour_info['total_aw'] or 0),
+                    'vorgabe_aw': labour_info['total_aw'],
                     'mechaniker': labour_info['mechaniker']
                 })
 

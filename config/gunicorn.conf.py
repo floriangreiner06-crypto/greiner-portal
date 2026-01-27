@@ -6,10 +6,11 @@ bind = "127.0.0.1:5000"
 backlog = 2048
 
 # Worker processes
-workers = multiprocessing.cpu_count() * 2 + 1
+# TAG 213 PERFORMANCE FIX: Mehr Worker für bessere Parallelität
+workers = multiprocessing.cpu_count() * 4 + 1  # Erhöht von * 2 auf * 4
 worker_class = "sync"
 worker_connections = 1000
-timeout = 180
+timeout = 30  # TAG 213: Reduziert von 180 auf 30 Sekunden (3 Min → 30 Sek)
 keepalive = 2
 
 # Logging
