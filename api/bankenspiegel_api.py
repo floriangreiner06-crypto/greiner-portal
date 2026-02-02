@@ -424,6 +424,48 @@ def get_konten():
                         konto['iban'] = 'Sachkonto Locosoft 071101'
                         break
 
+            # TAG 214: Saldo vom Sachkonto 070101 aus Loco-Soft für "Hypovereinsbank Eurokredit" holen
+            # WICHTIG: Das Sachkonto 070101 IST das "Hypovereinsbank Eurokredit" Konto!
+            # Der Saldo soll beim bestehenden Konto (ID 23) verwendet werden
+            # Saldo muss NEGATIV sein (rot), da die Gesellschaft der Bank schuldet (Kredit)
+            # IBAN wird auf Sachkontonummer "070101" gesetzt
+            locosoft_saldo_070101 = None
+            try:
+                from api.db_utils import locosoft_session, row_to_dict
+                with locosoft_session() as loco_conn:
+                    loco_cursor = loco_conn.cursor()
+                    # Saldo berechnen: HABEN - SOLL (für Passivkonto/Kredit)
+                    # Kontonummer 070101 = 70101 in Loco-Soft (Integer ohne führende Null)
+                    loco_cursor.execute("""
+                        SELECT COALESCE(SUM(
+                            CASE WHEN debit_or_credit='H' THEN posted_value 
+                                 ELSE -posted_value END
+                        )/100.0, 0) as saldo
+                        FROM journal_accountings
+                        WHERE nominal_account_number = 70101
+                    """)
+                    saldo_row = loco_cursor.fetchone()
+                    if saldo_row:
+                        # Saldo aus Loco-Soft ist positiv (300.000,00 €)
+                        # Aber: Die Gesellschaft schuldet der Bank, also muss es NEGATIV sein
+                        locosoft_saldo_070101 = -float(row_to_dict(saldo_row, loco_cursor).get('saldo', 0) or 0)
+            except Exception as e:
+                print(f"Fehler beim Holen des Saldos vom Sachkonto 070101 aus Loco-Soft: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                # Fehler ignorieren, Saldo bleibt None
+
+            # TAG 214: Saldo und IBAN beim bestehenden "Hypovereinsbank Eurokredit" Konto (ID 23) verwenden
+            if locosoft_saldo_070101 is not None:
+                for konto in konten:
+                    if konto.get('id') == 23:  # "Hypovereinsbank Eurokredit"
+                        # Loco-Soft Saldo überschreibt den DB-Saldo
+                        konto['saldo'] = locosoft_saldo_070101
+                        konto['stand_datum'] = None  # Kein Stand-Datum verfügbar
+                        # IBAN auf "Sachkonto Locosoft 070101" setzen
+                        konto['iban'] = 'Sachkonto Locosoft 070101'
+                        break
+
             # Statistik - TAG 136: float() für PostgreSQL Decimal
             gesamtsaldo = sum(float(k['saldo'] or 0) for k in konten)
 

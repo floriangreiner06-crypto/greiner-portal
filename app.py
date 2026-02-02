@@ -27,7 +27,7 @@ else:
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 Jahr in Produktion
 
 # Globale Static-Version (ändert sich bei jedem Flask-Neustart)
-STATIC_VERSION = '20260127160000'  # TAG 213 - Darlehen Peter Greiner: IBAN = "Sachkonto Locosoft 071101"
+STATIC_VERSION = '20260127171000'  # TAG 214 - Hypovereinsbank Eurokredit: IBAN anzeigen
 print(f"📦 Static Version: {STATIC_VERSION}")
 
 # Template-Kontext: Macht STATIC_VERSION in allen Templates verfügbar

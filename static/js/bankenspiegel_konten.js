@@ -128,19 +128,29 @@ function updateKontenTable() {
         // TAG 213: Bank-Name ausblenden wenn NULL (z.B. "Intern / Gesellschafter" ist redundant)
         const bankNameDisplay = konto.bank_name ? `<strong>${konto.bank_name}</strong>` : '';
         
+        // TAG 213/214: LocoSoft-Konto erkennen (IBAN beginnt mit "Sachkonto Locosoft")
+        const isLocosoftKonto = konto.iban && konto.iban.startsWith('Sachkonto Locosoft');
+        const rowClass = isLocosoftKonto ? 'table-info' : '';
+        // TAG 214: IBAN auch für LocoSoft-Konten anzeigen (z.B. "Sachkonto Locosoft 070101")
+        const ibanDisplay = konto.iban ? `<code class="small">${konto.iban}</code>` : '<span class="text-muted">-</span>';
+        const transaktionenButton = isLocosoftKonto 
+            ? '<span class="text-muted small">-</span>' 
+            : `<button class="btn btn-sm btn-outline-primary" onclick="showTransaktionen(${konto.id})">
+                <i class="bi bi-list me-1"></i>Transaktionen
+            </button>`;
+        
         return `
-            <tr>
+            <tr class="${rowClass}">
                 <td>${statusBadge}</td>
                 <td>
                     ${bankNameDisplay}
                 </td>
                 <td>
                     ${konto.kontoname || '-'}
-                    <br>
-                    <small class="text-muted">${formatIBAN(konto.iban)}</small>
+                    ${konto.iban && !isLocosoftKonto ? `<br><small class="text-muted">${formatIBAN(konto.iban)}</small>` : ''}
                 </td>
                 <td>
-                    <code class="small">${konto.iban || '-'}</code>
+                    ${ibanDisplay}
                 </td>
                 <td class="text-end ${saldoClass} fw-bold">
                     ${formatBetrag(saldo)}
@@ -152,9 +162,7 @@ function updateKontenTable() {
                     ${verfuegbar !== null && verfuegbar !== undefined ? formatBetrag(verfuegbar) : '<span class="text-muted">-</span>'}
                 </td>
                 <td class="text-center">
-                    <button class="btn btn-sm btn-outline-primary" onclick="showTransaktionen(${konto.id})">
-                        <i class="bi bi-list me-1"></i>Transaktionen
-                    </button>
+                    ${transaktionenButton}
                 </td>
             </tr>
         `;
