@@ -212,32 +212,37 @@ def benachrichtige_serviceberater_ueberschreitungen():
                     logger.warning(f"Fehler beim Holen von Auftrag {auftrag_nr}: {e}")
                     continue
             
-            if not alle_employee_nrs:
-                return {'success': True, 'message': 'Keine relevanten Employee-Nummern gefunden'}
-            
-            # E-Mail-Adressen aus employees-Tabelle holen
-            cursor.execute("""
-                SELECT 
-                    e.id,
-                    e.first_name,
-                    e.last_name,
-                    e.email,
-                    lem.locosoft_id
-                FROM employees e
-                LEFT JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
-                WHERE lem.locosoft_id = ANY(%s)
-                  AND e.aktiv = true
-                  AND e.email IS NOT NULL
-            """, (list(alle_employee_nrs),))
-            
+            # E-Mail-Adressen aus employees-Tabelle holen (kann leer sein, wenn nur Report-Subscriber empfangen)
             employee_emails = {}
-            for row in cursor.fetchall():
-                locosoft_id = row[4]
-                if locosoft_id:
-                    employee_emails[locosoft_id] = {
-                        'email': row[3],
-                        'name': f"{row[1]} {row[2]}".strip()
-                    }
+            if alle_employee_nrs:
+                cursor.execute("""
+                    SELECT 
+                        e.id,
+                        e.first_name,
+                        e.last_name,
+                        e.email,
+                        lem.locosoft_id
+                    FROM employees e
+                    LEFT JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
+                    WHERE lem.locosoft_id = ANY(%s)
+                      AND e.aktiv = true
+                      AND e.email IS NOT NULL
+                """, (list(alle_employee_nrs),))
+                for row in cursor.fetchall():
+                    locosoft_id = row[4]
+                    if locosoft_id:
+                        employee_emails[locosoft_id] = {
+                            'email': row[3],
+                            'name': f"{row[1]} {row[2]}".strip()
+                        }
+        
+        # TAG 206: Zusätzliche Empfänger aus E-Mail Reports (Admin → Rechte → E-Mail Reports)
+        report_subscriber_emails = []
+        try:
+            from reports.registry import get_subscriber_emails
+            report_subscriber_emails = get_subscriber_emails('alarm_auftrag_ueberschreitung')
+        except Exception as e:
+            logger.debug(f"Report-Subscriber für Alarm-E-Mail nicht geladen: {e}")
         
         # Erstelle Mapping: auftrag_nr -> ueberschritt
         # WICHTIG: Aktive Aufträge zuerst, damit sie nicht von abgeschlossenen überschrieben werden
@@ -355,6 +360,14 @@ def benachrichtige_serviceberater_ueberschreitungen():
                             empfaenger.append(employee_emails[fallback_nr])
                             empfaenger_ids.add(fallback_nr)
                 
+                # TAG 206: Report-Subscriber aus Admin E-Mail Reports (alarm_auftrag_ueberschreitung)
+                empfaenger_emails_set = {e['email'].lower() for e in empfaenger}
+                for sub_email in report_subscriber_emails:
+                    sub_email_lower = sub_email.lower().strip()
+                    if sub_email_lower and sub_email_lower not in empfaenger_emails_set:
+                        empfaenger.append({'email': sub_email_lower, 'name': sub_email_lower})
+                        empfaenger_emails_set.add(sub_email_lower)
+                
                 if not empfaenger:
                     continue
                 
@@ -363,31 +376,47 @@ def benachrichtige_serviceberater_ueberschreitungen():
                     cursor_tracking = conn_tracking.cursor()
                     
                     # Prüfe für jeden Empfänger, ob bereits gesendet
-                    empfaenger_zu_senden = []
+                    empfaenger_zu_senden = []  # (emp, employee_locosoft_id oder None, recipient_email oder None)
                     for emp in empfaenger:
                         emp_locosoft_id = None
-                        # Finde locosoft_id für diesen Empfänger
+                        recipient_email = None
                         for loco_id, emp_data in employee_emails.items():
-                            if emp_data['email'] == emp['email']:
+                            if (emp_data.get('email') or '').lower() == (emp.get('email') or '').lower():
                                 emp_locosoft_id = loco_id
                                 break
+                        if emp_locosoft_id is None:
+                            recipient_email = (emp.get('email') or '').lower().strip()
+                            if not recipient_email:
+                                continue
                         
-                        if not emp_locosoft_id:
-                            continue
-                        
-                        # Prüfe ob bereits gesendet
-                        cursor_tracking.execute("""
-                            SELECT 1 FROM email_notifications_sent
-                            WHERE auftrag_nr = %s
-                              AND employee_locosoft_id = %s
-                              AND notification_type = 'ueberschreitung'
-                              AND sent_date = CURRENT_DATE
-                        """, (auftrag_nr, emp_locosoft_id))
-                        
-                        if cursor_tracking.fetchone():
-                            logger.debug(f"E-Mail für Auftrag {auftrag_nr} an {emp['name']} bereits heute gesendet - überspringe")
+                        # Prüfe ob bereits heute gesendet (per Locosoft-ID oder per E-Mail für Report-Subscriber)
+                        already_sent = False
+                        if emp_locosoft_id is not None:
+                            cursor_tracking.execute("""
+                                SELECT 1 FROM email_notifications_sent
+                                WHERE auftrag_nr = %s
+                                  AND employee_locosoft_id = %s
+                                  AND notification_type = 'ueberschreitung'
+                                  AND sent_date = CURRENT_DATE
+                            """, (auftrag_nr, emp_locosoft_id))
+                            already_sent = cursor_tracking.fetchone() is not None
                         else:
-                            empfaenger_zu_senden.append((emp, emp_locosoft_id))
+                            try:
+                                cursor_tracking.execute("""
+                                    SELECT 1 FROM email_notifications_sent
+                                    WHERE auftrag_nr = %s
+                                      AND notification_type = 'ueberschreitung'
+                                      AND sent_date = CURRENT_DATE
+                                      AND recipient_email = %s
+                                """, (auftrag_nr, recipient_email))
+                                already_sent = cursor_tracking.fetchone() is not None
+                            except Exception:
+                                pass  # Spalte recipient_email fehlt (Migration nicht ausgeführt) → als nicht gesendet zählen
+                        
+                        if already_sent:
+                            logger.debug(f"E-Mail für Auftrag {auftrag_nr} an {emp.get('email')} bereits heute gesendet - überspringe")
+                        else:
+                            empfaenger_zu_senden.append((emp, emp_locosoft_id, recipient_email if emp_locosoft_id is None else None))
                     
                     if not empfaenger_zu_senden:
                         logger.debug(f"Alle E-Mails für Auftrag {auftrag_nr} bereits heute gesendet - überspringe")
@@ -457,7 +486,7 @@ def benachrichtige_serviceberater_ueberschreitungen():
                     """
                     
                     # E-Mail senden (TAG 182: Nur an Empfänger, die noch keine E-Mail erhalten haben)
-                    for emp, emp_locosoft_id in empfaenger_zu_senden:
+                    for emp, emp_locosoft_id, recipient_email_opt in empfaenger_zu_senden:
                         try:
                             connector.send_mail(
                                 sender_email='drive@auto-greiner.de',
@@ -466,16 +495,31 @@ def benachrichtige_serviceberater_ueberschreitungen():
                                 body_html=body_html
                             )
                             
-                            # TAG 182: Eintrag in Tracking-Tabelle nach erfolgreichem Versand
-                            cursor_tracking.execute("""
-                                INSERT INTO email_notifications_sent (auftrag_nr, employee_locosoft_id, notification_type, sent_date)
-                                VALUES (%s, %s, 'ueberschreitung', CURRENT_DATE)
-                                ON CONFLICT DO NOTHING
-                            """, (auftrag_nr, emp_locosoft_id))
+                            # TAG 182/206: Eintrag in Tracking-Tabelle nach erfolgreichem Versand
+                            try:
+                                if emp_locosoft_id is not None:
+                                    cursor_tracking.execute("""
+                                        INSERT INTO email_notifications_sent (auftrag_nr, employee_locosoft_id, notification_type, sent_date)
+                                        VALUES (%s, %s, 'ueberschreitung', CURRENT_DATE)
+                                    """, (auftrag_nr, emp_locosoft_id))
+                                else:
+                                    # Report-Subscriber (aus Admin E-Mail Reports); benötigt Spalte recipient_email (Migration TAG 206)
+                                    cursor_tracking.execute("""
+                                        INSERT INTO email_notifications_sent (auftrag_nr, employee_locosoft_id, notification_type, sent_date, recipient_email)
+                                        VALUES (%s, -1, 'ueberschreitung', CURRENT_DATE, %s)
+                                    """, (auftrag_nr, recipient_email_opt))
+                            except Exception as db_err:
+                                # Doppelter Eintrag (bereits gesendet) oder Spalte recipient_email fehlt (Migration nicht ausgeführt)
+                                if 'unique' in str(db_err).lower() or 'duplicate' in str(db_err).lower():
+                                    pass
+                                elif 'recipient_email' in str(db_err).lower():
+                                    logger.warning("Migration add_email_notifications_recipient_email_tag206 nicht ausgeführt - Report-Subscriber-Tracking ohne 1x/Tag-Limit")
+                                else:
+                                    raise
                             conn_tracking.commit()
                             
                             emails_gesendet += 1
-                            logger.info(f"E-Mail gesendet an {emp['name']} ({emp['email']}) für Auftrag {auftrag_nr}")
+                            logger.info(f"E-Mail gesendet an {emp.get('name', emp.get('email'))} ({emp['email']}) für Auftrag {auftrag_nr}")
                         except Exception as e:
                             logger.error(f"Fehler beim Senden an {emp['email']}: {e}")
                             conn_tracking.rollback()
@@ -1561,23 +1605,24 @@ def email_werkstatt_tagesbericht():
 
 
 @shared_task(soft_time_limit=600, name='celery_app.tasks.email_tek_daily')
-def email_tek_daily():
+def email_tek_daily(force=False):
     """
     TEK E-Mail - Tägliche Erfolgskontrolle per E-Mail
     Läuft täglich um 19:30 (nach Locosoft Mirror um 19:00)
     
     TAG 176: Aktiviert - nach Locosoft PostgreSQL-Befüllung (19:00 Uhr)
-    TAG 181: Zeitprüfung hinzugefügt - verhindert Versand vor 19:00 Uhr
+    TAG 181: Zeitprüfung - verhindert Versand vor 19:00 Uhr (nur bei geplantem Lauf).
+    Bei manuellem Start (admin/celery Start) wird force=True übergeben, dann wird trotzdem gesendet.
     """
     import subprocess
     import os
     from datetime import datetime
     
     try:
-        # TAG 181: Zeitprüfung - TEK sollte erst nach 19:00 Uhr gesendet werden
+        # TAG 181: Zeitprüfung - bei geplantem Lauf erst nach 19:00; bei manuellem Start (force=True) immer senden
         jetzt = datetime.now()
-        if jetzt.hour < 19:
-            error_msg = f"TEK E-Mail: Zu früh ({jetzt.strftime('%H:%M')} Uhr) - sollte erst nach 19:00 Uhr gesendet werden (nach Locosoft PostgreSQL Update)"
+        if not force and jetzt.hour < 19:
+            error_msg = f"TEK E-Mail: Zu früh ({jetzt.strftime('%H:%M')} Uhr) - sollte erst nach 19:00 Uhr gesendet werden (nach Locosoft PostgreSQL Update). Manuell starten: Task „Start“ nutzen."
             logger.error(error_msg)
             return {'success': False, 'error': error_msg}
         
@@ -1598,8 +1643,11 @@ def email_tek_daily():
             return {'success': False, 'error': 'Script nicht gefunden'}
         
         logger.info("Starte TEK E-Mail-Versand...")
+        cmd = ['/opt/greiner-portal/venv/bin/python3', script_path]
+        if force:
+            cmd.append('--force')
         result = subprocess.run(
-            ['/opt/greiner-portal/venv/bin/python3', script_path],
+            cmd,
             cwd='/opt/greiner-portal',
             capture_output=True,
             text=True,

@@ -186,10 +186,11 @@ def send_gesamt_reports(connector, heute, test_email=None):
         print(f"    [{standort_name}] Generiere PDF...")
         pdf_bytes = generate_tek_daily_pdf(data)
 
-        # Betreff mit Status
+        # Betreff mit Status (Abstand = Prognose - Breakeven, wie im PDF)
         gesamt = data['gesamt']
-        status = "+" if gesamt['breakeven_abstand'] >= 0 else ""
-        betreff = f"TEK {data['monat']} | DB1: {format_euro(gesamt['db1'])} | {status}{format_euro(gesamt['breakeven_abstand'])} vs BE"
+        abstand = (gesamt.get('prognose', gesamt.get('db1', 0)) - gesamt.get('breakeven', 0))
+        status = "+" if abstand >= 0 else ""
+        betreff = f"TEK {data['monat']} | DB1: {format_euro(gesamt['db1'])} | {status}{format_euro(abstand)} vs BE"
 
         # HTML-Body erstellen
         body_html = build_gesamt_email_html(data)
@@ -234,8 +235,13 @@ def send_filiale_reports(connector, heute, test_email=None):
     emails_sent = 0
 
     # Filiale-Reports nur für Standorte sinnvoll (DEG, LAN)
+    # Empfänger mit Standort DEG/LAN + "Alle Standorte" (None) bekommen den jeweiligen Report
     for standort in ['DEG', 'LAN']:
-        empfaenger = subscribers.get(standort, [])
+        empfaenger = list(subscribers.get(standort, []))
+        alle = subscribers.get(None) or []
+        for e in alle:
+            if e not in empfaenger:
+                empfaenger.append(e)
         if not empfaenger:
             continue
 
@@ -341,12 +347,141 @@ def send_bereich_reports(connector, heute, report_type, bereich_key, test_email=
     return emails_sent
 
 
+def send_verkauf_reports(connector, heute, test_email=None):
+    """
+    Sendet TEK Verkauf-Reports (NW+GW kombiniert) - TAG 215
+    Für Verkaufsleitung - alle Standorte.
+    """
+    from api.pdf_generator import generate_tek_verkauf_pdf
+    from api.standort_utils import STANDORT_NAMEN
+
+    if test_email:
+        subscribers = {None: [test_email], 'DEG': [test_email], 'LAN': [test_email]}
+        print(f"  TEST-MODUS: Sende Verkauf-Reports an {test_email}")
+    else:
+        subscribers = get_subscribers_for_report('tek_verkauf')
+    
+    total = sum(len(v) for v in subscribers.values())
+    if total == 0:
+        print("  Keine Empfänger für tek_verkauf")
+        return 0
+
+    emails_sent = 0
+
+    # Verarbeite nach Standort
+    standorte = []
+    if subscribers.get(None):
+        standorte.append((None, subscribers[None], 'Gesamt'))
+    if subscribers.get('DEG'):
+        standorte.append(('DEG', subscribers['DEG'], 'Deggendorf'))
+    if subscribers.get('LAN'):
+        standorte.append(('LAN', subscribers['LAN'], 'Landau'))
+
+    for standort, empfaenger, standort_name in standorte:
+        print(f"\n    [Verkauf {standort_name}] Lade Daten...")
+        data = get_tek_data(standort=standort)
+
+        print(f"    [Verkauf {standort_name}] Generiere PDF...")
+        pdf_bytes = generate_tek_verkauf_pdf(data, standort_name)
+
+        # Betreff
+        nw = next((b for b in data.get('bereiche', []) if b.get('bereich') == '1-NW'), None)
+        gw = next((b for b in data.get('bereiche', []) if b.get('bereich') == '2-GW'), None)
+        verkauf_db1 = (nw.get('db1', 0) if nw else 0) + (gw.get('db1', 0) if gw else 0)
+        betreff = f"TEK Verkauf{standort_name if standort_name != 'Gesamt' else ''} | DB: {format_euro(verkauf_db1)} | {data.get('monat', 'Aktueller Monat')}"
+
+        body_html = build_verkauf_email_html(data, standort_name)
+
+        suffix = f"_{standort}" if standort else ""
+        dateiname = f"TEK_Verkauf{suffix}_{heute.strftime('%Y%m%d')}.pdf"
+
+        print(f"    [Verkauf {standort_name}] Sende an {len(empfaenger)} Empfänger...")
+        connector.send_mail(
+            sender_email=ABSENDER,
+            to_emails=empfaenger,
+            subject=betreff,
+            body_html=body_html,
+            attachments=[{"name": dateiname, "content": pdf_bytes, "content_type": "application/pdf"}]
+        )
+        emails_sent += len(empfaenger)
+        print(f"    [Verkauf {standort_name}] OK!")
+
+    return emails_sent
+
+
+def send_service_reports(connector, heute, test_email=None):
+    """
+    Sendet TEK Service-Reports (Teile+Werkstatt kombiniert) - TAG 215
+    Für Service-Leitung - alle Standorte.
+    """
+    from api.pdf_generator import generate_tek_service_pdf
+
+    if test_email:
+        subscribers = {None: [test_email], 'DEG': [test_email], 'LAN': [test_email]}
+        print(f"  TEST-MODUS: Sende Service-Reports an {test_email}")
+    else:
+        subscribers = get_subscribers_for_report('tek_service')
+    
+    total = sum(len(v) for v in subscribers.values())
+    if total == 0:
+        print("  Keine Empfänger für tek_service")
+        return 0
+
+    emails_sent = 0
+
+    # Verarbeite nach Standort
+    standorte = []
+    if subscribers.get(None):
+        standorte.append((None, subscribers[None], 'Gesamt'))
+    if subscribers.get('DEG'):
+        standorte.append(('DEG', subscribers['DEG'], 'Deggendorf'))
+    if subscribers.get('LAN'):
+        standorte.append(('LAN', subscribers['LAN'], 'Landau'))
+
+    for standort, empfaenger, standort_name in standorte:
+        print(f"\n    [Service {standort_name}] Lade Daten...")
+        data = get_tek_data(standort=standort)
+
+        print(f"    [Service {standort_name}] Generiere PDF...")
+        pdf_bytes = generate_tek_service_pdf(data, standort_name)
+
+        # Betreff
+        teile = next((b for b in data.get('bereiche', []) if b.get('bereich') == '3-Teile'), None)
+        werkstatt = next((b for b in data.get('bereiche', []) if b.get('bereich') == '4-Lohn'), None)
+        service_db1 = (teile.get('db1', 0) if teile else 0) + (werkstatt.get('db1', 0) if werkstatt else 0)
+        betreff = f"TEK Service{standort_name if standort_name != 'Gesamt' else ''} | DB: {format_euro(service_db1)} | {data.get('monat', 'Aktueller Monat')}"
+
+        body_html = build_service_email_html(data, standort_name)
+
+        suffix = f"_{standort}" if standort else ""
+        dateiname = f"TEK_Service{suffix}_{heute.strftime('%Y%m%d')}.pdf"
+
+        print(f"    [Service {standort_name}] Sende an {len(empfaenger)} Empfänger...")
+        connector.send_mail(
+            sender_email=ABSENDER,
+            to_emails=empfaenger,
+            subject=betreff,
+            body_html=body_html,
+            attachments=[{"name": dateiname, "content": pdf_bytes, "content_type": "application/pdf"}]
+        )
+        emails_sent += len(empfaenger)
+        print(f"    [Service {standort_name}] OK!")
+
+    return emails_sent
+
+
 def build_gesamt_email_html(data):
-    """Erstellt HTML-Body für Gesamt-Report"""
+    """Erstellt HTML-Body für Gesamt-Report.
+    Breakeven-Abstand wie im PDF: Prognose minus Breakeven (nicht DB1 aktuell), damit E-Mail und Anhang übereinstimmen.
+    """
     gesamt = data['gesamt']
-    status_color = "#28a745" if gesamt['breakeven_abstand'] >= 0 else "#dc3545"
-    status_text = "POSITIV" if gesamt['breakeven_abstand'] >= 0 else "KRITISCH"
-    status_prefix = "+" if gesamt['breakeven_abstand'] >= 0 else ""
+    # Wie im PDF: Abstand = Prognose - Breakeven (nicht DB1 aktuell - Breakeven aus der API)
+    prognose = gesamt.get('prognose', gesamt.get('db1', 0))
+    breakeven = gesamt.get('breakeven', 0)
+    abstand_prognose = prognose - breakeven
+    status_color = "#28a745" if abstand_prognose >= 0 else "#dc3545"
+    status_text = "ÜBER Breakeven (Prognose)" if abstand_prognose >= 0 else "UNTER Breakeven (Prognose)"
+    status_prefix = "+" if abstand_prognose >= 0 else ""
 
     bereich_namen = {
         '1-NW': 'Neuwagen', '2-GW': 'Gebrauchtwagen',
@@ -356,12 +491,15 @@ def build_gesamt_email_html(data):
     bereiche_html = ""
     for i, b in enumerate(data['bereiche']):
         bg = '#f9f9f9' if i % 2 == 0 else '#ffffff'
+        # Stück nur für NW/GW, sonst "-"
+        stueck_display = str(b.get('stueck', 0)) if b.get('bereich') in ('1-NW', '2-GW') else "–"
         bereiche_html += f"""
         <tr style="background: {bg};">
             <td style="padding: 8px;">{bereich_namen.get(b['bereich'], b['bereich'])}</td>
+            <td style="padding: 8px; text-align: right;">{stueck_display}</td>
             <td style="padding: 8px; text-align: right;">{format_euro(b['umsatz'])} EUR</td>
+            <td style="padding: 8px; text-align: right;">{format_euro(b['einsatz'])} EUR</td>
             <td style="padding: 8px; text-align: right;">{format_euro(b['db1'])} EUR</td>
-            <td style="padding: 8px; text-align: center;">{b['marge']:.1f}%</td>
         </tr>"""
 
     return f"""
@@ -386,16 +524,17 @@ def build_gesamt_email_html(data):
         </table>
 
         <div style="background: {status_color}; color: white; padding: 15px; text-align: center; font-size: 16px; font-weight: bold; margin: 15px 0;">
-            {status_prefix}{format_euro(gesamt['breakeven_abstand'])} EUR vs. Breakeven ({status_text})
+            {status_prefix}{format_euro(abstand_prognose)} EUR {status_text}
         </div>
 
         <h3 style="color: #333; margin-top: 25px;">Bereiche</h3>
         <table style="border-collapse: collapse; width: 100%; margin: 10px 0;">
             <tr style="background: #333; color: white;">
                 <th style="padding: 8px; text-align: left;">Bereich</th>
-                <th style="padding: 8px; text-align: right;">Umsatz</th>
-                <th style="padding: 8px; text-align: right;">DB1</th>
-                <th style="padding: 8px; text-align: center;">Marge</th>
+                <th style="padding: 8px; text-align: right;">Stück</th>
+                <th style="padding: 8px; text-align: right;">Erlös</th>
+                <th style="padding: 8px; text-align: right;">Einsatz</th>
+                <th style="padding: 8px; text-align: right;">DB</th>
             </tr>
             {bereiche_html}
         </table>
@@ -515,7 +654,7 @@ def build_bereich_email_html(data, bereich_key, bereich_data):
 
         <table style="border-collapse: collapse; width: 100%; margin: 15px 0;">
             <tr>
-                <td style="padding: 8px; background: #f0f0f0;">Umsatz:</td>
+                <td style="padding: 8px; background: #f0f0f0;">Erlös:</td>
                 <td style="padding: 8px; text-align: right;">{format_euro(bereich_data['umsatz'])} EUR</td>
             </tr>
             <tr>
@@ -523,8 +662,150 @@ def build_bereich_email_html(data, bereich_key, bereich_data):
                 <td style="padding: 8px; text-align: right;">{format_euro(bereich_data['einsatz'])} EUR</td>
             </tr>
             <tr>
-                <td style="padding: 8px; background: #f0f0f0;">Ziel-Marge:</td>
-                <td style="padding: 8px; text-align: right;">{ziel_marge}%</td>
+                <td style="padding: 8px; background: #f0f0f0;">DB:</td>
+                <td style="padding: 8px; text-align: right;">{format_euro(bereich_data['db1'])} EUR</td>
+            </tr>
+        </table>
+
+        <p style="margin-top: 20px;">Details im PDF-Anhang.</p>
+
+        <p style="color: #999; font-size: 11px; margin-top: 30px; border-top: 1px solid #eee; padding-top: 10px;">
+            Automatisch generiert von DRIVE
+        </p>
+    </body>
+    </html>
+    """
+
+
+def build_verkauf_email_html(data, standort_name: str = None):
+    """Erstellt HTML-Body für Verkauf-Report (NW+GW) – detailliert wie TEK Gesamt (Kernkennzahlen + Bereiche im Detail)."""
+    nw = next((b for b in data.get('bereiche', []) if b.get('bereich') == '1-NW'), None)
+    gw = next((b for b in data.get('bereiche', []) if b.get('bereich') == '2-GW'), None)
+
+    verkauf_umsatz = (nw.get('umsatz', 0) if nw else 0) + (gw.get('umsatz', 0) if gw else 0)
+    verkauf_einsatz = (nw.get('einsatz', 0) if nw else 0) + (gw.get('einsatz', 0) if gw else 0)
+    verkauf_db1 = verkauf_umsatz - verkauf_einsatz
+    verkauf_marge = (verkauf_db1 / verkauf_umsatz * 100) if verkauf_umsatz > 0 else 0
+    verkauf_stueck = (nw.get('stueck', 0) if nw else 0) + (gw.get('stueck', 0) if gw else 0)
+    verkauf_db1_stk = (verkauf_db1 / verkauf_stueck) if verkauf_stueck > 0 else 0
+    verkauf_heute_umsatz = (nw.get('heute_umsatz', 0) if nw else 0) + (gw.get('heute_umsatz', 0) if gw else 0)
+    verkauf_heute_db1 = (nw.get('heute_db1', 0) if nw else 0) + (gw.get('heute_db1', 0) if gw else 0)
+
+    # Kernkennzahlen-Tabelle (wie im PDF)
+    kpi_rows = f"""
+            <tr><td style="padding: 8px; background: #f0f0f0;">Erlös (Monat):</td><td style="padding: 8px; text-align: right;">{format_euro(verkauf_umsatz)} EUR</td></tr>
+            <tr><td style="padding: 8px; background: #f9f9f9;">Einsatz (Monat):</td><td style="padding: 8px; text-align: right;">{format_euro(verkauf_einsatz)} EUR</td></tr>
+            <tr><td style="padding: 8px; background: #f0f0f0;">DB1 (Monat):</td><td style="padding: 8px; text-align: right;">{format_euro(verkauf_db1)} EUR</td></tr>
+            <tr><td style="padding: 8px; background: #f9f9f9;">Marge:</td><td style="padding: 8px; text-align: right;">{verkauf_marge:.1f}%</td></tr>
+            <tr><td style="padding: 8px; background: #f0f0f0;">Stück (Monat):</td><td style="padding: 8px; text-align: right;">{verkauf_stueck}</td></tr>
+            <tr><td style="padding: 8px; background: #f9f9f9;">DB1/Stück:</td><td style="padding: 8px; text-align: right;">{format_euro(verkauf_db1_stk)} EUR</td></tr>
+            <tr><td style="padding: 8px; background: #f0f0f0;">Erlös (Heute):</td><td style="padding: 8px; text-align: right;">{format_euro(verkauf_heute_umsatz)} EUR</td></tr>
+            <tr><td style="padding: 8px; background: #f9f9f9;">DB1 (Heute):</td><td style="padding: 8px; text-align: right;">{format_euro(verkauf_heute_db1)} EUR</td></tr>"""
+
+    # Bereiche im Detail: Neuwagen, Gebrauchtwagen, GESAMT
+    def detail_row(name, b):
+        if b is None:
+            return ""
+        u, e, d = b.get('umsatz', 0), b.get('einsatz', 0), b.get('db1', 0)
+        m = (d / u * 100) if u else 0
+        stk = b.get('stueck', 0)
+        db1_stk = b.get('db1_pro_stueck', 0) or (d / stk if stk else 0)
+        return f"""
+        <tr style="background: #f9f9f9;">
+            <td style="padding: 8px;">{name}</td>
+            <td style="padding: 8px; text-align: right;">{stk}</td>
+            <td style="padding: 8px; text-align: right;">{format_euro(u)} EUR</td>
+            <td style="padding: 8px; text-align: right;">{format_euro(e)} EUR</td>
+            <td style="padding: 8px; text-align: right;">{format_euro(d)} EUR</td>
+            <td style="padding: 8px; text-align: right;">{m:.1f}%</td>
+            <td style="padding: 8px; text-align: right;">{format_euro(db1_stk)} EUR</td>
+        </tr>"""
+    nw_row = detail_row('Neuwagen', nw)
+    gw_row = detail_row('Gebrauchtwagen', gw)
+    gesamt_row = f"""
+        <tr style="background: #333; color: white; font-weight: bold;">
+            <td style="padding: 8px;">GESAMT</td>
+            <td style="padding: 8px; text-align: right;">{verkauf_stueck}</td>
+            <td style="padding: 8px; text-align: right;">{format_euro(verkauf_umsatz)} EUR</td>
+            <td style="padding: 8px; text-align: right;">{format_euro(verkauf_einsatz)} EUR</td>
+            <td style="padding: 8px; text-align: right;">{format_euro(verkauf_db1)} EUR</td>
+            <td style="padding: 8px; text-align: right;">{verkauf_marge:.1f}%</td>
+            <td style="padding: 8px; text-align: right;">{format_euro(verkauf_db1_stk)} EUR</td>
+        </tr>"""
+
+    standort_suffix = f" {standort_name}" if standort_name and standort_name != 'Gesamt' else ""
+
+    return f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; color: #333; max-width: 650px;">
+        <h2 style="color: #0066cc; margin-bottom: 5px;">TEK Verkauf{standort_suffix}</h2>
+        <p style="color: #666; margin-top: 0;">{data.get('monat', 'Aktueller Monat')} | Stand: {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr</p>
+
+        <h3 style="color: #333; margin-top: 20px;">Kernkennzahlen</h3>
+        <table style="border-collapse: collapse; width: 100%; margin: 10px 0;">
+            {kpi_rows}
+        </table>
+
+        <h3 style="color: #333; margin-top: 25px;">Bereiche im Detail</h3>
+        <table style="border-collapse: collapse; width: 100%; margin: 10px 0;">
+            <tr style="background: #333; color: white;">
+                <th style="padding: 8px; text-align: left;">Bereich</th>
+                <th style="padding: 8px; text-align: right;">Stück</th>
+                <th style="padding: 8px; text-align: right;">Erlös</th>
+                <th style="padding: 8px; text-align: right;">Einsatz</th>
+                <th style="padding: 8px; text-align: right;">DB1</th>
+                <th style="padding: 8px; text-align: right;">Marge</th>
+                <th style="padding: 8px; text-align: right;">DB1/Stk</th>
+            </tr>
+            {nw_row}{gw_row}{gesamt_row}
+        </table>
+
+        <p style="margin-top: 20px;">Weitere Details im PDF-Anhang.</p>
+
+        <p style="color: #999; font-size: 11px; margin-top: 30px; border-top: 1px solid #eee; padding-top: 10px;">
+            Automatisch generiert von DRIVE<br>
+            <a href="http://drive.auto-greiner.de/controlling/tek" style="color: #0066cc;">In DRIVE öffnen</a>
+        </p>
+    </body>
+    </html>
+    """
+
+
+def build_service_email_html(data, standort_name: str = None):
+    """Erstellt HTML-Body für Service-Report (Teile+Werkstatt) - TAG 215"""
+    teile = next((b for b in data.get('bereiche', []) if b.get('bereich') == '3-Teile'), None)
+    werkstatt = next((b for b in data.get('bereiche', []) if b.get('bereich') == '4-Lohn'), None)
+    
+    service_umsatz = (teile.get('umsatz', 0) if teile else 0) + (werkstatt.get('umsatz', 0) if werkstatt else 0)
+    service_einsatz = (teile.get('einsatz', 0) if teile else 0) + (werkstatt.get('einsatz', 0) if werkstatt else 0)
+    service_db1 = service_umsatz - service_einsatz
+    service_marge = (service_db1 / service_umsatz * 100) if service_umsatz > 0 else 0
+    
+    standort_suffix = f" {standort_name}" if standort_name and standort_name != 'Gesamt' else ""
+    
+    return f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; color: #333; max-width: 600px;">
+        <h2 style="color: #0066cc; margin-bottom: 5px;">TEK Service{standort_suffix}</h2>
+        <p style="color: #666; margin-top: 0;">{data.get('monat', 'Aktueller Monat')} | Stand: {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr</p>
+
+        <table style="border-collapse: collapse; width: 100%; margin: 20px 0;">
+            <tr style="background: #0066cc; color: white;">
+                <th style="padding: 12px; text-align: right;">Erlös</th>
+                <th style="padding: 12px; text-align: right;">Einsatz</th>
+                <th style="padding: 12px; text-align: right;">DB</th>
+            </tr>
+            <tr style="background: #f5f5f5;">
+                <td style="padding: 12px; text-align: right; font-size: 18px; font-weight: bold;">{format_euro(service_umsatz)} EUR</td>
+                <td style="padding: 12px; text-align: right; font-size: 18px; font-weight: bold;">{format_euro(service_einsatz)} EUR</td>
+                <td style="padding: 12px; text-align: right; font-size: 18px; font-weight: bold;">{format_euro(service_db1)} EUR</td>
+            </tr>
+        </table>
+
+        <table style="border-collapse: collapse; width: 100%; margin: 15px 0;">
+            <tr>
+                <td style="padding: 8px; background: #f0f0f0;">Marge:</td>
+                <td style="padding: 8px; text-align: right;">{service_marge:.1f}%</td>
             </tr>
         </table>
 
@@ -678,6 +959,18 @@ def main():
                 count = send_bereich_reports(connector, heute, report_type, config['bereich_key'], test_email)
                 total_sent += count
                 print(f"    -> {count} E-Mails")
+
+        # 4. TEK Verkauf-Reports (NW+GW kombiniert) - TAG 215
+        print("\n[4] TEK VERKAUF-REPORTS (NW+GW)")
+        count = send_verkauf_reports(connector, heute, test_email)
+        total_sent += count
+        print(f"    -> {count} E-Mails")
+
+        # 5. TEK Service-Reports (Teile+Werkstatt kombiniert) - TAG 215
+        print("\n[5] TEK SERVICE-REPORTS (Teile+Werkstatt)")
+        count = send_service_reports(connector, heute, test_email)
+        total_sent += count
+        print(f"    -> {count} E-Mails")
 
         print(f"\n{'='*60}")
         print(f"ERFOLG! Insgesamt {total_sent} E-Mails gesendet.")

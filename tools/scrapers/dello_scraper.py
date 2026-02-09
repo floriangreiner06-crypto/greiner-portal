@@ -28,13 +28,22 @@ class DelloScraper:
     def _ensure_driver(self):
         if DelloScraper._driver is None:
             options = Options()
-            options.add_argument('--headless')
+            options.binary_location = '/usr/bin/google-chrome'
+            options.add_argument('--headless=new')
             options.add_argument('--no-sandbox')
             options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--disable-software-rasterizer')
+            options.add_argument('--disable-extensions')
             options.add_argument('--window-size=1920,1080')
             # Expliziter ChromeDriver-Pfad (nicht im Gunicorn PATH)
             service = Service(executable_path='/usr/local/bin/chromedriver')
-            DelloScraper._driver = webdriver.Chrome(service=service, options=options)
+            try:
+                DelloScraper._driver = webdriver.Chrome(service=service, options=options)
+            except Exception as e:
+                # Fallback: Versuche ohne expliziten Pfad
+                print(f"Dello ChromeDriver Fehler: {e}")
+                DelloScraper._driver = webdriver.Chrome(options=options)
             DelloScraper._driver.set_page_load_timeout(30)
             DelloScraper._logged_in = False
         return DelloScraper._driver

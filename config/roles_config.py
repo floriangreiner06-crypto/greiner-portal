@@ -111,6 +111,10 @@ FEATURE_ACCESS = {
     
     # QA Dashboard (TAG 192) - alle Mitarbeiter
     'qa_dashboard': ['*'],
+
+    # WhatsApp (TAG 211)
+    'whatsapp_teile': ['admin', 'lager', 'werkstatt_leitung', 'service_leitung', 'serviceberater'],  # Teile-Handel
+    'whatsapp_verkauf': ['admin', 'verkauf_leitung', 'verkauf'],  # Verkäufer-Chat
 }
 
 

@@ -203,6 +203,7 @@ def get_bestellungen():
             where_clause = " AND ".join(where_conditions)
 
             # 1. BESTELLUNGEN mit Pagination
+            # TAG 215: parsed_werkstattauftrag als Fallback für lokale_nr hinzugefügt
             query = f"""
                 SELECT
                     b.id,
@@ -212,6 +213,7 @@ def get_bestellungen():
                     b.absender_name,
                     b.empfaenger_code,
                     b.lokale_nr,
+                    b.parsed_werkstattauftrag,
                     b.url,
                     b.parsed_kundennummer,
                     b.parsed_vin,

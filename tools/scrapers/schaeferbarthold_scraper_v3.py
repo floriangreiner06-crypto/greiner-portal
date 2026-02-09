@@ -29,10 +29,19 @@ class SchaeferbartholdScraper:
         chrome_options.add_argument('--headless=new')
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--disable-gpu')
+        chrome_options.add_argument('--disable-software-rasterizer')
+        chrome_options.add_argument('--disable-extensions')
         chrome_options.add_argument('--window-size=1920,1080')
+        chrome_options.add_argument('--remote-debugging-port=9222')
         # Expliziter ChromeDriver-Pfad (nicht im Gunicorn PATH)
         service = Service(executable_path='/usr/local/bin/chromedriver')
-        return webdriver.Chrome(service=service, options=chrome_options)
+        try:
+            return webdriver.Chrome(service=service, options=chrome_options)
+        except Exception as e:
+            # Fallback: Versuche ohne expliziten Pfad
+            print(f"ChromeDriver Fehler mit explizitem Pfad: {e}")
+            return webdriver.Chrome(options=chrome_options)
     
     def login(self):
         if self.logged_in and self.driver:

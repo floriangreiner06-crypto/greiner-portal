@@ -107,6 +107,31 @@ def _init_standard_reports():
         'category': 'controlling'
     }
 
+    # TAG 215: Neue TEK-Reports für Verkauf (NW+GW) und Service (Teile+Werkstatt)
+    REPORT_REGISTRY['tek_verkauf'] = {
+        'name': 'TEK Verkauf (NW+GW)',
+        'description': 'TEK für Verkaufsleitung - Neuwagen und Gebrauchtwagen kombiniert',
+        'script': 'scripts/send_daily_tek.py',
+        'schedule': '19:30 Mo-Fr',
+        'supports_standort': True,
+        'standort_optionen': ['DEG', 'LAN'],
+        'supports_bereiche': False,
+        'icon': '🚗',
+        'category': 'controlling'
+    }
+
+    REPORT_REGISTRY['tek_service'] = {
+        'name': 'TEK Service (Teile+Werkstatt)',
+        'description': 'TEK für Service-Leitung - Teile und Werkstatt kombiniert',
+        'script': 'scripts/send_daily_tek.py',
+        'schedule': '19:30 Mo-Fr',
+        'supports_standort': True,
+        'standort_optionen': ['DEG', 'LAN'],
+        'supports_bereiche': False,
+        'icon': '🔧',
+        'category': 'controlling'
+    }
+
     REPORT_REGISTRY['auftragseingang'] = {
         'name': 'Auftragseingang',
         'description': 'Verkauf Stückzahlen nach Verkäufer (NW/GW/TV)',
@@ -127,6 +152,18 @@ def _init_standard_reports():
         'standort_optionen': ['DEG', 'LAN'],
         'supports_bereiche': False,
         'icon': '🔧',
+        'category': 'werkstatt'
+    }
+
+    # Alarm E-Mail: Auftrag überschreitet Vorgabe (Celery Task, keine Script-Datei)
+    REPORT_REGISTRY['alarm_auftrag_ueberschreitung'] = {
+        'name': 'Alarm E-Mail Auftragsüberschreitung',
+        'description': 'Benachrichtigung wenn ein Werkstattauftrag die Vorgabezeit überschreitet (Serviceberater + konfigurierte Empfänger)',
+        'script': 'celery_app/tasks.py (benachrichtige_serviceberater_ueberschreitungen)',
+        'schedule': 'alle 15 Min 7–18 Uhr Mo–Fr',
+        'supports_standort': False,
+        'supports_bereiche': False,
+        'icon': '⚠️',
         'category': 'werkstatt'
     }
 
@@ -304,6 +341,11 @@ def add_subscriber(
     if not report_exists(report_type):
         raise ValueError(f"Report '{report_type}' existiert nicht in Registry")
 
+    # E-Mail normalisieren (verhindert doppelte Domain z.B. ...@auto-greiner.de@auto-greiner.de)
+    email = email.lower().strip()
+    while email.endswith('@auto-greiner.de@auto-greiner.de'):
+        email = email.replace('@auto-greiner.de@auto-greiner.de', '@auto-greiner.de')
+
     conn = get_db()
     cursor = conn.cursor()
 
@@ -317,7 +359,7 @@ def add_subscriber(
             VALUES (%s, %s, %s, %s, %s)
         """, (
             report_type,
-            email.lower().strip(),
+            email,
             standort_db,
             json.dumps(bereiche) if bereiche else None,
             created_by
@@ -331,7 +373,7 @@ def add_subscriber(
             UPDATE report_subscriptions
             SET active = 1, created_by = %s
             WHERE report_type = %s AND email = %s AND standort = %s
-        """, (created_by, report_type, email.lower().strip(), standort_db))
+        """, (created_by, report_type, email, standort_db))
         conn.commit()
         return cursor.rowcount > 0
     finally:
@@ -468,6 +510,16 @@ def migrate_existing_subscribers():
         try:
             add_subscriber('werkstatt_tagesbericht', email, standort, created_by='migration')
         except:
+            pass
+
+    # TAG 206: Alarm E-Mail Auftragsüberschreitung – bisheriger Quality-Check/Fallback (Matthias König)
+    alarm_empfaenger = [
+        "matthias.koenig@auto-greiner.de",  # bisher hardcoded als 3007 / QUALITY_CHECK_USER
+    ]
+    for email in alarm_empfaenger:
+        try:
+            add_subscriber('alarm_auftrag_ueberschreitung', email, created_by='migration')
+        except Exception:
             pass
 
     print("Migration abgeschlossen!")

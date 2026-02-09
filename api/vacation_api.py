@@ -1558,6 +1558,13 @@ def get_all_balances():
             """)
             employees_with_ad = {row[0] for row in cursor.fetchall()}
 
+            # TAG 213: Mitarbeiter, die im Urlaubsplaner nicht angezeigt werden sollen
+            cursor.execute("""
+                SELECT employee_id FROM employee_vacation_settings
+                WHERE show_in_planner = false
+            """)
+            hide_in_planner_ids = {row[0] for row in cursor.fetchall()}
+
             # Dann: Balance-Daten holen
             # TAG 139: View hat 'department' nicht 'department_name'
             query = f"""
@@ -1591,6 +1598,9 @@ def get_all_balances():
             balances = []
             for row in cursor.fetchall():
                 emp_id = row[0]
+                # TAG 213: Im Urlaubsplaner ausgeblendete Mitarbeiter weglassen
+                if emp_id in hide_in_planner_ids:
+                    continue
                 has_ad = emp_id in employees_with_ad
                 dept_name = row[2]
 

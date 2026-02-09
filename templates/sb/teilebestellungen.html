@@ -41,6 +41,13 @@
 .status-in_locosoft { background-color: #20c997; color: white; }
 .status-zugebucht { background-color: #28a745; color: white; }
 
+/* TAG 215: Badge für Positionen mit schwarzer Schrift */
+.badge-positionen {
+    background-color: #6c757d;
+    color: #212529 !important;
+    font-weight: 500;
+}
+
 .filter-section {
     background-color: #f8f9fa;
     padding: 15px;
@@ -368,9 +375,9 @@ function renderBestellungen(bestellungen) {
                     <small>${b.absender_name || '-'}</small>
                 </td>
                 <td>${kundeDisplay}</td>
-                <td>${b.lokale_nr || '-'}</td>
+                <td>${b.lokale_nr || b.parsed_werkstattauftrag || '-'}</td>
                 <td>
-                    <span class="badge badge-primary">${b.anzahl_positionen || 0}</span>
+                    <span class="badge badge-positionen">${b.anzahl_positionen || 0}</span>
                 </td>
                 <td>
                     ${getStatusBadge(b.lieferschein_status || 'bestellt')}
@@ -514,7 +521,7 @@ function renderBestellungDetail(bestellung) {
                     </tr>
                     <tr>
                         <td class="text-muted">Lokale Nr:</td>
-                        <td>${bestellung.lokale_nr || '-'}</td>
+                        <td>${bestellung.lokale_nr || bestellung.parsed_werkstattauftrag || '-'}</td>
                     </tr>
                     <tr>
                         <td class="text-muted">Status:</td>

@@ -41,13 +41,15 @@ def get_ek_rabatt(cursor, rebate_code, parts_type):
 
 @teile_api.route('/vergleich/<teilenummer>', methods=['GET'])
 def teile_vergleich(teilenummer):
-    """Preisvergleich: Locosoft vs Schäferbarthold vs Dello (optional)
+    """Preisvergleich: Locosoft vs Schäferbarthold vs Dello vs RepDoc (optional)
     
     Query-Parameter:
     - dello=true  -> Dello einbeziehen (langsam, ~15 Sek)
+    - repdoc=true -> RepDoc einbeziehen (TAG 215)
     - dello=false -> Nur Locosoft + Schäferbarthold (Standard)
     """
     include_dello = request.args.get('dello', 'false').lower() == 'true'
+    include_repdoc = request.args.get('repdoc', 'false').lower() == 'true'
     
     result = {
         'success': True,
@@ -109,7 +111,13 @@ def teile_vergleich(teilenummer):
                 'verfuegbar': sb.get('verfuegbar')
             }
     except Exception as e:
-        result['quellen']['schaeferbarthold'] = {'error': str(e)}
+        import traceback
+        error_msg = str(e)
+        # Kürze sehr lange Fehlermeldungen
+        if len(error_msg) > 500:
+            error_msg = error_msg[:500] + "..."
+        result['quellen']['schaeferbarthold'] = {'error': error_msg}
+        print(f"Schäferbarthold Fehler: {error_msg}")
     
     # 3. Dello (nur wenn explizit angefordert)
     if include_dello:
@@ -135,7 +143,34 @@ def teile_vergleich(teilenummer):
         except Exception as e:
             result['quellen']['dello'] = {'error': str(e)}
     
-    # 4. Empfehlung
+    # 4. RepDoc (TAG 215 - nur wenn explizit angefordert)
+    if include_repdoc:
+        try:
+            from repdoc_scraper import RepDocScraper
+            repdoc = RepDocScraper()
+            repdoc_result = repdoc.search(teilenummer)
+            repdoc.close()
+            
+            if repdoc_result.get('success') and repdoc_result.get('ergebnisse'):
+                ergebnisse = [e for e in repdoc_result['ergebnisse'] if e.get('preis')]
+                if ergebnisse:
+                    # Bestes Ergebnis (niedrigster Preis)
+                    best = min(ergebnisse, key=lambda x: x.get('preis', float('inf')))
+                    result['quellen']['repdoc'] = {
+                        'name': 'RepDoc (WM SE / Trost)',
+                        'teilenummer': best.get('teilenummer', teilenummer),
+                        'beschreibung': best.get('beschreibung', ''),
+                        'upe': best.get('upe'),
+                        'ek': best.get('ek'),
+                        'preis': best.get('preis'),
+                        'verfuegbar': best.get('verfuegbar', True),
+                        'lieferzeit': best.get('lieferzeit'),
+                        'alle_ergebnisse': len(ergebnisse)
+                    }
+        except Exception as e:
+            result['quellen']['repdoc'] = {'error': str(e)}
+    
+    # 5. Empfehlung
     preise = []
     for quelle, daten in result['quellen'].items():
         if 'preis' in daten and daten['preis']:

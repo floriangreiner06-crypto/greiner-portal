@@ -247,6 +247,12 @@
                             <li><a class="dropdown-item" href="/verkauf/leasys-kalkulator">
                                 <i class="bi bi-calculator"></i> Leasys Kalkulator
                             </a></li>
+                            {% if current_user.can_access_feature('whatsapp_verkauf') %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('whatsapp.verkauf_chat') }}">
+                                <i class="bi bi-whatsapp text-success"></i> WhatsApp Chat
+                            </a></li>
+                            {% endif %}
                         </ul>
                     </li>
                     {% endif %}
@@ -308,6 +314,11 @@
                             <li><a class="dropdown-item" href="/aftersales/teile/preisradar">
                                 <i class="bi bi-radar"></i> Preisradar
                             </a></li>
+                            {% if current_user.can_access_feature('whatsapp_teile') %}
+                            <li><a class="dropdown-item" href="{{ url_for('whatsapp.messages_list') }}">
+                                <i class="bi bi-whatsapp text-success"></i> WhatsApp Teile
+                            </a></li>
+                            {% endif %}
                             
                             <li><hr class="dropdown-divider"></li>
                             
@@ -377,6 +388,9 @@
                             <li><h6 class="dropdown-header text-muted">Organisation</h6></li>
                             <li><a class="dropdown-item" href="/admin/organigramm">
                                 <i class="bi bi-diagram-3"></i> Organigramm
+                            </a></li>
+                            <li><a class="dropdown-item" href="/admin/mitarbeiterverwaltung">
+                                <i class="bi bi-people"></i> Mitarbeiterverwaltung
                             </a></li>
                             <li><a class="dropdown-item" href="/urlaubsplaner/admin">
                                 <i class="bi bi-calendar-check"></i> Urlaubsplaner Admin

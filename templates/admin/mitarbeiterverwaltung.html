@@ -224,6 +224,7 @@
         display: none;
     }
     
+    /* Sichtbar sobald ein Mitarbeiter gewählt ist (nicht nur bei Änderungen) */
     .btn-save.show {
         display: block;
     }
@@ -335,6 +336,132 @@
     <i class="fas fa-save"></i> Speichern
 </button>
 
+<!-- Modal: Arbeitszeitmodell (Add/Edit) -->
+<div class="modal fade" id="workingTimeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="workingTimeModalTitle">Arbeitszeitmodell</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="wtm_model_id" value="">
+                <div class="mb-3">
+                    <label class="form-label">Startdatum <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" id="wtm_start_date" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Enddatum (leer = unbefristet)</label>
+                    <input type="date" class="form-control" id="wtm_end_date">
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Stunden/Woche <span class="text-danger">*</span></label>
+                        <input type="number" step="0.5" min="0" class="form-control" id="wtm_hours_per_week" required>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Arbeitstage/Woche</label>
+                        <input type="number" min="1" max="7" class="form-control" id="wtm_working_days_per_week" value="5">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Beschreibung</label>
+                    <input type="text" class="form-control" id="wtm_description" placeholder="z.B. Vollzeit, Teilzeit 80%">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-primary" id="workingTimeModalSave">
+                    <i class="fas fa-save"></i> Speichern
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Ausnahme (Add) -->
+<div class="modal fade" id="exceptionModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Neue Ausnahme</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Von <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" id="exc_from_date" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Bis <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" id="exc_to_date" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Typ <span class="text-danger">*</span></label>
+                    <select class="form-select" id="exc_exception_type">
+                        <option value="sonderurlaub">Sonderurlaub</option>
+                        <option value="elternzeit">Elternzeit</option>
+                        <option value="sabbatical">Sabbatical</option>
+                        <option value="unbezahlt">Unbezahlter Urlaub</option>
+                        <option value="sonstige">Sonstige</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Bemerkung</label>
+                    <input type="text" class="form-control" id="exc_description">
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="exc_affects_vacation">
+                    <label class="form-check-label" for="exc_affects_vacation">Beeinflusst Urlaubsanspruch</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-primary" id="exceptionModalSave"><i class="fas fa-save"></i> Speichern</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Zeit ohne Urlaubsanspruch (Add) -->
+<div class="modal fade" id="periodNoVacationModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Neuer Zeitraum ohne Urlaubsanspruch</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Von <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" id="pnv_from_date" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Bis <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" id="pnv_to_date" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Typ <span class="text-danger">*</span></label>
+                    <select class="form-select" id="pnv_period_type">
+                        <option value="elternzeit">Elternzeit</option>
+                        <option value="unbezahlt">Unbezahlt</option>
+                        <option value="sabbatical">Sabbatical</option>
+                        <option value="sonstige">Sonstige</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Bezeichnung</label>
+                    <input type="text" class="form-control" id="pnv_description">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-primary" id="periodNoVacationModalSave"><i class="fas fa-save"></i> Speichern</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -380,6 +507,11 @@ function setupEventListeners() {
     
     // Speichern
     document.getElementById('btnSave').addEventListener('click', saveEmployee);
+    
+    // Modal Arbeitszeitmodell: Speichern-Button
+    document.getElementById('workingTimeModalSave').addEventListener('click', saveWorkingTimeModelSubmit);
+    document.getElementById('exceptionModalSave').addEventListener('click', saveExceptionSubmit);
+    document.getElementById('periodNoVacationModalSave').addEventListener('click', savePeriodNoVacationSubmit);
     
     // Warnung bei ungespeicherten Änderungen
     window.addEventListener('beforeunload', (e) => {
@@ -508,9 +640,14 @@ function renderEmployeeDetail(employee) {
     document.getElementById('employeeName').textContent = `${employee.last_name} ${employee.first_name}`;
     document.getElementById('employeeDepartment').textContent = employee.department || 'Keine Abteilung';
     
-    // Tabs anzeigen
+    // Tabs anzeigen, leeren Zustand ausblenden
     document.getElementById('mainTabs').style.display = 'block';
+    const emptyState = document.querySelector('#tabContent .empty-state');
+    if (emptyState) emptyState.style.display = 'none';
     document.querySelectorAll('.main-header-actions button').forEach(btn => btn.style.display = 'inline-block');
+    
+    // Speichern-Button anzeigen (unten rechts), sobald ein Datensatz gewählt ist
+    document.getElementById('btnSave').classList.add('show');
     
     // Tab-Content rendern
     renderTabDeckblatt(employee);
@@ -994,6 +1131,7 @@ function renderTabModuldaten(employee) {
                         </div>
                     </div>
                 </div>
+                <p class="text-muted small mt-2 mb-0">Urlaubseinstellungen werden mit dem Button <strong>„Speichern“</strong> (unten rechts) gespeichert.</p>
             </div>
             
             <div class="form-section">
@@ -1156,7 +1294,12 @@ function calculateAge(birthday) {
     if (!birthday) return '-';
     const birth = new Date(birthday);
     const now = new Date();
-    return now.getFullYear() - birth.getFullYear();
+    let age = now.getFullYear() - birth.getFullYear();
+    // Geburtstag in diesem Jahr noch nicht gehabt? Dann 1 Jahr abziehen
+    if (now.getMonth() < birth.getMonth() || (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate())) {
+        age--;
+    }
+    return age;
 }
 
 function filterEmployees() {
@@ -1209,8 +1352,32 @@ function markChanged() {
 }
 
 // ============================================================================
-// SPEICHERN
+// SPEICHERN (ein Button: Stammdaten + Urlaubseinstellungen)
 // ============================================================================
+function collectVacationSettingsData() {
+    const showInPlanner = document.getElementById('settings_show_in_planner');
+    if (!showInPlanner) return null;
+    const showBirthday = document.getElementById('settings_show_birthday');
+    const vacationExpires = document.getElementById('settings_vacation_expires');
+    const maxCarryOver = document.getElementById('settings_max_carry_over');
+    const weekendLimit = document.getElementById('settings_weekend_limit');
+    const maxVacationLength = document.getElementById('settings_max_vacation_length');
+    const calculationMethod = document.getElementById('settings_calculation_method');
+    const entryFrom = document.getElementById('settings_entry_from');
+    const entryUntil = document.getElementById('settings_entry_until');
+    return {
+        show_in_planner: !!showInPlanner?.checked,
+        show_birthday: !!showBirthday?.checked,
+        vacation_expires: !!vacationExpires?.checked,
+        max_carry_over: maxCarryOver?.value ? parseFloat(maxCarryOver.value) : 999.0,
+        weekend_limit: weekendLimit?.value ? parseInt(weekendLimit.value, 10) : 0,
+        max_vacation_length: maxVacationLength?.value ? parseInt(maxVacationLength.value, 10) : 14,
+        calculation_method: calculationMethod?.value || 'standard',
+        entry_from: entryFrom?.value || null,
+        entry_until: entryUntil?.value || null
+    };
+}
+
 async function saveEmployee() {
     if (!currentEmployeeId) return;
     
@@ -1222,18 +1389,31 @@ async function saveEmployee() {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(data)
         });
-        
         const result = await response.json();
         
-        if (result.success) {
-            hasUnsavedChanges = false;
-            document.getElementById('btnSave').classList.remove('show');
-            alert('Änderungen gespeichert!');
-            // Reload employee data
-            selectEmployee(currentEmployeeId);
-        } else {
+        if (!result.success) {
             alert('Fehler beim Speichern: ' + result.error);
+            return;
         }
+        
+        // Urlaubseinstellungen mit speichern, falls Tab Moduldaten geladen wurde
+        const vacationData = collectVacationSettingsData();
+        if (vacationData) {
+            const resVac = await fetch(`${API_BASE}/employee/${currentEmployeeId}/vacation-settings`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(vacationData)
+            });
+            const resVacJson = await resVac.json();
+            if (!resVacJson.success) {
+                alert('Stammdaten gespeichert, aber Urlaubseinstellungen: ' + (resVacJson.error || 'Fehler'));
+            }
+        }
+        
+        hasUnsavedChanges = false;
+        document.getElementById('btnSave').classList.remove('show');
+        alert('Änderungen gespeichert!');
+        selectEmployee(currentEmployeeId);
     } catch (error) {
         console.error('Fehler:', error);
         alert('Verbindungsfehler');
@@ -1243,10 +1423,28 @@ async function saveEmployee() {
 function collectFormData() {
     const data = {};
     
-    // Deckblatt
-    data.company = document.getElementById('deckblatt_company')?.value || null;
-    data.department_name = document.getElementById('deckblatt_department')?.value || null;
-    data.entry_date = document.getElementById('deckblatt_entry_date')?.value || null;
+    // Firma, Abteilung, Eintritt: aus dem aktuell sichtbaren Tab (Deckblatt vs. Mitarbeiterdaten/Vertrag)
+    const activeMainTab = document.querySelector('.main-tabs .nav-link.active')?.getAttribute('data-tab');
+    if (activeMainTab === 'deckblatt') {
+        data.company = document.getElementById('deckblatt_company')?.value?.trim() || null;
+        data.department_name = document.getElementById('deckblatt_department')?.value?.trim() || null;
+        data.entry_date = document.getElementById('deckblatt_entry_date')?.value || null;
+    } else if (activeMainTab === 'mitarbeiterdaten') {
+        data.company = document.getElementById('vertrag_company')?.value?.trim() || null;
+        data.department_name = document.getElementById('vertrag_department')?.value?.trim() || null;
+        data.entry_date = document.getElementById('vertrag_entry_date')?.value || null;
+    } else {
+        // Adressdaten/Moduldaten: beide Quellen, nicht-leere Werte bevorzugt
+        const dCompany = document.getElementById('deckblatt_company')?.value?.trim();
+        const vCompany = document.getElementById('vertrag_company')?.value?.trim();
+        data.company = dCompany || vCompany || null;
+        const dDept = document.getElementById('deckblatt_department')?.value?.trim();
+        const vDept = document.getElementById('vertrag_department')?.value?.trim();
+        data.department_name = dDept || vDept || null;
+        const dEntry = document.getElementById('deckblatt_entry_date')?.value;
+        const vEntry = document.getElementById('vertrag_entry_date')?.value;
+        data.entry_date = dEntry || vEntry || null;
+    }
     data.birthday = document.getElementById('deckblatt_birthday')?.value || null;
     
     // Adressdaten
@@ -1449,13 +1647,233 @@ function showSyncPreviewModal(data) {
     modal.show();
 }
 
-// Placeholder-Funktionen (werden später implementiert)
-function addWorkingTimeModel() { alert('Funktion wird implementiert...'); }
-function editWorkingTimeModel(id) { alert('Funktion wird implementiert...'); }
-function deleteWorkingTimeModel(id) { alert('Funktion wird implementiert...'); }
-function addException() { alert('Funktion wird implementiert...'); }
-function deleteException(id) { alert('Funktion wird implementiert...'); }
-function addPeriodWithoutVacation() { alert('Funktion wird implementiert...'); }
-function deletePeriodWithoutVacation(id) { alert('Funktion wird implementiert...'); }
+// ============================================================================
+// ARBEITSZEITMODELLE (Add/Edit/Delete)
+// ============================================================================
+let workingTimeModalInstance = null;
+
+function addWorkingTimeModel() {
+    if (!currentEmployeeId) return;
+    document.getElementById('workingTimeModalTitle').textContent = 'Neues Arbeitszeitmodell';
+    document.getElementById('wtm_model_id').value = '';
+    document.getElementById('wtm_start_date').value = '';
+    document.getElementById('wtm_end_date').value = '';
+    document.getElementById('wtm_hours_per_week').value = '';
+    document.getElementById('wtm_working_days_per_week').value = '5';
+    document.getElementById('wtm_description').value = '';
+    if (!workingTimeModalInstance) {
+        workingTimeModalInstance = new bootstrap.Modal(document.getElementById('workingTimeModal'));
+    }
+    workingTimeModalInstance.show();
+}
+
+function editWorkingTimeModel(id) {
+    if (!currentEmployeeId || !currentEmployeeData?.working_time_models) return;
+    const model = currentEmployeeData.working_time_models.find(m => m.id === id);
+    if (!model) return;
+    document.getElementById('workingTimeModalTitle').textContent = 'Arbeitszeitmodell bearbeiten';
+    document.getElementById('wtm_model_id').value = String(model.id);
+    document.getElementById('wtm_start_date').value = model.start_date || '';
+    document.getElementById('wtm_end_date').value = model.end_date || '';
+    document.getElementById('wtm_hours_per_week').value = model.hours_per_week ?? '';
+    document.getElementById('wtm_working_days_per_week').value = model.working_days_per_week ?? 5;
+    document.getElementById('wtm_description').value = model.description || '';
+    if (!workingTimeModalInstance) {
+        workingTimeModalInstance = new bootstrap.Modal(document.getElementById('workingTimeModal'));
+    }
+    workingTimeModalInstance.show();
+}
+
+async function saveWorkingTimeModelSubmit() {
+    if (!currentEmployeeId) return;
+    const modelId = document.getElementById('wtm_model_id').value.trim();
+    const startDate = document.getElementById('wtm_start_date').value;
+    const hoursPerWeek = document.getElementById('wtm_hours_per_week').value;
+    if (!startDate || !hoursPerWeek) {
+        alert('Bitte Startdatum und Stunden/Woche ausfüllen.');
+        return;
+    }
+    const data = {
+        start_date: startDate,
+        end_date: document.getElementById('wtm_end_date').value || null,
+        hours_per_week: parseFloat(hoursPerWeek),
+        working_days_per_week: parseInt(document.getElementById('wtm_working_days_per_week').value, 10) || 5,
+        description: document.getElementById('wtm_description').value?.trim() || null
+    };
+    try {
+        const url = modelId
+            ? `${API_BASE}/employee/${currentEmployeeId}/working-time-models/${modelId}`
+            : `${API_BASE}/employee/${currentEmployeeId}/working-time-models`;
+        const method = modelId ? 'PUT' : 'POST';
+        const response = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        const result = await response.json();
+        if (result.success) {
+            if (workingTimeModalInstance) workingTimeModalInstance.hide();
+            selectEmployee(currentEmployeeId);
+        } else {
+            alert('Fehler: ' + (result.error || 'Unbekannt'));
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Verbindungsfehler');
+    }
+}
+
+async function deleteWorkingTimeModel(id) {
+    if (!currentEmployeeId) return;
+    if (!confirm('Dieses Arbeitszeitmodell wirklich löschen?')) return;
+    try {
+        const response = await fetch(`${API_BASE}/employee/${currentEmployeeId}/working-time-models/${id}`, { method: 'DELETE' });
+        const result = await response.json();
+        if (result.success) {
+            selectEmployee(currentEmployeeId);
+        } else {
+            alert('Fehler: ' + (result.error || 'Unbekannt'));
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Verbindungsfehler');
+    }
+}
+
+// ============================================================================
+// AUSNAHMEN (Add/Delete)
+// ============================================================================
+let exceptionModalInstance = null;
+
+function addException() {
+    if (!currentEmployeeId) return;
+    document.getElementById('exc_from_date').value = '';
+    document.getElementById('exc_to_date').value = '';
+    document.getElementById('exc_exception_type').value = 'sonderurlaub';
+    document.getElementById('exc_description').value = '';
+    document.getElementById('exc_affects_vacation').checked = false;
+    if (!exceptionModalInstance) {
+        exceptionModalInstance = new bootstrap.Modal(document.getElementById('exceptionModal'));
+    }
+    exceptionModalInstance.show();
+}
+
+async function saveExceptionSubmit() {
+    if (!currentEmployeeId) return;
+    const fromDate = document.getElementById('exc_from_date').value;
+    const toDate = document.getElementById('exc_to_date').value;
+    if (!fromDate || !toDate) {
+        alert('Bitte Von- und Bis-Datum ausfüllen.');
+        return;
+    }
+    const data = {
+        from_date: fromDate,
+        to_date: toDate,
+        exception_type: document.getElementById('exc_exception_type').value,
+        description: document.getElementById('exc_description').value?.trim() || null,
+        affects_vacation_entitlement: document.getElementById('exc_affects_vacation').checked
+    };
+    try {
+        const response = await fetch(`${API_BASE}/employee/${currentEmployeeId}/exceptions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        const result = await response.json();
+        if (result.success) {
+            if (exceptionModalInstance) exceptionModalInstance.hide();
+            selectEmployee(currentEmployeeId);
+        } else {
+            alert('Fehler: ' + (result.error || 'Unbekannt'));
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Verbindungsfehler');
+    }
+}
+
+async function deleteException(id) {
+    if (!currentEmployeeId) return;
+    if (!confirm('Diese Ausnahme wirklich löschen?')) return;
+    try {
+        const response = await fetch(`${API_BASE}/employee/${currentEmployeeId}/exceptions/${id}`, { method: 'DELETE' });
+        const result = await response.json();
+        if (result.success) {
+            selectEmployee(currentEmployeeId);
+        } else {
+            alert('Fehler: ' + (result.error || 'Unbekannt'));
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Verbindungsfehler');
+    }
+}
+
+// ============================================================================
+// ZEITEN OHNE URLAUBSANSPRUCH (Add/Delete)
+// ============================================================================
+let periodNoVacationModalInstance = null;
+
+function addPeriodWithoutVacation() {
+    if (!currentEmployeeId) return;
+    document.getElementById('pnv_from_date').value = '';
+    document.getElementById('pnv_to_date').value = '';
+    document.getElementById('pnv_period_type').value = 'elternzeit';
+    document.getElementById('pnv_description').value = '';
+    if (!periodNoVacationModalInstance) {
+        periodNoVacationModalInstance = new bootstrap.Modal(document.getElementById('periodNoVacationModal'));
+    }
+    periodNoVacationModalInstance.show();
+}
+
+async function savePeriodNoVacationSubmit() {
+    if (!currentEmployeeId) return;
+    const fromDate = document.getElementById('pnv_from_date').value;
+    const toDate = document.getElementById('pnv_to_date').value;
+    if (!fromDate || !toDate) {
+        alert('Bitte Von- und Bis-Datum ausfüllen.');
+        return;
+    }
+    const data = {
+        from_date: fromDate,
+        to_date: toDate,
+        period_type: document.getElementById('pnv_period_type').value,
+        description: document.getElementById('pnv_description').value?.trim() || null
+    };
+    try {
+        const response = await fetch(`${API_BASE}/employee/${currentEmployeeId}/periods-without-vacation`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        const result = await response.json();
+        if (result.success) {
+            if (periodNoVacationModalInstance) periodNoVacationModalInstance.hide();
+            selectEmployee(currentEmployeeId);
+        } else {
+            alert('Fehler: ' + (result.error || 'Unbekannt'));
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Verbindungsfehler');
+    }
+}
+
+async function deletePeriodWithoutVacation(id) {
+    if (!currentEmployeeId) return;
+    if (!confirm('Diesen Zeitraum wirklich löschen?')) return;
+    try {
+        const response = await fetch(`${API_BASE}/employee/${currentEmployeeId}/periods-without-vacation/${id}`, { method: 'DELETE' });
+        const result = await response.json();
+        if (result.success) {
+            selectEmployee(currentEmployeeId);
+        } else {
+            alert('Fehler: ' + (result.error || 'Unbekannt'));
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Verbindungsfehler');
+    }
+}
 </script>
 {% endblock %}

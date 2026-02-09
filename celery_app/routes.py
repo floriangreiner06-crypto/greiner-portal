@@ -312,7 +312,11 @@ def start_task(task_name):
     if task_name not in task_map:
         return jsonify({'error': f'Task {task_name} nicht gefunden'}), 404
     
-    result = task_map[task_name].delay()
+    # TEK E-Mail: manueller Start soll immer senden (force=True umgeht Zeitprüfung vor 19:00)
+    if task_name == 'email_tek_daily':
+        result = task_map[task_name].delay(True)
+    else:
+        result = task_map[task_name].delay()
     
     # Speichere Task-ID -> Task-Name Mapping in Redis für Historie
     try:
@@ -443,6 +447,7 @@ def task_history(task_name):
             'sync_employees': 'celery_app.tasks.sync_employees',
             'sync_locosoft_employees': 'celery_app.tasks.sync_locosoft_employees',
             'email_auftragseingang': 'celery_app.tasks.email_auftragseingang',
+            'email_tek_daily': 'celery_app.tasks.email_tek_daily',
             'db_backup': 'celery_app.tasks.db_backup',
             'cleanup_backups': 'celery_app.tasks.cleanup_backups',
             'servicebox_scraper': 'celery_app.tasks.servicebox_scraper',

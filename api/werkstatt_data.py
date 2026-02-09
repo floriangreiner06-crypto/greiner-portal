@@ -1083,26 +1083,74 @@ class WerkstattData:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             
             query = """
-                WITH auftraege_mit_stempelung AS (
-                    SELECT DISTINCT
+                WITH auftraege_mit_stempelung_zeitraum AS (
+                    -- Stempelungen im gefilterten Zeitraum
+                    SELECT
                         t.employee_number,
-                        t.order_number
+                        t.order_number,
+                        SUM(EXTRACT(EPOCH FROM (COALESCE(t.end_time, NOW()) - t.start_time)) / 60) as stempelzeit_min_zeitraum
                     FROM times t
                     WHERE t.type = 2
                       AND t.end_time IS NOT NULL
                       AND t.start_time >= %s 
                       AND t.start_time < %s + INTERVAL '1 day'
+                    GROUP BY t.employee_number, t.order_number
+                ),
+                stempelungen_gesamt AS (
+                    -- Gesamt-Stempelzeit des Auftrags (alle Tage, nicht nur Zeitraum)
+                    SELECT
+                        t.employee_number,
+                        t.order_number,
+                        SUM(EXTRACT(EPOCH FROM (COALESCE(t.end_time, NOW()) - t.start_time)) / 60) as stempelzeit_min_gesamt
+                    FROM times t
+                    WHERE t.type = 2
+                      AND t.end_time IS NOT NULL
+                      AND t.order_number IN (SELECT order_number FROM auftraege_mit_stempelung_zeitraum)
+                    GROUP BY t.employee_number, t.order_number
+                ),
+                labours_gesamt AS (
+                    -- Gesamt-AW des Auftrags (alle Positionen)
+                    SELECT
+                        l.order_number,
+                        l.mechanic_no as employee_number,
+                        SUM(l.time_units) as aw_gesamt,
+                        SUM(l.net_price_in_order) as umsatz_gesamt
+                    FROM labours l
+                    WHERE l.order_number IN (SELECT order_number FROM auftraege_mit_stempelung_zeitraum)
+                      AND l.time_units > 0
+                      AND l.mechanic_no IS NOT NULL
+                    GROUP BY l.order_number, l.mechanic_no
                 )
                 SELECT 
                     ams.employee_number,
-                    -- FIX TAG 196: Summiere nur AW, die diesem Mechaniker zugeordnet sind!
-                    -- werkstatt_auftraege_abgerechnet summiert auch nur die AW pro Mechaniker.
-                    SUM(CASE WHEN l.mechanic_no = ams.employee_number THEN l.time_units ELSE 0 END) AS aw,
-                    SUM(CASE WHEN l.mechanic_no = ams.employee_number THEN l.time_units ELSE 0 END) * 6.0 / 60.0 AS vorgabezeit_std,
-                    SUM(CASE WHEN l.mechanic_no = ams.employee_number THEN l.net_price_in_order ELSE 0 END) AS umsatz
-                FROM auftraege_mit_stempelung ams
-                JOIN labours l ON ams.order_number = l.order_number
-                WHERE l.time_units > 0
+                    -- TAG 215 FIX: AW anteilig basierend auf Stempelzeit-Verhältnis
+                    -- AW_Zeitraum = AW_Gesamt × (Stempelzeit_Zeitraum / Stempelzeit_Gesamt)
+                    SUM(
+                        CASE 
+                            WHEN sg.stempelzeit_min_gesamt > 0 
+                            THEN lg.aw_gesamt * ams.stempelzeit_min_zeitraum / sg.stempelzeit_min_gesamt
+                            ELSE lg.aw_gesamt
+                        END
+                    ) AS aw,
+                    SUM(
+                        CASE 
+                            WHEN sg.stempelzeit_min_gesamt > 0 
+                            THEN lg.aw_gesamt * ams.stempelzeit_min_zeitraum / sg.stempelzeit_min_gesamt
+                            ELSE lg.aw_gesamt
+                        END
+                    ) * 6.0 / 60.0 AS vorgabezeit_std,
+                    SUM(
+                        CASE 
+                            WHEN sg.stempelzeit_min_gesamt > 0 
+                            THEN lg.umsatz_gesamt * ams.stempelzeit_min_zeitraum / sg.stempelzeit_min_gesamt
+                            ELSE lg.umsatz_gesamt
+                        END
+                    ) AS umsatz
+                FROM auftraege_mit_stempelung_zeitraum ams
+                JOIN stempelungen_gesamt sg ON ams.employee_number = sg.employee_number 
+                    AND ams.order_number = sg.order_number
+                JOIN labours_gesamt lg ON ams.order_number = lg.order_number 
+                    AND ams.employee_number = lg.employee_number
                 GROUP BY ams.employee_number
             """
             

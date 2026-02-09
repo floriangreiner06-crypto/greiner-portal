@@ -565,6 +565,16 @@ def migrate_subscriptions():
         return jsonify({'error': str(e)}), 500
 
 
+def _normalize_report_email(username_or_email):
+    """Verhindert doppelte Domain (z.B. user@auto-greiner.de@auto-greiner.de)."""
+    s = (username_or_email or '').strip().lower()
+    while '@auto-greiner.de@auto-greiner.de' in s:
+        s = s.replace('@auto-greiner.de@auto-greiner.de', '@auto-greiner.de')
+    if s and '@' not in s:
+        s = s + '@auto-greiner.de'
+    return s if s else None
+
+
 @admin_api.route('/api/admin/reports/employees', methods=['GET'])
 def get_employees_for_reports():
     """Mitarbeiter-Liste für Autocomplete beim Hinzufügen
@@ -574,16 +584,25 @@ def get_employees_for_reports():
         with db_session() as conn:
             cursor = conn.cursor()
 
+            # E-Mail: username kann "user", "user@auto-greiner.de" oder fehlerhaft doppelt sein
             cursor.execute('''
                 SELECT DISTINCT
-                    LOWER(username || '@auto-greiner.de') as email,
-                    display_name as name
+                    LOWER(CASE
+                        WHEN username LIKE '%@%' THEN TRIM(username)
+                        ELSE TRIM(username) || '@auto-greiner.de'
+                    END) AS email,
+                    display_name AS name
                 FROM users
-                WHERE username IS NOT NULL
+                WHERE username IS NOT NULL AND TRIM(username) != ''
                 ORDER BY display_name
             ''')
 
-            employees = rows_to_list(cursor.fetchall())
+            rows = rows_to_list(cursor.fetchall(), cursor)
+            employees = []
+            for r in rows:
+                email = _normalize_report_email(r.get('email') or r.get('Email'))
+                if email:
+                    employees.append({'email': email, 'name': r.get('name') or r.get('Name') or email})
 
         return jsonify({'employees': employees})
 

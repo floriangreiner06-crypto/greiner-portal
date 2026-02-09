@@ -1,0 +1,492 @@
+{% extends "base.html" %}
+
+{% block title %}WhatsApp Chat - Verkauf - Greiner DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .whatsapp-chat-container {
+        height: calc(100vh - 180px);
+        min-height: 400px;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        overflow: hidden;
+        background: #f8f9fa;
+    }
+    .whatsapp-contacts {
+        width: 320px;
+        min-width: 280px;
+        background: #fff;
+        border-right: 1px solid #dee2e6;
+        overflow-y: auto;
+    }
+    .whatsapp-chat-area {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        background: #e5ddd5;
+        min-width: 0;
+    }
+    .contact-item {
+        padding: 12px 16px;
+        border-bottom: 1px solid #f0f0f0;
+        cursor: pointer;
+        transition: background 0.15s;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .contact-item:hover { background: #f5f5f5; }
+    .contact-item.active { background: #e8f4fd; }
+    .contact-item .contact-avatar {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background: #25d366;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        flex-shrink: 0;
+    }
+    .contact-item .contact-info { flex: 1; min-width: 0; }
+    .contact-item .contact-name { font-weight: 600; color: #111; }
+    .contact-item .contact-preview { font-size: 0.85rem; color: #667781; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .contact-item .contact-meta { text-align: right; flex-shrink: 0; }
+    .contact-item .contact-time { font-size: 0.75rem; color: #667781; display: block; }
+    .contact-item .unread-badge {
+        display: inline-block;
+        min-width: 20px;
+        padding: 2px 6px;
+        font-size: 0.75rem;
+        background: #25d366;
+        color: #fff;
+        border-radius: 10px;
+        margin-top: 4px;
+    }
+    .chat-header {
+        padding: 12px 16px;
+        background: #f0f2f5;
+        border-bottom: 1px solid #dee2e6;
+        font-weight: 600;
+    }
+    .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .message {
+        max-width: 75%;
+        padding: 8px 12px;
+        border-radius: 8px;
+        word-wrap: break-word;
+    }
+    .message-inbound {
+        align-self: flex-start;
+        background: #fff;
+        box-shadow: 0 1px 0.5px rgba(0,0,0,0.13);
+    }
+    .message-outbound {
+        align-self: flex-end;
+        background: #d9fdd3;
+        box-shadow: 0 1px 0.5px rgba(0,0,0,0.13);
+    }
+    .message-time { font-size: 0.7rem; color: #667781; margin-top: 2px; }
+    .message-status { font-size: 0.7rem; color: #53bdeb; margin-left: 4px; }
+    .chat-input-area {
+        padding: 12px 16px;
+        background: #f0f2f5;
+        border-top: 1px solid #dee2e6;
+    }
+    .chat-input-area .form-control { border-radius: 24px; }
+    .chat-placeholder {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #667781;
+        font-size: 1.1rem;
+    }
+    .chat-placeholder i { font-size: 4rem; margin-bottom: 1rem; opacity: 0.5; }
+    .locosoft-row { cursor: pointer; }
+    .locosoft-row:hover { background: #f0f0f0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2><i class="bi bi-whatsapp text-success"></i> WhatsApp Chat – Verkauf</h2>
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#newChatModal">
+                <i class="bi bi-plus-lg"></i> Neuer Chat
+            </button>
+            <a href="{{ url_for('whatsapp.messages_list') }}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-chat-dots"></i> Alle Nachrichten
+            </a>
+        </div>
+    </div>
+
+    <!-- Modal: Neuer Chat -->
+    <div class="modal fade" id="newChatModal" tabindex="-1" aria-labelledby="newChatModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="newChatModalLabel"><i class="bi bi-person-plus text-success"></i> Neuer Chat</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small">Telefonnummer mit Ländervorwahl (z.B. 4915123456789). Für Twilio-Sandbox: zuerst „join &lt;code&gt;“ an die Sandbox-Nummer senden.</p>
+                    <div class="mb-3">
+                        <label class="form-label">Aus Locosoft wählen</label>
+                        <div class="input-group input-group-sm mb-2">
+                            <input type="text" class="form-control" id="locosoftSearch" placeholder="Name oder Kundennr. suchen...">
+                            <button type="button" class="btn btn-outline-secondary" id="locosoftSearchBtn">Suchen</button>
+                        </div>
+                        <div class="form-check form-check-sm mb-2">
+                            <input type="checkbox" class="form-check-input" id="locosoftMobileOnly" title="Nur Einträge mit Handynummer (015x, 016x, 017x oder com_type Mobil)">
+                            <label class="form-check-label small" for="locosoftMobileOnly">Nur Handynummern</label>
+                        </div>
+                        <div id="locosoftResults" class="border rounded overflow-auto d-none" style="max-height: 160px;"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="newChatPhone" class="form-label">Telefonnummer <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="newChatPhone" placeholder="z.B. 4915123456789" autocomplete="tel">
+                    </div>
+                    <div class="mb-3">
+                        <label for="newChatName" class="form-label">Name (optional)</label>
+                        <input type="text" class="form-control" id="newChatName" placeholder="Kundenname">
+                    </div>
+                    <div class="mb-3">
+                        <label for="newChatMessage" class="form-label">Erste Nachricht (optional)</label>
+                        <textarea class="form-control" id="newChatMessage" rows="2" placeholder="Nachricht eingeben..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                    <button type="button" class="btn btn-outline-primary" id="newChatStartBtn">Chat starten</button>
+                    <button type="button" class="btn btn-success" id="newChatSendBtn">Senden</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="whatsapp-chat-container d-flex">
+        <div class="whatsapp-contacts">
+            <div class="p-2 border-bottom bg-light">
+                <input type="text" class="form-control form-control-sm" id="contactSearch" placeholder="Kontakt suchen...">
+            </div>
+            <div id="contactsList">
+                <div class="text-center text-muted py-4" id="contactsLoading">
+                    <div class="spinner-border spinner-border-sm" role="status"></div> Lade Chats...
+                </div>
+                <div id="contactsItems"></div>
+                <div class="text-center text-muted py-4 d-none" id="contactsEmpty">Keine Chats vorhanden.</div>
+            </div>
+        </div>
+
+        <div class="whatsapp-chat-area">
+            <div id="chatPlaceholder" class="chat-placeholder">
+                <div class="text-center">
+                    <i class="bi bi-chat-left-text d-block"></i>
+                    <span>Wähle einen Kontakt, um die Unterhaltung zu starten.</span>
+                </div>
+            </div>
+            <div id="chatActive" class="d-none flex-grow-1 d-flex flex-column">
+                <div class="chat-header" id="chatHeader">–</div>
+                <div class="chat-messages" id="chatMessages"></div>
+                <div class="chat-input-area">
+                    <form id="sendForm" class="d-flex gap-2">
+                        <input type="hidden" id="currentContactId" name="contact_id">
+                        <input type="text" class="form-control" id="messageInput" placeholder="Nachricht eingeben..." autocomplete="off">
+                        <button type="submit" class="btn btn-success" id="sendBtn" title="Senden">
+                            <i class="bi bi-send-fill"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const contactsList = document.getElementById('contactsList');
+    const contactsItems = document.getElementById('contactsItems');
+    const contactsLoading = document.getElementById('contactsLoading');
+    const contactsEmpty = document.getElementById('contactsEmpty');
+    const chatPlaceholder = document.getElementById('chatPlaceholder');
+    const chatActive = document.getElementById('chatActive');
+    const chatHeader = document.getElementById('chatHeader');
+    const chatMessages = document.getElementById('chatMessages');
+    const currentContactId = document.getElementById('currentContactId');
+    const messageInput = document.getElementById('messageInput');
+    const sendForm = document.getElementById('sendForm');
+    const contactSearch = document.getElementById('contactSearch');
+
+    let chats = [];
+    let lastMessageId = 0;
+    let pollInterval = null;
+
+    function formatTime(iso) {
+        if (!iso) return '';
+        const d = new Date(iso);
+        const now = new Date();
+        if (d.toDateString() === now.toDateString()) {
+            return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+        }
+        return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function formatPreview(text) {
+        if (!text) return '';
+        return text.length > 35 ? text.substring(0, 35) + '…' : text;
+    }
+
+    function loadChats() {
+        return fetch('{{ url_for("whatsapp.verkauf_chats_api") }}')
+            .then(r => r.json())
+            .then(data => {
+                contactsLoading.classList.add('d-none');
+                chats = data.chats || [];
+                renderContacts(chats);
+                if (chats.length === 0) contactsEmpty.classList.remove('d-none');
+                return chats;
+            })
+            .catch(() => {
+                contactsLoading.classList.add('d-none');
+                contactsEmpty.classList.remove('d-none');
+                contactsEmpty.textContent = 'Fehler beim Laden.';
+            });
+    }
+
+    function renderContacts(list) {
+        contactsItems.innerHTML = list.map(c => `
+            <div class="contact-item" data-id="${c.id}" data-phone="${(c.phone_number || '').replace(/"/g, '&quot;')}" data-name="${(c.contact_name || '').replace(/"/g, '&quot;')}">
+                <div class="contact-avatar">${(c.contact_name || c.phone_number || '?').charAt(0).toUpperCase()}</div>
+                <div class="contact-info">
+                    <div class="contact-name">${c.contact_name || c.phone_number || 'Unbekannt'}</div>
+                    <div class="contact-preview">${formatPreview(c.last_message_preview) || '–'}</div>
+                </div>
+                <div class="contact-meta">
+                    <span class="contact-time">${formatTime(c.last_message_at)}</span>
+                    ${(c.unread_count > 0) ? `<span class="unread-badge">${c.unread_count}</span>` : ''}
+                </div>
+            </div>
+        `).join('');
+        document.querySelectorAll('.contact-item').forEach(el => {
+            el.addEventListener('click', () => selectContact(parseInt(el.dataset.id, 10), el.dataset.phone, el.dataset.name));
+        });
+    }
+
+    function selectContact(id, phone, name) {
+        document.querySelectorAll('.contact-item').forEach(el => el.classList.remove('active'));
+        const item = document.querySelector(`.contact-item[data-id="${id}"]`);
+        if (item) item.classList.add('active');
+        currentContactId.value = id;
+        chatHeader.textContent = name || phone || 'Kontakt';
+        chatHeader.dataset.phone = phone || '';
+        chatPlaceholder.classList.add('d-none');
+        chatActive.classList.remove('d-none');
+        chatMessages.innerHTML = '';
+        lastMessageId = 0;
+        loadMessages(id);
+        if (pollInterval) clearInterval(pollInterval);
+        pollInterval = setInterval(() => loadUpdates(id), 5000);
+        messageInput.focus();
+    }
+
+    function loadMessages(contactId) {
+        fetch('/whatsapp/verkauf/messages/' + contactId + '?limit=50')
+            .then(r => r.json())
+            .then(data => {
+                const messages = data.messages || [];
+                chatMessages.innerHTML = messages.map(m => renderMessage(m)).join('');
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+                if (messages.length) lastMessageId = messages[messages.length - 1].id;
+            });
+    }
+
+    function loadUpdates(contactId) {
+        if (!contactId) return;
+        const url = '/whatsapp/verkauf/updates?contact_id=' + contactId + '&last_message_id=' + lastMessageId;
+        fetch(url)
+            .then(r => r.json())
+            .then(data => {
+                const messages = data.messages || [];
+                if (messages.length) {
+                    messages.forEach(m => {
+                        chatMessages.insertAdjacentHTML('beforeend', renderMessage(m));
+                        lastMessageId = m.id;
+                    });
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                }
+            });
+    }
+
+    function renderMessage(m) {
+        const isOut = m.direction === 'outbound';
+        const time = formatTime(m.created_at);
+        const status = isOut ? (m.status === 'read' ? '✓✓' : m.status === 'delivered' ? '✓✓' : '✓') : '';
+        const content = (m.content || m.caption || '[Mediennachricht]').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return `<div class="message message-${isOut ? 'outbound' : 'inbound'}">
+            <div>${content}</div>
+            <div class="message-time">${time} ${status ? '<span class="message-status">' + status + '</span>' : ''}</div>
+        </div>`;
+    }
+
+    sendForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const contactId = currentContactId.value;
+        const phone = chatHeader.dataset.phone;
+        const text = messageInput.value.trim();
+        if (!contactId || !phone || !text) return;
+        fetch('{{ url_for("whatsapp.verkauf_send_api") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to: phone.replace(/\s/g, ''), message: text })
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Fehler: ' + data.error);
+                    return;
+                }
+                messageInput.value = '';
+                const msg = { id: lastMessageId + 1, direction: 'outbound', content: text, created_at: new Date().toISOString(), status: 'sent' };
+                chatMessages.insertAdjacentHTML('beforeend', renderMessage(msg));
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+                lastMessageId = msg.id;
+                loadChats();
+            })
+            .catch(() => alert('Fehler beim Senden.'));
+    });
+
+    contactSearch.addEventListener('input', function() {
+        const q = this.value.toLowerCase();
+        const filtered = q ? chats.filter(c => (c.contact_name || '').toLowerCase().includes(q) || (c.phone_number || '').includes(q)) : chats;
+        renderContacts(filtered);
+    });
+
+    document.getElementById('locosoftSearchBtn').addEventListener('click', function() {
+        const q = document.getElementById('locosoftSearch').value.trim();
+        const resultsEl = document.getElementById('locosoftResults');
+        resultsEl.classList.remove('d-none');
+        resultsEl.innerHTML = '<div class="p-2 text-muted small">Suche…</div>';
+        const mobileOnly = !!(document.getElementById('locosoftMobileOnly') && document.getElementById('locosoftMobileOnly').checked);
+        let url = '{{ url_for("whatsapp.verkauf_locosoft_addressbook_api") }}';
+        const parts = [];
+        if (q) parts.push('q=' + encodeURIComponent(q));
+        parts.push('mobile_only=' + (mobileOnly ? '1' : '0'));
+        url += '?' + parts.join('&');
+        fetch(url, { cache: 'no-store' })
+            .then(r => r.json())
+            .then(data => {
+                const list = data.customers || [];
+                if (list.length === 0) {
+                    const hint = mobileOnly
+                        ? 'Keine Kunden mit Handynummer gefunden. <a href="#" class="locosoft-clear-filter">Ohne Filter „Nur Handynummern“ suchen?</a>'
+                        : 'Keine Kunden gefunden.';
+                    resultsEl.innerHTML = '<div class="p-2 text-muted small">' + hint + '</div>';
+                    resultsEl.querySelector('.locosoft-clear-filter') && resultsEl.querySelector('.locosoft-clear-filter').addEventListener('click', function(e) {
+                        e.preventDefault();
+                        document.getElementById('locosoftMobileOnly').checked = false;
+                        document.getElementById('locosoftSearchBtn').click();
+                    });
+                    return;
+                }
+                resultsEl.innerHTML = list.map(function(c) {
+                    const phone = (c.phone || '').trim();
+                    const name = (c.display_name || c.family_name || c.first_name || 'Kunde ' + (c.customer_number || '')).trim();
+                    const city = (c.home_city || '').trim();
+                    const line = city ? name + ' · ' + city : name;
+                    return '<div class="p-2 border-bottom locosoft-row cursor-pointer" data-phone="' + (phone.replace(/"/g, '&quot;')) + '" data-name="' + (name.replace(/"/g, '&quot;')) + '" title="' + (phone || 'Keine Telefonnummer') + '">' + line + (phone ? ' <small class="text-muted">' + phone + '</small>' : '') + '</div>';
+                }).join('');
+                resultsEl.querySelectorAll('.locosoft-row').forEach(function(el) {
+                    el.addEventListener('click', function() {
+                        const phone = (el.dataset.phone || '').replace(/\s/g, '');
+                        const name = el.dataset.name || '';
+                        document.getElementById('newChatPhone').value = phone;
+                        document.getElementById('newChatName').value = name;
+                        resultsEl.classList.add('d-none');
+                    });
+                });
+            })
+            .catch(function() {
+                resultsEl.innerHTML = '<div class="p-2 text-danger small">Fehler beim Laden.</div>';
+            });
+    });
+
+    function getNewChatData() {
+        const phone = (document.getElementById('newChatPhone').value || '').trim().replace(/\s/g, '');
+        const name = (document.getElementById('newChatName').value || '').trim();
+        const message = (document.getElementById('newChatMessage').value || '').trim();
+        return { phone, name, message };
+    }
+
+    function clearNewChatModal() {
+        document.getElementById('newChatPhone').value = '';
+        document.getElementById('newChatName').value = '';
+        document.getElementById('newChatMessage').value = '';
+    }
+
+    document.getElementById('newChatStartBtn').addEventListener('click', function() {
+        const { phone, name } = getNewChatData();
+        if (!phone) { alert('Bitte Telefonnummer eingeben.'); return; }
+        const btn = this;
+        btn.disabled = true;
+        fetch('{{ url_for("whatsapp.verkauf_contact_api") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to: phone, contact_name: name || null })
+        })
+            .then(r => r.json())
+            .then(data => {
+                btn.disabled = false;
+                if (data.error) { alert('Fehler: ' + data.error); return; }
+                const c = data.contact;
+                const modal = bootstrap.Modal.getInstance(document.getElementById('newChatModal'));
+                if (modal) modal.hide();
+                clearNewChatModal();
+                loadChats().then(function() {
+                    selectContact(c.id, c.phone_number || phone, c.contact_name || c.workshop_name || name);
+                });
+            })
+            .catch(() => { btn.disabled = false; alert('Fehler beim Anlegen.'); });
+    });
+
+    document.getElementById('newChatSendBtn').addEventListener('click', function() {
+        const { phone, name, message } = getNewChatData();
+        if (!phone) { alert('Bitte Telefonnummer eingeben.'); return; }
+        if (!message) { alert('Bitte erste Nachricht eingeben oder „Chat starten“ wählen.'); return; }
+        const btn = this;
+        btn.disabled = true;
+        fetch('{{ url_for("whatsapp.verkauf_send_api") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to: phone, contact_name: name || null, message: message })
+        })
+            .then(r => r.json())
+            .then(data => {
+                btn.disabled = false;
+                if (data.error) { alert('Fehler: ' + data.error); return; }
+                const contactId = data.contact_id;
+                const modal = bootstrap.Modal.getInstance(document.getElementById('newChatModal'));
+                if (modal) modal.hide();
+                clearNewChatModal();
+                loadChats().then(function(loadedChats) {
+                    const list = loadedChats || chats;
+                    const contact = list && list.find(function(c) { return c.id === contactId; });
+                    selectContact(contactId, contact ? contact.phone_number : phone, contact ? (contact.contact_name || contact.workshop_name) : name);
+                });
+            })
+            .catch(() => { btn.disabled = false; alert('Fehler beim Senden.'); });
+    });
+
+    loadChats();
+})();
+</script>
+{% endblock %}

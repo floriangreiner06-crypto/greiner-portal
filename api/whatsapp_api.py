@@ -92,16 +92,24 @@ class WhatsAppClient:
         Formatiert Telefonnummer für Twilio (Format: whatsapp:+1234567890).
         
         Args:
-            phone: Telefonnummer (z.B. "491234567890")
+            phone: Telefonnummer (z.B. "491234567890" oder "whatsapp:+14155238886")
         
         Returns:
             Formatierte Nummer (z.B. "whatsapp:+491234567890")
         """
-        # Stelle sicher, dass + vorhanden ist
+        phone = (phone or '').strip()
+        if not phone:
+            return phone
+        # Bereits im Twilio-Format (z.B. aus .env: whatsapp:+14155238886)?
+        if phone.lower().startswith('whatsapp:'):
+            rest = phone[9:].strip().lstrip('+')
+            return f"whatsapp:+{rest}" if rest else phone
+        # Falsch: +whatsapp:+... (doppelt) → whatsapp:+...
+        if phone.startswith('+') and phone[1:10].lower() == 'whatsapp:':
+            return phone[1:]
+        # Normale Nummer: + hinzufügen, dann whatsapp:
         if not phone.startswith('+'):
             phone = '+' + phone
-        
-        # Füge whatsapp: Prefix hinzu
         return f"whatsapp:{phone}"
     
     def send_text_message(self, to: str, message: str) -> Optional[Dict[str, Any]]:

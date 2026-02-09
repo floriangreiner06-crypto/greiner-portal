@@ -374,19 +374,21 @@ def get_mechaniker_detail(mechaniker_nr):
             """), [mechaniker_nr, datum_von, datum_bis])
             tage = rows_to_list(cursor.fetchall())
 
-            # TAG 188: Aufträge nach Mechaniker-Nr filtern (JOIN mit loco_labours)
-            # WICHTIG: Nur Aufträge mit Stempelzeit > 0 anzeigen
-            # Nur Aufträge, bei denen dieser Mechaniker tatsächlich gearbeitet hat (via loco_labours)
+            # TAG 215: Erweiterte Auftragsliste - Kombiniert abgerechnete + LIVE-Aufträge
+            # Problem: Am Monatsanfang gibt es Stempelungen, aber noch keine abgerechneten Aufträge
+            # Lösung: Zeige auch LIVE-Aufträge aus times + labours (noch nicht abgerechnet)
+            
+            # 1. ABGERECHNETE Aufträge (Portal-DB)
             cursor.execute(convert_placeholders("""
                 SELECT DISTINCT
-                    a.rechnungs_datum,
+                    a.rechnungs_datum as datum,
                     a.rechnungs_nr,
                     a.auftrags_nr,
                     a.kennzeichen,
-                    a.summe_aw,
-                    a.summe_stempelzeit_min,
+                    a.summe_aw as aw,
+                    a.summe_stempelzeit_min as stempelzeit_min,
                     a.leistungsgrad,
-                    a.lohn_netto
+                    a.lohn_netto as umsatz
                 FROM werkstatt_auftraege_abgerechnet a
                 INNER JOIN loco_labours l ON a.rechnungs_nr = l.invoice_number
                     AND a.rechnungs_typ = l.invoice_type
@@ -394,10 +396,137 @@ def get_mechaniker_detail(mechaniker_nr):
                     AND l.mechanic_no IS NOT NULL
                 WHERE a.rechnungs_datum >= ? AND a.rechnungs_datum <= ?
                     AND a.summe_stempelzeit_min > 0
-                ORDER BY a.rechnungs_datum DESC
-                LIMIT 200
             """), [mechaniker_nr, datum_von, datum_bis])
-            auftraege = rows_to_list(cursor.fetchall())
+            auftraege_abgerechnet = rows_to_list(cursor.fetchall())
+            
+            # Markiere als abgerechnet
+            for auftrag in auftraege_abgerechnet:
+                auftrag['ist_abgerechnet'] = True
+                auftrag['rechnungs_nr'] = str(auftrag.get('rechnungs_nr', ''))
+                auftrag['auftrags_nr'] = str(auftrag.get('auftrags_nr', ''))
+                auftrag['datum'] = str(auftrag.get('datum', ''))
+            
+            # 2. LIVE-Aufträge (Locosoft-DB) - noch nicht abgerechnet
+            from api.db_utils import locosoft_session
+            from psycopg2.extras import RealDictCursor
+            
+            auftraege_live = []
+            with locosoft_session() as loco_conn:
+                loco_cursor = loco_conn.cursor(cursor_factory=RealDictCursor)
+                
+                # Hole bereits abgerechnete Auftragsnummern (um Duplikate zu vermeiden)
+                abgerechnet_auftrags_nrs = [str(a.get('auftrags_nr', '')) for a in auftraege_abgerechnet]
+                
+                live_query = """
+                    WITH stempelungen_mechaniker AS (
+                        -- TAG 215 FIX: Nur Stempelzeit im gefilterten Zeitraum zählen!
+                        -- Problem: Vorher wurde Gesamt-Stempelzeit des Auftrags gezeigt, nicht nur für den Zeitraum
+                        SELECT DISTINCT
+                            t.order_number,
+                            t.employee_number,
+                            SUM(EXTRACT(EPOCH FROM (COALESCE(t.end_time, NOW()) - t.start_time)) / 60) as stempelzeit_min
+                        FROM times t
+                        WHERE t.type = 2
+                            AND t.employee_number = %s
+                            AND t.end_time IS NOT NULL
+                            AND DATE(t.start_time) >= %s AND DATE(t.start_time) <= %s
+                            AND t.order_number > 31
+                        GROUP BY t.order_number, t.employee_number
+                    ),
+                    -- TAG 215 FIX: AW anteilig basierend auf Stempelzeit im Zeitraum
+                    -- Problem: AW ist eine Auftragseigenschaft, nicht zeitabhängig
+                    -- Lösung: AW anteilig basierend auf Stempelzeit-Verhältnis berechnen
+                    labours_gesamt AS (
+                        SELECT
+                            l.order_number,
+                            SUM(CASE WHEN l.mechanic_no = %s THEN l.time_units ELSE 0 END) as aw_gesamt,
+                            SUM(CASE WHEN l.mechanic_no = %s THEN l.net_price_in_order ELSE 0 END) as umsatz_gesamt
+                        FROM labours l
+                        WHERE l.order_number IN (SELECT order_number FROM stempelungen_mechaniker)
+                            AND l.time_units > 0
+                        GROUP BY l.order_number
+                    ),
+                    stempelungen_gesamt AS (
+                        -- Gesamt-Stempelzeit des Auftrags (alle Tage, nicht nur Zeitraum)
+                        SELECT
+                            t.order_number,
+                            SUM(EXTRACT(EPOCH FROM (COALESCE(t.end_time, NOW()) - t.start_time)) / 60) as stempelzeit_min_gesamt
+                        FROM times t
+                        WHERE t.type = 2
+                            AND t.employee_number = %s
+                            AND t.end_time IS NOT NULL
+                            AND t.order_number IN (SELECT order_number FROM stempelungen_mechaniker)
+                            AND t.order_number > 31
+                        GROUP BY t.order_number
+                    ),
+                    labours_mechaniker_gefiltert AS (
+                        -- AW anteilig: AW_gesamt × (Stempelzeit_Zeitraum / Stempelzeit_Gesamt)
+                        SELECT
+                            sm.order_number,
+                            CASE 
+                                WHEN sg.stempelzeit_min_gesamt > 0 
+                                THEN ROUND((lg.aw_gesamt * sm.stempelzeit_min / sg.stempelzeit_min_gesamt)::numeric, 1)
+                                ELSE lg.aw_gesamt
+                            END as aw,
+                            CASE 
+                                WHEN sg.stempelzeit_min_gesamt > 0 
+                                THEN ROUND((lg.umsatz_gesamt * sm.stempelzeit_min / sg.stempelzeit_min_gesamt)::numeric, 2)
+                                ELSE lg.umsatz_gesamt
+                            END as umsatz
+                        FROM stempelungen_mechaniker sm
+                        LEFT JOIN labours_gesamt lg ON sm.order_number = lg.order_number
+                        LEFT JOIN stempelungen_gesamt sg ON sm.order_number = sg.order_number
+                    ),
+                    auftrags_details AS (
+                        SELECT
+                            o.number as order_number,
+                            o.order_date,
+                            v.license_plate as kennzeichen
+                        FROM orders o
+                        LEFT JOIN vehicles v ON o.vehicle_number = v.internal_number
+                        WHERE o.number IN (SELECT order_number FROM stempelungen_mechaniker)
+                    )
+                    SELECT DISTINCT
+                        sm.order_number::text as auftrags_nr,
+                        ad.order_date::text as datum,
+                        NULL::text as rechnungs_nr,
+                        ad.kennzeichen,
+                        COALESCE(lm.aw, 0) as aw,
+                        sm.stempelzeit_min,
+                        CASE 
+                            WHEN sm.stempelzeit_min > 0 AND COALESCE(lm.aw, 0) > 0 
+                            THEN ROUND((COALESCE(lm.aw, 0) * 6.0 / sm.stempelzeit_min) * 100, 1)
+                            ELSE NULL
+                        END as leistungsgrad,
+                        COALESCE(lm.umsatz, 0) as umsatz
+                    FROM stempelungen_mechaniker sm
+                    LEFT JOIN labours_mechaniker_gefiltert lm ON sm.order_number = lm.order_number
+                    LEFT JOIN auftrags_details ad ON sm.order_number = ad.order_number
+                    WHERE sm.stempelzeit_min > 0
+                """
+                
+                params_live = [mechaniker_nr, datum_von, datum_bis, mechaniker_nr, mechaniker_nr, mechaniker_nr]
+                loco_cursor.execute(live_query, params_live)
+                auftraege_live_raw = [dict(row) for row in loco_cursor.fetchall()]
+                
+                # Filtere bereits abgerechnete Aufträge raus
+                for auftrag in auftraege_live_raw:
+                    auftrags_nr = str(auftrag.get('auftrags_nr', ''))
+                    if auftrags_nr not in abgerechnet_auftrags_nrs:
+                        auftrag['ist_abgerechnet'] = False
+                        auftraege_live.append(auftrag)
+            
+            # Kombiniere beide Quellen
+            auftraege = auftraege_abgerechnet + auftraege_live
+            
+            # Sortiere: Abgerechnet zuerst (neueste), dann LIVE (neueste)
+            auftraege.sort(key=lambda x: (
+                x.get('ist_abgerechnet', False) is False,  # Abgerechnet zuerst
+                x.get('datum', '') or '',  # Dann nach Datum (neueste zuerst)
+            ), reverse=True)
+            
+            # Limit auf 200
+            auftraege = auftraege[:200]
 
             return jsonify({
                 'success': True,

@@ -10,12 +10,14 @@ Endpoints:
 - /whatsapp/contacts - Kontakte verwalten (UI)
 """
 
-from flask import Blueprint, request, jsonify, render_template
+from flask import Blueprint, request, jsonify, render_template, abort
 from flask_login import login_required, current_user
 import logging
 from datetime import datetime
+from urllib.parse import urlencode
 from api.db_connection import get_db
 from api.whatsapp_api import WhatsAppClient, normalize_phone_number, get_whatsapp_config
+from api.locosoft_addressbook_api import search_customers as locosoft_search_customers, match_customer_by_phone as locosoft_match_customer_by_phone
 import json
 import os
 import re
@@ -284,9 +286,8 @@ def webhook_test():
         </html>
         """
     
-    # POST: Weiterleitung zum echten Webhook
+    # POST: Weiterleitung zum echten Webhook (form-urlencoded wie Twilio)
     if request.method == 'POST':
-        # Simuliere Form-encoded data
         test_data = {
             'MessageSid': request.form.get('MessageSid', 'SMtest123'),
             'From': request.form.get('From', 'whatsapp:+491234567890'),
@@ -294,11 +295,22 @@ def webhook_test():
             'To': request.form.get('To', 'whatsapp:+14155238886'),
             'NumMedia': request.form.get('NumMedia', '0')
         }
-        
-        # Erstelle neuen Request-Context für Webhook
         from flask import current_app
-        with current_app.test_request_context('/whatsapp/webhook', method='POST', data=test_data):
-            return webhook()
+        with current_app.test_request_context(
+            '/whatsapp/webhook',
+            method='POST',
+            data=urlencode(test_data),
+            content_type='application/x-www-form-urlencoded'
+        ):
+            webhook()
+        return """
+        <html><head><title>Inbound-Test</title></head><body>
+        <h1>Inbound-Test ausgeführt</h1>
+        <p>Webhook wurde simuliert. Wenn From/Body korrekt waren, ist die Nachricht in der DB.</p>
+        <p><strong>Nächster Schritt:</strong> <a href="/whatsapp/verkauf/chat">Verkauf → WhatsApp Chat</a> öffnen und den Kontakt (From-Nummer) auswählen – die eingehende Nachricht sollte erscheinen.</p>
+        <p><a href="/whatsapp/webhook/test">Nochmal testen</a></p>
+        </body></html>
+        """
 
 
 def _handle_status_update_twilio(message_sid: str, status: str):
@@ -410,6 +422,22 @@ def _handle_incoming_message_twilio(data: dict):
             contact_id = cursor.fetchone()[0] if cursor.rowcount > 0 else None
             conn.commit()
             logger.info(f"Neuer WhatsApp-Kontakt erstellt: {phone_number}")
+        # Eingehende Nachricht: Absender-Nummer mit Kunden (locosoft_kunden_sync) matchen
+        try:
+            match = locosoft_match_customer_by_phone(phone_number)
+            if match:
+                display_name = (match.get('display_name') or '').strip() or f"Kunde {match.get('customer_number', '')}"
+                first_name = (match.get('first_name') or '').strip() or None
+                cursor.execute("""
+                    UPDATE whatsapp_contacts
+                    SET workshop_name = %s, contact_name = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                """, (display_name, first_name or display_name, contact_id))
+                if cursor.rowcount > 0:
+                    conn.commit()
+                    logger.info(f"WhatsApp-Kontakt gematcht: {phone_number} -> {display_name}")
+        except Exception as match_err:
+            logger.debug(f"Kunden-Match für {phone_number}: {match_err}")
         
         # Extrahiere Nachrichteninhalt je nach Typ
         content = None
@@ -575,6 +603,275 @@ def _save_outbound_message(phone_number: str, message_id: str, message_type: str
         
     except Exception as e:
         logger.error(f"Fehler beim Speichern der ausgehenden Nachricht: {str(e)}")
+
+
+# =============================================================================
+# VERKÄUFER-ENDPOINTS (TAG 211)
+# =============================================================================
+
+def _require_whatsapp_verkauf():
+    """Prüft Zugriff auf WhatsApp Verkauf."""
+    if not current_user.is_authenticated:
+        return False
+    if hasattr(current_user, 'can_access_feature') and current_user.can_access_feature('whatsapp_verkauf'):
+        return True
+    return False
+
+
+@whatsapp_bp.route('/verkauf/locosoft-addressbook', methods=['GET'])
+@login_required
+def verkauf_locosoft_addressbook_api():
+    """API: Kunden aus Locosoft als Adressbuch (für Neuer Chat)."""
+    if not _require_whatsapp_verkauf():
+        return jsonify({'error': 'Keine Berechtigung'}), 403
+    try:
+        q = request.args.get('q', '').strip()
+        subsidiary = request.args.get('subsidiary', type=int)
+        limit = min(request.args.get('limit', 50, type=int), 100)
+        mobile_only = request.args.get('mobile_only', '0') in ('1', 'true', 'yes')
+        logger.info(f"Locosoft Adressbuch: q={q!r} mobile_only={mobile_only} -> Suche starten")
+        customers = locosoft_search_customers(q=q or '', subsidiary=subsidiary, limit=limit, mobile_only=mobile_only)
+        return jsonify({'customers': customers, 'mobile_only': mobile_only}), 200
+    except Exception as e:
+        logger.error(f"Locosoft Adressbuch: {e}")
+        return jsonify({'error': str(e), 'customers': []}), 500
+
+
+@whatsapp_bp.route('/verkauf/chat', methods=['GET'])
+@login_required
+def verkauf_chat():
+    """
+    Chat-Interface für Verkäufer (WhatsApp-ähnlich).
+    Zeigt Kontakte links, Chat rechts.
+    """
+    if not _require_whatsapp_verkauf():
+        abort(403)
+    return render_template('whatsapp/verkauf_chat.html')
+
+
+@whatsapp_bp.route('/verkauf/chats', methods=['GET'])
+@login_required
+def verkauf_chats_api():
+    """
+    API: Liste der Chats für aktuellen User (Verkäufer).
+    Nutzt Kontakte mit Nachrichten; falls Migration (contact_type/assigned_user_id) vorhanden,
+    auch Verkauf-Kontakte ohne Nachrichten.
+    """
+    if not _require_whatsapp_verkauf():
+        return jsonify({'error': 'Keine Berechtigung'}), 403
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        user_id = current_user.id if hasattr(current_user, 'id') else None
+        # Zuerst Abfrage mit Verkauf-Spalten (contact_type, assigned_user_id)
+        try:
+            cursor.execute("""
+                SELECT DISTINCT c.id, c.workshop_name as contact_name, c.phone_number, c.contact_name as contact_person,
+                       (SELECT content FROM whatsapp_messages m WHERE m.contact_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message_preview,
+                       (SELECT created_at FROM whatsapp_messages m WHERE m.contact_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message_at,
+                       (SELECT COUNT(*) FROM whatsapp_messages m WHERE m.contact_id = c.id AND m.direction = 'inbound' AND m.status != 'read') as unread_count
+                FROM whatsapp_contacts c
+                WHERE c.active = true
+                AND (
+                    EXISTS (SELECT 1 FROM whatsapp_messages m WHERE m.contact_id = c.id)
+                    OR (COALESCE(c.contact_type, 'workshop') = 'customer' AND (c.assigned_user_id = %s OR c.assigned_user_id IS NULL))
+                )
+                ORDER BY last_message_at DESC NULLS LAST, c.workshop_name
+                LIMIT 100
+            """, (user_id,))
+        except Exception as schema_err:
+            # Fallback: Spalten contact_type/assigned_user_id fehlen (Migration nicht ausgeführt)
+            logger.debug(f"Verkauf chats: Fallback-Query (Schema: {schema_err})")
+            cursor.execute("""
+                SELECT DISTINCT c.id, c.workshop_name as contact_name, c.phone_number, c.contact_name as contact_person,
+                       (SELECT content FROM whatsapp_messages m WHERE m.contact_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message_preview,
+                       (SELECT created_at FROM whatsapp_messages m WHERE m.contact_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message_at,
+                       (SELECT COUNT(*) FROM whatsapp_messages m WHERE m.contact_id = c.id AND m.direction = 'inbound' AND m.status != 'read') as unread_count
+                FROM whatsapp_contacts c
+                WHERE c.active = true
+                AND EXISTS (SELECT 1 FROM whatsapp_messages m WHERE m.contact_id = c.id)
+                ORDER BY last_message_at DESC NULLS LAST, c.workshop_name
+                LIMIT 100
+            """)
+        rows = cursor.fetchall()
+        desc = [d[0] for d in cursor.description] if cursor.description else []
+        conn.close()
+        chats = [dict(zip(desc, r)) for r in rows] if desc and rows else []
+        for c in chats:
+            if c.get('last_message_at') and hasattr(c['last_message_at'], 'isoformat'):
+                c['last_message_at'] = c['last_message_at'].isoformat()
+        return jsonify({'chats': chats}), 200
+    except Exception as e:
+        logger.error(f"Verkauf chats API: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@whatsapp_bp.route('/verkauf/messages/<int:contact_id>', methods=['GET'])
+@login_required
+def verkauf_messages_api(contact_id):
+    """API: Chat-Verlauf für einen Kontakt."""
+    if not _require_whatsapp_verkauf():
+        return jsonify({'error': 'Keine Berechtigung'}), 403
+    try:
+        limit = request.args.get('limit', 50, type=int)
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT m.id, m.message_id, m.contact_id, m.direction, m.message_type, m.content, m.media_url, m.caption, m.status, m.created_at,
+                   c.workshop_name as contact_name, c.phone_number
+            FROM whatsapp_messages m
+            LEFT JOIN whatsapp_contacts c ON m.contact_id = c.id
+            WHERE m.contact_id = %s
+            ORDER BY m.created_at ASC
+            LIMIT %s
+        """, (contact_id, limit))
+        rows = cursor.fetchall()
+        desc = [d[0] for d in cursor.description] if cursor.description else []
+        conn.close()
+        messages = [dict(zip(desc, r)) for r in rows] if desc and rows else []
+        for m in messages:
+            if m.get('created_at') and hasattr(m['created_at'], 'isoformat'):
+                m['created_at'] = m['created_at'].isoformat()
+        return jsonify({'messages': messages}), 200
+    except Exception as e:
+        logger.error(f"Verkauf messages API: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+def _ensure_verkauf_contact(phone_number: str, contact_name: str = None) -> int:
+    """
+    Findet oder erstellt einen WhatsApp-Kontakt für Verkauf (contact_type=customer).
+    Gibt contact_id zurück. Funktioniert auch ohne Migration (contact_type/assigned_user_id).
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT id FROM whatsapp_contacts WHERE phone_number = %s
+        """, (phone_number,))
+        row = cursor.fetchone()
+        if row:
+            return row[0] if isinstance(row, dict) else row['id']
+        user_id = current_user.id if hasattr(current_user, 'id') else None
+        display_name = (contact_name or '').strip() or f"Kunde {phone_number[-6:]}"
+        try:
+            cursor.execute("""
+                INSERT INTO whatsapp_contacts (workshop_name, phone_number, contact_name, contact_type, assigned_user_id)
+                VALUES (%s, %s, %s, 'customer', %s)
+                RETURNING id
+            """, (display_name, phone_number, contact_name or None, user_id))
+        except Exception:
+            cursor.execute("""
+                INSERT INTO whatsapp_contacts (workshop_name, phone_number, contact_name)
+                VALUES (%s, %s, %s)
+                RETURNING id
+            """, (display_name, phone_number, contact_name or None))
+        row = cursor.fetchone()
+        contact_id = row[0] if hasattr(row, '__getitem__') else row['id']
+        conn.commit()
+        logger.info(f"Neuer Verkauf-Kontakt erstellt: {phone_number} (id={contact_id})")
+        return contact_id
+    finally:
+        conn.close()
+
+
+@whatsapp_bp.route('/verkauf/contact', methods=['POST'])
+@login_required
+def verkauf_contact_api():
+    """API: Neuen Verkauf-Kontakt anlegen (ohne Nachricht). Für 'Neuer Chat'."""
+    if not _require_whatsapp_verkauf():
+        return jsonify({'error': 'Keine Berechtigung'}), 403
+    try:
+        data = request.get_json() or {}
+        to = data.get('to') or data.get('phone_number')
+        contact_name = (data.get('contact_name') or '').strip() or None
+        if not to:
+            return jsonify({'error': 'Telefonnummer erforderlich'}), 400
+        phone_number = normalize_phone_number(str(to))
+        contact_id = _ensure_verkauf_contact(phone_number, contact_name)
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, workshop_name, phone_number, contact_name
+            FROM whatsapp_contacts WHERE id = %s
+        """, (contact_id,))
+        row = cursor.fetchone()
+        desc = [d[0] for d in cursor.description] if cursor.description else []
+        conn.close()
+        if not row:
+            return jsonify({'error': 'Kontakt nicht gefunden'}), 500
+        contact = dict(zip(desc, row)) if desc and row else {'id': contact_id, 'phone_number': phone_number, 'contact_name': contact_name}
+        return jsonify({'contact': contact}), 200
+    except Exception as e:
+        logger.error(f"Verkauf contact API: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@whatsapp_bp.route('/verkauf/send', methods=['POST'])
+@login_required
+def verkauf_send_api():
+    """API: Nachricht senden (Verkäufer). Legt bei neuer Nummer automatisch einen Kontakt an."""
+    if not _require_whatsapp_verkauf():
+        return jsonify({'error': 'Keine Berechtigung'}), 403
+    try:
+        data = request.get_json() or {}
+        to = data.get('to') or data.get('phone_number')
+        message = data.get('message') or data.get('content')
+        contact_name = data.get('contact_name', '').strip() or None
+        if not to or not message:
+            return jsonify({'error': 'to und message erforderlich'}), 400
+        phone_number = normalize_phone_number(str(to))
+        contact_id = _ensure_verkauf_contact(phone_number, contact_name)
+        client = WhatsAppClient()
+        result = client.send_text_message(phone_number, message)
+        if result and result.get('success'):
+            _save_outbound_message(phone_number, result.get('message_id', ''), 'text', {'message': message})
+            return jsonify({**result, 'contact_id': contact_id}), 200
+        return jsonify(result or {'error': 'Senden fehlgeschlagen'}), 500
+    except Exception as e:
+        logger.error(f"Verkauf send API: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@whatsapp_bp.route('/verkauf/updates', methods=['GET'])
+@login_required
+def verkauf_updates_api():
+    """API: Neue Nachrichten (z.B. nach last_message_id) für Polling."""
+    if not _require_whatsapp_verkauf():
+        return jsonify({'error': 'Keine Berechtigung'}), 403
+    try:
+        contact_id = request.args.get('contact_id', type=int)
+        last_id = request.args.get('last_message_id', type=int)
+        if not contact_id:
+            return jsonify({'messages': []}), 200
+        conn = get_db()
+        cursor = conn.cursor()
+        if last_id:
+            cursor.execute("""
+                SELECT m.id, m.message_id, m.contact_id, m.direction, m.message_type, m.content, m.media_url, m.caption, m.status, m.created_at
+                FROM whatsapp_messages m
+                WHERE m.contact_id = %s AND m.id > %s
+                ORDER BY m.created_at ASC
+            """, (contact_id, last_id))
+        else:
+            cursor.execute("""
+                SELECT m.id, m.message_id, m.contact_id, m.direction, m.message_type, m.content, m.media_url, m.caption, m.status, m.created_at
+                FROM whatsapp_messages m
+                WHERE m.contact_id = %s
+                ORDER BY m.created_at ASC
+                LIMIT 50
+            """, (contact_id,))
+        rows = cursor.fetchall()
+        desc = [d[0] for d in cursor.description] if cursor.description else []
+        conn.close()
+        messages = [dict(zip(desc, r)) for r in rows] if desc and rows else []
+        for m in messages:
+            if m.get('created_at') and hasattr(m['created_at'], 'isoformat'):
+                m['created_at'] = m['created_at'].isoformat()
+        return jsonify({'messages': messages}), 200
+    except Exception as e:
+        logger.error(f"Verkauf updates API: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 # =============================================================================

@@ -5,6 +5,21 @@
 
 ---
 
+## 🖥️ ARBEITSUMGEBUNG (KONTEXT)
+
+**Wo wird entwickelt?**
+- **Server:** 10.80.80.20 (DRIVE/Portal-Host)
+- **Workspace:** `/opt/greiner-portal` – liegt **direkt auf diesem Server**
+
+**Konsequenz für Session-Arbeit:**
+- Änderungen/Erstellungen durch Cursor (bzw. Assistent) erfolgen **direkt auf 10.80.80.20** im Workspace.
+- Es gibt **keinen separaten „Sync zum Server“** für Code oder Session-Docs: Der Server **ist** die Arbeitsumgebung.
+- Beim Session-Ende **keinen** Hinweis geben wie „Dateien auf den Server syncen“ – sie sind bereits auf dem Server.
+
+(Falls zusätzlich ein Windows-Sync-Share o. Ä. genutzt wird: Das betrifft ggf. Backup/Kopie, nicht die primäre Bearbeitung auf 10.80.80.20.)
+
+---
+
 ## 🗂️ DATEI-STRUKTUR (VERBINDLICH)
 
 ```
@@ -207,6 +222,7 @@ Das ist alles! Claude weiß dann:
 - [ ] `docs/SESSION_WRAP_UP_TAG[XX].md` schreiben
 - [ ] `docs/TODO_FOR_CLAUDE_SESSION_START_TAG[XX+1].md` schreiben
 - [ ] Git-Befehle für User bereitstellen
+- [ ] **Kein** „Server-Sync“-Hinweis (Arbeit erfolgt direkt auf 10.80.80.20, siehe Abschnitt ARBEITSUMGEBUNG)
 
 ### Nach DB-Migrationen (USER):
 - [ ] `python3 scripts/utils/export_db_schema.py --all`

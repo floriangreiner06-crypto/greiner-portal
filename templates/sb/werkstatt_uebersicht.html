@@ -1481,17 +1481,25 @@ function renderAuftraegeListe(auftraege) {
     `;
     
     auftraege.forEach(auftrag => {
-        const vorgabeStd = (auftrag.summe_aw || 0) * 6 / 60;
-        const stempelStd = (auftrag.summe_stempelzeit_min || 0) / 60;
+        // TAG 215: Unterstütze beide Formate (abgerechnet: summe_aw, LIVE: aw)
+        const aw = auftrag.summe_aw || auftrag.aw || 0;
+        const stempelzeitMin = auftrag.summe_stempelzeit_min || auftrag.stempelzeit_min || 0;
+        const vorgabeStd = aw * 6 / 60;
+        const stempelStd = stempelzeitMin / 60;
         const lg = auftrag.leistungsgrad || 0;
         const lgClass = lg >= 100 ? 'text-success' : (lg >= 80 ? 'text-warning' : 'text-danger');
-        const datum = auftrag.rechnungs_datum ? new Date(auftrag.rechnungs_datum).toLocaleDateString('de-DE') : '-';
+        const datum = auftrag.rechnungs_datum || auftrag.datum;
+        const datumFormatted = datum ? new Date(datum).toLocaleDateString('de-DE') : '-';
         const auftragNr = auftrag.auftrags_nr;
+        const istAbgerechnet = auftrag.ist_abgerechnet !== false; // Default: true (für alte Daten)
+        const statusBadge = istAbgerechnet 
+            ? '<span class="badge bg-success ms-1" title="Abgerechnet">✓</span>'
+            : '<span class="badge bg-warning ms-1" title="Noch nicht abgerechnet (LIVE)">LIVE</span>';
         
         html += `
             <tr style="cursor: pointer;" onclick="bootstrap.Modal.getInstance(document.getElementById('detailModal')).hide(); showAuftragDetail(${auftragNr});">
-                <td>${datum}</td>
-                <td><strong>${auftragNr || '-'}</strong></td>
+                <td>${datumFormatted}</td>
+                <td><strong>${auftragNr || '-'}</strong>${statusBadge}</td>
                 <td>${auftrag.kennzeichen || '-'}</td>
                 <td class="text-end">${formatNumber(vorgabeStd, 1)}</td>
                 <td class="text-end">${formatNumber(stempelStd, 1)}</td>
