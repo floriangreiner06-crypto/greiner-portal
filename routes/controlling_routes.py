@@ -1,4 +1,4 @@
-﻿from flask import Blueprint, render_template, jsonify, request
+from flask import Blueprint, render_template, jsonify, request
 from decorators.auth_decorators import login_required
 import re
 from datetime import datetime, date, timedelta
@@ -752,6 +752,11 @@ def api_tek():
         von = f"{jahr}-{monat:02d}-01"
         bis = f"{jahr}-{monat+1:02d}-01" if monat < 12 else f"{jahr+1}-01-01"
 
+        # FÃ¼r Breakeven/Prognose: "3 Monate zurÃ¼ck" (wird in berechne_breakeven_prognose* referenziert)
+        from dateutil.relativedelta import relativedelta
+        _heute = date.today()
+        drei_monate_vorher = (_heute - relativedelta(months=3)).replace(day=1).strftime('%Y-%m-%d')
+
         # TAG 136: PostgreSQL-kompatibel - Placeholder-Funktion
         ph = sql_placeholder()  # Returns ? fÃ¼r SQLite, %s fÃ¼r PostgreSQL
         
@@ -1091,15 +1096,11 @@ def api_tek():
             gesamt['db1_pro_stueck'] = 0
 
         # =====================================================================
-        # WERKSTATT-EINSATZ (TAG 140: Rollierender 3-Vormonate Durchschnitt)
+        # WERKSTATT-EINSATZ (TAG 140: Method B – Einsatz 6M im Verhältnis zum Umsatz)
         # =====================================================================
-        # Die FIBU (74xxxx) enthält:
-        # - 740xxx: Lohnkosten - erst nach Monatsabschluss gebucht!
-        # - 743xxx: Teile-Einsatz
-        # - 747xxx: Fremdleistungen
-        #
-        # Im laufenden Monat fehlen Lohn + Fremdleistungen (werden erst später gebucht).
-        # Lösung: Rollierender Durchschnitt der letzten 3 abgeschlossenen Monate.
+        # Im laufenden Monat fehlt ein Teil des Einsatzes (74xxxx) in der FIBU.
+        # Method B: Rollierende 6-Monats-Quote (Einsatz 74xxxx / Umsatz 84xxxx) aus
+        #           loco_journal_accountings; Einsatz kalk = Umsatz_aktuell × Quote.
         #
         # Mechaniker-Produktivität holen (für Info-Anzeige)
         betrieb_fuer_ws = firma if firma in ['1', '2'] else '0'
@@ -1112,55 +1113,50 @@ def api_tek():
         produktivitaet = ws_produktivitaet.get('produktivitaet', 75.0)
         leistungsgrad = ws_produktivitaet.get('leistungsgrad', 85.0)
 
-        # TAG 140: Prüfen ob laufender Monat (Lohn+Fremdleistungen fehlen noch)
+        # TAG 140: Prüfen ob laufender Monat
         heute = datetime.now()
         ist_laufender_monat = bis >= heute.strftime('%Y-%m-%d')
 
         if '4-Lohn' in bereiche and werkstatt_umsatz > 0:
             if ist_laufender_monat:
-                # Rollierenden LOHN-Anteil aus den letzten 3 Monaten berechnen
-                # NUR Konten 740xxx (Lohn) - Fremdleistungen (747xxx) sind bereits in FIBU gebucht!
-                # Zeitraum: 3 abgeschlossene Vormonate (z.B. für Dez: Sep, Okt, Nov)
-                erster_vormonat = (heute.replace(day=1) - timedelta(days=1)).replace(day=1)
-                drei_monate_vorher = (erster_vormonat - timedelta(days=89)).replace(day=1)  # ~3 Monate zurück
+                # Method B: Einsatz/Umsatz-Quote der letzten 6 abgeschlossenen Monate
+                aktueller_monat_start = heute.replace(day=1)
+                bis_6m = aktueller_monat_start  # exklusiv
+                von_6m = bis_6m
+                for _ in range(6):
+                    von_6m = (von_6m - timedelta(days=1)).replace(day=1)
 
                 with db_session() as conn:
                     cursor = conn.cursor()
-                    # NUR Lohn (740xxx) der letzten 3 Monate - NICHT Fremdleistungen!
                     cursor.execute(convert_placeholders("""
-                        SELECT
-                            SUM(CASE WHEN nominal_account_number BETWEEN 740000 AND 742999
-                                     AND debit_or_credit = 'S' THEN posted_value
-                                     WHEN nominal_account_number BETWEEN 740000 AND 742999
-                                     AND debit_or_credit = 'H' THEN -posted_value
-                                     ELSE 0 END) / 100.0 as lohn,
-                            SUM(CASE WHEN nominal_account_number BETWEEN 840000 AND 849999
-                                     AND debit_or_credit = 'H' THEN posted_value
-                                     WHEN nominal_account_number BETWEEN 840000 AND 849999
-                                     AND debit_or_credit = 'S' THEN -posted_value
-                                     ELSE 0 END) / 100.0 as umsatz
+                        SELECT SUM(CASE WHEN nominal_account_number BETWEEN 840000 AND 849999 AND debit_or_credit = 'H' THEN posted_value
+                                       WHEN nominal_account_number BETWEEN 840000 AND 849999 AND debit_or_credit = 'S' THEN -posted_value ELSE 0 END) / 100.0 as umsatz
                         FROM loco_journal_accountings
                         WHERE accounting_date >= ? AND accounting_date < ?
-                    """), (drei_monate_vorher.strftime('%Y-%m-%d'), erster_vormonat.strftime('%Y-%m-%d')))
+                        """ + firma_filter_umsatz), (von_6m.strftime('%Y-%m-%d'), bis_6m.strftime('%Y-%m-%d')))
                     row = cursor.fetchone()
-                    r = row_to_dict(row, cursor)
+                    umsatz_6m = float((row_to_dict(row, cursor) or {}).get('umsatz') or 0)
 
-                hist_lohn = float(r['lohn'] or 0) if r else 0
-                hist_umsatz = float(r['umsatz'] or 0) if r else 0
-                lohn_anteil = (hist_lohn / hist_umsatz) if hist_umsatz > 0 else 0.25
+                    cursor.execute(convert_placeholders("""
+                        SELECT SUM(CASE WHEN nominal_account_number BETWEEN 740000 AND 749999 AND debit_or_credit = 'S' THEN posted_value
+                                       WHEN nominal_account_number BETWEEN 740000 AND 749999 AND debit_or_credit = 'H' THEN -posted_value ELSE 0 END) / 100.0 as einsatz
+                        FROM loco_journal_accountings
+                        WHERE accounting_date >= ? AND accounting_date < ?
+                        """ + firma_filter_einsatz), (von_6m.strftime('%Y-%m-%d'), bis_6m.strftime('%Y-%m-%d')))
+                    row = cursor.fetchone()
+                    einsatz_6m = float((row_to_dict(row, cursor) or {}).get('einsatz') or 0)
 
-                # Kalkulatorischen Lohn-Zuschlag auf aktuellen Umsatz anwenden
-                kalk_lohn_einsatz = round(werkstatt_umsatz * lohn_anteil, 2)
-                gesamt_einsatz = werkstatt_einsatz_fibu + kalk_lohn_einsatz
+                einsatz_quote_6m = (einsatz_6m / umsatz_6m) if umsatz_6m > 0 else 0.36
+                gesamt_einsatz = round(werkstatt_umsatz * einsatz_quote_6m, 2)
                 werkstatt_db1 = werkstatt_umsatz - gesamt_einsatz
                 werkstatt_marge = round((werkstatt_db1 / werkstatt_umsatz * 100), 1)
 
                 bereiche['4-Lohn']['einsatz_kalk'] = gesamt_einsatz
-                bereiche['4-Lohn']['einsatz_lohn_kalk'] = kalk_lohn_einsatz
+                bereiche['4-Lohn']['einsatz_lohn_kalk'] = max(0, round(gesamt_einsatz - werkstatt_einsatz_fibu, 2))
                 bereiche['4-Lohn']['einsatz_teile'] = werkstatt_einsatz_fibu
                 bereiche['4-Lohn']['db1_kalk'] = round(werkstatt_db1, 2)
                 bereiche['4-Lohn']['marge_kalk'] = werkstatt_marge
-                bereiche['4-Lohn']['hinweis'] = f"FIBU: {round(werkstatt_einsatz_fibu/1000)}k + Lohn kalk. ({round(lohn_anteil*100)}%): {round(kalk_lohn_einsatz/1000)}k"
+                bereiche['4-Lohn']['hinweis'] = f"Einsatz kalk. (6M-Quote {round(einsatz_quote_6m*100)}%): {round(gesamt_einsatz/1000)}k"
             else:
                 # Abgeschlossener Monat: Nur FIBU-Werte (Lohn+FL sind bereits gebucht)
                 werkstatt_db1 = werkstatt_umsatz - werkstatt_einsatz_fibu
@@ -1864,18 +1860,28 @@ def api_tek_detail():
         
         db = get_db()
         
-        # Firma/Standort-Filter bauen
+        # Firma/Standort-Filter bauen (Umsatz: branch_number, Einsatz: Konto-Endziffer wie Haupt-TEK)
         firma_filter = ""
+        firma_filter_umsatz = ""
+        firma_filter_einsatz = ""
         subsidiary = 1  # Default: Stellantis
         if firma == '1':
             firma_filter = "AND subsidiary_to_company_ref = 1"
+            firma_filter_umsatz = "AND subsidiary_to_company_ref = 1"
+            firma_filter_einsatz = "AND subsidiary_to_company_ref = 1"
             subsidiary = 1
             if standort == '1':
                 firma_filter += " AND branch_number = 1"
+                firma_filter_umsatz += " AND branch_number = 1"
+                firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
             elif standort == '2':
                 firma_filter += " AND branch_number = 3"
+                firma_filter_umsatz += " AND branch_number = 3"
+                firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
         elif firma == '2':
             firma_filter = "AND subsidiary_to_company_ref = 2"
+            firma_filter_umsatz = "AND subsidiary_to_company_ref = 2"
+            firma_filter_einsatz = "AND subsidiary_to_company_ref = 2"
             subsidiary = 2
         
         # Bereichs-Mapping: TEK-Bereich -> Konten-Ranges
@@ -2088,6 +2094,59 @@ def api_tek_detail():
         # Einsatz-Gruppen (mit Einzelkonten fÃ¼r Drill-Down)
         einsatz_gruppen = hole_gruppen(ranges['einsatz'], 'einsatz', mit_konten=True)
         einsatz_summe = sum(g['betrag'] for g in einsatz_gruppen)
+
+        # 4-Lohn: Im laufenden Monat Einsatz Gruppe 74 kalkuliert (Method B, 6-Monats-Quote)
+        # damit "Einsatz Lohn" in der Detail-Tabelle nicht 0 â‚¬ anzeigt
+        if bereich == '4-Lohn':
+            werkstatt_umsatz = next((g['betrag'] for g in umsatz_gruppen if g['gruppe'] == '84'), 0)
+            heute_d = date.today()
+            bis_d = datetime.strptime(bis, '%Y-%m-%d').date()
+            ist_laufender_monat = bis_d >= heute_d
+            if ist_laufender_monat and werkstatt_umsatz > 0:
+                aktueller_monat_start = heute_d.replace(day=1)
+                bis_6m = aktueller_monat_start
+                von_6m = bis_6m
+                for _ in range(6):
+                    von_6m = (von_6m - timedelta(days=1)).replace(day=1)
+                cursor = db.cursor()
+                cursor.execute(convert_placeholders("""
+                    SELECT SUM(CASE WHEN nominal_account_number BETWEEN 840000 AND 849999 AND debit_or_credit = 'H' THEN posted_value
+                                       WHEN nominal_account_number BETWEEN 840000 AND 849999 AND debit_or_credit = 'S' THEN -posted_value ELSE 0 END) / 100.0 as umsatz
+                    FROM loco_journal_accountings
+                    WHERE accounting_date >= ? AND accounting_date < ?
+                    """ + firma_filter_umsatz), (von_6m.strftime('%Y-%m-%d'), bis_6m.strftime('%Y-%m-%d')))
+                row = cursor.fetchone()
+                umsatz_6m = float((row_to_dict(row, cursor) or {}).get('umsatz') or 0)
+                cursor.execute(convert_placeholders("""
+                    SELECT SUM(CASE WHEN nominal_account_number BETWEEN 740000 AND 749999 AND debit_or_credit = 'S' THEN posted_value
+                                       WHEN nominal_account_number BETWEEN 740000 AND 749999 AND debit_or_credit = 'H' THEN -posted_value ELSE 0 END) / 100.0 as einsatz
+                    FROM loco_journal_accountings
+                    WHERE accounting_date >= ? AND accounting_date < ?
+                    """ + firma_filter_einsatz), (von_6m.strftime('%Y-%m-%d'), bis_6m.strftime('%Y-%m-%d')))
+                row = cursor.fetchone()
+                einsatz_6m = float((row_to_dict(row, cursor) or {}).get('einsatz') or 0)
+                einsatz_quote_6m = (einsatz_6m / umsatz_6m) if umsatz_6m > 0 else 0.36
+                einsatz_kalk_74 = round(werkstatt_umsatz * einsatz_quote_6m, 2)
+                # Gruppe 74 in einsatz_gruppen setzen oder anlegen
+                gr74 = next((g for g in einsatz_gruppen if g['gruppe'] == '74'), None)
+                if gr74:
+                    gr74['betrag'] = einsatz_kalk_74
+                    gr74['kalkuliert'] = True
+                else:
+                    einsatz_gruppen.append({
+                        'gruppe': '74',
+                        'name': gruppen_namen.get('74', 'Einsatz Lohn'),
+                        'betrag': einsatz_kalk_74,
+                        'anzahl_konten': 0,
+                        'buchungen_anzahl': 0,
+                        'konten': [],
+                        'kalkuliert': True
+                    })
+                einsatz_summe = sum(g['betrag'] for g in einsatz_gruppen)
+            elif werkstatt_umsatz > 0:
+                # Abgeschlossener Monat: 74 aus FIBU; Markierung entfernen
+                for g in einsatz_gruppen:
+                    g.pop('kalkuliert', None)
 
         db1 = umsatz_summe - einsatz_summe
 
@@ -3147,6 +3206,7 @@ def berechne_breakeven_prognose_standort(monat: int, jahr: int, aktueller_db1: f
 
     heute = date.today()
     vor_3_monaten = (heute - relativedelta(months=3)).isoformat()
+    drei_monate_vorher = vor_3_monaten  # Alias fÃ¼r AbwÃ¤rtskompatibilitÃ¤t
     heute_str = heute.isoformat()
 
     with db_session() as conn:
@@ -3294,6 +3354,7 @@ def berechne_breakeven_prognose(monat: int, jahr: int, aktueller_db1: float,
     # TAG 136: Python-basierte Datumsberechnung statt SQLite date()
     heute = date.today()
     vor_3_monaten = (heute - relativedelta(months=3)).isoformat()
+    drei_monate_vorher = vor_3_monaten  # Alias fÃ¼r AbwÃ¤rtskompatibilitÃ¤t
     heute_str = heute.isoformat()
 
     # =========================================================================

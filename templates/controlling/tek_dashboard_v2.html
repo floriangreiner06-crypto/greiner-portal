@@ -776,13 +776,14 @@ function renderDrill(bereichKey, data) {
             // Passende Einsatz-Gruppe finden (gleiche Gruppe-Nummer, 8x → 7x)
             const einsatzGruppe = data.einsatz.gruppen ? data.einsatz.gruppen.find(eg => eg.gruppe === String(g.gruppe).replace(/^8/, '7')) : null;
             const einsatzBetrag = einsatzGruppe ? einsatzGruppe.betrag : 0;
+            const einsatzKalk = einsatzGruppe && einsatzGruppe.kalkuliert;
             const db1 = g.betrag - einsatzBetrag;
             const marge = g.betrag > 0 ? (db1 / g.betrag * 100) : 0;
             const hatKonten = g.konten && g.konten.length > 0;
             const rowClass = hatKonten ? 'drill-row' : '';
             html += `<tr class="${rowClass}" ${hatKonten ? `onclick="toggleKonten(this, 'umsatz', ${i})" style="cursor:pointer"` : ''}>
                 <td><i class="bi ${hatKonten ? 'bi-chevron-right' : 'bi-folder'} text-success me-1 drill-icon"></i>${g.name} <small class="text-muted">(${g.gruppe})</small></td>
-                <td class="text-end val-neg">${fmtEuro(einsatzBetrag)}</td>
+                <td class="text-end val-neg">${fmtEuro(einsatzBetrag)}${einsatzKalk ? ' <span class="val-warn">*</span>' : ''}</td>
                 <td class="text-end val-pos">${fmtEuro(g.betrag)}</td>
                 <td class="text-end ${db1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(db1)}</td>
                 <td class="text-end ${marge >= 0 ? 'val-pos' : 'val-neg'}">${fmtPct(marge)}</td>
