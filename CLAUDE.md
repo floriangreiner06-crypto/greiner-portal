@@ -145,27 +145,33 @@ conn = get_locosoft_connection()
 | DB-Schema | `docs/DB_SCHEMA_POSTGRESQL.md` |
 | Locosoft-Schema | `docs/DB_SCHEMA_LOCOSOFT.md` |
 
-## Session-Dokumentation
+## WORKSTREAM-DOKUMENTATION
 
-Bei Session-Start lesen:
-1. Diese Datei (`CLAUDE.md`)
-2. `docs/sessions/TODO_FOR_CLAUDE_SESSION_START_TAG[X].md`
-3. `docs/sessions/SESSION_WRAP_UP_TAG[X-1].md`
-4. **Standards für neue Features beachten** (siehe `.claude/commands/session-start.md`)
+### Arbeitskontext laden:
+Wenn Florian einen Workstream nennt, lies:
+`docs/workstreams/{workstream}/CONTEXT.md`
 
-Bei Session-Ende erstellen:
-1. **Qualitätscheck durchführen** (Redundanzen, SSOT, Code-Duplikate)
-2. `docs/sessions/SESSION_WRAP_UP_TAG[X].md` (inkl. Qualitätscheck-Ergebnisse)
-3. `docs/sessions/TODO_FOR_CLAUDE_SESSION_START_TAG[X+1].md`
-4. **Git-Commit lokal** (Windows)
-5. **Git-Commit auf Server** (siehe unten)
+### Verfügbare Workstreams:
+| Workstream | Pfad | Scope |
+|------------|------|-------|
+| Controlling | docs/workstreams/controlling/ | BWA, Bankenspiegel, Finanzreporting, MT940 |
+| Werkstatt | docs/workstreams/werkstatt/ | TEK, Stempeluhr, ML, Gudat, Serviceberater, Garantie |
+| Verkauf | docs/workstreams/verkauf/ | Auftragseingang, Profitabilität, Gewinnplanung, eAutoSeller |
+| Teile & Lager | docs/workstreams/teile-lager/ | Bestellungen, Renner/Penner, MOBIS, Scraper |
+| Urlaubsplaner | docs/workstreams/urlaubsplaner/ | Urlaubsanträge, Genehmigung, Outlook-Kalender |
+| HR & Personal | docs/workstreams/hr/ | Organigramm, Jahresprämie, Mitarbeiterverwaltung |
+| Planung | docs/workstreams/planung/ | Budget, Unternehmensplan, KST-Ziele |
+| Finanzierungen | docs/workstreams/fahrzeugfinanzierungen/ | Zinsen, Santander, Leasys |
+| Infrastruktur | docs/workstreams/infrastruktur/ | Celery, PostgreSQL, Redis, Deployment, MCP |
+| Auth/LDAP | docs/workstreams/auth-ldap/ | Login, Rollen, RBAC |
+| Integrations | docs/workstreams/integrations/ | WhatsApp, eAutoSeller, SOAP, Scraper, Mail |
 
-**Qualitätscheck-Template:** `docs/QUALITAETSCHECK_TEMPLATE.md`
+### Bei Session-Ende:
+1. Aktualisiere die CONTEXT.md des bearbeiteten Workstreams
+2. Git commit: feat(workstream): Beschreibung
 
-### Git auf Server aktualisieren (IMMER am Session-Ende!)
-```bash
-ssh ag-admin@10.80.80.20 "cd /opt/greiner-portal && git add -A && git commit -m 'chore: Sync TAG[X] - [Kurzbeschreibung]'"
-```
+### Archiv:
+Historische Session-Docs: docs/archive/sessions/
 
 ## Diagnose-Befehle
 
