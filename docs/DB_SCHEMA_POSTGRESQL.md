@@ -100,6 +100,13 @@ DB_PASSWORD=DrivePortal2024
 | `loco_times` | Zeitbuchungen (Stempeluhr) | ~50.000 |
 | `werkstatt_auftraege_abgerechnet` | Abgerechnete Aufträge | ~5.000 |
 | `werkstatt_leistung_daily` | Tägliche Werkstatt-KPIs | ~1.000 |
+| `unfall_checkliste_positionen` | Kürzungspositionen-Checkliste (M4) | 12 |
+| `unfall_urteile` | Rechtsprechung Wissensdatenbank (M4) | ~10 |
+| `unfall_urteile_checkliste` | n:n Urteil ↔ Checklistenposition | ~10 |
+| `unfall_versicherungen` | Versicherungen Stammdaten | 0 |
+| `unfall_rechnungen` | Unfallrechnungen (Kopf) | 0 |
+| `unfall_positionen` | Positionen pro Rechnung | 0 |
+| `unfall_kuerzungen` | Kürzungen pro Rechnung/Prüfbericht | 0 |
 
 ### Teile & Lager
 

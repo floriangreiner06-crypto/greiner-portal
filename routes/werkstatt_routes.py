@@ -217,3 +217,14 @@ def werkstatt_liveboard_gantt():
 def werkstatt_reparaturpotenzial():
     """Reparaturpotenzial - Upselling-Empfehlungen für Serviceberater (TAG 127)"""
     return render_template('aftersales/werkstatt_reparaturpotenzial.html')
+
+
+# ============================================================
+# Unfall-Rechnungsprüfung – Wissensdatenbank (M4)
+# ============================================================
+
+@werkstatt_routes.route('/werkstatt/unfall-wissensdatenbank')
+@login_required
+def unfall_wissensdatenbank():
+    """Versicherungs-Rechnungsprüfung: Urteile & Checkliste Kürzungspositionen"""
+    return render_template('aftersales/unfall_wissensdatenbank.html')

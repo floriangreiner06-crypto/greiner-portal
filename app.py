@@ -709,6 +709,14 @@ try:
 except Exception as e:
     print(f"⚠️  Werkstatt API nicht geladen: {e}")
 
+# Unfall-Rechnungsprüfung – Wissensdatenbank (M4)
+try:
+    from api.unfall_wissensbasis_api import unfall_wissensbasis_api
+    app.register_blueprint(unfall_wissensbasis_api)
+    print("✅ Unfall-Wissensdatenbank API registriert: /api/unfall/")
+except Exception as e:
+    print(f"⚠️  Unfall-Wissensdatenbank API nicht geladen: {e}")
+
 # Werkstatt LIVE API (Echtzeit-Daten aus Locosoft)
 try:
     from api.werkstatt_live_api import werkstatt_live_bp
