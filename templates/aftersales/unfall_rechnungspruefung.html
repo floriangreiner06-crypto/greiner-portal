@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+
+{% block title %}Unfall-Rechnungsprüfung – Vollständigkeitscheck | Greiner DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .unfall-rp-section { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 1.5rem; }
+    .unfall-rp-header { padding: 1rem 1.25rem; border-bottom: 1px solid #eee; font-weight: 600; }
+    .unfall-rp-body { padding: 1rem 1.25rem; }
+    .auftrag-row { padding: 0.5rem 0.75rem; border-bottom: 1px solid #f0f0f0; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+    .auftrag-row:hover { background: #f8f9fa; }
+    .auftrag-row.active { background: #e7f1ff; border-left: 3px solid #0d6efd; }
+    .auftrag-nr { font-weight: 600; }
+    .auftrag-meta { font-size: 0.85rem; color: #6c757d; }
+    .ampel-gruen { background: #198754; color: white; padding: 0.25rem 0.6rem; border-radius: 6px; font-weight: 600; }
+    .ampel-rot { background: #dc3545; color: white; padding: 0.25rem 0.6rem; border-radius: 6px; font-weight: 600; }
+    .ampel-gelb { background: #ffc107; color: #212529; padding: 0.25rem 0.6rem; border-radius: 6px; font-weight: 600; }
+    .position-vorhanden { color: #198754; padding: 0.25rem 0; }
+    .position-fehlend { color: #dc3545; padding: 0.35rem 0; border-left: 3px solid #dc3545; padding-left: 0.5rem; margin-bottom: 0.25rem; }
+    .position-fehlend .hinweis { font-size: 0.8rem; font-style: italic; }
+    .check-placeholder { color: #6c757d; padding: 2rem; text-align: center; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <h1 class="h4 mb-3">Unfall-Rechnungsprüfung – Vollständigkeitscheck (M1)</h1>
+    <p class="text-muted small mb-3">Gutachten per PDF, Rechnung aus Locosoft. Prüfung, ob alle Gutachten- und Standard-Positionen in der Locosoft-Rechnung enthalten sind.</p>
+
+    <div class="row">
+        <div class="col-md-5">
+            <div class="unfall-rp-section">
+                <div class="unfall-rp-header d-flex flex-wrap align-items-center gap-2">
+                    <span>Versicherungsaufträge</span>
+                    <input type="date" id="filter-von" class="form-control form-control-sm" style="width: auto;">
+                    <span>–</span>
+                    <input type="date" id="filter-bis" class="form-control form-control-sm" style="width: auto;">
+                    <button type="button" class="btn btn-sm btn-primary" id="btn-laden">Laden</button>
+                </div>
+                <div class="unfall-rp-body" id="auftraege-container" style="max-height: 65vh; overflow-y: auto;">
+                    <div class="text-muted">Datum wählen und „Laden“ klicken.</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-7">
+            <div class="unfall-rp-section">
+                <div class="unfall-rp-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <span id="check-header">Vollständigkeitscheck</span>
+                    <span id="upload-area" class="d-none">
+                        <input type="file" id="gutachten-file" accept=".pdf" class="form-control form-control-sm d-inline-block" style="width: auto; max-width: 180px;">
+                        <button type="button" class="btn btn-sm btn-outline-primary ms-1" id="btn-upload-gutachten">Gutachten hochladen</button>
+                    </span>
+                </div>
+                <div class="unfall-rp-body" id="check-container">
+                    <div class="check-placeholder">Links einen Auftrag auswählen.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const auftraegeContainer = document.getElementById('auftraege-container');
+    const checkContainer = document.getElementById('check-container');
+    const checkHeader = document.getElementById('check-header');
+    const filterVon = document.getElementById('filter-von');
+    const filterBis = document.getElementById('filter-bis');
+    const btnLaden = document.getElementById('btn-laden');
+    const uploadArea = document.getElementById('upload-area');
+    const gutachtenFile = document.getElementById('gutachten-file');
+    const btnUploadGutachten = document.getElementById('btn-upload-gutachten');
+    var aktuelleAuftragsnummer = null;
+
+    function datumDefault() {
+        var heute = new Date();
+        var vor30 = new Date(heute);
+        vor30.setDate(vor30.getDate() - 30);
+        if (!filterVon.value) filterVon.value = vor30.toISOString().slice(0, 10);
+        if (!filterBis.value) filterBis.value = heute.toISOString().slice(0, 10);
+    }
+
+    function loadAuftraege() {
+        datumDefault();
+        var params = new URLSearchParams({ von: filterVon.value, bis: filterBis.value });
+        auftraegeContainer.innerHTML = '<div class="text-muted">Lade …</div>';
+        fetch('/api/unfall/auftraege?' + params.toString())
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.ok) {
+                    auftraegeContainer.innerHTML = '<div class="text-danger">Fehler: ' + (data.error || 'Unbekannt') + '</div>';
+                    return;
+                }
+                var items = data.items || [];
+                if (items.length === 0) {
+                    auftraegeContainer.innerHTML = '<div class="text-muted">Keine Versicherungsaufträge im Zeitraum.</div>';
+                    return;
+                }
+                auftraegeContainer.innerHTML = items.map(function(o) {
+                    var datum = o.order_date ? o.order_date.slice(0, 10) : '';
+                    return '<div class="auftrag-row" data-nummer="' + o.auftragsnummer + '">' +
+                        '<div><span class="auftrag-nr">' + o.auftragsnummer + '</span><br><span class="auftrag-meta">' + (o.versicherung_name || '') + ' · ' + datum + '</span></div>' +
+                        '<span class="auftrag-meta">' + (o.anzahl_positionen || 0) + ' Pos.</span></div>';
+                }).join('');
+                auftraegeContainer.querySelectorAll('.auftrag-row').forEach(function(row) {
+                        row.addEventListener('click', function() {
+                        auftraegeContainer.querySelectorAll('.auftrag-row').forEach(function(r) { r.classList.remove('active'); });
+                        row.classList.add('active');
+                        aktuelleAuftragsnummer = parseInt(row.dataset.nummer, 10);
+                        uploadArea.classList.toggle('d-none', !aktuelleAuftragsnummer);
+                        gutachtenFile.value = '';
+                        loadCheck(aktuelleAuftragsnummer);
+                    });
+                });
+            })
+            .catch(function(e) {
+                auftraegeContainer.innerHTML = '<div class="text-danger">Fehler: ' + e.message + '</div>';
+            });
+    }
+
+    function loadCheck(nummer) {
+        checkHeader.textContent = 'Vollständigkeitscheck – Auftrag ' + nummer;
+        checkContainer.innerHTML = '<div class="text-muted">Prüfe …</div>';
+        fetch('/api/unfall/auftrag/' + nummer + '/check')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.ok) {
+                    checkContainer.innerHTML = '<div class="text-danger">Fehler: ' + (data.error || 'Unbekannt') + '</div>';
+                    return;
+                }
+                var ampel = data.ampel || 'rot';
+                var ampelClass = 'ampel-' + ampel;
+                var ampelText = ampel === 'gruen' ? 'Vollständig' : (ampel === 'gelb' ? 'Checkliste prüfen' : 'Positionen prüfen');
+                var html = '<p><span class="' + ampelClass + '">' + ampelText + '</span> &nbsp; <span class="text-muted">' + (data.anzahl_labours || 0) + ' Labour-Positionen</span></p>';
+
+                if (data.gutachten_abgleich) {
+                    var ga = data.gutachten_abgleich;
+                    html += '<p class="small text-muted mt-2 mb-1"><strong>Ebene 1: Gutachten ↔ Rechnung</strong> (' + (ga.anzahl_positionen || 0) + ' Positionen im Gutachten)</p>';
+                    if ((ga.fehlende_in_rechnung || []).length > 0) {
+                        html += '<p class="small text-danger mb-1">Im Gutachten, aber nicht in Rechnung gefunden:</p>';
+                        ga.fehlende_in_rechnung.forEach(function(fp) {
+                            html += '<div class="position-fehlend"><strong>' + (fp.beschreibung || fp.position_typ || '') + '</strong>' + (fp.betrag_netto != null ? ' &nbsp; ' + fp.betrag_netto.toFixed(2) + ' €' : '') + '</div>';
+                        });
+                    } else {
+                        html += '<p class="small position-vorhanden">Alle Gutachten-Positionen in Rechnung gefunden.</p>';
+                    }
+                }
+
+                html += '<p class="small text-muted mt-2 mb-1"><strong>Ebene 2: Checkliste</strong></p>';
+                if ((data.vorhandene_positionen || []).length > 0) {
+                    html += '<p class="small text-muted mb-1">Vorhanden:</p><ul class="list-unstyled mb-2">';
+                    data.vorhandene_positionen.forEach(function(p) {
+                        html += '<li class="position-vorhanden">' + (p.bezeichnung || '') + '</li>';
+                    });
+                    html += '</ul>';
+                }
+                if ((data.fehlende_positionen || []).length > 0) {
+                    html += '<p class="small text-muted mb-1">Fehlend / prüfen:</p>';
+                    data.fehlende_positionen.forEach(function(p) {
+                        html += '<div class="position-fehlend"><strong>' + (p.bezeichnung || '') + '</strong><br><span class="hinweis">Position prüfen – ist das hier relevant?</span></div>';
+                    });
+                }
+                checkContainer.innerHTML = html;
+            })
+            .catch(function(e) {
+                checkContainer.innerHTML = '<div class="text-danger">Fehler: ' + e.message + '</div>';
+            });
+    }
+
+    btnUploadGutachten.addEventListener('click', function() {
+        if (!aktuelleAuftragsnummer || !gutachtenFile.files || !gutachtenFile.files[0]) {
+            alert('Bitte zuerst einen Auftrag wählen und eine PDF-Datei auswählen.');
+            return;
+        }
+        var fd = new FormData();
+        fd.append('file', gutachtenFile.files[0]);
+        btnUploadGutachten.disabled = true;
+        fetch('/api/unfall/auftrag/' + aktuelleAuftragsnummer + '/gutachten/upload', { method: 'POST', body: fd })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                btnUploadGutachten.disabled = false;
+                if (data.ok) {
+                    gutachtenFile.value = '';
+                    loadCheck(aktuelleAuftragsnummer);
+                } else {
+                    alert('Fehler: ' + (data.error || 'Unbekannt'));
+                }
+            })
+            .catch(function(e) {
+                btnUploadGutachten.disabled = false;
+                alert('Fehler: ' + e.message);
+            });
+    });
+
+    btnLaden.addEventListener('click', loadAuftraege);
+    datumDefault();
+})();
+</script>
+{% endblock %}

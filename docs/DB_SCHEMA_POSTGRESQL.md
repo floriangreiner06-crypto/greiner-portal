@@ -104,6 +104,11 @@ DB_PASSWORD=DrivePortal2024
 | `unfall_urteile` | Rechtsprechung Wissensdatenbank (M4) | ~10 |
 | `unfall_urteile_checkliste` | n:n Urteil ↔ Checklistenposition | ~10 |
 | `unfall_versicherungen` | Versicherungen Stammdaten | 0 |
+| `unfall_versicherung_kunden` | Whitelist Versicherungskunden (M1) | ~125 |
+| `unfall_gutachten` | Sachverständigengutachten pro Auftrag (PDF) | 0 |
+| `unfall_gutachten_positionen` | AI-extrahiert aus Gutachten, Abgleich Rechnung | 0 |
+| `unfall_textbausteine` | UE IWW Textbausteine (ue.iww.de) | ~700+ nach Scrape |
+| `unfall_textbausteine_positionen` | TB ↔ Checklistenposition | ~30+ nach Seed |
 | `unfall_rechnungen` | Unfallrechnungen (Kopf) | 0 |
 | `unfall_positionen` | Positionen pro Rechnung | 0 |
 | `unfall_kuerzungen` | Kürzungen pro Rechnung/Prüfbericht | 0 |

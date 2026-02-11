@@ -12,7 +12,7 @@ Werkstatt und Aftersales umfassen TEK-Dashboard, Stempeluhr/Live-Monitoring, Mec
 ### APIs
 - `api/werkstatt_api.py`, `api/werkstatt_data.py` — Werkstatt-Kern
 - `api/werkstatt_live_api.py` — Stempeluhr, Live-Monitoring
-- `api/unfall_wissensbasis_api.py` — Versicherungs-Rechnungsprüfung M4 (Checkliste, Urteile)
+- `api/unfall_wissensbasis_api.py` — M4 (Checkliste, Urteile); `api/unfall_rechnungspruefung_api.py` — M1 (Aufträge, Vollständigkeitscheck)
 - `api/serviceberater_api.py`, `api/serviceberater_data.py` — Serviceberater-Dashboard
 - `api/garantie_auftraege_api.py` — Garantie-Aufträge
 - `api/arbeitskarte_api.py` — Arbeitskarte
@@ -21,7 +21,7 @@ Werkstatt und Aftersales umfassen TEK-Dashboard, Stempeluhr/Live-Monitoring, Mec
 - `api/ml_api.py`, `api/ai_api.py` — ML/Prognosen
 
 ### Templates
-- `templates/aftersales/*.html` (inkl. `unfall_wissensdatenbank.html`)
+- `templates/aftersales/*.html` (inkl. `unfall_wissensdatenbank.html`, `unfall_rechnungspruefung.html`)
 - `templates/controlling/tek_dashboard.html`
 
 ### Tools / Scripts
@@ -40,8 +40,10 @@ Werkstatt und Aftersales umfassen TEK-Dashboard, Stempeluhr/Live-Monitoring, Mec
 
 - ✅ TEK-Dashboard, Stempeluhr, Serviceberater, Gudat-Anbindung in Nutzung
 - 🔧 ML, Garantieakte, ServiceBox je nach Projektstand
-- ✅ **Versicherungs-Rechnungsprüfung:** DB-Schema (7 Tabellen) + M4 Wissensdatenbank (API + UI + Seed) fertig; M1/M2/M3 folgen
-- ❌ Offene Punkte ggf. in Session-TODOs
+- ✅ **Versicherungs-Rechnungsprüfung:** DB + M4 (inkl. UE IWW Textbausteine gescrapt, API + UI) + M1 (Ebene 1+2); M2/M3 offen
+- **Navigation:** Unfall-Rechnungsprüfung & Unfall-Wissensdatenbank unter **Service → Werkstatt** (DB-Navigation, Migration `migration_tag216_navigation_unfall.sql`) sowie im Fallback-Menü „After Sales“ → „Unfall / Versicherung“ in `base.html`.
+- **UE IWW Scraper:** `scripts/imports/scrape_ue_iww.py` – Vollscrape 781 Einträge; NUL-Fix im DB-Import; Optionen `--from-json`, `--seed-only`. Export: `data/ue_iww_export.json`.
+- ❌ Offene Punkte: M2/M3 (Kürzungs-Abwehr/Tracking) nicht Priorität; Fokus: vollständige/korrekte Rechnungserstellung (M1).
 
 ## Offene Entscheidungen
 
@@ -51,7 +53,7 @@ Werkstatt und Aftersales umfassen TEK-Dashboard, Stempeluhr/Live-Monitoring, Mec
 
 ## Neues Modul: Versicherungs-Rechnungsprüfung für Unfallschäden (Feature-Plan)
 
-**Status:** DB-Schema + M4 umgesetzt; M1 (Vollständigkeitscheck), M2, M3 offen.
+**Status:** DB-Schema + M4 + M1 (Vollständigkeitscheck inkl. Ebene 1+2) umgesetzt; M2, M3 offen.
 
 ### Kontext & Ziele
 
@@ -69,6 +71,35 @@ Autohaus Greiner repariert Unfallschäden und stellt Rechnungen an gegnerische H
 - Rechnungen an Versicherungen (Locosoft oder PDF)
 - Prüfberichte ControlExpert/Versicherungen (PDF, eingescannt)
 - Zahlungseingänge (Bankenspiegel/MT940)
+
+### Locosoft-Analyse M1: loco_orders / loco_labours (Stand 2026-02-11)
+
+**Struktur**
+- **loco_orders:** `number` (PK), `order_date`, `subsidiary` (1/2/3), `order_customer`, `paying_customer`, `vehicle_number`, `order_mileage`, `order_classification_flag`, `has_open_positions`, `has_closed_positions`, …
+- **loco_labours:** `order_number` (FK), `order_position`, `order_position_line`, `charge_type`, `time_units`, `net_price_in_order`, `text_line`, `labour_operation_id`, `is_invoiced`, `invoice_number`, …
+
+**Kennzeichen Unfall/Versicherungsschaden**
+- **Kein** eigener Auftragstyp „Unfall“ in `order_classification_flag`. Die Flag-Werte (F, M, N, O, …) stehen für Vertriebsarten (z. B. F = Verkauf an freie Werkstätten, M = Mandanten Weiterberechnung), siehe `loco_order_classifications_def`.
+- **Versicherung als Zahler:** Unfallaufträge erkennt man über **paying_customer**: Kunde in `loco_customers_suppliers` mit `family_name` z. B. „%Versicherung%“, „%Huk%“, „%Allianz%“, „ADAC Versicherungs AG“. Join: `o.paying_customer = c.customer_number AND o.subsidiary = c.subsidiary`.
+- **Charge-Typen:** In `loco_labours` gibt es `charge_type` 54 und 83 (laut `loco_charge_type_descriptions`: „Reparaturkosten Versicherung Real Garant“). Treten bei Versicherungs-/Garantie-Reparaturen auf (nicht ausschließlich Unfall).
+- **Freitext:** In `loco_labours.text_line` kommen vor: „Freigabe-Nummer“, „Freigabenummer“, „Schaden feststellen“, „MOTOR TEILZERLEGEN, SCHADENSFESTSTELLUNG“. Suche nach „Freigabe“, „Schaden“, „Unfall“, „Gutachten“ kann zusätzlich genutzt werden.
+
+**Empfehlung für M1:** Unfallaufträge filtern über **paying_customer** (Versicherungs-Kunden aus Stammdaten oder Namenssuche). Positionen für Vollständigkeitscheck aus **loco_labours** (und ggf. Teile aus Locosoft parts) je Auftrag laden; `charge_type` und `text_line` helfen bei Zuordnung zu unserer Checkliste (z. B. Verbringung, Probefahrt).
+
+**Prozess:** Gutachten kommt per PDF (Upload im Modul), Rechnung wird immer in Locosoft erstellt. M1 prüft: Gutachten-Positionen und Checkliste gegen `loco_labours` (Rechnungsstand Locosoft).
+
+**Beispiel-Datensätze (Auszug)**
+
+| number  | order_date  | subsidiary | order_classification_flag | order_customer | paying_customer | paying_name (join) |
+|---------|-------------|------------|---------------------------|----------------|-----------------|---------------------|
+| 220747  | 2026-01-12  | 2          | (leer)                    | 3007401        | 2100498         | ADAC Versicherungs AG |
+| 220539  | 2025-12-23  | 2          | (leer)                    | 3008484        | 2100498         | ADAC Versicherungs AG |
+| 313560  | 2025-12-16  | 3          | (leer)                    | 3004455        | 3004455         | (charge_type 83)      |
+| 221269  | 2026-02-10  | 2          | F                         | 1001603        | 1001603         | (normal, freie Werkstatt) |
+
+- Auftrag **220747:** 1 Position, viele Zeilen `text_line` (charge_type 0): Freigabe-Nummer, Mietvertragnummer, Werkstattersatz, Fahrzeugdaten – typisch Versicherung/Ersatzwagen.
+- Auftrag **220539:** 19 Labours, charge_types 0 und 52; „Hyundai Mobilität“, „Freigabenummer“, „Mietvertragnummer“ – Unfall/Leihwagen-Kontext.
+- Auftrag **313560:** 1 Labour mit charge_type 83, net_price_in_order 565 €, text_line „24 Monate Garantie Premium …“ – Versicherung/Garantie, nicht zwingend Unfall.
 
 ### Workstream-Zuordnung
 

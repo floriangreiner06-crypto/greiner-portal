@@ -717,6 +717,13 @@ try:
 except Exception as e:
     print(f"⚠️  Unfall-Wissensdatenbank API nicht geladen: {e}")
 
+try:
+    from api.unfall_rechnungspruefung_api import unfall_rechnungspruefung_api
+    app.register_blueprint(unfall_rechnungspruefung_api)
+    print("✅ Unfall-Rechnungsprüfung API registriert: /api/unfall/auftraege, /auftrag/<nr>/check")
+except Exception as e:
+    print(f"⚠️  Unfall-Rechnungsprüfung API nicht geladen: {e}")
+
 # Werkstatt LIVE API (Echtzeit-Daten aus Locosoft)
 try:
     from api.werkstatt_live_api import werkstatt_live_bp

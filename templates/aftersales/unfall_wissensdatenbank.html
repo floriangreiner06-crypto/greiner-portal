@@ -17,6 +17,11 @@
     .urteil-gericht { font-size: 0.85rem; color: #6c757d; }
     .urteil-kurz { font-size: 0.9rem; margin-top: 0.35rem; }
     .externe-quellen a { display: block; padding: 0.35rem 0; }
+    .tb-link { font-size: 0.8rem; margin-top: 0.25rem; }
+    .tb-link a { color: #0d6efd; }
+    .badge-h { background: #0d6efd; color: #fff; }
+    .badge-k { background: #198754; color: #fff; }
+    .badge-hk { background: #6f42c1; color: #fff; }
 </style>
 {% endblock %}
 
@@ -49,7 +54,7 @@
 
     <div class="unfall-section mt-3">
         <div class="unfall-section-header">Externe Referenzquellen</div>
-        <div class="unfall-section-body" id="quellen-container">
+        <div class="unfall-section-body externe-quellen" id="quellen-container">
             <div class="text-muted">Lade …</div>
         </div>
     </div>
@@ -64,15 +69,34 @@
     let alleUrteile = [];
     let aktivePositionId = null;
 
+    function badgeClass(kat) {
+        if (!kat) return '';
+        if (kat === 'H') return 'badge-h';
+        if (kat === 'K') return 'badge-k';
+        return 'badge-hk';
+    }
+    function renderTextbausteine(tbs) {
+        if (!tbs || !tbs.length) return '';
+        return tbs.map(function(t) {
+            var nr = (t.tb_nummer || '').toString();
+            var label = nr ? 'TB ' + nr + ': ' + (t.titel || '') : (t.titel || '');
+            var badge = t.kategorie_hk ? '<span class="badge ' + badgeClass(t.kategorie_hk) + '">' + t.kategorie_hk + '</span> ' : '';
+            var url = (t.iww_url || '').trim();
+            if (!url) return '<span class="tb-link">' + badge + label + '</span>';
+            return '<div class="tb-link">' + badge + '<a href="' + url.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener">' + label + ' → UE IWW</a></div>';
+        }).join('');
+    }
     function loadCheckliste() {
-        fetch('/api/unfall/checkliste')
+        fetch('/api/unfall/checkliste?mit_textbausteinen=1')
             .then(r => r.json())
             .then(data => {
                 if (!data.ok) { checklisteContainer.innerHTML = '<div class="text-danger">Fehler: ' + (data.error || 'Unbekannt') + '</div>'; return; }
                 checklisteContainer.innerHTML = data.items.map(function(item) {
+                    var tbsHtml = renderTextbausteine(item.textbausteine);
                     return '<div class="checkliste-row" data-id="' + item.id + '" data-bezeichnung="' + (item.bezeichnung || '').replace(/"/g, '&quot;') + '">' +
                         '<div>' + (item.bezeichnung || '') + '</div>' +
-                        '<div class="haeufigkeit">' + (item.haeufigkeit || '') + ' · ' + (item.rechtslage || '') + '</div></div>';
+                        '<div class="haeufigkeit">' + (item.haeufigkeit || '') + ' · ' + (item.rechtslage || '') + '</div>' +
+                        (tbsHtml ? '<div class="mt-1">' + tbsHtml + '</div>' : '') + '</div>';
                 }).join('');
                 checklisteContainer.querySelectorAll('.checkliste-row').forEach(function(row) {
                     row.addEventListener('click', function() {
@@ -141,14 +165,17 @@
 
     function loadQuellen() {
         fetch('/api/unfall/externe-quellen')
-            .then(r => r.json())
-            .then(data => {
-                if (!data.ok) { quellenContainer.innerHTML = ''; return; }
-                quellenContainer.innerHTML = (data.items || []).map(function(q) {
-                    return '<a href="' + (q.url || '#') + '" target="_blank" rel="noopener">' + (q.name || '') + '</a> – ' + (q.nutzen || '');
+            .then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+            .then(function(data) {
+                if (!data.ok || !data.items || !data.items.length) { quellenContainer.innerHTML = '<span class="text-muted">Keine Quellen geladen.</span>'; return; }
+                quellenContainer.innerHTML = data.items.map(function(q) {
+                    var url = (q.url || '#').replace(/"/g, '&quot;');
+                    var name = (q.name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    var nutzen = (q.nutzen || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    return '<a href="' + url + '" target="_blank" rel="noopener">' + name + '</a> – ' + nutzen;
                 }).join('<br>');
             })
-            .catch(function() { quellenContainer.innerHTML = ''; });
+            .catch(function(e) { quellenContainer.innerHTML = '<span class="text-danger">Quellen konnten nicht geladen werden.</span>'; });
     }
 
     loadCheckliste();

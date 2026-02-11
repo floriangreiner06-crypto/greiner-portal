@@ -27,8 +27,9 @@ unfall_wissensbasis_api = Blueprint('unfall_wissensbasis_api', __name__, url_pre
 @unfall_wissensbasis_api.route('/checkliste', methods=['GET'])
 @login_required
 def get_checkliste():
-    """Alle typischen Kürzungspositionen (Checkliste für M1/M2)."""
+    """Alle typischen Kürzungspositionen (Checkliste für M1/M2). Optional ?mit_textbausteinen=1 liefert pro Position zugehörige UE IWW Textbausteine."""
     try:
+        mit_textbausteinen = request.args.get('mit_textbausteinen', '0') == '1'
         with db_session() as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -38,6 +39,16 @@ def get_checkliste():
                 ORDER BY sort_order NULLS LAST, bezeichnung
             """)
             items = rows_to_list(cursor.fetchall(), cursor)
+            if mit_textbausteinen:
+                for it in items:
+                    cursor.execute("""
+                        SELECT t.id, t.tb_nummer, t.titel, t.kategorie_hk, t.iww_url, t.ist_anwaltsbaustein
+                        FROM unfall_textbausteine t
+                        JOIN unfall_textbausteine_positionen tp ON tp.textbaustein_id = t.id
+                        WHERE tp.checkliste_position_id = %s
+                        ORDER BY t.tb_nummer NULLS LAST, t.titel
+                    """, (it['id'],))
+                    it['textbausteine'] = rows_to_list(cursor.fetchall(), cursor)
         return jsonify({'ok': True, 'items': items})
     except Exception as e:
         logger.exception("get_checkliste")
@@ -136,11 +147,72 @@ def get_urteile_zu_position(checkliste_id):
         return jsonify({'ok': False, 'error': str(e)}), 500
 
 
+@unfall_wissensbasis_api.route('/textbausteine', methods=['GET'])
+@login_required
+def get_textbausteine():
+    """Alle UE IWW Textbausteine; optional Filter: position_id, kategorie_hk, thema."""
+    try:
+        position_id = request.args.get('position_id', type=int)
+        kategorie_hk = request.args.get('kategorie_hk', '').strip()
+        thema = request.args.get('thema', '').strip()
+        with db_session() as conn:
+            cursor = conn.cursor()
+            if position_id:
+                cursor.execute("""
+                    SELECT t.id, t.tb_nummer, t.titel, t.beschreibung, t.kategorie_hk, t.datum, t.typ, t.thema, t.rubrik, t.iww_url, t.ist_anwaltsbaustein
+                    FROM unfall_textbausteine t
+                    JOIN unfall_textbausteine_positionen tp ON tp.textbaustein_id = t.id
+                    WHERE tp.checkliste_position_id = %s
+                    ORDER BY t.tb_nummer NULLS LAST, t.titel
+                """, (position_id,))
+            else:
+                sql = """
+                    SELECT id, tb_nummer, titel, beschreibung, kategorie_hk, datum, typ, thema, rubrik, iww_url, ist_anwaltsbaustein
+                    FROM unfall_textbausteine WHERE 1=1
+                """
+                params = []
+                if kategorie_hk:
+                    sql += " AND kategorie_hk = %s"
+                    params.append(kategorie_hk)
+                if thema:
+                    sql += " AND thema ILIKE %s"
+                    params.append(f'%{thema}%')
+                sql += " ORDER BY tb_nummer NULLS LAST, titel LIMIT 500"
+                cursor.execute(sql, params or None)
+            items = rows_to_list(cursor.fetchall(), cursor)
+        return jsonify({'ok': True, 'items': items})
+    except Exception as e:
+        logger.exception("get_textbausteine")
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@unfall_wissensbasis_api.route('/textbausteine/zu-position/<int:checkliste_id>', methods=['GET'])
+@login_required
+def get_textbausteine_zu_position(checkliste_id):
+    """Textbausteine (UE IWW) zu einer Kürzungsposition."""
+    try:
+        with db_session() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT t.id, t.tb_nummer, t.titel, t.beschreibung, t.kategorie_hk, t.iww_url, t.ist_anwaltsbaustein
+                FROM unfall_textbausteine t
+                JOIN unfall_textbausteine_positionen tp ON tp.textbaustein_id = t.id
+                WHERE tp.checkliste_position_id = %s
+                ORDER BY t.tb_nummer NULLS LAST, t.titel
+            """, (checkliste_id,))
+            items = rows_to_list(cursor.fetchall(), cursor)
+        return jsonify({'ok': True, 'items': items})
+    except Exception as e:
+        logger.exception("get_textbausteine_zu_position")
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
 @unfall_wissensbasis_api.route('/externe-quellen', methods=['GET'])
 @login_required
 def get_externe_quellen():
     """Link-Sammlung externe Referenzquellen (statisch aus Feature-Plan)."""
     quellen = [
+        {'name': 'UE IWW (Unfallregulierung effektiv)', 'url': 'https://www.iww.de/ue/downloads', 'nutzen': '702 Textbausteine für Kürzungsabwehr (Digital-Abo)'},
         {'name': 'ZKF (Zentralverband Karosserie- und Fahrzeugtechnik)', 'url': 'https://www.zkf.de', 'nutzen': 'SOS Rechnungskürzung, Branchenstandards'},
         {'name': 'Captain HUK', 'url': 'https://www.captain-huk.de', 'nutzen': 'Größte Urteilsdatenbank zu Kürzungen, nach Versicherer sortiert'},
         {'name': 'schaden.news', 'url': 'https://www.schaden.news', 'nutzen': 'Aktuelle Berichte über Kürzungspraktiken'},

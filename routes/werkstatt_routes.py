@@ -228,3 +228,10 @@ def werkstatt_reparaturpotenzial():
 def unfall_wissensdatenbank():
     """Versicherungs-Rechnungsprüfung: Urteile & Checkliste Kürzungspositionen"""
     return render_template('aftersales/unfall_wissensdatenbank.html')
+
+
+@werkstatt_routes.route('/werkstatt/unfall-rechnungspruefung')
+@login_required
+def unfall_rechnungspruefung():
+    """Unfall-Rechnungsprüfung M1: Vollständigkeitscheck für Versicherungsaufträge"""
+    return render_template('aftersales/unfall_rechnungspruefung.html')
