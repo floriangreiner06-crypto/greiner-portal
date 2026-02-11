@@ -104,6 +104,18 @@ def eautoseller_bestand():
     return render_template('verkauf_eautoseller_bestand.html', now=datetime.now())
 
 
+@verkauf_bp.route('/profitabilitaet')
+def profitabilitaet():
+    """Profitabilitäts-Dashboard (TAG 219) – DB pro Fahrzeug, Standkosten, Netto-Profitabilität"""
+    standort, konsolidiert = parse_standort_params(request)
+    return render_template(
+        'verkauf_profitabilitaet.html',
+        now=datetime.now(),
+        standort=standort,
+        konsolidiert=konsolidiert,
+    )
+
+
 @verkauf_bp.route('/gw-bestand')
 @verkauf_bp.route('/gw-dashboard')
 def gw_dashboard():

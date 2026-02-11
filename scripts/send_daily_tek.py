@@ -24,6 +24,14 @@ import os
 sys.path.insert(0, '/opt/greiner-portal')
 os.chdir('/opt/greiner-portal')
 
+# .env sofort laden (config/.env hat die echten Credentials für Server)
+try:
+    from dotenv import load_dotenv
+    load_dotenv('/opt/greiner-portal/.env')
+    load_dotenv('/opt/greiner-portal/config/.env', override=True)
+except ImportError:
+    pass
+
 from datetime import datetime, date
 from scripts.tek_api_helper import get_tek_data_from_api
 from api.db_utils import db_session, row_to_dict, get_locosoft_connection
@@ -213,17 +221,22 @@ def send_gesamt_reports(connector, heute, test_email=None):
     return emails_sent
 
 
-def send_filiale_reports(connector, heute, test_email=None):
+def send_filiale_reports(connector, heute, test_email=None, test_standort=None):
     """
     Sendet TEK Filiale-Reports (tek_filiale).
     Für Filialleiter wie Rolf - alle Bereiche eines Standorts.
+    test_standort: Bei Testversand nur diesen Standort senden (DEG/LAN).
     """
     from api.pdf_generator import generate_tek_filiale_pdf
 
     if test_email:
-        # Test-Modus: Beide Standorte an Test-Adresse
-        subscribers = {'DEG': [test_email], 'LAN': [test_email]}
-        print(f"  TEST-MODUS: Sende beide Filiale-Reports an {test_email}")
+        # Test-Modus: an Test-Adresse (nur ein Standort wenn test_standort gesetzt)
+        if test_standort in ('DEG', 'LAN'):
+            subscribers = {test_standort: [test_email]}
+            print(f"  TEST-MODUS: Sende Filiale {test_standort} an {test_email}")
+        else:
+            subscribers = {'DEG': [test_email], 'LAN': [test_email]}
+            print(f"  TEST-MODUS: Sende beide Filiale-Reports an {test_email}")
     else:
         subscribers = get_subscribers_for_report('tek_filiale')
     total = sum(len(v) for v in subscribers.values())
@@ -347,17 +360,25 @@ def send_bereich_reports(connector, heute, report_type, bereich_key, test_email=
     return emails_sent
 
 
-def send_verkauf_reports(connector, heute, test_email=None):
+def send_verkauf_reports(connector, heute, test_email=None, test_standort=None):
     """
     Sendet TEK Verkauf-Reports (NW+GW kombiniert) - TAG 215
     Für Verkaufsleitung - alle Standorte.
+    test_standort: Bei Testversand nur diesen Standort (DEG/LAN) oder Gesamt (None).
     """
     from api.pdf_generator import generate_tek_verkauf_pdf
     from api.standort_utils import STANDORT_NAMEN
 
     if test_email:
-        subscribers = {None: [test_email], 'DEG': [test_email], 'LAN': [test_email]}
-        print(f"  TEST-MODUS: Sende Verkauf-Reports an {test_email}")
+        if test_standort == 'DEG':
+            subscribers = {'DEG': [test_email]}
+            print(f"  TEST-MODUS: Sende Verkauf DEG an {test_email}")
+        elif test_standort == 'LAN':
+            subscribers = {'LAN': [test_email]}
+            print(f"  TEST-MODUS: Sende Verkauf LAN an {test_email}")
+        else:
+            subscribers = {None: [test_email], 'DEG': [test_email], 'LAN': [test_email]}
+            print(f"  TEST-MODUS: Sende Verkauf-Reports an {test_email}")
     else:
         subscribers = get_subscribers_for_report('tek_verkauf')
     
@@ -368,7 +389,7 @@ def send_verkauf_reports(connector, heute, test_email=None):
 
     emails_sent = 0
 
-    # Verarbeite nach Standort
+    # Verarbeite nach Standort (bei test_standort nur dieser)
     standorte = []
     if subscribers.get(None):
         standorte.append((None, subscribers[None], 'Gesamt'))
@@ -409,16 +430,24 @@ def send_verkauf_reports(connector, heute, test_email=None):
     return emails_sent
 
 
-def send_service_reports(connector, heute, test_email=None):
+def send_service_reports(connector, heute, test_email=None, test_standort=None):
     """
     Sendet TEK Service-Reports (Teile+Werkstatt kombiniert) - TAG 215
     Für Service-Leitung - alle Standorte.
+    test_standort: Bei Testversand nur diesen Standort (DEG/LAN) oder Gesamt (None).
     """
     from api.pdf_generator import generate_tek_service_pdf
 
     if test_email:
-        subscribers = {None: [test_email], 'DEG': [test_email], 'LAN': [test_email]}
-        print(f"  TEST-MODUS: Sende Service-Reports an {test_email}")
+        if test_standort == 'DEG':
+            subscribers = {'DEG': [test_email]}
+            print(f"  TEST-MODUS: Sende Service DEG an {test_email}")
+        elif test_standort == 'LAN':
+            subscribers = {'LAN': [test_email]}
+            print(f"  TEST-MODUS: Sende Service LAN an {test_email}")
+        else:
+            subscribers = {None: [test_email], 'DEG': [test_email], 'LAN': [test_email]}
+            print(f"  TEST-MODUS: Sende Service-Reports an {test_email}")
     else:
         subscribers = get_subscribers_for_report('tek_service')
     
@@ -610,32 +639,45 @@ def build_filiale_email_html(data):
 
 
 def build_bereich_email_html(data, bereich_key, bereich_data):
-    """Erstellt HTML-Body für Bereichs-Report"""
+    """Erstellt HTML-Body für Bereichs-Report – detailliert wie TEK Gesamt, ohne Status „Ziel erreicht“."""
     BEREICH_NAMEN = {
         '1-NW': 'Neuwagen', '2-GW': 'Gebrauchtwagen',
         '3-Teile': 'Teile', '4-Lohn': 'Werkstatt', '5-Sonst': 'Sonstige'
     }
-    BENCHMARKS = {
-        '1-NW': 12, '2-GW': 10, '3-Teile': 32, '4-Lohn': 50, '5-Sonst': 10
-    }
 
     bereich_name = BEREICH_NAMEN.get(bereich_key, bereich_key)
-    ziel_marge = BENCHMARKS.get(bereich_key, 10)
     marge = bereich_data.get('marge', 0)
+    u = bereich_data.get('umsatz', 0)
+    e = bereich_data.get('einsatz', 0)
+    d = bereich_data.get('db1', 0)
+    hu = bereich_data.get('heute_umsatz', 0)
+    hd = bereich_data.get('heute_db1', 0)
 
-    if marge >= ziel_marge:
-        status_color = "#28a745"
-        status_text = "Ziel erreicht"
-    elif marge >= ziel_marge * 0.7:
-        status_color = "#ffc107"
-        status_text = "Warnung"
-    else:
-        status_color = "#dc3545"
-        status_text = "Unter Ziel"
+    # Kernkennzahlen-Tabelle (wie TEK Gesamt / Verkauf)
+    kpi_rows = f"""
+            <tr><td style="padding: 8px; background: #f0f0f0;">Erlös (Monat):</td><td style="padding: 8px; text-align: right;">{format_euro(u)} EUR</td></tr>
+            <tr><td style="padding: 8px; background: #f9f9f9;">Einsatz (Monat):</td><td style="padding: 8px; text-align: right;">{format_euro(e)} EUR</td></tr>
+            <tr><td style="padding: 8px; background: #f0f0f0;">DB1 (Monat):</td><td style="padding: 8px; text-align: right;">{format_euro(d)} EUR</td></tr>
+            <tr><td style="padding: 8px; background: #f9f9f9;">Marge:</td><td style="padding: 8px; text-align: right;">{marge:.1f}%</td></tr>
+            <tr><td style="padding: 8px; background: #f0f0f0;">Erlös (Heute):</td><td style="padding: 8px; text-align: right;">{format_euro(hu)} EUR</td></tr>
+            <tr><td style="padding: 8px; background: #f9f9f9;">DB1 (Heute):</td><td style="padding: 8px; text-align: right;">{format_euro(hd)} EUR</td></tr>"""
+
+    # Werkstatt: Hinweis kalk. Einsatz, Produktivität, Leistungsgrad
+    werkstatt_extra = ""
+    if bereich_key == '4-Lohn':
+        if bereich_data.get('hinweis'):
+            werkstatt_extra += f"""
+            <tr><td style="padding: 8px; background: #f0f0f0;">Hinweis:</td><td style="padding: 8px; text-align: right; font-size: 12px;">{bereich_data.get('hinweis', '')}</td></tr>"""
+        if bereich_data.get('produktivitaet') is not None:
+            werkstatt_extra += f"""
+            <tr><td style="padding: 8px; background: #f9f9f9;">Produktivität (EW):</td><td style="padding: 8px; text-align: right;">{bereich_data.get('produktivitaet')} %</td></tr>"""
+        if bereich_data.get('leistungsgrad') is not None:
+            werkstatt_extra += f"""
+            <tr><td style="padding: 8px; background: #f0f0f0;">Leistungsgrad:</td><td style="padding: 8px; text-align: right;">{bereich_data.get('leistungsgrad')} %</td></tr>"""
 
     return f"""
     <html>
-    <body style="font-family: Arial, sans-serif; color: #333; max-width: 550px;">
+    <body style="font-family: Arial, sans-serif; color: #333; max-width: 650px;">
         <h2 style="color: #0066cc; margin-bottom: 5px;">TEK {bereich_name}</h2>
         <p style="color: #666; margin-top: 0;">{data['monat']} | Stand: {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr</p>
 
@@ -643,34 +685,24 @@ def build_bereich_email_html(data, bereich_key, bereich_data):
             <tr style="background: #0066cc; color: white;">
                 <th style="padding: 15px; text-align: center;">DB1</th>
                 <th style="padding: 15px; text-align: center;">Marge</th>
-                <th style="padding: 15px; text-align: center;">Status</th>
             </tr>
             <tr style="background: #f5f5f5;">
-                <td style="padding: 15px; text-align: center; font-size: 24px; font-weight: bold;">{format_euro(bereich_data['db1'])} EUR</td>
+                <td style="padding: 15px; text-align: center; font-size: 24px; font-weight: bold;">{format_euro(d)} EUR</td>
                 <td style="padding: 15px; text-align: center; font-size: 24px; font-weight: bold;">{marge:.1f}%</td>
-                <td style="padding: 15px; text-align: center; font-size: 16px; font-weight: bold; color: {status_color};">{status_text}</td>
             </tr>
         </table>
 
-        <table style="border-collapse: collapse; width: 100%; margin: 15px 0;">
-            <tr>
-                <td style="padding: 8px; background: #f0f0f0;">Erlös:</td>
-                <td style="padding: 8px; text-align: right;">{format_euro(bereich_data['umsatz'])} EUR</td>
-            </tr>
-            <tr>
-                <td style="padding: 8px; background: #f0f0f0;">Einsatz:</td>
-                <td style="padding: 8px; text-align: right;">{format_euro(bereich_data['einsatz'])} EUR</td>
-            </tr>
-            <tr>
-                <td style="padding: 8px; background: #f0f0f0;">DB:</td>
-                <td style="padding: 8px; text-align: right;">{format_euro(bereich_data['db1'])} EUR</td>
-            </tr>
+        <h3 style="color: #333; margin-top: 20px;">Kernkennzahlen</h3>
+        <table style="border-collapse: collapse; width: 100%; margin: 10px 0;">
+            {kpi_rows}
+            {werkstatt_extra}
         </table>
 
         <p style="margin-top: 20px;">Details im PDF-Anhang.</p>
 
         <p style="color: #999; font-size: 11px; margin-top: 30px; border-top: 1px solid #eee; padding-top: 10px;">
-            Automatisch generiert von DRIVE
+            Automatisch generiert von DRIVE<br>
+            <a href="http://drive.auto-greiner.de/controlling/tek" style="color: #0066cc;">In DRIVE öffnen</a>
         </p>
     </body>
     </html>

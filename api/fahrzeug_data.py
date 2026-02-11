@@ -42,6 +42,16 @@ from psycopg2.extras import RealDictCursor
 
 # SSOT: Standort-Namen und Filter-Funktionen
 from api.standort_utils import STANDORT_NAMEN, build_locosoft_filter_bestand, build_locosoft_filter_verkauf
+# SSOT: Kalkulations-SQL (TAG 219)
+from api.kalkulation_helpers import (
+    sql_ek_netto,
+    sql_variable_kosten,
+    sql_besteuerung_art,
+    sql_vk_netto,
+    sql_vku_subquery,
+    sql_db1,
+    sql_standzeit_tage,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -184,148 +194,25 @@ class FahrzeugData:
                     v.first_registration_date as ez,
                     dv.in_arrival_date as eingang,
                     dv.created_date,
-                    CURRENT_DATE - COALESCE(dv.in_arrival_date, dv.created_date) as standzeit_tage,
+                    {sql_standzeit_tage("dv")} as standzeit_tage,
                     dv.mileage_km as km_stand,
                     dv.in_used_vehicle_buy_type as ankauf_typ,
                     dv.out_sale_type as verkauf_typ,
                     dv.out_invoice_type as invoice_type,
-                    -- EK = Einsatzwert (Grundpreis + Zubehoer + Fracht + Einsatzerhoehungen)
-                    -- WICHTIG: calc_*-Felder sind bereits NETTO in Locosoft!
-                    COALESCE(dv.calc_basic_charge, 0) + COALESCE(dv.calc_accessory, 0)
-                        + COALESCE(dv.calc_extra_expenses, 0)
-                        + COALESCE(dv.calc_usage_value_encr_internal, 0)
-                        + COALESCE(dv.calc_usage_value_encr_external, 0) as ek_preis,
+                    -- EK = Einsatzwert (kalkulation_helpers SSOT)
+                    {sql_ek_netto("dv")} as ek_preis,
                     -- VK brutto (inkl. MwSt) - zur Anzeige
                     COALESCE(dv.out_sale_price, 0) as vk_preis_brutto,
-                    -- VK effektiv: Bei Regel (F) = VK/1.19, bei Diff (B) = VK - MwSt_auf_Marge
-                    -- WICHTIG: dealer_vehicle_type hat Priorität über out_sale_type!
-                    CASE
-                        WHEN (CASE
-                            WHEN dv.dealer_vehicle_type = 'D' THEN 'Diff25a'
-                            WHEN dv.dealer_vehicle_type = 'G' THEN 'Regel'
-                            WHEN dv.out_sale_type = 'F' THEN 'Regel'
-                            WHEN dv.out_sale_type = 'B' THEN 'Diff25a'
-                            WHEN dv.out_sale_type = 'L' THEN 'Leasing'
-                            WHEN dv.out_invoice_type = 8 THEN 'Diff25a'
-                            ELSE 'Regel'
-                        END) = 'Regel'
-                        THEN ROUND(COALESCE(dv.out_sale_price, 0) / 1.19, 2)
-                        ELSE ROUND(COALESCE(dv.out_sale_price, 0) - (
-                            GREATEST(COALESCE(dv.out_sale_price, 0) - (
-                                COALESCE(dv.calc_basic_charge, 0) + COALESCE(dv.calc_accessory, 0)
-                                + COALESCE(dv.calc_extra_expenses, 0)
-                                + COALESCE(dv.calc_usage_value_encr_internal, 0)
-                                + COALESCE(dv.calc_usage_value_encr_external, 0)
-                            ), 0) / 1.19 * 0.19
-                        ), 2)
-                    END as vk_preis,
-                    -- Variable VK-Kosten (intern + sonstige)
-                    -- WICHTIG: Variable Kosten werden zum Einsatzwert addiert (nicht abgezogen)!
-                    -- Siehe Locosoft-Screenshot: "Kalkulierter Gesamteinsatz" = Einsatzwert + variable Kosten
-                    COALESCE(dv.calc_cost_internal_invoices, 0) + COALESCE(dv.calc_cost_other, 0) as kosten_variable,
-                    -- Verkaufsunterstützung (VKU) - wird zum DB addiert!
-                    COALESCE(
-                        (SELECT SUM(claimed_amount)
-                         FROM dealer_sales_aid dsa
-                         WHERE dsa.dealer_vehicle_type = dv.dealer_vehicle_type
-                           AND dsa.dealer_vehicle_number = dv.dealer_vehicle_number),
-                        0
-                    ) as verkaufsunterstuetzung,
-                    -- Kalk. DB (basierend auf Besteuerungsart mit Fallback)
-                    -- Locosoft-Formel: DB = VK - MwSt - Einsatz - Var.Kosten + VKU
-                    -- WICHTIG: VKU wird nur bei VERKAUFTEN Fahrzeugen addiert!
-                    --   Bestandsfahrzeuge (out_invoice_date IS NULL): DB ohne VKU
-                    --   Verkaufte Fahrzeuge (out_invoice_date IS NOT NULL): DB mit VKU
-                    -- Regel (F): VK_netto - (Einsatzwert + variable Kosten) + Verkaufsunterstützung (nur wenn verkauft)
-                    --   VK_netto = VK_brutto / 1.19
-                    --   Einsatzwert = calc_basic_charge + calc_accessory + calc_extra_expenses + calc_usage_value_encr_*
-                    --   Variable Kosten = calc_cost_internal_invoices + calc_cost_other
-                    --   Kalkulierter Gesamteinsatz = Einsatzwert + variable Kosten
-                    --   DB = VK_netto - Kalkulierter Gesamteinsatz + Verkaufsunterstützung (nur wenn verkauft)
-                    -- Diff25a (B): (VK_brutto - Einsatzwert) / 1.19 - variable Kosten + Verkaufsunterstützung (nur wenn verkauft)
-                    --   Marge_brutto = VK_brutto - Einsatzwert
-                    --   Marge_netto = Marge_brutto / 1.19
-                    --   DB = Marge_netto - variable Kosten + Verkaufsunterstützung (nur wenn verkauft)
-                    CASE
-                        WHEN (CASE
-                            WHEN dv.dealer_vehicle_type = 'D' THEN 'Diff25a'
-                            WHEN dv.dealer_vehicle_type = 'G' THEN 'Regel'
-                            WHEN dv.out_sale_type = 'F' THEN 'Regel'
-                            WHEN dv.out_sale_type = 'B' THEN 'Diff25a'
-                            WHEN dv.out_sale_type = 'L' THEN 'Leasing'
-                            WHEN dv.out_invoice_type = 8 THEN 'Diff25a'
-                            ELSE 'Regel'
-                        END) = 'Regel'
-                        THEN ROUND(
-                            COALESCE(dv.out_sale_price, 0) / 1.19, 2
-                        ) - (
-                            -- Einsatzwert
-                            COALESCE(dv.calc_basic_charge, 0) + COALESCE(dv.calc_accessory, 0)
-                            + COALESCE(dv.calc_extra_expenses, 0)
-                            + COALESCE(dv.calc_usage_value_encr_internal, 0)
-                            + COALESCE(dv.calc_usage_value_encr_external, 0)
-                            -- + Variable Kosten (werden zum Einsatzwert addiert!)
-                            + COALESCE(dv.calc_cost_internal_invoices, 0)
-                            + COALESCE(dv.calc_cost_other, 0)
-                        ) + CASE
-                            -- VKU nur bei verkauften Fahrzeugen addieren!
-                            WHEN dv.out_invoice_date IS NOT NULL OR dv.out_sales_contract_date IS NOT NULL
-                            THEN COALESCE(
-                                (SELECT SUM(claimed_amount)
-                                 FROM dealer_sales_aid dsa
-                                 WHERE dsa.dealer_vehicle_type = dv.dealer_vehicle_type
-                                   AND dsa.dealer_vehicle_number = dv.dealer_vehicle_number),
-                                0
-                            )
-                            ELSE 0
-                        END
-                        ELSE ROUND(
-                            GREATEST(
-                                COALESCE(dv.out_sale_price, 0) - (
-                                    COALESCE(dv.calc_basic_charge, 0) + COALESCE(dv.calc_accessory, 0)
-                                    + COALESCE(dv.calc_extra_expenses, 0)
-                                    + COALESCE(dv.calc_usage_value_encr_internal, 0)
-                                    + COALESCE(dv.calc_usage_value_encr_external, 0)
-                                ), 0
-                            ) / 1.19, 2
-                        ) - (
-                            -- Variable Kosten werden bei Differenzbesteuerung abgezogen
-                            COALESCE(dv.calc_cost_internal_invoices, 0)
-                            + COALESCE(dv.calc_cost_other, 0)
-                        ) + CASE
-                            -- VKU nur bei verkauften Fahrzeugen addieren!
-                            WHEN dv.out_invoice_date IS NOT NULL OR dv.out_sales_contract_date IS NOT NULL
-                            THEN COALESCE(
-                                (SELECT SUM(claimed_amount)
-                                 FROM dealer_sales_aid dsa
-                                 WHERE dsa.dealer_vehicle_type = dv.dealer_vehicle_type
-                                   AND dsa.dealer_vehicle_number = dv.dealer_vehicle_number),
-                                0
-                            )
-                            ELSE 0
-                        END
-                    END as kalk_db,
-                    -- Besteuerungsart bestimmen
-                    -- WICHTIG: Kommissionsnummer beginnt mit Buchstaben und hat PRIORITÄT!
-                    --   D = Differenzbesteuert (nur bei Ankauf von Privatpersonen oder differenzbesteuerten Fahrzeugen)
-                    --   G = Gebrauchtwagen = Regelbesteuert (auch wenn out_sale_type = 'B' gesetzt ist!)
-                    --   N = Neuwagen
-                    --   etc.
-                    -- PRIORITÄT: dealer_vehicle_type > out_sale_type
-                    CASE
-                        -- PRIORITÄT 1: Kommissionsnummer beginnt mit "D" = Differenzbesteuert
-                        WHEN dv.dealer_vehicle_type = 'D' THEN 'Diff25a'
-                        -- PRIORITÄT 2: Kommissionsnummer beginnt mit "G" = Regelbesteuert
-                        WHEN dv.dealer_vehicle_type = 'G' THEN 'Regel'
-                        -- PRIORITÄT 3: Explizit gesetzt: out_sale_type (nur wenn dealer_vehicle_type nicht D oder G)
-                        WHEN dv.out_sale_type = 'F' THEN 'Regel'
-                        WHEN dv.out_sale_type = 'B' THEN 'Diff25a'
-                        WHEN dv.out_sale_type = 'L' THEN 'Leasing'
-                        -- Fallback: Invoice Type 8 = Gebrauchtwagen = immer §25a
-                        WHEN dv.out_invoice_type = 8 THEN 'Diff25a'
-                        -- Sonst: Regelbesteuerung
-                        ELSE 'Regel'
-                    END as besteuerung,
+                    -- VK effektiv (kalkulation_helpers SSOT)
+                    {sql_vk_netto("dv")} as vk_preis,
+                    -- Variable Kosten (kalkulation_helpers SSOT)
+                    {sql_variable_kosten("dv")} as kosten_variable,
+                    -- VKU (kalkulation_helpers SSOT)
+                    {sql_vku_subquery("dv")} as verkaufsunterstuetzung,
+                    -- Kalk. DB (kalkulation_helpers SSOT, VKU nur bei verkauft)
+                    {sql_db1("dv", vku_nur_bei_verkauf=True)} as kalk_db,
+                    -- Besteuerungsart (kalkulation_helpers SSOT)
+                    {sql_besteuerung_art("dv")} as besteuerung,
                     dv.in_subsidiary as standort,
                     dv.location as lagerort,
                     -- Zusatzfelder fuer detaillierte Kalkulation
@@ -333,13 +220,7 @@ class FahrzeugData:
                     -- Debug-Felder (fuer Validierung)
                     COALESCE(dv.calc_cost_internal_invoices, 0) as kosten_intern,
                     COALESCE(dv.calc_cost_other, 0) as kosten_sonstige,
-                    COALESCE(
-                        (SELECT SUM(claimed_amount)
-                         FROM dealer_sales_aid dsa
-                         WHERE dsa.dealer_vehicle_type = dv.dealer_vehicle_type
-                           AND dsa.dealer_vehicle_number = dv.dealer_vehicle_number),
-                        0
-                    ) as vku
+                    {sql_vku_subquery("dv")} as vku
                 FROM dealer_vehicles dv
                 LEFT JOIN vehicles v 
                     ON dv.dealer_vehicle_number = v.dealer_vehicle_number

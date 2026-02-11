@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TEK Gesamt – Tag & Monat, eine Seite pro KST (Mockup V2)</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        body { background: #f5f6f8; font-family: 'Segoe UI', system-ui, sans-serif; }
+        .mockup-badge { position: fixed; top: 10px; right: 10px; z-index: 999; font-size: 0.75rem; }
+        .tek-header { border-bottom: 3px solid #0066cc; padding-bottom: 0.75rem; margin-bottom: 1rem; }
+        .kpi-row .card { border-radius: 8px; border: none; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+        .kpi-row .kpi-value { font-size: 1.2rem; font-weight: 700; }
+        .kpi-row .kpi-label { font-size: 0.7rem; color: #6c757d; text-transform: uppercase; letter-spacing: .02em; }
+        .status-box { border-radius: 8px; padding: 0.75rem 1rem; text-align: center; font-weight: 700; font-size: 1rem; }
+        .status-box.positive { background: #d1e7dd; color: #0f5132; }
+        .section-title { color: #0066cc; font-weight: 700; font-size: 1rem; margin-bottom: 0.5rem; }
+        .overview-table { font-size: 0.85rem; }
+        .overview-table thead th { background: #0066cc; color: #fff; font-weight: 600; }
+        .overview-table .sum-row { font-weight: 700; background: #e7f1ff !important; }
+        .overview-table .col-heute { background: #f8f9fa; }
+        .overview-table .col-monat { background: #fff; }
+        /* Eine Seite pro KST beim Druck */
+        .kst-page { page-break-before: always; margin-top: 1.5rem; }
+        .kst-page:first-of-type { page-break-before: avoid; }
+        @media screen {
+            .kst-page { border-top: 3px solid #0066cc; padding-top: 1rem; }
+        }
+        .block-card { border-radius: 8px; border: 1px solid #dee2e6; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.05); margin-bottom: 1rem; }
+        .block-card .card-header { background: #0066cc; color: #fff; font-weight: 600; padding: 0.5rem 1rem; border-radius: 8px 8px 0 0; }
+        .detail-table { font-size: 0.8rem; }
+        .detail-table thead th { background: #495057; color: #fff; }
+        .detail-table .sub-row td:first-child { padding-left: 1.5rem; font-style: italic; }
+        .hint-text { font-size: 0.8rem; color: #6c757d; }
+        .seitenumbruch-hinweis { font-size: 0.75rem; color: #6c757d; margin-bottom: 0.5rem; }
+    </style>
+</head>
+<body>
+    <span class="mockup-badge badge bg-warning text-dark">MOCKUP V2 – Tag + Monat, 1 Seite pro KST</span>
+
+    <div class="container-fluid py-4" style="max-width: 1024px;">
+        <!-- ========== SEITE 1: Übersicht ========== -->
+        <div class="tek-header">
+            <h2 class="mb-1" style="color: #0066cc;"><i class="bi bi-graph-up-arrow me-2"></i>TEK – Tägliche Erfolgskontrolle</h2>
+            <p class="text-muted mb-0">Monat: Februar 2026 · Stand: 11.02.2026 14:30 Uhr (Tag)</p>
+        </div>
+
+        <!-- Kern-KPIs: Heute und Monat -->
+        <div class="section-title">Kern-Kennzahlen</div>
+        <div class="row g-2 kpi-row mb-2">
+            <div class="col"><div class="card"><div class="card-body py-2 px-2"><div class="kpi-label">DB1 Heute</div><div class="kpi-value">18.420 €</div></div></div></div>
+            <div class="col"><div class="card"><div class="card-body py-2 px-2"><div class="kpi-label">DB1 Monat</div><div class="kpi-value">312.450 €</div></div></div></div>
+            <div class="col"><div class="card"><div class="card-body py-2 px-2"><div class="kpi-label">Marge Heute</div><div class="kpi-value">11,2 %</div></div></div></div>
+            <div class="col"><div class="card"><div class="card-body py-2 px-2"><div class="kpi-label">Marge Monat</div><div class="kpi-value">12,4 %</div></div></div></div>
+            <div class="col"><div class="card"><div class="card-body py-2 px-2"><div class="kpi-label">Prognose</div><div class="kpi-value">298.000 €</div></div></div></div>
+            <div class="col"><div class="card"><div class="card-body py-2 px-2"><div class="kpi-label">Breakeven</div><div class="kpi-value">265.000 €</div></div></div></div>
+        </div>
+        <div class="status-box positive mb-4">+33.000 € über Breakeven (Prognose)</div>
+
+        <!-- Hauptübersicht: Tag und Monat pro Bereich -->
+        <div class="section-title">Bereichs-Übersicht (Heute | Monat kumuliert)</div>
+        <div class="block-card mb-4">
+            <div class="card-body p-0">
+                <table class="table table-sm overview-table mb-0">
+                    <thead>
+                        <tr>
+                            <th>Bereich</th>
+                            <th colspan="4" class="text-center col-heute">Heute (11.02.)</th>
+                            <th colspan="4" class="text-center col-monat">Monat (Februar)</th>
+                        </tr>
+                        <tr>
+                            <th></th>
+                            <th class="text-end col-heute">Stück</th>
+                            <th class="text-end col-heute">Erlös</th>
+                            <th class="text-end col-heute">DB1</th>
+                            <th class="text-end col-heute">Marge</th>
+                            <th class="text-end col-monat">Stück</th>
+                            <th class="text-end col-monat">Erlös</th>
+                            <th class="text-end col-monat">DB1</th>
+                            <th class="text-end col-monat">Marge</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Neuwagen</td><td class="text-end col-heute">2</td><td class="text-end col-heute">52.100 €</td><td class="text-end col-heute">6.120 €</td><td class="text-end col-heute">11,7 %</td><td class="text-end col-monat">47</td><td class="text-end col-monat">1.245.000 €</td><td class="text-end col-monat">146.800 €</td><td class="text-end col-monat">11,8 %</td></tr>
+                        <tr><td>Gebrauchtwagen</td><td class="text-end col-heute">3</td><td class="text-end col-heute">38.200 €</td><td class="text-end col-heute">4.050 €</td><td class="text-end col-heute">10,6 %</td><td class="text-end col-monat">62</td><td class="text-end col-monat">892.000 €</td><td class="text-end col-monat">94.000 €</td><td class="text-end col-monat">10,5 %</td></tr>
+                        <tr><td>Teile & Zubehör</td><td class="text-end col-heute">—</td><td class="text-end col-heute">12.400 €</td><td class="text-end col-heute">3.960 €</td><td class="text-end col-heute">31,9 %</td><td class="text-end col-monat">—</td><td class="text-end col-monat">285.000 €</td><td class="text-end col-monat">91.200 €</td><td class="text-end col-monat">32,0 %</td></tr>
+                        <tr><td>Werkstatt</td><td class="text-end col-heute">—</td><td class="text-end col-heute">8.200 €</td><td class="text-end col-heute">5.250 €</td><td class="text-end col-heute">64,0 %</td><td class="text-end col-monat">—</td><td class="text-end col-monat">70.717 €</td><td class="text-end col-monat">45.259 €</td><td class="text-end col-monat">64,0 %</td></tr>
+                        <tr><td>Sonstige</td><td class="text-end col-heute">—</td><td class="text-end col-heute">1.800 €</td><td class="text-end col-heute">180 €</td><td class="text-end col-heute">10,0 %</td><td class="text-end col-monat">—</td><td class="text-end col-monat">42.000 €</td><td class="text-end col-monat">3.900 €</td><td class="text-end col-monat">9,3 %</td></tr>
+                        <tr class="sum-row"><td><strong>GESAMT</strong></td><td class="text-end col-heute"><strong>5</strong></td><td class="text-end col-heute"><strong>112.900 €</strong></td><td class="text-end col-heute"><strong>19.560 €</strong></td><td class="text-end col-heute"><strong>17,3 %</strong></td><td class="text-end col-monat"><strong>109</strong></td><td class="text-end col-monat"><strong>2.534.717 €</strong></td><td class="text-end col-monat"><strong>381.159 €</strong></td><td class="text-end col-monat"><strong>15,0 %</strong></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ========== KST 1: Neuwagen (eigene Seite beim Druck) ========== -->
+        <div class="kst-page">
+            <p class="seitenumbruch-hinweis"><em>Im PDF/Druck: neue Seite</em></p>
+            <div class="block-card">
+                <div class="card-header">KST 1 – Neuwagen (detailliert)</div>
+                <div class="card-body p-0">
+                    <table class="table table-sm detail-table mb-0">
+                        <thead>
+                            <tr><th>Position</th><th class="text-end">Stück Heute</th><th class="text-end">Erlös Heute</th><th class="text-end">Einsatz Heute</th><th class="text-end">DB1 Heute</th><th class="text-end">DB1 %</th><th class="text-end">Stück Monat</th><th class="text-end">Erlös Monat</th><th class="text-end">Einsatz Monat</th><th class="text-end">DB1 Monat</th><th class="text-end">DB1 %</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Neuwagen gesamt</td><td class="text-end">2</td><td class="text-end">52.100 €</td><td class="text-end">45.980 €</td><td class="text-end">6.120 €</td><td class="text-end">11,7 %</td><td class="text-end">47</td><td class="text-end">1.245.000 €</td><td class="text-end">1.098.200 €</td><td class="text-end">146.800 €</td><td class="text-end">11,8 %</td></tr>
+                            <tr class="sub-row"><td>  Absatzweg Verkauf</td><td class="text-end">1</td><td class="text-end">28.500 €</td><td class="text-end">25.200 €</td><td class="text-end">3.300 €</td><td class="text-end">11,6 %</td><td class="text-end">28</td><td class="text-end">712.000 €</td><td class="text-end">629.100 €</td><td class="text-end">82.900 €</td><td class="text-end">11,6 %</td></tr>
+                            <tr class="sub-row"><td>  Absatzweg T/V</td><td class="text-end">1</td><td class="text-end">23.600 €</td><td class="text-end">20.780 €</td><td class="text-end">2.820 €</td><td class="text-end">11,9 %</td><td class="text-end">19</td><td class="text-end">533.000 €</td><td class="text-end">469.100 €</td><td class="text-end">63.900 €</td><td class="text-end">12,0 %</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== KST 2: Gebrauchtwagen ========== -->
+        <div class="kst-page">
+            <p class="seitenumbruch-hinweis"><em>Im PDF/Druck: neue Seite</em></p>
+            <div class="block-card">
+                <div class="card-header">KST 2 – Gebrauchtwagen (detailliert)</div>
+                <div class="card-body p-0">
+                    <table class="table table-sm detail-table mb-0">
+                        <thead>
+                            <tr><th>Position</th><th class="text-end">Stück H</th><th class="text-end">Erlös H</th><th class="text-end">Einsatz H</th><th class="text-end">DB1 H</th><th class="text-end">%</th><th class="text-end">Stück M</th><th class="text-end">Erlös M</th><th class="text-end">Einsatz M</th><th class="text-end">DB1 M</th><th class="text-end">%</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Gebrauchtwagen gesamt</td><td class="text-end">3</td><td class="text-end">38.200 €</td><td class="text-end">34.150 €</td><td class="text-end">4.050 €</td><td class="text-end">10,6 %</td><td class="text-end">62</td><td class="text-end">892.000 €</td><td class="text-end">798.000 €</td><td class="text-end">94.000 €</td><td class="text-end">10,5 %</td></tr>
+                            <tr class="sub-row"><td>  Absatzweg Verkauf</td><td class="text-end">2</td><td class="text-end">26.100 €</td><td class="text-end">23.400 €</td><td class="text-end">2.700 €</td><td class="text-end">10,3 %</td><td class="text-end">41</td><td class="text-end">598.000 €</td><td class="text-end">536.200 €</td><td class="text-end">61.800 €</td><td class="text-end">10,3 %</td></tr>
+                            <tr class="sub-row"><td>  Absatzweg T/V</td><td class="text-end">1</td><td class="text-end">12.100 €</td><td class="text-end">10.750 €</td><td class="text-end">1.350 €</td><td class="text-end">11,2 %</td><td class="text-end">21</td><td class="text-end">294.000 €</td><td class="text-end">261.800 €</td><td class="text-end">32.200 €</td><td class="text-end">11,0 %</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== KST 3: Werkstatt ========== -->
+        <div class="kst-page">
+            <p class="seitenumbruch-hinweis"><em>Im PDF/Druck: neue Seite</em></p>
+            <div class="block-card">
+                <div class="card-header">KST 3 – Werkstatt / Service (detailliert)</div>
+                <div class="card-body">
+                    <table class="table table-sm detail-table mb-2">
+                        <thead>
+                            <tr><th>Position</th><th class="text-end">Erlös H</th><th class="text-end">Einsatz H</th><th class="text-end">DB1 H</th><th class="text-end">%</th><th class="text-end">Erlös M</th><th class="text-end">Einsatz M</th><th class="text-end">DB1 M</th><th class="text-end">%</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Werkstatt gesamt</td><td class="text-end">8.200 €</td><td class="text-end">2.950 €</td><td class="text-end">5.250 €</td><td class="text-end">64,0 %</td><td class="text-end">70.717 €</td><td class="text-end">25.458 €</td><td class="text-end">45.259 €</td><td class="text-end">64,0 %</td></tr>
+                            <tr class="sub-row"><td>  Erlöse Lohn (84)</td><td class="text-end">8.200 €</td><td class="text-end">—</td><td class="text-end">—</td><td class="text-end">—</td><td class="text-end">70.717 €</td><td class="text-end">—</td><td class="text-end">—</td><td class="text-end">—</td></tr>
+                            <tr class="sub-row"><td>  Einsatz Lohn (74)</td><td class="text-end">—</td><td class="text-end">2.950 €</td><td class="text-end">—</td><td class="text-end">—</td><td class="text-end">—</td><td class="text-end">25.458 €</td><td class="text-end">—</td><td class="text-end">—</td></tr>
+                        </tbody>
+                    </table>
+                    <p class="hint-text mb-0"><strong>Hinweis:</strong> Einsatz kalk. (6M-Quote 36 %): 25k · Produktivität (EW): 78,5 % · Leistungsgrad: 92 %</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== KST 6: Teile ========== -->
+        <div class="kst-page">
+            <p class="seitenumbruch-hinweis"><em>Im PDF/Druck: neue Seite</em></p>
+            <div class="block-card">
+                <div class="card-header">KST 6 – Teile & Zubehör (detailliert)</div>
+                <div class="card-body p-0">
+                    <table class="table table-sm detail-table mb-0">
+                        <thead>
+                            <tr><th>Position</th><th class="text-end">Erlös H</th><th class="text-end">Einsatz H</th><th class="text-end">DB1 H</th><th class="text-end">%</th><th class="text-end">Erlös M</th><th class="text-end">Einsatz M</th><th class="text-end">DB1 M</th><th class="text-end">%</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Teile gesamt</td><td class="text-end">12.400 €</td><td class="text-end">8.440 €</td><td class="text-end">3.960 €</td><td class="text-end">31,9 %</td><td class="text-end">285.000 €</td><td class="text-end">193.800 €</td><td class="text-end">91.200 €</td><td class="text-end">32,0 %</td></tr>
+                            <tr class="sub-row"><td>  Erlöse Teile (83)</td><td class="text-end">12.400 €</td><td class="text-end">—</td><td class="text-end">—</td><td class="text-end">—</td><td class="text-end">285.000 €</td><td class="text-end">—</td><td class="text-end">—</td><td class="text-end">—</td></tr>
+                            <tr class="sub-row"><td>  Einsatz Teile (73)</td><td class="text-end">—</td><td class="text-end">8.440 €</td><td class="text-end">—</td><td class="text-end">—</td><td class="text-end">—</td><td class="text-end">193.800 €</td><td class="text-end">—</td><td class="text-end">—</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== KST 7: Sonstige / Clean Park ========== -->
+        <div class="kst-page">
+            <p class="seitenumbruch-hinweis"><em>Im PDF/Druck: neue Seite</em></p>
+            <div class="block-card">
+                <div class="card-header">KST 7 – Sonstige & Clean Park (detailliert)</div>
+                <div class="card-body p-0">
+                    <table class="table table-sm detail-table mb-0">
+                        <thead>
+                            <tr><th>Position</th><th class="text-end">Erlös H</th><th class="text-end">DB1 H</th><th class="text-end">Erlös M</th><th class="text-end">DB1 M</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Sonstige Erlöse</td><td class="text-end">1.800 €</td><td class="text-end">180 €</td><td class="text-end">42.000 €</td><td class="text-end">3.900 €</td></tr>
+                            <tr><td>Clean Park (847301 / 747301)</td><td class="text-end">—</td><td class="text-end">—</td><td class="text-end">—</td><td class="text-end">—</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <p class="text-muted small mt-3">TEK – Automatisch generiert von DRIVE · Mockup V2: Tag + Monat, eine Seite pro KST</p>
+    </div>
+</body>
+</html>

@@ -565,6 +565,41 @@ def migrate_subscriptions():
         return jsonify({'error': str(e)}), 500
 
 
+@admin_api.route('/api/admin/reports/<report_id>/send-test', methods=['POST'])
+def send_report_test_email(report_id):
+    """
+    Testversand: Report einmalig an eine angegebene E-Mail-Adresse senden.
+    Für Admin → E-Mail Reports → Verwalten → Testversand.
+    """
+    try:
+        from reports.registry import report_exists
+        from reports.send_test import send_report_test
+
+        if not report_exists(report_id):
+            return jsonify({'success': False, 'error': f'Report "{report_id}" nicht gefunden'}), 404
+
+        data = request.get_json() or {}
+        email = (data.get('email') or '').strip().lower()
+        standort = data.get('standort')  # None, '', 'DEG', 'LAN'
+
+        if not email or '@' not in email:
+            return jsonify({'success': False, 'error': 'Gültige E-Mail-Adresse erforderlich'}), 400
+
+        if standort == '':
+            standort = None
+
+        success, message = send_report_test(report_id, email, standort)
+
+        if success:
+            return jsonify({'success': True, 'message': message})
+        return jsonify({'success': False, 'error': message}), 400
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 def _normalize_report_email(username_or_email):
     """Verhindert doppelte Domain (z.B. user@auto-greiner.de@auto-greiner.de)."""
     s = (username_or_email or '').strip().lower()

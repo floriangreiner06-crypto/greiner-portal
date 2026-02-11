@@ -9,10 +9,10 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 from io import BytesIO
-from datetime import datetime
+from datetime import datetime, date
 
 
 def format_currency(value):
@@ -429,20 +429,558 @@ def format_currency_short(value):
         return "0 €"
 
 
+def get_tek_cleanpark_direct(firma, standort, von_heute, bis_heute, von_monat, bis_monat):
+    """Holt Clean-Park-Erlöse (847301) und -Aufwand (747301) für TEK-KST-Zeile. Returns dict mit heute_umsatz, heute_einsatz, monat_umsatz, monat_einsatz."""
+    from api.db_connection import get_db, convert_placeholders
+    firma_filter = ""
+    if firma == '1':
+        firma_filter = "AND subsidiary_to_company_ref = 1"
+        if standort == '1':
+            firma_filter += " AND branch_number = 1"
+        elif standort == '2':
+            firma_filter += " AND branch_number = 3"
+    elif firma == '2':
+        firma_filter = "AND subsidiary_to_company_ref = 2"
+    try:
+        db = get_db()
+        cur = db.cursor()
+        res = {'heute_umsatz': 0, 'heute_einsatz': 0, 'monat_umsatz': 0, 'monat_einsatz': 0}
+        for label, von, bis in [('heute', von_heute, bis_heute), ('monat', von_monat, bis_monat)]:
+            cur.execute(convert_placeholders(f"""
+                SELECT SUM(CASE WHEN debit_or_credit = 'H' THEN posted_value ELSE -posted_value END) / 100.0 as umsatz
+                FROM loco_journal_accountings
+                WHERE accounting_date >= %s AND accounting_date < %s AND nominal_account_number = 847301 {firma_filter}
+            """), (von, bis))
+            row = cur.fetchone()
+            res[f'{label}_umsatz'] = float(row[0] or 0) if row else 0
+            cur.execute(convert_placeholders(f"""
+                SELECT SUM(CASE WHEN debit_or_credit = 'S' THEN posted_value ELSE -posted_value END) / 100.0 as einsatz
+                FROM loco_journal_accountings
+                WHERE accounting_date >= %s AND accounting_date < %s AND nominal_account_number = 747301 {firma_filter}
+            """), (von, bis))
+            row = cur.fetchone()
+            res[f'{label}_einsatz'] = float(row[0] or 0) if row else 0
+        db.close()
+        return res
+    except Exception:
+        if 'db' in locals():
+            db.close()
+        return {'heute_umsatz': 0, 'heute_einsatz': 0, 'monat_umsatz': 0, 'monat_einsatz': 0}
+
+
+def get_tek_absatzwege_direct(bereich, firma, standort, monat, jahr, heute_datum=None):
+    """Holt Absatzwege-Daten direkt aus DRIVE DB (drive_portal) - Single Source of Truth (nur für NW/GW). Modul-Level für Wiederverwendung in TEK Verkauf-PDF."""
+    from api.db_connection import get_db, convert_placeholders
+    import psycopg2.extras
+    from datetime import datetime, date, timedelta
+    import re
+
+    if bereich not in ['1-NW', '2-GW']:
+        return {'absatzwege': []}
+
+    try:
+        if not monat or not jahr:
+            heute = date.today()
+            monat = monat or heute.month
+            jahr = jahr or heute.year
+
+        von = f"{jahr}-{monat:02d}-01"
+        bis = f"{jahr}-{monat+1:02d}-01" if monat < 12 else f"{jahr+1}-01-01"
+
+        if heute_datum:
+            if isinstance(heute_datum, str):
+                heute_str = datetime.strptime(heute_datum, '%d.%m.%Y').strftime('%Y-%m-%d') if '.' in heute_datum else heute_datum
+            else:
+                heute_str = heute_datum.strftime('%Y-%m-%d')
+        else:
+            heute_str = date.today().strftime('%Y-%m-%d')
+
+        morgen_str = (datetime.strptime(heute_str, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
+
+        firma_filter = ""
+        if firma == '1':
+            firma_filter = "AND j.subsidiary_to_company_ref = 1"
+            if standort == '1':
+                firma_filter += " AND j.branch_number = 1"
+            elif standort == '2':
+                firma_filter += " AND j.branch_number = 3"
+        elif firma == '2':
+            firma_filter = "AND j.subsidiary_to_company_ref = 2"
+
+        bereich_konten = {
+            '1-NW': {'umsatz': (810000, 819999), 'einsatz': (710000, 719999)},
+            '2-GW': {'umsatz': (820000, 829999), 'einsatz': (720000, 729999)}
+        }
+        ranges = bereich_konten[bereich]
+
+        def parse_modell_aus_kontobezeichnung(bezeichnung: str) -> dict:
+            if not bezeichnung:
+                return {'modell': 'Sonstige', 'kundentyp': '', 'verkaufsart': ''}
+            bez = bezeichnung.strip()
+            gw_match = re.match(r'(?:VE |EW )?GW (?:aus |a\.)?([\w/]+)\s+(?:an\s+)?(.+)', bez)
+            if gw_match:
+                herkunft_raw = gw_match.group(1)
+                rest = gw_match.group(2).strip()
+                herkunft_mapping = {'Eint': 'Eintausch', 'Zuk': 'Zukauf', 'Leasing': 'Leasing', 'Rent/VW': 'Rent/Vermitwg', 'Rent': 'Rent/Vermitwg'}
+                herkunft = herkunft_mapping.get(herkunft_raw, herkunft_raw)
+                modell = f"GW {herkunft}"
+                kundentyp = ''
+                verkaufsart = ''
+                kundentyp_patterns = [('Gewerbekd ', 'Gewerbe'), ('Gewdkd ', 'Gewerbe'), ('Gewkd ', 'Gewerbe'), ('Großkunden ', 'Großkunde'), ('Großkd ', 'Großkunde'), ('Kunden ', 'Privat'), ('KD ', 'Privat'), ('Kd ', 'Privat'), ('Händler ', 'Händler')]
+                for pattern, typ in kundentyp_patterns:
+                    if rest.startswith(pattern) or f' {pattern}' in f' {rest}':
+                        kundentyp = typ
+                        rest = rest.replace(pattern.strip(), '').strip()
+                        break
+                verkaufsart = rest.strip()
+                return {'modell': modell, 'kundentyp': kundentyp, 'verkaufsart': verkaufsart}
+            for prefix in ['NW VE ', 'NW EW ', 'GW VE ', 'GW EW ', 'VE ', 'EW ']:
+                if bez.startswith(prefix):
+                    bez = bez[len(prefix):]
+                    break
+            kundentyp_patterns = [('Gewerbekd ', 'Gewerbe'), ('Gewdkd ', 'Gewerbe'), ('Gewkd ', 'Gewerbe'), ('Großkunden ', 'Großkunde'), ('Großkd ', 'Großkunde'), ('Kunden ', 'Privat'), ('KD ', 'Privat'), ('Kd ', 'Privat'), ('Händler ', 'Händler')]
+            modell, kundentyp, verkaufsart = bez, '', ''
+            for pattern, typ in kundentyp_patterns:
+                idx = bez.find(f' {pattern.strip()}')
+                if idx == -1:
+                    idx = bez.find(pattern.strip())
+                if idx != -1:
+                    modell = bez[:idx].strip()
+                    rest = bez[idx:].strip()
+                    kundentyp = typ
+                    rest = rest.replace(pattern.strip(), '').strip()
+                    verkaufsart = rest
+                    break
+            return {'modell': modell, 'kundentyp': kundentyp, 'verkaufsart': verkaufsart}
+
+        def normalisiere_kundentyp(kundentyp: str) -> str:
+            mapping = {'Privat': 'Privat', 'Gewerbe': 'Gewerbe', 'Großkunde': 'Sonstige', 'Händler': 'Sonstige'}
+            return mapping.get(kundentyp, 'Sonstige')
+
+        def normalisiere_verkaufsart(verkaufsart: str) -> str:
+            v = (verkaufsart or '').lower()
+            if 'leas' in v:
+                return 'Leasing'
+            if 'kauf' in v:
+                return 'Kauf'
+            if 'reg' in v or 'regulär' in v:
+                return 'reg'
+            return 'Sonstige'
+
+        absatzweg_stats = {}
+        db = get_db()
+        cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        cur.execute(convert_placeholders(f"""
+            SELECT
+                j.nominal_account_number as konto,
+                COALESCE(n.account_description, MIN(j.posting_text), '') as bezeichnung,
+                SUM(CASE WHEN j.debit_or_credit = 'H' THEN j.posted_value ELSE -j.posted_value END) / 100.0 as betrag,
+                COUNT(DISTINCT SUBSTRING(j.vehicle_reference FROM 'FG:([A-Z0-9]+)')) as stueck
+            FROM loco_journal_accountings j
+            LEFT JOIN loco_nominal_accounts n
+                ON j.nominal_account_number = n.nominal_account_number
+                AND j.subsidiary_to_company_ref = n.subsidiary_to_company_ref
+            WHERE j.accounting_date >= %s AND j.accounting_date < %s
+              AND j.nominal_account_number BETWEEN %s AND %s
+              {firma_filter}
+            GROUP BY j.nominal_account_number, n.account_description
+        """), (von, bis, ranges['umsatz'][0], ranges['umsatz'][1]))
+
+        for row in cur.fetchall():
+            r = dict(row)
+            konto = r.get('konto', 0)
+            bezeichnung = r.get('bezeichnung', '') or ''
+            betrag = float(r.get('betrag', 0) or 0)
+            stueck = int(r.get('stueck', 0) or 0)
+            parsed = parse_modell_aus_kontobezeichnung(bezeichnung)
+            kundentyp = normalisiere_kundentyp(parsed['kundentyp'])
+            verkaufsart = normalisiere_verkaufsart(parsed['verkaufsart'])
+            absatzweg = f"{kundentyp} {verkaufsart}".strip() or 'Sonstige'
+            if bereich == '2-GW' and konto in (823101, 823102):
+                absatzweg = 'Privat reg'
+            if absatzweg not in absatzweg_stats:
+                absatzweg_stats[absatzweg] = {'absatzweg': absatzweg, 'stueck_monat': 0, 'umsatz_monat': 0, 'einsatz_monat': 0, 'konten': []}
+            absatzweg_stats[absatzweg]['stueck_monat'] += stueck
+            absatzweg_stats[absatzweg]['umsatz_monat'] += betrag
+            absatzweg_stats[absatzweg]['konten'].append({
+                'konto': konto, 'bezeichnung': bezeichnung, 'umsatz_monat': betrag, 'einsatz_monat': 0,
+                'stueck_monat': stueck, 'umsatz_heute': 0, 'einsatz_heute': 0, 'stueck_heute': 0
+            })
+
+        cur.execute(convert_placeholders(f"""
+            SELECT
+                j.nominal_account_number as konto,
+                COALESCE(n.account_description, MIN(j.posting_text), '') as bezeichnung,
+                SUM(CASE WHEN j.debit_or_credit = 'S' THEN j.posted_value ELSE -j.posted_value END) / 100.0 as betrag
+            FROM loco_journal_accountings j
+            LEFT JOIN loco_nominal_accounts n
+                ON j.nominal_account_number = n.nominal_account_number
+                AND j.subsidiary_to_company_ref = n.subsidiary_to_company_ref
+            WHERE j.accounting_date >= %s AND j.accounting_date < %s
+              AND j.nominal_account_number BETWEEN %s AND %s
+              {firma_filter}
+            GROUP BY j.nominal_account_number, n.account_description
+        """), (von, bis, ranges['einsatz'][0], ranges['einsatz'][1]))
+
+        for row in cur.fetchall():
+            r = dict(row)
+            bezeichnung = r.get('bezeichnung', '') or ''
+            betrag = float(r.get('betrag', 0) or 0)
+            konto = r.get('konto', 0)
+            parsed = parse_modell_aus_kontobezeichnung(bezeichnung)
+            kundentyp = normalisiere_kundentyp(parsed['kundentyp'])
+            verkaufsart = normalisiere_verkaufsart(parsed['verkaufsart'])
+            absatzweg = f"{kundentyp} {verkaufsart}".strip() or 'Sonstige'
+            # GW Leasingrücknahme (723101, 723102) → Privat reg
+            if bereich == '2-GW' and konto in (723101, 723102):
+                absatzweg = 'Privat reg'
+            if absatzweg not in absatzweg_stats:
+                absatzweg_stats[absatzweg] = {'absatzweg': absatzweg, 'stueck_monat': 0, 'umsatz_monat': 0, 'einsatz_monat': 0, 'konten': []}
+            absatzweg_stats[absatzweg]['einsatz_monat'] += betrag
+            konto_gefunden = False
+            for k in absatzweg_stats[absatzweg]['konten']:
+                if k['konto'] == konto:
+                    k['einsatz_monat'] += betrag
+                    konto_gefunden = True
+                    break
+            if not konto_gefunden:
+                absatzweg_stats[absatzweg]['konten'].append({
+                    'konto': konto, 'bezeichnung': bezeichnung, 'umsatz_monat': 0, 'einsatz_monat': betrag,
+                    'stueck_monat': 0, 'umsatz_heute': 0, 'einsatz_heute': 0, 'stueck_heute': 0
+                })
+
+        cur.execute(convert_placeholders(f"""
+            SELECT
+                j.nominal_account_number as konto,
+                COALESCE(n.account_description, MIN(j.posting_text), '') as bezeichnung,
+                SUM(CASE WHEN j.debit_or_credit = 'H' THEN j.posted_value ELSE -j.posted_value END) / 100.0 as betrag,
+                COUNT(DISTINCT SUBSTRING(j.vehicle_reference FROM 'FG:([A-Z0-9]+)')) as stueck
+            FROM loco_journal_accountings j
+            LEFT JOIN loco_nominal_accounts n
+                ON j.nominal_account_number = n.nominal_account_number
+                AND j.subsidiary_to_company_ref = n.subsidiary_to_company_ref
+            WHERE j.accounting_date >= %s AND j.accounting_date < %s
+              AND j.nominal_account_number BETWEEN %s AND %s
+              {firma_filter}
+            GROUP BY j.nominal_account_number, n.account_description
+        """), (heute_str, morgen_str, ranges['umsatz'][0], ranges['umsatz'][1]))
+
+        for row in cur.fetchall():
+            r = dict(row)
+            konto = r.get('konto', 0)
+            bezeichnung = r.get('bezeichnung', '') or ''
+            betrag = float(r.get('betrag', 0) or 0)
+            stueck = int(r.get('stueck', 0) or 0)
+            parsed = parse_modell_aus_kontobezeichnung(bezeichnung)
+            kundentyp = normalisiere_kundentyp(parsed['kundentyp'])
+            verkaufsart = normalisiere_verkaufsart(parsed['verkaufsart'])
+            absatzweg = f"{kundentyp} {verkaufsart}".strip() or 'Sonstige'
+            if bereich == '2-GW' and konto in (823101, 823102):
+                absatzweg = 'Privat reg'
+            if absatzweg in absatzweg_stats:
+                for k in absatzweg_stats[absatzweg]['konten']:
+                    if k['konto'] == konto:
+                        k['umsatz_heute'] += betrag
+                        k['stueck_heute'] += stueck
+                        break
+
+        cur.execute(convert_placeholders(f"""
+            SELECT
+                j.nominal_account_number as konto,
+                COALESCE(n.account_description, MIN(j.posting_text), '') as bezeichnung,
+                SUM(CASE WHEN j.debit_or_credit = 'S' THEN j.posted_value ELSE -j.posted_value END) / 100.0 as betrag
+            FROM loco_journal_accountings j
+            LEFT JOIN loco_nominal_accounts n
+                ON j.nominal_account_number = n.nominal_account_number
+                AND j.subsidiary_to_company_ref = n.subsidiary_to_company_ref
+            WHERE j.accounting_date >= %s AND j.accounting_date < %s
+              AND j.nominal_account_number BETWEEN %s AND %s
+              {firma_filter}
+            GROUP BY j.nominal_account_number, n.account_description
+        """), (heute_str, morgen_str, ranges['einsatz'][0], ranges['einsatz'][1]))
+
+        for row in cur.fetchall():
+            r = dict(row)
+            konto = r.get('konto', 0)
+            betrag = float(r.get('betrag', 0) or 0)
+            for absatzweg_data in absatzweg_stats.values():
+                for k in absatzweg_data['konten']:
+                    if k['konto'] == konto:
+                        k['einsatz_heute'] += betrag
+                        break
+
+        absatzwege = []
+        for a in absatzweg_stats.values():
+            if a['umsatz_monat'] > 0 or a['einsatz_monat'] > 0:
+                stueck_heute = sum(k['stueck_heute'] for k in a['konten'])
+                umsatz_heute = sum(k['umsatz_heute'] for k in a['konten'])
+                einsatz_heute = sum(k['einsatz_heute'] for k in a['konten'])
+                absatzwege.append({
+                    'absatzweg': a['absatzweg'],
+                    'stueck_monat': a['stueck_monat'],
+                    'umsatz_monat': round(a['umsatz_monat'], 2),
+                    'einsatz_monat': round(a['einsatz_monat'], 2),
+                    'db1_monat': round(a['umsatz_monat'] - a['einsatz_monat'], 2),
+                    'stueck_heute': stueck_heute,
+                    'umsatz_heute': round(umsatz_heute, 2),
+                    'einsatz_heute': round(einsatz_heute, 2),
+                    'db1_heute': round(umsatz_heute - einsatz_heute, 2),
+                    'konten': a['konten']
+                })
+        # Sortierung wie Global Cube: Privat Kauf/Leasing, Gewerbe Kauf/Leasing, Sonstige Kauf/Leasing, Privat reg, Privat Sonstige, Sonstige Sonstige
+        _aw_order = ['Privat Kauf', 'Privat Leasing', 'Gewerbe Kauf', 'Gewerbe Leasing', 'Sonstige Kauf', 'Sonstige Leasing', 'Privat reg', 'Privat Sonstige', 'Sonstige Sonstige']
+        absatzwege.sort(key=lambda x: (_aw_order.index(x['absatzweg']) if x['absatzweg'] in _aw_order else 99, x['absatzweg']))
+        db.close()
+        return {'absatzwege': absatzwege}
+    except Exception as e:
+        print(f"⚠️  Fehler beim Abrufen von Absatzwege-Daten für {bereich}: {e}")
+        import traceback
+        traceback.print_exc()
+        if 'db' in locals():
+            db.close()
+    return {'absatzwege': []}
+
+
+def get_tek_detail_data_direct(bereich, firma, standort, monat, jahr, heute_datum=None):
+    """Holt detaillierte TEK-Daten (umsatz_gruppen + einsatz_gruppen) aus DRIVE DB. Modul-Level für Wiederverwendung in TEK Service-PDF."""
+    from api.db_connection import get_db, convert_placeholders
+    import psycopg2.extras
+    from datetime import datetime, date, timedelta
+
+    bereich_konten = {
+        '1-NW': {'umsatz': (810000, 819999), 'einsatz': (710000, 719999)},
+        '2-GW': {'umsatz': (820000, 829999), 'einsatz': (720000, 729999)},
+        '3-Teile': {'umsatz': (830000, 839999), 'einsatz': (730000, 739999)},
+        '4-Lohn': {'umsatz': (840000, 849999), 'einsatz': (740000, 749999)},
+        '5-Sonst': {'umsatz': (860000, 869999), 'einsatz': (760000, 769999)}
+    }
+    empty = {'monat': {'umsatz_gruppen': [], 'einsatz_gruppen': []}, 'heute': {'umsatz_gruppen': [], 'einsatz_gruppen': []}}
+    if bereich not in bereich_konten:
+        return empty
+    try:
+        if not monat or not jahr:
+            heute = date.today()
+            monat = monat or heute.month
+            jahr = jahr or heute.year
+        von = f"{jahr}-{monat:02d}-01"
+        bis = f"{jahr}-{monat+1:02d}-01" if monat < 12 else f"{jahr+1}-01-01"
+        if heute_datum:
+            if isinstance(heute_datum, str):
+                heute_str = datetime.strptime(heute_datum, '%d.%m.%Y').strftime('%Y-%m-%d') if '.' in heute_datum else heute_datum
+            else:
+                heute_str = heute_datum.strftime('%Y-%m-%d')
+        else:
+            heute_str = date.today().strftime('%Y-%m-%d')
+        morgen_str = (datetime.strptime(heute_str, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
+
+        firma_filter = ""
+        if firma == '1':
+            firma_filter = "AND subsidiary_to_company_ref = 1"
+            if standort == '1':
+                firma_filter += " AND branch_number = 1"
+            elif standort == '2':
+                firma_filter += " AND branch_number = 3"
+        elif firma == '2':
+            firma_filter = "AND subsidiary_to_company_ref = 2"
+
+        ranges = bereich_konten[bereich]
+        db = get_db()
+
+        def hole_gruppen(konto_range, vorzeichen_typ, datum_von, datum_bis):
+            vorz = "CASE WHEN debit_or_credit = 'S' THEN posted_value ELSE -posted_value END" if vorzeichen_typ == 'einsatz' else "CASE WHEN debit_or_credit = 'H' THEN posted_value ELSE -posted_value END"
+            cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute(convert_placeholders(f"""
+                SELECT * FROM (
+                    SELECT substr(CAST(nominal_account_number AS TEXT), 1, 2) as gruppe,
+                           SUM({vorz}) / 100.0 as betrag
+                    FROM loco_journal_accountings
+                    WHERE accounting_date >= %s AND accounting_date < %s
+                      AND nominal_account_number BETWEEN %s AND %s
+                      {firma_filter}
+                    GROUP BY substr(CAST(nominal_account_number AS TEXT), 1, 2)
+                ) sub WHERE betrag != 0 ORDER BY gruppe
+            """), (datum_von, datum_bis, konto_range[0], konto_range[1]))
+            gruppen = [{'gruppe': row['gruppe'], 'betrag': round(float(row['betrag'] or 0), 2)} for row in cur.fetchall()]
+            return gruppen
+
+        umsatz_gruppen_monat = hole_gruppen(ranges['umsatz'], 'umsatz', von, bis)
+        einsatz_gruppen_monat = hole_gruppen(ranges['einsatz'], 'einsatz', von, bis)
+        umsatz_gruppen_heute = hole_gruppen(ranges['umsatz'], 'umsatz', heute_str, morgen_str)
+        einsatz_gruppen_heute = hole_gruppen(ranges['einsatz'], 'einsatz', heute_str, morgen_str)
+        db.close()
+        return {
+            'monat': {'umsatz_gruppen': umsatz_gruppen_monat, 'einsatz_gruppen': einsatz_gruppen_monat},
+            'heute': {'umsatz_gruppen': umsatz_gruppen_heute, 'einsatz_gruppen': einsatz_gruppen_heute}
+        }
+    except Exception as e:
+        print(f"⚠️  Fehler beim Abrufen von Detail-Daten für {bereich}: {e}")
+        import traceback
+        traceback.print_exc()
+        if 'db' in locals():
+            db.close()
+    return empty
+
+
+def get_tek_bereich_konten_direct(bereich, firma, standort, monat, jahr, heute_datum=None):
+    """Holt Konten-Details für 3-Teile und 4-Lohn (wie Absatzwege für NW/GW): pro Konto Umsatz/Einsatz Heute+Monat, gepaart 83+73 bzw. 84+74."""
+    from api.db_connection import get_db, convert_placeholders
+    import psycopg2.extras
+    from datetime import datetime, date, timedelta
+
+    bereich_konten = {
+        '3-Teile': {'umsatz': (830000, 839999), 'einsatz': (730000, 739999), 'label': 'Teile (83/73)'},
+        '4-Lohn': {'umsatz': (840000, 849999), 'einsatz': (740000, 749999), 'label': 'Lohn (84/74)'}
+    }
+    if bereich not in bereich_konten:
+        return {'absatzwege': []}
+    try:
+        if not monat or not jahr:
+            heute = date.today()
+            monat = monat or heute.month
+            jahr = jahr or heute.year
+        von = f"{jahr}-{monat:02d}-01"
+        bis = f"{jahr}-{monat+1:02d}-01" if monat < 12 else f"{jahr+1}-01-01"
+        if heute_datum:
+            heute_str = datetime.strptime(heute_datum, '%d.%m.%Y').strftime('%Y-%m-%d') if isinstance(heute_datum, str) and '.' in heute_datum else (heute_datum.strftime('%Y-%m-%d') if hasattr(heute_datum, 'strftime') else str(heute_datum)[:10])
+        else:
+            heute_str = date.today().strftime('%Y-%m-%d')
+        morgen_str = (datetime.strptime(heute_str, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
+
+        firma_filter = ""
+        if firma == '1':
+            firma_filter = "AND j.subsidiary_to_company_ref = 1"
+            if standort == '1':
+                firma_filter += " AND j.branch_number = 1"
+            elif standort == '2':
+                firma_filter += " AND j.branch_number = 3"
+        elif firma == '2':
+            firma_filter = "AND j.subsidiary_to_company_ref = 2"
+
+        ranges = bereich_konten[bereich]
+        db = get_db()
+        cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # Monat: Umsatz pro Konto
+        cur.execute(convert_placeholders(f"""
+            SELECT j.nominal_account_number as konto,
+                   COALESCE(n.account_description, MIN(j.posting_text), '') as bezeichnung,
+                   SUM(CASE WHEN j.debit_or_credit = 'H' THEN j.posted_value ELSE -j.posted_value END) / 100.0 as betrag
+            FROM loco_journal_accountings j
+            LEFT JOIN loco_nominal_accounts n ON j.nominal_account_number = n.nominal_account_number AND j.subsidiary_to_company_ref = n.subsidiary_to_company_ref
+            WHERE j.accounting_date >= %s AND j.accounting_date < %s AND j.nominal_account_number BETWEEN %s AND %s {firma_filter}
+            GROUP BY j.nominal_account_number, n.account_description
+        """), (von, bis, ranges['umsatz'][0], ranges['umsatz'][1]))
+        umsatz_monat = {int(r['konto']): {'bezeichnung': r.get('bezeichnung') or '', 'umsatz_monat': float(r.get('betrag') or 0), 'einsatz_monat': 0, 'umsatz_heute': 0, 'einsatz_heute': 0} for r in cur.fetchall()}
+
+        cur.execute(convert_placeholders(f"""
+            SELECT j.nominal_account_number as konto,
+                   COALESCE(n.account_description, MIN(j.posting_text), '') as bezeichnung,
+                   SUM(CASE WHEN j.debit_or_credit = 'S' THEN j.posted_value ELSE -j.posted_value END) / 100.0 as betrag
+            FROM loco_journal_accountings j
+            LEFT JOIN loco_nominal_accounts n ON j.nominal_account_number = n.nominal_account_number AND j.subsidiary_to_company_ref = n.subsidiary_to_company_ref
+            WHERE j.accounting_date >= %s AND j.accounting_date < %s AND j.nominal_account_number BETWEEN %s AND %s {firma_filter}
+            GROUP BY j.nominal_account_number, n.account_description
+        """), (von, bis, ranges['einsatz'][0], ranges['einsatz'][1]))
+        for r in cur.fetchall():
+            k = int(r['konto'])
+            if k not in umsatz_monat:
+                umsatz_monat[k] = {'bezeichnung': r.get('bezeichnung') or '', 'umsatz_monat': 0, 'einsatz_monat': 0, 'umsatz_heute': 0, 'einsatz_heute': 0}
+            umsatz_monat[k]['einsatz_monat'] = float(r.get('betrag') or 0)
+
+        cur.execute(convert_placeholders(f"""
+            SELECT j.nominal_account_number as konto,
+                   SUM(CASE WHEN j.debit_or_credit = 'H' THEN j.posted_value ELSE -j.posted_value END) / 100.0 as betrag
+            FROM loco_journal_accountings j
+            WHERE j.accounting_date >= %s AND j.accounting_date < %s AND j.nominal_account_number BETWEEN %s AND %s {firma_filter}
+            GROUP BY j.nominal_account_number
+        """), (heute_str, morgen_str, ranges['umsatz'][0], ranges['umsatz'][1]))
+        for r in cur.fetchall():
+            k = int(r['konto'])
+            if k not in umsatz_monat:
+                umsatz_monat[k] = {'bezeichnung': '', 'umsatz_monat': 0, 'einsatz_monat': 0, 'umsatz_heute': 0, 'einsatz_heute': 0}
+            umsatz_monat[k]['umsatz_heute'] = float(r.get('betrag') or 0)
+
+        cur.execute(convert_placeholders(f"""
+            SELECT j.nominal_account_number as konto,
+                   SUM(CASE WHEN j.debit_or_credit = 'S' THEN j.posted_value ELSE -j.posted_value END) / 100.0 as betrag
+            FROM loco_journal_accountings j
+            WHERE j.accounting_date >= %s AND j.accounting_date < %s AND j.nominal_account_number BETWEEN %s AND %s {firma_filter}
+            GROUP BY j.nominal_account_number
+        """), (heute_str, morgen_str, ranges['einsatz'][0], ranges['einsatz'][1]))
+        for r in cur.fetchall():
+            k = int(r['konto'])
+            if k not in umsatz_monat:
+                umsatz_monat[k] = {'bezeichnung': '', 'umsatz_monat': 0, 'einsatz_monat': 0, 'umsatz_heute': 0, 'einsatz_heute': 0}
+            umsatz_monat[k]['einsatz_heute'] = float(r.get('betrag') or 0)
+
+        db.close()
+
+        # Paare bilden: gleiche letzte 4 Ziffern (83xxxx+73xxxx bzw. 84xxxx+74xxxx)
+        paired = {}
+        for konto, v in umsatz_monat.items():
+            key = konto % 10000
+            if key not in paired:
+                paired[key] = {'erlos': None, 'einsatz': None}
+            if ranges['umsatz'][0] <= konto <= ranges['umsatz'][1]:
+                paired[key]['erlos'] = {'konto': konto, 'bezeichnung': v['bezeichnung'], 'umsatz_heute': v['umsatz_heute'], 'umsatz_monat': v['umsatz_monat'], 'einsatz_heute': 0, 'einsatz_monat': 0, 'stueck_heute': 0, 'stueck_monat': 0}
+            elif ranges['einsatz'][0] <= konto <= ranges['einsatz'][1]:
+                paired[key]['einsatz'] = {'konto': konto, 'bezeichnung': v['bezeichnung'], 'umsatz_heute': 0, 'umsatz_monat': 0, 'einsatz_heute': v['einsatz_heute'], 'einsatz_monat': v['einsatz_monat'], 'stueck_heute': 0, 'stueck_monat': 0}
+
+        konten_list = []
+        for key in sorted(paired.keys()):
+            er, en = paired[key]['erlos'], paired[key]['einsatz']
+            ku_h = (er['umsatz_heute'] if er else 0)
+            ke_h = (en['einsatz_heute'] if en else 0)
+            ku_m = (er['umsatz_monat'] if er else 0)
+            ke_m = (en['einsatz_monat'] if en else 0)
+            bez = (er['bezeichnung'] if er else (en['bezeichnung'] if en else '')).strip()
+            konto_display = (er['konto'] if er else en['konto'])
+            konten_list.append({
+                'konto': konto_display,
+                'bezeichnung': bez or f"Konto {konto_display}",
+                'umsatz_heute': round(ku_h, 2), 'einsatz_heute': round(ke_h, 2),
+                'umsatz_monat': round(ku_m, 2), 'einsatz_monat': round(ke_m, 2),
+                'stueck_heute': 0, 'stueck_monat': 0
+            })
+
+        uh = sum(k['umsatz_heute'] for k in konten_list)
+        eh = sum(k['einsatz_heute'] for k in konten_list)
+        um = sum(k['umsatz_monat'] for k in konten_list)
+        em = sum(k['einsatz_monat'] for k in konten_list)
+        return {
+            'absatzwege': [{
+                'absatzweg': ranges['label'],
+                'stueck_heute': 0, 'stueck_monat': 0,
+                'umsatz_heute': round(uh, 2), 'einsatz_heute': round(eh, 2), 'db1_heute': round(uh - eh, 2),
+                'umsatz_monat': round(um, 2), 'einsatz_monat': round(em, 2), 'db1_monat': round(um - em, 2),
+                'konten': konten_list
+            }]
+        }
+    except Exception as e:
+        print(f"⚠️  get_tek_bereich_konten_direct {bereich}: {e}")
+        import traceback
+        traceback.print_exc()
+        if 'db' in locals():
+            try:
+                db.close()
+            except Exception:
+                pass
+    return {'absatzwege': []}
+
+
 def generate_tek_daily_pdf(data: dict) -> bytes:
     """
-    Generiert PDF für TEK (Tägliche Erfolgskontrolle) - V3 Querformat mit detaillierter Aufschlüsselung
-    TAG 215: Querformat, detaillierte Struktur wie Global Cube F.04
-    
+    Generiert PDF für TEK (Tägliche Erfolgskontrolle) – Mockup V2 (Vorlage für alle TEK-Reports).
+    Struktur: Seite 1 = Übersicht (Tag + Monat, Kern-KPIs, Bereichs-Übersicht), danach eine Seite pro KST.
+
     Args:
         data: Dict mit Keys:
             - datum: str (z.B. "22.12.2025")
             - monat: str (z.B. "Dezember 2025")
-            - gesamt: dict mit db1, marge, prognose, breakeven, breakeven_abstand
-            - bereiche: list of dicts (bereich, umsatz, einsatz, db1, marge)
-            - vormonat: dict mit db1, marge (optional)
-            - vorjahr: dict mit db1, marge (optional)
-            - firma, standort_api, monat_num, jahr_num: Für API-Calls
+            - gesamt: dict mit db1, marge, prognose, breakeven
+            - bereiche: list of dicts (bereich, umsatz, einsatz, db1, marge, heute_umsatz, heute_db1, …)
+            - firma, standort_api, monat_num, jahr_num: Für Detail-APIs (Absatzwege, Clean Park)
 
     Returns:
         bytes: PDF-Inhalt
@@ -513,691 +1051,30 @@ def generate_tek_daily_pdf(data: dict) -> bytes:
         alignment=TA_LEFT
     )
 
-    # === HEADER MIT LOGO ===
+    # === MOCKUP V2: Seite 1 = Übersicht (Tag + Monat), danach eine Seite pro KST ===
     from reportlab.platypus import Image as RLImage
     import os
 
-    logo_path = '/opt/greiner-portal/static/images/greiner-logo.png'
-
-    # Header-Tabelle mit Logo + Titel
-    logo = None
-    if os.path.exists(logo_path):
-        try:
-            # Logo mit preserveAspectRatio laden (verhindert Verzerrung)
-            from reportlab.lib.utils import ImageReader
-            img_reader = ImageReader(logo_path)
-            img_width, img_height = img_reader.getSize()
-            aspect_ratio = img_width / img_height
-            
-            # Maximale Breite: 3cm, Höhe proportional
-            logo_width = 3*cm
-            logo_height = logo_width / aspect_ratio
-            logo = RLImage(logo_path, width=logo_width, height=logo_height, preserveAspectRatio=True)
-        except:
-            logo = None
-
-    if logo:
-        # Header mit Logo links, Titel rechts
-        header_data = [[logo, Paragraph("<b>TEK - Tägliche Erfolgskontrolle</b>", title_style)]]
-        header_table = Table(header_data, colWidths=[4*cm, 14*cm])
-        header_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), DRIVE_BLUE),
-            ('TEXTCOLOR', (1, 0), (1, 0), colors.white),
-            ('ALIGN', (0, 0), (0, 0), 'LEFT'),
-            ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('TOPPADDING', (0, 0), (-1, -1), 8),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-            ('LEFTPADDING', (0, 0), (0, 0), 15),
-            ('RIGHTPADDING', (1, 0), (1, 0), 15),
-        ]))
-    else:
-        # Fallback ohne Logo
-        header_data = [[Paragraph("<b>📊 TEK - Tägliche Erfolgskontrolle</b>", title_style)]]
-        header_table = Table(header_data, colWidths=[18*cm])
-        header_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), DRIVE_BLUE),
-            ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('TOPPADDING', (0, 0), (-1, -1), 15),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 15),
-        ]))
-
-    elements.append(header_table)
-    elements.append(Spacer(1, 2))
-
-    # Subtitle Box (bei Filiale: Standort anzeigen)
-    monat_text = data.get('monat', 'Aktueller Monat')
-    standort_name = (data.get('standort_name') or '').strip()
-    if standort_name and standort_name.lower() != 'gesamt':
-        subtitle_text = f"<b>Standort {standort_name}</b> • {monat_text} • Stand: {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr"
-    else:
-        subtitle_text = f"<b>{monat_text}</b> • Stand: {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr"
-    subtitle_data = [[Paragraph(subtitle_text, subtitle_style)]]
-    subtitle_table = Table(subtitle_data, colWidths=[18*cm])
-    subtitle_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), GRAY_LIGHT),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-    ]))
-    elements.append(subtitle_table)
-    elements.append(Spacer(1, 10))
-
-    # === VORMONAT / VORJAHR VERGLEICH (PROMINENT OBEN!) ===
-    # TAG 215: Performance-Vergleich mit HOCHGERECHNETER Prognose (nicht absolut)
     gesamt = data.get('gesamt', {})
     vormonat = data.get('vormonat', {})
     vorjahr = data.get('vorjahr', {})
-    
-    # Hochgerechnete Prognose für Vergleich verwenden
-    prognose_db1 = gesamt.get('prognose', gesamt.get('db1', 0))
-
-    if vormonat or vorjahr:
-        # Vergleichs-Header
-        elements.append(Paragraph("📈 Performance-Vergleich (Prognose vs. Abschluss)", section_style))
-
-        vergleich_data = [['', 'DB1', 'Trend', 'Δ DB1']]
-
-        # Vormonat
-        if vormonat:
-            vm_db1 = vormonat.get('db1', 0)
-            diff_db1_vm = prognose_db1 - vm_db1 if vm_db1 else 0
-            diff_percent_vm = ((prognose_db1 / vm_db1 - 1) * 100) if vm_db1 else 0
-
-            if diff_db1_vm > 0:
-                trend_vm = '↑'
-                trend_color_vm = SUCCESS
-                diff_text_vm = f"+{format_currency_short(diff_db1_vm)}"
-            elif diff_db1_vm < 0:
-                trend_vm = '↓'
-                trend_color_vm = DANGER
-                diff_text_vm = format_currency_short(diff_db1_vm)
-            else:
-                trend_vm = '→'
-                trend_color_vm = GRAY
-                diff_text_vm = "±0 €"
-
-            vergleich_data.append([
-                '🔸 vs. Vormonat',
-                format_currency_short(vm_db1),
-                trend_vm,
-                diff_text_vm
-            ])
-
-        # Vorjahr (gleicher Monat)
-        if vorjahr:
-            vj_db1 = vorjahr.get('db1', 0)
-            diff_db1_vj = prognose_db1 - vj_db1 if vj_db1 else 0
-            diff_percent_vj = ((prognose_db1 / vj_db1 - 1) * 100) if vj_db1 else 0
-
-            if diff_db1_vj > 0:
-                trend_vj = '↑'
-                trend_color_vj = SUCCESS
-                diff_text_vj = f"+{format_currency_short(diff_db1_vj)}"
-            elif diff_db1_vj < 0:
-                trend_vj = '↓'
-                trend_color_vj = DANGER
-                diff_text_vj = format_currency_short(diff_db1_vj)
-            else:
-                trend_vj = '→'
-                trend_color_vj = GRAY
-                diff_text_vj = "±0 €"
-
-            vergleich_data.append([
-                '🔹 vs. Vorjahresmonat',
-                format_currency_short(vj_db1),
-                trend_vj,
-                diff_text_vj
-            ])
-
-        vergleich_table = Table(vergleich_data, colWidths=[5*cm, 4*cm, 2.5*cm, 6.5*cm])
-        vergleich_style_list = [
-            ('BACKGROUND', (0, 0), (-1, 0), GRAY_DARK),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 9),
-            ('FONTSIZE', (0, 1), (-1, -1), 11),
-            ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-            ('ALIGN', (0, 1), (0, -1), 'LEFT'),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
-            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#e5e7eb')),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, GRAY_LIGHT]),
-        ]
-
-        # Trend-Farben
-        row = 1
-        if vormonat:
-            diff_db1_vm = prognose_db1 - vormonat.get('db1', 0)
-            trend_color_vm = SUCCESS if diff_db1_vm > 0 else (DANGER if diff_db1_vm < 0 else GRAY)
-            vergleich_style_list.append(('TEXTCOLOR', (2, row), (2, row), trend_color_vm))
-            vergleich_style_list.append(('FONTSIZE', (2, row), (2, row), 18))
-            vergleich_style_list.append(('TEXTCOLOR', (3, row), (3, row), trend_color_vm))
-            row += 1
-
-        if vorjahr:
-            diff_db1_vj = prognose_db1 - vorjahr.get('db1', 0)
-            trend_color_vj = SUCCESS if diff_db1_vj > 0 else (DANGER if diff_db1_vj < 0 else GRAY)
-            vergleich_style_list.append(('TEXTCOLOR', (2, row), (2, row), trend_color_vj))
-            vergleich_style_list.append(('FONTSIZE', (2, row), (2, row), 18))
-            vergleich_style_list.append(('TEXTCOLOR', (3, row), (3, row), trend_color_vj))
-
-        vergleich_table.setStyle(TableStyle(vergleich_style_list))
-        elements.append(vergleich_table)
-        elements.append(Spacer(1, 10))
-
-    # === GESAMT KPIs (MODERN CARD DESIGN) ===
-    # TAG 215: Marge für Gesamtbeträge entfernt, Breakeven hochgerechnet
-    elements.append(Paragraph("💰 Aktuelle Kennzahlen", section_style))
-
     prognose_db1 = gesamt.get('prognose', gesamt.get('db1', 0))
     breakeven_absolut = gesamt.get('breakeven', 0)
-    
-    # Breakeven-Abstand: Prognose vs. Breakeven (hochgerechnet, nicht absolut)
     breakeven_abstand = prognose_db1 - breakeven_absolut
 
-    # Card-Style KPI-Box (ohne Marge für Gesamt)
-    kpi_data = [
-        ['', 'DB1 Aktuell', 'Prognose', 'Breakeven', 'Abstand'],
-        [
-            '💵',
-            format_currency_short(gesamt.get('db1', 0)),
-            format_currency_short(prognose_db1),
-            format_currency_short(breakeven_absolut),
-            format_currency_short(breakeven_abstand)
-        ]
-    ]
-
-    kpi_table = Table(kpi_data, colWidths=[1.5*cm, 3.8*cm, 3.8*cm, 3.8*cm, 5.1*cm])
-    kpi_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), PRIMARY),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 10),
-        ('FONTSIZE', (0, 1), (0, 1), 20),  # Icon größer
-        ('FONTSIZE', (1, 1), (-1, 1), 18),  # Zahlen groß
-        ('FONTNAME', (1, 1), (-1, 1), 'Helvetica-Bold'),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
-        ('TOPPADDING', (0, 0), (-1, -1), 12),
-        ('GRID', (0, 0), (-1, -1), 1.5, colors.white),
-        ('BACKGROUND', (0, 1), (-1, 1), GRAY_LIGHT),
-        # Abstand-Farbe
-        ('TEXTCOLOR', (4, 1), (4, 1), SUCCESS if breakeven_abstand >= 0 else DANGER),
-    ]))
-
-    elements.append(kpi_table)
-    elements.append(Spacer(1, 12))
-
-    # Breakeven-Status-Box (mit Icon) - hochgerechnet
-    if breakeven_abstand >= 0:
-        be_color = SUCCESS
-        be_icon = '✅'
-        be_text = f"{be_icon} +{format_currency_short(breakeven_abstand)} ÜBER Breakeven (Prognose)"
+    # Datum/Heute für Übersicht
+    datum_str = data.get('datum', '')
+    if datum_str:
+        try:
+            heute_datum = datetime.strptime(datum_str, '%d.%m.%Y').strftime('%Y-%m-%d')
+        except Exception:
+            heute_datum = datetime.now().strftime('%Y-%m-%d')
     else:
-        be_color = DANGER
-        be_icon = '⚠️'
-        be_text = f"{be_icon} {format_currency_short(breakeven_abstand)} UNTER Breakeven (Prognose)"
+        heute_datum = datetime.now().strftime('%Y-%m-%d')
+    monat_num = data.get('monat_num') or (datetime.strptime(datum_str, '%d.%m.%Y').month if datum_str else datetime.now().month)
+    jahr_num = data.get('jahr_num') or (datetime.strptime(datum_str, '%d.%m.%Y').year if datum_str else datetime.now().year)
 
-    be_status_data = [[be_text]]
-    be_status_table = Table(be_status_data, colWidths=[18*cm])
-    be_status_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), be_color),
-        ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
-        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 14),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
-        ('TOPPADDING', (0, 0), (-1, -1), 12),
-    ]))
-    elements.append(be_status_table)
-    elements.append(Spacer(1, 20))
-
-    # === TAG 215: DETAILLIERTE AUFSCHLÜSSELUNG (wie Global Cube F.04) ===
-    # Querformat ermöglicht detaillierte Darstellung mit Heute und Monat nebeneinander
-    # Überschrift - kompakt und passend zum Design
-    elements.append(Paragraph("📊 KST-Aufschlüsselung", section_style))
-    
-    # Helper-Funktion: Holt detaillierte Daten direkt aus PostgreSQL
-    def get_tek_absatzwege_direct(bereich, firma, standort, monat, jahr, heute_datum=None):
-        """Holt Absatzwege-Daten direkt aus DRIVE DB (drive_portal) - Single Source of Truth (nur für NW/GW)"""
-        from api.db_connection import get_db, convert_placeholders
-        import psycopg2.extras
-        from datetime import datetime, date, timedelta
-        import re
-        
-        # Nur für NW/GW
-        if bereich not in ['1-NW', '2-GW']:
-            return {'absatzwege': []}
-        
-        try:
-            # Fallback für monat/jahr wenn None
-            if not monat or not jahr:
-                heute = date.today()
-                monat = monat or heute.month
-                jahr = jahr or heute.year
-            
-            # Datum-Strings
-            von = f"{jahr}-{monat:02d}-01"
-            bis = f"{jahr}-{monat+1:02d}-01" if monat < 12 else f"{jahr+1}-01-01"
-            
-            # Heute-Datum parsen
-            if heute_datum:
-                if isinstance(heute_datum, str):
-                    if '.' in heute_datum:
-                        heute_str = datetime.strptime(heute_datum, '%d.%m.%Y').strftime('%Y-%m-%d')
-                    else:
-                        heute_str = heute_datum
-                else:
-                    heute_str = heute_datum.strftime('%Y-%m-%d')
-            else:
-                heute_str = date.today().strftime('%Y-%m-%d')
-            
-            morgen_str = (datetime.strptime(heute_str, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
-            
-            # Firma/Standort-Filter
-            firma_filter = ""
-            if firma == '1':
-                firma_filter = "AND j.subsidiary_to_company_ref = 1"
-                if standort == '1':
-                    firma_filter += " AND j.branch_number = 1"
-                elif standort == '2':
-                    firma_filter += " AND j.branch_number = 3"
-            elif firma == '2':
-                firma_filter = "AND j.subsidiary_to_company_ref = 2"
-            
-            # Bereichs-Konten
-            bereich_konten = {
-                '1-NW': {'umsatz': (810000, 819999), 'einsatz': (710000, 719999)},
-                '2-GW': {'umsatz': (820000, 829999), 'einsatz': (720000, 729999)}
-            }
-            ranges = bereich_konten[bereich]
-            
-            # Parse-Funktionen (vereinfacht aus controlling_routes.py)
-            def parse_modell_aus_kontobezeichnung(bezeichnung: str) -> dict:
-                if not bezeichnung:
-                    return {'modell': 'Sonstige', 'kundentyp': '', 'verkaufsart': ''}
-                bez = bezeichnung.strip()
-                
-                # GW-Sonderbehandlung
-                gw_match = re.match(r'(?:VE |EW )?GW (?:aus |a\.)?([\w/]+)\s+(?:an\s+)?(.+)', bez)
-                if gw_match:
-                    herkunft_raw = gw_match.group(1)
-                    rest = gw_match.group(2).strip()
-                    herkunft_mapping = {'Eint': 'Eintausch', 'Zuk': 'Zukauf', 'Leasing': 'Leasing', 'Rent/VW': 'Rent/Vermitwg', 'Rent': 'Rent/Vermitwg'}
-                    herkunft = herkunft_mapping.get(herkunft_raw, herkunft_raw)
-                    modell = f"GW {herkunft}"
-                    kundentyp = ''
-                    verkaufsart = ''
-                    kundentyp_patterns = [('Gewerbekd ', 'Gewerbe'), ('Gewdkd ', 'Gewerbe'), ('Gewkd ', 'Gewerbe'), ('Großkunden ', 'Großkunde'), ('Großkd ', 'Großkunde'), ('Kunden ', 'Privat'), ('KD ', 'Privat'), ('Kd ', 'Privat'), ('Händler ', 'Händler')]
-                    for pattern, typ in kundentyp_patterns:
-                        if rest.startswith(pattern) or f' {pattern}' in f' {rest}':
-                            kundentyp = typ
-                            rest = rest.replace(pattern.strip(), '').strip()
-                            break
-                    verkaufsart = rest.strip()
-                    return {'modell': modell, 'kundentyp': kundentyp, 'verkaufsart': verkaufsart}
-                
-                # NW-Verarbeitung
-                for prefix in ['NW VE ', 'NW EW ', 'GW VE ', 'GW EW ', 'VE ', 'EW ']:
-                    if bez.startswith(prefix):
-                        bez = bez[len(prefix):]
-                        break
-                
-                kundentyp_patterns = [('Gewerbekd ', 'Gewerbe'), ('Gewdkd ', 'Gewerbe'), ('Gewkd ', 'Gewerbe'), ('Großkunden ', 'Großkunde'), ('Großkd ', 'Großkunde'), ('Kunden ', 'Privat'), ('KD ', 'Privat'), ('Kd ', 'Privat'), ('Händler ', 'Händler')]
-                modell = bez
-                kundentyp = ''
-                verkaufsart = ''
-                
-                for pattern, typ in kundentyp_patterns:
-                    idx = bez.find(f' {pattern.strip()}')
-                    if idx == -1:
-                        idx = bez.find(pattern.strip())
-                    if idx != -1:
-                        modell = bez[:idx].strip()
-                        rest = bez[idx:].strip()
-                        kundentyp = typ
-                        rest = rest.replace(pattern.strip(), '').strip()
-                        verkaufsart = rest
-                        break
-                
-                return {'modell': modell, 'kundentyp': kundentyp, 'verkaufsart': verkaufsart}
-            
-            def normalisiere_kundentyp(kundentyp: str) -> str:
-                mapping = {'Privat': 'Privat', 'Gewerbe': 'Gewerbe', 'Großkunde': 'Sonstige', 'Händler': 'Sonstige'}
-                return mapping.get(kundentyp, 'Sonstige')
-            
-            def normalisiere_verkaufsart(verkaufsart: str) -> str:
-                verkaufsart_lower = verkaufsart.lower()
-                if 'leas' in verkaufsart_lower:
-                    return 'Leasing'
-                elif 'kauf' in verkaufsart_lower:
-                    return 'Kauf'
-                elif 'reg' in verkaufsart_lower or 'regulär' in verkaufsart_lower:
-                    return 'reg'
-                else:
-                    return 'Sonstige'
-            
-            absatzweg_stats = {}
-            
-            # TAG 215: Nutze DRIVE DB (drive_portal) als Single Source of Truth
-            db = get_db()
-            cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            
-            # 1. Umsatz-Konten (aus DRIVE DB mit JOIN zu loco_nominal_accounts für Bezeichnungen)
-            cur.execute(convert_placeholders(f"""
-                SELECT
-                    j.nominal_account_number as konto,
-                    COALESCE(n.account_description, MIN(j.posting_text), '') as bezeichnung,
-                    SUM(CASE WHEN j.debit_or_credit = 'H' THEN j.posted_value ELSE -j.posted_value END) / 100.0 as betrag,
-                    COUNT(DISTINCT SUBSTRING(j.vehicle_reference FROM 'FG:([A-Z0-9]+)')) as stueck
-                FROM loco_journal_accountings j
-                LEFT JOIN loco_nominal_accounts n
-                    ON j.nominal_account_number = n.nominal_account_number
-                    AND j.subsidiary_to_company_ref = n.subsidiary_to_company_ref
-                WHERE j.accounting_date >= %s AND j.accounting_date < %s
-                  AND j.nominal_account_number BETWEEN %s AND %s
-                  {firma_filter}
-                GROUP BY j.nominal_account_number, n.account_description
-            """), (von, bis, ranges['umsatz'][0], ranges['umsatz'][1]))
-            
-            for row in cur.fetchall():
-                r = dict(row)
-                konto = r.get('konto', 0)
-                bezeichnung = r.get('bezeichnung', '') or ''
-                betrag = float(r.get('betrag', 0) or 0)
-                stueck = int(r.get('stueck', 0) or 0)
-                
-                parsed = parse_modell_aus_kontobezeichnung(bezeichnung)
-                kundentyp = normalisiere_kundentyp(parsed['kundentyp'])
-                verkaufsart = normalisiere_verkaufsart(parsed['verkaufsart'])
-                absatzweg = f"{kundentyp} {verkaufsart}".strip() or 'Sonstige'
-                
-                if absatzweg not in absatzweg_stats:
-                    absatzweg_stats[absatzweg] = {'absatzweg': absatzweg, 'stueck_monat': 0, 'umsatz_monat': 0, 'einsatz_monat': 0, 'konten': []}
-                
-                absatzweg_stats[absatzweg]['stueck_monat'] += stueck
-                absatzweg_stats[absatzweg]['umsatz_monat'] += betrag
-                absatzweg_stats[absatzweg]['konten'].append({
-                    'konto': konto,
-                    'bezeichnung': bezeichnung,
-                    'umsatz_monat': betrag,
-                    'einsatz_monat': 0,
-                    'stueck_monat': stueck,
-                    'umsatz_heute': 0,
-                    'einsatz_heute': 0,
-                    'stueck_heute': 0
-                })
-            
-            # 2. Einsatz-Konten (aus DRIVE DB mit JOIN zu loco_nominal_accounts für Bezeichnungen)
-            cur.execute(convert_placeholders(f"""
-                SELECT
-                    j.nominal_account_number as konto,
-                    COALESCE(n.account_description, MIN(j.posting_text), '') as bezeichnung,
-                    SUM(CASE WHEN j.debit_or_credit = 'S' THEN j.posted_value ELSE -j.posted_value END) / 100.0 as betrag
-                FROM loco_journal_accountings j
-                LEFT JOIN loco_nominal_accounts n
-                    ON j.nominal_account_number = n.nominal_account_number
-                    AND j.subsidiary_to_company_ref = n.subsidiary_to_company_ref
-                WHERE j.accounting_date >= %s AND j.accounting_date < %s
-                  AND j.nominal_account_number BETWEEN %s AND %s
-                  {firma_filter}
-                GROUP BY j.nominal_account_number, n.account_description
-            """), (von, bis, ranges['einsatz'][0], ranges['einsatz'][1]))
-            
-            for row in cur.fetchall():
-                r = dict(row)
-                bezeichnung = r.get('bezeichnung', '') or ''
-                betrag = float(r.get('betrag', 0) or 0)
-                konto = r.get('konto', 0)
-                
-                parsed = parse_modell_aus_kontobezeichnung(bezeichnung)
-                kundentyp = normalisiere_kundentyp(parsed['kundentyp'])
-                verkaufsart = normalisiere_verkaufsart(parsed['verkaufsart'])
-                absatzweg = f"{kundentyp} {verkaufsart}".strip() or 'Sonstige'
-                
-                if absatzweg not in absatzweg_stats:
-                    absatzweg_stats[absatzweg] = {'absatzweg': absatzweg, 'stueck_monat': 0, 'umsatz_monat': 0, 'einsatz_monat': 0, 'konten': []}
-                
-                absatzweg_stats[absatzweg]['einsatz_monat'] += betrag
-                
-                # Konto finden und Einsatz hinzufügen
-                konto_gefunden = False
-                for k in absatzweg_stats[absatzweg]['konten']:
-                    if k['konto'] == konto:
-                        k['einsatz_monat'] += betrag
-                        konto_gefunden = True
-                        break
-                if not konto_gefunden:
-                    absatzweg_stats[absatzweg]['konten'].append({
-                        'konto': konto,
-                        'bezeichnung': bezeichnung,
-                        'umsatz_monat': 0,
-                        'einsatz_monat': betrag,
-                        'stueck_monat': 0,
-                        'umsatz_heute': 0,
-                        'einsatz_heute': 0,
-                        'stueck_heute': 0
-                    })
-            
-            # 3. Heute-Daten (Umsatz) (aus DRIVE DB mit JOIN zu loco_nominal_accounts für Bezeichnungen)
-            cur.execute(convert_placeholders(f"""
-                SELECT
-                    j.nominal_account_number as konto,
-                    COALESCE(n.account_description, MIN(j.posting_text), '') as bezeichnung,
-                    SUM(CASE WHEN j.debit_or_credit = 'H' THEN j.posted_value ELSE -j.posted_value END) / 100.0 as betrag,
-                    COUNT(DISTINCT SUBSTRING(j.vehicle_reference FROM 'FG:([A-Z0-9]+)')) as stueck
-                FROM loco_journal_accountings j
-                LEFT JOIN loco_nominal_accounts n
-                    ON j.nominal_account_number = n.nominal_account_number
-                    AND j.subsidiary_to_company_ref = n.subsidiary_to_company_ref
-                WHERE j.accounting_date >= %s AND j.accounting_date < %s
-                  AND j.nominal_account_number BETWEEN %s AND %s
-                  {firma_filter}
-                GROUP BY j.nominal_account_number, n.account_description
-            """), (heute_str, morgen_str, ranges['umsatz'][0], ranges['umsatz'][1]))
-            
-            for row in cur.fetchall():
-                r = dict(row)
-                konto = r.get('konto', 0)
-                bezeichnung = r.get('bezeichnung', '') or ''
-                betrag = float(r.get('betrag', 0) or 0)
-                stueck = int(r.get('stueck', 0) or 0)
-                
-                parsed = parse_modell_aus_kontobezeichnung(bezeichnung)
-                kundentyp = normalisiere_kundentyp(parsed['kundentyp'])
-                verkaufsart = normalisiere_verkaufsart(parsed['verkaufsart'])
-                absatzweg = f"{kundentyp} {verkaufsart}".strip() or 'Sonstige'
-                
-                if absatzweg in absatzweg_stats:
-                    # Konto finden und Heute-Daten hinzufügen
-                    for k in absatzweg_stats[absatzweg]['konten']:
-                        if k['konto'] == konto:
-                            k['umsatz_heute'] += betrag
-                            k['stueck_heute'] += stueck
-                            break
-            
-            # 4. Heute-Daten (Einsatz) (aus DRIVE DB mit JOIN zu loco_nominal_accounts für Bezeichnungen)
-            cur.execute(convert_placeholders(f"""
-                SELECT
-                    j.nominal_account_number as konto,
-                    COALESCE(n.account_description, MIN(j.posting_text), '') as bezeichnung,
-                    SUM(CASE WHEN j.debit_or_credit = 'S' THEN j.posted_value ELSE -j.posted_value END) / 100.0 as betrag
-                FROM loco_journal_accountings j
-                LEFT JOIN loco_nominal_accounts n
-                    ON j.nominal_account_number = n.nominal_account_number
-                    AND j.subsidiary_to_company_ref = n.subsidiary_to_company_ref
-                WHERE j.accounting_date >= %s AND j.accounting_date < %s
-                  AND j.nominal_account_number BETWEEN %s AND %s
-                  {firma_filter}
-                GROUP BY j.nominal_account_number, n.account_description
-            """), (heute_str, morgen_str, ranges['einsatz'][0], ranges['einsatz'][1]))
-            
-            for row in cur.fetchall():
-                r = dict(row)
-                konto = r.get('konto', 0)
-                betrag = float(r.get('betrag', 0) or 0)
-                
-                # Konto in allen Absatzwegen finden
-                for absatzweg_key, absatzweg_data in absatzweg_stats.items():
-                    for k in absatzweg_data['konten']:
-                        if k['konto'] == konto:
-                            k['einsatz_heute'] += betrag
-                            break
-            
-            # Absatzwege in Liste umwandeln
-            absatzwege = []
-            for a in absatzweg_stats.values():
-                if a['umsatz_monat'] > 0 or a['einsatz_monat'] > 0:
-                    # Heute-Summen berechnen
-                    stueck_heute = sum(k['stueck_heute'] for k in a['konten'])
-                    umsatz_heute = sum(k['umsatz_heute'] for k in a['konten'])
-                    einsatz_heute = sum(k['einsatz_heute'] for k in a['konten'])
-                    
-                    absatzwege.append({
-                        'absatzweg': a['absatzweg'],
-                        'stueck_monat': a['stueck_monat'],
-                        'umsatz_monat': round(a['umsatz_monat'], 2),
-                        'einsatz_monat': round(a['einsatz_monat'], 2),
-                        'db1_monat': round(a['umsatz_monat'] - a['einsatz_monat'], 2),
-                        'stueck_heute': stueck_heute,
-                        'umsatz_heute': round(umsatz_heute, 2),
-                        'einsatz_heute': round(einsatz_heute, 2),
-                        'db1_heute': round(umsatz_heute - einsatz_heute, 2),
-                        'konten': a['konten']
-                    })
-            
-            absatzwege.sort(key=lambda x: x['absatzweg'])
-            
-            db.close()
-            return {'absatzwege': absatzwege}
-        except Exception as e:
-            print(f"⚠️  Fehler beim Abrufen von Absatzwege-Daten für {bereich}: {e}")
-            import traceback
-            traceback.print_exc()
-            if 'db' in locals():
-                db.close()
-        return {'absatzwege': []}
-    
-    def get_tek_detail_data_direct(bereich, firma, standort, monat, jahr, heute_datum=None):
-        """Holt detaillierte TEK-Daten direkt aus DRIVE DB (drive_portal) - Single Source of Truth (umsatz_gruppen + einsatz_gruppen)"""
-        from api.db_connection import get_db, convert_placeholders
-        import psycopg2.extras
-        from datetime import datetime, date, timedelta
-        
-        try:
-            # Fallback für monat/jahr wenn None
-            if not monat or not jahr:
-                heute = date.today()
-                monat = monat or heute.month
-                jahr = jahr or heute.year
-            
-            # Datum-Strings
-            von = f"{jahr}-{monat:02d}-01"
-            bis = f"{jahr}-{monat+1:02d}-01" if monat < 12 else f"{jahr+1}-01-01"
-            
-            # Heute-Datum parsen
-            if heute_datum:
-                if isinstance(heute_datum, str):
-                    # Format: "DD.MM.YYYY" oder "YYYY-MM-DD"
-                    if '.' in heute_datum:
-                        heute_str = datetime.strptime(heute_datum, '%d.%m.%Y').strftime('%Y-%m-%d')
-                    else:
-                        heute_str = heute_datum
-                else:
-                    heute_str = heute_datum.strftime('%Y-%m-%d')
-            else:
-                heute_str = date.today().strftime('%Y-%m-%d')
-            
-            morgen_str = (datetime.strptime(heute_str, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
-            
-            # Firma/Standort-Filter
-            firma_filter = ""
-            if firma == '1':
-                firma_filter = "AND subsidiary_to_company_ref = 1"
-                if standort == '1':
-                    firma_filter += " AND branch_number = 1"
-                elif standort == '2':
-                    firma_filter += " AND branch_number = 3"
-            elif firma == '2':
-                firma_filter = "AND subsidiary_to_company_ref = 2"
-            
-            # Bereichs-Mapping
-            bereich_konten = {
-                '1-NW': {'umsatz': (810000, 819999), 'einsatz': (710000, 719999)},
-                '2-GW': {'umsatz': (820000, 829999), 'einsatz': (720000, 729999)},
-                '3-Teile': {'umsatz': (830000, 839999), 'einsatz': (730000, 739999)},
-                '4-Lohn': {'umsatz': (840000, 849999), 'einsatz': (740000, 749999)},
-                '5-Sonst': {'umsatz': (860000, 869999), 'einsatz': (760000, 769999)}
-            }
-            
-            if bereich not in bereich_konten:
-                return {'monat': {'umsatz_gruppen': [], 'einsatz_gruppen': []}, 'heute': {'umsatz_gruppen': [], 'einsatz_gruppen': []}}
-            
-            ranges = bereich_konten[bereich]
-            
-            # TAG 215: Nutze DRIVE DB (drive_portal) als Single Source of Truth
-            db = get_db()
-            
-            def hole_gruppen(konto_range, vorzeichen_typ, datum_von, datum_bis):
-                """Holt Gruppen-Daten für einen Zeitraum"""
-                if vorzeichen_typ == 'einsatz':
-                    vorzeichen = "CASE WHEN debit_or_credit = 'S' THEN posted_value ELSE -posted_value END"
-                else:
-                    vorzeichen = "CASE WHEN debit_or_credit = 'H' THEN posted_value ELSE -posted_value END"
-                
-                cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-                cur.execute(convert_placeholders(f"""
-                    SELECT * FROM (
-                        SELECT
-                            substr(CAST(nominal_account_number AS TEXT), 1, 2) as gruppe,
-                            SUM({vorzeichen}) / 100.0 as betrag
-                        FROM loco_journal_accountings
-                        WHERE accounting_date >= %s AND accounting_date < %s
-                          AND nominal_account_number BETWEEN %s AND %s
-                          {firma_filter}
-                        GROUP BY substr(CAST(nominal_account_number AS TEXT), 1, 2)
-                    ) sub WHERE betrag != 0
-                    ORDER BY gruppe
-                """), (datum_von, datum_bis, konto_range[0], konto_range[1]))
-                
-                gruppen = []
-                for row in cur.fetchall():
-                    gruppen.append({
-                        'gruppe': row['gruppe'],
-                        'betrag': round(float(row['betrag'] or 0), 2)
-                    })
-                return gruppen
-            
-            # Monat-Daten
-            umsatz_gruppen_monat = hole_gruppen(ranges['umsatz'], 'umsatz', von, bis)
-            einsatz_gruppen_monat = hole_gruppen(ranges['einsatz'], 'einsatz', von, bis)
-            
-            # Heute-Daten
-            umsatz_gruppen_heute = hole_gruppen(ranges['umsatz'], 'umsatz', heute_str, morgen_str)
-            einsatz_gruppen_heute = hole_gruppen(ranges['einsatz'], 'einsatz', heute_str, morgen_str)
-            
-            db.close()
-            return {
-                'monat': {
-                    'umsatz_gruppen': umsatz_gruppen_monat,
-                    'einsatz_gruppen': einsatz_gruppen_monat
-                },
-                'heute': {
-                    'umsatz_gruppen': umsatz_gruppen_heute,
-                    'einsatz_gruppen': einsatz_gruppen_heute
-                }
-            }
-        except Exception as e:
-            print(f"⚠️  Fehler beim Abrufen von Detail-Daten für {bereich}: {e}")
-            import traceback
-            traceback.print_exc()
-            if 'db' in locals():
-                db.close()
-        return {'monat': {'umsatz_gruppen': [], 'einsatz_gruppen': []}, 'heute': {'umsatz_gruppen': [], 'einsatz_gruppen': []}}
-    
-    # KST-Mapping
+    # KST-Reihenfolge und Namen (Mockup V2)
     KST_MAPPING = {
         '1-NW': {'kst': '1', 'name': 'Neuwagen', 'order': 1, 'show_stueck': True},
         '2-GW': {'kst': '2', 'name': 'Gebrauchtwagen', 'order': 2, 'show_stueck': True},
@@ -1205,85 +1082,140 @@ def generate_tek_daily_pdf(data: dict) -> bytes:
         '3-Teile': {'kst': '6', 'name': 'Teile & Zubehör', 'order': 4, 'show_stueck': False},
         '5-Sonst': {'kst': '7', 'name': 'Sonstige', 'order': 5, 'show_stueck': False}
     }
-    
-    # Bereiche nach KST-Reihenfolge sortieren
     bereiche_sorted = sorted(
         data.get('bereiche', []),
         key=lambda b: KST_MAPPING.get(b.get('bereich', ''), {}).get('order', 99)
     )
-    
-    # TAG 215: Detaillierte Tabelle im Querformat (wie Global Cube F.04)
-    # Struktur: Bereich -> Absatzweg -> Marke (wo verfügbar)
-    # Spalten: Heute (Menge, Umsatzerlöse, Einsatzwerte, DB 1 ber., DB 1 in % ber.) | Monat kumuliert (gleiche Spalten)
-    # Datum parsen: "DD.MM.YYYY" -> "YYYY-MM-DD"
-    datum_str = data.get('datum', '')
-    if datum_str:
+
+    # Gesamt Heute aus Bereichen (für Kern-KPIs)
+    gesamt_heute_db1 = sum(b.get('heute_db1', 0) for b in data.get('bereiche', []))
+    gesamt_heute_umsatz = sum(b.get('heute_umsatz', 0) for b in data.get('bereiche', []))
+    gesamt_heute_marge = (gesamt_heute_db1 / gesamt_heute_umsatz * 100) if gesamt_heute_umsatz > 0 else 0
+
+    # Header mit Logo
+    logo_path = '/opt/greiner-portal/static/images/greiner-logo.png'
+    logo = None
+    if os.path.exists(logo_path):
         try:
-            # Format: "06.02.2026" -> "2026-02-06"
-            heute_datum = datetime.strptime(datum_str, '%d.%m.%Y').strftime('%Y-%m-%d')
-        except:
-            heute_datum = datetime.now().strftime('%Y-%m-%d')
+            from reportlab.lib.utils import ImageReader
+            img_reader = ImageReader(logo_path)
+            img_width, img_height = img_reader.getSize()
+            aspect_ratio = img_width / img_height
+            logo_width = 3*cm
+            logo_height = logo_width / aspect_ratio
+            logo = RLImage(logo_path, width=logo_width, height=logo_height, preserveAspectRatio=True)
+        except Exception:
+            logo = None
+
+    if logo:
+        header_data = [[logo, Paragraph("<b>TEK - Tägliche Erfolgskontrolle</b>", title_style)]]
+        header_table = Table(header_data, colWidths=[4*cm, 14*cm])
+        header_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), DRIVE_BLUE),
+            ('TEXTCOLOR', (1, 0), (1, 0), colors.white),
+            ('ALIGN', (0, 0), (0, 0), 'LEFT'), ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 8), ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('LEFTPADDING', (0, 0), (0, 0), 15), ('RIGHTPADDING', (1, 0), (1, 0), 15),
+        ]))
     else:
-        heute_datum = datetime.now().strftime('%Y-%m-%d')
-    
-    # Haupttabelle mit detaillierter Struktur
-    # TAG 215: Für NW/GW zusätzliche Spalte "DB/Stück" vor "DB1 %"
-    # Überschriften: kurze, eindeutige Labels damit keine Überlappung mit Nachbarspalten
-    detail_header = ['', '', 'Heute', '', '', '', '', '', 'Monat kumuliert', '', '', '', '', '']
-    _sub_labels = ['KST', 'Bereich/Absatzweg', 'Menge', 'Umsatzerlöse', 'Einsatzwerte', 'DB 1 ber.', 'DB/Stück', 'DB1 %', 'Menge', 'Umsatzerlöse', 'Einsatzwerte', 'DB 1 ber.', 'DB/Stück', 'DB1 %']
-    subheader_style = ParagraphStyle(
-        'TEKSubHeader',
-        parent=getSampleStyleSheet()['Normal'],
-        fontSize=8,
-        alignment=TA_CENTER,
-        wordWrap='CJK'  # Umbruch innerhalb der Zelle
-    )
-    detail_subheader = [Paragraph(t, subheader_style) for t in _sub_labels]
-    detail_data = [detail_header, detail_subheader]
-    
-    # Gesamt-Summen
-    gesamt_heute_stueck = 0
-    gesamt_heute_umsatz = 0
-    gesamt_heute_einsatz = 0
-    gesamt_heute_db1 = 0
-    gesamt_monat_stueck = 0
-    gesamt_monat_umsatz = 0
-    gesamt_monat_einsatz = 0
-    gesamt_monat_db1 = 0
-    
-    # Cache für Absatzweg-Daten (NW/GW), um doppelten Abruf zu vermeiden
+        header_data = [[Paragraph("<b>TEK - Tägliche Erfolgskontrolle</b>", title_style)]]
+        header_table = Table(header_data, colWidths=[18*cm])
+        header_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), DRIVE_BLUE),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('TOPPADDING', (0, 0), (-1, -1), 15), ('BOTTOMPADDING', (0, 0), (-1, -1), 15),
+        ]))
+    elements.append(header_table)
+    elements.append(Spacer(1, 2))
+
+    # Subtitle: Monat · Stand (Tag)
+    monat_text = data.get('monat', 'Aktueller Monat')
+    standort_name = (data.get('standort_name') or '').strip()
+    stand_str = f"Standort {standort_name} • " if (standort_name and standort_name.lower() != 'gesamt') else ""
+    subtitle_text = f"{stand_str}<b>Monat: {monat_text}</b> · Stand: {datum_str or datetime.now().strftime('%d.%m.%Y')} {datetime.now().strftime('%H:%M')} Uhr (Tag)"
+    subtitle_data = [[Paragraph(subtitle_text, subtitle_style)]]
+    subtitle_table = Table(subtitle_data, colWidths=[18*cm])
+    subtitle_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), GRAY_LIGHT),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('TOPPADDING', (0, 0), (-1, -1), 8), ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(subtitle_table)
+    elements.append(Spacer(1, 8))
+
+    # Kern-Kennzahlen wie Mockup/Global Cube: klare Karten-Optik, hellgrauer Header
+    elements.append(Paragraph("Kern-Kennzahlen", section_style))
+    kpi_headers = ['DB1 Heute', 'DB1 Monat', 'Marge Heute', 'Marge Monat', 'Prognose', 'Breakeven']
+    kpi_values = [
+        format_currency_short(gesamt_heute_db1),
+        format_currency_short(gesamt.get('db1', 0)),
+        format_percent(gesamt_heute_marge),
+        format_percent(gesamt.get('marge', 0)),
+        format_currency_short(prognose_db1),
+        format_currency_short(breakeven_absolut),
+    ]
+    kpi_table = Table([kpi_headers, kpi_values], colWidths=[2.95*cm]*6)
+    kpi_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e9ecef')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), GRAY_DARK),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 8),
+        ('FONTSIZE', (0, 1), (-1, 1), 10),
+        ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+        ('TOPPADDING', (0, 0), (-1, -1), 8), ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('ROWBACKGROUNDS', (0, 1), (-1, 1), [colors.white]),
+    ]))
+    elements.append(kpi_table)
+    elements.append(Spacer(1, 8))
+
+    # Status-Box Breakeven
+    if breakeven_abstand >= 0:
+        be_text = f"+{format_currency_short(breakeven_abstand)} über Breakeven (Prognose)"
+        be_color = SUCCESS
+    else:
+        be_text = f"{format_currency_short(breakeven_abstand)} unter Breakeven (Prognose)"
+        be_color = DANGER
+    be_table = Table([[be_text]], colWidths=[18*cm])
+    be_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), be_color),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 11),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('TOPPADDING', (0, 0), (-1, -1), 8), ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(be_table)
+    elements.append(Spacer(1, 10))
+
+    # Bereichs-Übersicht wie Global Cube: Menge, Umsatzerlöse, Einsatzwerte, DB 1 ber., DB 1 in % ber.
     _aw_cache = {}
-    
-    # Für jeden Bereich: Detaillierte Daten holen und strukturieren
+    datum_heute_str = datum_str or datetime.now().strftime('%d.%m.%Y')
+    monat_kurz = (data.get('monat') or '').replace(' ', '/')[:12]  # z.B. Feb./2026
+    overview_header = [
+        'Bereich',
+        'Menge', 'Umsatzerlöse', 'Einsatzwerte', 'DB1 ber.', 'DB1 %',
+        'Menge', 'Umsatzerlöse', 'Einsatzwerte', 'DB1 ber.', 'DB1 %'
+    ]
+    overview_data = [overview_header]
+    o_heute_stueck = o_heute_umsatz = o_heute_einsatz = o_heute_db1 = 0
+    o_monat_stueck = o_monat_umsatz = o_monat_einsatz = o_monat_db1 = 0
+
     for b in bereiche_sorted:
         bkey = b.get('bereich', '')
-        cfg = KST_MAPPING.get(bkey, {'kst': '-', 'name': bkey, 'show_stueck': False})
-        
-        # Monat/Jahr früh ermitteln (für NW/GW Absatzweg-Summe vor Bereichs-Zeile)
-        monat_num = data.get('monat_num')
-        jahr_num = data.get('jahr_num')
-        if not monat_num or not jahr_num:
-            datum_str = data.get('datum', '')
-            if datum_str:
-                try:
-                    datum_obj = datetime.strptime(datum_str, '%d.%m.%Y')
-                    monat_num = monat_num or datum_obj.month
-                    jahr_num = jahr_num or datum_obj.year
-                except Exception:
-                    pass
-            if not monat_num or not jahr_num:
-                heute = date.today()
-                monat_num = monat_num or heute.month
-                jahr_num = jahr_num or heute.year
-        
-        # Basis-Daten aus data (TAG 215: Jetzt mit allen Daten aus /api/tek wie Online-Version!)
-        heute_umsatz = b.get('heute_umsatz', 0)
-        heute_einsatz = b.get('heute_einsatz', 0) if 'heute_einsatz' in b else (heute_umsatz - b.get('heute_db1', 0))
-        heute_db1 = b.get('heute_db1', 0)
-        
-        # TAG 215: Stückzahlen – für NW/GW aus Absatzweg-Summe (damit Bereichszeile und Summenzeile übereinstimmen)
-        heute_stueck = b.get('heute_stueck', 0) if cfg['show_stueck'] else 0
-        monat_stueck = b.get('stueck', 0) if cfg['show_stueck'] else 0
+        cfg = KST_MAPPING.get(bkey, {'name': bkey, 'show_stueck': False})
+        name_display = cfg['name']
+        heute_u = b.get('heute_umsatz', 0)
+        heute_e = b.get('heute_einsatz', 0) if 'heute_einsatz' in b else (heute_u - b.get('heute_db1', 0))
+        heute_d = b.get('heute_db1', 0)
+        monat_u = b.get('umsatz', 0)
+        monat_e = b.get('einsatz', 0)
+        monat_d = b.get('db1', 0)
+        h_stueck = b.get('heute_stueck', 0) if cfg.get('show_stueck') else 0
+        m_stueck = b.get('stueck', 0) if cfg.get('show_stueck') else 0
         if bkey in ['1-NW', '2-GW']:
             if bkey not in _aw_cache:
                 _aw_cache[bkey] = get_tek_absatzwege_direct(
@@ -1291,604 +1223,338 @@ def generate_tek_daily_pdf(data: dict) -> bytes:
                     monat_num, jahr_num, heute_datum
                 )
             aw_list = _aw_cache[bkey].get('absatzwege', [])
-            sum_aw_heute = sum(aw.get('stueck_heute', 0) or 0 for aw in aw_list)
-            sum_aw_monat = sum(aw.get('stueck_monat', 0) or 0 for aw in aw_list)
-            heute_stueck = sum_aw_heute
-            monat_stueck = sum_aw_monat
-        
+            h_stueck = sum(aw.get('stueck_heute', 0) or 0 for aw in aw_list)
+            m_stueck = sum(aw.get('stueck_monat', 0) or 0 for aw in aw_list)
+        h_marge = (heute_d / heute_u * 100) if heute_u > 0 else 0
+        m_marge = (monat_d / monat_u * 100) if monat_u > 0 else 0
+        overview_data.append([
+            name_display,
+            str(h_stueck) if cfg.get('show_stueck') else "—",
+            format_currency_short(heute_u), format_currency_short(heute_e), format_currency_short(heute_d), format_percent(h_marge),
+            str(m_stueck) if cfg.get('show_stueck') else "—",
+            format_currency_short(monat_u), format_currency_short(monat_e), format_currency_short(monat_d), format_percent(m_marge)
+        ])
+        o_heute_stueck += h_stueck
+        o_heute_umsatz += heute_u
+        o_heute_einsatz += heute_e
+        o_heute_db1 += heute_d
+        o_monat_stueck += m_stueck
+        o_monat_umsatz += monat_u
+        o_monat_einsatz += monat_e
+        o_monat_db1 += monat_d
+
+    o_heute_marge = (o_heute_db1 / o_heute_umsatz * 100) if o_heute_umsatz > 0 else 0
+    o_monat_marge = (o_monat_db1 / o_monat_umsatz * 100) if o_monat_umsatz > 0 else 0
+    overview_data.append([
+        'GESAMT',
+        str(o_heute_stueck), format_currency_short(o_heute_umsatz), format_currency_short(o_heute_einsatz), format_currency_short(o_heute_db1), format_percent(o_heute_marge),
+        str(o_monat_stueck), format_currency_short(o_monat_umsatz), format_currency_short(o_monat_einsatz), format_currency_short(o_monat_db1), format_percent(o_monat_marge)
+    ])
+
+    colw_overview = [3.8*cm, 0.95*cm, 2.05*cm, 2.05*cm, 1.6*cm, 1.2*cm, 0.95*cm, 2.05*cm, 2.05*cm, 1.6*cm, 1.2*cm]
+    overview_table = Table(overview_data, colWidths=colw_overview, repeatRows=1)
+    overview_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e9ecef')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), GRAY_DARK),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, GRAY_LIGHT]),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#e7f1ff')),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('TOPPADDING', (0, 0), (-1, -1), 5), ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+    ]))
+    elements.append(Paragraph("Bereichs-Übersicht (Heute | Monat kumuliert)", section_style))
+    elements.append(overview_table)
+
+    # Werkstatt-KPIs in Anfangsübersicht (Seite 1)
+    werkstatt_bereich = next((b for b in data.get('bereiche', []) if b.get('bereich') == '4-Lohn' or b.get('id') == '4-Lohn'), None)
+    if werkstatt_bereich and (werkstatt_bereich.get('produktivitaet') is not None or werkstatt_bereich.get('leistungsgrad') is not None):
+        ws_kpi_row = []
+        if werkstatt_bereich.get('produktivitaet') is not None:
+            ws_kpi_row.append(f"Produktivität (EW): {werkstatt_bereich.get('produktivitaet')} %")
+        if werkstatt_bereich.get('leistungsgrad') is not None:
+            ws_kpi_row.append(f"Leistungsgrad: {werkstatt_bereich.get('leistungsgrad')} %")
+        if ws_kpi_row:
+            ws_overview_style = ParagraphStyle(
+                'WerkstattKPI', parent=getSampleStyleSheet()['Normal'],
+                fontSize=8, textColor=GRAY_DARK, spaceBefore=6, spaceAfter=0
+            )
+            elements.append(Spacer(1, 6))
+            elements.append(Paragraph("<b>Werkstatt-KPIs</b> " + " · ".join(ws_kpi_row), ws_overview_style))
+
+    elements.append(Spacer(1, 14))
+
+    # === Mockup V2: Eine Seite pro KST (detaillierte Blöcke) ===
+    gruppen_namen = {
+        '81': 'Erlöse Neuwagen', '82': 'Erlöse Gebrauchtwagen', '83': 'Erlöse Teile', '84': 'Erlöse Lohn',
+        '85': 'Erlöse Lack', '86': 'Sonstige Erlöse', '88': 'Erlöse Vermietung', '89': 'Sonstige betriebliche Erträge',
+        '71': 'Einsatz Neuwagen', '72': 'Einsatz Gebrauchtwagen', '73': 'Einsatz Teile', '74': 'Einsatz Lohn',
+        '75': 'Einsatz Lack', '76': 'Sonstiger Einsatz', '78': 'Einsatz Vermietung',
+    }
+    detail_table_style = [
+        ('BACKGROUND', (0, 0), (-1, 0), GRAY_DARK),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 7),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+        ('TOPPADDING', (0, 0), (-1, -1), 4), ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ]
+
+    for b in bereiche_sorted:
+        bkey = b.get('bereich', '')
+        cfg = KST_MAPPING.get(bkey, {'kst': '-', 'name': bkey, 'show_stueck': False})
+        heute_umsatz = b.get('heute_umsatz', 0)
+        heute_einsatz = b.get('heute_einsatz', 0) if 'heute_einsatz' in b else (heute_umsatz - b.get('heute_db1', 0))
+        heute_db1 = b.get('heute_db1', 0)
+        heute_stueck = b.get('heute_stueck', 0) if cfg.get('show_stueck') else 0
+        monat_stueck = b.get('stueck', 0) if cfg.get('show_stueck') else 0
+        if bkey in ['1-NW', '2-GW']:
+            if bkey not in _aw_cache:
+                _aw_cache[bkey] = get_tek_absatzwege_direct(
+                    bkey, data.get('firma', '0'), data.get('standort_api', '0'),
+                    monat_num, jahr_num, heute_datum
+                )
+            aw_list = _aw_cache[bkey].get('absatzwege', [])
+            heute_stueck = sum(aw.get('stueck_heute', 0) or 0 for aw in aw_list)
+            monat_stueck = sum(aw.get('stueck_monat', 0) or 0 for aw in aw_list)
         monat_umsatz = b.get('umsatz', 0)
         monat_einsatz = b.get('einsatz', 0)
         monat_db1 = b.get('db1', 0)
-        
-        # Marge berechnen
         heute_marge = (heute_db1 / heute_umsatz * 100) if heute_umsatz > 0 else 0
         monat_marge = (monat_db1 / monat_umsatz * 100) if monat_umsatz > 0 else 0
-        
-        # DB/Stück berechnen (nur für NW/GW)
-        heute_db_pro_stueck = (heute_db1 / heute_stueck) if (cfg['show_stueck'] and heute_stueck > 0) else 0
-        monat_db_pro_stueck = (monat_db1 / monat_stueck) if (cfg['show_stueck'] and monat_stueck > 0) else 0
-        
-        # Bereichs-Zeile (Hauptzeile) – bei NW/GW mit Stück aus Absatzweg-Summe
-        detail_data.append([
-            cfg['kst'],
-            cfg['name'],
-            str(heute_stueck) if cfg['show_stueck'] else "-",
-            format_currency_short(heute_umsatz),
-            format_currency_short(heute_einsatz),
-            format_currency_short(heute_db1),
-            format_currency_short(heute_db_pro_stueck) if cfg['show_stueck'] else "-",
-            format_percent(heute_marge),
-            str(monat_stueck) if cfg['show_stueck'] else "-",
-            format_currency_short(monat_umsatz),
-            format_currency_short(monat_einsatz),
-            format_currency_short(monat_db1),
-            format_currency_short(monat_db_pro_stueck) if cfg['show_stueck'] else "-",
-            format_percent(monat_marge)
+        heute_db_pro_stueck = (heute_db1 / heute_stueck) if (cfg.get('show_stueck') and heute_stueck > 0) else 0
+        monat_db_pro_stueck = (monat_db1 / monat_stueck) if (cfg.get('show_stueck') and monat_stueck > 0) else 0
+
+        elements.append(PageBreak())
+        elements.append(Paragraph(f"KST {cfg['kst']} – {cfg['name']} (detailliert)", section_style))
+
+        # Tabellen-Header (kurz gegen Spaltenüberlauf): DB1 ber., DB1 %
+        kst_header = [
+            'Position',
+            'Menge', 'Umsatzerlöse', 'Einsatzwerte', 'DB1 ber.', 'DB1 %',
+            'Menge', 'Umsatzerlöse', 'Einsatzwerte', 'DB1 ber.', 'DB1 %'
+        ]
+        kst_data = [kst_header]
+        # Erste Zeile = Hauptgruppe (z. B. 1 - Neuwagen), grau hinterlegt wie Global Cube
+        kst_data.append([
+            f"{cfg['kst']} - {cfg['name']}",
+            str(heute_stueck) if cfg.get('show_stueck') else "—",
+            format_currency_short(heute_umsatz), format_currency_short(heute_einsatz),
+            format_currency_short(heute_db1), format_percent(heute_marge),
+            str(monat_stueck) if cfg.get('show_stueck') else "—",
+            format_currency_short(monat_umsatz), format_currency_short(monat_einsatz),
+            format_currency_short(monat_db1), format_percent(monat_marge)
         ])
-        
-        # TAG 215: Detaillierte Aufschlüsselung - ALLE Kostenstellen-Gruppen (wie Global Cube F.04)
-        detail_info = get_tek_detail_data_direct(
-            bkey,
-            data.get('firma', '0'),
-            data.get('standort_api', '0'),
-            monat_num,
-            jahr_num,
-            heute_datum
-        )
-        
-        # Gruppen-Namen-Mapping
-        gruppen_namen = {
-            '81': 'Erlöse Neuwagen', '82': 'Erlöse Gebrauchtwagen',
-            '83': 'Erlöse Teile', '84': 'Erlöse Lohn',
-            '85': 'Erlöse Lack', '86': 'Sonstige Erlöse', '88': 'Erlöse Vermietung',
-            '89': 'Sonstige betriebliche Erträge',
-            '71': 'Einsatz Neuwagen', '72': 'Einsatz Gebrauchtwagen',
-            '73': 'Einsatz Teile', '74': 'Einsatz Lohn',
-            '75': 'Einsatz Lack', '76': 'Sonstiger Einsatz', '78': 'Einsatz Vermietung',
-        }
-        
-        # TAG 215: Für NW/GW: Absatzwege mit Konten anzeigen (wie DRIVE) – nutze gecachte Daten
-        if bkey in ['1-NW', '2-GW']:
-            absatzwege_data = _aw_cache.get(bkey)
-            if not absatzwege_data:
-                absatzwege_data = get_tek_absatzwege_direct(
-                    bkey,
-                    data.get('firma', '0'),
-                    data.get('standort_api', '0'),
-                    monat_num,
-                    jahr_num,
-                    heute_datum
-                )
-                _aw_cache[bkey] = absatzwege_data
-            
-            absatzwege = absatzwege_data.get('absatzwege', [])
-            # Stück-Summen aus den angezeigten Absatzwegen (nicht aus API-Bereich), damit Summenzeile zur Tabelle passt
-            sum_stueck_heute = sum(aw.get('stueck_heute', 0) or 0 for aw in absatzwege)
-            sum_stueck_monat = sum(aw.get('stueck_monat', 0) or 0 for aw in absatzwege)
-            
-            # Für jeden Absatzweg
+        kst_negative_cells = []  # (row_idx, col_idx) für rote Darstellung
+        kst_subtotal_rows = []   # Zeilen-Indizes für Summenzeilen pro Absatzweg (fett)
+
+        if bkey in ['1-NW', '2-GW', '3-Teile', '4-Lohn']:
+            if bkey not in _aw_cache:
+                if bkey in ['1-NW', '2-GW']:
+                    _aw_cache[bkey] = get_tek_absatzwege_direct(
+                        bkey, data.get('firma', '0'), data.get('standort_api', '0'),
+                        monat_num, jahr_num, heute_datum
+                    )
+                else:
+                    _aw_cache[bkey] = get_tek_bereich_konten_direct(
+                        bkey, data.get('firma', '0'), data.get('standort_api', '0'),
+                        monat_num, jahr_num, heute_datum
+                    )
+            absatzwege = _aw_cache.get(bkey, {}).get('absatzwege', [])
             for aw in absatzwege:
-                aw_stueck_heute = aw.get('stueck_heute', 0)
-                aw_umsatz_heute = aw.get('umsatz_heute', 0)
-                aw_einsatz_heute = aw.get('einsatz_heute', 0)
-                aw_db1_heute = aw.get('db1_heute', 0)
-                aw_marge_heute = (aw_db1_heute / aw_umsatz_heute * 100) if aw_umsatz_heute > 0 else 0
-                
-                aw_stueck_monat = aw.get('stueck_monat', 0)
-                aw_umsatz_monat = aw.get('umsatz_monat', 0)
-                aw_einsatz_monat = aw.get('einsatz_monat', 0)
-                aw_db1_monat = aw.get('db1_monat', 0)
-                aw_marge_monat = (aw_db1_monat / aw_umsatz_monat * 100) if aw_umsatz_monat > 0 else 0
-                
-                # DB/Stück berechnen
-                aw_db_pro_stueck_heute = (aw_db1_heute / aw_stueck_heute) if aw_stueck_heute > 0 else 0
-                aw_db_pro_stueck_monat = (aw_db1_monat / aw_stueck_monat) if aw_stueck_monat > 0 else 0
-                
-                # Absatzweg-Zeile (eingerückt)
-                detail_data.append([
-                    '',  # KST leer
-                    f"  {aw['absatzweg']}",  # Eingerückt
-                    str(aw_stueck_heute),
-                    format_currency_short(aw_umsatz_heute),
-                    format_currency_short(aw_einsatz_heute),
-                    format_currency_short(aw_db1_heute),
-                    format_currency_short(aw_db_pro_stueck_heute),
-                    format_percent(aw_marge_heute),
-                    str(aw_stueck_monat),
-                    format_currency_short(aw_umsatz_monat),
-                    format_currency_short(aw_einsatz_monat),
-                    format_currency_short(aw_db1_monat),
-                    format_currency_short(aw_db_pro_stueck_monat),
-                    format_percent(aw_marge_monat)
+                aw_display = aw.get('absatzweg', '')
+                if aw_display == 'Sonstige Sonstige':
+                    aw_display = 'Sonstige Erlöse Neuwagen' if bkey == '1-NW' else 'Sonstige Erlöse Gebrauchtwagen'
+                aw_sh = aw.get('stueck_heute', 0)
+                aw_sm = aw.get('stueck_monat', 0)
+                aw_uh = aw.get('umsatz_heute', 0)
+                aw_eh = aw.get('einsatz_heute', 0)
+                aw_dh = aw.get('db1_heute', 0)
+                aw_mh = (aw_dh / aw_uh * 100) if aw_uh > 0 else 0
+                aw_um = aw.get('umsatz_monat', 0)
+                aw_em = aw.get('einsatz_monat', 0)
+                aw_dm = aw.get('db1_monat', 0)
+                aw_mm = (aw_dm / aw_um * 100) if aw_um > 0 else 0
+                # Absatzweg als Kategorie (eingerückt)
+                kst_data.append([
+                    f"  {aw_display}",
+                    str(aw_sh), format_currency_short(aw_uh), format_currency_short(aw_eh),
+                    format_currency_short(aw_dh), format_percent(aw_mh),
+                    str(aw_sm), format_currency_short(aw_um), format_currency_short(aw_em),
+                    format_currency_short(aw_dm), format_percent(aw_mm)
                 ])
-                
-                # Konten unter Absatzweg (doppelt eingerückt)
-                konten = aw.get('konten', [])
-                for konto in konten:
-                    k_umsatz_heute = konto.get('umsatz_heute', 0)
-                    k_einsatz_heute = konto.get('einsatz_heute', 0)
-                    k_db1_heute = k_umsatz_heute - k_einsatz_heute
-                    k_marge_heute = (k_db1_heute / k_umsatz_heute * 100) if k_umsatz_heute > 0 else 0
-                    
-                    k_umsatz_monat = konto.get('umsatz_monat', 0)
-                    k_einsatz_monat = konto.get('einsatz_monat', 0)
-                    k_db1_monat = k_umsatz_monat - k_einsatz_monat
-                    k_marge_monat = (k_db1_monat / k_umsatz_monat * 100) if k_umsatz_monat > 0 else 0
-                    
-                    # DB/Stück für Konten (aus stueck_heute/stueck_monat)
-                    k_stueck_heute = konto.get('stueck_heute', 0)
-                    k_stueck_monat = konto.get('stueck_monat', 0)
-                    k_db_pro_stueck_heute = (k_db1_heute / k_stueck_heute) if k_stueck_heute > 0 else 0
-                    k_db_pro_stueck_monat = (k_db1_monat / k_stueck_monat) if k_stueck_monat > 0 else 0
-                    
-                    bezeichnung = konto.get('bezeichnung', f"Konto {konto.get('konto', '')}")
-                    # Kürzen falls zu lang (jetzt mehr Platz durch breitere Spalte)
-                    if len(bezeichnung) > 70:
-                        bezeichnung = bezeichnung[:67] + "..."
-                    
-                    # Verwende Paragraph für Textumbruch bei langen Bezeichnungen
-                    konto_text = f"    {konto.get('konto', '')}: {bezeichnung}"
-                    # Einfacher Text statt Paragraph (Paragraph würde zusätzliche Formatierung benötigen)
-                    detail_data.append([
-                        '',  # KST leer
-                        konto_text,  # Doppelt eingerückt
-                        "-",  # Menge nur auf Absatzweg-Ebene
-                        format_currency_short(k_umsatz_heute),
-                        format_currency_short(k_einsatz_heute),
-                        format_currency_short(k_db1_heute),
-                        format_currency_short(k_db_pro_stueck_heute) if k_stueck_heute > 0 else "-",
-                        format_percent(k_marge_heute),
-                        "-",
-                        format_currency_short(k_umsatz_monat),
-                        format_currency_short(k_einsatz_monat),
-                        format_currency_short(k_db1_monat),
-                        format_currency_short(k_db_pro_stueck_monat) if k_stueck_monat > 0 else "-",
-                        format_percent(k_marge_monat)
-                    ])
-            
-            # TAG 215: Kumulationszeile für KST nach allen Absatzwegen
-            # Stück = Summe der angezeigten Absatzweg-Stückzahlen (nicht API-Bereich), damit Summe zur Tabelle passt
-            summe_db_pro_stueck_heute = (heute_db1 / sum_stueck_heute) if sum_stueck_heute > 0 else 0
-            summe_db_pro_stueck_monat = (monat_db1 / sum_stueck_monat) if sum_stueck_monat > 0 else 0
-            detail_data.append([
-                cfg['kst'],  # KST wieder anzeigen
-                f"Summe {cfg['name']}",  # "Summe Neuwagen"
-                str(sum_stueck_heute),
-                format_currency_short(heute_umsatz),
-                format_currency_short(heute_einsatz),
-                format_currency_short(heute_db1),
-                format_currency_short(summe_db_pro_stueck_heute) if sum_stueck_heute > 0 else "-",
-                format_percent(heute_marge),
-                str(sum_stueck_monat),
-                format_currency_short(monat_umsatz),
-                format_currency_short(monat_einsatz),
-                format_currency_short(monat_db1),
-                format_currency_short(summe_db_pro_stueck_monat) if sum_stueck_monat > 0 else "-",
-                format_percent(monat_marge)
-            ])
-        else:
-            # Für andere Bereiche: Gruppen anzeigen (wie bisher)
-            # Kombiniere Umsatz- und Einsatz-Gruppen (nach Gruppen-Nummer sortiert)
-            umsatz_gruppen_monat = {g['gruppe']: g['betrag'] for g in detail_info.get('monat', {}).get('umsatz_gruppen', [])}
-            einsatz_gruppen_monat = {g['gruppe']: g['betrag'] for g in detail_info.get('monat', {}).get('einsatz_gruppen', [])}
-            umsatz_gruppen_heute = {g['gruppe']: g['betrag'] for g in detail_info.get('heute', {}).get('umsatz_gruppen', [])}
-            einsatz_gruppen_heute = {g['gruppe']: g['betrag'] for g in detail_info.get('heute', {}).get('einsatz_gruppen', [])}
-            
-            # Alle Gruppen (Kombination aus Umsatz und Einsatz)
-            alle_gruppen = sorted(set(list(umsatz_gruppen_monat.keys()) + list(einsatz_gruppen_monat.keys())))
-            
-            # Zeige jede Kostenstellen-Gruppe an
-            for gruppe in alle_gruppen:
-                umsatz_monat = umsatz_gruppen_monat.get(gruppe, 0)
-                einsatz_monat = einsatz_gruppen_monat.get(gruppe, 0)
-                db1_monat = umsatz_monat - einsatz_monat
-                marge_monat = (db1_monat / umsatz_monat * 100) if umsatz_monat > 0 else 0
-                
-                umsatz_heute = umsatz_gruppen_heute.get(gruppe, 0)
-                einsatz_heute = einsatz_gruppen_heute.get(gruppe, 0)
-                db1_heute = umsatz_heute - einsatz_heute
-                marge_heute = (db1_heute / umsatz_heute * 100) if umsatz_heute > 0 else 0
-                
-                gruppe_name = gruppen_namen.get(gruppe, f'Gruppe {gruppe}')
-                
-                # Gruppen-Zeile (eingerückt)
-                detail_data.append([
-                    '',  # KST leer
-                    f"  {gruppe_name}",  # Eingerückt
-                    "-",  # Menge nur bei NW/GW auf Absatzweg-Ebene
-                    format_currency_short(umsatz_heute),
-                    format_currency_short(einsatz_heute),
-                    format_currency_short(db1_heute),
-                    "-",  # DB/Stück nur für NW/GW
-                    format_percent(marge_heute),
-                    "-",
-                    format_currency_short(umsatz_monat),
-                    format_currency_short(einsatz_monat),
-                    format_currency_short(db1_monat),
-                    "-",  # DB/Stück nur für NW/GW
-                    format_percent(marge_monat)
+                if aw_dh < 0:
+                    kst_negative_cells.append((len(kst_data) - 1, 4))
+                if aw_mh < 0:
+                    kst_negative_cells.append((len(kst_data) - 1, 5))
+                if aw_dm < 0:
+                    kst_negative_cells.append((len(kst_data) - 1, 9))
+                if aw_mm < 0:
+                    kst_negative_cells.append((len(kst_data) - 1, 10))
+                konten_list = aw.get('konten', [])
+                if bkey in ['3-Teile', '4-Lohn']:
+                    # Bereits gepaarte Zeilen (ein Eintrag = eine Zeile mit Erlös + Einsatz)
+                    for k in konten_list:
+                        ku = k.get('umsatz_heute', 0) or 0
+                        ke = k.get('einsatz_heute', 0) or 0
+                        ku_m = k.get('umsatz_monat', 0) or 0
+                        ke_m = k.get('einsatz_monat', 0) or 0
+                        kd_h = ku - ke
+                        km_h = (kd_h / ku * 100) if ku > 0 else (0 if ke == 0 else 0)
+                        kd_m = ku_m - ke_m
+                        km_m = (kd_m / ku_m * 100) if ku_m > 0 else (0 if ke_m == 0 else 0)
+                        bez = (k.get('bezeichnung') or '').strip()
+                        if len(bez) > 42:
+                            bez = bez[:39] + '...'
+                        pos = f"    {k.get('konto', '')}: {bez}"
+                        kst_data.append([
+                            pos, '—',
+                            format_currency_short(ku), format_currency_short(ke),
+                            format_currency_short(kd_h), format_percent(km_h),
+                            '—', format_currency_short(ku_m), format_currency_short(ke_m),
+                            format_currency_short(kd_m), format_percent(km_m)
+                        ])
+                        if kd_h < 0:
+                            kst_negative_cells.append((len(kst_data) - 1, 4))
+                        if km_h < 0:
+                            kst_negative_cells.append((len(kst_data) - 1, 5))
+                        if kd_m < 0:
+                            kst_negative_cells.append((len(kst_data) - 1, 9))
+                        if km_m < 0:
+                            kst_negative_cells.append((len(kst_data) - 1, 10))
+                else:
+                    # NW/GW: Erlöskonto (81/82) und Einsatzkonto (71/72) zu EINER Zeile paaren (gleiche letzte 4 Ziffern)
+                    paired = {}
+                    for k in konten_list:
+                        kn = int(k.get('konto', 0) or 0)
+                        key = kn % 10000
+                        if key not in paired:
+                            paired[key] = {'erlos': None, 'einsatz': None}
+                        if (810000 <= kn <= 819999) or (820000 <= kn <= 829999):
+                            paired[key]['erlos'] = k
+                        elif (710000 <= kn <= 719999) or (720000 <= kn <= 729999):
+                            paired[key]['einsatz'] = k
+                    for pair_key in sorted(paired.keys()):
+                        er = paired[pair_key]['erlos']
+                        en = paired[pair_key]['einsatz']
+                        ku = (er.get('umsatz_heute', 0) or 0) if er else 0
+                        ke = (en.get('einsatz_heute', 0) or 0) if en else 0
+                        ku_m = (er.get('umsatz_monat', 0) or 0) if er else 0
+                        ke_m = (en.get('einsatz_monat', 0) or 0) if en else 0
+                        ks_h = (er.get('stueck_heute', 0) or 0) if er else (en.get('stueck_heute', 0) or 0 if en else 0)
+                        ks_m = (er.get('stueck_monat', 0) or 0) if er else (en.get('stueck_monat', 0) or 0 if en else 0)
+                        kd_h = ku - ke
+                        km_h = (kd_h / ku * 100) if ku > 0 else (0 if ke == 0 else 0)
+                        kd_m = ku_m - ke_m
+                        km_m = (kd_m / ku_m * 100) if ku_m > 0 else (0 if ke_m == 0 else 0)
+                        bez = ((er.get('bezeichnung') or '') if er else (en.get('bezeichnung') or '')).strip()
+                        if not bez and en:
+                            bez = (en.get('bezeichnung') or '').strip()
+                        if len(bez) > 42:
+                            bez = bez[:39] + '...'
+                        konto_display = (er.get('konto', '') if er else en.get('konto', ''))
+                        pos = f"    {konto_display}: {bez}" if konto_display else f"    {bez}"
+                        kst_data.append([
+                            pos,
+                            str(ks_h), format_currency_short(ku), format_currency_short(ke),
+                            format_currency_short(kd_h), format_percent(km_h),
+                            str(ks_m), format_currency_short(ku_m), format_currency_short(ke_m),
+                            format_currency_short(kd_m), format_percent(km_m)
+                        ])
+                        if kd_h < 0:
+                            kst_negative_cells.append((len(kst_data) - 1, 4))
+                        if km_h < 0:
+                            kst_negative_cells.append((len(kst_data) - 1, 5))
+                        if kd_m < 0:
+                            kst_negative_cells.append((len(kst_data) - 1, 9))
+                        if km_m < 0:
+                            kst_negative_cells.append((len(kst_data) - 1, 10))
+                # Summenzeile pro Absatzweg (fett) wie Global Cube
+                kst_data.append([
+                    f"  {aw_display}",
+                    str(aw_sh), format_currency_short(aw_uh), format_currency_short(aw_eh),
+                    format_currency_short(aw_dh), format_percent(aw_mh),
+                    str(aw_sm), format_currency_short(aw_um), format_currency_short(aw_em),
+                    format_currency_short(aw_dm), format_percent(aw_mm)
                 ])
-            
-            # TAG 215: Kumulationszeile für KST nach allen Gruppen
-            # Summe der KST (verwendet die Werte aus der Bereichs-Zeile)
-            detail_data.append([
-                cfg['kst'],  # KST wieder anzeigen
-                f"Summe {cfg['name']}",  # "Summe Service/Werkstatt"
-                str(heute_stueck) if cfg['show_stueck'] else "-",
-                format_currency_short(heute_umsatz),
-                format_currency_short(heute_einsatz),
-                format_currency_short(heute_db1),
-                format_currency_short(heute_db_pro_stueck) if cfg['show_stueck'] else "-",
-                format_percent(heute_marge),
-                str(monat_stueck) if cfg['show_stueck'] else "-",
-                format_currency_short(monat_umsatz),
-                format_currency_short(monat_einsatz),
-                format_currency_short(monat_db1),
-                format_currency_short(monat_db_pro_stueck) if cfg['show_stueck'] else "-",
-                format_percent(monat_marge)
-            ])
-        
-        # Summen für Gesamt
-        gesamt_heute_stueck += heute_stueck
-        gesamt_heute_umsatz += heute_umsatz
-        gesamt_heute_einsatz += heute_einsatz
-        gesamt_heute_db1 += heute_db1
-        gesamt_monat_stueck += monat_stueck
-        gesamt_monat_umsatz += monat_umsatz
-        gesamt_monat_einsatz += monat_einsatz
-        gesamt_monat_db1 += monat_db1
-    
-    # Gesamt-Marge
-    gesamt_heute_marge = (gesamt_heute_db1 / gesamt_heute_umsatz * 100) if gesamt_heute_umsatz > 0 else 0
-    gesamt_monat_marge = (gesamt_monat_db1 / gesamt_monat_umsatz * 100) if gesamt_monat_umsatz > 0 else 0
-    
-    # Gesamt-DB/Stück berechnen
-    gesamt_db_pro_stueck_heute = (gesamt_heute_db1 / gesamt_heute_stueck) if gesamt_heute_stueck > 0 else 0
-    gesamt_db_pro_stueck_monat = (gesamt_monat_db1 / gesamt_monat_stueck) if gesamt_monat_stueck > 0 else 0
-    
-    # Gesamt-Zeile
-    detail_data.append([
-        '', 'GESAMT',
-        str(gesamt_heute_stueck),
-        format_currency_short(gesamt_heute_umsatz),
-        format_currency_short(gesamt_heute_einsatz),
-        format_currency_short(gesamt_heute_db1),
-        format_currency_short(gesamt_db_pro_stueck_heute),
-        format_percent(gesamt_heute_marge),
-        str(gesamt_monat_stueck),
-        format_currency_short(gesamt_monat_umsatz),
-        format_currency_short(gesamt_monat_einsatz),
-        format_currency_short(gesamt_monat_db1),
-        format_currency_short(gesamt_db_pro_stueck_monat),
-        format_percent(gesamt_monat_marge)
-    ])
-    
-    # Tabelle im Querformat erstellen (mehr Platz für Spalten)
-    # Querformat: 29.7cm breit, 21cm hoch
-    # Mit reduzierten Seitenrändern (0.5cm links/rechts) = 28.7cm verfügbar
-    # Spaltenbreiten: DB/Stück und DB1 % etwas breiter, damit Überschriften nicht in Nachbarspalten laufen
-    col_widths_detail = [0.9*cm, 4.6*cm, 1.1*cm, 2.2*cm, 2.2*cm, 2.0*cm, 1.7*cm, 1.5*cm, 1.1*cm, 2.2*cm, 2.2*cm, 2.0*cm, 1.7*cm, 1.5*cm]
-    detail_table = Table(detail_data, colWidths=col_widths_detail)
-    
-    # Modernes, elegantes Styling für detaillierte Tabelle
-    detail_style = [
-        # Header-Zeile 1 (Heute, Monat kumuliert) - Moderner Gradient-Effekt
-        ('SPAN', (2, 0), (7, 0)),  # Heute (6 Spalten: Menge, Umsatz, Einsatz, DB1, DB/Stück, DB%)
-        ('SPAN', (8, 0), (13, 0)),  # Monat kumuliert (6 Spalten)
-        ('BACKGROUND', (0, 0), (-1, 0), MODERN_BLUE),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 10),
-        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
-        ('TOPPADDING', (0, 0), (-1, 0), 8),
-        ('LEFTPADDING', (0, 0), (-1, 0), 6),
-        ('RIGHTPADDING', (0, 0), (-1, 0), 6),
-        # Subheader-Zeile 2 (Spalten-Namen) - Elegant und subtil
-        ('BACKGROUND', (0, 1), (-1, 1), MODERN_GRAY_LIGHT),
-        ('TEXTCOLOR', (0, 1), (-1, 1), MODERN_GRAY),
-        ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 1), (-1, 1), 8),
-        ('ALIGN', (0, 1), (-1, 1), 'CENTER'),
-        ('BOTTOMPADDING', (0, 1), (-1, 1), 6),
-        ('TOPPADDING', (0, 1), (-1, 1), 6),
-        ('LEFTPADDING', (0, 1), (-1, 1), 4),
-        ('RIGHTPADDING', (0, 1), (-1, 1), 4),
-        # Daten-Zeilen - Modern, luftig, ohne dicke Linien
-        ('FONTSIZE', (0, 2), (-1, -2), 7),
-        ('FONTNAME', (0, 2), (-1, -2), 'Helvetica'),
-        ('ALIGN', (0, 2), (0, -2), 'CENTER'),  # KST
-        ('ALIGN', (1, 2), (1, -2), 'LEFT'),  # Bereich/Absatzweg
-        ('ALIGN', (2, 2), (-1, -2), 'RIGHT'),  # Zahlen rechts
-        ('BOTTOMPADDING', (0, 2), (-1, -2), 5),
-        ('TOPPADDING', (0, 2), (-1, -2), 5),
-        ('LEFTPADDING', (0, 2), (-1, -2), 4),
-        ('RIGHTPADDING', (0, 2), (-1, -2), 4),
-        # Moderne Grid-Linien - sehr dünn und subtil
-        ('LINEBELOW', (0, 0), (-1, 0), 0.5, MODERN_BLUE),
-        ('LINEBELOW', (0, 1), (-1, 1), 0.5, colors.HexColor('#e2e8f0')),
-        ('LINEBELOW', (0, 2), (-1, -2), 0.3, colors.HexColor('#f1f5f9')),  # Sehr dünne Trennlinien
-        # Moderne Zeilen-Hintergründe - sanfte Alternierung
-        ('ROWBACKGROUNDS', (0, 2), (-1, -2), [MODERN_BG, MODERN_GRAY_LIGHT]),
-        # Bereichs-Zeilen (Hauptzeilen) - Leicht hervorgehoben
-        # Gesamt-Zeile - Moderner Abschluss
-        ('BACKGROUND', (0, -1), (-1, -1), MODERN_BLUE),
-        ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
-        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, -1), (-1, -1), 9),
-        ('BOTTOMPADDING', (0, -1), (-1, -1), 8),
-        ('TOPPADDING', (0, -1), (-1, -1), 8),
-        ('LEFTPADDING', (0, -1), (-1, -1), 6),
-        ('RIGHTPADDING', (0, -1), (-1, -1), 6),
-        ('LINEABOVE', (0, -1), (-1, -1), 1, MODERN_BLUE),
-    ]
-    
-    # TAG 215: KST-Summenzeilen stylen (alle Zeilen mit "Summe" im Bereich/Absatzweg)
-    for row_idx in range(2, len(detail_data) - 1):  # Skip Header und Gesamt-Zeile
-        if len(detail_data[row_idx]) > 1 and isinstance(detail_data[row_idx][1], str) and 'Summe' in detail_data[row_idx][1]:
-            detail_style.append(('BACKGROUND', (0, row_idx), (-1, row_idx), colors.HexColor('#e8f4f8')))  # Hellblau
-            detail_style.append(('FONTNAME', (0, row_idx), (-1, row_idx), 'Helvetica-Bold'))
-            detail_style.append(('FONTSIZE', (0, row_idx), (1, row_idx), 7))  # Bereich/Absatzweg etwas größer
-            detail_style.append(('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 4))
-            detail_style.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 4))
-    
-    detail_table.setStyle(TableStyle(detail_style))
-    elements.append(detail_table)
-    elements.append(Spacer(1, 10))
-    
-    # Alte Bereichs-Tabelle (kompakt, optional - auskommentiert)
-    # bereich_header = ['Bereich', 'Umsatz', 'Einsatz', 'DB1', 'Marge', 'Status']
-    # bereich_data = [bereich_header]
+                kst_subtotal_rows.append(len(kst_data) - 1)
+        elif bkey == '5-Sonst':
+            try:
+                from datetime import timedelta
+                _hd = datetime.strptime(heute_datum, '%Y-%m-%d')
+                _bis_heute = (_hd + timedelta(days=1)).strftime('%Y-%m-%d')
+                _von_monat = f"{jahr_num}-{monat_num:02d}-01"
+                _bis_monat = f"{jahr_num}-{monat_num+1:02d}-01" if monat_num < 12 else f"{jahr_num+1}-01-01"
+                _cp = get_tek_cleanpark_direct(
+                    data.get('firma', '0'), data.get('standort_api', '0'),
+                    heute_datum, _bis_heute, _von_monat, _bis_monat
+                )
+                _cp_dh = _cp['heute_umsatz'] - _cp['heute_einsatz']
+                _cp_dm = _cp['monat_umsatz'] - _cp['monat_einsatz']
+                _cp_mh = (_cp_dh / _cp['heute_umsatz'] * 100) if _cp['heute_umsatz'] > 0 else 0
+                _cp_mm = (_cp_dm / _cp['monat_umsatz'] * 100) if _cp['monat_umsatz'] > 0 else 0
+                kst_data.append([
+                    'Clean Park (847301 / 747301)', '—',
+                    format_currency_short(_cp['heute_umsatz']), format_currency_short(_cp['heute_einsatz']),
+                    format_currency_short(_cp_dh), format_percent(_cp_mh),
+                    '—', format_currency_short(_cp['monat_umsatz']), format_currency_short(_cp['monat_einsatz']),
+                    format_currency_short(_cp_dm), format_percent(_cp_mm)
+                ])
+            except Exception:
+                pass
 
-    # Benchmarks für Status
-    BENCHMARKS = {
-        '1-NW': {'ziel': 12, 'warnung': 8},
-        '2-GW': {'ziel': 10, 'warnung': 7},
-        '3-Teile': {'ziel': 32, 'warnung': 25},
-        '4-Lohn': {'ziel': 50, 'warnung': 45},
-        '5-Sonst': {'ziel': 10, 'warnung': 5}
-    }
-
-    # Alte Bereiche-Tabelle entfernt - jetzt verwenden wir abteilungen_data (siehe oben)
-
-    # === TAG204: DRILL-DOWNS für Verkauf (NW/GW) ===
-    elements.append(Spacer(1, 30))
-    elements.append(Paragraph("🚗 Verkauf - Drill-Down", section_style))
-    
-    # Helper-Funktionen für Drill-Down APIs
-    def get_absatzwege_drill_down(bereich, firma, standort, monat, jahr):
-        """Holt Absatzwege-Daten via API /api/tek/detail"""
-        import requests
-        try:
-            params = {
-                'bereich': bereich,
-                'firma': firma,
-                'standort': standort,
-                'monat': monat,
-                'jahr': jahr,
-                'ebene': 'gruppen'
-            }
-            response = requests.get('http://127.0.0.1:5000/api/tek/detail', params=params, timeout=30)
-            if response.status_code == 200:
-                data = response.json()
-                return data.get('absatzwege', [])
-        except Exception as e:
-            print(f"⚠️  Fehler beim Abrufen von Absatzwegen: {e}")
-        return []
-    
-    def get_modelle_drill_down(bereich, firma, standort, monat, jahr):
-        """Holt Modell-Daten via API /api/tek/modelle"""
-        import requests
-        try:
-            params = {
-                'bereich': bereich,
-                'firma': firma,
-                'standort': standort,
-                'monat': monat,
-                'jahr': jahr,
-                'gruppierung': 'modell'
-            }
-            response = requests.get('http://127.0.0.1:5000/api/tek/modelle', params=params, timeout=30)
-            if response.status_code == 200:
-                data = response.json()
-                return data.get('modelle', [])
-        except Exception as e:
-            print(f"⚠️  Fehler beim Abrufen von Modellen: {e}")
-        return []
-    
-    # Neuwagen Drill-Down
-    nw = next((b for b in bereiche_sorted if b.get('bereich') == '1-NW'), None)
-    if nw and nw.get('umsatz', 0) > 0:
-        elements.append(Paragraph("📊 Neuwagen - Nach Absatzwegen (Monat kumuliert)", styles['Heading3']))
-        
-        absatzwege_nw = get_absatzwege_drill_down(
-            bereich='1-NW',
-            firma=data.get('firma', '0'),
-            standort=data.get('standort_api', '0'),
-            monat=data.get('monat_num'),
-            jahr=data.get('jahr_num')
-        )
-        
-        if absatzwege_nw:
-            absatzwege_data = [['Absatzweg', 'Stück', 'Erlöse', 'DB1', 'DB1/Stk']]
-            for aw in sorted(absatzwege_nw, key=lambda x: x.get('umsatz', 0), reverse=True):
-                absatzwege_data.append([
-                    aw.get('absatzweg', 'Unbekannt'),
-                    str(aw.get('stueck', 0)),
-                    format_currency_short(aw.get('umsatz', 0)),
-                    format_currency_short(aw.get('db1', 0)),
-                    format_currency_short(aw.get('db1_pro_stueck', 0))
-                ])
-            # Gesamt-Zeile
-            absatzwege_data.append([
-                'GESAMT',
-                str(nw.get('stueck', 0)),
-                format_currency_short(nw.get('umsatz', 0)),
-                format_currency_short(nw.get('db1', 0)),
-                format_currency_short(nw.get('db1_pro_stueck', 0))
-            ])
-            
-            absatzwege_table = Table(absatzwege_data, colWidths=[5*cm, 2*cm, 3*cm, 3*cm, 3*cm])
-            absatzwege_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), DRIVE_BLUE),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, -1), 9),
-                ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-                ('ALIGN', (0, 1), (0, -1), 'LEFT'),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-                ('TOPPADDING', (0, 0), (-1, -1), 6),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
-                ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#f9f9f9')]),
-                ('BACKGROUND', (0, -1), (-1, -1), GRAY_DARK),
-                ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
-                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-            ]))
-            elements.append(absatzwege_table)
-            elements.append(Spacer(1, 15))
-        
-        # Modelle
-        modelle_nw = get_modelle_drill_down(
-            bereich='1-NW',
-            firma=data.get('firma', '0'),
-            standort=data.get('standort_api', '0'),
-            monat=data.get('monat_num'),
-            jahr=data.get('jahr_num')
-        )
-        
-        if modelle_nw:
-            elements.append(Paragraph("📊 Neuwagen - Nach Modellen (Monat kumuliert)", styles['Heading3']))
-            modelle_data = [['Modell', 'Stück', 'Erlöse', 'DB1', 'DB1/Stk']]
-            for m in sorted(modelle_nw, key=lambda x: x.get('umsatz', 0), reverse=True)[:10]:  # Top 10
-                modelle_data.append([
-                    m.get('modell', 'Unbekannt'),
-                    str(m.get('stueck', 0)),
-                    format_currency_short(m.get('umsatz', 0)),
-                    format_currency_short(m.get('db1', 0)),
-                    format_currency_short(m.get('db1_pro_stueck', 0))
-                ])
-            # Gesamt-Zeile
-            modelle_data.append([
-                'GESAMT',
-                str(nw.get('stueck', 0)),
-                format_currency_short(nw.get('umsatz', 0)),
-                format_currency_short(nw.get('db1', 0)),
-                format_currency_short(nw.get('db1_pro_stueck', 0))
-            ])
-            
-            modelle_table = Table(modelle_data, colWidths=[5*cm, 2*cm, 3*cm, 3*cm, 3*cm])
-            modelle_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), DRIVE_BLUE),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, -1), 9),
-                ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-                ('ALIGN', (0, 1), (0, -1), 'LEFT'),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-                ('TOPPADDING', (0, 0), (-1, -1), 6),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
-                ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#f9f9f9')]),
-                ('BACKGROUND', (0, -1), (-1, -1), GRAY_DARK),
-                ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
-                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-            ]))
-            elements.append(modelle_table)
-            elements.append(Spacer(1, 20))
-    
-    # Gebrauchtwagen Drill-Down
-    gw = next((b for b in bereiche_sorted if b.get('bereich') == '2-GW'), None)
-    if gw and gw.get('umsatz', 0) > 0:
-        absatzwege_gw = get_absatzwege_drill_down(
-            bereich='2-GW',
-            firma=data.get('firma', '0'),
-            standort=data.get('standort_api', '0'),
-            monat=data.get('monat_num'),
-            jahr=data.get('jahr_num')
-        )
-        
-        if absatzwege_gw:
-            elements.append(Paragraph("📊 Gebrauchtwagen - Nach Absatzwegen (Monat kumuliert)", styles['Heading3']))
-            absatzwege_data = [['Absatzweg', 'Stück', 'Erlöse', 'DB1', 'DB1/Stk']]
-            for aw in sorted(absatzwege_gw, key=lambda x: x.get('umsatz', 0), reverse=True):
-                absatzwege_data.append([
-                    aw.get('absatzweg', 'Unbekannt'),
-                    str(aw.get('stueck', 0)),
-                    format_currency_short(aw.get('umsatz', 0)),
-                    format_currency_short(aw.get('db1', 0)),
-                    format_currency_short(aw.get('db1_pro_stueck', 0))
-                ])
-            absatzwege_data.append([
-                'GESAMT',
-                str(gw.get('stueck', 0)),
-                format_currency_short(gw.get('umsatz', 0)),
-                format_currency_short(gw.get('db1', 0)),
-                format_currency_short(gw.get('db1_pro_stueck', 0))
-            ])
-            
-            absatzwege_table = Table(absatzwege_data, colWidths=[5*cm, 2*cm, 3*cm, 3*cm, 3*cm])
-            absatzwege_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), DRIVE_BLUE),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, -1), 9),
-                ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-                ('ALIGN', (0, 1), (0, -1), 'LEFT'),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-                ('TOPPADDING', (0, 0), (-1, -1), 6),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
-                ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#f9f9f9')]),
-                ('BACKGROUND', (0, -1), (-1, -1), GRAY_DARK),
-                ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
-                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-            ]))
-            elements.append(absatzwege_table)
-            elements.append(Spacer(1, 15))
-        
-        modelle_gw = get_modelle_drill_down(
-            bereich='2-GW',
-            firma=data.get('firma', '0'),
-            standort=data.get('standort_api', '0'),
-            monat=data.get('monat_num'),
-            jahr=data.get('jahr_num')
-        )
-        
-        if modelle_gw:
-            elements.append(Paragraph("📊 Gebrauchtwagen - Nach Modellen (Monat kumuliert)", styles['Heading3']))
-            modelle_data = [['Modell', 'Stück', 'Erlöse', 'DB1', 'DB1/Stk']]
-            for m in sorted(modelle_gw, key=lambda x: x.get('umsatz', 0), reverse=True)[:10]:  # Top 10
-                modelle_data.append([
-                    m.get('modell', 'Unbekannt'),
-                    str(m.get('stueck', 0)),
-                    format_currency_short(m.get('umsatz', 0)),
-                    format_currency_short(m.get('db1', 0)),
-                    format_currency_short(m.get('db1_pro_stueck', 0))
-                ])
-            modelle_data.append([
-                'GESAMT',
-                str(gw.get('stueck', 0)),
-                format_currency_short(gw.get('umsatz', 0)),
-                format_currency_short(gw.get('db1', 0)),
-                format_currency_short(gw.get('db1_pro_stueck', 0))
-            ])
-            
-            modelle_table = Table(modelle_data, colWidths=[5*cm, 2*cm, 3*cm, 3*cm, 3*cm])
-            modelle_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), DRIVE_BLUE),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, -1), 9),
-                ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-                ('ALIGN', (0, 1), (0, -1), 'LEFT'),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-                ('TOPPADDING', (0, 0), (-1, -1), 6),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
-                ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#f9f9f9')]),
-                ('BACKGROUND', (0, -1), (-1, -1), GRAY_DARK),
-                ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
-                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-            ]))
-            elements.append(modelle_table)
-            elements.append(Spacer(1, 20))
+        # Spaltenbreiten: mehr Platz nutzen (Querformat ~28,7 cm), keine Überläufe
+        colw_kst = [7.2*cm, 0.95*cm, 2.05*cm, 2.05*cm, 1.6*cm, 1.2*cm, 0.95*cm, 2.05*cm, 2.05*cm, 1.6*cm, 1.2*cm]
+        kst_table = Table(kst_data, colWidths=colw_kst, repeatRows=1)
+        kst_style = list(detail_table_style)
+        # Header wie Global Cube: hellgrauer Hintergrund
+        kst_style.append(('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e9ecef')))
+        kst_style.append(('TEXTCOLOR', (0, 0), (-1, 0), GRAY_DARK))
+        # Hauptgruppe (Zeile 1): hellgrauer Hintergrund + fett wie Global Cube
+        kst_style.append(('BACKGROUND', (0, 1), (-1, 1), colors.HexColor('#e9ecef')))
+        kst_style.append(('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'))
+        kst_style.append(('FONTSIZE', (0, 1), (-1, 1), 8))
+        # Summenzeilen pro Absatzweg: fett
+        for row_idx in kst_subtotal_rows:
+            kst_style.append(('FONTNAME', (0, row_idx), (-1, row_idx), 'Helvetica-Bold'))
+            kst_style.append(('BACKGROUND', (0, row_idx), (-1, row_idx), colors.HexColor('#f8f9fa')))
+        # Negative Werte (DB 1 ber., DB 1 in %) in rot
+        for (row_idx, col_idx) in kst_negative_cells:
+            kst_style.append(('TEXTCOLOR', (col_idx, row_idx), (col_idx, row_idx), DANGER))
+        kst_table.setStyle(TableStyle(kst_style))
+        elements.append(kst_table)
+        if bkey == '4-Lohn':
+            # Werkstatt-KPI-Block wie Mockup V2: Produktivität und Leistungsgrad klar sichtbar
+            ws_kpi_rows = []
+            if b.get('produktivitaet') is not None:
+                ws_kpi_rows.append(['Produktivität (EW):', f"{b.get('produktivitaet')} %"])
+            if b.get('leistungsgrad') is not None:
+                ws_kpi_rows.append(['Leistungsgrad:', f"{b.get('leistungsgrad')} %"])
+            if ws_kpi_rows:
+                ws_kpi_table = Table(ws_kpi_rows, colWidths=[4*cm, 3*cm])
+                ws_kpi_table.setStyle(TableStyle([
+                    ('FONTSIZE', (0, 0), (-1, -1), 8),
+                    ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                    ('TEXTCOLOR', (0, 0), (-1, -1), GRAY_DARK),
+                    ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f8f9fa')),
+                    ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+                    ('TOPPADDING', (0, 0), (-1, -1), 5), ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 6), ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+                ]))
+                elements.append(Spacer(1, 6))
+                elements.append(ws_kpi_table)
+            if b.get('hinweis'):
+                hint_style = ParagraphStyle(
+                    'WerkstattHint', parent=getSampleStyleSheet()['Normal'],
+                    fontSize=8, textColor=GRAY, spaceBefore=6, spaceAfter=0
+                )
+                elements.append(Paragraph("<b>Hinweis:</b> " + str(b.get('hinweis')), hint_style))
+        elements.append(Spacer(1, 8))
 
     # Footer (modern mit DRIVE Branding)
     elements.append(Spacer(1, 30))
@@ -1937,7 +1603,7 @@ def generate_tek_bereich_pdf(data: dict, bereich_key: str) -> bytes:
         '2-GW': 'Gebrauchtwagen',
         '3-Teile': 'Teile',
         '4-Lohn': 'Werkstatt',
-        '5-Sonst': 'Sonstige'
+        '5-Sonst': 'Mietwagen'
     }
 
     BENCHMARKS = {
@@ -2009,28 +1675,18 @@ def generate_tek_bereich_pdf(data: dict, bereich_key: str) -> bytes:
         subtitle_style
     ))
 
-    # === HAUPT-KPIs (groß) ===
+    # === HAUPT-KPIs (groß) – ohne Status „Ziel erreicht“ (fachlich nicht sinnvoll) ===
     marge = bereich_data.get('marge', 0)
-    if marge >= benchmark['ziel']:
-        marge_color = colors.HexColor('#28a745')
-        status_text = "Ziel erreicht"
-    elif marge >= benchmark['warnung']:
-        marge_color = colors.HexColor('#ffc107')
-        status_text = "Warnung"
-    else:
-        marge_color = colors.HexColor('#dc3545')
-        status_text = "Unter Ziel"
 
     kpi_data = [
-        ['DB1', 'Marge', 'Status'],
+        ['DB1', 'Marge'],
         [
             format_currency_short(bereich_data.get('db1', 0)),
             format_percent(marge),
-            status_text
         ]
     ]
 
-    kpi_table = Table(kpi_data, colWidths=[6*cm, 5*cm, 5*cm])
+    kpi_table = Table(kpi_data, colWidths=[8*cm, 8*cm])
     kpi_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0066cc')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
@@ -2043,8 +1699,6 @@ def generate_tek_bereich_pdf(data: dict, bereich_key: str) -> bytes:
         ('TOPPADDING', (0, 0), (-1, -1), 15),
         ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#cccccc')),
         ('BACKGROUND', (0, 1), (-1, 1), colors.HexColor('#f8f9fa')),
-        ('TEXTCOLOR', (1, 1), (1, 1), marge_color),
-        ('TEXTCOLOR', (2, 1), (2, 1), marge_color),
     ]))
     elements.append(kpi_table)
     elements.append(Spacer(1, 15))
@@ -2054,12 +1708,23 @@ def generate_tek_bereich_pdf(data: dict, bereich_key: str) -> bytes:
 
     detail_data = [
         ['Kennzahl', 'Wert'],
-        ['Umsatz', format_currency_short(bereich_data.get('umsatz', 0))],
-        ['Einsatz', format_currency_short(bereich_data.get('einsatz', 0))],
-        ['DB1 (Rohertrag)', format_currency_short(bereich_data.get('db1', 0))],
+        ['Erlös (Monat)', format_currency_short(bereich_data.get('umsatz', 0))],
+        ['Einsatz (Monat)', format_currency_short(bereich_data.get('einsatz', 0))],
+        ['DB1 (Monat)', format_currency_short(bereich_data.get('db1', 0))],
         ['Marge', format_percent(marge)],
-        ['Ziel-Marge', f"{benchmark['ziel']}%"],
     ]
+    # Heute-Zahlen wenn vorhanden (wie TEK Gesamt)
+    if bereich_data.get('heute_umsatz') is not None or bereich_data.get('heute_db1') is not None:
+        detail_data.append(['Erlös (Heute)', format_currency_short(bereich_data.get('heute_umsatz', 0))])
+        detail_data.append(['DB1 (Heute)', format_currency_short(bereich_data.get('heute_db1', 0))])
+    # Werkstatt-spezifisch: Hinweis kalk. Einsatz, Produktivität, Leistungsgrad
+    if bereich_key == '4-Lohn':
+        if bereich_data.get('hinweis'):
+            detail_data.append(['Hinweis', bereich_data.get('hinweis', '')])
+        if bereich_data.get('produktivitaet') is not None:
+            detail_data.append(['Produktivität (EW)', f"{bereich_data.get('produktivitaet')} %"])
+        if bereich_data.get('leistungsgrad') is not None:
+            detail_data.append(['Leistungsgrad', f"{bereich_data.get('leistungsgrad')} %"])
 
     # Stückzahlen falls vorhanden (NW/GW)
     if bereich_key in ['1-NW', '2-GW'] and bereich_data.get('stueck'):
@@ -2332,6 +1997,166 @@ def generate_tek_verkauf_pdf(data: dict, standort_name: str = None) -> bytes:
         ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
     ]))
     elements.append(detail_table)
+
+    # === KST Verkauf (gleiche Detaillierung wie TEK Gesamt: Heute | Monat, Absatzwege, Konten) ===
+    _datum_str = data.get('datum', '')
+    _heute_datum = None
+    if _datum_str:
+        try:
+            _heute_datum = datetime.strptime(_datum_str, '%d.%m.%Y').strftime('%Y-%m-%d')
+        except Exception:
+            pass
+    if not _heute_datum:
+        _heute_datum = date.today().strftime('%Y-%m-%d')
+    _monat_num = data.get('monat_num')
+    _jahr_num = data.get('jahr_num')
+    if not _monat_num or not _jahr_num:
+        _monat_num = _monat_num or date.today().month
+        _jahr_num = _jahr_num or date.today().year
+    _firma_api = data.get('firma', '0')
+    _standort_api = data.get('standort_api', '0')
+
+    _kst_header = ['', '', 'Heute', '', '', '', '', '', 'Monat kumuliert', '', '', '', '', '']
+    _kst_sub = ['KST', 'Bereich/Absatzweg', 'Menge', 'Umsatzerlöse', 'Einsatzwerte', 'DB 1 ber.', 'DB/Stück', 'DB1 %', 'Menge', 'Umsatzerlöse', 'Einsatzwerte', 'DB 1 ber.', 'DB/Stück', 'DB1 %']
+    _sub_style = ParagraphStyle('TEKVerkaufSub', parent=styles['Normal'], fontSize=7, alignment=TA_CENTER, wordWrap='CJK')
+    _kst_subheader = [Paragraph(t, _sub_style) for t in _kst_sub]
+    kst_verkauf_data = [_kst_header, _kst_subheader]
+
+    _g_heute_stueck = _g_heute_umsatz = _g_heute_einsatz = _g_heute_db1 = 0
+    _g_monat_stueck = _g_monat_umsatz = _g_monat_einsatz = _g_monat_db1 = 0
+
+    for _bkey, _b, _kst_num, _name in [
+        ('1-NW', nw, '1', 'Neuwagen'),
+        ('2-GW', gw, '2', 'Gebrauchtwagen'),
+    ]:
+        if not _b:
+            continue
+        _heute_umsatz = _b.get('heute_umsatz', 0)
+        _heute_einsatz = _b.get('heute_einsatz', 0)
+        _heute_db1 = _b.get('heute_db1', 0)
+        _monat_umsatz = _b.get('umsatz', 0)
+        _monat_einsatz = _b.get('einsatz', 0)
+        _monat_db1 = _b.get('db1', 0)
+        _heute_marge = (_heute_db1 / _heute_umsatz * 100) if _heute_umsatz > 0 else 0
+        _monat_marge = (_monat_db1 / _monat_umsatz * 100) if _monat_umsatz > 0 else 0
+
+        _aw_data = get_tek_absatzwege_direct(_bkey, _firma_api, _standort_api, _monat_num, _jahr_num, _heute_datum)
+        _absatzwege = _aw_data.get('absatzwege', [])
+        _sum_stueck_heute = sum(aw.get('stueck_heute', 0) or 0 for aw in _absatzwege)
+        _sum_stueck_monat = sum(aw.get('stueck_monat', 0) or 0 for aw in _absatzwege)
+        _heute_stueck = _sum_stueck_heute
+        _monat_stueck = _sum_stueck_monat
+        _heute_db_stk = (_heute_db1 / _heute_stueck) if _heute_stueck > 0 else 0
+        _monat_db_stk = (_monat_db1 / _monat_stueck) if _monat_stueck > 0 else 0
+
+        kst_verkauf_data.append([
+            _kst_num, _name,
+            str(_heute_stueck), format_currency_short(_heute_umsatz), format_currency_short(_heute_einsatz),
+            format_currency_short(_heute_db1), format_currency_short(_heute_db_stk), format_percent(_heute_marge),
+            str(_monat_stueck), format_currency_short(_monat_umsatz), format_currency_short(_monat_einsatz),
+            format_currency_short(_monat_db1), format_currency_short(_monat_db_stk), format_percent(_monat_marge)
+        ])
+
+        for aw in _absatzwege:
+            _aw_display = aw.get('absatzweg', '')
+            if _aw_display == 'Sonstige Sonstige':
+                _aw_display = 'Sonstige Erlöse Neuwagen' if _bkey == '1-NW' else 'Sonstige Erlöse Gebrauchtwagen'
+            _aw_sh = aw.get('stueck_heute', 0)
+            _aw_uh = aw.get('umsatz_heute', 0)
+            _aw_eh = aw.get('einsatz_heute', 0)
+            _aw_dh = aw.get('db1_heute', 0)
+            _aw_mh = (_aw_dh / _aw_uh * 100) if _aw_uh > 0 else 0
+            _aw_sm = aw.get('stueck_monat', 0)
+            _aw_um = aw.get('umsatz_monat', 0)
+            _aw_em = aw.get('einsatz_monat', 0)
+            _aw_dm = aw.get('db1_monat', 0)
+            _aw_mm = (_aw_dm / _aw_um * 100) if _aw_um > 0 else 0
+            _aw_ds_h = (_aw_dh / _aw_sh) if _aw_sh > 0 else 0
+            _aw_ds_m = (_aw_dm / _aw_sm) if _aw_sm > 0 else 0
+            kst_verkauf_data.append([
+                '', f"  {_aw_display}",
+                str(_aw_sh), format_currency_short(_aw_uh), format_currency_short(_aw_eh),
+                format_currency_short(_aw_dh), format_currency_short(_aw_ds_h), format_percent(_aw_mh),
+                str(_aw_sm), format_currency_short(_aw_um), format_currency_short(_aw_em),
+                format_currency_short(_aw_dm), format_currency_short(_aw_ds_m), format_percent(_aw_mm)
+            ])
+            for k in aw.get('konten', []):
+                _ku = k.get('umsatz_heute', 0)
+                _ke = k.get('einsatz_heute', 0)
+                _kd = _ku - _ke
+                _km = (_kd / _ku * 100) if _ku > 0 else 0
+                _kum = k.get('umsatz_monat', 0)
+                _kem = k.get('einsatz_monat', 0)
+                _kdm = _kum - _kem
+                _kmm = (_kdm / _kum * 100) if _kum > 0 else 0
+                _ksh = k.get('stueck_heute', 0)
+                _ksm = k.get('stueck_monat', 0)
+                _kds_h = (_kd / _ksh) if _ksh > 0 else 0
+                _kds_m = (_kdm / _ksm) if _ksm > 0 else 0
+                _bez = (k.get('bezeichnung') or f"Konto {k.get('konto', '')}")
+                if len(_bez) > 70:
+                    _bez = _bez[:67] + "..."
+                kst_verkauf_data.append([
+                    '', f"    {k.get('konto', '')}: {_bez}",
+                    "-", format_currency_short(_ku), format_currency_short(_ke), format_currency_short(_kd),
+                    format_currency_short(_kds_h) if _ksh > 0 else "-", format_percent(_km),
+                    "-", format_currency_short(_kum), format_currency_short(_kem), format_currency_short(_kdm),
+                    format_currency_short(_kds_m) if _ksm > 0 else "-", format_percent(_kmm)
+                ])
+
+        _sum_db_stk_h = (_heute_db1 / _sum_stueck_heute) if _sum_stueck_heute > 0 else 0
+        _sum_db_stk_m = (_monat_db1 / _sum_stueck_monat) if _sum_stueck_monat > 0 else 0
+        kst_verkauf_data.append([
+            _kst_num, f"Summe {_name}",
+            str(_sum_stueck_heute), format_currency_short(_heute_umsatz), format_currency_short(_heute_einsatz),
+            format_currency_short(_heute_db1), format_currency_short(_sum_db_stk_h) if _sum_stueck_heute > 0 else "-", format_percent(_heute_marge),
+            str(_sum_stueck_monat), format_currency_short(_monat_umsatz), format_currency_short(_monat_einsatz),
+            format_currency_short(_monat_db1), format_currency_short(_sum_db_stk_m) if _sum_stueck_monat > 0 else "-", format_percent(_monat_marge)
+        ])
+        _g_heute_stueck += _sum_stueck_heute
+        _g_heute_umsatz += _heute_umsatz
+        _g_heute_einsatz += _heute_einsatz
+        _g_heute_db1 += _heute_db1
+        _g_monat_stueck += _sum_stueck_monat
+        _g_monat_umsatz += _monat_umsatz
+        _g_monat_einsatz += _monat_einsatz
+        _g_monat_db1 += _monat_db1
+
+    _g_heute_marge = (_g_heute_db1 / _g_heute_umsatz * 100) if _g_heute_umsatz > 0 else 0
+    _g_monat_marge = (_g_monat_db1 / _g_monat_umsatz * 100) if _g_monat_umsatz > 0 else 0
+    _g_db_stk_h = (_g_heute_db1 / _g_heute_stueck) if _g_heute_stueck > 0 else 0
+    _g_db_stk_m = (_g_monat_db1 / _g_monat_stueck) if _g_monat_stueck > 0 else 0
+    kst_verkauf_data.append([
+        '', 'GESAMT',
+        str(_g_heute_stueck), format_currency_short(_g_heute_umsatz), format_currency_short(_g_heute_einsatz),
+        format_currency_short(_g_heute_db1), format_currency_short(_g_db_stk_h), format_percent(_g_heute_marge),
+        str(_g_monat_stueck), format_currency_short(_g_monat_umsatz), format_currency_short(_g_monat_einsatz),
+        format_currency_short(_g_monat_db1), format_currency_short(_g_db_stk_m), format_percent(_g_monat_marge)
+    ])
+
+    _col_w = [0.55*cm, 3.2*cm, 0.7*cm, 1.35*cm, 1.35*cm, 1.2*cm, 1.0*cm, 1.0*cm, 0.7*cm, 1.35*cm, 1.35*cm, 1.2*cm, 1.0*cm, 1.0*cm]
+    _kst_table = Table(kst_verkauf_data, colWidths=_col_w)
+    _kst_style = [
+        ('SPAN', (2, 0), (7, 0)), ('SPAN', (8, 0), (13, 0)),
+        ('BACKGROUND', (0, 0), (-1, 0), DRIVE_BLUE), ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'), ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('BACKGROUND', (0, 1), (-1, 1), GRAY_DARK), ('TEXTCOLOR', (0, 1), (-1, 1), colors.white),
+        ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'), ('FONTSIZE', (0, 1), (-1, 1), 7),
+        ('FONTSIZE', (0, 2), (-1, -2), 6), ('ALIGN', (0, 2), (0, -2), 'CENTER'), ('ALIGN', (1, 2), (1, -2), 'LEFT'), ('ALIGN', (2, 2), (-1, -2), 'RIGHT'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4), ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('GRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#ddd')),
+        ('ROWBACKGROUNDS', (0, 2), (-1, -2), [colors.white, GRAY_LIGHT]),
+        ('BACKGROUND', (0, -1), (-1, -1), GRAY_DARK), ('TEXTCOLOR', (0, -1), (-1, -1), colors.white), ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'), ('FONTSIZE', (0, -1), (-1, -1), 8),
+    ]
+    for _ri in range(2, len(kst_verkauf_data) - 1):
+        if len(kst_verkauf_data[_ri]) > 1 and isinstance(kst_verkauf_data[_ri][1], str) and 'Summe' in kst_verkauf_data[_ri][1]:
+            _kst_style.append(('BACKGROUND', (0, _ri), (-1, _ri), colors.HexColor('#e8f4f8')))
+            _kst_style.append(('FONTNAME', (0, _ri), (-1, _ri), 'Helvetica-Bold'))
+    _kst_table.setStyle(TableStyle(_kst_style))
+    elements.append(Spacer(1, 15))
+    elements.append(Paragraph("KST Verkauf (Heute / Monat kumuliert)", section_style))
+    elements.append(_kst_table)
+    elements.append(Spacer(1, 18))
 
     # === Verkauf Drill-Down: Absatzwege + Modellen (wie TEK Gesamt) ===
     monat_num = data.get('monat_num')
@@ -2705,12 +2530,17 @@ def generate_tek_service_pdf(data: dict, standort_name: str = None) -> bytes:
         ])
     
     if werkstatt:
+        # TAG 219: Einsatz/DB1/Marge ggf. kalkulatorisch (laufender Monat) – Werte kommen so aus API/controlling_data
+        w_umsatz = werkstatt.get('umsatz', 0)
+        w_einsatz = werkstatt.get('einsatz_kalk') or werkstatt.get('einsatz', 0)
+        w_db1 = werkstatt.get('db1_kalk') if 'db1_kalk' in werkstatt else werkstatt.get('db1', 0)
+        w_marge = werkstatt.get('marge_kalk') if 'marge_kalk' in werkstatt else werkstatt.get('marge', 0)
         detail_data.append([
             'Werkstatt',
-            format_currency_short(werkstatt.get('umsatz', 0)),
-            format_currency_short(werkstatt.get('einsatz', 0)),
-            format_currency_short(werkstatt.get('db1', 0)),
-            format_percent(werkstatt.get('marge', 0))
+            format_currency_short(w_umsatz),
+            format_currency_short(w_einsatz),
+            format_currency_short(w_db1),
+            format_percent(w_marge)
         ])
     
     # Gesamt-Zeile
@@ -2740,6 +2570,143 @@ def generate_tek_service_pdf(data: dict, standort_name: str = None) -> bytes:
         ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
     ]))
     elements.append(detail_table)
+
+    # === WERKSTATT-DETAILS (TAG 219: kalk. Einsatz, KPIs wenn vorhanden) ===
+    if werkstatt:
+        ws_details = []
+        if werkstatt.get('hinweis'):
+            ws_details.append(werkstatt.get('hinweis'))
+        if werkstatt.get('produktivitaet') is not None:
+            ws_details.append(f"Produktivität (EW): {werkstatt.get('produktivitaet')} %")
+        if werkstatt.get('leistungsgrad') is not None:
+            ws_details.append(f"Leistungsgrad: {werkstatt.get('leistungsgrad')} %")
+        if ws_details:
+            hint_style = ParagraphStyle(
+                'WerkstattHint',
+                parent=styles['Normal'],
+                fontSize=8,
+                textColor=GRAY,
+                leftIndent=0,
+                spaceBefore=6,
+                spaceAfter=0
+            )
+            elements.append(Paragraph(
+                "Werkstatt: " + " | ".join(ws_details),
+                hint_style
+            ))
+            elements.append(Spacer(1, 10))
+
+    # === KST Service (Heute / Monat kumuliert, mit Gruppen wie TEK Gesamt) ===
+    _d_str = data.get('datum', '')
+    _heute_d = datetime.strptime(_d_str, '%d.%m.%Y').strftime('%Y-%m-%d') if _d_str and '.' in _d_str else date.today().strftime('%Y-%m-%d')
+    _mon = data.get('monat_num') or date.today().month
+    _jahr = data.get('jahr_num') or date.today().year
+    _firma = data.get('firma', '0')
+    _standort = data.get('standort_api', '0')
+
+    _gruppen_namen = {
+        '81': 'Erlöse Neuwagen', '82': 'Erlöse Gebrauchtwagen',
+        '83': 'Erlöse Teile', '84': 'Erlöse Lohn',
+        '85': 'Erlöse Lack', '86': 'Sonstige Erlöse', '88': 'Erlöse Vermietung', '89': 'Sonstige betriebliche Erträge',
+        '71': 'Einsatz Neuwagen', '72': 'Einsatz Gebrauchtwagen',
+        '73': 'Einsatz Teile', '74': 'Einsatz Lohn',
+        '75': 'Einsatz Lack', '76': 'Sonstiger Einsatz', '78': 'Einsatz Vermietung',
+    }
+
+    _sh = ['', '', 'Heute', '', '', '', '', '', 'Monat kumuliert', '', '', '', '', '']
+    _sl = ['KST', 'Bereich/Gruppe', 'Menge', 'Umsatzerlöse', 'Einsatzwerte', 'DB 1 ber.', 'DB/Stück', 'DB1 %', 'Menge', 'Umsatzerlöse', 'Einsatzwerte', 'DB 1 ber.', 'DB/Stück', 'DB1 %']
+    _sub_para = ParagraphStyle('TEKServiceSub', parent=styles['Normal'], fontSize=7, alignment=TA_CENTER, wordWrap='CJK')
+    kst_svc_data = [_sh, [Paragraph(t, _sub_para) for t in _sl]]
+
+    _gs_h_u = _gs_h_e = _gs_h_d = _gs_m_u = _gs_m_e = _gs_m_d = 0
+
+    for _bkey, _b, _kst, _name in [
+        ('3-Teile', teile, '6', 'Teile & Zubehör'),
+        ('4-Lohn', werkstatt, '3', 'Service/Werkstatt'),
+    ]:
+        if not _b:
+            continue
+        _hu = _b.get('heute_umsatz', 0)
+        _he = _b.get('heute_einsatz', 0)
+        _hd = _b.get('heute_db1', 0)
+        _mu = _b.get('umsatz', 0)
+        _me = _b.get('einsatz', 0)
+        _md = _b.get('db1', 0)
+        _hm = (_hd / _hu * 100) if _hu > 0 else 0
+        _mm = (_md / _mu * 100) if _mu > 0 else 0
+
+        kst_svc_data.append([
+            _kst, _name,
+            "-", format_currency_short(_hu), format_currency_short(_he), format_currency_short(_hd), "-", format_percent(_hm),
+            "-", format_currency_short(_mu), format_currency_short(_me), format_currency_short(_md), "-", format_percent(_mm)
+        ])
+
+        _detail = get_tek_detail_data_direct(_bkey, _firma, _standort, _mon, _jahr, _heute_d)
+        _um = {g['gruppe']: g['betrag'] for g in _detail.get('monat', {}).get('umsatz_gruppen', [])}
+        _em = {g['gruppe']: g['betrag'] for g in _detail.get('monat', {}).get('einsatz_gruppen', [])}
+        _uh = {g['gruppe']: g['betrag'] for g in _detail.get('heute', {}).get('umsatz_gruppen', [])}
+        _eh = {g['gruppe']: g['betrag'] for g in _detail.get('heute', {}).get('einsatz_gruppen', [])}
+        _all_gr = sorted(set(list(_um.keys()) + list(_em.keys())))
+
+        for _gr in _all_gr:
+            _u_m = _um.get(_gr, 0)
+            _e_m = _em.get(_gr, 0)
+            _d_m = _u_m - _e_m
+            _m_m = (_d_m / _u_m * 100) if _u_m > 0 else 0
+            _u_h = _uh.get(_gr, 0)
+            _e_h = _eh.get(_gr, 0)
+            _d_h = _u_h - _e_h
+            _m_h = (_d_h / _u_h * 100) if _u_h > 0 else 0
+            _label = _gruppen_namen.get(_gr, f'Gruppe {_gr}')
+            kst_svc_data.append([
+                '', f"  {_label}",
+                "-", format_currency_short(_u_h), format_currency_short(_e_h), format_currency_short(_d_h), "-", format_percent(_m_h),
+                "-", format_currency_short(_u_m), format_currency_short(_e_m), format_currency_short(_d_m), "-", format_percent(_m_m)
+            ])
+
+        kst_svc_data.append([
+            _kst, f"Summe {_name}",
+            "-", format_currency_short(_hu), format_currency_short(_he), format_currency_short(_hd), "-", format_percent(_hm),
+            "-", format_currency_short(_mu), format_currency_short(_me), format_currency_short(_md), "-", format_percent(_mm)
+        ])
+        _gs_h_u += _hu
+        _gs_h_e += _he
+        _gs_h_d += _hd
+        _gs_m_u += _mu
+        _gs_m_e += _me
+        _gs_m_d += _md
+
+    _gs_hm = (_gs_h_d / _gs_h_u * 100) if _gs_h_u > 0 else 0
+    _gs_mm = (_gs_m_d / _gs_m_u * 100) if _gs_m_u > 0 else 0
+    kst_svc_data.append([
+        '', 'GESAMT',
+        "-", format_currency_short(_gs_h_u), format_currency_short(_gs_h_e), format_currency_short(_gs_h_d), "-", format_percent(_gs_hm),
+        "-", format_currency_short(_gs_m_u), format_currency_short(_gs_m_e), format_currency_short(_gs_m_d), "-", format_percent(_gs_mm)
+    ])
+
+    _cw = [0.55*cm, 3.2*cm, 0.7*cm, 1.35*cm, 1.35*cm, 1.2*cm, 1.0*cm, 1.0*cm, 0.7*cm, 1.35*cm, 1.35*cm, 1.2*cm, 1.0*cm, 1.0*cm]
+    _tbl = Table(kst_svc_data, colWidths=_cw)
+    _sty = [
+        ('SPAN', (2, 0), (7, 0)), ('SPAN', (8, 0), (13, 0)),
+        ('BACKGROUND', (0, 0), (-1, 0), DRIVE_BLUE), ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'), ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('BACKGROUND', (0, 1), (-1, 1), GRAY_DARK), ('TEXTCOLOR', (0, 1), (-1, 1), colors.white),
+        ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'), ('FONTSIZE', (0, 1), (-1, 1), 7),
+        ('FONTSIZE', (0, 2), (-1, -2), 6), ('ALIGN', (0, 2), (0, -2), 'CENTER'), ('ALIGN', (1, 2), (1, -2), 'LEFT'), ('ALIGN', (2, 2), (-1, -2), 'RIGHT'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4), ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('GRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#ddd')),
+        ('ROWBACKGROUNDS', (0, 2), (-1, -2), [colors.white, GRAY_LIGHT]),
+        ('BACKGROUND', (0, -1), (-1, -1), GRAY_DARK), ('TEXTCOLOR', (0, -1), (-1, -1), colors.white), ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'), ('FONTSIZE', (0, -1), (-1, -1), 8),
+    ]
+    for _ri in range(2, len(kst_svc_data) - 1):
+        if len(kst_svc_data[_ri]) > 1 and isinstance(kst_svc_data[_ri][1], str) and 'Summe' in kst_svc_data[_ri][1]:
+            _sty.append(('BACKGROUND', (0, _ri), (-1, _ri), colors.HexColor('#e8f4f8')))
+            _sty.append(('FONTNAME', (0, _ri), (-1, _ri), 'Helvetica-Bold'))
+    _tbl.setStyle(TableStyle(_sty))
+    elements.append(Spacer(1, 15))
+    elements.append(Paragraph("KST Service (Heute / Monat kumuliert)", section_style))
+    elements.append(_tbl)
+    elements.append(Spacer(1, 18))
 
     # Footer
     elements.append(Spacer(1, 20))

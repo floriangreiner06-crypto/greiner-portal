@@ -16,6 +16,9 @@ Flask==3.0.0
 # Optional aber empfohlen:
 python-dateutil==2.8.2
 
+# .env laden (z. B. für TEK-Script, DB_Credentials)
+python-dotenv>=1.0.0
+
 # FÃ¼r Produktiv-Deployment (optional)
 gunicorn==21.2.0
 beautifulsoup4==4.12.2
@@ -28,3 +31,6 @@ twilio>=8.0.0
 
 # Redis für Caching (TAG 213)
 redis>=5.0.0
+
+# Excel-Export (z. B. VFW Lohnsteuerliste)
+openpyxl>=3.1.0

@@ -426,6 +426,37 @@
             <div class="modal-body">
                 <p class="text-muted mb-3" id="reportModalDesc"></p>
 
+                <!-- Testversand: Einzelnen Report an eine Adresse senden -->
+                <div class="card mb-3 border-primary">
+                    <div class="card-header bg-light py-2">
+                        <i class="bi bi-send-check me-1"></i>Testversand
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-2">Report einmalig an eine E-Mail-Adresse senden (z.B. zum Prüfen von Inhalt und Anhang).</p>
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-5">
+                                <label class="form-label small mb-0">E-Mail-Adresse</label>
+                                <input type="email" class="form-control form-control-sm" id="testSendEmail"
+                                       placeholder="z.B. name@auto-greiner.de" list="employeeEmails">
+                            </div>
+                            <div class="col-md-3" id="testStandortContainer">
+                                <label class="form-label small mb-0">Standort (optional)</label>
+                                <select class="form-select form-select-sm" id="testSendStandort">
+                                    <option value="">Gesamt / Alle</option>
+                                    <option value="DEG">Deggendorf</option>
+                                    <option value="LAN">Landau</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <button type="button" class="btn btn-primary btn-sm w-100" id="btnTestSend" onclick="sendTestReport()">
+                                    <i class="bi bi-send me-1"></i>Jetzt an diese Adresse senden
+                                </button>
+                            </div>
+                        </div>
+                        <div id="testSendResult" class="mt-2 small" style="display: none;"></div>
+                    </div>
+                </div>
+
                 <!-- Neuen Subscriber hinzufuegen -->
                 <div class="card mb-3">
                     <div class="card-header bg-light py-2">
@@ -812,13 +843,21 @@ async function openReportModal(reportId) {
     document.getElementById('reportModalTitle').textContent = report.name;
     document.getElementById('reportModalDesc').textContent = report.description;
 
-    // Standort-Select anzeigen/verstecken
+    // Standort-Select anzeigen/verstecken (Empfaenger + Testversand)
     const standortContainer = document.getElementById('standortSelectContainer');
+    const testStandortContainer = document.getElementById('testStandortContainer');
     if (report.supports_standort) {
         standortContainer.style.display = 'block';
+        testStandortContainer.style.display = 'block';
     } else {
         standortContainer.style.display = 'none';
+        testStandortContainer.style.display = 'none';
     }
+
+    // Testversand-Ergebnis zuruecksetzen
+    document.getElementById('testSendResult').style.display = 'none';
+    document.getElementById('testSendResult').innerHTML = '';
+    document.getElementById('testSendEmail').value = '';
 
     // Subscriber laden
     await loadReportSubscribers(reportId);
@@ -946,6 +985,54 @@ async function deleteSubscription(subscriptionId) {
         }
     } catch (error) {
         console.error('Fehler:', error);
+    }
+}
+
+async function sendTestReport() {
+    const email = document.getElementById('testSendEmail').value.trim();
+    const standortEl = document.getElementById('testSendStandort');
+    const standort = standortEl && standortEl.value ? standortEl.value : null;
+    const resultEl = document.getElementById('testSendResult');
+    const btn = document.getElementById('btnTestSend');
+
+    if (!email) {
+        resultEl.style.display = 'block';
+        resultEl.className = 'mt-2 small text-danger';
+        resultEl.textContent = 'Bitte E-Mail-Adresse eingeben.';
+        return;
+    }
+    if (email.indexOf('@') < 0) {
+        resultEl.style.display = 'block';
+        resultEl.className = 'mt-2 small text-danger';
+        resultEl.textContent = 'Ungueltige E-Mail-Adresse.';
+        return;
+    }
+
+    btn.disabled = true;
+    resultEl.style.display = 'block';
+    resultEl.className = 'mt-2 small text-muted';
+    resultEl.textContent = 'Sende...';
+
+    try {
+        const response = await fetch(`/api/admin/reports/${currentReportId}/send-test`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email, standort: standort })
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            resultEl.className = 'mt-2 small text-success';
+            resultEl.textContent = data.message || 'Report wurde gesendet.';
+        } else {
+            resultEl.className = 'mt-2 small text-danger';
+            resultEl.textContent = data.error || data.message || 'Versand fehlgeschlagen.';
+        }
+    } catch (err) {
+        resultEl.className = 'mt-2 small text-danger';
+        resultEl.textContent = 'Fehler: ' + (err.message || 'Netzwerkfehler');
+    } finally {
+        btn.disabled = false;
     }
 }
 

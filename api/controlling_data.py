@@ -127,10 +127,6 @@ def get_tek_data(monat=None, jahr=None, firma='0', standort='0', modus='teil', u
         """, (von, bis))
         einsatz_dict = {r['bereich']: float(r['einsatz'] or 0) for r in cursor.fetchall()}
 
-        # TAG147 FIX: Kalkulatorische Lohnkosten ENTFERNT
-        # Global Cube rechnet OHNE kalkulatorische Aufschläge
-        # Die 40%-Regel war FALSCH und führte zu 25k € Abweichung
-
         # Bereiche zusammenführen
         bereiche = []
         for bkey in ['1-NW', '2-GW', '3-Teile', '4-Lohn', '5-Sonst']:
@@ -146,7 +142,52 @@ def get_tek_data(monat=None, jahr=None, firma='0', standort='0', modus='teil', u
                 'marge': round(marge, 1)
             })
 
-        # Gesamt
+        # TAG 219: 4-Lohn im laufenden Monat – kalkulatorischer Einsatz (Method B, 6-Monats-Quote)
+        # Im laufenden Monat ist FIBU-Einsatz 74xxxx oft noch nicht voll gebucht → Marge würde verfälscht.
+        # Einsatz kalk = Umsatz_aktuell × (Einsatz_6M / Umsatz_6M); DB1/Marge daraus.
+        heute_ref = heute if isinstance(heute, date) else date.today()
+        ist_laufender_monat = (jahr == heute_ref.year and monat == heute_ref.month)
+        if ist_laufender_monat:
+            werkstatt_item = next((b for b in bereiche if b['id'] == '4-Lohn'), None)
+            werkstatt_umsatz = werkstatt_item['umsatz'] if werkstatt_item else 0
+            if werkstatt_item and werkstatt_umsatz > 0:
+                bis_6m = date(jahr, monat, 1)
+                von_6m = bis_6m
+                for _ in range(6):
+                    von_6m = (von_6m - timedelta(days=1)).replace(day=1)
+                von_6m_str = von_6m.strftime('%Y-%m-%d')
+                bis_6m_str = bis_6m.strftime('%Y-%m-%d')
+                cursor.execute(f"""
+                    SELECT COALESCE(SUM(CASE WHEN nominal_account_number BETWEEN 840000 AND 849999 AND debit_or_credit = 'H' THEN posted_value
+                               WHEN nominal_account_number BETWEEN 840000 AND 849999 AND debit_or_credit = 'S' THEN -posted_value ELSE 0 END) / 100.0, 0) as umsatz
+                    FROM loco_journal_accountings
+                    WHERE accounting_date >= %s AND accounting_date < %s
+                    {firma_filter_umsatz}
+                """, (von_6m_str, bis_6m_str))
+                row_umsatz = cursor.fetchone()
+                umsatz_6m = float(row_to_dict(row_umsatz).get('umsatz', 0) or 0) if row_umsatz else 0
+                cursor.execute(f"""
+                    SELECT COALESCE(SUM(CASE WHEN nominal_account_number BETWEEN 740000 AND 749999 AND debit_or_credit = 'S' THEN posted_value
+                               WHEN nominal_account_number BETWEEN 740000 AND 749999 AND debit_or_credit = 'H' THEN -posted_value ELSE 0 END) / 100.0, 0) as einsatz
+                    FROM loco_journal_accountings
+                    WHERE accounting_date >= %s AND accounting_date < %s
+                    {firma_filter_umsatz}
+                """, (von_6m_str, bis_6m_str))
+                row_einsatz = cursor.fetchone()
+                einsatz_6m = float(row_to_dict(row_einsatz).get('einsatz', 0) or 0) if row_einsatz else 0
+                einsatz_quote_6m = (einsatz_6m / umsatz_6m) if umsatz_6m > 0 else 0.36
+                gesamt_einsatz = round(werkstatt_umsatz * einsatz_quote_6m, 2)
+                werkstatt_db1 = werkstatt_umsatz - gesamt_einsatz
+                werkstatt_marge = round((werkstatt_db1 / werkstatt_umsatz * 100), 1)
+                werkstatt_item['einsatz'] = gesamt_einsatz
+                werkstatt_item['db1'] = round(werkstatt_db1, 2)
+                werkstatt_item['marge'] = werkstatt_marge
+                werkstatt_item['einsatz_kalk'] = gesamt_einsatz
+                werkstatt_item['db1_kalk'] = round(werkstatt_db1, 2)
+                werkstatt_item['marge_kalk'] = werkstatt_marge
+                werkstatt_item['hinweis'] = f"Einsatz kalk. (6M-Quote {round(einsatz_quote_6m*100)}%): {round(gesamt_einsatz/1000)}k"
+
+        # Gesamt (nach 4-Lohn-Kalk ggf. angepasst)
         total_umsatz = sum(b['umsatz'] for b in bereiche)
         total_einsatz = sum(b['einsatz'] for b in bereiche)
         total_db1 = total_umsatz - total_einsatz

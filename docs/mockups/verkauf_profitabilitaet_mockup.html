@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profitabilität Verkauf – Mockup (TAG 219)</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        body { background: #f5f6f8; font-family: 'Segoe UI', system-ui, sans-serif; }
+        .mockup-badge { position: fixed; top: 10px; right: 10px; z-index: 999; font-size: 0.75rem; }
+        .page-header { border-bottom: 2px solid #0d6efd; padding-bottom: 0.75rem; margin-bottom: 1.25rem; }
+        .filter-bar { background: #fff; border-radius: 8px; padding: 1rem; margin-bottom: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+        .kpi-card { border-radius: 8px; border: none; box-shadow: 0 1px 3px rgba(0,0,0,.08); height: 100%; }
+        .kpi-card .card-body { padding: 1rem 1.25rem; }
+        .kpi-value { font-size: 1.5rem; font-weight: 700; }
+        .kpi-label { font-size: 0.8rem; color: #6c757d; text-transform: uppercase; letter-spacing: .02em; }
+        .kpi-trend { font-size: 0.85rem; }
+        .chart-card { border-radius: 8px; border: none; box-shadow: 0 1px 3px rgba(0,0,0,.08); height: 100%; }
+        .chart-placeholder { height: 280px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #868e96; font-size: 0.9rem; }
+        .table-card { border-radius: 8px; border: none; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+        .table th { font-size: 0.8rem; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
+        .table td { vertical-align: middle; }
+        .row-gut { background-color: rgba(25, 135, 84, 0.08) !important; }
+        .row-warn { background-color: rgba(255, 193, 7, 0.15) !important; }
+        .row-krit { background-color: rgba(220, 53, 69, 0.08) !important; }
+        .benchmark-box { background: linear-gradient(135deg, #e7f1ff 0%, #cfe2ff 100%); border: 1px solid #9ec5fe; border-radius: 8px; padding: 1rem 1.25rem; }
+        .tab-content { padding-top: 0; }
+        .table-footer-summary { font-weight: 600; background: #f8f9fa !important; }
+    </style>
+</head>
+<body>
+    <span class="mockup-badge badge bg-warning text-dark">MOCKUP – Keine echten Daten</span>
+
+    <div class="container-fluid py-4">
+        <!-- Kopfzeile -->
+        <div class="page-header">
+            <h2 class="mb-1"><i class="bi bi-currency-euro text-success"></i> Profitabilität Verkauf</h2>
+            <p class="text-muted mb-0">DB pro Fahrzeug, Standkosten und Netto-Profitabilität nach Monat und Standort</p>
+        </div>
+
+        <!-- Filter -->
+        <div class="filter-bar">
+            <div class="row g-3 align-items-end">
+                <div class="col-auto">
+                    <label class="form-label small text-muted mb-0">Monat</label>
+                    <select class="form-select form-select-sm" style="width: auto;">
+                        <option>Januar</option><option>Februar</option><option selected>März</option><option>April</option>
+                        <option>Mai</option><option>Juni</option><option>Juli</option><option>August</option>
+                        <option>September</option><option>Oktober</option><option>November</option><option>Dezember</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label small text-muted mb-0">Jahr</label>
+                    <select class="form-select form-select-sm" style="width: auto;">
+                        <option>2024</option><option selected>2026</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label small text-muted mb-0">Standort</label>
+                    <select class="form-select form-select-sm" style="width: auto;">
+                        <option value="">Alle Standorte</option>
+                        <option>Deggendorf Opel</option>
+                        <option selected>Deggendorf Hyundai</option>
+                        <option>Landau Opel</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <button type="button" class="btn btn-primary btn-sm">
+                        <i class="bi bi-arrow-clockwise me-1"></i> Laden
+                    </button>
+                </div>
+                <div class="col text-end text-muted small">
+                    Stand: 10.02.2026
+                </div>
+            </div>
+        </div>
+
+        <!-- Zeile 1: KPI-Karten -->
+        <div class="row g-3 mb-4">
+            <div class="col-6 col-md-3">
+                <div class="card kpi-card">
+                    <div class="card-body">
+                        <div class="kpi-label">Verkaufte Fz</div>
+                        <div class="kpi-value text-primary">47</div>
+                        <div class="kpi-trend text-muted">März 2026</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card kpi-card">
+                    <div class="card-body">
+                        <div class="kpi-label">∅ DB pro Fz</div>
+                        <div class="kpi-value text-dark">1.420 €</div>
+                        <div class="kpi-trend text-success"><i class="bi bi-arrow-up-short"></i> +8 % vs. Vormonat</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card kpi-card">
+                    <div class="card-body">
+                        <div class="kpi-label">∅ Standzeit</div>
+                        <div class="kpi-value text-warning">72 <span class="fs-6 fw-normal">Tage</span></div>
+                        <div class="kpi-trend text-muted">Ziel &lt;65 Tage</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card kpi-card">
+                    <div class="card-body">
+                        <div class="kpi-label">∅ DB nach Standkosten</div>
+                        <div class="kpi-value text-success">892 €</div>
+                        <div class="kpi-trend text-muted">Netto pro Fahrzeug</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Zeile 2: Charts -->
+        <div class="row g-3 mb-4">
+            <div class="col-lg-7">
+                <div class="card chart-card">
+                    <div class="card-header bg-white border-bottom">
+                        <i class="bi bi-graph-up me-1"></i> Trend (12 Monate) – DB1 vs. DB netto
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-placeholder">
+                            <span><i class="bi bi-bar-chart-line me-2"></i> Chart.js Line-Chart: DB1 (blau), DB nach Standkosten (grün), Standzeit (rechte Y-Achse)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-5">
+                <div class="card chart-card">
+                    <div class="card-header bg-white border-bottom">
+                        <i class="bi bi-person-badge me-1"></i> Verkäufer-Ranking (DB netto)
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-placeholder">
+                            <span><i class="bi bi-bar-chart-horizontal me-2"></i> Chart.js Horizontal Bar – Top 10 Verkäufer nach DB netto</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Zeile 3: Tabelle mit Tabs -->
+        <div class="card table-card mb-4">
+            <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+                <ul class="nav nav-tabs card-header-tabs border-0" role="tablist">
+                    <li class="nav-item"><a class="nav-link active" href="#tab-gesamt" data-bs-toggle="tab">Gesamt</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#tab-nw" data-bs-toggle="tab">NW</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#tab-gw" data-bs-toggle="tab">GW</a></li>
+                </ul>
+                <span class="text-muted small">47 Fahrzeuge · sortierbar</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Kom.Nr</th>
+                                <th>Modell</th>
+                                <th>Kennz.</th>
+                                <th>Typ</th>
+                                <th class="text-end">Standzeit</th>
+                                <th class="text-end">EK</th>
+                                <th class="text-end">VK</th>
+                                <th class="text-end">DB1</th>
+                                <th class="text-end">Standkosten</th>
+                                <th class="text-end">DB netto</th>
+                                <th class="text-end">DB %</th>
+                                <th>Verkäufer</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="row-gut">
+                                <td>G 108234</td>
+                                <td>Corsa F</td>
+                                <td>DA-DG 123</td>
+                                <td><span class="badge bg-secondary">GW</span></td>
+                                <td class="text-end">52</td>
+                                <td class="text-end">14.200 €</td>
+                                <td class="text-end">18.990 €</td>
+                                <td class="text-end">1.850 €</td>
+                                <td class="text-end">412 €</td>
+                                <td class="text-end fw-semibold text-success">1.438 €</td>
+                                <td class="text-end">7,6 %</td>
+                                <td>M. Schmidt</td>
+                            </tr>
+                            <tr class="row-gut">
+                                <td>G 109102</td>
+                                <td>Mokka B</td>
+                                <td>DA-DG 456</td>
+                                <td><span class="badge bg-secondary">GW</span></td>
+                                <td class="text-end">61</td>
+                                <td class="text-end">19.500 €</td>
+                                <td class="text-end">24.490 €</td>
+                                <td class="text-end">2.120 €</td>
+                                <td class="text-end">498 €</td>
+                                <td class="text-end fw-semibold text-success">1.622 €</td>
+                                <td class="text-end">6,6 %</td>
+                                <td>T. Weber</td>
+                            </tr>
+                            <tr class="row-warn">
+                                <td>G 110891</td>
+                                <td>Insignia B</td>
+                                <td>DA-DG 789</td>
+                                <td><span class="badge bg-secondary">GW</span></td>
+                                <td class="text-end">78</td>
+                                <td class="text-end">22.100 €</td>
+                                <td class="text-end">27.900 €</td>
+                                <td class="text-end">1.680 €</td>
+                                <td class="text-end">728 €</td>
+                                <td class="text-end fw-semibold">952 €</td>
+                                <td class="text-end">3,4 %</td>
+                                <td>M. Schmidt</td>
+                            </tr>
+                            <tr class="row-warn">
+                                <td>N 12045</td>
+                                <td>Grandland</td>
+                                <td>DA-DG 101</td>
+                                <td><span class="badge bg-primary">NW</span></td>
+                                <td class="text-end">68</td>
+                                <td class="text-end">28.400 €</td>
+                                <td class="text-end">34.990 €</td>
+                                <td class="text-end">2.200 €</td>
+                                <td class="text-end">598 €</td>
+                                <td class="text-end fw-semibold">1.602 €</td>
+                                <td class="text-end">4,6 %</td>
+                                <td>S. Fischer</td>
+                            </tr>
+                            <tr class="row-krit">
+                                <td>G 107556</td>
+                                <td>Astra K</td>
+                                <td>DA-DG 202</td>
+                                <td><span class="badge bg-secondary">GW</span></td>
+                                <td class="text-end">124</td>
+                                <td class="text-end">12.800 €</td>
+                                <td class="text-end">15.490 €</td>
+                                <td class="text-end">-180 €</td>
+                                <td class="text-end">820 €</td>
+                                <td class="text-end fw-semibold text-danger">-1.000 €</td>
+                                <td class="text-end text-danger">-6,5 %</td>
+                                <td>K. Braun</td>
+                            </tr>
+                            <tr>
+                                <td colspan="5" class="table-footer-summary text-end">Summe / Ø (5 Beispiele):</td>
+                                <td class="text-end table-footer-summary">96.000 €</td>
+                                <td class="text-end table-footer-summary">122.860 €</td>
+                                <td class="text-end table-footer-summary">7.670 €</td>
+                                <td class="text-end table-footer-summary">3.056 €</td>
+                                <td class="text-end table-footer-summary">4.614 €</td>
+                                <td></td>
+                                <td></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Zeile 4: Benchmark-Box -->
+        <div class="benchmark-box">
+            <h6 class="mb-2"><i class="bi bi-bullseye me-1"></i> Benchmark-Vergleich</h6>
+            <div class="row g-3 small">
+                <div class="col-md-4">
+                    <strong>∅ Standzeit:</strong><br>
+                    <span class="text-primary">Euer Wert: 72 Tage</span> · Branche (Ziel): 65 Tage
+                </div>
+                <div class="col-md-4">
+                    <strong>DB-Anteil am VK:</strong><br>
+                    <span class="text-primary">Euer Wert: 5,2 %</span> · Branche (gut): &gt;10 %
+                </div>
+                <div class="col-md-4">
+                    <strong>Anteil Fz mit DB &gt; 0:</strong><br>
+                    <span class="text-success">87 %</span> · Anteil Standzeit &lt;65 Tage: <span class="text-warning">42 %</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

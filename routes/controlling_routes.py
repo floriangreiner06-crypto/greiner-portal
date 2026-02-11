@@ -1157,6 +1157,10 @@ def api_tek():
                 bereiche['4-Lohn']['db1_kalk'] = round(werkstatt_db1, 2)
                 bereiche['4-Lohn']['marge_kalk'] = werkstatt_marge
                 bereiche['4-Lohn']['hinweis'] = f"Einsatz kalk. (6M-Quote {round(einsatz_quote_6m*100)}%): {round(gesamt_einsatz/1000)}k"
+                # Anzeige/PDF nutzen db1/marge/einsatz → kalkulatorische Werte setzen (TAG 219)
+                bereiche['4-Lohn']['einsatz'] = round(gesamt_einsatz, 2)
+                bereiche['4-Lohn']['db1'] = round(werkstatt_db1, 2)
+                bereiche['4-Lohn']['marge'] = werkstatt_marge
             else:
                 # Abgeschlossener Monat: Nur FIBU-Werte (Lohn+FL sind bereits gebucht)
                 werkstatt_db1 = werkstatt_umsatz - werkstatt_einsatz_fibu
@@ -1167,6 +1171,10 @@ def api_tek():
                 fibu_einsatz_quote = round((werkstatt_einsatz_fibu / werkstatt_umsatz * 100), 1)
                 bereiche['4-Lohn']['hinweis'] = f"FIBU komplett: {round(werkstatt_einsatz_fibu/1000)}k ({fibu_einsatz_quote}% vom Umsatz)"
 
+            bereiche['4-Lohn']['produktivitaet'] = produktivitaet
+            bereiche['4-Lohn']['leistungsgrad'] = leistungsgrad
+        elif '4-Lohn' in bereiche:
+            # Werkstatt-KPIs immer anzeigen (auch bei Umsatz 0), z. B. für TEK-PDF Anfangsübersicht
             bereiche['4-Lohn']['produktivitaet'] = produktivitaet
             bereiche['4-Lohn']['leistungsgrad'] = leistungsgrad
 

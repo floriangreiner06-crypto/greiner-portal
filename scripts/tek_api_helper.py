@@ -56,7 +56,7 @@ def get_tek_data_from_api(monat=None, jahr=None, standort=None):
     # Extrahiere die Kernlogik aus api_tek() für interne Nutzung
     try:
         # Importiere die benötigten Funktionen
-        from routes.controlling_routes import get_stueckzahlen_locosoft
+        from routes.controlling_routes import get_stueckzahlen_locosoft, get_werkstatt_produktivitaet
         from api.controlling_data import get_tek_data as get_tek_data_core
         from api.db_utils import locosoft_session
         import psycopg2.extras
@@ -91,7 +91,13 @@ def get_tek_data_from_api(monat=None, jahr=None, standort=None):
                 'stueck': 0,
                 'heute_umsatz': 0,
                 'heute_db1': 0,
-                'heute_einsatz': 0
+                'heute_einsatz': 0,
+                'hinweis': b.get('hinweis'),  # TAG 219: 4-Lohn kalk. Einsatz-Hinweis
+                'produktivitaet': b.get('produktivitaet'),
+                'leistungsgrad': b.get('leistungsgrad'),
+                'einsatz_kalk': b.get('einsatz_kalk'),
+                'db1_kalk': b.get('db1_kalk'),
+                'marge_kalk': b.get('marge_kalk'),
             }
             
             # Stückzahlen zuordnen
@@ -103,6 +109,16 @@ def get_tek_data_from_api(monat=None, jahr=None, standort=None):
                 bereiche_dict[bkey]['stueck'] = stueck_gw.get('gesamt_stueck', 0)
                 if bereiche_dict[bkey]['stueck'] > 0:
                     bereiche_dict[bkey]['db1_pro_stueck'] = round(bereiche_dict[bkey]['db1'] / bereiche_dict[bkey]['stueck'], 2)
+        
+        # Werkstatt-KPIs aus DRIVE (werkstatt_leistung_daily) – controlling_data setzt sie nicht, nur die Route
+        if '4-Lohn' in bereiche_dict:
+            betrieb = firma if firma in ('1', '2') else '0'
+            try:
+                ws_kpi = get_werkstatt_produktivitaet(von, bis, betrieb)
+                bereiche_dict['4-Lohn']['produktivitaet'] = ws_kpi.get('produktivitaet')
+                bereiche_dict['4-Lohn']['leistungsgrad'] = ws_kpi.get('leistungsgrad')
+            except Exception:
+                pass
         
         # Heute-Daten holen (wie api_tek Zeile 1406-1597)
         heute = date.today()
@@ -215,7 +231,13 @@ def get_tek_data_from_api(monat=None, jahr=None, standort=None):
             'heute_db1': float(b.get('heute_db1', 0)),
             'heute_einsatz': float(b.get('heute_einsatz', 0)),
             'heute_stueck': int(b.get('heute_stueck', 0)),  # TAG 215: Heute-Stückzahlen
-            'db1_pro_stueck': float(b.get('db1_pro_stueck', 0))
+            'db1_pro_stueck': float(b.get('db1_pro_stueck', 0)),
+            'hinweis': b.get('hinweis'),  # TAG 219: 4-Lohn kalk. Einsatz
+            'produktivitaet': b.get('produktivitaet'),
+            'leistungsgrad': b.get('leistungsgrad'),
+            'einsatz_kalk': b.get('einsatz_kalk'),
+            'db1_kalk': b.get('db1_kalk'),
+            'marge_kalk': b.get('marge_kalk'),
         })
 
     gesamt = api_data.get('gesamt', {})

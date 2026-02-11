@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TEK Gesamt – Vorschlag übersichtliche Struktur (Mockup)</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        body { background: #f5f6f8; font-family: 'Segoe UI', system-ui, sans-serif; }
+        .mockup-badge { position: fixed; top: 10px; right: 10px; z-index: 999; font-size: 0.75rem; }
+        .tek-header { border-bottom: 3px solid #0066cc; padding-bottom: 0.75rem; margin-bottom: 1.25rem; }
+        .kpi-row .card { border-radius: 8px; border: none; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+        .kpi-row .kpi-value { font-size: 1.35rem; font-weight: 700; }
+        .kpi-row .kpi-label { font-size: 0.75rem; color: #6c757d; text-transform: uppercase; letter-spacing: .02em; }
+        .status-box { border-radius: 8px; padding: 1rem 1.25rem; text-align: center; font-weight: 700; font-size: 1.1rem; }
+        .status-box.positive { background: #d1e7dd; color: #0f5132; }
+        .status-box.negative { background: #f8d7da; color: #842029; }
+        .section-title { color: #0066cc; font-weight: 700; font-size: 1rem; margin-bottom: 0.75rem; padding-bottom: 0.35rem; border-bottom: 1px solid #dee2e6; }
+        .overview-table { font-size: 0.9rem; }
+        .overview-table thead th { background: #0066cc; color: #fff; font-weight: 600; white-space: nowrap; }
+        .overview-table tbody tr:hover { background: #f8f9fa; }
+        .overview-table .sum-row { font-weight: 700; background: #e7f1ff !important; }
+        .block-card { border-radius: 8px; border: 1px solid #dee2e6; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.05); margin-bottom: 1.25rem; }
+        .block-card .card-header { background: #f8f9fa; font-weight: 600; padding: 0.6rem 1rem; border-radius: 8px 8px 0 0; border-bottom: 1px solid #dee2e6; }
+        .detail-small { font-size: 0.85rem; }
+        .hint-text { font-size: 0.8rem; color: #6c757d; margin-top: 0.5rem; }
+        .drill-label { font-size: 0.75rem; color: #6c757d; font-style: italic; }
+    </style>
+</head>
+<body>
+    <span class="mockup-badge badge bg-warning text-dark">MOCKUP – Vorschlag TEK-Struktur</span>
+
+    <div class="container-fluid py-4" style="max-width: 1000px;">
+        <!-- 1. Titel + Stand -->
+        <div class="tek-header">
+            <h2 class="mb-1" style="color: #0066cc;"><i class="bi bi-graph-up-arrow me-2"></i>TEK – Tägliche Erfolgskontrolle</h2>
+            <p class="text-muted mb-0">Februar 2026 · Stand: 11.02.2026 14:30 Uhr</p>
+        </div>
+
+        <!-- 2. Kern-KPIs (kompakt) -->
+        <div class="row g-2 kpi-row mb-3">
+            <div class="col">
+                <div class="card h-100">
+                    <div class="card-body py-2 px-3">
+                        <div class="kpi-label">DB1 aktuell</div>
+                        <div class="kpi-value text-dark">312.450 €</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card h-100">
+                    <div class="card-body py-2 px-3">
+                        <div class="kpi-label">Marge</div>
+                        <div class="kpi-value text-dark">12,4 %</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card h-100">
+                    <div class="card-body py-2 px-3">
+                        <div class="kpi-label">Prognose (Hochrechnung)</div>
+                        <div class="kpi-value text-dark">298.000 €</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card h-100">
+                    <div class="card-body py-2 px-3">
+                        <div class="kpi-label">Breakeven</div>
+                        <div class="kpi-value text-dark">265.000 €</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status-Box (Breakeven-Abstand) -->
+        <div class="status-box positive mb-4">
+            +33.000 € über Breakeven (Prognose)
+        </div>
+
+        <!-- 3. "Heute" kompakt (optional) -->
+        <div class="mb-3">
+            <div class="section-title">Stand heute</div>
+            <div class="d-flex gap-3 flex-wrap small">
+                <span><strong>Erlös heute:</strong> 42.100 €</span>
+                <span><strong>DB1 heute:</strong> 5.220 €</span>
+            </div>
+        </div>
+
+        <!-- 4. Bereichs-Übersicht (eine Zeile pro Bereich) -->
+        <div class="block-card">
+            <div class="card-header">Bereichs-Übersicht (Monat)</div>
+            <div class="card-body p-0">
+                <table class="table table-sm table-hover overview-table mb-0">
+                    <thead>
+                        <tr>
+                            <th>Bereich</th>
+                            <th class="text-end">Erlös</th>
+                            <th class="text-end">Einsatz</th>
+                            <th class="text-end">DB1</th>
+                            <th class="text-end">Marge</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Neuwagen</td>
+                            <td class="text-end">1.245.000 €</td>
+                            <td class="text-end">1.098.200 €</td>
+                            <td class="text-end">146.800 €</td>
+                            <td class="text-end">11,8 %</td>
+                        </tr>
+                        <tr>
+                            <td>Gebrauchtwagen</td>
+                            <td class="text-end">892.000 €</td>
+                            <td class="text-end">798.000 €</td>
+                            <td class="text-end">94.000 €</td>
+                            <td class="text-end">10,5 %</td>
+                        </tr>
+                        <tr>
+                            <td>Teile & Zubehör</td>
+                            <td class="text-end">285.000 €</td>
+                            <td class="text-end">193.800 €</td>
+                            <td class="text-end">91.200 €</td>
+                            <td class="text-end">32,0 %</td>
+                        </tr>
+                        <tr>
+                            <td>Werkstatt</td>
+                            <td class="text-end">70.717 €</td>
+                            <td class="text-end">25.458 €</td>
+                            <td class="text-end">45.259 €</td>
+                            <td class="text-end">64,0 %</td>
+                        </tr>
+                        <tr>
+                            <td>Sonstige</td>
+                            <td class="text-end">42.000 €</td>
+                            <td class="text-end">38.100 €</td>
+                            <td class="text-end">3.900 €</td>
+                            <td class="text-end">9,3 %</td>
+                        </tr>
+                        <tr class="sum-row">
+                            <td>GESAMT</td>
+                            <td class="text-end">2.534.717 €</td>
+                            <td class="text-end">2.151.558 €</td>
+                            <td class="text-end">381.159 €</td>
+                            <td class="text-end">15,0 %</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 5. Verkauf im Detail -->
+        <div class="block-card">
+            <div class="card-header"><i class="bi bi-car-front me-1"></i> Verkauf im Detail (NW + GW)</div>
+            <div class="card-body p-0">
+                <table class="table table-sm detail-small mb-0">
+                    <thead>
+                        <tr class="table-light">
+                            <th>Bereich</th>
+                            <th class="text-end">Stück</th>
+                            <th class="text-end">Erlös</th>
+                            <th class="text-end">Einsatz</th>
+                            <th class="text-end">DB1</th>
+                            <th class="text-end">Marge</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Neuwagen</td><td class="text-end">47</td><td class="text-end">1.245.000 €</td><td class="text-end">1.098.200 €</td><td class="text-end">146.800 €</td><td class="text-end">11,8 %</td></tr>
+                        <tr><td>Gebrauchtwagen</td><td class="text-end">62</td><td class="text-end">892.000 €</td><td class="text-end">798.000 €</td><td class="text-end">94.000 €</td><td class="text-end">10,5 %</td></tr>
+                        <tr class="table-primary"><td><strong>Summe Verkauf</strong></td><td class="text-end"><strong>109</strong></td><td class="text-end"><strong>2.137.000 €</strong></td><td class="text-end"><strong>1.896.200 €</strong></td><td class="text-end"><strong>240.800 €</strong></td><td class="text-end"><strong>11,3 %</strong></td></tr>
+                    </tbody>
+                </table>
+                <p class="hint-text px-3 pb-2 mb-0 drill-label">Optional: Absatzwege / Modelle als eigener Drill-Down-Block</p>
+            </div>
+        </div>
+
+        <!-- 6. Service im Detail (Teile + Werkstatt) -->
+        <div class="block-card">
+            <div class="card-header"><i class="bi bi-wrench me-1"></i> Service im Detail (Teile + Werkstatt)</div>
+            <div class="card-body p-0">
+                <table class="table table-sm detail-small mb-0">
+                    <thead>
+                        <tr class="table-light">
+                            <th>Bereich</th>
+                            <th class="text-end">Erlös</th>
+                            <th class="text-end">Einsatz</th>
+                            <th class="text-end">DB1</th>
+                            <th class="text-end">Marge</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Teile & Zubehör</td><td class="text-end">285.000 €</td><td class="text-end">193.800 €</td><td class="text-end">91.200 €</td><td class="text-end">32,0 %</td></tr>
+                        <tr><td>Werkstatt</td><td class="text-end">70.717 €</td><td class="text-end">25.458 €</td><td class="text-end">45.259 €</td><td class="text-end">64,0 %</td></tr>
+                        <tr class="table-primary"><td><strong>Summe Service</strong></td><td class="text-end"><strong>355.717 €</strong></td><td class="text-end"><strong>219.258 €</strong></td><td class="text-end"><strong>136.459 €</strong></td><td class="text-end"><strong>38,4 %</strong></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 7. Werkstatt im Detail (eigener Block) -->
+        <div class="block-card">
+            <div class="card-header"><i class="bi bi-gear me-1"></i> Werkstatt im Detail</div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <table class="table table-sm detail-small mb-0">
+                            <thead>
+                                <tr class="table-light">
+                                    <th>Kennzahl</th>
+                                    <th class="text-end">Heute</th>
+                                    <th class="text-end">Monat</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>Erlös</td><td class="text-end">8.200 €</td><td class="text-end">70.717 €</td></tr>
+                                <tr><td>Einsatz</td><td class="text-end">2.950 €</td><td class="text-end">25.458 €</td></tr>
+                                <tr><td>DB1</td><td class="text-end">5.250 €</td><td class="text-end">45.259 €</td></tr>
+                                <tr><td>Marge</td><td class="text-end">64,0 %</td><td class="text-end">64,0 %</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <p class="hint-text mb-1"><strong>Hinweis:</strong> Einsatz kalk. (6M-Quote 36 %): 25k</p>
+                        <p class="hint-text mb-1">Produktivität (EW): 78,5 % · Leistungsgrad: 92 %</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 8. Sonstige / Clean Park (kompakt) -->
+        <div class="block-card">
+            <div class="card-header">Sonstige & Clean Park</div>
+            <div class="card-body py-2">
+                <table class="table table-sm detail-small mb-0">
+                    <thead>
+                        <tr class="table-light">
+                            <th>Position</th>
+                            <th class="text-end">Erlös</th>
+                            <th class="text-end">Einsatz</th>
+                            <th class="text-end">DB1</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Sonstige Erlöse</td><td class="text-end">42.000 €</td><td class="text-end">38.100 €</td><td class="text-end">3.900 €</td></tr>
+                        <tr><td>Clean Park (847301 / 747301)</td><td class="text-end">—</td><td class="text-end">—</td><td class="text-end">—</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 9. Drill-Downs (als Zusatz gekennzeichnet) -->
+        <div class="block-card border-secondary">
+            <div class="card-header bg-light"><span class="drill-label">Zusatz – Detail nach Absatzwegen / Modellen</span></div>
+            <div class="card-body py-2">
+                <p class="text-muted small mb-0">Neuwagen nach Absatzwegen · Gebrauchtwagen nach Absatzwegen · Optional: Modell-Drill-Down</p>
+            </div>
+        </div>
+
+        <p class="text-muted small mt-3">TEK – Automatisch generiert von DRIVE · Vorschlag für übersichtlichere Struktur</p>
+    </div>
+</body>
+</html>

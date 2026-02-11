@@ -4,7 +4,7 @@ Database Connection Layer - SQLite/PostgreSQL Dual-Mode
 TAG 135: PostgreSQL-Migration mit Rollback-Möglichkeit
 
 Konfiguration via Environment-Variablen oder .env:
-    DB_TYPE=sqlite|postgresql  (default: sqlite)
+    DB_TYPE=sqlite|postgresql  (default: postgresql, seit Migration)
     DB_HOST=localhost
     DB_PORT=5432
     DB_NAME=drive_portal
@@ -20,10 +20,9 @@ Verwendung:
     rows = cursor.fetchall()
     conn.close()
 
-Rollback:
+Falls wieder SQLite genutzt werden soll (z. B. lokal ohne PostgreSQL):
     1. In .env: DB_TYPE=sqlite setzen
     2. Service neustarten
-    3. Fertig - alle Queries gehen wieder an SQLite
 """
 
 import os
@@ -186,14 +185,16 @@ SQLITE_PATH = '/opt/greiner-portal/data/greiner_controlling.db'
 SQLITE_PATH_LOCAL = os.path.join(os.path.dirname(__file__), '..', 'data', 'greiner_controlling.db')
 
 # Environment-Variablen laden (falls dotenv verfügbar)
+# config/.env enthält die echten Credentials; override=True damit sie .env aus Root überstimmen
 try:
     from dotenv import load_dotenv
-    load_dotenv('/opt/greiner-portal/config/.env')
+    load_dotenv('/opt/greiner-portal/.env')
+    load_dotenv('/opt/greiner-portal/config/.env', override=True)
 except ImportError:
     pass
 
-# Konfiguration aus Environment
-DB_TYPE = os.getenv('DB_TYPE', 'sqlite').lower()
+# Konfiguration aus Environment (Default: postgresql seit Migration von SQLite)
+DB_TYPE = os.getenv('DB_TYPE', 'postgresql').lower()
 DB_HOST = os.getenv('DB_HOST', 'localhost')
 DB_PORT = int(os.getenv('DB_PORT', '5432'))
 DB_NAME = os.getenv('DB_NAME', 'drive_portal')

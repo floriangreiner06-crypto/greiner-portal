@@ -1,0 +1,342 @@
+{% extends "base.html" %}
+{% block title %}Profitabilität Verkauf - Greiner DRIVE{% endblock %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-3">
+        <div class="col-12">
+            <h2><i class="bi bi-currency-euro text-success"></i> Profitabilität Verkauf</h2>
+            <p class="text-muted">DB pro Fahrzeug, Standkosten und Netto-Profitabilität nach Monat und Standort</p>
+            <div class="alert alert-light border small py-2 mb-0">
+                <strong>DB1 = Rohmarge (Fahrzeugmarge) + Verkaufsunterstützung (VKU).</strong> Wenn VK &lt; EK, ist die reine Marge negativ – ein positiver DB kommt dann durch VKU/Nachlässe (Hersteller). Spalte „DB vor VKU“ zeigt die reine Fahrzeugmarge, „VKU“ den Anteil der Verkaufsunterstützung.
+                <br>
+                Standzeit = Durchlaufzeit der <em>verkauften</em> Fz. Bestand/Umschlag: <a href="/verkauf/gw-bestand">GW-Bestand</a>. Abweichungen zur BWA möglich.
+            </div>
+        </div>
+    </div>
+
+    {% set current_standort = standort %}
+    {% set show_konsolidiert = true %}
+    {% include 'components/standort_filter_tabs.html' %}
+
+    <div class="row mb-3">
+        <div class="col-auto">
+            <label class="form-label small text-muted mb-0">Monat</label>
+            <select id="monthSelect" class="form-select form-select-sm">
+                {% for m in range(1, 13) %}
+                <option value="{{ m }}" {% if m == now.month %}selected{% endif %}>{{ ['', 'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'][m] }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-auto">
+            <label class="form-label small text-muted mb-0">Jahr</label>
+            <select id="yearSelect" class="form-select form-select-sm">
+                <option value="{{ now.year - 1 }}">{{ now.year - 1 }}</option>
+                <option value="{{ now.year }}" selected>{{ now.year }}</option>
+            </select>
+        </div>
+        <div class="col-auto align-self-end">
+            <button type="button" id="loadBtn" class="btn btn-primary btn-sm">
+                <i class="bi bi-arrow-clockwise me-1"></i> Laden
+            </button>
+        </div>
+        <div class="col text-end align-self-end text-muted small">
+            Stand: <span id="datenstand">-</span>
+        </div>
+    </div>
+
+    <!-- KPI-Karten -->
+    <div class="row g-3 mb-4" id="kpiCards">
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body py-3">
+                    <div class="small text-muted text-uppercase">Verkaufte Fz</div>
+                    <div class="fs-4 fw-bold text-primary" id="kpiAnzahl">-</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body py-3">
+                    <div class="small text-muted text-uppercase">∅ DB1 pro Fz</div>
+                    <div class="fs-4 fw-bold" id="kpiAvgDb">-</div>
+                    <div class="small text-muted">Locosoft-Kalkulation</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body py-3">
+                    <div class="small text-muted text-uppercase">∅ Standzeit bis Verkauf</div>
+                    <div class="fs-4 fw-bold text-warning" id="kpiStandzeit">- <span class="fs-6 fw-normal">Tage</span></div>
+                    <div class="small text-muted">Durchlaufzeit verkaufter Fz</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body py-3">
+                    <div class="small text-muted text-uppercase">∅ DB nach Standkosten</div>
+                    <div class="fs-4 fw-bold text-success" id="kpiDbNetto">-</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="row g-3 mb-4">
+        <div class="col-lg-7">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-bottom">
+                    <i class="bi bi-bar-chart-steps me-1"></i> Trend (12 Monate) – DB1 und DB netto
+                </div>
+                <div class="card-body py-2">
+                    <canvas id="chartTrend" height="180"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-bottom">
+                    <i class="bi bi-person-badge me-1"></i> Verkäufer-Ranking (DB netto)
+                </div>
+                <div class="card-body">
+                    <canvas id="chartVerkaeufer" height="220"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabelle mit Tabs -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center flex-wrap">
+            <ul class="nav nav-tabs card-header-tabs border-0" role="tablist">
+                <li class="nav-item"><a class="nav-link active" href="#" data-tab="all">Gesamt</a></li>
+                <li class="nav-item"><a class="nav-link" href="#" data-tab="N">NW</a></li>
+                <li class="nav-item"><a class="nav-link" href="#" data-tab="G">GW</a></li>
+            </ul>
+            <span class="text-muted small" id="tableCount">0 Fahrzeuge</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Kom.Nr</th>
+                            <th>Modell</th>
+                            <th>Kennz.</th>
+                            <th>Typ</th>
+                            <th class="text-end" title="Tage im Bestand bis zur Verkaufsrechnung">Standzeit bis Vk.</th>
+                            <th class="text-end">EK</th>
+                            <th class="text-end">VK</th>
+                            <th class="text-end" title="Reine Fahrzeugmarge ohne VKU">DB vor VKU</th>
+                            <th class="text-end" title="Verkaufsunterstützung / Nachlässe">VKU</th>
+                            <th class="text-end">DB1</th>
+                            <th class="text-end">Standkosten</th>
+                            <th class="text-end">DB netto</th>
+                            <th class="text-end">DB %</th>
+                            <th>Verkäufer</th>
+                        </tr>
+                    </thead>
+                    <tbody id="profitTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Benchmark-Box -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body" style="background: linear-gradient(135deg, #e7f1ff 0%, #cfe2ff 100%); border: 1px solid #9ec5fe; border-radius: 8px;">
+            <h6 class="mb-2"><i class="bi bi-bullseye me-1"></i> Benchmark-Vergleich</h6>
+            <div class="row g-2 small">
+                <div class="col-md-4"><strong>∅ Standzeit bis Verkauf:</strong> <span id="benchStandzeit">-</span> · Bestand/Umschlag: <a href="/verkauf/gw-bestand">GW-Bestand</a></div>
+                <div class="col-md-4"><strong>DB-Anteil am VK:</strong> <span id="benchDbPct">-</span> · Branche (gut): &gt;10 %</div>
+                <div class="col-md-4"><strong>Anteil Fz DB &gt; 0:</strong> <span id="benchDbPos">-</span> · Standzeit &lt;65 Tage: <span id="benchSt65">-</span></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const monthSelect = document.getElementById('monthSelect');
+    const yearSelect = document.getElementById('yearSelect');
+    const loadBtn = document.getElementById('loadBtn');
+    let chartTrend = null;
+    let chartVerkaeufer = null;
+    let allFahrzeuge = [];
+
+    function getStandortFromURL() {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get('standort') || '';
+    }
+
+    function getParams() {
+        return {
+            month: parseInt(monthSelect.value, 10),
+            year: parseInt(yearSelect.value, 10),
+            standort: getStandortFromURL() || undefined
+        };
+    }
+
+    function formatCurrency(v) {
+        if (v == null || isNaN(v)) return '-';
+        return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(v);
+    }
+
+    function formatNumber(v, decimals) {
+        if (v == null || isNaN(v)) return '-';
+        return new Intl.NumberFormat('de-DE', { minimumFractionDigits: decimals ?? 0, maximumFractionDigits: decimals ?? 2 }).format(v);
+    }
+
+    function rowClass(f) {
+        if (f.db_nach_standkosten < 0 || f.standzeit_tage > 90) return 'table-danger';
+        if (f.standzeit_tage >= 65 && f.standzeit_tage <= 90) return 'table-warning';
+        return 'table-success';
+    }
+
+    function typLabel(t) {
+        const map = { 'N': 'NW', 'G': 'GW', 'D': 'VFW', 'V': 'V', 'T': 'T' };
+        return map[t] || t;
+    }
+
+    loadBtn.addEventListener('click', loadAll);
+
+    document.querySelectorAll('[data-tab]').forEach(function(link) {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            document.querySelectorAll('.nav-link[data-tab]').forEach(function(l) { l.classList.remove('active'); });
+            this.classList.add('active');
+            renderTable(allFahrzeuge, this.getAttribute('data-tab'));
+        });
+    });
+
+    async function loadAll() {
+        const p = getParams();
+        const q = new URLSearchParams();
+        if (p.month) q.set('month', p.month);
+        if (p.year) q.set('year', p.year);
+        if (p.standort) q.set('standort', p.standort);
+
+        try {
+            const [summaryRes, fahrzeugeRes, verkaeuferRes, trendRes] = await Promise.all([
+                fetch('/api/profitabilitaet/summary?' + q),
+                fetch('/api/profitabilitaet/fahrzeuge?' + q),
+                fetch('/api/profitabilitaet/verkaeufer?' + q),
+                fetch('/api/profitabilitaet/trend?year=' + p.year + (p.standort ? '&standort=' + p.standort : ''))
+            ]);
+
+            const summary = await summaryRes.json();
+            const fahrzeuge = await fahrzeugeRes.json();
+            const verkaeufer = await verkaeuferRes.json();
+            const trend = await trendRes.json();
+
+            if (summary.success && summary.data) {
+                const d = summary.data;
+                document.getElementById('kpiAnzahl').textContent = d.anzahl_verkauft;
+                document.getElementById('kpiAvgDb').textContent = formatCurrency(d.avg_db1_pro_fzg);
+                document.getElementById('kpiStandzeit').innerHTML = formatNumber(d.avg_standzeit, 1) + ' <span class="fs-6 fw-normal">Tage</span>';
+                document.getElementById('kpiDbNetto').textContent = formatCurrency(d.avg_db_netto_pro_fzg);
+                document.getElementById('benchStandzeit').textContent = formatNumber(d.avg_standzeit, 1) + ' Tage';
+                document.getElementById('benchDbPct').textContent = (d.anzahl_verkauft ? (d.summe_db1 / d.summe_umsatz * 100).toFixed(1) : '-') + ' %';
+                document.getElementById('benchDbPos').textContent = formatNumber(d.anteil_db_positiv, 1) + ' %';
+                document.getElementById('benchSt65').textContent = formatNumber(d.anteil_standzeit_unter_65, 1) + ' %';
+            }
+
+            if (fahrzeuge.success && fahrzeuge.data) {
+                allFahrzeuge = fahrzeuge.data;
+                renderTable(allFahrzeuge, document.querySelector('.nav-link[data-tab].active')?.getAttribute('data-tab') || 'all');
+                document.getElementById('tableCount').textContent = allFahrzeuge.length + ' Fahrzeuge';
+            }
+
+            if (verkaeufer.success && verkaeufer.data) {
+                renderChartVerkaeufer(verkaeufer.data);
+            }
+            if (trend.success && trend.data) {
+                renderChartTrend(trend.data);
+            }
+
+            document.getElementById('datenstand').textContent = new Date().toLocaleDateString('de-DE');
+        } catch (err) {
+            console.error(err);
+            alert('Fehler beim Laden');
+        }
+    }
+
+    function renderTable(list, tab) {
+        const tbody = document.getElementById('profitTableBody');
+        const filtered = tab === 'all' ? list : list.filter(function(f) { return f.dealer_vehicle_type === tab; });
+        tbody.innerHTML = filtered.map(function(f) {
+            const komNr = (f.dealer_vehicle_type || '') + ' ' + (f.dealer_vehicle_number || '');
+            var dbVorVku = (f.db1 != null && f.vku != null) ? (f.db1 - f.vku) : null;
+            var dbVorVkuClass = (dbVorVku != null && dbVorVku < 0) ? ' text-danger' : '';
+            return '<tr class="' + rowClass(f) + '">' +
+                '<td>' + komNr + '</td>' +
+                '<td>' + (f.modell || '-') + '</td>' +
+                '<td>' + (f.license_plate || '-') + '</td>' +
+                '<td><span class="badge bg-secondary">' + typLabel(f.dealer_vehicle_type) + '</span></td>' +
+                '<td class="text-end">' + (f.standzeit_tage ?? '-') + '</td>' +
+                '<td class="text-end">' + formatCurrency(f.ek_netto) + '</td>' +
+                '<td class="text-end">' + formatCurrency(f.vk_brutto) + '</td>' +
+                '<td class="text-end' + dbVorVkuClass + '">' + formatCurrency(dbVorVku) + '</td>' +
+                '<td class="text-end">' + formatCurrency(f.vku) + '</td>' +
+                '<td class="text-end">' + formatCurrency(f.db1) + '</td>' +
+                '<td class="text-end">' + formatCurrency(f.standkosten_gesamt) + '</td>' +
+                '<td class="text-end fw-semibold">' + formatCurrency(f.db_nach_standkosten) + '</td>' +
+                '<td class="text-end">' + formatNumber(f.db_nach_standkosten_pct, 1) + ' %</td>' +
+                '<td>' + (f.verkaufer_name || '-') + '</td>' +
+                '</tr>';
+        }).join('');
+    }
+
+    function renderChartTrend(data) {
+        const ctx = document.getElementById('chartTrend').getContext('2d');
+        if (chartTrend) chartTrend.destroy();
+        const labels = data.map(function(d) {
+            const names = ['', 'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+            return names[d.month] || d.month;
+        });
+        chartTrend = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'DB1 (Summe)', data: data.map(function(d) { return d.summe_db1; }), backgroundColor: 'rgba(13, 110, 253, 0.85)' },
+                    { label: 'DB netto (Summe)', data: data.map(function(d) { return d.summe_db_netto; }), backgroundColor: 'rgba(25, 135, 84, 0.85)' }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: {
+                    x: { grid: { display: false } },
+                    y: { beginAtZero: true, ticks: { maxTicksLimit: 6 } }
+                },
+                plugins: { legend: { position: 'top' } },
+                barPercentage: 0.75,
+                categoryPercentage: 0.85
+            }
+        });
+    }
+
+    function renderChartVerkaeufer(data) {
+        const ctx = document.getElementById('chartVerkaeufer').getContext('2d');
+        if (chartVerkaeufer) chartVerkaeufer.destroy();
+        const top = data.slice(0, 10);
+        chartVerkaeufer = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: top.map(function(d) { return (d.name || 'Verkäufer').slice(0, 15); }),
+                datasets: [{ label: 'DB netto', data: top.map(function(d) { return d.summe_db_netto; }), backgroundColor: 'rgba(25, 135, 84, 0.7)' }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                scales: { x: { beginAtZero: true } }
+            }
+        });
+    }
+
+    loadAll();
+});
+</script>
+{% endblock %}

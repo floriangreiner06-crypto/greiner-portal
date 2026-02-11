@@ -347,12 +347,14 @@ print("✅ Bankenspiegel Frontend registriert: /bankenspiegel/")
 
 # Verkauf API
 from api.verkauf_api import verkauf_api
+from api.profitabilitaet_api import profitabilitaet_api
 from api.parts_api import parts_api
 from api.admin_api import admin_api
 from api.zins_optimierung_api import zins_api
 from api.teile_api import teile_api
 from api.gewinnplanung_v2_gw_api import gewinnplanung_v2_gw_api
 app.register_blueprint(verkauf_api)
+app.register_blueprint(profitabilitaet_api)
 app.register_blueprint(parts_api)
 app.register_blueprint(admin_api)
 app.register_blueprint(teile_api)
