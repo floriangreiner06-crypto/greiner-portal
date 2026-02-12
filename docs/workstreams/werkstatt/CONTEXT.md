@@ -38,12 +38,14 @@ Werkstatt und Aftersales umfassen Stempeluhr/Live-Monitoring, Mechaniker-Leistun
 ## Aktueller Stand (✅ erledigt, 🔧 in Arbeit, ❌ offen)
 
 - ✅ **Workstream-Zuordnung (2026-02-12):** TEK in Workstream Controlling verschoben (Scope + CONTEXT.md, CLAUDE.md, .cursorrules angepasst).
+- ✅ **Alarm-E-Mail Doppelversand (2026-02-12):** Race-Condition behoben: „INSERT first“ statt „SELECT → SEND → INSERT“. Pro Auftrag/Empfänger/Tag wird nur noch 1 E-Mail gesendet, auch bei überlappenden Celery-Läufen (z. B. 09:45 und 10:00). Siehe `docs/BUGFIX_ALARM_EMAIL_DOPPELT_TAG213.md`.
 - ✅ Stempeluhr, Serviceberater, Gudat-Anbindung in Nutzung
 - 🔧 ML, Garantieakte, ServiceBox je nach Projektstand
 - ✅ **Versicherungs-Rechnungsprüfung:** DB + M4 (inkl. UE IWW Textbausteine gescrapt, API + UI) + M1 (Ebene 1+2); M2/M3 offen
 - **Navigation:** Unfall-Rechnungsprüfung & Unfall-Wissensdatenbank unter **Service → Werkstatt** (DB-Navigation, Migration `migration_tag216_navigation_unfall.sql`) sowie im Fallback-Menü „After Sales“ → „Unfall / Versicherung“ in `base.html`.
 - **UE IWW Scraper:** `scripts/imports/scrape_ue_iww.py` – Vollscrape 781 Einträge; NUL-Fix im DB-Import; Optionen `--from-json`, `--seed-only`. Export: `data/ue_iww_export.json`.
 - ❌ Offene Punkte: M2/M3 (Kürzungs-Abwehr/Tracking) nicht Priorität; Fokus: vollständige/korrekte Rechnungserstellung (M1).
+- ✅ **Greiner-Arbeitszeitenkatalog (2026-02-12):** Analyse & Konzept abgeschlossen. Bestandsaufnahme Locosoft labours, IST-Zeiten vs. Vorgabe-AW, Freitext-Clustering, Standort Opel vs. Hyundai, Reparaturpakete-Struktur, Top-100 Standardarbeiten-Vorschlag, DRIVE-Modul-Skizze. Siehe `docs/workstreams/werkstatt/ARBEITSZEITKATALOG_ANALYSE.md`. Kein Code deployt.
 
 ## Offene Entscheidungen
 
