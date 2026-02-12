@@ -239,19 +239,35 @@ Vergleich **Opel (subsidiary 1+2)** vs. **Hyundai (subsidiary 3)** für Arbeitsn
 
 ---
 
-## 6. Reparaturpakete-Struktur in Locosoft
+## 6. Reparatur- / Wartungspakete-Struktur in Locosoft
 
-In der Locosoft-Datenbank (loco_auswertung_db) gibt es **keine** eigenen Tabellen mit Namen wie „package“, „standard“, „template“, „catalogue“ oder „catalog“ für Reparaturpakete oder Standardarbeiten.
+**Hinweis (Betrieb):** Im Haus werden in Locosoft **Wartungspakete** gepflegt (z. B. mit Arbeitsnummer wie DES1). Die folgende Prüfung bezieht sich auf die **loco_auswertung_db** (PostgreSQL, Benutzer loco_auswertung_benutzer).
 
-**Relevante Strukturen:**
+### 6.1 Öffentliches Schema (public)
 
-| Tabelle | Zweck |
-|---------|--------|
-| **labours** | Einzelne Arbeitspositionen je Auftrag (order_number, order_position, labour_operation_id, time_units, text_line). |
-| **labours_master** | Stammdaten zu Arbeitsnummern: source_number, labour_number, mapping_code, text, source. Verknüpfung Hersteller-/Hyundai-Codes mit Beschreibungstext. |
-| **labours_groups** | Gruppierung von Arbeitsnummern: source_number, labour_number_range, description, source. Keine Paket-Logik im Sinne vordefinierter Reparaturpakete. |
+- Es gibt **keine** Tabellen mit Namen wie „package“, „standard“, „template“, „catalogue“ oder „catalog“ im Schema **public**.
+- **Relevante Tabellen:**
 
-**Fazit:** Eigene „Reparaturpakete“ oder ein betrieblicher Standardarbeitskatalog sind in Locosoft nicht als eigene Entität abgebildet. Sie müssten **außerhalb** (z. B. im DRIVE-Portal) geführt und mit labour_operation_id bzw. text_line gemappt werden.
+| Tabelle | Zweck | Befund (loco_auswertung_db) |
+|---------|--------|------------------------------|
+| **labours** | Einzelne Arbeitspositionen je Auftrag (labour_operation_id, time_units, text_line, …). | Vorhanden, wird genutzt. |
+| **labours_master** | Stammdaten zu Arbeitsnummern: source_number, labour_number, mapping_code, text, source. | Vorhanden. **DES1** z. B. als „Desinfektion Pollenfilterkasten“ (source ALLG + OPEL, source_number 0 bzw. 2100). |
+| **labours_groups** | Gruppierung von Arbeitsnummern: source_number, labour_number_range, description, source. | **Struktur vorhanden**, Inhalt in der Auswertungs-DB aktuell **0 Zeilen**. Eignet sich fachlich für Bereiche wie „Wartungspaket“ ( labour_number_range z. B. als Einzelcode oder Bereich). |
+
+- **configuration:** Eintrag „config_include_labours_master“ verweist auf Programm 291; dabei werden labours_master und labours_groups genannt. Ob labours_groups im Export/Sync in die Auswertungs-DB gefüllt wird, ist von der Einrichtung abhängig.
+
+### 6.2 Weitere Schemas (private, app2)
+
+- In der Datenbank existieren die Schemas **private** und **app2** (u. a. Tabellen wie times, journal_accountings, checklist, …). Der Benutzer **loco_auswertung_benutzer** hat **keine Berechtigung** für diese Schemas („keine Berechtigung für Schema private“). Dort könnten weitere, nur im Hauptsystem genutzte Strukturen für Wartungspakete liegen.
+
+### 6.3 Beispiel DES1
+
+- **labours_master:** DES1 kommt vor als labour_number mit text „Desinfektion Pollenfilterkasten“, source ALLG (source_number 0) und OPEL (source_number 2100). Damit ist DES1 im Stamm bekannt; ob es einem Wartungspaket zugeordnet ist, wäre über **labours_groups** (wenn befüllt) oder über Strukturen in private/app2 abbildbar.
+
+### 6.4 Fazit und Empfehlung
+
+- **Fazit:** In der **auswertungs-DB (public)** sind Wartungspakete nicht als eigene Tabelle mit Namen „Paket“/„Catalogue“ abgebildet. Die **Struktur labours_groups** ( labour_number_range, description, source) wäre geeignet für paketartige Gruppierungen, ist in dieser DB aber leer. Ob die bei euch gepflegten Wartungspakete in **labours_groups** (Hauptsystem) oder in **private/app2** liegen, ist mit den aktuellen Leserechten nicht prüfbar.
+- **Empfehlung:** Mit Locosoft/IT klären: (1) In welcher Tabelle bzw. in welchem Schema werden die Wartungspakete (z. B. DES1) gepflegt? (2) Wird **labours_groups** in die Auswertungs-DB übernommen – und wenn ja, aus welchem System/Freigabe? Danach kann der Greiner-Katalog bzw. das DRIVE-Modul gezielt auf diese Quelle (z. B. labours_groups sobald befüllt) angebunden werden.
 
 ---
 
