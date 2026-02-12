@@ -432,6 +432,13 @@ Damit entstehen **mehrere Referenzebenen**: Einzelarbeit, Kontext „mit Inspekt
 - **Schreiben:** Nur über DRIVE-UI (Werkstattleiter); keine automatische Überschreibung durch Batch ohne Freigabe.
 - **Sync Locosoft:** labours/labours_master bleiben unverändert; DRIVE-Katalog ist Zusatzschicht „Greiner-AW“.
 
+### 8.7 Vorgabezeiten in Locosoft pauschal erhöhen – geht das mit SOAP?
+
+**Kurz:** **Stammdaten (Katalog) pauschal anpassen – nein.** **Bestehende Aufträge pro Position anpassen – theoretisch ja, aber nur Einzelaufträge, nicht „ein Schalter für alle“.**
+- **SOAP-Schreibmethoden** (laut `config/locosoft_soap_config.py` / `tools/locosoft_soap_client.py`): writeWorkOrderDetails, writeWorkOrderTimes, writeWorkTimes, writeCustomerDetails, writeVehicleDetails, writePotential, writeAppointment, writeAppointmentNotification. Es gibt **keine** Methode vom Typ „writeLabourMaster“, „updateTimeUnitsCatalogue“ o.ä. Die Vorgabezeiten für **neue** Positionen kommen aus dem Locosoft-Stamm (Programm 291, 952, Hersteller-Import), nicht aus SOAP.
+- **writeWorkOrderDetails** kann einen **einzelnen Auftrag** inkl. seiner Arbeitspositionen (labours) mit **timeUnits** pro Position schreiben/ändern. Damit ließen sich **bestehende** Aufträge durchiterieren und pro Position die time_units erhöhen (z. B. +10 %). Das wäre aber: (1) nur **bereits angelegte** Aufträge, (2) sehr viele SOAP-Calls (ein Aufruf pro Auftrag), (3) unklar, ob Locosoft bei bereits gebuchten/fakturierten Positionen Änderungen an time_units zulässt. **Neue** Aufträge würden weiter die unveränderten Stamm-Vorgabezeiten bekommen.
+- **Empfehlung:** Pauschale Erhöhung der **Stamm-**Vorgabezeiten in Locosoft über **Stammdatenpflege** (Programm 291, 952, Modell-AW-Gruppe, Hersteller-Datenträger) oder über **Locosoft-Support** klären. Für betriebseigene Vorgaben der **Greiner-AW** den **DRIVE-Arbeitszeitenkatalog** (Abschnitt 8) nutzen und Locosoft unverändert lassen; Auswertungen/Kalkulation dann aus DRIVE mit Greiner-AW füttern.
+
 ---
 
 ## 9. Nächste Schritte (Empfehlung)
