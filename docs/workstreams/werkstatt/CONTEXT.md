@@ -1,11 +1,11 @@
 # Werkstatt & Aftersales — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-02-11
+## Letzte Aktualisierung: 2026-02-12
 
 ## Beschreibung
 
-Werkstatt und Aftersales umfassen TEK-Dashboard, Stempeluhr/Live-Monitoring, Mechaniker-Leistung, ML-Prognosen, Gudat-Integration, Serviceberater-Dashboard, Garantie-Aufträge und -Akte, Arbeitskarte, Reparaturpotenzial, SOAP-Schnittstellen und ServiceBox-Scraper.
+Werkstatt und Aftersales umfassen Stempeluhr/Live-Monitoring, Mechaniker-Leistung, ML-Prognosen, Gudat-Integration, Serviceberater-Dashboard, Garantie-Aufträge und -Akte, Arbeitskarte, Reparaturpotenzial, SOAP-Schnittstellen und ServiceBox-Scraper.
 
 ## Module & Dateien
 
@@ -22,7 +22,6 @@ Werkstatt und Aftersales umfassen TEK-Dashboard, Stempeluhr/Live-Monitoring, Mec
 
 ### Templates
 - `templates/aftersales/*.html` (inkl. `unfall_wissensdatenbank.html`, `unfall_rechnungspruefung.html`)
-- `templates/controlling/tek_dashboard.html`
 
 ### Tools / Scripts
 - `tools/gudat_*.py`
@@ -30,7 +29,7 @@ Werkstatt und Aftersales umfassen TEK-Dashboard, Stempeluhr/Live-Monitoring, Mec
 - `scripts/ml/`
 
 ### Celery Tasks
-- `werkstatt_leistung`, `servicebox_*`, `email_werkstatt_tagesbericht`, `email_tek_daily`, `ml_retrain`, `benachrichtige_serviceberater_ueberschreitungen`
+- `werkstatt_leistung`, `servicebox_*`, `email_werkstatt_tagesbericht`, `ml_retrain`, `benachrichtige_serviceberater_ueberschreitungen`
 
 ## DB-Tabellen (PostgreSQL drive_portal)
 
@@ -38,7 +37,8 @@ Werkstatt und Aftersales umfassen TEK-Dashboard, Stempeluhr/Live-Monitoring, Mec
 
 ## Aktueller Stand (✅ erledigt, 🔧 in Arbeit, ❌ offen)
 
-- ✅ TEK-Dashboard, Stempeluhr, Serviceberater, Gudat-Anbindung in Nutzung
+- ✅ **Workstream-Zuordnung (2026-02-12):** TEK in Workstream Controlling verschoben (Scope + CONTEXT.md, CLAUDE.md, .cursorrules angepasst).
+- ✅ Stempeluhr, Serviceberater, Gudat-Anbindung in Nutzung
 - 🔧 ML, Garantieakte, ServiceBox je nach Projektstand
 - ✅ **Versicherungs-Rechnungsprüfung:** DB + M4 (inkl. UE IWW Textbausteine gescrapt, API + UI) + M1 (Ebene 1+2); M2/M3 offen
 - **Navigation:** Unfall-Rechnungsprüfung & Unfall-Wissensdatenbank unter **Service → Werkstatt** (DB-Navigation, Migration `migration_tag216_navigation_unfall.sql`) sowie im Fallback-Menü „After Sales“ → „Unfall / Versicherung“ in `base.html`.

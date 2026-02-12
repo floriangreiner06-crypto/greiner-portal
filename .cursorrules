@@ -3,6 +3,7 @@
 ## Projekt
 Greiner Portal DRIVE — Flask ERP-System für Autohaus Greiner (Stellantis/Hyundai/Leapmotor)
 Server: 10.80.80.20, Pfad: /opt/greiner-portal/
+Interne Portal-URL: http://drive (nicht 10.80.80.20:5000 oder auto-greiner.de)
 Sync (Backup): \\Srvrdb01\Allgemein\Greiner Portal\Greiner_Portal_NEU\Server\
 
 ## Haupt-Datenbank
@@ -41,9 +42,13 @@ Wenn der User einen Workstream nennt oder an einem Thema arbeitet:
 2. Arbeite im Kontext dieses Workstreams
 3. Am Ende: Aktualisiere die CONTEXT.md
 
+### Session-Start / Session-Ende
+- **Session-Start:** Anweisungen aus .cursor/commands/session-start.md befolgen (CLAUDE.md + Workstream CONTEXT.md lesen, Status zeigen, auf Aufgabe warten).
+- **Session-Ende:** Anweisungen aus .cursor/commands/session-end.md befolgen (nur CONTEXT.md aktualisieren + Git-Commit-Vorschlag; keine SESSION_WRAP_UP oder TODO-Dateien in docs/archive).
+
 Workstreams:
-- controlling (BWA, Bankenspiegel, Finanzreporting, MT940, Kontenmapping)
-- werkstatt (TEK, Stempeluhr, ML, Gudat, Serviceberater, Garantie, Arbeitskarte, ServiceBox)
+- controlling (BWA, Bankenspiegel, TEK, Finanzreporting, MT940, Kontenmapping)
+- werkstatt (Stempeluhr, ML, Gudat, Serviceberater, Garantie, Arbeitskarte, ServiceBox)
 - verkauf (Auftragseingang, Profitabilität, Gewinnplanung, eAutoSeller, Ersatzwagen)
 - teile-lager (Bestellungen, Renner/Penner, MOBIS, Teilekatalog-Scraper)
 - urlaubsplaner (Urlaubsanträge, Genehmigung, Chef-Übersicht, Outlook-Kalender)
@@ -63,7 +68,7 @@ Workstreams:
 - Metabase CE (:3001)
 
 ## Services & Ports
-- Portal: :5000
+- Portal (intern): http://drive (Apache Reverse Proxy → Gunicorn :5000)
 - Flower: :5555
 - Metabase: :3001
 - Redis: :6379

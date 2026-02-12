@@ -5,6 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Arbeitsumgebung
 
 **Server:** 10.80.80.20 (auto-greiner.de)
+**Interne Portal-URL:** http://drive (nicht 10.80.80.20:5000 oder auto-greiner.de für internen Zugriff)
 **Projekt-Pfad:** `/opt/greiner-portal/`
 **Test-Umgebung:** `/data/greiner-test/` (Port 5001)
 **SSH User:** ag-admin
@@ -154,8 +155,8 @@ Wenn Florian einen Workstream nennt, lies:
 ### Verfügbare Workstreams:
 | Workstream | Pfad | Scope |
 |------------|------|-------|
-| Controlling | docs/workstreams/controlling/ | BWA, Bankenspiegel, Finanzreporting, MT940 |
-| Werkstatt | docs/workstreams/werkstatt/ | TEK, Stempeluhr, ML, Gudat, Serviceberater, Garantie |
+| Controlling | docs/workstreams/controlling/ | BWA, Bankenspiegel, TEK, Finanzreporting, MT940 |
+| Werkstatt | docs/workstreams/werkstatt/ | Stempeluhr, ML, Gudat, Serviceberater, Garantie |
 | Verkauf | docs/workstreams/verkauf/ | Auftragseingang, Profitabilität, Gewinnplanung, eAutoSeller |
 | Teile & Lager | docs/workstreams/teile-lager/ | Bestellungen, Renner/Penner, MOBIS, Scraper |
 | Urlaubsplaner | docs/workstreams/urlaubsplaner/ | Urlaubsanträge, Genehmigung, Outlook-Kalender |
@@ -183,7 +184,7 @@ sudo systemctl status celery-worker
 sudo systemctl status celery-beat
 
 # Flower Dashboard (Web-UI für Celery)
-# http://10.80.80.20:5555
+# Intern: http://drive:5555 (oder je nach Apache-Konfiguration)
 
 # Redis Status (Message Broker)
 redis-cli ping
