@@ -269,6 +269,19 @@ Vergleich **Opel (subsidiary 1+2)** vs. **Hyundai (subsidiary 3)** für Arbeitsn
 - **Fazit:** In der **auswertungs-DB (public)** sind Wartungspakete nicht als eigene Tabelle mit Namen „Paket“/„Catalogue“ abgebildet. Die **Struktur labours_groups** ( labour_number_range, description, source) wäre geeignet für paketartige Gruppierungen, ist in dieser DB aber leer. Ob die bei euch gepflegten Wartungspakete in **labours_groups** (Hauptsystem) oder in **private/app2** liegen, ist mit den aktuellen Leserechten nicht prüfbar.
 - **Empfehlung:** Mit Locosoft/IT klären: (1) In welcher Tabelle bzw. in welchem Schema werden die Wartungspakete (z. B. DES1) gepflegt? (2) Wird **labours_groups** in die Auswertungs-DB übernommen – und wenn ja, aus welchem System/Freigabe? Danach kann der Greiner-Katalog bzw. das DRIVE-Modul gezielt auf diese Quelle (z. B. labours_groups sobald befüllt) angebunden werden.
 
+### 6.5 Modell AW Gruppe (Programm 138) – nicht labours_groups
+
+In der Locosoft-Programmdokumentation (Programm-Modul **138** „Modellbezogene Grunddaten pflegen“) wird die **Modell-AW-Gruppe** beschrieben: Für jedes **Modell** (Fahrzeugmodell) wird eine vom Hersteller vergebene **Modell-AW-Gruppe** hinterlegt (z. B. L701, 1111, JOC, S, BS06), damit die Zeitvorgaben je Modell ermittelt werden können. Pflege u. a. über Modellcode (Programm 112, 132, 138, F5), Import über 952/953.
+
+**Das ist nicht die Tabelle labours_groups.**
+
+| Thema | Wo in der DB | Bedeutung |
+|-------|----------------|-----------|
+| **Modell AW Gruppe** | **models.model_labour_group** (und ggf. **makes.internal_labour_group**) | Pro **Modell** (model_code) eine Kennung (z. B. 0000, 01, 02, 0004 …), mit der Hersteller-Zeitvorgaben je Modell zugeordnet werden. |
+| **labours_groups** | **labours_groups** (source_number, labour_number_range, description, source) | Gruppierung von **Arbeitsnummern** (labour_number_range, z. B. Bereiche oder Einzelcodes), nicht die pro Modell hinterlegte AW-Gruppe. |
+
+In der Auswertungs-DB enthält **models.model_labour_group** Werte wie 00, 0000, 0004, 01, 02, …; **labours_groups** ist weiterhin leer und dient einer anderen fachlichen Aufgabe (Gruppierung von Arbeitsnummern, nicht die Modell-AW-Gruppe).
+
 ---
 
 ## 7. Greiner-Standardarbeiten – Top-100 Vorschlag
