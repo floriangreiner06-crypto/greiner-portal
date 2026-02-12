@@ -259,6 +259,24 @@ In der Locosoft-Datenbank (loco_auswertung_db) gibt es **keine** eigenen Tabelle
 
 Empfohlene Standardarbeiten mit **realistischer Greiner-AW** aus IST-Daten (Stempelzeiten), Hersteller-AW, Abweichung und Häufigkeit. Standort-Differenzen siehe Abschnitt 5.
 
+### 7.1 Feedback Serviceleiter (erster Eindruck)
+
+**Hinweis:** Die Spalte „Greiner-AW (Std)“ in der folgenden Tabelle ist ein **datengetriebener Vorschlag** (Mittelwert aus Stempelzeiten), kein verbindlicher Katalogwert. Die Werkstattleitung prüft und entscheidet.
+
+- **Beobachtung:** Überwiegend liegen die vorgeschlagenen Zeiten **unter** der Hersteller-Vorgabe.
+- **Vermutung:** Die Berechnung kann verzerrt sein, weil Mechaniker **nicht bei jedem Wechsel umstempeln** – insbesondere bei **Inspektionen** (eine Stempelung für mehrere Positionen bzw. Inspektion + Zusatzarbeiten).
+- **Folge:** IST-Zeiten pro Position können **zu niedrig** ausgewertet werden; die „Greiner-AW“ aus reiner IST-Mittelwertbildung wäre dann zu knapp.
+
+**Vorgeschlagene Anpassungsregeln (Serviceleiter):**
+
+| Konstellation | Regel |
+|---------------|--------|
+| **Ungerade Inspektionen** (1., 3., 5. … Jahr) oder **Zwischeninspektion** | **+1 AW** zur Hersteller-Vorgabezeit |
+| **Gerade Inspektionen** (2., 4., 6. … Jahr) | **+2 AW** zur Hersteller-Vorgabezeit |
+| **Zusatzarbeiten** (z. B. Zündkerzen 06250907, Luftfilter, Bremsflüssigkeit etc.) | **+1 AW** pro Zusatzarbeit; prüfen, ob hohe Abweichung (z. B. +285 %) mit **Fehl- oder Nicht-Umstempelung** zusammenhängt |
+
+Diese Regeln sind als **betriebliche Vorgabe** zu verstehen und sollten bei der Definition des Greiner-Katalogs (und ggf. im DRIVE-Modul) berücksichtigt werden. Zusatzarbeiten mit sehr hoher IST-Abweichung (z. B. 06250907 Zündkerzen) sollten vor Übernahme in den Katalog auf Stempelverhalten geprüft werden.
+
 *(Auszug Top-50; vollständige Top-100 aus Analyse 2026-02-12.)*
 
 | Arbeitsnr. | Beschreibung | Hersteller-AW | Greiner-AW (Std) | Abweichung % | Häufigkeit/Jahr (N) |
@@ -353,11 +371,12 @@ Empfohlene Standardarbeiten mit **realistischer Greiner-AW** aus IST-Daten (Stem
 
 ## 9. Nächste Schritte (Empfehlung)
 
-1. **Priorisierung:** Top-20 bis Top-50 Standardarbeiten mit größter Abweichung und hoher Häufigkeit zuerst im Katalog abbilden.
-2. **DB-Migration:** Tabellen arbeitszeitenkatalog (+ Historie, optional Mapping) anlegen.
-3. **API + UI:** Minimales CRUD für Katalog, dann View „IST-Vorschläge“ und Workflow „Übernehmen“.
-4. **Integration:** Anbindung an Angebots-/Auftragsprozess und an Kennzahlen (Vorgabe vs. IST) festlegen.
-5. **Freitext:** Optionale Erweiterung um „Freitext-Muster → neue Standardarbeit“ und Mapping text_line → arbeitsnummer.
+1. **Vorgaben Werkstattleitung:** Inspektions- und Zusatzarbeits-Regeln aus Abschnitt 7.1 (Serviceleiter-Feedback) im Katalog bzw. im Modul abbilden (+1 AW / +2 AW Inspektion, +1 AW Zusatzarbeit; Prüfung Stempelverhalten bei hohen Abweichungen).
+2. **Priorisierung:** Top-20 bis Top-50 Standardarbeiten mit größter Abweichung und hoher Häufigkeit zuerst im Katalog abbilden.
+3. **DB-Migration:** Tabellen arbeitszeitenkatalog (+ Historie, optional Mapping) anlegen.
+4. **API + UI:** Minimales CRUD für Katalog, dann View „IST-Vorschläge“ und Workflow „Übernehmen“.
+5. **Integration:** Anbindung an Angebots-/Auftragsprozess und an Kennzahlen (Vorgabe vs. IST) festlegen.
+6. **Freitext:** Optionale Erweiterung um „Freitext-Muster → neue Standardarbeit“ und Mapping text_line → arbeitsnummer.
 
 ---
 
