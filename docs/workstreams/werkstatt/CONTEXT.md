@@ -46,10 +46,12 @@ Werkstatt und Aftersales umfassen Stempeluhr/Live-Monitoring, Mechaniker-Leistun
 - **UE IWW Scraper:** `scripts/imports/scrape_ue_iww.py` – Vollscrape 781 Einträge; NUL-Fix im DB-Import; Optionen `--from-json`, `--seed-only`. Export: `data/ue_iww_export.json`.
 - ❌ Offene Punkte: M2/M3 (Kürzungs-Abwehr/Tracking) nicht Priorität; Fokus: vollständige/korrekte Rechnungserstellung (M1).
 - ✅ **Greiner-Arbeitszeitenkatalog (2026-02-12):** Analyse & Konzept abgeschlossen. Bestandsaufnahme Locosoft labours, IST-Zeiten vs. Vorgabe-AW, Freitext-Clustering, Standort Opel vs. Hyundai, Reparaturpakete-Struktur, Top-100 Standardarbeiten-Vorschlag, DRIVE-Modul-Skizze. Siehe `docs/workstreams/werkstatt/ARBEITSZEITKATALOG_ANALYSE.md`. Kein Code deployt.
+- ✅ **Ergänzungen Arbeitszeitenkatalog-Doku:** Feedback Serviceleiter (7.1), Katalog mit Referenz statt nur Pauschale (7.2), Wartungspakete/Locosoft erneut geprüft (6.1–6.4), Modell AW Gruppe vs. labours_groups geklärt (6.5), Vorgabezeiten pauschal erhöhen per SOAP (8.7).
+- ❌ **Nächster Schritt (Beschluss):** Zuerst in **Locosoft sauber pflegen und einrichten**; danach **DB-Stand erneut prüfen** (z. B. labours_groups, Wartungspakete). Greiner-Katalog/DRIVE-Modul folgt nach Klärung.
 
 ## Offene Entscheidungen
 
-- (Keine festgehalten)
+- Nach Locosoft-Pflege: DB (loco_auswertung_db / Spiegel) erneut prüfen – was ist dann in labours_groups, Wartungspaketen?
 
 ---
 
