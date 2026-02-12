@@ -277,6 +277,42 @@ Empfohlene Standardarbeiten mit **realistischer Greiner-AW** aus IST-Daten (Stem
 
 Diese Regeln sind als **betriebliche Vorgabe** zu verstehen und sollten bei der Definition des Greiner-Katalogs (und ggf. im DRIVE-Modul) berücksichtigt werden. Zusatzarbeiten mit sehr hoher IST-Abweichung (z. B. 06250907 Zündkerzen) sollten vor Übernahme in den Katalog auf Stempelverhalten geprüft werden.
 
+### 7.2 Alternative: Katalog mit Referenz statt nur Pauschale
+
+Die Pauschalen (+1/+2 AW) sind einfach umsetzbar, aber **statisch** und ohne Bezug zu echten Auftragskombinationen. Ein Katalog mit **mehr Referenz** und **mehr als nur pauschaler Aufschlag** könnte so aussehen:
+
+**1. Referenz pro Position (Transparenz)**  
+Jede Katalogzeile führt nicht nur „Greiner-AW“, sondern **Referenzdaten** mit:
+- **N** = Anzahl Aufträge/Positionen, auf denen die AW basiert
+- **Streuung** (z. B. Standardabweichung oder Perzentile 25/75) der IST-Zeiten
+- **Kontext-Anteil:** z. B. „80 % der Fälle im gleichen Auftrag wie INSP/93830000“ (Inspektionskontext)
+
+Damit sieht der Werkstattleiter sofort: „Diese AW stammt aus 353 Fällen, Streuung hoch, oft zusammen mit Inspektion → ggf. manuell prüfen.“ Statt blind +1 AW liefert der Katalog **nachvollziehbare Referenz**.
+
+**2. Kontextabhängige AW (nicht nur eine Zahl)**  
+Statt **einer** Greiner-AW pro Arbeitsnummer zwei (oder mehr) Werte:
+- **AW „allein“:** nur Aufträge, in denen diese Position die einzige bzw. dominante Arbeit ist (wenige Positionen pro Auftrag)
+- **AW „im Inspektionskontext“:** Aufträge, in denen gleichzeitig Inspektion (INSP, 93830000, ZI …) vorkommt
+
+Beispiel: Zündkerzen 06250907 → 1,2 AW „allein“, 0,8 AW „zusätzlich bei Inspektion“ (weil Rüstzeit schon abgegolten). So wird der Aufschlag **datengetrieben** aus echten Kombinationen berechnet, nicht pauschal +1 AW.
+
+**3. Kombinations- / Paket-AW aus echten Aufträgen**  
+Häufige **Kombinationen** (z. B. INSP + Zündkerzen + Bremsflüssigkeit) pro Auftrag auswerten:
+- Gesamt-IST des Auftrags erfassen
+- Pro Kombination einen **Paket-AW** berechnen (z. B. „Inspektion gerade + Zündkerzen = 8,5 AW“ aus Mittelwert aller solcher Aufträge)
+- Im Katalog: neben Einzelpositionen auch **Referenzpakete** mit eigener AW und N
+
+Damit entstehen **mehrere Referenzebenen**: Einzelarbeit, Kontext „mit Inspektion“, und konkrete Pakete. Angebote können wahlweise Einzel-AW oder Paket-AW nutzen.
+
+**4. Pauschale nur als Fallback**  
+- Wenn **N ≥ Schwellwert** (z. B. 30) und Streuung vertretbar: **Greiner-AW aus IST** (ggf. kontextabhängig) nutzen.
+- Wenn **N zu klein** oder Streuung sehr hoch: **Fallback** auf Hersteller + Pauschale (+1/+2 AW wie Serviceleiter-Vorschlag) oder manuelle Festlegung.
+
+**Umsetzung (stufig denkbar):**  
+- **Phase 1:** Katalog wie bisher, aber mit Spalten N, Streuung, „Anteil im Inspektionskontext“ (nur Anzeige, mehr Referenz).  
+- **Phase 2:** Kontext „allein“ vs. „mit Inspektion“ auswerten, zwei AW pro Position speichern und in Angebot/Planung nutzbar machen.  
+- **Phase 3:** Häufige Kombinationen identifizieren, Paket-AW berechnen und als zusätzliche Katalogreferenz anbieten.
+
 *(Auszug Top-50; vollständige Top-100 aus Analyse 2026-02-12.)*
 
 | Arbeitsnr. | Beschreibung | Hersteller-AW | Greiner-AW (Std) | Abweichung % | Häufigkeit/Jahr (N) |
@@ -371,12 +407,13 @@ Diese Regeln sind als **betriebliche Vorgabe** zu verstehen und sollten bei der 
 
 ## 9. Nächste Schritte (Empfehlung)
 
-1. **Vorgaben Werkstattleitung:** Inspektions- und Zusatzarbeits-Regeln aus Abschnitt 7.1 (Serviceleiter-Feedback) im Katalog bzw. im Modul abbilden (+1 AW / +2 AW Inspektion, +1 AW Zusatzarbeit; Prüfung Stempelverhalten bei hohen Abweichungen).
-2. **Priorisierung:** Top-20 bis Top-50 Standardarbeiten mit größter Abweichung und hoher Häufigkeit zuerst im Katalog abbilden.
-3. **DB-Migration:** Tabellen arbeitszeitenkatalog (+ Historie, optional Mapping) anlegen.
-4. **API + UI:** Minimales CRUD für Katalog, dann View „IST-Vorschläge“ und Workflow „Übernehmen“.
-5. **Integration:** Anbindung an Angebots-/Auftragsprozess und an Kennzahlen (Vorgabe vs. IST) festlegen.
-6. **Freitext:** Optionale Erweiterung um „Freitext-Muster → neue Standardarbeit“ und Mapping text_line → arbeitsnummer.
+1. **Entscheidung Katalog-Ansatz:** Statische Pauschale (7.1) vs. referenzbasierter Katalog (7.2). Empfehlung: Katalog mit Referenz (N, Streuung, Kontext) und optional kontextabhängiger AW / Paket-AW; Pauschale nur als Fallback bei wenig Daten.
+2. **Vorgaben Werkstattleitung:** Inspektions- und Zusatzarbeits-Regeln aus Abschnitt 7.1 im Katalog abbilden (als Mindestvorgabe oder Fallback).
+3. **Priorisierung:** Top-20 bis Top-50 Standardarbeiten mit größter Abweichung und hoher Häufigkeit zuerst im Katalog abbilden.
+4. **DB-Migration:** Tabellen arbeitszeitenkatalog (+ Historie, optional Mapping); bei referenzbasiertem Ansatz zusätzlich Felder N, Streuung, Kontext, ggf. Paket-Kombinationen.
+5. **API + UI:** Minimales CRUD für Katalog, dann View „IST-Vorschläge“ und Workflow „Übernehmen“; bei 7.2 Anzeige Referenzdaten und kontextabhängige AW.
+6. **Integration:** Anbindung an Angebots-/Auftragsprozess und an Kennzahlen (Vorgabe vs. IST) festlegen.
+7. **Freitext:** Optionale Erweiterung um „Freitext-Muster → neue Standardarbeit“ und Mapping text_line → arbeitsnummer.
 
 ---
 
