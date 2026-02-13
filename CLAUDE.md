@@ -166,6 +166,7 @@ Wenn Florian einen Workstream nennt, lies:
 | Infrastruktur | docs/workstreams/infrastruktur/ | Celery, PostgreSQL, Redis, Deployment, MCP |
 | Auth/LDAP | docs/workstreams/auth-ldap/ | Login, Rollen, RBAC |
 | Integrations | docs/workstreams/integrations/ | WhatsApp, eAutoSeller, SOAP, Scraper, Mail |
+| Vergütung | docs/workstreams/verguetung/ | Werkstatt-Prämien, Verkäufer-Provisionen, Jahresprämie |
 
 ### Bei Session-Ende:
 1. Aktualisiere die CONTEXT.md des bearbeiteten Workstreams

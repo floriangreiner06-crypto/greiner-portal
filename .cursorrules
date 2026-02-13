@@ -58,6 +58,7 @@ Workstreams:
 - infrastruktur (Celery, PostgreSQL, Redis, Deployment, Admin-UI, MCP, Metabase)
 - auth-ldap (Login, Rollen, RBAC, Rechte-Verwaltung)
 - integrations (WhatsApp, eAutoSeller, SOAP, Scraper, Microsoft Graph Mail)
+- verguetung (Werkstatt-Prämien, Verkäufer-Provisionen, Jahresprämie)
 
 ## Tech-Stack
 - Flask 3.x, Gunicorn, Apache Reverse Proxy
