@@ -5,7 +5,7 @@ from datetime import datetime, date, timedelta
 import calendar
 import psycopg2.extras
 
-# TAG 136: PostgreSQL-Migration - Nutze db_utils fÃ¼r Portal-DB
+# TAG 136: PostgreSQL-Migration - Nutze db_utils für Portal-DB
 from api.db_utils import db_session, row_to_dict, rows_to_list, locosoft_session
 from api.db_connection import convert_placeholders, sql_placeholder, get_db_type, get_db, get_db
 
@@ -19,14 +19,14 @@ from api.controlling_data import get_tek_data
 # Bayerische Feiertage 2025
 FEIERTAGE_2025 = [
     datetime(2025, 1, 1),    # Neujahr
-    datetime(2025, 1, 6),    # Heilige Drei KÃ¶nige
+    datetime(2025, 1, 6),    # Heilige Drei Könige
     datetime(2025, 4, 18),   # Karfreitag
     datetime(2025, 4, 21),   # Ostermontag
     datetime(2025, 5, 1),    # Tag der Arbeit
     datetime(2025, 5, 29),   # Christi Himmelfahrt
     datetime(2025, 6, 9),    # Pfingstmontag
     datetime(2025, 6, 19),   # Fronleichnam
-    datetime(2025, 8, 15),   # MariÃ¤ Himmelfahrt
+    datetime(2025, 8, 15),   # Mariä Himmelfahrt
     datetime(2025, 10, 3),   # Tag der Deutschen Einheit
     datetime(2025, 11, 1),   # Allerheiligen
     datetime(2025, 12, 25),  # 1. Weihnachtstag
@@ -92,7 +92,7 @@ def get_locosoft_db():
 
 
 # =============================================================================
-# MODELL-NORMALISIERUNG fÃ¼r Locosoft
+# MODELL-NORMALISIERUNG für Locosoft
 # =============================================================================
 # Extrahiert Basis-Modellname aus detaillierten Locosoft-Bezeichnungen
 
@@ -138,7 +138,7 @@ def normalisiere_locosoft_modell(description: str) -> str:
     if not description:
         return 'Sonstige'
 
-    # Lowercase fÃ¼r Matching
+    # Lowercase für Matching
     desc_lower = description.lower().strip()
 
     # Bekannte Modelle suchen
@@ -167,7 +167,7 @@ def normalisiere_fibu_modell(modell: str) -> str:
     if not modell:
         return 'Sonstige'
 
-    # Lowercase fÃ¼r Matching
+    # Lowercase für Matching
     modell_lower = modell.lower().strip()
 
     # Bekannte Modelle suchen
@@ -183,13 +183,13 @@ def normalisiere_fibu_modell(modell: str) -> str:
     if 'santafe' in modell_lower or 'santa' in modell_lower:
         return 'Santa Fe'
 
-    # Fallback: Ersten Buchstaben groÃŸ, Rest klein
+    # Fallback: Ersten Buchstaben groß, Rest klein
     return modell.strip()
 
 
 def get_stueckzahlen_locosoft(von: str, bis: str, bereich: str = '1-NW', firma: str = '0', standort: str = '0') -> dict:
     """
-    Holt Fahrzeug-StÃ¼ckzahlen aus Locosoft dealer_vehicles.
+    Holt Fahrzeug-Stückzahlen aus Locosoft dealer_vehicles.
     
     TAG167 FIX: Stückzahlen aus dealer_vehicles (tatsächliche Auslieferungen),
     NICHT aus journal_accountings (nur bereits gebuchte Verkäufe)!
@@ -227,13 +227,11 @@ def get_stueckzahlen_locosoft(von: str, bis: str, bereich: str = '1-NW', firma: 
         with locosoft_session() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-            # TAG176: Nur fakturierte Fahrzeuge bis HEUTE zählen (nicht zukünftige!)
-            # Verwende COALESCE(out_invoice_date, out_sales_contract_date) als primäres Datum
-            # (out_sales_contract_date ist der Vertragsabschluss = fakturiert)
+            # TAG176: Nur fakturierte Fahrzeuge bis HEUTE zählen (keine zukünftigen Fakturierungen!)
+            # Primäres Datum: COALESCE(out_invoice_date, out_sales_contract_date)
             heute_str = date.today().isoformat()
-            # Verwende min(bis, heute) um zukünftige Daten auszuschließen
             bis_effektiv = min(bis, heute_str)
-            
+            # Explizit: Rechnungs-/Vertragsdatum darf nicht in der Zukunft liegen (Absicherung)
             cur.execute(f"""
                 SELECT
                     COALESCE(m.description, 'Unbekannt') as modell_raw,
@@ -247,6 +245,7 @@ def get_stueckzahlen_locosoft(von: str, bis: str, bereich: str = '1-NW', firma: 
                   AND dv.out_sale_price > 0
                   AND COALESCE(dv.out_invoice_date, dv.out_sales_contract_date) >= %s
                   AND COALESCE(dv.out_invoice_date, dv.out_sales_contract_date) <= %s
+                  AND COALESCE(dv.out_invoice_date, dv.out_sales_contract_date)::date <= CURRENT_DATE
                   {standort_filter}
                 GROUP BY m.description
                 ORDER BY stueck DESC
@@ -255,7 +254,7 @@ def get_stueckzahlen_locosoft(von: str, bis: str, bereich: str = '1-NW', firma: 
             rows = cur.fetchall()
             cur.close()
 
-        # Nach Basis-Modell gruppieren (auÃŸerhalb des with-Blocks)
+        # Nach Basis-Modell gruppieren (außerhalb des with-Blocks)
         modelle = {}
         gesamt_stueck = 0
 
@@ -294,7 +293,7 @@ def get_stueckzahlen_locosoft(von: str, bis: str, bereich: str = '1-NW', firma: 
 controlling_bp = Blueprint('controlling', __name__, url_prefix='/controlling')
 
 # =============================================================================
-# KONSTANTEN: MA-VERTEILUNG FÃœR UMLAGE
+# KONSTANTEN: MA-VERTEILUNG FÜR UMLAGE
 # =============================================================================
 # Wird dynamisch aus DB geladen, aber als Fallback hier definiert
 DEFAULT_MA_VERTEILUNG = {
@@ -310,20 +309,20 @@ DEFAULT_MA_VERTEILUNG = {
 # Diese Konten sind "linke Tasche, rechte Tasche" - heben sich auf Konzernebene auf
 # Bei Einzelbetrachtung verzerren sie die echte Performance
 #
-# ERLÃ–SE bei Stellantis (Autohaus Greiner bekommt):
-#   817051 = Kostenumlage NW        ~12.500 â‚¬/Monat
-#   827051 = Kostenumlage GW        ~12.500 â‚¬/Monat  
-#   837051 = Kostenumlage Werkstatt ~12.500 â‚¬/Monat
-#   847051 = Kostenumlage Teile     ~12.500 â‚¬/Monat
-#   SUMME:                          ~50.000 â‚¬/Monat
+# ERLÖSE bei Stellantis (Autohaus Greiner bekommt):
+#   817051 = Kostenumlage NW        ~12.500 €/Monat
+#   827051 = Kostenumlage GW        ~12.500 €/Monat  
+#   837051 = Kostenumlage Werkstatt ~12.500 €/Monat
+#   847051 = Kostenumlage Teile     ~12.500 €/Monat
+#   SUMME:                          ~50.000 €/Monat
 #
 # KOSTEN bei Hyundai (Auto Greiner zahlt) - als HABEN gebucht!
-#   498001 = Kostenumlage Haupt     ~50.000 â‚¬/Monat
-#   415001 = Kostenumlage Personal  ~ 5.000 â‚¬/Monat (+ echte Personalkosten SOLL)
-#   440001 = Kostenumlage Miete     ~ 2.500 â‚¬/Monat (+ echte Mietkosten SOLL)
-#   461001 = Kostenumlage Versich.  ~   500 â‚¬/Monat (+ echte Versicherungen SOLL)
-#   462001 = Kostenumlage BeitrÃ¤ge  ~   500 â‚¬/Monat (+ echte BeitrÃ¤ge SOLL)
-#   SUMME:                          ~58.500 â‚¬/Monat
+#   498001 = Kostenumlage Haupt     ~50.000 €/Monat
+#   415001 = Kostenumlage Personal  ~ 5.000 €/Monat (+ echte Personalkosten SOLL)
+#   440001 = Kostenumlage Miete     ~ 2.500 €/Monat (+ echte Mietkosten SOLL)
+#   461001 = Kostenumlage Versich.  ~   500 €/Monat (+ echte Versicherungen SOLL)
+#   462001 = Kostenumlage Beiträge  ~   500 €/Monat (+ echte Beiträge SOLL)
+#   SUMME:                          ~58.500 €/Monat
 #
 # WICHTIG: Die Konten 415001, 440001, 461001, 462001 haben DOPPELTE Verwendung:
 #   - Echte Kosten (SOLL-Buchungen): Miete Fischer, Lohn/Gehalt, etc.
@@ -333,7 +332,7 @@ DEFAULT_MA_VERTEILUNG = {
 UMLAGE_ERLOESE_KONTEN = [817051, 827051, 837051, 847051]
 UMLAGE_KOSTEN_KONTEN = [498001]  # Haupt-Umlage-Konto (nur HABEN-Buchungen)
 
-# Buchungstexte die als Umlage identifiziert werden (fÃ¼r HABEN-Buchungen auf Kostenkonten)
+# Buchungstexte die als Umlage identifiziert werden (für HABEN-Buchungen auf Kostenkonten)
 UMLAGE_BUCHUNGSTEXTE = ['Kostenumlage AH Greiner', 'Kostenumlage Auto Greiner', 'Kostenumlage']
 
 def get_ma_verteilung(standort: str = '0') -> dict:
@@ -361,8 +360,8 @@ def get_ma_verteilung(standort: str = '0') -> dict:
                 CASE
                     WHEN department_name IN ('Verkauf', 'Verkauf NW', 'Verkauf GW', 'Disposition', 'Fahrzeuge') THEN '12'
                     WHEN department_name IN ('Werkstatt', 'Service', 'Service & Empfang', 'Serviceberater', 'Hol- und Bringservice') THEN '3'
-                    WHEN department_name IN ('Teile', 'Lager', 'Lager & Teile', 'Teile und ZubehÃ¶r') THEN '6'
-                    WHEN department_name IN ('Verwaltung', 'Buchhaltung', 'GeschÃ¤ftsleitung', 'GeschÃ¤ftsfÃ¼hrung', 'CRM', 'Marketing', 'Call-Center', 'Kundenzentrale') THEN '0'
+                    WHEN department_name IN ('Teile', 'Lager', 'Lager & Teile', 'Teile und Zubehör') THEN '6'
+                    WHEN department_name IN ('Verwaltung', 'Buchhaltung', 'Geschäftsleitung', 'Geschäftsführung', 'CRM', 'Marketing', 'Call-Center', 'Kundenzentrale') THEN '0'
                     ELSE '9'
                 END as kst,
                 COUNT(*) as anzahl
@@ -551,12 +550,12 @@ def kst_ziele_dashboard():
 
 
 # =============================================================================
-# HELPER: Umsatz/Einsatz pro Bereich fÃ¼r beliebigen Zeitraum
+# HELPER: Umsatz/Einsatz pro Bereich für beliebigen Zeitraum
 # =============================================================================
 
 def get_bereich_daten(von: str, bis: str, firma_filter_umsatz: str, umlage_erloese_filter: str = '', firma_filter_einsatz: str = None) -> dict:
     """
-    Holt Umsatz und Einsatz pro Bereich fÃ¼r einen Zeitraum.
+    Holt Umsatz und Einsatz pro Bereich für einen Zeitraum.
     TAG 136: PostgreSQL-kompatibel
     TAG 157: firma_filter_einsatz für korrekte Standort-Zuordnung (Konto-Endziffer)
     Returns: {'1-NW': {'umsatz': X, 'einsatz': Y}, ...}
@@ -625,10 +624,10 @@ def get_bereich_daten(von: str, bis: str, firma_filter_umsatz: str, umlage_erloe
 
 def get_werkstatt_produktivitaet(von: str, bis: str, betrieb: str = '0') -> dict:
     """
-    Holt Werkstatt-ProduktivitÃ¤t (EW) fÃ¼r kalkulatorischen Einsatz.
+    Holt Werkstatt-Produktivität (EW) für kalkulatorischen Einsatz.
 
     NUTZT ZENTRALE BERECHNUNG aus api/werkstatt_api.py (werkstatt_leistung_daily)
-    = Single Source of Truth fÃ¼r Werkstatt-KPIs
+    = Single Source of Truth für Werkstatt-KPIs
     TAG 136: PostgreSQL-kompatibel
 
     Returns: {
@@ -683,9 +682,9 @@ def get_werkstatt_produktivitaet(von: str, bis: str, betrieb: str = '0') -> dict
             umsatz = result.get('umsatz') or 0
 
             # GLEICHE FORMELN wie werkstatt_api.py:
-            # ProduktivitÃ¤t = Stempelzeit / Anwesenheit * 100
+            # Produktivität = Stempelzeit / Anwesenheit * 100
             # Leistungsgrad = Vorgabezeit_AW * 6 / Stempelzeit * 100 (6 Min pro AW)
-            # TAG 136: PostgreSQL gibt decimal.Decimal zurÃ¼ck, muss zu float gecastet werden
+            # TAG 136: PostgreSQL gibt decimal.Decimal zurück, muss zu float gecastet werden
             stempelzeit = float(stempelzeit) if stempelzeit else 0
             anwesenheit = float(anwesenheit) if anwesenheit else 0
             vorgabe_aw = float(vorgabe_aw) if vorgabe_aw else 0
@@ -702,14 +701,14 @@ def get_werkstatt_produktivitaet(von: str, bis: str, betrieb: str = '0') -> dict
             }
 
     except Exception as e:
-        print(f"Werkstatt-ProduktivitÃ¤t Fehler: {e}")
+        print(f"Werkstatt-Produktivität Fehler: {e}")
         import traceback
         traceback.print_exc()
         return {'produktivitaet': 75.0, 'leistungsgrad': 85.0}
 
 
 # =============================================================================
-# TEK API - TÃ¤gliche Erfolgskontrolle
+# TEK API - Tägliche Erfolgskontrolle
 # =============================================================================
 
 @controlling_bp.route('/api/tek')
@@ -727,7 +726,7 @@ def api_tek():
     
     Umlage-Bereinigung:
     - Bei 'ohne' werden die internen Umlage-Konten herausgerechnet
-    - Betrifft: 817051, 827051, 837051, 847051 (ErlÃ¶se) und 498001 (Kosten)
+    - Betrifft: 817051, 827051, 837051, 847051 (Erlöse) und 498001 (Kosten)
     - Zeigt die "echte" operative Performance ohne Konzern-interne Verrechnungen
     
     Firmenstruktur:
@@ -752,13 +751,13 @@ def api_tek():
         von = f"{jahr}-{monat:02d}-01"
         bis = f"{jahr}-{monat+1:02d}-01" if monat < 12 else f"{jahr+1}-01-01"
 
-        # FÃ¼r Breakeven/Prognose: "3 Monate zurÃ¼ck" (wird in berechne_breakeven_prognose* referenziert)
+        # Für Breakeven/Prognose: "3 Monate zurück" (wird in berechne_breakeven_prognose* referenziert)
         from dateutil.relativedelta import relativedelta
         _heute = date.today()
         drei_monate_vorher = (_heute - relativedelta(months=3)).replace(day=1).strftime('%Y-%m-%d')
 
         # TAG 136: PostgreSQL-kompatibel - Placeholder-Funktion
-        ph = sql_placeholder()  # Returns ? fÃ¼r SQLite, %s fÃ¼r PostgreSQL
+        ph = sql_placeholder()  # Returns ? für SQLite, %s für PostgreSQL
         
         # Filter bauen
         # WICHTIG (TAG157 FIX): Locosoft verwendet unterschiedliche Standort-Zuordnungen:
@@ -767,11 +766,11 @@ def api_tek():
         #          - Kosten (4xxxxx): Konto-Endziffer (6. Stelle: 1=DEG, 2=LAN) oder subsidiary (2=HYU)
 
         firma_filter = ""
-        firma_filter_umsatz = ""   # FÃ¼r Umsatz: branch_number
-        firma_filter_einsatz = ""  # FÃ¼r Einsatz: Konto-Endziffer! (TAG157) - IMMER initialisieren!
-        firma_filter_kosten = ""   # FÃ¼r Kosten: Konto-Endziffer
+        firma_filter_umsatz = ""   # Für Umsatz: branch_number
+        firma_filter_einsatz = ""  # Für Einsatz: Konto-Endziffer! (TAG157) - IMMER initialisieren!
+        firma_filter_kosten = ""   # Für Kosten: Konto-Endziffer
         standort_name = "Alle"
-        standort_code = standort  # FÃ¼r MA-Verteilung
+        standort_code = standort  # Für MA-Verteilung
 
         # TAG167: firma_filter_einsatz IMMER initialisieren (auch bei firma='0')
         # Fallback für get_bereich_daten() falls nicht gesetzt
@@ -783,19 +782,19 @@ def api_tek():
             firma_filter_kosten = "AND subsidiary_to_company_ref = 1"
             standort_name = "Stellantis (DEG+LAN)"
             if standort == '1':
-                # Deggendorf: branch_number=1 fÃ¼r Umsatz, Konto-Endziffer=1 fÃ¼r Einsatz/Kosten
+                # Deggendorf: branch_number=1 für Umsatz, Konto-Endziffer=1 für Einsatz/Kosten
                 firma_filter_umsatz += " AND branch_number = 1"
                 firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
                 firma_filter_kosten += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'"
                 standort_name = "Deggendorf"
                 standort_code = '1'
-            elif standort == '2':  # Landau (frÃ¼her '3' fÃ¼r branch, jetzt '2' fÃ¼r Konto-Endung)
-                # Landau: branch_number=3 fÃ¼r Umsatz, Konto-Endziffer=2 fÃ¼r Einsatz/Kosten
+            elif standort == '2':  # Landau (früher '3' für branch, jetzt '2' für Konto-Endung)
+                # Landau: branch_number=3 für Umsatz, Konto-Endziffer=2 für Einsatz/Kosten
                 firma_filter_umsatz += " AND branch_number = 3"
                 firma_filter_einsatz += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
                 firma_filter_kosten += " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'"
                 standort_name = "Landau"
-                standort_code = '3'  # FÃ¼r MA-Verteilung in employees (location='Landau')
+                standort_code = '3'  # Für MA-Verteilung in employees (location='Landau')
         elif firma == '2':
             # Hyundai (Auto Greiner) - separate Firma
             firma_filter = "AND subsidiary_to_company_ref = 2"
@@ -813,14 +812,14 @@ def api_tek():
         umlage_kosten_betrag = 0
         
         if umlage == 'ohne':
-            # Umlage-ErlÃ¶se aus Umsatz ausschlieÃŸen (die 4 Umlage-Konten)
+            # Umlage-Erlöse aus Umsatz ausschließen (die 4 Umlage-Konten)
             umlage_konten_str = ','.join(map(str, UMLAGE_ERLOESE_KONTEN))
             umlage_erloese_filter = f"AND nominal_account_number NOT IN ({umlage_konten_str})"
 
-            # Umlage-Kosten ausschlieÃŸen: OPTION C = Buchungstext-basiert + KST 0
+            # Umlage-Kosten ausschließen: OPTION C = Buchungstext-basiert + KST 0
             # Filtert nur HABEN-Buchungen mit "Kostenumlage" im Text auf KST 0 (Verwaltung)
-            # Dies schlieÃŸt 498001 (50k), 415001, 440001, 461001, 462001 aus
-            # ABER behÃ¤lt 415011, 415021, 415031, 415061 (echte Kosten auf KST 1-6)!
+            # Dies schließt 498001 (50k), 415001, 440001, 461001, 462001 aus
+            # ABER behält 415011, 415021, 415031, 415061 (echte Kosten auf KST 1-6)!
             umlage_kosten_filter = """AND NOT (
                 debit_or_credit = 'H'
                 AND substr(CAST(nominal_account_number AS TEXT), 5, 1) = '0'
@@ -828,7 +827,7 @@ def api_tek():
                      OR posting_text LIKE '%%kostenumlage%%')
             )"""
 
-            # Berechne Umlage-Betrag fÃ¼r Info-Anzeige (ErlÃ¶s-Seite)
+            # Berechne Umlage-Betrag für Info-Anzeige (Erlös-Seite)
             with db_session() as conn:
                 cursor = conn.cursor()
                 cursor.execute(convert_placeholders(f"""
@@ -845,7 +844,7 @@ def api_tek():
                     umlage_result = row_to_dict(umlage_result)
                     umlage_betrag = float(umlage_result['betrag'] or 0)
 
-                # Berechne auch den Kosten-Filter-Betrag fÃ¼r Info (nur KST 0)
+                # Berechne auch den Kosten-Filter-Betrag für Info (nur KST 0)
                 cursor.execute(convert_placeholders(f"""
                     SELECT COALESCE(SUM(
                         CASE WHEN debit_or_credit='H' THEN posted_value ELSE -posted_value END
@@ -869,7 +868,7 @@ def api_tek():
         with db_session() as conn:
             cursor = conn.cursor()
 
-            # UMSATZ NACH BEREICHEN (branch_number fÃ¼r Standort-Filter)
+            # UMSATZ NACH BEREICHEN (branch_number für Standort-Filter)
             cursor.execute(convert_placeholders(f"""
                 SELECT
                     CASE
@@ -892,7 +891,7 @@ def api_tek():
             """), (von, bis))
             umsatz_rows = cursor.fetchall()
 
-            # EINSATZ NACH BEREICHEN (branch_number fÃ¼r Standort-Filter)
+            # EINSATZ NACH BEREICHEN (branch_number für Standort-Filter)
             cursor.execute(convert_placeholders(f"""
                 SELECT
                     CASE
@@ -917,7 +916,7 @@ def api_tek():
         
         # =====================================================================
         # VOLLKOSTEN (nur wenn modus='voll')
-        # Verwendet firma_filter_kosten fÃ¼r Kosten-Konten (4xxxxx)
+        # Verwendet firma_filter_kosten für Kosten-Konten (4xxxxx)
         # TAG 136: berechne_vollkosten nutzt jetzt intern db_session()
         # =====================================================================
         kosten_data = None
@@ -925,7 +924,7 @@ def api_tek():
             kosten_data = berechne_vollkosten(von, bis, firma_filter_kosten, standort_code, umlage_kosten_filter)
         
         # =====================================================================
-        # BEREICHE ZUSAMMENFÃœHREN
+        # BEREICHE ZUSAMMENFÜHREN
         # =====================================================================
         bereich_namen = {
             '1-NW': 'Neuwagen', '2-GW': 'Gebrauchtwagen',
@@ -986,7 +985,7 @@ def api_tek():
             totals['umsatz'] += u
             totals['einsatz'] += e
         
-        # Andere UmsÃ¤tze/EinsÃ¤tze addieren
+        # Andere Umsätze/Einsätze addieren
         totals['umsatz'] += umsatz_dict.get('6-8932', 0) + umsatz_dict.get('9-Andere', 0)
         totals['einsatz'] += einsatz_dict.get('9-Andere', 0)
 
@@ -1015,7 +1014,7 @@ def api_tek():
             })
 
         # =====================================================================
-        # VM/VJ PRO BEREICH (fÃ¼r Teile und Werkstatt Tabs)
+        # VM/VJ PRO BEREICH (für Teile und Werkstatt Tabs)
         # =====================================================================
         vm_monat_calc, vm_jahr_calc = (12, jahr - 1) if monat == 1 else (monat - 1, jahr)
         vm_von_bereich = f"{vm_jahr_calc}-{vm_monat_calc:02d}-01"
@@ -1028,7 +1027,7 @@ def api_tek():
         vm_bereiche = get_bereich_daten(vm_von_bereich, vm_bis_bereich, firma_filter_umsatz, umlage_erloese_filter, firma_filter_einsatz)
         vj_bereiche = get_bereich_daten(vj_von_bereich, vj_bis_bereich, firma_filter_umsatz, umlage_erloese_filter, firma_filter_einsatz)
 
-        # VM/VJ zu jedem Bereich hinzufÃ¼gen
+        # VM/VJ zu jedem Bereich hinzufügen
         for bkey in bereiche:
             vm_b = vm_bereiche.get(bkey, {})
             vj_b = vj_bereiche.get(bkey, {})
@@ -1038,25 +1037,25 @@ def api_tek():
             bereiche[bkey]['vj_db1'] = vj_b.get('db1', 0)
 
         # =====================================================================
-        # STÃœCKZAHLEN FÃœR NW/GW (aus dealer_vehicles)
+        # STÜCKZAHLEN FÜR NW/GW (aus dealer_vehicles)
         # =====================================================================
         stueck_nw = get_stueckzahlen_locosoft(von, bis, '1-NW', firma, standort)
         stueck_gw = get_stueckzahlen_locosoft(von, bis, '2-GW', firma, standort)
 
-        # VM-StÃ¼ckzahlen
+        # VM-Stückzahlen
         vm_stueck_nw = get_stueckzahlen_locosoft(vm_von_bereich, vm_bis_bereich, '1-NW', firma, standort)
         vm_stueck_gw = get_stueckzahlen_locosoft(vm_von_bereich, vm_bis_bereich, '2-GW', firma, standort)
 
-        # VJ-StÃ¼ckzahlen
+        # VJ-Stückzahlen
         vj_stueck_nw = get_stueckzahlen_locosoft(vj_von_bereich, vj_bis_bereich, '1-NW', firma, standort)
         vj_stueck_gw = get_stueckzahlen_locosoft(vj_von_bereich, vj_bis_bereich, '2-GW', firma, standort)
 
-        # StÃ¼ckzahlen zu Bereichen hinzufÃ¼gen
+        # Stückzahlen zu Bereichen hinzufügen
         if '1-NW' in bereiche:
             bereiche['1-NW']['stueck'] = stueck_nw.get('gesamt_stueck', 0)
             bereiche['1-NW']['vm_stueck'] = vm_stueck_nw.get('gesamt_stueck', 0)
             bereiche['1-NW']['vj_stueck'] = vj_stueck_nw.get('gesamt_stueck', 0)
-            # DB1/StÃ¼ck berechnen
+            # DB1/Stück berechnen
             if bereiche['1-NW']['stueck'] > 0:
                 bereiche['1-NW']['db1_pro_stueck'] = round(bereiche['1-NW']['db1'] / bereiche['1-NW']['stueck'], 2)
             else:
@@ -1066,18 +1065,18 @@ def api_tek():
             bereiche['2-GW']['stueck'] = stueck_gw.get('gesamt_stueck', 0)
             bereiche['2-GW']['vm_stueck'] = vm_stueck_gw.get('gesamt_stueck', 0)
             bereiche['2-GW']['vj_stueck'] = vj_stueck_gw.get('gesamt_stueck', 0)
-            # DB1/StÃ¼ck berechnen
+            # DB1/Stück berechnen
             if bereiche['2-GW']['stueck'] > 0:
                 bereiche['2-GW']['db1_pro_stueck'] = round(bereiche['2-GW']['db1'] / bereiche['2-GW']['stueck'], 2)
             else:
                 bereiche['2-GW']['db1_pro_stueck'] = 0
 
-        # Gesamt-StÃ¼ckzahlen
+        # Gesamt-Stückzahlen
         gesamt_stueck = stueck_nw.get('gesamt_stueck', 0) + stueck_gw.get('gesamt_stueck', 0)
         gesamt_vm_stueck = vm_stueck_nw.get('gesamt_stueck', 0) + vm_stueck_gw.get('gesamt_stueck', 0)
         gesamt_vj_stueck = vj_stueck_nw.get('gesamt_stueck', 0) + vj_stueck_gw.get('gesamt_stueck', 0)
 
-        # StÃ¼ckzahlen zum Gesamt-Objekt hinzufÃ¼gen
+        # Stückzahlen zum Gesamt-Objekt hinzufügen
         gesamt['stueck'] = gesamt_stueck
         gesamt['stueck_nw'] = stueck_nw.get('gesamt_stueck', 0)
         gesamt['stueck_gw'] = stueck_gw.get('gesamt_stueck', 0)
@@ -1258,7 +1257,7 @@ def api_tek():
 
         with db_session() as conn:
             cursor = conn.cursor()
-            # Kompletter Vorjahres-Monat (fÃ¼r Vergleich mit Hochrechnung)
+            # Kompletter Vorjahres-Monat (für Vergleich mit Hochrechnung)
             cursor.execute(convert_placeholders(f"""
                 SELECT SUM(CASE WHEN debit_or_credit = 'H' THEN posted_value ELSE -posted_value END) / 100.0 as umsatz
                 FROM loco_journal_accountings
@@ -1603,7 +1602,7 @@ def api_tek():
         # TAG176: Beide Tage sind jetzt geholt (heute_daten, vortag_daten)
         # Daten sind bereits in bereiche eingefügt
 
-        monat_namen = ['', 'Januar', 'Februar', 'MÃ¤rz', 'April', 'Mai', 'Juni',
+        monat_namen = ['', 'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
                        'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
         
         response = {
@@ -1675,42 +1674,42 @@ def api_tek():
 # SKR51-Kontobezeichnungen (Autohaus-Kontenrahmen)
 SKR51_KONTOBEZEICHNUNGEN = {
     # Umsatz Neuwagen (81xxxx)
-    810111: 'NW VE Privatkunde bar/Ã¼berw.',
+    810111: 'NW VE Privatkunde bar/überw.',
     810151: 'NW VE Privatkunde Leasing',
     810211: 'NW VE Privatkunde Finanzierung',
-    810311: 'NW VE Gewerbekunde bar/Ã¼berw.',
+    810311: 'NW VE Gewerbekunde bar/überw.',
     810351: 'NW VE Gewerbekunde Leasing',
     810411: 'NW VE Gewerbekunde Finanzierung',
-    810511: 'NW VE GroÃŸkunde bar/Ã¼berw.',
-    810551: 'NW VE GroÃŸkunde Leasing',
-    810611: 'NW VE GroÃŸkunde Finanzierung',
-    810811: 'NW VE an HÃ¤ndler',
+    810511: 'NW VE Großkunde bar/überw.',
+    810551: 'NW VE Großkunde Leasing',
+    810611: 'NW VE Großkunde Finanzierung',
+    810811: 'NW VE an Händler',
     810831: 'NW VE Gewerbekunde Leasing',
     810911: 'NW VE Sonstige',
-    811111: 'NW HerstellerprÃ¤mien',
-    811211: 'NW BonusprÃ¤mien',
-    813211: 'NW SonderprÃ¤mien/Boni',
+    811111: 'NW Herstellerprämien',
+    811211: 'NW Bonusprämien',
+    813211: 'NW Sonderprämien/Boni',
     817001: 'NW Innenumsatz',
     817051: 'NW Kostenumlage intern',
     
     # Umsatz Gebrauchtwagen (82xxxx)
-    820111: 'GW VE Privatkunde bar/Ã¼berw.',
+    820111: 'GW VE Privatkunde bar/überw.',
     820151: 'GW VE Privatkunde Leasing',
     820211: 'GW VE Privatkunde Finanzierung',
-    820311: 'GW VE Gewerbekunde bar/Ã¼berw.',
+    820311: 'GW VE Gewerbekunde bar/überw.',
     820351: 'GW VE Gewerbekunde Leasing',
     820411: 'GW VE Gewerbekunde Finanzierung',
-    820511: 'GW VE an HÃ¤ndler',
+    820511: 'GW VE an Händler',
     820611: 'GW VE Sonstige',
-    821111: 'GW PrÃ¤mien/Boni',
+    821111: 'GW Prämien/Boni',
     827001: 'GW Innenumsatz',
     827051: 'GW Kostenumlage intern',
     
-    # Umsatz Teile/ZubehÃ¶r (83xxxx)
+    # Umsatz Teile/Zubehör (83xxxx)
     830111: 'Teile VE Werkstatt extern',
     830211: 'Teile VE Thekenverkauf',
-    830311: 'Teile VE an HÃ¤ndler',
-    830411: 'Teile VE ZubehÃ¶r',
+    830311: 'Teile VE an Händler',
+    830411: 'Teile VE Zubehör',
     830511: 'Teile VE Sonstige',
     837001: 'Teile Innenumsatz',
     
@@ -1724,12 +1723,12 @@ SKR51_KONTOBEZEICHNUNGEN = {
     847001: 'Lohn Innenumsatz',
     
     # Sonstige Umsatz (86xxxx)
-    860111: 'Mietwagen ErlÃ¶se',
+    860111: 'Mietwagen Erlöse',
     860211: 'Versicherungsprovision',
     860311: 'Finanzierungsprovision',
     860411: 'Leasingprovision',
     860511: 'Sonstige Provisionen',
-    860611: 'Sonstige ErlÃ¶se',
+    860611: 'Sonstige Erlöse',
     
     # Einsatz Neuwagen (71xxxx)
     710111: 'NW EK Privatkunde',
@@ -1738,12 +1737,12 @@ SKR51_KONTOBEZEICHNUNGEN = {
     710311: 'NW EK Gewerbekunde',
     710351: 'NW EK Gewerbe Leasing',
     710411: 'NW EK Gewerbe Finanzierung',
-    710511: 'NW EK GroÃŸkunde',
-    710811: 'NW EK an HÃ¤ndler',
+    710511: 'NW EK Großkunde',
+    710811: 'NW EK an Händler',
     710831: 'NW EK Gewerbe Leasing',
     710911: 'NW EK Sonstige',
     710101: 'NW Wareneinsatz',
-    717501: 'NW Zulassung/ÃœberfÃ¼hrung',
+    717501: 'NW Zulassung/Überführung',
     717001: 'NW Innenumsatz EK',
     
     # Einsatz Gebrauchtwagen (72xxxx)
@@ -1751,17 +1750,17 @@ SKR51_KONTOBEZEICHNUNGEN = {
     720151: 'GW EK Leasing',
     720211: 'GW EK Finanzierung',
     720311: 'GW EK Gewerbekunde',
-    720411: 'GW EK an HÃ¤ndler',
+    720411: 'GW EK an Händler',
     720511: 'GW EK Sonstige',
     720101: 'GW Wareneinsatz',
     727001: 'GW Innenumsatz EK',
-    727501: 'GW Zulassung/ÃœberfÃ¼hrung',
+    727501: 'GW Zulassung/Überführung',
     
     # Einsatz Teile (73xxxx)
     730111: 'Teile EK Werkstatt',
     730211: 'Teile EK Theke',
-    730311: 'Teile EK HÃ¤ndler',
-    730411: 'Teile EK ZubehÃ¶r',
+    730311: 'Teile EK Händler',
+    730411: 'Teile EK Zubehör',
     730101: 'Teile Wareneinsatz',
     737001: 'Teile Innenumsatz EK',
     
@@ -1788,7 +1787,7 @@ def get_konto_bezeichnung(db, konto: int, subsidiary: int = 1) -> str:
     - konto: Kontonummer (z.B. 830001)
     - subsidiary: 1=Stellantis, 2=Hyundai (Standard: 1)
 
-    RÃ¼ckgabe: ErlÃ¶sart z.B. "VE GM OT an Kunde Mechanik"
+    Rückgabe: Erlösart z.B. "VE GM OT an Kunde Mechanik"
     """
     cursor = db.cursor()
 
@@ -1824,8 +1823,8 @@ def get_konto_bezeichnung(db, konto: int, subsidiary: int = 1) -> str:
     # 3. Fallback: Generische Bezeichnung
     prefix = str(konto)[:2]
     gruppen_namen = {
-        '81': 'ErlÃ¶se Neuwagen', '82': 'ErlÃ¶se Gebrauchtwagen',
-        '83': 'ErlÃ¶se Teile', '84': 'ErlÃ¶se Lohn',
+        '81': 'Erlöse Neuwagen', '82': 'Erlöse Gebrauchtwagen',
+        '83': 'Erlöse Teile', '84': 'Erlöse Lohn',
         '71': 'Einsatz Neuwagen', '72': 'Einsatz Gebrauchtwagen',
         '73': 'Einsatz Teile', '74': 'Einsatz Lohn',
     }
@@ -1836,15 +1835,15 @@ def get_konto_bezeichnung(db, konto: int, subsidiary: int = 1) -> str:
 @login_required
 def api_tek_detail():
     """
-    API: Drill-Down fÃ¼r TEK-Bereiche - Hierarchisch (Gruppen -> Konten -> Buchungen)
+    API: Drill-Down für TEK-Bereiche - Hierarchisch (Gruppen -> Konten -> Buchungen)
     
     Parameter:
     - bereich: '1-NW', '2-GW', '3-Teile', '4-Lohn', '5-Sonst'
     - firma, standort, monat, jahr: Filter (wie bei /api/tek)
     - ebene: 'gruppen' (Standard), 'konten', oder 'buchungen'
-    - gruppe: (optional) 2-stelliges PrÃ¤fix fÃ¼r Konten-Detail (z.B. '81')
-    - konto: (optional) FÃ¼r Buchungs-Details eines bestimmten Kontos
-    - typ: 'umsatz' oder 'einsatz' (fÃ¼r Konten/Buchungen)
+    - gruppe: (optional) 2-stelliges Präfix für Konten-Detail (z.B. '81')
+    - konto: (optional) Für Buchungs-Details eines bestimmten Kontos
+    - typ: 'umsatz' oder 'einsatz' (für Konten/Buchungen)
     """
     try:
         bereich = request.args.get('bereich', '2-GW')
@@ -1904,10 +1903,10 @@ def api_tek_detail():
         # Gruppen-Bezeichnungen (SKR51)
         gruppen_namen = {
             # Umsatz
-            '81': 'ErlÃ¶se Neuwagen', '82': 'ErlÃ¶se Gebrauchtwagen', 
-            '83': 'ErlÃ¶se Teile', '84': 'ErlÃ¶se Lohn',
-            '85': 'ErlÃ¶se Lack', '86': 'Sonstige ErlÃ¶se', '88': 'ErlÃ¶se Vermietung',
-            '89': 'Sonstige betriebliche ErtrÃ¤ge',
+            '81': 'Erlöse Neuwagen', '82': 'Erlöse Gebrauchtwagen', 
+            '83': 'Erlöse Teile', '84': 'Erlöse Lohn',
+            '85': 'Erlöse Lack', '86': 'Sonstige Erlöse', '88': 'Erlöse Vermietung',
+            '89': 'Sonstige betriebliche Erträge',
             # Einsatz
             '71': 'Einsatz Neuwagen', '72': 'Einsatz Gebrauchtwagen',
             '73': 'Einsatz Teile', '74': 'Einsatz Lohn',
@@ -1920,7 +1919,7 @@ def api_tek_detail():
         ranges = bereich_konten[bereich]
         
         # =====================================================================
-        # EBENE: BUCHUNGEN (Detail fÃ¼r ein Konto)
+        # EBENE: BUCHUNGEN (Detail für ein Konto)
         # =====================================================================
         if ebene == 'buchungen' and konto:
             # Vorzeichen basierend auf Kontotyp
@@ -1968,7 +1967,7 @@ def api_tek_detail():
             }), 200
         
         # =====================================================================
-        # EBENE: KONTEN (Detail fÃ¼r eine Gruppe, z.B. '81')
+        # EBENE: KONTEN (Detail für eine Gruppe, z.B. '81')
         # =====================================================================
         if ebene == 'konten' and gruppe:
             # Bestimme Range und Vorzeichen basierend auf Typ
@@ -2062,7 +2061,7 @@ def api_tek_detail():
                     'buchungen_anzahl': int(row['buchungen_anzahl'])
                 }
 
-                # Optional: Einzelkonten fÃ¼r Drill-Down laden
+                # Optional: Einzelkonten für Drill-Down laden
                 if mit_konten:
                     cursor.execute(convert_placeholders(f"""
                         SELECT * FROM (
@@ -2095,16 +2094,16 @@ def api_tek_detail():
 
             return ergebnis
         
-        # Umsatz-Gruppen (mit Einzelkonten fÃ¼r Drill-Down)
+        # Umsatz-Gruppen (mit Einzelkonten für Drill-Down)
         umsatz_gruppen = hole_gruppen(ranges['umsatz'], 'umsatz', mit_konten=True)
         umsatz_summe = sum(g['betrag'] for g in umsatz_gruppen)
 
-        # Einsatz-Gruppen (mit Einzelkonten fÃ¼r Drill-Down)
+        # Einsatz-Gruppen (mit Einzelkonten für Drill-Down)
         einsatz_gruppen = hole_gruppen(ranges['einsatz'], 'einsatz', mit_konten=True)
         einsatz_summe = sum(g['betrag'] for g in einsatz_gruppen)
 
         # 4-Lohn: Im laufenden Monat Einsatz Gruppe 74 kalkuliert (Method B, 6-Monats-Quote)
-        # damit "Einsatz Lohn" in der Detail-Tabelle nicht 0 â‚¬ anzeigt
+        # damit "Einsatz Lohn" in der Detail-Tabelle nicht 0 € anzeigt
         if bereich == '4-Lohn':
             werkstatt_umsatz = next((g['betrag'] for g in umsatz_gruppen if g['gruppe'] == '84'), 0)
             heute_d = date.today()
@@ -2159,7 +2158,7 @@ def api_tek_detail():
         db1 = umsatz_summe - einsatz_summe
 
         # =====================================================================
-        # FAHRZEUG-GRUPPIERUNG nach Modell + Absatzweg (nur fÃ¼r NW, GW)
+        # FAHRZEUG-GRUPPIERUNG nach Modell + Absatzweg (nur für NW, GW)
         # TAG 136: Nutzt bestehende parse_modell_aus_kontobezeichnung Logik
         # Format Kontobezeichnung: "NW VE Corsa an Kd Leas" -> Modell, Kundentyp, Verkaufsart
         # =====================================================================
@@ -2201,7 +2200,7 @@ def api_tek_detail():
                 kundentyp = normalisiere_kundentyp(parsed['kundentyp'])
                 verkaufsart = normalisiere_verkaufsart(parsed['verkaufsart'])
 
-                # Modell-Statistik (Umsatz) mit Konten-Details fÃ¼r Drill-Down
+                # Modell-Statistik (Umsatz) mit Konten-Details für Drill-Down
                 if modell not in modell_stats:
                     modell_stats[modell] = {'modell': modell, 'stueck': 0, 'umsatz': 0, 'einsatz': 0, 'konten': []}
                 modell_stats[modell]['stueck'] += stueck
@@ -2214,7 +2213,7 @@ def api_tek_detail():
                     'stueck': stueck
                 })
 
-                # Absatzweg-Statistik (Umsatz) mit Konten fÃ¼r Drill-Down
+                # Absatzweg-Statistik (Umsatz) mit Konten für Drill-Down
                 absatzweg = f"{kundentyp} {verkaufsart}".strip() or 'Sonstige'
                 if absatzweg not in absatzweg_stats:
                     absatzweg_stats[absatzweg] = {'absatzweg': absatzweg, 'stueck': 0, 'umsatz': 0, 'einsatz': 0, 'konten': []}
@@ -2260,7 +2259,7 @@ def api_tek_detail():
                 if modell not in modell_stats:
                     modell_stats[modell] = {'modell': modell, 'stueck': 0, 'umsatz': 0, 'einsatz': 0, 'konten': []}
                 modell_stats[modell]['einsatz'] += betrag
-                # Auch Einsatz-Konten zum Drill-Down hinzufÃ¼gen
+                # Auch Einsatz-Konten zum Drill-Down hinzufügen
                 modell_stats[modell]['konten'].append({
                     'konto': konto,
                     'bezeichnung': bezeichnung,
@@ -2274,7 +2273,7 @@ def api_tek_detail():
                 if absatzweg not in absatzweg_stats:
                     absatzweg_stats[absatzweg] = {'absatzweg': absatzweg, 'stueck': 0, 'umsatz': 0, 'einsatz': 0, 'konten': []}
                 absatzweg_stats[absatzweg]['einsatz'] += betrag
-                # Auch Einsatz-Konten zum Drill-Down hinzufÃ¼gen
+                # Auch Einsatz-Konten zum Drill-Down hinzufügen
                 absatzweg_stats[absatzweg]['konten'].append({
                     'konto': konto,
                     'bezeichnung': bezeichnung,
@@ -2283,7 +2282,7 @@ def api_tek_detail():
                     'stueck': 0
                 })
 
-            # Modelle in Liste umwandeln (mit DB1 und Einzelkonten fÃ¼r Drill-Down)
+            # Modelle in Liste umwandeln (mit DB1 und Einzelkonten für Drill-Down)
             fahrzeuge = [
                 {
                     'modell': m['modell'],
@@ -2292,7 +2291,7 @@ def api_tek_detail():
                     'einsatz': round(m['einsatz'], 2),
                     'db1': round(m['umsatz'] - m['einsatz'], 2),
                     'db1_pro_stueck': round((m['umsatz'] - m['einsatz']) / m['stueck'], 2) if m['stueck'] > 0 else 0,
-                    'konten': m.get('konten', [])  # Einzelkonten fÃ¼r Drill-Down
+                    'konten': m.get('konten', [])  # Einzelkonten für Drill-Down
                 }
                 for m in modell_stats.values() if m['umsatz'] > 0 or m['einsatz'] > 0
             ]
@@ -2300,15 +2299,15 @@ def api_tek_detail():
             def sortkey_modell(item):
                 m = item['modell'].lower()
                 # Diese Begriffe ans Ende sortieren
-                nachrangig = ['sonstig', 'umlage', 'erlÃ¶s', 'erloes', 'kosten', 'zubehÃ¶r', 'zubehoer',
-                              'garantie', 'bonus', 'prÃ¤mie', 'praemie', 'provision', 'rabatt']
+                nachrangig = ['sonstig', 'umlage', 'erlös', 'erloes', 'kosten', 'zubehör', 'zubehoer',
+                              'garantie', 'bonus', 'prämie', 'praemie', 'provision', 'rabatt']
                 for begriff in nachrangig:
                     if begriff in m:
                         return (1, item['modell'])  # Nach hinten
                 return (0, item['modell'])  # Normale alphabetische Sortierung
             fahrzeuge.sort(key=sortkey_modell)
 
-            # Absatzwege in Liste umwandeln (mit DB1 und Konten fÃ¼r Drill-Down)
+            # Absatzwege in Liste umwandeln (mit DB1 und Konten für Drill-Down)
             absatzwege = [
                 {
                     'absatzweg': a['absatzweg'],
@@ -2317,7 +2316,7 @@ def api_tek_detail():
                     'einsatz': round(a['einsatz'], 2),
                     'db1': round(a['umsatz'] - a['einsatz'], 2),
                     'db1_pro_stueck': round((a['umsatz'] - a['einsatz']) / a['stueck'], 2) if a['stueck'] > 0 else 0,
-                    'konten': a.get('konten', [])  # Einzelkonten fÃ¼r Drill-Down
+                    'konten': a.get('konten', [])  # Einzelkonten für Drill-Down
                 }
                 for a in absatzweg_stats.values() if a['umsatz'] > 0 or a['einsatz'] > 0
             ]
@@ -2360,7 +2359,7 @@ def api_tek_detail():
 
 
 # =============================================================================
-# TEK MODELL-ANSICHT - FahrzeugstÃ¼cke nach Modell gruppiert
+# TEK MODELL-ANSICHT - Fahrzeugstücke nach Modell gruppiert
 # =============================================================================
 
 def parse_modell_aus_kontobezeichnung(bezeichnung: str) -> dict:
@@ -2408,12 +2407,12 @@ def parse_modell_aus_kontobezeichnung(bezeichnung: str) -> dict:
             ('Gewerbekd ', 'Gewerbe'),
             ('Gewdkd ', 'Gewerbe'),   # Tippfehler in Locosoft
             ('Gewkd ', 'Gewerbe'),
-            ('GroÃŸkunden ', 'GroÃŸkunde'),
-            ('GroÃŸkd ', 'GroÃŸkunde'),
+            ('Großkunden ', 'Großkunde'),
+            ('Großkd ', 'Großkunde'),
             ('Kunden ', 'Privat'),
             ('KD ', 'Privat'),
             ('Kd ', 'Privat'),
-            ('HÃ¤ndler ', 'HÃ¤ndler'),
+            ('Händler ', 'Händler'),
         ]
         for pattern, typ in kundentyp_patterns:
             if rest.startswith(pattern) or f' {pattern}' in f' {rest}':
@@ -2437,17 +2436,17 @@ def parse_modell_aus_kontobezeichnung(bezeichnung: str) -> dict:
             break
 
     # Bekannte Kundentypen (inkl. Tippfehler-Varianten aus Locosoft)
-    # Reihenfolge wichtig: lÃ¤ngere zuerst, um "Gewerbekd" vor "Gewkd" zu matchen
+    # Reihenfolge wichtig: längere zuerst, um "Gewerbekd" vor "Gewkd" zu matchen
     kundentyp_patterns = [
         ('Gewerbekd ', 'Gewerbe'),
         ('Gewdkd ', 'Gewerbe'),   # Tippfehler in Locosoft
         ('Gewkd ', 'Gewerbe'),
-        ('GroÃŸkunden ', 'GroÃŸkunde'),
-        ('GroÃŸkd ', 'GroÃŸkunde'),
+        ('Großkunden ', 'Großkunde'),
+        ('Großkd ', 'Großkunde'),
         ('Kunden ', 'Privat'),
         ('KD ', 'Privat'),
         ('Kd ', 'Privat'),
-        ('HÃ¤ndler ', 'HÃ¤ndler'),
+        ('Händler ', 'Händler'),
     ]
 
     # Split bei " an " (z.B. "Combo Van an Gewkd Kauf")
@@ -2481,7 +2480,7 @@ def parse_modell_aus_kontobezeichnung(bezeichnung: str) -> dict:
     modell = bez
 
     for pattern, typ in kundentyp_patterns:
-        # Suche Pattern (mit Leerzeichen davor fÃ¼r Wortgrenze)
+        # Suche Pattern (mit Leerzeichen davor für Wortgrenze)
         idx = bez.find(f' {pattern.strip()}')
         if idx == -1:
             idx = bez.find(pattern.strip())  # Am Anfang?
@@ -2514,9 +2513,9 @@ def normalisiere_kundentyp(kundentyp: str) -> str:
     if not kundentyp:
         return 'Sonstige'
     # Bereits normalisiert?
-    if kundentyp in ['Privat', 'Gewerbe', 'GroÃŸkunde', 'HÃ¤ndler', 'Sonstige']:
+    if kundentyp in ['Privat', 'Gewerbe', 'Großkunde', 'Händler', 'Sonstige']:
         return kundentyp
-    # Mapping fÃ¼r Rohwerte aus Kontobezeichnung
+    # Mapping für Rohwerte aus Kontobezeichnung
     mapping = {
         'Kunden': 'Privat',
         'Kd': 'Privat',
@@ -2524,9 +2523,9 @@ def normalisiere_kundentyp(kundentyp: str) -> str:
         'Gewkd': 'Gewerbe',
         'Gewdkd': 'Gewerbe',  # Tippfehler in Locosoft
         'Gewerbekd': 'Gewerbe',
-        'GroÃŸkd': 'GroÃŸkunde',
-        'GroÃŸkunden': 'GroÃŸkunde',
-        'HÃ¤ndler': 'HÃ¤ndler'
+        'Großkd': 'Großkunde',
+        'Großkunden': 'Großkunde',
+        'Händler': 'Händler'
     }
     return mapping.get(kundentyp, kundentyp)
 
@@ -2545,11 +2544,11 @@ def normalisiere_verkaufsart(verkaufsart: str) -> str:
 
 def kategorisiere_modell(modell: str) -> tuple:
     """
-    Kategorisiert Modellnamen fÃ¼r bessere Gruppierung.
+    Kategorisiert Modellnamen für bessere Gruppierung.
 
     Returns: (kategorie, sortierung)
-        - kategorie: 'Fahrzeuge', 'VorfÃ¼hrwagen', 'Sonstige Fzg', 'NebenerlÃ¶se', 'Unbekannt'
-        - sortierung: Zahl fÃ¼r Reihenfolge (1=oben, 5=unten)
+        - kategorie: 'Fahrzeuge', 'Vorführwagen', 'Sonstige Fzg', 'Nebenerlöse', 'Unbekannt'
+        - sortierung: Zahl für Reihenfolge (1=oben, 5=unten)
     """
     if not modell:
         return ('Unbekannt', 5)
@@ -2566,18 +2565,18 @@ def kategorisiere_modell(modell: str) -> tuple:
         if bm in m_lower:
             return ('Fahrzeuge', 1)
 
-    # VorfÃ¼hrwagen
-    if 'vfw' in m_lower or 'vorfÃ¼hr' in m_lower:
-        return ('VorfÃ¼hrwagen', 2)
+    # Vorführwagen
+    if 'vfw' in m_lower or 'vorführ' in m_lower:
+        return ('Vorführwagen', 2)
 
     # Sonstige Fahrzeuge
     if 'sonst' in m_lower and ('fzg' in m_lower or 'pkw' in m_lower or 'nw' in m_lower or 'gw' in m_lower):
         return ('Sonstige Fzg', 3)
 
-    # NebenerlÃ¶se (keine Fahrzeuge)
+    # Nebenerlöse (keine Fahrzeuge)
     if any(x in m_lower for x in ['umlage', 'zulassung', 'prov.', 'provision', 'garantie',
                                    'givit', 'finanz', 'sonst.verk', 'sonst.erl']):
-        return ('NebenerlÃ¶se', 4)
+        return ('Nebenerlöse', 4)
 
     # Unbekannte Konten (nur Kontonummer)
     if modell.startswith('Konto ') or modell.isdigit():
@@ -2589,7 +2588,7 @@ def kategorisiere_modell(modell: str) -> tuple:
 
 def get_fibu_modell_daten(von: str, bis: str, bereich: str, firma: str, standort: str, subsidiary: int) -> dict:
     """
-    Holt FiBu-Daten fÃ¼r einen Zeitraum, gruppiert nach Modell.
+    Holt FiBu-Daten für einen Zeitraum, gruppiert nach Modell.
     TAG 136: PostgreSQL-kompatibel
 
     Returns: dict mit {modell_name: {'umsatz': X, 'einsatz': Y, 'db1': Z}}
@@ -2747,7 +2746,7 @@ def api_tek_modelle():
 
         if bereich not in bereich_konten:
             db.close()
-            return jsonify({'success': False, 'error': f'Bereich {bereich} nicht unterstÃ¼tzt fÃ¼r Modell-Ansicht'}), 400
+            return jsonify({'success': False, 'error': f'Bereich {bereich} nicht unterstützt für Modell-Ansicht'}), 400
 
         ranges = bereich_konten[bereich]
 
@@ -2805,7 +2804,7 @@ def api_tek_modelle():
         # Umsatz verarbeiten
         for row in umsatz_konten:
             parsed = parse_modell_aus_kontobezeichnung(row['bezeichnung'])
-            modell = normalisiere_fibu_modell(parsed['modell'])  # Normalisieren fÃ¼r Locosoft-Match
+            modell = normalisiere_fibu_modell(parsed['modell'])  # Normalisieren für Locosoft-Match
             kundentyp = normalisiere_kundentyp(parsed['kundentyp'])
             verkaufsart = normalisiere_verkaufsart(parsed['verkaufsart'])
 
@@ -2839,7 +2838,7 @@ def api_tek_modelle():
         # Einsatz verarbeiten
         for row in einsatz_konten:
             parsed = parse_modell_aus_kontobezeichnung(row['bezeichnung'])
-            modell = normalisiere_fibu_modell(parsed['modell'])  # Normalisieren fÃ¼r Locosoft-Match
+            modell = normalisiere_fibu_modell(parsed['modell'])  # Normalisieren für Locosoft-Match
             kundentyp = normalisiere_kundentyp(parsed['kundentyp'])
             verkaufsart = normalisiere_verkaufsart(parsed['verkaufsart'])
 
@@ -2901,12 +2900,12 @@ def api_tek_modelle():
             modelle_liste.append(eintrag)
 
         # =====================================================================
-        # LOCOSOFT STÃœCKZAHLEN holen und mit FiBu-Daten mergen
+        # LOCOSOFT STÜCKZAHLEN holen und mit FiBu-Daten mergen
         # =====================================================================
         stueckzahlen = get_stueckzahlen_locosoft(von, bis, bereich, firma, standort)
         gesamt_stueck = stueckzahlen.get('gesamt_stueck', 0)
 
-        # StÃ¼ckzahlen zu den Modellen hinzufÃ¼gen (Fuzzy-Match nach Modellname)
+        # Stückzahlen zu den Modellen hinzufügen (Fuzzy-Match nach Modellname)
         for eintrag in modelle_liste:
             modell_name = eintrag['modell']
             stueck_info = stueckzahlen['modelle'].get(modell_name)
@@ -2936,7 +2935,7 @@ def api_tek_modelle():
         vj_daten = get_fibu_modell_daten(vj_von, vj_bis, bereich, firma, standort, subsidiary)
         vj_stueck = get_stueckzahlen_locosoft(vj_von, vj_bis, bereich, firma, standort)
 
-        # Vergleichswerte zu jedem Modell hinzufÃ¼gen
+        # Vergleichswerte zu jedem Modell hinzufügen
         for eintrag in modelle_liste:
             modell_name = eintrag['modell']
 
@@ -2973,7 +2972,7 @@ def api_tek_modelle():
         gesamt_vj_db1 = sum(m['vj_db1'] for m in modelle_liste)
         gesamt_vj_stueck = vj_stueck.get('gesamt_stueck', 0)
 
-        monat_namen = ['', 'Januar', 'Februar', 'MÃ¤rz', 'April', 'Mai', 'Juni',
+        monat_namen = ['', 'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
                        'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
 
         return jsonify({
@@ -3046,10 +3045,10 @@ def berechne_vollkosten(von: str, bis: str, firma_filter: str, standort: str = '
     - 6 = Teile
     - 7 = Mietwagen/Sonstige
 
-    Umlage nach MA-SchlÃ¼ssel aus employees-Tabelle (gefiltert nach Standort)
+    Umlage nach MA-Schlüssel aus employees-Tabelle (gefiltert nach Standort)
 
     Parameter:
-    - umlage_kosten_filter: Optionaler Filter um Umlage-Kosten auszuschlieÃŸen (498001)
+    - umlage_kosten_filter: Optionaler Filter um Umlage-Kosten auszuschließen (498001)
     """
 
     # MA-Verteilung holen (mit Standort-Filter)
@@ -3059,7 +3058,7 @@ def berechne_vollkosten(von: str, bis: str, firma_filter: str, standort: str = '
     produktiv_kst = ['12', '3', '6']  # 12=Verkauf(1+2), 3=Service, 6=Teile
     produktiv_ma = sum(ma_verteilung.get(k, 0) for k in produktiv_kst)
 
-    # Umlage-SchlÃ¼ssel berechnen
+    # Umlage-Schlüssel berechnen
     umlage_schluessel = {}
     for kst in produktiv_kst:
         ma = ma_verteilung.get(kst, 0)
@@ -3071,7 +3070,7 @@ def berechne_vollkosten(von: str, bis: str, firma_filter: str, standort: str = '
         # =========================================================================
         # VARIABLE KOSTEN nach KST (5. Stelle)
         # Konten: 4151xx, 4355xx, 455-456xx, 487xx, 491-497xx
-        # HINWEIS: umlage_kosten_filter auch hier anwenden fÃ¼r Konsistenz
+        # HINWEIS: umlage_kosten_filter auch hier anwenden für Konsistenz
         # =========================================================================
         variable_sql = convert_placeholders(f"""
             SELECT
@@ -3125,9 +3124,9 @@ def berechne_vollkosten(von: str, bis: str, firma_filter: str, standort: str = '
 
         # =========================================================================
         # INDIREKTE KOSTEN (KST 0 = Verwaltung)
-        # WICHTIG: umlage_kosten_filter wird hier angewendet um Konto 498001 auszuschlieÃŸen
-        #          wenn "ohne Umlage" gewÃ¤hlt ist. Sonst werden die internen Umlagen
-        #          (50.000 â‚¬/Monat als HABEN gebucht) die Kosten negativ machen!
+        # WICHTIG: umlage_kosten_filter wird hier angewendet um Konto 498001 auszuschließen
+        #          wenn "ohne Umlage" gewählt ist. Sonst werden die internen Umlagen
+        #          (50.000 €/Monat als HABEN gebucht) die Kosten negativ machen!
         # =========================================================================
         indirekte_sql = convert_placeholders(f"""
             SELECT SUM(CASE WHEN debit_or_credit = 'S' THEN posted_value ELSE -posted_value END) / 100.0 as summe
@@ -3151,27 +3150,27 @@ def berechne_vollkosten(von: str, bis: str, firma_filter: str, standort: str = '
         indirekte_gesamt = float(row_to_dict(row)['summe'] or 0) if row else 0
     
     # =========================================================================
-    # UMLAGE VERTEILEN nach MA-SchlÃ¼ssel
+    # UMLAGE VERTEILEN nach MA-Schlüssel
     # =========================================================================
     umlage_verteilt = {}
     for kst in produktiv_kst:
         anteil = umlage_schluessel.get(kst, 0) / 100
         umlage_verteilt[kst] = indirekte_gesamt * anteil
     
-    # KST 1+2 zusammenfassen fÃ¼r Verkauf (wird in API auf NW/GW aufgeteilt)
-    # FÃ¼r TEK: 1=NW, 2=GW brauchen separate Werte
-    # Aufteilung 1/2 nach Umsatz-VerhÃ¤ltnis wÃ¤re ideal, hier erstmal 50/50
+    # KST 1+2 zusammenfassen für Verkauf (wird in API auf NW/GW aufgeteilt)
+    # Für TEK: 1=NW, 2=GW brauchen separate Werte
+    # Aufteilung 1/2 nach Umsatz-Verhältnis wäre ideal, hier erstmal 50/50
     if '12' in umlage_verteilt:
         verkauf_umlage = umlage_verteilt['12']
         umlage_verteilt['1'] = verkauf_umlage * 0.5
         umlage_verteilt['2'] = verkauf_umlage * 0.5
     
-    # Variable/Direkte fÃ¼r 1+2 auch aufteilen
+    # Variable/Direkte für 1+2 auch aufteilen
     for d in [variable, direkte]:
         if '1' in d and '2' in d:
             pass  # Schon getrennt
         elif '1' not in d and '2' not in d:
-            # Keine Daten fÃ¼r 1 oder 2
+            # Keine Daten für 1 oder 2
             d['1'] = 0
             d['2'] = 0
     
@@ -3193,16 +3192,16 @@ def berechne_breakeven_prognose_standort(monat: int, jahr: int, aktueller_db1: f
                                           firma_filter_umsatz: str, firma_filter_kosten: str,
                                           firma_filter_einsatz: str = None) -> dict:
     """
-    Berechnet Breakeven-Prognose fÃ¼r einen spezifischen Standort.
+    Berechnet Breakeven-Prognose für einen spezifischen Standort.
 
     Unterschied zu berechne_breakeven_prognose:
     - Kosten werden nach 6. Ziffer der Kontonummer gefiltert (Standort-spezifisch)
     - Umsatz/Einsatz nach branch_number gefiltert
 
     Parameter:
-    - firma_filter_umsatz: Filter fÃ¼r Umsatz/Einsatz (z.B. " AND branch_number = 1")
-    - firma_filter_kosten: Filter fÃ¼r Kosten (z.B. " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'")
-    - firma_filter_einsatz: Filter fÃ¼r Einsatz (z.B. " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'")
+    - firma_filter_umsatz: Filter für Umsatz/Einsatz (z.B. " AND branch_number = 1")
+    - firma_filter_kosten: Filter für Kosten (z.B. " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'")
+    - firma_filter_einsatz: Filter für Einsatz (z.B. " AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'")
     """
     # TAG167: Fallback für Einsatz-Filter - Abwärtskompatibilität
     if firma_filter_einsatz is None:
@@ -3214,13 +3213,13 @@ def berechne_breakeven_prognose_standort(monat: int, jahr: int, aktueller_db1: f
 
     heute = date.today()
     vor_3_monaten = (heute - relativedelta(months=3)).isoformat()
-    drei_monate_vorher = vor_3_monaten  # Alias fÃ¼r AbwÃ¤rtskompatibilitÃ¤t
+    drei_monate_vorher = vor_3_monaten  # Alias für Abwärtskompatibilität
     heute_str = heute.isoformat()
 
     with db_session() as conn:
         cursor = conn.cursor()
 
-        # Kosten fÃ¼r diesen Standort (mit Filter auf 6. Ziffer der Kontonummer)
+        # Kosten für diesen Standort (mit Filter auf 6. Ziffer der Kontonummer)
         # Nur direkte Kosten des Standorts - keine Umlagen
         cursor.execute(convert_placeholders(f"""
             SELECT
@@ -3254,7 +3253,7 @@ def berechne_breakeven_prognose_standort(monat: int, jahr: int, aktueller_db1: f
         direkte_3m = float(kosten_3m.get('direkte') or 0)
         kosten_pro_monat = (variable_3m + direkte_3m) / 3  # Nur direkte Kosten, keine Umlagen
 
-        # Umsatz/Einsatz fÃ¼r diesen Standort
+        # Umsatz/Einsatz für diesen Standort
         cursor.execute(convert_placeholders(f"""
             SELECT
                 COALESCE(SUM(CASE WHEN debit_or_credit = 'H' THEN posted_value ELSE -posted_value END) / 100.0, 0) as umsatz
@@ -3362,12 +3361,12 @@ def berechne_breakeven_prognose(monat: int, jahr: int, aktueller_db1: float,
     # TAG 136: Python-basierte Datumsberechnung statt SQLite date()
     heute = date.today()
     vor_3_monaten = (heute - relativedelta(months=3)).isoformat()
-    drei_monate_vorher = vor_3_monaten  # Alias fÃ¼r AbwÃ¤rtskompatibilitÃ¤t
+    drei_monate_vorher = vor_3_monaten  # Alias für Abwärtskompatibilität
     heute_str = heute.isoformat()
 
     # =========================================================================
     # ANTEILIGE KOSTENVERTEILUNG (TAG136+)
-    # Berechne Umsatz-Anteil dieser Firma vs. Gesamt fÃ¼r faire Kostenverteilung
+    # Berechne Umsatz-Anteil dieser Firma vs. Gesamt für faire Kostenverteilung
     # =========================================================================
     umsatz_anteil = 1.0  # Default: 100% der Kosten
     umsatz_firma = 0
@@ -3495,7 +3494,7 @@ def berechne_breakeven_prognose(monat: int, jahr: int, aktueller_db1: float,
     werktage_gesamt = werktage['gesamt']
     werktage_vergangen = werktage['vergangen']
 
-    # Alte Variablen fÃ¼r KompatibilitÃ¤t
+    # Alte Variablen für Kompatibilität
     tage_im_monat = werktage_gesamt  # Jetzt Werktage statt 31
 
     # =========================================================================
@@ -3506,7 +3505,7 @@ def berechne_breakeven_prognose(monat: int, jahr: int, aktueller_db1: float,
     db1_3m_schnitt = None
 
     if tage_mit_daten < 5:
-        # GLEITENDER DURCHSCHNITT: Ã˜ DB1 der letzten 3 abgeschlossenen Monate
+        # GLEITENDER DURCHSCHNITT: Ø DB1 der letzten 3 abgeschlossenen Monate
         # TAG 136: PostgreSQL-kompatibel - TO_CHAR statt strftime
         vor_3m_start = (datetime.strptime(von, '%Y-%m-%d') - relativedelta(months=3)).strftime('%Y-%m-%d')
 
@@ -3570,7 +3569,7 @@ def berechne_breakeven_prognose(monat: int, jahr: int, aktueller_db1: float,
 
     # =========================================================================
     # BREAKEVEN PRO BEREICH (TAG132)
-    # Umlage-SchlÃ¼ssel: Anteil an indirekten Kosten pro Abteilung
+    # Umlage-Schlüssel: Anteil an indirekten Kosten pro Abteilung
     # Basierend auf Hybrid aus Umsatz- und DB1-Anteil
     # =========================================================================
     UMLAGE_SCHLUESSEL = {
@@ -3592,7 +3591,7 @@ def berechne_breakeven_prognose(monat: int, jahr: int, aktueller_db1: float,
             'indirekte': round(indirekte_3m / 3, 2),
             'gesamt': round(kosten_pro_monat, 2)
         },
-        'breakeven_schwelle': round(kosten_pro_monat, 2),  # Ã˜ 3 Monate
+        'breakeven_schwelle': round(kosten_pro_monat, 2),  # Ø 3 Monate
         'aktueller_db1': round(aktueller_db1, 2),
         'operativer_db1': round(operativ_db1, 2),
         'tage_mit_daten': tage_mit_daten,
@@ -3624,7 +3623,7 @@ def berechne_breakeven_prognose(monat: int, jahr: int, aktueller_db1: float,
             'umsatz_anteil': round(umsatz_anteil * 100, 1),  # z.B. 67.3%
             'umsatz_firma_3m': round(umsatz_firma, 2),
             'umsatz_gesamt_3m': round(umsatz_gesamt, 2),
-            'kosten_gesamt_3m': round(kosten_3m_gesamt / 3, 2),  # Ã˜ pro Monat
+            'kosten_gesamt_3m': round(kosten_3m_gesamt / 3, 2),  # Ø pro Monat
         },
     }
 
@@ -3644,7 +3643,7 @@ def api_overview():
         aktiv_check = "aktiv = true" if get_db_type() == 'postgresql' else "aktiv = 1"
         ist_operativ_check = "ist_operativ = true" if get_db_type() == 'postgresql' else "ist_operativ = 1"
 
-        # TAG 136: Datumsfunktion fÃ¼r PostgreSQL/SQLite
+        # TAG 136: Datumsfunktion für PostgreSQL/SQLite
         if get_db_type() == 'postgresql':
             date_12_months_ago = "NOW() - INTERVAL '12 months'"
         else:
