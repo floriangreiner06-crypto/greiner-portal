@@ -149,6 +149,11 @@
                             <li><a class="dropdown-item" href="/controlling/kst-ziele">
                                 <i class="bi bi-bar-chart text-success"></i> KST-Ziele (Tagesstatus)
                             </a></li>
+                            {% if current_user.can_access_feature('controlling') or current_user.can_access_feature('admin') %}
+                            <li><a class="dropdown-item" href="/controlling/afa">
+                                <i class="bi bi-calculator text-info"></i> AfA Vorführwagen/Mietwagen
+                            </a></li>
+                            {% endif %}
 
                             <li><hr class="dropdown-divider"></li>
                             {% endif %}

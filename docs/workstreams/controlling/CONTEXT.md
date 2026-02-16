@@ -1,11 +1,11 @@
 # Controlling (BWA, Bankenspiegel, Finanzreporting) — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-02-13
+## Letzte Aktualisierung: 2026-02-16
 
 ## Beschreibung
 
-Controlling umfasst BWA-Berechnung, Bankenspiegel mit Konten und Transaktionen, TEK (Tägliche Erfolgskontrolle), den Finanzreporting-Cube sowie Kontenmapping. MT940/CAMT/PDF-Import, Umsatz-Bereinigung, Stundensatz-Kalkulation und Zins-Optimierung gehören ebenfalls in diesen Workstream.
+Controlling umfasst BWA-Berechnung, Bankenspiegel mit Konten und Transaktionen, TEK (Tägliche Erfolgskontrolle), den Finanzreporting-Cube sowie Kontenmapping. MT940/CAMT/PDF-Import, Umsatz-Bereinigung, Stundensatz-Kalkulation und Zins-Optimierung gehören ebenfalls in diesen Workstream. **AfA-Modul (2026-02-16):** Automatische monatliche Abschreibung für Vorführwagen und Mietwagen (Anlagevermögen).
 
 ## Module & Dateien
 
@@ -17,20 +17,28 @@ Controlling umfasst BWA-Berechnung, Bankenspiegel mit Konten und Transaktionen, 
 - `api/kontenmapping_api.py` — Kontenmapping
 - `api/stundensatz_kalkulation_api.py` — Stundensatz-Kalkulation
 - `api/zins_optimierung_api.py` — Zins-Optimierung
+- `api/afa_api.py` — **AfA Vorführwagen/Mietwagen:** Dashboard, Fahrzeuge, Monatsberechnung, Buchungsliste, CRUD, Abgang
+
+### Routes
+- `routes/controlling_routes.py` — Controlling-Frontend
+- `routes/afa_routes.py` — AfA-Dashboard (Controlling → AfA Vorführwagen/Mietwagen)
 
 ### Templates
 - `templates/bankenspiegel_*.html`
-- `templates/controlling/*.html` (inkl. TEK-Dashboard: `tek_dashboard.html`, `tek_dashboard_v2.html`)
+- `templates/controlling/*.html` (inkl. TEK-Dashboard: `tek_dashboard.html`, `tek_dashboard_v2.html`, **`afa_dashboard.html`**)
 
 ### Parser / Daten
 - `parsers/` — MT940, CAMT, PDF-Import
 
 ### Celery Tasks
 - `import_mt940`, `import_hvb_pdf`, `umsatz_bereinigung`, `bwa_berechnung`, `refresh_finanzreporting_cube`, `email_tek_daily`
+- **`afa_monatsberechnung`** — Monatliche AfA-Buchungen für aktive VFW/Mietwagen (z. B. am 1. des Monats für Vormonat)
 
 ## DB-Tabellen (PostgreSQL drive_portal)
 
 - `konten`, `banken`, `transaktionen`, `daily_balances`, `kategorien`, `kreditlinien`, `fibu_buchungen`, `bwa_monatswerte`
+- **`afa_anlagevermoegen`** — VFW/Mietwagen-Stammdaten mit AfA-Parametern (linear 72 Monate)
+- **`afa_buchungen`** — Monatliche AfA-Buchungen (Historie) pro Fahrzeug
 
 ## Aktueller Stand (✅ erledigt, 🔧 in Arbeit, ❌ offen)
 
@@ -40,6 +48,8 @@ Controlling umfasst BWA-Berechnung, Bankenspiegel mit Konten und Transaktionen, 
 - 🔧 Kontenmapping und Stundensatz-Kalkulation je nach Projektstand
 - ✅ **Kontenübersicht Locosoft (2026-02-13):** Klärung, wann Sachkonto 070101/071101 aktualisiert wird (live aus Locosoft bei jedem Aufruf; Locosoft-DB-Befüllung ca. 18–19 Uhr). Doku in CONTEXT.md ergänzt. Bestätigung: DRIVE-Saldo war korrekt, Typo in manueller Buchhaltungsauswertung.
 - ✅ **Umlaut-Darstellung BWA/TEK-Modale (2026-02-13):** Zeichenfehler („ErlÄtise“ statt „Erlöse“) behoben. Ursache war Moji­bake in `routes/controlling_routes.py` (UTF-8-Zeichen fälschlich als Latin-1 gespeichert). Korrektur: alle gruppen_namen, SKR51_KONTOBEZEICHNUNGEN und weiteren Umlaute (ö, ä, ü, ß, €, Ø) in der Datei auf korrektes UTF-8 gestellt.
+- ✅ **TEK Breakeven SSOT (2026-02-13):** Eine Breakeven/Prognose-Logik für Portal und PDF. SSOT: `api/controlling_data.py` (`berechne_breakeven_prognose`, `berechne_breakeven_prognose_standort`); Werktage: `utils/werktage.py` (`get_werktage_monat`). `get_tek_data` nutzt die SSOT statt eigener Formel (BWA-Kosten, echte Werktage). Projektregel: SSOT in CLAUDE.md und .cursorrules für alle Workstreams ergänzt.
+- ✅ **AfA-Modul Vorführwagen/Mietwagen (2026-02-16):** Neues Sub-Modul zur automatischen Berechnung der monatlichen Abschreibung (AfA) für VFW und Mietwagen. Lineare AfA 72 Monate, monatsgenau. Dashboard unter Controlling → AfA Vorführwagen/Mietwagen; API `/api/afa/*`; Tabellen `afa_anlagevermoegen`, `afa_buchungen`; Celery-Task `afa_monatsberechnung`. Siehe `docs/workstreams/controlling/AFA_DISCOVERY.md` und `AFA_MODUL_KONZEPT.md`.
 - ❌ Offene Punkte ggf. in Session-TODOs
 
 ## Offene Entscheidungen

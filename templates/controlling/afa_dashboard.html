@@ -1,0 +1,368 @@
+{% extends "base.html" %}
+
+{% block title %}AfA Vorführwagen / Mietwagen{% endblock %}
+
+{% block extra_css %}
+<style>
+    .afa-kpi-card {
+        background: #fff;
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
+        border-left: 4px solid;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .afa-kpi-card.vfw { border-left-color: #0d6efd; }
+    .afa-kpi-card.miet { border-left-color: #198754; }
+    .afa-kpi-card.wert { border-left-color: #6f42c1; }
+    .afa-kpi-card.afa { border-left-color: #fd7e14; }
+    .afa-kpi-card.halte { border-left-color: #20c997; }
+    .afa-kpi-label { font-size: 0.75rem; color: #6c757d; text-transform: uppercase; }
+    .afa-kpi-value { font-size: 1.5rem; font-weight: 700; }
+
+    .afa-table { font-size: 0.9rem; }
+    .afa-table th { background: #343a40; color: #fff; padding: 0.5rem; white-space: nowrap; }
+    .afa-table td { padding: 0.4rem 0.5rem; vertical-align: middle; }
+    .afa-table tbody tr:hover { background: #f8f9fa; }
+    .badge-vfw { background: #0d6efd; }
+    .badge-miet { background: #198754; }
+    .status-aktiv { color: #198754; }
+    .status-verkauft { color: #6c757d; }
+
+    #monatsuebersicht-summe { font-size: 1.25rem; font-weight: 700; }
+    #detailModal .modal-body .chart-container { height: 280px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h4 class="mb-0"><i class="bi bi-calculator"></i> AfA Vorführwagen / Mietwagen</h4>
+            <small class="text-muted">Anlagevermögen — lineare Abschreibung 72 Monate, monatsgenau</small>
+        </div>
+    </div>
+
+    <!-- KPI-Karten -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-2">
+            <div class="afa-kpi-card vfw">
+                <div class="afa-kpi-label">Aktive VFW</div>
+                <div class="afa-kpi-value" id="kpi-vfw">-</div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="afa-kpi-card miet">
+                <div class="afa-kpi-label">Aktive Mietwagen</div>
+                <div class="afa-kpi-value" id="kpi-miet">-</div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="afa-kpi-card wert">
+                <div class="afa-kpi-label">Restbuchwert gesamt</div>
+                <div class="afa-kpi-value" id="kpi-rest">-</div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="afa-kpi-card afa">
+                <div class="afa-kpi-label">AfA pro Monat</div>
+                <div class="afa-kpi-value" id="kpi-afa">-</div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="afa-kpi-card halte">
+                <div class="afa-kpi-label">Ø Haltedauer (Monate)</div>
+                <div class="afa-kpi-value" id="kpi-halte">-</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabelle: Aktive Fahrzeuge -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <h6 class="mb-0"><i class="bi bi-car-front"></i> Fahrzeuge (VFW / Mietwagen)</h6>
+            <div class="d-flex gap-2 flex-wrap">
+                <select id="filter-art" class="form-select form-select-sm" style="width: auto;">
+                    <option value="">Alle Arten</option>
+                    <option value="VFW">VFW</option>
+                    <option value="MIETWAGEN">Mietwagen</option>
+                </select>
+                <select id="filter-marke" class="form-select form-select-sm" style="width: auto;">
+                    <option value="">Alle Marken</option>
+                </select>
+                <select id="filter-betrieb" class="form-select form-select-sm" style="width: auto;">
+                    <option value="">Alle Betriebe</option>
+                    <option value="1">1 (DEG Opel)</option>
+                    <option value="2">2 (HYU)</option>
+                    <option value="3">3 (LAN)</option>
+                </select>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover afa-table mb-0">
+                    <thead>
+                        <tr>
+                            <th>Kennzeichen</th>
+                            <th>Modell / Bezeichnung</th>
+                            <th>Art</th>
+                            <th>Anschaffung</th>
+                            <th>EK netto</th>
+                            <th>Monatl. AfA</th>
+                            <th>Restbuchwert</th>
+                            <th>Status</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tab-fahrzeuge">
+                        <tr><td colspan="9" class="text-center text-muted py-4">Lade Daten...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Monatsübersicht (Buchhalter) -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <h6 class="mb-0"><i class="bi bi-calendar-month"></i> Monatsübersicht — Buchungsliste für Locosoft</h6>
+            <div class="d-flex gap-2 align-items-center">
+                <input type="month" id="monat-picker" class="form-control form-control-sm" style="width: auto;">
+                <button type="button" class="btn btn-sm btn-outline-primary" id="btn-berechne-monat" title="AfA-Buchungen für diesen Monat anlegen">Berechnen</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-csv-export">CSV exportieren</button>
+            </div>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small mb-2">Summe = Betrag für Einbuchung in Locosoft (kalk. Abschreibung 444xxx)</p>
+            <div class="table-responsive">
+                <table class="table table-sm afa-table">
+                    <thead>
+                        <tr>
+                            <th>Kennzeichen</th>
+                            <th>Bezeichnung</th>
+                            <th>Art</th>
+                            <th>AfA-Betrag (€)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="monats-positionen">
+                        <tr><td colspan="4" class="text-center text-muted">Monat wählen und laden.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-2"><strong>Summe:</strong> <span id="monatsuebersicht-summe">0,00 €</span></div>
+        </div>
+    </div>
+</div>
+
+<!-- Fahrzeug-Detail-Modal -->
+<div class="modal fade" id="detailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-car-front"></i> <span id="detail-titel">Fahrzeug</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="detail-kpis" class="row g-2 mb-3"></div>
+                <div class="chart-container mb-3">
+                    <canvas id="detail-chart"></canvas>
+                </div>
+                <div id="detail-buchgewinn" class="alert alert-secondary d-none"></div>
+                <table class="table table-sm">
+                    <thead><tr><th>Monat</th><th>AfA</th><th>Restbuchwert</th><th>Kumuliert</th></tr></thead>
+                    <tbody id="detail-buchungen"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    const API = '/api/afa';
+    let dashboardData = null;
+    let detailChart = null;
+
+    function fmtEuro(v) {
+        if (v == null || v === '') return '-';
+        return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v);
+    }
+    function fmtDatum(str) {
+        if (!str) return '-';
+        return str.replace(/^(\d{4})-(\d{2}).*/, '$2.$1');
+    }
+
+    function loadDashboard() {
+        fetch(API + '/dashboard')
+            .then(r => r.json())
+            .then(data => {
+                if (!data.ok) { document.getElementById('tab-fahrzeuge').innerHTML = '<tr><td colspan="9" class="text-danger">' + (data.error || 'Fehler') + '</td></tr>'; return; }
+                dashboardData = data;
+                const k = data.kpis || {};
+                document.getElementById('kpi-vfw').textContent = k.anzahl_aktive_vfw ?? '-';
+                document.getElementById('kpi-miet').textContent = k.anzahl_aktive_mietwagen ?? '-';
+                document.getElementById('kpi-rest').textContent = fmtEuro(k.summe_restbuchwert);
+                document.getElementById('kpi-afa').textContent = fmtEuro(k.afa_monat_gesamt);
+                document.getElementById('kpi-halte').textContent = (k.durchschnitt_halte_monate != null ? k.durchschnitt_halte_monate.toFixed(1) : '-');
+
+                const fz = data.fahrzeuge || [];
+                const marken = [...new Set(fz.map(f => f.marke).filter(Boolean))].sort();
+                const selMarke = document.getElementById('filter-marke');
+                selMarke.innerHTML = '<option value="">Alle Marken</option>' + marken.map(m => '<option value="' + m + '">' + m + '</option>').join('');
+
+                renderFahrzeuge(fz);
+            })
+            .catch(e => {
+                document.getElementById('tab-fahrzeuge').innerHTML = '<tr><td colspan="9" class="text-danger">Netzwerkfehler: ' + e.message + '</td></tr>';
+            });
+    }
+
+    function renderFahrzeuge(fahrzeuge) {
+        const art = document.getElementById('filter-art').value;
+        const marke = document.getElementById('filter-marke').value;
+        const betrieb = document.getElementById('filter-betrieb').value;
+        let list = fahrzeuge;
+        if (art) list = list.filter(f => f.fahrzeugart === art);
+        if (marke) list = list.filter(f => (f.marke || '').indexOf(marke) !== -1);
+        if (betrieb) list = list.filter(f => String(f.betriebsnr) === betrieb);
+
+        const tbody = document.getElementById('tab-fahrzeuge');
+        if (list.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">Keine Fahrzeuge (oder Filter ergibt keine Treffer).</td></tr>';
+            return;
+        }
+        tbody.innerHTML = list.map(f => {
+            const rw = f.status === 'aktiv' ? (f.restbuchwert_aktuell != null ? f.restbuchwert_aktuell : '-') : (f.restbuchwert_abgang != null ? f.restbuchwert_abgang : '-');
+            const badge = f.fahrzeugart === 'VFW' ? 'badge-vfw' : 'badge-miet';
+            const statusCl = f.status === 'aktiv' ? 'status-aktiv' : 'status-verkauft';
+            return '<tr>' +
+                '<td>' + (f.kennzeichen || '-') + '</td>' +
+                '<td>' + (f.fahrzeug_bezeichnung || f.modell || '-') + '</td>' +
+                '<td><span class="badge ' + badge + '">' + (f.fahrzeugart || '-') + '</span></td>' +
+                '<td>' + fmtDatum(f.anschaffungsdatum) + '</td>' +
+                '<td>' + fmtEuro(f.anschaffungskosten_netto) + '</td>' +
+                '<td>' + fmtEuro(f.afa_monatlich) + '</td>' +
+                '<td>' + fmtEuro(rw) + '</td>' +
+                '<td class="' + statusCl + '">' + (f.status || '-') + '</td>' +
+                '<td><button type="button" class="btn btn-sm btn-outline-primary detail-btn" data-id="' + f.id + '">Detail</button></td>' +
+                '</tr>';
+        }).join('');
+
+        tbody.querySelectorAll('.detail-btn').forEach(btn => {
+            btn.addEventListener('click', () => openDetail(parseInt(btn.dataset.id, 10)));
+        });
+    }
+
+    function loadMonatsuebersicht() {
+        const mp = document.getElementById('monat-picker').value;
+        if (!mp) return;
+        const [jahr, monat] = mp.split('-').map(Number);
+        fetch(API + '/monatsberechnung?jahr=' + jahr + '&monat=' + monat)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.ok) return;
+                const pos = data.positionen || [];
+                const summe = data.summe_afa || 0;
+                const tbody = document.getElementById('monats-positionen');
+                tbody.innerHTML = pos.length === 0
+                    ? '<tr><td colspan="4" class="text-center text-muted">Keine aktiven Fahrzeuge in diesem Monat.</td></tr>'
+                    : pos.map(p => '<tr><td>' + (p.kennzeichen || '-') + '</td><td>' + (p.fahrzeug_bezeichnung || '-') + '</td><td>' + (p.fahrzeugart || '-') + '</td><td>' + fmtEuro(p.afa_betrag) + '</td></tr>').join('');
+                document.getElementById('monatsuebersicht-summe').textContent = fmtEuro(summe);
+            });
+    }
+
+    function openDetail(id) {
+        fetch(API + '/fahrzeug/' + id)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.ok) { alert(data.error || 'Fehler'); return; }
+                const f = data.fahrzeug;
+                document.getElementById('detail-titel').textContent = (f.kennzeichen || f.vin || 'ID ' + id) + ' — ' + (f.fahrzeug_bezeichnung || f.modell || '');
+                document.getElementById('detail-kpis').innerHTML =
+                    '<div class="col"><strong>EK netto</strong> ' + fmtEuro(f.anschaffungskosten_netto) + '</div>' +
+                    '<div class="col"><strong>Monatl. AfA</strong> ' + fmtEuro(f.afa_monatlich) + '</div>' +
+                    '<div class="col"><strong>Restbuchwert</strong> ' + fmtEuro(f.restbuchwert_aktuell != null ? f.restbuchwert_aktuell : f.restbuchwert_abgang) + '</div>';
+
+                const buchungen = f.buchungen || [];
+                document.getElementById('detail-buchungen').innerHTML = buchungen.length === 0
+                    ? '<tr><td colspan="4" class="text-muted">Keine Buchungen erfasst.</td></tr>'
+                    : buchungen.map(b => '<tr><td>' + (b.buchungsmonat || '-') + '</td><td>' + fmtEuro(b.afa_betrag) + '</td><td>' + fmtEuro(b.restbuchwert) + '</td><td>' + fmtEuro(b.kumuliert) + '</td></tr>').join('');
+
+                const bwEl = document.getElementById('detail-buchgewinn');
+                if (f.buchgewinn_verlust != null) {
+                    bwEl.classList.remove('d-none');
+                    bwEl.textContent = (f.buchgewinn_verlust >= 0 ? 'Buchgewinn: ' : 'Buchverlust: ') + fmtEuro(f.buchgewinn_verlust);
+                    bwEl.className = 'alert ' + (f.buchgewinn_verlust >= 0 ? 'alert-success' : 'alert-danger');
+                } else {
+                    bwEl.classList.add('d-none');
+                }
+
+                if (detailChart) detailChart.destroy();
+                const ctx = document.getElementById('detail-chart').getContext('2d');
+                const labels = buchungen.map(b => b.buchungsmonat || '');
+                const restWerte = buchungen.map(b => b.restbuchwert);
+                if (labels.length === 0) {
+                    restWerte.push(f.restbuchwert_aktuell != null ? f.restbuchwert_aktuell : f.anschaffungskosten_netto);
+                    labels.push('AK');
+                }
+                detailChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{ label: 'Restbuchwert (€)', data: restWerte, borderColor: '#0d6efd', fill: false, tension: 0.1 }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: { y: { beginAtZero: true } }
+                    }
+                });
+
+                new bootstrap.Modal(document.getElementById('detailModal')).show();
+            });
+    }
+
+    function csvExport() {
+        const mp = document.getElementById('monat-picker').value;
+        if (!mp) { alert('Bitte Monat wählen.'); return; }
+        const [jahr, monat] = mp.split('-').map(Number);
+        fetch(API + '/buchungsliste?jahr=' + jahr + '&monat=' + monat)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.ok) return;
+                const rows = data.export_csv_zeilen || [];
+                const csv = rows.map(row => row.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(';')).join('\n');
+                const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'afa_buchungsliste_' + mp + '.csv';
+                a.click();
+                URL.revokeObjectURL(a.href);
+            });
+    }
+
+    document.getElementById('filter-art').addEventListener('change', () => dashboardData && renderFahrzeuge(dashboardData.fahrzeuge));
+    document.getElementById('filter-marke').addEventListener('change', () => dashboardData && renderFahrzeuge(dashboardData.fahrzeuge));
+    document.getElementById('filter-betrieb').addEventListener('change', () => dashboardData && renderFahrzeuge(dashboardData.fahrzeuge));
+
+    const now = new Date();
+    document.getElementById('monat-picker').value = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    document.getElementById('monat-picker').addEventListener('change', loadMonatsuebersicht);
+    document.getElementById('btn-berechne-monat').addEventListener('click', function() {
+        const mp = document.getElementById('monat-picker').value;
+        if (!mp) return;
+        fetch(API + '/berechne-monat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ 'yyyy-mm': mp }) })
+            .then(r => r.json())
+            .then(data => {
+                if (data.ok) { loadMonatsuebersicht(); loadDashboard(); alert('Berechnung: ' + (data.inserted || 0) + ' Buchungen angelegt.'); }
+                else alert('Fehler: ' + (data.error || 'Unbekannt'));
+            });
+    });
+    document.getElementById('btn-csv-export').addEventListener('click', csvExport);
+
+    loadDashboard();
+    loadMonatsuebersicht();
+})();
+</script>
+{% endblock %}

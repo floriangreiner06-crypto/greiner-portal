@@ -371,11 +371,10 @@ def benachrichtige_serviceberater_ueberschreitungen():
                 if not empfaenger:
                     continue
                 
-                # TAG 182: Prüfe ob bereits E-Mail für diesen Auftrag heute gesendet wurde
+                # TAG 182/213: "INSERT first" – verhindert Doppel-E-Mails bei überlappenden Task-Läufen (Race).
+                # Statt SELECT dann SEND dann INSERT: zuerst INSERT (atomar). Nur wer den Eintrag anlegt, sendet.
                 with db_session() as conn_tracking:
                     cursor_tracking = conn_tracking.cursor()
-                    
-                    # Prüfe für jeden Empfänger, ob bereits gesendet
                     empfaenger_zu_senden = []  # (emp, employee_locosoft_id oder None, recipient_email oder None)
                     for emp in empfaenger:
                         emp_locosoft_id = None
@@ -388,35 +387,28 @@ def benachrichtige_serviceberater_ueberschreitungen():
                             recipient_email = (emp.get('email') or '').lower().strip()
                             if not recipient_email:
                                 continue
-                        
-                        # Prüfe ob bereits heute gesendet (per Locosoft-ID oder per E-Mail für Report-Subscriber)
-                        already_sent = False
-                        if emp_locosoft_id is not None:
-                            cursor_tracking.execute("""
-                                SELECT 1 FROM email_notifications_sent
-                                WHERE auftrag_nr = %s
-                                  AND employee_locosoft_id = %s
-                                  AND notification_type = 'ueberschreitung'
-                                  AND sent_date = CURRENT_DATE
-                            """, (auftrag_nr, emp_locosoft_id))
-                            already_sent = cursor_tracking.fetchone() is not None
-                        else:
-                            try:
+                        recipient_email_opt = recipient_email if emp_locosoft_id is None else None
+                        try:
+                            if emp_locosoft_id is not None:
                                 cursor_tracking.execute("""
-                                    SELECT 1 FROM email_notifications_sent
-                                    WHERE auftrag_nr = %s
-                                      AND notification_type = 'ueberschreitung'
-                                      AND sent_date = CURRENT_DATE
-                                      AND recipient_email = %s
-                                """, (auftrag_nr, recipient_email))
-                                already_sent = cursor_tracking.fetchone() is not None
-                            except Exception:
-                                pass  # Spalte recipient_email fehlt (Migration nicht ausgeführt) → als nicht gesendet zählen
-                        
-                        if already_sent:
-                            logger.debug(f"E-Mail für Auftrag {auftrag_nr} an {emp.get('email')} bereits heute gesendet - überspringe")
-                        else:
-                            empfaenger_zu_senden.append((emp, emp_locosoft_id, recipient_email if emp_locosoft_id is None else None))
+                                    INSERT INTO email_notifications_sent (auftrag_nr, employee_locosoft_id, notification_type, sent_date)
+                                    VALUES (%s, %s, 'ueberschreitung', CURRENT_DATE)
+                                """, (auftrag_nr, emp_locosoft_id))
+                            else:
+                                cursor_tracking.execute("""
+                                    INSERT INTO email_notifications_sent (auftrag_nr, employee_locosoft_id, notification_type, sent_date, recipient_email)
+                                    VALUES (%s, -1, 'ueberschreitung', CURRENT_DATE, %s)
+                                """, (auftrag_nr, recipient_email_opt))
+                            conn_tracking.commit()
+                            empfaenger_zu_senden.append((emp, emp_locosoft_id, recipient_email_opt))
+                        except Exception as e:
+                            conn_tracking.rollback()
+                            if getattr(e, 'pgcode', None) == '23505':
+                                logger.debug(f"Auftrag {auftrag_nr} an {emp.get('email')} bereits heute gesendet (UNIQUE) - überspringe")
+                            elif 'recipient_email' in str(e).lower():
+                                logger.warning("Spalte recipient_email fehlt (Migration TAG 206) - Report-Subscriber übersprungen")
+                            else:
+                                raise
                     
                     if not empfaenger_zu_senden:
                         logger.debug(f"Alle E-Mails für Auftrag {auftrag_nr} bereits heute gesendet - überspringe")
@@ -485,7 +477,7 @@ def benachrichtige_serviceberater_ueberschreitungen():
                     </div>
                     """
                     
-                    # E-Mail senden (TAG 182: Nur an Empfänger, die noch keine E-Mail erhalten haben)
+                    # E-Mail senden (TAG 182/213: nur an Empfänger, für die INSERT oben erfolgreich war)
                     for emp, emp_locosoft_id, recipient_email_opt in empfaenger_zu_senden:
                         try:
                             connector.send_mail(
@@ -494,35 +486,10 @@ def benachrichtige_serviceberater_ueberschreitungen():
                                 subject=subject,
                                 body_html=body_html
                             )
-                            
-                            # TAG 182/206: Eintrag in Tracking-Tabelle nach erfolgreichem Versand
-                            try:
-                                if emp_locosoft_id is not None:
-                                    cursor_tracking.execute("""
-                                        INSERT INTO email_notifications_sent (auftrag_nr, employee_locosoft_id, notification_type, sent_date)
-                                        VALUES (%s, %s, 'ueberschreitung', CURRENT_DATE)
-                                    """, (auftrag_nr, emp_locosoft_id))
-                                else:
-                                    # Report-Subscriber (aus Admin E-Mail Reports); benötigt Spalte recipient_email (Migration TAG 206)
-                                    cursor_tracking.execute("""
-                                        INSERT INTO email_notifications_sent (auftrag_nr, employee_locosoft_id, notification_type, sent_date, recipient_email)
-                                        VALUES (%s, -1, 'ueberschreitung', CURRENT_DATE, %s)
-                                    """, (auftrag_nr, recipient_email_opt))
-                            except Exception as db_err:
-                                # Doppelter Eintrag (bereits gesendet) oder Spalte recipient_email fehlt (Migration nicht ausgeführt)
-                                if 'unique' in str(db_err).lower() or 'duplicate' in str(db_err).lower():
-                                    pass
-                                elif 'recipient_email' in str(db_err).lower():
-                                    logger.warning("Migration add_email_notifications_recipient_email_tag206 nicht ausgeführt - Report-Subscriber-Tracking ohne 1x/Tag-Limit")
-                                else:
-                                    raise
-                            conn_tracking.commit()
-                            
                             emails_gesendet += 1
                             logger.info(f"E-Mail gesendet an {emp.get('name', emp.get('email'))} ({emp['email']}) für Auftrag {auftrag_nr}")
                         except Exception as e:
                             logger.error(f"Fehler beim Senden an {emp['email']}: {e}")
-                            conn_tracking.rollback()
             
             except Exception as e:
                 logger.error(f"Fehler bei Auftrag {auftrag_nr}: {e}")
@@ -2219,4 +2186,100 @@ def send_whatsapp_message(to: str, message: str, message_type: str = 'text', ima
     
     except Exception as e:
         logger.exception("Fehler beim Senden der WhatsApp-Nachricht (Celery)")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=120, name='celery_app.tasks.fetch_whatsapp_inbound_polling')
+def fetch_whatsapp_inbound_polling():
+    """
+    Holt eingehende WhatsApp-Nachrichten von der Twilio API (Polling).
+    Alternative zum Webhook: Kein öffentlicher Endpoint nötig, nur ausgehende HTTPS-Verbindungen.
+
+    Nur aktiv wenn WHATSAPP_USE_POLLING_INSTEAD_OF_WEBHOOK=true (oder 1/yes).
+    Siehe: docs/workstreams/integrations/WHATSAPP_ALTERNATIVE_OHNE_WEBHOOK.md
+    """
+    import os
+    from datetime import datetime, timedelta
+
+    if os.getenv('WHATSAPP_USE_POLLING_INSTEAD_OF_WEBHOOK', '').strip().lower() not in ('1', 'true', 'yes'):
+        return {'success': True, 'skipped': True, 'reason': 'Webhook-Modus aktiv'}
+    try:
+        from api.whatsapp_api import WhatsAppClient
+        from api.whatsapp_inbound import process_inbound_message
+
+        # Zeitfenster 60 Min (Zeitskew Server/Twilio), Twilio liefert date_sent in UTC
+        since = datetime.utcnow() - timedelta(minutes=60)
+        client = WhatsAppClient()
+        messages = client.fetch_inbound_messages(since)
+        if messages:
+            logger.info("WhatsApp Polling: Twilio lieferte %s Inbound-Nachricht(en)", len(messages))
+        processed = 0
+        for data in messages:
+            process_inbound_message(data)
+            processed += 1
+        if processed:
+            logger.info("WhatsApp Polling: %s neue Nachrichten in DB gespeichert", processed)
+        return {'success': True, 'processed': processed, 'fetched': len(messages)}
+    except Exception as e:
+        logger.exception("WhatsApp Polling Fehler: %s", e)
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=120, name='celery_app.tasks.afa_monatsberechnung')
+def afa_monatsberechnung(jahr=None, monat=None):
+    """
+    AfA-Monatsberechnung: Berechnet für alle aktiven VFW/Mietwagen die monatliche AfA
+    und schreibt Einträge in afa_buchungen.
+    Am 1. jeden Monats ausführen (für Vormonat), oder mit jahr/monat aufrufen.
+    """
+    from dateutil.relativedelta import relativedelta
+    from api.db_utils import db_session
+    from api.afa_api import berechne_monatliche_afa, berechne_restbuchwert, _fahrzeug_from_row
+
+    try:
+        heute = date.today()
+        if jahr is not None and monat is not None:
+            buchungsmonat = date(int(jahr), int(monat), 1)
+        else:
+            # Vormonat
+            erstes_heute = heute.replace(day=1)
+            buchungsmonat = erstes_heute - relativedelta(months=1)
+        jahr, monat = buchungsmonat.year, buchungsmonat.month
+
+        with db_session() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, anschaffungsdatum, anschaffungskosten_netto, nutzungsdauer_monate, afa_methode, afa_monatlich
+                FROM afa_anlagevermoegen
+                WHERE status = 'aktiv'
+                AND anschaffungsdatum <= %s
+                AND (abgangsdatum IS NULL OR abgangsdatum >= %s)
+            """, (buchungsmonat, buchungsmonat))
+            rows = cur.fetchall()
+            fahrzeuge = [_fahrzeug_from_row(r, cur) for r in rows]
+        inserted = 0
+        with db_session() as conn:
+            cur = conn.cursor()
+            for f in fahrzeuge:
+                afa = f.get('afa_monatlich') or berechne_monatliche_afa(f)
+                if afa is None:
+                    continue
+                cur.execute(
+                    "SELECT id FROM afa_buchungen WHERE anlage_id = %s AND buchungsmonat = %s",
+                    (f['id'], buchungsmonat)
+                )
+                if cur.fetchone():
+                    continue
+                rest = berechne_restbuchwert(f, buchungsmonat)
+                kumuliert = float(f['anschaffungskosten_netto']) - (rest or 0)
+                cur.execute("""
+                    INSERT INTO afa_buchungen (anlage_id, buchungsmonat, afa_betrag, restbuchwert, kumuliert, ist_anteilig)
+                    VALUES (%s, %s, %s, %s, %s, false)
+                """, (f['id'], buchungsmonat, afa, rest, round(kumuliert, 2)))
+                inserted += 1
+            conn.commit()
+        logger.info("AfA-Monatsberechnung %s-%02d: %s Fahrzeuge, %s neue Buchungen", jahr, monat, len(fahrzeuge), inserted)
+        return {'success': True, 'buchungsmonat': f'{jahr}-{monat:02d}', 'anzahl_fahrzeuge': len(fahrzeuge), 'inserted': inserted}
+    except Exception as e:
+        logger.exception("AfA-Monatsberechnung Fehler: %s", e)
         return {'success': False, 'error': str(e)}

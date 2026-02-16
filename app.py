@@ -408,9 +408,11 @@ except Exception as e:
 # Verkauf Frontend Routes
 from routes.verkauf_routes import verkauf_bp
 from routes.controlling_routes import controlling_bp
+from routes.afa_routes import afa_bp
 app.register_blueprint(verkauf_bp)
 print("✅ Verkauf Frontend registriert: /verkauf/")
 app.register_blueprint(controlling_bp)
+app.register_blueprint(afa_bp)
 print("✅ Controlling registriert: /controlling/")
 
 # Werkstatt Frontend Routes (TAG 119)
@@ -441,6 +443,10 @@ try:
     from api.kontenmapping_api import kontenmapping_api
     app.register_blueprint(kontenmapping_api)
     print("✅ Kontenmapping API registriert: /api/kontenmapping/")
+    # AfA-Modul Vorführwagen/Mietwagen (2026-02-16)
+    from api.afa_api import afa_api
+    app.register_blueprint(afa_api)
+    print("✅ AfA API registriert: /api/afa/")
 except Exception as e:
     print(f"⚠️  Controlling API nicht geladen: {e}")
 

@@ -73,6 +73,8 @@ DB_PASSWORD=DrivePortal2024
 | `fibu_buchungen` | FIBU-Buchungen | ~550.000 |
 | `bwa_monatswerte` | BWA-Monatswerte | ~100 |
 | `fahrzeugfinanzierungen` | EK-Finanzierungen | ~200 |
+| `afa_anlagevermoegen` | VFW/Mietwagen Anlagevermögen (AfA) | — |
+| `afa_buchungen` | Monatliche AfA-Buchungen (Historie) | — |
 | `tilgungen` | Tilgungsplan | ~1.000 |
 | `ek_finanzierung_konditionen` | Zinskonditionen | 3 |
 | `finanzierungsbanken` | Stellantis, Santander etc. | 3 |
