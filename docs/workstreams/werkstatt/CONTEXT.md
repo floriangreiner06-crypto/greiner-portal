@@ -1,7 +1,7 @@
 # Werkstatt & Aftersales — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-02-12
+## Letzte Aktualisierung: 2026-02-16
 
 ## Beschreibung
 
@@ -21,7 +21,7 @@ Werkstatt und Aftersales umfassen Stempeluhr/Live-Monitoring, Mechaniker-Leistun
 - `api/ml_api.py`, `api/ai_api.py` — ML/Prognosen
 
 ### Templates
-- `templates/aftersales/*.html` (inkl. `unfall_wissensdatenbank.html`, `unfall_rechnungspruefung.html`)
+- `templates/aftersales/*.html` (inkl. `unfall_wissensdatenbank.html`, `unfall_rechnungspruefung.html`, `garantie_handbuecher.html`)
 
 ### Tools / Scripts
 - `tools/gudat_*.py`
@@ -48,6 +48,8 @@ Werkstatt und Aftersales umfassen Stempeluhr/Live-Monitoring, Mechaniker-Leistun
 - ✅ **Greiner-Arbeitszeitenkatalog (2026-02-12):** Analyse & Konzept abgeschlossen. Bestandsaufnahme Locosoft labours, IST-Zeiten vs. Vorgabe-AW, Freitext-Clustering, Standort Opel vs. Hyundai, Reparaturpakete-Struktur, Top-100 Standardarbeiten-Vorschlag, DRIVE-Modul-Skizze. Siehe `docs/workstreams/werkstatt/ARBEITSZEITKATALOG_ANALYSE.md`. Kein Code deployt.
 - ✅ **Ergänzungen Arbeitszeitenkatalog-Doku:** Feedback Serviceleiter (7.1), Katalog mit Referenz statt nur Pauschale (7.2), Wartungspakete/Locosoft erneut geprüft (6.1–6.4), Modell AW Gruppe vs. labours_groups geklärt (6.5), Vorgabezeiten pauschal erhöhen per SOAP (8.7).
 - ❌ **Nächster Schritt (Beschluss):** Zuerst in **Locosoft sauber pflegen und einrichten**; danach **DB-Stand erneut prüfen** (z. B. labours_groups, Wartungspakete). Greiner-Katalog/DRIVE-Modul folgt nach Klärung.
+- ✅ **Garantie-Handbücher Phase 1 (2026-02-16):** Handbücher & Richtlinien als Referenz umgesetzt. Ordner `docs/workstreams/werkstatt/garantie` (Sync: F:\Greiner Portal\Greiner_Portal_NEU\Server\…\garantie); Seite „Handbücher & Richtlinien“ unter Service → Garantie; PDFs werden nach Sync dort abgelegt und im Portal verlinkt (Login, sichere Auslieferung). Siehe `GARANTIE_HANDBUECHER_WISSENSBASIS_MACHBARKEIT.md`.
+- ✅ **Garantie Handbücher – DB-Navigation (2026-02-16):** Navi-Punkt „Handbücher & Richtlinien“ fehlte bei aktivierter DB-Navigation; Migration `add_navigation_garantie_handbuecher.sql` eingespielt, Eintrag in `navigation_items` ergänzt; `migrate_navigation_items.py` für künftige Neuaufbauten angepasst.
 
 ## Offene Entscheidungen
 

@@ -186,6 +186,7 @@ def migrate_navigation_items():
             {'label': '', 'is_divider': True, 'order_index': 4},
             {'label': 'Garantie', 'is_header': True, 'requires_feature': 'aftersales', 'order_index': 5},
             {'label': 'Garantieaufträge', 'url': '/aftersales/garantie/auftraege', 'icon': 'bi-shield-check', 'requires_feature': 'aftersales', 'order_index': 6},
+            {'label': 'Handbücher & Richtlinien', 'url': '/aftersales/garantie/handbuecher', 'icon': 'bi-journal-bookmark', 'requires_feature': 'aftersales', 'order_index': 7},
         ]
         
         for item in aftersales_items:
