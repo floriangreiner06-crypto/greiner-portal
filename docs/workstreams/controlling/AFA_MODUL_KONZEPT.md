@@ -31,13 +31,12 @@ Automatische Berechnung der **monatlichen Abschreibung (AfA)** für Vorführwage
 
 - **DRIVE:** Keine bestehende SSOT für VFW/Mietwagen-Liste → neue Tabelle.
 - **Locosoft:** `dealer_vehicle_type`, `is_rental_or_school_vehicle` vorhanden; optional später Anreicherung/Import.
-- **FIBU 444xxx:** Bereits für kalk. Abschreibungen genutzt; AfA-Modul liefert Buchungsliste. Sachkonto für VFW/Mietwagen mit Buchhaltung klären.
+- **FIBU:** Buchhaltung bucht Monatsende: **450001/450002** an **090301/090302** (Mietwagen) bzw. **090401/090402** (VFW). Abgang: 090xxx an Bestandskonto. Details: **`AFA_BUCHHALTUNG_FEEDBACK.md`**.
 
-Details: **`AFA_DISCOVERY.md`**.
+Details Discovery: **`AFA_DISCOVERY.md`**.
 
 ## Nächste Schritte (optional)
 
 1. RedBeat/Celery Beat: `afa_monatsberechnung` am 1. jeden Monats (für Vormonat) planen.
-2. Sachkonto 444xxx für VFW/Mietwagen-Afa mit Florian festlegen.
-3. Formular „Neues Fahrzeug anlegen“ im Dashboard (derzeit nur API POST).
-4. Degressive AfA (ab 01.07.2025) ergänzen, wenn gewünscht.
+2. Formular „Neues Fahrzeug anlegen“ im Dashboard (derzeit nur API POST).
+3. Degressive AfA (ab 01.07.2025) ergänzen, wenn gewünscht.

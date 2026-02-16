@@ -80,7 +80,13 @@
     <div class="card mb-4">
         <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
             <h6 class="mb-0"><i class="bi bi-car-front"></i> Fahrzeuge (VFW / Mietwagen)</h6>
-            <div class="d-flex gap-2 flex-wrap">
+            <div class="d-flex gap-2 flex-wrap align-items-center">
+                <label class="small text-muted me-1">Bestand:</label>
+                <select id="filter-gj" class="form-select form-select-sm" style="width: auto;" title="Nur Fahrzeuge im Bestand dieses Geschäftsjahres">
+                    <option value="">Alle Geschäftsjahre</option>
+                    <option value="2024/25">2024/25</option>
+                    <option value="2025/26" selected>2025/26</option>
+                </select>
                 <select id="filter-art" class="form-select form-select-sm" style="width: auto;">
                     <option value="">Alle Arten</option>
                     <option value="VFW">VFW</option>
@@ -121,6 +127,41 @@
         </div>
     </div>
 
+    <!-- Aus Locosoft importieren -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <h6 class="mb-0"><i class="bi bi-cloud-download"></i> Aus Locosoft importieren</h6>
+            <div class="d-flex gap-2 align-items-center">
+                <label class="small text-muted me-1">Nutzungsdauer (Monate):</label>
+                <input type="number" id="locosoft-nutzungsdauer" value="72" min="1" max="120" class="form-control form-control-sm" style="width: 5rem;">
+                <button type="button" class="btn btn-sm btn-outline-primary" id="btn-locosoft-laden">Kandidaten laden</button>
+                <button type="button" class="btn btn-sm btn-success d-none" id="btn-locosoft-import">Ausgewählte importieren</button>
+            </div>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small mb-2">Zeigt VFW (Typ V) und eigene Mietwagen (Jw-Kz X oder M, Kennzeichen X) aus Locosoft, die noch nicht in AfA sind und noch nicht verkauft. EK = Einsatzwert-Formel inkl. Einsatzerhöhung.</p>
+            <div class="table-responsive">
+                <table class="table table-sm afa-table">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="locosoft-select-all" title="Alle auswählen"></th>
+                            <th>Kennzeichen</th>
+                            <th>Bezeichnung</th>
+                            <th>Art</th>
+                            <th>Anschaffung</th>
+                            <th>EK netto</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="locosoft-kandidaten">
+                        <tr><td colspan="7" class="text-center text-muted">Kandidaten laden klicken.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div id="locosoft-fehler" class="mt-2 small text-danger d-none"></div>
+        </div>
+    </div>
+
     <!-- Monatsübersicht (Buchhalter) -->
     <div class="card mb-4">
         <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -132,7 +173,7 @@
             </div>
         </div>
         <div class="card-body">
-            <p class="text-muted small mb-2">Summe = Betrag für Einbuchung in Locosoft (kalk. Abschreibung 444xxx)</p>
+            <p class="text-muted small mb-2">Summe = Betrag für Monatsbuchung. Buchhaltung: 450001/450002 an 090301/090302 (Mietwagen) bzw. 090401/090402 (VFW). CSV enthält Soll-/Haben-Konten pro Zeile.</p>
             <div class="table-responsive">
                 <table class="table table-sm afa-table">
                     <thead>
@@ -140,11 +181,13 @@
                             <th>Kennzeichen</th>
                             <th>Bezeichnung</th>
                             <th>Art</th>
+                            <th>Soll</th>
+                            <th>Haben</th>
                             <th>AfA-Betrag (€)</th>
                         </tr>
                     </thead>
                     <tbody id="monats-positionen">
-                        <tr><td colspan="4" class="text-center text-muted">Monat wählen und laden.</td></tr>
+                        <tr><td colspan="6" class="text-center text-muted">Monat wählen und laden.</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -194,7 +237,9 @@
     }
 
     function loadDashboard() {
-        fetch(API + '/dashboard')
+        const gj = document.getElementById('filter-gj').value;
+        const url = API + '/dashboard' + (gj ? '?gj=' + encodeURIComponent(gj) : '');
+        fetch(url)
             .then(r => r.json())
             .then(data => {
                 if (!data.ok) { document.getElementById('tab-fahrzeuge').innerHTML = '<tr><td colspan="9" class="text-danger">' + (data.error || 'Fehler') + '</td></tr>'; return; }
@@ -265,9 +310,10 @@
                 const pos = data.positionen || [];
                 const summe = data.summe_afa || 0;
                 const tbody = document.getElementById('monats-positionen');
+                const fmtKonto = (k) => k != null ? String(k).padStart(6, '0') : '-';
                 tbody.innerHTML = pos.length === 0
-                    ? '<tr><td colspan="4" class="text-center text-muted">Keine aktiven Fahrzeuge in diesem Monat.</td></tr>'
-                    : pos.map(p => '<tr><td>' + (p.kennzeichen || '-') + '</td><td>' + (p.fahrzeug_bezeichnung || '-') + '</td><td>' + (p.fahrzeugart || '-') + '</td><td>' + fmtEuro(p.afa_betrag) + '</td></tr>').join('');
+                    ? '<tr><td colspan="6" class="text-center text-muted">Keine aktiven Fahrzeuge in diesem Monat.</td></tr>'
+                    : pos.map(p => '<tr><td>' + (p.kennzeichen || '-') + '</td><td>' + (p.fahrzeug_bezeichnung || '-') + '</td><td>' + (p.fahrzeugart || '-') + '</td><td>' + fmtKonto(p.konto_soll) + '</td><td>' + fmtKonto(p.konto_haben) + '</td><td>' + fmtEuro(p.afa_betrag) + '</td></tr>').join('');
                 document.getElementById('monatsuebersicht-summe').textContent = fmtEuro(summe);
             });
     }
@@ -342,6 +388,7 @@
             });
     }
 
+    document.getElementById('filter-gj').addEventListener('change', loadDashboard);
     document.getElementById('filter-art').addEventListener('change', () => dashboardData && renderFahrzeuge(dashboardData.fahrzeuge));
     document.getElementById('filter-marke').addEventListener('change', () => dashboardData && renderFahrzeuge(dashboardData.fahrzeuge));
     document.getElementById('filter-betrieb').addEventListener('change', () => dashboardData && renderFahrzeuge(dashboardData.fahrzeuge));
@@ -360,6 +407,77 @@
             });
     });
     document.getElementById('btn-csv-export').addEventListener('click', csvExport);
+
+    let locosoftKandidaten = [];
+    function loadLocosoftKandidaten() {
+        document.getElementById('locosoft-kandidaten').innerHTML = '<tr><td colspan="7" class="text-center text-muted">Lade …</td></tr>';
+        document.getElementById('locosoft-fehler').classList.add('d-none');
+        fetch(API + '/locosoft-kandidaten')
+            .then(r => r.json())
+            .then(data => {
+                if (!data.ok) {
+                    document.getElementById('locosoft-kandidaten').innerHTML = '<tr><td colspan="7" class="text-danger">' + (data.error || 'Fehler') + '</td></tr>';
+                    return;
+                }
+                locosoftKandidaten = data.kandidaten || [];
+                renderLocosoftKandidaten(locosoftKandidaten);
+            })
+            .catch(e => {
+                document.getElementById('locosoft-kandidaten').innerHTML = '<tr><td colspan="7" class="text-danger">' + e.message + '</td></tr>';
+            });
+    }
+    function renderLocosoftKandidaten(list) {
+        const tbody = document.getElementById('locosoft-kandidaten');
+        if (list.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Keine Kandidaten (alle bereits importiert oder Filter).</td></tr>';
+            document.getElementById('btn-locosoft-import').classList.add('d-none');
+            return;
+        }
+        document.getElementById('btn-locosoft-import').classList.remove('d-none');
+        tbody.innerHTML = list.map((k, i) => {
+            const badge = k.fahrzeugart === 'VFW' ? 'badge-vfw' : 'badge-miet';
+            const datum = (k.anschaffungsdatum || '').replace(/^(\d{4})-(\d{2}).*/, '$2.$1');
+            return '<tr>' +
+                '<td><input type="checkbox" class="locosoft-cb" data-idx="' + i + '"></td>' +
+                '<td>' + (k.kennzeichen || '-') + '</td>' +
+                '<td>' + (k.fahrzeug_bezeichnung || '-') + '</td>' +
+                '<td><span class="badge ' + badge + '">' + (k.fahrzeugart || '-') + '</span></td>' +
+                '<td>' + datum + '</td>' +
+                '<td>' + fmtEuro(k.anschaffungskosten_netto) + '</td>' +
+                '<td></td></tr>';
+        }).join('');
+        document.getElementById('locosoft-select-all').checked = false;
+    }
+    document.getElementById('btn-locosoft-laden').addEventListener('click', loadLocosoftKandidaten);
+    document.getElementById('locosoft-select-all').addEventListener('change', function() {
+        document.querySelectorAll('.locosoft-cb').forEach(cb => { cb.checked = this.checked; });
+    });
+    document.getElementById('btn-locosoft-import').addEventListener('click', function() {
+        const nd = parseInt(document.getElementById('locosoft-nutzungsdauer').value, 10) || 72;
+        const checked = [];
+        document.querySelectorAll('.locosoft-cb:checked').forEach(cb => {
+            const idx = parseInt(cb.dataset.idx, 10);
+            const k = locosoftKandidaten[idx];
+            if (k) checked.push({ dealer_vehicle_type: k.dealer_vehicle_type, dealer_vehicle_number: k.dealer_vehicle_number });
+        });
+        if (checked.length === 0) { alert('Bitte mindestens einen Kandidaten auswählen.'); return; }
+        fetch(API + '/import-locosoft', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: checked, nutzungsdauer_monate: nd })
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.ok) { alert(data.error || 'Fehler'); return; }
+                const n = data.importiert || 0;
+                const fehler = (data.fehler || []).length;
+                alert('Import: ' + n + ' Fahrzeug(e) angelegt.' + (fehler ? ' Fehler: ' + fehler : ''));
+                loadDashboard();
+                loadMonatsuebersicht();
+                loadLocosoftKandidaten();
+            })
+            .catch(e => alert('Fehler: ' + e.message));
+    });
 
     loadDashboard();
     loadMonatsuebersicht();
