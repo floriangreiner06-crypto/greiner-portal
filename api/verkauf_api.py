@@ -10,6 +10,7 @@ Updated: TAG 159 - Refactoring auf Data-Module Pattern
 """
 
 from flask import Blueprint, jsonify, request
+from flask_login import login_required
 from datetime import datetime, date
 from typing import Dict, List
 
@@ -267,6 +268,7 @@ def get_interne_auftraege_bulk():
 # ============================================================================
 
 @verkauf_api.route('/auftragseingang', methods=['GET'])
+@login_required
 def get_auftragseingang():
     """
     GET /api/verkauf/auftragseingang?month=11&year=2025&location=1
@@ -293,6 +295,7 @@ def get_auftragseingang():
 # ============================================================================
 
 @verkauf_api.route('/auftragseingang/summary', methods=['GET'])
+@login_required
 def get_auftragseingang_summary():
     """
     GET /api/verkauf/auftragseingang/summary?month=11&year=2025&location=1
@@ -315,6 +318,7 @@ def get_auftragseingang_summary():
 
 
 @verkauf_api.route('/auftragseingang/detail', methods=['GET'])
+@login_required
 def get_auftragseingang_detail():
     """
     GET /api/verkauf/auftragseingang/detail?month=11&year=2025&location=&verkaufer=
@@ -344,6 +348,7 @@ def get_auftragseingang_detail():
 # ============================================================================
 
 @verkauf_api.route('/auslieferung/summary', methods=['GET'])
+@login_required
 def get_auslieferung_summary():
     """
     GET /api/verkauf/auslieferung/summary?month=11&year=2025
@@ -364,6 +369,7 @@ def get_auslieferung_summary():
 
 
 @verkauf_api.route('/auslieferung/detail', methods=['GET'])
+@login_required
 def get_auslieferung_detail():
     """
     GET /api/verkauf/auslieferung/detail?month=11&year=2025&location=&verkaufer=&vin=
@@ -425,6 +431,7 @@ def health():
 
 
 @verkauf_api.route('/verkaufer', methods=['GET'])
+@login_required
 def get_verkaufer_liste():
     """
     GET /api/verkauf/verkaufer

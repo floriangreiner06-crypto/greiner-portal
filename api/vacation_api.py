@@ -41,6 +41,7 @@ CHANGES TAG 104:
 
 from flask import Blueprint, request, jsonify, session
 from flask_login import login_required
+from decorators.auth_decorators import admin_required, role_required
 from datetime import datetime, date, timedelta
 import json
 
@@ -93,6 +94,17 @@ except ImportError:
     print("⚠️ vacation_calendar_service nicht verfügbar")
 
 vacation_api = Blueprint('vacation_api', __name__, url_prefix='/api/vacation')
+
+# TAG 219: Whitelist für Jahr (SQL-Injection-Schutz bei dynamischem View-Namen)
+ALLOWED_YEARS = range(2020, 2031)
+
+
+def _validate_vacation_year(year):
+    """Prüft Jahr gegen Whitelist. Returns (year, None) oder (None, error_response)."""
+    if year is None or year not in ALLOWED_YEARS:
+        return None, (jsonify({"error": "Ungültiges Jahr"}), 400)
+    return year, None
+
 
 # E-Mail-Konfiguration
 HR_EMAIL = 'hr@auto-greiner.de'  # HR-Mailbox für Locosoft-Einträge
@@ -834,6 +846,7 @@ def health_check():
 
 
 @vacation_api.route('/my-balance', methods=['GET'])
+@login_required
 def get_my_balance():
     """
     GET /api/vacation/my-balance
@@ -855,6 +868,9 @@ def get_my_balance():
             }), 401
         
         year = request.args.get('year', datetime.now().year, type=int)
+        year, err = _validate_vacation_year(year)
+        if err:
+            return err
 
         # TAG 198: Automatische Jahreswechsel-Logik - stelle sicher dass Jahr existiert
         try:
@@ -945,6 +961,16 @@ def get_my_balance():
                 balance['resturlaub_korrigiert'] = round(
                     balance['anspruch'] - locosoft_absences.get('urlaub', 0), 1
                 )
+                # Feedback 3.2: Rest-Anzeige oben links = gleiche Logik wie /balance (Liste)
+                # Resturlaub = min(View-Wert, Anspruch − Locosoft-Urlaub), damit 11 und nicht 16
+                resturlaub_view = balance['resturlaub'] if balance['resturlaub'] is not None else (
+                    (balance['anspruch'] or 0) - (balance.get('verbraucht') or 0) - (balance.get('geplant') or 0)
+                )
+                loco_urlaub = locosoft_absences.get('urlaub', 0) or 0
+                balance['resturlaub'] = min(
+                    resturlaub_view,
+                    max(0, round((balance['anspruch'] or 0) - loco_urlaub, 1))
+                )
         
         approver_info = get_approver_summary(ldap_username)
         
@@ -1002,6 +1028,7 @@ def get_my_approvers():
 
 
 @vacation_api.route('/my-team', methods=['GET'])
+@login_required
 def get_my_team():
     """
     GET /api/vacation/my-team
@@ -1025,7 +1052,10 @@ def get_my_team():
             }), 403
         
         year = request.args.get('year', datetime.now().year, type=int)
-        
+        year, err = _validate_vacation_year(year)
+        if err:
+            return err
+
         # TAG 198: Automatische Jahreswechsel-Logik
         try:
             from api.vacation_year_utils import ensure_vacation_year_setup_simple
@@ -1530,6 +1560,7 @@ def reject_vacation():
 
 
 @vacation_api.route('/balance', methods=['GET'])
+@role_required(['hr', 'admin'])
 def get_all_balances():
     """
     GET /api/vacation/balance
@@ -1539,6 +1570,9 @@ def get_all_balances():
     """
     try:
         year = request.args.get('year', datetime.now().year, type=int)
+        year, err = _validate_vacation_year(year)
+        if err:
+            return err
         department = request.args.get('department', None)
         location = request.args.get('location', None)
 
@@ -1594,15 +1628,46 @@ def get_all_balances():
             query += " ORDER BY name"
 
             cursor.execute(query, params)
+            balance_rows = cursor.fetchall()
+
+            # Locosoft: Resturlaub-Anzeige um Urlaubstage aus Locosoft reduzieren (Locosoft = führendes System)
+            emp_to_loco = {}
+            if LOCOSOFT_AVAILABLE and balance_rows:
+                cursor.execute("""
+                    SELECT id, locosoft_id FROM employees
+                    WHERE aktiv = true AND locosoft_id IS NOT NULL
+                """)
+                emp_to_loco = {row[0]: row[1] for row in cursor.fetchall()}
+            loco_urlaub_by_emp = {}
+            if emp_to_loco:
+                try:
+                    loco_ids = list(emp_to_loco.values())
+                    loco_absences = get_absences_for_employees(loco_ids, year)
+                    # loco_absences: {locosoft_id: {'urlaub': X, ...}} -> umrechnen auf employee_id
+                    loco_to_emp = {v: k for k, v in emp_to_loco.items()}
+                    for loco_id, data in loco_absences.items():
+                        emp_id = loco_to_emp.get(loco_id)
+                        if emp_id is not None:
+                            loco_urlaub_by_emp[emp_id] = data.get('urlaub', 0) or 0
+                except Exception as e:
+                    print(f"⚠️ Locosoft-Abwesenheiten für Balance: {e}")
 
             balances = []
-            for row in cursor.fetchall():
+            for row in balance_rows:
                 emp_id = row[0]
                 # TAG 213: Im Urlaubsplaner ausgeblendete Mitarbeiter weglassen
                 if emp_id in hide_in_planner_ids:
                     continue
                 has_ad = emp_id in employees_with_ad
                 dept_name = row[2]
+                anspruch = row[4] or 0
+                resturlaub_view = row[7] if row[7] is not None else (anspruch - (row[5] or 0) - (row[6] or 0))
+                # Resturlaub-Anzeige: min(View, Anspruch - Locosoft-Urlaub), damit Locosoft-Buchungen sichtbar werden
+                if emp_id in loco_urlaub_by_emp:
+                    loco_urlaub = loco_urlaub_by_emp[emp_id]
+                    resturlaub_display = min(resturlaub_view, max(0, round(anspruch - loco_urlaub, 1)))
+                else:
+                    resturlaub_display = resturlaub_view
 
                 # TAG 123: Mitarbeiter ohne AD-Mapping in spezielle Gruppe
                 if not has_ad:
@@ -1616,10 +1681,10 @@ def get_all_balances():
                     'department_name': display_dept,
                     'department_original': dept_name,  # Original für Filter
                     'location': row[3],
-                    'anspruch': row[4],
+                    'anspruch': anspruch,
                     'verbraucht': row[5],
                     'geplant': row[6],
-                    'resturlaub': row[7],
+                    'resturlaub': resturlaub_display,
                     'has_ad_mapping': has_ad
                 })
 
@@ -1810,9 +1875,9 @@ def get_blocks_and_free_days():
         with db_session() as conn:
             cursor = conn.cursor()
             
-            # 1. Urlaubssperren laden
+            # 1. Urlaubssperren laden (department oder employee_ids für spezifische MA)
             cursor.execute("""
-                SELECT block_date, department_name, reason
+                SELECT block_date, department_name, reason, employee_ids
                 FROM vacation_blocks
                 WHERE EXTRACT(YEAR FROM block_date) = %s
                 ORDER BY block_date, department_name
@@ -1822,9 +1887,16 @@ def get_blocks_and_free_days():
                 date_str = row[0].isoformat() if hasattr(row[0], 'isoformat') else str(row[0])
                 if date_str not in blocks_dict:
                     blocks_dict[date_str] = []
+                emp_ids = None
+                if len(row) > 3 and row[3]:
+                    try:
+                        emp_ids = [int(x.strip()) for x in str(row[3]).split(',') if x.strip().isdigit()]
+                    except (ValueError, AttributeError):
+                        pass
                 blocks_dict[date_str].append({
-                    'department': row[1],
-                    'reason': row[2] or ''
+                    'department': row[1] or '',
+                    'reason': row[2] or '',
+                    'employee_ids': emp_ids
                 })
             
             # 2. Freie Tage laden
@@ -1861,6 +1933,7 @@ def get_blocks_and_free_days():
 
 
 @vacation_api.route('/my-bookings', methods=['GET'])
+@login_required
 def get_my_bookings():
     """
     GET /api/vacation/my-bookings
@@ -1977,6 +2050,7 @@ def get_my_bookings():
 
 
 @vacation_api.route('/requests', methods=['GET'])
+@login_required
 def get_requests():
     """
     GET /api/vacation/requests
@@ -2071,6 +2145,7 @@ def get_requests():
 
 
 @vacation_api.route('/book', methods=['POST'])
+@login_required
 def book_vacation():
     """
     POST /api/vacation/book
@@ -2164,6 +2239,9 @@ def book_vacation():
             if vacation_type_id == 1:  # Nur bei echtem Urlaub
                 requested_days = 1.0 if day_part == 'full' else 0.5
                 booking_year = int(booking_date[:4])
+                booking_year, err = _validate_vacation_year(booking_year)
+                if err:
+                    return err
 
                 # Hole aktuellen Resturlaub aus Locosoft (genaueste Quelle)
                 available_days = None
@@ -2240,20 +2318,28 @@ def book_vacation():
                         'resturlaub_info': resturlaub_info
                     }), 400
 
-            # TAG 127: Abwesenheits-Typen die Admin-Berechtigung brauchen
-            # vacation_type_id: 5=Krankheit, 6=Ausgleichstag (ZA)
-            is_sickness = vacation_type_id == 5  # Krankheit (war vorher 3, korrigiert)
-            is_za = vacation_type_id == 6  # Zeitausgleich
-            is_admin_only_type = is_sickness or is_za
-
-            # Prüfe Admin-Berechtigung für spezielle Typen
+            # TAG 127 / Anforderung: Schulung und Krankheit nur Genehmiger + Admin; ZA nur Admin
+            # vacation_type_id: 5=Krankheit, 6=Zeitausgleich (ZA), 9=Schulung
+            is_sickness = vacation_type_id == 5
+            is_schulung = vacation_type_id == 9
+            is_za = vacation_type_id == 6
             user_is_admin = is_vacation_admin(ldap_username)
+            user_is_approver = is_approver(ldap_username) if ldap_username else False
 
-            if is_admin_only_type and not user_is_admin:
-                return jsonify({
-                    'success': False,
-                    'error': 'Krankheit und Zeitausgleich können nur von Admins eingetragen werden'
-                }), 403
+            if is_sickness or is_schulung:
+                if not (user_is_admin or user_is_approver):
+                    return jsonify({
+                        'success': False,
+                        'error': 'Schulung und Krankheit können nur von Genehmiger oder Admin eingetragen werden'
+                    }), 403
+            elif is_za:
+                if not user_is_admin:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Zeitausgleich kann nur von Admins eingetragen werden'
+                    }), 403
+
+            is_admin_only_type = is_sickness or is_za or is_schulung  # alle drei direkt approved
 
             # Status-Logik:
             # - Admin-Buchung für anderen: direkt 'approved' (wird manuell in Locosoft nachgepflegt)
@@ -3104,8 +3190,9 @@ def get_locosoft_days_bulk():
 
 
 @vacation_api.route('/debug/session', methods=['GET'])
+@admin_required
 def debug_session():
-    """Debug-Endpoint: Zeigt Session-Daten"""
+    """Debug-Endpoint: Zeigt Session-Daten (nur für Admins)."""
     employee_id, ldap_username, employee_data = get_employee_from_session()
     
     return jsonify({

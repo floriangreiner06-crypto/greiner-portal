@@ -14,6 +14,7 @@ Updated: TAG 117 - Migration auf db_session (Connection-Safety)
 """
 
 from flask import Blueprint, jsonify, request
+from flask_login import login_required
 from datetime import datetime, date, timedelta
 from typing import Optional, Dict, List, Any
 
@@ -158,6 +159,7 @@ def find_vehicle_by_vin(loco_cursor, vin, fields='marke_modell'):
 # ============================================================================
 
 @bankenspiegel_api.route('/dashboard', methods=['GET'])
+@login_required
 def get_dashboard():
     """
     GET /api/bankenspiegel/dashboard
@@ -308,6 +310,7 @@ def get_dashboard():
 # ============================================================================
 
 @bankenspiegel_api.route('/konten', methods=['GET'])
+@login_required
 def get_konten():
     """
     GET /api/bankenspiegel/konten?bank_id=1
@@ -487,6 +490,7 @@ def get_konten():
 # ============================================================================
 
 @bankenspiegel_api.route('/transaktionen', methods=['GET'])
+@login_required
 def get_transaktionen():
     """
     GET /api/bankenspiegel/transaktionen?konto_id=1&von=2025-01-01&bis=2025-12-31
@@ -710,6 +714,7 @@ def get_transaktionen():
 # ============================================================================
 
 @bankenspiegel_api.route('/einkaufsfinanzierung', methods=['GET'])
+@login_required
 def get_einkaufsfinanzierung():
     """
     GET /api/bankenspiegel/einkaufsfinanzierung
@@ -1069,6 +1074,7 @@ def get_einkaufsfinanzierung():
 # ============================================================================
 
 @bankenspiegel_api.route('/fahrzeuge-mit-zinsen', methods=['GET'])
+@login_required
 def get_fahrzeuge_mit_zinsen():
     """
     GET /api/bankenspiegel/fahrzeuge-mit-zinsen
@@ -1142,6 +1148,7 @@ def get_fahrzeuge_mit_zinsen():
 # ============================================================================
 
 @bankenspiegel_api.route('/konto/<int:konto_id>/snapshots')
+@login_required
 def get_konto_snapshots(konto_id):
     """Historische Snapshots für ein Konto"""
     try:

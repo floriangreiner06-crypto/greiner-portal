@@ -11,6 +11,7 @@ Flower Dashboard: :5555
 from flask import Blueprint, jsonify, request
 from flask_login import current_user
 from datetime import datetime
+from decorators.auth_decorators import admin_required
 import os
 import json
 
@@ -21,6 +22,7 @@ admin_api = Blueprint('admin_api', __name__)
 
 
 @admin_api.route('/api/admin/logs', methods=['GET'])
+@admin_required
 def list_logs():
     """Liste alle verfügbaren Log-Dateien"""
     log_dir = '/opt/greiner-portal/logs'
@@ -58,6 +60,7 @@ def admin_health():
 # =============================================================================
 
 @admin_api.route('/api/admin/users-roles', methods=['GET'])
+@admin_required
 def get_users_roles():
     """Alle User mit ihren Rollen laden
     TAG 136: PostgreSQL-kompatibel (STRING_AGG statt GROUP_CONCAT)
@@ -139,6 +142,7 @@ def get_users_roles():
 
 
 @admin_api.route('/api/admin/user/<int:user_id>/role', methods=['POST'])
+@admin_required
 def assign_role(user_id):
     """Rolle einem User zuweisen
     TAG 136: PostgreSQL-kompatibel
@@ -188,6 +192,7 @@ def assign_role(user_id):
 
 
 @admin_api.route('/api/admin/user/<int:user_id>/role', methods=['DELETE'])
+@admin_required
 def remove_role(user_id):
     """Rolle von User entfernen
     TAG 136: PostgreSQL-kompatibel
@@ -228,6 +233,7 @@ def remove_role(user_id):
 
 
 @admin_api.route('/api/admin/feature-access', methods=['GET'])
+@admin_required
 def get_feature_access():
     """Feature-Zugriffs-Matrix laden (DB + Config-Fallback)
     TAG 190: Erweitert um DB-basierte Verwaltung
@@ -248,6 +254,7 @@ def get_feature_access():
 
 
 @admin_api.route('/api/admin/feature-access/<feature>/role/<role>', methods=['POST'])
+@admin_required
 def add_feature_access(feature, role):
     """Rolle zu Feature hinzufügen
     TAG 190: Speichert in DB
@@ -290,6 +297,7 @@ def add_feature_access(feature, role):
 
 
 @admin_api.route('/api/admin/feature-access/<feature>/role/<role>', methods=['DELETE'])
+@admin_required
 def remove_feature_access(feature, role):
     """Rolle von Feature entfernen
     TAG 190: Entfernt aus DB
@@ -325,6 +333,7 @@ def remove_feature_access(feature, role):
 
 
 @admin_api.route('/api/admin/feature-access/<feature>', methods=['POST'])
+@admin_required
 def update_feature_access(feature):
     """Feature-Zugriff komplett aktualisieren (alle Rollen)
     TAG 190: Ersetzt alle Rollen für ein Feature
@@ -376,6 +385,7 @@ def update_feature_access(feature):
 # =============================================================================
 
 @admin_api.route('/api/admin/reports', methods=['GET'])
+@admin_required
 def get_reports():
     """Alle verfügbaren Reports mit Subscriber-Infos"""
     try:
@@ -404,6 +414,7 @@ def get_reports():
 
 
 @admin_api.route('/api/admin/reports/<report_id>', methods=['GET'])
+@admin_required
 def get_report_detail(report_id):
     """Details zu einem Report inkl. Subscribers"""
     try:
@@ -427,6 +438,7 @@ def get_report_detail(report_id):
 
 
 @admin_api.route('/api/admin/reports/<report_id>/subscribe', methods=['POST'])
+@admin_required
 def subscribe_to_report(report_id):
     """Neuen Subscriber hinzufügen"""
     try:
@@ -482,6 +494,7 @@ def subscribe_to_report(report_id):
 
 
 @admin_api.route('/api/admin/reports/<report_id>/unsubscribe', methods=['POST'])
+@admin_required
 def unsubscribe_from_report(report_id):
     """Subscriber entfernen (deaktivieren)"""
     try:
@@ -515,6 +528,7 @@ def unsubscribe_from_report(report_id):
 
 
 @admin_api.route('/api/admin/reports/subscription/<int:subscription_id>', methods=['DELETE'])
+@admin_required
 def delete_subscription(subscription_id):
     """Subscription komplett löschen"""
     try:
@@ -532,6 +546,7 @@ def delete_subscription(subscription_id):
 
 
 @admin_api.route('/api/admin/reports/subscription/<int:subscription_id>/toggle', methods=['POST'])
+@admin_required
 def toggle_subscription(subscription_id):
     """Subscription aktivieren/deaktivieren"""
     try:
@@ -549,6 +564,7 @@ def toggle_subscription(subscription_id):
 
 
 @admin_api.route('/api/admin/reports/migrate', methods=['POST'])
+@admin_required
 def migrate_subscriptions():
     """Einmalige Migration der hardcoded Empfänger in die DB"""
     try:
@@ -566,6 +582,7 @@ def migrate_subscriptions():
 
 
 @admin_api.route('/api/admin/reports/<report_id>/send-test', methods=['POST'])
+@admin_required
 def send_report_test_email(report_id):
     """
     Testversand: Report einmalig an eine angegebene E-Mail-Adresse senden.
@@ -611,6 +628,7 @@ def _normalize_report_email(username_or_email):
 
 
 @admin_api.route('/api/admin/reports/employees', methods=['GET'])
+@admin_required
 def get_employees_for_reports():
     """Mitarbeiter-Liste für Autocomplete beim Hinzufügen
     TAG 136: PostgreSQL-kompatibel
@@ -650,6 +668,7 @@ def get_employees_for_reports():
 # =============================================================================
 
 @admin_api.route('/api/admin/dashboards', methods=['GET'])
+@admin_required
 def get_available_dashboards():
     """Verfügbare Dashboards laden
     TAG 190: Für Admin-Seite - gibt alle Dashboards zurück (Filterung erfolgt im Frontend)
@@ -688,6 +707,7 @@ def get_available_dashboards():
 
 
 @admin_api.route('/api/admin/user/<int:user_id>/dashboard', methods=['GET'])
+@admin_required
 def get_user_dashboard_config(user_id):
     """User-Dashboard-Konfiguration laden
     TAG 190: Nur für eigenen User oder Admin
@@ -749,6 +769,7 @@ def get_user_dashboard_config(user_id):
 
 
 @admin_api.route('/api/admin/user/<int:user_id>/dashboard', methods=['POST'])
+@admin_required
 def set_user_dashboard_config(user_id):
     """User-Dashboard-Konfiguration speichern
     TAG 190: Nur für eigenen User oder Admin
@@ -912,6 +933,7 @@ def get_navigation_items():
 
 
 @admin_api.route('/api/admin/navigation/all', methods=['GET'])
+@admin_required
 def get_all_navigation_items():
     """Alle Navigation-Items laden (für Admin-UI)
     TAG 190: Nur für Admins
@@ -960,6 +982,7 @@ def get_all_navigation_items():
 
 
 @admin_api.route('/api/admin/navigation/<int:item_id>', methods=['POST'])
+@admin_required
 def update_navigation_item(item_id):
     """Navigation-Item aktualisieren
     TAG 190: Nur für Admins
@@ -1022,6 +1045,7 @@ def update_navigation_item(item_id):
 
 
 @admin_api.route('/api/admin/navigation', methods=['POST'])
+@admin_required
 def create_navigation_item():
     """Neues Navigation-Item erstellen
     TAG 190: Nur für Admins
@@ -1077,6 +1101,7 @@ def create_navigation_item():
 
 
 @admin_api.route('/api/admin/navigation/<int:item_id>', methods=['DELETE'])
+@admin_required
 def delete_navigation_item(item_id):
     """Navigation-Item löschen
     TAG 190: Nur für Admins
@@ -1110,6 +1135,7 @@ def delete_navigation_item(item_id):
 
 
 @admin_api.route('/api/admin/user/<int:user_id>/dashboard', methods=['DELETE'])
+@admin_required
 def reset_user_dashboard_config(user_id):
     """User-Dashboard-Konfiguration zurücksetzen
     TAG 190: Zurück zu rollenbasierter Weiterleitung

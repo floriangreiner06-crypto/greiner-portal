@@ -5,6 +5,7 @@ MIT HYUNDAI ZINSEN!
 TAG 136: PostgreSQL-kompatibel
 """
 from flask import Blueprint, jsonify
+from flask_login import login_required
 from datetime import datetime
 
 # Zentrale DB-Utilities (TAG117, TAG136: PostgreSQL-kompatibel)
@@ -14,6 +15,7 @@ from api.db_connection import get_db_type, convert_placeholders
 zins_api = Blueprint('zins_api', __name__)
 
 @zins_api.route('/api/zinsen/report', methods=['GET'])
+@login_required
 def zins_report():
     """Kompletter Zins-Report mit Empfehlungen"""
     with db_session() as conn:
@@ -220,6 +222,7 @@ def _zins_report_impl(c):
 
 
 @zins_api.route('/api/zinsen/dashboard', methods=['GET'])
+@login_required
 def zins_dashboard():
     """Kompakte Dashboard-Daten - MIT HYUNDAI!
     TAG 136: PostgreSQL-kompatibel
@@ -437,6 +440,7 @@ def zins_dashboard():
 
 
 @zins_api.route('/api/zinsen/umbuchung-empfehlung', methods=['GET'])
+@login_required
 def umbuchung_empfehlung():
     """Umbuchungs-Empfehlungen mit Firmen-Beruecksichtigung"""
     with db_session() as conn:
