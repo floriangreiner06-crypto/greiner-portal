@@ -272,7 +272,8 @@ def get_tek_data_from_api(monat=None, jahr=None, standort=None):
             'marge': float(gesamt.get('marge', 0)),
             'prognose': float(gesamt.get('prognose', 0)),
             'breakeven': float(gesamt.get('breakeven', 0)),
-            'breakeven_abstand': float(gesamt.get('breakeven_diff', 0))
+            'breakeven_abstand': float(gesamt.get('breakeven_diff', 0)),
+            'werktage': gesamt.get('werktage'),  # {gesamt, vergangen, verbleibend} mit Datenstichtag
         },
         'bereiche': bereiche_liste,  # TAG 215: Jetzt mit stueck, heute_umsatz, heute_db1, heute_einsatz
         'vormonat': {

@@ -182,137 +182,168 @@ def generate_auftragseingang_pdf(data: dict) -> bytes:
     return buffer.getvalue()
 
 
-def generate_auftragseingang_komplett_pdf(tag_data: dict, monat_data: dict, datum_display: str, monat_display: str) -> bytes:
+def generate_auftragseingang_komplett_pdf(tag_data: dict, monat_data: dict, datum_display: str, monat_display: str,
+                                          nw_tag: list = None, nw_monat: list = None,
+                                          werktage: dict = None, prognose: int = None, ae_pro_tag: float = None) -> bytes:
     """
-    Generiert PDF für Auftragseingang mit TAG und MONAT kumuliert
-    
+    Generiert PDF für Auftragseingang mit TAG und MONAT kumuliert.
+    Design angelehnt an TEK. Datenquelle = VerkaufData (konsistent mit DRIVE online).
+    Optional: Werktage/Prognose, NW nach Marke/Modell.
+
     Args:
-        tag_data: Dict mit verkaufer list für den Tag
-        monat_data: Dict mit verkaufer list für den Monat
+        tag_data: Liste Verkäufer für den Tag (aus VerkaufData.get_auftragseingang_detail)
+        monat_data: Liste Verkäufer für den Monat
         datum_display: z.B. "26.11.2025"
         monat_display: z.B. "November 2025"
-    
-    Returns:
-        bytes: PDF-Inhalt
+        nw_tag / nw_monat: Optional Neuwagen nach Marke/Modell
+        werktage: Optional {gesamt, vergangen, verbleibend} von get_werktage_monat
+        prognose: Optional Prognose AE (auf Monatsende hochgerechnet)
+        ae_pro_tag: Optional Ø AE/Tag
     """
     buffer = BytesIO()
     doc = SimpleDocTemplate(
-        buffer, 
+        buffer,
         pagesize=A4,
         leftMargin=1.2*cm,
         rightMargin=1.2*cm,
         topMargin=1.2*cm,
         bottomMargin=1.2*cm
     )
-    
     elements = []
     styles = getSampleStyleSheet()
-    
-    # Custom Styles
+    DRIVE_BLUE = colors.HexColor('#0066cc')
+    GRAY = colors.HexColor('#6c757d')
+    LIGHT_BG = colors.HexColor('#f8f9fa')
+    SUM_BG = colors.HexColor('#e7f1ff')
+
+    # TEK-ähnliche Styles
     title_style = ParagraphStyle(
-        'CustomTitle',
+        'AETitle',
         parent=styles['Heading1'],
-        fontSize=20,
-        alignment=TA_CENTER,
-        spaceAfter=5,
-        textColor=colors.HexColor('#333333')
+        fontSize=18,
+        alignment=TA_LEFT,
+        spaceAfter=4,
+        textColor=DRIVE_BLUE,
+        fontName='Helvetica-Bold'
     )
-    
     subtitle_style = ParagraphStyle(
-        'CustomSubtitle',
+        'AESubtitle',
         parent=styles['Normal'],
-        fontSize=11,
-        alignment=TA_CENTER,
-        textColor=colors.grey,
-        spaceAfter=15
+        fontSize=9,
+        alignment=TA_LEFT,
+        textColor=GRAY,
+        spaceAfter=10
     )
-    
     section_style = ParagraphStyle(
-        'SectionTitle',
+        'AESection',
         parent=styles['Heading2'],
-        fontSize=14,
-        spaceAfter=8,
-        spaceBefore=15,
-        textColor=colors.HexColor('#0066cc')
+        fontSize=11,
+        spaceAfter=6,
+        spaceBefore=12,
+        textColor=DRIVE_BLUE,
+        fontName='Helvetica-Bold',
+        alignment=TA_LEFT
     )
-    
-    # === HEADER ===
-    elements.append(Paragraph("📊 Auftragseingang", title_style))
+
+    # === HEADER (wie TEK) ===
+    elements.append(Paragraph("Auftragseingang", title_style))
+    line_table = Table([['']], colWidths=[16*cm])
+    line_table.setStyle(TableStyle([
+        ('LINEABOVE', (0, 0), (-1, 0), 3, DRIVE_BLUE),
+        ('TOPPADDING', (0, 0), (-1, -1), 0), ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(line_table)
     elements.append(Paragraph(
-        f"Stand: {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr",
+        f"Monat: {monat_display} · Stand: {datum_display} {datetime.now().strftime('%H:%M')} Uhr",
         subtitle_style
     ))
-    
-    # === ÜBERSICHT: TAG vs MONAT ===
+
+    # === ÜBERSICHT (ohne Umsatz) ===
     tag_summary = {
         'neu': sum(v.get('summe_neu', 0) for v in tag_data),
         'test_vorfuehr': sum(v.get('summe_test_vorfuehr', 0) for v in tag_data),
         'gebraucht': sum(v.get('summe_gebraucht', 0) for v in tag_data),
         'gesamt': sum(v.get('summe_gesamt', 0) for v in tag_data),
-        'umsatz': sum(v.get('umsatz_gesamt', 0) for v in tag_data)
     }
-    
     monat_summary = {
         'neu': sum(v.get('summe_neu', 0) for v in monat_data),
         'test_vorfuehr': sum(v.get('summe_test_vorfuehr', 0) for v in monat_data),
         'gebraucht': sum(v.get('summe_gebraucht', 0) for v in monat_data),
         'gesamt': sum(v.get('summe_gesamt', 0) for v in monat_data),
-        'umsatz': sum(v.get('umsatz_gesamt', 0) for v in monat_data)
     }
-    
-    # Kompakte Übersichtstabelle
+
     overview_data = [
-        ['', 'Neuwagen', 'Test/Vorführ', 'Gebraucht', 'GESAMT', 'Umsatz'],
-        [
-            f'📅 Heute ({datum_display})',
-            str(tag_summary['neu']),
-            str(tag_summary['test_vorfuehr']),
-            str(tag_summary['gebraucht']),
-            str(tag_summary['gesamt']),
-            format_currency(tag_summary['umsatz'])
-        ],
-        [
-            f'📆 {monat_display}',
-            str(monat_summary['neu']),
-            str(monat_summary['test_vorfuehr']),
-            str(monat_summary['gebraucht']),
-            str(monat_summary['gesamt']),
-            format_currency(monat_summary['umsatz'])
-        ]
+        ['', 'Neuwagen', 'Test/Vorführ', 'Gebraucht', 'GESAMT'],
+        [f'Heute ({datum_display})', str(tag_summary['neu']), str(tag_summary['test_vorfuehr']), str(tag_summary['gebraucht']), str(tag_summary['gesamt'])],
+        [monat_display, str(monat_summary['neu']), str(monat_summary['test_vorfuehr']), str(monat_summary['gebraucht']), str(monat_summary['gesamt'])]
     ]
-    
-    col_widths_overview = [4.5*cm, 2.2*cm, 2.5*cm, 2.2*cm, 2*cm, 3.5*cm]
+    col_widths_overview = [4.5*cm, 2.5*cm, 2.8*cm, 2.5*cm, 2.2*cm]
     overview_table = Table(overview_data, colWidths=col_widths_overview)
     overview_table.setStyle(TableStyle([
-        # Header
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#333333')),
+        ('BACKGROUND', (0, 0), (-1, 0), DRIVE_BLUE),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 10),
-        # Heute-Zeile
-        ('BACKGROUND', (0, 1), (-1, 1), colors.HexColor('#e6f2ff')),
-        ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
-        ('FONTSIZE', (1, 1), (-2, 1), 14),
-        # Monat-Zeile
-        ('BACKGROUND', (0, 2), (-1, 2), colors.HexColor('#fff3cd')),
-        ('FONTNAME', (0, 2), (-1, 2), 'Helvetica-Bold'),
-        ('FONTSIZE', (1, 2), (-2, 2), 14),
-        # Allgemein
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BACKGROUND', (0, 1), (-1, 1), LIGHT_BG),
+        ('BACKGROUND', (0, 2), (-1, 2), colors.white),
+        ('FONTNAME', (0, 1), (-1, 2), 'Helvetica-Bold'),
+        ('FONTSIZE', (1, 1), (-1, 2), 12),
         ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-        ('ALIGN', (-1, 1), (-1, -1), 'RIGHT'),
         ('ALIGN', (0, 1), (0, -1), 'LEFT'),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
-        ('TOPPADDING', (0, 0), (-1, -1), 10),
-        ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#cccccc')),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
     ]))
-    
     elements.append(overview_table)
-    
-    # === DETAILS HEUTE ===
-    elements.append(Paragraph(f"🚗 Heute ({datum_display}) - nach Verkäufer", section_style))
-    
+
+    # Werktage + Prognose (wie DRIVE online)
+    if werktage and (prognose is not None or ae_pro_tag is not None):
+        wt_para = f"Werktage: {werktage.get('vergangen', 0)} von {werktage.get('gesamt', 0)} vergangen ({werktage.get('verbleibend', 0)} verbleibend)"
+        if ae_pro_tag is not None:
+            wt_para += f" · Ø {ae_pro_tag} AE/Tag"
+        if prognose is not None:
+            wt_para += f" · Prognose: {prognose} AE"
+        prog_style = ParagraphStyle('AEProg', parent=styles['Normal'], fontSize=9, textColor=GRAY, spaceAfter=6)
+        elements.append(Paragraph(wt_para, prog_style))
+    elements.append(Spacer(1, 8))
+
+    # === NEUWAGEN NACH MARKE UND MODELL (nur NW, nicht GW) ===
+    if nw_tag or nw_monat:
+        elements.append(Paragraph("Neuwagen nach Marke und Modell", section_style))
+        # Eine Tabelle: Marke | Modell | Heute | Monat
+        nw_all_keys = set()
+        nw_tag_map = {(r.get('marke', ''), r.get('modell', '')): r.get('anzahl', 0) for r in (nw_tag or [])}
+        nw_monat_map = {(r.get('marke', ''), r.get('modell', '')): r.get('anzahl', 0) for r in (nw_monat or [])}
+        nw_all_keys = set(nw_tag_map.keys()) | set(nw_monat_map.keys())
+        nw_rows = [['Marke', 'Modell', f'Heute ({datum_display})', monat_display]]
+        for (marke, modell) in sorted(nw_all_keys, key=lambda x: (x[0] or '', x[1] or '')):
+            nw_rows.append([
+                marke or '–',
+                (modell or '–')[:35],
+                str(nw_tag_map.get((marke, modell), 0)),
+                str(nw_monat_map.get((marke, modell), 0))
+            ])
+        if len(nw_rows) > 1:
+            col_nw = [3.5*cm, 5*cm, 2.5*cm, 2.5*cm]
+            nw_table = Table(nw_rows, colWidths=col_nw)
+            nw_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), DRIVE_BLUE),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('ALIGN', (2, 0), (-1, -1), 'CENTER'),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                ('TOPPADDING', (0, 0), (-1, -1), 5),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, LIGHT_BG]),
+            ]))
+            elements.append(nw_table)
+        elements.append(Spacer(1, 8))
+
+    # === HEUTE – nach Verkäufer (ohne Umsatz) ===
+    elements.append(Paragraph(f"Heute ({datum_display}) – nach Verkäufer", section_style))
     if tag_data:
-        tag_table_data = [['Verkäufer', 'NW', 'T/V', 'GW', 'Ges.', 'Umsatz']]
+        tag_table_data = [['Verkäufer', 'NW', 'T/V', 'GW', 'Ges.']]
         for vk in sorted(tag_data, key=lambda x: x.get('summe_gesamt', 0), reverse=True):
             if vk.get('summe_gesamt', 0) > 0:
                 tag_table_data.append([
@@ -320,36 +351,32 @@ def generate_auftragseingang_komplett_pdf(tag_data: dict, monat_data: dict, datu
                     str(vk.get('summe_neu', 0)),
                     str(vk.get('summe_test_vorfuehr', 0)),
                     str(vk.get('summe_gebraucht', 0)),
-                    str(vk.get('summe_gesamt', 0)),
-                    format_currency(vk.get('umsatz_gesamt', 0))
+                    str(vk.get('summe_gesamt', 0))
                 ])
-        
         if len(tag_table_data) > 1:
-            col_widths_detail = [5.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 3.2*cm]
+            col_widths_detail = [6.5*cm, 2*cm, 2*cm, 2*cm, 2*cm]
             tag_table = Table(tag_table_data, colWidths=col_widths_detail)
             tag_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0066cc')),
+                ('BACKGROUND', (0, 0), (-1, 0), DRIVE_BLUE),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
                 ('FONTSIZE', (0, 0), (-1, -1), 9),
                 ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-                ('ALIGN', (-1, 1), (-1, -1), 'RIGHT'),
                 ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
                 ('TOPPADDING', (0, 0), (-1, -1), 6),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
-                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f5f5')]),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, LIGHT_BG]),
             ]))
             elements.append(tag_table)
         else:
             elements.append(Paragraph("Keine Aufträge heute.", styles['Normal']))
     else:
         elements.append(Paragraph("Keine Aufträge heute.", styles['Normal']))
-    
-    # === DETAILS MONAT ===
-    elements.append(Paragraph(f"📈 {monat_display} kumuliert - nach Verkäufer", section_style))
-    
+
+    # === MONAT – nach Verkäufer (ohne Umsatz) ===
+    elements.append(Paragraph(f"{monat_display} kumuliert – nach Verkäufer", section_style))
     if monat_data:
-        monat_table_data = [['Verkäufer', 'NW', 'T/V', 'GW', 'Ges.', 'Umsatz']]
+        monat_table_data = [['Verkäufer', 'NW', 'T/V', 'GW', 'Ges.']]
         for vk in sorted(monat_data, key=lambda x: x.get('summe_gesamt', 0), reverse=True):
             if vk.get('summe_gesamt', 0) > 0:
                 monat_table_data.append([
@@ -357,36 +384,28 @@ def generate_auftragseingang_komplett_pdf(tag_data: dict, monat_data: dict, datu
                     str(vk.get('summe_neu', 0)),
                     str(vk.get('summe_test_vorfuehr', 0)),
                     str(vk.get('summe_gebraucht', 0)),
-                    str(vk.get('summe_gesamt', 0)),
-                    format_currency(vk.get('umsatz_gesamt', 0))
+                    str(vk.get('summe_gesamt', 0))
                 ])
-        
-        # Summenzeile
         monat_table_data.append([
             'GESAMT',
             str(monat_summary['neu']),
             str(monat_summary['test_vorfuehr']),
             str(monat_summary['gebraucht']),
-            str(monat_summary['gesamt']),
-            format_currency(monat_summary['umsatz'])
+            str(monat_summary['gesamt'])
         ])
-        
-        col_widths_detail = [5.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 3.2*cm]
+        col_widths_detail = [6.5*cm, 2*cm, 2*cm, 2*cm, 2*cm]
         monat_table = Table(monat_table_data, colWidths=col_widths_detail)
         monat_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#cc8800')),
+            ('BACKGROUND', (0, 0), (-1, 0), DRIVE_BLUE),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, -1), 9),
             ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-            ('ALIGN', (-1, 1), (-1, -1), 'RIGHT'),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
             ('TOPPADDING', (0, 0), (-1, -1), 6),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#f5f5f5')]),
-            # Summenzeile
-            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#333333')),
-            ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, LIGHT_BG]),
+            ('BACKGROUND', (0, -1), (-1, -1), SUM_BG),
             ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
         ]))
         elements.append(monat_table)
@@ -1019,36 +1038,63 @@ def generate_tek_daily_pdf(data: dict) -> bytes:
     # Aliase für Kompatibilität
     PRIMARY = DRIVE_BLUE
     SUCCESS = DRIVE_GREEN
+    # Mockup V2: Status-Box positive = hellgrün wie HTML
+    SUCCESS_BG = colors.HexColor('#d1e7dd')
+    SUCCESS_TEXT = colors.HexColor('#0f5132')
 
-    # Custom Styles
+    # Custom Styles (angelehnt an TEK_GESAMT_UEBERSICHT_MOCKUP_V2.html)
     title_style = ParagraphStyle(
-        'ModernTitle',
+        'TEKTitle',
         parent=styles['Heading1'],
-        fontSize=24,
-        alignment=TA_CENTER,
-        spaceAfter=3,
-        textColor=GRAY_DARK,
+        fontSize=18,
+        alignment=TA_LEFT,
+        spaceAfter=4,
+        textColor=DRIVE_BLUE,
         fontName='Helvetica-Bold'
     )
-
     subtitle_style = ParagraphStyle(
-        'ModernSubtitle',
+        'TEKSubtitle',
         parent=styles['Normal'],
-        fontSize=10,
-        alignment=TA_CENTER,
+        fontSize=9,
+        alignment=TA_LEFT,
         textColor=GRAY,
-        spaceAfter=20
+        spaceAfter=6
     )
-
+    kpi_label_style = ParagraphStyle(
+        'KpiLabel',
+        parent=styles['Normal'],
+        fontSize=6,
+        textColor=GRAY,
+        alignment=TA_CENTER,
+        spaceAfter=0,
+        spaceBefore=0
+    )
+    kpi_value_style = ParagraphStyle(
+        'KpiValue',
+        parent=styles['Normal'],
+        fontSize=11,
+        fontName='Helvetica-Bold',
+        textColor=GRAY_DARK,
+        alignment=TA_CENTER,
+        spaceAfter=0,
+        spaceBefore=0
+    )
     section_style = ParagraphStyle(
-        'ModernSection',
+        'TEKSection',
         parent=styles['Heading2'],
         fontSize=11,
         spaceAfter=8,
         spaceBefore=12,
-        textColor=MODERN_BLUE,
+        textColor=DRIVE_BLUE,
         fontName='Helvetica-Bold',
         alignment=TA_LEFT
+    )
+    section_style_page1 = ParagraphStyle(
+        'TEKSectionPage1',
+        parent=section_style,
+        fontSize=10,
+        spaceAfter=3,
+        spaceBefore=4
     )
 
     # === MOCKUP V2: Seite 1 = Übersicht (Tag + Monat), danach eine Seite pro KST ===
@@ -1092,63 +1138,27 @@ def generate_tek_daily_pdf(data: dict) -> bytes:
     gesamt_heute_umsatz = sum(b.get('heute_umsatz', 0) for b in data.get('bereiche', []))
     gesamt_heute_marge = (gesamt_heute_db1 / gesamt_heute_umsatz * 100) if gesamt_heute_umsatz > 0 else 0
 
-    # Header mit Logo
-    logo_path = '/opt/greiner-portal/static/images/greiner-logo.png'
-    logo = None
-    if os.path.exists(logo_path):
-        try:
-            from reportlab.lib.utils import ImageReader
-            img_reader = ImageReader(logo_path)
-            img_width, img_height = img_reader.getSize()
-            aspect_ratio = img_width / img_height
-            logo_width = 3*cm
-            logo_height = logo_width / aspect_ratio
-            logo = RLImage(logo_path, width=logo_width, height=logo_height, preserveAspectRatio=True)
-        except Exception:
-            logo = None
-
-    if logo:
-        header_data = [[logo, Paragraph("<b>TEK - Tägliche Erfolgskontrolle</b>", title_style)]]
-        header_table = Table(header_data, colWidths=[4*cm, 14*cm])
-        header_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), DRIVE_BLUE),
-            ('TEXTCOLOR', (1, 0), (1, 0), colors.white),
-            ('ALIGN', (0, 0), (0, 0), 'LEFT'), ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('TOPPADDING', (0, 0), (-1, -1), 8), ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-            ('LEFTPADDING', (0, 0), (0, 0), 15), ('RIGHTPADDING', (1, 0), (1, 0), 15),
-        ]))
-    else:
-        header_data = [[Paragraph("<b>TEK - Tägliche Erfolgskontrolle</b>", title_style)]]
-        header_table = Table(header_data, colWidths=[18*cm])
-        header_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), DRIVE_BLUE),
-            ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('TOPPADDING', (0, 0), (-1, -1), 15), ('BOTTOMPADDING', (0, 0), (-1, -1), 15),
-        ]))
-    elements.append(header_table)
-    elements.append(Spacer(1, 2))
-
-    # Subtitle: Monat · Stand (Tag)
+    # Header wie Mockup: Titel (blau) + Linie + Untertitel
+    elements.append(Paragraph("<b>TEK – Tägliche Erfolgskontrolle</b>", title_style))
+    line_table = Table([['']], colWidths=[18*cm])
+    line_table.setStyle(TableStyle([
+        ('LINEABOVE', (0, 0), (-1, 0), 3, DRIVE_BLUE),
+        ('TOPPADDING', (0, 0), (-1, -1), 0), ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(line_table)
     monat_text = data.get('monat', 'Aktueller Monat')
     standort_name = (data.get('standort_name') or '').strip()
-    stand_str = f"Standort {standort_name} • " if (standort_name and standort_name.lower() != 'gesamt') else ""
-    subtitle_text = f"{stand_str}<b>Monat: {monat_text}</b> · Stand: {datum_str or datetime.now().strftime('%d.%m.%Y')} {datetime.now().strftime('%H:%M')} Uhr (Tag)"
-    subtitle_data = [[Paragraph(subtitle_text, subtitle_style)]]
-    subtitle_table = Table(subtitle_data, colWidths=[18*cm])
-    subtitle_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), GRAY_LIGHT),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('TOPPADDING', (0, 0), (-1, -1), 8), ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-    ]))
-    elements.append(subtitle_table)
-    elements.append(Spacer(1, 8))
+    stand_str = f"Standort {standort_name} · " if (standort_name and standort_name.lower() != 'gesamt') else ""
+    wt = gesamt.get('werktage') or {}
+    wt_str = f" · Noch {wt.get('verbleibend', '–')} WT" if wt else ""
+    subtitle_text = f"{stand_str}Monat: {monat_text} · Stand: {datum_str or datetime.now().strftime('%d.%m.%Y')} {datetime.now().strftime('%H:%M')} Uhr (Tag){wt_str}"
+    elements.append(Paragraph(subtitle_text, subtitle_style))
+    elements.append(Spacer(1, 6))
 
-    # Kern-Kennzahlen wie Mockup/Global Cube: klare Karten-Optik, hellgrauer Header
-    elements.append(Paragraph("Kern-Kennzahlen", section_style))
-    kpi_headers = ['DB1 Heute', 'DB1 Monat', 'Marge Heute', 'Marge Monat', 'Prognose', 'Breakeven']
-    kpi_values = [
+    # Kern-Kennzahlen als 6 Karten (Mockup: Label oben, Wert unten)
+    elements.append(Paragraph("Kern-Kennzahlen", section_style_page1))
+    kpi_labels = ['DB1 HEUTE', 'DB1 MONAT', 'MARGE HEUTE', 'MARGE MONAT', 'PROGNOSE', 'BREAKEVEN']
+    kpi_vals = [
         format_currency_short(gesamt_heute_db1),
         format_currency_short(gesamt.get('db1', 0)),
         format_percent(gesamt_heute_marge),
@@ -1156,67 +1166,66 @@ def generate_tek_daily_pdf(data: dict) -> bytes:
         format_currency_short(prognose_db1),
         format_currency_short(breakeven_absolut),
     ]
-    kpi_table = Table([kpi_headers, kpi_values], colWidths=[2.95*cm]*6)
+    kpi_row = []
+    for i in range(6):
+        cell_content = [Paragraph(kpi_labels[i], kpi_label_style), Paragraph(kpi_vals[i], kpi_value_style)]
+        kpi_row.append(cell_content)
+    kpi_table = Table([kpi_row], colWidths=[2.95*cm]*6)
     kpi_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e9ecef')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), GRAY_DARK),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 8),
-        ('FONTSIZE', (0, 1), (-1, 1), 10),
-        ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
-        ('TOPPADDING', (0, 0), (-1, -1), 8), ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ('ROWBACKGROUNDS', (0, 1), (-1, 1), [colors.white]),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+        ('TOPPADDING', (0, 0), (-1, -1), 6), ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('BACKGROUND', (0, 0), (-1, -1), colors.white),
     ]))
     elements.append(kpi_table)
-    elements.append(Spacer(1, 8))
+    elements.append(Spacer(1, 4))
 
-    # Status-Box Breakeven
+    # Status-Box Breakeven (Mockup: positiv = #d1e7dd / #0f5132, negativ = rot)
     if breakeven_abstand >= 0:
         be_text = f"+{format_currency_short(breakeven_abstand)} über Breakeven (Prognose)"
-        be_color = SUCCESS
+        be_bg, be_fg = SUCCESS_BG, SUCCESS_TEXT
     else:
         be_text = f"{format_currency_short(breakeven_abstand)} unter Breakeven (Prognose)"
-        be_color = DANGER
-    be_table = Table([[be_text]], colWidths=[18*cm])
+        be_bg, be_fg = DANGER, colors.white
+    be_para = Paragraph(f'<b>{be_text}</b>', ParagraphStyle('BE', parent=styles['Normal'], fontSize=10, textColor=be_fg, alignment=TA_CENTER, fontName='Helvetica-Bold'))
+    be_table = Table([[be_para]], colWidths=[18*cm])
     be_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), be_color),
-        ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
-        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 11),
+        ('BACKGROUND', (0, 0), (-1, -1), be_bg),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('TOPPADDING', (0, 0), (-1, -1), 8), ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 6), ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
     ]))
     elements.append(be_table)
-    elements.append(Spacer(1, 10))
+    elements.append(Spacer(1, 4))
 
-    # Bereichs-Übersicht wie Global Cube: Menge, Umsatzerlöse, Einsatzwerte, DB 1 ber., DB 1 in % ber.
+    # Bereichs-Übersicht Mockup: 9 Spalten (Bereich | Heute: Stück, Erlös, DB1, Marge | Monat: Stück, Erlös, DB1, Marge), keine Summenzeilen pro Bereich
     _aw_cache = {}
     datum_heute_str = datum_str or datetime.now().strftime('%d.%m.%Y')
-    monat_kurz = (data.get('monat') or '').replace(' ', '/')[:12]  # z.B. Feb./2026
-    overview_header = [
+    monat_name = (data.get('monat') or '').strip()  # z.B. "Februar 2026"
+    # Header Zeile 1: Bereich | Heute (DD.MM.) colspan 4 | Monat (Name) colspan 4
+    overview_header1 = [
         'Bereich',
-        'Menge', 'Umsatzerlöse', 'Einsatzwerte', 'DB1 ber.', 'DB1 %',
-        'Menge', 'Umsatzerlöse', 'Einsatzwerte', 'DB1 ber.', 'DB1 %'
+        f'Heute ({datum_heute_str[:5]})', '', '', '',  # Platzhalter für colspan 4
+        monat_name, '', '', ''  # colspan 4
     ]
-    overview_data = [overview_header]
-    o_heute_stueck = o_heute_umsatz = o_heute_einsatz = o_heute_db1 = 0
-    o_monat_stueck = o_monat_umsatz = o_monat_einsatz = o_monat_db1 = 0
+    overview_header2 = ['', 'Stück', 'Erlös', 'DB1', 'Marge', 'Stück', 'Erlös', 'DB1', 'Marge']
+    overview_data = [overview_header1, overview_header2]
+    o_heute_stueck = o_heute_umsatz = o_heute_db1 = 0
+    o_monat_stueck = o_monat_umsatz = o_monat_db1 = 0
+    col_w = [3.2*cm] + [1.85*cm]*4 + [1.85*cm]*4  # 1 + 4 + 4
 
     for b in bereiche_sorted:
         bkey = b.get('bereich', '')
         cfg = KST_MAPPING.get(bkey, {'name': bkey, 'show_stueck': False})
         name_display = cfg['name']
         heute_u = b.get('heute_umsatz', 0)
-        heute_e = b.get('heute_einsatz', 0) if 'heute_einsatz' in b else (heute_u - b.get('heute_db1', 0))
         heute_d = b.get('heute_db1', 0)
         monat_u = b.get('umsatz', 0)
-        monat_e = b.get('einsatz', 0)
         monat_d = b.get('db1', 0)
         h_stueck = b.get('heute_stueck', 0) if cfg.get('show_stueck') else 0
         m_stueck = b.get('stueck', 0) if cfg.get('show_stueck') else 0
-        if bkey in ['1-NW', '2-GW']:
+        if bkey in ['1-NW', '2-GW'] and (not h_stueck and not m_stueck):
             if bkey not in _aw_cache:
                 _aw_cache[bkey] = get_tek_absatzwege_direct(
                     bkey, data.get('firma', '0'), data.get('standort_api', '0'),
@@ -1225,51 +1234,54 @@ def generate_tek_daily_pdf(data: dict) -> bytes:
             aw_list = _aw_cache[bkey].get('absatzwege', [])
             h_stueck = sum(aw.get('stueck_heute', 0) or 0 for aw in aw_list)
             m_stueck = sum(aw.get('stueck_monat', 0) or 0 for aw in aw_list)
+        elif bkey in ['1-NW', '2-GW']:
+            h_stueck = int(b.get('heute_stueck', 0) or 0)
+            m_stueck = int(b.get('stueck', 0) or 0)
         h_marge = (heute_d / heute_u * 100) if heute_u > 0 else 0
         m_marge = (monat_d / monat_u * 100) if monat_u > 0 else 0
         overview_data.append([
             name_display,
             str(h_stueck) if cfg.get('show_stueck') else "—",
-            format_currency_short(heute_u), format_currency_short(heute_e), format_currency_short(heute_d), format_percent(h_marge),
+            format_currency_short(heute_u), format_currency_short(heute_d), format_percent(h_marge),
             str(m_stueck) if cfg.get('show_stueck') else "—",
-            format_currency_short(monat_u), format_currency_short(monat_e), format_currency_short(monat_d), format_percent(m_marge)
+            format_currency_short(monat_u), format_currency_short(monat_d), format_percent(m_marge)
         ])
         o_heute_stueck += h_stueck
         o_heute_umsatz += heute_u
-        o_heute_einsatz += heute_e
         o_heute_db1 += heute_d
         o_monat_stueck += m_stueck
         o_monat_umsatz += monat_u
-        o_monat_einsatz += monat_e
         o_monat_db1 += monat_d
 
     o_heute_marge = (o_heute_db1 / o_heute_umsatz * 100) if o_heute_umsatz > 0 else 0
     o_monat_marge = (o_monat_db1 / o_monat_umsatz * 100) if o_monat_umsatz > 0 else 0
     overview_data.append([
         'GESAMT',
-        str(o_heute_stueck), format_currency_short(o_heute_umsatz), format_currency_short(o_heute_einsatz), format_currency_short(o_heute_db1), format_percent(o_heute_marge),
-        str(o_monat_stueck), format_currency_short(o_monat_umsatz), format_currency_short(o_monat_einsatz), format_currency_short(o_monat_db1), format_percent(o_monat_marge)
+        str(o_heute_stueck), format_currency_short(o_heute_umsatz), format_currency_short(o_heute_db1), format_percent(o_heute_marge),
+        str(o_monat_stueck), format_currency_short(o_monat_umsatz), format_currency_short(o_monat_db1), format_percent(o_monat_marge)
     ])
 
-    colw_overview = [3.8*cm, 0.95*cm, 2.05*cm, 2.05*cm, 1.6*cm, 1.2*cm, 0.95*cm, 2.05*cm, 2.05*cm, 1.6*cm, 1.2*cm]
-    overview_table = Table(overview_data, colWidths=colw_overview, repeatRows=1)
+    overview_table = Table(overview_data, colWidths=col_w, repeatRows=2)
     overview_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e9ecef')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), GRAY_DARK),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+        ('SPAN', (1, 0), (4, 0)), ('SPAN', (5, 0), (8, 0)),
+        ('BACKGROUND', (0, 0), (-1, 1), DRIVE_BLUE),
+        ('TEXTCOLOR', (0, 0), (-1, 1), colors.white),
+        ('FONTNAME', (0, 0), (-1, 1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 7),
+        ('ALIGN', (1, 0), (-1, 1), 'CENTER'), ('ALIGN', (1, 2), (-1, -1), 'RIGHT'),
         ('ALIGN', (0, 0), (0, -1), 'LEFT'),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, GRAY_LIGHT]),
+        ('BACKGROUND', (1, 2), (4, -2), colors.HexColor('#f8f9fa')),
+        ('BACKGROUND', (5, 2), (8, -2), colors.white),
+        ('ROWBACKGROUNDS', (0, 2), (0, -2), [colors.white, colors.HexColor('#f8f9fa')]),
         ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#e7f1ff')),
         ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-        ('TOPPADDING', (0, 0), (-1, -1), 5), ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 4), ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
     ]))
-    elements.append(Paragraph("Bereichs-Übersicht (Heute | Monat kumuliert)", section_style))
+    elements.append(Paragraph("Bereichs-Übersicht", section_style_page1))
     elements.append(overview_table)
 
-    # Werkstatt-KPIs in Anfangsübersicht (Seite 1)
+    # Werkstatt-KPIs in Anfangsübersicht (Seite 1) – kompakt, eine Zeile
     werkstatt_bereich = next((b for b in data.get('bereiche', []) if b.get('bereich') == '4-Lohn' or b.get('id') == '4-Lohn'), None)
     if werkstatt_bereich and (werkstatt_bereich.get('produktivitaet') is not None or werkstatt_bereich.get('leistungsgrad') is not None):
         ws_kpi_row = []
@@ -1280,12 +1292,12 @@ def generate_tek_daily_pdf(data: dict) -> bytes:
         if ws_kpi_row:
             ws_overview_style = ParagraphStyle(
                 'WerkstattKPI', parent=getSampleStyleSheet()['Normal'],
-                fontSize=8, textColor=GRAY_DARK, spaceBefore=6, spaceAfter=0
+                fontSize=7, textColor=GRAY_DARK, spaceBefore=2, spaceAfter=0
             )
-            elements.append(Spacer(1, 6))
+            elements.append(Spacer(1, 2))
             elements.append(Paragraph("<b>Werkstatt-KPIs</b> " + " · ".join(ws_kpi_row), ws_overview_style))
 
-    elements.append(Spacer(1, 14))
+    elements.append(Spacer(1, 6))
 
     # === Mockup V2: Eine Seite pro KST (detaillierte Blöcke) ===
     gruppen_namen = {
@@ -1294,8 +1306,10 @@ def generate_tek_daily_pdf(data: dict) -> bytes:
         '71': 'Einsatz Neuwagen', '72': 'Einsatz Gebrauchtwagen', '73': 'Einsatz Teile', '74': 'Einsatz Lohn',
         '75': 'Einsatz Lack', '76': 'Sonstiger Einsatz', '78': 'Einsatz Vermietung',
     }
+    # Mockup: KST-Tabellenkopf #495057, weiße Schrift
+    KST_HEADER_GRAY = colors.HexColor('#495057')
     detail_table_style = [
-        ('BACKGROUND', (0, 0), (-1, 0), GRAY_DARK),
+        ('BACKGROUND', (0, 0), (-1, 0), KST_HEADER_GRAY),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 7),
@@ -1313,7 +1327,8 @@ def generate_tek_daily_pdf(data: dict) -> bytes:
         heute_db1 = b.get('heute_db1', 0)
         heute_stueck = b.get('heute_stueck', 0) if cfg.get('show_stueck') else 0
         monat_stueck = b.get('stueck', 0) if cfg.get('show_stueck') else 0
-        if bkey in ['1-NW', '2-GW']:
+        # NW/GW: Stück aus E-Mail-Daten (API) nutzen; nur bei 0 Fallback auf Absatzwege-DB
+        if bkey in ['1-NW', '2-GW'] and (not heute_stueck and not monat_stueck):
             if bkey not in _aw_cache:
                 _aw_cache[bkey] = get_tek_absatzwege_direct(
                     bkey, data.get('firma', '0'), data.get('standort_api', '0'),
@@ -1322,6 +1337,9 @@ def generate_tek_daily_pdf(data: dict) -> bytes:
             aw_list = _aw_cache[bkey].get('absatzwege', [])
             heute_stueck = sum(aw.get('stueck_heute', 0) or 0 for aw in aw_list)
             monat_stueck = sum(aw.get('stueck_monat', 0) or 0 for aw in aw_list)
+        elif bkey in ['1-NW', '2-GW']:
+            heute_stueck = int(b.get('heute_stueck', 0) or 0)
+            monat_stueck = int(b.get('stueck', 0) or 0)
         monat_umsatz = b.get('umsatz', 0)
         monat_einsatz = b.get('einsatz', 0)
         monat_db1 = b.get('db1', 0)
@@ -1331,7 +1349,19 @@ def generate_tek_daily_pdf(data: dict) -> bytes:
         monat_db_pro_stueck = (monat_db1 / monat_stueck) if (cfg.get('show_stueck') and monat_stueck > 0) else 0
 
         elements.append(PageBreak())
-        elements.append(Paragraph(f"KST {cfg['kst']} – {cfg['name']} (detailliert)", section_style))
+        # Mockup: blauer Karten-Header (#0066cc, weiße Schrift)
+        kst_header_para = Paragraph(
+            f"<b>KST {cfg['kst']} – {cfg['name']} (detailliert)</b>",
+            ParagraphStyle('KSTCard', parent=styles['Normal'], fontSize=11, textColor=colors.white, fontName='Helvetica-Bold')
+        )
+        kst_card_table = Table([[kst_header_para]], colWidths=[18*cm])
+        kst_card_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), DRIVE_BLUE),
+            ('TOPPADDING', (0, 0), (-1, -1), 6), ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8), ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        elements.append(kst_card_table)
+        elements.append(Spacer(1, 4))
 
         # Tabellen-Header (kurz gegen Spaltenüberlauf): DB1 ber., DB1 %
         kst_header = [

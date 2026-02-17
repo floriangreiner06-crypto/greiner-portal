@@ -1,7 +1,7 @@
 # Controlling (BWA, Bankenspiegel, Finanzreporting) — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-02-16
+## Letzte Aktualisierung: 2026-02-17
 
 ## Beschreibung
 
@@ -49,6 +49,10 @@ Controlling umfasst BWA-Berechnung, Bankenspiegel mit Konten und Transaktionen, 
 - ✅ **Kontenübersicht Locosoft (2026-02-13):** Klärung, wann Sachkonto 070101/071101 aktualisiert wird (live aus Locosoft bei jedem Aufruf; Locosoft-DB-Befüllung ca. 18–19 Uhr). Doku in CONTEXT.md ergänzt. Bestätigung: DRIVE-Saldo war korrekt, Typo in manueller Buchhaltungsauswertung.
 - ✅ **Umlaut-Darstellung BWA/TEK-Modale (2026-02-13):** Zeichenfehler („ErlÄtise“ statt „Erlöse“) behoben. Ursache war Moji­bake in `routes/controlling_routes.py` (UTF-8-Zeichen fälschlich als Latin-1 gespeichert). Korrektur: alle gruppen_namen, SKR51_KONTOBEZEICHNUNGEN und weiteren Umlaute (ö, ä, ü, ß, €, Ø) in der Datei auf korrektes UTF-8 gestellt.
 - ✅ **TEK Breakeven SSOT (2026-02-13):** Eine Breakeven/Prognose-Logik für Portal und PDF. SSOT: `api/controlling_data.py` (`berechne_breakeven_prognose`, `berechne_breakeven_prognose_standort`); Werktage: `utils/werktage.py` (`get_werktage_monat`). `get_tek_data` nutzt die SSOT statt eigener Formel (BWA-Kosten, echte Werktage). Projektregel: SSOT in CLAUDE.md und .cursorrules für alle Workstreams ergänzt.
+- ✅ **TEK Werktage Datenstichtag (2026-02-17):** Da Locosoft-Daten erst abends (ca. 18–19 Uhr) kommen, zählt „verbleibende Werktage“ morgens den heutigen Tag mit (9 WT). Ab 19:00 Uhr gilt Kalender-Heute als vergangen (8 WT). Umsetzung: `get_werktage_monat(jahr, monat, stichtag=…)` mit Stichtag = gestern vor 19:00, sonst heute; `berechne_breakeven_prognose` und `berechne_breakeven_prognose_standort` übergeben den Stichtag. Portal und TEK-E-Mail/PDF nutzen dieselbe Logik.
+- ✅ **TEK Portal = Report (2026-02-17):** Gleiche DB1 und gleiche Prognose in DRIVE und TEK-E-Mail/PDF. Ursache der Abweichung: (1) `get_tek_data` summierte nur 5 Bereiche + Clean Park, Portal zusätzlich 6-8932/9-Andere → Gesamt-DB1 in get_tek_data um 9-Andere ergänzt. (2) Hochrechnung wurde im Backend aus `operativ_db1` berechnet, im Portal aus `total_db1` → SSOT: `berechne_breakeven_prognose` nutzt jetzt `aktueller_db1` für die Hochrechnung; Frontend zeigt `prognose.hochrechnung_db1` aus der API.
+- ✅ **TEK Prognose wie GlobalCube (2026-02-17):** Referenz GlobalCube: Prognose = (DB1 / **vergangene Werktage**) × Werktage gesamt. DRIVE nutzte zuvor „Tage mit Daten“ (Locosoft) als Divisor → Prognose zu schlecht. Umstellung auf **werktage_vergangen** (mit Datenstichtag vor 19:00 = gestern), damit z. B. bei 212.211 € nach 9 WT → 471.580 € (wie im GlobalCube-PDF).
+- ✅ **TEK Berechnung konsistent (Reporting + Online):** Eine SSOT für DB1, Breakeven und Prognose in allen Modulen: **Portal** (api_tek → berechne_breakeven_prognose, Frontend zeigt prognose.hochrechnung_db1), **alle TEK-Reports** (tek_daily, tek_filiale, tek_nw/gw/teile/werkstatt, tek_verkauf, tek_service) über send_daily_tek.get_tek_data → tek_api_helper → api.controlling_data.get_tek_data → berechne_breakeven_prognose; **PDF** und **E-Mail** nutzen data.gesamt.prognose aus derselben Quelle. Standort-Breakevens (Deggendorf/Landau) nutzen berechne_breakeven_prognose_standort (gleiche Werktage-Formel). KST-Ziele nutzen eigene Hochrechnung (werktage_vergangen) für Zielerreichung, nicht TEK-Breakeven.
 - ✅ **AfA-Modul Vorführwagen/Mietwagen (2026-02-16):** Neues Sub-Modul zur automatischen Berechnung der monatlichen Abschreibung (AfA) für VFW und Mietwagen. Lineare AfA 72 Monate, monatsgenau. Dashboard unter Controlling → AfA Vorführwagen/Mietwagen; API `/api/afa/*`; Tabellen `afa_anlagevermoegen`, `afa_buchungen`; Celery-Task `afa_monatsberechnung`. Siehe `docs/workstreams/controlling/AFA_DISCOVERY.md` und `AFA_MODUL_KONZEPT.md`.
 - ✅ **AfA Locosoft-Filter & Bestand (2026-02-16):** Nur eigene Mietwagen (Kennzeichen X oder `pre_owned_car_code` X/**M**); nur noch nicht verkaufte (`out_invoice_date IS NULL`). Dashboard-Filter „Bestand Geschäftsjahr“ (z. B. 2025/26). Buchhaltungs-Konten (450001/450002 an 090301/090302/090401/090402) in Monatsberechnung und CSV-Export; Abgang 090xxx an Bestandskonto dokumentiert.
 - ✅ **AfA Buchhaltungs-Feedback (2026-02-16):** Konten-Mapping und Buchungslogik in `AFA_BUCHHALTUNG_FEEDBACK.md`. Excel-Anhänge in `docs/workstreams/controlling/AfA/` ausgewertet; Mietwagen-Listen nutzen Jw-Kz **M**, Filter um „M“ erweitert. Nutzungsdauer 72 Monate (in Excel keine Spalte; DATEV-Scan ist Bild-PDF, Werte manuell extrahieren).
@@ -66,6 +70,13 @@ Controlling umfasst BWA-Berechnung, Bankenspiegel mit Konten und Transaktionen, 
 - **Ausgangslage:** Erlöse/Umsätze Drive = Globalcube; DB1 weicht ab.
 - **Analyse (ohne Code-Änderung):** `docs/workstreams/controlling/TEK_DB1_ABWEICHUNG_DRIVE_VS_GLOBALCUBE_ANALYSE.md`
 - **Kernbefund:** Abweichung = Einsatz-Abweichung (DB1 = Umsatz − Einsatz). Drive TEK nutzt keinen G&V-Filter und schließt 743002 beim Einsatz nicht aus; BWA tut beides. 4-Lohn im laufenden Monat: Drive kalkulatorischer Einsatz (6-Monats-Quote). Nächster Schritt: Werte aus beiden PDFs pro Bereich vergleichen, Globalcube-Einsatz-Definition klären, dann ggf. get_tek_data anpassen.
+
+## TEK vs. VM / vs. VJ (Vormonat / Vorjahr) – Werktagestand
+
+- **Aktueller Monat (TEK):** Zeigt alle in Locosoft vorhandenen Buchungen im Monat (typ. 1. bis gestriges Datum, da Locosoft abends befüllt wird).
+- **Vormonat (VM):** Im Portal und in `get_tek_data` wird der **komplette** Vormonat verwendet (alle Tage Januar, nicht „erste N Werktage“).
+- **Vorjahr (VJ):** Im **Portal** (`controlling_routes`) wird der **komplette** Vorjahresmonat verwendet. In **get_tek_data (PDF/E-Mail)** wird VJ **bis zum gleichen Kalendertag** begrenzt (TAG146).
+- **Fazit:** Die Vergleiche „vs. VM“ und „vs. VJ“ sind **nicht** auf den gleichen Werktagestand bezogen: aktueller Monat = Teilmonat (z. B. 12 Werktage), VM/VJ = Vollmonat. Für einen werktage-basierten Vergleich (z. B. „erste 12 WT Feb 26“ vs. „erste 12 WT Jan 26“ vs. „erste 12 WT Feb 25“) müsste die Logik in `controlling_routes` und ggf. in `get_tek_data` erweitert werden.
 
 ## TEK „Heute“ / tägliche Fakturierung (2026-02-12)
 

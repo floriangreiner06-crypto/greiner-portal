@@ -500,77 +500,144 @@ def send_service_reports(connector, heute, test_email=None, test_standort=None):
 
 
 def build_gesamt_email_html(data):
-    """Erstellt HTML-Body für Gesamt-Report.
-    Breakeven-Abstand wie im PDF: Prognose minus Breakeven (nicht DB1 aktuell), damit E-Mail und Anhang übereinstimmen.
+    """Erstellt HTML-Body für Gesamt-Report (Mockup V2: wie TEK_GESAMT_UEBERSICHT_MOCKUP_V2.html).
+    Breakeven-Abstand = Prognose minus Breakeven (wie PDF).
     """
     gesamt = data['gesamt']
-    # Wie im PDF: Abstand = Prognose - Breakeven (nicht DB1 aktuell - Breakeven aus der API)
     prognose = gesamt.get('prognose', gesamt.get('db1', 0))
     breakeven = gesamt.get('breakeven', 0)
     abstand_prognose = prognose - breakeven
-    status_color = "#28a745" if abstand_prognose >= 0 else "#dc3545"
-    status_text = "ÜBER Breakeven (Prognose)" if abstand_prognose >= 0 else "UNTER Breakeven (Prognose)"
-    status_prefix = "+" if abstand_prognose >= 0 else ""
+    status_positive = abstand_prognose >= 0
+    status_bg = "#d1e7dd" if status_positive else "#dc3545"
+    status_color = "#0f5132" if status_positive else "white"
+    status_text = "ÜBER Breakeven (Prognose)" if status_positive else "UNTER Breakeven (Prognose)"
+    status_prefix = "+" if status_positive else ""
+
+    # Kern-KPIs: Heute aus Bereichen, Monat aus gesamt
+    bereiche = data.get('bereiche', [])
+    gesamt_heute_db1 = sum(b.get('heute_db1', 0) for b in bereiche)
+    gesamt_heute_umsatz = sum(b.get('heute_umsatz', 0) for b in bereiche)
+    marge_heute = (gesamt_heute_db1 / gesamt_heute_umsatz * 100) if gesamt_heute_umsatz else 0
+
+    datum_str = data.get('datum', datetime.now().strftime('%d.%m.%Y'))
+    heute_kurz = datum_str[:5] if len(datum_str) >= 5 else datum_str  # DD.MM.
+    monat_name = data.get('monat', '')
+    stand_str = f"Stand: {datum_str} {datetime.now().strftime('%H:%M')} Uhr (Tag)"
+    wt = gesamt.get('werktage') or {}
+    wt_str = f" · Noch {wt.get('verbleibend', '–')} WT" if wt else ""
+    untertitel = f"Monat: {monat_name} · {stand_str}{wt_str}"
 
     bereich_namen = {
         '1-NW': 'Neuwagen', '2-GW': 'Gebrauchtwagen',
-        '3-Teile': 'Teile', '4-Lohn': 'Werkstatt', '5-Sonst': 'Sonstige'
+        '3-Teile': 'Teile & Zubehör', '4-Lohn': 'Service/Werkstatt', '5-Sonst': 'Sonstige'
     }
 
-    bereiche_html = ""
-    for i, b in enumerate(data['bereiche']):
-        bg = '#f9f9f9' if i % 2 == 0 else '#ffffff'
-        # Stück nur für NW/GW, sonst "-"
-        stueck_display = str(b.get('stueck', 0)) if b.get('bereich') in ('1-NW', '2-GW') else "–"
-        bereiche_html += f"""
-        <tr style="background: {bg};">
-            <td style="padding: 8px;">{bereich_namen.get(b['bereich'], b['bereich'])}</td>
-            <td style="padding: 8px; text-align: right;">{stueck_display}</td>
-            <td style="padding: 8px; text-align: right;">{format_euro(b['umsatz'])} EUR</td>
-            <td style="padding: 8px; text-align: right;">{format_euro(b['einsatz'])} EUR</td>
-            <td style="padding: 8px; text-align: right;">{format_euro(b['db1'])} EUR</td>
-        </tr>"""
+    # 6 KPI-Karten (Label oben, Wert unten)
+    kpis = [
+        ('DB1 HEUTE', format_euro(gesamt_heute_db1)),
+        ('DB1 MONAT', format_euro(gesamt['db1'])),
+        ('MARGE HEUTE', f"{marge_heute:.1f}%"),
+        ('MARGE MONAT', f"{gesamt['marge']:.1f}%"),
+        ('PROGNOSE', format_euro(prognose)),
+        ('BREAKEVEN', format_euro(breakeven)),
+    ]
+    kpi_cells = "".join(f"""
+            <td style="padding: 10px; text-align: center; border: 1px solid #dee2e6; background: #fff;">
+                <div style="font-size: 10px; color: #6c757d; text-transform: uppercase;">{label}</div>
+                <div style="font-size: 14px; font-weight: bold; color: #212529;">{val}</div>
+            </td>""" for label, val in kpis)
+
+    # Bereichstabelle: 9 Spalten (Bereich | Heute: Stück, Erlös, DB1, Marge | Monat: Stück, Erlös, DB1, Marge), GESAMT-Zeile
+    o_heute_stueck = o_heute_umsatz = o_heute_db1 = 0
+    o_monat_stueck = o_monat_umsatz = o_monat_db1 = 0
+    bereiche_rows = ""
+    for i, b in enumerate(bereiche):
+        bkey = b.get('bereich', '')
+        name = bereich_namen.get(bkey, bkey)
+        show_stueck = bkey in ('1-NW', '2-GW')
+        h_stueck = b.get('heute_stueck', 0) if show_stueck else 0
+        m_stueck = b.get('stueck', 0) if show_stueck else 0
+        h_umsatz = b.get('heute_umsatz', 0)
+        h_db1 = b.get('heute_db1', 0)
+        h_marge = (h_db1 / h_umsatz * 100) if h_umsatz else 0
+        m_umsatz = b.get('umsatz', 0)
+        m_db1 = b.get('db1', 0)
+        m_marge = (m_db1 / m_umsatz * 100) if m_umsatz else 0
+        o_heute_stueck += h_stueck
+        o_heute_umsatz += h_umsatz
+        o_heute_db1 += h_db1
+        o_monat_stueck += m_stueck
+        o_monat_umsatz += m_umsatz
+        o_monat_db1 += m_db1
+        stueck_h = str(h_stueck) if show_stueck else "–"
+        stueck_m = str(m_stueck) if show_stueck else "–"
+        bg = '#f8f9fa' if i % 2 == 1 else '#fff'
+        bereiche_rows += f"""
+            <tr style="background: {bg};">
+                <td style="padding: 6px 8px;">{name}</td>
+                <td style="padding: 6px 8px; text-align: right; background: #f8f9fa;">{stueck_h}</td>
+                <td style="padding: 6px 8px; text-align: right; background: #f8f9fa;">{format_euro(h_umsatz)}</td>
+                <td style="padding: 6px 8px; text-align: right; background: #f8f9fa;">{format_euro(h_db1)}</td>
+                <td style="padding: 6px 8px; text-align: right; background: #f8f9fa;">{h_marge:.1f}%</td>
+                <td style="padding: 6px 8px; text-align: right;">{stueck_m}</td>
+                <td style="padding: 6px 8px; text-align: right;">{format_euro(m_umsatz)}</td>
+                <td style="padding: 6px 8px; text-align: right;">{format_euro(m_db1)}</td>
+                <td style="padding: 6px 8px; text-align: right;">{m_marge:.1f}%</td>
+            </tr>"""
+    o_heute_marge = (o_heute_db1 / o_heute_umsatz * 100) if o_heute_umsatz else 0
+    o_monat_marge = (o_monat_db1 / o_monat_umsatz * 100) if o_monat_umsatz else 0
+    bereiche_rows += f"""
+            <tr style="background: #e7f1ff; font-weight: bold;">
+                <td style="padding: 6px 8px;">GESAMT</td>
+                <td style="padding: 6px 8px; text-align: right; background: #f8f9fa;">{o_heute_stueck}</td>
+                <td style="padding: 6px 8px; text-align: right; background: #f8f9fa;">{format_euro(o_heute_umsatz)}</td>
+                <td style="padding: 6px 8px; text-align: right; background: #f8f9fa;">{format_euro(o_heute_db1)}</td>
+                <td style="padding: 6px 8px; text-align: right; background: #f8f9fa;">{o_heute_marge:.1f}%</td>
+                <td style="padding: 6px 8px; text-align: right;">{o_monat_stueck}</td>
+                <td style="padding: 6px 8px; text-align: right;">{format_euro(o_monat_umsatz)}</td>
+                <td style="padding: 6px 8px; text-align: right;">{format_euro(o_monat_db1)}</td>
+                <td style="padding: 6px 8px; text-align: right;">{o_monat_marge:.1f}%</td>
+            </tr>"""
 
     return f"""
     <html>
-    <body style="font-family: Arial, sans-serif; color: #333; max-width: 650px;">
-        <h2 style="color: #0066cc; margin-bottom: 5px;">TEK - Tägliche Erfolgskontrolle</h2>
-        <p style="color: #666; margin-top: 0;">{data['monat']} | Stand: {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr</p>
+    <body style="font-family: Arial, sans-serif; color: #333; max-width: 750px;">
+        <h2 style="color: #0066cc; font-size: 18px; margin-bottom: 4px;">TEK – Tägliche Erfolgskontrolle</h2>
+        <div style="border-bottom: 3px solid #0066cc; margin-bottom: 6px;"></div>
+        <p style="color: #6c757d; font-size: 12px; margin: 0 0 12px 0;">{untertitel}</p>
 
-        <table style="border-collapse: collapse; width: 100%; margin: 20px 0;">
-            <tr style="background: #0066cc; color: white;">
-                <th style="padding: 12px; text-align: center;">DB1 aktuell</th>
-                <th style="padding: 12px; text-align: center;">Marge</th>
-                <th style="padding: 12px; text-align: center;">Prognose</th>
-                <th style="padding: 12px; text-align: center;">Breakeven</th>
-            </tr>
-            <tr style="background: #f5f5f5;">
-                <td style="padding: 12px; text-align: center; font-size: 18px; font-weight: bold;">{format_euro(gesamt['db1'])} EUR</td>
-                <td style="padding: 12px; text-align: center; font-size: 18px; font-weight: bold;">{gesamt['marge']:.1f}%</td>
-                <td style="padding: 12px; text-align: center; font-size: 18px; font-weight: bold;">{format_euro(gesamt['prognose'])} EUR</td>
-                <td style="padding: 12px; text-align: center; font-size: 18px; font-weight: bold;">{format_euro(gesamt['breakeven'])} EUR</td>
-            </tr>
+        <table style="border-collapse: collapse; width: 100%; margin: 12px 0;">
+            <tr>{kpi_cells}</tr>
         </table>
 
-        <div style="background: {status_color}; color: white; padding: 15px; text-align: center; font-size: 16px; font-weight: bold; margin: 15px 0;">
+        <div style="background: {status_bg}; color: {status_color}; padding: 10px 15px; text-align: center; font-size: 14px; font-weight: bold; margin: 12px 0;">
             {status_prefix}{format_euro(abstand_prognose)} EUR {status_text}
         </div>
 
-        <h3 style="color: #333; margin-top: 25px;">Bereiche</h3>
-        <table style="border-collapse: collapse; width: 100%; margin: 10px 0;">
-            <tr style="background: #333; color: white;">
-                <th style="padding: 8px; text-align: left;">Bereich</th>
-                <th style="padding: 8px; text-align: right;">Stück</th>
-                <th style="padding: 8px; text-align: right;">Erlös</th>
-                <th style="padding: 8px; text-align: right;">Einsatz</th>
-                <th style="padding: 8px; text-align: right;">DB</th>
+        <h3 style="color: #333; font-size: 14px; margin: 20px 0 8px 0;">Bereichs-Übersicht</h3>
+        <table style="border-collapse: collapse; width: 100%; font-size: 12px;">
+            <tr style="background: #0066cc; color: white;">
+                <th style="padding: 6px 8px; text-align: left;">Bereich</th>
+                <th colspan="4" style="padding: 6px 8px; text-align: center;">Heute ({heute_kurz})</th>
+                <th colspan="4" style="padding: 6px 8px; text-align: center;">Monat ({monat_name})</th>
             </tr>
-            {bereiche_html}
+            <tr style="background: #0066cc; color: white;">
+                <th style="padding: 4px 8px;"></th>
+                <th style="padding: 4px 8px; text-align: right;">Stück</th>
+                <th style="padding: 4px 8px; text-align: right;">Erlös</th>
+                <th style="padding: 4px 8px; text-align: right;">DB1</th>
+                <th style="padding: 4px 8px; text-align: right;">Marge</th>
+                <th style="padding: 4px 8px; text-align: right;">Stück</th>
+                <th style="padding: 4px 8px; text-align: right;">Erlös</th>
+                <th style="padding: 4px 8px; text-align: right;">DB1</th>
+                <th style="padding: 4px 8px; text-align: right;">Marge</th>
+            </tr>
+            {bereiche_rows}
         </table>
 
-        <p style="margin-top: 20px;">Details im PDF-Anhang.</p>
+        <p style="margin-top: 16px; font-size: 12px; color: #666;">Details im PDF-Anhang.</p>
 
-        <p style="color: #999; font-size: 11px; margin-top: 30px; border-top: 1px solid #eee; padding-top: 10px;">
+        <p style="color: #999; font-size: 11px; margin-top: 24px; border-top: 1px solid #eee; padding-top: 10px;">
             Automatisch generiert von DRIVE<br>
             <a href="http://drive.auto-greiner.de/controlling/tek" style="color: #0066cc;">In DRIVE öffnen</a>
         </p>

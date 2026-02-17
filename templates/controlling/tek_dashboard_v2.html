@@ -464,7 +464,8 @@ function renderPrognose(data) {
     document.getElementById('werktageDetail').textContent = `(${wt.vergangen}/${wt.gesamt} WT)`;
 
     const tagesschnitt = wt.vergangen > 0 ? g.db1 / wt.vergangen : 0;
-    const hochrechnung = tagesschnitt * wt.gesamt;
+    // SSOT: Hochrechnung aus API (stimmt mit PDF/E-Mail überein)
+    const hochrechnung = (p.hochrechnung_db1 != null && p.hochrechnung_db1 !== undefined) ? p.hochrechnung_db1 : (tagesschnitt * wt.gesamt);
     document.getElementById('tagesschnitt').textContent = fmtEuro(tagesschnitt);
     document.getElementById('hochrechnung').textContent = fmtEuro(hochrechnung);
 
@@ -501,7 +502,7 @@ function renderBreakeven(data) {
 
     const wt = p.werktage;
     const tagesschnitt = wt.vergangen > 0 ? g.db1 / wt.vergangen : 0;
-    const hochrechnung = tagesschnitt * wt.gesamt;
+    const hochrechnung = (p.hochrechnung_db1 != null && p.hochrechnung_db1 !== undefined) ? p.hochrechnung_db1 : (tagesschnitt * wt.gesamt);
     const breakeven = p.breakeven_schwelle;
     const abstand = hochrechnung - breakeven;
 
