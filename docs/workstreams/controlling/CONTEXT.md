@@ -58,6 +58,7 @@ Controlling umfasst BWA-Berechnung, Bankenspiegel mit Konten und Transaktionen, 
 - ✅ **AfA Locosoft-Filter & Bestand (2026-02-16):** Nur eigene Mietwagen (Kennzeichen X oder `pre_owned_car_code` X/**M**); nur noch nicht verkaufte (`out_invoice_date IS NULL`). Dashboard-Filter „Bestand Geschäftsjahr“ (z. B. 2025/26). Buchhaltungs-Konten (450001/450002 an 090301/090302/090401/090402) in Monatsberechnung und CSV-Export; Abgang 090xxx an Bestandskonto dokumentiert.
 - ✅ **AfA Buchhaltungs-Feedback (2026-02-16):** Konten-Mapping und Buchungslogik in `AFA_BUCHHALTUNG_FEEDBACK.md`. Excel-Anhänge in `docs/workstreams/controlling/AfA/` ausgewertet; Mietwagen-Listen nutzen Jw-Kz **M**, Filter um „M“ erweitert. Nutzungsdauer 72 Monate (in Excel keine Spalte; DATEV-Scan ist Bild-PDF, Werte manuell extrahieren).
 - ❌ **Offen:** DATEV-Scan (Scan_20260216130905.pdf) – keine Textebene, Werte manuell extrahieren und bei Bedarf in Doku/AfA-Ordner ergänzen.
+- ✅ **Export Konten-Mapping (2026-02-17):** Script `scripts/analysis/export_konten_mapping.py` – Sachkonten 800000–899999 aus `fibu_buchungen` (PostgreSQL) als CSV (Semikolon, UTF-8). Ausgabe: `data/exports/konten_mapping_export.csv`; optional Kopie in Windows-Sync (`data/exports/`). Konsolenausgabe: Zusammenfassung nach Kategorie, WARNUNG 817xxx/827xxx bei Kategorie „wareneinsatz“, Konten ohne Kategorie.
 
 ## Offene Entscheidungen
 
