@@ -8,8 +8,8 @@
         --urlaub: #4CAF50;
         --pending: #FFF59D;
         --za: #2196F3;
-        --krank: #F48FB1;
-        --schulung: #CE93D8;
+        --krank: #E91E63;
+        --schulung: #5C6BC0;
         --feiertag: #FFCDD2;
         --weekend: #ECEFF1;
         --today-bg: #1976D2;
@@ -384,7 +384,7 @@
         <div class="gantt-col">
             <div class="toolbar">
                 <div style="display:flex;align-items:center;gap:10px;">
-                    <!-- TAG 213: Kalender mit Monat- und Jahresauswahl statt Pfeile -->
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btnMonthPrev" title="Vorheriger Monat"><i class="fas fa-chevron-left"></i></button>
                     <select class="form-select form-select-sm" id="monthSelect" style="width:auto;font-weight:600;min-width:140px;" onchange="changeMonthYear()">
                         <option value="0">Januar</option>
                         <option value="1">Februar</option>
@@ -402,6 +402,7 @@
                     <select class="form-select form-select-sm" id="yearSelect" style="width:auto;font-weight:600;min-width:100px;" onchange="changeMonthYear()">
                         <!-- Wird dynamisch befüllt -->
                     </select>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btnMonthNext" title="Nächster Monat"><i class="fas fa-chevron-right"></i></button>
                 </div>
                 <div style="display:flex;align-items:center;gap:10px;">
                     <button class="btn btn-primary btn-sm" id="btnToday"><i class="fas fa-calendar-day"></i> Heute</button>
@@ -443,9 +444,12 @@
                     <i class="fas fa-users"></i> Masseneingabe
                 </button>
             </div>
-            <div class="sidebar">
-                <h6><i class="fas fa-clipboard-list"></i> Meine Anträge</h6>
-                <div id="myList"><div class="no-data">Lade...</div></div>
+            <div class="sidebar" id="sidebarMyRequests">
+                <h6 class="d-flex align-items-center justify-content-between" style="cursor:pointer;" id="myRequestsHeader" title="Ein-/ausklappen">
+                    <span><i class="fas fa-clipboard-list"></i> Meine Anträge</span>
+                    <i class="fas fa-chevron-right" id="myRequestsChevron"></i>
+                </h6>
+                <div id="myList" style="display:none;"><div class="no-data">Lade...</div></div>
             </div>
             <div class="approver-box" id="apprBox" style="display:none;">
                 <h6><i class="fas fa-user-check"></i> Zu genehmigen (<span id="apprCnt">0</span>)</h6>
@@ -482,15 +486,22 @@
     </div>
 </div>
 
-<!-- POPUP: Batch-Delete für mehrere gebuchte Tage (TAG 113) -->
-<div class="popup-menu" id="batchDeletePopup" style="border-color: #dc3545;">
-    <div class="popup-menu-header" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);" id="batchDeleteHeader">🗑️ 3 Tage löschen?</div>
+<!-- POPUP: Batch-Aktion für mehrere gebuchte Tage (TAG 113 + serielle Genehmigung/Ablehnung) -->
+<div class="popup-menu" id="batchDeletePopup" style="border-color: #6c757d; max-width: 320px;">
+    <div class="popup-menu-header" style="background: linear-gradient(135deg, #5C6BC0 0%, #7E57C2 100%);" id="batchDeleteHeader">📅 3 Tag(e) – Aktion?</div>
     <div class="popup-menu-body" style="padding: 15px;">
-        <p style="margin: 0 0 10px 0; font-size: 13px;" id="batchDeleteInfo">Ausgewählte Buchungen werden storniert.</p>
+        <p style="margin: 0 0 8px 0; font-size: 13px;" id="batchDeleteInfo">Ausgewählte Buchungen.</p>
+        <p style="margin: 0 0 8px 0; font-size: 12px; color: #666;" id="batchPendingInfo"></p>
+        <div id="batchRejectReasonWrap" style="display: none; margin-top: 10px;">
+            <label class="form-label" style="font-size: 12px;">Grund für Ablehnung (optional)</label>
+            <textarea class="form-control form-control-sm" id="batchRejectReason" rows="2" placeholder="z.B. Personalmangel..."></textarea>
+        </div>
     </div>
-    <div class="popup-menu-footer">
+    <div class="popup-menu-footer" style="flex-wrap: wrap; gap: 6px;">
         <button class="btn-cancel" onclick="hideBatchDeletePopup()">Abbrechen</button>
-        <button class="btn-submit" style="background: #dc3545;" onclick="doBatchDelete()">🗑️ Löschen</button>
+        <button class="btn-submit" id="batchBtnApprove" style="background: #28a745; display: none;" onclick="doBatchApprove()"><i class="fas fa-check"></i> Genehmigen</button>
+        <button class="btn-submit" id="batchBtnReject" style="background: #dc3545; display: none;" onclick="doBatchReject()"><i class="fas fa-times"></i> Ablehnen</button>
+        <button class="btn-submit" style="background: #6c757d;" onclick="doBatchDelete()">🗑️ Löschen</button>
     </div>
 </div>
 
@@ -694,6 +705,7 @@ let justOpenedPopup = false;
 let blocks = {};  // TAG 198: Urlaubssperren {date: [{department, reason}]}
 let freeDays = {};  // TAG 198: Freie Tage {date: {description, affects_entitlement}}
 let massBookingDatesList = [];  // TAG 213: Liste der ausgewählten Daten für Masseneingabe
+let lastMassBookingTarget = 'employees';  // Merken der Ziel-Auswahl, damit sie bei Urlaubssperre nicht springt
 
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('📅 Urlaubsplaner V20 init...');
@@ -783,20 +795,22 @@ async function loadAllEmployees() {
             console.log(`📅 Beispiel employee_ids: ${sampleIds}`);
         }
         
-        // Abteilungen-Filter befüllen
+        // Abteilungen- und Standort-Filter befüllen (bei erneutem Aufruf zuerst alte Optionen entfernen)
+        const filterDeptEl = document.getElementById('filterDept');
+        const filterLocEl = document.getElementById('filterLocation');
+        while (filterDeptEl.options.length > 1) filterDeptEl.remove(1);
+        while (filterLocEl.options.length > 1) filterLocEl.remove(1);
         const depts = [...new Set(allEmployees.map(e => e.grp_code))].filter(d => d).sort();
         depts.forEach(d => {
             const opt = document.createElement('option');
             opt.value = d; opt.textContent = d;
-            document.getElementById('filterDept').appendChild(opt);
+            filterDeptEl.appendChild(opt);
         });
-        
-        // NEU: Standort-Filter befüllen
         const locs = [...new Set(allEmployees.map(e => e.location))].filter(l => l).sort();
         locs.forEach(l => {
             const opt = document.createElement('option');
             opt.value = l; opt.textContent = l;
-            document.getElementById('filterLocation').appendChild(opt);
+            filterLocEl.appendChild(opt);
         });
     } else {
         console.error('❌ loadAllEmployees fehlgeschlagen:', r.error);
@@ -910,10 +924,12 @@ async function changeMonthYear() {
     mon = newMon;
     yr = newYr;
     
-    // Bei Jahreswechsel Daten neu laden
+    // Bei Jahreswechsel Daten neu laden (Resturlaub ist pro Jahr)
     if (yr !== oldYr) {
         await loadAllBookings();
         await loadMyBook();
+        await loadAllEmployees();  // Balance/Resturlaub für neues Jahr
+        await loadMe();
     }
     
     render();
@@ -1011,7 +1027,9 @@ function render() {
                     const isToday = ds === today;  // TAG 198: Aktueller Tag
                     const isFreeDay = freeDays[ds];  // TAG 198: Freier Tag (Betriebsferien)
                     // TAG 213 FIX: Verwende grp_code statt department (konsistent mit allEmployees)
-                    const isBlocked = blocks[ds] && blocks[ds].some(b => b.department === emp.grp_code);  // TAG 198: Urlaubssperre
+                    const isBlocked = blocks[ds] && blocks[ds].some(b =>
+                        b.department === emp.grp_code || (b.employee_ids && b.employee_ids.includes(emp.employee_id))
+                    );  // TAG 198: Urlaubssperre (Abteilung oder spezifische MA)
                     let c = 'cell', icon = '', bookingId = '';
                     
                     if (isFreeDay) c += ' free-day';  // TAG 198: Freier Tag
@@ -1080,8 +1098,8 @@ function render() {
                             if (bk.day_part === 'am') c += ' half-am';
                             else if (bk.day_part === 'pm') c += ' half-pm';
                             else if (bk.day_part === 'half') c += ' half-day';
-                            // TAG 116: Locosoft-Indikator
-                            if ((bk.source === 'locosoft' || bk.in_locosoft) && bk.status === 'approved') c += ' in-locosoft';
+                            /* Blaue Punkt-Markierung: finale Genehmigung/Buchung – aus Locosoft ODER aus DRIVE (beide Richtungen) */
+                            if (bk.status === 'approved') c += ' in-locosoft';
                             icon = ICON[bk.type_id] || '';
                             // TAG 198: bookingId auch für andere Buchungen setzen (für Genehmigung)
                             if (bk.id && !bk.id.toString().startsWith('loco_')) {
@@ -1142,27 +1160,29 @@ function setupInteraction() {
             if (!dragging) return;
             
             if (dragMode === 'book') {
-                // Buch-Modus: nur unbebuchte Zellen
+                // Buch-Modus: nur unbebuchte Zellen in der Zeile des gewählten MA (selEmpId)
                 document.querySelectorAll('.cell.sel').forEach(x => x.classList.remove('sel'));
                 sel.clear();
                 const start = new Date(dragStart), end = new Date(c.dataset.d);
                 const [from, to] = start <= end ? [start, end] : [end, start];
+                const empId = selEmpId != null ? String(selEmpId) : c.dataset.e;
                 for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
                     const ds = d.toISOString().split('T')[0];
                     if (d.getDay() === 0 || d.getDay() === 6 || FT[ds]) continue;
-                    const cell = document.querySelector(`.cell[data-d="${ds}"][data-ok="1"]:not(.booked)`);
+                    const cell = document.querySelector(`.cell[data-d="${ds}"][data-e="${empId}"][data-ok="1"]:not(.booked)`);
                     if (cell) { sel.add(ds); cell.classList.add('sel'); }
                 }
             } else if (dragMode === 'delete') {
-                // Lösch-Modus: nur gebuchte Zellen
+                // Lösch-Modus: nur gebuchte Zellen in der Zeile des gewählten MA (selEmpId)
                 document.querySelectorAll('.cell.sel').forEach(x => x.classList.remove('sel'));
                 selBooked.clear();
                 const start = new Date(dragStart), end = new Date(c.dataset.d);
                 const [from, to] = start <= end ? [start, end] : [end, start];
+                const empId = selEmpId != null ? String(selEmpId) : c.dataset.e;
                 for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
                     const ds = d.toISOString().split('T')[0];
                     if (d.getDay() === 0 || d.getDay() === 6 || FT[ds]) continue;
-                    const cell = document.querySelector(`.cell[data-d="${ds}"][data-ok="1"].booked`);
+                    const cell = document.querySelector(`.cell[data-d="${ds}"][data-e="${empId}"][data-ok="1"].booked`);
                     if (cell) {
                         const bid = cell.dataset.bid;
                         if (bid) selBooked.add(parseInt(bid));
@@ -1328,9 +1348,10 @@ async function submitBooking() {
         toast(r.error || 'Fehler beim Buchen', 'danger');
     }
 
-    // Immer neu laden um aktuellen Stand zu zeigen
+    // Immer neu laden um aktuellen Stand zu zeigen (inkl. Resturlaub pro MA)
     await loadMyBook();
     await loadAllBookings();
+    await loadAllEmployees();  // Resturlaub in der Tabelle aktualisieren (Usertest-Feedback)
     await loadMe();
     render();
     renderMy();
@@ -1465,13 +1486,46 @@ function hideAllPopups() {
     editBooking = null;
 }
 
-// TAG 113: Batch-Delete Funktionen
+// TAG 113: Batch-Delete; serielle Genehmigung/Ablehnung (Feedback: Modal soll auch Genehmigen/Ablehnen können)
 function showBatchDeletePopup() {
     if (selBooked.size === 0) return;
     
-    const count = selBooked.size;
-    document.getElementById('batchDeleteHeader').textContent = `🗑️ ${count} Tag(e) löschen?`;
-    document.getElementById('batchDeleteInfo').textContent = `${count} ausgewählte Buchung(en) werden storniert.`;
+    const bookingIds = Array.from(selBooked);
+    const count = bookingIds.length;
+    // Pending-Buchungen aus Auswahl (nur diese können genehmigt/abgelehnt werden)
+    const pendingIds = bookingIds.filter(id => {
+        const b = allBookings.find(x => (x.id == id || x.booking_id == id));
+        return b && b.status === 'pending';
+    });
+    const pendingCount = pendingIds.length;
+    const canApproveReject = (typeof isAppr !== 'undefined' && (isAppr || isAdmin)) && pendingCount > 0;
+    
+    document.getElementById('batchDeleteHeader').textContent = `📅 ${count} Tag(e) – Aktion?`;
+    document.getElementById('batchDeleteInfo').textContent = `${count} ausgewählte Buchung(en).`;
+    const pendingEl = document.getElementById('batchPendingInfo');
+    if (pendingCount > 0) {
+        pendingEl.textContent = `${pendingCount} davon warten auf Genehmigung.`;
+        pendingEl.style.display = 'block';
+    } else {
+        pendingEl.textContent = '';
+        pendingEl.style.display = 'none';
+    }
+    
+    const btnApprove = document.getElementById('batchBtnApprove');
+    const btnReject = document.getElementById('batchBtnReject');
+    const reasonWrap = document.getElementById('batchRejectReasonWrap');
+    if (canApproveReject) {
+        btnApprove.style.display = 'inline-block';
+        btnApprove.innerHTML = '<i class="fas fa-check"></i> Genehmigen' + (pendingCount > 1 ? ` (${pendingCount})` : '');
+        btnReject.style.display = 'inline-block';
+        btnReject.innerHTML = '<i class="fas fa-times"></i> Ablehnen' + (pendingCount > 1 ? ` (${pendingCount})` : '');
+        reasonWrap.style.display = 'block';
+        document.getElementById('batchRejectReason').value = '';
+    } else {
+        btnApprove.style.display = 'none';
+        btnReject.style.display = 'none';
+        reasonWrap.style.display = 'none';
+    }
     
     positionPopup('batchDeletePopup');
 }
@@ -1480,6 +1534,63 @@ function hideBatchDeletePopup() {
     document.getElementById('batchDeletePopup').classList.remove('show');
     clearSelection();
     selBooked.clear();
+}
+
+function getBatchPendingIds() {
+    const bookingIds = Array.from(selBooked);
+    return bookingIds.filter(id => {
+        const b = allBookings.find(x => (x.id == id || x.booking_id == id));
+        return b && b.status === 'pending';
+    });
+}
+
+async function doBatchApprove() {
+    const pendingIds = getBatchPendingIds();
+    if (pendingIds.length === 0) {
+        hideBatchDeletePopup();
+        return;
+    }
+    let ok = 0, err = 0;
+    for (const id of pendingIds) {
+        const r = await api('/approve', 'POST', { booking_id: id });
+        if (r.success) ok++; else err++;
+    }
+    hideBatchDeletePopup();
+    if (err === 0) {
+        toast(`${ok} Buchung(en) genehmigt!`, 'success');
+    } else {
+        toast(ok > 0 ? `${ok} genehmigt, ${err} Fehler.` : 'Fehler beim Genehmigen.', ok > 0 ? 'warning' : 'danger');
+    }
+    await loadMyBook();
+    await loadAllBookings();
+    await loadMe();
+    render();
+    renderMy();
+}
+
+async function doBatchReject() {
+    const pendingIds = getBatchPendingIds();
+    if (pendingIds.length === 0) {
+        hideBatchDeletePopup();
+        return;
+    }
+    const reason = (document.getElementById('batchRejectReason') && document.getElementById('batchRejectReason').value) || 'Abgelehnt (Batch)';
+    let ok = 0, err = 0;
+    for (const id of pendingIds) {
+        const r = await api('/reject', 'POST', { booking_id: id, reason });
+        if (r.success) ok++; else err++;
+    }
+    hideBatchDeletePopup();
+    if (err === 0) {
+        toast(`${ok} Buchung(en) abgelehnt.`, 'success');
+    } else {
+        toast(ok > 0 ? `${ok} abgelehnt, ${err} Fehler.` : 'Fehler beim Ablehnen.', ok > 0 ? 'warning' : 'danger');
+    }
+    await loadMyBook();
+    await loadAllBookings();
+    await loadMe();
+    render();
+    renderMy();
 }
 
 async function doBatchDelete() {
@@ -1501,12 +1612,15 @@ async function doBatchDelete() {
     
     await loadMyBook();
     await loadAllBookings();
+    await loadAllEmployees();
     await loadMe();
     render();
     renderMy();
 }
 
 window.showBatchDeletePopup = showBatchDeletePopup;
+window.doBatchApprove = doBatchApprove;
+window.doBatchReject = doBatchReject;
 window.hideBatchDeletePopup = hideBatchDeletePopup;
 window.doBatchDelete = doBatchDelete;
 
@@ -1579,7 +1693,7 @@ async function doCancel() {
     if (r.success) {
         bootstrap.Modal.getInstance(document.getElementById('cancelModal')).hide();
         toast('Storniert!', 'success');
-        await loadMyBook(); await loadAllBookings(); await loadMe(); render(); renderMy();
+        await loadMyBook(); await loadAllBookings(); await loadAllEmployees(); await loadMe(); render(); renderMy();
     } else {
         toast('Fehler: ' + (r.error || ''), 'danger');
     }
@@ -1599,7 +1713,10 @@ async function doApprove() {
         await loadAppr();
         await loadMyBook();
         await loadAllBookings();
+        await loadAllEmployees();  // Resturlaub aktualisieren
+        await loadMe();
         render();
+        renderMy();
     } else {
         toast('Fehler: ' + (r.error || ''), 'danger');
     }
@@ -1620,6 +1737,11 @@ async function doReject() {
         bootstrap.Modal.getInstance(document.getElementById('rejectModal')).hide();
         toast('Abgelehnt', 'warning');
         await loadAppr();
+        await loadAllBookings();
+        await loadAllEmployees();
+        await loadMe();
+        render();
+        renderMy();
     } else {
         toast('Fehler: ' + (r.error || ''), 'danger');
     }
@@ -1657,6 +1779,25 @@ function events() {
     // TAG 213: btnPrev und btnNext entfernt - Navigation über Dropdowns
     // Event-Listener für Monat/Jahr-Dropdowns werden über onchange im HTML gehandelt
     
+    document.getElementById('btnMonthPrev').addEventListener('click', () => {
+        if (mon === 0) { mon = 11; yr--; } else mon--;
+        document.getElementById('monthSelect').value = mon;
+        document.getElementById('yearSelect').value = yr;
+        changeMonthYear();
+    });
+    document.getElementById('btnMonthNext').addEventListener('click', () => {
+        if (mon === 11) { mon = 0; yr++; } else mon++;
+        document.getElementById('monthSelect').value = mon;
+        document.getElementById('yearSelect').value = yr;
+        changeMonthYear();
+    });
+    document.getElementById('myRequestsHeader').addEventListener('click', () => {
+        const listEl = document.getElementById('myList');
+        const chev = document.getElementById('myRequestsChevron');
+        const isHidden = listEl.style.display === 'none';
+        listEl.style.display = isHidden ? 'block' : 'none';
+        chev.className = isHidden ? 'fas fa-chevron-down' : 'fas fa-chevron-right';
+    });
     document.getElementById('btnToday').addEventListener('click', async () => { 
         const oldYr = yr;
         mon = new Date().getMonth(); 
@@ -1667,11 +1808,13 @@ function events() {
         document.getElementById('yearSelect').value = yr;
         
         if (yr !== oldYr) {
-            await loadAllBookings();  // Bei Jahreswechsel neu laden
-            await loadMyBook();       // TAG 116 FIX: Auch eigene Buchungen neu laden!
+            await loadAllBookings();
+            await loadMyBook();
+            await loadAllEmployees();  // Resturlaub für neues Jahr
+            await loadMe();
         }
         render(); 
-        renderMy();  // TAG 116 FIX: Sidebar aktualisieren
+        renderMy();
     });
     document.getElementById('filterDept').addEventListener('change', () => render());
     document.getElementById('filterLocation').addEventListener('change', () => render());  // NEU
@@ -1729,7 +1872,8 @@ async function showMassBookingModal() {
     massBookingDatesList = [];  // TAG 213: Liste der ausgewählten Daten
     document.getElementById('massBookingType').value = '1';
     document.getElementById('massBookingDayPart').value = 'full';
-    document.getElementById('massBookingTarget').value = 'department';
+    document.getElementById('massBookingTarget').value = 'employees';
+    lastMassBookingTarget = 'employees';
     document.getElementById('massBookingAutoApprove').checked = false;
     updateMassBookingTarget();
     updateMassBookingType();  // TAG 213: Tag-Teil anzeigen/verstecken
@@ -1738,7 +1882,9 @@ async function showMassBookingModal() {
 }
 
 function updateMassBookingTarget() {
-    const target = document.getElementById('massBookingTarget').value;
+    const targetSelect = document.getElementById('massBookingTarget');
+    const target = targetSelect.value;
+    lastMassBookingTarget = (target === 'department' || target === 'employees' || target === 'all') ? target : lastMassBookingTarget;
     document.getElementById('massBookingDepartmentBox').style.display = 
         target === 'department' ? 'block' : 'none';
     document.getElementById('massBookingEmployeesBox').style.display = 
@@ -1752,13 +1898,13 @@ function updateMassBookingType() {
     const targetSelect = document.getElementById('massBookingTarget');
     const autoApproveBox = document.getElementById('massBookingAutoApprove').closest('.mb-3');
     
-    // Tag-Teil nur bei normalen Buchungen anzeigen, nicht bei Urlaubssperre
+    // Tag-Teil und Auto-Genehmigen nur bei normalen Buchungen, nicht bei Urlaubssperre
     if (bookingType === 'block') {
         dayPartBox.style.display = 'none';
         autoApproveBox.style.display = 'none';
-        // Bei Urlaubssperre nur "Abteilung" erlauben
-        targetSelect.value = 'department';
-        targetSelect.disabled = true;
+        targetSelect.disabled = false;
+        // Urlaubssperre: Ziel-Auswahl aus lastMassBookingTarget wiederherstellen (verhindert Sprung auf Abteilung)
+        targetSelect.value = lastMassBookingTarget;
         updateMassBookingTarget();
     } else {
         dayPartBox.style.display = 'block';
@@ -1848,24 +1994,27 @@ async function submitMassBooking() {
     
     // TAG 213: Prüfe ob Urlaubssperre
     if (bookingType === 'block') {
-        // Urlaubssperre erstellen
+        // Urlaubssperre: Abteilung ODER spezifische Mitarbeiter
         const department = document.getElementById('massBookingDepartment').value;
-        if (!department) {
-            alert('Bitte Abteilung wählen für Urlaubssperre');
+        const selectedEmployees = target === 'employees'
+            ? Array.from(document.getElementById('massBookingEmployees').selectedOptions).map(opt => parseInt(opt.value, 10))
+            : [];
+        const useEmployees = target === 'employees' && selectedEmployees.length > 0;
+        if (!useEmployees && !department) {
+            alert('Bitte Abteilung wählen oder spezifische Mitarbeiter auswählen für Urlaubssperre.');
             return;
         }
         
         const reason = prompt('Grund für Urlaubssperre (optional):', '');
         
         try {
+            const body = { dates: massBookingDatesList, reason: reason || '' };
+            if (useEmployees) body.employee_ids = selectedEmployees;
+            else body.department = department;
             const r = await fetch('/api/vacation/admin/blocks', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    dates: massBookingDatesList,
-                    department: department,
-                    reason: reason || ''
-                })
+                body: JSON.stringify(body)
             });
             const result = await r.json();
             

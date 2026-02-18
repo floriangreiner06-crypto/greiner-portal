@@ -4,6 +4,8 @@
 VACATION CHEF API - Ergänzung für Chef-Übersicht
 TAG 103
 Updated: TAG 117 - Migration auf db_session
+Feb 2026: Chef-Übersicht zeigt nun auch Genehmiger mit Priorität 2 (Stellvertreter),
+          nicht nur Priorität 1 (seit TAG 104 war nur priority=1 gefiltert).
 """
 
 from flask import Blueprint, jsonify
@@ -40,6 +42,11 @@ def get_grp_display_name(code):
     return GRP_NAMES.get(code, code)
 
 
+# Abteilungs-Aliase: employees.department_name -> loco_grp_code für Genehmiger-Zuordnung.
+# Damit Team-Zusammensetzung in Chef-Übersicht mit Urlaubsplaner übereinstimmt (gleiche Abteilungslogik).
+DEPT_TO_APPROVAL_GRP = {'Service & Empfang': 'Service'}
+
+
 @chef_api.route('/chef-overview', methods=['GET'])
 def get_chef_overview():
     """
@@ -52,16 +59,21 @@ def get_chef_overview():
         with db_session() as conn:
             cursor = conn.cursor()
 
-            # Alle Genehmiger mit ihren Regeln
+            # Alle Genehmiger mit ihren Regeln.
+            # Bis Feb 2026: nur priority = 1 (Haupt-Genehmiger). Seit Feb 2026: priority IN (1, 2),
+            # damit auch Stellvertreter (z. B. Sandra Brendel) in der Chef-Übersicht erscheinen.
             cursor.execute("""
                 SELECT DISTINCT
                     ar.approver_ldap_username,
                     e.first_name || ' ' || e.last_name as approver_name,
-                    e.id as approver_id, e.last_name
+                    e.id as approver_id,
+                    e.last_name,
+                    MIN(ar.priority) as min_priority
                 FROM vacation_approval_rules ar
                 JOIN ldap_employee_mapping lem ON ar.approver_ldap_username = lem.ldap_username
                 JOIN employees e ON lem.employee_id = e.id
-                WHERE ar.active = 1 AND ar.priority = 1
+                WHERE ar.active = 1 AND ar.priority IN (1, 2)
+                GROUP BY ar.approver_ldap_username, e.first_name, e.last_name, e.id
                 ORDER BY e.last_name
             """)
 
@@ -74,7 +86,7 @@ def get_chef_overview():
             for approver in approvers:
                 approver_ldap = approver['approver_ldap_username']
 
-                # Gruppen des Genehmigers
+                # Gruppen des Genehmigers (alle Regeln mit Priorität 1 oder 2)
                 cursor.execute("""
                     SELECT DISTINCT
                         loco_grp_code,
@@ -85,7 +97,7 @@ def get_chef_overview():
                             ELSE 'Alle'
                         END as standort
                     FROM vacation_approval_rules
-                    WHERE approver_ldap_username = %s AND active = 1 AND priority = 1
+                    WHERE approver_ldap_username = %s AND active = 1 AND priority IN (1, 2)
                 """, (approver_ldap,))
 
                 rules = cursor.fetchall()
@@ -96,8 +108,13 @@ def get_chef_overview():
                 standorte = list(set([r['standort'] for r in rules]))
                 standort = standorte[0] if len(standorte) == 1 else 'Alle'
 
-                # Team-Mitglieder holen (über department_name statt loco_grp_code)
-                cursor.execute("""
+                # Team-Mitglieder holen (department_name = loco_grp_code oder Alias, damit wie Urlaubsplaner)
+                # Alias: z. B. "Service & Empfang" -> Genehmiger "Service", damit Team-Zusammensetzung passt
+                dept_match = "e.department_name = ar.loco_grp_code"
+                for dept, grp in DEPT_TO_APPROVAL_GRP.items():
+                    dept_match += f" OR (e.department_name = %s AND ar.loco_grp_code = %s)"
+                alias_params = [p for pair in DEPT_TO_APPROVAL_GRP.items() for p in pair]
+                cursor.execute(f"""
                     SELECT DISTINCT
                         e.id as employee_id,
                         e.first_name || ' ' || e.last_name as name,
@@ -109,18 +126,18 @@ def get_chef_overview():
                         END as subsidiary,
                         COALESCE(e.location, 'Unbekannt') as standort, e.last_name
                     FROM vacation_approval_rules ar
-                    JOIN employees e ON e.department_name = ar.loco_grp_code
+                    JOIN employees e ON ({dept_match})
                         AND (ar.subsidiary IS NULL
                              OR (ar.subsidiary = 1 AND e.location = 'Deggendorf')
                              OR (ar.subsidiary = 3 AND e.location = 'Landau a.d. Isar'))
                     LEFT JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
                     WHERE ar.approver_ldap_username = %s
                       AND ar.active = 1
-                      AND ar.priority = 1
+                      AND ar.priority IN (1, 2)
                       AND e.aktiv = true
                       AND (lem.ldap_username IS NULL OR lem.ldap_username != %s)
                     ORDER BY e.last_name
-                """, (approver_ldap, approver_ldap))
+                """, (*alias_params, approver_ldap, approver_ldap))
 
                 members_raw = cursor.fetchall()
                 member_ids = list(set([m['employee_id'] for m in members_raw]))

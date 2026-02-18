@@ -1560,13 +1560,15 @@ def reject_vacation():
 
 
 @vacation_api.route('/balance', methods=['GET'])
-@role_required(['hr', 'admin'])
+@login_required
 def get_all_balances():
     """
     GET /api/vacation/balance
 
-    Gibt Urlaubssalden für alle Mitarbeiter zurück.
+    Gibt Urlaubssalden für alle Mitarbeiter zurück (für Urlaubsplaner-Teamansicht).
+    Jeder eingeloggte User darf die Liste laden (hr/admin nur für Admin-Views erforderlich).
     TAG 123: Erweitert um has_ad_mapping Flag für Mitarbeiter ohne AD-Zuordnung.
+    Security-Fix: Zuvor @role_required(['hr','admin']) → Mitarbeiter sahen leere Planer-Liste.
     """
     try:
         year = request.args.get('year', datetime.now().year, type=int)
@@ -1641,14 +1643,28 @@ def get_all_balances():
             loco_urlaub_by_emp = {}
             if emp_to_loco:
                 try:
-                    loco_ids = list(emp_to_loco.values())
-                    loco_absences = get_absences_for_employees(loco_ids, year)
-                    # loco_absences: {locosoft_id: {'urlaub': X, ...}} -> umrechnen auf employee_id
                     loco_to_emp = {v: k for k, v in emp_to_loco.items()}
+                    loco_ids = list(loco_to_emp.keys())
+                    loco_absences = get_absences_for_employees(loco_ids, year)
                     for loco_id, data in loco_absences.items():
                         emp_id = loco_to_emp.get(loco_id)
                         if emp_id is not None:
                             loco_urlaub_by_emp[emp_id] = data.get('urlaub', 0) or 0
+                    # Fallback: Wenn Aggregat 0 liefert, Urlaub aus Tagesdaten summieren (gleiche Quelle wie Kalender)
+                    try:
+                        loco_days = get_absence_days_for_employees(loco_ids, year)
+                        for loco_id, days in loco_days.items():
+                            emp_id = loco_to_emp.get(loco_id)
+                            if emp_id is None:
+                                continue
+                            urlaub_from_days = sum(
+                                d.get('day_contingent', 1.0) for d in (days or [])
+                                if d.get('reason') in ('Url', 'BUr')
+                            )
+                            if urlaub_from_days > 0 and (loco_urlaub_by_emp.get(emp_id) or 0) == 0:
+                                loco_urlaub_by_emp[emp_id] = round(urlaub_from_days, 1)
+                    except Exception as fallback_e:
+                        print(f"⚠️ Locosoft-Tage-Fallback für Balance: {fallback_e}")
                 except Exception as e:
                     print(f"⚠️ Locosoft-Abwesenheiten für Balance: {e}")
 
