@@ -1,7 +1,7 @@
 # Verkauf & Fahrzeuge — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-02-13
+## Letzte Aktualisierung: 2026-02-17
 
 ## Beschreibung
 
@@ -39,7 +39,7 @@ Verkauf umfasst Auftragseingang, Auslieferungen, Deckungsbeitrag, Profitabilitä
 - ✅ AHK FIN Check / Autohauskenner-Portal: Machbarkeits- und Nutzenanalyse erstellt, Portal-Check (keine API); Integration vorerst auf Eis
 - ✅ mobile.de Zukauf/Neueingestellte: API-Optionen analysiert (Search-API + Ad-Stream); Scraping blockiert, offizielle APIs nutzbar. Siehe `MOBILEDE_ZUKAUF_API_OPTIONEN.md`.
 - 🔧 eAutoSeller, Ersatzwagen je nach Projektstand
-- ✅ Provisionsabrechnung Phase 1+2 (Teil): **Live-Preview** (Phase 1) und **Vorlauf + Dashboard** (Phase 2 Teil). SSOT: `api/provision_service.py` (berechne_live_provision, create_vorlauf, get_dashboard_daten, get_lauf_detail), `api/provision_api.py` (live-preview, vorlauf-erstellen, dashboard, lauf/<id>). Views: /provision/meine, /provision/dashboard (VKL), /provision/detail/<id>. PDF-Modul `api/provision_pdf.py` (reportlab) angelegt; bei Bedarf nach Commit-Fix prüfen. Offen: Einspruch, Endlauf freigeben, PDF-Download-URL; Phase 3 (Kat. V, Lohnbuchhaltung). Abweichung Kraus Jan 2026 mit Buchhaltung klären (VIN-Liste im Sync).
+- ✅ Provisionsabrechnung Phase 1+2 (Teil): **Live-Preview** (Phase 1) und **Vorlauf + Dashboard** (Phase 2 Teil). SSOT: `api/provision_service.py` (berechne_live_provision, create_vorlauf, get_dashboard_daten, get_lauf_detail), `api/provision_api.py` (live-preview, vorlauf-erstellen, dashboard, lauf/<id>). Views: /provision/meine, /provision/dashboard (VKL), /provision/detail/<id>. PDF-Modul `api/provision_pdf.py` (reportlab); PDF-Pfad wird nach Generierung in DB gespeichert. **Offen:** Einspruch, Endlauf freigeben, PDF-Download-URL; Phase 3 (Kat. V, Lohnbuchhaltung). Abweichung Kraus Jan 2026 (230,61 €) mit Buchhaltung klären (VIN-Liste im Sync).
 - ✅ **Verkäufer-Zielplanung (Erweiterung):** Saisonalität aus Locosoft (API `saisonalitaet/<jahr>`, Monatsverteilung), IST in Monatsverteilung (SSOT gleicher Endpoint). Monatsziele-API nutzt gespeicherte Ziele falls vorhanden.
 - ✅ **Auftragseingang Zielerfüllung:** Monatsziele-API; Summary-Karten mit „Zielerfüllung (Zielplanung): NW/GW IST/Ziel (X%)“; Verkäufer-Tabelle mit Spalten Ziel NW, Ziel GW, Erfüllung % (nur Monatsansicht).
 - ✅ **Workflow Zielplanung:** Tabelle `verkaeufer_ziele`, GET/POST Ziele, editierbare Tabelle (Vorschlag übernehmen, Gespeicherte Ziele laden, Speichern). Differenz-Box: Summe vereinbarte Ziele vs. Konzernziel, Hinweis auf Ausgleich in weiteren Planungsgesprächen.
