@@ -234,6 +234,14 @@
                             <li><a class="dropdown-item" href="/verkauf/profitabilitaet">
                                 <i class="bi bi-currency-euro text-success"></i> Profitabilität
                             </a></li>
+                            <li><a class="dropdown-item" href="/provision/meine">
+                                <i class="bi bi-cash-coin"></i> Meine Provision
+                            </a></li>
+                            {% if current_user.portal_role in ['admin', 'geschaeftsleitung'] or current_user.has_role('admin') or current_user.has_role('geschaeftsfuehrung') %}
+                            <li><a class="dropdown-item" href="/provision/dashboard">
+                                <i class="bi bi-cash-stack"></i> Provisions-Dashboard (VKL)
+                            </a></li>
+                            {% endif %}
 
                             <!-- Budget-Planung (nur GF + VK-Leitung) -->
                             {% if current_user.portal_role in ['admin', 'geschaeftsleitung', 'verkauf_leitung'] %}

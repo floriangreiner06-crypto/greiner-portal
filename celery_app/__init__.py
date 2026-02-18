@@ -13,7 +13,8 @@ Erstellt: 2025-12-09 (TAG 110)
 """
 
 from celery import Celery
-from celery.schedules import crontab
+from celery.schedules import crontab, schedule
+from datetime import timedelta
 import os
 
 # Basis-Pfad
@@ -254,6 +255,12 @@ app.conf.update(
             'schedule': crontab(minute=0, hour=20, day_of_week='mon-fri'),
             'options': {'queue': 'aftersales'}
         },
+        # ServiceBox Passwort-Ablauf: Erinnerungs-E-Mail an Servicelieter (täglich 8:00)
+        'check-servicebox-password-expiry': {
+            'task': 'celery_app.tasks.check_servicebox_password_expiry',
+            'schedule': crontab(minute=0, hour=8, day_of_week='mon-fri'),
+            'options': {'queue': 'aftersales'}
+        },
         
         # Teile
         'sync-teile': {
@@ -361,6 +368,15 @@ app.conf.update(
             'task': 'celery_app.tasks.benachrichtige_serviceberater_ueberschreitungen',
             'schedule': crontab(minute='*/15', hour='7-18', day_of_week='mon-fri'),
             'options': {'queue': 'aftersales'}
+        },
+
+        # =====================================================================
+        # WHATSAPP POLLING (Alternative zum Webhook — nur bei WHATSAPP_USE_POLLING_INSTEAD_OF_WEBHOOK=true)
+        # =====================================================================
+        'fetch-whatsapp-inbound-polling': {
+            'task': 'celery_app.tasks.fetch_whatsapp_inbound_polling',
+            'schedule': schedule(run_every=timedelta(seconds=30)),  # Alle 30 Sekunden
+            'options': {'queue': 'verkauf'}
         },
     },
     

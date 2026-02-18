@@ -26,7 +26,12 @@ WEEKDAY_NAMES = {
 }
 
 def cron_to_readable(schedule):
-    """Wandelt Crontab in lesbare Beschreibung um."""
+    """Wandelt Crontab/Schedule in lesbare Beschreibung um."""
+    if hasattr(schedule, 'run_every') and getattr(schedule.run_every, 'total_seconds', None):
+        sec = int(schedule.run_every.total_seconds())
+        if sec < 60:
+            return f"Alle {sec} Sek."
+        return f"Alle {sec // 60} Min"
     if not hasattr(schedule, '_orig_minute'):
         return str(schedule)
     
@@ -143,6 +148,8 @@ def get_cron_string(schedule):
     """Extrahiert Cron-String aus Schedule-Objekt."""
     if hasattr(schedule, '_orig_minute'):
         return f"{schedule._orig_minute} {schedule._orig_hour} * * {schedule._orig_day_of_week}"
+    if hasattr(schedule, 'run_every') and getattr(schedule.run_every, 'total_seconds', None):
+        return f"every {int(schedule.run_every.total_seconds())}s"
     return str(schedule)
 
 
@@ -210,6 +217,7 @@ TASK_CATEGORIES = {
             ('servicebox_matcher', 'ServiceBox Matcher', 'Mit Locosoft matchen'),
             ('servicebox_import', 'ServiceBox Import', 'In DB importieren'),
             ('servicebox_master', 'ServiceBox Master', 'Komplett neu laden (langsam!)'),
+            ('check_servicebox_password_expiry', 'ServiceBox Passwort-Prüfung', 'Erinnerung bei ablaufendem Passwort'),
             ('sync_teile', 'Teile Sync', 'Teile synchronisieren'),
             ('import_teile', 'Teile Import', 'Teile-Lieferscheine importieren'),
             ('werkstatt_leistung', 'Werkstatt Leistung', 'Leistungsgrade berechnen'),
@@ -226,6 +234,14 @@ TASK_CATEGORIES = {
             ('import_stellantis', 'Stellantis Import', 'Stellantis Fahrzeuge importieren'),
             ('sync_stammdaten', 'Stammdaten Sync', 'Fahrzeug-Stammdaten sync'),
             ('locosoft_mirror', 'Locosoft Mirror', 'Locosoft komplett spiegeln'),
+        ]
+    },
+    'integrations': {
+        'name': 'Integrationen',
+        'icon': '🔗',
+        'tasks': [
+            ('fetch_whatsapp_inbound_polling', 'WhatsApp Inbound Polling', 'Eingehende WhatsApp-Nachrichten von Twilio abrufen (alle 30 s)'),
+            ('sync_eautoseller_data', 'eAutoSeller Sync', 'eAutoSeller-Daten synchronisieren'),
         ]
     }
 }
@@ -265,12 +281,12 @@ def start_task(task_name):
         import_mt940, import_hvb_pdf, import_santander, import_hyundai,
         scrape_hyundai, leasys_cache_refresh, umsatz_bereinigung, bwa_berechnung,
         sync_employees, sync_locosoft_employees, email_auftragseingang,
-        email_tek_daily, db_backup, cleanup_backups, servicebox_scraper, servicebox_matcher,
-        servicebox_import, servicebox_master, sync_teile, import_teile,
+        email_tek_daily, db_backup, cleanup_backups,         servicebox_scraper, servicebox_matcher,
+        servicebox_import, servicebox_master, check_servicebox_password_expiry, sync_teile, import_teile,
         werkstatt_leistung, email_werkstatt_tagesbericht, sync_charge_types,
         ml_retrain, sync_sales, import_stellantis, sync_stammdaten, locosoft_mirror, sync_ad_departments,
         update_penner_marktpreise, email_penner_weekly, sync_eautoseller_data,
-        benachrichtige_serviceberater_ueberschreitungen
+        benachrichtige_serviceberater_ueberschreitungen, fetch_whatsapp_inbound_polling
     )
     
     task_map = {
@@ -292,6 +308,7 @@ def start_task(task_name):
         'servicebox_matcher': servicebox_matcher,
         'servicebox_import': servicebox_import,
         'servicebox_master': servicebox_master,
+        'check_servicebox_password_expiry': check_servicebox_password_expiry,
         'sync_teile': sync_teile,
         'import_teile': import_teile,
         'werkstatt_leistung': werkstatt_leistung,
@@ -307,6 +324,7 @@ def start_task(task_name):
         'email_penner_weekly': email_penner_weekly,
         'sync_eautoseller_data': sync_eautoseller_data,
         'benachrichtige_serviceberater_ueberschreitungen': benachrichtige_serviceberater_ueberschreitungen,
+        'fetch_whatsapp_inbound_polling': fetch_whatsapp_inbound_polling,
     }
     
     if task_name not in task_map:
@@ -454,6 +472,7 @@ def task_history(task_name):
             'servicebox_matcher': 'celery_app.tasks.servicebox_matcher',
             'servicebox_import': 'celery_app.tasks.servicebox_import',
             'servicebox_master': 'celery_app.tasks.servicebox_master',
+            'check_servicebox_password_expiry': 'celery_app.tasks.check_servicebox_password_expiry',
             'sync_teile': 'celery_app.tasks.sync_teile',
             'import_teile': 'celery_app.tasks.import_teile',
             'werkstatt_leistung': 'celery_app.tasks.werkstatt_leistung',
@@ -469,6 +488,7 @@ def task_history(task_name):
             'email_penner_weekly': 'celery_app.tasks.email_penner_weekly',
             'sync_eautoseller_data': 'celery_app.tasks.sync_eautoseller_data',
             'benachrichtige_serviceberater_ueberschreitungen': 'celery_app.tasks.benachrichtige_serviceberater_ueberschreitungen',
+            'fetch_whatsapp_inbound_polling': 'celery_app.tasks.fetch_whatsapp_inbound_polling',
         }
         
         full_task_name = task_map.get(task_name)

@@ -34,3 +34,13 @@ def user_dashboard_config():
     TAG 190: Nur Admin kann Startseiten konfigurieren
     """
     return render_template('admin/user_dashboard_config.html')
+
+
+@admin_routes.route('/admin/servicebox-zugang')
+@login_required
+@role_required(['admin'])
+def servicebox_zugang():
+    """ServiceBox (Stellantis) Passwort & Ablaufdatum verwalten.
+    Teile-Lager/Werkstatt; Erinnerungs-E-Mails bei ablaufendem Passwort.
+    """
+    return render_template('admin/servicebox_zugang.html')

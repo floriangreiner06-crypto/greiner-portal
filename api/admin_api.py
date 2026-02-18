@@ -902,10 +902,10 @@ def get_navigation_items():
                         current_user.can_access_feature(item['requires_feature'])):
                     continue
             
-            # Prüfe Rollen-Restriktion
+            # Prüfe Rollen-Restriktion (einzelne Rolle oder kommasep. Liste)
             if item.get('role_restriction'):
-                if user_role != item['role_restriction']:
-                    # Prüfe auch ob User admin ist (admin sieht alles)
+                allowed_roles = [r.strip() for r in str(item['role_restriction']).split(',') if r.strip()]
+                if user_role not in allowed_roles:
                     if not (hasattr(current_user, 'can_access_feature') and 
                             current_user.can_access_feature('admin')):
                         continue
@@ -1181,5 +1181,103 @@ def reset_user_dashboard_config(user_id):
             'success': True
         })
     
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# =============================================================================
+# SERVICEBOX ZUGANG (Teile-Lager / Werkstatt) – Passwort & Ablauf-Erinnerung
+# =============================================================================
+
+CREDENTIALS_PATH = '/opt/greiner-portal/config/credentials.json'
+SERVICEBOX_KEY = ('external_systems', 'stellantis_servicebox')
+
+
+def _load_credentials():
+    """Lädt credentials.json. Wirft bei Fehler."""
+    if not os.path.exists(CREDENTIALS_PATH):
+        raise FileNotFoundError('credentials.json nicht gefunden')
+    with open(CREDENTIALS_PATH, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+
+def _save_credentials(creds):
+    """Speichert credentials.json atomar (temp + rename)."""
+    tmp = CREDENTIALS_PATH + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(creds, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, CREDENTIALS_PATH)
+
+
+@admin_api.route('/api/admin/servicebox-config', methods=['GET'])
+@admin_required
+def get_servicebox_config():
+    """
+    Liest ServiceBox-Zugangsdaten (ohne Passwort).
+    Für Admin-UI: Anzeige Username, Ablaufdatum, Erinnerungs-E-Mails.
+    """
+    try:
+        creds = _load_credentials()
+        ext = creds.get('external_systems', {})
+        sb = ext.get('stellantis_servicebox', {})
+        return jsonify({
+            'username': sb.get('username') or '',
+            'portal_url': sb.get('portal_url') or 'https://servicebox.mpsa.com',
+            'password_expires_at': sb.get('password_expires_at') or None,
+            'reminder_emails': sb.get('reminder_emails') or [],
+            'configured': bool(sb.get('username')),
+        })
+    except FileNotFoundError as e:
+        return jsonify({'error': str(e)}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_api.route('/api/admin/servicebox-config', methods=['POST'])
+@admin_required
+def update_servicebox_config():
+    """
+    Aktualisiert ServiceBox-Passwort und/oder Ablaufdatum und Erinnerungs-E-Mails.
+    Body: password (optional), password_expires_at (optional, ISO-Datum),
+          reminder_emails (optional, Liste E-Mail-Adressen).
+    """
+    try:
+        creds = _load_credentials()
+        if 'external_systems' not in creds:
+            creds['external_systems'] = {}
+        sb = creds['external_systems'].setdefault('stellantis_servicebox', {})
+
+        data = request.get_json(force=True, silent=True) or {}
+        updated = False
+
+        if 'password' in data and data['password'] is not None and str(data['password']).strip():
+            sb['password'] = str(data['password']).strip()
+            updated = True
+        if 'password_expires_at' in data:
+            val = data['password_expires_at']
+            sb['password_expires_at'] = (val.strip() if isinstance(val, str) and val.strip() else None) or None
+            updated = True
+        if 'reminder_emails' in data:
+            raw = data['reminder_emails']
+            if isinstance(raw, list):
+                sb['reminder_emails'] = [str(e).strip() for e in raw if str(e).strip()]
+            elif isinstance(raw, str):
+                sb['reminder_emails'] = [e.strip() for e in raw.split(',') if e.strip()]
+            else:
+                sb['reminder_emails'] = []
+            updated = True
+
+        if not updated:
+            return jsonify({'message': 'Nichts geändert', 'success': True})
+
+        _save_credentials(creds)
+        return jsonify({
+            'message': 'ServiceBox-Zugang aktualisiert',
+            'success': True,
+            'password_expires_at': sb.get('password_expires_at'),
+            'reminder_emails': sb.get('reminder_emails', []),
+        })
+    except FileNotFoundError as e:
+        return jsonify({'error': str(e)}), 404
     except Exception as e:
         return jsonify({'error': str(e)}), 500

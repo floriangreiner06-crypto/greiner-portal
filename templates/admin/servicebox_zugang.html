@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}Admin - ServiceBox Zugang - DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .card-header-servicebox {
+        background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
+        color: white;
+        font-weight: 600;
+    }
+    .status-ok { color: #198754; }
+    .status-warn { color: #fd7e14; }
+    .status-expired { color: #dc3545; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-1">ServiceBox Zugang</h1>
+            <p class="text-muted mb-0">Stellantis ServiceBox – Passwort & Ablaufdatum verwalten</p>
+        </div>
+        <a href="/admin/rechte" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Zurück zu Rechte
+        </a>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header card-header-servicebox">
+                    <i class="bi bi-key"></i> Zugangsdaten
+                </div>
+                <div class="card-body">
+                    <div id="config-load-error" class="alert alert-danger d-none"></div>
+                    <div id="config-status" class="mb-3">
+                        <p class="text-muted mb-2">Lade Konfiguration…</p>
+                    </div>
+                    <form id="form-servicebox">
+                        <div class="mb-3">
+                            <label class="form-label">Benutzername (nur Anzeige)</label>
+                            <input type="text" class="form-control" id="username" readonly placeholder="–">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Neues Passwort <span class="text-muted">(leer lassen = unverändert)</span></label>
+                            <input type="password" class="form-control" id="password" placeholder="Neues ServiceBox-Passwort" autocomplete="new-password">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Passwort gültig bis (Ablaufdatum)</label>
+                            <input type="date" class="form-control" id="password_expires_at">
+                            <small class="text-muted">Wenn gesetzt: Erinnerungs-E-Mail an Servicelieter vor Ablauf.</small>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Erinnerungs-E-Mails bei ablaufendem Passwort</label>
+                            <input type="text" class="form-control" id="reminder_emails" placeholder="z.B. m.koenig@auto-greiner.de, f.greiner@auto-greiner.de">
+                            <small class="text-muted">Kommagetrennt. Servicelieter Matthias König und Florian Greiner werden benachrichtigt.</small>
+                        </div>
+                        <button type="submit" class="btn btn-primary" id="btn-save">
+                            <i class="bi bi-check-lg"></i> Speichern
+                        </button>
+                        <span id="save-feedback" class="ms-2"></span>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-light">
+                    <i class="bi bi-info-circle"></i> Hinweise
+                </div>
+                <div class="card-body small">
+                    <p>Das ServiceBox-Passwort muss bei Stellantis regelmäßig geändert werden. Hier können Sie es zentral für das DRIVE-Portal anpassen.</p>
+                    <p>Wenn ein <strong>Ablaufdatum</strong> gesetzt ist, erhalten die angegebenen Empfänger automatisch eine E-Mail, sobald das Passwort abgelaufen ist oder in den nächsten 14 Tagen abläuft.</p>
+                    <p>Der Zugang wird für Teilebestellungen, Werkstatt-Live und geplante DRIVE-Features genutzt.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const form = document.getElementById('form-servicebox');
+    const statusEl = document.getElementById('config-status');
+    const errorEl = document.getElementById('config-load-error');
+    const saveFeedback = document.getElementById('save-feedback');
+    const btnSave = document.getElementById('btn-save');
+
+    function loadConfig() {
+        errorEl.classList.add('d-none');
+        statusEl.innerHTML = '<p class="text-muted mb-2">Lade Konfiguration…</p>';
+        fetch('/api/admin/servicebox-config')
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    errorEl.textContent = data.error;
+                    errorEl.classList.remove('d-none');
+                    statusEl.innerHTML = '';
+                    return;
+                }
+                document.getElementById('username').value = data.username || '–';
+                document.getElementById('password_expires_at').value = data.password_expires_at || '';
+                document.getElementById('reminder_emails').value = (data.reminder_emails || []).join(', ');
+                let statusHtml = '';
+                if (data.username) {
+                    statusHtml += '<p class="mb-1"><strong>Zugang:</strong> ' + escapeHtml(data.username) + '</p>';
+                }
+                if (data.password_expires_at) {
+                    const d = new Date(data.password_expires_at);
+                    const now = new Date();
+                    const days = Math.ceil((d - now) / (1000 * 60 * 60 * 24));
+                    let cls = 'status-ok';
+                    if (days < 0) cls = 'status-expired';
+                    else if (days <= 14) cls = 'status-warn';
+                    statusHtml += '<p class="mb-0 ' + cls + '"><strong>Ablauf:</strong> ' + d.toLocaleDateString('de-DE') + ' ';
+                    if (days < 0) statusHtml += '(abgelaufen)';
+                    else if (days <= 14) statusHtml += '(läuft in ' + days + ' Tagen ab)';
+                    else statusHtml += '(noch ' + days + ' Tage gültig)';
+                    statusHtml += '</p>';
+                } else {
+                    statusHtml += '<p class="text-muted mb-0">Kein Ablaufdatum gesetzt.</p>';
+                }
+                statusEl.innerHTML = statusHtml;
+            })
+            .catch(err => {
+                errorEl.textContent = 'Konfiguration konnte nicht geladen werden: ' + err.message;
+                errorEl.classList.remove('d-none');
+                statusEl.innerHTML = '';
+            });
+    }
+
+    function escapeHtml(s) {
+        const div = document.createElement('div');
+        div.textContent = s;
+        return div.innerHTML;
+    }
+
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        btnSave.disabled = true;
+        saveFeedback.textContent = '';
+        const payload = {};
+        const pwd = document.getElementById('password').value.trim();
+        if (pwd) payload.password = pwd;
+        payload.password_expires_at = document.getElementById('password_expires_at').value || null;
+        const emailsStr = document.getElementById('reminder_emails').value.trim();
+        payload.reminder_emails = emailsStr ? emailsStr.split(',').map(s => s.trim()).filter(Boolean) : [];
+        fetch('/api/admin/servicebox-config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    saveFeedback.innerHTML = '<span class="text-danger">' + escapeHtml(data.error) + '</span>';
+                } else {
+                    saveFeedback.innerHTML = '<span class="text-success">' + (data.message || 'Gespeichert.') + '</span>';
+                    document.getElementById('password').value = '';
+                    loadConfig();
+                }
+            })
+            .catch(err => {
+                saveFeedback.innerHTML = '<span class="text-danger">Fehler: ' + escapeHtml(err.message) + '</span>';
+            })
+            .finally(function() { btnSave.disabled = false; });
+    });
+
+    loadConfig();
+})();
+</script>
+{% endblock %}

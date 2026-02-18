@@ -673,6 +673,92 @@ def servicebox_master():
         return {'success': False, 'error': str(e)}
 
 
+# ServiceBox Passwort-Ablauf: Standard-Empfänger für Erinnerungs-E-Mail
+SERVICEBOX_REMINDER_EMAILS_DEFAULT = [
+    'f.greiner@auto-greiner.de',
+    'm.koenig@auto-greiner.de',
+]
+
+
+@shared_task(soft_time_limit=60, name='celery_app.tasks.check_servicebox_password_expiry')
+def check_servicebox_password_expiry():
+    """
+    Prüft, ob das ServiceBox-Passwort abgelaufen ist oder in 14 Tagen abläuft.
+    Sendet in dem Fall eine E-Mail an die konfigurierten Empfänger
+    (Servicelieter Matthias König, Florian Greiner bzw. reminder_emails in credentials).
+    Läuft täglich (z. B. 8:00).
+    """
+    import json
+    import os
+    from datetime import timedelta
+
+    credentials_path = '/opt/greiner-portal/config/credentials.json'
+    try:
+        if not os.path.exists(credentials_path):
+            logger.debug("ServiceBox: credentials.json nicht gefunden, überspringe Prüfung")
+            return {'success': True, 'skipped': 'no_credentials'}
+
+        with open(credentials_path, 'r', encoding='utf-8') as f:
+            creds = json.load(f)
+        sb = creds.get('external_systems', {}).get('stellantis_servicebox', {})
+        expires_at = sb.get('password_expires_at')
+        if not expires_at or not str(expires_at).strip():
+            logger.debug("ServiceBox: Kein Ablaufdatum gesetzt, überspringe Prüfung")
+            return {'success': True, 'skipped': 'no_expiry_date'}
+
+        try:
+            expiry_date = date.fromisoformat(str(expires_at).strip().split('T')[0])
+        except (ValueError, TypeError):
+            logger.warning("ServiceBox: Ungültiges Ablaufdatum '%s', überspringe", expires_at)
+            return {'success': True, 'skipped': 'invalid_date'}
+
+        today = date.today()
+        days_left = (expiry_date - today).days
+        if days_left > 14:
+            logger.debug("ServiceBox: Passwort läuft in %s Tagen, keine E-Mail nötig", days_left)
+            return {'success': True, 'days_left': days_left}
+
+        # E-Mail-Empfänger: aus Konfiguration oder Fallback
+        to_emails = sb.get('reminder_emails') or SERVICEBOX_REMINDER_EMAILS_DEFAULT
+        to_emails = [e.strip() for e in to_emails if isinstance(e, str) and e.strip()]
+        if not to_emails:
+            logger.warning("ServiceBox: Keine Erinnerungs-E-Mail-Adressen konfiguriert")
+            return {'success': True, 'skipped': 'no_recipients'}
+
+        if days_left < 0:
+            subject = "DRIVE: ServiceBox-Passwort ist abgelaufen"
+            status_text = f"am {expiry_date.isoformat()} abgelaufen"
+        else:
+            subject = "DRIVE: ServiceBox-Passwort läuft bald ab"
+            status_text = f"am {expiry_date.isoformat()} (noch {days_left} Tage)"
+
+        body_html = f"""
+        <p>Das <strong>Stellantis ServiceBox</strong>-Passwort für das DRIVE-Portal {status_text}.</p>
+        <p>Bitte Passwort bei Stellantis erneuern und im DRIVE-Portal unter<br>
+        <strong>Admin → ServiceBox Zugang</strong> aktualisieren.</p>
+        <p>Der Zugang wird für Teilebestellungen, Werkstatt-Live und weitere DRIVE-Features genutzt.</p>
+        <p style="color: #6c757d; font-size: 12px;">Diese E-Mail wurde automatisch vom Greiner DRIVE Portal gesendet.</p>
+        """
+        try:
+            from api.graph_mail_connector import GraphMailConnector
+            connector = GraphMailConnector()
+            connector.send_mail(
+                sender_email='drive@auto-greiner.de',
+                to_emails=to_emails,
+                subject=subject,
+                body_html=body_html
+            )
+            logger.info("ServiceBox Passwort-Erinnerung an %s gesendet (Tage bis Ablauf: %s)", to_emails, days_left)
+            return {'success': True, 'email_sent': True, 'to': to_emails, 'days_left': days_left}
+        except Exception as mail_err:
+            logger.exception("ServiceBox: E-Mail-Versand fehlgeschlagen: %s", mail_err)
+            return {'success': False, 'error': str(mail_err)}
+
+    except Exception as e:
+        logger.exception("Fehler bei ServiceBox Passwort-Ablauf-Prüfung")
+        return {'success': False, 'error': str(e)}
+
+
 # =============================================================================
 # CONTROLLING & VERWALTUNG - IMPORT TASKS (TAG 173)
 # =============================================================================
