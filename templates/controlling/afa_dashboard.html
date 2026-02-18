@@ -109,8 +109,10 @@
                     <thead>
                         <tr>
                             <th>Kennzeichen</th>
+                            <th>VIN</th>
                             <th>Modell / Bezeichnung</th>
                             <th>Art</th>
+                            <th title="Tageszulassung = nicht AfA-pflichtig">Tageszul. (nicht AfA-pflichtig)</th>
                             <th>Anschaffung</th>
                             <th>EK netto</th>
                             <th>Monatl. AfA</th>
@@ -120,9 +122,43 @@
                         </tr>
                     </thead>
                     <tbody id="tab-fahrzeuge">
-                        <tr><td colspan="9" class="text-center text-muted py-4">Lade Daten...</td></tr>
+                        <tr><td colspan="11" class="text-center text-muted py-4">Lade Daten...</td></tr>
                     </tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Abgangs-Kontrolle (DRIVE vs. Locosoft) -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <h6 class="mb-0"><i class="bi bi-clipboard-check"></i> Abgangs-Kontrolle</h6>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-abgangs-kontrolle">Aktualisieren</button>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small mb-2">Vergleich DRIVE mit Locosoft (Rechnungsdatum): Fahrzeuge, die in Locosoft als verkauft gelten, in DRIVE aber noch „aktiv“ – bitte Abgang prüfen.</p>
+            <div id="abgangs-kontrolle-placeholder" class="text-muted small">Klick auf „Aktualisieren“ zum Laden.</div>
+            <div id="abgangs-kontrolle-content" class="d-none">
+                <div class="mb-3">
+                    <strong class="text-warning">Bitte Abgang in DRIVE prüfen</strong> (in Locosoft bereits verkauft):
+                    <div class="table-responsive mt-1">
+                        <table class="table table-sm afa-table">
+                            <thead><tr><th>Kennzeichen</th><th>Bezeichnung</th><th>Locosoft Rechnung</th><th>Hinweis</th></tr></thead>
+                            <tbody id="abgang-pruefen-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div id="abgang-pruefen-leer" class="small text-muted d-none">Keine Einträge.</div>
+                </div>
+                <div>
+                    <strong>Abgang in DRIVE</strong> (mit Locosoft-Datum zur Kontrolle):
+                    <div class="table-responsive mt-1">
+                        <table class="table table-sm afa-table">
+                            <thead><tr><th>Kennzeichen</th><th>Bezeichnung</th><th>Abgangsdatum DRIVE</th><th>Locosoft Rechnung</th></tr></thead>
+                            <tbody id="abgang-drive-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div id="abgang-drive-leer" class="small text-muted d-none">Keine Einträge.</div>
+                </div>
             </div>
         </div>
     </div>
@@ -134,18 +170,20 @@
             <div class="d-flex gap-2 align-items-center">
                 <label class="small text-muted me-1">Nutzungsdauer (Monate):</label>
                 <input type="number" id="locosoft-nutzungsdauer" value="72" min="1" max="120" class="form-control form-control-sm" style="width: 5rem;">
-                <button type="button" class="btn btn-sm btn-outline-primary" id="btn-locosoft-laden">Kandidaten laden</button>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="btn-locosoft-laden">Bestand laden</button>
                 <button type="button" class="btn btn-sm btn-success d-none" id="btn-locosoft-import">Ausgewählte importieren</button>
             </div>
         </div>
         <div class="card-body">
-            <p class="text-muted small mb-2">Zeigt VFW (Typ V) und eigene Mietwagen (Jw-Kz X oder M, Kennzeichen X) aus Locosoft, die noch nicht in AfA sind und noch nicht verkauft. EK = Einsatzwert-Formel inkl. Einsatzerhöhung.</p>
+            <p class="text-muted small mb-2">Zeigt VFW (Typ V) und eigene Mietwagen (Jw-Kz M) aus Locosoft, die noch nicht in AfA sind und noch nicht verkauft. EK = Einsatzwert-Formel inkl. Einsatzerhöhung.</p>
             <div class="table-responsive">
                 <table class="table table-sm afa-table">
                     <thead>
                         <tr>
                             <th><input type="checkbox" id="locosoft-select-all" title="Alle auswählen"></th>
+                            <th>Nr.</th>
                             <th>Kennzeichen</th>
+                            <th>VIN</th>
                             <th>Bezeichnung</th>
                             <th>Art</th>
                             <th>Anschaffung</th>
@@ -154,7 +192,7 @@
                         </tr>
                     </thead>
                     <tbody id="locosoft-kandidaten">
-                        <tr><td colspan="7" class="text-center text-muted">Kandidaten laden klicken.</td></tr>
+                        <tr><td colspan="9" class="text-center text-muted">Bestand laden klicken.</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -179,6 +217,8 @@
                     <thead>
                         <tr>
                             <th>Kennzeichen</th>
+                            <th>Fahrgestellnr.</th>
+                            <th>Standort</th>
                             <th>Bezeichnung</th>
                             <th>Art</th>
                             <th>Soll</th>
@@ -187,7 +227,7 @@
                         </tr>
                     </thead>
                     <tbody id="monats-positionen">
-                        <tr><td colspan="6" class="text-center text-muted">Monat wählen und laden.</td></tr>
+                        <tr><td colspan="8" class="text-center text-muted">Monat wählen und laden.</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -210,10 +250,53 @@
                     <canvas id="detail-chart"></canvas>
                 </div>
                 <div id="detail-buchgewinn" class="alert alert-secondary d-none"></div>
+                <div id="detail-tageszulassung" class="mb-3 d-none">
+                    <label class="form-check">
+                        <input type="checkbox" class="form-check-input" id="detail-check-tageszulassung">
+                        <span class="form-check-label">Tageszulassung (nicht AfA-pflichtig)</span>
+                    </label>
+                    <button type="button" class="btn btn-sm btn-primary ms-2" id="detail-btn-save-tageszulassung">Speichern</button>
+                </div>
+                <div id="detail-loeschen" class="mb-3 d-none">
+                    <button type="button" class="btn btn-sm btn-outline-danger" id="detail-btn-loeschen" title="Fahrzeug und alle AfA-Buchungen endgültig löschen (z. B. versehentlicher Import)">Fahrzeug löschen</button>
+                </div>
                 <table class="table table-sm">
                     <thead><tr><th>Monat</th><th>AfA</th><th>Restbuchwert</th><th>Kumuliert</th></tr></thead>
                     <tbody id="detail-buchungen"></tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Locosoft-Fahrzeugdetail-Modal -->
+<div class="modal fade" id="locosoftDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-cloud-download"></i> Fahrzeugdetails (Locosoft)</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="locosoft-detail-loading" class="text-muted">Lade …</div>
+                <div id="locosoft-detail-content" class="d-none">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="text-secondary border-bottom pb-1">Identifikation</h6>
+                            <table class="table table-sm table-borderless mb-3"><tbody id="locosoft-detail-ident"></tbody></table>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-secondary border-bottom pb-1">Fahrzeug</h6>
+                            <table class="table table-sm table-borderless mb-3"><tbody id="locosoft-detail-fahrzeug"></tbody></table>
+                        </div>
+                    </div>
+                    <h6 class="text-secondary border-bottom pb-1">Kalkulation (Locosoft)</h6>
+                    <table class="table table-sm table-borderless mb-3"><tbody id="locosoft-detail-kalk"></tbody></table>
+                    <h6 class="text-secondary border-bottom pb-1">Sonstiges</h6>
+                    <table class="table table-sm table-borderless mb-3"><tbody id="locosoft-detail-sonst"></tbody></table>
+                    <div id="locosoft-detail-ek" class="alert alert-light mb-0"></div>
+                </div>
+                <div id="locosoft-detail-error" class="text-danger d-none"></div>
             </div>
         </div>
     </div>
@@ -226,6 +309,7 @@
     const API = '/api/afa';
     let dashboardData = null;
     let detailChart = null;
+    let detailFahrzeugId = null;
 
     function fmtEuro(v) {
         if (v == null || v === '') return '-';
@@ -242,7 +326,7 @@
         fetch(url)
             .then(r => r.json())
             .then(data => {
-                if (!data.ok) { document.getElementById('tab-fahrzeuge').innerHTML = '<tr><td colspan="9" class="text-danger">' + (data.error || 'Fehler') + '</td></tr>'; return; }
+                if (!data.ok) { document.getElementById('tab-fahrzeuge').innerHTML = '<tr><td colspan="11" class="text-danger">' + (data.error || 'Fehler') + '</td></tr>'; return; }
                 dashboardData = data;
                 const k = data.kpis || {};
                 document.getElementById('kpi-vfw').textContent = k.anzahl_aktive_vfw ?? '-';
@@ -259,7 +343,7 @@
                 renderFahrzeuge(fz);
             })
             .catch(e => {
-                document.getElementById('tab-fahrzeuge').innerHTML = '<tr><td colspan="9" class="text-danger">Netzwerkfehler: ' + e.message + '</td></tr>';
+                document.getElementById('tab-fahrzeuge').innerHTML = '<tr><td colspan="11" class="text-danger">Netzwerkfehler: ' + e.message + '</td></tr>';
             });
     }
 
@@ -274,17 +358,20 @@
 
         const tbody = document.getElementById('tab-fahrzeuge');
         if (list.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">Keine Fahrzeuge (oder Filter ergibt keine Treffer).</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted">Keine Fahrzeuge (oder Filter ergibt keine Treffer).</td></tr>';
             return;
         }
         tbody.innerHTML = list.map(f => {
             const rw = f.status === 'aktiv' ? (f.restbuchwert_aktuell != null ? f.restbuchwert_aktuell : '-') : (f.restbuchwert_abgang != null ? f.restbuchwert_abgang : '-');
             const badge = f.fahrzeugart === 'VFW' ? 'badge-vfw' : 'badge-miet';
             const statusCl = f.status === 'aktiv' ? 'status-aktiv' : 'status-verkauft';
+            const tzBadge = f.tageszulassung ? '<span class="badge bg-secondary">Tageszul.</span>' : '-';
             return '<tr>' +
                 '<td>' + (f.kennzeichen || '-') + '</td>' +
+                '<td class="text-nowrap">' + (f.vin || '-') + '</td>' +
                 '<td>' + (f.fahrzeug_bezeichnung || f.modell || '-') + '</td>' +
                 '<td><span class="badge ' + badge + '">' + (f.fahrzeugart || '-') + '</span></td>' +
+                '<td>' + tzBadge + '</td>' +
                 '<td>' + fmtDatum(f.anschaffungsdatum) + '</td>' +
                 '<td>' + fmtEuro(f.anschaffungskosten_netto) + '</td>' +
                 '<td>' + fmtEuro(f.afa_monatlich) + '</td>' +
@@ -301,20 +388,29 @@
 
     function loadMonatsuebersicht() {
         const mp = document.getElementById('monat-picker').value;
-        if (!mp) return;
+        if (!mp) return Promise.resolve();
         const [jahr, monat] = mp.split('-').map(Number);
-        fetch(API + '/monatsberechnung?jahr=' + jahr + '&monat=' + monat)
-            .then(r => r.json())
+        const tbody = document.getElementById('monats-positionen');
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">Lade …</td></tr>';
+        return fetch(API + '/monatsberechnung?jahr=' + jahr + '&monat=' + monat)
+            .then(r => {
+                if (!r.ok) throw new Error('Antwort: ' + r.status);
+                return r.json();
+            })
             .then(data => {
-                if (!data.ok) return;
+                if (!data.ok) { throw new Error(data.error || 'Monatsberechnung fehlgeschlagen'); }
                 const pos = data.positionen || [];
                 const summe = data.summe_afa || 0;
-                const tbody = document.getElementById('monats-positionen');
                 const fmtKonto = (k) => k != null ? String(k).padStart(6, '0') : '-';
                 tbody.innerHTML = pos.length === 0
-                    ? '<tr><td colspan="6" class="text-center text-muted">Keine aktiven Fahrzeuge in diesem Monat.</td></tr>'
-                    : pos.map(p => '<tr><td>' + (p.kennzeichen || '-') + '</td><td>' + (p.fahrzeug_bezeichnung || '-') + '</td><td>' + (p.fahrzeugart || '-') + '</td><td>' + fmtKonto(p.konto_soll) + '</td><td>' + fmtKonto(p.konto_haben) + '</td><td>' + fmtEuro(p.afa_betrag) + '</td></tr>').join('');
+                    ? '<tr><td colspan="8" class="text-center text-muted">Keine aktiven Fahrzeuge in diesem Monat.</td></tr>'
+                    : pos.map(p => '<tr><td>' + (p.kennzeichen || '-') + '</td><td>' + (p.vin || '-') + '</td><td>' + (p.standort || '-') + '</td><td>' + (p.fahrzeug_bezeichnung || '-') + '</td><td>' + (p.fahrzeugart || '-') + '</td><td>' + fmtKonto(p.konto_soll) + '</td><td>' + fmtKonto(p.konto_haben) + '</td><td>' + fmtEuro(p.afa_betrag) + '</td></tr>').join('');
                 document.getElementById('monatsuebersicht-summe').textContent = fmtEuro(summe);
+            })
+            .catch(e => {
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Fehler: ' + (e.message || 'Laden fehlgeschlagen') + '</td></tr>';
+                document.getElementById('monatsuebersicht-summe').textContent = '0,00 €';
+                throw e;
             });
     }
 
@@ -324,7 +420,11 @@
             .then(data => {
                 if (!data.ok) { alert(data.error || 'Fehler'); return; }
                 const f = data.fahrzeug;
+                detailFahrzeugId = f.id;
                 document.getElementById('detail-titel').textContent = (f.kennzeichen || f.vin || 'ID ' + id) + ' — ' + (f.fahrzeug_bezeichnung || f.modell || '');
+                document.getElementById('detail-tageszulassung').classList.remove('d-none');
+                document.getElementById('detail-check-tageszulassung').checked = !!f.tageszulassung;
+                document.getElementById('detail-loeschen').classList.remove('d-none');
                 document.getElementById('detail-kpis').innerHTML =
                     '<div class="col"><strong>EK netto</strong> ' + fmtEuro(f.anschaffungskosten_netto) + '</div>' +
                     '<div class="col"><strong>Monatl. AfA</strong> ' + fmtEuro(f.afa_monatlich) + '</div>' +
@@ -369,23 +469,95 @@
             });
     }
 
+    document.getElementById('detail-btn-save-tageszulassung').addEventListener('click', function() {
+        if (detailFahrzeugId == null) return;
+        const tageszulassung = document.getElementById('detail-check-tageszulassung').checked;
+        fetch(API + '/fahrzeug/' + detailFahrzeugId, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tageszulassung: tageszulassung })
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.ok) { loadDashboard(); alert('Gespeichert.'); }
+                else alert('Fehler: ' + (data.error || 'Unbekannt'));
+            })
+            .catch(e => alert('Fehler: ' + e.message));
+    });
+
+    document.getElementById('detail-btn-loeschen').addEventListener('click', function() {
+        if (detailFahrzeugId == null) return;
+        if (!confirm('Fahrzeug und alle zugehörigen AfA-Buchungen endgültig löschen?\n\nDiese Aktion kann nicht rückgängig gemacht werden.')) return;
+        fetch(API + '/fahrzeug/' + detailFahrzeugId, { method: 'DELETE' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.ok) {
+                    bootstrap.Modal.getInstance(document.getElementById('detailModal')).hide();
+                    detailFahrzeugId = null;
+                    loadDashboard();
+                    loadMonatsuebersicht();
+                    alert('Fahrzeug gelöscht.');
+                } else {
+                    alert('Fehler: ' + (data.error || 'Unbekannt'));
+                }
+            })
+            .catch(e => alert('Fehler: ' + e.message));
+    });
+
+    function loadAbgangsKontrolle() {
+        document.getElementById('abgangs-kontrolle-placeholder').classList.remove('d-none');
+        document.getElementById('abgangs-kontrolle-content').classList.add('d-none');
+        document.getElementById('abgangs-kontrolle-placeholder').textContent = 'Lade …';
+        fetch(API + '/abgangs-kontrolle')
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('abgangs-kontrolle-placeholder').classList.add('d-none');
+                document.getElementById('abgangs-kontrolle-content').classList.remove('d-none');
+                if (!data.ok) {
+                    document.getElementById('abgang-pruefen-tbody').innerHTML = '<tr><td colspan="4" class="text-danger">' + (data.error || 'Fehler') + '</td></tr>';
+                    return;
+                }
+                const pruefen = data.abgang_pruefen || [];
+                const drive = data.abgang_drive_mit_locosoft || [];
+                const t1 = document.getElementById('abgang-pruefen-tbody');
+                const t2 = document.getElementById('abgang-drive-tbody');
+                document.getElementById('abgang-pruefen-leer').classList.toggle('d-none', pruefen.length > 0);
+                document.getElementById('abgang-drive-leer').classList.toggle('d-none', drive.length > 0);
+                t1.innerHTML = pruefen.length === 0 ? '' : pruefen.map(p => '<tr><td>' + (p.kennzeichen || '-') + '</td><td>' + (p.fahrzeug_bezeichnung || '-') + '</td><td>' + (p.locosoft_out_invoice_date || '-') + '</td><td>' + (p.hinweis || '') + '</td></tr>').join('');
+                t2.innerHTML = drive.length === 0 ? '' : drive.map(d => '<tr><td>' + (d.kennzeichen || '-') + '</td><td>' + (d.fahrzeug_bezeichnung || '-') + '</td><td>' + (d.abgangsdatum || '-') + '</td><td>' + (d.locosoft_out_invoice_date || '-') + '</td></tr>').join('');
+            })
+            .catch(e => {
+                document.getElementById('abgangs-kontrolle-placeholder').textContent = 'Fehler: ' + e.message;
+            });
+    }
+    document.getElementById('btn-abgangs-kontrolle').addEventListener('click', loadAbgangsKontrolle);
+
     function csvExport() {
         const mp = document.getElementById('monat-picker').value;
         if (!mp) { alert('Bitte Monat wählen.'); return; }
         const [jahr, monat] = mp.split('-').map(Number);
         fetch(API + '/buchungsliste?jahr=' + jahr + '&monat=' + monat)
-            .then(r => r.json())
+            .then(r => {
+                if (!r.ok) throw new Error('Antwort: ' + r.status);
+                const ct = r.headers.get('content-type') || '';
+                if (!ct.includes('application/json')) throw new Error('Keine JSON-Antwort');
+                return r.json();
+            })
             .then(data => {
-                if (!data.ok) return;
+                if (!data.ok) { alert('Fehler: ' + (data.error || 'Buchungsliste konnte nicht geladen werden.')); return; }
                 const rows = data.export_csv_zeilen || [];
-                const csv = rows.map(row => row.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(';')).join('\n');
+                const csv = rows.length ? rows.map(row => row.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(';')).join('\n') : 'Kennzeichen;Fahrgestellnr.;Standort;Bezeichnung;Art;Betrieb;Soll;Haben;AfA-Betrag\n;;;;;;;;;0';
                 const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
                 const a = document.createElement('a');
                 a.href = URL.createObjectURL(blob);
                 a.download = 'afa_buchungsliste_' + mp + '.csv';
+                document.body.appendChild(a);
                 a.click();
+                document.body.removeChild(a);
                 URL.revokeObjectURL(a.href);
-            });
+                if (rows.length <= 2) alert('CSV exportiert. Enthält für diesen Monat keine AfA-Positionen (nur Summe).');
+            })
+            .catch(e => { alert('CSV-Export fehlgeschlagen: ' + e.message); });
     }
 
     document.getElementById('filter-gj').addEventListener('change', loadDashboard);
@@ -398,38 +570,43 @@
     document.getElementById('monat-picker').addEventListener('change', loadMonatsuebersicht);
     document.getElementById('btn-berechne-monat').addEventListener('click', function() {
         const mp = document.getElementById('monat-picker').value;
-        if (!mp) return;
+        if (!mp) { alert('Bitte Monat wählen.'); return; }
         fetch(API + '/berechne-monat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ 'yyyy-mm': mp }) })
             .then(r => r.json())
             .then(data => {
-                if (data.ok) { loadMonatsuebersicht(); loadDashboard(); alert('Berechnung: ' + (data.inserted || 0) + ' Buchungen angelegt.'); }
-                else alert('Fehler: ' + (data.error || 'Unbekannt'));
-            });
+                if (!data.ok) { alert('Fehler: ' + (data.error || 'Unbekannt')); return; }
+                var inserted = data.inserted || 0;
+                loadMonatsuebersicht()
+                    .then(function() { loadDashboard(); })
+                    .then(function() { alert('Berechnung: ' + inserted + ' Buchung(en) angelegt.'); })
+                    .catch(function() { alert('Berechnung gespeichert (' + inserted + ' Buchung(en)), aber Monatsübersicht konnte nicht neu geladen werden.'); });
+            })
+            .catch(function(e) { alert('Fehler: ' + (e.message || 'Berechnung fehlgeschlagen')); });
     });
     document.getElementById('btn-csv-export').addEventListener('click', csvExport);
 
     let locosoftKandidaten = [];
     function loadLocosoftKandidaten() {
-        document.getElementById('locosoft-kandidaten').innerHTML = '<tr><td colspan="7" class="text-center text-muted">Lade …</td></tr>';
+        document.getElementById('locosoft-kandidaten').innerHTML = '<tr><td colspan="9" class="text-center text-muted">Lade …</td></tr>';
         document.getElementById('locosoft-fehler').classList.add('d-none');
         fetch(API + '/locosoft-kandidaten')
             .then(r => r.json())
             .then(data => {
                 if (!data.ok) {
-                    document.getElementById('locosoft-kandidaten').innerHTML = '<tr><td colspan="7" class="text-danger">' + (data.error || 'Fehler') + '</td></tr>';
+                    document.getElementById('locosoft-kandidaten').innerHTML = '<tr><td colspan="9" class="text-danger">' + (data.error || 'Fehler') + '</td></tr>';
                     return;
                 }
                 locosoftKandidaten = data.kandidaten || [];
                 renderLocosoftKandidaten(locosoftKandidaten);
             })
             .catch(e => {
-                document.getElementById('locosoft-kandidaten').innerHTML = '<tr><td colspan="7" class="text-danger">' + e.message + '</td></tr>';
+                document.getElementById('locosoft-kandidaten').innerHTML = '<tr><td colspan="9" class="text-danger">' + e.message + '</td></tr>';
             });
     }
     function renderLocosoftKandidaten(list) {
         const tbody = document.getElementById('locosoft-kandidaten');
         if (list.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Keine Kandidaten (alle bereits importiert oder Filter).</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">Keine Kandidaten (alle bereits importiert oder Filter).</td></tr>';
             document.getElementById('btn-locosoft-import').classList.add('d-none');
             return;
         }
@@ -439,14 +616,87 @@
             const datum = (k.anschaffungsdatum || '').replace(/^(\d{4})-(\d{2}).*/, '$2.$1');
             return '<tr>' +
                 '<td><input type="checkbox" class="locosoft-cb" data-idx="' + i + '"></td>' +
+                '<td class="text-end">' + (i + 1) + '</td>' +
                 '<td>' + (k.kennzeichen || '-') + '</td>' +
+                '<td class="text-nowrap">' + (k.vin || '-') + '</td>' +
                 '<td>' + (k.fahrzeug_bezeichnung || '-') + '</td>' +
                 '<td><span class="badge ' + badge + '">' + (k.fahrzeugart || '-') + '</span></td>' +
                 '<td>' + datum + '</td>' +
                 '<td>' + fmtEuro(k.anschaffungskosten_netto) + '</td>' +
-                '<td></td></tr>';
+                '<td><button type="button" class="btn btn-sm btn-outline-secondary locosoft-detail-btn" data-idx="' + i + '" title="Locosoft-Details anzeigen">Detail</button></td></tr>';
         }).join('');
         document.getElementById('locosoft-select-all').checked = false;
+        tbody.querySelectorAll('.locosoft-detail-btn').forEach(btn => {
+            btn.addEventListener('click', function(e) { e.stopPropagation(); openLocosoftDetail(locosoftKandidaten[parseInt(btn.dataset.idx, 10)]); });
+        });
+    }
+
+    function openLocosoftDetail(k) {
+        if (!k) return;
+        const modalEl = document.getElementById('locosoftDetailModal');
+        document.getElementById('locosoft-detail-loading').classList.remove('d-none');
+        document.getElementById('locosoft-detail-content').classList.add('d-none');
+        document.getElementById('locosoft-detail-error').classList.add('d-none');
+        document.getElementById('locosoft-detail-error').textContent = '';
+        var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+        const params = new URLSearchParams({ dealer_vehicle_type: String(k.dealer_vehicle_type || ''), dealer_vehicle_number: String(k.dealer_vehicle_number) });
+        fetch(API + '/locosoft-fahrzeug-detail?' + params)
+            .then(r => {
+                const ct = (r.headers.get('content-type') || '');
+                if (!ct.includes('application/json')) {
+                    return r.text().then(() => { throw new Error('Antwort war keine JSON-Daten (z. B. Seite nicht gefunden). Bitte Portal neustarten und Seite neu laden.'); });
+                }
+                return r.json();
+            })
+            .then(data => {
+                document.getElementById('locosoft-detail-loading').classList.add('d-none');
+                if (!data.ok) {
+                    document.getElementById('locosoft-detail-error').textContent = data.error || 'Fehler';
+                    document.getElementById('locosoft-detail-error').classList.remove('d-none');
+                    return;
+                }
+                const d = data.detail || {};
+                function row(label, val) { return '<tr><td class="text-muted pe-2">' + label + '</td><td>' + (val != null && val !== '' ? val : '-') + '</td></tr>'; }
+                document.getElementById('locosoft-detail-ident').innerHTML = [
+                    row('VIN', d.identifikation && d.identifikation.vin),
+                    row('Kennzeichen', d.identifikation && d.identifikation.kennzeichen),
+                    row('Kennzeichen (out)', d.identifikation && d.identifikation.out_license_plate),
+                    row('Typ', d.identifikation && d.identifikation.dealer_vehicle_type),
+                    row('Kom.Nr.', d.identifikation && d.identifikation.dealer_vehicle_number),
+                    row('Interne Nr.', d.identifikation && d.identifikation.internal_number),
+                ].join('');
+                document.getElementById('locosoft-detail-fahrzeug').innerHTML = [
+                    row('Modell/Bezeichnung', d.fahrzeug && d.fahrzeug.model_description),
+                    row('Erstzulassung', d.fahrzeug && d.fahrzeug.first_registration_date),
+                ].join('');
+                const kalk = d.kalkulation || {};
+                document.getElementById('locosoft-detail-kalk').innerHTML = [
+                    row('Ankunft/Eingang', kalk.in_arrival_date),
+                    row('Grundgebühr', kalk.calc_basic_charge != null ? fmtEuro(kalk.calc_basic_charge) : null),
+                    row('Zubehör', kalk.calc_accessory != null ? fmtEuro(kalk.calc_accessory) : null),
+                    row('Nebenkosten', kalk.calc_extra_expenses != null ? fmtEuro(kalk.calc_extra_expenses) : null),
+                    row('Einsatzerhöhung intern', kalk.calc_usage_value_encr_internal != null ? fmtEuro(kalk.calc_usage_value_encr_internal) : null),
+                    row('Einsatzerhöhung extern', kalk.calc_usage_value_encr_external != null ? fmtEuro(kalk.calc_usage_value_encr_external) : null),
+                    row('Einsatzerhöhung sonstige', kalk.calc_usage_value_encr_other != null ? fmtEuro(kalk.calc_usage_value_encr_other) : null),
+                    row('Abschreibung gesamt', kalk.calc_total_writedown != null ? fmtEuro(kalk.calc_total_writedown) : null),
+                ].join('');
+                const sonst = d.sonstiges || {};
+                document.getElementById('locosoft-detail-sonst').innerHTML = [
+                    row('Mietwagen/Schulungsfahrzeug', sonst.is_rental_or_school_vehicle != null ? (sonst.is_rental_or_school_vehicle ? 'Ja' : 'Nein') : '-'),
+                    row('Jw-Kz (pre_owned_car_code)', sonst.pre_owned_car_code),
+                    row('Standort (subsidiary)', sonst.subsidiary),
+                ].join('');
+                document.getElementById('locosoft-detail-ek').innerHTML = d.ek_netto_berechnet != null
+                    ? '<strong>EK netto (berechnet):</strong> ' + fmtEuro(d.ek_netto_berechnet)
+                    : '';
+                document.getElementById('locosoft-detail-content').classList.remove('d-none');
+            })
+            .catch(e => {
+                document.getElementById('locosoft-detail-loading').classList.add('d-none');
+                document.getElementById('locosoft-detail-error').textContent = 'Fehler: ' + e.message;
+                document.getElementById('locosoft-detail-error').classList.remove('d-none');
+            });
     }
     document.getElementById('btn-locosoft-laden').addEventListener('click', loadLocosoftKandidaten);
     document.getElementById('locosoft-select-all').addEventListener('change', function() {

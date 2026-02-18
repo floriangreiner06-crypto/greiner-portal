@@ -1,7 +1,7 @@
 # Controlling (BWA, Bankenspiegel, Finanzreporting) — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-02-17
+## Letzte Aktualisierung: 2026-02-16
 
 ## Beschreibung
 
@@ -54,9 +54,11 @@ Controlling umfasst BWA-Berechnung, Bankenspiegel mit Konten und Transaktionen, 
 - ✅ **TEK Prognose wie GlobalCube (2026-02-17):** Referenz GlobalCube: Prognose = (DB1 / **vergangene Werktage**) × Werktage gesamt. DRIVE nutzte zuvor „Tage mit Daten“ (Locosoft) als Divisor → Prognose zu schlecht. Umstellung auf **werktage_vergangen** (mit Datenstichtag vor 19:00 = gestern), damit z. B. bei 212.211 € nach 9 WT → 471.580 € (wie im GlobalCube-PDF).
 - ✅ **TEK Berechnung konsistent (Reporting + Online):** Eine SSOT für DB1, Breakeven und Prognose in allen Modulen: **Portal** (api_tek → berechne_breakeven_prognose, Frontend zeigt prognose.hochrechnung_db1), **alle TEK-Reports** (tek_daily, tek_filiale, tek_nw/gw/teile/werkstatt, tek_verkauf, tek_service) über send_daily_tek.get_tek_data → tek_api_helper → api.controlling_data.get_tek_data → berechne_breakeven_prognose; **PDF** und **E-Mail** nutzen data.gesamt.prognose aus derselben Quelle. Standort-Breakevens (Deggendorf/Landau) nutzen berechne_breakeven_prognose_standort (gleiche Werktage-Formel). KST-Ziele nutzen eigene Hochrechnung (werktage_vergangen) für Zielerreichung, nicht TEK-Breakeven.
 - **Session 2026-02-17:** TEK SSOT (Portal = alle Reports), Werktage-Datenstichtag (9 WT morgens), Prognose wie GlobalCube (Werktage-Divisor), Werktage/Prognose in PDF und E-Mail; Commit 2b3b4ba gepusht.
+- **TEK DRIVE vs. Reporting (2026-02-17):** Analyse **ohne Code-Änderung** in `docs/workstreams/controlling/TEK_DRIVE_VS_REPORTING_ANALYSE.md`. Kern: Zwei Datenpfade (Portal = eigene Aggregation in api_tek; Report = get_tek_data); Clean Park in get_tek_data doppelt (9-Andere + cp); 4-Lohn im Report kalkulatorischer Einsatz → DB1/Prognose niedriger; Stückzahlen 68 vs. 70 vermutlich Aufrufzeit/Parameter.
 - ✅ **AfA-Modul Vorführwagen/Mietwagen (2026-02-16):** Neues Sub-Modul zur automatischen Berechnung der monatlichen Abschreibung (AfA) für VFW und Mietwagen. Lineare AfA 72 Monate, monatsgenau. Dashboard unter Controlling → AfA Vorführwagen/Mietwagen; API `/api/afa/*`; Tabellen `afa_anlagevermoegen`, `afa_buchungen`; Celery-Task `afa_monatsberechnung`. Siehe `docs/workstreams/controlling/AFA_DISCOVERY.md` und `AFA_MODUL_KONZEPT.md`.
 - ✅ **AfA Locosoft-Filter & Bestand (2026-02-16):** Nur eigene Mietwagen (Kennzeichen X oder `pre_owned_car_code` X/**M**); nur noch nicht verkaufte (`out_invoice_date IS NULL`). Dashboard-Filter „Bestand Geschäftsjahr“ (z. B. 2025/26). Buchhaltungs-Konten (450001/450002 an 090301/090302/090401/090402) in Monatsberechnung und CSV-Export; Abgang 090xxx an Bestandskonto dokumentiert.
 - ✅ **AfA Buchhaltungs-Feedback (2026-02-16):** Konten-Mapping und Buchungslogik in `AFA_BUCHHALTUNG_FEEDBACK.md`. Excel-Anhänge in `docs/workstreams/controlling/AfA/` ausgewertet; Mietwagen-Listen nutzen Jw-Kz **M**, Filter um „M“ erweitert. Nutzungsdauer 72 Monate (in Excel keine Spalte; DATEV-Scan ist Bild-PDF, Werte manuell extrahieren).
+- ✅ **AfA Monatsübersicht & CSV-Export (2026-02-16):** Berechnen/CSV: Fehlerbehandlung ergänzt (Alert bei API-Fehler, Download ins DOM); Monatsübersicht lädt als Promise, Alert erst nach Aktualisierung. Fix 500 in `monatsberechnung` (UnboundLocalError `date` durch entfernten lokalen Import); Fix 500 in `buchungsliste` (Response vs. Tupel-Rückgabe von `monatsberechnung`). Konten laut Buchhaltung: Mietwagen 090301/090302, VFW 090401/090402. Fahrgestellnr. (VIN) in Tabelle und CSV; Sortierung nach Kategorie (Mietwagen DEG/LAN/HYU, VFW DEG/LAN/HYU/Leapmotor); **Standort-Spalte** (DEG/HYU/LAN) für erkennbare Gruppierung.
 - ❌ **Offen:** DATEV-Scan (Scan_20260216130905.pdf) – keine Textebene, Werte manuell extrahieren und bei Bedarf in Doku/AfA-Ordner ergänzen.
 - ✅ **Export Konten-Mapping (2026-02-17):** Script `scripts/analysis/export_konten_mapping.py` – Sachkonten 800000–899999 aus `fibu_buchungen` (PostgreSQL) als CSV (Semikolon, UTF-8). Ausgabe: `data/exports/konten_mapping_export.csv`; optional Kopie in Windows-Sync (`data/exports/`). Konsolenausgabe: Zusammenfassung nach Kategorie, WARNUNG 817xxx/827xxx bei Kategorie „wareneinsatz“, Konten ohne Kategorie.
 
@@ -64,8 +66,12 @@ Controlling umfasst BWA-Berechnung, Bankenspiegel mit Konten und Transaktionen, 
 
 - (Keine festgehalten)
 
-## TEK 4-Lohn: 6-Monats-Quote vs. Globalcube 40 % (2026-02)
-- **Verbleibende Abweichung:** Globalcube nutzt **statisch 40 %** Einsatzquote (EW) für Service; Drive nutzt die **6-Monats-Durchschnitts-Quote**. Die Zahlenabweichung ist damit fachlich plausibel. Optional: 40 %-Option in Drive anbieten, wenn Abgleich gewünscht.
+## TEK 4-Lohn: Rollierender Schnitt (SSOT)
+- **Vereinbarung:** 4-Lohn-Einsatz im laufenden Monat = **rollierender 6-Monats-Schnitt** (Einsatz_aktuell = Umsatz_aktuell × (Einsatz_6M / Umsatz_6M)). SSOT: `api/controlling_data.get_tek_data`; siehe CLAUDE.md (SSOT für alle KPIs/Berechnungen) und `docs/TEK_LOHNKOSTEN_LOCOSOFT_6_MONATE.md`.
+- **SSOT umgesetzt (2026-02-17):** Portal (api_tek) bezieht alle TEK-KPIs aus get_tek_data; 4-Lohn = rollierender Schnitt wie in Reports. Standort-DB1 (Deggendorf/Landau) ebenfalls aus get_tek_data(standort=1/2). Prognose aus api_data.prognose_detail.
+
+## TEK 4-Lohn vs. Globalcube 40 % (2026-02)
+- **Verbleibende Abweichung:** Globalcube nutzt **statisch 40 %** Einsatzquote (EW) für Service; Drive nutzt den **rollierenden 6-Monats-Schnitt**. Die Zahlenabweichung ist damit fachlich plausibel. Optional: 40 %-Option in Drive anbieten, wenn Abgleich gewünscht.
 
 ## TEK DB1 vs. Globalcube (2026-02-13)
 

@@ -18,18 +18,21 @@ afa_api = Blueprint('afa_api', __name__)
 
 # Standort-Mapping Locosoft -> AfA betriebsnr (1=DEG Opel, 2=HYU, 3=LAN)
 LOCOSOFT_SUBSIDIARY_TO_BETRIEBSNR = {1: 1, 2: 2, 3: 3}
+# Anzeige Standort in Buchungsliste (Sortierung sichtbar: Mietwagen DEG/LAN/HYU, VFW DEG/LAN/HYU/Leapmotor)
+BETRIEBSNR_TO_STANDORT = {1: 'DEG', 2: 'HYU', 3: 'LAN'}
 
-# Buchhaltung (Feedback 2026-02): Monatsende Buchung "Soll an Haben"
+# Buchhaltung (Feedback Buchhaltung 2026): Monatsende Buchung "Soll an Haben"
 # betriebsnr 1=DEG Opel, 2=HYU, 3=LAN
-# 450001 = Auflaufende Abschreibung (DEG/HYU), 450002 = Auflaufende Abschreibung (LAN)
-# 90301/90302 = Mietwagen, 90401/90402 = VFW (Buchhaltung schreibt 090301/090401)
-AFA_KONTO_SOLL = {1: 450001, 2: 450001, 3: 450002}   # pro betriebsnr
-AFA_KONTO_HABEN_MIETWAGEN = {1: 90301, 2: 90301, 3: 90302}
-AFA_KONTO_HABEN_VFW = {1: 90401, 2: 90401, 3: 90402}
+# Soll: 450001 (DEG/HYU), 450002 (LAN)
+# Haben: Mietwagen 090301 (DEG/HYU), 090302 (LAN); VFW 090401 (DEG/HYU/Leapmotor), 090402 (LAN)
+AFA_KONTO_SOLL = {1: 450001, 2: 450001, 3: 450002}
+AFA_KONTO_HABEN_MIETWAGEN = {1: 90301, 2: 90301, 3: 90302}   # 090301, 090302
+AFA_KONTO_HABEN_VFW = {1: 90401, 2: 90401, 3: 90402}         # 090401, 090402 (VFW DEG/HYU/Leapmotor, LAN)
 
 
-def _afa_konten(betriebsnr, fahrzeugart):
-    """Liefert (konto_soll, konto_haben) für Monatsbuchung AfA. fahrzeugart = VFW | MIETWAGEN."""
+def _afa_konten(betriebsnr, fahrzeugart, fahrzeug=None):
+    """Liefert (konto_soll, konto_haben) für Monatsbuchung AfA. fahrzeugart = VFW | MIETWAGEN.
+    Mietwagen: 090301 (DEG/HYU), 090302 (LAN). VFW: 090401 (DEG/HYU/Leapmotor), 090402 (LAN)."""
     bn = int(betriebsnr) if betriebsnr is not None else 1
     soll = AFA_KONTO_SOLL.get(bn, 450001)
     if (fahrzeugart or '').upper() == 'MIETWAGEN':
@@ -122,6 +125,8 @@ def _fahrzeug_from_row(row, cursor=None):
                 'restbuchwert_abgang', 'buchgewinn_verlust', 'verkaufspreis_netto'):
         if d.get(key) is not None and isinstance(d[key], Decimal):
             d[key] = float(d[key])
+    if d.get('tageszulassung') is not None and not isinstance(d['tageszulassung'], bool):
+        d['tageszulassung'] = bool(d['tageszulassung'])
     if d.get('afa_monatlich') is None and d.get('anschaffungskosten_netto') and d.get('nutzungsdauer_monate'):
         d['afa_monatlich'] = berechne_monatliche_afa(d)
     return d
@@ -145,7 +150,7 @@ def dashboard():
                 SELECT id, vin, kennzeichen, fahrzeug_bezeichnung, marke, modell,
                        fahrzeugart, betriebsnr, firma, anschaffungsdatum, anschaffungskosten_netto,
                        nutzungsdauer_monate, afa_methode, afa_monatlich, status, abgangsdatum,
-                       restbuchwert_abgang, buchgewinn_verlust
+                       restbuchwert_abgang, buchgewinn_verlust, tageszulassung
                 FROM afa_anlagevermoegen
                 ORDER BY status ASC, anschaffungsdatum DESC
             """)
@@ -168,6 +173,8 @@ def dashboard():
 
         heute = date.today()
         aktive = [f for f in fahrzeuge if f.get('status') == 'aktiv']
+        # Nur AfA-pflichtige (keine Tageszulassung) für Summen/KPIs
+        aktive_afa = [f for f in aktive if not f.get('tageszulassung')]
         summe_restbuchwert = 0
         summe_afa_monat = 0
         halte_monate_list = []
@@ -175,14 +182,15 @@ def dashboard():
             if f.get('status') == 'aktiv':
                 rw = berechne_restbuchwert(f, heute)
                 f['restbuchwert_aktuell'] = rw
-                if rw is not None:
-                    summe_restbuchwert += rw
-                if f.get('afa_monatlich') is not None:
-                    summe_afa_monat += f['afa_monatlich']
-                if f.get('anschaffungsdatum'):
-                    ad = date.fromisoformat(f['anschaffungsdatum']) if isinstance(f['anschaffungsdatum'], str) else f['anschaffungsdatum']
-                    monate = (heute.year - ad.year) * 12 + (heute.month - ad.month) + 1
-                    halte_monate_list.append(max(0, monate))
+                if not f.get('tageszulassung'):
+                    if rw is not None:
+                        summe_restbuchwert += rw
+                    if f.get('afa_monatlich') is not None:
+                        summe_afa_monat += f['afa_monatlich']
+                    if f.get('anschaffungsdatum'):
+                        ad = date.fromisoformat(f['anschaffungsdatum']) if isinstance(f['anschaffungsdatum'], str) else f['anschaffungsdatum']
+                        monate = (heute.year - ad.year) * 12 + (heute.month - ad.month) + 1
+                        halte_monate_list.append(max(0, monate))
 
         durchschnitt_halte = (sum(halte_monate_list) / len(halte_monate_list)) if halte_monate_list else 0
 
@@ -193,6 +201,7 @@ def dashboard():
                 'anzahl_aktive_vfw': sum(1 for f in aktive if f.get('fahrzeugart') == 'VFW'),
                 'anzahl_aktive_mietwagen': sum(1 for f in aktive if f.get('fahrzeugart') == 'MIETWAGEN'),
                 'anzahl_aktiv': len(aktive),
+                'anzahl_afa_pflichtig': len(aktive_afa),
                 'summe_restbuchwert': round(summe_restbuchwert, 2),
                 'afa_monat_gesamt': round(summe_afa_monat, 2),
                 'durchschnitt_halte_monate': round(durchschnitt_halte, 1),
@@ -219,7 +228,7 @@ def fahrzeuge_liste():
         SELECT id, vin, kennzeichen, fahrzeug_bezeichnung, marke, modell,
                fahrzeugart, betriebsnr, firma, anschaffungsdatum, anschaffungskosten_netto,
                nutzungsdauer_monate, afa_methode, afa_monatlich, status, abgangsdatum,
-               abgangsgrund, restbuchwert_abgang, buchgewinn_verlust
+               abgangsgrund, restbuchwert_abgang, buchgewinn_verlust, tageszulassung
         FROM afa_anlagevermoegen
         WHERE 1=1
     """
@@ -291,6 +300,27 @@ def fahrzeug_detail(fk_id):
 
 
 # =============================================================================
+# DELETE /api/afa/fahrzeug/<id>
+# =============================================================================
+
+@afa_api.route('/api/afa/fahrzeug/<int:fk_id>', methods=['DELETE'])
+def fahrzeug_loeschen(fk_id):
+    """Fahrzeug und zugehörige AfA-Buchungen löschen (z. B. versehentlicher Import)."""
+    try:
+        with db_session() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM afa_anlagevermoegen WHERE id = %s", (fk_id,))
+            if not cur.fetchone():
+                return jsonify({'ok': False, 'error': 'Fahrzeug nicht gefunden'}), 404
+            cur.execute("DELETE FROM afa_buchungen WHERE anlage_id = %s", (fk_id,))
+            cur.execute("DELETE FROM afa_anlagevermoegen WHERE id = %s", (fk_id,))
+            conn.commit()
+        return jsonify({'ok': True})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+# =============================================================================
 # GET /api/afa/monatsberechnung
 # =============================================================================
 
@@ -305,7 +335,6 @@ def monatsberechnung():
         if len(parts) == 2:
             jahr, monat = int(parts[0]), int(parts[1])
     if not jahr or not monat:
-        from datetime import date
         heute = date.today()
         jahr, monat = heute.year, heute.month
     buchungsmonat = date(jahr, monat, 1)
@@ -316,9 +345,10 @@ def monatsberechnung():
             cur.execute("""
                 SELECT id, vin, kennzeichen, fahrzeug_bezeichnung, marke, modell, fahrzeugart,
                        betriebsnr, anschaffungsdatum, anschaffungskosten_netto, nutzungsdauer_monate,
-                       afa_methode, afa_monatlich, status, abgangsdatum
+                       afa_methode, afa_monatlich, status, abgangsdatum, tageszulassung
                 FROM afa_anlagevermoegen
                 WHERE status = 'aktiv'
+                AND (tageszulassung IS NULL OR tageszulassung = false)
                 AND anschaffungsdatum <= %s
                 AND (abgangsdatum IS NULL OR abgangsdatum >= %s)
             """, (buchungsmonat, buchungsmonat))
@@ -328,23 +358,37 @@ def monatsberechnung():
         positionen = []
         summe = 0
         for f in aktive:
+            if f.get('tageszulassung'):
+                continue
             afa = f.get('afa_monatlich') or berechne_monatliche_afa(f)
             if afa is None:
                 continue
             rest = berechne_restbuchwert(f, buchungsmonat)
-            k_soll, k_haben = _afa_konten(f.get('betriebsnr'), f.get('fahrzeugart'))
+            k_soll, k_haben = _afa_konten(f.get('betriebsnr'), f.get('fahrzeugart'), f)
+            bn = f.get('betriebsnr') or 1
             positionen.append({
                 'anlage_id': f['id'],
+                'vin': f.get('vin'),
                 'kennzeichen': f.get('kennzeichen'),
+                'standort': BETRIEBSNR_TO_STANDORT.get(bn, 'DEG'),
                 'fahrzeug_bezeichnung': f.get('fahrzeug_bezeichnung'),
+                'marke': f.get('marke'),
                 'fahrzeugart': f.get('fahrzeugart'),
-                'betriebsnr': f.get('betriebsnr'),
+                'betriebsnr': bn,
                 'afa_betrag': afa,
                 'restbuchwert': rest,
                 'konto_soll': k_soll,
                 'konto_haben': k_haben,
             })
             summe += afa
+
+        # Sortierung: Mietwagen DEG, LAN, HYU; dann VFW DEG, LAN, HYU, Leapmotor (Buchhaltung zum Kontrollieren)
+        def _sort_key_pos(p):
+            art = (p.get('fahrzeugart') or '').upper()
+            bn = p.get('betriebsnr') or 1
+            is_leap = 'Leapmotor' in (p.get('marke') or '') + (p.get('fahrzeug_bezeichnung') or '')
+            return (0 if art == 'MIETWAGEN' else 1, {1: 0, 3: 1, 2: 2}.get(bn, 0), 1 if (art == 'VFW' and is_leap) else 0)
+        positionen.sort(key=_sort_key_pos)
 
         return jsonify({
             'ok': True,
@@ -377,9 +421,13 @@ def buchungsliste():
 
     try:
         resp = monatsberechnung()
-        if resp[1] != 200:
-            return resp
-        data = resp[0].get_json()
+        if isinstance(resp, tuple):
+            resp_obj, status = resp[0], resp[1]
+        else:
+            resp_obj, status = resp, 200
+        if status != 200:
+            return resp if isinstance(resp, tuple) else (resp, status)
+        data = resp_obj.get_json()
         if not data.get('ok'):
             return jsonify(data), 500
         positionen = data.get('positionen', [])
@@ -390,9 +438,9 @@ def buchungsliste():
             'positionen': positionen,
             'summe_afa': summe,
             'export_csv_zeilen': [
-                ['Kennzeichen', 'Bezeichnung', 'Art', 'Betrieb', 'Soll', 'Haben', 'AfA-Betrag'],
-                *[[p.get('kennzeichen'), p.get('fahrzeug_bezeichnung'), p.get('fahrzeugart'), p.get('betriebsnr'), '{:06d}'.format(p.get('konto_soll') or 0), '{:06d}'.format(p.get('konto_haben') or 0), p.get('afa_betrag')] for p in positionen],
-                ['', '', '', '', '', 'Summe', summe],
+                ['Kennzeichen', 'Fahrgestellnr.', 'Standort', 'Bezeichnung', 'Art', 'Betrieb', 'Soll', 'Haben', 'AfA-Betrag'],
+                *[[p.get('kennzeichen'), p.get('vin') or '', p.get('standort') or '', p.get('fahrzeug_bezeichnung'), p.get('fahrzeugart'), p.get('betriebsnr'), '{:06d}'.format(p.get('konto_soll') or 0), '{:06d}'.format(p.get('konto_haben') or 0), p.get('afa_betrag')] for p in positionen],
+                ['', '', '', '', '', '', '', 'Summe', summe],
             ],
         })
     except Exception as e:
@@ -424,6 +472,7 @@ def fahrzeug_anlegen():
     locosoft_fahrzeug_id = data.get('locosoft_fahrzeug_id')
     finanzierung_id = data.get('finanzierung_id')
     notizen = data.get('notizen')
+    tageszulassung = bool(data.get('tageszulassung', False))
 
     if not anschaffungsdatum or not anschaffungskosten_netto:
         return jsonify({'ok': False, 'error': 'anschaffungsdatum und anschaffungskosten_netto erforderlich'}), 400
@@ -442,16 +491,16 @@ def fahrzeug_anlegen():
                     vin, kennzeichen, fahrzeug_bezeichnung, marke, modell,
                     fahrzeugart, betriebsnr, firma, anschaffungsdatum, anschaffungskosten_netto,
                     nutzungsdauer_monate, afa_methode, afa_monatlich, status,
-                    locosoft_fahrzeug_id, finanzierung_id, notizen
+                    locosoft_fahrzeug_id, finanzierung_id, notizen, tageszulassung
                 ) VALUES (
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'aktiv',
-                    %s, %s, %s
+                    %s, %s, %s, %s
                 )
                 RETURNING id
             """, (
                 vin, kennzeichen, fahrzeug_bezeichnung, marke, modell,
                 fahrzeugart, betriebsnr, firma, anschaffungsdatum, ak, nd, afa_methode, afa_monatlich,
-                locosoft_fahrzeug_id, finanzierung_id, notizen
+                locosoft_fahrzeug_id, finanzierung_id, notizen, tageszulassung
             ))
             new_id = cur.fetchone()[0]
             conn.commit()
@@ -473,12 +522,14 @@ def fahrzeug_bearbeiten(fk_id):
     params = []
     for key in ('vin', 'kennzeichen', 'fahrzeug_bezeichnung', 'marke', 'modell', 'fahrzeugart',
                 'betriebsnr', 'firma', 'anschaffungsdatum', 'anschaffungskosten_netto',
-                'nutzungsdauer_monate', 'afa_methode', 'locosoft_fahrzeug_id', 'finanzierung_id', 'notizen'):
+                'nutzungsdauer_monate', 'afa_methode', 'locosoft_fahrzeug_id', 'finanzierung_id', 'notizen', 'tageszulassung'):
         if key not in data:
             continue
         val = data[key]
         if key == 'anschaffungsdatum' and isinstance(val, str):
             val = date.fromisoformat(val)
+        if key == 'tageszulassung':
+            val = bool(val) if val is not None else False
         if key in ('anschaffungskosten_netto', 'nutzungsdauer_monate'):
             val = float(val) if key == 'anschaffungskosten_netto' else int(val)
         if key in ('anschaffungskosten_netto', 'nutzungsdauer_monate') and key == 'anschaffungskosten_netto':
@@ -599,6 +650,7 @@ def berechne_monat():
                 SELECT id, anschaffungsdatum, anschaffungskosten_netto, nutzungsdauer_monate, afa_methode, afa_monatlich
                 FROM afa_anlagevermoegen
                 WHERE status = 'aktiv'
+                AND (tageszulassung IS NULL OR tageszulassung = false)
                 AND anschaffungsdatum <= %s
                 AND (abgangsdatum IS NULL OR abgangsdatum >= %s)
             """, (buchungsmonat, buchungsmonat))
@@ -608,6 +660,8 @@ def berechne_monat():
         with db_session() as conn:
             cur = conn.cursor()
             for f in fahrzeuge:
+                if f.get('tageszulassung'):
+                    continue
                 afa = f.get('afa_monatlich') or berechne_monatliche_afa(f)
                 if afa is None:
                     continue
@@ -637,12 +691,94 @@ def berechne_monat():
 
 
 # =============================================================================
+# GET /api/afa/abgangs-kontrolle
+# =============================================================================
+
+@afa_api.route('/api/afa/abgangs-kontrolle', methods=['GET'])
+def abgangs_kontrolle():
+    """
+    Kontrollreport: DRIVE vs. Locosoft (out_invoice_date).
+    - Bitte prüfen: DRIVE status=aktiv, aber in Locosoft bereits verkauft (out_invoice_date gesetzt).
+    - Abgang in DRIVE: Liste mit Locosoft-Verkaufsdatum zur Kontrolle.
+    """
+    try:
+        with db_session() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, vin, kennzeichen, fahrzeug_bezeichnung, status, abgangsdatum
+                FROM afa_anlagevermoegen
+                WHERE vin IS NOT NULL AND TRIM(vin) != ''
+                ORDER BY status ASC, abgangsdatum DESC NULLS LAST
+            """)
+            rows = cur.fetchall()
+        portal = rows_to_list(rows, cur) if cur else []
+        vins = [r['vin'].strip() for r in portal if r.get('vin')]
+        if not vins:
+            return jsonify({'ok': True, 'abgang_pruefen': [], 'abgang_drive_mit_locosoft': [], 'hinweis': 'Keine Fahrzeuge mit VIN.'})
+
+        placeholders = ','.join(['%s'] * len(vins))
+        with locosoft_session() as conn:
+            cur = conn.cursor()
+            cur.execute(f"""
+                SELECT v.vin, dv.out_invoice_date
+                FROM vehicles v
+                JOIN dealer_vehicles dv ON dv.vehicle_number = v.internal_number
+                    AND dv.dealer_vehicle_type = v.dealer_vehicle_type
+                    AND dv.dealer_vehicle_number = v.dealer_vehicle_number
+                WHERE v.vin IN ({placeholders})
+            """, vins)
+            loco_rows = cur.fetchall()
+        loco_map = {}
+        for r in loco_rows:
+            vin = (r[0] or '').strip()
+            if vin:
+                loco_map[vin] = r[1]  # out_invoice_date
+
+        abgang_pruefen = []
+        abgang_drive_mit_locosoft = []
+        for p in portal:
+            vin = (p.get('vin') or '').strip()
+            if not vin:
+                continue
+            loco_inv = loco_map.get(vin)
+            if p.get('status') == 'aktiv' and loco_inv:
+                abgang_pruefen.append({
+                    'id': p.get('id'), 'vin': vin, 'kennzeichen': p.get('kennzeichen'),
+                    'fahrzeug_bezeichnung': p.get('fahrzeug_bezeichnung'),
+                    'locosoft_out_invoice_date': loco_inv.isoformat() if hasattr(loco_inv, 'isoformat') else str(loco_inv),
+                    'hinweis': 'In Locosoft als verkauft (Rechnungsdatum). Bitte Abgang in DRIVE prüfen.',
+                })
+            if p.get('status') == 'verkauft':
+                abgang_drive_mit_locosoft.append({
+                    'id': p.get('id'), 'vin': vin, 'kennzeichen': p.get('kennzeichen'),
+                    'fahrzeug_bezeichnung': p.get('fahrzeug_bezeichnung'),
+                    'abgangsdatum': p.get('abgangsdatum').isoformat() if p.get('abgangsdatum') and hasattr(p['abgangsdatum'], 'isoformat') else str(p.get('abgangsdatum') or ''),
+                    'locosoft_out_invoice_date': loco_inv.isoformat() if loco_inv and hasattr(loco_inv, 'isoformat') else (str(loco_inv) if loco_inv else None),
+                })
+
+        return jsonify({
+            'ok': True,
+            'abgang_pruefen': abgang_pruefen,
+            'abgang_drive_mit_locosoft': abgang_drive_mit_locosoft,
+        })
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+# =============================================================================
 # GET /api/afa/locosoft-kandidaten
 # =============================================================================
-# Fahrzeugfilter: VFW = dealer_vehicle_type 'V' und nicht Mietwagen;
-#                Mietwagen = is_rental_or_school_vehicle = true, aber nur EIGENE:
-#                Kennzeichen enthält "X" oder pre_owned_car_code IN ('X','M') (Buchhaltung Excel Jw-Kz M, Locosoft X).
+# Fahrzeugfilter:
+#   VFW = dealer_vehicle_type 'V' und nicht Mietwagen (is_rental_or_school_vehicle = false).
+#   Mietwagen = (a) is_rental_or_school_vehicle = true mit eigene (Jw-Kz M)
+#               (b) dealer_vehicle_type 'G' (Gebrauchtwagen) mit Jw-Kz M (Buchhaltung Mietwagen-Listen).
 # EK-Formel: wie kalkulation_helpers + usage_value_encr_other - total_writedown.
+
+def _locosoft_eigene_mietwagen_condition():
+    """Bedingung für 'eigene Mietwagen': Jw-Kennzeichen (pre_owned_car_code) = 'M'."""
+    return """(
+                UPPER(TRIM(COALESCE(dv.pre_owned_car_code, ''))) = 'M'
+            )"""
 
 _LOCOSOFT_KANDIDATEN_SQL = """
     SELECT
@@ -675,14 +811,8 @@ _LOCOSOFT_KANDIDATEN_SQL = """
         AND v.make_number = m.make_number
     WHERE (
         (dv.dealer_vehicle_type = 'V' AND (dv.is_rental_or_school_vehicle IS NULL OR dv.is_rental_or_school_vehicle = false))
-        OR (
-            dv.is_rental_or_school_vehicle = true
-            AND (
-                COALESCE(TRIM(v.license_plate), '') LIKE '%%X%%'
-                OR COALESCE(TRIM(dv.out_license_plate), '') LIKE '%%X%%'
-                OR UPPER(TRIM(COALESCE(dv.pre_owned_car_code, ''))) IN ('X', 'M')
-            )
-        )
+        OR (dv.is_rental_or_school_vehicle = true AND """ + _locosoft_eigene_mietwagen_condition() + """)
+        OR (dv.dealer_vehicle_type = 'G' AND """ + _locosoft_eigene_mietwagen_condition() + """)
     )
     AND (dv.deactivated_date IS NULL AND dv.deactivated_by_employee_no IS NULL)
     AND (dv.out_invoice_date IS NULL)
@@ -739,8 +869,15 @@ def locosoft_kandidaten():
             else:
                 betriebsnr = 1
 
+            # Art: Mietwagen wenn is_rental_or_school_vehicle ODER Fz.-Art G mit Jw-Kz M (Buchhaltung)
             if r.get('is_rental_or_school_vehicle'):
                 fahrzeugart = 'MIETWAGEN'
+            elif (r.get('dealer_vehicle_type') or '').upper() == 'G':
+                jw = (r.get('pre_owned_car_code') or '').strip().upper()
+                if jw == 'M':
+                    fahrzeugart = 'MIETWAGEN'
+                else:
+                    fahrzeugart = 'VFW'
             else:
                 fahrzeugart = 'VFW'
 
@@ -757,6 +894,78 @@ def locosoft_kandidaten():
                 'betriebsnr': betriebsnr,
             })
         return jsonify({'ok': True, 'kandidaten': kandidaten})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+# =============================================================================
+# GET /api/afa/locosoft-fahrzeug-detail
+# =============================================================================
+
+@afa_api.route('/api/afa/locosoft-fahrzeug-detail', methods=['GET'])
+def locosoft_fahrzeug_detail():
+    """
+    Einzelnes Fahrzeug aus Locosoft mit allen verfügbaren Feldern (für Detail-Modal).
+    Query: dealer_vehicle_type, dealer_vehicle_number.
+    """
+    dtype = (request.args.get('dealer_vehicle_type') or '').strip().upper()
+    dnum = request.args.get('dealer_vehicle_number', type=int)
+    if not dtype or dnum is None:
+        return jsonify({'ok': False, 'error': 'dealer_vehicle_type und dealer_vehicle_number erforderlich'}), 400
+    try:
+        sql_one = _LOCOSOFT_KANDIDATEN_SQL.replace(
+            "ORDER BY dv.dealer_vehicle_type, dv.dealer_vehicle_number",
+            "AND dv.dealer_vehicle_type = %s AND dv.dealer_vehicle_number = %s ORDER BY dv.dealer_vehicle_type, dv.dealer_vehicle_number"
+        )
+        with locosoft_session() as conn:
+            cur = conn.cursor()
+            cur.execute(sql_one, (dtype, dnum))
+            row = cur.fetchone()
+            if not row:
+                return jsonify({'ok': False, 'error': 'Fahrzeug in Locosoft nicht gefunden'}), 404
+            r = row_to_dict(row, cur)
+
+        def _fmt(v):
+            if v is None:
+                return None
+            if hasattr(v, 'isoformat'):
+                return v.isoformat()[:10] if hasattr(v, 'date') else str(v)
+            if isinstance(v, Decimal):
+                return float(v)
+            return str(v)
+
+        detail = {
+            'identifikation': {
+                'vin': _fmt(r.get('vin')),
+                'kennzeichen': _fmt(r.get('license_plate')),
+                'out_license_plate': _fmt(r.get('out_license_plate')),
+                'dealer_vehicle_type': _fmt(r.get('dealer_vehicle_type')),
+                'dealer_vehicle_number': _fmt(r.get('dealer_vehicle_number')),
+                'internal_number': _fmt(r.get('internal_number')),
+            },
+            'fahrzeug': {
+                'model_description': _fmt(r.get('model_description')),
+                'first_registration_date': _fmt(r.get('first_registration_date')),
+            },
+            'kalkulation': {
+                'in_arrival_date': _fmt(r.get('in_arrival_date')),
+                'calc_basic_charge': _fmt(r.get('calc_basic_charge')),
+                'calc_accessory': _fmt(r.get('calc_accessory')),
+                'calc_extra_expenses': _fmt(r.get('calc_extra_expenses')),
+                'calc_usage_value_encr_internal': _fmt(r.get('calc_usage_value_encr_internal')),
+                'calc_usage_value_encr_external': _fmt(r.get('calc_usage_value_encr_external')),
+                'calc_usage_value_encr_other': _fmt(r.get('calc_usage_value_encr_other')),
+                'calc_total_writedown': _fmt(r.get('calc_total_writedown')),
+            },
+            'sonstiges': {
+                'is_rental_or_school_vehicle': r.get('is_rental_or_school_vehicle'),
+                'pre_owned_car_code': _fmt(r.get('pre_owned_car_code')),
+                'subsidiary': _fmt(r.get('subsidiary')),
+            },
+        }
+        ek = _ek_netto_from_locosoft_row(r)
+        detail['ek_netto_berechnet'] = round(float(ek), 2) if ek else None
+        return jsonify({'ok': True, 'detail': detail})
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
 
@@ -834,7 +1043,14 @@ def import_locosoft():
 
             subsidiary = r.get('subsidiary')
             betriebsnr = LOCOSOFT_SUBSIDIARY_TO_BETRIEBSNR.get(int(subsidiary), 1) if subsidiary is not None else 1
-            fahrzeugart = 'MIETWAGEN' if r.get('is_rental_or_school_vehicle') else 'VFW'
+            # Art wie in Kandidaten: Mietwagen bei is_rental ODER Typ G mit Jw-Kz M (Buchhaltung)
+            if r.get('is_rental_or_school_vehicle'):
+                fahrzeugart = 'MIETWAGEN'
+            elif (r.get('dealer_vehicle_type') or '').upper() == 'G':
+                jw = (r.get('pre_owned_car_code') or '').strip().upper()
+                fahrzeugart = 'MIETWAGEN' if (jw == 'M') else 'VFW'
+            else:
+                fahrzeugart = 'VFW'
             afa_monatlich = round(ek / nutzungsdauer_monate, 2)
 
             with db_session() as conn:
