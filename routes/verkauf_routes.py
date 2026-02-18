@@ -3,6 +3,7 @@ Verkauf Routes
 HTML-Seiten für Verkaufsbereich
 """
 from flask import Blueprint, render_template, request
+from flask_login import login_required, current_user
 from datetime import datetime
 from utils.standort_filter_helpers import parse_standort_params
 
@@ -73,6 +74,38 @@ def budget_planung():
     - IST vs PLAN Vergleich
     """
     return render_template('verkauf_budget.html', now=datetime.now())
+
+
+@verkauf_bp.route('/zielplanung')
+@login_required
+def zielplanung():
+    """Verkäufer-Zielplanung (Kalenderjahr)
+
+    NW/GW-Ziele pro Verkäufer: Konzernziele minus Pool Handelsgeschäft,
+    Verteilung nach historischer Leistung (Referenzjahr). History 2023–2025.
+    Zugriff: wie Budget-Planung (VKL/GF).
+    """
+    if current_user.portal_role not in ('admin', 'geschaeftsleitung', 'verkauf_leitung'):
+        from flask import abort
+        abort(403)
+    return render_template('verkauf_zielplanung.html', now=datetime.now())
+
+
+@verkauf_bp.route('/zielplanung/verkaeufer/<int:mitarbeiter_nr>')
+@login_required
+def zielplanung_verkaeufer_detail(mitarbeiter_nr):
+    """Detailansicht eines Verkäufers für Planungsgespräch – nur diese Person, Vorjahr + Vorschlag + Bearbeitung."""
+    if current_user.portal_role not in ('admin', 'geschaeftsleitung', 'verkauf_leitung'):
+        from flask import abort
+        abort(403)
+    jahr = request.args.get('jahr', type=int) or datetime.now().year
+    referenz_jahr = request.args.get('referenz_jahr', type=int) or max(2024, jahr - 1)
+    return render_template(
+        'verkauf_zielplanung_detail.html',
+        mitarbeiter_nr=mitarbeiter_nr,
+        jahr=jahr,
+        referenz_jahr=referenz_jahr,
+    )
 
 
 @verkauf_bp.route('/budget/wizard')

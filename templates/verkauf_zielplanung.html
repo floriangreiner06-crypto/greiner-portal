@@ -1,0 +1,464 @@
+{% extends "base.html" %}
+{% block title %}Verkäufer-Zielplanung - DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .zielplanung-card { border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .zielplanung-card .card-header { font-weight: 600; background: #f8f9fa; border-bottom: 1px solid #dee2e6; }
+    .tbl-verkaeufer { font-size: 0.95rem; }
+    .tbl-verkaeufer th { white-space: nowrap; }
+    .badge-pool { background: #6f42c1; color: #fff; }
+    .kpi-mini { font-weight: 700; color: #0d6efd; }
+    .kpi-mini.nw { color: #0d6efd; }
+    .kpi-mini.gw { color: #198754; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <h1 class="h4 mb-3"><i class="bi bi-bullseye text-success"></i> Verkäufer-Zielplanung</h1>
+    <p class="text-muted small">Kalenderjahr; Konzernziele minus Pool Handelsgeschäft. Basis: <strong>Auftragseingang</strong> (Vertragsdatum), nicht Fakturierung – wie Verkäuferarbeitsplatz Catch. NW nach Marken: Hyundai nur Roland/Edeltraud, Opel ohne die beiden, Leapmotor auf alle. Daten: Locosoft.</p>
+
+    <div class="row">
+        <div class="col-lg-6 mb-4">
+            <div class="card zielplanung-card">
+                <div class="card-header">Stückzahl nach Verkäufer (Historie)</div>
+                <div class="card-body">
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                        <label class="mb-0">Jahr:</label>
+                        <select id="historie-jahr" class="form-select form-select-sm" style="width: auto;">
+                            <option value="2025">2025</option>
+                            <option value="2024">2024</option>
+                            <option value="2023">2023</option>
+                        </select>
+                        <button type="button" class="btn btn-sm btn-primary" id="btn-lade-historie">Laden</button>
+                    </div>
+                    <div id="historie-placeholder" class="text-muted small">Jahr wählen und „Laden“ klicken.</div>
+                    <div id="historie-tabelle" class="table-responsive d-none">
+                        <table class="table table-sm table-hover tbl-verkaeufer">
+                            <thead><tr><th>Nr</th><th>Name</th><th>Standort</th><th>NW</th><th title="Hyundai">Hy</th><th title="Opel">Op</th><th title="Leapmotor">Lp</th><th>GW</th><th>Summe</th><th></th></tr></thead>
+                            <tbody id="historie-tbody"></tbody>
+                            <tfoot id="historie-tfoot"></tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6 mb-4">
+            <div class="card zielplanung-card">
+                <div class="card-header">Zielverteilung (Vorschlag)</div>
+                <div class="card-body">
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                        <label class="mb-0">Zieljahr:</label>
+                        <input type="number" id="ziel-jahr" value="2026" class="form-control form-control-sm" style="width: 80px;">
+                        <label class="mb-0 ms-2">Referenz:</label>
+                        <select id="referenz-jahr" class="form-select form-select-sm" style="width: auto;">
+                            <option value="2025">2025</option>
+                            <option value="2024">2024</option>
+                        </select>
+                        <label class="mb-0 ms-2">Konzernziel NW:</label>
+                        <input type="number" id="konzern-nw" value="630" class="form-control form-control-sm" style="width: 70px;" title="Gesamt; oder unten pro Marke einzeln">
+                        <label class="mb-0">GW:</label>
+                        <input type="number" id="konzern-gw" value="900" class="form-control form-control-sm" style="width: 70px;">
+                        <button type="button" class="btn btn-sm btn-success" id="btn-verteilung">Berechnen</button>
+                    </div>
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2 small text-muted">
+                        <span>NW nach Marke (optional, sonst aus Gesamt-NW nach Referenz):</span>
+                        <label class="mb-0">Hyundai:</label>
+                        <input type="number" id="ziel-nw-hyundai" placeholder="auto" class="form-control form-control-sm" style="width: 60px;">
+                        <label class="mb-0">Opel:</label>
+                        <input type="number" id="ziel-nw-opel" placeholder="auto" class="form-control form-control-sm" style="width: 60px;">
+                        <label class="mb-0">Leapmotor:</label>
+                        <input type="number" id="ziel-nw-leapmotor" placeholder="auto" class="form-control form-control-sm" style="width: 60px;">
+                    </div>
+                    <p class="small text-muted mb-2">Workflow: Berechnen (Vorschlag) → ggf. anpassen → Speichern. Einzelansicht pro Verkäufer für Planungsgespräch (ohne andere Daten): Link „Detail“ in der Tabelle.</p>
+                    <div id="differenz-box" class="alert alert-secondary py-2 mb-2 d-none" role="alert">
+                        <strong>Differenz zur Konzernvorgabe:</strong> Summe vereinbarte Ziele <span id="diff-sum-nw">0</span> NW / <span id="diff-sum-gw">0</span> GW.
+                        Konzernziel <span id="diff-konzern-nw">630</span> NW / <span id="diff-konzern-gw">900</span> GW.
+                        Differenz: <span id="diff-delta-nw">0</span> NW / <span id="diff-delta-gw">0</span> GW.
+                        <span class="small d-block mt-1 text-muted">Differenzen können in weiteren Planungsgesprächen ausgeglichen oder bewusst getragen werden.</span>
+                    </div>
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-ziele-laden">Gespeicherte Ziele laden</button>
+                        <button type="button" class="btn btn-sm btn-primary" id="btn-ziele-speichern">Ziele speichern</button>
+                        <span id="ziele-speichern-hinweis" class="small text-success d-none"></span>
+                    </div>
+                    <div id="verteilung-placeholder" class="text-muted small">Konzernziele anpassen und „Berechnen“ klicken.</div>
+                    <div id="verteilung-kpis" class="small mb-2 d-none"></div>
+                    <div id="verteilung-tabelle" class="table-responsive d-none">
+                        <table class="table table-sm table-hover tbl-verkaeufer">
+                            <thead><tr><th>Nr</th><th>Name</th><th>IST NW</th><th>IST GW</th><th>Ziel Hy</th><th>Ziel Op</th><th>Ziel Lp</th><th>Ziel NW</th><th>Ziel GW</th><th>Summe</th><th>Planungsgespräch</th><th></th></tr></thead>
+                            <tbody id="verteilung-tbody"></tbody>
+                            <tfoot id="verteilung-tfoot"></tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12 mb-4">
+            <div class="card zielplanung-card">
+                <div class="card-header"><i class="bi bi-calendar3 me-1"></i> Monatsverteilung (Saisonalität)</div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">Jahresziele werden anhand der Saisonalität eines Referenzjahrs (Locosoft Auftragseingang) auf 12 Monate verteilt. Es werden die gleichen Referenzwerte wie oben (Referenzjahr, Konzernziel NW/GW) verwendet.</p>
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="btn-monatsverteilung">Monatsverteilung laden</button>
+                    </div>
+                    <div id="monats-placeholder" class="text-muted small">Button klicken, um Verteilung aus Referenzjahr und Konzernzielen zu berechnen.</div>
+                    <p id="monats-ist-hinweis" class="small text-muted mb-0 d-none"></p>
+                    <div id="monats-content" class="d-none">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover tbl-verkaeufer">
+                                        <thead><tr><th>Monat</th><th>NW %</th><th>GW %</th><th>Ziel NW</th><th>Ziel GW</th><th>IST NW</th><th>IST GW</th></tr></thead>
+                                        <tbody id="monats-tbody"></tbody>
+                                        <tfoot id="monats-tfoot"></tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="chart-container" style="height: 280px;">
+                                    <canvas id="monats-chart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    const API = '/api/verkaeufer-zielplanung';
+
+    document.getElementById('btn-lade-historie').addEventListener('click', function() {
+        const jahr = parseInt(document.getElementById('historie-jahr').value, 10);
+        fetch(API + '/stueckzahl/' + jahr)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) { document.getElementById('historie-placeholder').textContent = 'Fehler: ' + (data.error || 'Unbekannt'); return; }
+                const tbody = document.getElementById('historie-tbody');
+                const tfoot = document.getElementById('historie-tfoot');
+                tbody.innerHTML = '';
+                data.verkaeufer.forEach(function(v) {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML =
+                        '<td>' + v.mitarbeiter_nr + '</td>' +
+                        '<td>' + escapeHtml(v.name) + '</td>' +
+                        '<td>' + (v.standort || '') + '</td>' +
+                        '<td>' + v.nw_stueck + '</td>' +
+                        '<td>' + (v.nw_hyundai || 0) + '</td>' +
+                        '<td>' + (v.nw_opel || 0) + '</td>' +
+                        '<td>' + (v.nw_leapmotor || 0) + '</td>' +
+                        '<td>' + v.gw_stueck + '</td>' +
+                        '<td><strong>' + v.summe_stueck + '</strong></td>' +
+                        '<td>' + (v.ist_handelsgeschaeft ? '<span class="badge badge-pool">Pool</span>' : '') + '</td>';
+                    tbody.appendChild(tr);
+                });
+                const g = data.gesamt;
+                const sumHy = data.verkaeufer.reduce(function(a, v) { return a + (v.nw_hyundai || 0); }, 0);
+                const sumOp = data.verkaeufer.reduce(function(a, v) { return a + (v.nw_opel || 0); }, 0);
+                const sumLp = data.verkaeufer.reduce(function(a, v) { return a + (v.nw_leapmotor || 0); }, 0);
+                tfoot.innerHTML = '<tr class="table-light"><td colspan="2"><strong>GESAMT</strong></td><td></td><td><strong>' + g.nw + '</strong></td><td>' + sumHy + '</td><td>' + sumOp + '</td><td>' + sumLp + '</td><td><strong>' + g.gw + '</strong></td><td><strong>' + g.summe + '</strong></td><td></td></tr>';
+                document.getElementById('historie-placeholder').classList.add('d-none');
+                document.getElementById('historie-tabelle').classList.remove('d-none');
+            })
+            .catch(function(e) {
+                document.getElementById('historie-placeholder').textContent = 'Fehler: ' + e.message;
+            });
+    });
+
+    let letzteVerteilung = null;
+
+    document.getElementById('btn-verteilung').addEventListener('click', function() {
+        const zielJahr = parseInt(document.getElementById('ziel-jahr').value, 10);
+        const refJahr = parseInt(document.getElementById('referenz-jahr').value, 10);
+        const zielNw = parseInt(document.getElementById('konzern-nw').value, 10);
+        const zielGw = parseInt(document.getElementById('konzern-gw').value, 10);
+        let url = API + '/verteilung?ziel_jahr=' + zielJahr + '&referenz_jahr=' + refJahr + '&ziel_nw=' + zielNw + '&ziel_gw=' + zielGw;
+        const hy = document.getElementById('ziel-nw-hyundai').value.trim();
+        const op = document.getElementById('ziel-nw-opel').value.trim();
+        const lp = document.getElementById('ziel-nw-leapmotor').value.trim();
+        if (hy) url += '&ziel_nw_hyundai=' + hy;
+        if (op) url += '&ziel_nw_opel=' + op;
+        if (lp) url += '&ziel_nw_leapmotor=' + lp;
+        fetch(url)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) { document.getElementById('verteilung-placeholder').textContent = 'Fehler: ' + (data.error || 'Unbekannt'); return; }
+                letzteVerteilung = data;
+                const tbody = document.getElementById('verteilung-tbody');
+                const tfoot = document.getElementById('verteilung-tfoot');
+                tbody.innerHTML = '';
+                data.verkaeufer.forEach(function(v) {
+                    const tr = document.createElement('tr');
+                    tr.setAttribute('data-mitarbeiter-nr', v.mitarbeiter_nr);
+                    const detailUrl = '/verkauf/zielplanung/verkaeufer/' + v.mitarbeiter_nr + '?jahr=' + zielJahr + '&referenz_jahr=' + refJahr;
+                    tr.innerHTML =
+                        '<td>' + v.mitarbeiter_nr + '</td>' +
+                        '<td>' + escapeHtml(v.name) + '</td>' +
+                        '<td>' + v.nw_ist + '</td>' +
+                        '<td>' + v.gw_ist + '</td>' +
+                        '<td>' + (v.ziel_nw_hyundai || 0) + '</td>' +
+                        '<td>' + (v.ziel_nw_opel || 0) + '</td>' +
+                        '<td>' + (v.ziel_nw_leapmotor || 0) + '</td>' +
+                        '<td><input type="number" min="0" class="form-control form-control-sm input-ziel-nw" style="width:56px" value="' + (v.ziel_nw || 0) + '"></td>' +
+                        '<td><input type="number" min="0" class="form-control form-control-sm input-ziel-gw" style="width:56px" value="' + (v.ziel_gw || 0) + '"></td>' +
+                        '<td class="summe-ziel"></td>' +
+                        '<td><input type="date" class="form-control form-control-sm input-pg-datum" style="width:120px" title="Planungsgespräch am"> <input type="text" class="form-control form-control-sm input-pg-notiz" placeholder="Notiz" style="width:100px" maxlength="200"></td>' +
+                        '<td>' + (v.ist_handelsgeschaeft ? '<span class="badge badge-pool">Pool</span> ' : '') + '<a href="' + detailUrl + '" target="_blank" class="small">Detail</a></td>';
+                    tbody.appendChild(tr);
+                });
+                updateSummenZeile();
+                updateDifferenzBox();
+                tfoot.innerHTML = '<tr class="table-light"><td colspan="2"><strong>GESAMT</strong></td><td></td><td></td><td></td><td></td><td></td><td id="foot-ziel-nw"></td><td id="foot-ziel-gw"></td><td id="foot-summe"></td><td></td><td></td></tr>';
+                document.getElementById('verteilung-kpis').className = 'small mb-2';
+                document.getElementById('verteilung-kpis').innerHTML =
+                    'NW gesamt ' + data.konzernziel_nw + ' (Hyundai ' + (data.konzernziel_nw_hyundai || '-') + ' / Opel ' + (data.konzernziel_nw_opel || '-') + ' / Leapmotor ' + (data.konzernziel_nw_leapmotor || '-') + '). GW ' + data.konzernziel_gw + '. ' +
+                    'Pool Handelsgeschäft: ' + data.pool_handelsgeschaeft_nw + ' NW / ' + data.pool_handelsgeschaeft_gw + ' GW. ' +
+                    'Verteilungspool: ' + data.pool_verteilung_nw + ' NW / ' + data.pool_verteilung_gw + ' GW.';
+                document.getElementById('verteilung-placeholder').classList.add('d-none');
+                document.getElementById('verteilung-kpis').classList.remove('d-none');
+                document.getElementById('verteilung-tabelle').classList.remove('d-none');
+                tbody.querySelectorAll('.input-ziel-nw, .input-ziel-gw').forEach(function(el) { el.addEventListener('input', updateSummenZeile); });
+                document.getElementById('konzern-nw').addEventListener('input', function() { updateDifferenzBox(); });
+                document.getElementById('konzern-gw').addEventListener('input', function() { updateDifferenzBox(); });
+            })
+            .catch(function(e) {
+                document.getElementById('verteilung-placeholder').textContent = 'Fehler: ' + e.message;
+            });
+    });
+
+    function updateSummenZeile() {
+        const tbody = document.getElementById('verteilung-tbody');
+        if (!tbody) return;
+        let sumNw = 0, sumGw = 0;
+        tbody.querySelectorAll('tr[data-mitarbeiter-nr]').forEach(function(tr) {
+            const nw = parseInt(tr.querySelector('.input-ziel-nw').value, 10) || 0;
+            const gw = parseInt(tr.querySelector('.input-ziel-gw').value, 10) || 0;
+            tr.querySelector('.summe-ziel').textContent = nw + gw;
+            sumNw += nw;
+            sumGw += gw;
+        });
+        const footNw = document.getElementById('foot-ziel-nw');
+        const footGw = document.getElementById('foot-ziel-gw');
+        const footSum = document.getElementById('foot-summe');
+        if (footNw) footNw.innerHTML = '<strong>' + sumNw + '</strong>';
+        if (footGw) footGw.innerHTML = '<strong>' + sumGw + '</strong>';
+        if (footSum) footSum.innerHTML = '<strong>' + (sumNw + sumGw) + '</strong>';
+        updateDifferenzBox(sumNw, sumGw);
+    }
+
+    function updateDifferenzBox(sumNw, sumGw) {
+        var box = document.getElementById('differenz-box');
+        if (!box) return;
+        var tbody = document.getElementById('verteilung-tbody');
+        if (!tbody || !tbody.querySelectorAll('tr[data-mitarbeiter-nr]').length) { box.classList.add('d-none'); return; }
+        if (sumNw === undefined || sumGw === undefined) {
+            sumNw = 0; sumGw = 0;
+            tbody.querySelectorAll('tr[data-mitarbeiter-nr]').forEach(function(tr) {
+                sumNw += parseInt(tr.querySelector('.input-ziel-nw').value, 10) || 0;
+                sumGw += parseInt(tr.querySelector('.input-ziel-gw').value, 10) || 0;
+            });
+        }
+        var konzernNw = parseInt(document.getElementById('konzern-nw').value, 10) || 0;
+        var konzernGw = parseInt(document.getElementById('konzern-gw').value, 10) || 0;
+        document.getElementById('diff-sum-nw').textContent = sumNw;
+        document.getElementById('diff-sum-gw').textContent = sumGw;
+        document.getElementById('diff-konzern-nw').textContent = konzernNw;
+        document.getElementById('diff-konzern-gw').textContent = konzernGw;
+        var dNw = sumNw - konzernNw, dGw = sumGw - konzernGw;
+        document.getElementById('diff-delta-nw').textContent = (dNw >= 0 ? '+' : '') + dNw;
+        document.getElementById('diff-delta-gw').textContent = (dGw >= 0 ? '+' : '') + dGw;
+        document.getElementById('diff-delta-nw').className = dNw !== 0 ? (dNw > 0 ? 'text-success' : 'text-danger') : '';
+        document.getElementById('diff-delta-gw').className = dGw !== 0 ? (dGw > 0 ? 'text-success' : 'text-danger') : '';
+        box.classList.remove('d-none');
+    }
+
+    document.getElementById('btn-ziele-laden').addEventListener('click', function() {
+        const jahr = parseInt(document.getElementById('ziel-jahr').value, 10);
+        fetch(API + '/ziele/' + jahr)
+            .then(r => r.json())
+            .then(function(data) {
+                if (!data.success || !data.gespeichert || !data.ziele.length) {
+                    alert(data.gespeichert ? 'Keine gespeicherten Ziele für ' + jahr : 'Zuerst „Berechnen“ klicken, dann gespeicherte Ziele laden.');
+                    return;
+                }
+                const tbody = document.getElementById('verteilung-tbody');
+                const rows = tbody ? tbody.querySelectorAll('tr[data-mitarbeiter-nr]') : [];
+                if (!rows.length) {
+                    alert('Bitte zuerst „Berechnen“ klicken, um die Tabelle zu füllen.');
+                    return;
+                }
+                const byNr = {};
+                data.ziele.forEach(function(z) { byNr[z.mitarbeiter_nr] = z; });
+                rows.forEach(function(tr) {
+                    const nr = parseInt(tr.getAttribute('data-mitarbeiter-nr'), 10);
+                    const z = byNr[nr];
+                    if (z) {
+                        tr.querySelector('.input-ziel-nw').value = z.ziel_nw || 0;
+                        tr.querySelector('.input-ziel-gw').value = z.ziel_gw || 0;
+                        var d = z.planungsgespraech_am;
+                        if (d) tr.querySelector('.input-pg-datum').value = d.substring(0, 10);
+                        if (z.planungsgespraech_notiz) tr.querySelector('.input-pg-notiz').value = z.planungsgespraech_notiz;
+                    }
+                });
+                updateSummenZeile();
+                updateDifferenzBox();
+            })
+            .catch(function(e) { alert('Fehler: ' + e.message); });
+    });
+
+    document.getElementById('btn-ziele-speichern').addEventListener('click', function() {
+        const jahr = parseInt(document.getElementById('ziel-jahr').value, 10);
+        const tbody = document.getElementById('verteilung-tbody');
+        const rows = tbody ? tbody.querySelectorAll('tr[data-mitarbeiter-nr]') : [];
+        if (!rows.length) {
+            alert('Bitte zuerst „Berechnen“ klicken.');
+            return;
+        }
+        const ziele = [];
+        rows.forEach(function(tr) {
+            const nr = parseInt(tr.getAttribute('data-mitarbeiter-nr'), 10);
+            const nw = parseInt(tr.querySelector('.input-ziel-nw').value, 10) || 0;
+            const gw = parseInt(tr.querySelector('.input-ziel-gw').value, 10) || 0;
+            const pgDatum = tr.querySelector('.input-pg-datum').value.trim();
+            const pgNotiz = tr.querySelector('.input-pg-notiz').value.trim();
+            ziele.push({ mitarbeiter_nr: nr, ziel_nw: nw, ziel_gw: gw, planungsgespraech_am: pgDatum || null, planungsgespraech_notiz: pgNotiz || null });
+        });
+        fetch(API + '/ziele/' + jahr, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ziele: ziele })
+        })
+            .then(r => r.json())
+            .then(function(data) {
+                if (data.success) {
+                    var h = document.getElementById('ziele-speichern-hinweis');
+                    h.textContent = data.message || 'Ziele gespeichert.';
+                    h.classList.remove('d-none');
+                    setTimeout(function() { h.classList.add('d-none'); }, 5000);
+                } else {
+                    alert('Fehler: ' + (data.error || 'Unbekannt'));
+                }
+            })
+            .catch(function(e) { alert('Fehler: ' + e.message); });
+    });
+
+    function escapeHtml(s) {
+        if (!s) return '';
+        var d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
+    }
+
+    var monatsChart = null;
+    var MONATSNAMEN = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+
+    document.getElementById('btn-monatsverteilung').addEventListener('click', function() {
+        var refJahr = parseInt(document.getElementById('referenz-jahr').value, 10);
+        var zielNw = parseInt(document.getElementById('konzern-nw').value, 10);
+        var zielGw = parseInt(document.getElementById('konzern-gw').value, 10);
+        var aktuellesJahr = new Date().getFullYear();
+        var url = API + '/monatsverteilung?referenz_jahr=' + refJahr + '&ziel_nw=' + zielNw + '&ziel_gw=' + zielGw;
+        // SSOT: IST aus Saisonalität (gleiche Logik wie Stückzahl, nur nach Monat) – für laufendes Jahr = IST
+        var istUrl = API + '/saisonalitaet/' + aktuellesJahr;
+        Promise.all([ fetch(url).then(function(r) { return r.json(); }), fetch(istUrl).then(function(r) { return r.json(); }) ])
+            .then(function(results) {
+                var data = results[0];
+                var istData = results[1];
+                if (!data.success) {
+                    document.getElementById('monats-placeholder').textContent = 'Fehler: ' + (data.error || 'Unbekannt');
+                    document.getElementById('monats-placeholder').classList.remove('d-none');
+                    document.getElementById('monats-content').classList.add('d-none');
+                    return;
+                }
+                var istByMonat = {};
+                if (istData.success && (istData.monate || []).length) {
+                    istData.monate.forEach(function(m) { istByMonat[m.monat] = { nw: m.nw_stueck || 0, gw: m.gw_stueck || 0 }; });
+                }
+                var monate = data.monate || [];
+                monate.forEach(function(m) {
+                    var ist = istByMonat[m.monat] || { nw: 0, gw: 0 };
+                    m.ist_nw = ist.nw;
+                    m.ist_gw = ist.gw;
+                });
+                var tbody = document.getElementById('monats-tbody');
+                var tfoot = document.getElementById('monats-tfoot');
+                tbody.innerHTML = '';
+                var sumNw = 0, sumGw = 0, sumIstNw = 0, sumIstGw = 0;
+                monate.forEach(function(m) {
+                    sumNw += m.ziel_nw || 0;
+                    sumGw += m.ziel_gw || 0;
+                    sumIstNw += m.ist_nw || 0;
+                    sumIstGw += m.ist_gw || 0;
+                    var tr = document.createElement('tr');
+                    tr.innerHTML =
+                        '<td>' + MONATSNAMEN[(m.monat || 1) - 1] + '</td>' +
+                        '<td>' + (m.nw_pct != null ? m.nw_pct.toFixed(1) : '-') + ' %</td>' +
+                        '<td>' + (m.gw_pct != null ? m.gw_pct.toFixed(1) : '-') + ' %</td>' +
+                        '<td class="kpi-mini nw">' + (m.ziel_nw || 0) + '</td>' +
+                        '<td class="kpi-mini gw">' + (m.ziel_gw || 0) + '</td>' +
+                        '<td>' + (m.ist_nw || 0) + '</td>' +
+                        '<td>' + (m.ist_gw || 0) + '</td>';
+                    tbody.appendChild(tr);
+                });
+                tfoot.innerHTML = '<tr class="table-light"><td><strong>Summe</strong></td><td></td><td></td><td><strong>' + sumNw + '</strong></td><td><strong>' + sumGw + '</strong></td><td><strong>' + sumIstNw + '</strong></td><td><strong>' + sumIstGw + '</strong></td></tr>';
+                document.getElementById('monats-placeholder').classList.add('d-none');
+                document.getElementById('monats-content').classList.remove('d-none');
+                var hinweis = document.getElementById('monats-ist-hinweis');
+                hinweis.textContent = 'IST: Auftragseingang ' + aktuellesJahr + ' (Locosoft, gleiche Logik wie Stückzahl).';
+                hinweis.classList.remove('d-none');
+                renderMonatsChart(data);
+            })
+            .catch(function(e) {
+                document.getElementById('monats-placeholder').textContent = 'Fehler: ' + e.message;
+                document.getElementById('monats-placeholder').classList.remove('d-none');
+                document.getElementById('monats-content').classList.add('d-none');
+            });
+    });
+
+    function renderMonatsChart(data) {
+        var canvas = document.getElementById('monats-chart');
+        if (!canvas) return;
+        var monate = data.monate || [];
+        var labels = monate.map(function(m) { return MONATSNAMEN[(m.monat || 1) - 1]; });
+        var zielNw = monate.map(function(m) { return m.ziel_nw || 0; });
+        var zielGw = monate.map(function(m) { return m.ziel_gw || 0; });
+        var istNw = monate.map(function(m) { return m.ist_nw || 0; });
+        var istGw = monate.map(function(m) { return m.ist_gw || 0; });
+        if (typeof Chart === 'undefined') return;
+        if (monatsChart) monatsChart.destroy();
+        monatsChart = new Chart(canvas.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'Ziel NW', data: zielNw, backgroundColor: 'rgba(13, 110, 253, 0.7)', borderColor: '#0d6efd', borderWidth: 1 },
+                    { label: 'Ziel GW', data: zielGw, backgroundColor: 'rgba(25, 135, 84, 0.7)', borderColor: '#198754', borderWidth: 1 },
+                    { label: 'IST NW', data: istNw, type: 'line', borderColor: '#0d6efd', backgroundColor: 'transparent', borderWidth: 2, borderDash: [4, 2], pointRadius: 3 },
+                    { label: 'IST GW', data: istGw, type: 'line', borderColor: '#198754', backgroundColor: 'transparent', borderWidth: 2, borderDash: [4, 2], pointRadius: 3 }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { stacked: false },
+                    y: { beginAtZero: true, ticks: { stepSize: 1 } }
+                },
+                plugins: { legend: { position: 'top' } }
+            }
+        });
+    }
+})();
+</script>
+{% endblock %}

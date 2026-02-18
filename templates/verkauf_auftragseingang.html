@@ -169,6 +169,7 @@ let currentVerkaufer = '';
 let currentPeriod = 'month';
 let currentDay = '';
 let lastTotalAE = 0; // Für Prognose-Berechnung
+let monatszieleData = null; // Zielerfüllung: Monatsziele (nur bei Monatsansicht)
 
 document.addEventListener('DOMContentLoaded', function() {
     // Aktuelles Datum setzen
@@ -259,8 +260,16 @@ async function loadData() {
     const prognoseRow = document.getElementById('prognoseRow');
     if (currentPeriod === 'month') {
         prognoseRow.style.display = 'block';
+        try {
+            const zieleRes = await fetch(`/api/verkaeufer-zielplanung/monatsziele?jahr=${currentYear}&monat=${currentMonth}`);
+            const zieleJson = await zieleRes.json();
+            monatszieleData = zieleJson.success ? zieleJson : null;
+        } catch (e) {
+            monatszieleData = null;
+        }
     } else {
         prognoseRow.style.display = 'none';
+        monatszieleData = null;
     }
 
     await loadSummary();
@@ -418,6 +427,8 @@ async function loadSummary() {
         // Gesamt
         const gesamt = neuwagen.gesamt + testvorfuehr.gesamt + gebrauchtwagen.gesamt;
         const gesamt_umsatz = neuwagen.umsatz + testvorfuehr.umsatz + gebrauchtwagen.umsatz;
+        const istNW = neuwagen.gesamt + testvorfuehr.gesamt;
+        const istGW = gebrauchtwagen.gesamt;
 
         // Für Prognose-Berechnung speichern
         lastTotalAE = gesamt;
@@ -433,6 +444,14 @@ async function loadSummary() {
                 </div>
             </div>
         `;
+        
+        if (currentPeriod === 'month' && monatszieleData && monatszieleData.ziel_nw_konzern != null && monatszieleData.ziel_gw_konzern != null) {
+            const zNw = monatszieleData.ziel_nw_konzern;
+            const zGw = monatszieleData.ziel_gw_konzern;
+            const pctNw = zNw > 0 ? Math.round((istNW / zNw) * 100) : '-';
+            const pctGw = zGw > 0 ? Math.round((istGW / zGw) * 100) : '-';
+            html += '<div class="row mt-2"><div class="col-12"><p class="mb-0 small text-muted">Zielerfüllung (Zielplanung): <strong>NW</strong> ' + istNW + ' / ' + zNw + ' (' + pctNw + '%) &nbsp;|&nbsp; <strong>GW</strong> ' + istGW + ' / ' + zGw + ' (' + pctGw + '%)</p></div></div>';
+        }
         
         html += '</div>';
         container.innerHTML = html;
@@ -470,40 +489,40 @@ async function loadDetails() {
             return;
         }
 
+        const zieleByNr = {};
+        if (currentPeriod === 'month' && monatszieleData && monatszieleData.ziele) {
+            monatszieleData.ziele.forEach(z => { zieleByNr[z.mitarbeiter_nr] = z; });
+        }
+        const hasZiele = Object.keys(zieleByNr).length > 0;
+
         let html = '<div class="table-responsive"><table class="table table-striped table-hover">';
-        html += `
-            <thead class="table-dark">
-                <tr>
-                    <th>Verkäufer</th>
-                    <th class="text-center">Neu</th>
-                    <th class="text-center">Test/Vorführ</th>
-                    <th class="text-center">Gebraucht</th>
-                    <th class="text-center">Gesamt</th>
-                    <th>Modelle</th>
-                </tr>
-            </thead>
-            <tbody>
-        `;
+        html += '<thead class="table-dark"><tr><th>Verkäufer</th><th class="text-center">Neu</th><th class="text-center">Test/Vorführ</th><th class="text-center">Gebraucht</th><th class="text-center">Gesamt</th>';
+        if (hasZiele) html += '<th class="text-center">Ziel NW</th><th class="text-center">Ziel GW</th><th class="text-center">Erfüllung</th>';
+        html += '<th>Modelle</th></tr></thead><tbody>';
 
         data.verkaufer.forEach(vk => {
-            html += `
-                <tr>
-                    <td><strong>${vk.verkaufer_name || 'Unbekannt'}</strong></td>
-                    <td class="text-center">
-                        <span class="badge bg-success">${vk.summe_neu}</span>
-                    </td>
-                    <td class="text-center">
-                        <span class="badge bg-warning text-dark">${vk.summe_test_vorfuehr}</span>
-                    </td>
-                    <td class="text-center">
-                        <span class="badge bg-secondary">${vk.summe_gebraucht}</span>
-                    </td>
-                    <td class="text-center">
-                        <strong>${vk.summe_gesamt}</strong>
-                    </td>
-                    <td>${formatModelle(vk)}</td>
-                </tr>
-            `;
+            const istNw = (vk.summe_neu || 0) + (vk.summe_test_vorfuehr || 0);
+            const istGw = vk.summe_gebraucht || 0;
+            const ziel = zieleByNr[vk.verkaufer_nummer];
+            let zielCells = '';
+            if (hasZiele) {
+                if (ziel) {
+                    const zn = ziel.ziel_nw || 0;
+                    const zg = ziel.ziel_gw || 0;
+                    const pctNw = zn > 0 ? Math.round((istNw / zn) * 100) : '-';
+                    const pctGw = zg > 0 ? Math.round((istGw / zg) * 100) : '-';
+                    zielCells = '<td class="text-center">' + zn + '</td><td class="text-center">' + zg + '</td><td class="text-center small">NW ' + pctNw + '% / GW ' + pctGw + '%</td>';
+                } else {
+                    zielCells = '<td class="text-center">-</td><td class="text-center">-</td><td class="text-center small text-muted">-</td>';
+                }
+            }
+            html += '<tr><td><strong>' + (vk.verkaufer_name || 'Unbekannt') + '</strong></td>' +
+                '<td class="text-center"><span class="badge bg-success">' + (vk.summe_neu || 0) + '</span></td>' +
+                '<td class="text-center"><span class="badge bg-warning text-dark">' + (vk.summe_test_vorfuehr || 0) + '</span></td>' +
+                '<td class="text-center"><span class="badge bg-secondary">' + (vk.summe_gebraucht || 0) + '</span></td>' +
+                '<td class="text-center"><strong>' + (vk.summe_gesamt || 0) + '</strong></td>' +
+                (hasZiele ? zielCells : '') +
+                '<td>' + formatModelle(vk) + '</td></tr>';
         });
 
         html += '</tbody></table></div>';

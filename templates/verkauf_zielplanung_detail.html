@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% block title %}Zielplanung – {{ mitarbeiter_nr }} - DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .zielplanung-card { border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .zielplanung-card .card-header { font-weight: 600; background: #f8f9fa; border-bottom: 1px solid #dee2e6; }
+    .kpi-nw { color: #0d6efd; }
+    .kpi-gw { color: #198754; }
+    .detail-hero { background: linear-gradient(135deg, #f0f7ff 0%, #e8f5e9 100%); border-radius: 12px; padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; border: 1px solid rgba(13, 110, 253, 0.15); }
+    .detail-jahresziel { font-size: 2rem; font-weight: 700; color: #0d6efd; line-height: 1.2; }
+    .detail-steigerung { font-size: 0.95rem; color: #198754; font-weight: 600; }
+    .detail-badge-plus { background: #198754; color: #fff; font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 6px; }
+    .detail-vorjahr-ziel { font-size: 0.85rem; color: #6c757d; }
+    .detail-vereinbart-box { background: #f8f9fa; }
+    .detail-vereinbart-box td:first-child { border-left: 4px solid #0d6efd; }
+    .detail-success-msg { font-size: 1rem; color: #198754; font-weight: 500; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <p class="mb-2">
+        <a href="{{ url_for('verkauf.zielplanung') }}"><i class="bi bi-arrow-left"></i> Zurück zur Zielplanung</a>
+    </p>
+    <h1 class="h4 mb-2"><i class="bi bi-bullseye text-success me-1"></i> Planungsgespräch – Ihre Ziele</h1>
+    <p class="text-muted small mb-0">Gemeinsam die Ziele für das Jahr festlegen. Nur Ihre Daten – Vorjahr, Vorschlag und Ihre Vereinbarung.</p>
+
+    <div id="detail-placeholder" class="text-center py-4">
+        <div class="spinner-border text-primary"></div>
+        <p class="mt-2">Lade Daten…</p>
+    </div>
+    <div id="detail-content" class="d-none">
+        <!-- Motivierender Teaser + Jahresziel prominent -->
+        <div class="detail-hero">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <p class="mb-1 text-muted small"><span id="detail-name"></span> <span class="badge bg-secondary ms-1" id="detail-standort"></span></p>
+                    <p class="mb-0 fw-semibold">Ihre Ziele für <span id="detail-jahr-label"></span></p>
+                </div>
+                <div class="col-md-4 text-md-end mt-2 mt-md-0">
+                    <p class="detail-vorjahr-ziel mb-0">Ihr vereinbartes Jahresziel</p>
+                    <p class="detail-jahresziel mb-0"><span id="hero-summe">0</span> <span class="fs-6 fw-normal text-muted">Einheiten</span></p>
+                    <p id="hero-steigerung" class="detail-steigerung mb-0 mt-1"></p>
+                    <p id="hero-badge" class="mb-0 mt-1"></p>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-lg-8">
+                <div class="card zielplanung-card mb-4">
+                    <div class="card-header">Von der Leistung zum Ziel</div>
+                    <div class="card-body">
+                        <input type="hidden" id="detail-jahr" value="{{ jahr }}">
+                        <input type="hidden" id="detail-referenz-jahr" value="{{ referenz_jahr }}">
+                        <table class="table table-sm mb-0">
+                            <thead><tr><th></th><th class="kpi-nw">NW</th><th class="kpi-gw">GW</th><th>Summe</th></tr></thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Ihre Leistung im Vorjahr <span id="label-referenz-jahr"></span></strong></td>
+                                    <td id="vorjahr-nw"></td>
+                                    <td id="vorjahr-gw"></td>
+                                    <td id="vorjahr-summe"></td>
+                                </tr>
+                                <tr class="table-light">
+                                    <td>Planungsvorschlag (auf Basis Ihrer Leistung)</td>
+                                    <td id="vorschlag-nw"></td>
+                                    <td id="vorschlag-gw"></td>
+                                    <td id="vorschlag-summe"></td>
+                                </tr>
+                                <tr class="detail-vereinbart-box">
+                                    <td><strong>Vereinbarte Ziele</strong> <span class="text-muted small">(im Gespräch anpassbar)</span></td>
+                                    <td><input type="number" min="0" id="input-ziel-nw" class="form-control form-control-sm" style="width:80px"></td>
+                                    <td><input type="number" min="0" id="input-ziel-gw" class="form-control form-control-sm" style="width:80px"></td>
+                                    <td id="vereinbart-summe" class="fw-bold"></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <div class="row mt-3">
+                            <div class="col-md-6">
+                                <label class="form-label small">Planungsgespräch am</label>
+                                <input type="date" id="input-pg-datum" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small">Notiz</label>
+                                <input type="text" id="input-pg-notiz" class="form-control form-control-sm" placeholder="Optional" maxlength="200">
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <button type="button" class="btn btn-success btn-lg" id="btn-speichern"><i class="bi bi-check2-circle me-1"></i> Ziele speichern</button>
+                            <span id="speichern-hinweis" class="ms-2 detail-success-msg d-none"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="detail-fehler" class="alert alert-danger d-none"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    const API = '/api/verkaeufer-zielplanung';
+    const mitarbeiterNr = {{ mitarbeiter_nr }};
+    const urlParams = new URLSearchParams(window.location.search);
+    const jahr = urlParams.get('jahr') || document.getElementById('detail-jahr')?.value || new Date().getFullYear();
+    const referenzJahr = urlParams.get('referenz_jahr') || document.getElementById('detail-referenz-jahr')?.value || (jahr - 1);
+
+    function loadDetail() {
+        const url = API + '/verkaeufer/' + mitarbeiterNr + '?jahr=' + jahr + '&referenz_jahr=' + referenzJahr;
+        fetch(url)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.success) {
+                    document.getElementById('detail-placeholder').classList.add('d-none');
+                    document.getElementById('detail-fehler').textContent = data.error || 'Fehler';
+                    document.getElementById('detail-fehler').classList.remove('d-none');
+                    return;
+                }
+                document.getElementById('detail-placeholder').classList.add('d-none');
+                document.getElementById('detail-fehler').classList.add('d-none');
+                document.getElementById('detail-content').classList.remove('d-none');
+
+                document.getElementById('detail-name').textContent = data.name || 'Verkäufer #' + mitarbeiterNr;
+                document.getElementById('detail-standort').textContent = data.standort || '';
+                document.getElementById('detail-jahr-label').textContent = data.jahr;
+                document.getElementById('label-referenz-jahr').textContent = '(' + data.referenz_jahr + ')';
+                document.getElementById('vorjahr-nw').textContent = data.vorjahr.nw;
+                document.getElementById('vorjahr-gw').textContent = data.vorjahr.gw;
+                document.getElementById('vorjahr-summe').textContent = data.vorjahr.nw + data.vorjahr.gw;
+                document.getElementById('vorschlag-nw').textContent = data.vorschlag.ziel_nw;
+                document.getElementById('vorschlag-gw').textContent = data.vorschlag.ziel_gw;
+                document.getElementById('vorschlag-summe').textContent = data.vorschlag.ziel_nw + data.vorschlag.ziel_gw;
+
+                window._detailVorjahrSumme = data.vorjahr.nw + data.vorjahr.gw;
+                window._detailVorschlagSumme = data.vorschlag.ziel_nw + data.vorschlag.ziel_gw;
+
+                var zn = data.vorschlag.ziel_nw, zg = data.vorschlag.ziel_gw;
+                if (data.gespeichert) {
+                    zn = data.gespeichert.ziel_nw;
+                    zg = data.gespeichert.ziel_gw;
+                    if (data.gespeichert.planungsgespraech_am) document.getElementById('input-pg-datum').value = data.gespeichert.planungsgespraech_am.substring(0, 10);
+                    if (data.gespeichert.planungsgespraech_notiz) document.getElementById('input-pg-notiz').value = data.gespeichert.planungsgespraech_notiz;
+                }
+                document.getElementById('input-ziel-nw').value = zn;
+                document.getElementById('input-ziel-gw').value = zg;
+                updateVereinbartSumme();
+            })
+            .catch(function(e) {
+                document.getElementById('detail-placeholder').classList.add('d-none');
+                document.getElementById('detail-fehler').textContent = 'Fehler: ' + e.message;
+                document.getElementById('detail-fehler').classList.remove('d-none');
+            });
+    }
+
+    function updateVereinbartSumme() {
+        var nw = parseInt(document.getElementById('input-ziel-nw').value, 10) || 0;
+        var gw = parseInt(document.getElementById('input-ziel-gw').value, 10) || 0;
+        var summe = nw + gw;
+        document.getElementById('vereinbart-summe').textContent = summe;
+        var heroSum = document.getElementById('hero-summe');
+        if (heroSum) heroSum.textContent = summe;
+        var vorjahrSum = window._detailVorjahrSumme;
+        var vorschlagSum = window._detailVorschlagSumme;
+        var heroSteigerung = document.getElementById('hero-steigerung');
+        if (heroSteigerung && vorjahrSum !== undefined && vorjahrSum > 0) {
+            var pct = Math.round(((summe - vorjahrSum) / vorjahrSum) * 100);
+            heroSteigerung.textContent = (pct >= 0 ? '+' : '') + pct + '% gegenüber Vorjahr';
+            heroSteigerung.style.color = pct >= 0 ? '#198754' : '#6c757d';
+        }
+        var heroBadge = document.getElementById('hero-badge');
+        if (heroBadge && vorschlagSum !== undefined && summe > vorschlagSum) {
+            heroBadge.innerHTML = '<span class="detail-badge-plus"><i class="bi bi-arrow-up-circle me-1"></i> Über Planvorschlag</span>';
+        } else if (heroBadge) {
+            heroBadge.innerHTML = '';
+        }
+    }
+    document.getElementById('input-ziel-nw').addEventListener('input', updateVereinbartSumme);
+    document.getElementById('input-ziel-gw').addEventListener('input', updateVereinbartSumme);
+
+    document.getElementById('btn-speichern').addEventListener('click', function() {
+        var payload = {
+            ziel_nw: parseInt(document.getElementById('input-ziel-nw').value, 10) || 0,
+            ziel_gw: parseInt(document.getElementById('input-ziel-gw').value, 10) || 0,
+            planungsgespraech_am: document.getElementById('input-pg-datum').value.trim() || null,
+            planungsgespraech_notiz: document.getElementById('input-pg-notiz').value.trim() || null
+        };
+        fetch(API + '/ziele/' + jahr + '/verkaeufer/' + mitarbeiterNr, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    var h = document.getElementById('speichern-hinweis');
+                    h.textContent = 'Ziele gespeichert – viel Erfolg im ' + jahr + '!';
+                    h.classList.remove('d-none');
+                    setTimeout(function() { h.classList.add('d-none'); }, 6000);
+                } else {
+                    alert('Fehler: ' + (data.error || 'Unbekannt'));
+                }
+            })
+            .catch(function(e) { alert('Fehler: ' + e.message); });
+    });
+
+    loadDetail();
+})();
+</script>
+{% endblock %}
