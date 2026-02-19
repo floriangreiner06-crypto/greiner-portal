@@ -489,22 +489,24 @@ def get_bereich_daten(von: str, bis: str, firma_filter_umsatz: str, umlage_erloe
     Holt Umsatz und Einsatz pro Bereich für einen Zeitraum.
     TAG 136: PostgreSQL-kompatibel
     TAG 157: firma_filter_einsatz für korrekte Standort-Zuordnung (Konto-Endziffer)
-    Returns: {'1-NW': {'umsatz': X, 'einsatz': Y}, ...}
+    Abgleich mit get_tek_data: G&V-Filter, Clean Park (847301/747301) aus 4-Lohn ausgenommen.
+    Returns: {'1-NW': {'umsatz': X, 'einsatz': Y, 'db1': Z}, ...}
     """
     # TAG157: Wenn kein separater Einsatz-Filter, nutze Umsatz-Filter (Abwärtskompatibilität)
     if firma_filter_einsatz is None:
         firma_filter_einsatz = firma_filter_umsatz
+    guv_filter = get_guv_filter()
     with db_session() as conn:
         cursor = conn.cursor()
 
-        # UMSATZ
+        # UMSATZ (wie get_tek_data: G&V-Filter, Clean Park 847301 nicht in 4-Lohn)
         cursor.execute(convert_placeholders(f"""
             SELECT
                 CASE
                     WHEN nominal_account_number BETWEEN 810000 AND 819999 THEN '1-NW'
                     WHEN nominal_account_number BETWEEN 820000 AND 829999 THEN '2-GW'
                     WHEN nominal_account_number BETWEEN 830000 AND 839999 THEN '3-Teile'
-                    WHEN nominal_account_number BETWEEN 840000 AND 849999 THEN '4-Lohn'
+                    WHEN nominal_account_number BETWEEN 840000 AND 849999 AND nominal_account_number != 847301 THEN '4-Lohn'
                     WHEN nominal_account_number BETWEEN 860000 AND 869999 THEN '5-Sonst'
                     ELSE '9-Andere'
                 END as bereich,
@@ -515,18 +517,19 @@ def get_bereich_daten(von: str, bis: str, firma_filter_umsatz: str, umlage_erloe
                    OR (nominal_account_number BETWEEN 893200 AND 893299))
               {firma_filter_umsatz}
               {umlage_erloese_filter}
+              {guv_filter}
             GROUP BY bereich
         """), (von, bis))
         umsatz_rows = [row_to_dict(r) for r in cursor.fetchall()]
 
-        # EINSATZ (TAG157: firma_filter_einsatz mit Konto-Endziffer für korrekte Standort-Zuordnung!)
+        # EINSATZ (TAG157; G&V-Filter; Clean Park 747301 nicht in 4-Lohn)
         cursor.execute(convert_placeholders(f"""
             SELECT
                 CASE
                     WHEN nominal_account_number BETWEEN 710000 AND 719999 THEN '1-NW'
                     WHEN nominal_account_number BETWEEN 720000 AND 729999 THEN '2-GW'
                     WHEN nominal_account_number BETWEEN 730000 AND 739999 THEN '3-Teile'
-                    WHEN nominal_account_number BETWEEN 740000 AND 749999 THEN '4-Lohn'
+                    WHEN nominal_account_number BETWEEN 740000 AND 749999 AND nominal_account_number != 747301 THEN '4-Lohn'
                     WHEN nominal_account_number BETWEEN 760000 AND 769999 THEN '5-Sonst'
                     ELSE '9-Andere'
                 END as bereich,
@@ -535,6 +538,7 @@ def get_bereich_daten(von: str, bis: str, firma_filter_umsatz: str, umlage_erloe
             WHERE accounting_date >= ? AND accounting_date < ?
               AND nominal_account_number BETWEEN 700000 AND 799999
               {firma_filter_einsatz}
+              {guv_filter}
             GROUP BY bereich
         """), (von, bis))
         einsatz_rows = [row_to_dict(r) for r in cursor.fetchall()]
@@ -544,10 +548,12 @@ def get_bereich_daten(von: str, bis: str, firma_filter_umsatz: str, umlage_erloe
         umsatz = next((float(r['umsatz'] or 0) for r in umsatz_rows if r['bereich'] == bkey), 0)
         einsatz = next((float(r['einsatz'] or 0) for r in einsatz_rows if r['bereich'] == bkey), 0)
         db1 = umsatz - einsatz
+        marge = (db1 / umsatz * 100) if umsatz > 0 else 0
         result[bkey] = {
             'umsatz': round(umsatz, 2),
             'einsatz': round(einsatz, 2),
-            'db1': round(db1, 2)
+            'db1': round(db1, 2),
+            'marge': round(marge, 1)
         }
 
     return result
@@ -794,117 +800,62 @@ def api_tek():
                     umlage_kosten_betrag = abs(float(umlage_kosten_result['betrag'] or 0))
 
         # =====================================================================
-        # UMSATZ/EINSATZ NACH BEREICHEN - TAG 136: PostgreSQL-kompatibel
-        # SSOT: Gleicher G&V-Filter wie get_tek_data (controlling_data), damit
-        # Breakeven/Prognose im Portal = PDF/E-Mail.
-        # =====================================================================
-        guv_filter = get_guv_filter()
-        with db_session() as conn:
-            cursor = conn.cursor()
-
-            # UMSATZ NACH BEREICHEN (branch_number für Standort-Filter)
-            cursor.execute(convert_placeholders(f"""
-                SELECT
-                    CASE
-                        WHEN nominal_account_number BETWEEN 810000 AND 819999 THEN '1-NW'
-                        WHEN nominal_account_number BETWEEN 820000 AND 829999 THEN '2-GW'
-                        WHEN nominal_account_number BETWEEN 830000 AND 839999 THEN '3-Teile'
-                        WHEN nominal_account_number BETWEEN 840000 AND 849999 THEN '4-Lohn'
-                        WHEN nominal_account_number BETWEEN 860000 AND 869999 THEN '5-Sonst'
-                        WHEN nominal_account_number BETWEEN 893200 AND 893299 THEN '6-8932'
-                        ELSE '9-Andere'
-                    END as bereich,
-                    SUM(CASE WHEN debit_or_credit = 'H' THEN posted_value ELSE -posted_value END) / 100.0 as umsatz
-                FROM loco_journal_accountings
-                WHERE accounting_date >= ? AND accounting_date < ?
-                  AND ((nominal_account_number BETWEEN 800000 AND 889999)
-                       OR (nominal_account_number BETWEEN 893200 AND 893299))
-                  {firma_filter_umsatz}
-                  {umlage_erloese_filter}
-                  {guv_filter}
-                GROUP BY bereich
-            """), (von, bis))
-            umsatz_rows = cursor.fetchall()
-
-            # EINSATZ NACH BEREICHEN (branch_number für Standort-Filter)
-            cursor.execute(convert_placeholders(f"""
-                SELECT
-                    CASE
-                        WHEN nominal_account_number BETWEEN 710000 AND 719999 THEN '1-NW'
-                        WHEN nominal_account_number BETWEEN 720000 AND 729999 THEN '2-GW'
-                        WHEN nominal_account_number BETWEEN 730000 AND 739999 THEN '3-Teile'
-                        WHEN nominal_account_number BETWEEN 740000 AND 749999 THEN '4-Lohn'
-                        WHEN nominal_account_number BETWEEN 760000 AND 769999 THEN '5-Sonst'
-                        ELSE '9-Andere'
-                    END as bereich,
-                    SUM(CASE WHEN debit_or_credit = 'S' THEN posted_value ELSE -posted_value END) / 100.0 as einsatz
-                FROM loco_journal_accountings
-                WHERE accounting_date >= ? AND accounting_date < ?
-                  AND nominal_account_number BETWEEN 700000 AND 799999
-                  {firma_filter_einsatz}
-                  {guv_filter}
-                GROUP BY bereich
-            """), (von, bis))
-            einsatz_rows = cursor.fetchall()
-
-        umsatz_dict = {row_to_dict(r)['bereich']: float(row_to_dict(r)['umsatz'] or 0) for r in umsatz_rows}
-        einsatz_dict = {row_to_dict(r)['bereich']: float(row_to_dict(r)['einsatz'] or 0) for r in einsatz_rows}
-        
-        # =====================================================================
-        # VOLLKOSTEN (nur wenn modus='voll')
-        # Verwendet firma_filter_kosten für Kosten-Konten (4xxxxx)
-        # TAG 136: berechne_vollkosten nutzt jetzt intern db_session()
-        # =====================================================================
-        kosten_data = None
-        if modus == 'voll':
-            kosten_data = berechne_vollkosten(von, bis, firma_filter_kosten, standort_code, umlage_kosten_filter)
-        
-        # =====================================================================
-        # BEREICHE ZUSAMMENFÜHREN
-        # =====================================================================
+        # SSOT: Alle TEK-KPIs aus get_tek_data (4-Lohn = rollierender Schnitt)
+        api_data = get_tek_data(monat=monat, jahr=jahr, firma=firma, standort=standort, modus=modus, umlage=umlage)
         bereich_namen = {
             '1-NW': 'Neuwagen', '2-GW': 'Gebrauchtwagen',
             '3-Teile': 'Teile/Service', '4-Lohn': 'Werkstattlohn', '5-Sonst': 'Sonstige'
         }
-        
-        # Mapping: TEK-Bereich â†’ FIBU-Kostenstelle (5. Stelle)
-        bereich_zu_kst = {
-            '1-NW': '1',      # Neuwagen
-            '2-GW': '2',      # Gebrauchtwagen
-            '3-Teile': '6',   # Teile = KST 6
-            '4-Lohn': '3',    # Werkstattlohn = Service = KST 3
-            '5-Sonst': '7'    # Sonstige
-        }
-        
         bereiche = {}
-        totals = {'umsatz': 0, 'einsatz': 0, 'variable': 0, 'direkte': 0, 'umlage': 0}
-        
-        for bkey in ['1-NW', '2-GW', '3-Teile', '4-Lohn', '5-Sonst']:
-            u = umsatz_dict.get(bkey, 0)
-            e = einsatz_dict.get(bkey, 0)
-            db1 = u - e
-            marge = (db1 / u * 100) if u > 0 else 0
-            
-            bereich = {
-                'name': bereich_namen[bkey],
-                'umsatz': round(u, 2),
-                'einsatz': round(e, 2),
+        for b in api_data['bereiche']:
+            bkey = b.get('id', '')
+            umsatz = b.get('umsatz')
+            einsatz = b.get('einsatz')
+            if umsatz is None:
+                umsatz = 0
+            if einsatz is None:
+                einsatz = 0
+            umsatz = float(umsatz)
+            einsatz = float(einsatz)
+            db1_val = b.get('db1')
+            db1 = float(db1_val) if db1_val is not None else (umsatz - einsatz)
+            marge_val = b.get('marge')
+            marge = float(marge_val) if marge_val is not None else ((db1 / umsatz * 100) if umsatz else 0)
+            bereiche[bkey] = {
+                'name': bereich_namen.get(bkey, bkey),
+                'umsatz': round(umsatz, 2),
+                'einsatz': round(einsatz, 2),
                 'db1': round(db1, 2),
-                'marge': round(marge, 1)
+                'marge': round(marge, 1),
+                'hinweis': b.get('hinweis'),
+                'einsatz_kalk': b.get('einsatz_kalk'),
+                'db1_kalk': b.get('db1_kalk'),
+                'marge_kalk': b.get('marge_kalk'),
             }
-            
-            # Vollkosten-Erweiterung
-            if kosten_data:
+        gesamt = dict(api_data['gesamt'])
+        total_db1 = gesamt['db1']
+        kosten_data = None
+
+        # =====================================================================
+        # VOLLKOSTEN (nur modus='voll'): get_tek_data liefert nur Teilkosten
+        # =====================================================================
+        if modus == 'voll':
+            kosten_data = berechne_vollkosten(von, bis, firma_filter_kosten, standort_code, umlage_kosten_filter)
+            # Vollkosten in Bereiche/Gesamt aus get_tek_data mergen â†’ FIBU-Kostenstelle (5. Stelle)
+            bereich_zu_kst = {'1-NW': '1', '2-GW': '2', '3-Teile': '6', '4-Lohn': '3', '5-Sonst': '7'}
+            totals_var = totals_dir = totals_uml = 0
+            for bkey in ['1-NW', '2-GW', '3-Teile', '4-Lohn', '5-Sonst']:
+                if bkey not in bereiche:
+                    continue
                 kst = bereich_zu_kst.get(bkey, '0')
                 var = kosten_data['variable'].get(kst, 0)
                 dir_k = kosten_data['direkte'].get(kst, 0)
                 uml = kosten_data['umlage_verteilt'].get(kst, 0)
-                
+                db1 = bereiche[bkey]['db1']
                 db2 = db1 - var
                 db3 = db2 - dir_k
                 be = db3 - uml
-                
-                bereich.update({
+                bereiche[bkey].update({
                     'variable_kosten': round(var, 2),
                     'db2': round(db2, 2),
                     'direkte_kosten': round(dir_k, 2),
@@ -912,39 +863,18 @@ def api_tek():
                     'umlage': round(uml, 2),
                     'be': round(be, 2)
                 })
-                
-                totals['variable'] += var
-                totals['direkte'] += dir_k
-                totals['umlage'] += uml
-            
-            bereiche[bkey] = bereich
-            totals['umsatz'] += u
-            totals['einsatz'] += e
-        
-        # Andere Umsätze/Einsätze addieren
-        totals['umsatz'] += umsatz_dict.get('6-8932', 0) + umsatz_dict.get('9-Andere', 0)
-        totals['einsatz'] += einsatz_dict.get('9-Andere', 0)
-
-        total_db1 = totals['umsatz'] - totals['einsatz']
-
-        gesamt = {
-            'umsatz': round(totals['umsatz'], 2),
-            'einsatz': round(totals['einsatz'], 2),
-            'db1': round(total_db1, 2),
-            'marge': round((total_db1 / totals['umsatz'] * 100) if totals['umsatz'] > 0 else 0, 1)
-        }
-
-        if kosten_data:
-            total_db2 = total_db1 - totals['variable']
-            total_db3 = total_db2 - totals['direkte']
-            total_be = total_db3 - totals['umlage']
-
+                totals_var += var
+                totals_dir += dir_k
+                totals_uml += uml
+            total_db2 = total_db1 - totals_var
+            total_db3 = total_db2 - totals_dir
+            total_be = total_db3 - totals_uml
             gesamt.update({
-                'variable_kosten': round(totals['variable'], 2),
+                'variable_kosten': round(totals_var, 2),
                 'db2': round(total_db2, 2),
-                'direkte_kosten': round(totals['direkte'], 2),
+                'direkte_kosten': round(totals_dir, 2),
                 'db3': round(total_db3, 2),
-                'umlage': round(totals['umlage'], 2),
+                'umlage': round(totals_uml, 2),
                 'indirekte_gesamt': round(kosten_data['indirekte_gesamt'], 2),
                 'be': round(total_be, 2)
             })
@@ -956,8 +886,13 @@ def api_tek():
         vm_von_bereich = f"{vm_jahr_calc}-{vm_monat_calc:02d}-01"
         vm_bis_bereich = f"{vm_jahr_calc}-{vm_monat_calc+1:02d}-01" if vm_monat_calc < 12 else f"{vm_jahr_calc+1}-01-01"
 
-        vj_von_bereich = f"{jahr-1}-{monat:02d}-01"
-        vj_bis_bereich = f"{jahr-1}-{monat+1:02d}-01" if monat < 12 else f"{jahr}-01-01"
+        # VJ pro Bereich: bei aktuellem Monat nur bis gleicher Tag (wie get_tek_data), sonst voller Monat
+        vj_jahr_bereich = jahr - 1
+        vj_von_bereich = f"{vj_jahr_bereich}-{monat:02d}-01"
+        if monat == heute.month and jahr == heute.year:
+            vj_bis_bereich = f"{vj_jahr_bereich}-{monat:02d}-{heute.day+1:02d}"
+        else:
+            vj_bis_bereich = f"{vj_jahr_bereich}-{monat+1:02d}-01" if monat < 12 else f"{vj_jahr_bereich+1}-01-01"
 
         # VM-Daten pro Bereich holen (TAG157: firma_filter_einsatz für korrekte Standort-Zuordnung!)
         vm_bereiche = get_bereich_daten(vm_von_bereich, vm_bis_bereich, firma_filter_umsatz, umlage_erloese_filter, firma_filter_einsatz)
@@ -1030,88 +965,12 @@ def api_tek():
         else:
             gesamt['db1_pro_stueck'] = 0
 
-        # =====================================================================
-        # WERKSTATT-EINSATZ (TAG 140: Method B – Einsatz 6M im Verhältnis zum Umsatz)
-        # =====================================================================
-        # Im laufenden Monat fehlt ein Teil des Einsatzes (74xxxx) in der FIBU.
-        # Method B: Rollierende 6-Monats-Quote (Einsatz 74xxxx / Umsatz 84xxxx) aus
-        #           loco_journal_accountings; Einsatz kalk = Umsatz_aktuell × Quote.
-        #
-        # Mechaniker-Produktivität holen (für Info-Anzeige)
+        # 4-Lohn aus get_tek_data (SSOT, inkl. rollierender Schnitt). Nur Produktivität ergänzen.
         betrieb_fuer_ws = firma if firma in ['1', '2'] else '0'
         ws_produktivitaet = get_werkstatt_produktivitaet(von, bis, betrieb_fuer_ws)
-
-        werkstatt_umsatz = bereiche.get('4-Lohn', {}).get('umsatz', 0)
-        werkstatt_einsatz_fibu = bereiche.get('4-Lohn', {}).get('einsatz', 0)
-
-        # Produktivität (EW) aus Stempeluhr-Daten - nur für Info
-        produktivitaet = ws_produktivitaet.get('produktivitaet', 75.0)
-        leistungsgrad = ws_produktivitaet.get('leistungsgrad', 85.0)
-
-        # TAG 140: Prüfen ob laufender Monat
-        heute = datetime.now()
-        ist_laufender_monat = bis >= heute.strftime('%Y-%m-%d')
-
-        if '4-Lohn' in bereiche and werkstatt_umsatz > 0:
-            if ist_laufender_monat:
-                # Method B: Einsatz/Umsatz-Quote der letzten 6 abgeschlossenen Monate
-                aktueller_monat_start = heute.replace(day=1)
-                bis_6m = aktueller_monat_start  # exklusiv
-                von_6m = bis_6m
-                for _ in range(6):
-                    von_6m = (von_6m - timedelta(days=1)).replace(day=1)
-
-                with db_session() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(convert_placeholders("""
-                        SELECT SUM(CASE WHEN nominal_account_number BETWEEN 840000 AND 849999 AND debit_or_credit = 'H' THEN posted_value
-                                       WHEN nominal_account_number BETWEEN 840000 AND 849999 AND debit_or_credit = 'S' THEN -posted_value ELSE 0 END) / 100.0 as umsatz
-                        FROM loco_journal_accountings
-                        WHERE accounting_date >= ? AND accounting_date < ?
-                        """ + firma_filter_umsatz), (von_6m.strftime('%Y-%m-%d'), bis_6m.strftime('%Y-%m-%d')))
-                    row = cursor.fetchone()
-                    umsatz_6m = float((row_to_dict(row, cursor) or {}).get('umsatz') or 0)
-
-                    cursor.execute(convert_placeholders("""
-                        SELECT SUM(CASE WHEN nominal_account_number BETWEEN 740000 AND 749999 AND debit_or_credit = 'S' THEN posted_value
-                                       WHEN nominal_account_number BETWEEN 740000 AND 749999 AND debit_or_credit = 'H' THEN -posted_value ELSE 0 END) / 100.0 as einsatz
-                        FROM loco_journal_accountings
-                        WHERE accounting_date >= ? AND accounting_date < ?
-                        """ + firma_filter_einsatz), (von_6m.strftime('%Y-%m-%d'), bis_6m.strftime('%Y-%m-%d')))
-                    row = cursor.fetchone()
-                    einsatz_6m = float((row_to_dict(row, cursor) or {}).get('einsatz') or 0)
-
-                einsatz_quote_6m = (einsatz_6m / umsatz_6m) if umsatz_6m > 0 else 0.36
-                gesamt_einsatz = round(werkstatt_umsatz * einsatz_quote_6m, 2)
-                werkstatt_db1 = werkstatt_umsatz - gesamt_einsatz
-                werkstatt_marge = round((werkstatt_db1 / werkstatt_umsatz * 100), 1)
-
-                bereiche['4-Lohn']['einsatz_kalk'] = gesamt_einsatz
-                bereiche['4-Lohn']['einsatz_lohn_kalk'] = max(0, round(gesamt_einsatz - werkstatt_einsatz_fibu, 2))
-                bereiche['4-Lohn']['einsatz_teile'] = werkstatt_einsatz_fibu
-                bereiche['4-Lohn']['db1_kalk'] = round(werkstatt_db1, 2)
-                bereiche['4-Lohn']['marge_kalk'] = werkstatt_marge
-                bereiche['4-Lohn']['hinweis'] = f"Einsatz kalk. (6M-Quote {round(einsatz_quote_6m*100)}%): {round(gesamt_einsatz/1000)}k"
-                # Anzeige/PDF nutzen db1/marge/einsatz → kalkulatorische Werte setzen (TAG 219)
-                bereiche['4-Lohn']['einsatz'] = round(gesamt_einsatz, 2)
-                bereiche['4-Lohn']['db1'] = round(werkstatt_db1, 2)
-                bereiche['4-Lohn']['marge'] = werkstatt_marge
-            else:
-                # Abgeschlossener Monat: Nur FIBU-Werte (Lohn+FL sind bereits gebucht)
-                werkstatt_db1 = werkstatt_umsatz - werkstatt_einsatz_fibu
-                werkstatt_marge = round((werkstatt_db1 / werkstatt_umsatz * 100), 1)
-
-                bereiche['4-Lohn']['db1'] = round(werkstatt_db1, 2)
-                bereiche['4-Lohn']['marge'] = werkstatt_marge
-                fibu_einsatz_quote = round((werkstatt_einsatz_fibu / werkstatt_umsatz * 100), 1)
-                bereiche['4-Lohn']['hinweis'] = f"FIBU komplett: {round(werkstatt_einsatz_fibu/1000)}k ({fibu_einsatz_quote}% vom Umsatz)"
-
-            bereiche['4-Lohn']['produktivitaet'] = produktivitaet
-            bereiche['4-Lohn']['leistungsgrad'] = leistungsgrad
-        elif '4-Lohn' in bereiche:
-            # Werkstatt-KPIs immer anzeigen (auch bei Umsatz 0), z. B. für TEK-PDF Anfangsübersicht
-            bereiche['4-Lohn']['produktivitaet'] = produktivitaet
-            bereiche['4-Lohn']['leistungsgrad'] = leistungsgrad
+        if '4-Lohn' in bereiche:
+            bereiche['4-Lohn']['produktivitaet'] = ws_produktivitaet.get('produktivitaet', 75.0)
+            bereiche['4-Lohn']['leistungsgrad'] = ws_produktivitaet.get('leistungsgrad', 85.0)
 
         # =====================================================================
         # FIRMEN-VERGLEICH - TAG 136: PostgreSQL-kompatibel
@@ -1224,7 +1083,7 @@ def api_tek():
         # Die echten Kosten werden über firma_filter_kosten zugeordnet.
         # TAG157: firma_filter_einsatz für korrekte Standort-Zuordnung!
         # =====================================================================
-        prognose = berechne_breakeven_prognose(monat, jahr, total_db1, firma_filter_umsatz, firma_filter_kosten, anteilige_kosten=False, firma_filter_einsatz=firma_filter_einsatz)
+        prognose = api_data.get('prognose_detail') or {}
 
         # =====================================================================
         # STANDORT-BREAKEVENS (nur wenn Alle Firmen oder Stellantis)
@@ -1233,50 +1092,11 @@ def api_tek():
         # =====================================================================
         standort_breakevens = None
         if firma in ['0', '1'] and standort == '0':
-            with db_session() as conn:
-                cursor = conn.cursor()
-
-                # Deggendorf: branch_number=1 für Umsatz, 6. Ziffer=1 für Einsatz/Kosten
-                cursor.execute(convert_placeholders("""
-                    SELECT COALESCE(SUM(CASE WHEN debit_or_credit = 'H' THEN posted_value ELSE -posted_value END) / 100.0, 0) as umsatz
-                    FROM loco_journal_accountings
-                    WHERE accounting_date >= ? AND accounting_date < ?
-                      AND ((nominal_account_number BETWEEN 800000 AND 889999) OR (nominal_account_number BETWEEN 893200 AND 893299))
-                      AND branch_number = 1
-                """), (von, bis))
-                dego_umsatz = float(row_to_dict(cursor.fetchone()).get('umsatz') or 0)
-
-                # TAG157: Einsatz-Zuordnung über Konto-Endziffer (6. Ziffer), NICHT branch_number!
-                cursor.execute(convert_placeholders("""
-                    SELECT COALESCE(SUM(CASE WHEN debit_or_credit = 'S' THEN posted_value ELSE -posted_value END) / 100.0, 0) as einsatz
-                    FROM loco_journal_accountings
-                    WHERE accounting_date >= ? AND accounting_date < ?
-                      AND nominal_account_number BETWEEN 700000 AND 799999
-                      AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '1'
-                """), (von, bis))
-                dego_einsatz = float(row_to_dict(cursor.fetchone()).get('einsatz') or 0)
-                dego_db1 = dego_umsatz - dego_einsatz
-
-                # Landau: branch_number=3 für Umsatz, 6. Ziffer=2 für Einsatz/Kosten
-                cursor.execute(convert_placeholders("""
-                    SELECT COALESCE(SUM(CASE WHEN debit_or_credit = 'H' THEN posted_value ELSE -posted_value END) / 100.0, 0) as umsatz
-                    FROM loco_journal_accountings
-                    WHERE accounting_date >= ? AND accounting_date < ?
-                      AND ((nominal_account_number BETWEEN 800000 AND 889999) OR (nominal_account_number BETWEEN 893200 AND 893299))
-                      AND branch_number = 3
-                """), (von, bis))
-                lano_umsatz = float(row_to_dict(cursor.fetchone()).get('umsatz') or 0)
-
-                # TAG157: Einsatz-Zuordnung über Konto-Endziffer (6. Ziffer), NICHT branch_number!
-                cursor.execute(convert_placeholders("""
-                    SELECT COALESCE(SUM(CASE WHEN debit_or_credit = 'S' THEN posted_value ELSE -posted_value END) / 100.0, 0) as einsatz
-                    FROM loco_journal_accountings
-                    WHERE accounting_date >= ? AND accounting_date < ?
-                      AND nominal_account_number BETWEEN 700000 AND 799999
-                      AND substr(CAST(nominal_account_number AS TEXT), 6, 1) = '2'
-                """), (von, bis))
-                lano_einsatz = float(row_to_dict(cursor.fetchone()).get('einsatz') or 0)
-                lano_db1 = lano_umsatz - lano_einsatz
+            # SSOT: Standort-DB1 aus get_tek_data (gleiche Logik wie Gesamt)
+            data_dego = get_tek_data(monat=monat, jahr=jahr, firma='1', standort='1', modus=modus, umlage=umlage)
+            data_lano = get_tek_data(monat=monat, jahr=jahr, firma='1', standort='2', modus=modus, umlage=umlage)
+            dego_db1 = data_dego['gesamt']['db1']
+            lano_db1 = data_lano['gesamt']['db1']
 
             # Werktage aus Gesamt-Prognose
             werktage_info = prognose.get('werktage', {}) if prognose else {}
@@ -1568,8 +1388,8 @@ def api_tek():
                 'stueck': gesamt_vm_stueck
             },
             'veraenderung': {
-                'umsatz': round(totals['umsatz'] - vm_umsatz, 2),
-                'umsatz_prozent': round((totals['umsatz'] - vm_umsatz) / vm_umsatz * 100, 1) if vm_umsatz > 0 else 0,
+                'umsatz': round(gesamt['umsatz'] - vm_umsatz, 2),
+                'umsatz_prozent': round((gesamt['umsatz'] - vm_umsatz) / vm_umsatz * 100, 1) if vm_umsatz > 0 else 0,
                 'db1': round(total_db1 - vm_db1, 2),
                 'db1_prozent': round((total_db1 - vm_db1) / abs(vm_db1) * 100, 1) if vm_db1 != 0 else 0
             },

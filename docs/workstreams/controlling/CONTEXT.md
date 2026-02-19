@@ -1,7 +1,7 @@
 # Controlling (BWA, Bankenspiegel, Finanzreporting) — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-02-16
+## Letzte Aktualisierung: 2026-02-19
 
 ## Beschreibung
 
@@ -61,6 +61,10 @@ Controlling umfasst BWA-Berechnung, Bankenspiegel mit Konten und Transaktionen, 
 - ✅ **AfA Monatsübersicht & CSV-Export (2026-02-16):** Berechnen/CSV: Fehlerbehandlung ergänzt (Alert bei API-Fehler, Download ins DOM); Monatsübersicht lädt als Promise, Alert erst nach Aktualisierung. Fix 500 in `monatsberechnung` (UnboundLocalError `date` durch entfernten lokalen Import); Fix 500 in `buchungsliste` (Response vs. Tupel-Rückgabe von `monatsberechnung`). Konten laut Buchhaltung: Mietwagen 090301/090302, VFW 090401/090402. Fahrgestellnr. (VIN) in Tabelle und CSV; Sortierung nach Kategorie (Mietwagen DEG/LAN/HYU, VFW DEG/LAN/HYU/Leapmotor); **Standort-Spalte** (DEG/HYU/LAN) für erkennbare Gruppierung.
 - ❌ **Offen:** DATEV-Scan (Scan_20260216130905.pdf) – keine Textebene, Werte manuell extrahieren und bei Bedarf in Doku/AfA-Ordner ergänzen.
 - ✅ **Export Konten-Mapping (2026-02-17):** Script `scripts/analysis/export_konten_mapping.py` – Sachkonten 800000–899999 aus `fibu_buchungen` (PostgreSQL) als CSV (Semikolon, UTF-8). Ausgabe: `data/exports/konten_mapping_export.csv`; optional Kopie in Windows-Sync (`data/exports/`). Konsolenausgabe: Zusammenfassung nach Kategorie, WARNUNG 817xxx/827xxx bei Kategorie „wareneinsatz“, Konten ohne Kategorie.
+- ✅ **TEK Monatswerte & Vergleichswerte (2026-02-19):** Alle Bereiche zeigen Monatswerte (Einsatz, DB1, Marge) und Vergleichswerte (vs. VM / vs. VJ). Anpassungen: (1) `get_bereich_daten` nutzt denselben G&V-Filter und schließt Clean Park (847301/747301) aus 4-Lohn aus wie `get_tek_data`. (2) VJ pro Bereich: bei aktuellem Monat nur bis gleicher Kalendertag (wie SSOT), sonst voller Monat. (3) Frontend: vs. VM/VJ zeigt „n.a.“ wenn Vergleichsmonat Umsatz hatte aber DB1 = 0, sonst „-“ wenn keine Daten.
+- ✅ **TEK Portal Monatswerte robust (2026-02-19):** Backend (api_tek) liefert Einsatz/DB1/Marge pro Bereich explizit als Zahl (kein null); Frontend nutzt `?? 0` und `Number()` sowie `fmtEuro`/`fmtPct` mit NaN-Check, damit keine „-“ mehr bei 0 oder fehlenden Keys.
+- ✅ **TEK E-Mail GESAMT-Zeile = Portal (2026-02-19):** Im Gesamt-Report (build_gesamt_email_html) verwendet die GESAMT-Zeile der Tabelle für Monat jetzt `data.gesamt` (Umsatz, DB1, Marge) statt Summe der 5 Bereiche → E-Mail entspricht Portal (inkl. 9-Andere + Clean Park). Filiale-, Abteilungs-, Verkauf- und Service-Reports nutzen bereits dieselbe SSOT (get_tek_data) und waren fachlich korrekt.
+- ✅ **TEK Abweichungen E-Mail vs. Portal dokumentiert (2026-02-19):** In `TEK_DRIVE_VS_REPORTING_ANALYSE.md` Abschnitt 9: verbleibende Ursachen (GESAMT-Zeile behoben, Stückzahl Zeitpunkt, Heute-Filter, Prognose) und Bestätigung dass alle Reports (Gesamt, Filiale, Abteilungen, Verkauf, Service) über tek_api_helper → get_tek_data_core denselben Datenstand haben.
 
 ## Offene Entscheidungen
 

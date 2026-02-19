@@ -548,8 +548,9 @@ def build_gesamt_email_html(data):
             </td>""" for label, val in kpis)
 
     # Bereichstabelle: 9 Spalten (Bereich | Heute: Stück, Erlös, DB1, Marge | Monat: Stück, Erlös, DB1, Marge), GESAMT-Zeile
+    # Heute-GESAMT = Summe der 5 Bereiche (kein gesamt.heute in API). Monat-GESAMT = data.gesamt (SSOT, inkl. 9-Andere + Clean Park)
     o_heute_stueck = o_heute_umsatz = o_heute_db1 = 0
-    o_monat_stueck = o_monat_umsatz = o_monat_db1 = 0
+    o_monat_stueck = 0
     bereiche_rows = ""
     for i, b in enumerate(bereiche):
         bkey = b.get('bereich', '')
@@ -567,8 +568,6 @@ def build_gesamt_email_html(data):
         o_heute_umsatz += h_umsatz
         o_heute_db1 += h_db1
         o_monat_stueck += m_stueck
-        o_monat_umsatz += m_umsatz
-        o_monat_db1 += m_db1
         stueck_h = str(h_stueck) if show_stueck else "–"
         stueck_m = str(m_stueck) if show_stueck else "–"
         bg = '#f8f9fa' if i % 2 == 1 else '#fff'
@@ -585,7 +584,10 @@ def build_gesamt_email_html(data):
                 <td style="padding: 6px 8px; text-align: right;">{m_marge:.1f}%</td>
             </tr>"""
     o_heute_marge = (o_heute_db1 / o_heute_umsatz * 100) if o_heute_umsatz else 0
-    o_monat_marge = (o_monat_db1 / o_monat_umsatz * 100) if o_monat_umsatz else 0
+    # Monat-GESAMT aus SSOT (get_tek_data gesamt = inkl. 9-Andere + Clean Park), damit E-Mail = Portal
+    g_umsatz = float(gesamt.get('umsatz', 0))
+    g_db1 = float(gesamt.get('db1', 0))
+    g_marge = float(gesamt.get('marge', 0))
     bereiche_rows += f"""
             <tr style="background: #e7f1ff; font-weight: bold;">
                 <td style="padding: 6px 8px;">GESAMT</td>
@@ -594,9 +596,9 @@ def build_gesamt_email_html(data):
                 <td style="padding: 6px 8px; text-align: right; background: #f8f9fa;">{format_euro(o_heute_db1)}</td>
                 <td style="padding: 6px 8px; text-align: right; background: #f8f9fa;">{o_heute_marge:.1f}%</td>
                 <td style="padding: 6px 8px; text-align: right;">{o_monat_stueck}</td>
-                <td style="padding: 6px 8px; text-align: right;">{format_euro(o_monat_umsatz)}</td>
-                <td style="padding: 6px 8px; text-align: right;">{format_euro(o_monat_db1)}</td>
-                <td style="padding: 6px 8px; text-align: right;">{o_monat_marge:.1f}%</td>
+                <td style="padding: 6px 8px; text-align: right;">{format_euro(g_umsatz)}</td>
+                <td style="padding: 6px 8px; text-align: right;">{format_euro(g_db1)}</td>
+                <td style="padding: 6px 8px; text-align: right;">{g_marge:.1f}%</td>
             </tr>"""
 
     return f"""
@@ -647,9 +649,12 @@ def build_gesamt_email_html(data):
 
 
 def build_filiale_email_html(data):
-    """Erstellt HTML-Body für Filiale-Report"""
+    """Erstellt HTML-Body für Filiale-Report (Prognose + Werktage wie Gesamt)."""
     gesamt = data['gesamt']
     standort_name = data.get('standort_name', 'Filiale')
+    wt = gesamt.get('werktage') or {}
+    wt_str = f" · Noch {wt.get('verbleibend', '–')} WT" if wt else ""
+    stand_str = f"Stand: {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr{wt_str}"
 
     bereich_namen = {
         '1-NW': 'Neuwagen', '2-GW': 'Gebrauchtwagen',
@@ -670,7 +675,7 @@ def build_filiale_email_html(data):
     <html>
     <body style="font-family: Arial, sans-serif; color: #333; max-width: 600px;">
         <h2 style="color: #0066cc; margin-bottom: 5px;">TEK Filiale {standort_name}</h2>
-        <p style="color: #666; margin-top: 0;">{data['monat'].split(' - ')[-1]} | Stand: {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr</p>
+        <p style="color: #666; margin-top: 0;">{data.get('monat', '').split(' - ')[-1] if data.get('monat') else ''} | {stand_str}</p>
 
         <table style="border-collapse: collapse; width: 100%; margin: 20px 0;">
             <tr style="background: #0066cc; color: white;">
@@ -742,11 +747,16 @@ def build_bereich_email_html(data, bereich_key, bereich_data):
             werkstatt_extra += f"""
             <tr><td style="padding: 8px; background: #f0f0f0;">Leistungsgrad:</td><td style="padding: 8px; text-align: right;">{bereich_data.get('leistungsgrad')} %</td></tr>"""
 
+    gesamt = data.get('gesamt', {})
+    wt = gesamt.get('werktage') or {}
+    wt_str = f" · Noch {wt.get('verbleibend', '–')} WT" if wt else ""
+    stand_str = f"Stand: {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr{wt_str}"
+
     return f"""
     <html>
     <body style="font-family: Arial, sans-serif; color: #333; max-width: 650px;">
         <h2 style="color: #0066cc; margin-bottom: 5px;">TEK {bereich_name}</h2>
-        <p style="color: #666; margin-top: 0;">{data['monat']} | Stand: {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr</p>
+        <p style="color: #666; margin-top: 0;">{data.get('monat', '')} | {stand_str}</p>
 
         <table style="border-collapse: collapse; width: 100%; margin: 20px 0;">
             <tr style="background: #0066cc; color: white;">
@@ -833,12 +843,16 @@ def build_verkauf_email_html(data, standort_name: str = None):
         </tr>"""
 
     standort_suffix = f" {standort_name}" if standort_name and standort_name != 'Gesamt' else ""
+    gesamt = data.get('gesamt', {})
+    wt = gesamt.get('werktage') or {}
+    wt_str = f" · Noch {wt.get('verbleibend', '–')} WT" if wt else ""
+    stand_str = f"Stand: {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr{wt_str}"
 
     return f"""
     <html>
     <body style="font-family: Arial, sans-serif; color: #333; max-width: 650px;">
         <h2 style="color: #0066cc; margin-bottom: 5px;">TEK Verkauf{standort_suffix}</h2>
-        <p style="color: #666; margin-top: 0;">{data.get('monat', 'Aktueller Monat')} | Stand: {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr</p>
+        <p style="color: #666; margin-top: 0;">{data.get('monat', 'Aktueller Monat')} | {stand_str}</p>
 
         <h3 style="color: #333; margin-top: 20px;">Kernkennzahlen</h3>
         <table style="border-collapse: collapse; width: 100%; margin: 10px 0;">
@@ -881,12 +895,16 @@ def build_service_email_html(data, standort_name: str = None):
     service_marge = (service_db1 / service_umsatz * 100) if service_umsatz > 0 else 0
     
     standort_suffix = f" {standort_name}" if standort_name and standort_name != 'Gesamt' else ""
-    
+    gesamt = data.get('gesamt', {})
+    wt = gesamt.get('werktage') or {}
+    wt_str = f" · Noch {wt.get('verbleibend', '–')} WT" if wt else ""
+    stand_str = f"Stand: {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr{wt_str}"
+
     return f"""
     <html>
     <body style="font-family: Arial, sans-serif; color: #333; max-width: 600px;">
         <h2 style="color: #0066cc; margin-bottom: 5px;">TEK Service{standort_suffix}</h2>
-        <p style="color: #666; margin-top: 0;">{data.get('monat', 'Aktueller Monat')} | Stand: {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr</p>
+        <p style="color: #666; margin-top: 0;">{data.get('monat', 'Aktueller Monat')} | {stand_str}</p>
 
         <table style="border-collapse: collapse; width: 100%; margin: 20px 0;">
             <tr style="background: #0066cc; color: white;">

@@ -322,9 +322,9 @@ const BEREICHE = {
 
 let currentData = null;
 
-// Formatierung
-const fmtEuro = v => v == null ? '-' : new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(v);
-const fmtPct = v => v == null ? '-' : v.toFixed(1) + '%';
+// Formatierung (null/undefined/NaN → '-', sonst Zahl formatieren)
+const fmtEuro = v => (v == null || Number.isNaN(Number(v))) ? '-' : new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(Number(v));
+const fmtPct = v => (v == null || Number.isNaN(Number(v))) ? '-' : Number(v).toFixed(1) + '%';
 
 function changeMonth(delta) {
     let m = parseInt(document.getElementById('filterMonat').value) + delta;
@@ -568,23 +568,28 @@ function renderTable(data) {
     for (const [key, b] of Object.entries(data.bereiche)) {
         const cfg = BEREICHE[key] || { name: key, icon: 'bi-circle', class: '', benchMarge: 10 };
 
-        // Werkstatt: kalk. Werte verwenden
-        const einsatz = b.einsatz_kalk !== undefined ? b.einsatz_kalk : b.einsatz;
-        const db1 = b.db1_kalk !== undefined ? b.db1_kalk : b.db1;
-        const marge = b.marge_kalk !== undefined ? b.marge_kalk : (b.umsatz > 0 ? db1 / b.umsatz * 100 : 0);
-        const isKalk = b.einsatz_kalk !== undefined;
+        // Werkstatt: kalk. Werte verwenden; Monatswerte immer numerisch (nie null/undefined → sonst "-")
+        const rawEinsatz = b.einsatz_kalk ?? b.einsatz ?? 0;
+        const rawDb1 = b.db1_kalk ?? b.db1 ?? 0;
+        const einsatz = Number(rawEinsatz);
+        const db1 = Number(rawDb1);
+        const umsatzNum = Number(b.umsatz ?? 0);
+        const marge = umsatzNum > 0 ? (db1 / umsatzNum) * 100 : 0;
+        const isKalk = b.einsatz_kalk !== undefined && b.einsatz_kalk !== null;
 
         // Stückzahlen
         const stueck = b.stueck || null;
         const db1ProStueck = b.db1_pro_stueck || (stueck > 0 ? db1 / stueck : null);
 
-        // VM/VJ Vergleich
-        const vmDb1 = b.vm_db1 || 0;
-        const vjDb1 = b.vj_db1 || 0;
+        // VM/VJ Vergleich (Prozent nur wenn VM/VJ-DB1 != 0, sonst n.a. oder -)
+        const vmDb1 = b.vm_db1 ?? 0;
+        const vjDb1 = b.vj_db1 ?? 0;
+        const vmUmsatz = b.vm_umsatz ?? 0;
+        const vjUmsatz = b.vj_umsatz ?? 0;
         const vmDiff = db1 - vmDb1;
         const vjDiff = db1 - vjDb1;
-        const vmPct = vmDb1 !== 0 ? (vmDiff / Math.abs(vmDb1) * 100) : 0;
-        const vjPct = vjDb1 !== 0 ? (vjDiff / Math.abs(vjDb1) * 100) : 0;
+        const vmPct = vmDb1 !== 0 ? (vmDiff / Math.abs(vmDb1) * 100) : null;
+        const vjPct = vjDb1 !== 0 ? (vjDiff / Math.abs(vjDb1) * 100) : null;
 
         // Marge-Balken
         const margeClass = marge >= cfg.benchMarge ? 'marge-ok' : (marge >= cfg.benchMarge * 0.7 ? 'marge-warn' : 'marge-bad');
@@ -628,14 +633,14 @@ function renderTable(data) {
                 <td class="text-end">${db1ProStueck !== null ? fmtEuro(db1ProStueck) : '<span class="val-muted">-</span>'}</td>
                 <td class="text-center"><small>${anteil > 0 ? anteil.toFixed(0) + '%' : '-'}</small></td>
                 <td class="text-center">
-                    ${vmDb1 !== 0 || b.vm_umsatz > 0
+                    ${vmDb1 !== 0 && vmPct !== null
                         ? `<span class="delta ${vmDiff >= 0 ? 'delta-pos' : 'delta-neg'}">${vmDiff >= 0 ? '+' : ''}${vmPct.toFixed(0)}%</span>`
-                        : '<span class="val-muted">-</span>'}
+                        : (vmUmsatz > 0 ? '<span class="val-muted">n.a.</span>' : '<span class="val-muted">-</span>')}
                 </td>
                 <td class="text-center">
-                    ${vjDb1 !== 0 || b.vj_umsatz > 0
+                    ${vjDb1 !== 0 && vjPct !== null
                         ? `<span class="delta ${vjDiff >= 0 ? 'delta-pos' : 'delta-neg'}">${vjDiff >= 0 ? '+' : ''}${vjPct.toFixed(0)}%</span>`
-                        : '<span class="val-muted">-</span>'}
+                        : (vjUmsatz > 0 ? '<span class="val-muted">n.a.</span>' : '<span class="val-muted">-</span>')}
                 </td>
             </tr>
         `;
