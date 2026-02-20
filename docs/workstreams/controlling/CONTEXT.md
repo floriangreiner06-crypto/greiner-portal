@@ -1,7 +1,7 @@
 # Controlling (BWA, Bankenspiegel, Finanzreporting) — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-02-19
+## Letzte Aktualisierung: 2026-02-20
 
 ## Beschreibung
 
@@ -65,6 +65,11 @@ Controlling umfasst BWA-Berechnung, Bankenspiegel mit Konten und Transaktionen, 
 - ✅ **TEK Portal Monatswerte robust (2026-02-19):** Backend (api_tek) liefert Einsatz/DB1/Marge pro Bereich explizit als Zahl (kein null); Frontend nutzt `?? 0` und `Number()` sowie `fmtEuro`/`fmtPct` mit NaN-Check, damit keine „-“ mehr bei 0 oder fehlenden Keys.
 - ✅ **TEK E-Mail GESAMT-Zeile = Portal (2026-02-19):** Im Gesamt-Report (build_gesamt_email_html) verwendet die GESAMT-Zeile der Tabelle für Monat jetzt `data.gesamt` (Umsatz, DB1, Marge) statt Summe der 5 Bereiche → E-Mail entspricht Portal (inkl. 9-Andere + Clean Park). Filiale-, Abteilungs-, Verkauf- und Service-Reports nutzen bereits dieselbe SSOT (get_tek_data) und waren fachlich korrekt.
 - ✅ **TEK Abweichungen E-Mail vs. Portal dokumentiert (2026-02-19):** In `TEK_DRIVE_VS_REPORTING_ANALYSE.md` Abschnitt 9: verbleibende Ursachen (GESAMT-Zeile behoben, Stückzahl Zeitpunkt, Heute-Filter, Prognose) und Bestätigung dass alle Reports (Gesamt, Filiale, Abteilungen, Verkauf, Service) über tek_api_helper → get_tek_data_core denselben Datenstand haben.
+- ✅ **Offene Posten Fahrzeugverkauf (2026-02-19):** SQL-Abfrage für die wöchentliche Buchhaltungsliste „offene Posten aus dem Fahrzeugverkauf“ (gruppierbar nach Verkäufer): `scripts/sql/offene_posten_fahrzeugverkauf.sql`, Doku `OFFENE_POSTEN_FAHRZEUGVERKAUF_QUERY.md`. Daten aus loco_journal_accountings (Debitoren 150000–199999), Verkäufer aus **FIBU** `employee_number` (= „Rg. schreibender Mitarbeiter“, wie Locosoft L362PR Spalte „Mitarbeiter“). Locosoft-OPOS-Export (CSV/XLS + Screenshot) im Ordner **`docs/workstreams/controlling/OPOS/`**; Mapping Doku `OPOS/README.md`. Konzept für **OPOS-Modul** (Filter, Reporting): `OPOS_MODUL_KONZEPT.md`.
+- ✅ **OPOS Rollen/Rechte (2026-02-19):** Anbindung an bestehendes DRIVE-Rollenkonzept: Feature `opos` in `config/roles_config.py` (admin, buchhaltung, verkauf_leitung, verkauf). Vorschlag Daten-Sichtbarkeit: Buchhaltung/Admin/Verkaufsleitung = alle Posten; Verkäufer = nur eigene (Filter über ldap_employee_mapping → locosoft_id). Doku: **`OPOS_ROLLEN_RECHTE_VORSCHLAG.md`**.
+- ✅ **OPOS-Modul umgesetzt (2026-02-19):** Route `/controlling/opos`, Template `templates/controlling/opos.html`, API `api/opos_api.py` (GET `/api/controlling/opos`, GET `/api/controlling/opos/verkaeufer`). Filter: Von/Bis, Verkäufer (nur für Berechtigte), Nur Fahrzeugverkauf. Verkäufer sehen nur eigene Posten; Navigation in base.html und DB-Migration `migrations/add_navigation_opos.sql`, Script `migrate_navigation_items.py` ergänzt.
+- ✅ **OPOS Abgleich Locosoft (2026-02-19):** Wenn Kunde nicht in `loco_customers_suppliers` vorkommt, Anzeige „Kunde Nr. &lt;Nummer&gt;“ statt leer. Hinweis im Template und Doku **`OPOS/OPOS_ABGLEICH_LOCOSOFT.md`** für Vergleich mit Locosoft L362PR (Stichtag, Zeilen pro Buchung vs. pro Rechnung).
+- ✅ **TEK vs. VM / vs. VJ gleicher Zeitraum (2026-02-20):** Abweichungen „vs. VM“ und „vs. VJ“ waren zuvor irreführend (Teilmonat aktuell vs. Vollmonat VM/VJ). Anpassung in `routes/controlling_routes.py`: **VM** bei aktuellem Monat = erste N Tage des Vormonats (N = heutiger Kalendertag); **VJ** für Gesamt-Box und GESAMT-Zeile = bis gleicher Kalendertag (wie bereits pro Bereich). Abschnitt „TEK vs. VM / vs. VJ“ in CONTEXT.md auf „gleicher Zeitraum“ aktualisiert.
 
 ## Offene Entscheidungen
 
@@ -83,12 +88,12 @@ Controlling umfasst BWA-Berechnung, Bankenspiegel mit Konten und Transaktionen, 
 - **Analyse (ohne Code-Änderung):** `docs/workstreams/controlling/TEK_DB1_ABWEICHUNG_DRIVE_VS_GLOBALCUBE_ANALYSE.md`
 - **Kernbefund:** Abweichung = Einsatz-Abweichung (DB1 = Umsatz − Einsatz). Drive TEK nutzt keinen G&V-Filter und schließt 743002 beim Einsatz nicht aus; BWA tut beides. 4-Lohn im laufenden Monat: Drive kalkulatorischer Einsatz (6-Monats-Quote). Nächster Schritt: Werte aus beiden PDFs pro Bereich vergleichen, Globalcube-Einsatz-Definition klären, dann ggf. get_tek_data anpassen.
 
-## TEK vs. VM / vs. VJ (Vormonat / Vorjahr) – Werktagestand
+## TEK vs. VM / vs. VJ (Vormonat / Vorjahr) – gleicher Zeitraum
 
 - **Aktueller Monat (TEK):** Zeigt alle in Locosoft vorhandenen Buchungen im Monat (typ. 1. bis gestriges Datum, da Locosoft abends befüllt wird).
-- **Vormonat (VM):** Im Portal und in `get_tek_data` wird der **komplette** Vormonat verwendet (alle Tage Januar, nicht „erste N Werktage“).
-- **Vorjahr (VJ):** Im **Portal** (`controlling_routes`) wird der **komplette** Vorjahresmonat verwendet. In **get_tek_data (PDF/E-Mail)** wird VJ **bis zum gleichen Kalendertag** begrenzt (TAG146).
-- **Fazit:** Die Vergleiche „vs. VM“ und „vs. VJ“ sind **nicht** auf den gleichen Werktagestand bezogen: aktueller Monat = Teilmonat (z. B. 12 Werktage), VM/VJ = Vollmonat. Für einen werktage-basierten Vergleich (z. B. „erste 12 WT Feb 26“ vs. „erste 12 WT Jan 26“ vs. „erste 12 WT Feb 25“) müsste die Logik in `controlling_routes` und ggf. in `get_tek_data` erweitert werden.
+- **Vormonat (VM):** Im **Portal** (`controlling_routes`) wird bei **aktuellem Monat** nur der **gleiche Zeitraum** wie aktuell verwendet: erste N Tage des Vormonats (N = heutiger Kalendertag, max. letzter Tag des Vormonats). Bei vergangenen Monaten: voller Vormonat. So ist „vs. VM“ ein Vergleich gleicher Kalendertage (z. B. 1.–19. Feb vs. 1.–19. Jan).
+- **Vorjahr (VJ):** Im **Portal** und in **get_tek_data (PDF/E-Mail)** wird VJ **bis zum gleichen Kalendertag** begrenzt (TAG146), wenn der anzeigende Monat der aktuelle ist; sonst voller Vorjahresmonat.
+- **Fazit (Stand 2026-02-20):** Die Vergleiche „vs. VM“ und „vs. VJ“ sind im Portal auf den **gleichen Zeitraum** bezogen (erste N Tage / bis gleicher Tag), damit die Prozentabweichungen fachlich vergleichbar sind.
 
 ## TEK „Heute“ / tägliche Fakturierung (2026-02-12)
 

@@ -1,7 +1,9 @@
-from flask import Blueprint, render_template, jsonify, request
+from flask import Blueprint, render_template, jsonify, request, abort
+from flask_login import current_user
 from decorators.auth_decorators import login_required
 import re
 from datetime import datetime, date, timedelta
+import calendar
 import psycopg2.extras
 
 # TAG 136: PostgreSQL-Migration - Nutze db_utils für Portal-DB
@@ -480,6 +482,17 @@ def kst_ziele_dashboard():
                          konsolidiert=konsolidiert)
 
 
+@controlling_bp.route('/opos')
+@login_required
+def opos_dashboard():
+    """Offene Posten (OPOS) – Liste offener Debitorenposten, gruppierbar nach Verkäufer."""
+    if not current_user.can_access_feature('opos'):
+        abort(403)
+    return render_template('controlling/opos.html',
+                         page_title='Offene Posten (OPOS)',
+                         active_page='controlling')
+
+
 # =============================================================================
 # HELPER: Umsatz/Einsatz pro Bereich für beliebigen Zeitraum
 # =============================================================================
@@ -880,11 +893,18 @@ def api_tek():
             })
 
         # =====================================================================
-        # VM/VJ PRO BEREICH (für Teile und Werkstatt Tabs)
+        # VM/VJ PRO BEREICH (gleicher Zeitraum: erste N Tage / bis gleicher Tag)
         # =====================================================================
         vm_monat_calc, vm_jahr_calc = (12, jahr - 1) if monat == 1 else (monat - 1, jahr)
         vm_von_bereich = f"{vm_jahr_calc}-{vm_monat_calc:02d}-01"
-        vm_bis_bereich = f"{vm_jahr_calc}-{vm_monat_calc+1:02d}-01" if vm_monat_calc < 12 else f"{vm_jahr_calc+1}-01-01"
+        # VM: bei aktuellem Monat nur erste N Tage (N = heute.day), sonst voller Vormonat
+        if monat == heute.month and jahr == heute.year:
+            last_day_vm = calendar.monthrange(vm_jahr_calc, vm_monat_calc)[1]
+            n_tage_vm = min(heute.day, last_day_vm)
+            vm_ende = date(vm_jahr_calc, vm_monat_calc, n_tage_vm) + timedelta(days=1)
+            vm_bis_bereich = vm_ende.strftime("%Y-%m-%d")
+        else:
+            vm_bis_bereich = f"{vm_jahr_calc}-{vm_monat_calc+1:02d}-01" if vm_monat_calc < 12 else f"{vm_jahr_calc+1}-01-01"
 
         # VJ pro Bereich: bei aktuellem Monat nur bis gleicher Tag (wie get_tek_data), sonst voller Monat
         vj_jahr_bereich = jahr - 1
@@ -1012,11 +1032,17 @@ def api_tek():
                     }
 
         # =====================================================================
-        # VORMONAT (Umsatz/Einsatz -> firma_filter_umsatz) - TAG 136
+        # VORMONAT (gleicher Zeitraum: erste N Tage wie aktueller Monat) - TAG 136
         # =====================================================================
         vm_monat, vm_jahr = (12, jahr - 1) if monat == 1 else (monat - 1, jahr)
         vm_von = f"{vm_jahr}-{vm_monat:02d}-01"
-        vm_bis = f"{vm_jahr}-{vm_monat+1:02d}-01" if vm_monat < 12 else f"{vm_jahr+1}-01-01"
+        if monat == heute.month and jahr == heute.year:
+            last_day_vm = calendar.monthrange(vm_jahr, vm_monat)[1]
+            n_tage_vm = min(heute.day, last_day_vm)
+            vm_ende = date(vm_jahr, vm_monat, n_tage_vm) + timedelta(days=1)
+            vm_bis = vm_ende.strftime("%Y-%m-%d")
+        else:
+            vm_bis = f"{vm_jahr}-{vm_monat+1:02d}-01" if vm_monat < 12 else f"{vm_jahr+1}-01-01"
 
         with db_session() as conn:
             cursor = conn.cursor()
@@ -1044,15 +1070,17 @@ def api_tek():
         vm_db1 = vm_umsatz - vm_einsatz
 
         # =====================================================================
-        # VORJAHR (kompletter Monat - Vergleich mit Hochrechnung) - TAG 136
+        # VORJAHR (bei aktuellem Monat: bis gleicher Tag wie SSOT) - TAG 136
         # =====================================================================
         vj_jahr = jahr - 1
         vj_von = f"{vj_jahr}-{monat:02d}-01"
-        vj_bis = f"{vj_jahr}-{monat+1:02d}-01" if monat < 12 else f"{vj_jahr+1}-01-01"
+        if monat == heute.month and jahr == heute.year:
+            vj_bis = f"{vj_jahr}-{monat:02d}-{heute.day+1:02d}"
+        else:
+            vj_bis = f"{vj_jahr}-{monat+1:02d}-01" if monat < 12 else f"{vj_jahr+1}-01-01"
 
         with db_session() as conn:
             cursor = conn.cursor()
-            # Kompletter Vorjahres-Monat (für Vergleich mit Hochrechnung)
             cursor.execute(convert_placeholders(f"""
                 SELECT SUM(CASE WHEN debit_or_credit = 'H' THEN posted_value ELSE -posted_value END) / 100.0 as umsatz
                 FROM loco_journal_accountings
