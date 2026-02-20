@@ -105,18 +105,20 @@
 
 .org-level:last-child::after { display: none; }
 
-/* Person Card - Kompakt */
+/* Person Card - Kompakt (vertikal gestapelt, wenig Breite) */
 .person-card {
     background: white;
     border-radius: 8px;
-    padding: 8px 12px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    text-align: center;
-    min-width: 120px;
-    max-width: 150px;
+    padding: 6px 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    text-align: left;
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
     cursor: pointer;
     transition: all 0.2s;
     border-left: 3px solid #667eea;
+    box-sizing: border-box;
 }
 
 .person-card:hover {
@@ -165,6 +167,51 @@
     color: #888;
     margin-top: 2px;
 }
+
+/* Interaktives Organigramm: Team-Meta, Auf-/Zuklappen */
+.org-node-children {
+    margin-left: 20px;
+    padding-left: 12px;
+    border-left: 2px solid #e5e7eb;
+}
+/* Kompakte vertikale Liste – wenig horizontal scrollen */
+.org-hierarchy {
+    padding: 12px 0;
+    max-width: 420px;
+    overflow-x: auto;
+}
+.org-node {
+    margin-bottom: 6px;
+}
+.org-node-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    font-size: 10px;
+}
+.org-node-meta .team-size { color: #64748b; }
+.org-pending-badge {
+    background: #fef3c7;
+    color: #b45309;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-decoration: none;
+}
+.org-pending-badge:hover { background: #fde68a; color: #92400e; }
+.btn-toggle-team {
+    padding: 2px 8px;
+    font-size: 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    background: #f8fafc;
+    cursor: pointer;
+    color: #475569;
+}
+.btn-toggle-team:hover { background: #e2e8f0; }
+.person-card.has-team { padding-bottom: 6px; }
 
 /* ========== ABTEILUNGS-ANSICHT ========== */
 .dept-tree {
@@ -497,7 +544,7 @@
                             <tr><th>Mitarbeiter</th><th>Abteilung</th><th>Vertreter</th><th>Prio</th><th></th></tr>
                         </thead>
                         <tbody id="substitutesBody">
-                            <tr><td colspan="5" style="text-align: center; color: #888;">Keine Regeln</td></tr>
+                            <tr><td colspan="5" style="text-align: center; color: #888;">Lädt...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -527,6 +574,90 @@
         </div>
     </div>
 </div>
+
+<!-- Modal: Neue Genehmigungsregel -->
+<div class="modal fade" id="approverRuleModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-check-circle me-2"></i>Neue Genehmigungsregel</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Gruppe (Abteilung)</label>
+                    <select class="form-select" id="approverRuleGrp">
+                        <option value="">— Bitte wählen —</option>
+                    </select>
+                    <small class="text-muted">Abteilungsname wie in bestehenden Regeln (z. B. Geschäftsführung, Werkstatt)</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Standort</label>
+                    <select class="form-select" id="approverRuleStandort">
+                        <option value="">Alle Standorte</option>
+                        <option value="1">Deggendorf</option>
+                        <option value="3">Landau a.d. Isar</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Genehmiger (Mitarbeiter)</label>
+                    <select class="form-select" id="approverRuleApprover">
+                        <option value="">— Bitte wählen —</option>
+                    </select>
+                    <small class="text-muted">Nur Mitarbeiter mit LDAP-Anbindung</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Priorität</label>
+                    <select class="form-select" id="approverRulePriority">
+                        <option value="1">1 – Haupt-Genehmiger</option>
+                        <option value="2">2 – Stellvertreter</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-primary" id="approverRuleSaveBtn" onclick="saveApproverRule()"><i class="fas fa-check me-1"></i>Speichern</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Neue Vertretungsregel -->
+<div class="modal fade" id="substituteRuleModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-exchange-alt me-2"></i>Neue Vertretungsregel</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Mitarbeiter (wird vertreten)</label>
+                    <select class="form-select" id="substituteRuleEmployee">
+                        <option value="">— Bitte wählen —</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Vertreter</label>
+                    <select class="form-select" id="substituteRuleSubstitute">
+                        <option value="">— Bitte wählen —</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Priorität</label>
+                    <select class="form-select" id="substituteRulePriority">
+                        <option value="1">1 – Hauptvertreter</option>
+                        <option value="2">2 – Stellvertreter</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-primary" id="substituteRuleSaveBtn" onclick="saveSubstituteRule()"><i class="fas fa-check me-1"></i>Speichern</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -534,12 +665,19 @@
 let employees = [];
 let departments = [];
 let orgTree = [];
+/** Gruppencodes aus geladenen Genehmigungsregeln (für konsistentes Dropdown: Abteilungsnamen wie „Geschäftsführung“) */
+let approverGrpCodes = [];
 
 async function api(endpoint, method = 'GET', body = null) {
     const opts = { method, headers: { 'Content-Type': 'application/json' } };
     if (body) opts.body = JSON.stringify(body);
-    const r = await fetch('/api/organization' + endpoint, opts);
-    return r.json();
+    const res = await fetch('/api/organization' + endpoint, opts);
+    const text = await res.text();
+    try {
+        return JSON.parse(text);
+    } catch (e) {
+        return { success: false, error: res.status === 200 ? 'Ungültige Antwort' : 'Fehler ' + res.status };
+    }
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -559,30 +697,44 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadDepartments();
     await loadOrgTree();
     await loadApprovers();
+    await loadSubstitutes();
     loadCapacityToday();
 });
 
 async function loadEmployees() {
-    const r = await api('/employees');
-    if (r.success) {
-        employees = r.employees;
-        // Location aus departments holen falls nicht in employees
-        for (const emp of employees) {
-            if (!emp.location) {
-                const dept = departments.find(d => d.name === emp.department);
-                if (dept) emp.location = dept.location;
+    try {
+        const r = await api('/employees');
+        if (r.success && r.employees) {
+            employees = r.employees;
+            for (const emp of employees) {
+                if (!emp.location) {
+                    const dept = departments.find(d => d.name === emp.department);
+                    if (dept) emp.location = dept.location;
+                }
             }
         }
+    } catch (e) {
+        console.error('Fehler beim Laden der Mitarbeiter:', e);
     }
+    updateStats();
 }
 
 async function loadDepartments() {
-    const r = await api('/departments');
-    if (r.success) {
-        departments = r.departments;
-        renderDepartments();
-        updateStats();
+    const container = document.getElementById('deptTree');
+    try {
+        const r = await api('/departments');
+        if (r.success) {
+            departments = r.departments || [];
+            renderDepartments();
+        } else {
+            container.innerHTML = '<div style="text-align: center; padding: 40px; color: #c00;">Abteilungen konnten nicht geladen werden. ' + (r.error || '') + '</div>';
+        }
+    } catch (e) {
+        console.error('Fehler beim Laden der Abteilungen:', e);
+        container.innerHTML = '<div style="text-align: center; padding: 40px; color: #c00;">Fehler beim Laden der Abteilungen. Bitte Seite neu laden.</div>';
+        departments = [];
     }
+    updateStats();
 }
 
 function filterByLocation() {
@@ -612,7 +764,7 @@ function updateStats() {
 }
 
 async function loadOrgTree() {
-    const r = await api('/tree');
+    const r = await api('/tree?with_vacation=1');
     if (r.success) {
         orgTree = r.tree;
         renderHierarchy();
@@ -620,11 +772,46 @@ async function loadOrgTree() {
 }
 
 async function loadApprovers() {
+    const tbody = document.getElementById('approversBody');
     const r = await api('/approval-rules');
     if (r.success) {
-        document.getElementById('statRules').textContent = r.count;
-        renderApprovers(r.rules);
+        approverGrpCodes = [...new Set((r.rules || []).map(x => x.grp_code).filter(Boolean))];
+        document.getElementById('statRules').textContent = r.count ?? (r.rules?.length ?? 0);
+        renderApprovers(r.rules || []);
+    } else {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #c00;">' + (r.error || 'Laden fehlgeschlagen') + '</td></tr>';
     }
+}
+
+async function loadSubstitutes() {
+    const tbody = document.getElementById('substitutesBody');
+    try {
+        const r = await api('/substitutes');
+        if (r.success && r.substitutes) {
+            renderSubstitutes(r.substitutes);
+        } else {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #888;">' + (r.message || r.error || 'Keine Regeln') + '</td></tr>';
+        }
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #c00;">Fehler beim Laden</td></tr>';
+    }
+}
+
+function renderSubstitutes(substitutes) {
+    const tbody = document.getElementById('substitutesBody');
+    if (!substitutes || !substitutes.length) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #888;">Keine Vertretungsregeln</td></tr>';
+        return;
+    }
+    tbody.innerHTML = substitutes.map(s => `
+        <tr>
+            <td>${s.employee_name || ''}</td>
+            <td>${s.department || ''}</td>
+            <td>${s.substitute_name || ''}</td>
+            <td>${s.priority || 1}</td>
+            <td><button class="btn-sm btn-danger" onclick="deleteSubstitute(${s.id})"><i class="fas fa-trash"></i></button></td>
+        </tr>
+    `).join('');
 }
 
 function loadCapacityToday() {
@@ -659,11 +846,11 @@ function renderDepartments() {
     // Filtere und sortiere
     let filtered = departments;
     if (loc) {
-        // Filtere Members nach Standort und berechne count neu
+        // Filtere Members nach Standort (location aus API-Member oder employees)
         filtered = departments.map(d => {
             const filteredMembers = d.members.filter(m => {
-                const emp = employees.find(e => e.id === m.id);
-                return emp && emp.location === loc;
+                const memberLoc = m.location || (employees.find(e => e.id === m.id) || {}).location;
+                return memberLoc === loc;
             });
             return { ...d, members: filteredMembers, count: filteredMembers.length };
         }).filter(d => d.count > 0);
@@ -715,15 +902,12 @@ function renderHierarchy() {
     const container = document.getElementById('orgHierarchy');
     const loc = document.getElementById('locationFilter').value;
     
-    // Filtere Tree nach Standort
     function filterTree(nodes) {
         if (!nodes) return [];
         return nodes.map(n => {
             const emp = employees.find(e => e.id === n.id);
             const matchLoc = !loc || (emp && emp.location === loc);
             const filteredChildren = filterTree(n.children);
-            
-            // Zeige Node wenn er matched ODER Kinder hat die matchen
             if (matchLoc || filteredChildren.length > 0) {
                 return { ...n, children: filteredChildren, _dimmed: !matchLoc };
             }
@@ -732,45 +916,63 @@ function renderHierarchy() {
     }
     
     const filteredTree = loc ? filterTree(orgTree) : orgTree;
-    
-    // Finde CEO
     const ceo = filteredTree.find(n => n.department === 'Geschäftsführung') || filteredTree[0];
     if (!ceo) {
         container.innerHTML = '<div style="text-align: center; color: #888; padding: 40px;">Keine Hierarchie-Daten</div>';
         return;
     }
     
-    function renderLevel(nodes, level = 0) {
-        if (!nodes || nodes.length === 0) return '';
+    function renderNode(node, level = 0, defaultOpen = false) {
+        const initials = (node.first_name?.[0] || '') + (node.last_name?.[0] || '');
+        const isCeo = node.department === 'Geschäftsführung';
+        const isManager = node.is_manager;
+        const children = node.children || [];
+        const hasTeam = children.length > 0;
+        const teamSize = node.team_size !== undefined && node.team_size !== null ? node.team_size : children.length;
+        const pendingCount = node.pending_team_count || 0;
+        const openAttr = defaultOpen ? '' : ' style="display:none;"';
         
-        let html = '<div class="org-level">';
-        for (const node of nodes) {
-            const initials = (node.first_name?.[0] || '') + (node.last_name?.[0] || '');
-            const isCeo = node.department === 'Geschäftsführung';
-            const isManager = node.is_manager;
-            
-            html += `
-                <div class="person-card ${isCeo ? 'ceo' : isManager ? 'manager' : ''}" onclick="showPerson(${node.id})">
-                    <div class="person-avatar">${initials}</div>
-                    <div class="person-name">${node.name}</div>
-                    <div class="person-dept">${node.department || ''}</div>
+        let metaHtml = '';
+        if (hasTeam) {
+            metaHtml = `
+                <div class="org-node-meta">
+                    <span class="team-size">${teamSize} Mitarbeiter</span>
+                    ${pendingCount > 0 ? `<a href="/urlaubsplaner/chef" class="org-pending-badge" onclick="event.stopPropagation()">${pendingCount} offen</a>` : ''}
+                    <button type="button" class="btn-toggle-team" data-node-id="${node.id}" onclick="toggleTeam(this); event.stopPropagation();">Team anzeigen</button>
                 </div>
             `;
         }
-        html += '</div>';
         
-        // Render children
-        for (const node of nodes) {
-            if (node.children && node.children.length > 0) {
-                html += renderLevel(node.children, level + 1);
-            }
-        }
+        const childrenHtml = hasTeam
+            ? '<div class="org-node-children" data-parent-id="' + node.id + '"' + openAttr + '>' +
+              children.map(c => renderNode(c, level + 1, false)).join('') + '</div>'
+            : '';
         
-        return html;
+        return `
+            <div class="org-node" data-id="${node.id}">
+                <div class="person-card ${isCeo ? 'ceo' : isManager ? 'manager' : ''} ${hasTeam ? 'has-team' : ''}" onclick="showPerson(${node.id})">
+                    <div class="person-avatar">${initials}</div>
+                    <div class="person-name">${node.name}</div>
+                    <div class="person-dept">${node.department || ''}</div>
+                    ${metaHtml}
+                </div>
+                ${childrenHtml}
+            </div>
+        `;
     }
     
-    // Baue Hierarchie ab CEO
-    container.innerHTML = renderLevel([ceo]);
+    container.innerHTML = renderNode(ceo, 0, true);
+}
+
+function toggleTeam(btn) {
+    const nodeId = btn.dataset.nodeId;
+    const nodeEl = document.querySelector('.org-node[data-id="' + nodeId + '"]');
+    if (!nodeEl) return;
+    const childrenEl = nodeEl.querySelector('.org-node-children');
+    if (!childrenEl) return;
+    const isHidden = childrenEl.style.display === 'none';
+    childrenEl.style.display = isHidden ? 'block' : 'none';
+    btn.textContent = isHidden ? 'Team ausblenden' : 'Team anzeigen';
 }
 
 function renderApprovers(rules) {
@@ -829,7 +1031,116 @@ async function deleteApprover(id) {
     loadApprovers();
 }
 
-function showAddSubstituteModal() { alert('TODO: Modal für Vertretungsregel'); }
-function showAddApproverModal() { alert('TODO: Modal für Genehmiger'); }
+function showAddApproverModal() {
+    const grpSel = document.getElementById('approverRuleGrp');
+    grpSel.innerHTML = '<option value="">— Bitte wählen —</option>';
+    const deptNames = departments.map(d => d.name).filter(Boolean);
+    const allGrps = [...new Set([...deptNames, ...approverGrpCodes])].sort();
+    allGrps.forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        grpSel.appendChild(opt);
+    });
+    const approverSel = document.getElementById('approverRuleApprover');
+    approverSel.innerHTML = '<option value="">— Bitte wählen —</option>';
+    const withLdap = employees.filter(e => e.ldap_username && e.ldap_username.trim());
+    withLdap.forEach(e => {
+        const opt = document.createElement('option');
+        opt.value = e.ldap_username;
+        opt.textContent = e.name + (e.department ? ' (' + e.department + ')' : '');
+        approverSel.appendChild(opt);
+    });
+    grpSel.value = '';
+    document.getElementById('approverRuleStandort').value = '';
+    document.getElementById('approverRulePriority').value = '1';
+    new bootstrap.Modal(document.getElementById('approverRuleModal')).show();
+}
+
+async function saveApproverRule() {
+    const grp = document.getElementById('approverRuleGrp').value?.trim();
+    const standort = document.getElementById('approverRuleStandort').value?.trim() || null;
+    const approver = document.getElementById('approverRuleApprover').value?.trim();
+    const priority = parseInt(document.getElementById('approverRulePriority').value, 10) || 1;
+    if (!grp || !approver) {
+        alert('Bitte Gruppe und Genehmiger auswählen.');
+        return;
+    }
+    const btn = document.getElementById('approverRuleSaveBtn');
+    btn.disabled = true;
+    try {
+        const res = await api('/approval-rules', 'POST', {
+            loco_grp_code: grp,
+            subsidiary: standort ? parseInt(standort, 10) : null,
+            approver_ldap_username: approver,
+            priority: priority
+        });
+        if (res && res.success) {
+            bootstrap.Modal.getInstance(document.getElementById('approverRuleModal')).hide();
+            loadApprovers();
+        } else {
+            alert(res?.error || 'Speichern fehlgeschlagen.');
+        }
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+function showAddSubstituteModal() {
+    const empSel = document.getElementById('substituteRuleEmployee');
+    const subSel = document.getElementById('substituteRuleSubstitute');
+    empSel.innerHTML = '<option value="">— Bitte wählen —</option>';
+    subSel.innerHTML = '<option value="">— Bitte wählen —</option>';
+    employees.forEach(e => {
+        const o1 = document.createElement('option');
+        o1.value = e.id;
+        o1.textContent = e.name + (e.department ? ' (' + e.department + ')' : '');
+        empSel.appendChild(o1);
+        const o2 = document.createElement('option');
+        o2.value = e.id;
+        o2.textContent = e.name + (e.department ? ' (' + e.department + ')' : '');
+        subSel.appendChild(o2);
+    });
+    document.getElementById('substituteRulePriority').value = '1';
+    new bootstrap.Modal(document.getElementById('substituteRuleModal')).show();
+}
+
+async function saveSubstituteRule() {
+    const employeeId = parseInt(document.getElementById('substituteRuleEmployee').value, 10);
+    const substituteId = parseInt(document.getElementById('substituteRuleSubstitute').value, 10);
+    const priority = parseInt(document.getElementById('substituteRulePriority').value, 10) || 1;
+    if (!employeeId || !substituteId) {
+        alert('Bitte Mitarbeiter und Vertreter auswählen.');
+        return;
+    }
+    if (employeeId === substituteId) {
+        alert('Mitarbeiter kann nicht sich selbst vertreten.');
+        return;
+    }
+    const btn = document.getElementById('substituteRuleSaveBtn');
+    btn.disabled = true;
+    try {
+        const res = await api('/substitutes', 'POST', {
+            employee_id: employeeId,
+            substitute_id: substituteId,
+            priority: priority
+        });
+        if (res && res.success) {
+            bootstrap.Modal.getInstance(document.getElementById('substituteRuleModal')).hide();
+            loadSubstitutes();
+        } else {
+            alert(res?.error || 'Speichern fehlgeschlagen.');
+        }
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function deleteSubstitute(id) {
+    if (!confirm('Vertretungsregel löschen?')) return;
+    const res = await api('/substitutes/' + id, 'DELETE');
+    if (res && res.success) loadSubstitutes();
+    else alert(res?.error || 'Löschen fehlgeschlagen.');
+}
 </script>
 {% endblock %}

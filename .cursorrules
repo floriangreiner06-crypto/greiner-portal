@@ -12,8 +12,11 @@ SQLite (data/greiner_controlling.db) ist Legacy — nur noch für Altdaten
 Locosoft: PostgreSQL auf 10.80.80.8
 
 ## Immer lesen
-- CLAUDE.md (Architektur, Pfade, Deployment)
+- CLAUDE.md (Architektur, Pfade, Deployment, SSOT-Regel)
 - Bei DB-Arbeiten: relevante Schema-Docs in docs/
+
+## SSOT (Single Source of Truth) – alle Workstreams
+- Immer auf eine SSOT bauen; bei neuen Sachen zuerst prüfen, was es schon gibt – nicht parallel neu implementieren.
 
 ## Arbeitsweise
 
@@ -21,6 +24,9 @@ Locosoft: PostgreSQL auf 10.80.80.8
 - Entwicklung findet AUF DEM SERVER statt (/opt/greiner-portal/)
 - Windows-Sync-Verzeichnis ist NUR eine Backup-Kopie
 - Bei Bedarf Dateien VOM SERVER INS SYNC kopieren (nicht umgekehrt!)
+
+### Markdown-Docs ins Windows-Sync
+- **Nach dem Erstellen oder Bearbeiten von .md-Dateien in docs/** diese automatisch ins Windows-Docs kopieren. Ziel: `/mnt/greiner-portal-sync/docs/` (bzw. gleicher Unterpfad wie im Repo, z. B. `docs/workstreams/xy/` → `/mnt/greiner-portal-sync/docs/workstreams/xy/`). So sind die Dateien unter Windows (\\Srvrdb01\...\Server\docs\) sofort sichtbar.
 
 ### Git lebt auf dem Server
 - Alle git-Operationen auf dem Server: /opt/greiner-portal/
@@ -59,6 +65,9 @@ Workstreams:
 - auth-ldap (Login, Rollen, RBAC, Rechte-Verwaltung)
 - integrations (WhatsApp, eAutoSeller, SOAP, Scraper, Microsoft Graph Mail)
 - verguetung (Werkstatt-Prämien, Verkäufer-Provisionen, Jahresprämie)
+
+## Navigation (Navi-Punkte)
+- **Navi-Punkte sind DB-basiert, nicht hardcoded.** Menüeinträge kommen aus der Tabelle `navigation_items` (PostgreSQL). Neue Punkte nur per Migration anlegen (`migrations/add_navigation_<name>.sql`) und ausführen; optional `scripts/migrate_navigation_items.py` ergänzen. Siehe CLAUDE.md Abschnitt „Navigation (DB-basiert)“.
 
 ## Tech-Stack
 - Flask 3.x, Gunicorn, Apache Reverse Proxy

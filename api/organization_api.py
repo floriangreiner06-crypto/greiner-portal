@@ -21,6 +21,7 @@ import json
 
 # Zentrale DB-Utilities (TAG117)
 from api.db_utils import db_session
+from api.db_connection import sql_placeholder, get_db_type
 
 organization_api = Blueprint('organization_api', __name__, url_prefix='/api/organization')
 
@@ -64,9 +65,13 @@ def get_org_tree():
     GET /api/organization/tree
 
     Gibt das komplette Organigramm als Baum-Struktur zurück.
-    Basiert auf manager_id Beziehungen in employees.
+    Basiert auf supervisor_id in employees.
+    Optional: with_vacation=1 ergänzt pro Knoten team_size und pending_team_count
+    (Anzahl offener Urlaubsanträge im direkten Team) für interaktives Organigramm.
     """
     try:
+        with_vacation = request.args.get('with_vacation', '0') == '1'
+
         with db_session() as conn:
             cursor = conn.cursor()
 
@@ -108,6 +113,18 @@ def get_org_tree():
                     'children': []
                 })
 
+            # Offene Urlaubsanträge pro Mitarbeiter (für interaktives Organigramm)
+            pending_by_employee = {}
+            if with_vacation:
+                cursor.execute("""
+                    SELECT employee_id, COUNT(*) as cnt
+                    FROM vacation_bookings
+                    WHERE status = 'pending'
+                    GROUP BY employee_id
+                """)
+                for row in cursor.fetchall():
+                    pending_by_employee[row[0]] = row[1]
+
         # Baum-Struktur aufbauen (außerhalb DB-Block)
         emp_dict = {e['id']: e for e in employees}
         roots = []
@@ -127,6 +144,19 @@ def get_org_tree():
 
         for root in roots:
             sort_children(root)
+
+        # Pro Knoten: team_size, pending_team_count (für interaktives Organigramm)
+        def enrich_node(node):
+            children = node.get('children') or []
+            node['team_size'] = len(children)
+            node['pending_team_count'] = sum(
+                pending_by_employee.get(c['id'], 0) for c in children
+            ) if with_vacation else 0
+            for child in children:
+                enrich_node(child)
+
+        for root in roots:
+            enrich_node(root)
 
         return jsonify({
             'success': True,
@@ -156,15 +186,14 @@ def get_departments():
         with db_session() as conn:
             cursor = conn.cursor()
 
-            # Abteilungen mit Mitarbeiter-Anzahl
+            # Abteilungen mit Mitarbeiter-Anzahl (PostgreSQL: is_manager ist Integer 0/1)
             cursor.execute("""
                 SELECT
                     department_name,
                     COUNT(*) as count,
-                    SUM(CASE WHEN is_manager = 1 THEN 1 ELSE 0 END) as manager_count,
-                    location
+                    SUM(CASE WHEN is_manager = 1 THEN 1 ELSE 0 END) as manager_count
                 FROM employees
-                WHERE aktiv = true AND department_name IS NOT NULL
+                WHERE aktiv = true AND department_name IS NOT NULL AND department_name != ''
                 GROUP BY department_name
                 ORDER BY department_name
             """)
@@ -175,7 +204,7 @@ def get_departments():
             for row in dept_rows:
                 dept_name = row[0]
 
-                # Mitarbeiter dieser Abteilung holen
+                # Mitarbeiter dieser Abteilung holen (inkl. location für Standortfilter)
                 cursor.execute("""
                     SELECT
                         e.id,
@@ -184,7 +213,8 @@ def get_departments():
                         e.manager_role,
                         e.is_manager,
                         e.locosoft_id,
-                        lem.ldap_username
+                        lem.ldap_username,
+                        e.location
                     FROM employees e
                     LEFT JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
                     WHERE e.aktiv = true AND e.department_name = %s
@@ -192,7 +222,11 @@ def get_departments():
                 """, (dept_name,))
 
                 members = []
+                first_location = None
                 for emp in cursor.fetchall():
+                    loc = emp[7] if len(emp) > 7 else None
+                    if first_location is None and loc:
+                        first_location = loc
                     members.append({
                         'id': emp[0],
                         'name': emp[1],
@@ -200,14 +234,15 @@ def get_departments():
                         'position': emp[3],
                         'is_manager': bool(emp[4]),
                         'locosoft_id': emp[5],
-                        'ldap_username': emp[6]
+                        'ldap_username': emp[6],
+                        'location': loc
                     })
 
                 departments.append({
                     'name': dept_name,
                     'count': row[1],
                     'manager_count': row[2],
-                    'location': row[3],
+                    'location': first_location,
                     'members': members
                 })
 
@@ -293,6 +328,20 @@ def get_employees_list():
 # VERTRETUNGSREGELN ENDPOINTS
 # ============================================================================
 
+def _substitution_rules_table_exists(cursor):
+    """Prüft ob Tabelle substitution_rules existiert (PostgreSQL oder SQLite)."""
+    if get_db_type() == 'postgresql':
+        cursor.execute("""
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = 'public' AND table_name = 'substitution_rules'
+        """)
+    else:
+        cursor.execute("""
+            SELECT 1 FROM sqlite_master WHERE type='table' AND name='substitution_rules'
+        """)
+    return cursor.fetchone() is not None
+
+
 @organization_api.route('/substitutes', methods=['GET'])
 def get_substitutes():
     """
@@ -304,27 +353,21 @@ def get_substitutes():
         with db_session() as conn:
             cursor = conn.cursor()
 
-            # Prüfe ob Tabelle existiert
-            cursor.execute("""
-                SELECT name FROM sqlite_master
-                WHERE type='table' AND name='substitution_rules'
-            """)
-
-            if not cursor.fetchone():
+            if not _substitution_rules_table_exists(cursor):
                 return jsonify({
                     'success': True,
                     'substitutes': [],
-                    'message': 'Tabelle substitution_rules existiert noch nicht'
+                    'message': 'Tabelle substitution_rules existiert noch nicht (Migration ausführen: migrations/add_substitution_rules.sql)'
                 })
 
             cursor.execute("""
                 SELECT
                     sr.id,
                     sr.employee_id,
-                    e1.first_name || ' ' || e1.last_name as employee_name,
+                    e1.first_name || ' ' || COALESCE(e1.last_name, '') as employee_name,
                     e1.department_name,
                     sr.substitute_id,
-                    e2.first_name || ' ' || e2.last_name as substitute_name,
+                    e2.first_name || ' ' || COALESCE(e2.last_name, '') as substitute_name,
                     sr.priority,
                     sr.valid_from,
                     sr.valid_to,
@@ -333,7 +376,7 @@ def get_substitutes():
                 JOIN employees e1 ON sr.employee_id = e1.id
                 JOIN employees e2 ON sr.substitute_id = e2.id
                 WHERE e1.aktiv = true AND e2.aktiv = true
-                ORDER BY e1.department_name, e1.last_name, sr.priority
+                ORDER BY e1.department_name NULLS LAST, e1.last_name, sr.priority
             """)
 
             substitutes = []
@@ -392,28 +435,36 @@ def create_substitute():
         with db_session() as conn:
             cursor = conn.cursor()
 
-            # Tabelle erstellen falls nicht vorhanden
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS substitution_rules (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    employee_id INTEGER NOT NULL,
-                    substitute_id INTEGER NOT NULL,
-                    priority INTEGER DEFAULT 1,
-                    valid_from DATE,
-                    valid_to DATE,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    created_by TEXT,
-                    FOREIGN KEY (employee_id) REFERENCES employees(id),
-                    FOREIGN KEY (substitute_id) REFERENCES employees(id)
-                )
-            """)
+            if get_db_type() != 'postgresql' and not _substitution_rules_table_exists(cursor):
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS substitution_rules (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        employee_id INTEGER NOT NULL,
+                        substitute_id INTEGER NOT NULL,
+                        priority INTEGER DEFAULT 1,
+                        valid_from DATE,
+                        valid_to DATE,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        created_by TEXT,
+                        FOREIGN KEY (employee_id) REFERENCES employees(id),
+                        FOREIGN KEY (substitute_id) REFERENCES employees(id)
+                    )
+                """)
 
-            cursor.execute("""
-                INSERT INTO substitution_rules (employee_id, substitute_id, priority, valid_from, valid_to, created_by)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (employee_id, substitute_id, priority, valid_from, valid_to, username))
-
-            rule_id = cursor.lastrowid
+            if get_db_type() == 'postgresql':
+                cursor.execute("""
+                    INSERT INTO substitution_rules (employee_id, substitute_id, priority, valid_from, valid_to, created_by)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (employee_id, substitute_id, priority, valid_from, valid_to, username))
+                row = cursor.fetchone()
+                rule_id = row[0] if row else None
+            else:
+                cursor.execute("""
+                    INSERT INTO substitution_rules (employee_id, substitute_id, priority, valid_from, valid_to, created_by)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (employee_id, substitute_id, priority, valid_from, valid_to, username))
+                rule_id = cursor.lastrowid
             conn.commit()
 
             return jsonify({
@@ -531,17 +582,36 @@ def create_approval_rule():
         priority = data.get('priority', 1)
 
         if not grp_code or not approver_ldap:
-            return jsonify({'success': False, 'error': 'grp_code und approver_ldap erforderlich'}), 400
+            return jsonify({'success': False, 'error': 'Gruppe und Genehmiger (LDAP) erforderlich'}), 400
 
+        ph = sql_placeholder()
         with db_session() as conn:
             cursor = conn.cursor()
+            # approver_employee_id optional auflösen (ldap_username -> employee_id)
+            approver_employee_id = None
+            cursor.execute(
+                "SELECT employee_id FROM ldap_employee_mapping WHERE ldap_username = %s",
+                (approver_ldap.strip().lower(),)
+            )
+            row = cursor.fetchone()
+            if row:
+                approver_employee_id = row[0]
 
-            cursor.execute("""
-                INSERT INTO vacation_approval_rules (grp_code, standort, approver_ldap, priority, aktiv, created_at)
-                VALUES (?, ?, ?, ?, 1, ?)
-            """, (grp_code, standort, approver_ldap, priority, datetime.now().isoformat()))
-
-            rule_id = cursor.lastrowid
+            # Spalten: loco_grp_code, subsidiary, approver_ldap_username, active (PostgreSQL)
+            if get_db_type() == 'postgresql':
+                cursor.execute(f"""
+                    INSERT INTO vacation_approval_rules (loco_grp_code, subsidiary, approver_employee_id, approver_ldap_username, priority, active, created_at)
+                    VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, 1, NOW())
+                    RETURNING id
+                """, (grp_code, standort, approver_employee_id, approver_ldap.strip(), priority or 1))
+                row = cursor.fetchone()
+                rule_id = row[0] if row else None
+            else:
+                cursor.execute(f"""
+                    INSERT INTO vacation_approval_rules (loco_grp_code, subsidiary, approver_employee_id, approver_ldap_username, priority, active, created_at)
+                    VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, 1, datetime('now'))
+                """, (grp_code, standort, approver_employee_id, approver_ldap.strip(), priority or 1))
+                rule_id = cursor.lastrowid
             conn.commit()
 
             return jsonify({
@@ -569,8 +639,8 @@ def delete_approval_rule(rule_id):
         with db_session() as conn:
             cursor = conn.cursor()
 
-            # Soft-Delete: aktiv = 0
-            cursor.execute("UPDATE vacation_approval_rules SET aktiv = 0 WHERE id = %s", (rule_id,))
+            # Soft-Delete: active = 0 (PostgreSQL/SQLite-kompatibel)
+            cursor.execute("UPDATE vacation_approval_rules SET active = 0 WHERE id = %s", (rule_id,))
 
             if cursor.rowcount == 0:
                 return jsonify({'success': False, 'error': 'Regel nicht gefunden'}), 404

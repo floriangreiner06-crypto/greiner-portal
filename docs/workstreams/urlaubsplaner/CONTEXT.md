@@ -1,7 +1,7 @@
 # Urlaubsplaner — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-02-18
+## Letzte Aktualisierung: 2026-02-19
 
 ## Projektkontext (Stand diese Woche)
 
@@ -65,8 +65,9 @@ Urlaubsplaner deckt Urlaubsanträge, Genehmigungsprozess, Chef-Übersicht, Urlau
 - ✅ Usertest-Fixes TAG 198: Genehmigung, Rollen, Resturlaub, Jahreswechsel, Urlaubssperren, Masseneingaben, Jahresend-Report, freie Tage
 - ✅ **Urlaubssperren:** Admin-Löschen über `can_manage_vacation_blocks()` (Admin/Genehmiger); Urlaubssperre in Masseneingabe wahlweise **spezifische Mitarbeiter** (Ziel „Spezifische Mitarbeiter“) oder Abteilung – DB-Spalte `vacation_blocks.employee_ids`, Migration `alter_vacation_blocks_employee_ids.sql`
 - ✅ **Schulung & Krankheit:** Nur **Genehmiger** und **Admin** buchbar (Einzelbuchung + Masseneingabe); Zeitausgleich weiterhin nur Admin
+- ✅ **Vertretungsregel (Organigramm):** Vertreter darf im Zeitraum, in dem die vertretene Person Urlaub/Abwesenheit hat, **keinen Urlaub** buchen. Prüfung in Einzelbuchung, Buch-Batch und Masseneingabe; Fehlermeldung mit Namen der vertretenen Person. Tabelle `substitution_rules` (auth-ldap/Organigramm).
 - ✅ **Resturlaub-Anzeige (Usertest-Feedback):** Nach Buchung/Genehmigung/Storno/Ablehnung/Jahreswechsel wird die Mitarbeiterliste inkl. Resturlaub neu geladen (`loadAllEmployees`), damit „28 Tage Rest“ sich nach 1 Tag verplant sofort auf 27 aktualisiert; Filter-Dropdowns werden bei erneutem Befüllen nicht mehr doppelt befüllt
-- **Outlook-Kalender (Microsoft Graph):** Code in `vacation_calendar_service.py` vorhanden (add_vacation_event); `delete_vacation_event` nicht implementiert. **Aktuell nicht produktiv genutzt** – Option „Löschung bei Widerruf“ nur relevant, wenn Kalender-Integration aktiviert wird.
+- **Outlook-Kalender (Microsoft Graph):** Ab 2026-02: Bei Genehmigung schreibt DRIVE in **zwei** Ziele – (1) Shared Mailbox **drive@** (Übersicht für Führungskräfte, Sichtbarkeit nur für FK in M365 konfigurieren, siehe `KALENDER_DRIVE_NUR_FUEHRUNGSKRAEFTE.md`), (2) **persönlicher M365-Kalender** des Mitarbeiters (erscheint in Team-Ansicht des Vorgesetzten). Event-IDs in `vacation_bookings` für Storno-Löschung. Die Outlook-Kalendergruppe „Team: …“ kommt aus AD/M365, nicht aus DRIVE – siehe `OUTLOOK_TEAMKALENDER_VS_DRIVE.md`.
 - 🔧 E-Mails (HR/MA) je nach Integrations-Stand
 
 ### Mitarbeiterverwaltung (Admin, TAG 213)
@@ -124,8 +125,17 @@ Urlaubsplaner deckt Urlaubsanträge, Genehmigungsprozess, Chef-Übersicht, Urlau
 - ✅ **Chef-Übersicht Team-Zusammensetzung:** „Service & Empfang“ wird dem Genehmiger „Service“ zugeordnet (`DEPT_TO_APPROVAL_GRP` in `api/vacation_chef_api.py`).
 - ✅ **Doku:** HAR-Auswertung personal-login.de (`PERSONAL_LOGIN_HAR_AUSWERTUNG.md`), Feature-Liste DRIVE (`FEATURE_LISTE_DRIVE_UMSETZUNG.md`), Vorgehen Verbesserung/Ergänzung (`VORGEHEN_VERBESSERUNG_ERGAENZUNG.md`); .md ins Windows-Sync kopiert.
 
+### Bugfix: Resturlaub-Validierung bei negativem Locosoft-Wert (2026-02, Buchhaltung)
+- **Problem:** Buchhaltung konnte Urlaub nicht eintragen (z. B. Bianca Greindl, zuvor Silvia): Liste zeigte z. B. 6 Rest, Fehlermeldung „Verfügbar: -5,0 Tage“. Ursache: Locosoft meldete mehr Urlaubstage als Portal-Anspruch → Validierung rechnete negativen Rest, Anzeige nutzt View/Fallback und zeigte positiven Rest.
+- **Lösung:** In `api/vacation_api.py` (Einzelbuchung + book-batch): Wenn `available_days < 0`, Resturlaub aus View `v_vacation_balance_{Jahr}` lesen und für Validierung verwenden (≥ 0). So stimmen Anzeige und Buchungsprüfung überein.
+- **Doku:** `BUGFIX_RESTURLAUB_VALIDIERUNG_NEGATIV.md` – für künftige Fälle in derselben Thematik.
+
+### Usertest-Fixes: Resturlaub konsistent, 0 Rest ablehnen, Neuberechnung (2026-02)
+- **Sandra Schimmer:** „Wieder zu wenig Resturlaub“ trotz 16 Tage Rest in der Liste → Validierung nutzte andere Quelle (Locosoft-Formel) als die Anzeige (View + Locosoft-Cap). **Lösung:** Hilfsfunktion `_get_available_rest_days_for_validation()` berechnet verfügbaren Rest **wie die Balance-Anzeige** (View + min(View, Anspruch − Locosoft)); Einzel- und Batch-Buchung nutzen diese Quelle. Kein Abweichen mehr zwischen Liste und Buchungsprüfung.
+- **Herbert Huber:** 0 Tage Rest, Buchung trotzdem möglich → Bei Batch fehlte View-Fallback, `available_days` blieb `None`. **Lösung:** Batch nutzt dieselbe Hilfsfunktion (immer View-Basis); bei 0 Rest wird abgelehnt (`requested_days > available_days`).
+- **Keine Neuberechnung des Resturlaubs:** Nach Urlaubsantrag bzw. Typ-Änderung blieb die angezeigte Restzahl unverändert. **Lösung:** Nach Typ-Änderung (Edit-Popup) wird `loadAllEmployees()` aufgerufen, damit die Tabelle den Resturlaub neu lädt. Nach Antrag-Einreichung war `loadAllEmployees()` bereits vorhanden.
+
 ### Offene Punkte aus Usertest (Urlaubsplaner)
-- **Vanessa testet morgen** (Zugriff Planer, Masseneingabe, Markierung).
 - Optional prüfen: falsche Darstellung bei Vanessa (Frontend/Filter), E-Mail an HR nach Genehmigung, Mitarbeiter-Abteilungszuordnungen (laut Usertest-Dokumenten).
 
 ## Offene Entscheidungen

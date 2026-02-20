@@ -1,7 +1,7 @@
 # Auth & LDAP — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-02-11
+## Letzte Aktualisierung: 2026-02-19
 
 ## Beschreibung
 
@@ -33,12 +33,21 @@ Auth umfasst LDAP/AD-Integration, RBAC, Session-Management, Rollen-Config, Dashb
 ## Aktueller Stand (✅ erledigt, 🔧 in Arbeit, ❌ offen)
 
 - ✅ LDAP-Login, Rollen, RBAC, Rechte-Verwaltung im Einsatz
+- ✅ **Option B (Rechte nur aus Portal):** Zugriff wird ausschließlich in der Rechteverwaltung festgelegt. LDAP liefert nur Identität (wer darf sich anmelden). Pro User eine **Rolle** zuweisen (Dropdown „Rolle zuweisen“). „— Bitte zuweisen —“ = noch keine Rolle → Zugriff wie „mitarbeiter“ (minimal). OU/Title (AD) nur zur Info.
+- ✅ **Rollen & Feature-Zugriff:** Im Tab „Feature-Zugriff“: Block „Rollen & Feature-Zugriff“ – Rolle wählen, Features an/abwählen, speichern. Zusätzlich „Nach Feature“ (bestehende Karten).
+- ✅ **Organigramm:** Abteilungen, Hierarchie (Tree), **Vertretungsregeln** (CRUD, PostgreSQL `substitution_rules`), **Genehmigungsregeln** (Modal „Neue Regel“ mit Abteilungsname wie „Geschäftsführung“, Speichern/Löschen). Genehmiger-Dropdown konsistent mit bestehenden Regeln (Abteilungsnamen, nicht Kurzcodes wie GL).
+- ✅ **Vertretungsregel → Urlaubsplaner:** Vertreter darf im Zeitraum, in dem die vertretene Person abwesend ist, keinen Urlaub buchen (Prüfung in `vacation_api.book_vacation`, `book_batch`, `vacation_admin_api.mass_booking`). Testanleitung Vanessa ergänzt.
 - 🔧 Dashboard-Personalisierung je nach Projektstand
-- ❌ Offene Punkte ggf. in Session-TODOs
 
 ## Offene Entscheidungen
 
-- (Keine festgehalten)
+- (Keine aktuell)
+
+## Wichtige Hinweise (TAG 2026-02-19, Session-Ende)
+
+- **Wirksame Portal-Rolle** (Navi + Features): 1) **admin** in `user_roles` → voller Zugriff; 2) **users.portal_role_override** (in Rechteverwaltung gesetzt) → diese Rolle; 3) sonst **mitarbeiter** (Default, kein LDAP-Fallback mehr).
+- Diagnose pro User: `python scripts/checks/check_user_portal_role.py "Nachname"`.
+- Ausführlich: `docs/workstreams/auth-ldap/PORTAL_ROLLE_WARUM_GRANULARER.md`.
 
 ## Abhängigkeiten
 

@@ -106,6 +106,50 @@ def _validate_vacation_year(year):
     return year, None
 
 
+def _check_substitute_vacation_conflict(cursor, substitute_employee_id, dates_list):
+    """
+    Vertretungsregel: Der Vertreter darf in dem Zeitraum keinen Urlaub buchen,
+    in dem die von ihm vertretene Person abwesend ist (Urlaub/Abwesenheit).
+    substitute_employee_id = Mitarbeiter, der buchen will (ist Vertreter).
+    dates_list = Liste von Datumsstrings 'YYYY-MM-DD'.
+    Returns: None wenn OK; sonst (blocked_dates, vertretene_name) für Fehlermeldung.
+    """
+    if not dates_list:
+        return None
+    try:
+        # Wen vertritt dieser Mitarbeiter? (employee_id = vertretene Person)
+        cursor.execute("""
+            SELECT sr.employee_id, e.first_name || ' ' || COALESCE(e.last_name, '') as vertretene_name
+            FROM substitution_rules sr
+            JOIN employees e ON e.id = sr.employee_id
+            WHERE sr.substitute_id = %s
+        """, (substitute_employee_id,))
+        substituted = cursor.fetchall()
+        if not substituted:
+            return None
+        placeholders = ','.join(['%s'] * len(dates_list))
+        blocked = []
+        first_vertretene_name = None
+        for row in substituted:
+            vertretene_id = row[0]
+            vname = row[1] if len(row) > 1 else 'Mitarbeiter'
+            if first_vertretene_name is None:
+                first_vertretene_name = vname
+            cursor.execute(f"""
+                SELECT booking_date FROM vacation_bookings
+                WHERE employee_id = %s AND booking_date IN ({placeholders})
+                AND status IN ('pending', 'approved')
+            """, (vertretene_id,) + tuple(dates_list))
+            for r in cursor.fetchall():
+                blocked.append(str(r[0]))
+        if blocked:
+            return (sorted(set(blocked)), first_vertretene_name)
+        return None
+    except Exception:
+        # Tabelle substitution_rules kann fehlen (Legacy)
+        return None
+
+
 # E-Mail-Konfiguration
 HR_EMAIL = 'hr@auto-greiner.de'  # HR-Mailbox für Locosoft-Einträge
 DRIVE_EMAIL = 'drive@auto-greiner.de'  # Absender
@@ -232,6 +276,64 @@ def is_vacation_admin(ldap_username=None):
     username_clean = username.lower().split('@')[0]
 
     return username_clean in allowed_users
+
+
+def _get_available_rest_days_for_validation(cursor, employee_id, booking_year, locosoft_id=None):
+    """
+    Berechnet verfügbaren Resturlaub für Validierung – gleiche Logik wie Balance-Anzeige.
+    Verhindert „Liste zeigt 16 Rest, Buchung sagt zu wenig“ (Sandra) und „0 Rest, Buchung möglich“ (Herbert).
+    Returns: (available_days: float, resturlaub_info: dict | None)
+    """
+    booking_year, _ = _validate_vacation_year(booking_year)
+    if not booking_year:
+        return 0.0, None
+    try:
+        view_name = f'v_vacation_balance_{booking_year}'
+        query = f"""
+            SELECT anspruch, verbraucht, geplant, resturlaub
+            FROM {view_name}
+            WHERE employee_id = {sql_placeholder()}
+        """
+        query = convert_placeholders(query)
+        cursor.execute(query, (employee_id,))
+        row = cursor.fetchone()
+        if not row:
+            return 0.0, None
+        anspruch = float(row[0] or 0)
+        resturlaub_view = float(row[3]) if row[3] is not None else (anspruch - (float(row[1] or 0) + float(row[2] or 0)))
+        loco_urlaub = None
+        if LOCOSOFT_AVAILABLE and locosoft_id:
+            try:
+                locosoft_absences = get_absences_for_employee(locosoft_id, booking_year)
+                if locosoft_absences:
+                    loco_urlaub = locosoft_absences.get('urlaub', 0) or 0
+                # Wie Balance-API: Fallback aus Tagesdaten wenn Aggregat 0 liefert
+                if (loco_urlaub or 0) == 0:
+                    try:
+                        loco_days = get_absence_days_for_employees([locosoft_id], booking_year)
+                        days_list = (loco_days or {}).get(locosoft_id) or []
+                        urlaub_from_days = sum(
+                            d.get('day_contingent', 1.0) for d in days_list
+                            if d.get('reason') in ('Url', 'BUr')
+                        )
+                        if urlaub_from_days > 0:
+                            loco_urlaub = round(urlaub_from_days, 1)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        if loco_urlaub is not None:
+            available_days = min(resturlaub_view, max(0.0, round(anspruch - loco_urlaub, 1)))
+        else:
+            available_days = resturlaub_view
+        available_days = max(0.0, round(available_days, 1))
+        info = {'anspruch': anspruch, 'resturlaub_view': resturlaub_view, 'verfuegbar': available_days}
+        if loco_urlaub is not None:
+            info['locosoft_urlaub'] = loco_urlaub
+        return available_days, info
+    except Exception as e:
+        print(f"⚠️ _get_available_rest_days_for_validation: {e}")
+        return 0.0, None
 
 
 def get_employee_by_id(employee_id):
@@ -1412,9 +1514,29 @@ def approve_vacation():
         hr_email_sent = send_approval_email_to_hr(booking_details, approver_name)
         employee_email_sent = send_approval_notification_to_employee(booking_details, approver_name)
         
-        # Team-Kalender Eintrag (TAG 104)
-        calendar_added = add_to_team_calendar(booking_details)
-        
+        # Team-Kalender: drive@ + Mitarbeiter-Kalender (TAG 104 / 2026-02)
+        calendar_result = add_to_team_calendar(booking_details)
+        calendar_added = False
+        if isinstance(calendar_result, dict):
+            calendar_added = calendar_result.get('drive_ok') or bool(calendar_result.get('employee_event_id'))
+            if calendar_result.get('employee_event_id') or calendar_result.get('drive_event_id'):
+                update_placeholders = []
+                update_args = []
+                if calendar_result.get('employee_event_id'):
+                    update_placeholders.append(f"calendar_event_id_employee = {sql_placeholder()}")
+                    update_args.append(calendar_result['employee_event_id'])
+                if calendar_result.get('drive_event_id'):
+                    update_placeholders.append(f"calendar_event_id_drive = {sql_placeholder()}")
+                    update_args.append(calendar_result['drive_event_id'])
+                if update_placeholders:
+                    update_args.append(booking_id)
+                    query = f"UPDATE vacation_bookings SET {', '.join(update_placeholders)} WHERE id = {sql_placeholder()}"
+                    query = convert_placeholders(query)
+                    cursor.execute(query, tuple(update_args))
+                    conn.commit()
+        else:
+            calendar_added = bool(calendar_result)
+
         return jsonify({
             'success': True,
             'message': 'Urlaubsantrag genehmigt',
@@ -2258,80 +2380,31 @@ def book_vacation():
                 booking_year, err = _validate_vacation_year(booking_year)
                 if err:
                     return err
+                try:
+                    from api.vacation_year_utils import ensure_vacation_year_setup_simple
+                    ensure_vacation_year_setup_simple(booking_year)
+                except Exception as e:
+                    print(f"⚠️ ensure_vacation_year_setup_simple({booking_year}): {e}")
 
-                # Hole aktuellen Resturlaub aus Locosoft (genaueste Quelle)
-                available_days = None
-
-                if LOCOSOFT_AVAILABLE and employee_data and employee_data.get('locosoft_id'):
-                    try:
-                        locosoft_absences = get_absences_for_employee(
-                            employee_data['locosoft_id'],
-                            booking_year
-                        )
-                        if locosoft_absences:
-                            # Anspruch aus vacation_entitlements holen
-                            cursor.execute("""
-                                SELECT total_days FROM vacation_entitlements
-                                WHERE employee_id = %s AND year = %s
-                            """, (employee_id, booking_year))
-                            ent_row = cursor.fetchone()
-                            anspruch = ent_row[0] if ent_row else 27
-
-                            # Bereits in Locosoft gebuchter Urlaub
-                            urlaub_locosoft = locosoft_absences.get('urlaub', 0)
-
-                            # Bereits im Portal pending/approved gebuchter Urlaub (noch nicht in Locosoft)
-                            # TAG 136: PostgreSQL-kompatible Query
-                            query = f"""
-                                SELECT COALESCE(SUM(CASE WHEN day_part = 'full' THEN 1.0 ELSE 0.5 END), 0)
-                                FROM vacation_bookings
-                                WHERE employee_id = {sql_placeholder()}
-                                  AND {sql_year('booking_date')} = {sql_placeholder()}
-                                  AND vacation_type_id = 1
-                                  AND status IN ('pending', 'approved')
-                            """
-                            query = convert_placeholders(query)
-                            cursor.execute(query, (employee_id, str(booking_year)))
-                            portal_pending = cursor.fetchone()[0] or 0
-
-                            # Verfügbar = Anspruch - Locosoft - Portal-Pending
-                            available_days = round(anspruch - urlaub_locosoft - portal_pending, 1)
-                            resturlaub_info = {
-                                'anspruch': anspruch,
-                                'locosoft': urlaub_locosoft,
-                                'portal_pending': portal_pending,
-                                'verfuegbar': available_days
-                            }
-                    except Exception as e:
-                        print(f"⚠️ Locosoft-Abfrage für Resturlaub fehlgeschlagen: {e}")
-
-                # Fallback: Nur Portal-Daten wenn Locosoft nicht verfügbar
-                if available_days is None:
-                    query = f"""
-                        SELECT anspruch, verbraucht, geplant, resturlaub
-                        FROM v_vacation_balance_{booking_year}
-                        WHERE employee_id = {sql_placeholder()}
-                    """
-                    query = convert_placeholders(query)
-                    cursor.execute(query, (employee_id,))
-                    bal_row = cursor.fetchone()
-                    if bal_row:
-                        available_days = bal_row[3] or 0  # resturlaub
-                        resturlaub_info = {
-                            'anspruch': bal_row[0],
-                            'verbraucht': bal_row[1],
-                            'geplant': bal_row[2],
-                            'verfuegbar': available_days
-                        }
-                    else:
-                        available_days = 27  # Default Anspruch
-
-                # Prüfung: Genug Resturlaub?
-                if available_days is not None and requested_days > available_days:
+                # Resturlaub wie in der Anzeige (View + Locosoft-Cap) – Usertest Sandra/Herbert
+                available_days, resturlaub_info = _get_available_rest_days_for_validation(
+                    cursor, employee_id, booking_year, (employee_data or {}).get('locosoft_id')
+                )
+                if requested_days > available_days or available_days < 0:
                     return jsonify({
                         'success': False,
                         'error': f'Nicht genug Resturlaub! Verfügbar: {available_days} Tage, angefragt: {requested_days} Tag(e)',
                         'resturlaub_info': resturlaub_info
+                    }), 400
+
+            # Vertretungsregel: Vertreter darf in dem Zeitraum keinen Urlaub buchen, in dem die vertretene Person abwesend ist
+            if vacation_type_id == 1:
+                conflict = _check_substitute_vacation_conflict(cursor, employee_id, [booking_date])
+                if conflict:
+                    blocked_dates, vertretene_name = conflict
+                    return jsonify({
+                        'success': False,
+                        'error': f'Sie vertreten in diesem Zeitraum {vertretene_name}. Urlaubsbuchung an den Tagen {", ".join(blocked_dates)} ist nicht möglich.'
                     }), 400
 
             # TAG 127 / Anforderung: Schulung und Krankheit nur Genehmiger + Admin; ZA nur Admin
@@ -2492,7 +2565,7 @@ def cancel_vacation():
         with db_session() as conn:
             cursor = conn.cursor()
 
-            # Hole Booking-Details
+            # Hole Booking-Details inkl. Kalender-Event-IDs für Storno
             cursor.execute("""
                 SELECT
                     vb.employee_id,
@@ -2502,7 +2575,9 @@ def cancel_vacation():
                     vt.name as vacation_type,
                     e.first_name || ' ' || e.last_name as employee_name,
                     e.department_name,
-                    e.email as owner_email
+                    e.email as owner_email,
+                    vb.calendar_event_id_employee,
+                    vb.calendar_event_id_drive
                 FROM vacation_bookings vb
                 JOIN employees e ON vb.employee_id = e.id
                 LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
@@ -2518,6 +2593,8 @@ def cancel_vacation():
             booking_owner_id = booking[0]
             is_own_booking = booking_owner_id == employee_id
             owner_email = booking[7]
+            calendar_event_id_employee = booking[8] if len(booking) > 8 else None
+            calendar_event_id_drive = booking[9] if len(booking) > 9 else None
 
             # Prüfe ob User Admin ist (GRP_Urlaub_Admin)
             is_admin = False
@@ -2557,7 +2634,8 @@ def cancel_vacation():
             'day_part': booking[3],
             'vacation_type': booking[4] or 'Urlaub',
             'employee_name': booking[5],
-            'department': booking[6] or ''
+            'department': booking[6] or '',
+            'employee_email': owner_email
         }
 
         # E-Mail an Genehmiger senden (zur Info)
@@ -2616,12 +2694,16 @@ def cancel_vacation():
                 reason
             )
         
-        # Kalendereintrag löschen falls vorhanden
+        # Kalendereintrag löschen (drive@ + Mitarbeiter-Kalender)
         calendar_deleted = False
         if was_approved and CALENDAR_AVAILABLE:
             try:
                 calendar_service = VacationCalendarService()
-                calendar_deleted = calendar_service.delete_vacation_event(booking_details)
+                calendar_deleted = calendar_service.delete_vacation_event(
+                    booking_details,
+                    calendar_event_id_employee=calendar_event_id_employee,
+                    calendar_event_id_drive=calendar_event_id_drive
+                )
             except Exception as e:
                 print(f"⚠️ Kalender-Löschung fehlgeschlagen: {e}")
         
@@ -2764,36 +2846,20 @@ def book_vacation_batch():
                     'free_dates': [str(fd[0]) for fd in free_dates]
                 }), 400
 
-            # Resturlaub-Validierung für Urlaub (type_id=1)
+            # Resturlaub-Validierung für Urlaub (type_id=1) – gleiche Logik wie Anzeige (Usertest Sandra/Herbert)
             if vacation_type_id == 1:
                 requested_days = len(dates) * (1.0 if day_part == 'full' else 0.5)
                 booking_year = int(dates[0][:4])
-                available_days = None
-
-                if LOCOSOFT_AVAILABLE and employee_data and employee_data.get('locosoft_id'):
-                    try:
-                        locosoft_absences = get_absences_for_employee(employee_data['locosoft_id'], booking_year)
-                        if locosoft_absences:
-                            query = f"SELECT total_days FROM vacation_entitlements WHERE employee_id = {sql_placeholder()} AND year = {sql_placeholder()}"
-                            query = convert_placeholders(query)
-                            cursor.execute(query, (employee_id, booking_year))
-                            ent_row = cursor.fetchone()
-                            anspruch = ent_row[0] if ent_row else 27
-                            urlaub_locosoft = locosoft_absences.get('urlaub', 0)
-                            # TAG 136: PostgreSQL-kompatible Query
-                            query = f"""
-                                SELECT COALESCE(SUM(CASE WHEN day_part = 'full' THEN 1.0 ELSE 0.5 END), 0)
-                                FROM vacation_bookings WHERE employee_id = {sql_placeholder()} AND {sql_year('booking_date')} = {sql_placeholder()}
-                                AND vacation_type_id = 1 AND status IN ('pending', 'approved')
-                            """
-                            query = convert_placeholders(query)
-                            cursor.execute(query, (employee_id, str(booking_year)))
-                            portal_pending = cursor.fetchone()[0] or 0
-                            available_days = round(anspruch - urlaub_locosoft - portal_pending, 1)
-                    except Exception as e:
-                        print(f"⚠️ Locosoft-Abfrage fehlgeschlagen: {e}")
-
-                if available_days is not None and requested_days > available_days:
+                try:
+                    from api.vacation_year_utils import ensure_vacation_year_setup_simple
+                    ensure_vacation_year_setup_simple(booking_year)
+                except Exception as e:
+                    print(f"⚠️ ensure_vacation_year_setup_simple({booking_year}): {e}")
+                # target_employee_data = Person, für die gebucht wird (bei Admin-Buchung ≠ employee_data)
+                available_days, _ = _get_available_rest_days_for_validation(
+                    cursor, employee_id, booking_year, (target_employee_data or {}).get('locosoft_id')
+                )
+                if requested_days > available_days or available_days < 0:
                     return jsonify({
                         'success': False,
                         'error': f'Nicht genug Resturlaub! Verfügbar: {available_days} Tage, angefragt: {requested_days} Tag(e)'
@@ -2810,6 +2876,17 @@ def book_vacation_batch():
 
             if existing:
                 return jsonify({'success': False, 'error': f'Bereits gebucht: {existing[0]}'}), 400
+
+            # Vertretungsregel: Vertreter darf in dem Zeitraum keinen Urlaub buchen, in dem die vertretene Person abwesend ist
+            if vacation_type_id == 1:
+                conflict = _check_substitute_vacation_conflict(cursor, employee_id, dates)
+                if conflict:
+                    blocked_dates, vertretene_name = conflict
+                    return jsonify({
+                        'success': False,
+                        'error': f'Sie vertreten in diesem Zeitraum {vertretene_name}. Urlaubsbuchung an den Tagen {", ".join(blocked_dates)} ist nicht möglich.',
+                        'blocked_dates': blocked_dates
+                    }), 400
 
             # Alle Buchungen einfügen
             # TAG 127: Admin-Direktbuchungen sind sofort genehmigt
