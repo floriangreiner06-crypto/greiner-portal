@@ -1,7 +1,7 @@
 # Werkstatt & Aftersales — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-02-16
+## Letzte Aktualisierung: 2026-02-20
 
 ## Beschreibung
 
@@ -19,9 +19,11 @@ Werkstatt und Aftersales umfassen Stempeluhr/Live-Monitoring, Mechaniker-Leistun
 - `api/reparaturpotenzial_api.py` — Reparaturpotenzial
 - `api/gudat_api.py`, `api/gudat_data.py` — Gudat-Integration
 - `api/ml_api.py`, `api/ai_api.py` — ML/Prognosen
+- `api/fahrzeugschein_scanner.py`, `api/fahrzeuganlage_api.py` — Fahrzeuganlage (Fahrzeugschein-OCR via AWS Bedrock; Phase 2: Locosoft-Anlage per SOAP – erst Kunde, dann Fahrzeug)
 
 ### Templates
 - `templates/aftersales/*.html` (inkl. `unfall_wissensdatenbank.html`, `unfall_rechnungspruefung.html`, `garantie_handbuecher.html`)
+- `templates/fahrzeuganlage.html` — Fahrzeuganlage (Scan & Copy)
 
 ### Tools / Scripts
 - `tools/gudat_*.py`
@@ -33,7 +35,7 @@ Werkstatt und Aftersales umfassen Stempeluhr/Live-Monitoring, Mechaniker-Leistun
 
 ## DB-Tabellen (PostgreSQL drive_portal)
 
-- `orders`, `labours`, View `times`, `employees_history`, `absence_calendar`, `werkstatt_leistung_daily`, `delivery_notes`
+- `orders`, `labours`, View `times`, `employees_history`, `absence_calendar`, `werkstatt_leistung_daily`, `delivery_notes`, `fahrzeugschein_scans` (Fahrzeuganlage Scan-Archiv)
 
 ## Aktueller Stand (✅ erledigt, 🔧 in Arbeit, ❌ offen)
 
@@ -50,6 +52,17 @@ Werkstatt und Aftersales umfassen Stempeluhr/Live-Monitoring, Mechaniker-Leistun
 - ❌ **Nächster Schritt (Beschluss):** Zuerst in **Locosoft sauber pflegen und einrichten**; danach **DB-Stand erneut prüfen** (z. B. labours_groups, Wartungspakete). Greiner-Katalog/DRIVE-Modul folgt nach Klärung.
 - ✅ **Garantie-Handbücher Phase 1 (2026-02-16):** Handbücher & Richtlinien als Referenz umgesetzt. Ordner `docs/workstreams/werkstatt/garantie` (Sync: F:\Greiner Portal\Greiner_Portal_NEU\Server\…\garantie); Seite „Handbücher & Richtlinien“ unter Service → Garantie; PDFs werden nach Sync dort abgelegt und im Portal verlinkt (Login, sichere Auslieferung). Siehe `GARANTIE_HANDBUECHER_WISSENSBASIS_MACHBARKEIT.md`.
 - ✅ **Garantie Handbücher – DB-Navigation (2026-02-16):** Navi-Punkt „Handbücher & Richtlinien“ fehlte bei aktivierter DB-Navigation; Migration `add_navigation_garantie_handbuecher.sql` eingespielt, Eintrag in `navigation_items` ergänzt; `migrate_navigation_items.py` für künftige Neuaufbauten angepasst.
+- ✅ **Gudat Connector vs. DRIVE Web-API (2026-02-19):** Der Gudat Connector für Locosoft ist bereits im Einsatz (Sync Locosoft↔Gudat). Er ist **kein Ersatz** für die DRIVE-Web-API: Der Connector synchronisiert nur Locosoft↔Gudat und stellt keine API für DRIVE bereit. DRIVE nutzt weiter die direkte Gudat-Web-API (REST/GraphQL) für Live-Board, Kapazität, Arbeitskarte. Siehe `GUDAT_CONNECTOR_SETUP_ANALYSE.md`.
+- ✅ **Werkstatt Live-Board analog Gudat (2026-02-19):** URL `/werkstatt/liveboard` (bzw. `/werkstatt/drive/liveboard`) zeigt „Wer arbeitet gerade an was?“ – Mechaniker-Spalten mit zugewiesenen Aufträgen, Stempelzeiten (Locosoft) + Gudat-Disposition (geplante Tasks). Anzeige „62 Gudat“, „7 aktiv“, „3 frei“ kommt aus der Gudat-Integration; Gantt-Ansicht unter `/werkstatt/liveboard/gantt`. Credentials: siehe unten.
+- ✅ **Fahrzeuganlage (2026-02-20):** Modul unter Service → Werkstatt: Fahrzeugschein-Upload, OCR via AWS Bedrock (eu-central-1), Scan-Archiv in PostgreSQL `fahrzeugschein_scans`, Dublettencheck gegen `loco_vehicles` (read-only). Phase 2: Anlage in Locosoft per SOAP (`writeCustomerDetails` → `writeVehicleDetails`); Reihenfolge **erst Kunde, dann Fahrzeug**. Doku: `docs/workstreams/werkstatt/Fahrzeuganlage/` (inkl. LOCOSOFT_ANLAGE_SOAP.md). SOAP-Test steht noch aus.
+- ✅ **DAT VIN-Abfrage – Client & Integration (2026-02-20):** `api/dat_vin_client.py` (Login-Versuch + doVinRequest), Route `/api/fahrzeuganlage/dat-vin-lookup`, Button „DAT“ in der Fahrzeuganlage. Konfiguration: `config/credentials.json` (dat_vin) bzw. .env. Selenium-Login angepasst (Cookie-Layer ausblenden, `button.tLogin` per JS klicken). ❌ **Automatischer Login schlägt fehl:** Auf dat.de erscheint im Headless-Browser kein Login-Formular (Kundennummer/Benutzer/Passwort) im DOM – nur Such-/Newsletter-Felder; /AuthorizationManager/ und /myClaim/ liefern 403. **Empfehlung:** Token manuell in `dat_vin.token` eintragen (nach Browser-Login aus POST zu myClaim/json/security/Login kopieren) oder DAT Service (+49 711 4503-130) nach API-/Token-Zugang fragen. Siehe `Fahrzeuganlage/DAT_VIN_ABFRAGE_RECHERCHE.md` (inkl. Befund Selenium/Headless).
+- **Rückruf Stellantis – VIN-Abgleich Locosoft (2026-02-20):** Serviceleiter legt Rückruf-Listen (Rundschreiben + Excel-VIN-Liste) unter `docs/workstreams/werkstatt/Rückruf/` ab (Sync: F:\…\Server\docs\workstreams\werkstatt\Rückruf). Anforderung: Abgleich VINs aus Excel gegen Locosoft – „bereits Kunde“ vs. „noch kein Kunde“. Excel-Spalten können je Rundschreiben unterschiedlich sein. **Machbarkeit: ja** – offen: nur Skript oder plus Portal-UI. Siehe `Rueckruf_MACHBARKEIT_VIN_ABGLEICH_LOCOSOFT.md`.
+
+### Gudat-Credentials (SSOT)
+
+- **Nicht in .env** – Gudat steht in **`config/credentials.json`** unter `external_systems.gudat` (username, password).
+- Aktuell: `florian.greiner@auto-greiner.de` / Passwort `Hyundai2025!` (2026-02-19 bestätigt).
+- Nutzer: `api/gudat_api.py`, `api/gudat_data.py` (lädt aus credentials.json), `api/werkstatt_live_api.py` und `api/arbeitskarte_api.py` (eigene Konstante, inhaltlich gleich). Bei Passwortänderung: **nur** `config/credentials.json` anpassen; `gudat_data.py` liest daraus.
 
 ## Offene Entscheidungen
 
