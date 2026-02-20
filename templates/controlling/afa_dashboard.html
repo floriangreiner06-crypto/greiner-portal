@@ -108,6 +108,7 @@
                 <table class="table table-striped table-hover afa-table mb-0">
                     <thead>
                         <tr>
+                            <th>Nr.</th>
                             <th>Kennzeichen</th>
                             <th>VIN</th>
                             <th>Modell / Bezeichnung</th>
@@ -122,7 +123,7 @@
                         </tr>
                     </thead>
                     <tbody id="tab-fahrzeuge">
-                        <tr><td colspan="11" class="text-center text-muted py-4">Lade Daten...</td></tr>
+                        <tr><td colspan="12" class="text-center text-muted py-4">Lade Daten...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -137,13 +138,14 @@
         </div>
         <div class="card-body">
             <p class="text-muted small mb-2">Vergleich DRIVE mit Locosoft (Rechnungsdatum): Fahrzeuge, die in Locosoft als verkauft gelten, in DRIVE aber noch „aktiv“ – bitte Abgang prüfen.</p>
+            <p class="text-muted small mb-2">Falls ein Fahrzeug unter „Bitte Abgang prüfen“ erscheint und in DRIVE noch „aktiv“ ist: Abgang im <strong>Fahrzeug-Detail</strong> (Button „Detail“ in der Fahrzeugübersicht) buchen. Ein manuelles Löschen ist nur bei versehentlich importierten Fahrzeugen nötig.</p>
             <div id="abgangs-kontrolle-placeholder" class="text-muted small">Klick auf „Aktualisieren“ zum Laden.</div>
             <div id="abgangs-kontrolle-content" class="d-none">
                 <div class="mb-3">
                     <strong class="text-warning">Bitte Abgang in DRIVE prüfen</strong> (in Locosoft bereits verkauft):
                     <div class="table-responsive mt-1">
                         <table class="table table-sm afa-table">
-                            <thead><tr><th>Kennzeichen</th><th>Bezeichnung</th><th>Locosoft Rechnung</th><th>Hinweis</th></tr></thead>
+                            <thead><tr><th>Kennzeichen</th><th>FIN</th><th>Bezeichnung</th><th>Locosoft Rechnung</th><th>Hinweis</th></tr></thead>
                             <tbody id="abgang-pruefen-tbody"></tbody>
                         </table>
                     </div>
@@ -153,7 +155,7 @@
                     <strong>Abgang in DRIVE</strong> (mit Locosoft-Datum zur Kontrolle):
                     <div class="table-responsive mt-1">
                         <table class="table table-sm afa-table">
-                            <thead><tr><th>Kennzeichen</th><th>Bezeichnung</th><th>Abgangsdatum DRIVE</th><th>Locosoft Rechnung</th></tr></thead>
+                            <thead><tr><th>Kennzeichen</th><th>FIN</th><th>Bezeichnung</th><th>Abgangsdatum DRIVE</th><th>Locosoft Rechnung</th></tr></thead>
                             <tbody id="abgang-drive-tbody"></tbody>
                         </table>
                     </div>
@@ -208,6 +210,7 @@
                 <input type="month" id="monat-picker" class="form-control form-control-sm" style="width: auto;">
                 <button type="button" class="btn btn-sm btn-outline-primary" id="btn-berechne-monat" title="AfA-Buchungen für diesen Monat anlegen">Berechnen</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-csv-export">CSV exportieren</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-csv-export-hyundai" title="Nur Hyundai (Betrieb 2) – separate Buchhaltung">CSV exportieren (Hyundai)</button>
             </div>
         </div>
         <div class="card-body">
@@ -216,6 +219,7 @@
                 <table class="table table-sm afa-table">
                     <thead>
                         <tr>
+                            <th>Nr.</th>
                             <th>Kennzeichen</th>
                             <th>Fahrgestellnr.</th>
                             <th>Standort</th>
@@ -227,7 +231,7 @@
                         </tr>
                     </thead>
                     <tbody id="monats-positionen">
-                        <tr><td colspan="8" class="text-center text-muted">Monat wählen und laden.</td></tr>
+                        <tr><td colspan="9" class="text-center text-muted">Monat wählen und laden.</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -256,6 +260,27 @@
                         <span class="form-check-label">Tageszulassung (nicht AfA-pflichtig)</span>
                     </label>
                     <button type="button" class="btn btn-sm btn-primary ms-2" id="detail-btn-save-tageszulassung">Speichern</button>
+                </div>
+                <div id="detail-abgang" class="mb-3 d-none border rounded p-3 bg-light">
+                    <h6 class="text-secondary mb-2"><i class="bi bi-box-arrow-right"></i> Abgang buchen</h6>
+                    <p class="small text-muted mb-2">Abgangsdatum eingeben – DRIVE ermittelt die aufgelaufene AfA für die Buchung in Locosoft (Haben-Buchung Fahrzeugsachbuchung).</p>
+                    <div class="row g-2 align-items-end">
+                        <div class="col-auto">
+                            <label class="form-label small mb-0">Abgangsdatum</label>
+                            <input type="date" class="form-control form-control-sm" id="detail-abgangsdatum">
+                        </div>
+                        <div class="col-auto">
+                            <label class="form-label small mb-0">Verkaufspreis netto (optional)</label>
+                            <input type="number" step="0.01" class="form-control form-control-sm" id="detail-verkaufspreis" placeholder="optional">
+                        </div>
+                        <div class="col-auto">
+                            <button type="button" class="btn btn-sm btn-primary" id="detail-btn-abgang">Abgang buchen</button>
+                        </div>
+                    </div>
+                    <div id="detail-abgang-vorschau" class="mt-2 small d-none">
+                        <strong>Aufgelaufene AfA (bis Abgangsdatum):</strong> <span id="detail-aufgelaufene-afa">–</span><br>
+                        <strong>Restbuchwert:</strong> <span id="detail-restbuchwert-vorschau">–</span>
+                    </div>
                 </div>
                 <div id="detail-loeschen" class="mb-3 d-none">
                     <button type="button" class="btn btn-sm btn-outline-danger" id="detail-btn-loeschen" title="Fahrzeug und alle AfA-Buchungen endgültig löschen (z. B. versehentlicher Import)">Fahrzeug löschen</button>
@@ -358,15 +383,16 @@
 
         const tbody = document.getElementById('tab-fahrzeuge');
         if (list.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted">Keine Fahrzeuge (oder Filter ergibt keine Treffer).</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted">Keine Fahrzeuge (oder Filter ergibt keine Treffer).</td></tr>';
             return;
         }
-        tbody.innerHTML = list.map(f => {
+        tbody.innerHTML = list.map((f, idx) => {
             const rw = f.status === 'aktiv' ? (f.restbuchwert_aktuell != null ? f.restbuchwert_aktuell : '-') : (f.restbuchwert_abgang != null ? f.restbuchwert_abgang : '-');
             const badge = f.fahrzeugart === 'VFW' ? 'badge-vfw' : 'badge-miet';
             const statusCl = f.status === 'aktiv' ? 'status-aktiv' : 'status-verkauft';
             const tzBadge = f.tageszulassung ? '<span class="badge bg-secondary">Tageszul.</span>' : '-';
             return '<tr>' +
+                '<td class="text-end">' + (idx + 1) + '</td>' +
                 '<td>' + (f.kennzeichen || '-') + '</td>' +
                 '<td class="text-nowrap">' + (f.vin || '-') + '</td>' +
                 '<td>' + (f.fahrzeug_bezeichnung || f.modell || '-') + '</td>' +
@@ -391,7 +417,7 @@
         if (!mp) return Promise.resolve();
         const [jahr, monat] = mp.split('-').map(Number);
         const tbody = document.getElementById('monats-positionen');
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">Lade …</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">Lade …</td></tr>';
         return fetch(API + '/monatsberechnung?jahr=' + jahr + '&monat=' + monat)
             .then(r => {
                 if (!r.ok) throw new Error('Antwort: ' + r.status);
@@ -403,12 +429,12 @@
                 const summe = data.summe_afa || 0;
                 const fmtKonto = (k) => k != null ? String(k).padStart(6, '0') : '-';
                 tbody.innerHTML = pos.length === 0
-                    ? '<tr><td colspan="8" class="text-center text-muted">Keine aktiven Fahrzeuge in diesem Monat.</td></tr>'
-                    : pos.map(p => '<tr><td>' + (p.kennzeichen || '-') + '</td><td>' + (p.vin || '-') + '</td><td>' + (p.standort || '-') + '</td><td>' + (p.fahrzeug_bezeichnung || '-') + '</td><td>' + (p.fahrzeugart || '-') + '</td><td>' + fmtKonto(p.konto_soll) + '</td><td>' + fmtKonto(p.konto_haben) + '</td><td>' + fmtEuro(p.afa_betrag) + '</td></tr>').join('');
+                    ? '<tr><td colspan="9" class="text-center text-muted">Keine aktiven Fahrzeuge in diesem Monat.</td></tr>'
+                    : pos.map((p, i) => '<tr><td class="text-end">' + (i + 1) + '</td><td>' + (p.kennzeichen || '-') + '</td><td>' + (p.vin || '-') + '</td><td>' + (p.standort || '-') + '</td><td>' + (p.fahrzeug_bezeichnung || '-') + '</td><td>' + (p.fahrzeugart || '-') + '</td><td>' + fmtKonto(p.konto_soll) + '</td><td>' + fmtKonto(p.konto_haben) + '</td><td>' + fmtEuro(p.afa_betrag) + '</td></tr>').join('');
                 document.getElementById('monatsuebersicht-summe').textContent = fmtEuro(summe);
             })
             .catch(e => {
-                tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Fehler: ' + (e.message || 'Laden fehlgeschlagen') + '</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="9" class="text-center text-danger">Fehler: ' + (e.message || 'Laden fehlgeschlagen') + '</td></tr>';
                 document.getElementById('monatsuebersicht-summe').textContent = '0,00 €';
                 throw e;
             });
@@ -424,6 +450,15 @@
                 document.getElementById('detail-titel').textContent = (f.kennzeichen || f.vin || 'ID ' + id) + ' — ' + (f.fahrzeug_bezeichnung || f.modell || '');
                 document.getElementById('detail-tageszulassung').classList.remove('d-none');
                 document.getElementById('detail-check-tageszulassung').checked = !!f.tageszulassung;
+                const abgangEl = document.getElementById('detail-abgang');
+                if (f.status === 'aktiv') {
+                    abgangEl.classList.remove('d-none');
+                    document.getElementById('detail-abgangsdatum').value = '';
+                    document.getElementById('detail-verkaufspreis').value = '';
+                    document.getElementById('detail-abgang-vorschau').classList.add('d-none');
+                } else {
+                    abgangEl.classList.add('d-none');
+                }
                 document.getElementById('detail-loeschen').classList.remove('d-none');
                 document.getElementById('detail-kpis').innerHTML =
                     '<div class="col"><strong>EK netto</strong> ' + fmtEuro(f.anschaffungskosten_netto) + '</div>' +
@@ -504,6 +539,52 @@
             .catch(e => alert('Fehler: ' + e.message));
     });
 
+    document.getElementById('detail-abgangsdatum').addEventListener('change', function() {
+        if (detailFahrzeugId == null) return;
+        const datum = this.value;
+        const vorschauEl = document.getElementById('detail-abgang-vorschau');
+        if (!datum) { vorschauEl.classList.add('d-none'); return; }
+        fetch(API + '/fahrzeug/' + detailFahrzeugId + '/abgang-vorschau?datum=' + encodeURIComponent(datum))
+            .then(r => r.json())
+            .then(data => {
+                if (!data.ok) { vorschauEl.classList.add('d-none'); return; }
+                document.getElementById('detail-aufgelaufene-afa').textContent = fmtEuro(data.aufgelaufene_afa);
+                document.getElementById('detail-restbuchwert-vorschau').textContent = fmtEuro(data.restbuchwert);
+                vorschauEl.classList.remove('d-none');
+            })
+            .catch(function() { vorschauEl.classList.add('d-none'); });
+    });
+
+    document.getElementById('detail-btn-abgang').addEventListener('click', function() {
+        if (detailFahrzeugId == null) return;
+        const datum = document.getElementById('detail-abgangsdatum').value;
+        if (!datum) { alert('Bitte Abgangsdatum eingeben.'); return; }
+        const verkaufspreis = document.getElementById('detail-verkaufspreis').value.trim();
+        const body = { abgangsdatum: datum };
+        if (verkaufspreis) body.verkaufspreis_netto = parseFloat(verkaufspreis);
+        fetch(API + '/fahrzeug/' + detailFahrzeugId + '/abgang', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.ok) {
+                    const msg = 'Abgang gebucht.\n\nAufgelaufene AfA (für Locosoft-Buchung): ' + fmtEuro(data.aufgelaufene_afa) + '\nRestbuchwert: ' + fmtEuro(data.restbuchwert_abgang);
+                    if (data.buchgewinn_verlust != null) msg += '\nBuchgewinn/Buchverlust: ' + fmtEuro(data.buchgewinn_verlust);
+                    bootstrap.Modal.getInstance(document.getElementById('detailModal')).hide();
+                    detailFahrzeugId = null;
+                    loadDashboard();
+                    loadMonatsuebersicht();
+                    loadAbgangsKontrolle();
+                    alert(msg);
+                } else {
+                    alert('Fehler: ' + (data.error || 'Unbekannt'));
+                }
+            })
+            .catch(e => alert('Fehler: ' + e.message));
+    });
+
     function loadAbgangsKontrolle() {
         document.getElementById('abgangs-kontrolle-placeholder').classList.remove('d-none');
         document.getElementById('abgangs-kontrolle-content').classList.add('d-none');
@@ -514,7 +595,7 @@
                 document.getElementById('abgangs-kontrolle-placeholder').classList.add('d-none');
                 document.getElementById('abgangs-kontrolle-content').classList.remove('d-none');
                 if (!data.ok) {
-                    document.getElementById('abgang-pruefen-tbody').innerHTML = '<tr><td colspan="4" class="text-danger">' + (data.error || 'Fehler') + '</td></tr>';
+                    document.getElementById('abgang-pruefen-tbody').innerHTML = '<tr><td colspan="5" class="text-danger">' + (data.error || 'Fehler') + '</td></tr>';
                     return;
                 }
                 const pruefen = data.abgang_pruefen || [];
@@ -523,8 +604,8 @@
                 const t2 = document.getElementById('abgang-drive-tbody');
                 document.getElementById('abgang-pruefen-leer').classList.toggle('d-none', pruefen.length > 0);
                 document.getElementById('abgang-drive-leer').classList.toggle('d-none', drive.length > 0);
-                t1.innerHTML = pruefen.length === 0 ? '' : pruefen.map(p => '<tr><td>' + (p.kennzeichen || '-') + '</td><td>' + (p.fahrzeug_bezeichnung || '-') + '</td><td>' + (p.locosoft_out_invoice_date || '-') + '</td><td>' + (p.hinweis || '') + '</td></tr>').join('');
-                t2.innerHTML = drive.length === 0 ? '' : drive.map(d => '<tr><td>' + (d.kennzeichen || '-') + '</td><td>' + (d.fahrzeug_bezeichnung || '-') + '</td><td>' + (d.abgangsdatum || '-') + '</td><td>' + (d.locosoft_out_invoice_date || '-') + '</td></tr>').join('');
+                t1.innerHTML = pruefen.length === 0 ? '' : pruefen.map(p => '<tr><td>' + (p.kennzeichen || '-') + '</td><td class="text-nowrap">' + (p.vin || '-') + '</td><td>' + (p.fahrzeug_bezeichnung || '-') + '</td><td>' + (p.locosoft_out_invoice_date || '-') + '</td><td>' + (p.hinweis || '') + '</td></tr>').join('');
+                t2.innerHTML = drive.length === 0 ? '' : drive.map(d => '<tr><td>' + (d.kennzeichen || '-') + '</td><td class="text-nowrap">' + (d.vin || '-') + '</td><td>' + (d.fahrzeug_bezeichnung || '-') + '</td><td>' + (d.abgangsdatum || '-') + '</td><td>' + (d.locosoft_out_invoice_date || '-') + '</td></tr>').join('');
             })
             .catch(e => {
                 document.getElementById('abgangs-kontrolle-placeholder').textContent = 'Fehler: ' + e.message;
@@ -532,11 +613,14 @@
     }
     document.getElementById('btn-abgangs-kontrolle').addEventListener('click', loadAbgangsKontrolle);
 
-    function csvExport() {
+    function csvExport(betriebFilter) {
         const mp = document.getElementById('monat-picker').value;
         if (!mp) { alert('Bitte Monat wählen.'); return; }
         const [jahr, monat] = mp.split('-').map(Number);
-        fetch(API + '/buchungsliste?jahr=' + jahr + '&monat=' + monat)
+        let url = API + '/buchungsliste?jahr=' + jahr + '&monat=' + monat;
+        if (betriebFilter != null) url += '&betrieb=' + betriebFilter;
+        const suffix = (betriebFilter === 2) ? '_hyundai' : '';
+        fetch(url)
             .then(r => {
                 if (!r.ok) throw new Error('Antwort: ' + r.status);
                 const ct = r.headers.get('content-type') || '';
@@ -546,16 +630,16 @@
             .then(data => {
                 if (!data.ok) { alert('Fehler: ' + (data.error || 'Buchungsliste konnte nicht geladen werden.')); return; }
                 const rows = data.export_csv_zeilen || [];
-                const csv = rows.length ? rows.map(row => row.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(';')).join('\n') : 'Kennzeichen;Fahrgestellnr.;Standort;Bezeichnung;Art;Betrieb;Soll;Haben;AfA-Betrag\n;;;;;;;;;0';
+                const csv = rows.length ? rows.map(row => row.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(';')).join('\n') : 'Nr.;Kennzeichen;Fahrgestellnr.;Standort;Bezeichnung;Art;Betrieb;Soll;Haben;AfA-Betrag\n;;;;;;;;;;0';
                 const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
                 const a = document.createElement('a');
                 a.href = URL.createObjectURL(blob);
-                a.download = 'afa_buchungsliste_' + mp + '.csv';
+                a.download = 'afa_buchungsliste_' + mp + suffix + '.csv';
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(a.href);
-                if (rows.length <= 2) alert('CSV exportiert. Enthält für diesen Monat keine AfA-Positionen (nur Summe).');
+                if (rows.length <= 2) alert('CSV exportiert.' + (betriebFilter === 2 ? ' (Nur Hyundai)' : '') + ' Enthält für diesen Monat keine AfA-Positionen (nur Summe).');
             })
             .catch(e => { alert('CSV-Export fehlgeschlagen: ' + e.message); });
     }
@@ -583,7 +667,8 @@
             })
             .catch(function(e) { alert('Fehler: ' + (e.message || 'Berechnung fehlgeschlagen')); });
     });
-    document.getElementById('btn-csv-export').addEventListener('click', csvExport);
+    document.getElementById('btn-csv-export').addEventListener('click', () => csvExport(null));
+    document.getElementById('btn-csv-export-hyundai').addEventListener('click', () => csvExport(2));
 
     let locosoftKandidaten = [];
     function loadLocosoftKandidaten() {

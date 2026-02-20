@@ -156,6 +156,15 @@ def dashboard():
             """)
             rows = cur.fetchall()
         fahrzeuge = [_fahrzeug_from_row(r, cur) for r in rows]
+        for f in fahrzeuge:
+            f['standort'] = BETRIEBSNR_TO_STANDORT.get(f.get('betriebsnr') or 1, 'DEG')
+        # Sortierung wie Monatsübersicht: Mietwagen DEG/LAN/HYU, dann VFW DEG/LAN/HYU, dann VFW Leapmotor (Buchhaltung)
+        def _sort_key_fahrzeug(f):
+            art = (f.get('fahrzeugart') or '').upper()
+            bn = f.get('betriebsnr') or 1
+            is_leap = 'Leapmotor' in (f.get('marke') or '') + (f.get('fahrzeug_bezeichnung') or '')
+            return (0 if art == 'MIETWAGEN' else 1, {1: 0, 3: 1, 2: 2}.get(bn, 0), 1 if (art == 'VFW' and is_leap) else 0)
+        fahrzeuge.sort(key=_sort_key_fahrzeug)
 
         if gj_range:
             von, bis = gj_range
@@ -300,6 +309,45 @@ def fahrzeug_detail(fk_id):
 
 
 # =============================================================================
+# GET /api/afa/fahrzeug/<id>/abgang-vorschau
+# =============================================================================
+
+@afa_api.route('/api/afa/fahrzeug/<int:fk_id>/abgang-vorschau', methods=['GET'])
+def fahrzeug_abgang_vorschau(fk_id):
+    """Für Abgangsdatum: Restbuchwert und aufgelaufene AfA (für Buchhaltung Locosoft)."""
+    datum_str = request.args.get('datum')
+    if not datum_str:
+        return jsonify({'ok': False, 'error': 'Parameter datum (YYYY-MM-DD) erforderlich'}), 400
+    try:
+        stichtag = date.fromisoformat(datum_str)
+    except (ValueError, TypeError):
+        return jsonify({'ok': False, 'error': 'Ungültiges Datum'}), 400
+    try:
+        with db_session() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, anschaffungsdatum, anschaffungskosten_netto, nutzungsdauer_monate, afa_methode, afa_monatlich
+                FROM afa_anlagevermoegen WHERE id = %s AND status = 'aktiv'
+            """, (fk_id,))
+            row = cur.fetchone()
+            if not row:
+                return jsonify({'ok': False, 'error': 'Fahrzeug nicht gefunden oder nicht aktiv'}), 404
+            f = _fahrzeug_from_row(row, cur)
+        rest = berechne_restbuchwert(f, stichtag)
+        ak = float(f.get('anschaffungskosten_netto') or 0)
+        aufgelaufene_afa = round(ak - (rest or 0), 2) if rest is not None else None
+        return jsonify({
+            'ok': True,
+            'datum': datum_str,
+            'restbuchwert': rest,
+            'aufgelaufene_afa': aufgelaufene_afa,
+            'anschaffungskosten_netto': ak,
+        })
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+# =============================================================================
 # DELETE /api/afa/fahrzeug/<id>
 # =============================================================================
 
@@ -431,17 +479,24 @@ def buchungsliste():
         if not data.get('ok'):
             return jsonify(data), 500
         positionen = data.get('positionen', [])
-        summe = data.get('summe_afa', 0)
+        # Zwei Buchhaltungen: Standard-CSV = nur Opel/Leapmotor (Betrieb 1+3), Hyundai-CSV = betrieb=2
+        betrieb_filter = request.args.get('betrieb', type=int)
+        if betrieb_filter is not None:
+            positionen = [p for p in positionen if (p.get('betriebsnr') or 0) == betrieb_filter]
+        else:
+            # "CSV exportieren" ohne Parameter: Hyundai (2) ausschließen, nur DEG/LAN (1, 3)
+            positionen = [p for p in positionen if (p.get('betriebsnr') or 0) in (1, 3)]
+        summe = round(sum(p.get('afa_betrag') or 0 for p in positionen), 2)
+        # CSV mit fortlaufender Nr.
+        header = ['Nr.', 'Kennzeichen', 'Fahrgestellnr.', 'Standort', 'Bezeichnung', 'Art', 'Betrieb', 'Soll', 'Haben', 'AfA-Betrag']
+        csv_rows = [[i + 1, p.get('kennzeichen'), p.get('vin') or '', p.get('standort') or '', p.get('fahrzeug_bezeichnung'), p.get('fahrzeugart'), p.get('betriebsnr'), '{:06d}'.format(p.get('konto_soll') or 0), '{:06d}'.format(p.get('konto_haben') or 0), p.get('afa_betrag')] for i, p in enumerate(positionen)]
+        summe_row = ['', '', '', '', '', '', '', '', 'Summe', summe]
         return jsonify({
             'ok': True,
             'buchungsmonat': data['buchungsmonat'],
             'positionen': positionen,
             'summe_afa': summe,
-            'export_csv_zeilen': [
-                ['Kennzeichen', 'Fahrgestellnr.', 'Standort', 'Bezeichnung', 'Art', 'Betrieb', 'Soll', 'Haben', 'AfA-Betrag'],
-                *[[p.get('kennzeichen'), p.get('vin') or '', p.get('standort') or '', p.get('fahrzeug_bezeichnung'), p.get('fahrzeugart'), p.get('betriebsnr'), '{:06d}'.format(p.get('konto_soll') or 0), '{:06d}'.format(p.get('konto_haben') or 0), p.get('afa_betrag')] for p in positionen],
-                ['', '', '', '', '', '', '', 'Summe', summe],
-            ],
+            'export_csv_zeilen': [header, *csv_rows, summe_row],
         })
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
@@ -614,10 +669,13 @@ def fahrzeug_abgang(fk_id):
                 WHERE id = %s
             """, (abgangsdatum, abgangsgrund, verkaufspreis_netto, rest, buchgewinn_verlust, fk_id))
             conn.commit()
+        ak = float(f.get('anschaffungskosten_netto') or 0)
+        aufgelaufene_afa = round(ak - (rest or 0), 2) if rest is not None else None
         return jsonify({
             'ok': True,
             'restbuchwert_abgang': rest,
             'buchgewinn_verlust': buchgewinn_verlust,
+            'aufgelaufene_afa': aufgelaufene_afa,
         })
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
