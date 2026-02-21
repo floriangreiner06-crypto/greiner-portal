@@ -70,6 +70,24 @@ TITLE_TO_ROLE = {
 # Fallback-Rolle wenn Title nicht gefunden
 DEFAULT_ROLE = 'mitarbeiter'
 
+# Für Admin-Rechteverwaltung: Alle Portal-Rollen in sinnvoller Reihenfolge
+PORTAL_ROLES_FOR_ADMIN = [
+    'admin',
+    'buchhaltung',
+    'verkauf_leitung',
+    'verkauf',
+    'werkstatt_leitung',
+    'werkstatt',
+    'service_leitung',
+    'serviceberater',
+    'service',
+    'disposition',
+    'lager',
+    'callcenter',
+    'marketing',
+    'mitarbeiter',
+]
+
 
 # =============================================================================
 # FEATURE-ZUGRIFF PRO ROLLE
@@ -100,6 +118,8 @@ FEATURE_ACCESS = {
     # After Sales / Teile
     'teilebestellungen': ['admin', 'buchhaltung', 'lager', 'werkstatt', 'werkstatt_leitung', 'service', 'service_leitung', 'serviceberater', 'disposition'],
     'aftersales': ['admin', 'buchhaltung', 'werkstatt', 'werkstatt_leitung', 'service', 'service_leitung', 'serviceberater'],
+    # Fahrzeuganlage (Scan & Copy, Phase 2: SOAP-Anlage Locosoft – erst Kunde, dann Fahrzeug)
+    'fahrzeuganlage': ['admin', 'buchhaltung', 'werkstatt', 'werkstatt_leitung', 'service', 'service_leitung', 'serviceberater', 'disposition'],
 
     # SB-Controlling (TAG121)
     'sb_dashboard': ['admin', 'buchhaltung', 'service_leitung', 'serviceberater'],
@@ -115,6 +135,13 @@ FEATURE_ACCESS = {
     # WhatsApp (TAG 211)
     'whatsapp_teile': ['admin', 'lager', 'werkstatt_leitung', 'service_leitung', 'serviceberater'],  # Teile-Handel
     'whatsapp_verkauf': ['admin', 'verkauf_leitung', 'verkauf'],  # Verkäufer-Chat
+
+    # OPOS – Offene Posten (Controlling, TAG 219)
+    # Buchhaltung/Admin/Verkaufsleitung: alle Posten; Verkäufer: nur eigene (Filter in API)
+    'opos': ['admin', 'buchhaltung', 'verkauf_leitung', 'verkauf'],
+
+    # Marketing Potenzial / Predictive Scoring (Call-Agent, 2026-02-21)
+    'marketing_potenzial': ['admin'],
 }
 
 
@@ -171,6 +198,14 @@ _feature_access_cache = None
 _cache_timestamp = None
 from datetime import datetime, timedelta
 CACHE_TTL = timedelta(minutes=5)
+
+
+def clear_feature_access_cache():
+    """Cache leeren nach Änderungen an feature_access (Rechteverwaltung)."""
+    global _feature_access_cache, _cache_timestamp
+    _feature_access_cache = None
+    _cache_timestamp = None
+
 
 def get_feature_access_from_db():
     """

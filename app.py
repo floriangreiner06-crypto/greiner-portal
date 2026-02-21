@@ -411,6 +411,16 @@ from routes.controlling_routes import controlling_bp
 from routes.afa_routes import afa_bp
 app.register_blueprint(verkauf_bp)
 print("✅ Verkauf Frontend registriert: /verkauf/")
+
+# Provisionsmodul (Phase 1: Live-Preview, SSOT in api/provision_service)
+try:
+    from api.provision_api import provision_api
+    from routes.provision_routes import provision_bp
+    app.register_blueprint(provision_api)
+    app.register_blueprint(provision_bp)
+    print("✅ Provisionsmodul registriert: /api/provision/, /provision/")
+except Exception as e:
+    print(f"⚠️  Provisionsmodul nicht geladen: {e}")
 app.register_blueprint(controlling_bp)
 app.register_blueprint(afa_bp)
 print("✅ Controlling registriert: /controlling/")
@@ -447,8 +457,22 @@ try:
     from api.afa_api import afa_api
     app.register_blueprint(afa_api)
     print("✅ AfA API registriert: /api/afa/")
+    # OPOS – Offene Posten (2026-02-19)
+    from api.opos_api import opos_api
+    app.register_blueprint(opos_api)
+    print("✅ OPOS API registriert: /api/controlling/opos")
 except Exception as e:
     print(f"⚠️  Controlling API nicht geladen: {e}")
+
+# Marketing Potenzial / Predictive Scoring (2026-02-21)
+try:
+    from api.marketing_potenzial_api import marketing_potenzial_api
+    from routes.marketing_routes import marketing_bp
+    app.register_blueprint(marketing_potenzial_api)
+    app.register_blueprint(marketing_bp)
+    print("✅ Marketing Potenzial API + Frontend: /api/marketing/potenzial/, /marketing/potenzial")
+except Exception as e:
+    print(f"⚠️  Marketing Potenzial nicht geladen: {e}")
 
 # Jahresprämie API & Routes
 try:
@@ -730,6 +754,14 @@ try:
 except Exception as e:
     print(f"⚠️  Unfall-Rechnungsprüfung API nicht geladen: {e}")
 
+# Fahrzeuganlage API (Fahrzeugschein-OCR via AWS Bedrock)
+try:
+    from api.fahrzeuganlage_api import fahrzeuganlage_api
+    app.register_blueprint(fahrzeuganlage_api)
+    print("✅ Fahrzeuganlage API registriert: /api/fahrzeuganlage/")
+except Exception as e:
+    print(f"⚠️  Fahrzeuganlage API nicht geladen: {e}")
+
 # Werkstatt LIVE API (Echtzeit-Daten aus Locosoft)
 try:
     from api.werkstatt_live_api import werkstatt_live_bp
@@ -852,6 +884,14 @@ try:
     print("✅ Budget API registriert: /api/budget/")
 except Exception as e:
     print(f"⚠️  Budget API nicht geladen: {e}")
+
+# Verkäufer-Zielplanung API (Kalenderjahr, NW/GW-Verteilung)
+try:
+    from api.verkaeufer_zielplanung_api import verkaeufer_zielplanung_bp
+    app.register_blueprint(verkaeufer_zielplanung_bp)
+    print("✅ Verkäufer-Zielplanung API registriert: /api/verkaeufer-zielplanung/")
+except Exception as e:
+    print(f"⚠️  Verkäufer-Zielplanung API nicht geladen: {e}")
 
 # Unternehmensplan API - 1%-Rendite Dashboard (TAG 157)
 try:

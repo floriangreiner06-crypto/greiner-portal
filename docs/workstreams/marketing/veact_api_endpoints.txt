@@ -1,0 +1,24 @@
+# Veact – erkannte API-/App-URLs (redirect_uri=asmc.veact.net, Kampagnen Manager)
+# Wichtige: accounts.veact.net/v1/oauth2/auth | asmc.veact.net/oauth/callback | asmc.veact.net/organisation/.../cm/ | asmc.veact.net/user_mgt/login | ub.veact.net/api/surveys/ | ub.veact.net/flags/
+
+/api/
+https://accounts.veact.net/v1/oauth2/auth
+https://accounts.veact.net/v1/oauth2/auth?client_id=asmc.4385903485&redirect_uri=https%3A%2F%2Fasmc.veact.net%2Forganisation%2F646c5ffae49ebe10c9e40ef0%2Fcm%2F
+https://asmc.veact.net/classpath/managed/css/asmc.css?h=8b827e69738f6710cdcc9579fa70d14981884d9c
+https://asmc.veact.net/classpath/managed/css/base.css?h=98e12b06d3292d846deacff9b4bf06a49cb5cd0e
+https://asmc.veact.net/classpath/managed/css/customer-satisfaction.css?h=11c7e0de410c8a7f95e48fa9b569ffa4fbb59372
+https://asmc.veact.net/classpath/managed/css/cv-report.css?h=3a28039a00c6f32c51ee1b79b3305ffdb33f2f9e
+https://asmc.veact.net/classpath/managed/css/dashboard.css?h=023ccfe2c41960a1e450047b7e324c14bdac9867
+https://asmc.veact.net/classpath/managed/css/feedback.css?h=1b25cd702ffbb80bb2192419c4a55ec3c3eb8edf
+https://asmc.veact.net/classpath/managed/css/partner-print-shop.css?h=fc6f62ccdbcf691f665b0dc12280381a100d473a
+https://asmc.veact.net/classpath/managed/css/reporting-dashboard.css?h=e52040c47a5fdf668d3313d95a27627658bbf3f5
+https://asmc.veact.net/images/ajax-loader.gif
+https://asmc.veact.net/oauth/callback?code=UmpUtO1Ph3tNeud9H3wKmB1tq4CmLLoOaSHC54r1&redirect_uri=https%3A%2F%2Fasmc.veact.net%2Forganisation%2F646c5ffae49ebe10c9e40ef0%2Fcm%2F
+https://asmc.veact.net/organisation/646c5ffae49ebe10c9e40ef0/cm/
+https://asmc.veact.net/scripts/utils.js?v2
+https://asmc.veact.net/styles/cm/list-table-commons.css?v=2
+https://asmc.veact.net/styles/font-awesome/4.4.0/fonts/fontawesome-webfont.woff2?v=4.4.0
+https://mc.veact.net
+https://ub.veact.net
+https://ub.veact.net/api/surveys/?token=phc_8SdeCBXtv3vq1XajwfKTtoDgkepLPKJzr6RHVYcKtii&ip=0&_=1771670477179&ver=1.352.0
+https://ub.veact.net/flags/?v=2&ip=0&_=1771670477100&ver=1.352.0&compression=base64

@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+
+{% block title %}Werkstatt-Potenzial{% endblock %}
+
+{% block extra_css %}
+<style>
+    .potenzial-table { font-size: 0.9rem; }
+    .potenzial-table th { background: #343a40; color: #fff; padding: 0.5rem; white-space: nowrap; }
+    .potenzial-table td { padding: 0.4rem 0.5rem; vertical-align: middle; }
+    .potenzial-table tbody tr:hover { background: #f8f9fa; }
+    .badge-high { background: #dc3545; }
+    .badge-medium { background: #fd7e14; }
+    .badge-low { background: #6c757d; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h4 class="mb-0"><i class="bi bi-telephone-outbound"></i> Werkstatt-Potenzial</h4>
+            <small class="text-muted">Priorisierte Liste für Call-Agent / Catch-Export (Verschleißreparatur). Daten aus Locosoft + Scoring.</small>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="card mb-3">
+        <div class="card-body py-2">
+            <form id="potenzial-filter" class="row g-2 align-items-end">
+                <div class="col-auto">
+                    <label class="form-label small mb-0">Standort</label>
+                    <select name="subsidiary" id="filter-subsidiary" class="form-select form-select-sm" style="width: 140px;">
+                        <option value="">Alle</option>
+                        <option value="1">DEG Opel</option>
+                        <option value="2">DEG Hyundai</option>
+                        <option value="3">Landau</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label small mb-0">Kategorie</label>
+                    <select name="category_id" id="filter-category" class="form-select form-select-sm" style="width: 180px;">
+                        <option value="">Alle</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label small mb-0">Priorität</label>
+                    <select name="priority" id="filter-priority" class="form-select form-select-sm" style="width: 120px;">
+                        <option value="">Alle</option>
+                        <option value="HIGH">Hoch</option>
+                        <option value="MEDIUM">Mittel</option>
+                        <option value="LOW">Niedrig</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label small mb-0">km-Confidence</label>
+                    <select name="confidence" id="filter-confidence" class="form-select form-select-sm" style="width: 120px;">
+                        <option value="">Alle</option>
+                        <option value="HIGH">Hoch</option>
+                        <option value="MEDIUM">Mittel</option>
+                        <option value="LOW">Niedrig</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label small mb-0">&nbsp;</label>
+                    <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-search"></i> Anwenden</button>
+                </div>
+                <div class="col-auto ms-auto">
+                    <label class="form-label small mb-0">&nbsp;</label>
+                    <a id="btn-export-csv" href="#" class="btn btn-outline-success btn-sm" target="_blank" rel="noopener"><i class="bi bi-download"></i> CSV exportieren</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- KPI -->
+    <div class="row g-3 mb-3">
+        <div class="col-auto">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body py-2">
+                    <span class="small text-muted">Einträge (gefiltert)</span>
+                    <div class="fs-5 fw-bold" id="kpi-count">–</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped potenzial-table mb-0">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>Fzg-Nr.</th>
+                            <th>Standort</th>
+                            <th>Kategorie</th>
+                            <th>Halter</th>
+                            <th>Telefon</th>
+                            <th>Letzter Service</th>
+                            <th>geschätzt km</th>
+                            <th>Priorität</th>
+                            <th>Score</th>
+                            <th>Empfehlung</th>
+                        </tr>
+                    </thead>
+                    <tbody id="potenzial-tbody">
+                        <tr><td colspan="11" class="text-center text-muted py-4">Lade Daten…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Kunden- und Fahrzeugdaten -->
+<div class="modal fade" id="detailModal" tabindex="-1" aria-labelledby="detailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="detailModalLabel"><i class="bi bi-info-circle"></i> Kunde &amp; Fahrzeug</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+            </div>
+            <div class="modal-body" id="detailModalBody">
+                <div class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm"></span> Lade…</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const tbody = document.getElementById('potenzial-tbody');
+    const form = document.getElementById('potenzial-filter');
+    const btnExport = document.getElementById('btn-export-csv');
+    const kpiCount = document.getElementById('kpi-count');
+
+    function getFilterParams() {
+        const p = new URLSearchParams();
+        const sub = document.getElementById('filter-subsidiary').value;
+        const cat = document.getElementById('filter-category').value;
+        const prio = document.getElementById('filter-priority').value;
+        const conf = document.getElementById('filter-confidence').value;
+        if (sub) p.set('subsidiary', sub);
+        if (cat) p.set('category_id', cat);
+        if (prio) p.set('priority', prio);
+        if (conf) p.set('confidence', conf);
+        p.set('limit', '1000');
+        return p;
+    }
+
+    function priorityBadge(priority) {
+        if (!priority) return '–';
+        var c = 'badge-low';
+        if (priority === 'HIGH') c = 'badge-high';
+        else if (priority === 'MEDIUM') c = 'badge-medium';
+        return '<span class="badge ' + c + '">' + priority + '</span>';
+    }
+
+    function loadCategories() {
+        fetch('/api/marketing/potenzial/categories')
+            .then(r => r.json())
+            .then(data => {
+                const sel = document.getElementById('filter-category');
+                if (data.categories && data.categories.length) {
+                    sel.innerHTML = '<option value="">Alle</option>' +
+                        data.categories.map(c => '<option value="' + c.category_id + '">' + (c.name || c.category_id) + '</option>').join('');
+                }
+            })
+            .catch(() => {});
+    }
+
+    function renderDetailHtml(data) {
+        if (data.not_found || !data.vehicle) {
+            return '<div class="alert alert-info mb-0">' +
+                '<i class="bi bi-info-circle"></i> ' + (data.message || 'Keine Details zu diesem Fahrzeug verfügbar.') +
+                '</div>';
+        }
+        const v = data.vehicle || {};
+        const c = data.customer || {};
+        const inv = data.last_invoice || {};
+        const fmt = (x) => (x != null && x !== '') ? x : '–';
+        const fmtKm = (x) => (x != null) ? x.toLocaleString('de-DE') : '–';
+        const fmtEuro = (x) => (x != null && !isNaN(x)) ? new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(x) : '–';
+        let html = '<div class="row"><div class="col-md-6">';
+        html += '<h6 class="text-secondary border-bottom pb-1 mb-2">Fahrzeug</h6>';
+        html += '<table class="table table-sm table-borderless mb-0"><tbody>';
+        html += '<tr><td class="text-muted" style="width:40%">Fzg-Nr.</td><td>' + fmt(v.vehicle_number) + '</td></tr>';
+        html += '<tr><td class="text-muted">Kennzeichen</td><td>' + fmt(v.license_plate) + '</td></tr>';
+        html += '<tr><td class="text-muted">Marke / Modell</td><td>' + fmt(v.make) + ' ' + fmt(v.model) + '</td></tr>';
+        html += '<tr><td class="text-muted">VIN</td><td><code class="small">' + fmt(v.vin) + '</code></td></tr>';
+        html += '<tr><td class="text-muted">Erstzulassung</td><td>' + fmt(v.first_registration_date) + '</td></tr>';
+        html += '<tr><td class="text-muted">Baujahr</td><td>' + fmt(v.production_year) + '</td></tr>';
+        html += '<tr><td class="text-muted">km-Stand (Locosoft)</td><td>' + fmtKm(v.mileage_km) + (v.odometer_reading_date ? ' <small class="text-muted">(' + v.odometer_reading_date + ')</small>' : '') + '</td></tr>';
+        html += '<tr><td class="text-muted">Nächste Inspektion</td><td>' + fmt(v.next_service_date) + ' / ' + fmtKm(v.next_service_km) + ' km</td></tr>';
+        html += '<tr><td class="text-muted">Standort</td><td>' + fmt(v.subsidiary) + '</td></tr>';
+        html += '</tbody></table>';
+        html += '<h6 class="text-secondary border-bottom pb-1 mb-2 mt-3">Letzte Rechnung</h6>';
+        html += '<table class="table table-sm table-borderless mb-0"><tbody>';
+        html += '<tr><td class="text-muted" style="width:40%">Rechnungsnr.</td><td>' + fmt(inv.invoice_type) + ' / ' + fmt(inv.invoice_number) + '</td></tr>';
+        html += '<tr><td class="text-muted">Rechnungsdatum</td><td>' + fmt(inv.invoice_date) + '</td></tr>';
+        html += '<tr><td class="text-muted">Auftragsnr.</td><td>' + fmt(inv.order_number) + '</td></tr>';
+        html += '<tr><td class="text-muted">Betrag (netto)</td><td>' + fmtEuro(inv.total_net) + '</td></tr>';
+        html += '<tr><td class="text-muted">Betrag (brutto)</td><td>' + fmtEuro(inv.total_gross) + '</td></tr>';
+        html += '<tr><td class="text-muted">km-Stand (Rechnung)</td><td>' + fmtKm(inv.odometer_reading) + '</td></tr>';
+        html += '</tbody></table></div><div class="col-md-6">';
+        html += '<h6 class="text-secondary border-bottom pb-1 mb-2">Kunde / Halter</h6>';
+        html += '<table class="table table-sm table-borderless mb-0"><tbody>';
+        html += '<tr><td class="text-muted" style="width:40%">Name</td><td>' + fmt(c.full_name) + '</td></tr>';
+        html += '<tr><td class="text-muted">Kunden-Nr.</td><td>' + fmt(c.customer_number) + '</td></tr>';
+        if (c.phones && c.phones.length) {
+            html += '<tr><td class="text-muted">Telefon</td><td>' + c.phones.map(p => '<a href="tel:' + p + '">' + p + '</a>').join(', ') + '</td></tr>';
+        }
+        if (c.emails && c.emails.length) {
+            html += '<tr><td class="text-muted">E-Mail</td><td>' + c.emails.map(e => '<a href="mailto:' + e + '">' + e + '</a>').join(', ') + '</td></tr>';
+        }
+        if (c.home_street || c.zip_code || c.home_city) {
+            html += '<tr><td class="text-muted">Adresse</td><td>' + [c.home_street, [c.zip_code, c.home_city].filter(Boolean).join(' ')].filter(Boolean).join(', ') + '</td></tr>';
+        }
+        html += '</tbody></table></div></div>';
+        return html;
+    }
+
+    function openDetailModal(vehicleNumber) {
+        const modal = new bootstrap.Modal(document.getElementById('detailModal'));
+        const body = document.getElementById('detailModalBody');
+        body.innerHTML = '<div class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm"></span> Lade…</div>';
+        modal.show();
+        fetch('/api/marketing/potenzial/detail/' + vehicleNumber)
+            .then(function(r) {
+                return r.text().then(function(text) {
+                    var data;
+                    try {
+                        data = text ? JSON.parse(text) : {};
+                    } catch (e) {
+                        throw new Error('Die Antwort war kein gültiges JSON (z. B. Fehlerseite oder Session abgelaufen). Bitte Seite neu laden und erneut versuchen.');
+                    }
+                    return { ok: r.ok, data: data };
+                });
+            })
+            .then(function(res) {
+                var ok = res.ok, data = res.data;
+                if (!ok && data && data.error) {
+                    body.innerHTML = '<div class="alert alert-warning mb-0"><i class="bi bi-exclamation-triangle"></i> ' + (data.error || 'Unbekannter Fehler') + '</div>';
+                } else {
+                    body.innerHTML = renderDetailHtml(data);
+                }
+            })
+            .catch(function(err) {
+                body.innerHTML = '<div class="alert alert-danger mb-0"><i class="bi bi-exclamation-triangle"></i> ' + (err.message || 'Unbekannter Fehler') + '</div>';
+            });
+    }
+
+    function loadList() {
+        const params = getFilterParams();
+        tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-4">Lade…</td></tr>';
+        btnExport.href = '/api/marketing/potenzial/export.csv?' + params.toString();
+
+        fetch('/api/marketing/potenzial/list?' + params.toString())
+            .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
+            .then(data => {
+                kpiCount.textContent = data.count ?? 0;
+                if (!data.items || data.items.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-4">Keine Einträge (Filter anpassen?).</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.items.map(row => {
+                    const lastSvc = row.last_service_date || '–';
+                    const km = row.estimated_current_km != null ? row.estimated_current_km.toLocaleString('de-DE') : '–';
+                    const score = row.score_combined != null ? row.score_combined.toFixed(2) : '–';
+                    const vn = row.vehicle_number;
+                    return '<tr>' +
+                        '<td><button type="button" class="btn btn-sm btn-outline-secondary py-0" title="Kunde &amp; Fahrzeug" data-vn="' + vn + '"><i class="bi bi-info-circle"></i></button></td>' +
+                        '<td>' + (vn || '–') + '</td>' +
+                        '<td>' + (row.subsidiary != null ? row.subsidiary : '–') + '</td>' +
+                        '<td>' + (row.category_id || '–') + '</td>' +
+                        '<td>' + (row.holder_name || '–') + '</td>' +
+                        '<td>' + (row.holder_phone || '–') + '</td>' +
+                        '<td>' + lastSvc + '</td>' +
+                        '<td>' + km + '</td>' +
+                        '<td>' + priorityBadge(row.priority) + '</td>' +
+                        '<td>' + score + '</td>' +
+                        '<td class="small">' + (row.recommended_action || '–') + '</td></tr>';
+                }).join('');
+                tbody.querySelectorAll('button[data-vn]').forEach(function(btn) {
+                    btn.addEventListener('click', function() { openDetailModal(parseInt(this.getAttribute('data-vn'), 10)); });
+                });
+            })
+            .catch(err => {
+                tbody.innerHTML = '<tr><td colspan="11" class="text-center text-danger py-4">Fehler: ' + (err.message || 'Unbekannt') + '</td></tr>';
+                kpiCount.textContent = '–';
+            });
+    }
+
+    form.addEventListener('submit', function(e) { e.preventDefault(); loadList(); });
+    loadCategories();
+    loadList();
+})();
+</script>
+{% endblock %}

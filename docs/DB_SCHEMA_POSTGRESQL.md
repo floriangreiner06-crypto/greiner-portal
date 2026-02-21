@@ -90,6 +90,11 @@ DB_PASSWORD=DrivePortal2024
 | `sales` | Verkäufe (alt) | ~1.000 |
 | `leasys_vehicle_cache` | Leasys Programm-Cache | ~170 |
 | `budget_plan` | **NEU TAG 143** Verkaufs-Budget | ~72/Jahr |
+| `provision_config` | **Provisionsmodul** SSOT Sätze/Min/Max (Kat. I–V) | ~10 |
+| `provision_laeufe` | Provisionsläufe (Vorlauf/Endlauf) | Phase 2 |
+| `provision_positionen` | Einzelpositionen pro Lauf | Phase 2 |
+| `provision_zusatzleistungen` | Kat. V manuell | Phase 3 |
+| `provision_audit_log` | Audit Provisionsänderungen | Phase 2+ |
 | `stellantis_bestellungen` | Bestellungen | ~100 |
 | `stellantis_positionen` | Bestellpositionen | ~500 |
 
@@ -114,6 +119,15 @@ DB_PASSWORD=DrivePortal2024
 | `unfall_rechnungen` | Unfallrechnungen (Kopf) | 0 |
 | `unfall_positionen` | Positionen pro Rechnung | 0 |
 | `unfall_kuerzungen` | Kürzungen pro Rechnung/Prüfbericht | 0 |
+
+### Marketing / Potenzial (Predictive Scoring, 2026-02-21)
+
+| Tabelle | Beschreibung | Zeilen (ca.) |
+|---------|--------------|--------------|
+| `repair_categories` | Reparaturkategorien (Intervall km/Jahre) | 5 |
+| `repair_category_keywords` | Keywords pro Kategorie (Locosoft text_line) | ~15 |
+| `vehicle_km_estimates` | Geschätzter km-Stand pro Fahrzeug (Locosoft internal_number) | ~10.000 |
+| `vehicle_repair_scores` | Verschleiß-Score pro Fahrzeug/Kategorie (Call-Agent/Catch) | ~260.000 |
 
 ### Teile & Lager
 
@@ -226,6 +240,9 @@ CREATE TABLE vacation_bookings (
     approved_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+-- Erweiterung 2026-02 (Kalender): booking_date, day_part, vacation_type_id, department_name, etc.
+-- calendar_event_id_employee TEXT  -- Graph-Event-ID im Mitarbeiter-Kalender (für Storno-Löschung)
+-- calendar_event_id_drive TEXT     -- Graph-Event-ID im drive@-Kalender (für Storno-Löschung)
 ```
 
 ### fahrzeugfinanzierungen

@@ -1,0 +1,1002 @@
+<html><head>
+  
+  <meta content="text/html; charset=UTF-8" http-equiv="content-type">
+  <meta content="" name="description">
+  <meta content="" name="keywords">
+  <meta content="noindex,nofollow" name="robots">
+
+  <title>VEACT ASMC</title>
+
+  
+  <link href="/styles/font-awesome/4.4.0/css/font-awesome.css" rel="stylesheet">
+
+  
+  <link rel="stylesheet" href="/classpath/blueprint/plugins/fancy-type/screen.css" type="text/css" media="screen, projection">
+
+  
+  <script type="text/javascript" crossorigin="anonymous" async="" src="https://ub.veact.net/static/array.js"></script><script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+  <script src="https://code.jquery.com/jquery-migrate-1.2.1.min.js"></script>
+  
+
+  <link href="/scripts/jquery-ui-1.10.4/css/ui-overcast/jquery-ui.min.css" rel="stylesheet">
+  <link href="/scripts/jquery-ui-1.10.4/js/multiselect/jquery.multiselect.css" rel="stylesheet">
+  <link href="/scripts/jquery-ui-1.10.4/js/multiselect/jquery.multiselect.filter.css" rel="stylesheet">
+  <link href="/scripts/jquery-ui-1.10.4/js/multiselect/altStyle.css" rel="stylesheet">
+  <link href="/styles/customer/customer.css" rel="stylesheet">
+  <link href="/styles/cm/list-table-commons.css?v=2" rel="stylesheet">
+
+
+  <style type="text/css">
+    .tt-input {
+      vertical-align: inherit !important;
+    }
+  </style>
+  <script src="/scripts/jquery-ui-1.10.4/js/jquery-ui-1.10.4.min.js" type="text/javascript"></script>
+  <script src="/scripts/jquery-ui-1.10.4/js/multiselect/commonv2.js" type="text/javascript"></script>
+  <script src="/scripts/jquery-ui-1.10.4/js/multiselect/jquery.multiselect.js" type="text/javascript"></script>
+  <script src="/scripts/jquery-ui-1.10.4/js/multiselect/jquery.multiselect.filter.js" type="text/javascript"></script>
+  <script src="/scripts/treetable/js/jquery.tbltree.js" type="text/javascript"></script>
+  <script src="/scripts/treetable/js/jquery.cookie.js" type="text/javascript"></script>
+  <link rel="stylesheet" href="/scripts/treetable/css/jquery.tbltree.css" type="text/css">
+  <link href="//maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css" rel="stylesheet">
+  <link href="//maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap-theme.min.css" rel="stylesheet">
+
+
+  <script src="/scripts/typeahead.bundle.min.js"></script>
+
+  <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js" type="text/javascript"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chosen/1.8.7/chosen.jquery.min.js" type="text/javascript"></script>
+  
+  <link href="/scripts/chosen-1.4.2/bootstrap-chosen.css" type="text/css" rel="stylesheet">
+
+  <script src="//cdn.datatables.net/1.13.11/js/jquery.dataTables.min.js" language="javascript" type="text/javascript"></script>
+  <link href="//cdn.datatables.net/1.13.11/css/jquery.dataTables.css" type="text/css" rel="stylesheet">
+
+  
+  <script type="text/javascript" src="/scripts/jquery.MultiFile.pack.js"></script>
+
+  <script src="/scripts/noty-2.2.2/js/noty/packaged/jquery.noty.packaged.min.js" type="text/javascript"></script>
+
+  
+  <script src="https://www.google.com/jsapi" type="text/javascript"></script>
+
+  
+  <script src="/scripts/dropdown_menus.js" type="text/javascript"></script>
+  <script src="/scripts/utils.js?v2" type="text/javascript"></script>
+
+  
+
+  <link rel="stylesheet" type="text/css" href="/classpath/managed/css/base.css?h=98e12b06d3292d846deacff9b4bf06a49cb5cd0e"><link rel="stylesheet" type="text/css" href="/classpath/managed/css/dashboard.css?h=023ccfe2c41960a1e450047b7e324c14bdac9867"><link rel="stylesheet" type="text/css" href="/classpath/managed/css/feedback.css?h=1b25cd702ffbb80bb2192419c4a55ec3c3eb8edf"><link rel="stylesheet" type="text/css" href="/classpath/managed/css/cv-report.css?h=3a28039a00c6f32c51ee1b79b3305ffdb33f2f9e"><link rel="stylesheet" type="text/css" href="/classpath/managed/css/customer-satisfaction.css?h=11c7e0de410c8a7f95e48fa9b569ffa4fbb59372"><link rel="stylesheet" type="text/css" href="/classpath/managed/css/partner-print-shop.css?h=fc6f62ccdbcf691f665b0dc12280381a100d473a"><link rel="stylesheet" type="text/css" href="/classpath/managed/css/reporting-dashboard.css?h=e52040c47a5fdf668d3313d95a27627658bbf3f5"><link rel="stylesheet" type="text/css" href="/classpath/managed/css/asmc.css?h=8b827e69738f6710cdcc9579fa70d14981884d9c">
+
+  <script type="text/javascript">
+    $(document).ready(function () {
+      $(window).scroll(function () {
+        if ($(this).scrollTop()) {
+          $('#scrollBackToTop').fadeIn();
+        } else {
+          $('#scrollBackToTop').fadeOut();
+        }
+      });
+
+      $("#scrollBackToTop").click(function () {
+        $("html, body").animate({
+          scrollTop: 0
+        }, 1000);
+      });
+
+      for (i = 0; i < 3; i++) {
+        if (!$(".pulsate").attr('disabled')) {
+          $(".pulsate").fadeTo('slow', 0.5).fadeTo('slow', 1.0);
+        }
+      }
+    });
+
+    isMobile = {
+      Android: function () {
+        return navigator.userAgent.match(/Android/i);
+      },
+      BlackBerry: function () {
+        return navigator.userAgent.match(/BlackBerry/i);
+      },
+      iOS: function () {
+        return navigator.userAgent.match(/iPhone|iPad|iPod/i);
+      },
+      Opera: function () {
+        return navigator.userAgent.match(/Opera Mini/i);
+      },
+      Windows: function () {
+        return navigator.userAgent.match(/IEMobile/i) || navigator.userAgent.match(/WPDesktop/i);
+      },
+      any: function () {
+        return (isMobile.Android() || isMobile.BlackBerry() || isMobile.iOS() || isMobile.Opera() || isMobile.Windows());
+      }
+    };
+
+    function zoomIfMobile() {
+      /*
+              if (isMobile.any()) {
+                document.getElementById("container").className += " fatFingers"
+              }
+      */
+    }
+  </script>
+
+  
+  
+  <script type="text/javascript">
+    // <![CDATA[
+
+    $(document).ready(function () {
+      var feedbackc = $("#feedback_container");
+      var feedbackb = $("#feedback_body");
+      var height = feedbackc.height() > feedbackb.height() ? feedbackb.height() : feedbackc.height();
+      var width = feedbackc.width() > feedbackb.width() ? feedbackb.width() : feedbackc.width();
+
+      feedbackc.modal('show').css({
+        'margin-top': function () { //vertical centering
+          return (-height / 2) + "px";
+        },
+        'margin-left': function () { //Horizontal centering
+          return (-width / 2) + "px";
+        }
+      });
+    });
+
+    $(document).ready(function () {
+      // simulates leaving a textfield/area when leaving the page
+      var selected = "none";
+      var modified = false;
+
+      var selector = $('textarea');
+      var selector2 = $(":text");
+
+      var onFocus = function () {
+        selected = this;
+        modified = false;
+      };
+      var onKeyUp = function () {
+        modified = true;
+      };
+      var onBlur = function () {
+        selected = "none";
+        modified = false;
+      };
+
+      selector.bind('focus', onFocus);
+      selector.bind('keyup paste keypress keyup', onKeyUp);
+      selector.bind('blur', onBlur);
+      selector2.bind('focus', onFocus);
+      selector2.bind('keyup paste keypress keyup', onKeyUp);
+      selector2.bind('blur', onBlur);
+
+      window.onbeforeunload = function () {
+        if (selected != "none" && selected.onblur && modified) {
+          selected.onblur()
+        }
+      }
+    });
+    // ]]>
+  </script>
+
+  <style type="text/css">
+    #scrollBackToTop {
+      padding-top: 10px;
+      padding-right: 10px;
+      padding-left: 10px;
+      background: #004884;
+      color: #fff;
+      position: fixed;
+      bottom: 0;
+      right: 5px;
+      font-size: 20px;
+      display: none;
+      border-radius: 3px;
+      cursor: pointer;
+      margin-right: 20px;
+      margin-bottom: 20px;
+    }
+
+    @media print {
+      a[href]:after {
+        content: "";
+      }
+    }
+
+    .promoter {
+      float: right;
+      margin-top: -10px;
+      margin-bottom: 1em;
+    }
+
+    .container {
+      width: 980px;
+    }
+
+    .fatFingers {
+      zoom: 1.7
+    }
+
+    .customersearchfield {
+      width: 250px
+    }
+
+    .legacy-prepend-top-margin {
+      margin-top: 0.37em;
+    }
+
+    .prepend-top {
+      margin-top: 10px;
+    }
+
+    .prepend-top-20 {
+      margin-top: 20px;
+    }
+
+    .append-bottom {
+      margin-bottom: 10px;
+    }
+
+    .append-bottom-20 {
+      margin-bottom: 20px;
+    }
+
+    .remove-prepended-top {
+      margin-top: -10px;
+    }
+
+    .remove-prepended-top-20 {
+      margin-top: -20px;
+    }
+
+    .remove-appended-bottom {
+      margin-bottom: -10px;
+    }
+
+    .remove-appended-bottom-20 {
+      margin-bottom: -20px;
+    }
+
+    /*remove when we swtich to bootstrap 4*/
+    .mt-0 {
+      margin-top: 0 !important;
+    }
+    /*remove when we swtich to bootstrap 4*/
+    .mb-0 {
+      margin-bottom: 0 !important;
+    }
+
+    .remove-top-from-first-child:first-child {
+      margin-top: 0px;
+    }
+
+    .span-like {
+      display: inline;
+    }
+
+    .btn-label-like {
+      pointer-events: none;
+    }
+
+    .invoiceDetailsDialog table {
+      line-height: 2;
+      margin-bottom: 1.4em;
+    }
+
+    .invoiceDetailsDialog table tr td {
+      background-color: #e5ecf9;
+    }
+
+    .ui-widget-content {
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      font-size: 12px;
+    }
+
+    .alignRightWithPadding {
+      text-align:right;
+      padding:0.3em;
+    }
+
+    .floatLeft {
+      float: left;
+    }
+
+    /* .ui-multiselect-filter input {
+          height: 28px;
+          width: 335px;
+          border: 1px solid #aaa;
+          margin-left: 2px;
+          font-size: 13px;
+        }
+
+        .ui-multiselect-filter {
+          font-size: 13px;
+        }
+
+        .ui-multiselect-menu .ui-widget-header {
+          background: none;
+          border: none;
+        }
+
+
+        .ui-multiselect {
+          border: none;
+          background: #FFF;
+        }
+
+        .ui-multiselect:hover {
+          border: none;
+          background: #FFF;
+          font-weight: normal;
+          color: #444;
+        }
+
+        .ui-state-hover {
+          color: #FFF;
+        }
+
+        .ui-state-hover, .ui-widget-content .ui-state-hover, .ui-widget-header .ui-state-hover {
+          background:#3875d7;
+          color: #FFF;
+        }
+
+        .ui-multiselect-menu .ui-corner-all {
+          font-weight: normal;
+          border-radius: 0px;
+        }
+
+        .ui-multiselect-checkboxes input {
+          margin-right: 5px;
+          margin-left: 3px;
+        }
+
+        .ui-multiselect-close {
+          display: none;
+        }
+
+        .ui-multiselect-all {
+          display: none;
+        }
+
+        .ui-multiselect-none {
+          display: none;
+        }
+
+        .ui-multiselect-menu {
+          width: 400px !important;
+          border-radius: 4px;
+        }
+
+        .ui-multiselect-checkboxes {
+          height: 360px !important;
+        }*/
+  </style>
+
+  <script></script>
+  <script>
+    !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init be ys Ss me gs ws capture Ne calculateEventProperties xs register register_once register_for_session unregister unregister_for_session Rs getFeatureFlag getFeatureFlagPayload isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSurveysLoaded onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey canRenderSurveyAsync identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty Is ks createPersonProfile Ps bs opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing debug Es getPageViewId captureTraceFeedback captureTraceMetric".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+    posthog.init('phc_8SdeCBXtv3vq1XajwfKTtoDgkepLPKJzr6RHVYcKtii', {
+        api_host: 'https://ub.veact.net',
+        persistence: 'memory',
+        person_profiles: 'identified_only', // or 'always' to create profiles for anonymous users as well
+    });
+</script><script>
+    const userId = '650834a5fa22874cae23870c' || null;
+    const isInternalUser = false;
+    const userGroup = 'external';
+    const userGroupName = 'External Users';
+    const userGroupDescription = 'Users with non-veact email domains';
+
+    posthog.identify(userId);
+    posthog.group("user_type", userGroup, {
+       name: userGroupName,
+       description: userGroupDescription,
+    });
+</script><script></script>
+  <script type="text/javascript">var asmc = {"organisation":"646c5ffae49ebe10c9e40ef0","locale":"de","l18n":{"search:noData":"No matches found"}};</script>
+
+
+	
+<script>
+      $(function () {
+        var customers = new Bloodhound({
+          datumTokenizer: Bloodhound.tokenizers.obj.whitespace('value'),
+          queryTokenizer: Bloodhound.tokenizers.whitespace,
+          rateLimitWait: 500,
+          limit: 15,
+          remote: {
+            url: '/api/' + asmc.organisation + '/search?q=%QUERY'
+          }
+        });
+
+        customers.initialize();
+
+        $('#remote .typeahead').typeahead({
+          minLength: 3,
+          highlight: true,
+        }, {
+          name: 'customers',
+          displayKey: 'name',
+          templates: {
+            empty: "<div class='tt-suggestion no-data'><p>" + asmc.l18n['search:noData'] + "</div>"
+          },
+          source: customers.ttAdapter()
+        }
+        ).on('typeahead:selected', function (obj, datum) {
+          window.open(datum.url, '_blank');
+        })
+          .focus(function () {
+            $("#remote").addClass("focus");
+          })
+          .focusout(function () {
+            $("#remote").removeClass("focus");
+          });
+
+        // A nice keyboard shortcut for easy access for the search box
+        // jquery hotkeys might be interesting if we want to extend keyboard support.
+        window.onkeydown = function (e) {
+          e = e || window.event;
+          var k = e.keyCode || e.which;
+          switch (k) {
+            case 83: // 'S'
+              if (e.ctrlKey) {
+                $('#remote .typeahead').focus();
+                $('html, body').animate({
+                  scrollTop: 0
+                }, 500);
+                return false;
+              }
+          }
+          return true;
+        };
+      });
+    </script>
+
+	
+<style>
+    .in-progress {
+      background-color: #FDF4B0;
+      border : solid 1px #E2DE7B;
+      border-radius: 3px;
+      padding: 2px 4px;
+      font-weight: bold;
+      color: grey;
+    }
+    .container {width:1000px;}
+
+    input.search-query {
+      padding-left:26px;
+    }
+
+    .campaign-search {
+      position: relative;
+    }
+
+    div.campaign-search:before {
+      display: block;
+      width: 14px;
+      height: 14px;
+      content: "\e003";
+      font-family: 'Glyphicons Halflings';
+      background-position: -48px 0;
+      position: absolute;
+      top:8px;
+      left:8px;
+      opacity: .5;
+      z-index: 1000;
+    }
+
+    div.campaign-search + .tooltip > .tooltip-inner {
+      background-color: #363936;
+      color: white;
+      padding: 15px;
+      font-size: 12px;
+    }
+
+    .transparent {
+      background-color: transparent;
+      border:none;
+      padding-left: 1px;
+    }
+
+  </style>
+
+	
+<script type="text/javascript">
+    $(document).ready(function(){
+      $('.campaign-search').tooltip();
+    });
+  </script>
+
+	
+<style>
+        #banner-container {
+  background-color: #d7d7d7;
+  padding: 40px;
+  position: fixed;
+  bottom: 0;
+  display: flex;
+  width: 980px;
+  z-index: 1050;
+}
+#banner-container > * {
+  margin-left: 10px;
+  margin-right: 10px;
+}
+      </style>
+
+	
+</head>
+<body data-lift-session-id="F955716860649QSQ231" data-lift-gc="F955716860652MCTDMD">
+
+<div>
+    
+
+    <div class="container" id="container">
+
+      
+
+      <div style="clear:both"></div>
+
+      
+      <div class="content" style="margin-top:0px">
+        
+        <div>
+          </div>
+        
+        <div class="header">
+          
+          <div class="asm_top_menu">
+            <ul class="tabs">
+              <li class="first_tab plain_tab">
+            <a href="/organisation/646c5ffae49ebe10c9e40ef0" target="_self">Home</a>
+          </li><li class="plain_tab">
+            <a href="/organisation/646c5ffae49ebe10c9e40ef0/marketingplanning/" target="_self">Marketing Planner Dashboard</a>
+          </li><li class="plain_tab">
+            <a href="/organisation/646c5ffae49ebe10c9e40ef0/reporting/" target="_self">Reports</a>
+          </li><li class="plain_tab">
+            <a href="/organisation/646c5ffae49ebe10c9e40ef0/cm/" target="_self">Campaign Manager</a>
+          </li><li class="plain_tab">
+            <a href="https://mc.veact.net" target="_blank">VLP</a>
+          </li><li class="plain_tab">
+            <a href="/organisation/646c5ffae49ebe10c9e40ef0/print-templates/" target="_self">Print Templates</a>
+          </li><li class="plain_tab">
+            <a href="/organisation/646c5ffae49ebe10c9e40ef0/account/" target="_self">Account</a>
+          </li>
+              
+              <li class="asm_top_menu_settings">
+                <span>
+                  User
+                </span>
+                <ul class="dropdown span-2 last_tab user-menu"><li> <a href="/user_mgt/logout">Logout</a></li></ul>
+              </li>
+            </ul>
+          </div>
+          
+          <h1 style="display:none">Veact After-Sales Marketing Cockpit (ASMC)</h1>
+          <br>
+          
+          <a style="display:inline-block" href="/">
+            <img alt="Veact" src="/images/logo_veact_4c.png" id="logo">
+            <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="brand_specific_logo">
+          </a>
+
+          <div class="title">
+            <div>
+              Autohaus Greiner GmbH &amp; Co. KG<br>
+            </div>
+            <img src="/images/ajax-loader.gif" style="display:none; margin-bottom: 0px; margin-left: 5px" id="ajax-loader" alt="">
+            <div class="search">
+  
+
+  <div id="remote">
+    <i class="fa fa-search"></i>
+    <span class="twitter-typeahead" style="position: relative; display: inline-block; direction: ltr;"><input type="text" class="customersearchfield typeahead legacy-prepend-top-margin tt-hint" readonly="" autocomplete="off" spellcheck="false" tabindex="-1" style="position: absolute; top: 0px; left: 0px; border-color: transparent; box-shadow: none; opacity: 1; background: none 0% 0% / auto repeat scroll padding-box border-box rgb(255, 255, 255);"><input placeholder="Search (Ctrl + S)" type="text" class="customersearchfield typeahead legacy-prepend-top-margin tt-input" autocomplete="off" spellcheck="false" dir="auto" style="position: relative; vertical-align: top; background-color: transparent;"><pre aria-hidden="true" style="position: absolute; visibility: hidden; white-space: pre; font-family: &quot;Lucida Sans&quot;, &quot;Lucida Sans Unicode&quot;, &quot;Lucida Grande&quot;, &quot;DejaVu Sans&quot;, &quot;Bitstream Vera Sans&quot;, &quot;Liberation Sans&quot;, Verdana, &quot;Verdana Ref&quot;, Corbel, sans-serif; font-size: 14px; font-style: normal; font-variant: normal; font-weight: 700; word-spacing: 0px; letter-spacing: 0px; text-indent: 0px; text-rendering: auto; text-transform: none;"></pre><span class="tt-dropdown-menu" style="position: absolute; top: 100%; left: 0px; z-index: 100; display: none; right: auto;"><div class="tt-dataset-customers"></div></span></span>
+  </div>
+</div>
+          </div>
+        </div> 
+
+        <div style="clear:both"></div>
+
+        
+        <div style="min-height: 45px;" class="dialogue_box last" id="page-title">
+          <h2 class="pageTitle">
+            Campaign Manager
+            
+          </h2>
+          <span id="pageSubTitle"></span>
+        </div>
+        
+        <div class="notice_box" style="">
+          <div id="lift__noticesContainer__"></div><script type="text/javascript">
+// <![CDATA[
+VeactJs.improveNoticeBox();
+// ]]>
+</script>
+        </div>
+        
+        <div>
+          <div id="content" class="dialogue_box">
+  
+
+
+  <div class="append-bottom">
+    <button class="btn-veact btn-veact-blue" onclick="lift.ajax(&quot;F955716860653VJSXZN=true&quot;, null, null, null); return false;">Generate new managed campaign</button>
+    <button class="btn-veact btn-veact-orange" onclick="lift.ajax(&quot;F9557168606544KTB4G=true&quot;, null, null, null); return false;">Maintain customer data</button>
+    <div class="pull-right">
+      <div class="campaign-search form-inline" data-placement="top" title="" data-original-title="Search campaigns by a campaign name, dealer name, outlet name or campaign type.">
+      <input onblur="lift.ajax('F955716860656NIJIHH=' + encodeURIComponent(this.value), null, null, null)" onkeypress="liftUtils.lift_blurIfReturn(event)" class="form-control search-query" placeholder="Search Campaigns" type="text" value="">
+    </div>
+    </div>
+</div>
+
+<div>
+
+  <div class="cm-campaign append-bottom">
+    <div class="cm-campaign-container">
+      <div title="Hauptuntersuchung HMD April 2026 - Autohaus Greiner GmbH &amp; Co. KG" class="cm-campaign-name name">
+        <h4 class="nameControl">
+          <span class="hideElem" name="isTestCampaign"><span class="label label-info">Test</span></span>
+          <span class="campaignName">Hauptuntersuchung HMD April 2026 - Autohaus Greiner GmbH &amp; Co. KG</span>
+        </h4>
+      </div> 
+      <div class="cm-campaign-channels channels">
+        <span name="channels"> <span class="glyphicon glyphicon-send text-primary" aria-hidden="true"></span><span> </span><span class="glyphicon glyphicon-earphone text-primary" aria-hidden="true"></span><span> </span><span class="glyphicon glyphicon-envelope text-primary" aria-hidden="true"></span> </span>
+      </div>
+      <div class="cm-campaign-status">
+        <div class="label label-success cm-campaign-status-label">Review</div>
+      </div>
+      <div class="cm-campaign-invoicing">
+        
+      </div>
+      <div class="cm-campaign-actions actions">
+        
+        <a name="manage" href="/organisation/646c5ffae49ebe10c9e40ef0/cm/campaign/6997a931806676468760b9bf/review?F955716860661C1Z2RT=_" role="button" class="btn btn-veact btn-veact-blue btn-veact-small">Manage</a>
+        
+        
+      </div>
+
+    </div> 
+    <div class="cm-children-campaign-container">
+      
+    </div>
+  </div><div class="cm-campaign append-bottom">
+    <div class="cm-campaign-container">
+      <div title="Inspektion HMD April 2026 - Autohaus Greiner GmbH &amp; Co. KG" class="cm-campaign-name name">
+        <h4 class="nameControl">
+          <span class="hideElem" name="isTestCampaign"><span class="label label-info">Test</span></span>
+          <span class="campaignName">Inspektion HMD April 2026 - Autohaus Greiner GmbH &amp; Co. KG</span>
+        </h4>
+      </div> 
+      <div class="cm-campaign-channels channels">
+        <span name="channels"> <span class="glyphicon glyphicon-send text-primary" aria-hidden="true"></span><span> </span><span class="glyphicon glyphicon-earphone text-primary" aria-hidden="true"></span><span> </span><span class="glyphicon glyphicon-envelope text-primary" aria-hidden="true"></span> </span>
+      </div>
+      <div class="cm-campaign-status">
+        <div class="label label-success cm-campaign-status-label">Review</div>
+      </div>
+      <div class="cm-campaign-invoicing">
+        
+      </div>
+      <div class="cm-campaign-actions actions">
+        
+        <a name="manage" href="/organisation/646c5ffae49ebe10c9e40ef0/cm/campaign/6997a931806676468760b9c3/review?F955716860663T1LAPM=_" role="button" class="btn btn-veact btn-veact-blue btn-veact-small">Manage</a>
+        
+        
+      </div>
+
+    </div> 
+    <div class="cm-children-campaign-container">
+      
+    </div>
+  </div><div class="cm-campaign append-bottom">
+    <div class="cm-campaign-container">
+      <div title="Hauptuntersuchung Opel April 2026 - Autohaus Greiner GmbH &amp; Co. KG" class="cm-campaign-name name">
+        <h4 class="nameControl">
+          <span class="hideElem" name="isTestCampaign"><span class="label label-info">Test</span></span>
+          <span class="campaignName">Hauptuntersuchung Opel April 2026 - Autohaus Greiner GmbH &amp; Co. KG</span>
+        </h4>
+      </div> 
+      <div class="cm-campaign-channels channels">
+        <span name="channels"> <span class="glyphicon glyphicon-send text-primary" aria-hidden="true"></span><span> </span><span class="glyphicon glyphicon-earphone text-primary" aria-hidden="true"></span><span> </span><span class="glyphicon glyphicon-envelope text-primary" aria-hidden="true"></span> </span>
+      </div>
+      <div class="cm-campaign-status">
+        <div class="label label-success cm-campaign-status-label">Review</div>
+      </div>
+      <div class="cm-campaign-invoicing">
+        
+      </div>
+      <div class="cm-campaign-actions actions">
+        
+        <a name="manage" href="/organisation/646c5ffae49ebe10c9e40ef0/cm/campaign/6997a932806676468760b9c7/review?F955716860665SWNYX0=_" role="button" class="btn btn-veact btn-veact-blue btn-veact-small">Manage</a>
+        
+        
+      </div>
+
+    </div> 
+    <div class="cm-children-campaign-container">
+      
+    </div>
+  </div><div class="cm-campaign append-bottom">
+    <div class="cm-campaign-container">
+      <div title="Inspektion Opel April 2026 - Autohaus Greiner GmbH &amp; Co. KG" class="cm-campaign-name name">
+        <h4 class="nameControl">
+          <span class="hideElem" name="isTestCampaign"><span class="label label-info">Test</span></span>
+          <span class="campaignName">Inspektion Opel April 2026 - Autohaus Greiner GmbH &amp; Co. KG</span>
+        </h4>
+      </div> 
+      <div class="cm-campaign-channels channels">
+        <span name="channels"> <span class="glyphicon glyphicon-send text-primary" aria-hidden="true"></span><span> </span><span class="glyphicon glyphicon-earphone text-primary" aria-hidden="true"></span><span> </span><span class="glyphicon glyphicon-envelope text-primary" aria-hidden="true"></span> </span>
+      </div>
+      <div class="cm-campaign-status">
+        <div class="label label-success cm-campaign-status-label">Review</div>
+      </div>
+      <div class="cm-campaign-invoicing">
+        
+      </div>
+      <div class="cm-campaign-actions actions">
+        
+        <a name="manage" href="/organisation/646c5ffae49ebe10c9e40ef0/cm/campaign/6997a932806676468760b9cb/review?F955716860667CLH4X2=_" role="button" class="btn btn-veact btn-veact-blue btn-veact-small">Manage</a>
+        
+        
+      </div>
+
+    </div> 
+    <div class="cm-children-campaign-container">
+      
+    </div>
+  </div><div class="cm-campaign append-bottom">
+    <div class="cm-campaign-container">
+      <div title="Hauptuntersuchung HMD March 2026 - Autohaus Greiner GmbH &amp; Co. KG" class="cm-campaign-name name">
+        <h4 class="nameControl">
+          <span class="hideElem" name="isTestCampaign"><span class="label label-info">Test</span></span>
+          <span class="campaignName">Hauptuntersuchung HMD March 2026 - Autohaus Greiner GmbH &amp; Co. KG</span>
+        </h4>
+      </div> 
+      <div class="cm-campaign-channels channels">
+        <span name="channels"> <span class="glyphicon glyphicon-send text-primary" aria-hidden="true"></span><span> </span><span class="glyphicon glyphicon-earphone text-primary" aria-hidden="true"></span><span> </span><span class="glyphicon glyphicon-envelope text-primary" aria-hidden="true"></span> </span>
+      </div>
+      <div class="cm-campaign-status">
+        <div class="label label-success cm-campaign-status-label">Followup</div>
+      </div>
+      <div class="cm-campaign-invoicing">
+        
+      </div>
+      <div class="cm-campaign-actions actions">
+        
+        <a name="manage" href="/organisation/646c5ffae49ebe10c9e40ef0/cm/campaign/696f030240763019f719310b/review?F95571686066924MBUN=_" role="button" class="btn btn-veact btn-veact-blue btn-veact-small">Manage</a>
+        
+        
+      </div>
+
+    </div> 
+    <div class="cm-children-campaign-container">
+      
+    </div>
+  </div><div class="cm-campaign append-bottom">
+    <div class="cm-campaign-container">
+      <div title="Inspektion HMD March 2026 - Autohaus Greiner GmbH &amp; Co. KG" class="cm-campaign-name name">
+        <h4 class="nameControl">
+          <span class="hideElem" name="isTestCampaign"><span class="label label-info">Test</span></span>
+          <span class="campaignName">Inspektion HMD March 2026 - Autohaus Greiner GmbH &amp; Co. KG</span>
+        </h4>
+      </div> 
+      <div class="cm-campaign-channels channels">
+        <span name="channels"> <span class="glyphicon glyphicon-send text-primary" aria-hidden="true"></span><span> </span><span class="glyphicon glyphicon-earphone text-primary" aria-hidden="true"></span><span> </span><span class="glyphicon glyphicon-envelope text-primary" aria-hidden="true"></span> </span>
+      </div>
+      <div class="cm-campaign-status">
+        <div class="label label-success cm-campaign-status-label">Followup</div>
+      </div>
+      <div class="cm-campaign-invoicing">
+        
+      </div>
+      <div class="cm-campaign-actions actions">
+        
+        <a name="manage" href="/organisation/646c5ffae49ebe10c9e40ef0/cm/campaign/696f030240763019f719310f/review?F955716860671MPBXLL=_" role="button" class="btn btn-veact btn-veact-blue btn-veact-small">Manage</a>
+        
+        
+      </div>
+
+    </div> 
+    <div class="cm-children-campaign-container">
+      
+    </div>
+  </div><div class="cm-campaign append-bottom">
+    <div class="cm-campaign-container">
+      <div title="Hauptuntersuchung Opel March 2026 - Autohaus Greiner GmbH &amp; Co. KG" class="cm-campaign-name name">
+        <h4 class="nameControl">
+          <span class="hideElem" name="isTestCampaign"><span class="label label-info">Test</span></span>
+          <span class="campaignName">Hauptuntersuchung Opel March 2026 - Autohaus Greiner GmbH &amp; Co. KG</span>
+        </h4>
+      </div> 
+      <div class="cm-campaign-channels channels">
+        <span name="channels"> <span class="glyphicon glyphicon-send text-primary" aria-hidden="true"></span><span> </span><span class="glyphicon glyphicon-earphone text-primary" aria-hidden="true"></span><span> </span><span class="glyphicon glyphicon-envelope text-primary" aria-hidden="true"></span> </span>
+      </div>
+      <div class="cm-campaign-status">
+        <div class="label label-success cm-campaign-status-label">Followup</div>
+      </div>
+      <div class="cm-campaign-invoicing">
+        
+      </div>
+      <div class="cm-campaign-actions actions">
+        
+        <a name="manage" href="/organisation/646c5ffae49ebe10c9e40ef0/cm/campaign/696f030340763019f7193113/review?F955716860673AXCXV0=_" role="button" class="btn btn-veact btn-veact-blue btn-veact-small">Manage</a>
+        
+        
+      </div>
+
+    </div> 
+    <div class="cm-children-campaign-container">
+      
+    </div>
+  </div><div class="cm-campaign append-bottom">
+    <div class="cm-campaign-container">
+      <div title="Inspektion Opel March 2026 - Autohaus Greiner GmbH &amp; Co. KG" class="cm-campaign-name name">
+        <h4 class="nameControl">
+          <span class="hideElem" name="isTestCampaign"><span class="label label-info">Test</span></span>
+          <span class="campaignName">Inspektion Opel March 2026 - Autohaus Greiner GmbH &amp; Co. KG</span>
+        </h4>
+      </div> 
+      <div class="cm-campaign-channels channels">
+        <span name="channels"> <span class="glyphicon glyphicon-send text-primary" aria-hidden="true"></span><span> </span><span class="glyphicon glyphicon-earphone text-primary" aria-hidden="true"></span><span> </span><span class="glyphicon glyphicon-envelope text-primary" aria-hidden="true"></span> </span>
+      </div>
+      <div class="cm-campaign-status">
+        <div class="label label-success cm-campaign-status-label">Followup</div>
+      </div>
+      <div class="cm-campaign-invoicing">
+        
+      </div>
+      <div class="cm-campaign-actions actions">
+        
+        <a name="manage" href="/organisation/646c5ffae49ebe10c9e40ef0/cm/campaign/696f030340763019f7193117/review?F955716860675OIHOF2=_" role="button" class="btn btn-veact btn-veact-blue btn-veact-small">Manage</a>
+        
+        
+      </div>
+
+    </div> 
+    <div class="cm-children-campaign-container">
+      
+    </div>
+  </div><div class="cm-campaign append-bottom">
+    <div class="cm-campaign-container">
+      <div title="Hauptuntersuchung HMD February 2026 - Autohaus Greiner GmbH &amp; Co. KG" class="cm-campaign-name name">
+        <h4 class="nameControl">
+          <span class="hideElem" name="isTestCampaign"><span class="label label-info">Test</span></span>
+          <span class="campaignName">Hauptuntersuchung HMD February 2026 - Autohaus Greiner GmbH &amp; Co. KG</span>
+        </h4>
+      </div> 
+      <div class="cm-campaign-channels channels">
+        <span name="channels"> <span class="glyphicon glyphicon-send text-primary" aria-hidden="true"></span><span> </span><span class="glyphicon glyphicon-earphone text-primary" aria-hidden="true"></span><span> </span><span class="glyphicon glyphicon-envelope text-primary" aria-hidden="true"></span> </span>
+      </div>
+      <div class="cm-campaign-status">
+        <div class="label label-success cm-campaign-status-label">Followup</div>
+      </div>
+      <div class="cm-campaign-invoicing">
+        
+      </div>
+      <div class="cm-campaign-actions actions">
+        
+        <a name="manage" href="/organisation/646c5ffae49ebe10c9e40ef0/cm/campaign/6949f4478ff44129380bbe5e/review?F955716860677HMAWNN=_" role="button" class="btn btn-veact btn-veact-blue btn-veact-small">Manage</a>
+        
+        
+      </div>
+
+    </div> 
+    <div class="cm-children-campaign-container">
+      
+    </div>
+  </div><div class="cm-campaign append-bottom">
+    <div class="cm-campaign-container">
+      <div title="Inspektion HMD February 2026 - Autohaus Greiner GmbH &amp; Co. KG" class="cm-campaign-name name">
+        <h4 class="nameControl">
+          <span class="hideElem" name="isTestCampaign"><span class="label label-info">Test</span></span>
+          <span class="campaignName">Inspektion HMD February 2026 - Autohaus Greiner GmbH &amp; Co. KG</span>
+        </h4>
+      </div> 
+      <div class="cm-campaign-channels channels">
+        <span name="channels"> <span class="glyphicon glyphicon-send text-primary" aria-hidden="true"></span><span> </span><span class="glyphicon glyphicon-earphone text-primary" aria-hidden="true"></span><span> </span><span class="glyphicon glyphicon-envelope text-primary" aria-hidden="true"></span> </span>
+      </div>
+      <div class="cm-campaign-status">
+        <div class="label label-success cm-campaign-status-label">Followup</div>
+      </div>
+      <div class="cm-campaign-invoicing">
+        
+      </div>
+      <div class="cm-campaign-actions actions">
+        
+        <a name="manage" href="/organisation/646c5ffae49ebe10c9e40ef0/cm/campaign/6949f4478ff44129380bbe62/review?F955716860679HHCGOU=_" role="button" class="btn btn-veact btn-veact-blue btn-veact-small">Manage</a>
+        
+        
+      </div>
+
+    </div> 
+    <div class="cm-children-campaign-container">
+      
+    </div>
+  </div> 
+
+  <div aria-hidden="true" role="dialog" data-keyboard="false" tabindex="-1" id="preview-invoice" class="modal fade">
+    <div role="document" class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+          <div class="modal-header">
+              <h4 class="modal-title"><span>Rechnung</span></h4>
+          </div>
+          <div class="modal-body">
+              <div id="invoice-content"></div>
+          </div>
+          <div class="modal-footer">
+              <button data-dismiss="modal" class="btn btn-secondary" id="close">
+                  Cancel
+              </button>
+          </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dataTables_wrapper">
+  <div class="dataTables_info">
+    <span class="records">Displaying 1-10 of 16</span>
+  </div>
+  <div class="dataTables_paginate">
+    <span class="first"><a class="paginate_button disabled">First</a></span>
+    <span class="prev"><a class="paginate_button disabled">Prev</a></span>
+    <span class="zoomed-pages"><a class="paginate_button current">1</a><a class="paginate_button" href="/organisation/646c5ffae49ebe10c9e40ef0/cm/?offset=10&amp;search=">2</a></span>
+    <span class="next"><a class="paginate_button" href="/organisation/646c5ffae49ebe10c9e40ef0/cm/?offset=10&amp;search=">Next</a></span>
+    <span class="last"><a class="paginate_button" href="/organisation/646c5ffae49ebe10c9e40ef0/cm/?offset=10&amp;search=">Last</a></span>
+  </div>
+</div>
+
+</div>
+        </div>
+      </div>
+      
+      <div class="footer" id="footer">
+        
+        <h5 class="alt">
+          <span></span><span> The VEACT After-Sales Marketing Cockpit and all contents are copyright</span><span> 2012-2026</span><span> VEACT GmbH</span>
+          <small>2026.02.19-162544-3614218</small>
+          <span></span><a href="javascript://" onclick="jQuery('#'+&quot;jqueryStash&quot;).html(&quot;&lt;div id=\&quot;nqTSaLSqXswKiTto\&quot; name=\&quot;bootstrapDialog\&quot; class=\&quot;modal fade asmcBsPopupDialog\&quot; tabindex=\&quot;-1\&quot; role=\&quot;dialog\&quot; aria-labelledby=\&quot;myModalLabel\&quot; aria-hidden=\&quot;true\&quot;&gt;\u000a      &lt;style&gt;\u000a        .ui-multiselect { width:300px !important }\u000a      &lt;/style&gt;\u000a      &lt;div class=\&quot;modal-dialog\&quot;&gt;\u000a        &lt;div style=\&quot;width:600px\&quot; class=\&quot;modal-content asmcBsPopupDialogWrap\&quot;&gt;\u000a\u000a          &lt;div class=\&quot;modal-header asmcBsPopupDialogHeader\&quot;&gt;\u000a            &lt;button type=\&quot;button\&quot; class=\&quot;close asmcBsPopupDialogClose\&quot; data-dismiss=\&quot;modal\&quot;&gt;\u000a              &lt;span aria-hidden=\&quot;true\&quot;&gt;\u000a                \u00d7\u000a              &lt;/span&gt;\u000a              &lt;span class=\&quot;sr-only\&quot;&gt;Close&lt;/span&gt;\u000a            &lt;/button&gt;\u000a            &lt;h4 style=\&quot;text-align:center;font-weight:bold;\&quot; class=\&quot;modal-title asmcBsPopupDialogTitleBar\&quot; id=\&quot;myModalLabel\&quot;&gt;\u000a              &lt;span name=\&quot;titleGoesHere\&quot;&gt;Cookie Preferences&lt;/span&gt;\u000a            &lt;/h4&gt;\u000a          &lt;/div&gt;\u000a          \u000a          &lt;div style=\&quot;margin: 15px;\&quot; name=\&quot;grayBox\&quot;&gt;\u000a            &lt;h3&gt;&lt;span name=\&quot;bigTitle\&quot;&gt;&lt;/span&gt;&lt;/h3&gt;\u000a            &lt;h5&gt;&lt;span style=\&quot;font-size: small;\&quot; name=\&quot;subTitle\&quot;&gt;The following panel allows you to customize your consent preferences for any tracking technology used to help us achieve the features and activities described below. To learn more about how these trackers help us and how they work, check the cookie policy. You can review and change your choices at any time.&lt;/span&gt;&lt;/h5&gt;\u000a          &lt;/div&gt;\u000a          &lt;div class=\&quot;modal-body asmcBsPopupDialogBody\&quot;&gt;\u000a            &lt;span id=\&quot;bootstrap-dialog-error\&quot;&gt;&lt;/span&gt;\u000a            &lt;div&gt;\u000a              &lt;div id=\&quot;bootstrapDialogContent\&quot;&gt;&lt;head&gt;&lt;style&gt;\u000a        .cookie-form {\u000a  display: grid;\u000a  grid-template-areas:\u000a    \u0027title title\u0027\u000a    \u0027desc choice\u0027;\u000a    grid-column-gap: 50px;\u000a}\u000a.cookie-form-title {grid-area: title; font-weight: bold; margin-left: 20px;}\u000a.cookie-form-desc {grid-area: desc;}\u000a.cookie-form-choice {grid-area: choice;}\u000a\u000a      &lt;/style&gt;&lt;/head&gt;&lt;div class=\&quot;cookie-form\&quot;&gt;\u000a        &lt;h4 class=\&quot;cookie-form-title\&quot;&gt;Strictly necessary&lt;/h4&gt;\u000a        &lt;text class=\&quot;cookie-form-desc\&quot;&gt;These trackers are used for activities that are strictly necessary to operate or deliver the service you requested from us and, therefore, do not require you to consent.&lt;/text&gt;\u000a        &lt;div class=\&quot;cookie-form-choice\&quot;&gt;&lt;input disabled=\&quot;\&quot; style=\&quot;width:auto;\&quot; id=\&quot;F955716860686BBNGDG\&quot; onclick=\&quot;lift.ajax(\u0027F955716860683CHMFRI=\u0027 + encodeURIComponent(&amp;quot;&amp;quot;), null, null, null)\&quot; checked=\&quot;checked\&quot; type=\&quot;radio\&quot; name=\&quot;F955716860681M5QHIC\&quot; value=\&quot;F955716860682OC1F5J\&quot;&gt;&lt;label for=\&quot;F955716860686BBNGDG\&quot; style=\&quot;float:none;width:auto;margin:5px;\&quot;&gt;Accept&lt;/label&gt;&lt;input disabled=\&quot;\&quot; style=\&quot;width:auto;\&quot; id=\&quot;F955716860687FVZFCL\&quot; onclick=\&quot;lift.ajax(\u0027F955716860685NCCNIY=\u0027 + encodeURIComponent(&amp;quot;&amp;quot;), null, null, null)\&quot; type=\&quot;radio\&quot; name=\&quot;F955716860681M5QHIC\&quot; value=\&quot;F95571686068403JZ3F\&quot;&gt;&lt;label for=\&quot;F955716860687FVZFCL\&quot; style=\&quot;float:none;width:auto;margin:5px;\&quot;&gt;Reject&lt;/label&gt;&lt;/div&gt;\u000a      &lt;/div&gt;&lt;div class=\&quot;cookie-form\&quot;&gt;\u000a        &lt;h4 class=\&quot;cookie-form-title\&quot;&gt;Basic interactions &amp;amp; functionalities&lt;/h4&gt;\u000a        &lt;text class=\&quot;cookie-form-desc\&quot;&gt;These trackers enable basic interactions and functionalities that allow you to access selected features of our service and facilitate your communication with us.&lt;/text&gt;\u000a        &lt;div class=\&quot;cookie-form-choice\&quot;&gt;&lt;input style=\&quot;width:auto;\&quot; id=\&quot;F955716860693VKJUGU\&quot; onclick=\&quot;lift.ajax(\u0027F95571686069054RLMP=\u0027 + encodeURIComponent(&amp;quot;&amp;quot;), null, null, null)\&quot; type=\&quot;radio\&quot; name=\&quot;F955716860688UV0YSF\&quot; value=\&quot;F955716860689Q5EIAA\&quot;&gt;&lt;label for=\&quot;F955716860693VKJUGU\&quot; style=\&quot;float:none;width:auto;margin:5px;\&quot;&gt;Accept&lt;/label&gt;&lt;input style=\&quot;width:auto;\&quot; id=\&quot;F955716860694ETBB0O\&quot; onclick=\&quot;lift.ajax(\u0027F955716860692BKLDQW=\u0027 + encodeURIComponent(&amp;quot;&amp;quot;), null, null, null)\&quot; checked=\&quot;checked\&quot; type=\&quot;radio\&quot; name=\&quot;F955716860688UV0YSF\&quot; value=\&quot;F955716860691YP2ZBI\&quot;&gt;&lt;label for=\&quot;F955716860694ETBB0O\&quot; style=\&quot;float:none;width:auto;margin:5px;\&quot;&gt;Reject&lt;/label&gt;&lt;/div&gt;\u000a      &lt;/div&gt;&lt;div class=\&quot;cookie-form\&quot;&gt;\u000a        &lt;h4 class=\&quot;cookie-form-title\&quot;&gt;Experience enhancement&lt;/h4&gt;\u000a        &lt;text class=\&quot;cookie-form-desc\&quot;&gt;These trackers help us to provide a personalized user experience by improving the quality of your preference management options, and by enabling the interaction with external networks and platforms.&lt;/text&gt;\u000a        &lt;div class=\&quot;cookie-form-choice\&quot;&gt;&lt;input style=\&quot;width:auto;\&quot; id=\&quot;F955716860700KQHJU3\&quot; onclick=\&quot;lift.ajax(\u0027F955716860697V5EDBA=\u0027 + encodeURIComponent(&amp;quot;&amp;quot;), null, null, null)\&quot; type=\&quot;radio\&quot; name=\&quot;F955716860695WOA20V\&quot; value=\&quot;F955716860696FLCQ4D\&quot;&gt;&lt;label for=\&quot;F955716860700KQHJU3\&quot; style=\&quot;float:none;width:auto;margin:5px;\&quot;&gt;Accept&lt;/label&gt;&lt;input style=\&quot;width:auto;\&quot; id=\&quot;F955716860701KRV5MK\&quot; onclick=\&quot;lift.ajax(\u0027F955716860699VHTVWP=\u0027 + encodeURIComponent(&amp;quot;&amp;quot;), null, null, null)\&quot; checked=\&quot;checked\&quot; type=\&quot;radio\&quot; name=\&quot;F955716860695WOA20V\&quot; value=\&quot;F95571686069811IZMP\&quot;&gt;&lt;label for=\&quot;F955716860701KRV5MK\&quot; style=\&quot;float:none;width:auto;margin:5px;\&quot;&gt;Reject&lt;/label&gt;&lt;/div&gt;\u000a      &lt;/div&gt;&lt;div class=\&quot;cookie-form\&quot;&gt;\u000a        &lt;h4 class=\&quot;cookie-form-title\&quot;&gt;Measurement&lt;/h4&gt;\u000a        &lt;text class=\&quot;cookie-form-desc\&quot;&gt;These trackers help us to measure traffic and analyze your behavior with the goal of improving our service.&lt;/text&gt;\u000a        &lt;div class=\&quot;cookie-form-choice\&quot;&gt;&lt;input style=\&quot;width:auto;\&quot; id=\&quot;F955716860707M0KBH0\&quot; onclick=\&quot;lift.ajax(\u0027F955716860704NBRDGI=\u0027 + encodeURIComponent(&amp;quot;&amp;quot;), null, null, null)\&quot; type=\&quot;radio\&quot; name=\&quot;F955716860702CH1HAN\&quot; value=\&quot;F955716860703VDY00K\&quot;&gt;&lt;label for=\&quot;F955716860707M0KBH0\&quot; style=\&quot;float:none;width:auto;margin:5px;\&quot;&gt;Accept&lt;/label&gt;&lt;input style=\&quot;width:auto;\&quot; id=\&quot;F95571686070832KRGY\&quot; onclick=\&quot;lift.ajax(\u0027F955716860706I3K4HH=\u0027 + encodeURIComponent(&amp;quot;&amp;quot;), null, null, null)\&quot; checked=\&quot;checked\&quot; type=\&quot;radio\&quot; name=\&quot;F955716860702CH1HAN\&quot; value=\&quot;F955716860705URKVII\&quot;&gt;&lt;label for=\&quot;F95571686070832KRGY\&quot; style=\&quot;float:none;width:auto;margin:5px;\&quot;&gt;Reject&lt;/label&gt;&lt;/div&gt;\u000a      &lt;/div&gt;&lt;/div&gt;\u000a            &lt;/div&gt;\u000a          &lt;/div&gt;\u000a          \u000a          &lt;div class=\&quot;asmcBsPopupDialogFooter\&quot;&gt;\u000a            &lt;span name=\&quot;submit\&quot;&gt;&lt;button class=\&quot;btn btn-primary\&quot; onclick=\&quot;lift.ajax(&amp;quot;F955716860709ZRGZJI=true&amp;quot;, null, null, null); return false;\&quot;&gt;Ok&lt;/button&gt;&lt;/span&gt;\u000a            &lt;span name=\&quot;cancel\&quot;&gt;&lt;button class=\&quot;btn btn-default\&quot; onclick=\&quot;lift.ajax(&amp;quot;F955716860710HDQJGH=true&amp;quot;, null, null, null); return false;\&quot;&gt;Cancel&lt;/button&gt;&lt;/span&gt;\u000a          &lt;/div&gt;\u000a        &lt;/div&gt;\u000a      &lt;/div&gt;\u000a    &lt;/div&gt;&quot;);
+jQuery('#'+&quot;bootstrapDialogContent&quot;).html(&quot;&lt;head&gt;&lt;style&gt;\u000a        .cookie-form {\u000a  display: grid;\u000a  grid-template-areas:\u000a    \u0027title title\u0027\u000a    \u0027desc choice\u0027;\u000a    grid-column-gap: 50px;\u000a}\u000a.cookie-form-title {grid-area: title; font-weight: bold; margin-left: 20px;}\u000a.cookie-form-desc {grid-area: desc;}\u000a.cookie-form-choice {grid-area: choice;}\u000a\u000a      &lt;/style&gt;&lt;/head&gt;&lt;div class=\&quot;cookie-form\&quot;&gt;\u000a        &lt;h4 class=\&quot;cookie-form-title\&quot;&gt;Strictly necessary&lt;/h4&gt;\u000a        &lt;text class=\&quot;cookie-form-desc\&quot;&gt;These trackers are used for activities that are strictly necessary to operate or deliver the service you requested from us and, therefore, do not require you to consent.&lt;/text&gt;\u000a        &lt;div class=\&quot;cookie-form-choice\&quot;&gt;&lt;input disabled=\&quot;\&quot; style=\&quot;width:auto;\&quot; id=\&quot;F955716860686BBNGDG\&quot; onclick=\&quot;lift.ajax(\u0027F955716860683CHMFRI=\u0027 + encodeURIComponent(&amp;quot;&amp;quot;), null, null, null)\&quot; checked=\&quot;checked\&quot; type=\&quot;radio\&quot; name=\&quot;F955716860681M5QHIC\&quot; value=\&quot;F955716860682OC1F5J\&quot;&gt;&lt;label for=\&quot;F955716860686BBNGDG\&quot; style=\&quot;float:none;width:auto;margin:5px;\&quot;&gt;Accept&lt;/label&gt;&lt;input disabled=\&quot;\&quot; style=\&quot;width:auto;\&quot; id=\&quot;F955716860687FVZFCL\&quot; onclick=\&quot;lift.ajax(\u0027F955716860685NCCNIY=\u0027 + encodeURIComponent(&amp;quot;&amp;quot;), null, null, null)\&quot; type=\&quot;radio\&quot; name=\&quot;F955716860681M5QHIC\&quot; value=\&quot;F95571686068403JZ3F\&quot;&gt;&lt;label for=\&quot;F955716860687FVZFCL\&quot; style=\&quot;float:none;width:auto;margin:5px;\&quot;&gt;Reject&lt;/label&gt;&lt;/div&gt;\u000a      &lt;/div&gt;&lt;div class=\&quot;cookie-form\&quot;&gt;\u000a        &lt;h4 class=\&quot;cookie-form-title\&quot;&gt;Basic interactions &amp;amp; functionalities&lt;/h4&gt;\u000a        &lt;text class=\&quot;cookie-form-desc\&quot;&gt;These trackers enable basic interactions and functionalities that allow you to access selected features of our service and facilitate your communication with us.&lt;/text&gt;\u000a        &lt;div class=\&quot;cookie-form-choice\&quot;&gt;&lt;input style=\&quot;width:auto;\&quot; id=\&quot;F955716860693VKJUGU\&quot; onclick=\&quot;lift.ajax(\u0027F95571686069054RLMP=\u0027 + encodeURIComponent(&amp;quot;&amp;quot;), null, null, null)\&quot; type=\&quot;radio\&quot; name=\&quot;F955716860688UV0YSF\&quot; value=\&quot;F955716860689Q5EIAA\&quot;&gt;&lt;label for=\&quot;F955716860693VKJUGU\&quot; style=\&quot;float:none;width:auto;margin:5px;\&quot;&gt;Accept&lt;/label&gt;&lt;input style=\&quot;width:auto;\&quot; id=\&quot;F955716860694ETBB0O\&quot; onclick=\&quot;lift.ajax(\u0027F955716860692BKLDQW=\u0027 + encodeURIComponent(&amp;quot;&amp;quot;), null, null, null)\&quot; checked=\&quot;checked\&quot; type=\&quot;radio\&quot; name=\&quot;F955716860688UV0YSF\&quot; value=\&quot;F955716860691YP2ZBI\&quot;&gt;&lt;label for=\&quot;F955716860694ETBB0O\&quot; style=\&quot;float:none;width:auto;margin:5px;\&quot;&gt;Reject&lt;/label&gt;&lt;/div&gt;\u000a      &lt;/div&gt;&lt;div class=\&quot;cookie-form\&quot;&gt;\u000a        &lt;h4 class=\&quot;cookie-form-title\&quot;&gt;Experience enhancement&lt;/h4&gt;\u000a        &lt;text class=\&quot;cookie-form-desc\&quot;&gt;These trackers help us to provide a personalized user experience by improving the quality of your preference management options, and by enabling the interaction with external networks and platforms.&lt;/text&gt;\u000a        &lt;div class=\&quot;cookie-form-choice\&quot;&gt;&lt;input style=\&quot;width:auto;\&quot; id=\&quot;F955716860700KQHJU3\&quot; onclick=\&quot;lift.ajax(\u0027F955716860697V5EDBA=\u0027 + encodeURIComponent(&amp;quot;&amp;quot;), null, null, null)\&quot; type=\&quot;radio\&quot; name=\&quot;F955716860695WOA20V\&quot; value=\&quot;F955716860696FLCQ4D\&quot;&gt;&lt;label for=\&quot;F955716860700KQHJU3\&quot; style=\&quot;float:none;width:auto;margin:5px;\&quot;&gt;Accept&lt;/label&gt;&lt;input style=\&quot;width:auto;\&quot; id=\&quot;F955716860701KRV5MK\&quot; onclick=\&quot;lift.ajax(\u0027F955716860699VHTVWP=\u0027 + encodeURIComponent(&amp;quot;&amp;quot;), null, null, null)\&quot; checked=\&quot;checked\&quot; type=\&quot;radio\&quot; name=\&quot;F955716860695WOA20V\&quot; value=\&quot;F95571686069811IZMP\&quot;&gt;&lt;label for=\&quot;F955716860701KRV5MK\&quot; style=\&quot;float:none;width:auto;margin:5px;\&quot;&gt;Reject&lt;/label&gt;&lt;/div&gt;\u000a      &lt;/div&gt;&lt;div class=\&quot;cookie-form\&quot;&gt;\u000a        &lt;h4 class=\&quot;cookie-form-title\&quot;&gt;Measurement&lt;/h4&gt;\u000a        &lt;text class=\&quot;cookie-form-desc\&quot;&gt;These trackers help us to measure traffic and analyze your behavior with the goal of improving our service.&lt;/text&gt;\u000a        &lt;div class=\&quot;cookie-form-choice\&quot;&gt;&lt;input style=\&quot;width:auto;\&quot; id=\&quot;F955716860707M0KBH0\&quot; onclick=\&quot;lift.ajax(\u0027F955716860704NBRDGI=\u0027 + encodeURIComponent(&amp;quot;&amp;quot;), null, null, null)\&quot; type=\&quot;radio\&quot; name=\&quot;F955716860702CH1HAN\&quot; value=\&quot;F955716860703VDY00K\&quot;&gt;&lt;label for=\&quot;F955716860707M0KBH0\&quot; style=\&quot;float:none;width:auto;margin:5px;\&quot;&gt;Accept&lt;/label&gt;&lt;input style=\&quot;width:auto;\&quot; id=\&quot;F95571686070832KRGY\&quot; onclick=\&quot;lift.ajax(\u0027F955716860706I3K4HH=\u0027 + encodeURIComponent(&amp;quot;&amp;quot;), null, null, null)\&quot; checked=\&quot;checked\&quot; type=\&quot;radio\&quot; name=\&quot;F955716860702CH1HAN\&quot; value=\&quot;F955716860705URKVII\&quot;&gt;&lt;label for=\&quot;F95571686070832KRGY\&quot; style=\&quot;float:none;width:auto;margin:5px;\&quot;&gt;Reject&lt;/label&gt;&lt;/div&gt;\u000a      &lt;/div&gt;&quot;);
+jQuery('#nqTSaLSqXswKiTto').on('shown.bs.modal', function() { $(document).off(&quot;focusin.modal&quot;) });
+jQuery('#nqTSaLSqXswKiTto').modal('show');; return false;"><text>Cookie Preferences</text></a>
+          <span style="float: right; display: inline;" id="scrollBackToTop">^</span>
+        </h5>
+      </div>
+      
+      <div id="cookie_banner">
+        <div>
+          <div id="banner-container">
+      
+      <text>We and selected third parties use cookies or similar technologies for technical purposes and, with your consent, for other purposes (basic interactions &amp; functionalities, experience enhancement, measurement) as specified in the cookie policy.
+        <a href="https://veact.com/en/dataprotection/" target="_blank">Cookie Policy</a>
+      </text>
+      <button id="banner-acceptButton" onclick="lift.ajax(&quot;F955716860711VEZ51C=true&quot;, null, null, null); return false;" class="btn-veact btn-veact-blue btn-veact-small" style="font-size: 100%;">Accept All</button>
+      <button id="banner-customiseButton" onclick="lift.ajax(&quot;F955716860712T0EACH=true&quot;, null, null, null); return false;" class="btn-veact btn-veact-blue btn-veact-small">Learn more and customise</button>
+    </div>
+        </div>
+      </div>
+    </div>
+
+  <script>
+    /* ASMC-186: Remove comet watchers upon logout to prevent redirection to oauth server being cancelled by Chrome browser */
+    $('.user-menu a[href="/user_mgt/logout"]').on('click', function (s) {
+      lift_toWatch = {};
+    });
+  </script>
+
+  
+  <div id="jqueryStash"></div><script src="https://code.jquery.com/jquery-migrate-3.0.0.min.js"></script>
+
+  
+  <div>
+</div>
+
+
+
+</div><script type="text/javascript" crossorigin="anonymous" src="https://ub.veact.net/static/exception-autocapture.js?v=1.352.0"></script><script type="text/javascript" crossorigin="anonymous" src="https://ub.veact.net/static/surveys.js?v=1.352.0"></script><script type="text/javascript" crossorigin="anonymous" src="https://ub.veact.net/static/dead-clicks-autocapture.js?v=1.352.0"></script><script type="text/javascript" crossorigin="anonymous" src="https://ub.veact.net/array/phc_8SdeCBXtv3vq1XajwfKTtoDgkepLPKJzr6RHVYcKtii/config.js"></script><script src="/classpath/lift.js" type="text/javascript"></script>
+
+	<script type="text/javascript" src="/lift/page/F955716860652MCTDMD.js"></script>
+	
+
+  
+  </body></html>
