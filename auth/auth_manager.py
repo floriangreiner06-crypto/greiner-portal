@@ -9,7 +9,7 @@ Date: 2025-11-08
 import os
 import logging
 from datetime import datetime
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Tuple
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 import json
@@ -227,16 +227,10 @@ class AuthManager:
             # OU aus DN extrahieren
             ou = self._extract_ou_from_dn(user_details['dn'])
             
-            # Title aus LDAP holen
+            # Title aus LDAP holen (nur für Anzeige/Cache, nicht für Zugriff)
             ldap_title = user_details.get('title')
-            
-            # Portal-Rolle aus Title ermitteln (TAG76)
-            portal_role = get_role_from_title(ldap_title)
 
-            # Erlaubte Features für diese Rolle
-            allowed_features = get_allowed_features(portal_role)
-
-            # Rollen basierend auf OU zuweisen
+            # Rollen basierend auf OU zuweisen (für user_roles, nur admin wirkt für Zugriff)
             roles, permissions = self._get_roles_for_ou(ou)
 
             # User in Datenbank cachen/updaten
@@ -250,13 +244,20 @@ class AuthManager:
                 title=ldap_title
             )
 
-            # TAG134: Admin-Override - wenn user_roles=admin, alle Features freischalten
+            # Option B: Zugriff nur aus Portal – keine LDAP-Rolle für Berechtigung
+            # Wirksame Rolle = admin (user_roles) ODER in Rechteverwaltung zugewiesene Rolle ODER Default mitarbeiter
             if self._is_db_admin(user_id):
                 portal_role = 'admin'
                 roles = ['admin']
                 permissions = OU_ROLE_MAPPING['Geschäftsleitung']['permissions']
-                allowed_features = list(FEATURE_ACCESS.keys())  # Alle Features
+                # 'admin' in allowed_features damit can_access_feature('admin') für Rechteverwaltung/Speichern etc. True ist
+                allowed_features = ['admin'] + list(FEATURE_ACCESS.keys())
                 logger.info(f"👑 Admin-Override für {username} - alle Features freigeschaltet")
+            else:
+                override = self._get_portal_role_override(user_id)
+                portal_role = (override or 'mitarbeiter').strip() or 'mitarbeiter'
+                allowed_features = get_allowed_features(portal_role)
+                logger.info(f"✅ Login: {username} → Portal-Rolle: {portal_role} (aus {'Rechteverwaltung' if override else 'Default'})")
 
             # User-Objekt erstellen (TAG 109: company für Standort)
             user = User(
@@ -330,6 +331,27 @@ class AuthManager:
             # Fallback für unbekannte OUs: Basis-Rechte
             logger.warning(f"⚠️ Unbekannte OU: {ou} → Basis-Rechte")
             return (['user'], {'see_own_data': True})
+
+    def _get_portal_role_override(self, user_id: int):
+        """
+        Granulare Rechte: Liefert die in der Rechteverwaltung gesetzte Portal-Rolle.
+        Return: Rolle (str) oder None wenn kein Override.
+        """
+        try:
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute(
+                convert_placeholders('SELECT portal_role_override FROM users WHERE id = ?'),
+                (user_id,)
+            )
+            row = cursor.fetchone()
+            conn.close()
+            if row and row.get('portal_role_override'):
+                return row['portal_role_override'].strip()
+            return None
+        except Exception as e:
+            logger.warning(f"portal_role_override lesen: {e}")
+            return None
 
     def _is_db_admin(self, user_id: int) -> bool:
         """
@@ -471,18 +493,18 @@ class AuthManager:
                     if config['role'] == role_name:
                         permissions.update(config['permissions'])
             
-            # Title und Portal-Rolle ermitteln (TAG76)
-            from config.roles_config import get_role_from_title, get_allowed_features, FEATURE_ACCESS
+            # Option B: Portal-Rolle nur aus DB – kein LDAP-Fallback
+            from config.roles_config import get_allowed_features, FEATURE_ACCESS
             user_title = user_row['title']
-            portal_role = get_role_from_title(user_title)
-            allowed_features = get_allowed_features(portal_role)
-
-            # TAG134: Admin-Override - wenn user_roles=admin, alle Features freischalten
             if 'admin' in roles:
                 portal_role = 'admin'
                 permissions = OU_ROLE_MAPPING['Geschäftsleitung']['permissions']
-                allowed_features = list(FEATURE_ACCESS.keys())
+                allowed_features = ['admin'] + list(FEATURE_ACCESS.keys())
                 logger.info(f"👑 Admin-Override für User {user_id} - alle Features freigeschaltet")
+            else:
+                override = user_row.get('portal_role_override')
+                portal_role = (override or 'mitarbeiter').strip() or 'mitarbeiter'
+                allowed_features = get_allowed_features(portal_role)
 
             # TAG 109: Company aus LDAP holen für Standort-Default
             company = None
@@ -540,6 +562,16 @@ class AuthManager:
 
         except Exception as e:
             logger.error(f"❌ Fehler beim Loggen des Auth-Events: {str(e)}")
+
+    def change_password(self, username: str, old_password: str, new_password: str) -> Tuple[bool, Optional[str]]:
+        """
+        Ändert das AD-Passwort des Benutzers (Self-Service).
+        Das neue Passwort gilt sofort für Windows-Anmeldung und Drive.
+
+        Returns:
+            (success: bool, error_message: Optional[str])
+        """
+        return self.ldap.change_user_password(username, old_password, new_password)
     
     def logout_user(self, user: User):
         """Loggt User aus (für Audit-Trail)"""

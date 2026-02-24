@@ -1,7 +1,7 @@
 # Auth & LDAP — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-02-24 (Rechteverwaltung Modal, Organigramm-Link)
+## Letzte Aktualisierung: 2026-02-24
 
 ## Beschreibung
 
@@ -33,7 +33,7 @@ Auth umfasst LDAP/AD-Integration, RBAC, Session-Management, Rollen-Config, Dashb
 
 ## Aktueller Stand (✅ erledigt, 🔧 in Arbeit, ❌ offen)
 
-- ✅ **AD-Passwort ändern (Self-Service):** Nutzer können unter „Passwort ändern“ (User-Dropdown) ihr Active-Directory-Passwort ändern. Das neue Passwort gilt ab der nächsten Anmeldung für Windows und Drive. LDAPS (Port 636), ldap3 `ad_modify_password` (DELETE+ADD unicodePwd). Route: `/profil/passwort`, Template: `profil_passwort.html`.
+- ✅ **AD-Passwort ändern (Self-Service):** Nutzer können unter „Passwort ändern“ (User-Dropdown) ihr Active-Directory-Passwort ändern. Das neue Passwort gilt ab der nächsten Anmeldung für Windows und Drive. LDAPS (Port 636), ldap3 `ad_modify_password` (DELETE+ADD unicodePwd). Route: `/profil/passwort`, Template: `profil_passwort.html`. Erfolgs-/Fehler-Feedback direkt auf der Seite („Vom AD bestätigt“ / „vom AD-Server nicht akzeptiert“). Fehlermeldungen nutzerfreundlich übersetzt (Keys in ldap_connector, `PASSWORT_FEHLER_UEBERSETZUNG` + `_passwort_fehler_fuer_anwender()` in app.py) – keine technischen/englischen Texte im UI.
 - ✅ LDAP-Login, Rollen, RBAC, Rechte-Verwaltung im Einsatz
 - ✅ **Option B (Rechte nur aus Portal):** Zugriff wird ausschließlich in der Rechteverwaltung festgelegt. LDAP liefert nur Identität (wer darf sich anmelden). Pro User eine **Rolle** zuweisen (Dropdown „Rolle zuweisen“). „— Bitte zuweisen —“ = noch keine Rolle → Zugriff wie „mitarbeiter“ (minimal). OU/Title (AD) nur zur Info.
 - ✅ **Rollen & Feature-Zugriff:** Im Tab „Feature-Zugriff“: Block „Rollen & Feature-Zugriff“ – Rolle wählen, Features an/abwählen, speichern. Zusätzlich „Nach Feature“ (bestehende Karten).

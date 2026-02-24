@@ -107,14 +107,14 @@
                         {% if navigation_items %}
                             {% from 'macros/navigation.html' import render_navigation_item %}
                             {% for item in navigation_items %}
-                                {{ render_navigation_item(item, 0) }}
+                                {{ render_navigation_item(item, 0, loop.previtem.is_divider if loop.previtem else false) }}
                             {% endfor %}
                         {% endif %}
                     {% else %}
                         {# Fallback: Bestehende hardcoded Navigation #}
 
-                    <!-- Controlling Dropdown (inkl. Bankenspiegel) -->
-                    {% if current_user.is_authenticated and (current_user.can_access_feature('bankenspiegel') or current_user.can_access_feature('zinsen') or current_user.can_access_feature('einkaufsfinanzierung')) %}
+                    <!-- Controlling Dropdown (inkl. Bankenspiegel, OPOS) -->
+                    {% if current_user.is_authenticated and (current_user.can_access_feature('bankenspiegel') or current_user.can_access_feature('zinsen') or current_user.can_access_feature('einkaufsfinanzierung') or current_user.can_access_feature('opos')) %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="controllingDropdown" role="button" data-bs-toggle="dropdown">
                             <i class="bi bi-graph-up-arrow"></i> Controlling
@@ -152,6 +152,11 @@
                             {% if current_user.can_access_feature('controlling') or current_user.can_access_feature('admin') %}
                             <li><a class="dropdown-item" href="/controlling/afa">
                                 <i class="bi bi-calculator text-info"></i> AfA Vorführwagen/Mietwagen
+                            </a></li>
+                            {% endif %}
+                            {% if current_user.can_access_feature('opos') %}
+                            <li><a class="dropdown-item" href="/controlling/opos">
+                                <i class="bi bi-receipt-cutoff"></i> Offene Posten (OPOS)
                             </a></li>
                             {% endif %}
 
@@ -202,11 +207,7 @@
 
                             <li><hr class="dropdown-divider"></li>
 
-                            <!-- Archiv -->
-                            <li><h6 class="dropdown-header text-muted small">Archiv</h6></li>
-                            <li><a class="dropdown-item text-muted small" href="/controlling/tek/archiv">
-                                <i class="bi bi-archive"></i> TEK v1
-                            </a></li>
+                            <!-- Archiv: TEK v1 nur über DB-Navigation (navigation_items) -->
                             {% endif %}
                         </ul>
                     </li>
@@ -416,11 +417,8 @@
                             <li><a class="dropdown-item" href="/admin/organigramm">
                                 <i class="bi bi-diagram-3"></i> Organigramm
                             </a></li>
-                            <li><a class="dropdown-item" href="/admin/mitarbeiterverwaltung">
-                                <i class="bi bi-people"></i> Mitarbeiterverwaltung
-                            </a></li>
-                            <li><a class="dropdown-item" href="/urlaubsplaner/admin">
-                                <i class="bi bi-calendar-check"></i> Urlaubsplaner Admin
+                            <li><a class="dropdown-item" href="/admin/provision-config">
+                                <i class="bi bi-percent"></i> Provisionsarten
                             </a></li>
 
                             <li><hr class="dropdown-divider"></li>
@@ -477,6 +475,9 @@
                                     <i class="bi bi-shield-check"></i> Rechteverwaltung
                                 </a></li>
                                 {% endif %}
+                                <li><a class="dropdown-item" href="{{ url_for('profil_passwort') }}">
+                                    <i class="bi bi-key"></i> Passwort ändern
+                                </a></li>
                                 <li><a class="dropdown-item" href="#">
                                     <i class="bi bi-person"></i> Profil
                                 </a></li>

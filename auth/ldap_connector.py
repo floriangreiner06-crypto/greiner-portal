@@ -27,6 +27,7 @@ from typing import Optional, List, Dict, Tuple
 from pathlib import Path
 from ldap3 import Server, Connection, ALL, NTLM, SIMPLE, ALL_ATTRIBUTES
 from ldap3.core.exceptions import LDAPException, LDAPBindError
+from ldap3.extend.microsoft.modifyPassword import ad_modify_password
 
 # Logger
 logger = logging.getLogger(__name__)
@@ -276,6 +277,66 @@ class LDAPConnector:
         except Exception as e:
             logger.error(f"❌ Fehler bei User-Suche '{search_term}': {e}")
             return []
+
+    def change_user_password(self, username: str, old_password: str, new_password: str) -> Tuple[bool, Optional[str]]:
+        """
+        Ändert das AD-Passwort des Benutzers (Self-Service).
+        Erfordert LDAPS (Port 636). Das neue Passwort gilt sofort für Windows-Anmeldung und Drive.
+
+        Args:
+            username: Benutzername (mit oder ohne @domain)
+            old_password: Aktuelles Passwort
+            new_password: Neues Passwort
+
+        Returns:
+            (success: bool, error_message: Optional[str])
+        """
+        try:
+            if not username or not old_password or not new_password:
+                return (False, "felder_leer")
+            if len(new_password) < 8:
+                return (False, "passwort_zu_kurz")
+            # Username normalisieren
+            if "@" not in username:
+                domain = self.config["LDAP_SERVER"].split(".", 1)[-1]
+                username = f"{username}@{domain}"
+            # User-DN mit Service-Account holen
+            user_details = self.get_user_details(username)
+            if not user_details:
+                return (False, "benutzer_nicht_gefunden")
+            user_dn = user_details["dn"]
+            # Als Benutzer verbinden (Bind mit aktuellem Passwort)
+            conn = Connection(
+                self.server,
+                user=username,
+                password=old_password,
+                auto_bind=True,
+                raise_exceptions=True,
+            )
+            try:
+                success = ad_modify_password(conn, user_dn, new_password, old_password)
+                if success:
+                    logger.info(f"✅ Passwort geändert: {username}")
+                    return (True, None)
+                return (False, "server_abgelehnt")
+            finally:
+                conn.unbind()
+        except LDAPBindError:
+            logger.warning(f"❌ Passwortänderung fehlgeschlagen für {username}: Ungültiges aktuelles Passwort")
+            return (False, "aktuelles_passwort_falsch")
+        except LDAPException as e:
+            logger.error(f"❌ LDAP-Fehler bei Passwortänderung für {username}: {e}")
+            msg = str(e).lower()
+            if "unwillingToPerform" in msg or "will_not_perform" in msg:
+                return (False, "richtlinie_oder_verbindung")
+            if "constraintViolation" in msg or "constraint_violation" in msg or "password" in msg and "policy" in msg:
+                return (False, "passwortrichtlinie")
+            if "invalidCredentials" in msg or "invalid_credentials" in msg or "data 52e" in msg:
+                return (False, "aktuelles_passwort_falsch")
+            return (False, "verbindung_verzeichnis")
+        except Exception as e:
+            logger.error(f"❌ Fehler bei Passwortänderung für {username}: {e}")
+            return (False, "unerwarteter_fehler")
     
     def test_connection(self) -> Tuple[bool, str]:
         """

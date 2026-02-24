@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Passwort ändern - DRIVE{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-lg-6 mx-auto">
+            {% if show_success %}
+            <div class="alert alert-success d-flex align-items-center mb-4" role="alert">
+                <i class="bi bi-check-circle-fill me-3" style="font-size: 1.5rem;"></i>
+                <div>
+                    <strong>Vom Active Directory bestätigt.</strong><br>
+                    Die Passwortänderung wurde vom AD-Server akzeptiert. Das neue Passwort gilt ab der nächsten Anmeldung für <strong>Windows</strong> und das <strong>Greiner Portal (Drive)</strong>.
+                </div>
+            </div>
+            <p><a href="{{ url_for('start') }}" class="btn btn-primary"><i class="bi bi-house me-1"></i>Zur Startseite</a></p>
+            {% else %}
+            {% if error is defined and error %}
+            <div class="alert alert-danger d-flex align-items-start mb-4" role="alert">
+                <i class="bi bi-exclamation-triangle-fill me-2 mt-1"></i>
+                <div>
+                    <strong>Änderung vom AD-Server nicht akzeptiert.</strong><br>
+                    {{ error }}
+                </div>
+            </div>
+            {% endif %}
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <i class="bi bi-key me-2"></i>Passwort ändern
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-4">
+                        Hier können Sie Ihr <strong>Active-Directory-Passwort</strong> ändern.
+                        Das neue Passwort gilt ab der nächsten Anmeldung für <strong>Windows</strong> und das <strong>Greiner Portal (Drive)</strong>.
+                    </p>
+                    <form method="post" action="{{ url_for('profil_passwort') }}" autocomplete="off">
+                        <div class="mb-3">
+                            <label for="current_password" class="form-label">Aktuelles Passwort</label>
+                            <input type="password" class="form-control" id="current_password" name="current_password"
+                                   required autocomplete="current-password" placeholder="Aktuelles Passwort">
+                        </div>
+                        <div class="mb-3">
+                            <label for="new_password" class="form-label">Neues Passwort</label>
+                            <input type="password" class="form-control" id="new_password" name="new_password"
+                                   required minlength="8" autocomplete="new-password" placeholder="Mindestens 8 Zeichen">
+                            <div class="form-text">Mindestens 8 Zeichen. Beachten Sie die Passwortrichtlinie Ihres Unternehmens.</div>
+                        </div>
+                        <div class="mb-4">
+                            <label for="new_password_repeat" class="form-label">Neues Passwort wiederholen</label>
+                            <input type="password" class="form-control" id="new_password_repeat" name="new_password_repeat"
+                                   required minlength="8" autocomplete="new-password" placeholder="Wiederholung">
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check-lg me-1"></i>Passwort ändern
+                            </button>
+                            <a href="{{ url_for('start') }}" class="btn btn-outline-secondary">Abbrechen</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
