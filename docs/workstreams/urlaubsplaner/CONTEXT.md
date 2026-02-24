@@ -1,7 +1,7 @@
 # Urlaubsplaner — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-02-24 (Rechteverwaltung Modal, Embed, Testanleitung)
+## Letzte Aktualisierung: 2026-02-24 (Bugfix Genehmigen 403, Bereinigung Debug-Code)
 
 ## Projektkontext (Stand diese Woche)
 
@@ -164,6 +164,12 @@ Urlaubsplaner deckt Urlaubsanträge, Genehmigungsprozess, Chef-Übersicht, Urlau
 - ✅ **Hinweise Redundanz:** In Digitaler Personalakte (Moduldaten/Urlaub) Hinweis auf Urlaubsverwaltung; in Urlaubsplaner-Admin Hinweis auf Digitale Personalakte.
 - ✅ **Link „Digitale Personalakte bearbeiten“:** Öffnet `/admin/mitarbeiterverwaltung?embed=1&employee_id=<id>`; Personalakte wählt den Mitarbeiter automatisch (`employee_id` aus URL, `requestAnimationFrame(() => selectEmployee(id))`).
 - ✅ **Testanleitung:** `docs/TESTANLEITUNG_VANESSA_RECHTEVERWALTUNG_MITARBEITER_URLAUB.md` – für Vanessa/Test-Team: alle Änderungen (Modal, Links, Embed, Hinweise) durchspielen. Test läuft.
+
+### Bugfix: Genehmigen 403 – „Fehler beim Genehmigen“ (Margit für Susanne, 2026-02-24)
+- **Ursache:** In `vacation_approver_service.py` warf `get_team_for_approver()` eine Exception, weil in `get_team_by_manager()` und in der Admin-Team-Abfrage **boolean-Spalten** mit Integer verglichen wurden: `loco_employees.is_latest_record = 1` und teils `e.aktiv = 1`. PostgreSQL: „operator does not exist: boolean = integer“. Die Exception wurde gefangen → leeres Team → 403 „Kein Team zugeordnet“.
+- **Fix:** Alle betroffenen Stellen auf PostgreSQL-taugliche Vergleiche umgestellt: `le.is_latest_record IS NOT DISTINCT FROM true`, `e.aktiv = true`. Dateien: `api/vacation_approver_service.py` (get_team_by_manager, Admin-Block).
+- **Beibehalten:** Abteilungs-Erweiterung aus Anzeigenamen; Kalender-Event-IDs in eigener DB-Session; try/except um E-Mails/Kalender; Fallback auf `current_user` und case-insensitiver Lookup in `get_employee_from_session`; `credentials: 'include'` und 4xx-Body-Parsing im Frontend.
+- **Bereinigt:** Debug-Logging (APPROVE 401/403), `reason`/`debug` in API-Responses, lange Toast-/Konsole-Debug-Ausgaben im Frontend.
 
 ## Offene Entscheidungen
 

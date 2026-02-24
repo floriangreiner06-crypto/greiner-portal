@@ -739,25 +739,39 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function api(ep, m='GET', d=null) {
     try {
-        const o = {method:m, headers:{'Content-Type':'application/json'}};
+        const o = { method: m, headers: { 'Content-Type': 'application/json' }, credentials: 'include' };
         if (d) o.body = JSON.stringify(d);
-        return await (await fetch(API+ep, o)).json();
-    } catch(e) {
+        const res = await fetch(API + ep, o);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return data && typeof data.success !== 'undefined' ? data : { success: false, error: data.message || ('HTTP ' + res.status) };
+        return data;
+    } catch (e) {
         console.error('API Error:', e);
-        return {success: false, error: e.message};
+        return { success: false, error: e.message };
     }
 }
 
-async function loadMe() {
-    const r = await api('/my-balance');
-    if (!r.success) return;
+async function loadMe(overrideYear) {
+    const yearParam = overrideYear != null ? overrideYear : (typeof yr !== 'undefined' ? yr : new Date().getFullYear());
+    const res = await fetch(API + '/my-balance?year=' + yearParam + '&_=' + Date.now(), { cache: 'no-store' });
+    const r = await res.json().catch(() => ({ success: false }));
+    if (!r.success) {
+        console.warn('📅 my-balance fehlgeschlagen – Kalender wird trotzdem geladen.', r.error || res.status);
+        isAppr = false;
+        isAdmin = false;
+        return;
+    }
     me = r.employee;
     meId = me?.employee_id;
     const b = r.balance;
     myDept = b.department || me?.department || 'Sonstige';  // NEU: Eigene Abteilung merken
     document.getElementById('userName').textContent = b.name || `${me.first_name} ${me.last_name}`;
     // TAG 209: Verwende resturlaub (aus View) statt resturlaub_korrigiert (nur Locosoft)
-    const resturlaub = b.resturlaub ?? b.resturlaub_korrigiert ?? 0;
+    let resturlaub = b.resturlaub ?? b.resturlaub_korrigiert ?? 0;
+    // Nach gerade erfolgter Buchung: Server liefert oft noch alten Stand – Korrektur anwenden (kein Rücksprung 11→10→11)
+    if (window._lastVacationBooking && window._lastVacationBooking.empId === meId) {
+        resturlaub = Math.round(Math.max(0, resturlaub - window._lastVacationBooking.days) * 10) / 10;
+    }
     document.getElementById('userRest').textContent = resturlaub;
     document.getElementById('sAnspruch').textContent = b.anspruch || 27;
     document.getElementById('sUrlaub').textContent = b.urlaub_locosoft ?? b.verbraucht ?? 0;
@@ -777,16 +791,25 @@ async function loadMe() {
     }
 }
 
-async function loadAllEmployees() {
-    const r = await api('/balance?year=' + yr);
+async function loadAllEmployees(overrideYear) {
+    const yearParam = overrideYear != null ? overrideYear : yr;
+    const res = await fetch(API + '/balance?year=' + yearParam + '&_=' + Date.now(), { cache: 'no-store' });
+    const r = await res.json().catch(() => ({ success: false, error: 'Parse error' }));
     if (r.success && r.balances) {
-        allEmployees = r.balances.map(e => ({
-            employee_id: e.employee_id,
-            name: e.name,
-            grp_code: e.department_name || 'Sonstige',
-            location: e.location || 'Deggendorf',  // NEU: Standort
-            resturlaub: e.resturlaub
-        }));
+        const lastBook = window._lastVacationBooking;
+        allEmployees = (r.balances || []).map(e => {
+            let rest = e.resturlaub;
+            if (lastBook && e.employee_id === lastBook.empId) {
+                rest = Math.round(Math.max(0, (rest ?? 0) - lastBook.days) * 10) / 10;
+            }
+            return {
+                employee_id: e.employee_id,
+                name: e.name,
+                grp_code: e.department_name || 'Sonstige',
+                location: e.location || 'Deggendorf',
+                resturlaub: rest
+            };
+        });
         
         // TAG 213 DEBUG: Log employee_ids
         console.log(`📅 loadAllEmployees: ${allEmployees.length} Mitarbeiter geladen`);
@@ -813,7 +836,8 @@ async function loadAllEmployees() {
             filterLocEl.appendChild(opt);
         });
     } else {
-        console.error('❌ loadAllEmployees fehlgeschlagen:', r.error);
+        console.error('❌ loadAllEmployees fehlgeschlagen – /balance:', r.error || 'keine balances');
+        allEmployees = [];
     }
 }
 
@@ -865,50 +889,47 @@ async function loadBlocksAndFreeDays() {
 
 async function loadAppr() {
     const r = await api('/pending-approvals');
-    if (r.success && r.pending?.length) {
-        // TAG 167: Defensive Programming - Nur Anträge anzeigen die genehmigt werden können
-        // Backend filtert bereits, aber zusätzliche Validierung für Sicherheit
-        const validPending = r.pending.filter(p => {
-            // Prüfe ob employee_id vorhanden ist (Backend sollte bereits filtern)
+    // Genehmiger-Box anzeigen sobald r.success (User ist Genehmiger), auch bei 0 offenen Anträgen
+    if (r.success) {
+        const pending = r.pending || [];
+        const validPending = pending.filter(p => {
             if (!p.employee_id) {
                 console.warn('⚠️ Antrag ohne employee_id gefunden:', p);
                 return false;
             }
             return true;
         });
-        
-        if (validPending.length !== r.pending.length) {
-            console.warn(`⚠️ ${r.pending.length - validPending.length} Anträge wurden gefiltert (keine gültige employee_id)`);
+        if (validPending.length !== pending.length) {
+            console.warn(`⚠️ ${pending.length - validPending.length} Anträge wurden gefiltert (keine gültige employee_id)`);
         }
-        
         document.getElementById('apprBox').style.display = 'block';
         document.getElementById('apprCnt').textContent = validPending.length;
         let h = '';
-        validPending.forEach(p => {
-            // TAG 198: Defensive Programming - Prüfe ob alle benötigten Felder vorhanden sind
-            if (!p.employee_name || !p.date || !p.booking_id) {
-                console.warn('⚠️ Unvollständige Daten in pending approval:', p);
-                return; // Überspringe unvollständige Einträge
-            }
-            
-            // TAG 198: Urlaubstyp anzeigen (Icon + Name)
-            const typeIcon = ICON[p.type_id] || '📅';
-            const typeName = p.type_name || 'Urlaub';
-            const dayPartText = p.day_part === 'am' ? ' (VM)' : p.day_part === 'pm' ? ' (NM)' : p.day_part === 'half' ? ' (½)' : '';
-            const dateStr = fmtD(p.date);
-            const employeeName = String(p.employee_name || 'Unbekannt');
-            
-            h += `<div class="appr-item">
-                <div>
-                    <strong>${employeeName}</strong> - ${dateStr}${dayPartText}<br>
-                    <small class="text-muted">${typeIcon} ${typeName}</small>
-                </div>
-                <div class="btns">
-                    <button class="btn btn-success btn-sm" onclick="showApprove(${p.booking_id},'${employeeName.replace(/'/g, "\\'")}','${p.date}')"><i class="fas fa-check"></i> OK</button>
-                    <button class="btn btn-danger btn-sm" onclick="showRej(${p.booking_id},'${employeeName.replace(/'/g, "\\'")}')" title="Ablehnen"><i class="fas fa-times"></i> Ablehnen</button>
-                </div>
-            </div>`;
-        });
+        if (validPending.length > 0) {
+            validPending.forEach(p => {
+                if (!p.employee_name || !p.date || !p.booking_id) {
+                    console.warn('⚠️ Unvollständige Daten in pending approval:', p);
+                    return;
+                }
+                const typeIcon = ICON[p.type_id] || '📅';
+                const typeName = p.type_name || 'Urlaub';
+                const dayPartText = p.day_part === 'am' ? ' (VM)' : p.day_part === 'pm' ? ' (NM)' : p.day_part === 'half' ? ' (½)' : '';
+                const dateStr = fmtD(p.date);
+                const employeeName = String(p.employee_name || 'Unbekannt');
+                h += `<div class="appr-item">
+                    <div>
+                        <strong>${employeeName}</strong> - ${dateStr}${dayPartText}<br>
+                        <small class="text-muted">${typeIcon} ${typeName}</small>
+                    </div>
+                    <div class="btns">
+                        <button class="btn btn-success btn-sm" onclick="showApprove(${p.booking_id},'${employeeName.replace(/'/g, "\\'")}','${p.date}')"><i class="fas fa-check"></i> OK</button>
+                        <button class="btn btn-danger btn-sm" onclick="showRej(${p.booking_id},'${employeeName.replace(/'/g, "\\'")}')" title="Ablehnen"><i class="fas fa-times"></i> Ablehnen</button>
+                    </div>
+                </div>`;
+            });
+        } else {
+            h = '<p class="text-muted small mb-0">Keine offenen Anträge.</p>';
+        }
         document.getElementById('apprList').innerHTML = h;
     } else {
         document.getElementById('apprBox').style.display = 'none';
@@ -1031,6 +1052,7 @@ function render() {
                         b.department === emp.grp_code || (b.employee_ids && b.employee_ids.includes(emp.employee_id))
                     );  // TAG 198: Urlaubssperre (Abteilung oder spezifische MA)
                     let c = 'cell', icon = '', bookingId = '';
+                    let bk = null;  // im äußeren Scope, damit canClick (isAppr && !!bk) bei WE/FT/freeDay definiert ist
                     
                     if (isFreeDay) c += ' free-day';  // TAG 198: Freier Tag
                     else if (isFT) c += ' ft';
@@ -1040,7 +1062,6 @@ function render() {
                     if (!isFT && !isWE && !isFreeDay) {
                         // TAG 209: Immer allBookings verwenden (enthält alle Buchungen inkl. Locosoft)
                         // Für eigene Buchungen können wir myBook als Fallback verwenden
-                        let bk = null;
                         
                         // Zuerst in allBookings suchen (enthält alle Buchungen)
                         // TAG 213 FIX: Verbesserte employee_id-Vergleiche - verwende == für flexiblen Typ-Vergleich
@@ -1059,30 +1080,6 @@ function render() {
                             
                             // Status-Prüfung
                             const statusOk = b.status !== 'cancelled' && b.status !== 'rejected';
-                            
-                            // TAG 213 DEBUG: Log nur bei Problemen (erste 5 Versuche pro Mitarbeiter, nicht nur eigene)
-                            if (!bk && d <= 5 && allBookings.length > 0 && empEmpId > 0) {
-                                // Prüfe ob es Buchungen für diesen Mitarbeiter gibt
-                                const matchingBookings = allBookings.filter(b2 => {
-                                    const b2EmpId = typeof b2.employee_id === 'string' ? parseInt(b2.employee_id, 10) : (b2.employee_id || 0);
-                                    return (b2EmpId == empEmpId) && b2EmpId > 0;
-                                });
-                                if (matchingBookings.length > 0) {
-                                    // Es gibt Buchungen für diesen Mitarbeiter, aber keine für dieses Datum
-                                    const datesForEmp = matchingBookings.map(b2 => b2.date).slice(0, 5);
-                                    console.log(`⚠️ ${emp.name} (ID: ${empEmpId}) hat ${matchingBookings.length} Buchungen, aber nicht für ${ds}. Buchungen: ${datesForEmp.join(', ')}`);
-                                } else if (d === 1) {
-                                    // Keine Buchungen für diesen Mitarbeiter gefunden
-                                    console.log(`⚠️ ${emp.name} (ID: ${empEmpId}) hat keine Buchungen in allBookings. allBookings.length=${allBookings.length}`);
-                                    // Zeige erste 3 employee_ids aus allBookings
-                                    const sampleEmpIds = [...new Set(allBookings.slice(0, 10).map(b2 => {
-                                        const b2EmpId = typeof b2.employee_id === 'string' ? parseInt(b2.employee_id, 10) : (b2.employee_id || 0);
-                                        return b2EmpId;
-                                    }))];
-                                    console.log(`  → Beispiel employee_ids in allBookings: ${sampleEmpIds.join(', ')}`);
-                                }
-                            }
-                            
                             return empIdMatch && dateMatch && statusOk;
                         });
                         
@@ -1108,9 +1105,9 @@ function render() {
                         }
                     }
                     
-                    // TAG 127: Admins können auch in fremden Zeilen klicken
+                    // TAG 127: Admins können in fremden Zeilen klicken; Genehmiger nur auf gebuchte (zum Genehmigen/Ablehnen)
                     // TAG 198: Kein Klick bei freien Tagen oder gesperrten Tagen
-                    const canClick = (isMe || isAdmin) && !isWE && !isFT && !isFreeDay && !isBlocked;
+                    const canClick = (isMe || isAdmin || (isAppr && !!bk)) && !isWE && !isFT && !isFreeDay && !isBlocked;
                     bd += `<td class="${c}" data-d="${ds}" data-e="${emp.employee_id}" data-bid="${bookingId}" ${canClick?'data-ok="1"':''} title="${isFreeDay ? 'Betriebsferien' : isBlocked ? 'Urlaubssperre' : ''}">${icon}</td>`;
                 }
                 bd += '</tr>';
@@ -1337,6 +1334,9 @@ async function submitBooking() {
 
     hideBookPopup();
 
+    const bookedDays = isHalf ? dates.length * 0.5 : dates.length;
+    const targetEmpId = selEmpId || meId;  // Für wen gebucht (ich oder anderer MA)
+
     if (r.success) {
         const tageText = isHalf ? `${dates.length * 0.5} Tag(e)` : `${dates.length} Tag(e)`;
         if (isBookingForOther) {
@@ -1344,17 +1344,40 @@ async function submitBooking() {
         } else {
             toast(`${tageText}${halfInfo} beantragt!`, 'success');
         }
+        // Merken für Reload: Server liefert oft noch alten Stand – wir korrigieren Anzeige nach dem Laden
+        window._lastVacationBooking = { empId: targetEmpId, days: bookedDays };
+        // Optimistisches Update: sofort anzeigen
+        const emp = allEmployees.find(e => e.employee_id === targetEmpId);
+        if (emp && typeof emp.resturlaub === 'number') {
+            emp.resturlaub = Math.round(Math.max(0, emp.resturlaub - bookedDays) * 10) / 10;
+            render();
+        }
+        if (targetEmpId === meId) {
+            const userRestEl = document.getElementById('userRest');
+            const sRestEl = document.getElementById('sRest');
+            if (userRestEl && sRestEl) {
+                const newRest = allEmployees.find(e => e.employee_id === meId)?.resturlaub ?? userRestEl.textContent;
+                userRestEl.textContent = newRest;
+                sRestEl.textContent = newRest;
+            }
+        }
     } else {
         toast(r.error || 'Fehler beim Buchen', 'danger');
     }
 
-    // Immer neu laden um aktuellen Stand zu zeigen (inkl. Resturlaub pro MA)
+    if (r.success) await new Promise(ok => setTimeout(ok, 120));
+
+    // Jahr der gebuchten Tage für Balance-Abfrage (verhindert falsches Jahr und „Rücksprung“ der Anzeige)
+    const bookingYear = r.success ? parseInt(String(dates[0]).substring(0, 4), 10) : null;
+
     await loadMyBook();
     await loadAllBookings();
-    await loadAllEmployees();  // Resturlaub in der Tabelle aktualisieren (Usertest-Feedback)
-    await loadMe();
+    await loadAllEmployees(bookingYear);
+    await loadMe(bookingYear);
     render();
     renderMy();
+
+    if (window._lastVacationBooking) window._lastVacationBooking = null;
 
     // Reset selEmpId
     selEmpId = null;
@@ -1411,6 +1434,7 @@ async function changeType(newTypeId) {
     
     await loadMyBook();
     await loadAllBookings();
+    await loadAllEmployees();  // Resturlaub neu berechnen (Usertest: Neuberechnung bei Urlaubsantrag)
     await loadMe();
     render();
     renderMy();
@@ -1713,12 +1737,12 @@ async function doApprove() {
         await loadAppr();
         await loadMyBook();
         await loadAllBookings();
-        await loadAllEmployees();  // Resturlaub aktualisieren
+        await loadAllEmployees();
         await loadMe();
         render();
         renderMy();
     } else {
-        toast('Fehler: ' + (r.error || ''), 'danger');
+        toast('Fehler: ' + (r.error || 'Unbekannt'), 'danger');
     }
 }
 

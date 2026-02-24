@@ -166,7 +166,7 @@ def get_team_by_manager(manager_username: str) -> List[Dict]:
                     SELECT e.id as employee_id, lem.locosoft_id, le.subsidiary
                     FROM employees e
                     JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
-                    LEFT JOIN loco_employees le ON lem.locosoft_id = le.employee_number AND le.is_latest_record = 1
+                    LEFT JOIN loco_employees le ON lem.locosoft_id = le.employee_number AND le.is_latest_record IS NOT DISTINCT FROM true
                     WHERE lem.ldap_username = %s
                 """, (member['ldap_username'],))
 
@@ -279,14 +279,15 @@ def get_approvers_for_employee(employee_id: int) -> List[Dict]:
                 logger.warning(f"Kein Manager in AD für {employee_ldap} - eskaliere zu GL")
                 return _get_gl_approvers_impl(cursor)
 
-            # 3. Prüfe ob Manager Genehmiger-Rechte hat
+            # 3. Prüfe ob Manager Genehmiger-Rechte hat (SPLIT_PART = Teil vor @)
+            manager_norm = _normalize_ldap_username(manager_username)
             cursor.execute("""
                 SELECT u.id, u.username, u.display_name, u.email, u.ad_groups, e.id as employee_id
                 FROM users u
-                LEFT JOIN ldap_employee_mapping lem ON lem.ldap_username = REPLACE(u.username, '@auto-greiner.de', '')
+                LEFT JOIN ldap_employee_mapping lem ON LOWER(TRIM(SPLIT_PART(COALESCE(lem.ldap_username,'') || '@', '@', 1))) = LOWER(TRIM(SPLIT_PART(COALESCE(u.username,'') || '@', '@', 1)))
                 LEFT JOIN employees e ON lem.employee_id = e.id
-                WHERE REPLACE(u.username, '@auto-greiner.de', '') = %s
-            """, (manager_username,))
+                WHERE LOWER(TRIM(SPLIT_PART(COALESCE(u.username,'') || '@', '@', 1))) = %s
+            """, (manager_norm or '',))
 
             manager_row = cursor.fetchone()
 
@@ -296,15 +297,15 @@ def get_approvers_for_employee(employee_id: int) -> List[Dict]:
 
             ad_groups = json.loads(manager_row['ad_groups']) if manager_row['ad_groups'] else []
 
-            # Prüfe ob Manager Genehmiger-Gruppe oder Admin hat
-            is_approver = any(g.startswith('GRP_Urlaub_Genehmiger_') or g == 'GRP_Urlaub_Admin' for g in ad_groups)
+            # Prüfe ob Manager Genehmiger-Gruppe oder Admin hat (inkl. "Genehmiger für Urlaub Dispo")
+            is_approver = any(_is_approver_group(g) for g in ad_groups)
 
             if not is_approver:
                 logger.info(f"Manager {manager_username} hat keine Genehmiger-Gruppe - eskaliere zu GL")
                 return _get_gl_approvers_impl(cursor)
 
             # Manager ist Genehmiger!
-            approver_group = next((g for g in ad_groups if g.startswith('GRP_Urlaub_Genehmiger_')), 'GRP_Urlaub_Admin')
+            approver_group = next((g for g in ad_groups if _is_approver_group(g)), 'GRP_Urlaub_Admin')
 
             return [{
                 'approver_id': manager_row['employee_id'],
@@ -336,19 +337,22 @@ def get_team_for_approver(approver_ldap_username: str, include_self: bool = Fals
         with db_session() as conn:
             cursor = conn.cursor()
 
-            # 1. Hole AD-Gruppen des Users
+            # 1. Hole AD-Gruppen des Users (SPLIT_PART = Teil vor @, unabhängig von Domain)
+            norm = _normalize_ldap_username(approver_ldap_username)
+            if not norm:
+                return []
             cursor.execute("""
                 SELECT ad_groups FROM users
-                WHERE username = %s OR username = %s
-            """, (approver_ldap_username, f"{approver_ldap_username}@auto-greiner.de"))
-
+                WHERE LOWER(TRIM(SPLIT_PART(COALESCE(username,'') || '@', '@', 1))) = %s
+            """, (norm,))
             row = cursor.fetchone()
-            if not row or not row['ad_groups']:
+            if not row or not row.get('ad_groups'):
                 return []
 
-            ad_groups = json.loads(row['ad_groups'])
+            raw_ag = row.get('ad_groups')
+            ad_groups = json.loads(raw_ag) if isinstance(raw_ag, str) else (raw_ag if isinstance(raw_ag, list) else [])
             is_admin = 'GRP_Urlaub_Admin' in ad_groups
-            is_approver_flag = any(g.startswith('GRP_Urlaub_Genehmiger_') for g in ad_groups)
+            is_approver_flag = any(_is_approver_group(g) for g in ad_groups)
 
             if not is_admin and not is_approver_flag:
                 return []
@@ -369,8 +373,8 @@ def get_team_for_approver(approver_ldap_username: str, include_self: bool = Fals
                         END as standort
                     FROM employees e
                     JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
-                    LEFT JOIN loco_employees le ON lem.locosoft_id = le.employee_number AND le.is_latest_record = 1
-                    WHERE e.aktiv = 1  -- TAG 213 FIX: aktiv ist INTEGER, nicht BOOLEAN
+                    LEFT JOIN loco_employees le ON lem.locosoft_id = le.employee_number AND le.is_latest_record IS NOT DISTINCT FROM true
+                    WHERE e.aktiv = true
                     ORDER BY e.last_name, e.first_name
                 """)
 
@@ -389,14 +393,16 @@ def get_team_for_approver(approver_ldap_username: str, include_self: bool = Fals
                     })
                 return team
 
-            # 3. Normaler Genehmiger: Team via AD manager
+            # 3. Normaler Genehmiger: Team = direkte Reports (AD manager) + ggf. Abteilung aus Gruppen-Suffix
             team_raw = get_team_by_manager(approver_ldap_username)
+            seen_ids = set()
 
             team = []
             for member in team_raw:
                 if not include_self and member.get('ldap_username') == approver_ldap_username:
                     continue
                 if member.get('employee_id'):  # Nur wenn in DB verknüpft
+                    seen_ids.add(member['employee_id'])
                     team.append({
                         'employee_id': member['employee_id'],
                         'name': member['name'],
@@ -407,6 +413,61 @@ def get_team_for_approver(approver_ldap_username: str, include_self: bool = Fals
                         'approver_priority': 1
                     })
 
+            # 3b. Abteilung aus Genehmiger-Gruppen: technischer Name (GRP_Urlaub_Genehmiger_Disposition)
+            #     ODER Anzeigename ("Genehmiger für Urlaub Disposition") → Margit kann für Susanne genehmigen
+            def _department_suffixes_from_groups(groups):
+                suffixes = []
+                for g in (groups or []):
+                    g = str(g).strip() if g else ""
+                    if not g:
+                        continue
+                    if g.startswith('GRP_Urlaub_Genehmiger_'):
+                        s = g.replace('GRP_Urlaub_Genehmiger_', '').strip()
+                        if s and s not in suffixes:
+                            suffixes.append(s)
+                    elif _is_approver_group(g) and 'urlaub' in g.lower():
+                        # Anzeigename z.B. "Genehmiger für Urlaub Disposition" → letztes Wort = Abteilung
+                        parts = g.split()
+                        if len(parts) >= 2:
+                            s = parts[-1].strip()
+                            if s and s not in suffixes:
+                                suffixes.append(s)
+                return suffixes
+
+            try:
+                dept_suffixes = _department_suffixes_from_groups(ad_groups)
+                for suffix in dept_suffixes:
+                    # Abgleich: exakt ODER department_name beginnt mit Suffix (z.B. Dispo → Disposition)
+                    cursor.execute("""
+                        SELECT e.id, e.first_name || ' ' || e.last_name as name, lem.ldap_username,
+                               lem.locosoft_id, le.subsidiary
+                        FROM employees e
+                        JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
+                        LEFT JOIN loco_employees le ON lem.locosoft_id = le.employee_number AND le.is_latest_record IS NOT DISTINCT FROM true
+                        WHERE e.aktiv = true
+                          AND (LOWER(TRIM(COALESCE(e.department_name, ''))) = LOWER(%s)
+                             OR LOWER(TRIM(COALESCE(e.department_name, ''))) LIKE LOWER(%s) || '%%')
+                        ORDER BY e.last_name, e.first_name
+                    """, (suffix, suffix))
+                    for dept_row in cursor.fetchall():
+                        eid = dept_row[0]
+                        if eid in seen_ids:
+                            continue
+                        seen_ids.add(eid)
+                        if not include_self and (dept_row[2] or '').lower() == (approver_ldap_username or '').lower():
+                            continue
+                        team.append({
+                            'employee_id': eid,
+                            'name': dept_row[1] or 'Unbekannt',
+                            'ldap_username': dept_row[2],
+                            'locosoft_id': dept_row[3],
+                            'subsidiary': dept_row[4],
+                            'standort': {1: 'Deggendorf', 3: 'Landau'}.get(dept_row[4], 'Unbekannt') if dept_row[4] is not None else 'Unbekannt',
+                            'approver_priority': 1
+                        })
+            except Exception as e:
+                logger.warning(f"Team-Erweiterung nach Abteilung übersprungen: {e}")
+
             return team
 
     except Exception as e:
@@ -416,52 +477,78 @@ def get_team_for_approver(approver_ldap_username: str, include_self: bool = Fals
         return []
 
 
+def _normalize_ldap_username(username: Optional[str]) -> str:
+    """Username für Lookup normalisieren: lowercase, ohne @domain (Dispo/Test: Margit, Jennifer)."""
+    if not username:
+        return ""
+    u = (username or "").strip().lower()
+    return u.split("@")[0] if "@" in u else u
+
+
+def _is_approver_group(group_name: str) -> bool:
+    """
+    Prüft ob eine AD-Gruppe Urlaub-Genehmiger-Rechte bedeutet.
+    - Technische Namen: GRP_Urlaub_Genehmiger_*, GRP_Urlaub_Admin
+    - Anzeigename aus AD (CN): z. B. "Genehmiger für Urlaub Dispo" (enthält Genehmiger + Urlaub)
+    """
+    if not group_name:
+        return False
+    g = (group_name if isinstance(group_name, str) else str(group_name)).strip()
+    if g == 'GRP_Urlaub_Admin' or g.startswith('GRP_Urlaub_Genehmiger_'):
+        return True
+    g_lower = g.lower()
+    if 'genehmiger' in g_lower and 'urlaub' in g_lower:
+        return True
+    return False
+
+
 def is_approver(ldap_username: str) -> bool:
-    """Prüft ob ein User Genehmiger-Rechte hat."""
+    """Prüft ob ein User Genehmiger-Rechte hat. Lookup case-insensitive und mit/ohne Domain."""
     try:
+        norm = _normalize_ldap_username(ldap_username)
+        if not norm:
+            return False
         with db_session() as conn:
             cursor = conn.cursor()
-
+            # Case-insensitiver Abgleich; Teil vor @ (SPLIT_PART) unabhängig von Domain-Schreibweise
             cursor.execute("""
                 SELECT ad_groups FROM users
-                WHERE username = %s OR username = %s
-            """, (ldap_username, f"{ldap_username}@auto-greiner.de"))
-
+                WHERE LOWER(TRIM(SPLIT_PART(COALESCE(username,'') || '@', '@', 1))) = %s
+            """, (norm,))
             row = cursor.fetchone()
-            if not row or not row['ad_groups']:
+            if not row:
                 return False
-
-            ad_groups = json.loads(row['ad_groups'])
-
+            raw = row.get('ad_groups') if hasattr(row, 'get') else (row['ad_groups'] if 'ad_groups' in (row.keys() if hasattr(row, 'keys') else []) else None)
+            if not raw:
+                return False
+            ad_groups = json.loads(raw) if isinstance(raw, str) else (raw if isinstance(raw, list) else [])
             for group in ad_groups:
-                if group.startswith('GRP_Urlaub_Genehmiger_') or group == 'GRP_Urlaub_Admin':
+                if _is_approver_group(group):
                     return True
-
             return False
-
     except Exception as e:
         logger.error(f"Fehler bei is_approver: {e}")
         return False
 
 
 def is_admin(ldap_username: str) -> bool:
-    """Prüft ob ein User Admin-Rechte hat (GRP_Urlaub_Admin)."""
+    """Prüft ob ein User Admin-Rechte hat (GRP_Urlaub_Admin). Lookup case-insensitive."""
     try:
+        norm = _normalize_ldap_username(ldap_username)
+        if not norm:
+            return False
         with db_session() as conn:
             cursor = conn.cursor()
-
             cursor.execute("""
                 SELECT ad_groups FROM users
-                WHERE username = %s OR username = %s
-            """, (ldap_username, f"{ldap_username}@auto-greiner.de"))
-
+                WHERE LOWER(TRIM(SPLIT_PART(COALESCE(username,'') || '@', '@', 1))) = %s
+            """, (norm,))
             row = cursor.fetchone()
             if not row or not row['ad_groups']:
                 return False
-
-            ad_groups = json.loads(row['ad_groups'])
+            raw = row['ad_groups']
+            ad_groups = json.loads(raw) if isinstance(raw, str) else (raw if isinstance(raw, list) else [])
             return 'GRP_Urlaub_Admin' in ad_groups
-
     except Exception as e:
         logger.error(f"Fehler bei is_admin: {e}")
         return False
@@ -486,16 +573,20 @@ def get_approver_summary(ldap_username: str) -> Dict:
         team = get_team_for_approver(ldap_username)
         team_size = len(team)
 
+        norm = _normalize_ldap_username(ldap_username)
         with db_session() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
-                SELECT ad_groups FROM users
-                WHERE username = %s OR username = %s
-            """, (ldap_username, f"{ldap_username}@auto-greiner.de"))
-
+            if norm:
+                cursor.execute("""
+                    SELECT ad_groups FROM users
+                    WHERE LOWER(TRIM(SPLIT_PART(COALESCE(username,'') || '@', '@', 1))) = %s
+                """, (norm,))
+            else:
+                cursor.execute("SELECT 1 WHERE 1=0")  # keine Zeile
             row = cursor.fetchone()
-            ad_groups = json.loads(row['ad_groups']) if row and row['ad_groups'] else []
-            approver_groups = [g for g in ad_groups if g.startswith('GRP_Urlaub_')]
+            raw = row.get('ad_groups') if row else None
+            ad_groups = json.loads(raw) if isinstance(raw, str) else (raw if isinstance(raw, list) else [])
+            approver_groups = [g for g in ad_groups if _is_approver_group(g) or (g and g.startswith('GRP_Urlaub_'))]
 
             # Offene Anträge
             team_ids = [m['employee_id'] for m in team if m.get('employee_id')]

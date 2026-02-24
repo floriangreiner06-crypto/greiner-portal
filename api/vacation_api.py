@@ -40,7 +40,7 @@ CHANGES TAG 104:
 """
 
 from flask import Blueprint, request, jsonify, session
-from flask_login import login_required
+from flask_login import login_required, current_user
 from decorators.auth_decorators import admin_required, role_required
 from datetime import datetime, date, timedelta
 import json
@@ -98,6 +98,9 @@ vacation_api = Blueprint('vacation_api', __name__, url_prefix='/api/vacation')
 # TAG 219: Whitelist für Jahr (SQL-Injection-Schutz bei dynamischem View-Namen)
 ALLOWED_YEARS = range(2020, 2031)
 
+# Rollout SSOT: Kein pauschaler Weihnachten/Silvester-Abzug mehr.
+# Halbe Tage (24.12., 31.12.) werden als normale Urlaubsbuchungen im Planer erfasst und in verbraucht gezählt.
+
 
 def _validate_vacation_year(year):
     """Prüft Jahr gegen Whitelist. Returns (year, None) oder (None, error_response)."""
@@ -129,24 +132,98 @@ def _check_substitute_vacation_conflict(cursor, substitute_employee_id, dates_li
             return None
         placeholders = ','.join(['%s'] * len(dates_list))
         blocked = []
-        first_vertretene_name = None
+        # Name der Person, die an den blockierten Tagen tatsächlich Urlaub hat (für Fehlermeldung)
+        conflict_vertretene_name = None
         for row in substituted:
             vertretene_id = row[0]
             vname = row[1] if len(row) > 1 else 'Mitarbeiter'
-            if first_vertretene_name is None:
-                first_vertretene_name = vname
             cursor.execute(f"""
                 SELECT booking_date FROM vacation_bookings
                 WHERE employee_id = %s AND booking_date IN ({placeholders})
                 AND status IN ('pending', 'approved')
             """, (vertretene_id,) + tuple(dates_list))
-            for r in cursor.fetchall():
+            found = cursor.fetchall()
+            for r in found:
                 blocked.append(str(r[0]))
+                if conflict_vertretene_name is None:
+                    conflict_vertretene_name = vname
         if blocked:
-            return (sorted(set(blocked)), first_vertretene_name)
+            return (sorted(set(blocked)), conflict_vertretene_name or (substituted[0][1] if substituted else 'Mitarbeiter'))
         return None
     except Exception:
         # Tabelle substitution_rules kann fehlen (Legacy)
+        return None
+
+
+def _check_max_absence_per_dept_location(cursor, employee_id, dates_list, vacation_type_id):
+    """
+    Max. Abwesenheit pro Abteilung und Standort (nur planbar: Urlaub + Schulung; Krankheit nicht).
+    Prüft ob durch die neue Buchung die Grenze (Default 50%, editierbar pro Abteilung/Standort) überschritten würde.
+    vacation_type_id: 1 = Urlaub, 9 = Schulung (nur diese prüfen).
+    Returns: None wenn OK; sonst (blocked_dates, max_percent, current_absent, total) für Fehlermeldung.
+    """
+    if not dates_list or vacation_type_id not in (1, 9):
+        return None
+    try:
+        q = "SELECT department_name, COALESCE(NULLIF(TRIM(location), ''), 'Deggendorf') as loc FROM employees WHERE id = " + sql_placeholder() + " AND aktiv = true"
+        cursor.execute(convert_placeholders(q), (employee_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        department_name, location = row[0], (row[1] or '') or 'Deggendorf'
+        # Standort: Landau vs Deggendorf (einheitlich für Abgleich)
+        loc_normalized = 'Landau' if location and 'landau' in str(location).lower() else 'Deggendorf'
+
+        # Max-% aus Tabelle (Default 50)
+        max_percent = 50
+        try:
+            cursor.execute(convert_placeholders("""
+                SELECT max_absence_percent FROM department_absence_limits
+                WHERE department_name = """ + sql_placeholder() + """ AND location = """ + sql_placeholder()),
+                (department_name, loc_normalized))
+            r = cursor.fetchone()
+            if r:
+                max_percent = int(r[0])
+        except Exception:
+            pass
+
+        # SQL: Standort = Landau wenn location "landau" enthält, sonst Deggendorf
+        loc_case = "CASE WHEN LOWER(COALESCE(e.location,'')) LIKE '%landau%' THEN 'Landau' ELSE 'Deggendorf' END"
+        ph = sql_placeholder()
+        cursor.execute(convert_placeholders(f"""
+            SELECT COUNT(*) FROM employees e
+            WHERE e.department_name = {ph}
+              AND {loc_case} = {ph}
+              AND e.aktiv = true
+        """), (department_name, loc_normalized))
+        total = cursor.fetchone()[0] or 0
+        if total == 0:
+            return None
+
+        blocked = []
+        first_absent = 0
+        for d in dates_list:
+            cursor.execute(convert_placeholders(f"""
+                SELECT COUNT(DISTINCT vb.employee_id)
+                FROM vacation_bookings vb
+                JOIN employees e ON e.id = vb.employee_id
+                WHERE e.department_name = {ph}
+                  AND {loc_case} = {ph}
+                  AND e.aktiv = true
+                  AND vb.booking_date = {ph}
+                  AND vb.vacation_type_id IN (1, 9)
+                  AND vb.status IN ('pending', 'approved')
+            """), (department_name, loc_normalized, d))
+            absent = cursor.fetchone()[0] or 0
+            if (absent + 1) / total > max_percent / 100.0:
+                blocked.append(d)
+                if first_absent == 0:
+                    first_absent = absent
+        if blocked:
+            return (sorted(blocked), max_percent, first_absent, total)
+        return None
+    except Exception:
+        # Tabelle department_absence_limits kann fehlen
         return None
 
 
@@ -173,25 +250,23 @@ def handle_vacation_error(e):
 
 
 def get_employee_from_session():
-    """
-    Holt employee_id aus Flask-Login Session via ldap_employee_mapping
-    """
-    # 1. Hole user_id aus Flask-Login Session
+    """Holt employee_id aus Flask-Login Session via ldap_employee_mapping."""
     user_id = session.get('_user_id')
     ldap_username = None
 
     if not user_id:
-        # Fallback: Versuche alte Session-Keys
         ldap_username = (
             session.get('username') or
             session.get('user') or
             session.get('ldap_user') or
             session.get('sAMAccountName')
         )
-
+        if not ldap_username and getattr(current_user, 'is_authenticated', False):
+            ldap_username = getattr(current_user, 'username', None)
         if not ldap_username:
             return None, None, None
 
+        ldap_username = (ldap_username or '').strip()
         ldap_username = ldap_username.split('@')[0] if '@' in ldap_username else ldap_username
     else:
         with db_session() as conn:
@@ -208,7 +283,8 @@ def get_employee_from_session():
             username = user_row[0]
             ldap_username = username.split('@')[0] if '@' in username else username
 
-    # Lookup in ldap_employee_mapping
+    ldap_username = (ldap_username or '').strip().lower()
+
     with db_session() as conn:
         cursor = conn.cursor()
 
@@ -224,7 +300,7 @@ def get_employee_from_session():
                 e.is_manager
             FROM ldap_employee_mapping lem
             JOIN employees e ON lem.employee_id = e.id
-            WHERE lem.ldap_username = %s AND e.aktiv = true
+            WHERE LOWER(TRIM(COALESCE(lem.ldap_username, ''))) = %s AND e.aktiv = true
         """, (ldap_username,))
 
         result = cursor.fetchone()
@@ -278,6 +354,20 @@ def is_vacation_admin(ldap_username=None):
     return username_clean in allowed_users
 
 
+def _compute_rest_display(anspruch, resturlaub_view, loco_urlaub=0):
+    """
+    SSOT für Resturlaub-Anzeige: min(Portal-Rest, Anspruch − Locosoft-Urlaub).
+    Locosoft liefert nur 'urlaub' (Url, BUr); Zeitausgleich (ZA) mindert Rest nicht.
+    """
+    anspruch = float(anspruch or 0)
+    rest = max(0.0, round(float(resturlaub_view or 0), 1))
+    loco = float(loco_urlaub or 0)
+    if loco > 0:
+        capped = max(0.0, round(anspruch - loco, 1))
+        rest = min(rest, capped)
+    return max(0.0, round(rest, 1))
+
+
 def _get_available_rest_days_for_validation(cursor, employee_id, booking_year, locosoft_id=None):
     """
     Berechnet verfügbaren Resturlaub für Validierung – gleiche Logik wie Balance-Anzeige.
@@ -299,37 +389,19 @@ def _get_available_rest_days_for_validation(cursor, employee_id, booking_year, l
         row = cursor.fetchone()
         if not row:
             return 0.0, None
-        anspruch = float(row[0] or 0)
-        resturlaub_view = float(row[3]) if row[3] is not None else (anspruch - (float(row[1] or 0) + float(row[2] or 0)))
-        loco_urlaub = None
+        anspruch_raw = float(row[0] or 0)
+        anspruch = max(0.0, round(float(anspruch_raw), 1))
+        resturlaub_view_raw = float(row[3]) if row[3] is not None else (anspruch_raw - (float(row[1] or 0) + float(row[2] or 0)))
+        resturlaub_view = max(0.0, round(float(resturlaub_view_raw), 1))
+        loco_urlaub = 0
         if LOCOSOFT_AVAILABLE and locosoft_id:
             try:
-                locosoft_absences = get_absences_for_employee(locosoft_id, booking_year)
-                if locosoft_absences:
-                    loco_urlaub = locosoft_absences.get('urlaub', 0) or 0
-                # Wie Balance-API: Fallback aus Tagesdaten wenn Aggregat 0 liefert
-                if (loco_urlaub or 0) == 0:
-                    try:
-                        loco_days = get_absence_days_for_employees([locosoft_id], booking_year)
-                        days_list = (loco_days or {}).get(locosoft_id) or []
-                        urlaub_from_days = sum(
-                            d.get('day_contingent', 1.0) for d in days_list
-                            if d.get('reason') in ('Url', 'BUr')
-                        )
-                        if urlaub_from_days > 0:
-                            loco_urlaub = round(urlaub_from_days, 1)
-                    except Exception:
-                        pass
+                loco = get_absences_for_employee(locosoft_id, booking_year)
+                loco_urlaub = (loco or {}).get('urlaub', 0) or 0
             except Exception:
                 pass
-        if loco_urlaub is not None:
-            available_days = min(resturlaub_view, max(0.0, round(anspruch - loco_urlaub, 1)))
-        else:
-            available_days = resturlaub_view
-        available_days = max(0.0, round(available_days, 1))
+        available_days = _compute_rest_display(anspruch, resturlaub_view, loco_urlaub)
         info = {'anspruch': anspruch, 'resturlaub_view': resturlaub_view, 'verfuegbar': available_days}
-        if loco_urlaub is not None:
-            info['locosoft_urlaub'] = loco_urlaub
         return available_days, info
     except Exception as e:
         print(f"⚠️ _get_available_rest_days_for_validation: {e}")
@@ -1037,22 +1109,29 @@ def get_my_balance():
                 'employee_id': employee_id
             }), 404
         
+        anspruch_raw = row[4]
+        anspruch = max(0, round(float(anspruch_raw or 0), 1))
         balance = {
             'employee_id': row[0],
             'name': row[1],
             'department': row[2],
             'location': row[3],
-            'anspruch': row[4],
+            'anspruch': anspruch,
             'verbraucht': row[5],
             'geplant': row[6],
             'resturlaub': row[7]
         }
-        
-        # Locosoft Abwesenheiten hinzufügen
+        # Resturlaub = View-Wert (Portal)
+        if balance['resturlaub'] is None:
+            balance['resturlaub'] = max(0, round((anspruch_raw or 0) - (balance.get('verbraucht') or 0) - (balance.get('geplant') or 0), 1))
+        else:
+            balance['resturlaub'] = max(0, round(float(balance['resturlaub']), 1))
+
+        # Locosoft: Rest = min(Portal-Rest, Anspruch − Locosoft-Urlaub), damit Kalender und Rest übereinstimmen
         locosoft_absences = None
         if LOCOSOFT_AVAILABLE and employee_data and employee_data.get('locosoft_id'):
             locosoft_absences = get_absences_for_employee(
-                employee_data['locosoft_id'], 
+                employee_data['locosoft_id'],
                 year
             )
             if locosoft_absences:
@@ -1060,23 +1139,30 @@ def get_my_balance():
                 balance['zeitausgleich'] = locosoft_absences.get('zeitausgleich', 0)
                 balance['krank'] = locosoft_absences.get('krank', 0)
                 balance['sonstige'] = locosoft_absences.get('sonstige', 0)
-                balance['resturlaub_korrigiert'] = round(
-                    balance['anspruch'] - locosoft_absences.get('urlaub', 0), 1
-                )
-                # Feedback 3.2: Rest-Anzeige oben links = gleiche Logik wie /balance (Liste)
-                # Resturlaub = min(View-Wert, Anspruch − Locosoft-Urlaub), damit 11 und nicht 16
-                resturlaub_view = balance['resturlaub'] if balance['resturlaub'] is not None else (
-                    (balance['anspruch'] or 0) - (balance.get('verbraucht') or 0) - (balance.get('geplant') or 0)
-                )
                 loco_urlaub = locosoft_absences.get('urlaub', 0) or 0
-                balance['resturlaub'] = min(
-                    resturlaub_view,
-                    max(0, round((balance['anspruch'] or 0) - loco_urlaub, 1))
+                balance['resturlaub'] = _compute_rest_display(
+                    balance.get('anspruch'), balance['resturlaub'], loco_urlaub
                 )
-        
-        approver_info = get_approver_summary(ldap_username)
-        
-        return jsonify({
+
+        # Genehmiger-Infos: Fehler hier dürfen my-balance nicht zu 500 führen (strukturell entkoppeln)
+        try:
+            approver_info = get_approver_summary(ldap_username)
+            if not approver_info.get('is_approver') and not approver_info.get('is_admin'):
+                from flask_login import current_user
+                session_username = getattr(current_user, 'username', None)
+                if session_username and str(session_username).strip().lower() != (ldap_username or '').strip().lower():
+                    approver_info = get_approver_summary(session_username)
+        except Exception as e:
+            approver_info = {
+                'is_approver': False,
+                'is_admin': False,
+                'team_size': 0,
+                'groups': [],
+                'pending_requests': 0,
+            }
+            print(f"⚠️ get_approver_summary fehlgeschlagen (my-balance liefert trotzdem Balance): {e}")
+
+        payload = {
             'success': True,
             'year': year,
             'ldap_username': ldap_username,
@@ -1084,7 +1170,47 @@ def get_my_balance():
             'balance': balance,
             'locosoft_absences': locosoft_absences,
             'approver_info': approver_info
-        })
+        }
+        # Debug: warum wird Genehmiger nicht erkannt? ?debug_approver=1 an my-balance hängen
+        if request.args.get('debug_approver'):
+            from api.vacation_approver_service import _normalize_ldap_username
+            norm = _normalize_ldap_username(ldap_username)
+            from flask_login import current_user
+            session_user = getattr(current_user, 'username', None)
+            payload['debug_approver'] = {
+                'ldap_username': ldap_username,
+                'normalized': norm,
+                'session_username': session_user,
+                'approver_info_is_approver': approver_info.get('is_approver'),
+                'approver_info_is_admin': approver_info.get('is_admin'),
+            }
+            try:
+                with db_session() as conn:
+                    cur = conn.cursor()
+                    cur.execute("""
+                        SELECT id, username, ad_groups FROM users
+                        WHERE LOWER(TRIM(SPLIT_PART(COALESCE(username,'') || '@', '@', 1))) = %s
+                    """, (norm or '',))
+                    row = cur.fetchone()
+                    if row:
+                        raw = row.get('ad_groups')
+                        payload['debug_approver']['user_found'] = True
+                        payload['debug_approver']['user_id'] = row.get('id')
+                        payload['debug_approver']['username_in_db'] = row.get('username')
+                        try:
+                            groups = json.loads(raw) if isinstance(raw, str) else (raw if isinstance(raw, list) else [])
+                            payload['debug_approver']['ad_groups_count'] = len(groups)
+                            payload['debug_approver']['ad_groups_preview'] = [str(g)[:50] for g in (groups or [])[:10]]
+                        except Exception as e:
+                            payload['debug_approver']['ad_groups_error'] = str(e)
+                    else:
+                        payload['debug_approver']['user_found'] = False
+            except Exception as e:
+                payload['debug_approver']['error'] = str(e)
+
+        resp = jsonify(payload)
+        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
+        return resp
         
     except Exception as e:
         import traceback
@@ -1215,9 +1341,12 @@ def get_my_team():
                 krank = loco.get('krank', 0)
                 sonstige = loco.get('sonstige', 0)
 
-                anspruch = row[4] or 27
-                verfuegbar = round(anspruch - urlaub, 1)
-
+                anspruch_raw = row[4] or 27
+                anspruch = max(0, round(float(anspruch_raw or 0), 1))
+                resturlaub_raw = row[7] if row[7] is not None else (anspruch_raw - (row[5] or 0) - (row[6] or 0))
+                resturlaub_view = max(0, round(float(resturlaub_raw or 0), 1))
+                resturlaub_display = _compute_rest_display(anspruch, resturlaub_view, urlaub)
+                verfuegbar = resturlaub_display
                 team.append({
                     'employee_id': row[0],
                     'name': row[1],
@@ -1231,7 +1360,7 @@ def get_my_team():
                     'verfuegbar': verfuegbar,
                     'verbraucht': row[5],
                     'geplant': row[6],
-                    'resturlaub': row[7],
+                    'resturlaub': resturlaub_display,
                     'grp_code': member_info.get('grp_code', ''),
                     'standort': member_info.get('standort', '')
                 })
@@ -1410,28 +1539,25 @@ def approve_vacation():
     """
     try:
         employee_id, ldap_username, employee_data = get_employee_from_session()
-        
+
         if not employee_id:
             return jsonify({'success': False, 'error': 'Nicht angemeldet'}), 401
-        
-        # TAG 198: Admin-Bypass - Admin kann alle genehmigen (Prüfung VOR is_approver)
+
         is_admin = is_vacation_admin(ldap_username)
-        
-        # TAG 198: Nur prüfen wenn nicht Admin (Admins sind automatisch Approver)
-        if not is_admin and not is_approver(ldap_username):
+        is_approver_flag = is_approver(ldap_username)
+
+        if not is_admin and not is_approver_flag:
             return jsonify({'success': False, 'error': 'Keine Genehmiger-Berechtigung'}), 403
-        
-        data = request.get_json()
+
+        data = request.get_json() or {}
         booking_id = data.get('booking_id')
         comment = data.get('comment', '')
-        
+
         if not booking_id:
             return jsonify({'success': False, 'error': 'booking_id erforderlich'}), 400
 
         with db_session() as conn:
             cursor = conn.cursor()
-
-            # Hole Booking-Details für E-Mail
             cursor.execute("""
                 SELECT
                     vb.employee_id,
@@ -1448,37 +1574,29 @@ def approve_vacation():
                 LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
                 WHERE vb.id = %s
             """, (booking_id,))
-
             booking = cursor.fetchone()
 
-            if not booking:
-                return jsonify({'success': False, 'error': 'Buchung nicht gefunden'}), 404
+        if not booking:
+            return jsonify({'success': False, 'error': 'Buchung nicht gefunden'}), 404
 
-            # TAG 209: Team-Validierung nur für normale Genehmiger (nicht Admin)
-            # Admins können alle Buchungen genehmigen, auch eigene
-            if not is_admin:
-                team_members = get_team_for_approver(ldap_username)
-                team_ids = [m['employee_id'] for m in team_members]
-                
-                if not team_ids:
-                    return jsonify({
-                        'success': False, 
-                        'error': 'Kein Team zugeordnet. Bitte Admin kontaktieren.',
-                        'debug': {
-                            'ldap_username': ldap_username,
-                            'team_size': len(team_members)
-                        }
-                    }), 403
-                
-                if booking[0] not in team_ids:
-                    return jsonify({
-                        'success': False, 
-                        'error': f'Keine Berechtigung für diese Buchung. Team-Größe: {len(team_ids)}',
-                        'debug': {
-                            'booking_employee_id': booking[0],
-                            'team_ids': team_ids[:5]  # Erste 5 für Debug
-                        }
-                    }), 403
+        if not is_admin:
+            team_members = get_team_for_approver(ldap_username)
+            team_ids = [m['employee_id'] for m in team_members]
+
+            if not team_ids:
+                return jsonify({
+                    'success': False,
+                    'error': 'Kein Team zugeordnet. Bitte Admin kontaktieren.'
+                }), 403
+
+            if booking[0] not in team_ids:
+                return jsonify({
+                    'success': False,
+                    'error': f'Keine Berechtigung für diese Buchung. Team-Größe: {len(team_ids)}'
+                }), 403
+
+        with db_session() as conn:
+            cursor = conn.cursor()
 
             if booking[1] != 'pending':
                 return jsonify({'success': False, 'error': f'Buchung hat bereits Status: {booking[1]}'}), 400
@@ -1498,9 +1616,8 @@ def approve_vacation():
 
             conn.commit()
 
-        # Booking-Details für E-Mails
+        # Ab hier: Buchung ist bereits genehmigt. E-Mails/Kalender dürfen Fehler nicht an den User durchreichen (Margit-Bug).
         approver_name = f"{employee_data.get('first_name', '')} {employee_data.get('last_name', '')}".strip()
-        
         booking_details = {
             'date': booking[2],
             'day_part': booking[3],
@@ -1509,33 +1626,39 @@ def approve_vacation():
             'employee_email': booking[7],
             'department': booking[8] or ''
         }
-        
-        # E-Mails senden (TAG 104)
-        hr_email_sent = send_approval_email_to_hr(booking_details, approver_name)
-        employee_email_sent = send_approval_notification_to_employee(booking_details, approver_name)
-        
-        # Team-Kalender: drive@ + Mitarbeiter-Kalender (TAG 104 / 2026-02)
-        calendar_result = add_to_team_calendar(booking_details)
+        hr_email_sent = False
+        employee_email_sent = False
         calendar_added = False
-        if isinstance(calendar_result, dict):
-            calendar_added = calendar_result.get('drive_ok') or bool(calendar_result.get('employee_event_id'))
-            if calendar_result.get('employee_event_id') or calendar_result.get('drive_event_id'):
-                update_placeholders = []
-                update_args = []
-                if calendar_result.get('employee_event_id'):
-                    update_placeholders.append(f"calendar_event_id_employee = {sql_placeholder()}")
-                    update_args.append(calendar_result['employee_event_id'])
-                if calendar_result.get('drive_event_id'):
-                    update_placeholders.append(f"calendar_event_id_drive = {sql_placeholder()}")
-                    update_args.append(calendar_result['drive_event_id'])
-                if update_placeholders:
-                    update_args.append(booking_id)
-                    query = f"UPDATE vacation_bookings SET {', '.join(update_placeholders)} WHERE id = {sql_placeholder()}"
-                    query = convert_placeholders(query)
-                    cursor.execute(query, tuple(update_args))
-                    conn.commit()
-        else:
-            calendar_added = bool(calendar_result)
+
+        try:
+            hr_email_sent = send_approval_email_to_hr(booking_details, approver_name)
+            employee_email_sent = send_approval_notification_to_employee(booking_details, approver_name)
+            calendar_result = add_to_team_calendar(booking_details)
+            if isinstance(calendar_result, dict):
+                calendar_added = calendar_result.get('drive_ok') or bool(calendar_result.get('employee_event_id'))
+                if calendar_result.get('employee_event_id') or calendar_result.get('drive_event_id'):
+                    update_placeholders = []
+                    update_args = []
+                    if calendar_result.get('employee_event_id'):
+                        update_placeholders.append(f"calendar_event_id_employee = {sql_placeholder()}")
+                        update_args.append(calendar_result['employee_event_id'])
+                    if calendar_result.get('drive_event_id'):
+                        update_placeholders.append(f"calendar_event_id_drive = {sql_placeholder()}")
+                        update_args.append(calendar_result['drive_event_id'])
+                    if update_placeholders:
+                        update_args.append(booking_id)
+                        query = f"UPDATE vacation_bookings SET {', '.join(update_placeholders)} WHERE id = {sql_placeholder()}"
+                        query = convert_placeholders(query)
+                        with db_session() as conn2:
+                            cur2 = conn2.cursor()
+                            cur2.execute(query, tuple(update_args))
+                            conn2.commit()
+            else:
+                calendar_added = bool(calendar_result)
+        except Exception as notify_err:
+            import traceback
+            print(f"⚠️ Approve: E-Mail/Kalender fehlgeschlagen (Buchung ist trotzdem genehmigt): {notify_err}")
+            traceback.print_exc()
 
         return jsonify({
             'success': True,
@@ -1754,7 +1877,7 @@ def get_all_balances():
             cursor.execute(query, params)
             balance_rows = cursor.fetchall()
 
-            # Locosoft: Resturlaub-Anzeige um Urlaubstage aus Locosoft reduzieren (Locosoft = führendes System)
+            # Locosoft-Urlaub holen, damit Rest = min(Portal-Rest, Anspruch − Locosoft) (Kalender zeigt beides)
             emp_to_loco = {}
             if LOCOSOFT_AVAILABLE and balance_rows:
                 cursor.execute("""
@@ -1766,46 +1889,27 @@ def get_all_balances():
             if emp_to_loco:
                 try:
                     loco_to_emp = {v: k for k, v in emp_to_loco.items()}
-                    loco_ids = list(loco_to_emp.keys())
-                    loco_absences = get_absences_for_employees(loco_ids, year)
+                    loco_absences = get_absences_for_employees(list(loco_to_emp.keys()), year)
                     for loco_id, data in loco_absences.items():
                         emp_id = loco_to_emp.get(loco_id)
                         if emp_id is not None:
                             loco_urlaub_by_emp[emp_id] = data.get('urlaub', 0) or 0
-                    # Fallback: Wenn Aggregat 0 liefert, Urlaub aus Tagesdaten summieren (gleiche Quelle wie Kalender)
-                    try:
-                        loco_days = get_absence_days_for_employees(loco_ids, year)
-                        for loco_id, days in loco_days.items():
-                            emp_id = loco_to_emp.get(loco_id)
-                            if emp_id is None:
-                                continue
-                            urlaub_from_days = sum(
-                                d.get('day_contingent', 1.0) for d in (days or [])
-                                if d.get('reason') in ('Url', 'BUr')
-                            )
-                            if urlaub_from_days > 0 and (loco_urlaub_by_emp.get(emp_id) or 0) == 0:
-                                loco_urlaub_by_emp[emp_id] = round(urlaub_from_days, 1)
-                    except Exception as fallback_e:
-                        print(f"⚠️ Locosoft-Tage-Fallback für Balance: {fallback_e}")
                 except Exception as e:
-                    print(f"⚠️ Locosoft-Abwesenheiten für Balance: {e}")
+                    print(f"⚠️ Locosoft für Balance: {e}")
 
             balances = []
             for row in balance_rows:
                 emp_id = row[0]
-                # TAG 213: Im Urlaubsplaner ausgeblendete Mitarbeiter weglassen
                 if emp_id in hide_in_planner_ids:
                     continue
                 has_ad = emp_id in employees_with_ad
                 dept_name = row[2]
-                anspruch = row[4] or 0
-                resturlaub_view = row[7] if row[7] is not None else (anspruch - (row[5] or 0) - (row[6] or 0))
-                # Resturlaub-Anzeige: min(View, Anspruch - Locosoft-Urlaub), damit Locosoft-Buchungen sichtbar werden
-                if emp_id in loco_urlaub_by_emp:
-                    loco_urlaub = loco_urlaub_by_emp[emp_id]
-                    resturlaub_display = min(resturlaub_view, max(0, round(anspruch - loco_urlaub, 1)))
-                else:
-                    resturlaub_display = resturlaub_view
+                anspruch_raw = row[4] or 0
+                anspruch = max(0, round(float(anspruch_raw or 0), 1))
+                resturlaub_view_raw = row[7] if row[7] is not None else (anspruch_raw - (row[5] or 0) - (row[6] or 0))
+                resturlaub_view = max(0, round(float(resturlaub_view_raw or 0), 1))
+                loco_u = loco_urlaub_by_emp.get(emp_id, 0) or 0
+                resturlaub_display = _compute_rest_display(anspruch, resturlaub_view, loco_u)
 
                 # TAG 123: Mitarbeiter ohne AD-Mapping in spezielle Gruppe
                 if not has_ad:
@@ -1826,7 +1930,7 @@ def get_all_balances():
                     'has_ad_mapping': has_ad
                 })
 
-        return jsonify({
+        resp = jsonify({
             'success': True,
             'year': year,
             'count': len(balances),
@@ -1836,6 +1940,8 @@ def get_all_balances():
             },
             'balances': balances
         })
+        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
+        return resp
 
     except Exception as e:
         import traceback
@@ -2358,7 +2464,7 @@ def book_vacation():
         with db_session() as conn:
             cursor = conn.cursor()
 
-            query = f"SELECT id FROM vacation_bookings WHERE employee_id = {sql_placeholder()} AND booking_date = {sql_placeholder()} AND status != 'cancelled'"
+            query = f"SELECT id FROM vacation_bookings WHERE employee_id = {sql_placeholder()} AND booking_date = {sql_placeholder()} AND status IN ('pending', 'approved')"
             query = convert_placeholders(query)
             cursor.execute(query, (employee_id, booking_date))
 
@@ -2407,7 +2513,17 @@ def book_vacation():
                         'error': f'Sie vertreten in diesem Zeitraum {vertretene_name}. Urlaubsbuchung an den Tagen {", ".join(blocked_dates)} ist nicht möglich.'
                     }), 400
 
-            # TAG 127 / Anforderung: Schulung und Krankheit nur Genehmiger + Admin; ZA nur Admin
+            # Max. Abwesenheit pro Abteilung/Standort (Urlaub + Schulung; Default 50%, editierbar)
+            cap = _check_max_absence_per_dept_location(cursor, employee_id, [booking_date], vacation_type_id)
+            if cap:
+                blocked_dates, max_pct, _a, _t = cap
+                return jsonify({
+                    'success': False,
+                    'error': f'Max. Abwesenheit in Ihrer Abteilung/am Standort ({max_pct}%) wäre überschritten. Keine Buchung an: {", ".join(blocked_dates)}.',
+                    'blocked_dates': blocked_dates
+                }), 400
+
+            # Berechtigung: Krankheit NUR Admin; Schulung Genehmiger oder Admin; ZA nur Admin (Test DRIVE / Testanleitung)
             # vacation_type_id: 5=Krankheit, 6=Zeitausgleich (ZA), 9=Schulung
             is_sickness = vacation_type_id == 5
             is_schulung = vacation_type_id == 9
@@ -2415,11 +2531,17 @@ def book_vacation():
             user_is_admin = is_vacation_admin(ldap_username)
             user_is_approver = is_approver(ldap_username) if ldap_username else False
 
-            if is_sickness or is_schulung:
+            if is_sickness:
+                if not user_is_admin:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Krankheitstage können nur von Admins eingetragen werden'
+                    }), 403
+            elif is_schulung:
                 if not (user_is_admin or user_is_approver):
                     return jsonify({
                         'success': False,
-                        'error': 'Schulung und Krankheit können nur von Genehmiger oder Admin eingetragen werden'
+                        'error': 'Schulung kann nur von Genehmiger oder Admin eingetragen werden'
                     }), 403
             elif is_za:
                 if not user_is_admin:
@@ -2791,21 +2913,10 @@ def book_vacation_batch():
         with db_session() as conn:
             cursor = conn.cursor()
 
-            # Krankheit nur für Admins (TAG 113)
-            is_sickness = vacation_type_id == 3
+            # Krankheit (type_id 5) nur für Admins – Korrektur: war fälschlich type_id == 3 (Test DRIVE)
+            is_sickness = vacation_type_id == 5
             if is_sickness:
-                query = "SELECT ad_groups FROM users WHERE username LIKE ? OR username = ?"
-                query = convert_placeholders(query)
-                cursor.execute(query, (f"%{ldap_username}%", ldap_username))
-                user_row = cursor.fetchone()
-                is_admin = False
-                if user_row and user_row[0]:
-                    try:
-                        groups = json.loads(user_row[0]) if isinstance(user_row[0], str) else user_row[0]
-                        is_admin = 'GRP_Urlaub_Admin' in groups
-                    except:
-                        pass
-                if not is_admin:
+                if not is_vacation_admin(ldap_username):
                     return jsonify({'success': False, 'error': 'Krankheitstage können nur von Admins eingetragen werden'}), 403
 
             # TAG 198: Prüfe Urlaubssperren
@@ -2865,17 +2976,22 @@ def book_vacation_batch():
                         'error': f'Nicht genug Resturlaub! Verfügbar: {available_days} Tage, angefragt: {requested_days} Tag(e)'
                     }), 400
 
-            # Prüfe ob bereits Buchungen existieren
+            # Prüfe ob bereits Buchungen existieren (nur pending/approved blockieren – rejected zählt nicht)
             existing = []
             for d in dates:
-                query = f"SELECT id FROM vacation_bookings WHERE employee_id = {sql_placeholder()} AND booking_date = {sql_placeholder()} AND status != 'cancelled'"
+                query = f"SELECT id, status FROM vacation_bookings WHERE employee_id = {sql_placeholder()} AND booking_date = {sql_placeholder()} AND status IN ('pending', 'approved')"
                 query = convert_placeholders(query)
                 cursor.execute(query, (employee_id, d))
-                if cursor.fetchone():
+                row = cursor.fetchone()
+                if row:
                     existing.append(d)
 
             if existing:
-                return jsonify({'success': False, 'error': f'Bereits gebucht: {existing[0]}'}), 400
+                return jsonify({
+                    'success': False,
+                    'error': f'Bereits gebucht an: {", ".join(existing)}',
+                    'existing_dates': existing
+                }), 400
 
             # Vertretungsregel: Vertreter darf in dem Zeitraum keinen Urlaub buchen, in dem die vertretene Person abwesend ist
             if vacation_type_id == 1:
@@ -2887,6 +3003,16 @@ def book_vacation_batch():
                         'error': f'Sie vertreten in diesem Zeitraum {vertretene_name}. Urlaubsbuchung an den Tagen {", ".join(blocked_dates)} ist nicht möglich.',
                         'blocked_dates': blocked_dates
                     }), 400
+
+            # Max. Abwesenheit pro Abteilung/Standort (Urlaub + Schulung; Default 50%, editierbar)
+            cap = _check_max_absence_per_dept_location(cursor, employee_id, dates, vacation_type_id)
+            if cap:
+                blocked_dates, max_pct, _a, _t = cap
+                return jsonify({
+                    'success': False,
+                    'error': f'Max. Abwesenheit in Ihrer Abteilung/am Standort ({max_pct}%) wäre überschritten. Keine Buchung an: {", ".join(blocked_dates)}.',
+                    'blocked_dates': blocked_dates
+                }), 400
 
             # Alle Buchungen einfügen
             # TAG 127: Admin-Direktbuchungen sind sofort genehmigt
