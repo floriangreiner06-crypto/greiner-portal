@@ -1,4 +1,4 @@
-{% extends 'base.html' %}
+{% extends base_template|default('base.html') %}
 
 {% block title %}Urlaubsplaner - Administration - Greiner DRIVE{% endblock %}
 
@@ -87,6 +87,7 @@
                     <i class="fas fa-user-cog"></i> Urlaubsplaner - Administration
                 </h1>
                 <small>Urlaubsansprüche verwalten und bearbeiten</small>
+                <p class="mb-0 mt-1 small opacity-90">Stammdaten und Urlaubseinstellungen können auch in der Digitalen Personalakte (Rechteverwaltung → Mitarbeiterverwaltung) gepflegt werden.</p>
             </div>
             <div class="col-auto">
                 <a href="/urlaubsplaner/v2" class="btn btn-light">
@@ -137,6 +138,19 @@
                 <div class="text-muted">Ø Verfügbar</div>
             </div>
         </div>
+    </div>
+
+    <!-- Urlaubssperren (Usertest: löschen können) -->
+    <div class="table-container mb-4">
+        <h5 class="mb-3"><i class="fas fa-ban text-danger"></i> Urlaubssperren</h5>
+        <p class="text-muted small">Sperren für das gewählte Jahr. Löschen zum Entfernen.</p>
+        <div class="mb-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="loadBlocks()"><i class="fas fa-sync"></i> Aktualisieren</button>
+        </div>
+        <table class="table table-sm table-hover" id="blocksTable">
+            <thead><tr><th>Datum</th><th>Abteilung</th><th>Grund</th><th>Aktion</th></tr></thead>
+            <tbody id="blocksTableBody"><tr><td colspan="4" class="text-muted">Lade...</td></tr></tbody>
+        </table>
     </div>
 
     <!-- Filter -->
@@ -288,8 +302,58 @@ let currentEditEmployee = null;
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🔧 Urlaubsplaner Admin wird geladen...');
     loadData();
+    loadBlocks();
     setupEventListeners();
 });
+
+// ============================================================================
+// URLAUBSSPERREN (Usertest: löschen können)
+// ============================================================================
+async function loadBlocks() {
+    const year = document.getElementById('filterYear').value;
+    const tbody = document.getElementById('blocksTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="4" class="text-muted">Lade...</td></tr>';
+    try {
+        const r = await fetch(`/api/vacation/admin/blocks?year=${year}`);
+        const data = await r.json();
+        if (!data.success) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-danger">' + (data.error || 'Fehler') + '</td></tr>';
+            return;
+        }
+        const blocks = data.blocks || [];
+        if (blocks.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-muted">Keine Sperren für dieses Jahr.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = blocks.map(b => `
+            <tr>
+                <td>${b.date}</td>
+                <td>${b.department || '-'}</td>
+                <td>${b.reason || '-'}</td>
+                <td><button type="button" class="btn btn-sm btn-danger" onclick="deleteBlock(${b.id}, '${(b.date||'').replace(/'/g, "\\'")}')"><i class="fas fa-trash"></i> Löschen</button></td>
+            </tr>
+        `).join('');
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-danger">Fehler: ' + e.message + '</td></tr>';
+    }
+}
+
+async function deleteBlock(blockId, dateLabel) {
+    if (!confirm('Urlaubssperre vom ' + dateLabel + ' wirklich löschen?')) return;
+    try {
+        const r = await fetch('/api/vacation/admin/blocks/' + blockId, { method: 'DELETE' });
+        const data = await r.json();
+        if (data.success) {
+            showToast('Sperre gelöscht', 'success');
+            loadBlocks();
+        } else {
+            showToast('Fehler: ' + (data.error || ''), 'danger');
+        }
+    } catch (e) {
+        showToast('Fehler: ' + e.message, 'danger');
+    }
+}
 
 // ============================================================================
 // DATEN LADEN
@@ -560,7 +624,10 @@ function exportExcel() {
 // HELPER
 // ============================================================================
 function setupEventListeners() {
-    document.getElementById('filterYear').addEventListener('change', loadData);
+    document.getElementById('filterYear').addEventListener('change', function() {
+        loadData();
+        loadBlocks();
+    });
     document.getElementById('filterStandort').addEventListener('change', () => renderTable(allEmployees));
     document.getElementById('filterStatus').addEventListener('change', () => renderTable(allEmployees));
     document.getElementById('searchInput').addEventListener('input', () => renderTable(allEmployees));

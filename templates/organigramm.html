@@ -496,6 +496,9 @@
             <button class="org-tab" data-tab="approvers">
                 <i class="fas fa-check-circle"></i> Genehmiger
             </button>
+            <button class="org-tab" data-tab="absence-limits">
+                <i class="fas fa-percentage"></i> Abwesenheitsgrenzen
+            </button>
         </div>
         
         <!-- Standort-Filter -->
@@ -567,6 +570,31 @@
                         </thead>
                         <tbody id="approversBody">
                             <tr><td colspan="5" style="text-align: center; color: #888;">Lädt...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab: Abwesenheitsgrenzen (max. % pro Abteilung/Standort, Default 50%) -->
+        <div class="org-tab-content" id="tab-absence-limits">
+            <div class="org-card">
+                <div class="org-card-header">
+                    <i class="fas fa-percentage"></i> Max. Abwesenheit pro Abteilung und Standort
+                </div>
+                <div class="org-card-body">
+                    <p class="text-muted small mb-3">Nur planbare Abwesenheit (Urlaub + Schulung) zählt; Krankheit nicht. Standard: 50%. Pro Abteilung und Standort editierbar.</p>
+                    <table class="table table-sm table-bordered" id="absenceLimitsTable">
+                        <thead>
+                            <tr>
+                                <th>Abteilung</th>
+                                <th>Standort</th>
+                                <th>Max. Abwesenheit %</th>
+                                <th>Aktion</th>
+                            </tr>
+                        </thead>
+                        <tbody id="absenceLimitsBody">
+                            <tr><td colspan="4" style="text-align: center; color: #888;">Lädt...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -682,15 +710,25 @@ async function api(endpoint, method = 'GET', body = null) {
 
 document.addEventListener('DOMContentLoaded', async () => {
     // Tab-Switching
-    document.querySelectorAll('.org-tab').forEach(tab => {
-        tab.addEventListener('click', () => {
+    function switchToTab(tabKey) {
+        const tab = document.querySelector('.org-tab[data-tab="' + tabKey + '"]');
+        if (tab) {
             document.querySelectorAll('.org-tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.org-tab-content').forEach(c => c.classList.remove('active'));
             tab.classList.add('active');
-            document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+            const panel = document.getElementById('tab-' + tabKey);
+            if (panel) panel.classList.add('active');
+        }
+    }
+    document.querySelectorAll('.org-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            switchToTab(tab.dataset.tab);
         });
     });
-    
+    // Hash: z.B. #substitutes öffnet Vertretungen-Tab
+    const hash = (window.location.hash || '').replace(/^#/, '');
+    if (hash) switchToTab(hash);
+
     document.getElementById('searchInput').addEventListener('input', debounce(handleSearch, 300));
     
     await loadEmployees();
@@ -698,6 +736,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadOrgTree();
     await loadApprovers();
     await loadSubstitutes();
+    await loadAbsenceLimits();
     loadCapacityToday();
 });
 
@@ -812,6 +851,72 @@ function renderSubstitutes(substitutes) {
             <td><button class="btn-sm btn-danger" onclick="deleteSubstitute(${s.id})"><i class="fas fa-trash"></i></button></td>
         </tr>
     `).join('');
+}
+
+async function loadAbsenceLimits() {
+    const tbody = document.getElementById('absenceLimitsBody');
+    try {
+        const r = await api('/absence-limits');
+        if (r.success && r.settings && r.settings.length) {
+            tbody.innerHTML = r.settings.map(s => {
+                const dept = (s.department_name || '').replace(/"/g, '&quot;');
+                const loc = (s.location || 'Deggendorf').replace(/"/g, '&quot;');
+                return `
+                <tr data-dept="${dept}" data-loc="${loc}">
+                    <td>${escapeHtml(s.department_name)}</td>
+                    <td>${escapeHtml(s.location)}</td>
+                    <td>
+                        <input type="number" min="1" max="100" value="${s.max_absence_percent}"
+                               style="width: 70px;" class="form-control form-control-sm d-inline-block absence-pct-input">
+                    </td>
+                    <td>
+                        <button type="button" class="btn btn-sm btn-primary btn-save-absence"><i class="fas fa-save"></i> Speichern</button>
+                    </td>
+                </tr>
+            `;
+            }).join('');
+            tbody.querySelectorAll('.btn-save-absence').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const tr = this.closest('tr');
+                    if (!tr) return;
+                    saveAbsenceLimit(tr.dataset.dept, tr.dataset.loc, tr.querySelector('.absence-pct-input'));
+                });
+            });
+        } else {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #888;">' + (r.error || 'Keine Einträge') + '</td></tr>';
+        }
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #c00;">Fehler beim Laden</td></tr>';
+    }
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+async function saveAbsenceLimit(departmentName, location, inputEl) {
+    const input = inputEl || document.querySelector(`tr[data-dept="${escapeHtml(departmentName)}"][data-loc="${escapeHtml(location)}"] .absence-pct-input`);
+    if (!input) return;
+    const val = parseInt(input.value, 10);
+    if (isNaN(val) || val < 1 || val > 100) {
+        alert('Bitte einen Wert zwischen 1 und 100 eingeben.');
+        return;
+    }
+    const r = await api('/absence-limits', 'PUT', {
+        department_name: departmentName,
+        location: location,
+        max_absence_percent: val
+    });
+    if (r.success) {
+        if (typeof showToast === 'function') showToast(r.message || 'Gespeichert.', 'success');
+        else alert(r.message || 'Gespeichert.');
+        loadAbsenceLimits();
+    } else {
+        alert(r.error || 'Speichern fehlgeschlagen.');
+    }
 }
 
 function loadCapacityToday() {

@@ -4,26 +4,83 @@
 
 {% block extra_css %}
 <style>
+    /* Rechteverwaltung Mockup-Style */
+    .rechte-header {
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        padding: 1.25rem 1.75rem;
+        color: white;
+        border-radius: 0.5rem;
+        margin-bottom: 0;
+    }
+    .rechte-header .subtitle { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; }
+    .rechte-header .title { font-size: 1.35rem; font-weight: 800; }
+    .rechte-status-bar {
+        background: white;
+        border-bottom: 1px solid #e5e7eb;
+        padding: 0.6rem 1.75rem;
+        font-size: 0.8rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1.5rem;
+    }
+    .rechte-status-bar .stat-ok { color: #059669; }
+    .rechte-status-bar .stat-default { color: #6b7280; }
+    .rechte-status-bar .stat-warn { color: #dc2626; }
+    .rechte-status-bar .stat-ssot { color: #6366f1; margin-left: auto; }
+    .rechte-info-banner {
+        background: linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%);
+        border: 1px solid #bfdbfe;
+        border-radius: 0.6rem;
+        padding: 0.9rem 1.1rem;
+        margin-bottom: 1.25rem;
+        font-size: 0.85rem;
+        line-height: 1.5;
+    }
+    .rechte-source-portal { font-size: 0.65rem; font-weight: 600; color: #059669; background: #ecfdf5; padding: 0.15rem 0.4rem; border-radius: 4px; }
+    .rechte-source-default { font-size: 0.65rem; color: #6b7280; background: #f9fafb; padding: 0.15rem 0.4rem; border-radius: 4px; }
+    .user-row-no-role { background: #fef2f2 !important; }
+    .user-row-no-role:hover { background: #fee2e2 !important; }
+    .rechte-role-btn {
+        padding: 0.5rem 0.9rem;
+        border-radius: 0.5rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+        border: 1px solid #e5e7eb;
+        background: white;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .rechte-role-btn:hover { border-color: #93c5fd; background: #eff6ff; }
+    .rechte-role-btn.active { border-width: 2px; }
+    .rechte-matrix-table { font-size: 0.8rem; }
+    .rechte-matrix-table th { position: sticky; top: 0; background: #f8fafc; z-index: 1; }
+    .rechte-matrix-table .feat-cell { position: sticky; left: 0; background: white; z-index: 0; }
+    .rechte-arch-step { border-radius: 0.5rem; padding: 0.9rem 1.1rem; margin-bottom: 0.5rem; border: 2px solid; }
+    .rechte-feature-group-card { border: 1px solid #e5e7eb; border-radius: 0.5rem; overflow: hidden; }
+    .rechte-feature-group-card .group-head { background: #f8fafc; padding: 0.5rem 0.9rem; font-weight: 700; font-size: 0.8rem; }
+
     .card-header-admin {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
         font-weight: 600;
     }
-    .user-row {
-        transition: background 0.2s;
-    }
-    .user-row:hover {
-        background: #f8f9fa;
-    }
-    .role-badge {
-        font-size: 0.8rem;
-        padding: 0.3rem 0.6rem;
-        margin: 0.1rem;
-    }
-    .role-admin { background: #dc3545; color: white; }
-    .role-buchhaltung { background: #28a745; color: white; }
-    .role-verkauf { background: #007bff; color: white; }
-    .role-werkstatt { background: #fd7e14; color: white; }
+    .user-row { transition: background 0.2s; }
+    .user-row:hover { background: #f8f9fa !important; }
+    .role-badge { font-size: 0.8rem; padding: 0.3rem 0.6rem; margin: 0.1rem; border-radius: 6px; font-weight: 600; }
+    .role-admin { background: #dc2626; color: white; }
+    .role-buchhaltung { background: #2563eb; color: white; }
+    .role-verkauf_leitung { background: #0d9488; color: white; }
+    .role-verkauf { background: #059669; color: white; }
+    .role-werkstatt_leitung { background: #ea580c; color: white; }
+    .role-werkstatt { background: #d97706; color: white; }
+    .role-service_leitung { background: #c026d3; color: white; }
+    .role-serviceberater { background: #a855f7; color: white; }
+    .role-service { background: #7c3aed; color: white; }
+    .role-disposition { background: #4f46e5; color: white; }
+    .role-lager { background: #6366f1; color: white; }
+    .role-callcenter { background: #64748b; color: white; }
+    .role-marketing { background: #475569; color: white; }
+    .role-mitarbeiter { background: #6b7280; color: white; }
     .role-default { background: #6c757d; color: white; }
 
     .feature-card {
@@ -157,25 +214,46 @@
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid py-4">
-    <!-- Header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
+<div class="container-fluid py-4 px-0">
+    <!-- Header (Mockup-Style) -->
+    <div class="rechte-header d-flex justify-content-between align-items-center mb-0">
         <div>
-            <h2><i class="bi bi-gear-wide-connected me-2"></i>Administration</h2>
-            <p class="text-muted mb-0">Rechte, Reports & System verwalten</p>
+            <div class="subtitle mb-1">DRIVE · Admin</div>
+            <div class="title">🔐 Rechteverwaltung</div>
         </div>
-        <div>
-            <a href="/admin/celery/" class="btn btn-outline-primary">
-                <i class="bi bi-cpu me-1"></i>Task Manager
-            </a>
+        <div class="text-end">
+            <a href="/admin/celery/" class="btn btn-sm btn-outline-light"><i class="bi bi-cpu me-1"></i>Task Manager</a>
         </div>
     </div>
 
+    <!-- Status-Bar (wird per JS befüllt) -->
+    <div class="rechte-status-bar" id="rechteStatusBar">
+        <span class="stat-ok">✓ <strong id="statWithRole">0</strong> mit Portal-Rolle</span>
+        <span class="stat-default">📋 <strong id="statDefault">0</strong> Default</span>
+        <span class="stat-warn">⚠ <strong id="statNoRole">0</strong> ohne Rolle</span>
+        <span class="stat-ssot">SSOT: Portal (Option B)</span>
+    </div>
+
     <!-- Tabs -->
-    <ul class="nav nav-tabs mb-4" role="tablist">
+    <ul class="nav nav-tabs px-3 pt-2 mb-0 bg-white border-bottom" role="tablist">
         <li class="nav-item">
             <a class="nav-link active" data-bs-toggle="tab" href="#users-tab">
-                <i class="bi bi-people me-1"></i>User & Rollen
+                <i class="bi bi-people me-1"></i>User & Rollen <span class="badge bg-secondary ms-1" id="tabUserCount">0</span>
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#rollen-features-tab">
+                <i class="bi bi-shield-check me-1"></i>Rollen-Features
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#matrix-tab">
+                <i class="bi bi-grid-3x3 me-1"></i>Matrix
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#architektur-tab">
+                <i class="bi bi-diagram-3 me-1"></i>Architektur
             </a>
         </li>
         <li class="nav-item">
@@ -185,7 +263,7 @@
         </li>
         <li class="nav-item">
             <a class="nav-link" data-bs-toggle="tab" href="#features-tab">
-                <i class="bi bi-key me-1"></i>Feature-Zugriff
+                <i class="bi bi-key me-1"></i>Nach Feature
             </a>
         </li>
         <li class="nav-item">
@@ -198,49 +276,113 @@
                 <i class="bi bi-list-ul me-1"></i>Navigation
             </a>
         </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#mitarbeiter-config-tab" id="tab-mitarbeiter-config">
+                <i class="bi bi-person-gear me-1"></i>Mitarbeiter-Konfig <span class="badge bg-secondary ms-1" id="tabMitarbeiterCount">0</span>
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#urlaubsverwaltung-tab">
+                <i class="bi bi-umbrella me-1"></i>Urlaubsverwaltung
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#mitarbeiterverwaltung-tab">
+                <i class="bi bi-people me-1"></i>Mitarbeiterverwaltung
+            </a>
+        </li>
     </ul>
 
-    <div class="tab-content">
-        <!-- TAB 1: User & Rollen -->
+    <div class="tab-content bg-white p-3">
+        <!-- TAB 1: User & Rollen (Mockup-ähnlich) -->
         <div class="tab-pane fade show active" id="users-tab">
-            <div class="card">
-                <div class="card-header card-header-admin d-flex justify-content-between align-items-center">
-                    <span><i class="bi bi-people me-2"></i>Portal-User</span>
-                    <input type="text" class="form-control form-control-sm search-box"
-                           id="userSearch" placeholder="Suchen...">
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover mb-0" id="usersTable">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Name</th>
-                                    <th>OU (AD)</th>
-                                    <th>Title (AD)</th>
-                                    <th>DB-Rollen</th>
-                                    <th>Startseite</th>
-                                    <th>Letzter Login</th>
-                                    <th class="text-center">Aktion</th>
-                                </tr>
-                            </thead>
-                            <tbody id="usersBody">
-                                <tr>
-                                    <td colspan="7" class="text-center py-4">
-                                        <div class="spinner-border text-primary" role="status"></div>
-                                        <div class="mt-2">Lade User...</div>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+            <div class="rechte-info-banner">
+                <strong>So funktioniert's:</strong> Ein Ort für Rollen, Mitarbeiter-Struktur und Urlaub. Jeder User bekommt <strong>eine Portal-Rolle</strong> zugewiesen (bestimmt Navi &amp; Features). Hier pflegst du zusätzlich <strong>Mitarbeiter-Konfig</strong> (Abteilung, Genehmiger, Vertretung) und <strong>Urlaubsverwaltung</strong> (Ansprüche, Sperren).
             </div>
+            <div class="d-flex gap-2 flex-wrap mb-3">
+                <input type="text" class="form-control" id="userSearch" placeholder="🔍 Name oder E-Mail suchen…" style="max-width: 280px;">
+                <select class="form-select" id="userFilterStatus" style="max-width: 200px;">
+                    <option value="alle">Alle User</option>
+                    <option value="ohne_rolle">⚠ Ohne Rolle</option>
+                    <option value="mit_override">✅ Mit Portal-Rolle</option>
+                    <option value="nur_default">📋 Nur Default</option>
+                </select>
+            </div>
+            <div class="small text-muted mb-2">
+                <span id="userCounter">0 von 0 Benutzern</span>
+                <span class="text-danger fw-bold ms-2" id="userNoRoleWarn" style="display:none;"></span>
+            </div>
+            <div class="table-responsive border rounded">
+                <table class="table table-hover mb-0" id="usersTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Mitarbeiter</th>
+                            <th>LDAP-Info</th>
+                            <th>Portal-Rolle</th>
+                            <th>Quelle</th>
+                            <th class="text-center" style="width:140px;">Aktion</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersBody">
+                        <tr>
+                            <td colspan="5" class="text-center py-4">
+                                <div class="spinner-border text-primary" role="status"></div>
+                                <div class="mt-2">Lade User...</div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
 
-            <div class="alert alert-info mt-3">
-                <i class="bi bi-info-circle me-2"></i>
-                <strong>Hinweis:</strong> User mit <span class="badge role-admin">admin</span> in DB-Rollen
-                erhalten automatisch Zugriff auf <strong>alle</strong> Features (Option C).
-                Der LDAP-Title wird dabei ignoriert.
+        <!-- TAB 2: Rollen-Features (Mockup: Rollen-Buttons + gruppierte Checkboxen) -->
+        <div class="tab-pane fade" id="rollen-features-tab">
+            <div class="rechte-info-banner" style="background: linear-gradient(135deg, #faf5ff 0%, #fdf2f8 100%); border-color: #e9d5ff;">
+                <strong>Rollen-Features:</strong> Hier legst du fest, welche Module jede Rolle sehen darf. Änderungen gelten für <strong>alle User</strong> mit dieser Rolle.
+            </div>
+            <div class="mb-3 d-flex flex-wrap gap-2" id="roleSelectorButtons"></div>
+            <div class="mb-3 p-3 rounded border" id="selectedRoleInfo" style="display:none;"></div>
+            <div class="row g-3" id="roleFeaturesGrouped"></div>
+            <div class="mt-3">
+                <button type="button" class="btn btn-primary" id="saveRoleFeaturesBtn2" onclick="saveRoleFeatures()" disabled>
+                    <i class="bi bi-check me-1"></i>Änderungen speichern
+                </button>
+            </div>
+        </div>
+
+        <!-- TAB 3: Matrix (Feature × Rolle, read-only) -->
+        <div class="tab-pane fade" id="matrix-tab">
+            <div class="rechte-info-banner" style="background: linear-gradient(135deg, #fefce8 0%, #fef9c3 100%); border-color: #fde68a;">
+                <strong>Berechtigungsmatrix:</strong> Übersicht — welche Rolle hat Zugriff auf welches Feature. Read-only.
+            </div>
+            <div class="table-responsive border rounded">
+                <table class="table table-sm rechte-matrix-table mb-0" id="matrixTable">
+                    <thead></thead>
+                    <tbody id="matrixBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- TAB 4: Architektur (Kaskade) -->
+        <div class="tab-pane fade" id="architektur-tab">
+            <div class="rechte-info-banner" style="background: linear-gradient(135deg, #f0fdfa 0%, #ecfdf5 100%); border-color: #99f6e4;">
+                <strong>Architektur:</strong> So wird die Portal-Rolle ermittelt — eine klare Kaskade.
+            </div>
+            <div class="rechte-arch-step" style="border-color: #6366f1; background: #6366f108;">
+                <strong>1. Login via LDAP</strong><br>
+                <small class="text-muted">AD liefert nur: ✓ Identität (wer bist du?) — KEINE Rechte!</small>
+            </div>
+            <div class="rechte-arch-step" style="border-color: #dc2626; background: #dc262608;">
+                <strong>2. admin in user_roles?</strong><br>
+                <small class="text-muted">Ja → Rolle = admin, voller Zugriff. Fertig.</small>
+            </div>
+            <div class="rechte-arch-step" style="border-color: #059669; background: #05966908;">
+                <strong>3. portal_role_override gesetzt?</strong><br>
+                <small class="text-muted">Ja → Diese Rolle verwenden (vom Admin im Portal zugewiesen).</small>
+            </div>
+            <div class="rechte-arch-step" style="border-color: #6b7280; background: #f9fafb;">
+                <strong>4. Fallback: mitarbeiter</strong><br>
+                <small class="text-muted">Minimaler Zugriff (nur Urlaubsplaner, eigene Daten).</small>
             </div>
         </div>
 
@@ -266,6 +408,34 @@
 
         <!-- TAB 3: Feature-Zugriff -->
         <div class="tab-pane fade" id="features-tab">
+            <!-- Rollen-Ansicht: Rolle wählen → Features an/aus -->
+            <div class="card mb-4">
+                <div class="card-header card-header-admin">
+                    <i class="bi bi-shield-check me-2"></i>Rollen &amp; Feature-Zugriff
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">Rolle wählen und Zugriff pro Feature ein- oder abwählen. Speichern übernimmt die Änderungen für diese Rolle.</p>
+                    <div class="row align-items-end mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label small mb-1">Rolle</label>
+                            <select class="form-select" id="roleFeatureSelect" onchange="onRoleForFeaturesChange()">
+                                <option value="">— Rolle wählen —</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <button type="button" class="btn btn-primary" id="saveRoleFeaturesBtn" onclick="saveRoleFeatures()" disabled>
+                                <i class="bi bi-check me-1"></i>Zugriff für diese Rolle speichern
+                            </button>
+                        </div>
+                    </div>
+                    <div id="roleFeaturesList" class="border rounded p-3 bg-light" style="max-height: 320px; overflow-y: auto;">
+                        <span class="text-muted">Bitte zuerst eine Rolle wählen.</span>
+                    </div>
+                </div>
+            </div>
+            <!-- Nach Feature (bestehend) -->
+            <h5 class="mb-2"><i class="bi bi-key me-1"></i>Nach Feature</h5>
+            <p class="text-muted small mb-3">Pro Feature die Rollen mit Zugriff bearbeiten (Klick auf Stift).</p>
             <div class="row" id="featuresGrid">
                 <div class="col-12 text-center py-4">
                     <div class="spinner-border text-primary" role="status"></div>
@@ -316,10 +486,9 @@
                     </button>
                 </div>
                 <div class="card-body">
-                    <div class="alert alert-info">
+                    <div class="alert alert-info mb-3">
                         <i class="bi bi-info-circle me-2"></i>
-                        <strong>TAG 190:</strong> Navigation-Items werden aus der Datenbank geladen.
-                        Änderungen werden sofort wirksam (nach Browser-Refresh).
+                        Navigation-Items aus der Datenbank. Stift = bearbeiten, Papierkorb = löschen. Nach Änderung ggf. Browser aktualisieren.
                     </div>
                     <div id="navigationTree" class="mt-3">
                         <div class="text-center py-4">
@@ -327,6 +496,191 @@
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- TAB: Mitarbeiter-Konfig -->
+        <div class="tab-pane fade" id="mitarbeiter-config-tab">
+            <div class="rechte-info-banner" style="background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border-color: #a7f3d0;">
+                <strong>Mitarbeiter-Konfig:</strong> Abteilung, Standort, Genehmiger (Urlaub) und Vertretung pro Mitarbeiter. Genehmiger ergibt sich aus den Regeln (Gruppe/Standort). Vertretungen bearbeiten: <a href="/admin/organigramm" target="_blank">Organigramm <i class="bi bi-box-arrow-up-right small"></i></a> oder Stift pro Zeile.
+            </div>
+            <div class="d-flex gap-2 flex-wrap mb-3">
+                <input type="text" class="form-control" id="mitarbeiterConfigSearch" placeholder="Mitarbeiter suchen…" style="max-width: 280px;">
+                <select class="form-select" id="mitarbeiterConfigDept" style="max-width: 220px;">
+                    <option value="">Alle Abteilungen</option>
+                </select>
+            </div>
+            <div class="small text-muted mb-2"><span id="mitarbeiterConfigCounter">0 Mitarbeiter</span></div>
+            <div class="table-responsive border rounded">
+                <table class="table table-hover mb-0" id="mitarbeiterConfigTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Mitarbeiter</th>
+                            <th>Abteilung</th>
+                            <th>Standort</th>
+                            <th>Genehmiger (Urlaub)</th>
+                            <th>Vertritt</th>
+                            <th>wird vertreten</th>
+                            <th class="text-center" style="width:100px;">Aktion</th>
+                        </tr>
+                    </thead>
+                    <tbody id="mitarbeiterConfigBody">
+                        <tr><td colspan="7" class="text-center py-4"><div class="spinner-border text-primary"></div><div class="mt-2">Lade Mitarbeiter-Konfig…</div></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- TAB: Urlaubsverwaltung (inkl. Vollansicht Urlaubsplaner-Admin) -->
+        <div class="tab-pane fade" id="urlaubsverwaltung-tab">
+            <div class="rechte-info-banner" style="background: linear-gradient(135deg, #eff6ff 0%, #f0f9ff 100%); border-color: #bae6fd;">
+                <strong>Urlaubsverwaltung:</strong> Ansprüche, Sperren und Freie Tage – alles hier. <a href="/urlaubsplaner/chef" class="ms-2" target="_blank"><i class="bi bi-diagram-3"></i> Chef-Übersicht öffnen</a>
+            </div>
+            <iframe src="/urlaubsplaner/admin?embed=1" class="border rounded w-100" style="min-height: calc(100vh - 280px); height: 900px;" title="Urlaubsplaner Administration"></iframe>
+        </div>
+
+        <!-- TAB: Mitarbeiterverwaltung (Digitale Personalakte, eingebettet) -->
+        <div class="tab-pane fade" id="mitarbeiterverwaltung-tab">
+            <div class="rechte-info-banner" style="background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border-color: #a7f3d0;">
+                <strong>Mitarbeiterverwaltung:</strong> Digitale Personalakte – Stammdaten, Vertrag, Arbeitszeit, Urlaubseinstellungen. Links: Mitarbeiter wählen, rechts: Datensatz bearbeiten.
+            </div>
+            <iframe src="/admin/mitarbeiterverwaltung?embed=1" class="border rounded w-100" style="min-height: calc(100vh - 280px); height: 900px;" title="Mitarbeiterverwaltung"></iframe>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Navigation-Item bearbeiten -->
+<div class="modal fade" id="navEditModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Navigation-Item bearbeiten</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="navEditId" value="">
+                <div class="mb-2">
+                    <label class="form-label small">Label</label>
+                    <input type="text" class="form-control" id="navEditLabel" placeholder="Anzeigename">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">URL</label>
+                    <input type="text" class="form-control" id="navEditUrl" placeholder="/pfad/">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">Icon (z.B. bi-house)</label>
+                    <input type="text" class="form-control" id="navEditIcon" placeholder="bi-house">
+                </div>
+                <div class="row mb-2">
+                    <div class="col-6">
+                        <label class="form-label small">Feature (optional)</label>
+                        <input type="text" class="form-control" id="navEditRequiresFeature" placeholder="z.B. bankenspiegel">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">Rollen (optional)</label>
+                        <input type="text" class="form-control" id="navEditRoleRestriction" placeholder="admin,buchhaltung">
+                    </div>
+                </div>
+                <div class="form-check mb-2">
+                    <input type="checkbox" class="form-check-input" id="navEditActive" checked>
+                    <label class="form-check-label" for="navEditActive">Aktiv</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-primary" onclick="saveNavigationItem()">
+                    <i class="bi bi-check me-1"></i>Speichern
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Mitarbeiter-Konfig bearbeiten (Stammdaten, Vertretungen, Urlaub) -->
+<div class="modal fade" id="mitarbeiterConfigModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-person-gear me-2"></i>Mitarbeiter bearbeiten</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
+                <input type="hidden" id="mitarbeiterConfigEmpId" value="">
+                <h6 id="mitarbeiterConfigEmpName" class="mb-3"></h6>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label small">Abteilung</label>
+                            <select class="form-select" id="mitarbeiterConfigDeptEdit"></select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small">Standort</label>
+                            <select class="form-select" id="mitarbeiterConfigLocationEdit">
+                                <option value="">—</option>
+                                <option value="Deggendorf">Deggendorf</option>
+                                <option value="Landau a.d. Isar">Landau a.d. Isar</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small">Vertritt (stellt sich für)</label>
+                        <div id="mitarbeiterConfigVertrittList" class="small mb-2 border rounded p-2" style="min-height: 38px; max-height: 120px; overflow-y: auto;"></div>
+                        <div class="input-group input-group-sm mb-3">
+                            <select class="form-select" id="mitarbeiterConfigVertrittAdd" style="max-width: 200px;"><option value="">— hinzufügen —</option></select>
+                            <button type="button" class="btn btn-outline-primary" onclick="addVertretungRule('vertritt')"><i class="bi bi-plus"></i></button>
+                        </div>
+                        <label class="form-label small">Wird vertreten von</label>
+                        <div id="mitarbeiterConfigWirdVertretenList" class="small mb-2 border rounded p-2" style="min-height: 38px; max-height: 120px; overflow-y: auto;"></div>
+                        <div class="input-group input-group-sm">
+                            <select class="form-select" id="mitarbeiterConfigWirdVertretenAdd" style="max-width: 200px;"><option value="">— hinzufügen —</option></select>
+                            <button type="button" class="btn btn-outline-primary" onclick="addVertretungRule('wird_vertreten')"><i class="bi bi-plus"></i></button>
+                        </div>
+                    </div>
+                </div>
+                <p class="small text-muted mb-0 mt-2"><a href="/admin/organigramm#substitutes" target="_blank"><i class="bi bi-diagram-3"></i> Alle Vertretungsregeln im Organigramm</a></p>
+
+                <hr class="my-4">
+                <h6 class="text-secondary mb-3"><i class="bi bi-umbrella me-1"></i> Urlaub</h6>
+                <div class="row">
+                    <div class="col-md-4">
+                        <label class="form-label small">Urlaubsanspruch (Jahr)</label>
+                        <select class="form-select form-select-sm" id="mitarbeiterConfigUrlaubYear">
+                            <option value="2025">2025</option>
+                            <option value="2026">2026</option>
+                            <option value="2027">2027</option>
+                            <option value="2024">2024</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small">Anspruch (Tage)</label>
+                        <input type="number" class="form-control form-control-sm" id="mitarbeiterConfigUrlaubAnspruch" min="0" max="60" step="0.5" placeholder="27">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small">Übertrag</label>
+                        <input type="number" class="form-control form-control-sm" id="mitarbeiterConfigUrlaubUebertrag" min="0" max="30" step="0.5" placeholder="0">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small">Korrektur (+/-)</label>
+                        <input type="number" class="form-control form-control-sm" id="mitarbeiterConfigUrlaubKorrektur" step="0.5" placeholder="0">
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-3">
+                        <label class="form-label small">Max. Urlaubslänge (am Stück)</label>
+                        <input type="number" class="form-control form-control-sm" id="mitarbeiterConfigMaxUrlaubslänge" min="1" max="30" placeholder="14">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small">Berechnung Urlaubswertung</label>
+                        <select class="form-select form-select-sm" id="mitarbeiterConfigCalculationMethod">
+                            <option value="standard">Standard (Wertung an Arbeitstagen)</option>
+                        </select>
+                    </div>
+                </div>
+                <p class="small text-muted mt-2 mb-0"><a href="#" id="mitarbeiterConfigPersonalakteLink" target="_blank"><i class="bi bi-folder2-open me-1"></i> Alle Daten in der Digitalen Personalakte bearbeiten</a></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-primary" onclick="saveMitarbeiterConfig()"><i class="bi bi-check me-1"></i>Speichern</button>
             </div>
         </div>
     </div>
@@ -510,13 +864,36 @@
 <script>
 let usersData = [];
 let rolesData = [];
+let availablePortalRoles = [];
 let featureData = {};
 let titleData = {};
 let reportsData = {};
 let currentReportId = null;
 let employeesData = [];
+let employeesConfigData = [];
 let availableDashboards = [];
 let currentDashboardUserId = null;
+let selectedRoleForFeatures = '';
+
+// Feature-Gruppen für Rollen-Features und Matrix (Lesbarkeit)
+// Alle Features aus Nav (requires_feature) erscheinen durch API-Ergänzung; hier nur Gruppierung
+var FEATURE_GROUPS = {
+    bankenspiegel: 'Finanzen', controlling: 'Finanzen', zinsen: 'Finanzen',
+    einkaufsfinanzierung: 'Finanzen', fahrzeugfinanzierungen: 'Finanzen', opos: 'Finanzen',
+    auftragseingang: 'Verkauf', auslieferungen: 'Verkauf', verkauf_dashboard: 'Verkauf',
+    fahrzeuge: 'Verkauf', stellantis_bestand: 'Verkauf', verkaeufer_zielplanung: 'Verkauf',
+    urlaubsplaner: 'HR / Urlaub', mitarbeiterverwaltung: 'HR / Urlaub', organigramm: 'HR / Urlaub',
+    urlaub_genehmigen: 'HR / Urlaub',
+    teilebestellungen: 'Werkstatt / Teile', aftersales: 'Werkstatt / Teile',
+    werkstatt: 'Werkstatt', gudat: 'Werkstatt', stempeluhr: 'Werkstatt', werkstatt_live: 'Werkstatt',
+    fahrzeuganlage: 'Werkstatt',
+    planung: 'Planung', abteilungsleiter_planung: 'Planung', kst_ziele: 'Planung',
+    provision: 'Vergütung',
+    whatsapp: 'Integrationen', whatsapp_teile: 'Integrationen', whatsapp_verkauf: 'Integrationen',
+    marketing_potenzial: 'Marketing',
+    qa_dashboard: 'Qualität', sb_dashboard: 'Werkstatt / Teile', sb_ranking: 'Werkstatt / Teile',
+    navigation: 'System', rechteverwaltung: 'System'
+};
 
 // Laden beim Start
 document.addEventListener('DOMContentLoaded', function() {
@@ -525,6 +902,19 @@ document.addEventListener('DOMContentLoaded', function() {
     loadReports();
     loadEmployees();
     loadDashboards();
+    // Tab-Wechsel: Mitarbeiter-Konfig und Urlaubsverwaltung nachladen
+    const tabMitarbeiter = document.querySelector('a[href="#mitarbeiter-config-tab"]');
+    if (tabMitarbeiter) {
+        tabMitarbeiter.addEventListener('shown.bs.tab', function() {
+            loadEmployeesConfig();
+        });
+    }
+    // Urlaubsverwaltung-Tab lädt Vollansicht per iframe, kein JS-Load nötig
+    // Filter Mitarbeiter-Konfig
+    const searchMc = document.getElementById('mitarbeiterConfigSearch');
+    const deptMc = document.getElementById('mitarbeiterConfigDept');
+    if (searchMc) searchMc.addEventListener('input', renderMitarbeiterConfigTable);
+    if (deptMc) deptMc.addEventListener('change', renderMitarbeiterConfigTable);
 });
 
 // User & Rollen laden
@@ -535,12 +925,29 @@ async function loadUsersRoles() {
 
         usersData = data.users;
         rolesData = data.available_roles;
+        availablePortalRoles = data.available_portal_roles || [];
 
         renderUsersTable();
+        // Rollen-Features-Tab: Buttons und ggf. gruppierte Checkboxen nachziehen (Ladereihenfolge unabhängig)
+        renderRoleSelectorButtons();
+        if (featureData && Object.keys(featureData).length && (availablePortalRoles || []).length) {
+            if (!selectedRoleForFeatures) selectedRoleForFeatures = availablePortalRoles[0];
+            renderRoleFeaturesGrouped(selectedRoleForFeatures);
+            const infoEl = document.getElementById('selectedRoleInfo');
+            if (infoEl) {
+                const role = selectedRoleForFeatures;
+                const count = Object.keys(featureData).filter(f => (featureData[f] || []).includes(role) || (featureData[f] || []).includes('*')).length;
+                infoEl.style.display = 'block';
+                infoEl.innerHTML = '<strong>Rolle: ' + escapeHtml(role) + '</strong> — ' + count + ' Features mit Zugriff. Checkboxen unten anpassen und speichern.';
+            }
+            document.querySelectorAll('#roleSelectorButtons .rechte-role-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.role === selectedRoleForFeatures);
+            });
+        }
     } catch (error) {
         console.error('Fehler:', error);
         document.getElementById('usersBody').innerHTML =
-            '<tr><td colspan="6" class="text-danger text-center">Fehler beim Laden</td></tr>';
+            '<tr><td colspan="9" class="text-danger text-center">Fehler beim Laden</td></tr>';
     }
 }
 
@@ -555,64 +962,158 @@ async function loadFeatureAccess() {
 
         renderFeaturesGrid();
         renderTitlesTable();
+        renderRoleSelectorButtons();
+        renderMatrixTable();
+        if (selectedRoleForFeatures) renderRoleFeaturesGrouped(selectedRoleForFeatures);
     } catch (error) {
         console.error('Fehler:', error);
     }
 }
 
-// User-Tabelle rendern
+// Gefilterte User-Liste (Suche + Status)
+function getFilteredUsers() {
+    const search = (document.getElementById('userSearch') || {}).value || '';
+    const filterStatus = (document.getElementById('userFilterStatus') || {}).value || 'alle';
+    const q = search.toLowerCase().trim();
+    let list = usersData;
+    if (q) {
+        list = list.filter(u => {
+            const name = (u.display_name || '').toLowerCase();
+            const email = (u.email || '').toLowerCase();
+            return name.includes(q) || email.includes(q);
+        });
+    }
+    if (filterStatus === 'ohne_rolle') {
+        list = list.filter(u => !(u.portal_role_override || '').trim());
+    } else if (filterStatus === 'mit_override') {
+        list = list.filter(u => (u.portal_role_override || '').trim());
+    } else if (filterStatus === 'nur_default') {
+        list = list.filter(u => !(u.portal_role_override || '').trim());
+    }
+    return list;
+}
+
+// User-Tabelle rendern (Mockup: Mitarbeiter, LDAP-Info, Portal-Rolle, Quelle, Aktion)
 function renderUsersTable() {
     const tbody = document.getElementById('usersBody');
+    const filtered = getFilteredUsers();
 
     if (usersData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center">Keine User gefunden</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center">Keine User gefunden</td></tr>';
+        updateRechteStatusBar(0, 0, 0);
         return;
     }
 
-    tbody.innerHTML = usersData.map(user => {
-        const roles = user.roles.split(', ').map(r => {
-            const roleClass = getRoleClass(r.trim());
-            return `<span class="badge role-badge ${roleClass}">${r.trim()}</span>`;
+    const hasOverride = usersData.filter(u => (u.portal_role_override || '').trim()).length;
+    const defaultCount = usersData.length - hasOverride;
+    updateRechteStatusBar(hasOverride, defaultCount, defaultCount);
+
+    document.getElementById('tabUserCount').textContent = usersData.length;
+    document.getElementById('userCounter').textContent = filtered.length + ' von ' + usersData.length + ' Benutzern';
+    const noRoleCount = usersData.filter(u => !(u.portal_role_override || '').trim()).length;
+    const warnEl = document.getElementById('userNoRoleWarn');
+    if (noRoleCount > 0) {
+        warnEl.textContent = '⚠ ' + noRoleCount + ' ohne zugewiesene Portal-Rolle (nutzen Default)';
+        warnEl.style.display = 'inline';
+    } else {
+        warnEl.style.display = 'none';
+    }
+
+    tbody.innerHTML = filtered.map(user => {
+        const effectiveRole = user.effective_portal_role || 'mitarbeiter';
+        const effectiveRoleClass = getRoleClass(effectiveRole);
+        const currentOverride = (user.portal_role_override || '').trim();
+        const sourcePortal = currentOverride !== '';
+        const lastLogin = user.last_login ? new Date(user.last_login).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+        const noRoleRow = !sourcePortal ? ' user-row-no-role' : '';
+
+        const portalRoleOptions = ['', ...availablePortalRoles].map(r => {
+            const label = r === '' ? '— Bitte zuweisen —' : r;
+            const selected = currentOverride === r ? ' selected' : '';
+            return `<option value="${r}"${selected}>${label}</option>`;
         }).join('');
 
-        const lastLogin = user.last_login ?
-            new Date(user.last_login).toLocaleString('de-DE') : '-';
-        
-        const dashboardDisplay = user.dashboard_name 
-            ? `<span class="badge bg-info">${user.dashboard_name}</span>`
-            : '<span class="text-muted small">Standard</span>';
-
         return `
-            <tr class="user-row" data-user-id="${user.id}">
-                <td><strong>${user.display_name}</strong></td>
-                <td><span class="text-muted">${user.ou || '-'}</span></td>
-                <td><span class="small">${user.title || '-'}</span></td>
-                <td>${roles}</td>
-                <td>${dashboardDisplay}</td>
-                <td class="small text-muted">${lastLogin}</td>
+            <tr class="user-row${noRoleRow}" data-user-id="${user.id}">
+                <td>
+                    <strong>${escapeHtml(user.display_name)}</strong>
+                    <div class="small text-muted">Letzter Login: ${lastLogin}</div>
+                </td>
+                <td>
+                    <span class="text-muted small">${escapeHtml(user.ou || '—')}</span>
+                    <div class="small">${escapeHtml(user.title || '—')}</div>
+                </td>
+                <td><span class="badge role-badge ${effectiveRoleClass}">${effectiveRole}</span></td>
+                <td>
+                    ${sourcePortal ? '<span class="rechte-source-portal">Portal ✓</span>' : '<span class="rechte-source-default">Default</span>'}
+                </td>
                 <td class="text-center">
-                    <button class="btn btn-sm btn-outline-primary me-1"
-                            onclick="openRoleModal(${user.id}, '${user.display_name}', '${user.roles}')"
-                            title="Rollen bearbeiten">
-                        <i class="bi bi-pencil"></i>
-                    </button>
-                    <button class="btn btn-sm btn-outline-success"
-                            onclick="openDashboardModal(${user.id}, '${user.display_name}', '${user.dashboard_url || ''}')"
-                            title="Startseite konfigurieren">
-                        <i class="bi bi-house-door"></i>
-                    </button>
+                    <select class="form-select form-select-sm portal-role-select" style="max-width: 11rem; display: inline-block;"
+                            data-user-id="${user.id}" onchange="setPortalRole(${user.id}, this.value)">
+                        ${portalRoleOptions}
+                    </select>
+                    <div class="mt-1">
+                        <button class="btn btn-sm btn-outline-secondary me-1" data-user-id="${user.id}" data-user-name="${escapeHtml(user.display_name)}" data-user-roles="${escapeHtml(user.roles)}" onclick="openRoleModalFromBtn(this)" title="DB-Rollen"><i class="bi bi-pencil"></i></button>
+                        <button class="btn btn-sm btn-outline-secondary" data-user-id="${user.id}" data-user-name="${escapeHtml(user.display_name)}" data-user-url="${(user.dashboard_url || '').replace(/"/g, '&quot;')}" onclick="openDashboardModalFromBtn(this)" title="Startseite"><i class="bi bi-house-door"></i></button>
+                    </div>
                 </td>
             </tr>
         `;
     }).join('');
 }
 
-// Rollen-Klasse bestimmen
+function updateRechteStatusBar(withRole, defaultCount, noRole) {
+    const el = (id) => document.getElementById(id);
+    if (el('statWithRole')) el('statWithRole').textContent = withRole;
+    if (el('statDefault')) el('statDefault').textContent = defaultCount;
+    if (el('statNoRole')) el('statNoRole').textContent = noRole;
+}
+
+function escapeHtml(s) {
+    if (s == null) return '';
+    const div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+}
+
+async function setPortalRole(userId, value) {
+    const portalRole = value === '' ? null : value;
+    try {
+        const response = await fetch(`/api/admin/user/${userId}/portal-role`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ portal_role: portalRole })
+        });
+        const result = await response.json();
+        if (result.success) {
+            await loadUsersRoles();
+        } else {
+            alert('Fehler: ' + (result.error || result.message));
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Fehler beim Speichern');
+    }
+}
+
+// Rollen-Klasse für Badges (Mockup-Farben)
 function getRoleClass(role) {
-    if (role === 'admin') return 'role-admin';
-    if (role === 'buchhaltung') return 'role-buchhaltung';
-    if (role.includes('verkauf')) return 'role-verkauf';
-    if (role.includes('werkstatt')) return 'role-werkstatt';
+    if (!role) return 'role-default';
+    const r = (role + '').toLowerCase();
+    if (r === 'admin') return 'role-admin';
+    if (r === 'buchhaltung') return 'role-buchhaltung';
+    if (r === 'verkauf_leitung') return 'role-verkauf_leitung';
+    if (r === 'verkauf') return 'role-verkauf';
+    if (r === 'werkstatt_leitung') return 'role-werkstatt_leitung';
+    if (r === 'werkstatt') return 'role-werkstatt';
+    if (r === 'service_leitung') return 'role-service_leitung';
+    if (r === 'serviceberater') return 'role-serviceberater';
+    if (r === 'service') return 'role-service';
+    if (r === 'disposition') return 'role-disposition';
+    if (r === 'lager') return 'role-lager';
+    if (r === 'callcenter') return 'role-callcenter';
+    if (r === 'marketing') return 'role-marketing';
+    if (r === 'mitarbeiter') return 'role-mitarbeiter';
     return 'role-default';
 }
 
@@ -646,6 +1147,156 @@ function renderFeaturesGrid() {
     }).join('');
 
     grid.innerHTML = html;
+
+    // Rollen-Dropdown für "Rollen & Feature-Zugriff" füllen
+    const roleSelect = document.getElementById('roleFeatureSelect');
+    if (roleSelect && availablePortalRoles.length) {
+        roleSelect.innerHTML = '<option value="">— Rolle wählen —</option>' +
+            availablePortalRoles.map(r => '<option value="' + escapeHtml(r) + '">' + escapeHtml(r) + '</option>').join('');
+    }
+}
+
+function onRoleForFeaturesChange() {
+    const role = (document.getElementById('roleFeatureSelect') || {}).value;
+    const listEl = document.getElementById('roleFeaturesList');
+    const saveBtn = document.getElementById('saveRoleFeaturesBtn');
+    if (!listEl) return;
+    if (!role) {
+        listEl.innerHTML = '<span class="text-muted">Bitte zuerst eine Rolle wählen.</span>';
+        if (saveBtn) saveBtn.disabled = true;
+        return;
+    }
+    const allFeatures = Object.keys(featureData || {}).sort();
+    if (allFeatures.length === 0) {
+        listEl.innerHTML = '<span class="text-muted">Keine Features geladen.</span>';
+        if (saveBtn) saveBtn.disabled = true;
+        return;
+    }
+    const checkboxes = allFeatures.map((f, i) => {
+        const roles = featureData[f] || [];
+        const checked = roles.includes(role) || roles.includes('*') ? ' checked' : '';
+        const safeId = 'rf_' + i;
+        return `<div class="form-check"><input class="form-check-input" type="checkbox" id="${safeId}" data-feature="${escapeHtml(f)}" ${checked}><label class="form-check-label" for="${safeId}">${escapeHtml(f)}</label></div>`;
+    }).join('');
+    listEl.innerHTML = checkboxes;
+    if (saveBtn) saveBtn.disabled = false;
+}
+
+// Rollen-Features Tab: Rollen als Buttons
+function renderRoleSelectorButtons() {
+    const container = document.getElementById('roleSelectorButtons');
+    if (!container) return;
+    const roles = availablePortalRoles || [];
+    container.innerHTML = roles.map(role => {
+        const count = Object.keys(featureData || {}).filter(f => {
+            const r = featureData[f] || [];
+            return r.includes(role) || r.includes('*');
+        }).length;
+        const active = selectedRoleForFeatures === role ? ' active' : '';
+        const cls = getRoleClass(role);
+        return `<button type="button" class="rechte-role-btn ${cls}${active}" data-role="${escapeHtml(role)}" onclick="selectRoleForFeatures(this.getAttribute('data-role'))">${escapeHtml(role)} <span class="badge bg-secondary ms-1">${count}</span></button>`;
+    }).join('');
+}
+
+function selectRoleForFeatures(role) {
+    selectedRoleForFeatures = role;
+    document.querySelectorAll('#roleSelectorButtons .rechte-role-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.dataset.role === role) btn.classList.add('active');
+    });
+    const infoEl = document.getElementById('selectedRoleInfo');
+    if (infoEl) {
+        const count = Object.keys(featureData || {}).filter(f => {
+            const r = featureData[f] || [];
+            return r.includes(role) || r.includes('*');
+        }).length;
+        infoEl.style.display = 'block';
+        infoEl.innerHTML = '<strong>Rolle: ' + escapeHtml(role) + '</strong> — ' + count + ' Features mit Zugriff. Checkboxen unten anpassen und speichern.';
+    }
+    renderRoleFeaturesGrouped(role);
+    const saveBtn = document.getElementById('saveRoleFeaturesBtn2');
+    if (saveBtn) saveBtn.disabled = false;
+}
+
+// Rollen-Features Tab: gruppierte Feature-Checkboxen
+function renderRoleFeaturesGrouped(role) {
+    const container = document.getElementById('roleFeaturesGrouped');
+    if (!container) return;
+    const allFeatures = Object.keys(featureData || {}).sort();
+    const byGroup = {};
+    allFeatures.forEach(f => {
+        const group = FEATURE_GROUPS[f] || 'Sonstige';
+        if (!byGroup[group]) byGroup[group] = [];
+        byGroup[group].push(f);
+    });
+    const groupOrder = ['Finanzen', 'Verkauf', 'Werkstatt / Teile', 'Werkstatt', 'HR / Urlaub', 'Planung', 'Vergütung', 'Integrationen', 'System', 'Sonstige'];
+    let html = '';
+    groupOrder.forEach(g => {
+        const features = byGroup[g];
+        if (!features || !features.length) return;
+        const cells = features.map((f, i) => {
+            const roles = featureData[f] || [];
+            const checked = roles.includes(role) || roles.includes('*') ? ' checked' : '';
+            const safeId = 'rfg_' + g.replace(/\s/g, '_') + '_' + i;
+            return `<div class="form-check"><input class="form-check-input" type="checkbox" id="${safeId}" data-feature="${escapeHtml(f)}" ${checked}><label class="form-check-label" for="${safeId}">${escapeHtml(f)}</label></div>`;
+        }).join('');
+        html += `<div class="col-md-6 col-lg-4"><div class="rechte-feature-group-card"><div class="group-head">${escapeHtml(g)}</div><div class="p-2">${cells}</div></div></div>`;
+    });
+    container.innerHTML = html || '<div class="col-12 text-muted">Keine Features.</div>';
+}
+
+// Matrix-Tab: Feature × Rolle (read-only)
+// Rollen aus featureData + availablePortalRoles, damit alle Spalten erscheinen (unabhängig von Ladereihenfolge)
+function renderMatrixTable() {
+    const thead = document.querySelector('#matrixTable thead');
+    const tbody = document.getElementById('matrixBody');
+    if (!thead || !tbody) return;
+    const features = Object.keys(featureData || {}).sort();
+    const fromData = new Set();
+    Object.values(featureData || {}).forEach(arr => arr.forEach(r => { if (r !== '*') fromData.add(r); }));
+    const roles = [...new Set([...(availablePortalRoles || []), ...fromData, 'admin'])].sort((a, b) => (a === 'admin' ? -1 : b === 'admin' ? 1 : a.localeCompare(b)));
+    thead.innerHTML = '<tr><th class="feat-cell">Feature</th>' + roles.map(r => '<th class="text-center">' + escapeHtml(r) + '</th>').join('') + '</tr>';
+    tbody.innerHTML = features.map(f => {
+        const allowed = featureData[f] || [];
+        const cells = roles.map(r => {
+            const ok = allowed.includes(r) || allowed.includes('*');
+            return '<td class="text-center">' + (ok ? '✓' : '—') + '</td>';
+        }).join('');
+        return '<tr><td class="feat-cell">' + escapeHtml(f) + '</td>' + cells + '</tr>';
+    }).join('');
+}
+
+async function saveRoleFeatures() {
+    // Rolle: aus Rollen-Features-Tab (Button) oder aus Feature-Zugriff-Dropdown
+    const role = selectedRoleForFeatures || (document.getElementById('roleFeatureSelect') || {}).value;
+    if (!role) {
+        alert('Bitte zuerst eine Rolle wählen (User & Rollen oder Rollen-Features-Tab).');
+        return;
+    }
+    // Checkboxen: aus Rollen-Features-Tab (gruppiert) oder aus Feature-Zugriff-Liste
+    const groupedEl = document.getElementById('roleFeaturesGrouped');
+    const listEl = document.getElementById('roleFeaturesList');
+    const inputs = groupedEl ? groupedEl.querySelectorAll('input[type="checkbox"]:checked') : (listEl ? listEl.querySelectorAll('input[type="checkbox"]:checked') : []);
+    const features = Array.from(inputs).map(el => el.dataset.feature).filter(Boolean);
+    try {
+        const response = await fetch(`/api/admin/role/${encodeURIComponent(role)}/features`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ features: features })
+        });
+        const result = await response.json();
+        if (result.success) {
+            await loadFeatureAccess();
+            onRoleForFeaturesChange();
+            if (selectedRoleForFeatures) renderRoleFeaturesGrouped(selectedRoleForFeatures);
+            alert(result.message || 'Gespeichert.');
+        } else {
+            alert('Fehler: ' + (result.error || result.message));
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Fehler beim Speichern');
+    }
 }
 
 // Title-Tabelle rendern
@@ -664,7 +1315,21 @@ function renderTitlesTable() {
     tbody.innerHTML = html;
 }
 
-// Modal oeffnen
+// Modal oeffnen (aus Buttons mit data-Attributen, um Sonderzeichen in Namen sicher zu handhaben)
+function openRoleModalFromBtn(btn) {
+    const id = parseInt(btn.dataset.userId, 10);
+    const name = btn.dataset.userName || '';
+    const roles = btn.dataset.userRoles || '';
+    openRoleModal(id, name, roles);
+}
+
+function openDashboardModalFromBtn(btn) {
+    const id = parseInt(btn.dataset.userId, 10);
+    const name = btn.dataset.userName || '';
+    const url = btn.dataset.userUrl || '';
+    openDashboardModal(id, name, url);
+}
+
 function openRoleModal(userId, userName, currentRoles) {
     document.getElementById('modalUserName').textContent = userName;
 
@@ -725,16 +1390,9 @@ async function toggleRole(element) {
     }
 }
 
-// Suche
-document.getElementById('userSearch').addEventListener('input', function(e) {
-    const search = e.target.value.toLowerCase();
-    const rows = document.querySelectorAll('#usersBody tr');
-
-    rows.forEach(row => {
-        const text = row.textContent.toLowerCase();
-        row.style.display = text.includes(search) ? '' : 'none';
-    });
-});
+// Suche & Filter: Tabelle neu rendern (nutzt getFilteredUsers)
+document.getElementById('userSearch').addEventListener('input', function() { renderUsersTable(); });
+document.getElementById('userFilterStatus').addEventListener('change', function() { renderUsersTable(); });
 
 // =============================================================================
 // REPORTS TAB
@@ -1317,22 +1975,30 @@ async function saveFeatureAccess() {
 let navigationItems = [];
 
 async function loadNavigationItems() {
+    const container = document.getElementById('navigationTree');
+    if (!container) return;
     try {
         const response = await fetch('/api/admin/navigation/all');
-        const data = await response.json();
-        
-        if (data.error) {
-            document.getElementById('navigationTree').innerHTML = 
-                `<div class="alert alert-danger">Fehler: ${data.error}</div>`;
+        let data;
+        try {
+            data = await response.json();
+        } catch (e) {
+            container.innerHTML = '<div class="alert alert-danger">Antwort war kein JSON (z.B. Login-Weiterleitung). HTTP ' + response.status + '</div>';
             return;
         }
-        
+        if (!response.ok) {
+            container.innerHTML = '<div class="alert alert-danger">' + (data.error || ('HTTP ' + response.status)) + '</div>';
+            return;
+        }
+        if (data.error) {
+            container.innerHTML = '<div class="alert alert-danger">' + escapeHtml(data.error) + '</div>';
+            return;
+        }
         navigationItems = data.items || [];
         renderNavigationTree();
     } catch (error) {
         console.error('Fehler beim Laden der Navigation:', error);
-        document.getElementById('navigationTree').innerHTML = 
-            '<div class="alert alert-danger">Fehler beim Laden der Navigation</div>';
+        container.innerHTML = '<div class="alert alert-danger">Fehler beim Laden: ' + escapeHtml(error.message || 'Unbekannt') + '</div>';
     }
 }
 
@@ -1362,6 +2028,10 @@ function renderNavigationTree() {
             rootItems.push(itemsById[item.id]);
         }
     });
+    rootItems.sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+    rootItems.forEach(item => {
+        if (item.children) item.children.sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+    });
     
     // HTML rendern
     let html = '<div class="list-group">';
@@ -1376,20 +2046,24 @@ function renderNavigationTree() {
 function renderNavigationItem(item, level) {
     const indent = level * 20;
     const badgeClass = item.active ? 'bg-success' : 'bg-secondary';
-    const icon = item.icon ? `<i class="bi ${item.icon} me-1"></i>` : '';
+    const icon = item.icon ? `<i class="bi ${escapeHtml(item.icon)} me-1"></i>` : '';
+    const label = escapeHtml(item.label || '(Kein Label)');
+    const url = item.url ? escapeHtml(item.url) : '';
+    const reqFeature = item.requires_feature ? escapeHtml(item.requires_feature) : '';
+    const roleRest = item.role_restriction ? escapeHtml(item.role_restriction) : '';
     
     let html = `
         <div class="list-group-item" style="padding-left: ${indent + 10}px;">
             <div class="d-flex justify-content-between align-items-center">
                 <div>
                     ${icon}
-                    <strong>${item.label || '(Kein Label)'}</strong>
+                    <strong>${label}</strong>
                     ${item.is_dropdown ? '<span class="badge bg-info ms-2">Dropdown</span>' : ''}
                     ${item.is_header ? '<span class="badge bg-warning ms-2">Header</span>' : ''}
                     ${item.is_divider ? '<span class="badge bg-secondary ms-2">Divider</span>' : ''}
-                    ${item.url ? `<small class="text-muted ms-2">${item.url}</small>` : ''}
-                    ${item.requires_feature ? `<span class="badge bg-primary ms-1">Feature: ${item.requires_feature}</span>` : ''}
-                    ${item.role_restriction ? `<span class="badge bg-danger ms-1">Rolle: ${item.role_restriction}</span>` : ''}
+                    ${url ? `<small class="text-muted ms-2">${url}</small>` : ''}
+                    ${reqFeature ? `<span class="badge bg-primary ms-1">Feature: ${reqFeature}</span>` : ''}
+                    ${roleRest ? `<span class="badge bg-danger ms-1">Rolle: ${roleRest}</span>` : ''}
                     <span class="badge ${badgeClass} ms-2">${item.active ? 'Aktiv' : 'Inaktiv'}</span>
                 </div>
                 <div>
@@ -1420,32 +2094,371 @@ function editNavigationItem(itemId) {
         alert('Item nicht gefunden');
         return;
     }
-    
-    // TODO: Modal für Bearbeitung öffnen
-    alert(`Bearbeiten: ${item.label}\n\nDiese Funktion wird noch implementiert.`);
+    document.getElementById('navEditId').value = item.id;
+    document.getElementById('navEditLabel').value = item.label || '';
+    document.getElementById('navEditUrl').value = item.url || '';
+    document.getElementById('navEditIcon').value = item.icon || '';
+    document.getElementById('navEditRequiresFeature').value = item.requires_feature || '';
+    document.getElementById('navEditRoleRestriction').value = item.role_restriction || '';
+    document.getElementById('navEditActive').checked = item.active !== false;
+    new bootstrap.Modal(document.getElementById('navEditModal')).show();
+}
+
+async function saveNavigationItem() {
+    const id = document.getElementById('navEditId').value;
+    if (!id) return;
+    const payload = {
+        label: document.getElementById('navEditLabel').value || '',
+        url: document.getElementById('navEditUrl').value || null,
+        icon: document.getElementById('navEditIcon').value || null,
+        order_index: (navigationItems.find(i => i.id === parseInt(id, 10)) || {}).order_index || 0,
+        requires_feature: document.getElementById('navEditRequiresFeature').value.trim() || null,
+        role_restriction: document.getElementById('navEditRoleRestriction').value.trim() || null,
+        is_dropdown: (navigationItems.find(i => i.id === parseInt(id, 10)) || {}).is_dropdown || false,
+        is_header: (navigationItems.find(i => i.id === parseInt(id, 10)) || {}).is_header || false,
+        is_divider: (navigationItems.find(i => i.id === parseInt(id, 10)) || {}).is_divider || false,
+        active: document.getElementById('navEditActive').checked,
+        category: (navigationItems.find(i => i.id === parseInt(id, 10)) || {}).category || 'main'
+    };
+    try {
+        const response = await fetch('/api/admin/navigation/' + id, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const result = await response.json().catch(() => ({}));
+        if (response.ok && result.success) {
+            bootstrap.Modal.getInstance(document.getElementById('navEditModal')).hide();
+            await loadNavigationItems();
+            alert('Gespeichert.');
+        } else {
+            alert('Fehler: ' + (result.error || response.status));
+        }
+    } catch (e) {
+        alert('Fehler: ' + (e.message || 'Netzwerk'));
+    }
 }
 
 async function deleteNavigationItem(itemId) {
-    if (!confirm('Navigation-Item wirklich löschen?')) {
+    if (!confirm('Navigation-Item wirklich löschen? (Unterpunkte können mitgelöscht werden.)')) {
         return;
     }
     
     try {
-        const response = await fetch(`/api/admin/navigation/${itemId}`, {
-            method: 'DELETE'
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
+        const response = await fetch('/api/admin/navigation/' + itemId, { method: 'DELETE' });
+        let result;
+        try {
+            result = await response.json();
+        } catch (e) {
+            alert('Antwort war kein JSON. HTTP ' + response.status);
+            return;
+        }
+        if (response.ok && result.success) {
             await loadNavigationItems();
-            alert('Navigation-Item gelöscht');
+            alert('Navigation-Item gelöscht.');
         } else {
-            alert('Fehler: ' + (result.error || result.message));
+            alert('Fehler: ' + (result.error || result.message || 'HTTP ' + response.status));
         }
     } catch (error) {
         console.error('Fehler:', error);
-        alert('Fehler beim Löschen');
+        alert('Fehler beim Löschen: ' + (error.message || 'Netzwerkfehler'));
+    }
+}
+
+// --- Mitarbeiter-Konfig (Rechteverwaltung) ---
+async function loadEmployeesConfig() {
+    const tbody = document.getElementById('mitarbeiterConfigBody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-3"><div class="spinner-border text-primary"></div><div class="mt-2">Lade…</div></td></tr>';
+    try {
+        const response = await fetch('/api/organization/employees-config');
+        const data = await response.json();
+        if (!data.success) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">' + (data.error || 'Fehler') + '</td></tr>';
+            return;
+        }
+        employeesConfigData = data.employees || [];
+        const deptSelect = document.getElementById('mitarbeiterConfigDept');
+        if (deptSelect && deptSelect.options.length <= 1) {
+            const depts = [...new Set(employeesConfigData.map(e => e.department_name).filter(Boolean))].sort();
+            depts.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d;
+                opt.textContent = d;
+                deptSelect.appendChild(opt);
+            });
+        }
+        document.getElementById('tabMitarbeiterCount').textContent = employeesConfigData.length;
+        renderMitarbeiterConfigTable();
+    } catch (e) {
+        console.error(e);
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Netzwerkfehler</td></tr>';
+    }
+}
+
+function renderMitarbeiterConfigTable() {
+    const tbody = document.getElementById('mitarbeiterConfigBody');
+    if (!tbody) return;
+    const search = (document.getElementById('mitarbeiterConfigSearch') || {}).value || '';
+    const dept = (document.getElementById('mitarbeiterConfigDept') || {}).value || '';
+    let list = employeesConfigData.filter(e => {
+        if (search && !(e.name || '').toLowerCase().includes(search.toLowerCase())) return false;
+        if (dept && e.department_name !== dept) return false;
+        return true;
+    });
+    document.getElementById('mitarbeiterConfigCounter').textContent = list.length + ' Mitarbeiter';
+    if (list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Keine Einträge</td></tr>';
+        return;
+    }
+    tbody.innerHTML = list.map(e => {
+        const vertritt = (e.vertritt || []).join(', ') || '—';
+        const wirdVertreten = (e.wird_vertreten || []).join(', ') || '—';
+        const approver = e.approver_name || '—';
+        const deptName = e.department_name ? '<span class="badge bg-warning text-dark">' + escapeHtml(e.department_name) + '</span>' : '—';
+        return '<tr>' +
+            '<td>' + escapeHtml(e.name) + '</td>' +
+            '<td>' + deptName + '</td>' +
+            '<td>' + escapeHtml(e.location || '—') + '</td>' +
+            '<td>' + escapeHtml(approver) + '</td>' +
+            '<td class="small">' + escapeHtml(vertritt) + '</td>' +
+            '<td class="small">' + escapeHtml(wirdVertreten) + '</td>' +
+            '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-primary" onclick="openMitarbeiterConfigModal(' + e.id + ')"><i class="bi bi-pen"></i></button></td>' +
+            '</tr>';
+    }).join('');
+}
+
+let mitarbeiterConfigEmployeeDetail = null; // geladene Detail-Daten (Urlaub, Einstellungen)
+
+async function openMitarbeiterConfigModal(empId) {
+    const emp = employeesConfigData.find(e => e.id === empId);
+    if (!emp) return;
+    document.getElementById('mitarbeiterConfigEmpId').value = emp.id;
+    document.getElementById('mitarbeiterConfigEmpName').textContent = emp.name;
+    const deptSelect = document.getElementById('mitarbeiterConfigDeptEdit');
+    deptSelect.innerHTML = '';
+    const allDepts = [...new Set(employeesConfigData.map(e => e.department_name).filter(Boolean))].sort();
+    const currentDept = (emp.department_name || '').trim();
+    if (currentDept && !allDepts.includes(currentDept)) {
+        const o = document.createElement('option');
+        o.value = currentDept;
+        o.textContent = currentDept;
+        o.selected = true;
+        deptSelect.appendChild(o);
+    }
+    allDepts.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d;
+        opt.textContent = d;
+        if (d === currentDept) opt.selected = true;
+        deptSelect.appendChild(opt);
+    });
+    const locSelect = document.getElementById('mitarbeiterConfigLocationEdit');
+    locSelect.value = emp.location || '';
+    // Vertretungs-Dropdowns: alle außer aktueller MA
+    const others = employeesConfigData.filter(e => e.id !== emp.id).map(e => ({ id: e.id, name: e.name }));
+    const vertrittAdd = document.getElementById('mitarbeiterConfigVertrittAdd');
+    const wirdAdd = document.getElementById('mitarbeiterConfigWirdVertretenAdd');
+    vertrittAdd.innerHTML = '<option value="">— hinzufügen —</option>' + others.map(o => '<option value="' + o.id + '">' + escapeHtml(o.name) + '</option>').join('');
+    wirdAdd.innerHTML = '<option value="">— hinzufügen —</option>' + others.map(o => '<option value="' + o.id + '">' + escapeHtml(o.name) + '</option>').join('');
+    // Urlaub-Felder zurücksetzen
+    mitarbeiterConfigEmployeeDetail = null;
+    document.getElementById('mitarbeiterConfigUrlaubAnspruch').value = '';
+    document.getElementById('mitarbeiterConfigUrlaubUebertrag').value = '';
+    document.getElementById('mitarbeiterConfigUrlaubKorrektur').value = '';
+    document.getElementById('mitarbeiterConfigMaxUrlaubslänge').value = '';
+    const yearSelect = document.getElementById('mitarbeiterConfigUrlaubYear');
+    const currentYear = new Date().getFullYear();
+    if (!yearSelect.querySelector('option[value="' + currentYear + '"]')) {
+        const opt = document.createElement('option');
+        opt.value = currentYear;
+        opt.textContent = currentYear;
+        yearSelect.insertBefore(opt, yearSelect.firstChild);
+    }
+    yearSelect.value = currentYear;
+    document.getElementById('mitarbeiterConfigPersonalakteLink').href = '/admin/mitarbeiterverwaltung?embed=1&employee_id=' + emp.id;
+    await loadSubstitutesForModal(emp.id);
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('mitarbeiterConfigModal')).show();
+    // Employee-Detail für Urlaub laden
+    try {
+        const r = await fetch('/api/employee-management/employee/' + emp.id);
+        const data = await r.json();
+        if (data.success && data.employee) {
+            mitarbeiterConfigEmployeeDetail = data.employee;
+            const vs = (data.employee.vacation_settings || {});
+            document.getElementById('mitarbeiterConfigMaxUrlaubslänge').value = vs.max_vacation_length ?? 14;
+            const calcSelect = document.getElementById('mitarbeiterConfigCalculationMethod');
+            calcSelect.value = (vs.calculation_method || 'standard');
+            fillMitarbeiterConfigEntitlementForYear(data.employee.vacation_entitlements || [], yearSelect.value);
+        }
+    } catch (e) {
+        console.error('Employee-Detail für Urlaub:', e);
+    }
+    yearSelect.onchange = function() {
+        if (mitarbeiterConfigEmployeeDetail && mitarbeiterConfigEmployeeDetail.vacation_entitlements)
+            fillMitarbeiterConfigEntitlementForYear(mitarbeiterConfigEmployeeDetail.vacation_entitlements, yearSelect.value);
+    };
+}
+
+function fillMitarbeiterConfigEntitlementForYear(entitlements, year) {
+    const y = parseInt(year, 10);
+    const e = entitlements.find(ent => parseInt(ent.year, 10) === y);
+    document.getElementById('mitarbeiterConfigUrlaubAnspruch').value = e ? (e.total_days ?? '') : '27';
+    document.getElementById('mitarbeiterConfigUrlaubUebertrag').value = e ? (e.carried_over ?? '') : '0';
+    document.getElementById('mitarbeiterConfigUrlaubKorrektur').value = e ? (e.added_manually ?? '') : '0';
+}
+
+let substitutesData = [];
+
+async function loadSubstitutesForModal(empId) {
+    try {
+        const response = await fetch('/api/organization/substitutes');
+        const data = await response.json();
+        substitutesData = data.substitutes || [];
+        renderVertretungLists(empId);
+    } catch (e) {
+        console.error(e);
+        document.getElementById('mitarbeiterConfigVertrittList').innerHTML = '<span class="text-muted">Fehler beim Laden</span>';
+        document.getElementById('mitarbeiterConfigWirdVertretenList').innerHTML = '';
+    }
+}
+
+function renderVertretungLists(empId) {
+    const vertrittRules = substitutesData.filter(r => r.substitute_id === empId);
+    const wirdVertretenRules = substitutesData.filter(r => r.employee_id === empId);
+    const vertrittList = document.getElementById('mitarbeiterConfigVertrittList');
+    const wirdList = document.getElementById('mitarbeiterConfigWirdVertretenList');
+    vertrittList.innerHTML = vertrittRules.length === 0
+        ? '<span class="text-muted">—</span>'
+        : vertrittRules.map(r => '<span class="d-inline-block me-2 mb-1"><span class="badge bg-light text-dark">' + escapeHtml(r.employee_name) + '</span> <button type="button" class="btn btn-sm btn-link text-danger p-0 ms-1" onclick="deleteVertretungRule(' + r.id + ')" title="Entfernen"><i class="bi bi-x-lg"></i></button></span>').join('');
+    wirdList.innerHTML = wirdVertretenRules.length === 0
+        ? '<span class="text-muted">—</span>'
+        : wirdVertretenRules.map(r => '<span class="d-inline-block me-2 mb-1"><span class="badge bg-light text-dark">' + escapeHtml(r.substitute_name) + '</span> <button type="button" class="btn btn-sm btn-link text-danger p-0 ms-1" onclick="deleteVertretungRule(' + r.id + ')" title="Entfernen"><i class="bi bi-x-lg"></i></button></span>').join('');
+}
+
+async function addVertretungRule(type) {
+    const empId = parseInt(document.getElementById('mitarbeiterConfigEmpId').value, 10);
+    if (!empId) return;
+    const vertrittAdd = document.getElementById('mitarbeiterConfigVertrittAdd');
+    const wirdAdd = document.getElementById('mitarbeiterConfigWirdVertretenAdd');
+    let employee_id, substitute_id;
+    if (type === 'vertritt') {
+        const sel = parseInt(vertrittAdd.value, 10);
+        if (!sel) return;
+        employee_id = sel;
+        substitute_id = empId;
+    } else {
+        const sel = parseInt(wirdAdd.value, 10);
+        if (!sel) return;
+        employee_id = empId;
+        substitute_id = sel;
+    }
+    try {
+        const response = await fetch('/api/organization/substitutes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ employee_id: employee_id, substitute_id: substitute_id, priority: 1 })
+        });
+        const result = await response.json();
+        if (response.ok && result.success) {
+            await loadSubstitutesForModal(empId);
+            if (type === 'vertritt') vertrittAdd.value = ''; else wirdAdd.value = '';
+        } else {
+            alert('Fehler: ' + (result.error || response.status));
+        }
+    } catch (e) {
+        alert('Fehler: ' + (e.message || 'Netzwerk'));
+    }
+}
+
+async function deleteVertretungRule(ruleId) {
+    const empId = parseInt(document.getElementById('mitarbeiterConfigEmpId').value, 10);
+    if (!empId) return;
+    try {
+        const response = await fetch('/api/organization/substitutes/' + ruleId, { method: 'DELETE' });
+        const result = await response.json();
+        if (response.ok && result.success) {
+            await loadSubstitutesForModal(empId);
+        } else {
+            alert('Fehler: ' + (result.error || response.status));
+        }
+    } catch (e) {
+        alert('Fehler: ' + (e.message || 'Netzwerk'));
+    }
+}
+
+async function saveMitarbeiterConfig() {
+    const empId = document.getElementById('mitarbeiterConfigEmpId').value;
+    const department_name = document.getElementById('mitarbeiterConfigDeptEdit').value || null;
+    const location = document.getElementById('mitarbeiterConfigLocationEdit').value || null;
+    if (!empId) return;
+    try {
+        const body = {};
+        if (department_name !== null && department_name !== '') body.department_name = department_name;
+        if (location !== null) body.location = location;
+        const response = await fetch('/api/employee-management/employee/' + empId, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.success) {
+            alert('Fehler Stammdaten: ' + (result.error || response.status));
+            return;
+        }
+        if (mitarbeiterConfigEmployeeDetail) {
+            const maxLen = document.getElementById('mitarbeiterConfigMaxUrlaubslänge').value;
+            const calcMethod = document.getElementById('mitarbeiterConfigCalculationMethod').value;
+            const r2 = await fetch('/api/employee-management/employee/' + empId + '/vacation-settings', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ max_vacation_length: maxLen ? parseInt(maxLen, 10) : 14, calculation_method: calcMethod || 'standard' })
+            });
+            if (!r2.ok) console.warn('Urlaubseinstellungen konnten nicht gespeichert werden.');
+            const year = document.getElementById('mitarbeiterConfigUrlaubYear').value;
+            const anspruch = parseFloat(document.getElementById('mitarbeiterConfigUrlaubAnspruch').value) || 27;
+            const uebertrag = parseFloat(document.getElementById('mitarbeiterConfigUrlaubUebertrag').value) || 0;
+            const korrektur = parseFloat(document.getElementById('mitarbeiterConfigUrlaubKorrektur').value) || 0;
+            const r3 = await fetch('/api/vacation/admin/update-entitlement', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ employee_id: parseInt(empId, 10), year: parseInt(year, 10), anspruch: anspruch, uebertrag: uebertrag, korrektur: korrektur, kommentar: '' })
+            });
+            if (!r3.ok) {
+                const j = await r3.json().catch(() => ({}));
+                console.warn('Urlaubsanspruch:', j.error || r3.status);
+            }
+        }
+        bootstrap.Modal.getInstance(document.getElementById('mitarbeiterConfigModal')).hide();
+        await loadEmployeesConfig();
+    } catch (e) {
+        alert('Fehler: ' + (e.message || 'Netzwerk'));
+    }
+}
+
+// --- Urlaubsverwaltung Tab: Balance aus Vacation-Admin-API ---
+async function loadUrlaubBalance() {
+    const tbody = document.getElementById('urlaubBalanceBody');
+    if (!tbody) return;
+    const year = (document.getElementById('urlaubYearSelect') || {}).value || new Date().getFullYear();
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-2"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr>';
+    try {
+        const response = await fetch('/api/vacation/admin/employees?year=' + year);
+        const data = await response.json();
+        if (!data.success || !data.employees) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Keine Daten oder keine Berechtigung.</td></tr>';
+            return;
+        }
+        const rows = (data.employees || []).slice(0, 100).map(e => {
+            const anspruch = e.anspruch != null ? e.anspruch : '—';
+            const urlaub = e.urlaub != null ? e.urlaub : '—';
+            const verfueg = e.verfuegbar != null ? e.verfuegbar : '—';
+            return '<tr><td>' + escapeHtml(e.name || e.employee_name || '') + '</td><td>' + escapeHtml(e.grp_code || e.department_name || '—') + '</td><td>' + anspruch + '</td><td>' + urlaub + '</td><td>' + verfueg + '</td></tr>';
+        });
+        tbody.innerHTML = rows.length ? rows.join('') : '<tr><td colspan="5" class="text-center text-muted">Keine Einträge</td></tr>';
+    } catch (e) {
+        console.error(e);
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Fehler beim Laden</td></tr>';
     }
 }
 

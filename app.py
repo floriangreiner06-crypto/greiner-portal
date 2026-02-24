@@ -216,6 +216,74 @@ def logout():
     flash('Sie wurden erfolgreich abgemeldet.', 'info')
     return redirect(url_for('login'))
 
+
+# Nutzerfreundliche Fehlermeldungen für Passwort-Ändern (keine technischen Begriffe)
+PASSWORT_FEHLER_UEBERSETZUNG = {
+    'aktuelles_passwort_falsch': 'Das von Ihnen eingegebene aktuelle Passwort stimmt nicht. Bitte prüfen Sie es und versuchen Sie es erneut.',
+    'felder_leer': 'Bitte füllen Sie alle Felder aus.',
+    'passwort_zu_kurz': 'Das neue Passwort muss mindestens 8 Zeichen haben.',
+    'benutzer_nicht_gefunden': 'Ihr Benutzerkonto konnte im Verzeichnis nicht gefunden werden. Bitte wenden Sie sich an die IT.',
+    'server_abgelehnt': 'Die Passwortänderung konnte nicht durchgeführt werden. Bitte versuchen Sie es später erneut oder wenden Sie sich an die IT.',
+    'richtlinie_oder_verbindung': 'Die Passwortänderung ist an dieser Stelle nicht möglich (z. B. Firmenrichtlinie oder Verbindung). Bitte wenden Sie sich an die IT.',
+    'passwortrichtlinie': 'Das neue Passwort erfüllt die Anforderungen nicht (z. B. Länge, Zeichen). Bitte beachten Sie die Passwortrichtlinie Ihres Unternehmens.',
+    'verbindung_verzeichnis': 'Die Verbindung zum Verzeichnisdienst ist fehlgeschlagen. Bitte versuchen Sie es später erneut oder wenden Sie sich an die IT.',
+    'unerwarteter_fehler': 'Ein unerwarteter Fehler ist aufgetreten. Bitte versuchen Sie es später erneut oder wenden Sie sich an die IT.',
+    'wiederholung_stimmt_nicht': 'Das neue Passwort und die Wiederholung stimmen nicht überein. Bitte geben Sie beide Felder identisch ein.',
+    'auth_nicht_verfuegbar': 'Die Anmeldung ist derzeit nicht verfügbar. Bitte versuchen Sie es später erneut oder wenden Sie sich an die IT.',
+}
+
+
+def _passwort_fehler_fuer_anwender(msg_or_key):
+    """Übersetzt technische/englische Fehlermeldungen in verständliche deutsche Texte."""
+    if not msg_or_key:
+        return PASSWORT_FEHLER_UEBERSETZUNG.get('unerwarteter_fehler')
+    key = (msg_or_key or '').strip()
+    if key in PASSWORT_FEHLER_UEBERSETZUNG:
+        return PASSWORT_FEHLER_UEBERSETZUNG[key]
+    # Bekannte technische/englische Phrasen abfangen
+    lower = key.lower()
+    if 'invalid' in lower and ('credential' in lower or 'password' in lower):
+        return PASSWORT_FEHLER_UEBERSETZUNG['aktuelles_passwort_falsch']
+    if 'unwilling' in lower or 'will_not_perform' in lower:
+        return PASSWORT_FEHLER_UEBERSETZUNG['richtlinie_oder_verbindung']
+    if 'constraint' in lower or 'policy' in lower:
+        return PASSWORT_FEHLER_UEBERSETZUNG['passwortrichtlinie']
+    if 'bind' in lower or 'ldap' in lower or 'connection' in lower:
+        return PASSWORT_FEHLER_UEBERSETZUNG['verbindung_verzeichnis']
+    # Unbekannte Meldung: generisch, technischen Text nicht anzeigen
+    return PASSWORT_FEHLER_UEBERSETZUNG['unerwarteter_fehler']
+
+
+@app.route('/profil/passwort', methods=['GET', 'POST'])
+@login_required
+def profil_passwort():
+    """Self-Service: AD-Passwort ändern. Gilt ab nächster Anmeldung für Windows und Drive."""
+    def form_page(error_msg=None, success=False):
+        return render_template(
+            'profil_passwort.html',
+            error=_passwort_fehler_fuer_anwender(error_msg) if error_msg else None,
+            show_success=success,
+        )
+
+    if request.method == 'POST':
+        old = request.form.get('current_password', '')
+        new = request.form.get('new_password', '')
+        repeat = request.form.get('new_password_repeat', '')
+        if new != repeat:
+            return form_page(error_msg='wiederholung_stimmt_nicht')
+        if not auth_manager:
+            return form_page(error_msg='auth_nicht_verfuegbar')
+        try:
+            success, err = auth_manager.change_password(current_user.username, old, new)
+            if success:
+                return redirect(url_for('profil_passwort', success=1))
+            return form_page(error_msg=err or 'unerwarteter_fehler')
+        except Exception as e:
+            return form_page(error_msg=str(e))
+    # GET: Erfolg von Redirect anzeigen oder Formular
+    return form_page(success=(request.args.get('success') == '1'))
+
+
 # ============================================================================
 # MAIN ROUTES
 # ============================================================================
@@ -312,14 +380,16 @@ def urlaubsplaner_chef():
 @login_required
 def urlaubsplaner_admin():
     """HR-Admin: Urlaubsansprüche verwalten"""
-    return render_template('urlaubsplaner_admin.html')
+    base = 'base_embed.html' if request.args.get('embed') else 'base.html'
+    return render_template('urlaubsplaner_admin.html', base_template=base)
 
 # Mitarbeiterverwaltung (TAG 213 - Umfassende Mitarbeiterverwaltung)
 @app.route('/admin/mitarbeiterverwaltung')
 @login_required
 def mitarbeiterverwaltung():
     """Umfassende Mitarbeiterverwaltung nach Muster 'Digitale Personalakte'"""
-    return render_template('admin/mitarbeiterverwaltung.html')
+    base = 'base_embed.html' if request.args.get('embed') else 'base.html'
+    return render_template('admin/mitarbeiterverwaltung.html', base_template=base)
 
 # Organigramm (TAG 113 - Organisation & Vertretungsregeln)
 @app.route('/admin/organigramm')
@@ -908,6 +978,16 @@ try:
     print("✅ KST-Ziele API registriert: /api/kst-ziele/")
 except Exception as e:
     print(f"⚠️  KST-Ziele API nicht geladen: {e}")
+
+# Hilfe-Modul (Workstream Hilfe – 2026-02-24)
+try:
+    from api.hilfe_api import hilfe_api
+    from routes.hilfe_routes import hilfe_bp
+    app.register_blueprint(hilfe_api)
+    app.register_blueprint(hilfe_bp)
+    print("✅ Hilfe-Modul registriert: /api/hilfe/, /hilfe/")
+except Exception as e:
+    print(f"⚠️  Hilfe-Modul nicht geladen: {e}")
 
 # Ersatzwagen-Kalender Test-UI (TAG 131)
 @app.route('/test/ersatzwagen')
