@@ -1,0 +1,53 @@
+# Greiner Portal DRIVE — Projekt- und Tool-Konfiguration
+# Qualitätscheck Phase 1: Ruff, Bandit, pip-audit
+
+[project]
+name = "greiner-portal"
+version = "0.1.0"
+description = "Flask ERP für Autohaus Greiner (DRIVE)"
+readme = "CLAUDE.md"
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.8.0",
+    "bandit>=1.7.0",
+    "pip-audit>=2.0.0",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+exclude = [
+    ".venv",
+    ".git",
+    "__pycache__",
+    "venv",
+    "migrations",
+    "node_modules",
+]
+# Verzeichnisse, die Ruff prüft (bei Aufruf explizit angeben: api/ routes/ auth/ celery_app/)
+# scripts/ bewusst nicht in exclude – kann bei Bedarf ergänzt werden für lockerere Regeln
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # Pyflakes
+    "I",     # isort
+    "B",     # flake8-bugbear
+    "C4",    # flake8-comprehensions
+]
+ignore = [
+    "E501",  # line too long (wird von formatter übernommen)
+    "B008",  # do not perform function calls in argument defaults
+    "B904",  # raise without from inside except
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["api", "auth", "celery_app", "routes"]
+
+[tool.pytest.ini_options]
+# Für spätere Phase (Tests); testpaths leer lassen bis tests/ existiert
+testpaths = []
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"

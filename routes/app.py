@@ -153,6 +153,7 @@ def logout():
     flash('Sie wurden erfolgreich abgemeldet.', 'info')
     return redirect(url_for('login'))
 
+
 # ============================================================================
 # MAIN ROUTES
 # ============================================================================
@@ -349,8 +350,9 @@ if __name__ == '__main__':
     print(f"🔐 Auth-System: {'✅ Aktiviert' if auth_manager else '⚠️  Nicht verfügbar'}")
     print(f"🔑 Secret Key: {'✅ Geladen' if app.config.get('SECRET_KEY') else '❌ Fehlt'}")
     print("=" * 80)
-    
-    app.run(host='0.0.0.0', port=5000, debug=True)
+
+    debug = os.environ.get('FLASK_DEBUG', '0').strip().lower() in ('1', 'true', 'yes')
+    app.run(host='0.0.0.0', port=5000, debug=debug)
 
 # ========================================
 # DASHBOARD (STARTSEITE)

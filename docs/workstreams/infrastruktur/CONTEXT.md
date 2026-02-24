@@ -1,7 +1,7 @@
 # Infrastruktur & DevOps — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-02-11
+## Letzte Aktualisierung: 2026-02-24
 
 ## Beschreibung
 
@@ -36,6 +36,7 @@ Infrastruktur umfasst Celery/RedBeat, Redis, Deployment, Locosoft-Mirror, Postgr
 ## Aktueller Stand (✅ erledigt, 🔧 in Arbeit, ❌ offen)
 
 - ✅ PostgreSQL-Migration (TAG 135), Celery, Redis, Flower, Metabase, Admin-UI im Einsatz
+- ✅ Qualitätscheck Phase 1 (Ruff, Bandit, pip-audit, Checkliste CONTEXT/SSOT); 2 Bandit-High behoben (siehe docs/QUALITAETSCHECK_*.md)
 - 🔧 MCP, Locosoft-Mirror, Backups je nach Projektstand
 - ❌ Offene Punkte ggf. in Session-TODOs
 

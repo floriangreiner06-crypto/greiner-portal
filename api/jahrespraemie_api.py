@@ -636,7 +636,7 @@ def upload_lohnjournal(berechnung_id):
                     row['bruttobezug']
                 ))
 
-            file_hash = hashlib.md5(open(temp_path, 'rb').read()).hexdigest()
+            file_hash = hashlib.md5(open(temp_path, 'rb').read(), usedforsecurity=False).hexdigest()
             cursor.execute(convert_placeholders("""
                 UPDATE praemien_berechnungen
                 SET lohnjournal_datei = %s, lohnjournal_hash = %s
