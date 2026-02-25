@@ -5,25 +5,35 @@
 {% block extra_css %}
 <style>
     .kpi-card {
-        border-radius: 12px;
-        border: none;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        transition: transform 0.2s;
+        border-radius: 8px;
+        border: 1px solid #eee;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        transition: transform 0.15s;
     }
     .kpi-card:hover {
-        transform: translateY(-2px);
+        transform: translateY(-1px);
     }
     .kpi-value {
-        font-size: 2rem;
+        font-size: 1.1rem;
         font-weight: 700;
     }
     .kpi-label {
-        font-size: 0.85rem;
+        font-size: 0.7rem;
         color: #6c757d;
     }
     .progress-thick {
-        height: 12px;
+        height: 8px;
         border-radius: 6px;
+    }
+    .badge-mini {
+        font-size: 0.7rem;
+        padding: 0.2rem 0.5rem;
+        border-radius: 6px;
+    }
+    .sb-tagesziel-table th, .sb-tagesziel-table td {
+        padding: 0.4rem 0.75rem;
+        font-size: 0.85rem;
+        vertical-align: middle;
     }
     .sb-row {
         cursor: pointer;
@@ -111,7 +121,7 @@
     </div>
     
     <!-- Werktage-Fortschritt (nur aktueller Monat) -->
-    <div class="card mb-4" id="werktageCard" style="display: none;">
+    <div class="card mb-3" id="werktageCard" style="display: none;">
         <div class="card-body py-2">
             <div class="row align-items-center">
                 <div class="col-auto">
@@ -131,50 +141,74 @@
         </div>
     </div>
 
-    <!-- Tagesziel-Karten (TAG 164) -->
-    <div class="row g-4 mb-4" id="tageszielCards" style="display: none;">
-        <!-- Wird per JavaScript gefüllt -->
+    <!-- Serviceberater · Tagesziel & Offene Aufträge (kompakte Tabelle statt Karten) -->
+    <div class="card mb-3" id="sbTageszielCard" style="display: none;">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <strong><i class="bi bi-person-badge text-primary"></i> Serviceberater · Tagesziel & Offene Aufträge</strong>
+            <div class="form-check form-check-sm mb-0">
+                <input class="form-check-input" type="checkbox" id="sbBringterminNurVergangen" onchange="loadOffeneAuftraegeCounts(); updateOffenCountsInTable();">
+                <label class="form-check-label" for="sbBringterminNurVergangen">Ohne Bring-Termin in der Zukunft</label>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover sb-tagesziel-table mb-0" id="sbTageszielTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Name</th>
+                            <th class="text-end">Heute fakturiert</th>
+                            <th class="text-end">Ziel</th>
+                            <th class="text-end">Heute %</th>
+                            <th class="text-center" style="width: 100px;">Offene Aufträge</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sbTageszielTableBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 
-    <!-- KPI Cards -->
-    <div class="row g-4 mb-4">
+    <!-- KPI Cards (kompakt) -->
+    <div class="row g-2 mb-4">
         <div class="col-md-3">
             <div class="card kpi-card h-100">
-                <div class="card-body text-center">
-                    <i class="bi bi-piggy-bank text-danger fs-2"></i>
+                <div class="card-body text-center py-2">
+                    <i class="bi bi-piggy-bank text-danger"></i>
                     <div class="kpi-value text-danger" id="kpiBreakevenSchwelle">-</div>
                     <div class="kpi-label">Breakeven-Schwelle</div>
-                    <small class="text-muted">Gesamtkosten/Monat</small>
+                    <small class="text-muted" style="font-size: 0.65rem;">Gesamtkosten/Monat</small>
                 </div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="card kpi-card h-100">
-                <div class="card-body text-center">
-                    <i class="bi bi-bullseye text-primary fs-2"></i>
+                <div class="card-body text-center py-2">
+                    <i class="bi bi-bullseye text-primary"></i>
                     <div class="kpi-value text-primary" id="kpiUmsatzZiel">-</div>
                     <div class="kpi-label">Umsatz-Ziel pro SB</div>
-                    <small class="text-muted">TAG 165: Umsatz statt DB1</small>
+                    <small class="text-muted" style="font-size: 0.65rem;">Umsatz statt DB1</small>
                 </div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="card kpi-card h-100">
-                <div class="card-body text-center">
-                    <i class="bi bi-currency-euro text-success fs-2"></i>
+                <div class="card-body text-center py-2">
+                    <i class="bi bi-currency-euro text-success"></i>
                     <div class="kpi-value text-success" id="kpiUmsatzGesamt">-</div>
                     <div class="kpi-label">Team Umsatz aktuell</div>
-                    <small class="text-muted" id="kpiUmsatzSoll">Soll: -</small>
+                    <small class="text-muted" id="kpiUmsatzSoll" style="font-size: 0.65rem;">Soll: -</small>
                 </div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="card kpi-card h-100">
-                <div class="card-body text-center">
-                    <i class="bi bi-graph-up fs-2" id="kpiErreichungIcon"></i>
+                <div class="card-body text-center py-2">
+                    <i class="bi bi-graph-up" id="kpiErreichungIcon"></i>
                     <div class="kpi-value" id="kpiErreichung">-</div>
                     <div class="kpi-label">Ø Zielerreichung</div>
-                    <small id="kpiErreichungSoll" class="text-muted">Soll: -</small>
+                    <small id="kpiErreichungSoll" class="text-muted" style="font-size: 0.65rem;">Soll: -</small>
                 </div>
             </div>
         </div>
@@ -375,17 +409,16 @@
 // Globale Variablen
 let sbData = null;
 let sbChart = null;
+let offenCounts = {};  // ma_id -> Anzahl offene Aufträge (für Spalte "Offene Aufträge")
 
 // Initialisierung
 document.addEventListener('DOMContentLoaded', function() {
-    // Aktuellen Monat setzen
     const heute = new Date();
     const monat = heute.toISOString().slice(0, 7);
     document.getElementById('filterMonat').value = monat;
     
-    // Daten laden
-    loadData();
-    loadTagesziele();  // TAG 164: Tagesziel-Karten
+    loadData();  // ruft nach Erfolg loadTagesziele() auf
+    loadOffeneAuftraegeCounts();
     loadWettbewerb();
     loadTekConfig();
 });
@@ -405,6 +438,7 @@ async function loadData() {
             renderKPIs(data);
             renderTable(data, ansicht);
             renderChart(data, ansicht);
+            loadTagesziele();  // Nach sbData: Tabelle Tagesziel + Offene Aufträge
         } else {
             showError(data.error);
         }
@@ -413,7 +447,49 @@ async function loadData() {
     }
 }
 
-// Tagesziel-Daten laden (TAG 164)
+// Offene Aufträge pro SB (für Controlling-Tabelle)
+async function loadOffeneAuftraegeCounts() {
+    try {
+        let url = '/api/serviceberater/offene-auftraege-counts';
+        const cb = document.getElementById('sbBringterminNurVergangen');
+        if (cb && cb.checked) url += '?bringtermin_nur_vergangen=true';
+        const response = await fetch(url);
+        const data = await response.json();
+        if (data.success && data.counts) {
+            offenCounts = data.counts;
+            const tbody = document.getElementById('sbTageszielTableBody');
+            if (tbody && tbody.rows.length > 0) {
+                updateOffenCountsInTable();
+            }
+        }
+    } catch (e) {
+        console.error('Offene Aufträge Counts:', e);
+    }
+}
+
+function getWerkstattLiveLink(maId) {
+    let href = `/werkstatt/live?serviceberater_nr=${maId}`;
+    const cb = document.getElementById('sbBringterminNurVergangen');
+    if (cb && cb.checked) href += '&bringtermin_nur_vergangen=true';
+    return href;
+}
+
+function updateOffenCountsInTable() {
+    const tbody = document.getElementById('sbTageszielTableBody');
+    if (!tbody) return;
+    Array.from(tbody.rows).forEach(row => {
+        const maId = parseInt(row.dataset.maId, 10);
+        const cell = row.querySelector('.cell-offen');
+        if (cell && !isNaN(maId)) {
+            const n = offenCounts[maId] != null ? offenCounts[maId] : 0;
+            cell.innerHTML = n > 0
+                ? `<a href="${getWerkstattLiveLink(maId)}" class="badge-mini bg-danger text-white text-decoration-none">${n}</a>`
+                : '<span class="text-muted">0</span>';
+        }
+    });
+}
+
+// Tagesziel-Daten laden (TAG 164) + kompakte Tabelle mit Offene Aufträge
 async function loadTagesziele() {
     const heute = new Date().toISOString().split('T')[0];
     
@@ -423,90 +499,55 @@ async function loadTagesziele() {
         
         if (data.success && data.data) {
             const tagesziele = Array.isArray(data.data) ? data.data : [data.data];
-            renderTageszielCards(tagesziele);
+            renderSbTageszielTable(tagesziele);
         } else {
-            document.getElementById('tageszielCards').style.display = 'none';
+            document.getElementById('sbTageszielCard').style.display = 'none';
         }
     } catch (error) {
         console.error('Fehler beim Laden der Tagesziele:', error);
-        document.getElementById('tageszielCards').style.display = 'none';
+        document.getElementById('sbTageszielCard').style.display = 'none';
     }
 }
 
-// Tagesziel-Karten rendern (TAG 164)
-function renderTageszielCards(tagesziele) {
-    const container = document.getElementById('tageszielCards');
+// Serviceberater-Tabelle: Tagesziel + Offene Aufträge (kompakt statt Karten)
+function renderSbTageszielTable(tagesziele) {
+    const card = document.getElementById('sbTageszielCard');
+    const tbody = document.getElementById('sbTageszielTableBody');
     
     if (!tagesziele || tagesziele.length === 0) {
-        container.style.display = 'none';
+        card.style.display = 'none';
         return;
     }
     
-    // Nur Serviceberater anzeigen (aus sbData)
     const sbIds = sbData ? sbData.serviceberater.filter(s => s.ist_serviceberater).map(s => s.ma_id) : [];
     const relevanteZiele = tagesziele.filter(tz => sbIds.includes(tz.ma_id));
     
     if (relevanteZiele.length === 0) {
-        container.style.display = 'none';
+        card.style.display = 'none';
         return;
     }
     
-    container.style.display = 'block';
-    container.innerHTML = relevanteZiele.map(tz => {
+    card.style.display = 'block';
+    tbody.innerHTML = relevanteZiele.map(tz => {
         const statusClass = tz.erfuellung.status === 'ok' ? 'success' : 
                            tz.erfuellung.status === 'warnung' ? 'warning' : 'danger';
-        const statusIcon = tz.erfuellung.status === 'ok' ? 'check-circle' : 
-                          tz.erfuellung.status === 'warnung' ? 'exclamation-triangle' : 'x-circle';
         const statusText = tz.erfuellung.status === 'ok' ? 'Auf Kurs' : 
                           tz.erfuellung.status === 'warnung' ? 'Knapp' : 'Kritisch';
+        const n = offenCounts[tz.ma_id] != null ? offenCounts[tz.ma_id] : 0;
+        const offenLink = getWerkstattLiveLink(tz.ma_id);
+        const offenHtml = n > 0
+            ? `<a href="${offenLink}" class="badge-mini bg-danger text-white text-decoration-none">${n}</a>`
+            : '<span class="text-muted">0</span>';
         
         return `
-            <div class="col-md-6 col-lg-4">
-                <div class="card kpi-card h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-3">
-                            <div>
-                                <h6 class="mb-1">
-                                    <i class="bi bi-person-badge text-primary"></i>
-                                    ${tz.name}
-                                </h6>
-                                <small class="text-muted">Tagesziel</small>
-                            </div>
-                            <span class="badge bg-${statusClass}">
-                                <i class="bi bi-${statusIcon}"></i> ${statusText}
-                            </span>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <div class="d-flex justify-content-between mb-1">
-                                <span>Heute fakturiert:</span>
-                                <strong class="text-${statusClass}">${formatCurrency(tz.ist.umsatz_heute)}</strong>
-                            </div>
-                            <div class="d-flex justify-content-between mb-2">
-                                <span>Ziel:</span>
-                                <span>${formatCurrency(tz.ziele.tagesziel_umsatz)}</span>
-                            </div>
-                            <div class="progress progress-thick">
-                                <div class="progress-bar bg-${statusClass}" 
-                                     role="progressbar" 
-                                     style="width: ${Math.min(tz.erfuellung.heute_prozent, 100)}%">
-                                </div>
-                            </div>
-                            <div class="text-center mt-2">
-                                <strong>${tz.erfuellung.heute_prozent.toFixed(1)}%</strong>
-                                ${tz.erfuellung.auf_kurs ? '<i class="bi bi-check-circle text-success ms-1"></i>' : ''}
-                            </div>
-                        </div>
-                        
-                        <div class="border-top pt-2">
-                            <small class="text-muted">
-                                Monat: ${tz.erfuellung.monat_prozent.toFixed(1)}% 
-                                (${tz.ziele.werktage_vergangen}/${tz.ziele.werktage_gesamt} Werktage)
-                            </small>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <tr data-ma-id="${tz.ma_id}">
+                <td><strong>${tz.name}</strong></td>
+                <td class="text-end">${formatCurrency(tz.ist.umsatz_heute)}</td>
+                <td class="text-end">${formatCurrency(tz.ziele.tagesziel_umsatz)}</td>
+                <td class="text-end">${tz.erfuellung.heute_prozent.toFixed(1)}%</td>
+                <td class="text-center cell-offen">${offenHtml}</td>
+                <td><span class="badge-mini bg-${statusClass} text-white">${statusText}</span></td>
+            </tr>
         `;
     }).join('');
 }

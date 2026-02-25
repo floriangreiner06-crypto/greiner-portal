@@ -7,51 +7,51 @@
     .sb-hero {
         background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
         color: white;
-        padding: 2rem;
-        border-radius: 1rem;
-        margin-bottom: 2rem;
+        padding: 1rem 1.25rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
     }
 
     .sb-hero h1 {
-        font-size: 1.75rem;
-        margin-bottom: 0.25rem;
+        font-size: 1.25rem;
+        margin-bottom: 0.15rem;
     }
 
     .sb-hero .subtitle {
-        opacity: 0.85;
-        font-size: 1rem;
+        opacity: 0.9;
+        font-size: 0.9rem;
     }
 
     .kpi-card {
         background: white;
-        border-radius: 1rem;
-        padding: 1.5rem;
+        border-radius: 8px;
+        padding: 0.5rem 0.75rem;
         text-align: center;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        transition: transform 0.2s, box-shadow 0.2s;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        border: 1px solid #eee;
+        transition: transform 0.15s;
         height: 100%;
     }
 
     .kpi-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        transform: translateY(-1px);
     }
 
     .kpi-value {
-        font-size: 2.25rem;
+        font-size: 1.1rem;
         font-weight: 700;
-        line-height: 1.1;
+        line-height: 1.2;
     }
 
     .kpi-label {
         color: #6c757d;
-        font-size: 0.875rem;
-        margin-top: 0.5rem;
+        font-size: 0.7rem;
+        margin-top: 0.2rem;
     }
 
     .kpi-icon {
-        font-size: 1.5rem;
-        margin-top: 0.5rem;
+        font-size: 1rem;
+        margin-top: 0.25rem;
     }
 
     .kpi-success { color: #198754; }
@@ -62,10 +62,10 @@
 
     .progress-section {
         background: white;
-        border-radius: 1rem;
-        padding: 1.5rem;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        margin-bottom: 2rem;
+        border-radius: 8px;
+        padding: 1rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        margin-bottom: 1rem;
     }
 
     .progress-section .progress {
@@ -80,11 +80,12 @@
 
     .quick-link {
         background: white;
-        border-radius: 1rem;
-        padding: 1.5rem;
+        border-radius: 8px;
+        padding: 0.75rem 1rem;
         text-align: center;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        transition: transform 0.2s, box-shadow 0.2s;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        border: 1px solid #eee;
+        transition: transform 0.15s;
         text-decoration: none;
         color: inherit;
         display: block;
@@ -92,34 +93,52 @@
     }
 
     .quick-link:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        transform: translateY(-2px);
         color: inherit;
     }
 
     .quick-link i {
-        font-size: 2.5rem;
-        margin-bottom: 0.75rem;
+        font-size: 1.35rem;
+        margin-bottom: 0.35rem;
         display: block;
     }
 
     .quick-link .link-title {
         font-weight: 600;
-        font-size: 1rem;
+        font-size: 0.9rem;
     }
 
     .quick-link .link-desc {
         color: #6c757d;
-        font-size: 0.8rem;
-        margin-top: 0.25rem;
+        font-size: 0.75rem;
+        margin-top: 0.15rem;
     }
 
     .werktage-info {
+        background: rgba(255,255,255,0.2);
+        border-radius: 6px;
+        padding: 0.35rem 0.6rem;
+        font-size: 0.8rem;
+    }
+
+    .offene-auftraege-block {
         background: #f8f9fa;
-        border-radius: 0.5rem;
+        border: 1px solid #e9ecef;
+        border-radius: 8px;
         padding: 0.75rem 1rem;
-        font-size: 0.875rem;
-        color: #6c757d;
+        margin-bottom: 1rem;
+    }
+
+    .offene-auftraege-block .count {
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: #dc3545;
+    }
+
+    .badge-mini {
+        font-size: 0.7rem;
+        padding: 0.2rem 0.5rem;
+        border-radius: 6px;
     }
 
     .trend-badge {
@@ -212,6 +231,25 @@
             </div>
         </div>
 
+        <!-- Offene Aufträge (für diesen Serviceberater) -->
+        <div class="offene-auftraege-block" id="offeneAuftraegeBlock">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                <div>
+                    <span class="count" id="offeneAuftraegeCount">-</span> offene Aufträge
+                </div>
+                <a href="#" id="offeneAuftraegeLink" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-clipboard-data"></i> Alle anzeigen
+                </a>
+            </div>
+            <div class="form-check form-check-sm mb-2">
+                <input class="form-check-input" type="checkbox" id="offeneBringterminNurVergangen" onchange="loadOffeneAuftraege()">
+                <label class="form-check-label" for="offeneBringterminNurVergangen">Ohne Bring-Termin in der Zukunft</label>
+            </div>
+            <div class="small text-muted" id="offeneAuftraegeSummen" style="display: none;">
+                Summe Lohn: <strong id="offeneSummeLohn">0,00</strong> € · Summe Teile: <strong id="offeneSummeTeile">0,00</strong> € · Gesamt: <strong id="offeneSummeGesamt">0,00</strong> €
+            </div>
+        </div>
+
         <!-- Tagesziel-Karte (TAG 164) -->
         <div class="card mb-4" id="tageszielCard" style="display: none;">
             <div class="card-body">
@@ -280,7 +318,7 @@
 
         <!-- Quick Links -->
         <h5 class="mb-3"><i class="bi bi-grid-3x3-gap"></i> Schnellzugriff</h5>
-        <div class="row g-3">
+        <div class="row g-2">
             <div class="col-6 col-md-4 col-lg-3">
                 <a href="/aftersales/serviceberater" class="quick-link" id="linkRanking">
                     <i class="bi bi-bar-chart-line text-primary"></i>
@@ -293,6 +331,13 @@
                     <i class="bi bi-broadcast text-success"></i>
                     <div class="link-title">Werkstatt Live</div>
                     <div class="link-desc">Aktuelle Aufträge</div>
+                </a>
+            </div>
+            <div class="col-6 col-md-4 col-lg-3">
+                <a href="#" class="quick-link" id="linkOffeneAuftraege">
+                    <i class="bi bi-clipboard-data text-danger"></i>
+                    <div class="link-title">Meine offenen Aufträge</div>
+                    <div class="link-desc">Nur meine Aufträge</div>
                 </a>
             </div>
             <div class="col-6 col-md-4 col-lg-3">
@@ -320,6 +365,7 @@
 document.addEventListener('DOMContentLoaded', function() {
     loadDashboard();
     loadTagesziel();  // TAG 164: Tagesziel-Karte
+    loadOffeneAuftraege();  // Offene Aufträge (Anzahl + Link)
 });
 
 async function loadDashboard() {
@@ -505,9 +551,54 @@ function renderDashboard(data) {
     // Update ranking link with standort filter
     document.getElementById('linkRanking').href = `/aftersales/serviceberater?standort=${data.sb.standort}`;
 
+    // Link "Meine offenen Aufträge" (Werkstatt Live gefiltert auf diesen SB)
+    if (maId) {
+        document.getElementById('linkOffeneAuftraege').href = `/werkstatt/live?serviceberater_nr=${maId}`;
+    }
+
     // Show content
     document.getElementById('loadingState').style.display = 'none';
     document.getElementById('mainContent').style.display = 'block';
+}
+
+// Offene Aufträge laden (Anzahl für aktuellen SB)
+// bringtermin_nur_vergangen: nur Aufträge ohne Bring-Termin in der Zukunft (wie Locosoft „ohne vorbereitete“)
+async function loadOffeneAuftraege() {
+    try {
+        let url = '/api/serviceberater/offene-auftraege';
+        {% if ma_id_param %}
+        url += '?ma_id={{ ma_id_param }}';
+        {% endif %}
+        const cb = document.getElementById('offeneBringterminNurVergangen');
+        if (cb && cb.checked) url += (url.indexOf('?') >= 0 ? '&' : '?') + 'bringtermin_nur_vergangen=true';
+        const response = await fetch(url);
+        const data = response.ok ? await response.json() : {};
+        if (data.success) {
+            document.getElementById('offeneAuftraegeCount').textContent = data.anzahl;
+            const link = document.getElementById('offeneAuftraegeLink');
+            if (data.ma_id) {
+                let href = `/werkstatt/live?serviceberater_nr=${data.ma_id}`;
+                if (cb && cb.checked) href += '&bringtermin_nur_vergangen=true';
+                link.href = href;
+            }
+            const summenEl = document.getElementById('offeneAuftraegeSummen');
+            if (data.summen) {
+                summenEl.style.display = '';
+                document.getElementById('offeneSummeLohn').textContent = (data.summen.summe_lohn || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                document.getElementById('offeneSummeTeile').textContent = (data.summen.summe_teile || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                document.getElementById('offeneSummeGesamt').textContent = (data.summen.gesamtsumme || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            } else {
+                summenEl.style.display = 'none';
+            }
+        } else {
+            document.getElementById('offeneAuftraegeCount').textContent = '0';
+            document.getElementById('offeneAuftraegeSummen').style.display = 'none';
+        }
+    } catch (e) {
+        console.error('Offene Aufträge:', e);
+        document.getElementById('offeneAuftraegeCount').textContent = '-';
+        document.getElementById('offeneAuftraegeSummen').style.display = 'none';
+    }
 }
 
 // Tagesziel laden (TAG 164)

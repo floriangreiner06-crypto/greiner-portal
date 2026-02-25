@@ -368,23 +368,66 @@ def get_offene_auftraege():
     Holt alle offenen Werkstatt-Aufträge LIVE aus Locosoft.
 
     TAG 149 REFACTORING: Nutzt werkstatt_data.py (Single Source of Truth)
-    Vorher: 113 Zeilen SQL direkt in API
-    Nachher: 30 Zeilen - nutzt WerkstattData.get_offene_auftraege()
-
     Query-Parameter:
     - subsidiary: Filter nach Betrieb (1, 2, 3)
     - tage: Wie viele Tage zurück (default: 7)
     - nur_offen: true/false (default: true)
+    - serviceberater_nr: Nur Aufträge dieses Serviceberaters (MA-ID, optional)
     """
     try:
         from api.werkstatt_data import WerkstattData
+        from api.db_utils import locosoft_session
 
         # Parameter parsen
         subsidiary = request.args.get('subsidiary', type=int)
         tage = request.args.get('tage', 7, type=int)
         nur_offen = request.args.get('nur_offen', 'true').lower() == 'true'
+        serviceberater_nr = request.args.get('serviceberater_nr', type=int)
+        bringtermin_nur_vergangen = request.args.get('bringtermin_nur_vergangen', 'false').lower() == 'true'
 
-        # HAUPTDATEN VON WERKSTATT_DATA.PY HOLEN
+        # Bei Filter nach Serviceberater: get_alle_offene_auftraege (90 Tage, einheitliche Struktur)
+        if serviceberater_nr:
+            with locosoft_session() as conn:
+                cur = conn.cursor(cursor_factory=RealDictCursor)
+                raw = get_alle_offene_auftraege(cur, subsidiary=subsidiary, serviceberater_nr=serviceberater_nr,
+                                                bringtermin_nur_vergangen=bringtermin_nur_vergangen)
+            # In gleiche Kurzform wie WerkstattData bringen (für Frontend-Kompatibilität)
+            auftraege = []
+            for a in raw.get('auftraege', []):
+                auftraege.append({
+                    'auftrag_nr': a['auftrag_nr'],
+                    'betrieb': a['betrieb'],
+                    'betrieb_name': a.get('betrieb_name', ''),
+                    'datum': a.get('auftrag_datum'),
+                    'uhrzeit': None,
+                    'serviceberater': a.get('serviceberater_name') or f"MA {a.get('serviceberater_nr')}",
+                    'serviceberater_nr': a.get('serviceberater_nr'),
+                    'kennzeichen': a.get('kennzeichen'),
+                    'marke': a.get('marke'),
+                    'kunde': a.get('kunde'),
+                    'dringlichkeit': a.get('dringlichkeit'),
+                    'ist_offen': True,
+                    'hat_abgeschlossene': None,
+                    'geplant_fertig': a.get('termin_abholen'),
+                    'vorgabe_aw': a.get('vorgabe_aw', 0),
+                })
+            return jsonify({
+                'success': True,
+                'source': 'LIVE_V2',
+                'timestamp': datetime.now().isoformat(),
+                'filter': {
+                    'subsidiary': subsidiary,
+                    'tage': 90,
+                    'nur_offen': True,
+                    'serviceberater_nr': serviceberater_nr,
+                    'bringtermin_nur_vergangen': bringtermin_nur_vergangen,
+                },
+                'anzahl': len(auftraege),
+                'summen': raw.get('summen', {'summe_lohn': 0, 'summe_teile': 0, 'gesamtsumme': 0}),
+                'auftraege': auftraege,
+            })
+
+        # Standard: WerkstattData
         data = WerkstattData.get_offene_auftraege(
             betrieb=subsidiary,
             tage_zurueck=tage,
@@ -393,7 +436,7 @@ def get_offene_auftraege():
 
         return jsonify({
             'success': True,
-            'source': 'LIVE_V2',  # Marker: nutzt werkstatt_data.py
+            'source': 'LIVE_V2',
             'timestamp': datetime.now().isoformat(),
             'filter': {
                 'subsidiary': subsidiary,
@@ -1826,36 +1869,44 @@ def get_avg_problematische_auftraege(cur_loco, subsidiary=None):
     }
 
 
-def get_alle_offene_auftraege_safe(cur_loco, subsidiary=None, serviceberater_nr=None, min_alter_tage=None):
+def get_alle_offene_auftraege_safe(cur_loco, subsidiary=None, serviceberater_nr=None, min_alter_tage=None,
+                                   bringtermin_nur_vergangen=False):
     """
     TAG 200: Wrapper für get_alle_offene_auftraege mit Fehlerbehandlung
     """
     try:
-        return get_alle_offene_auftraege(cur_loco, subsidiary, serviceberater_nr, min_alter_tage)
+        return get_alle_offene_auftraege(cur_loco, subsidiary, serviceberater_nr, min_alter_tage,
+                                         bringtermin_nur_vergangen=bringtermin_nur_vergangen)
     except Exception as e:
         logger.warning(f"Fehler bei get_alle_offene_auftraege: {e}")
         return {
             'anzahl': 0,
             'summe_aw': 0,
             'summe_gesamt': 0,
+            'summen': {'summe_lohn': 0, 'summe_teile': 0, 'gesamtsumme': 0},
             'auftraege': []
         }
 
 
-def get_alle_offene_auftraege(cur_loco, subsidiary=None, serviceberater_nr=None, min_alter_tage=None):
+def get_alle_offene_auftraege(cur_loco, subsidiary=None, serviceberater_nr=None, min_alter_tage=None,
+                              bringtermin_nur_vergangen=False):
     """
     TAG 200: Holt alle offenen Aufträge aus Locosoft
     Struktur entspricht der CSV-Datei zur Validierung
-    
+
     Args:
         cur_loco: Locosoft Cursor
         subsidiary: Betrieb (optional)
         serviceberater_nr: Serviceberater-Nummer (optional)
         min_alter_tage: Mindestalter in Tagen (optional)
+        bringtermin_nur_vergangen: Wenn True, nur Aufträge mit Bring-Termin in der Vergangenheit/heute
+                                   (estimated_inbound_time IS NULL oder DATE <= heute). Entspricht Locosoft
+                                   „ohne vorbereitete Aufträge“ / ohne Bring-Termin in der Zukunft.
     """
     from datetime import date, timedelta
     heute = date.today()
-    
+
+    # Lohn = Arbeitspositionen (labours, net_price); Teile = Tabelle parts (VK = sum), wie Locosoft „Arb. Wert“ / „ET VK“
     query = """
         SELECT
             o.number as auftrag_nr,
@@ -1878,8 +1929,9 @@ def get_alle_offene_auftraege(cur_loco, subsidiary=None, serviceberater_nr=None,
             COUNT(DISTINCT CASE WHEN NOT l.is_invoiced AND l.labour_type IN ('P', 'PT') THEN l.order_position END) as anzahl_unfakt_fz_positionen,
             COUNT(DISTINCT CASE WHEN NOT l.is_invoiced AND l.labour_type = 'ET' THEN l.order_position END) as anzahl_unfakt_et_positionen,
             COALESCE(SUM(CASE WHEN NOT l.is_invoiced THEN l.net_price_in_order ELSE 0 END), 0) as summe_lohn,
-            COALESCE(SUM(CASE WHEN NOT l.is_invoiced AND l.labour_type = 'ET' THEN l.net_price_in_order ELSE 0 END), 0) as summe_et,
-            COALESCE(SUM(CASE WHEN NOT l.is_invoiced THEN l.net_price_in_order ELSE 0 END), 0) as gesamtsumme,
+            (SELECT COALESCE(SUM(p.sum), 0) FROM parts p WHERE p.order_number = o.number AND NOT p.is_invoiced) as summe_et,
+            COALESCE(SUM(CASE WHEN NOT l.is_invoiced THEN l.net_price_in_order ELSE 0 END), 0)
+              + (SELECT COALESCE(SUM(p.sum), 0) FROM parts p WHERE p.order_number = o.number AND NOT p.is_invoiced) as gesamtsumme,
             o.estimated_inbound_time as termin_bringen,
             o.estimated_outbound_time as termin_abholen
         FROM orders o
@@ -1893,17 +1945,19 @@ def get_alle_offene_auftraege(cur_loco, subsidiary=None, serviceberater_nr=None,
         WHERE o.has_open_positions = true
           AND o.order_date >= CURRENT_DATE - INTERVAL '90 days'  -- Letzte 90 Tage
     """
-    
     params = []
-    
+
+    if bringtermin_nur_vergangen:
+        query += " AND (o.estimated_inbound_time IS NULL OR DATE(o.estimated_inbound_time) <= CURRENT_DATE)"
+
     if subsidiary:
         query += " AND o.subsidiary = %s"
         params.append(subsidiary)
-    
+
     if serviceberater_nr:
         query += " AND o.order_taking_employee_no = %s"
         params.append(serviceberater_nr)
-    
+
     if min_alter_tage and min_alter_tage > 0:
         min_datum = heute - timedelta(days=min_alter_tage)
         query += " AND o.order_date <= %s"
@@ -1973,10 +2027,17 @@ def get_alle_offene_auftraege(cur_loco, subsidiary=None, serviceberater_nr=None,
             'termin_abholen': a['termin_abholen'].strftime('%d.%m.%Y %H:%M') if a['termin_abholen'] else None
         })
     
+    summe_lohn = sum(a['summe_lohn'] for a in auftraege_liste)
+    summe_teile = sum(a['summe_et'] for a in auftraege_liste)
     return {
         'anzahl': len(auftraege_liste),
         'summe_aw': round(sum(a['vorgabe_aw'] for a in auftraege_liste), 1),
         'summe_gesamt': round(sum(a['gesamtsumme'] for a in auftraege_liste), 2),
+        'summen': {
+            'summe_lohn': round(summe_lohn, 2),
+            'summe_teile': round(summe_teile, 2),
+            'gesamtsumme': round(summe_lohn + summe_teile, 2),
+        },
         'auftraege': auftraege_liste
     }
 

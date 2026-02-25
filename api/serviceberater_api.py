@@ -1538,23 +1538,26 @@ def monatsziel():
 @serviceberater_api.route('/offene-auftraege', methods=['GET'])
 def get_offene_auftraege_sb():
     """
-    GET /api/serviceberater/offene-auftraege?ma_id=123
+    GET /api/serviceberater/offene-auftraege?ma_id=123&bringtermin_nur_vergangen=true
     
     TAG 181: Liefert offene Aufträge für einen Serviceberater.
     Für Serviceberater: automatisch gefiltert nach eigener MA-ID
-    Für Verkaufsleitung/GL: ma_id Parameter möglich
+    Für Verkaufsleitung/GL: ma_id Parameter möglich.
+    bringtermin_nur_vergangen=true: nur Aufträge ohne Bring-Termin in der Zukunft (wie Locosoft „ohne vorbereitete“).
     """
     from flask_login import current_user
-    from api.werkstatt_data import WerkstattData
-    
+    from api.werkstatt_live_api import get_alle_offene_auftraege
+
     # MA-ID aus Parameter oder aus User-Kontext
     ma_id_param = request.args.get('ma_id', type=int)
-    
+    bringtermin_nur_vergangen = request.args.get('bringtermin_nur_vergangen', 'false').lower() == 'true'
+
     # Prüfe Berechtigung
     if ma_id_param:
-        # Wenn ma_id angegeben, muss User admin/controlling/verkauf_leitung sein
-        if not (current_user.can_access_feature('admin') or 
+        # Wenn ma_id angegeben: admin, controlling, service_leitung oder verkauf_leitung
+        if not (current_user.can_access_feature('admin') or
                 current_user.can_access_feature('controlling') or
+                current_user.can_access_feature('service_leitung') or
                 current_user.can_access_feature('verkauf')):
             return jsonify({'error': 'Keine Berechtigung'}), 403
         ma_id = ma_id_param
@@ -1564,87 +1567,95 @@ def get_offene_auftraege_sb():
         display_name = getattr(current_user, 'display_name', '')
         if not display_name:
             return jsonify({'error': 'Keine MA-ID gefunden'}), 400
-        
+
         sb_config = get_sb_config_from_ldap(display_name)
         if not sb_config:
             return jsonify({'error': 'Serviceberater-Konfiguration nicht gefunden'}), 404
-        
+
         ma_id = sb_config.get('ma_id')
         if not ma_id:
             return jsonify({'error': 'MA-ID nicht in Konfiguration'}), 404
-    
+
     try:
-        # Hole offene Aufträge für diesen Serviceberater
-        # Nutze WerkstattData.get_offene_auftraege() und filtere nach serviceberater_nr
         with locosoft_session() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
-            
-            cursor.execute("""
-                SELECT
-                    o.number as auftrag_nr,
-                    o.subsidiary as betrieb,
-                    o.order_date as auftrag_datum,
-                    o.order_taking_employee_no as serviceberater_nr,
-                    eh.name as serviceberater_name,
-                    o.vehicle_number,
-                    v.license_plate as kennzeichen,
-                    m.description as marke,
-                    COALESCE(cs.family_name || ', ' || cs.first_name, cs.family_name) as kunde,
-                    o.urgency as dringlichkeit,
-                    o.has_open_positions as ist_offen,
-                    o.estimated_outbound_time as geplant_fertig,
-                    COALESCE(SUM(l.time_units), 0) as vorgabe_aw
-                FROM orders o
-                LEFT JOIN employees_history eh ON o.order_taking_employee_no = eh.employee_number
-                    AND eh.is_latest_record = true
-                LEFT JOIN vehicles v ON o.vehicle_number = v.internal_number
-                LEFT JOIN makes m ON v.make_number = m.make_number
-                LEFT JOIN customers_suppliers cs ON o.order_customer = cs.customer_number
-                LEFT JOIN labours l ON o.number = l.order_number AND l.time_units > 0
-                WHERE o.has_open_positions = true
-                  AND o.order_taking_employee_no = %s
-                  AND o.order_date >= CURRENT_DATE - INTERVAL '30 days'
-                GROUP BY o.number, o.subsidiary, o.order_date, o.order_taking_employee_no,
-                         eh.name, o.vehicle_number, v.license_plate, m.description,
-                         cs.family_name, cs.first_name, o.urgency, o.has_open_positions,
-                         o.estimated_outbound_time
-                ORDER BY o.order_date DESC
-            """, (ma_id,))
-            
-            auftraege_raw = cursor.fetchall()
-            
-            auftraege = []
-            for auftrag in auftraege_raw:
-                auftrag_datum = auftrag['auftrag_datum']
-                datum_str = auftrag_datum.strftime('%d.%m.%Y') if auftrag_datum else None
-                geplant_fertig = auftrag['geplant_fertig']
-                geplant_fertig_str = geplant_fertig.strftime('%d.%m.%Y %H:%M') if geplant_fertig else None
-                
-                auftraege.append({
-                    'auftrag_nr': auftrag['auftrag_nr'],
-                    'betrieb': auftrag['betrieb'],
-                    'datum': datum_str,
-                    'kennzeichen': auftrag['kennzeichen'],
-                    'marke': auftrag['marke'],
-                    'kunde': auftrag['kunde'],
-                    'dringlichkeit': auftrag['dringlichkeit'],
-                    'geplant_fertig': geplant_fertig_str,
-                    'vorgabe_aw': float(auftrag['vorgabe_aw'] or 0)
-                })
-            
-            return jsonify({
-                'success': True,
-                'ma_id': ma_id,
-                'serviceberater_name': auftraege_raw[0]['serviceberater_name'] if auftraege_raw else None,
-                'anzahl': len(auftraege),
-                'auftraege': auftraege
+            raw = get_alle_offene_auftraege(
+                cursor,
+                serviceberater_nr=ma_id,
+                bringtermin_nur_vergangen=bringtermin_nur_vergangen,
+            )
+        auftraege_raw = raw.get('auftraege', [])
+        serviceberater_name = auftraege_raw[0].get('serviceberater_name') if auftraege_raw else None
+        auftraege = []
+        for a in auftraege_raw:
+            auftraege.append({
+                'auftrag_nr': a['auftrag_nr'],
+                'betrieb': a['betrieb'],
+                'datum': a.get('auftrag_datum'),
+                'kennzeichen': a.get('kennzeichen'),
+                'marke': a.get('marke'),
+                'kunde': a.get('kunde'),
+                'dringlichkeit': a.get('dringlichkeit'),
+                'geplant_fertig': a.get('termin_abholen'),
+                'vorgabe_aw': a.get('vorgabe_aw', 0),
             })
-            
+        return jsonify({
+            'success': True,
+            'ma_id': ma_id,
+            'serviceberater_name': serviceberater_name,
+            'bringtermin_nur_vergangen': bringtermin_nur_vergangen,
+            'anzahl': len(auftraege),
+            'summen': raw.get('summen', {'summe_lohn': 0, 'summe_teile': 0, 'gesamtsumme': 0}),
+            'auftraege': auftraege,
+        })
     except Exception as e:
         return jsonify({
             'success': False,
             'error': str(e)
         }), 500
+
+
+@serviceberater_api.route('/offene-auftraege-counts', methods=['GET'])
+def get_offene_auftraege_counts():
+    """
+    GET /api/serviceberater/offene-auftraege-counts?bringtermin_nur_vergangen=true
+
+    Liefert für alle Serviceberater (SERVICEBERATER_CONFIG) die Anzahl offener Aufträge.
+    bringtermin_nur_vergangen=true: nur Aufträge ohne Bring-Termin in der Zukunft.
+    """
+    from flask_login import current_user
+    if not (current_user.can_access_feature('admin') or
+            current_user.can_access_feature('controlling') or
+            current_user.can_access_feature('service_leitung')):
+        return jsonify({'error': 'Keine Berechtigung'}), 403
+
+    bringtermin_nur_vergangen = request.args.get('bringtermin_nur_vergangen', 'false').lower() == 'true'
+
+    if not SERVICEBERATER_IDS:
+        return jsonify({'success': True, 'counts': {}})
+
+    try:
+        with locosoft_session() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            placeholders = ','.join(['%s'] * len(SERVICEBERATER_IDS))
+            sql = """
+                SELECT order_taking_employee_no as ma_id, COUNT(*) as anzahl
+                FROM orders o
+                WHERE o.has_open_positions = true
+                  AND o.order_taking_employee_no IN (""" + placeholders + """)
+                  AND o.order_date >= CURRENT_DATE - INTERVAL '90 days'
+            """
+            if bringtermin_nur_vergangen:
+                sql += " AND (o.estimated_inbound_time IS NULL OR DATE(o.estimated_inbound_time) <= CURRENT_DATE)"
+            sql += " GROUP BY order_taking_employee_no"
+            cursor.execute(sql, SERVICEBERATER_IDS)
+            rows = cursor.fetchall()
+        counts = {int(r['ma_id']): int(r['anzahl']) for r in rows}
+        for ma_id in SERVICEBERATER_IDS:
+            counts.setdefault(ma_id, 0)
+        return jsonify({'success': True, 'counts': counts, 'bringtermin_nur_vergangen': bringtermin_nur_vergangen})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @serviceberater_api.route('/health', methods=['GET'])
