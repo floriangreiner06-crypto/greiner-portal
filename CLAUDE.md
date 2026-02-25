@@ -39,6 +39,21 @@ sudo systemctl status greiner-portal
 
 **Templates brauchen KEINEN Neustart** - nur Browser-Refresh (Strg+F5)
 
+### Agent-Arbeitsweise: Migrationen und Neustarts selbst ausführen
+- **Migrationen:** Wenn der Agent eine neue oder geänderte SQL-Migration anlegt (`migrations/*.sql`), soll er sie **selbst ausführen**:  
+  `PGPASSWORD=DrivePortal2024 psql -h 127.0.0.1 -U drive_user -d drive_portal -f migrations/<datei>.sql`
+- **Neustarts:** Nach Änderungen an Python/Backend den betroffenen Service **selbst neustarten** (z. B. `sudo systemctl restart greiner-portal` oder bei Celery-Tasks `sudo systemctl restart celery-worker celery-beat`). Nicht nur in der Doku erwähnen – den Befehl ausführen.
+
+## Kein SQLite (verbindlich)
+- **Scripts und API:** Es darf kein Code mehr sqlite3 oder data/greiner_controlling.db verwenden. Alle Zugriffe auf die Portal-Datenbank ausschließlich über `api.db_connection.get_db()` bzw. `api.db_utils.db_session()`. Locosoft weiterhin über `api.db_utils.get_locosoft_connection()`.
+- **Hintergrund:** Haupt-DB ist seit TAG 135 PostgreSQL; Scripts die in SQLite schrieben, haben die App nicht gefüttert. Details: docs/NO_SQLITE.md, docs/SQLITE_VERWEISE_AUDIT.md.
+
+## SSOT (Single Source of Truth) – gilt für alle Workstreams
+
+- **Immer SSOT für alle KPIs und alle Berechnungen:** Jede Kennzahl und jede fachliche Berechnung hat genau eine Quelle (eine Funktion, ein Modul). Alle Nutzer (Portal, PDF, E-Mail, Scripts, Reports) beziehen daraus – es gibt keine parallele oder abweichende Berechnung für dieselbe Kennzahl.
+- **Immer auf eine SSOT bauen:** Berechnungen, Konfigurationen und fachliche Logik nur an einer Stelle definieren; bei neuen Anforderungen zuerst prüfen, ob bereits eine passende SSOT existiert – nicht parallel neu implementieren.
+- **TEK (Tägliche Erfolgskontrolle):** SSOT für alle TEK-KPIs (Umsatz, Einsatz, DB1, Marge, Prognose, Breakeven, Werktage) ist `api/controlling_data.py` (`get_tek_data`, `berechne_breakeven_prognose`). **4-Lohn-Einsatz:** Vereinbart ist der **rollierende 6-Monats-Schnitt** (Einsatz_aktuell = Umsatz_aktuell × (Einsatz_6M / Umsatz_6M)); diese Logik lebt in `get_tek_data`. Portal und alle Reports müssen dieselbe Quelle nutzen – keine eigene Aggregation in den Routes.
+
 ## Architektur
 
 ### Tech-Stack
@@ -139,7 +154,8 @@ conn = get_locosoft_connection()
 | Zweck | Datei |
 |-------|-------|
 | Flask Entry | `app.py` (Blueprints, Routes, Login) |
-| Base Template | `templates/base.html` (Navigation) |
+| Base Template | `templates/base.html` (Fallback-Navigation, wenn USE_DB_NAVIGATION=false) |
+| DB-Navigation | `api/navigation_utils.py`, Tabelle `navigation_items` (siehe unten) |
 | Auth-System | `auth/auth_manager.py` |
 | LDAP-Connector | `auth/ldap_connector.py` |
 | DB-Connection | `api/db_connection.py` (PostgreSQL + HybridRow) |
@@ -166,6 +182,7 @@ Wenn Florian einen Workstream nennt, lies:
 | Infrastruktur | docs/workstreams/infrastruktur/ | Celery, PostgreSQL, Redis, Deployment, MCP |
 | Auth/LDAP | docs/workstreams/auth-ldap/ | Login, Rollen, RBAC |
 | Integrations | docs/workstreams/integrations/ | WhatsApp, eAutoSeller, SOAP, Scraper, Mail |
+| Marketing | docs/workstreams/marketing/ | Kampagnen, Kundenkommunikation, WhatsApp Marketing, Leads |
 | Vergütung | docs/workstreams/verguetung/ | Werkstatt-Prämien, Verkäufer-Provisionen, Jahresprämie |
 
 ### Bei Session-Ende:
@@ -196,6 +213,21 @@ PGPASSWORD=DrivePortal2024 psql -h 127.0.0.1 -U drive_user -d drive_portal -c "\
 # PostgreSQL Locosoft
 PGPASSWORD=loco psql -h 10.80.80.8 -U loco_auswertung_benutzer -d loco_auswertung_db -c "SELECT 1"
 ```
+
+## Navigation (DB-basiert – verbindliche Regel)
+
+**Die Menüpunkte (Navi) kommen aus der Datenbank, nicht aus dem Template.**
+
+- **Quelle:** Tabelle **`navigation_items`** (PostgreSQL). Die Menüleiste wird aus dieser Tabelle geladen, sobald `USE_DB_NAVIGATION=true` (config/.env) – was in Produktion der Fall ist.
+- **Navi-Punkte sind nicht in base.html hardcoden.** Neue Einträge werden ausschließlich über die DB angelegt (Migration + ggf. `migrate_navigation_items.py`). In `base.html` steht nur Fallback-Code für den Fall, dass keine DB-Navigation geladen wird.
+
+**Neue Menüpunkte so anlegen:**
+
+1. **Migration anlegen:** z. B. `migrations/add_navigation_<name>.sql` mit `INSERT INTO navigation_items (parent_id, label, url, icon, order_index, requires_feature, role_restriction, ...)` – `parent_id` = ID des übergeordneten Menüpunkts (z. B. Controlling); `requires_feature` und `role_restriction` steuern die Sichtbarkeit.
+2. **Migration ausführen:** `PGPASSWORD=DrivePortal2024 psql -h 127.0.0.1 -U drive_user -d drive_portal -f migrations/add_navigation_<name>.sql`
+3. **Optional:** `scripts/migrate_navigation_items.py` um den Eintrag ergänzen (für Neuaufbau der DB).
+
+Referenz: `migrations/add_navigation_verkaeufer_zielplanung.sql`, `migrations/add_navigation_opos.sql`, `migrations/migration_tag211_whatsapp_navigation.sql`. Filterlogik: `api/navigation_utils.py` (Feature + Rolle).
 
 ## Besonderheiten
 

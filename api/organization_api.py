@@ -16,6 +16,7 @@ Features:
 """
 
 from flask import Blueprint, request, jsonify, session
+from flask_login import current_user
 from datetime import datetime, date
 import json
 
@@ -415,8 +416,9 @@ def create_substitute():
     Erstellt neue Vertretungsregel.
     """
     try:
-        username, is_admin = get_current_user()
-        if not is_admin:
+        is_portal_admin = getattr(current_user, 'is_authenticated', False) and getattr(current_user, 'portal_role', None) == 'admin'
+        username, is_org_admin = get_current_user()
+        if not is_portal_admin and not is_org_admin:
             return jsonify({'success': False, 'error': 'Admin-Berechtigung erforderlich'}), 403
 
         data = request.get_json()
@@ -485,8 +487,9 @@ def delete_substitute(rule_id):
     Löscht eine Vertretungsregel.
     """
     try:
-        username, is_admin = get_current_user()
-        if not is_admin:
+        is_portal_admin = getattr(current_user, 'is_authenticated', False) and getattr(current_user, 'portal_role', None) == 'admin'
+        username, is_org_admin = get_current_user()
+        if not is_portal_admin and not is_org_admin:
             return jsonify({'success': False, 'error': 'Admin-Berechtigung erforderlich'}), 403
 
         with db_session() as conn:
@@ -511,6 +514,145 @@ def delete_substitute(rule_id):
 # ============================================================================
 # GENEHMIGER-KETTEN (APPROVAL CHAINS)
 # ============================================================================
+
+# Abteilungs-Alias für Genehmiger-Zuordnung (department_name -> loco_grp_code in vacation_approval_rules)
+DEPT_TO_APPROVAL_GRP = {
+    'Service & Empfang': 'Service',
+    'Disposition': 'DIS',
+    'Buchhaltung': 'VER',
+    'Werkstatt': 'MON',
+    'Verkauf': 'VKB',
+    'Callcenter': 'CC',
+    'Kundenzentrale': 'SER',
+}
+
+
+@organization_api.route('/employees-config', methods=['GET'])
+def get_employees_config():
+    """
+    GET /api/organization/employees-config
+
+    Liste aller aktiven Mitarbeiter mit Abteilung, Standort, Genehmiger (aus vacation_approval_rules),
+    Vertritt (wen vertritt diese Person) und wird vertreten (wer vertritt diese Person).
+    Für Rechteverwaltung Tab „Mitarbeiter-Konfig“.
+    """
+    try:
+        is_portal_admin = getattr(current_user, 'is_authenticated', False) and getattr(current_user, 'portal_role', None) == 'admin'
+        username, is_org_admin = get_current_user()
+        if not is_portal_admin and not is_org_admin:
+            return jsonify({'success': False, 'error': 'Admin-Berechtigung erforderlich'}), 403
+
+        with db_session() as conn:
+            cursor = conn.cursor()
+
+            # Alle aktiven MA mit Abteilung und Standort
+            cursor.execute("""
+                SELECT e.id, e.first_name || ' ' || COALESCE(e.last_name, '') as name,
+                       e.department_name, e.location
+                FROM employees e
+                WHERE e.aktiv = true
+                ORDER BY e.department_name NULLS LAST, e.last_name, e.first_name
+            """)
+            employees = []
+            for row in cursor.fetchall():
+                emp_id, name, dept, location = row[0], row[1], row[2] or '', row[3] or ''
+                employees.append({
+                    'id': emp_id,
+                    'name': name,
+                    'department_name': dept,
+                    'location': location,
+                    'approver_name': None,
+                    'vertritt': [],
+                    'wird_vertreten': []
+                })
+
+            # Subsidiary aus location: Deggendorf=1, Landau a.d. Isar=3
+            def loc_to_subs(loc):
+                if not loc:
+                    return None
+                loc = (loc or '').strip()
+                if 'Deggendorf' in loc or loc == '1':
+                    return 1
+                if 'Landau' in loc or loc == '3':
+                    return 3
+                return None
+
+            # Genehmiger aus vacation_approval_rules (priority 1 pro Gruppe/Standort)
+            cursor.execute("""
+                SELECT ar.loco_grp_code, ar.subsidiary, ae.first_name || ' ' || COALESCE(ae.last_name, '') as approver_name
+                FROM vacation_approval_rules ar
+                JOIN ldap_employee_mapping lem ON ar.approver_ldap_username = lem.ldap_username
+                JOIN employees ae ON lem.employee_id = ae.id
+                WHERE ar.active = 1 AND ar.priority = 1
+                ORDER BY ar.loco_grp_code, ar.subsidiary NULLS LAST
+            """)
+            rules = cursor.fetchall()
+            # Pro (loco_grp_code, subsidiary) den Genehmiger-Namen
+            approver_by_grp = {}
+            for r in rules:
+                key = (r[0], r[1])
+                if key not in approver_by_grp:
+                    approver_by_grp[key] = r[2]
+
+            for emp in employees:
+                dept = (emp['department_name'] or '').strip()
+                loc = (emp['location'] or '').strip()
+                subs = loc_to_subs(loc)
+                # Match: loco_grp_code = department_name oder Alias
+                for (grp_code, sub), approver_name in approver_by_grp.items():
+                    if sub is not None and sub != subs:
+                        continue
+                    if grp_code == dept:
+                        emp['approver_name'] = approver_name
+                        break
+                    if dept in DEPT_TO_APPROVAL_GRP and DEPT_TO_APPROVAL_GRP[dept] == grp_code:
+                        emp['approver_name'] = approver_name
+                        break
+
+            # Vertretungsregeln: substitute_id -> vertritt (wen vertritt er)
+            if _substitution_rules_table_exists(cursor):
+                cursor.execute("""
+                    SELECT sr.substitute_id, e1.first_name || ' ' || COALESCE(e1.last_name, '') as principal_name
+                    FROM substitution_rules sr
+                    JOIN employees e1 ON sr.employee_id = e1.id
+                    JOIN employees e2 ON sr.substitute_id = e2.id
+                    WHERE e1.aktiv = true AND e2.aktiv = true
+                """)
+                vertritt_map = {}
+                for row in cursor.fetchall():
+                    sub_id, principal = row[0], row[1]
+                    vertritt_map.setdefault(sub_id, []).append(principal)
+                for emp in employees:
+                    emp['vertritt'] = vertritt_map.get(emp['id'], [])
+
+                cursor.execute("""
+                    SELECT sr.employee_id, e2.first_name || ' ' || COALESCE(e2.last_name, '') as substitute_name
+                    FROM substitution_rules sr
+                    JOIN employees e1 ON sr.employee_id = e1.id
+                    JOIN employees e2 ON sr.substitute_id = e2.id
+                    WHERE e1.aktiv = true AND e2.aktiv = true
+                """)
+                wird_vertreten_map = {}
+                for row in cursor.fetchall():
+                    emp_id, sub_name = row[0], row[1]
+                    wird_vertreten_map.setdefault(emp_id, []).append(sub_name)
+                for emp in employees:
+                    emp['wird_vertreten'] = wird_vertreten_map.get(emp['id'], [])
+
+            return jsonify({
+                'success': True,
+                'employees': employees,
+                'count': len(employees)
+            })
+
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
 
 @organization_api.route('/approval-rules', methods=['GET'])
 def get_approval_rules():
@@ -755,10 +897,10 @@ def get_capacity_settings():
         with db_session() as conn:
             cursor = conn.cursor()
 
-            # Prüfe ob Tabelle existiert
+            # Prüfe ob Tabelle existiert (PostgreSQL; SQLite wird nicht mehr genutzt)
             cursor.execute("""
-                SELECT name FROM sqlite_master
-                WHERE type='table' AND name='department_capacity_settings'
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'department_capacity_settings'
             """)
 
             if not cursor.fetchone():
@@ -858,6 +1000,125 @@ def save_capacity_settings():
                 'message': f'Einstellung für {department} gespeichert'
             })
 
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
+# MAX. ABWESENHEIT PRO ABTEILUNG + STANDORT (Default 50%, editierbar)
+# ============================================================================
+
+@organization_api.route('/absence-limits', methods=['GET'])
+def get_absence_limits():
+    """
+    GET /api/organization/absence-limits
+
+    Gibt alle Abwesenheitsgrenzen (max_absence_percent) pro Abteilung und Standort zurück.
+    Fehlende Einträge = Default 50%. Standorte: Deggendorf, Landau.
+    """
+    try:
+        with db_session() as conn:
+            cursor = conn.cursor()
+            if get_db_type() == 'postgresql':
+                cursor.execute("""
+                    SELECT department_name, location, max_absence_percent, updated_at, updated_by
+                    FROM department_absence_limits
+                    ORDER BY department_name, location
+                """)
+                rows = cursor.fetchall()
+                settings = [
+                    {'department_name': r[0], 'location': r[1], 'max_absence_percent': r[2],
+                     'updated_at': r[3].isoformat() if r[3] else None, 'updated_by': r[4]}
+                    for r in rows
+                ]
+            else:
+                try:
+                    cursor.execute("""
+                        SELECT department_name, location, max_absence_percent, updated_at, updated_by
+                        FROM department_absence_limits
+                        ORDER BY department_name, location
+                    """)
+                    rows = cursor.fetchall()
+                    settings = [
+                        {'department_name': r[0], 'location': r[1], 'max_absence_percent': r[2],
+                         'updated_at': r[3], 'updated_by': r[4]}
+                        for r in rows
+                    ]
+                except Exception:
+                    settings = []
+
+            # Alle Kombinationen (Abteilung × Standort) aus employees, fehlende mit Default 50
+            cursor.execute("""
+                SELECT DISTINCT department_name FROM employees
+                WHERE aktiv = true AND department_name IS NOT NULL AND department_name != ''
+                ORDER BY department_name
+            """)
+            depts = [row[0] for row in cursor.fetchall()]
+            locations = ['Deggendorf', 'Landau']
+            by_key = {(s['department_name'], s['location']): s for s in settings}
+            result = []
+            for d in depts:
+                for loc in locations:
+                    key = (d, loc)
+                    if key in by_key:
+                        result.append(by_key[key])
+                    else:
+                        result.append({
+                            'department_name': d,
+                            'location': loc,
+                            'max_absence_percent': 50,
+                            'updated_at': None,
+                            'updated_by': None
+                        })
+            return jsonify({'success': True, 'settings': result})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@organization_api.route('/absence-limits', methods=['PUT'])
+def save_absence_limit():
+    """
+    PUT /api/organization/absence-limits
+
+    Body: { "department_name": "...", "location": "Deggendorf"|"Landau", "max_absence_percent": 50 }
+    Speichert die Abwesenheitsgrenze für eine Abteilung am Standort (Default 50%).
+    """
+    try:
+        username, is_admin = get_current_user()
+        if not is_admin:
+            return jsonify({'success': False, 'error': 'Admin-Berechtigung erforderlich'}), 403
+
+        data = request.get_json()
+        department_name = data.get('department_name') or data.get('department')
+        location = data.get('location', 'Deggendorf')
+        max_absence_percent = int(data.get('max_absence_percent', 50))
+        if max_absence_percent < 1 or max_absence_percent > 100:
+            return jsonify({'success': False, 'error': 'max_absence_percent muss zwischen 1 und 100 liegen'}), 400
+        if not department_name:
+            return jsonify({'success': False, 'error': 'department_name erforderlich'}), 400
+        location = 'Landau' if location and 'landau' in str(location).lower() else 'Deggendorf'
+
+        with db_session() as conn:
+            cursor = conn.cursor()
+            if get_db_type() == 'postgresql':
+                cursor.execute("""
+                    INSERT INTO department_absence_limits (department_name, location, max_absence_percent, updated_at, updated_by)
+                    VALUES (%s, %s, %s, CURRENT_TIMESTAMP, %s)
+                    ON CONFLICT (department_name, location) DO UPDATE SET
+                        max_absence_percent = EXCLUDED.max_absence_percent,
+                        updated_at = CURRENT_TIMESTAMP,
+                        updated_by = EXCLUDED.updated_by
+                """, (department_name, location, max_absence_percent, username))
+            else:
+                cursor.execute("""
+                    INSERT OR REPLACE INTO department_absence_limits (department_name, location, max_absence_percent, updated_at, updated_by)
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?)
+                """, (department_name, location, max_absence_percent, username))
+            conn.commit()
+        return jsonify({
+            'success': True,
+            'message': f'Max. Abwesenheit {max_absence_percent}% für {department_name} ({location}) gespeichert'
+        })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 

@@ -1,7 +1,7 @@
 # Fahrzeugfinanzierungen & Zinsen — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-02-11
+## Letzte Aktualisierung: 2026-02-25
 
 ## Beschreibung
 
@@ -32,8 +32,11 @@ Fahrzeugfinanzierungen umfassen Zinssatz-Tracking, Einkaufsfinanzierung, Santand
 ## Aktueller Stand (✅ erledigt, 🔧 in Arbeit, ❌ offen)
 
 - ✅ Einkaufsfinanzierung, Leasys, Zins-Analyse im Einsatz
+- ✅ **Fahrzeugdetails Typ (2026-02-25):** Anzeige aus Locosoft `out_sale_type`/`pre_owned_car_code`/`is_rental` (wie Provisions-/AfA-Modul).
+- ✅ **Modell in Listen (2026-02-25):** Listen (Stellantis/Santander/Hyundai), Warnungen, Top10, Fahrzeuge mit Zinsen mit Modell aus Locosoft angereichert, wenn in DB leer.
+- ✅ **Kennzeichen (2026-02-25):** Spalte `kennzeichen` in `fahrzeugfinanzierungen` (Migration), Sync in `sync_stammdaten`/`sync_fahrzeug_stammdaten` aus Locosoft.
+- ✅ **Zinsfreiheit-Doku:** `docs/workstreams/controlling/ZINSFREIHEIT_STELLANTIS_HYUNDAI.md` (Stellantis/Santander/Hyundai).
 - 🔧 Santander/Hyundai-Import, Scraper je nach Projektstand
-- ❌ Offene Punkte ggf. in Session-TODOs
 
 ## Offene Entscheidungen
 

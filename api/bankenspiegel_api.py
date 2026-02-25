@@ -29,6 +29,43 @@ bankenspiegel_api = Blueprint('bankenspiegel_api', __name__, url_prefix='/api/ba
 # HELPER-FUNKTIONEN
 # ============================================================================
 
+# Fahrzeugtyp-Anzeige wie im Provisions- und AfA-Modul: out_sale_type (Locosoft) hat Priorität,
+# sonst dealer_vehicle_type + pre_owned_car_code + is_rental_or_school_vehicle.
+def _fahrzeugtyp_from_locosoft(row):
+    """
+    Berechnet die Anzeige 'Typ' aus Locosoft-Feldern (konsistent mit Provisionsmodul/AfA).
+    row: dict mit out_sale_type, dealer_vehicle_type, pre_owned_car_code, is_rental_or_school_vehicle.
+    """
+    out_sale = (row.get('out_sale_type') or '').strip().upper()
+    dtype = (row.get('dealer_vehicle_type') or '').strip().upper()
+    jw = (row.get('pre_owned_car_code') or '').strip().upper()
+    is_rental = row.get('is_rental_or_school_vehicle') in (True, 't', 1)
+    if is_rental:
+        return 'Leihgabe/Mietwagen'
+    if dtype == 'G' and jw == 'M':
+        return 'Mietwagen'
+    if out_sale:
+        if out_sale in ('F', 'N', 'D'):
+            return 'Neuwagen'
+        if out_sale == 'T':
+            return 'Tageszulassung'
+        if out_sale in ('V', 'L'):
+            return 'Vorführwagen' if out_sale == 'V' else 'Leihgabe/Mietwagen'
+        if out_sale in ('B', 'G'):
+            return 'Gebrauchtwagen'
+    if dtype == 'G':
+        return 'Gebrauchtwagen'
+    if dtype == 'N':
+        return 'Neuwagen'
+    if dtype in ('D', 'V'):
+        return 'Vorführwagen'
+    if dtype == 'T':
+        return 'Tageszulassung'
+    if dtype == 'L':
+        return 'Leihgabe/Mietwagen'
+    return 'Unbekannt'
+
+
 def find_vehicle_by_vin(loco_cursor, vin, fields='marke_modell'):
     """
     Helper-Funktion: Findet Fahrzeug in Locosoft anhand VIN (flexible Suche)
@@ -91,20 +128,15 @@ def find_vehicle_by_vin(loco_cursor, vin, fields='marke_modell'):
         """
         params = (vin_upper, vin_upper, vin_upper, vin_upper, vin_like)
     else:
-        # Alle Felder (für get_fahrzeug_details)
+        # Alle Felder (für get_fahrzeug_details). fahrzeugtyp wird in Python aus out_sale_type/
+        # pre_owned_car_code/is_rental (wie Provisions- und AfA-Modul) berechnet, nicht nur dealer_vehicle_type.
         query = """
             SELECT 
                 dv.dealer_vehicle_number as kommissionsnummer,
                 dv.dealer_vehicle_type,
-                CASE 
-                    WHEN dv.dealer_vehicle_type = 'G' THEN 'Gebrauchtwagen'
-                    WHEN dv.dealer_vehicle_type = 'N' THEN 'Neuwagen'
-                    WHEN dv.dealer_vehicle_type = 'D' THEN 'Vorführwagen'
-                    WHEN dv.dealer_vehicle_type = 'V' THEN 'Vorführwagen'
-                    WHEN dv.dealer_vehicle_type = 'T' THEN 'Tageszulassung'
-                    WHEN dv.dealer_vehicle_type = 'L' THEN 'Leihgabe/Mietwagen'
-                    ELSE 'Unbekannt'
-                END as fahrzeugtyp,
+                dv.out_sale_type,
+                dv.pre_owned_car_code,
+                dv.is_rental_or_school_vehicle,
                 v.vin,
                 v.license_plate as kennzeichen,
                 COALESCE(
@@ -972,7 +1004,7 @@ def get_einkaufsfinanzierung():
                     'marken': marken
                 })
 
-            # 3. TOP 10 TEUERSTE FAHRZEUGE
+            # 3. TOP 10 TEUERSTE FAHRZEUGE (Modell ggf. aus Locosoft nachladen)
             cursor.execute("""
                 SELECT
                     finanzinstitut,
@@ -988,22 +1020,29 @@ def get_einkaufsfinanzierung():
                 ORDER BY aktueller_saldo DESC
                 LIMIT 10
             """)
-
+            top_rows = cursor.fetchall()
             top_fahrzeuge = []
-            for row in cursor.fetchall():
-                r = row_to_dict(row)
-                top_fahrzeuge.append({
-                    'institut': r['finanzinstitut'],
-                    'vin': r['vin'][-8:] if r['vin'] else '???',
-                    'modell': r['modell'],
-                    'marke': r['rrdi'],
-                    'saldo': float(r['aktueller_saldo']) if r['aktueller_saldo'] else 0,
-                    'original': float(r['original_betrag']) if r['original_betrag'] else 0,
-                    'alter': r['alter_tage'],
-                    'zinsfreiheit': r['zinsfreiheit_tage']
-                })
+            from api.db_utils import locosoft_session
+            with locosoft_session() as loco_conn:
+                loco_cursor = loco_conn.cursor()
+                for row in top_rows:
+                    r = row_to_dict(row, cursor)
+                    if not (r.get('modell') or '').strip() or (r.get('modell') or '').strip().lower() == 'unbekannt':
+                        loco_data = find_vehicle_by_vin(loco_cursor, r.get('vin'), fields='marke_modell')
+                        if loco_data and (loco_data.get('modell') or '').strip():
+                            r['modell'] = (loco_data['modell'] or '').strip()
+                    top_fahrzeuge.append({
+                        'institut': r['finanzinstitut'],
+                        'vin': r['vin'][-8:] if r['vin'] else '???',
+                        'modell': r.get('modell') or '-',
+                        'marke': r['rrdi'],
+                        'saldo': float(r['aktueller_saldo']) if r['aktueller_saldo'] else 0,
+                        'original': float(r['original_betrag']) if r['original_betrag'] else 0,
+                        'alter': r['alter_tage'],
+                        'zinsfreiheit': r['zinsfreiheit_tage']
+                    })
 
-            # 4. ZINSFREIHEIT-WARNUNGEN (<= 30 Tage ODER bereits über Zinsfreiheit)
+            # 4. ZINSFREIHEIT-WARNUNGEN (<= 30 Tage ODER bereits über Zinsfreiheit) – Modell ggf. aus Locosoft
             cursor.execute("""
                 SELECT
                     finanzinstitut,
@@ -1024,29 +1063,32 @@ def get_einkaufsfinanzierung():
                     CASE WHEN alter_tage > zinsfreiheit_tage THEN 0 ELSE 1 END,
                     zinsfreiheit_tage ASC
             """)
-
+            warn_rows = cursor.fetchall()
             warnungen = []
-            for row in cursor.fetchall():
-                r = row_to_dict(row)
-                zinsfreiheit_tage = r['zinsfreiheit_tage']
-                alter_tage = r['alter_tage'] or 0
-                
-                # Berechne tatsächliche Tage übrig (kann negativ sein wenn bereits über Zinsfreiheit)
-                if alter_tage > zinsfreiheit_tage:
-                    tage_uebrig = -(alter_tage - zinsfreiheit_tage)  # Negativ = bereits über
-                else:
-                    tage_uebrig = zinsfreiheit_tage - alter_tage  # Positiv = noch übrig
-                
-                warnungen.append({
-                    'institut': r['finanzinstitut'],
-                    'vin': r['vin'][-8:] if r['vin'] else '???',
-                    'modell': r['modell'],
-                    'marke': r['rrdi'],
-                    'tage_uebrig': tage_uebrig,
-                    'saldo': float(r['aktueller_saldo']) if r['aktueller_saldo'] else 0,
-                    'alter': alter_tage,
-                    'kritisch': tage_uebrig < 15 if tage_uebrig >= 0 else True  # Negativ = kritisch
-                })
+            with locosoft_session() as loco_conn:
+                loco_cursor = loco_conn.cursor()
+                for row in warn_rows:
+                    r = row_to_dict(row, cursor)
+                    if not (r.get('modell') or '').strip() or (r.get('modell') or '').strip().lower() == 'unbekannt':
+                        loco_data = find_vehicle_by_vin(loco_cursor, r.get('vin'), fields='marke_modell')
+                        if loco_data and (loco_data.get('modell') or '').strip():
+                            r['modell'] = (loco_data['modell'] or '').strip()
+                    zinsfreiheit_tage = r['zinsfreiheit_tage']
+                    alter_tage = r['alter_tage'] or 0
+                    if alter_tage > zinsfreiheit_tage:
+                        tage_uebrig = -(alter_tage - zinsfreiheit_tage)
+                    else:
+                        tage_uebrig = zinsfreiheit_tage - alter_tage
+                    warnungen.append({
+                        'institut': r['finanzinstitut'],
+                        'vin': r['vin'][-8:] if r['vin'] else '???',
+                        'modell': r.get('modell') or '-',
+                        'marke': r['rrdi'],
+                        'tage_uebrig': tage_uebrig,
+                        'saldo': float(r['aktueller_saldo']) if r['aktueller_saldo'] else 0,
+                        'alter': alter_tage,
+                        'kritisch': tage_uebrig < 15 if tage_uebrig >= 0 else True
+                    })
 
         return jsonify({
             'success': True,
@@ -1109,6 +1151,17 @@ def get_fahrzeuge_mit_zinsen():
             final_query = convert_placeholders(query)
             c.execute(final_query, params)
             fahrzeuge = rows_to_list(c.fetchall())
+
+            # Modell aus Locosoft nachladen, wo in fahrzeuge_mit_zinsen leer
+            from api.db_utils import locosoft_session
+            need_modell = [f for f in fahrzeuge if not (f.get('modell') or '').strip() or (f.get('modell') or '').strip().lower() == 'unbekannt']
+            if need_modell:
+                with locosoft_session() as loco_conn:
+                    loco_cursor = loco_conn.cursor()
+                    for f in need_modell:
+                        loco_data = find_vehicle_by_vin(loco_cursor, f.get('vin'), fields='marke_modell')
+                        if loco_data and (loco_data.get('modell') or '').strip():
+                            f['modell'] = (loco_data['modell'] or '').strip()
 
             # Statistik berechnen
             gesamt_saldo = sum(float(f.get('aktueller_saldo') or 0) for f in fahrzeuge)
@@ -1686,6 +1739,28 @@ def get_fahrzeuge_by_marke():
             cursor.execute(query, params if len(params) > 1 else (params[0],))
             fahrzeuge = rows_to_list(cursor.fetchall())
             
+            # Modell aus Locosoft nachladen, wenn in fahrzeugfinanzierungen leer
+            # (Detail-Modal zeigt Modell aus Locosoft; Liste soll konsistent sein)
+            if fahrzeuge:
+                from api.db_utils import locosoft_session
+                need_modell = [
+                    fz for fz in fahrzeuge
+                    if not (fz.get('modell') or '').strip()
+                    or (fz.get('modell') or '').strip().lower() == 'unbekannt'
+                ]
+                if need_modell:
+                    with locosoft_session() as loco_conn:
+                        loco_cursor = loco_conn.cursor()
+                        for fz in need_modell:
+                            vin = fz.get('vin')
+                            if not vin:
+                                continue
+                            loco_data = find_vehicle_by_vin(loco_cursor, vin, fields='marke_modell')
+                            if loco_data:
+                                modell = (loco_data.get('modell') or '').strip()
+                                if modell:
+                                    fz['modell'] = modell
+            
         return jsonify({
             'success': True,
             'institut': institut,
@@ -1735,6 +1810,8 @@ def get_fahrzeug_details():
             fahrzeug = find_vehicle_by_vin(loco_cursor, vin, fields='all')
             
             if fahrzeug:
+                # Typ wie im Provisions- und AfA-Modul aus out_sale_type / dealer_vehicle_type / pre_owned_car_code
+                fahrzeug['fahrzeugtyp'] = _fahrzeugtyp_from_locosoft(fahrzeug)
                 
                 # Standort-Name aus subsidiaries (falls vorhanden)
                 if fahrzeug.get('standort'):

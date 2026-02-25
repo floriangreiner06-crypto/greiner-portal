@@ -8,7 +8,7 @@ Sync (Backup): \\Srvrdb01\Allgemein\Greiner Portal\Greiner_Portal_NEU\Server\
 
 ## Haupt-Datenbank
 PostgreSQL: drive_portal auf 127.0.0.1 (seit TAG 135)
-SQLite (data/greiner_controlling.db) ist Legacy — nur noch für Altdaten
+**Kein SQLite mehr:** Weder in API noch in Scripts darf sqlite3 oder data/greiner_controlling.db verwendet werden. Alle DB-Zugriffe über api.db_connection (get_db) bzw. api.db_utils (db_session). Siehe docs/NO_SQLITE.md.
 Locosoft: PostgreSQL auf 10.80.80.8
 
 ## Immer lesen
@@ -42,6 +42,10 @@ Locosoft: PostgreSQL auf 10.80.80.8
 - Bei Celery-Task-Änderungen: IMMER celery-worker UND celery-beat restarten
 - Bei Template-Änderungen: Kein Restart nötig, nur Browser-Refresh
 
+### Migrationen und Neustarts – der Agent führt sie aus
+- **Neue/geänderte Migrationen (migrations/*.sql):** Nach dem Anlegen oder Ändern die Migration selbst ausführen: `PGPASSWORD=DrivePortal2024 psql -h 127.0.0.1 -U drive_user -d drive_portal -f migrations/<datei>.sql`
+- **Nach Python-/Code-Änderungen am Backend:** Den betroffenen Service selbst neustarten (Portal: `sudo systemctl restart greiner-portal`; bei Celery-Tasks: `sudo systemctl restart celery-worker celery-beat`). Nicht nur anweisen – der Agent führt den Befehl aus.
+
 ## Workstream-System
 Wenn der User einen Workstream nennt oder an einem Thema arbeitet:
 1. Lies docs/workstreams/{workstream}/CONTEXT.md
@@ -64,6 +68,7 @@ Workstreams:
 - infrastruktur (Celery, PostgreSQL, Redis, Deployment, Admin-UI, MCP, Metabase)
 - auth-ldap (Login, Rollen, RBAC, Rechte-Verwaltung)
 - integrations (WhatsApp, eAutoSeller, SOAP, Scraper, Microsoft Graph Mail)
+- marketing (Kampagnen, Kundenkommunikation, WhatsApp Marketing, Leads)
 - verguetung (Werkstatt-Prämien, Verkäufer-Provisionen, Jahresprämie)
 
 ## Navigation (Navi-Punkte)
@@ -71,7 +76,8 @@ Workstreams:
 
 ## Tech-Stack
 - Flask 3.x, Gunicorn, Apache Reverse Proxy
-- PostgreSQL (Haupt-DB), SQLite (Legacy), Redis
+- PostgreSQL (Haupt-DB) – SQLite ist verboten (siehe NO_SQLITE.md)
+- Redis
 - Celery + RedBeat, Flower (:5555)
 - Jinja2, Bootstrap 4, jQuery, Chart.js
 - LDAP/AD, Microsoft Graph

@@ -222,6 +222,7 @@ CREATE TABLE employees (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP
 );
+-- Erweiterung (Vergütung): provision_aktiv BOOLEAN DEFAULT true (false = von Provisionsabrechnung ausgenommen, z.B. VKL/GF)
 ```
 
 ### vacation_bookings
@@ -247,25 +248,12 @@ CREATE TABLE vacation_bookings (
 
 ### fahrzeugfinanzierungen
 
-```sql
-CREATE TABLE fahrzeugfinanzierungen (
-    id SERIAL PRIMARY KEY,
-    fahrzeug_id VARCHAR(50),
-    vin VARCHAR(17),
-    kennzeichen VARCHAR(20),
-    marke VARCHAR(50),
-    modell VARCHAR(100),
-    bank VARCHAR(50),                 -- 'stellantis', 'santander'
-    finanzierungsbetrag DECIMAL(12,2),
-    zins_aktuell DECIMAL(5,2),
-    zins_frei_bis DATE,
-    eingang_datum DATE,
-    status VARCHAR(20),               -- 'aktiv', 'abgeloest', 'verkauft'
-    standort INTEGER,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP
-);
-```
+Die Tabelle hat viele Spalten (u. a. vin, hsn, tsn, finanzinstitut, aktiv, aktualisiert_am, …). Wichtige Spalten für Stammdaten-Sync aus Locosoft:
+
+- **kennzeichen** VARCHAR(20) – amtliches Kfz-Kennzeichen, aus Locosoft `vehicles.license_plate` synchronisiert (Migration: `migrations/add_fahrzeugfinanzierungen_kennzeichen.sql`). Scripts: `scripts/sync/sync_stammdaten.py`, `sync_fahrzeug_stammdaten.py`.
+- **hsn**, **tsn** – aus Locosoft `vehicles.german_kba_hsn` / `german_kba_tsn`.
+
+(Vereinfachtes älteres Schema nur zur groben Orientierung – die Live-Tabelle weicht ab.)
 
 ---
 
