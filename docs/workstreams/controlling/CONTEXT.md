@@ -1,7 +1,7 @@
 # Controlling (BWA, Bankenspiegel, Finanzreporting) — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-02-20
+## Letzte Aktualisierung: 2026-02-25
 
 ## Beschreibung
 
@@ -32,6 +32,7 @@ Controlling umfasst BWA-Berechnung, Bankenspiegel mit Konten und Transaktionen, 
 
 ### Celery Tasks
 - `import_mt940`, `import_hvb_pdf`, `umsatz_bereinigung`, `bwa_berechnung`, `refresh_finanzreporting_cube`, `email_tek_daily`
+- **`email_afa_bestand_report`** — AfA Bestand Abgleich DRIVE/Locosoft (20:00 Mo–Fr), E-Mail an Report-Abonnenten
 - **`afa_monatsberechnung`** — Monatliche AfA-Buchungen für aktive VFW/Mietwagen (z. B. am 1. des Monats für Vormonat)
 
 ## DB-Tabellen (PostgreSQL drive_portal)
@@ -71,6 +72,7 @@ Controlling umfasst BWA-Berechnung, Bankenspiegel mit Konten und Transaktionen, 
 - ✅ **OPOS Abgleich Locosoft (2026-02-19):** Wenn Kunde nicht in `loco_customers_suppliers` vorkommt, Anzeige „Kunde Nr. &lt;Nummer&gt;“ statt leer. Hinweis im Template und Doku **`OPOS/OPOS_ABGLEICH_LOCOSOFT.md`** für Vergleich mit Locosoft L362PR (Stichtag, Zeilen pro Buchung vs. pro Rechnung).
 - ✅ **TEK vs. VM / vs. VJ gleicher Zeitraum (2026-02-20):** Abweichungen „vs. VM“ und „vs. VJ“ waren zuvor irreführend (Teilmonat aktuell vs. Vollmonat VM/VJ). Anpassung in `routes/controlling_routes.py`: **VM** bei aktuellem Monat = erste N Tage des Vormonats (N = heutiger Kalendertag); **VJ** für Gesamt-Box und GESAMT-Zeile = bis gleicher Kalendertag (wie bereits pro Bereich). Abschnitt „TEK vs. VM / vs. VJ“ in CONTEXT.md auf „gleicher Zeitraum“ aktualisiert.
 - ✅ **AfA Buchhaltung Christian (2026-02-20):** Option A bestätigt (Haben-Buchung manuell in Locosoft). **Abgang im Fahrzeug-Detail:** Bereich „Abgang buchen“ mit Abgangsdatum und optional Verkaufspreis; bei Datumseingabe zeigt DRIVE **aufgelaufene AfA** und Restbuchwert (API GET `/api/afa/fahrzeug/<id>/abgang-vorschau?datum=`); nach „Abgang buchen“ Erfolgsmeldung mit aufgelaufene AfA für Locosoft. CSV: „CSV exportieren“ = nur Opel/Leapmotor (ohne Hyundai), „CSV exportieren (Hyundai)“ = nur Betrieb 2. Doku `AfA/UMSETZUNGSVORSCHLAG_ABGANG_BUCHUNGEN.md` mit Konten-Matrix Verkauf/Umbuchung GW und Status-Update.
+- ✅ **AfA Bestand E-Mail-Report (2026-02-25):** Automatischer Abgleich AfA-Bestand DRIVE/Locosoft mit E-Mail-Report umgesetzt. Report **„AfA Bestand Abgleich“** in Report-Verwaltung; Abonnenten konfigurierbar. Celery-Task `email_afa_bestand_report` (20:00 Mo–Fr); Script `scripts/send_afa_bestand_report.py`; Daten aus `api/afa_api.get_locosoft_kandidaten_data` und `get_abgangs_kontrolle_data`. Konzept: `AfA/UMSETZUNGSVORSCHLAG_AFA_BESTAND_EMAIL_REPORT.md`. Testversand und manueller Start (Admin → Celery → AfA Bestand Report) bestätigt.
 
 ## Offene Entscheidungen
 

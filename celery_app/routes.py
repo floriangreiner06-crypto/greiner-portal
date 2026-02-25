@@ -205,6 +205,7 @@ TASK_CATEGORIES = {
             ('sync_ad_departments', 'AD Abteilungen Sync', 'Abteilungen aus Active Directory'),
             ('email_auftragseingang', 'E-Mail Auftragseingang', 'Täglichen Report senden'),
             ('email_tek_daily', 'TEK E-Mail', 'TEK Tagesreports senden'),
+            ('email_afa_bestand_report', 'AfA Bestand Report', 'AfA Bestand DRIVE/Locosoft Abgleich senden'),
             ('db_backup', 'DB Backup', 'Datenbank-Backup erstellen'),
             ('cleanup_backups', 'Backup Cleanup', 'Alte Backups löschen'),
         ]
@@ -281,7 +282,7 @@ def start_task(task_name):
         import_mt940, import_hvb_pdf, import_santander, import_hyundai,
         scrape_hyundai, leasys_cache_refresh, umsatz_bereinigung, bwa_berechnung,
         sync_employees, sync_locosoft_employees, email_auftragseingang,
-        email_tek_daily, db_backup, cleanup_backups,         servicebox_scraper, servicebox_matcher,
+        email_tek_daily, email_afa_bestand_report, db_backup, cleanup_backups,         servicebox_scraper, servicebox_matcher,
         servicebox_import, servicebox_master, check_servicebox_password_expiry, sync_teile, import_teile,
         werkstatt_leistung, email_werkstatt_tagesbericht, sync_charge_types,
         ml_retrain, sync_sales, import_stellantis, sync_stammdaten, locosoft_mirror, sync_ad_departments,
@@ -302,6 +303,7 @@ def start_task(task_name):
         'sync_locosoft_employees': sync_locosoft_employees,
         'email_auftragseingang': email_auftragseingang,
         'email_tek_daily': email_tek_daily,
+        'email_afa_bestand_report': email_afa_bestand_report,
         'db_backup': db_backup,
         'cleanup_backups': cleanup_backups,
         'servicebox_scraper': servicebox_scraper,
@@ -330,8 +332,10 @@ def start_task(task_name):
     if task_name not in task_map:
         return jsonify({'error': f'Task {task_name} nicht gefunden'}), 404
     
-    # TEK E-Mail: manueller Start soll immer senden (force=True umgeht Zeitprüfung vor 19:00)
+    # TEK E-Mail / AfA Bestand: manueller Start mit force=True
     if task_name == 'email_tek_daily':
+        result = task_map[task_name].delay(True)
+    elif task_name == 'email_afa_bestand_report':
         result = task_map[task_name].delay(True)
     else:
         result = task_map[task_name].delay()
@@ -466,6 +470,7 @@ def task_history(task_name):
             'sync_locosoft_employees': 'celery_app.tasks.sync_locosoft_employees',
             'email_auftragseingang': 'celery_app.tasks.email_auftragseingang',
             'email_tek_daily': 'celery_app.tasks.email_tek_daily',
+            'email_afa_bestand_report': 'celery_app.tasks.email_afa_bestand_report',
             'db_backup': 'celery_app.tasks.db_backup',
             'cleanup_backups': 'celery_app.tasks.cleanup_backups',
             'servicebox_scraper': 'celery_app.tasks.servicebox_scraper',

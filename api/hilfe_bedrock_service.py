@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Hilfe „Mit KI erweitern“ – zuerst LM Studio (RZ), Fallback AWS Bedrock.
+Hilfe „Mit KI erweitern“ – nur LM Studio (RZ). Bedrock auskommentiert.
 Nutzt Kontext-Registry für fachliche SSOT-Snippets.
 Workstream: Hilfe | 2026-02-24
 """
@@ -8,15 +8,16 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-try:
-    import boto3
-    BOTO3_AVAILABLE = True
-except ImportError:
-    BOTO3_AVAILABLE = False
+# Bedrock für Hilfe-KI auskommentiert – nur noch LM Studio
+# try:
+#     import boto3
+#     BOTO3_AVAILABLE = True
+# except ImportError:
+#     BOTO3_AVAILABLE = False
 
 
 # Kontext-Registry: Schlüsselwörter (lower) -> Kontext für KI (fachliche SSOT-Beschreibung).
-# Entspricht docs/workstreams/Hilfe/hilfe_ki_kontext_registry.md
+# Entspricht docs/workstreams/Hilfe/hilfe_ki_kontext_registry.md (Letzte Prüfung: 2026-02-25)
 HILFE_KI_KONTEXT_REGISTRY = {
     "tek": """Die TEK (Tägliche Erfolgskontrolle) im DRIVE zeigt tägliche Kennzahlen für Umsatz, Einsatz, DB1 (Deckungsbeitrag 1), Marge und eine Breakeven-Prognose. Alle Berechnungen kommen aus einer zentralen Quelle (api/controlling_data.py).
 - **Umsatz:** Tagesumsatz aus Locosoft (Fahrzeugverkauf, Werkstatt, Teile etc.), Konten 800000–889999.
@@ -89,13 +90,13 @@ def _erweitern_mit_lm_studio(artikel_titel: str, aktueller_inhalt: str, tags: st
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
-    # Timeout 60s für längere Artikel-Erweiterung (LM Studio Default 30s oft zu knapp)
+    # Timeout 90s für längere Artikel-Erweiterung
     out = lm_studio_client.chat_completion(
         messages=messages,
         model=None,
         max_tokens=2048,
         temperature=0.3,
-        timeout=60,
+        timeout=90,
     )
     if not out:
         logger.info("hilfe_ki: LM Studio chat_completion lieferte nichts (Timeout/Netzwerk/Modell?).")
@@ -107,75 +108,46 @@ def _erweitern_mit_lm_studio(artikel_titel: str, aktueller_inhalt: str, tags: st
     return {"inhalt": out, "kontext_verwendet": kontext_verwendet, "backend": "lm_studio"}
 
 
-def _get_bedrock_client_and_model():
-    """
-    SSOT wie Fahrzeugschein: dieselbe credentials.json und dieselbe Client/Model-ID.
-    Gibt (client, model_id) oder (None, None) zurück.
-    """
-    from api.fahrzeuganlage_api import _load_bedrock_credentials
-    creds = _load_bedrock_credentials()
-    if not creds or not creds.get("secret_access_key"):
-        return None, None
-    from api.fahrzeugschein_scanner import FahrzeugscheinScanner
-    scanner = FahrzeugscheinScanner(creds)
-    return scanner.client, scanner.model_id
+# def _get_bedrock_client_and_model():
+#     """SSOT wie Fahrzeugschein: dieselbe credentials.json und Client/Model-ID. Gibt (client, model_id) oder (None, None)."""
+#     from api.fahrzeuganlage_api import _load_bedrock_credentials
+#     creds = _load_bedrock_credentials()
+#     if not creds or not creds.get("secret_access_key"):
+#         return None, None
+#     from api.fahrzeugschein_scanner import FahrzeugscheinScanner
+#     scanner = FahrzeugscheinScanner(creds)
+#     return scanner.client, scanner.model_id
 
 
 def erweitern_mit_ki(artikel_titel: str, aktueller_inhalt: str, tags: str = None) -> dict:
     """
-    Erweitert den Hilfe-Artikel per KI. Zuerst LM Studio (RZ), bei Fehler Fallback Bedrock.
-    Returns: {"inhalt": "<markdown>", "kontext_verwendet": bool, "backend": "lm_studio"|"bedrock"} oder {"error": "<msg>"}.
+    Erweitert den Hilfe-Artikel per KI – nur LM Studio (RZ). Bedrock auskommentiert.
+    Returns: {"inhalt": "<markdown>", "kontext_verwendet": bool, "backend": "lm_studio"} oder {"error": "<msg>"}.
     """
-    # 1. Versuch: LM Studio (RZ)
     result = _erweitern_mit_lm_studio(artikel_titel, aktueller_inhalt, tags)
     if result:
         logger.info("hilfe_ki: Erweiterung via LM Studio (RZ) erfolgreich")
         return result
 
     logger.warning(
-        "hilfe_ki: LM Studio (RZ) lieferte keine Antwort – Fallback auf Bedrock. "
-        "LM Studio prüfen: Server erreichbar? (config: api_url, default_model, timeout)"
+        "hilfe_ki: LM Studio (RZ) lieferte keine Antwort. "
+        "LM Studio prüfen: Server erreichbar? (config: api_url, default_model, timeout=90)"
     )
-
-    # 2. Fallback: Bedrock
-    if not BOTO3_AVAILABLE:
-        return {"error": "Weder LM Studio (RZ) erreichbar noch boto3 installiert."}
-    client, model_id = _get_bedrock_client_and_model()
-    if not client or not model_id:
-        return {"error": "LM Studio (RZ) nicht erreichbar und AWS Bedrock nicht konfiguriert (config/credentials.json → aws_bedrock)."}
-
-    system_prompt, user_prompt, kontext_verwendet = _build_erweitern_prompts(artikel_titel, aktueller_inhalt, tags)
-    try:
-        response = client.converse(
-            modelId=model_id,
-            messages=[{"role": "user", "content": [{"text": user_prompt}]}],
-            system=[{"text": system_prompt}],
-            inferenceConfig={"maxTokens": 4096, "temperature": 0.3},
+    return {
+        "error": (
+            "LM Studio (RZ) hat keine Antwort geliefert (Timeout oder Server nicht erreichbar). "
+            "Bitte Server in config/credentials.json → lm_studio prüfen (z. B. 46.229.10.1:4433), Timeout 90 s."
         )
-        output = (response.get("output") or {}).get("message") or {}
-        content = output.get("content") or []
-        if not content:
-            return {"error": "Keine Antwort von der KI erhalten (Bedrock)."}
-        inhalt = (content[0].get("text") or "").strip()
-        if not inhalt:
-            return {"error": "Leere Antwort von Bedrock."}
-        return {"inhalt": inhalt, "kontext_verwendet": kontext_verwendet, "backend": "bedrock"}
-    except Exception as e:
-        logger.exception("hilfe_bedrock erweitern_mit_ki: %s", e)
-        err_msg = str(e)
-        # Verständliche Meldung, wenn Bedrock-Konto nicht freigeschaltet ist
-        if "Access to Bedrock models is not allowed for this account" in err_msg or "ValidationException" in err_msg:
-            return {
-                "error": (
-                    "LM Studio (RZ) war nicht erreichbar; Bedrock-Fallback fehlgeschlagen: "
-                    "Zugriff auf Bedrock ist für dieses AWS-Konto nicht freigeschaltet. "
-                    "Bitte LM Studio prüfen (Server in config/credentials.json → lm_studio, z. B. 46.229.10.1:4433) "
-                    "oder beim AWS Support Bedrock für das Konto anfragen."
-                )
-            }
-        return {"error": err_msg}
-     "Bitte LM Studio prüfen (Server in config/credentials.json → lm_studio, z. B. 46.229.10.1:4433) "
-                    "oder beim AWS Support Bedrock für das Konto anfragen."
-                )
-            }
-        return {"error": err_msg}
+    }
+
+    # --- Bedrock-Fallback auskommentiert (nur noch LM Studio für Hilfe-KI) ---
+    # if not BOTO3_AVAILABLE:
+    #     return {"error": "Weder LM Studio erreichbar noch boto3 installiert."}
+    # client, model_id = _get_bedrock_client_and_model()
+    # if not client or not model_id:
+    #     return {"error": "LM Studio nicht erreichbar und AWS Bedrock nicht konfiguriert."}
+    # system_prompt, user_prompt, kontext_verwendet = _build_erweitern_prompts(...)
+    # try:
+    #     response = client.converse(...)
+    #     ...
+    # except Exception as e: ...

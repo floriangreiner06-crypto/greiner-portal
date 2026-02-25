@@ -7,6 +7,7 @@ TAG 171: Serviceberater-Modal per E-Mail
 """
 
 import logging
+import sys
 from datetime import datetime, date
 from celery import shared_task
 
@@ -1143,8 +1144,9 @@ def sync_locosoft_employees():
     import os
     
     try:
-        # Prüfe verschiedene mögliche Pfade
+        # Prüfe verschiedene mögliche Pfade (PostgreSQL-Version zuerst für ldap_employee_mapping)
         script_paths = [
+            '/opt/greiner-portal/scripts/sync/sync_ldap_employees_pg.py',
             '/opt/greiner-portal/scripts/sync/sync_ldap_employees.py',
             '/opt/greiner-portal/scripts/sync/sync_employees.py'
         ]
@@ -1723,6 +1725,52 @@ def email_tek_daily(force=False):
         return {'success': False, 'error': 'Timeout'}
     except Exception as e:
         logger.exception("Fehler bei TEK E-Mail")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=300, name='celery_app.tasks.email_afa_bestand_report')
+def email_afa_bestand_report(force=False):
+    """
+    AfA Bestand Abgleich – E-Mail-Report (DRIVE vs. Locosoft).
+    Läuft täglich 20:00 Mo–Fr (nach Locosoft-Update ca. 18–19 Uhr).
+    force=True: manueller Start (z. B. aus Admin/Celery-UI).
+    """
+    import subprocess
+    import os
+    try:
+        script_paths = [
+            '/opt/greiner-portal/scripts/send_afa_bestand_report.py',
+            os.path.join(os.path.dirname(__file__), '..', 'scripts', 'send_afa_bestand_report.py'),
+        ]
+        script_path = None
+        for p in script_paths:
+            if os.path.exists(p):
+                script_path = p
+                break
+        if not script_path:
+            logger.error("AfA Bestand Report: Script nicht gefunden")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        cmd = [sys.executable, script_path]
+        if force:
+            cmd.append('--force')
+        result = subprocess.run(
+            cmd,
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if result.returncode == 0:
+            logger.info("AfA Bestand Report erfolgreich gesendet")
+            return {'success': True, 'stdout': (result.stdout or '')[-500:]}
+        error_msg = (result.stderr or result.stdout or 'Unbekannter Fehler')[-500:]
+        logger.error("AfA Bestand Report fehlgeschlagen: %s", error_msg)
+        return {'success': False, 'error': error_msg, 'exit_code': result.returncode}
+    except subprocess.TimeoutExpired:
+        logger.error("AfA Bestand Report: Timeout")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei AfA Bestand Report")
         return {'success': False, 'error': str(e)}
 
 

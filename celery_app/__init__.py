@@ -167,6 +167,12 @@ app.conf.update(
             'schedule': crontab(minute=30, hour=19, day_of_week='mon-fri'),
             'options': {'queue': 'controlling'}
         },
+        # AfA Bestand Abgleich (20:00 nach Locosoft-Update)
+        'email-afa-bestand-report': {
+            'task': 'celery_app.tasks.email_afa_bestand_report',
+            'schedule': crontab(minute=0, hour=20, day_of_week='mon-fri'),
+            'options': {'queue': 'controlling'}
+        },
         
         # Wartung
         'db-backup': {

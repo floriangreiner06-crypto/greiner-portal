@@ -752,6 +752,68 @@ def berechne_monat():
 # GET /api/afa/abgangs-kontrolle
 # =============================================================================
 
+def get_abgangs_kontrolle_data():
+    """
+    Liefert Abgleich DRIVE vs. Locosoft (out_invoice_date).
+    Für API und E-Mail-Report (send_afa_bestand_report).
+    Returns: dict mit abgang_pruefen, abgang_drive_mit_locosoft
+    """
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, vin, kennzeichen, fahrzeug_bezeichnung, status, abgangsdatum
+            FROM afa_anlagevermoegen
+            WHERE vin IS NOT NULL AND TRIM(vin) != ''
+            ORDER BY status ASC, abgangsdatum DESC NULLS LAST
+        """)
+        rows = cur.fetchall()
+    portal = rows_to_list(rows, cur) if cur else []
+    vins = [r['vin'].strip() for r in portal if r.get('vin')]
+    if not vins:
+        return {'abgang_pruefen': [], 'abgang_drive_mit_locosoft': []}
+
+    placeholders = ','.join(['%s'] * len(vins))
+    with locosoft_session() as conn:
+        cur = conn.cursor()
+        cur.execute(f"""
+            SELECT v.vin, dv.out_invoice_date
+            FROM vehicles v
+            JOIN dealer_vehicles dv ON dv.vehicle_number = v.internal_number
+                AND dv.dealer_vehicle_type = v.dealer_vehicle_type
+                AND dv.dealer_vehicle_number = v.dealer_vehicle_number
+            WHERE v.vin IN ({placeholders})
+        """, vins)
+        loco_rows = cur.fetchall()
+    loco_map = {}
+    for r in loco_rows:
+        vin = (r[0] or '').strip()
+        if vin:
+            loco_map[vin] = r[1]  # out_invoice_date
+
+    abgang_pruefen = []
+    abgang_drive_mit_locosoft = []
+    for p in portal:
+        vin = (p.get('vin') or '').strip()
+        if not vin:
+            continue
+        loco_inv = loco_map.get(vin)
+        if p.get('status') == 'aktiv' and loco_inv:
+            abgang_pruefen.append({
+                'id': p.get('id'), 'vin': vin, 'kennzeichen': p.get('kennzeichen'),
+                'fahrzeug_bezeichnung': p.get('fahrzeug_bezeichnung'),
+                'locosoft_out_invoice_date': loco_inv.isoformat() if hasattr(loco_inv, 'isoformat') else str(loco_inv),
+                'hinweis': 'In Locosoft als verkauft (Rechnungsdatum). Bitte Abgang in DRIVE prüfen.',
+            })
+        if p.get('status') == 'verkauft':
+            abgang_drive_mit_locosoft.append({
+                'id': p.get('id'), 'vin': vin, 'kennzeichen': p.get('kennzeichen'),
+                'fahrzeug_bezeichnung': p.get('fahrzeug_bezeichnung'),
+                'abgangsdatum': p.get('abgangsdatum').isoformat() if p.get('abgangsdatum') and hasattr(p['abgangsdatum'], 'isoformat') else str(p.get('abgangsdatum') or ''),
+                'locosoft_out_invoice_date': loco_inv.isoformat() if loco_inv and hasattr(loco_inv, 'isoformat') else (str(loco_inv) if loco_inv else None),
+            })
+    return {'abgang_pruefen': abgang_pruefen, 'abgang_drive_mit_locosoft': abgang_drive_mit_locosoft}
+
+
 @afa_api.route('/api/afa/abgangs-kontrolle', methods=['GET'])
 def abgangs_kontrolle():
     """
@@ -760,65 +822,8 @@ def abgangs_kontrolle():
     - Abgang in DRIVE: Liste mit Locosoft-Verkaufsdatum zur Kontrolle.
     """
     try:
-        with db_session() as conn:
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT id, vin, kennzeichen, fahrzeug_bezeichnung, status, abgangsdatum
-                FROM afa_anlagevermoegen
-                WHERE vin IS NOT NULL AND TRIM(vin) != ''
-                ORDER BY status ASC, abgangsdatum DESC NULLS LAST
-            """)
-            rows = cur.fetchall()
-        portal = rows_to_list(rows, cur) if cur else []
-        vins = [r['vin'].strip() for r in portal if r.get('vin')]
-        if not vins:
-            return jsonify({'ok': True, 'abgang_pruefen': [], 'abgang_drive_mit_locosoft': [], 'hinweis': 'Keine Fahrzeuge mit VIN.'})
-
-        placeholders = ','.join(['%s'] * len(vins))
-        with locosoft_session() as conn:
-            cur = conn.cursor()
-            cur.execute(f"""
-                SELECT v.vin, dv.out_invoice_date
-                FROM vehicles v
-                JOIN dealer_vehicles dv ON dv.vehicle_number = v.internal_number
-                    AND dv.dealer_vehicle_type = v.dealer_vehicle_type
-                    AND dv.dealer_vehicle_number = v.dealer_vehicle_number
-                WHERE v.vin IN ({placeholders})
-            """, vins)
-            loco_rows = cur.fetchall()
-        loco_map = {}
-        for r in loco_rows:
-            vin = (r[0] or '').strip()
-            if vin:
-                loco_map[vin] = r[1]  # out_invoice_date
-
-        abgang_pruefen = []
-        abgang_drive_mit_locosoft = []
-        for p in portal:
-            vin = (p.get('vin') or '').strip()
-            if not vin:
-                continue
-            loco_inv = loco_map.get(vin)
-            if p.get('status') == 'aktiv' and loco_inv:
-                abgang_pruefen.append({
-                    'id': p.get('id'), 'vin': vin, 'kennzeichen': p.get('kennzeichen'),
-                    'fahrzeug_bezeichnung': p.get('fahrzeug_bezeichnung'),
-                    'locosoft_out_invoice_date': loco_inv.isoformat() if hasattr(loco_inv, 'isoformat') else str(loco_inv),
-                    'hinweis': 'In Locosoft als verkauft (Rechnungsdatum). Bitte Abgang in DRIVE prüfen.',
-                })
-            if p.get('status') == 'verkauft':
-                abgang_drive_mit_locosoft.append({
-                    'id': p.get('id'), 'vin': vin, 'kennzeichen': p.get('kennzeichen'),
-                    'fahrzeug_bezeichnung': p.get('fahrzeug_bezeichnung'),
-                    'abgangsdatum': p.get('abgangsdatum').isoformat() if p.get('abgangsdatum') and hasattr(p['abgangsdatum'], 'isoformat') else str(p.get('abgangsdatum') or ''),
-                    'locosoft_out_invoice_date': loco_inv.isoformat() if loco_inv and hasattr(loco_inv, 'isoformat') else (str(loco_inv) if loco_inv else None),
-                })
-
-        return jsonify({
-            'ok': True,
-            'abgang_pruefen': abgang_pruefen,
-            'abgang_drive_mit_locosoft': abgang_drive_mit_locosoft,
-        })
+        data = get_abgangs_kontrolle_data()
+        return jsonify({'ok': True, **data})
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
 
@@ -879,6 +884,79 @@ _LOCOSOFT_KANDIDATEN_SQL = """
 """
 
 
+def get_locosoft_kandidaten_data():
+    """
+    Liefert VFW- und Mietwagen-Kandidaten aus Locosoft (noch nicht in AfA importiert).
+    Für API und E-Mail-Report (send_afa_bestand_report).
+    Returns: list of kandidaten dicts
+    """
+    with locosoft_session() as conn:
+        cur = conn.cursor()
+        cur.execute(_LOCOSOFT_KANDIDATEN_SQL)
+        rows = cur.fetchall()
+    raw = rows_to_list(rows, cur)
+
+    # Bereits importierte VINs / Locosoft-IDs aus Portal
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT vin, locosoft_fahrzeug_id FROM afa_anlagevermoegen WHERE vin IS NOT NULL OR locosoft_fahrzeug_id IS NOT NULL")
+        portal_rows = cur.fetchall()
+    existing_vins = {row[0]: True for row in portal_rows if row and row[0]}
+    existing_ids = {row[1]: True for row in portal_rows if row and row[1] is not None}
+
+    kandidaten = []
+    for r in raw:
+        vin = (r.get('vin') or '').strip()
+        internal_number = r.get('internal_number')
+        if not vin and not internal_number:
+            continue
+        if vin and existing_vins.get(vin):
+            continue
+        if internal_number is not None and existing_ids.get(internal_number):
+            continue
+
+        ek = _ek_netto_from_locosoft_row(r)
+        if ek <= 0:
+            continue
+        anschaffung = r.get('in_arrival_date') or r.get('first_registration_date')
+        if isinstance(anschaffung, date):
+            anschaffung = anschaffung.isoformat()
+        elif anschaffung:
+            anschaffung = str(anschaffung)[:10]
+
+        subsidiary = r.get('subsidiary')
+        if subsidiary is not None:
+            betriebsnr = LOCOSOFT_SUBSIDIARY_TO_BETRIEBSNR.get(int(subsidiary), 1)
+        else:
+            betriebsnr = 1
+
+        # Art: Mietwagen wenn is_rental_or_school_vehicle ODER Fz.-Art G mit Jw-Kz M (Buchhaltung)
+        if r.get('is_rental_or_school_vehicle'):
+            fahrzeugart = 'MIETWAGEN'
+        elif (r.get('dealer_vehicle_type') or '').upper() == 'G':
+            jw = (r.get('pre_owned_car_code') or '').strip().upper()
+            if jw == 'M':
+                fahrzeugart = 'MIETWAGEN'
+            else:
+                fahrzeugart = 'VFW'
+        else:
+            fahrzeugart = 'VFW'
+
+        kandidaten.append({
+            'dealer_vehicle_type': r.get('dealer_vehicle_type'),
+            'dealer_vehicle_number': r.get('dealer_vehicle_number'),
+            'internal_number': internal_number,
+            'vin': vin,
+            'kennzeichen': (r.get('license_plate') or r.get('out_license_plate') or '').strip(),
+            'fahrzeug_bezeichnung': (r.get('model_description') or '').strip() or None,
+            'fahrzeugart': fahrzeugart,
+            'anschaffungsdatum': anschaffung,
+            'anschaffungskosten_netto': ek,
+            'betriebsnr': betriebsnr,
+        })
+    return kandidaten
+
+
 @afa_api.route('/api/afa/locosoft-kandidaten', methods=['GET'])
 def locosoft_kandidaten():
     """
@@ -887,70 +965,7 @@ def locosoft_kandidaten():
     EK = Einsatzwert-Formel inkl. Einsatzerhöhung interne/externe/other - Abschreibung.
     """
     try:
-        with locosoft_session() as conn:
-            cur = conn.cursor()
-            cur.execute(_LOCOSOFT_KANDIDATEN_SQL)
-            rows = cur.fetchall()
-        raw = rows_to_list(rows, cur)
-
-        # Bereits importierte VINs / Locosoft-IDs aus Portal
-        with db_session() as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT vin, locosoft_fahrzeug_id FROM afa_anlagevermoegen WHERE vin IS NOT NULL OR locosoft_fahrzeug_id IS NOT NULL")
-            portal_rows = cur.fetchall()
-        existing_vins = {row[0]: True for row in portal_rows if row and row[0]}
-        existing_ids = {row[1]: True for row in portal_rows if row and row[1] is not None}
-
-        kandidaten = []
-        for r in raw:
-            vin = (r.get('vin') or '').strip()
-            internal_number = r.get('internal_number')
-            if not vin and not internal_number:
-                continue
-            if vin and existing_vins.get(vin):
-                continue
-            if internal_number is not None and existing_ids.get(internal_number):
-                continue
-
-            ek = _ek_netto_from_locosoft_row(r)
-            if ek <= 0:
-                continue
-            anschaffung = r.get('in_arrival_date') or r.get('first_registration_date')
-            if isinstance(anschaffung, date):
-                anschaffung = anschaffung.isoformat()
-            elif anschaffung:
-                anschaffung = str(anschaffung)[:10]
-
-            subsidiary = r.get('subsidiary')
-            if subsidiary is not None:
-                betriebsnr = LOCOSOFT_SUBSIDIARY_TO_BETRIEBSNR.get(int(subsidiary), 1)
-            else:
-                betriebsnr = 1
-
-            # Art: Mietwagen wenn is_rental_or_school_vehicle ODER Fz.-Art G mit Jw-Kz M (Buchhaltung)
-            if r.get('is_rental_or_school_vehicle'):
-                fahrzeugart = 'MIETWAGEN'
-            elif (r.get('dealer_vehicle_type') or '').upper() == 'G':
-                jw = (r.get('pre_owned_car_code') or '').strip().upper()
-                if jw == 'M':
-                    fahrzeugart = 'MIETWAGEN'
-                else:
-                    fahrzeugart = 'VFW'
-            else:
-                fahrzeugart = 'VFW'
-
-            kandidaten.append({
-                'dealer_vehicle_type': r.get('dealer_vehicle_type'),
-                'dealer_vehicle_number': r.get('dealer_vehicle_number'),
-                'internal_number': internal_number,
-                'vin': vin,
-                'kennzeichen': (r.get('license_plate') or r.get('out_license_plate') or '').strip(),
-                'fahrzeug_bezeichnung': (r.get('model_description') or '').strip() or None,
-                'fahrzeugart': fahrzeugart,
-                'anschaffungsdatum': anschaffung,
-                'anschaffungskosten_netto': ek,
-                'betriebsnr': betriebsnr,
-            })
+        kandidaten = get_locosoft_kandidaten_data()
         return jsonify({'ok': True, 'kandidaten': kandidaten})
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500

@@ -167,6 +167,18 @@ def _init_standard_reports():
         'category': 'werkstatt'
     }
 
+    # AfA Bestand Abgleich DRIVE/Locosoft (2026-02-25)
+    REPORT_REGISTRY['afa_bestand_report'] = {
+        'name': 'AfA Bestand Abgleich',
+        'description': 'Abgleich AfA-Bestand DRIVE vs. Locosoft: neue Fahrzeuge in Locosoft (Import prüfen), offene Abgänge in DRIVE',
+        'script': 'scripts/send_afa_bestand_report.py',
+        'schedule': '20:00 Mo-Fr',
+        'supports_standort': False,
+        'supports_bereiche': False,
+        'icon': '📋',
+        'category': 'controlling'
+    }
+
 # Beim Import initialisieren
 _init_standard_reports()
 
