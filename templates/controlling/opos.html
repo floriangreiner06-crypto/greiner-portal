@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+
+{% block title %}Offene Posten (OPOS){% endblock %}
+
+{% block extra_css %}
+<style>
+    .opos-kpi-card {
+        background: #fff;
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
+        border-left: 4px solid #0d6efd;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .opos-table { font-size: 0.9rem; }
+    .opos-table th { background: #343a40; color: #fff; padding: 0.5rem; white-space: nowrap; }
+    .opos-table td { padding: 0.4rem 0.5rem; vertical-align: middle; }
+    .opos-table tbody tr:hover { background: #f8f9fa; }
+    .opos-table .betrag { text-align: right; font-variant-numeric: tabular-nums; }
+    .badge-fz { background: #0d6efd; }
+    .badge-sonstige { background: #6c757d; }
+    .opos-rg-link { cursor: pointer; text-decoration: none; }
+    .opos-rg-link:hover { text-decoration: underline; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h4 class="mb-0"><i class="bi bi-receipt-cutoff"></i> Offene Posten (OPOS)</h4>
+            <small class="text-muted">Unausgeglichene Debitorenposten – gruppiert nach Verkäufer/Ansprechpartner. Daten aus Locosoft-Spiegel (loco_journal_accountings).</small>
+        </div>
+    </div>
+    <div class="alert alert-light border small py-2 mb-3">
+        <strong>Hinweis:</strong> Es werden nur <strong>offene</strong> Posten angezeigt: In Locosoft sind offene mit „OP“, bezahlte mit Auszifferungsnummer gekennzeichnet; DRIVE nutzt <code>clearing_number</code> (nur Zeilen mit clearing_number leer/0). Zusätzlich nur Kunden mit positivem Debitoren-Gesamtsaldo. Standard: Rechnungsdatum ab „vor 24 Monaten“; Filter „Von“/„Bis“ anpassbar. „Kunde Nr. …“ = Kundennummer nicht im Kundenstamm.<br>
+        <strong>Datenstand:</strong> Die Liste basiert auf dem aktuellen Stand der gespiegelten FIBU-Daten. Wenn sich in Locosoft gerade Zahlungen oder Ausbuchungen geändert haben, kann die Anzeige bis zum nächsten Sync abweichen. Für verbindliche Prüfung: Locosoft L362PR „Unausgeglichene Personenkonten“ (Stichtag) nutzen. Siehe <code>docs/workstreams/controlling/OPOS/OPOS_ABGLEICH_LOCOSOFT.md</code>.
+    </div>
+
+    <!-- Filter -->
+    <div class="card mb-3">
+        <div class="card-body py-2">
+            <form id="opos-filter" class="row g-2 align-items-end">
+                <div class="col-auto">
+                    <label class="form-label small mb-0">Von</label>
+                    <input type="date" name="von" id="filter-von" class="form-control form-control-sm" style="width: 140px;">
+                </div>
+                <div class="col-auto">
+                    <label class="form-label small mb-0">Bis</label>
+                    <input type="date" name="bis" id="filter-bis" class="form-control form-control-sm" style="width: 140px;">
+                </div>
+                <div class="col-auto" id="wrap-verkaeufer" style="display: none;">
+                    <label class="form-label small mb-0">Verkäufer</label>
+                    <select name="verkaeufer_nr" id="filter-verkaeufer" class="form-select form-select-sm" style="width: 200px;">
+                        <option value="">Alle</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label small mb-0">&nbsp;</label>
+                    <select name="nur_fahrzeugverkauf" id="filter-nur-fz" class="form-select form-select-sm" style="width: auto;">
+                        <option value="">Alle Posten</option>
+                        <option value="1">Nur Fahrzeugverkauf</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-search"></i> Anwenden</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- KPI + Tabelle -->
+    <div class="row g-3 mb-3">
+        <div class="col-auto">
+            <div class="opos-kpi-card">
+                <span class="small text-muted">Anzahl Posten</span>
+                <div class="fs-4 fw-bold" id="kpi-anzahl">–</div>
+            </div>
+        </div>
+        <div class="col-auto">
+            <div class="opos-kpi-card">
+                <span class="small text-muted">Summe offen (€)</span>
+                <div class="fs-4 fw-bold" id="kpi-summe">–</div>
+            </div>
+        </div>
+        <div class="col-auto align-self-center" id="hinweis-nur-eigene" style="display: none;">
+            <span class="badge bg-info">Nur Ihre eigenen Posten</span>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped opos-table mb-0">
+                    <thead>
+                        <tr>
+                            <th>Verkäufer / Ansprechpartner</th>
+                            <th>Kunde</th>
+                            <th>Rechnungsdatum</th>
+                            <th>Rechnungsnr.</th>
+                            <th class="betrag">Betrag (€)</th>
+                            <th>Art</th>
+                        </tr>
+                    </thead>
+                    <tbody id="opos-tbody">
+                        <tr><td colspan="6" class="text-center text-muted py-4">Lade Daten…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Locosoft-Infos zur Rechnung -->
+<div class="modal fade" id="opos-rechnung-modal" tabindex="-1" aria-labelledby="opos-rechnung-modal-label" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h5 class="modal-title" id="opos-rechnung-modal-label">Rechnung – Locosoft-Daten</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+            </div>
+            <div class="modal-body">
+                <div id="opos-modal-loading" class="text-muted py-3">Lade…</div>
+                <div id="opos-modal-content" style="display: none;">
+                    <p class="mb-2"><strong>Kunde:</strong> <span id="opos-modal-kunde"></span> <span id="opos-modal-customer-nr" class="text-muted small"></span></p>
+                    <p class="mb-3"><strong>Rechnung:</strong> <span id="opos-modal-rg-nr"></span> vom <span id="opos-modal-rg-datum"></span></p>
+                    <div id="opos-modal-rechnungen-wrap" class="mb-3" style="display: none;">
+                        <h6 class="mb-2">Rechnungskopf (loco_invoices)</h6>
+                        <div id="opos-modal-rechnungen"></div>
+                    </div>
+                    <h6 class="mb-2">FIBU-Buchungen (loco_journal_accountings)</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Konto</th>
+                                    <th>S/H</th>
+                                    <th class="text-end">Betrag (€)</th>
+                                    <th>Beleg</th>
+                                    <th>Buchdat</th>
+                                    <th>Ausziff.-Nr</th>
+                                    <th>Mitarbeiter</th>
+                                    <th>Buchtext</th>
+                                </tr>
+                            </thead>
+                            <tbody id="opos-modal-buchungen"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="opos-modal-error" class="alert alert-danger py-2 mb-0" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const tbody = document.getElementById('opos-tbody');
+    const form = document.getElementById('opos-filter');
+    const wrapVerkaeufer = document.getElementById('wrap-verkaeufer');
+    const selectVerkaeufer = document.getElementById('filter-verkaeufer');
+    const hinweisNurEigene = document.getElementById('hinweis-nur-eigene');
+    const filterMode = {{ (filter_mode or 'all_filterable')|tojson }};
+    const defaultVerkaeuferNr = {{ (default_verkaeufer_nr or 'null')|tojson }};
+
+    function fmtEuro(v) {
+        if (v == null || isNaN(v)) return '–';
+        return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v);
+    }
+
+    function loadVerkaeufer() {
+        return fetch('/api/controlling/opos/verkaeufer')
+            .then(r => r.json())
+            .then(data => {
+                if (data.verkaeufer && data.verkaeufer.length) {
+                    wrapVerkaeufer.style.display = 'block';
+                    selectVerkaeufer.innerHTML = '<option value="">Alle</option>' +
+                        data.verkaeufer.map(v => '<option value="' + v.locosoft_id + '">' + (v.name || 'Nr. ' + v.locosoft_id) + '</option>').join('');
+                    if (filterMode === 'own_default' && defaultVerkaeuferNr != null) {
+                        selectVerkaeufer.value = String(defaultVerkaeuferNr);
+                    }
+                }
+            })
+            .catch(() => {});
+    }
+
+    function loadOpos() {
+        const params = new URLSearchParams();
+        const von = document.getElementById('filter-von').value;
+        const bis = document.getElementById('filter-bis').value;
+        const verkaeufer = document.getElementById('filter-verkaeufer').value;
+        const nurFz = document.getElementById('filter-nur-fz').value;
+        if (von) params.set('von', von);
+        if (bis) params.set('bis', bis);
+        if (verkaeufer) params.set('verkaeufer_nr', verkaeufer);
+        if (nurFz) params.set('nur_fahrzeugverkauf', nurFz);
+
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Lade…</td></tr>';
+        fetch('/api/controlling/opos?' + params.toString())
+            .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
+            .then(data => {
+                document.getElementById('kpi-anzahl').textContent = data.anzahl ?? '–';
+                document.getElementById('kpi-summe').textContent = fmtEuro(data.gesamt_eur);
+                if (data.nur_eigene) hinweisNurEigene.style.display = 'block';
+                else hinweisNurEigene.style.display = 'none';
+
+                if (!data.rows || data.rows.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Keine offenen Posten gefunden.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.rows.map(row => {
+                    const op = (row.posten_art === 'OP' || !row.posten_art) ? '<span class="badge bg-secondary me-1">OP</span>' : '';
+                    const typ = row.ist_fahrzeugverkauf ? '<span class="badge badge-fz">Fz</span>' : '<span class="badge badge-sonstige">Sonst.</span>';
+                    const art = op + typ;
+                    const cust = row.customer_number != null ? String(row.customer_number) : '';
+                    const rgNr = (row.rechnung_nr || '–').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    const rgLink = '<a href="#" class="opos-rg-link" data-customer="' + cust + '" data-invoice="' + (row.rechnung_nr || '').replace(/"/g, '&quot;') + '" data-date="' + (row.rechnung_datum || '') + '">' + rgNr + '</a>';
+                    return '<tr>' +
+                        '<td>' + (row.verkaeufer_oder_ersteller || '–') + '</td>' +
+                        '<td>' + (row.kunde || '–') + '</td>' +
+                        '<td>' + (row.rechnung_datum || '–') + '</td>' +
+                        '<td>' + rgLink + '</td>' +
+                        '<td class="betrag">' + fmtEuro(row.betrag_eur) + '</td>' +
+                        '<td>' + art + '</td></tr>';
+                }).join('');
+                tbody.querySelectorAll('.opos-rg-link').forEach(function(a) {
+                    a.addEventListener('click', function(e) { e.preventDefault(); openRechnungModal(this); });
+                });
+            })
+            .catch(err => {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-4">Fehler: ' + (err.message || 'Unbekannt') + '</td></tr>';
+                document.getElementById('kpi-anzahl').textContent = '–';
+                document.getElementById('kpi-summe').textContent = '–';
+            });
+    }
+
+    function setDefaultVon() {
+        var von = document.getElementById('filter-von');
+        if (von && !von.value) {
+            var d = new Date();
+            d.setMonth(d.getMonth() - 24);
+            von.value = d.toISOString().slice(0, 10);
+        }
+    }
+
+    function openRechnungModal(linkEl) {
+        var customer = linkEl.getAttribute('data-customer');
+        var invoice = linkEl.getAttribute('data-invoice');
+        var date = linkEl.getAttribute('data-date');
+        if (!invoice || !date) return;
+        var modalEl = document.getElementById('opos-rechnung-modal');
+        var loadingEl = document.getElementById('opos-modal-loading');
+        var contentEl = document.getElementById('opos-modal-content');
+        var errorEl = document.getElementById('opos-modal-error');
+        loadingEl.style.display = 'block';
+        contentEl.style.display = 'none';
+        errorEl.style.display = 'none';
+        var params = new URLSearchParams({ invoice_number: invoice, invoice_date: date });
+        if (customer) params.set('customer_number', customer);
+        fetch('/api/controlling/opos/rechnung-detail?' + params.toString())
+            .then(function(r) { if (!r.ok) throw new Error(r.statusText); return r.json(); })
+            .then(function(data) {
+                loadingEl.style.display = 'none';
+                document.getElementById('opos-modal-kunde').textContent = data.kunde || '–';
+                document.getElementById('opos-modal-customer-nr').textContent = data.customer_number != null ? '(Nr. ' + data.customer_number + ')' : '';
+                document.getElementById('opos-modal-rg-nr').textContent = data.invoice_number || '–';
+                document.getElementById('opos-modal-rg-datum').textContent = data.invoice_date || '–';
+                var rechnungenWrap = document.getElementById('opos-modal-rechnungen-wrap');
+                var rechnungenDiv = document.getElementById('opos-modal-rechnungen');
+                if (data.rechnungen && data.rechnungen.length > 0) {
+                    rechnungenWrap.style.display = 'block';
+                    rechnungenDiv.innerHTML = data.rechnungen.map(function(inv) {
+                        var parts = ['Typ ' + (inv.invoice_type || '–') + ', Brutto ' + fmtEuro(inv.total_gross) + ', Netto ' + fmtEuro(inv.total_net)];
+                        if (inv.job_amount_net != null) parts.push('Lohn netto ' + fmtEuro(inv.job_amount_net));
+                        if (inv.part_amount_net != null) parts.push('Teile netto ' + fmtEuro(inv.part_amount_net));
+                        if (inv.order_number != null) parts.push('Auftrag ' + inv.order_number);
+                        return '<p class="small mb-1">' + parts.join(' · ') + '</p>';
+                    }).join('');
+                } else {
+                    rechnungenWrap.style.display = 'none';
+                }
+                var tbody = document.getElementById('opos-modal-buchungen');
+                tbody.innerHTML = (data.buchungen || []).map(function(b) {
+                    return '<tr><td>' + (b.nominal_account_number || '') + '</td><td>' + (b.debit_or_credit || '') + '</td><td class="text-end">' + fmtEuro(b.betrag_eur) + '</td><td>' + (b.document_type || '') + ' ' + (b.document_number || '') + '</td><td>' + (b.document_date || b.accounting_date || '') + '</td><td>' + (b.clearing_number != null && b.clearing_number !== '' && b.clearing_number !== 0 ? b.clearing_number : 'OP') + '</td><td>' + (b.employee_number || '') + '</td><td class="small">' + (b.posting_text || '') + '</td></tr>';
+                }).join('');
+                contentEl.style.display = 'block';
+                if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                } else {
+                    modalEl.classList.add('show');
+                    modalEl.style.display = 'block';
+                }
+            })
+            .catch(function(err) {
+                loadingEl.style.display = 'none';
+                errorEl.textContent = 'Fehler: ' + (err.message || 'Unbekannt');
+                errorEl.style.display = 'block';
+                if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                }
+            });
+    }
+
+    form.addEventListener('submit', function(e) { e.preventDefault(); loadOpos(); });
+    setDefaultVon();
+    if (filterMode === 'own_default' && defaultVerkaeuferNr != null) {
+        loadVerkaeufer().then(function() { loadOpos(); });
+    } else {
+        loadVerkaeufer();
+        loadOpos();
+    }
+})();
+</script>
+{% endblock %}
