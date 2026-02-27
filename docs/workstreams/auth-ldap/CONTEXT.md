@@ -43,6 +43,11 @@ Auth umfasst LDAP/AD-Integration, RBAC, Session-Management, Rollen-Config, Dashb
 - 🔧 Dashboard-Personalisierung je nach Projektstand
 - ✅ **AD Service-Account statt Administrator/Florian (2026-02-27):** Ein technischer Account (svc_portal) wird für LDAP und alle CIFS-Mounts genutzt. Doku: `AD_DRIVE_ACCOUNT_STATT_ADMINISTRATOR_VORSCHLAG.md`, `AD_SERVICE_ACCOUNT_RECHTE_UND_UMSTELLUNG.md`, `DRIVE_FEATURES_AD_ACCOUNT_UEBERSICHT.md`. fstab für CIFS korrigiert (Leerzeichen als `\040`), Buchhaltung-Mount in fstab ergänzt (`scripts/add_fstab_buchhaltung.sh`). Mounts und LDAP mit venv getestet – alles OK.
 - ✅ **vacation_approver_service:** PostgreSQL-Fix für `get_team_for_approver` (Admin-Fall: SELECT DISTINCT + ORDER BY – Order-By-Ausdruck in Select-Liste).
+- ✅ **AD vs. Drive / „kein AD“ (2026-02-27):** sync_ad_departments legt beim Lauf automatisch `ldap_employee_mapping` an, wenn ein MA per E-Mail-Prefix im AD gefunden wird (bisher nur Abteilung aktualisiert) – „kein AD“ verschwindet dann. ldap3 in requirements.txt + .venv; Aufruf Sync: `.venv/bin/python`. Doku: `AD_SYNC_KEIN_AD.md` (Bedeutung „kein AD“, Option 1a Abteilungs-Sync).
+
+## Auf Eis gelegt (vorerst)
+
+- **Modul zur LDAP-Bearbeitung:** Bearbeitung von LDAP/AD-Daten im Portal (z. B. Abteilung, Standort, Vorgesetzter im Portal ändern, ggf. Zurückschreiben ins AD) ist **vorerst nicht geplant**. AD ↔ Drive (Sync, Mapping, Login, Passwort-Self-Service) läuft; weitere LDAP-Edit-Funktionen bleiben zurückgestellt.
 
 ## Offene Entscheidungen
 

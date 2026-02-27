@@ -4,8 +4,11 @@
 # Installation: pip install -r requirements.txt
 # ============================================================================
 
-# PDF Parsing
+# PDF: Parsing + Generierung (Reporting, Testanleitungen, Provision)
 pdfplumber==0.11.0
+reportlab>=4.0.0
+# Fahrzeuganlage: PDF-Upload (erste Seite → Bild für OCR)
+pymupdf>=1.24.0
 
 # Flask (fÃ¼r Web-Interface)
 Flask==3.0.0
@@ -34,3 +37,6 @@ redis>=5.0.0
 
 # Excel-Export (z. B. VFW Lohnsteuerliste)
 openpyxl>=3.1.0
+
+# LDAP/AD (Sync ldap_employee_mapping, Auth)
+ldap3>=2.9.1

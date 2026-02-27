@@ -67,10 +67,10 @@ def main():
         print("\n📊 Verbinde zu PostgreSQL (drive_portal)...")
         with db_session() as conn:
             cursor = conn.cursor()
-            # Aktiv = true (PostgreSQL)
+            # Aktiv = true (PostgreSQL); locosoft_id für Mapping-Anlage
             cursor.execute("""
                 SELECT e.id, e.email, e.first_name, e.last_name, e.department_name,
-                       lem.ldap_username
+                       COALESCE(e.locosoft_id, 0), lem.ldap_username
                 FROM employees e
                 LEFT JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
                 WHERE e.aktiv = true AND e.email IS NOT NULL
@@ -83,10 +83,11 @@ def main():
             updated = 0
             unchanged = 0
             not_found = 0
+            mapping_created = 0  # neu: Mapping angelegt, wenn per E-Mail-Prefix gefunden
             errors = []
             changes = []
 
-            for emp_id, email, first_name, last_name, current_dept, ldap_username in employees:
+            for emp_id, email, first_name, last_name, current_dept, locosoft_id, ldap_username in employees:
                 username = ldap_username if ldap_username else (email.split('@')[0] if email else None)
                 if not username:
                     continue
@@ -101,6 +102,27 @@ def main():
                     if conn_ldap.entries:
                         entry = conn_ldap.entries[0]
                         ad_dept = str(entry.department) if hasattr(entry, 'department') and entry.department else None
+
+                        # Wenn wir den MA per E-Mail-Prefix gefunden haben (ohne Mapping): Mapping anlegen,
+                        # damit "kein AD" im Urlaubsplaner verschwindet (konsistent mit sync_ldap_employees_pg).
+                        if not ldap_username:
+                            cursor.execute(
+                                "SELECT id FROM ldap_employee_mapping WHERE employee_id = %s",
+                                (emp_id,)
+                            )
+                            existing = cursor.fetchone()
+                            if existing:
+                                cursor.execute(
+                                    "UPDATE ldap_employee_mapping SET ldap_username = %s, ldap_email = %s, locosoft_id = %s WHERE employee_id = %s",
+                                    (username, email, locosoft_id, emp_id)
+                                )
+                            else:
+                                cursor.execute(
+                                    "INSERT INTO ldap_employee_mapping (ldap_username, ldap_email, employee_id, locosoft_id, verified) VALUES (%s, %s, %s, %s, 1)",
+                                    (username, email, emp_id, locosoft_id)
+                                )
+                            mapping_created += 1
+                            logger.info(f"Mapping angelegt/aktualisiert: {first_name} {last_name} → {username}")
 
                         if ad_dept and ad_dept != current_dept:
                             cursor.execute(
@@ -133,6 +155,8 @@ def main():
         print("📊 SYNC ABGESCHLOSSEN")
         print("=" * 70)
         print(f"\n✅ Aktualisiert:    {updated}")
+        if mapping_created:
+            print(f"🔗 AD-Mapping:      {mapping_created} (per E-Mail-Prefix zugeordnet)")
         print(f"⏸️  Unverändert:     {unchanged}")
         print(f"⚠️  Nicht in AD:     {not_found}")
         if changes:
@@ -153,6 +177,7 @@ def main():
         return {
             'status': 'success',
             'updated': updated,
+            'mapping_created': mapping_created,
             'unchanged': unchanged,
             'not_found': not_found,
             'changes': changes[:10]
