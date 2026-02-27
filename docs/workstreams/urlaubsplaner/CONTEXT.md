@@ -1,7 +1,7 @@
 # Urlaubsplaner — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-02-24 (Bugfix Genehmigen 403, Bereinigung Debug-Code)
+## Letzte Aktualisierung: 2026-02-27 (AD/Abteilungen Doku, Genehmiger-Service SQL-Fix)
 
 ## Projektkontext (Stand diese Woche)
 
@@ -67,11 +67,11 @@ Urlaubsplaner deckt Urlaubsanträge, Genehmigungsprozess, Chef-Übersicht, Urlau
 - ✅ **Schulung & Krankheit (Test DRIVE):** **Krankheit (type_id 5)** nur **Admin** buchbar (Einzelbuchung, Buch-Batch, Masseneingabe); **Schulung (9)** Genehmiger oder Admin; Zeitausgleich nur Admin. Buch-Batch prüfte fälschlich type_id 3 → korrigiert auf 5.
 - ✅ **Vertretungsregel (Organigramm):** Vertreter darf im Zeitraum, in dem die vertretene Person Urlaub/Abwesenheit hat, **keinen Urlaub** buchen. Prüfung in Einzelbuchung, Buch-Batch und Masseneingabe; Fehlermeldung mit Namen der vertretenen Person. Masseneingabe meldet übersprungene Buchungen per `substitute_conflict_skipped` in der Antwort. Tabelle `substitution_rules` (auth-ldap/Organigramm).
 - ✅ **Max. Abwesenheit pro Abteilung/Standort:** Es gilt eine Obergrenze für planbare Abwesenheit (nur **Urlaub + Schulung**; Krankheit nicht planbar) von **50 % pro Abteilung und Standort** (Deggendorf, Landau). Default 50 %, **pro Abteilung editierbar** im Organigramm (Tab „Abwesenheitsgrenzen“). Tabelle `department_absence_limits`, Migration `migrations/add_department_absence_limits.sql`. Prüfung in Einzelbuchung, Buch-Batch und Masseneingabe; bei Überschreitung Fehlermeldung mit blockierten Tagen.
-- ✅ **Resturlaub und Krankheit (Vanessa/Stefan Geier):** Krankheitstage dürfen den Resturlaub **nicht** mindern. Die View zählt nur `vacation_type_id = 1` (Urlaub). Wenn Locosoft fälschlich Krankheit als Urlaub (Url/BUr) führt, drückt das die Anzeige. **Safeguard:** Wenn „Anspruch − Locosoft-Urlaub“ mehr als 0,5 Tage unter dem View-Resturlaub liegt, wird der **View-Resturlaub** angezeigt (in `/balance`, `/my-balance` und Validierung). Siehe `RESTURLAUB_KEINE_KRANKHEIT.md`.
+- ✅ **Resturlaub und Krankheit (Vanessa/Stefan Geier):** Krankheitstage mindern den Resturlaub nicht. Die View zählt nur `vacation_type_id = 1` (Urlaub). Seit 2026-02: Rest nur aus DRIVE (View), Locosoft fließt nicht mehr in die Anzeige ein. Siehe `RESTURLAUB_KEINE_KRANKHEIT.md`, `STELLUNGNAHME_RESTURLAUB_OHNE_LOCOSOFT.md`.
 - ✅ **Resturlaub-Anzeige (Usertest-Feedback):** Nach Buchung/Genehmigung/Storno/Ablehnung/Jahreswechsel wird die Mitarbeiterliste inkl. Resturlaub neu geladen (`loadAllEmployees`), damit „28 Tage Rest“ sich nach 1 Tag verplant sofort auf 27 aktualisiert; Filter-Dropdowns werden bei erneutem Befüllen nicht mehr doppelt befüllt
 - ✅ **Genehmiger-Erkennung (Test Dispo):** Margit/Jennifer bekamen E-Mail, aber kein Genehmigungs-Modal. **Fix 1:** Username-Lookup case-insensitive und mit/ohne Domain (`_normalize_ldap_username`). **Fix 2:** AD-Gruppe „Genehmiger für Urlaub Dispo“ wird erkannt – LDAP liefert den **CN** der Gruppe (Anzeigename), nicht „GRP_Urlaub_Genehmiger_*“. In `vacation_approver_service.py` gilt ein User als Genehmiger, wenn er in einer Gruppe ist, die **entweder** `GRP_Urlaub_Genehmiger_*` / `GRP_Urlaub_Admin` **oder** im Namen „Genehmiger“ und „Urlaub“ enthält (`_is_approver_group()`). Damit zählt „Genehmiger für Urlaub Dispo“.
 - ✅ **Strukturelle Entkopplung (Genehmiger vs. Kalender):** Damit ein Fehler in der Genehmiger-Logik nicht die ganze Seite leer macht: (1) **Backend** `get_my_balance`: `get_approver_summary` in try/except – bei Exception sicheres Default-`approver_info`, kein 500. (2) **Frontend** `loadMe`: bei `!r.success` kein harter Return ohne Hinweis; Konsole warnt, `isAppr`/`isAdmin` auf false, danach laufen `loadAllEmployees` und Kalender weiter. (3) `loadAllEmployees` bei Fehler: `allEmployees = []` explizit, klare Konsole-Meldung.
-- ✅ **Resturlaub SSOT (Test DRIVE):** Eine zentrale Funktion `_compute_rest_display(anspruch, resturlaub_view, loco_urlaub)` in `vacation_api.py` – Rest = min(Portal-Rest, Anspruch − Locosoft-Urlaub). Verwendet in Balance, My-Balance, Validierung und Team-Übersicht; **Zeitausgleich (ZA)** mindert Rest nicht (nur Locosoft-`urlaub` = Url/BUr; ZA in Locosoft getrennt, Doku in `vacation_locosoft_service.py`).
+- ✅ **Resturlaub nur aus DRIVE (2026-02):** `_compute_rest_display` liefert nur den View-Wert; keine Locosoft-Kappe. Balance, My-Balance, Validierung und Team-Übersicht nutzen ausschließlich Portal-Daten (View `v_vacation_balance_*`, Mitarbeiterverwaltung/Moduldaten/Urlaubsanspruch). Locosoft optional nur für Anzeige (z. B. Kalender).
 - **Outlook-Kalender (Microsoft Graph):** Ab 2026-02: Bei Genehmigung schreibt DRIVE in **zwei** Ziele – (1) Shared Mailbox **drive@** (Übersicht für Führungskräfte, Sichtbarkeit nur für FK in M365 konfigurieren, siehe `KALENDER_DRIVE_NUR_FUEHRUNGSKRAEFTE.md`), (2) **persönlicher M365-Kalender** des Mitarbeiters (erscheint in Team-Ansicht des Vorgesetzten). Event-IDs in `vacation_bookings` für Storno-Löschung. Die Outlook-Kalendergruppe „Team: …“ kommt aus AD/M365, nicht aus DRIVE – siehe `OUTLOOK_TEAMKALENDER_VS_DRIVE.md`.
 - 🔧 E-Mails (HR/MA) je nach Integrations-Stand
 
@@ -100,13 +100,13 @@ Urlaubsplaner deckt Urlaubsanträge, Genehmigungsprozess, Chef-Übersicht, Urlau
 - **Lösung:** Blaue Markierung (`in-locosoft`) wird jetzt für **alle** genehmigten Buchungen angezeigt (`status === 'approved'`) – unabhängig ob Quelle Locosoft oder DRIVE. Locosoft bleibt führendes System; Anzeige im Kalender gilt für beide Richtungen.
 - **Datei:** `templates/urlaubsplaner_v2.html` (Render-Logik der Zelle).
 
-### Rollout: Rest = min(Portal-Rest, Anspruch − Locosoft-Urlaub) (2026-02)
-- **Anspruch:** Führend aus Mitarbeiterverwaltung (Portal). Kein pauschaler Weihnachten/Silvester-Abzug; Halbtage als Buchungen erfassen.
-- **Rest:** Damit Kalender (zeigt Portal + Locosoft) und Rest-Zahl übereinstimmen: **Rest = min(Portal-Rest, Anspruch − Locosoft-Urlaub)**. Locosoft-Urlaub (Url/BUr) wird wieder in Balance, My-Balance, Validierung und Team einbezogen. So zählen auch nur in Locosoft gebuchte Tage (z. B. Dezember) für den Rest.
+### Resturlaub nur aus DRIVE (2026-02, ersetzt früheren Locosoft-Rollout)
+- **Anspruch:** Führend aus Mitarbeiterverwaltung (Portal) → Moduldaten → Urlaubsanspruch. Kein pauschaler Weihnachten/Silvester-Abzug; Halbtage als Buchungen erfassen.
+- **Rest:** Nur aus Portal (View `v_vacation_balance_*`). Keine Locosoft-Verbindung für Urlaubsanspruchsberechnung; siehe `STELLUNGNAHME_RESTURLAUB_OHNE_LOCOSOFT.md` und Vereinbarung oben.
 
 ### Feedback 3.2 umgesetzt (2026-02-13)
 - **Nr. 3 Urlaubsanspruch-Optionen:** Dropdown in der Mitarbeiterverwaltung auf Personalplaner-Werte umgestellt: **5,5 | 11 | 16 | 22 | 27 | 30** Tage (+ „Andere …“). Datei: `templates/admin/mitarbeiterverwaltung.html`.
-- **Rest-Anzeige oben links:** Die Anzeige „Rest“ (oben links und im User-Badge) kam aus `/my-balance` ohne Locosoft-Korrektur → zeigte z. B. 16 statt 11. **Lösung:** In `get_my_balance()` wird `resturlaub` jetzt mit derselben Logik wie in `get_all_balances()` gesetzt: **min(View-Resturlaub, Anspruch − Locosoft-Urlaub)**. Datei: `api/vacation_api.py`.
+- **Rest-Anzeige oben links:** Kommt aus `/my-balance`; seit 2026-02 nur noch View-Wert (DRIVE), keine Locosoft-Kappe. Datei: `api/vacation_api.py`.
 - **Freie Tage im Arbeitszeitmodell:** Anforderung dokumentiert; Umsetzung vorgeschlagen unter `FREIE_TAGE_ARBEITSZEITMODELL_VORSCHLAG.md` (nur Teilzeit, Freie Tage im Modell pflegen → im Urlaubsplaner ausgrauen; rote Kreise = freie Tage, grüne = Regelarbeitstage). Noch nicht implementiert.
 
 ### Usertest „Urlaubsplaner neu“ (Vanessa) umgesetzt (2026-02-16)
@@ -120,6 +120,7 @@ Urlaubsplaner deckt Urlaubsanträge, Genehmigungsprozess, Chef-Übersicht, Urlau
 
 ### Vertretungsregel + Resturlaub nach Eingabe (Usertest Vanessa, 2026-02)
 - **Vertretungsregel:** Fehlermeldung „Sie vertreten …“ nannte bisher immer die **erste** Vertretungsperson (z. B. Doris Egginger). Wenn Ramona an einem Tag aber **Sandra Brendel** vertritt (Sandra hat Urlaub) und Doris nicht, war die Meldung falsch. **Fix:** In `_check_substitute_vacation_conflict` wird für die Meldung die Person verwendet, **die an den blockierten Tagen tatsächlich Urlaub hat** (`conflict_vertretene_name`). Datei: `api/vacation_api.py`.
+- **Vertretungsregel „mindestens eine anwesend“ (Vanessa, 2026-02):** Bei Jennifer sind Margit und Ilayda als Vertretung hinterlegt. Gewünscht: **Entweder Margit oder Ilayda** muss da sein – nicht beide blockieren. Bisher: Sobald Jennifer abwesend war, konnten weder Margit noch Ilayda Urlaub buchen. **Fix:** Blockierung nur, wenn die vertretene Person abwesend ist **und** an demselben Tag **keine andere** Vertretung anwesend ist. Doku: `VANESSA_VERTRETUNGSREGEL_OR.md`. Datei: `api/vacation_api.py` (`_check_substitute_vacation_conflict`).
 - **Resturlaub wird nach Eingabe nicht neu berechnet:** Backend-Test (`scripts/test_urlaub_resturlaub_nach_buchung.py`) bestätigt: View liefert nach Buchung korrekt reduzierten Rest. **Fixes:** (1) **Optimistisches Update:** Direkt nach erfolgreicher Buchung wird in `allEmployees` der Resturlaub des gebuchten MA um die gebuchten Tage verringert und `render()` sowie ggf. „Mein Rest“ in der Sidebar sofort aktualisiert. (2) Balance-Abfragen mit `fetch(..., { cache: 'no-store' })` und Backend-Header `Cache-Control: no-store`. (3) 120 ms Verzögerung vor Reload; danach erneutes `loadAllEmployees()`/`loadMe()` als Quelle der Wahrheit. Dateien: `templates/urlaubsplaner_v2.html`, `api/vacation_api.py`.
 
 ### Serielle Genehmigung/Ablehnung im Batch-Modal (2026-02-13)
@@ -151,7 +152,8 @@ Urlaubsplaner deckt Urlaubsanträge, Genehmigungsprozess, Chef-Übersicht, Urlau
 - **Keine Neuberechnung des Resturlaubs:** Nach Urlaubsantrag bzw. Typ-Änderung blieb die angezeigte Restzahl unverändert. **Lösung:** Nach Typ-Änderung (Edit-Popup) wird `loadAllEmployees()` aufgerufen, damit die Tabelle den Resturlaub neu lädt. Nach Antrag-Einreichung war `loadAllEmployees()` bereits vorhanden.
 
 ### Offene Punkte aus Usertest (Urlaubsplaner)
-- Optional prüfen: falsche Darstellung bei Vanessa (Frontend/Filter), E-Mail an HR nach Genehmigung, Mitarbeiter-Abteilungszuordnungen (laut Usertest-Dokumenten).
+- Optional prüfen: falsche Darstellung bei Vanessa (Frontend/Filter), E-Mail an HR nach Genehmigung.
+- ✅ **Abteilungszuordnungen (Vanessa):** Erklärung erstellt – Silvia → Dispo; Stephan Wittmann, Götz Klein, Sandra Schimmer → Fahrzeuge; Edith Egner → Service. Abteilung = AD-User-Attribut `department`; Pflege im AD oder künftig Admin-Tool (Option B mit LDAP-Schreibrecht). Doku: `AD_ABTEILUNGEN_ADMIN_TOOL_VORSCHLAG.md`.
 
 ### Qualität unzureichend – Test nach 5 Min abgebrochen (2026-02-24)
 - **Quelle:** `Test DRIVE.docx` (Windows-Sync: `docs/workstreams/urlaubsplaner/`). Test wurde nach kurzer Zeit abgebrochen; vier konkrete Fehler dokumentiert.
@@ -170,6 +172,12 @@ Urlaubsplaner deckt Urlaubsanträge, Genehmigungsprozess, Chef-Übersicht, Urlau
 - **Fix:** Alle betroffenen Stellen auf PostgreSQL-taugliche Vergleiche umgestellt: `le.is_latest_record IS NOT DISTINCT FROM true`, `e.aktiv = true`. Dateien: `api/vacation_approver_service.py` (get_team_by_manager, Admin-Block).
 - **Beibehalten:** Abteilungs-Erweiterung aus Anzeigenamen; Kalender-Event-IDs in eigener DB-Session; try/except um E-Mails/Kalender; Fallback auf `current_user` und case-insensitiver Lookup in `get_employee_from_session`; `credentials: 'include'` und 4xx-Body-Parsing im Frontend.
 - **Bereinigt:** Debug-Logging (APPROVE 401/403), `reason`/`debug` in API-Responses, lange Toast-/Konsole-Debug-Ausgaben im Frontend.
+
+## Vereinbarung: Resturlaub ohne Locosoft (2026-02, umgesetzt)
+
+- **Vereinbarung:** Für die **Urlaubsanspruchs- bzw. Resturlaubsberechnung** wird **keine Verbindung mehr zu Locosoft** genutzt. Portal (View `v_vacation_balance_*`, `vacation_entitlements`, `vacation_bookings`) ist die einzige Quelle für Anspruch, Verbraucht, Geplant und Rest (Mitarbeiterverwaltung → Moduldaten → Urlaubsanspruch).
+- **Stellungnahme:** `STELLUNGNAHME_RESTURLAUB_OHNE_LOCOSOFT.md`.
+- **Umsetzung:** `api/vacation_api.py` – Rest nur aus View; Locosoft-Kappe und Locosoft-Abrufe für Rest-Berechnung entfernt (get_my_balance, get_all_balances, Team-Balance, _get_available_rest_days_for_validation). Locosoft optional weiter für Anzeige (z. B. Kalender).
 
 ## Offene Entscheidungen
 

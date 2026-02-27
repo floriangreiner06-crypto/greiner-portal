@@ -1,0 +1,20 @@
+# Korrigierte fstab-Zeilen für CIFS (Leerzeichen als \040)
+# Zum Übernehmen: sudo nano /etc/fstab und die CIFS-Zeilen ersetzen
+# ODER: Diese Zeilen ans Ende von /etc/fstab anhängen und die alten CIFS-Zeilen löschen
+
+# Greiner Portal Sync (Leerzeichen in "Greiner Portal" = \040)
+//Srvrdb01/Allgemein/Greiner\040Portal/Greiner_Portal_NEU/Server /mnt/greiner-portal-sync cifs credentials=/root/.smbcredentials,domain=auto-greiner.de,uid=1000,gid=1000,file_mode=0664,dir_mode=0775,nofail 0 0
+
+# Locosoft Teilelieferscheine (Leerzeichen in " - " = \040)
+//srvloco01/Loco/LOCOAUSTAUSCH/PSABox/DE08250/Empfangen/Historie/Teilelieferscheine\040-\040XQ0093 /mnt/loco-teilelieferscheine cifs credentials=/root/.smbcredentials,domain=auto-greiner.de,uid=1000,gid=1000,file_mode=0664,dir_mode=0775,nofail 0 0
+
+# Hyundai / Stellantis Garantie
+//srvrdb01/Allgemein/DigitalesAutohaus/Hyundai_Garantie /mnt/hyundai-garantie cifs credentials=/root/.smbcredentials,domain=auto-greiner.de,vers=3.0,uid=1000,gid=1000,file_mode=0775,dir_mode=0775,nofail 0 0
+//srvloco01/Loco/BILDER /mnt/loco-bilder cifs credentials=/root/.smbcredentials,domain=auto-greiner.de,vers=3.0,uid=1000,gid=1000,file_mode=0664,dir_mode=0775,nofail 0 0
+//srvrdb01/Allgemein/DigitalesAutohaus/Stellantis_Garantie /mnt/stellantis-garantie cifs credentials=/root/.smbcredentials,domain=auto-greiner.de,vers=3.0,uid=1000,gid=1000,file_mode=0775,dir_mode=0775,nofail 0 0
+
+# GlobalCube (falls gewünscht)
+//srvgc01/GlobalCube /mnt/globalcube cifs credentials=/root/.smbcredentials,domain=auto-greiner.de,vers=3.0,uid=1000,gid=1000,file_mode=0755,dir_mode=0755,nofail 0 0
+
+# Buchhaltung (Allgemein)
+//srvrdb01/Allgemein /mnt/buchhaltung cifs credentials=/root/.smbcredentials,domain=auto-greiner.de,vers=3.0,uid=0,gid=0,nofail 0 0

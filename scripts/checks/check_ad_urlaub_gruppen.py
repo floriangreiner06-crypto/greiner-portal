@@ -4,34 +4,57 @@
 AD Urlaubs-Gruppen Check
 ========================
 Zeigt alle AD-Gruppen mit "Urlaub" im Namen und deren Mitglieder.
+Nutzt dieselbe LDAP-Config wie das Portal: config/ldap_credentials.env
 
 Ausführen:
     python3 /opt/greiner-portal/scripts/checks/check_ad_urlaub_gruppen.py
 """
 
+import os
 import ldap3
 from ldap3 import Server, Connection, ALL, SUBTREE
-import json
 
-# LDAP Config
-LDAP_SERVER = 'srvdc01.auto-greiner.de'
-LDAP_PORT = 389
-LDAP_BIND_DN = 'svc_portal@auto-greiner.de'
-LDAP_BIND_PASSWORD = 'Vollgas2026!'
-LDAP_BASE_DN = 'DC=auto-greiner,DC=de'
+LDAP_CONFIG_PATH = '/opt/greiner-portal/config/ldap_credentials.env'
+
+
+def load_ldap_config():
+    """Lädt LDAP-Config aus ldap_credentials.env (wie Portal und Sync-Scripts)."""
+    config = {}
+    if not os.path.isfile(LDAP_CONFIG_PATH):
+        return config
+    with open(LDAP_CONFIG_PATH) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                key, value = line.split('=', 1)
+                config[key.strip()] = value.strip()
+    return config
+
 
 def main():
     print("=" * 70)
     print("AD URLAUBS-GRUPPEN CHECK")
     print("=" * 70)
     print()
-    
+
+    ldap_config = load_ldap_config()
+    if not ldap_config.get('LDAP_BIND_DN') or not ldap_config.get('LDAP_BIND_PASSWORD'):
+        print(f"❌ Config nicht gefunden oder unvollständig: {LDAP_CONFIG_PATH}")
+        print("   Bitte LDAP_BIND_DN und LDAP_BIND_PASSWORD setzen.")
+        return
+
+    server_name = ldap_config.get('LDAP_SERVER', 'srvdc01.auto-greiner.de')
+    port = int(ldap_config.get('LDAP_PORT', '389'))
+    bind_dn = ldap_config['LDAP_BIND_DN']
+    bind_password = ldap_config['LDAP_BIND_PASSWORD']
+    base_dn = ldap_config.get('LDAP_BASE_DN', 'DC=auto-greiner,DC=de')
+
     # 1. Verbindung herstellen
-    print(f"Verbinde zu {LDAP_SERVER}...")
+    print(f"Verbinde zu {server_name}...")
     try:
-        server = Server(LDAP_SERVER, port=LDAP_PORT, get_info=ALL)
-        conn = Connection(server, user=LDAP_BIND_DN, password=LDAP_BIND_PASSWORD, auto_bind=True)
-        print(f"✅ Verbunden als {LDAP_BIND_DN}")
+        server = Server(server_name, port=port, get_info=ALL)
+        conn = Connection(server, user=bind_dn, password=bind_password, auto_bind=True)
+        print(f"✅ Verbunden als {bind_dn}")
     except Exception as e:
         print(f"❌ Verbindungsfehler: {e}")
         return
@@ -44,7 +67,7 @@ def main():
     print("-" * 70)
     
     conn.search(
-        search_base=LDAP_BASE_DN,
+        search_base=base_dn,
         search_filter='(&(objectClass=group)(cn=*Urlaub*))',
         search_scope=SUBTREE,
         attributes=['cn', 'description', 'member', 'distinguishedName']
@@ -89,7 +112,7 @@ def main():
     
     # 3. Alle GRP_* Gruppen suchen
     conn.search(
-        search_base=LDAP_BASE_DN,
+        search_base=base_dn,
         search_filter='(&(objectClass=group)(cn=GRP_*))',
         search_scope=SUBTREE,
         attributes=['cn', 'description', 'member']
@@ -136,7 +159,7 @@ def main():
     
     for username in test_users:
         conn.search(
-            search_base=LDAP_BASE_DN,
+            search_base=base_dn,
             search_filter=f'(&(objectClass=user)(sAMAccountName={username}))',
             search_scope=SUBTREE,
             attributes=['cn', 'displayName', 'memberOf', 'manager', 'department']

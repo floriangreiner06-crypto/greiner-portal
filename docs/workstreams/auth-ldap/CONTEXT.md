@@ -1,7 +1,7 @@
 # Auth & LDAP — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-02-24
+## Letzte Aktualisierung: 2026-02-27
 
 ## Beschreibung
 
@@ -41,6 +41,8 @@ Auth umfasst LDAP/AD-Integration, RBAC, Session-Management, Rollen-Config, Dashb
 - ✅ **Vertretungsregel → Urlaubsplaner:** Vertreter darf im Zeitraum, in dem die vertretene Person abwesend ist, keinen Urlaub buchen (Prüfung in `vacation_api.book_vacation`, `book_batch`, `vacation_admin_api.mass_booking`). Testanleitung Vanessa ergänzt.
 - ✅ **Rechteverwaltung – Modal „Mitarbeiter bearbeiten“:** Tab „Mitarbeiter-Konfig“: Stift öffnet Modal mit Stammdaten, Vertretungen und Urlaub (Anspruch/Jahr, Einstellungen). Link „Alle Vertretungsregeln im Organigramm“ → `/admin/organigramm#substitutes`; Organigramm wertet Hash aus und öffnet Tab **Vertretungen** (nicht Abteilungen). Template: `rechte_verwaltung.html`, Organigramm: `organigramm.html` (switchToTab, Hash).
 - 🔧 Dashboard-Personalisierung je nach Projektstand
+- ✅ **AD Service-Account statt Administrator/Florian (2026-02-27):** Ein technischer Account (svc_portal) wird für LDAP und alle CIFS-Mounts genutzt. Doku: `AD_DRIVE_ACCOUNT_STATT_ADMINISTRATOR_VORSCHLAG.md`, `AD_SERVICE_ACCOUNT_RECHTE_UND_UMSTELLUNG.md`, `DRIVE_FEATURES_AD_ACCOUNT_UEBERSICHT.md`. fstab für CIFS korrigiert (Leerzeichen als `\040`), Buchhaltung-Mount in fstab ergänzt (`scripts/add_fstab_buchhaltung.sh`). Mounts und LDAP mit venv getestet – alles OK.
+- ✅ **vacation_approver_service:** PostgreSQL-Fix für `get_team_for_approver` (Admin-Fall: SELECT DISTINCT + ORDER BY – Order-By-Ausdruck in Select-Liste).
 
 ## Offene Entscheidungen
 
