@@ -485,12 +485,400 @@ def kst_ziele_dashboard():
 @controlling_bp.route('/opos')
 @login_required
 def opos_dashboard():
-    """Offene Posten (OPOS) – Liste offener Debitorenposten, gruppierbar nach Verkäufer."""
+    """Offene Posten (OPOS) – Liste offener Debitorenposten. Filter-Modus aus Rechteverwaltung."""
     if not current_user.can_access_feature('opos'):
         abort(403)
+    from api.feature_filter_mode import get_filter_mode
+    role = getattr(current_user, 'portal_role', '') or 'mitarbeiter'
+    filter_mode = get_filter_mode(role, 'opos')
+    default_verkaeufer_nr = None
+    if filter_mode == 'own_default':
+        username = getattr(current_user, 'username', '') or ''
+        ldap_username = username.split('@')[0] if '@' in username else username
+        with db_session() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT lem.locosoft_id FROM ldap_employee_mapping lem
+                JOIN employees e ON lem.employee_id = e.id
+                WHERE lem.ldap_username = %s AND e.aktiv = true
+            """, (ldap_username,))
+            row = cur.fetchone()
+        if row and row[0] is not None:
+            default_verkaeufer_nr = int(row[0])
     return render_template('controlling/opos.html',
                          page_title='Offene Posten (OPOS)',
-                         active_page='controlling')
+                         active_page='controlling',
+                         filter_mode=filter_mode,
+                         default_verkaeufer_nr=default_verkaeufer_nr)
+
+
+@controlling_bp.route('/tagesumsatz')
+@login_required
+def tagesumsatz_mockup():
+    """Tagesumsatz nach Rechnungsdatum (Mockup) – wie Locosoft 272/273, ohne in Locosoft zu filtern."""
+    from datetime import date
+    heute = date.today().isoformat()
+    return render_template('controlling/tagesumsatz_mockup.html',
+                         page_title='Tagesumsatz',
+                         active_page='controlling',
+                         heute=heute)
+
+
+@controlling_bp.route('/api/tagesumsatz')
+@login_required
+def api_tagesumsatz():
+    """
+    Tagesumsatz nach Rechnungsdatum aus Locosoft (invoices + dealer_vehicles).
+    GET ?datum=YYYY-MM-DD (default: heute).
+    """
+    datum_str = request.args.get('datum') or date.today().isoformat()
+    try:
+        d = datetime.strptime(datum_str, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({'error': 'Ungültiges Datum (YYYY-MM-DD)'}), 400
+    von = d.isoformat()
+    bis = (d + timedelta(days=1)).isoformat()
+
+    # Rechnungsarten: 2=Werkstatt, 3=Reklamation, 4=intern, 5=Barverkauf, 6=Garantie, 7=NW, 8=GW/Vorführ/Tageszul.
+    ART_LABELS = {
+        2: 'Werkstatt',
+        3: 'Reklamation',
+        4: 'Intern',
+        5: 'Barverkauf',
+        6: 'Garantie',
+        7: 'Neufahrzeug (7)',
+        8: 'Vorführ / GW / Tageszul. (8)',
+    }
+
+    gesamt_netto = 0.0
+    gesamt_brutto = 0.0
+    werkstatt_netto = 0.0
+    fahrzeug_netto = 0.0
+    anzahl_rechnungen = 0
+    detail_272 = []
+    detail_273 = []
+    by_type = {}  # invoice_type -> { anzahl, job_netto, part_netto, total_netto, total_brutto }
+    lohn_einsatz = 0.0
+    teile_einsatz = 0.0
+    vak_fremdleistung = 0.0  # VAK Fremdleistung (charge_type 90–99), in L272PR vom Lohn Bruttoertrag abgezogen
+
+    try:
+        with locosoft_session() as conn:
+            cur = conn.cursor()
+            # invoices: ein Tag, nicht storniert
+            cur.execute("""
+                SELECT invoice_type,
+                       COUNT(*) AS anzahl,
+                       COALESCE(SUM(job_amount_net), 0) AS job_netto,
+                       COALESCE(SUM(part_amount_net), 0) AS part_netto,
+                       COALESCE(SUM(total_net), 0) AS total_netto,
+                       COALESCE(SUM(total_gross), 0) AS total_brutto
+                FROM invoices
+                WHERE invoice_date >= %s AND invoice_date < %s
+                  AND (is_canceled IS NULL OR is_canceled = false)
+                GROUP BY invoice_type
+            """, (von, bis))
+            for row in cur.fetchall():
+                itype = row[0]
+                if itype is None:
+                    continue
+                by_type[itype] = {
+                    'anzahl': int(row[1] or 0),
+                    'job_netto': float(row[2] or 0),
+                    'part_netto': float(row[3] or 0),
+                    'total_netto': float(row[4] or 0),
+                    'total_brutto': float(row[5] or 0),
+                }
+                gesamt_netto += float(row[4] or 0)
+                gesamt_brutto += float(row[5] or 0)
+                anzahl_rechnungen += int(row[1] or 0)
+                if itype in (2, 3, 4, 5, 6):
+                    werkstatt_netto += float(row[4] or 0)
+                elif itype in (7, 8):
+                    fahrzeug_netto += float(row[4] or 0)
+
+            # L272PR: Lohn Bruttoertrag = Lohn-Erlös netto − Selbstkosten (Einsatz) − VAK Fremdleistung (charge_type 90–99)
+            # Lohn-Einsatz: nur Positionen außer Fremdleistung (90–99), damit VAK separat abziehbar
+            cur.execute("""
+                SELECT COALESCE(SUM(l.usage_value), 0)
+                FROM labours l
+                INNER JOIN invoices i ON i.invoice_type = l.invoice_type AND i.invoice_number = l.invoice_number
+                WHERE i.invoice_date >= %s AND i.invoice_date < %s
+                  AND i.invoice_type IN (2, 3, 4, 5, 6)
+                  AND (i.is_canceled IS NULL OR i.is_canceled = false)
+                  AND (l.charge_type IS NULL OR l.charge_type < 90 OR l.charge_type > 99)
+            """, (von, bis))
+            row = cur.fetchone()
+            if row:
+                lohn_einsatz = float(row[0] or 0)
+            # VAK Fremdleistung: Einsatzwert der Berechnungsart 90–99 (Fremdleistung), in L272PR separat abgezogen
+            cur.execute("""
+                SELECT COALESCE(SUM(l.usage_value), 0)
+                FROM labours l
+                INNER JOIN invoices i ON i.invoice_type = l.invoice_type AND i.invoice_number = l.invoice_number
+                WHERE i.invoice_date >= %s AND i.invoice_date < %s
+                  AND i.invoice_type IN (2, 3, 4, 5, 6)
+                  AND (i.is_canceled IS NULL OR i.is_canceled = false)
+                  AND l.charge_type BETWEEN 90 AND 99
+            """, (von, bis))
+            row = cur.fetchone()
+            if row:
+                vak_fremdleistung = float(row[0] or 0)
+            # Teile-Einsatz (unverändert)
+            cur.execute("""
+                SELECT COALESCE(SUM(p.usage_value), 0)
+                FROM parts p
+                INNER JOIN invoices i ON i.invoice_type = p.invoice_type AND i.invoice_number = p.invoice_number
+                WHERE i.invoice_date >= %s AND i.invoice_date < %s
+                  AND i.invoice_type IN (2, 3, 4, 5, 6)
+                  AND (i.is_canceled IS NULL OR i.is_canceled = false)
+            """, (von, bis))
+            row = cur.fetchone()
+            if row:
+                teile_einsatz = float(row[0] or 0)
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+    # L272: Summen Lohn/Teile netto (für Bruttoertrag-Berechnung)
+    lohn_erlös_netto = sum(by_type.get(t, {}).get('job_netto', 0) for t in (2, 3, 4, 5, 6))
+    teile_erlös_netto = sum(by_type.get(t, {}).get('part_netto', 0) for t in (2, 3, 4, 5, 6))
+
+    # Fahrzeug-DB1: zuerst aus Locosoft für den Tag (gleiche Quelle wie L273PR), Fallback Portal sales
+    db_by_type = {}
+    try:
+        with locosoft_session() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT dv.out_invoice_type,
+                       dv.out_sale_price,
+                       dv.out_sale_type,
+                       COALESCE(dv.calc_basic_charge, 0) + COALESCE(dv.calc_accessory, 0)
+                         + COALESCE(dv.calc_extra_expenses, 0) + COALESCE(dv.calc_usage_value_encr_internal, 0) AS einsatzwert,
+                       COALESCE(dv.calc_cost_internal_invoices, 0) + COALESCE(dv.calc_cost_other, 0) AS variable_kosten,
+                       COALESCE(i.full_vat_value, 0) + COALESCE(i.reduced_vat_value, 0) AS mwst,
+                       (SELECT COALESCE(SUM(dsa.claimed_amount), 0)
+                        FROM dealer_sales_aid dsa
+                        WHERE dsa.dealer_vehicle_type = dv.dealer_vehicle_type
+                          AND dsa.dealer_vehicle_number = dv.dealer_vehicle_number) AS vku
+                FROM dealer_vehicles dv
+                LEFT JOIN invoices i ON i.invoice_type = dv.out_invoice_type
+                  AND i.invoice_number = dv.out_invoice_number
+                WHERE dv.out_invoice_date >= %s AND dv.out_invoice_date < %s
+                  AND dv.out_invoice_date IS NOT NULL
+            """, (von, bis))
+            loco_db_by_type = {}
+            for row in cur.fetchall():
+                ot = row[0]
+                if ot not in (7, 8):
+                    continue
+                out_sale_price = float(row[1] or 0)
+                out_sale_type = str(row[2] or '')
+                einsatzwert = float(row[3] or 0)
+                variable_kosten = float(row[4] or 0)
+                mwst = float(row[5] or 0)
+                vku = float(row[6] or 0)
+                if out_sale_price and out_sale_price > 0:
+                    if mwst == 0:
+                        is_diff = (ot == 8) or (out_sale_type == 'B')
+                        marge_brutto = out_sale_price - einsatzwert
+                        mwst = (marge_brutto / 1.19 * 0.19) if is_diff and marge_brutto > 0 else (out_sale_price / 1.19 * 0.19)
+                    db1 = out_sale_price - mwst - einsatzwert - variable_kosten + vku
+                    loco_db_by_type[ot] = loco_db_by_type.get(ot, 0) + db1
+            db_by_type = loco_db_by_type
+    except Exception:
+        pass
+    if not db_by_type:
+        try:
+            with db_session() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT out_invoice_type, COALESCE(SUM(deckungsbeitrag), 0) AS db1
+                    FROM sales
+                    WHERE out_invoice_date >= %s AND out_invoice_date < %s
+                      AND out_invoice_date IS NOT NULL
+                    GROUP BY out_invoice_type
+                """, (von, bis))
+                for row in cur.fetchall():
+                    ot = row[0]
+                    if ot is not None:
+                        db_by_type[ot] = float(row[1] or 0)
+        except Exception:
+            pass
+
+    # Detail 272 (Typen 2–6) inkl. typ für Detail-Modal
+    for itype in (2, 3, 4, 5, 6):
+        t = by_type.get(itype, {'anzahl': 0, 'job_netto': 0, 'part_netto': 0, 'total_netto': 0})
+        detail_272.append({
+            'art': ART_LABELS.get(itype, 'Typ ' + str(itype)),
+            'typ': itype,
+            'anzahl': t['anzahl'],
+            'lohn_netto': t['job_netto'],
+            'teile_netto': t['part_netto'],
+            'summe_netto': t['total_netto'],
+        })
+    summe_272_anzahl = sum(t['anzahl'] for t in detail_272)
+    summe_272_lohn = sum(t['lohn_netto'] for t in detail_272)
+    summe_272_teile = sum(t['teile_netto'] for t in detail_272)
+    summe_272_gesamt = sum(t['summe_netto'] for t in detail_272)
+
+    # Detail 273 (Typen 7, 8) – aus invoices + DB1 aus sales
+    summe_273_db = 0.0
+    for itype in (7, 8):
+        t = by_type.get(itype, {'anzahl': 0, 'total_netto': 0})
+        db1 = db_by_type.get(itype, 0)
+        summe_273_db += db1
+        detail_273.append({
+            'typ': ART_LABELS.get(itype, 'Typ ' + str(itype)),
+            'typ_id': itype,
+            'anzahl': t['anzahl'],
+            'umsatz_netto': t['total_netto'],
+            'db1': db1,
+        })
+    summe_273_anzahl = sum(t['anzahl'] for t in detail_273)
+    summe_273_gesamt = sum(t['umsatz_netto'] for t in detail_273)
+
+    # Anzahl-Detail-Text
+    parts_detail = []
+    for itype in (2, 3, 4, 5, 6, 7, 8):
+        t = by_type.get(itype, {'anzahl': 0})
+        if t['anzahl']:
+            parts_detail.append('{} {}'.format(ART_LABELS.get(itype, str(itype)), t['anzahl']))
+    anzahl_detail = ' · '.join(parts_detail) if parts_detail else '—'
+
+    # Letzte 7 Tage (für Balken) – immer 7 Einträge, fehlende Tage mit 0
+    letzte_7 = []
+    start_7 = d - timedelta(days=6)
+    try:
+        with locosoft_session() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT DATE(invoice_date) AS d,
+                       COALESCE(SUM(total_net), 0) AS netto
+                FROM invoices
+                WHERE invoice_date >= %s AND invoice_date < %s
+                  AND (is_canceled IS NULL OR is_canceled = false)
+                GROUP BY DATE(invoice_date)
+                ORDER BY d
+            """, (start_7.isoformat(), bis))
+            by_day = {row[0]: float(row[1] or 0) for row in cur.fetchall()}
+        for i in range(7):
+            day = start_7 + timedelta(days=i)
+            letzte_7.append({
+                'datum': day.isoformat(),
+                'tag': day.day,
+                'umsatz_netto': round(by_day.get(day, 0), 2),
+            })
+    except Exception:
+        for i in range(7):
+            day = start_7 + timedelta(days=i)
+            letzte_7.append({'datum': day.isoformat(), 'tag': day.day, 'umsatz_netto': 0})
+
+    # L272PR: Lohn Bruttoertrag = Lohn-Erlös netto − Einsatz − VAK Fremdleistung; Teile Bruttoertrag = Teile-Erlös − Einsatzwert
+    lohn_ertrag = max(0.0, lohn_erlös_netto - lohn_einsatz - vak_fremdleistung)
+    teile_ertrag = max(0.0, teile_erlös_netto - teile_einsatz)
+
+    return jsonify({
+        'datum': von,
+        'gesamt_netto': round(gesamt_netto, 2),
+        'gesamt_brutto': round(gesamt_brutto, 2),
+        'werkstatt_netto': round(werkstatt_netto, 2),
+        'fahrzeug_netto': round(fahrzeug_netto, 2),
+        'anzahl_rechnungen': anzahl_rechnungen,
+        'anzahl_detail': anzahl_detail,
+        'lohn_ertrag': round(lohn_ertrag, 2),
+        'teile_ertrag': round(teile_ertrag, 2),
+        'fahrzeug_db': round(summe_273_db, 2) if summe_273_db else None,
+        'detail_272': detail_272,
+        'summe_272': {'anzahl': summe_272_anzahl, 'lohn_netto': summe_272_lohn, 'teile_netto': summe_272_teile, 'summe_netto': summe_272_gesamt},
+        'detail_273': detail_273,
+        'summe_273': {'anzahl': summe_273_anzahl, 'summe_netto': summe_273_gesamt, 'summe_db': round(summe_273_db, 2)},
+        'letzte_7_tage': letzte_7,
+    })
+
+
+@controlling_bp.route('/api/tagesumsatz/detail')
+@login_required
+def api_tagesumsatz_detail():
+    """
+    Einzelrechnungen für Tagesumsatz-Detail-Modal.
+    GET ?datum=YYYY-MM-DD&bereich=272|273&typ=2..8
+    """
+    datum_str = request.args.get('datum') or date.today().isoformat()
+    bereich = request.args.get('bereich')
+    typ_str = request.args.get('typ')
+    if not bereich or not typ_str:
+        return jsonify({'error': 'bereich und typ erforderlich'}), 400
+    try:
+        d = datetime.strptime(datum_str, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({'error': 'Ungültiges Datum (YYYY-MM-DD)'}), 400
+    von = d.isoformat()
+    bis = (d + timedelta(days=1)).isoformat()
+    try:
+        typ = int(typ_str)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'typ muss 2–8 sein'}), 400
+    if bereich == '272':
+        if typ not in (2, 3, 4, 5, 6):
+            return jsonify({'error': 'Für 272 typ 2–6'}), 400
+        try:
+            with locosoft_session() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT invoice_number, order_number, paying_customer,
+                           COALESCE(job_amount_net, 0) AS job_netto,
+                           COALESCE(part_amount_net, 0) AS part_netto,
+                           COALESCE(total_net, 0) AS total_netto
+                    FROM invoices
+                    WHERE invoice_date >= %s AND invoice_date < %s
+                      AND invoice_type = %s
+                      AND (is_canceled IS NULL OR is_canceled = false)
+                    ORDER BY invoice_number
+                """, (von, bis, typ))
+                rows = cur.fetchall()
+                items = []
+                for r in rows:
+                    items.append({
+                        'rechnungsnr': r[0],
+                        'auftragsnr': r[1],
+                        'kunde': r[2],
+                        'lohn_netto': round(float(r[3] or 0), 2),
+                        'teile_netto': round(float(r[4] or 0), 2),
+                        'summe_netto': round(float(r[5] or 0), 2),
+                    })
+                return jsonify({'bereich': '272', 'typ': typ, 'datum': von, 'items': items})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+    if bereich == '273':
+        if typ not in (7, 8):
+            return jsonify({'error': 'Für 273 typ 7 oder 8'}), 400
+        try:
+            with db_session() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT out_invoice_number, vin, model_description,
+                           COALESCE(out_sale_price, 0) AS umsatz_netto,
+                           COALESCE(deckungsbeitrag, 0) AS db1
+                    FROM sales
+                    WHERE out_invoice_date >= %s AND out_invoice_date < %s
+                      AND out_invoice_type = %s
+                    ORDER BY out_invoice_number
+                """, (von, bis, typ))
+                rows = cur.fetchall()
+                items = []
+                for r in rows:
+                    items.append({
+                        'rechnungsnr': r[0],
+                        'vin': r[1] or '—',
+                        'modell': r[2] or '—',
+                        'umsatz_netto': round(float(r[3] or 0), 2),
+                        'db1': round(float(r[4] or 0), 2),
+                    })
+                return jsonify({'bereich': '273', 'typ': typ, 'datum': von, 'items': items})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+    return jsonify({'error': 'bereich muss 272 oder 273 sein'}), 400
 
 
 # =============================================================================
@@ -701,7 +1089,7 @@ def api_tek():
         von = f"{jahr}-{monat:02d}-01"
         bis = f"{jahr}-{monat+1:02d}-01" if monat < 12 else f"{jahr+1}-01-01"
 
-        # Für Breakeven/Prognose: "3 Monate zurück" (wird in berechne_breakeven_prognose* referenziert)
+        # Für Breakeven/Prognose: letzte 4 abgeschlossene Kalendermonate (berechne_breakeven_prognose*)
         from dateutil.relativedelta import relativedelta
         _heute = date.today()
         drei_monate_vorher = (_heute - relativedelta(months=3)).replace(day=1).strftime('%Y-%m-%d')
@@ -910,7 +1298,9 @@ def api_tek():
         vj_jahr_bereich = jahr - 1
         vj_von_bereich = f"{vj_jahr_bereich}-{monat:02d}-01"
         if monat == heute.month and jahr == heute.year:
-            vj_bis_bereich = f"{vj_jahr_bereich}-{monat:02d}-{heute.day+1:02d}"
+            last_day_vj = calendar.monthrange(vj_jahr_bereich, monat)[1]
+            vj_tag = min(heute.day, last_day_vj)
+            vj_bis_bereich = (date(vj_jahr_bereich, monat, vj_tag) + timedelta(days=1)).strftime('%Y-%m-%d')
         else:
             vj_bis_bereich = f"{vj_jahr_bereich}-{monat+1:02d}-01" if monat < 12 else f"{vj_jahr_bereich+1}-01-01"
 
@@ -1075,7 +1465,9 @@ def api_tek():
         vj_jahr = jahr - 1
         vj_von = f"{vj_jahr}-{monat:02d}-01"
         if monat == heute.month and jahr == heute.year:
-            vj_bis = f"{vj_jahr}-{monat:02d}-{heute.day+1:02d}"
+            last_day_vj = calendar.monthrange(vj_jahr, monat)[1]
+            vj_tag = min(heute.day, last_day_vj)
+            vj_bis = (date(vj_jahr, monat, vj_tag) + timedelta(days=1)).strftime('%Y-%m-%d')
         else:
             vj_bis = f"{vj_jahr}-{monat+1:02d}-01" if monat < 12 else f"{vj_jahr+1}-01-01"
 
@@ -1809,8 +2201,9 @@ def api_tek_detail():
         
         # =====================================================================
         # EBENE: GRUPPEN (Standard - 2-stellige Kontengruppen) TAG 136
+        # hole_gruppen(von, bis, ...) für beliebigen Zeitraum (Monat oder Vortag)
         # =====================================================================
-        def hole_gruppen(konto_range, vorzeichen_typ, mit_konten=False):
+        def hole_gruppen(von_d, bis_d, konto_range, vorzeichen_typ, mit_konten=False):
             if vorzeichen_typ == 'einsatz':
                 vorzeichen = "CASE WHEN debit_or_credit = 'S' THEN posted_value ELSE -posted_value END"
             else:
@@ -1832,7 +2225,7 @@ def api_tek_detail():
                     GROUP BY substr(CAST(nominal_account_number AS TEXT), 1, 2)
                 ) sub WHERE betrag != 0
                 ORDER BY ABS(betrag) DESC
-            """), (von, bis, konto_range[0], konto_range[1]))
+            """), (von_d, bis_d, konto_range[0], konto_range[1]))
             rows = [row_to_dict(r) for r in cursor.fetchall()]
 
             ergebnis = []
@@ -1865,7 +2258,7 @@ def api_tek_detail():
                             GROUP BY j.nominal_account_number, n.account_description
                         ) sub WHERE betrag != 0
                         ORDER BY ABS(betrag) DESC
-                    """), (von, bis, konto_range[0], konto_range[1], row['gruppe']))
+                    """), (von_d, bis_d, konto_range[0], konto_range[1], row['gruppe']))
                     konten_rows = [row_to_dict(kr) for kr in cursor.fetchall()]
                     g['konten'] = [{
                         'konto': kr['konto'],
@@ -1878,13 +2271,20 @@ def api_tek_detail():
 
             return ergebnis
         
-        # Umsatz-Gruppen (mit Einzelkonten für Drill-Down)
-        umsatz_gruppen = hole_gruppen(ranges['umsatz'], 'umsatz', mit_konten=True)
+        # Umsatz-Gruppen (mit Einzelkonten für Drill-Down) – Kumuliert = Monat
+        umsatz_gruppen = hole_gruppen(von, bis, ranges['umsatz'], 'umsatz', mit_konten=True)
         umsatz_summe = sum(g['betrag'] for g in umsatz_gruppen)
 
-        # Einsatz-Gruppen (mit Einzelkonten für Drill-Down)
-        einsatz_gruppen = hole_gruppen(ranges['einsatz'], 'einsatz', mit_konten=True)
+        # Einsatz-Gruppen (mit Einzelkonten für Drill-Down) – Kumuliert = Monat
+        einsatz_gruppen = hole_gruppen(von, bis, ranges['einsatz'], 'einsatz', mit_konten=True)
         einsatz_summe = sum(g['betrag'] for g in einsatz_gruppen)
+
+        # Vortag (ein Tag) – kontenbezogen wie GlobalCube (Vortag pro Konto in Modal)
+        vortag_d = heute - timedelta(days=1)
+        vortag_von = vortag_d.strftime('%Y-%m-%d')
+        vortag_bis = (vortag_d + timedelta(days=1)).strftime('%Y-%m-%d')
+        umsatz_gruppen_vortag = hole_gruppen(vortag_von, vortag_bis, ranges['umsatz'], 'umsatz', mit_konten=True)
+        einsatz_gruppen_vortag = hole_gruppen(vortag_von, vortag_bis, ranges['einsatz'], 'einsatz', mit_konten=True)
 
         # 4-Lohn: Im laufenden Monat Einsatz Gruppe 74 kalkuliert (Method B, 6-Monats-Quote)
         # damit "Einsatz Lohn" in der Detail-Tabelle nicht 0 € anzeigt
@@ -2108,6 +2508,11 @@ def api_tek_detail():
 
         db.close()
 
+        # Vortag-Summen für Modal (Vortag + Kumuliert)
+        vortag_umsatz_summe = sum(g['betrag'] for g in umsatz_gruppen_vortag)
+        vortag_einsatz_summe = sum(g['betrag'] for g in einsatz_gruppen_vortag)
+        vortag_datum_formatiert = vortag_d.strftime('%d.%m.%Y')
+
         return jsonify({
             'success': True,
             'ebene': 'gruppen',
@@ -2132,6 +2537,19 @@ def api_tek_detail():
                 'anzahl_gruppen': len(einsatz_gruppen),
                 'gesamt': round(einsatz_summe, 2)
             },
+            'vortag': {
+                'datum': vortag_von,
+                'datum_formatiert': vortag_datum_formatiert,
+                'umsatz': {
+                    'gruppen': umsatz_gruppen_vortag,
+                    'gesamt': round(vortag_umsatz_summe, 2)
+                },
+                'einsatz': {
+                    'gruppen': einsatz_gruppen_vortag,
+                    'gesamt': round(vortag_einsatz_summe, 2)
+                }
+            },
+            'kumuliert_label': f"{['', 'Jan.', 'Feb.', 'März', 'Apr.', 'Mai', 'Juni', 'Juli', 'Aug.', 'Sep.', 'Okt.', 'Nov.', 'Dez.'][monat]}/{jahr}",
             'db1': round(db1, 2),
             'fahrzeuge': fahrzeuge,   # TAG 136: Modell-Gruppierung
             'absatzwege': absatzwege  # TAG 136: Absatzweg-Gruppierung (Kundentyp + Verkaufsart)

@@ -13,6 +13,7 @@ Author: Claude AI + Florian Greiner
 Date: 2025-12-30
 """
 
+import calendar
 from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
 
@@ -157,9 +158,10 @@ def get_tek_data(monat=None, jahr=None, firma='0', standort='0', modus='teil', u
                 'marge': round(marge, 1)
             })
 
-        # TAG 219: 4-Lohn im laufenden Monat – kalkulatorischer Einsatz (Method B, 6-Monats-Quote)
-        # Im laufenden Monat ist FIBU-Einsatz 74xxxx oft noch nicht voll gebucht → Marge würde verfälscht.
-        # Einsatz kalk = Umsatz_aktuell × (Einsatz_6M / Umsatz_6M); DB1/Marge daraus.
+        # 4-Lohn-Einsatz (SSOT, vereinbart): Rollierender 6-Monats-Schnitt
+        # Im laufenden Monat: FIBU-Einsatz 74xxxx ist oft noch nicht voll gebucht → Marge würde verfälscht.
+        # Vereinbarung: Wir nehmen den rollierenden Schnitt – Einsatz = Umsatz_aktuell × (Einsatz_6M / Umsatz_6M).
+        # Diese eine Logik gilt für Portal und alle Reports; keine abweichende Berechnung in den Routes.
         heute_ref = heute if isinstance(heute, date) else date.today()
         ist_laufender_monat = (jahr == heute_ref.year and monat == heute_ref.month)
         if ist_laufender_monat:
@@ -263,9 +265,11 @@ def get_tek_data(monat=None, jahr=None, firma='0', standort='0', modus='teil', u
         # Nicht den GANZEN Monat, sondern nur bis heute!
         vj_von = f"{vj_jahr}-{monat:02d}-01"
         if monat == heute.month and jahr == heute.year:
-            # Aktueller Monat: Vergleiche bis zum gleichen Tag
-            # +1 Tag weil SQL WHERE < (nicht <=) nutzt
-            vj_bis = f"{vj_jahr}-{monat:02d}-{heute.day+1:02d}"
+            # Aktueller Monat: Vergleiche bis zum gleichen Tag (VJ).
+            # Letzten Tag im VJ-Monat begrenzen (z. B. Feb 2025 hat 28 Tage, nicht 29).
+            last_day_vj = calendar.monthrange(vj_jahr, monat)[1]
+            vj_tag = min(heute.day, last_day_vj)
+            vj_bis = (date(vj_jahr, monat, vj_tag) + timedelta(days=1)).strftime('%Y-%m-%d')
         else:
             # Vergangener Monat: Kompletter Monat
             vj_bis = f"{vj_jahr}-{monat+1:02d}-01" if monat < 12 else f"{vj_jahr+1}-01-01"
@@ -299,7 +303,7 @@ def get_tek_data(monat=None, jahr=None, firma='0', standort='0', modus='teil', u
     breakeven = round(prognose_result.get('breakeven_schwelle') or 0, 2)
     werktage = prognose_result.get('werktage')  # Für PDF/E-Mail: vergangen, verbleibend, gesamt (Datenstichtag)
 
-    # Rückgabe im einheitlichen Format
+    # Rückgabe im einheitlichen Format (SSOT für Portal + Reports)
     return {
         'bereiche': bereiche,
         'gesamt': {
@@ -312,6 +316,7 @@ def get_tek_data(monat=None, jahr=None, firma='0', standort='0', modus='teil', u
             'breakeven_diff': round(total_db1 - breakeven, 2),
             'werktage': werktage,
         },
+        'prognose_detail': prognose_result,  # Vollständiges Dict für Portal (hochrechnung_db1, status, ampel, …)
         'vm': {  # Vormonat
             'db1': round(vm_db1, 2),
             'marge': round(vm_marge, 1)
@@ -327,12 +332,26 @@ def get_tek_data(monat=None, jahr=None, firma='0', standort='0', modus='teil', u
 # BREAKEVEN-PROGNOSE (SSOT – eine Logik für Portal und PDF)
 # =============================================================================
 
+def _letzte_4_abgeschlossene_monate():
+    """
+    Zeitraum der letzten 4 abgeschlossenen Kalendermonate vor dem aktuellen Monat (schwankungsstabil).
+    Bsp.: Im Februar → Okt, Nov, Dez, Jan; im März → Nov, Dez, Jan, Feb.
+    Returns: (von_str, bis_str) für SQL >= von AND < bis.
+    """
+    heute = date.today()
+    erster_aktuell = date(heute.year, heute.month, 1)
+    von_4m = erster_aktuell - relativedelta(months=4)
+    bis_4m = erster_aktuell
+    return von_4m.isoformat(), bis_4m.isoformat()
+
+
 def berechne_breakeven_prognose_standort(monat: int, jahr: int, aktueller_db1: float,
                                          firma_filter_umsatz: str, firma_filter_kosten: str,
                                          firma_filter_einsatz: str = None) -> dict:
     """
     Berechnet Breakeven-Prognose für einen spezifischen Standort.
     Kosten nach 6. Ziffer der Kontonummer; Umsatz/Einsatz nach branch_number.
+    Kosten-Schnitt: letzte 4 abgeschlossene Kalendermonate (schwankungsstabil ab Monatsanfang).
     """
     if firma_filter_einsatz is None:
         firma_filter_einsatz = firma_filter_umsatz
@@ -342,8 +361,7 @@ def berechne_breakeven_prognose_standort(monat: int, jahr: int, aktueller_db1: f
     heute = date.today()
     now = datetime.now()
     stichtag = heute if now.hour >= 19 else (heute - timedelta(days=1))
-    vor_3_monaten = (heute - relativedelta(months=3)).isoformat()
-    heute_str = heute.isoformat()
+    kosten_von_str, kosten_bis_str = _letzte_4_abgeschlossene_monate()
 
     with db_session() as conn:
         cursor = conn.cursor()
@@ -370,12 +388,12 @@ def berechne_breakeven_prognose_standort(monat: int, jahr: int, aktueller_db1: f
             FROM loco_journal_accountings
             WHERE accounting_date >= ? AND accounting_date < ?
             {firma_filter_kosten}
-        """), (vor_3_monaten, heute_str))
+        """), (kosten_von_str, kosten_bis_str))
         row = cursor.fetchone()
-        kosten_3m = row_to_dict(row) if row else {}
-        variable_3m = float(kosten_3m.get('variable') or 0)
-        direkte_3m = float(kosten_3m.get('direkte') or 0)
-        kosten_pro_monat = (variable_3m + direkte_3m) / 3
+        kosten_4m = row_to_dict(row) if row else {}
+        variable_4m = float(kosten_4m.get('variable') or 0)
+        direkte_4m = float(kosten_4m.get('direkte') or 0)
+        kosten_pro_monat = (variable_4m + direkte_4m) / 4
 
         cursor.execute(convert_placeholders(f"""
             SELECT COALESCE(SUM(CASE WHEN debit_or_credit = 'H' THEN posted_value ELSE -posted_value END) / 100.0, 0) as umsatz
@@ -426,7 +444,7 @@ def berechne_breakeven_prognose_standort(monat: int, jahr: int, aktueller_db1: f
         status, ampel = 'kritisch', 'rot'
 
     return {
-        'kosten_3m_schnitt': {'variable': round(variable_3m / 3, 2), 'direkte': round(direkte_3m / 3, 2), 'gesamt': round(kosten_pro_monat, 2)},
+        'kosten_4m_schnitt': {'variable': round(variable_4m / 4, 2), 'direkte': round(direkte_4m / 4, 2), 'gesamt': round(kosten_pro_monat, 2)},
         'breakeven_schwelle': round(kosten_pro_monat, 2),
         'aktueller_db1': round(aktueller_db1, 2),
         'operativer_db1': round(operativ_db1, 2),
@@ -445,6 +463,7 @@ def berechne_breakeven_prognose(monat: int, jahr: int, aktueller_db1: float,
     """
     SSOT: Breakeven-Prognose (BWA-Kosten, echte Werktage). Nutzung: Portal + get_tek_data (PDF/E-Mail).
     Datenstichtag: Vor 19:00 Uhr zählt „vergangen“ nur bis gestern (Locosoft liefert abends).
+    Kosten-Schnitt: letzte 4 abgeschlossene Kalendermonate (schwankungsstabil ab Monatsanfang).
     """
     if firma_filter_kosten is None:
         firma_filter_kosten = firma_filter_umsatz
@@ -457,8 +476,7 @@ def berechne_breakeven_prognose(monat: int, jahr: int, aktueller_db1: float,
     # TEK-Datenstichtag: Locosoft kommt abends. Vor 19:00 = Stichtag gestern → 9 verbleibende WT morgens.
     now = datetime.now()
     stichtag = heute if now.hour >= 19 else (heute - timedelta(days=1))
-    vor_3_monaten = (heute - relativedelta(months=3)).isoformat()
-    heute_str = heute.isoformat()
+    kosten_von_str, kosten_bis_str = _letzte_4_abgeschlossene_monate()
 
     umsatz_anteil = 1.0
     umsatz_firma = 0
@@ -472,7 +490,7 @@ def berechne_breakeven_prognose(monat: int, jahr: int, aktueller_db1: float,
                 WHERE accounting_date >= ? AND accounting_date < ?
                   AND nominal_account_number BETWEEN 800000 AND 889999
                   {firma_filter_umsatz}
-            """), (vor_3_monaten, heute_str))
+            """), (kosten_von_str, kosten_bis_str))
             row = cursor.fetchone()
             umsatz_firma = float(row_to_dict(row).get('umsatz') or 0) if row else 0
             cursor.execute(convert_placeholders("""
@@ -480,7 +498,7 @@ def berechne_breakeven_prognose(monat: int, jahr: int, aktueller_db1: float,
                 FROM loco_journal_accountings
                 WHERE accounting_date >= ? AND accounting_date < ?
                   AND nominal_account_number BETWEEN 800000 AND 889999
-            """), (vor_3_monaten, heute_str))
+            """), (kosten_von_str, kosten_bis_str))
             row = cursor.fetchone()
             umsatz_gesamt = float(row_to_dict(row).get('umsatz') or 0) if row else 0
             if umsatz_gesamt > 0:
@@ -518,17 +536,17 @@ def berechne_breakeven_prognose(monat: int, jahr: int, aktueller_db1: float,
             FROM loco_journal_accountings
             WHERE accounting_date >= ? AND accounting_date < ?
             {kosten_filter}
-        """), (vor_3_monaten, heute_str))
+        """), (kosten_von_str, kosten_bis_str))
         row = cursor.fetchone()
-        kosten_3m = row_to_dict(row) if row else {}
-        variable_3m_gesamt = float(kosten_3m.get('variable') or 0)
-        direkte_3m_gesamt = float(kosten_3m.get('direkte') or 0)
-        indirekte_3m_gesamt = float(kosten_3m.get('indirekte') or 0)
-        kosten_3m_gesamt = variable_3m_gesamt + direkte_3m_gesamt + indirekte_3m_gesamt
-        variable_3m = variable_3m_gesamt * umsatz_anteil
-        direkte_3m = direkte_3m_gesamt * umsatz_anteil
-        indirekte_3m = indirekte_3m_gesamt * umsatz_anteil
-        kosten_pro_monat = (variable_3m + direkte_3m + indirekte_3m) / 3
+        kosten_4m = row_to_dict(row) if row else {}
+        variable_4m_gesamt = float(kosten_4m.get('variable') or 0)
+        direkte_4m_gesamt = float(kosten_4m.get('direkte') or 0)
+        indirekte_4m_gesamt = float(kosten_4m.get('indirekte') or 0)
+        kosten_4m_gesamt = variable_4m_gesamt + direkte_4m_gesamt + indirekte_4m_gesamt
+        variable_4m = variable_4m_gesamt * umsatz_anteil
+        direkte_4m = direkte_4m_gesamt * umsatz_anteil
+        indirekte_4m = indirekte_4m_gesamt * umsatz_anteil
+        kosten_pro_monat = (variable_4m + direkte_4m + indirekte_4m) / 4
 
         cursor.execute(convert_placeholders(f"""
             SELECT COALESCE(SUM(CASE WHEN debit_or_credit = 'H' THEN posted_value ELSE -posted_value END) / 100.0, 0) as umsatz
@@ -618,7 +636,7 @@ def berechne_breakeven_prognose(monat: int, jahr: int, aktueller_db1: float,
     breakeven_bereiche = {bereich: round(kosten_pro_monat * anteil, 2) for bereich, anteil in UMLAGE_SCHLUESSEL.items()}
 
     return {
-        'kosten_3m_schnitt': {'variable': round(variable_3m / 3, 2), 'direkte': round(direkte_3m / 3, 2), 'indirekte': round(indirekte_3m / 3, 2), 'gesamt': round(kosten_pro_monat, 2)},
+        'kosten_4m_schnitt': {'variable': round(variable_4m / 4, 2), 'direkte': round(direkte_4m / 4, 2), 'indirekte': round(indirekte_4m / 4, 2), 'gesamt': round(kosten_pro_monat, 2)},
         'breakeven_schwelle': round(kosten_pro_monat, 2),
         'aktueller_db1': round(aktueller_db1, 2),
         'operativer_db1': round(operativ_db1, 2),
@@ -638,5 +656,5 @@ def berechne_breakeven_prognose(monat: int, jahr: int, aktueller_db1: float,
         'db1_pro_werktag': round(db1_pro_werktag, 2),
         'breakeven_bereiche': breakeven_bereiche,
         'umlage_schluessel': {k: round(v * 100, 0) for k, v in UMLAGE_SCHLUESSEL.items()},
-        'kostenverteilung': {'anteilig': anteilige_kosten, 'umsatz_anteil': round(umsatz_anteil * 100, 1), 'umsatz_firma_3m': round(umsatz_firma, 2), 'umsatz_gesamt_3m': round(umsatz_gesamt, 2), 'kosten_gesamt_3m': round(kosten_3m_gesamt / 3, 2)},
+        'kostenverteilung': {'anteilig': anteilige_kosten, 'umsatz_anteil': round(umsatz_anteil * 100, 1), 'umsatz_firma_4m': round(umsatz_firma, 2), 'umsatz_gesamt_4m': round(umsatz_gesamt, 2), 'kosten_gesamt_4m': round(kosten_4m_gesamt / 4, 2)},
     }

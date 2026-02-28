@@ -224,7 +224,7 @@
                     </div>
                 </div>
                 <div class="small text-muted mt-1" id="breakevenHinweis" style="font-size: 0.7rem;">
-                    Hochrechnung DB1 (Ø/Tag × Werktage) vs. Ø Kosten (3 Monate)
+                    Hochrechnung DB1 (Ø/Tag × Werktage) vs. Ø Kosten (4 Monate)
                 </div>
             </div>
         </div>
@@ -536,7 +536,7 @@ function renderBreakeven(data) {
         hinweisEl.innerHTML = `Noch <strong>${verbleibend} WT</strong> · Bei Ø ${fmtEuro(tagesschnitt)}/Tag → Prognose: ${fmtEuro(hochrechnung)}${anteilInfo}`;
     } else {
         // Monat abgeschlossen
-        hinweisEl.innerHTML = `Monat abgeschlossen · Endstand DB1 vs. Ø Kosten (3M)${anteilInfo}`;
+        hinweisEl.innerHTML = `Monat abgeschlossen · Endstand DB1 vs. Ø Kosten (4M)${anteilInfo}`;
     }
 }
 
@@ -734,6 +734,16 @@ async function showDrill(bereichKey) {
 function renderDrill(bereichKey, data) {
     let html = '<div class="p-3">';
 
+    // Vortag + Kumuliert für Modal (Vortag = ein Tag, Kumuliert = Monat)
+    const vortag = data.vortag || null;
+    const vortagDatum = vortag ? (vortag.datum_formatiert || vortag.datum || '') : '';
+    const kumuliertLabel = data.kumuliert_label || 'Monat';
+    const showVortagKumuliert = !!vortag;
+    const sumVortagU = vortag ? vortag.umsatz.gesamt : 0;
+    const sumVortagE = vortag ? vortag.einsatz.gesamt : 0;
+    const sumDb1V = sumVortagU - sumVortagE;
+    const sumMargeV = sumVortagU > 0 ? (sumDb1V / sumVortagU * 100) : 0;
+
     // Modelle/Absatzwege nur für NW/GW anzeigen
     const hatModelle = data.fahrzeuge && data.fahrzeuge.length > 0;
     const hatAbsatzwege = data.absatzwege && data.absatzwege.length > 0;
@@ -773,44 +783,53 @@ function renderDrill(bereichKey, data) {
         <div class="tab-content">
     `;
 
-    // Umsatz-Tab (mit Drill-Down für Einzelkonten) - tabellarisch mit Einsatz | Erlös | DB1 | DB%
+    // Umsatz-Tab (mit Drill-Down für Einzelkonten) – Vortag + Kumuliert
     html += '<div class="tab-pane fade show active" id="drillUmsatz">';
     if (data.umsatz.gruppen && data.umsatz.gruppen.length > 0) {
-        html += '<table class="table table-sm drill-table"><thead><tr><th>Erlösgruppe</th><th class="text-end text-danger">Einsatz</th><th class="text-end text-success">Erlös</th><th class="text-end">DB1</th><th class="text-end">DB%</th></tr></thead><tbody>';
+        const colCount = showVortagKumuliert ? 9 : 5;  // 1 + 4 oder 1 + 4 + 4
+        let tableHead = '';
+        if (showVortagKumuliert) {
+            tableHead = `<thead><tr><th>Erlösgruppe</th><th colspan="4" class="text-center bg-light border-start">Vortag<br><small class="text-muted">${vortagDatum}</small></th><th colspan="4" class="text-center border-start">Kumuliert<br><small class="text-muted">${kumuliertLabel}</small></th></tr><tr><th></th><th class="text-end text-danger">Einsatz</th><th class="text-end text-success">Erlös</th><th class="text-end">DB1</th><th class="text-end">DB%</th><th class="text-end text-danger">Einsatz</th><th class="text-end text-success">Erlös</th><th class="text-end">DB1</th><th class="text-end">DB%</th></tr></thead>`;
+        } else {
+            tableHead = '<thead><tr><th>Erlösgruppe</th><th class="text-end text-danger">Einsatz</th><th class="text-end text-success">Erlös</th><th class="text-end">DB1</th><th class="text-end">DB%</th></tr></thead>';
+        }
+        html += `<table class="table table-sm drill-table">${tableHead}<tbody>`;
         for (let i = 0; i < data.umsatz.gruppen.length; i++) {
             const g = data.umsatz.gruppen[i];
-            // Passende Einsatz-Gruppe finden (gleiche Gruppe-Nummer, 8x → 7x)
             const einsatzGruppe = data.einsatz.gruppen ? data.einsatz.gruppen.find(eg => eg.gruppe === String(g.gruppe).replace(/^8/, '7')) : null;
             const einsatzBetrag = einsatzGruppe ? einsatzGruppe.betrag : 0;
             const einsatzKalk = einsatzGruppe && einsatzGruppe.kalkuliert;
             const db1 = g.betrag - einsatzBetrag;
             const marge = g.betrag > 0 ? (db1 / g.betrag * 100) : 0;
+            const gVortag = vortag && vortag.umsatz.gruppen ? vortag.umsatz.gruppen.find(vg => String(vg.gruppe) === String(g.gruppe)) : null;
+            const eVortag = vortag && vortag.einsatz.gruppen ? vortag.einsatz.gruppen.find(eg => String(eg.gruppe) === String(g.gruppe).replace(/^8/, '7')) : null;
+            const eBetragV = eVortag ? eVortag.betrag : 0;
+            const erloesV = gVortag ? gVortag.betrag : 0;
+            const db1V = erloesV - eBetragV;
+            const margeV = erloesV > 0 ? (db1V / erloesV * 100) : 0;
             const hatKonten = g.konten && g.konten.length > 0;
             const rowClass = hatKonten ? 'drill-row' : '';
+            const cellsVortag = showVortagKumuliert
+                ? `<td class="text-end val-neg bg-light">${fmtEuro(eBetragV)}</td><td class="text-end val-pos bg-light">${fmtEuro(erloesV)}</td><td class="text-end bg-light ${db1V >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(db1V)}</td><td class="text-end bg-light ${margeV >= 0 ? 'val-pos' : 'val-neg'}">${fmtPct(margeV)}</td>`
+                : '';
+            const cellsKumuliert = `<td class="text-end val-neg">${fmtEuro(einsatzBetrag)}${einsatzKalk ? ' <span class="val-warn">*</span>' : ''}</td><td class="text-end val-pos">${fmtEuro(g.betrag)}</td><td class="text-end ${db1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(db1)}</td><td class="text-end ${marge >= 0 ? 'val-pos' : 'val-neg'}">${fmtPct(marge)}</td>`;
             html += `<tr class="${rowClass}" ${hatKonten ? `onclick="toggleKonten(this, 'umsatz', ${i})" style="cursor:pointer"` : ''}>
-                <td><i class="bi ${hatKonten ? 'bi-chevron-right' : 'bi-folder'} text-success me-1 drill-icon"></i>${g.name} <small class="text-muted">(${g.gruppe})</small></td>
-                <td class="text-end val-neg">${fmtEuro(einsatzBetrag)}${einsatzKalk ? ' <span class="val-warn">*</span>' : ''}</td>
-                <td class="text-end val-pos">${fmtEuro(g.betrag)}</td>
-                <td class="text-end ${db1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(db1)}</td>
-                <td class="text-end ${marge >= 0 ? 'val-pos' : 'val-neg'}">${fmtPct(marge)}</td>
+                <td><i class="bi ${hatKonten ? 'bi-chevron-right' : 'bi-folder'} text-success me-1 drill-icon"></i>${g.name} <small class="text-muted">(${g.gruppe})</small></td>${cellsVortag}${cellsKumuliert}
             </tr>`;
-            // Versteckte Zeile für Konten-Details
+            // Versteckte Zeile für Konten-Details – Vortag + Kumuliert (kontenbezogen wie GlobalCube)
             if (hatKonten) {
                 const einsatzKonten = einsatzGruppe ? einsatzGruppe.konten || [] : [];
-                html += `<tr class="konten-detail d-none" id="konten-umsatz-${i}"><td colspan="5" class="p-0">
+                const vortagUG = showVortagKumuliert && vortag && vortag.umsatz.gruppen ? vortag.umsatz.gruppen.find(vg => String(vg.gruppe) === String(g.gruppe)) : null;
+                const vortagEG = showVortagKumuliert && vortag && vortag.einsatz.gruppen ? vortag.einsatz.gruppen.find(vg => String(vg.gruppe) === String(g.gruppe).replace(/^8/, '7')) : null;
+                const vortagUKonten = vortagUG && vortagUG.konten ? vortagUG.konten : [];
+                const vortagEKonten = vortagEG && vortagEG.konten ? vortagEG.konten : [];
+                const innerHead = showVortagKumuliert
+                    ? `<tr><th>Konto</th><th>Bezeichnung</th><th colspan="4" class="text-center bg-light border-start">Vortag</th><th colspan="4" class="text-center border-start">Kumuliert</th></tr><tr><th></th><th></th><th class="text-end text-danger">Einsatz</th><th class="text-end text-success">Erlös</th><th class="text-end">DB1</th><th class="text-end">DB%</th><th class="text-end text-danger">Einsatz</th><th class="text-end text-success">Erlös</th><th class="text-end">DB1</th><th class="text-end">DB%</th></tr>`
+                    : `<tr><th>Konto</th><th>Bezeichnung</th><th class="text-end text-danger">Einsatz</th><th class="text-end text-success">Erlös</th><th class="text-end">DB1</th><th class="text-end">DB%</th></tr>`;
+                html += `<tr class="konten-detail d-none" id="konten-umsatz-${i}"><td colspan="${colCount}" class="p-0">
                     <table class="table table-sm table-bordered mb-0" style="font-size: 0.75rem;">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Konto</th>
-                                <th>Bezeichnung</th>
-                                <th class="text-end text-danger">Einsatz</th>
-                                <th class="text-end text-success">Erlös</th>
-                                <th class="text-end">DB1</th>
-                                <th class="text-end">DB%</th>
-                            </tr>
-                        </thead>
+                        <thead class="table-light">${innerHead}</thead>
                         <tbody>`;
-                // Konten matchen
                 const kontenPaare = [];
                 const usedEinsatz = new Set();
                 for (const u of g.konten) {
@@ -831,25 +850,30 @@ function renderDrill(bereichKey, data) {
                     const erloes = p.u ? p.u.betrag : 0;
                     const einsatz = p.e ? p.e.betrag : 0;
                     const kMarge = erloes > 0 ? (p.db1 / erloes * 100) : 0;
-                    html += `<tr>
-                        <td><code>${konto}</code></td>
-                        <td>${bez}</td>
-                        <td class="text-end val-neg">${einsatz > 0 ? fmtEuro(einsatz) : '-'}</td>
-                        <td class="text-end val-pos">${erloes > 0 ? fmtEuro(erloes) : '-'}</td>
-                        <td class="text-end ${p.db1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(p.db1)}</td>
-                        <td class="text-end ${kMarge >= 0 ? 'val-pos' : 'val-neg'}">${fmtPct(kMarge)}</td>
-                    </tr>`;
+                    let cellsVortagK = '';
+                    if (showVortagKumuliert) {
+                        const vU = p.u ? (vortagUKonten.find(k => String(k.konto) === String(p.u.konto))?.betrag ?? 0) : 0;
+                        const vE = p.e ? (vortagEKonten.find(k => String(k.konto) === String(p.e.konto))?.betrag ?? 0) : 0;
+                        const db1VK = vU - vE;
+                        const margeVK = vU > 0 ? (db1VK / vU * 100) : 0;
+                        cellsVortagK = `<td class="text-end val-neg bg-light">${vE !== 0 ? fmtEuro(vE) : '-'}</td><td class="text-end val-pos bg-light">${vU !== 0 ? fmtEuro(vU) : '-'}</td><td class="text-end bg-light ${db1VK >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(db1VK)}</td><td class="text-end bg-light ${margeVK >= 0 ? 'val-pos' : 'val-neg'}">${vU > 0 ? fmtPct(margeVK) : '-'}</td>`;
+                    }
+                    const cellsKumuliertK = `<td class="text-end val-neg">${einsatz > 0 ? fmtEuro(einsatz) : '-'}</td><td class="text-end val-pos">${erloes > 0 ? fmtEuro(erloes) : '-'}</td><td class="text-end ${p.db1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(p.db1)}</td><td class="text-end ${kMarge >= 0 ? 'val-pos' : 'val-neg'}">${fmtPct(kMarge)}</td>`;
+                    html += `<tr><td><code>${konto}</code></td><td>${bez}</td>${cellsVortagK}${cellsKumuliertK}</tr>`;
                 }
                 html += '</tbody></table></td></tr>';
             }
         }
-        // Summenzeile
+        // Summenzeile (Vortag + Kumuliert)
         const sumErloes = data.umsatz.gruppen.reduce((s, g) => s + g.betrag, 0);
         const sumEinsatz = data.einsatz.gruppen ? data.einsatz.gruppen.reduce((s, g) => s + g.betrag, 0) : 0;
         const sumDb1 = sumErloes - sumEinsatz;
         const sumMarge = sumErloes > 0 ? (sumDb1 / sumErloes * 100) : 0;
+        const sumCellsVortag = showVortagKumuliert
+            ? `<td class="text-end val-neg bg-light">${fmtEuro(sumVortagE)}</td><td class="text-end val-pos bg-light">${fmtEuro(sumVortagU)}</td><td class="text-end bg-light ${sumDb1V >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(sumDb1V)}</td><td class="text-end bg-light ${sumMargeV >= 0 ? 'val-pos' : 'val-neg'}">${fmtPct(sumMargeV)}</td>`
+            : '';
         html += `<tr class="table-secondary fw-bold">
-            <td>Gesamt</td>
+            <td>Gesamt</td>${sumCellsVortag}
             <td class="text-end val-neg">${fmtEuro(sumEinsatz)}</td>
             <td class="text-end val-pos">${fmtEuro(sumErloes)}</td>
             <td class="text-end ${sumDb1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(sumDb1)}</td>
@@ -861,43 +885,55 @@ function renderDrill(bereichKey, data) {
     }
     html += '</div>';
 
-    // Einsatz-Tab (mit Drill-Down für Einzelkonten) - tabellarisch mit Einsatz | Erlös | DB1 | DB%
+    // Einsatz-Tab (mit Drill-Down für Einzelkonten) – Vortag + Kumuliert
     html += '<div class="tab-pane fade" id="drillEinsatz">';
     if (data.einsatz.gruppen && data.einsatz.gruppen.length > 0) {
-        html += '<table class="table table-sm drill-table"><thead><tr><th>Kostengruppe</th><th class="text-end text-danger">Einsatz</th><th class="text-end text-success">Erlös</th><th class="text-end">DB1</th><th class="text-end">DB%</th></tr></thead><tbody>';
+        const colCountE = showVortagKumuliert ? 9 : 5;
+        let tableHeadE = '';
+        if (showVortagKumuliert) {
+            tableHeadE = `<thead><tr><th>Kostengruppe</th><th colspan="4" class="text-center bg-light border-start">Vortag<br><small class="text-muted">${vortagDatum}</small></th><th colspan="4" class="text-center border-start">Kumuliert<br><small class="text-muted">${kumuliertLabel}</small></th></tr><tr><th></th><th class="text-end text-danger">Einsatz</th><th class="text-end text-success">Erlös</th><th class="text-end">DB1</th><th class="text-end">DB%</th><th class="text-end text-danger">Einsatz</th><th class="text-end text-success">Erlös</th><th class="text-end">DB1</th><th class="text-end">DB%</th></tr></thead>`;
+        } else {
+            tableHeadE = '<thead><tr><th>Kostengruppe</th><th class="text-end text-danger">Einsatz</th><th class="text-end text-success">Erlös</th><th class="text-end">DB1</th><th class="text-end">DB%</th></tr></thead>';
+        }
+        html += `<table class="table table-sm drill-table">${tableHeadE}<tbody>`;
         for (let i = 0; i < data.einsatz.gruppen.length; i++) {
             const g = data.einsatz.gruppen[i];
-            // Passende Umsatz-Gruppe finden (gleiche Gruppe-Nummer, 7x → 8x)
             const umsatzGruppe = data.umsatz.gruppen ? data.umsatz.gruppen.find(ug => ug.gruppe === String(g.gruppe).replace(/^7/, '8')) : null;
             const erloesBetrag = umsatzGruppe ? umsatzGruppe.betrag : 0;
             const db1 = erloesBetrag - g.betrag;
             const marge = erloesBetrag > 0 ? (db1 / erloesBetrag * 100) : 0;
+            const gVortagE = vortag && vortag.einsatz.gruppen ? vortag.einsatz.gruppen.find(vg => String(vg.gruppe) === String(g.gruppe)) : null;
+            const uVortagE = vortag && vortag.umsatz.gruppen ? vortag.umsatz.gruppen.find(ug => String(ug.gruppe) === String(g.gruppe).replace(/^7/, '8')) : null;
+            const eBetragVE = gVortagE ? gVortagE.betrag : 0;
+            const erloesVE = uVortagE ? uVortagE.betrag : 0;
+            const db1VE = erloesVE - eBetragVE;
+            const margeVE = erloesVE > 0 ? (db1VE / erloesVE * 100) : 0;
             const hatKonten = g.konten && g.konten.length > 0;
             const rowClass = hatKonten ? 'drill-row' : '';
+            const cellsVortagE = showVortagKumuliert
+                ? `<td class="text-end val-neg bg-light">${fmtEuro(eBetragVE)}</td><td class="text-end val-pos bg-light">${fmtEuro(erloesVE)}</td><td class="text-end bg-light ${db1VE >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(db1VE)}</td><td class="text-end bg-light ${margeVE >= 0 ? 'val-pos' : 'val-neg'}">${fmtPct(margeVE)}</td>`
+                : '';
             html += `<tr class="${rowClass}" ${hatKonten ? `onclick="toggleKonten(this, 'einsatz', ${i})" style="cursor:pointer"` : ''}>
-                <td><i class="bi ${hatKonten ? 'bi-chevron-right' : 'bi-folder'} text-danger me-1 drill-icon"></i>${g.name} <small class="text-muted">(${g.gruppe})</small></td>
+                <td><i class="bi ${hatKonten ? 'bi-chevron-right' : 'bi-folder'} text-danger me-1 drill-icon"></i>${g.name} <small class="text-muted">(${g.gruppe})</small></td>${cellsVortagE}
                 <td class="text-end val-neg">${fmtEuro(g.betrag)}</td>
                 <td class="text-end val-pos">${fmtEuro(erloesBetrag)}</td>
                 <td class="text-end ${db1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(db1)}</td>
                 <td class="text-end ${marge >= 0 ? 'val-pos' : 'val-neg'}">${fmtPct(marge)}</td>
             </tr>`;
-            // Versteckte Zeile für Konten-Details
+            // Versteckte Zeile für Konten-Details – Vortag + Kumuliert (kontenbezogen wie GlobalCube)
             if (hatKonten) {
                 const umsatzKonten = umsatzGruppe ? umsatzGruppe.konten || [] : [];
-                html += `<tr class="konten-detail d-none" id="konten-einsatz-${i}"><td colspan="5" class="p-0">
+                const vortagEG2 = showVortagKumuliert && vortag && vortag.einsatz.gruppen ? vortag.einsatz.gruppen.find(vg => String(vg.gruppe) === String(g.gruppe)) : null;
+                const vortagUG2 = showVortagKumuliert && vortag && vortag.umsatz.gruppen ? vortag.umsatz.gruppen.find(vg => String(vg.gruppe) === String(g.gruppe).replace(/^7/, '8')) : null;
+                const vortagEKonten2 = vortagEG2 && vortagEG2.konten ? vortagEG2.konten : [];
+                const vortagUKonten2 = vortagUG2 && vortagUG2.konten ? vortagUG2.konten : [];
+                const innerHeadE = showVortagKumuliert
+                    ? `<tr><th>Konto</th><th>Bezeichnung</th><th colspan="4" class="text-center bg-light border-start">Vortag</th><th colspan="4" class="text-center border-start">Kumuliert</th></tr><tr><th></th><th></th><th class="text-end text-danger">Einsatz</th><th class="text-end text-success">Erlös</th><th class="text-end">DB1</th><th class="text-end">DB%</th><th class="text-end text-danger">Einsatz</th><th class="text-end text-success">Erlös</th><th class="text-end">DB1</th><th class="text-end">DB%</th></tr>`
+                    : `<tr><th>Konto</th><th>Bezeichnung</th><th class="text-end text-danger">Einsatz</th><th class="text-end text-success">Erlös</th><th class="text-end">DB1</th><th class="text-end">DB%</th></tr>`;
+                html += `<tr class="konten-detail d-none" id="konten-einsatz-${i}"><td colspan="${colCountE}" class="p-0">
                     <table class="table table-sm table-bordered mb-0" style="font-size: 0.75rem;">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Konto</th>
-                                <th>Bezeichnung</th>
-                                <th class="text-end text-danger">Einsatz</th>
-                                <th class="text-end text-success">Erlös</th>
-                                <th class="text-end">DB1</th>
-                                <th class="text-end">DB%</th>
-                            </tr>
-                        </thead>
+                        <thead class="table-light">${innerHeadE}</thead>
                         <tbody>`;
-                // Konten matchen
                 const kontenPaare = [];
                 const usedUmsatz = new Set();
                 for (const e of g.konten) {
@@ -919,29 +955,34 @@ function renderDrill(bereichKey, data) {
                     const erloes = p.u ? p.u.betrag : 0;
                     const einsatz = p.e ? p.e.betrag : 0;
                     const kMarge = erloes > 0 ? (p.db1 / erloes * 100) : 0;
-                    html += `<tr>
-                        <td><code>${konto}</code></td>
-                        <td>${bez}</td>
-                        <td class="text-end val-neg">${einsatz > 0 ? fmtEuro(einsatz) : '-'}</td>
-                        <td class="text-end val-pos">${erloes > 0 ? fmtEuro(erloes) : '-'}</td>
-                        <td class="text-end ${p.db1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(p.db1)}</td>
-                        <td class="text-end ${kMarge >= 0 ? 'val-pos' : 'val-neg'}">${fmtPct(kMarge)}</td>
-                    </tr>`;
+                    let cellsVortagKE = '';
+                    if (showVortagKumuliert) {
+                        const vE = p.e ? (vortagEKonten2.find(k => String(k.konto) === String(p.e.konto))?.betrag ?? 0) : 0;
+                        const vU = p.u ? (vortagUKonten2.find(k => String(k.konto) === String(p.u.konto))?.betrag ?? 0) : 0;
+                        const db1VKE = vU - vE;
+                        const margeVKE = vU > 0 ? (db1VKE / vU * 100) : 0;
+                        cellsVortagKE = `<td class="text-end val-neg bg-light">${vE !== 0 ? fmtEuro(vE) : '-'}</td><td class="text-end val-pos bg-light">${vU !== 0 ? fmtEuro(vU) : '-'}</td><td class="text-end bg-light ${db1VKE >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(db1VKE)}</td><td class="text-end bg-light ${margeVKE >= 0 ? 'val-pos' : 'val-neg'}">${vU > 0 ? fmtPct(margeVKE) : '-'}</td>`;
+                    }
+                    const cellsKumuliertKE = `<td class="text-end val-neg">${einsatz > 0 ? fmtEuro(einsatz) : '-'}</td><td class="text-end val-pos">${erloes > 0 ? fmtEuro(erloes) : '-'}</td><td class="text-end ${p.db1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(p.db1)}</td><td class="text-end ${kMarge >= 0 ? 'val-pos' : 'val-neg'}">${fmtPct(kMarge)}</td>`;
+                    html += `<tr><td><code>${konto}</code></td><td>${bez}</td>${cellsVortagKE}${cellsKumuliertKE}</tr>`;
                 }
                 html += '</tbody></table></td></tr>';
             }
         }
-        // Summenzeile
+        // Summenzeile (Vortag + Kumuliert)
         const sumEinsatz = data.einsatz.gruppen.reduce((s, g) => s + g.betrag, 0);
         const sumErloes = data.umsatz.gruppen ? data.umsatz.gruppen.reduce((s, g) => s + g.betrag, 0) : 0;
-        const sumDb1 = sumErloes - sumEinsatz;
-        const sumMarge = sumErloes > 0 ? (sumDb1 / sumErloes * 100) : 0;
+        const sumDb1E = sumErloes - sumEinsatz;
+        const sumMargeE = sumErloes > 0 ? (sumDb1E / sumErloes * 100) : 0;
+        const sumCellsVortagE = showVortagKumuliert
+            ? `<td class="text-end val-neg bg-light">${fmtEuro(sumVortagE)}</td><td class="text-end val-pos bg-light">${fmtEuro(sumVortagU)}</td><td class="text-end bg-light ${sumDb1V >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(sumDb1V)}</td><td class="text-end bg-light ${sumMargeV >= 0 ? 'val-pos' : 'val-neg'}">${fmtPct(sumMargeV)}</td>`
+            : '';
         html += `<tr class="table-secondary fw-bold">
-            <td>Gesamt</td>
+            <td>Gesamt</td>${sumCellsVortagE}
             <td class="text-end val-neg">${fmtEuro(sumEinsatz)}</td>
             <td class="text-end val-pos">${fmtEuro(sumErloes)}</td>
-            <td class="text-end ${sumDb1 >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(sumDb1)}</td>
-            <td class="text-end ${sumMarge >= 0 ? 'val-pos' : 'val-neg'}">${fmtPct(sumMarge)}</td>
+            <td class="text-end ${sumDb1E >= 0 ? 'val-pos' : 'val-neg'}">${fmtEuro(sumDb1E)}</td>
+            <td class="text-end ${sumMargeE >= 0 ? 'val-pos' : 'val-neg'}">${fmtPct(sumMargeE)}</td>
         </tr>`;
         html += '</tbody></table>';
     } else {
