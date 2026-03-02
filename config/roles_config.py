@@ -108,6 +108,15 @@ FEATURE_ACCESS = {
     'auslieferungen': ['admin', 'buchhaltung', 'verkauf_leitung', 'verkauf', 'disposition'],
     'verkauf_dashboard': ['admin', 'buchhaltung', 'verkauf_leitung', 'verkauf', 'disposition'],
 
+    # eAutoseller Bestand (nur VKL/Admin/Disposition – Verkäufer standardmäßig nicht)
+    'eautoseller': ['admin', 'verkauf_leitung', 'disposition'],
+
+    # Verkauf Planung/Ziel/Leasys (nur VKL/GF/Admin, nicht normaler Verkäufer)
+    'gw_standzeit': ['admin', 'geschaeftsleitung', 'verkauf_leitung'],
+    'planung': ['admin', 'geschaeftsleitung', 'verkauf_leitung'],
+    'verkaeufer_zielplanung': ['admin', 'geschaeftsleitung', 'verkauf_leitung'],
+    'leasys': ['admin', 'disposition', 'verkauf_leitung'],
+
     # Fahrzeuge / Bestand
     'fahrzeuge': ['admin', 'buchhaltung', 'verkauf_leitung', 'verkauf', 'disposition'],
     'stellantis_bestand': ['admin', 'buchhaltung', 'verkauf_leitung', 'verkauf', 'disposition'],
@@ -151,6 +160,9 @@ FEATURE_ACCESS = {
 
     # Marketing Potenzial / Predictive Scoring (Call-Agent, 2026-02-21)
     'marketing_potenzial': ['admin'],
+
+    # AfA Verkaufsempfehlungen (GF/VKL) – positiver Cashflow, hoher Umschlag, inkl. Zinsen
+    'afa_verkaufsempfehlungen': ['admin', 'verkauf_leitung'],
 }
 
 

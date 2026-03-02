@@ -1,7 +1,11 @@
 # Auth & LDAP — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-03-02
+## Letzte Aktualisierung: 2026-02-27
+
+### Feature eautoseller / „verlorene“ Verkauf-Features (2026-02-27)
+- **Problem:** eautoseller unter Verkauf und in Rechteverwaltung nicht auffindbar. Ursache: Feature nur in DB/Navi, nicht in `FEATURE_ACCESS` (config/roles_config.py).
+- **Lösung:** `FEATURE_ACCESS` um **eautoseller**, **gw_standzeit**, **planung**, **verkaeufer_zielplanung**, **leasys** ergänzt. Feature-Zugriff sichtbar unter **User & Rollen → Feature-Zugriff → Nach Rolle**. Rolle „Verkauf“ hat eautoseller bewusst nicht (Admin/VKL/Disposition schon); bei Bedarf dort anhaken. Doku: `FEATURE_EAUTOSELLER_UND_VERKAUF.md`.
 
 ### Rechteverwaltung Entschlackung (2026-03-02)
 - **Vorschlag B:** Nur Sicht „Nach Rolle“ bearbeitbar; „Nach Feature“ und „Matrix“ nur Übersicht (read-only). Speichern nur aus „Nach Rolle“. Feature-Karten ohne Stift-Button.
@@ -65,6 +69,7 @@ Auth umfasst LDAP/AD-Integration, RBAC, Session-Management, Rollen-Config, Dashb
 - ✅ **Locosoft-ID in Rechteverwaltung sichtbar (2026-03-02):** Modal „Mitarbeiter bearbeiten“ zeigt **Locosoft-ID (für Filter „nur eigene“)** aus `ldap_employee_mapping`; API `GET /api/employee-management/employee/<id>` liefert `mapping_locosoft_id`. Doku: `LOCOSOFT_ID_ANZEIGE_UND_FILTER.md`.
 - ✅ **User fehlt / Login schlägt fehl (2026-03-02):** User-Liste kommt aus Tabelle `users` (Eintrag nur bei erstem erfolgreichen LDAP-Login). Prüfanleitung für fehlende User (z. B. Christian Raith): `PRUEFUNG_USER_FEHLT_LOGIN.md`. Typo in ldap_employee_mapping (chrsitian→christian) für Christian Raith korrigiert.
 - ✅ **Dashboard nur für berechtigte Rollen (2026-03-02):** Top-Level „Dashboard“ mit `requires_feature = 'dashboard'`; Rolle werkstatt standardmäßig ohne Feature → Dashboard in Navi ausgeblendet. Migration `fix_navigation_dashboard_requires_feature.sql`.
+- ✅ **Feature eautoseller / „verlorene“ Verkauf-Features (2026-02-27):** eautoseller, gw_standzeit, planung, verkaeufer_zielplanung, leasys in `FEATURE_ACCESS` ergänzt; in Rechteverwaltung unter Feature-Zugriff → Nach Rolle sichtbar und zuweisbar. Doku: `FEATURE_EAUTOSELLER_UND_VERKAUF.md`.
 
 ## Auf Eis gelegt (vorerst)
 
