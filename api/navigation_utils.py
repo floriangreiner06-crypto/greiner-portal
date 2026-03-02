@@ -144,6 +144,97 @@ def get_navigation_for_user():
         return []  # Fallback: Leere Liste
 
 
+def get_navigation_for_role(role: str, allowed_features: set):
+    """
+    Lädt Navigation-Items gefiltert für eine gegebene Rolle und Feature-Menge.
+    Für Admin-Anzeige „Rechte & Navi für User“ – ohne current_user.
+    """
+    if allowed_features is None:
+        allowed_features = set()
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, parent_id, label, url, icon, order_index,
+                   requires_feature, role_restriction, is_dropdown, is_header, is_divider, active, category
+            FROM navigation_items
+            WHERE active = true
+            ORDER BY order_index, label
+        ''')
+        all_items = rows_to_list(cursor.fetchall())
+        conn.close()
+
+        all_items_by_id = {item['id']: item for item in all_items}
+        effective_feature_by_id = {}
+        for item in all_items:
+            effective_feature_by_id[item['id']] = (item.get('requires_feature') or '').strip() or None
+        changed = True
+        while changed:
+            changed = False
+            for item in all_items:
+                if effective_feature_by_id.get(item['id']):
+                    continue
+                pid = item.get('parent_id')
+                if pid and pid in effective_feature_by_id and effective_feature_by_id.get(pid):
+                    effective_feature_by_id[item['id']] = effective_feature_by_id[pid]
+                    changed = True
+
+        filtered_items = []
+        is_admin = role == 'admin'
+        for item in all_items:
+            eff = effective_feature_by_id.get(item['id'])
+            if eff:
+                if not is_admin and eff not in allowed_features:
+                    continue
+            if item.get('role_restriction'):
+                allowed_roles = [r.strip() for r in str(item['role_restriction']).split(',') if r.strip()]
+                if role not in allowed_roles and not is_admin:
+                    continue
+            filtered_items.append(item)
+
+        filtered_ids = {item['id'] for item in filtered_items}
+        while True:
+            to_add = []
+            for item in filtered_items:
+                pid = item.get('parent_id')
+                if pid and pid not in filtered_ids and pid in all_items_by_id:
+                    to_add.append(all_items_by_id[pid])
+                    filtered_ids.add(pid)
+            if not to_add:
+                break
+            filtered_items.extend(to_add)
+
+        items_by_id = {item['id']: item for item in filtered_items}
+        root_items = []
+        for item in filtered_items:
+            if item['parent_id']:
+                parent = items_by_id.get(item['parent_id'])
+                if parent:
+                    if 'children' not in parent:
+                        parent['children'] = []
+                    parent['children'].append(item)
+            else:
+                root_items.append(item)
+
+        def remove_empty_dropdowns(items):
+            result = []
+            for item in list(items):
+                if item.get('is_dropdown') and item.get('children'):
+                    item['children'] = remove_empty_dropdowns(item['children'])
+                if item.get('is_dropdown') and len(item.get('children', [])) == 0:
+                    continue
+                result.append(item)
+            return result
+
+        root_items = remove_empty_dropdowns(root_items)
+        return root_items
+    except Exception as e:
+        import traceback
+        print(f"⚠️ get_navigation_for_role: {e}")
+        traceback.print_exc()
+        return []
+
+
 def render_navigation_html(items):
     """
     Rendert Navigation-Items als HTML

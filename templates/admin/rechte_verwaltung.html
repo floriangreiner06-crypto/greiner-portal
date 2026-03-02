@@ -234,7 +234,7 @@
         <span class="stat-ssot">SSOT: Portal (Option B)</span>
     </div>
 
-    <!-- Tabs -->
+    <!-- Tabs (reduziert auf 3: User & Rollen, Mitarbeiter & Urlaub, Einstellungen) -->
     <ul class="nav nav-tabs px-3 pt-2 mb-0 bg-white border-bottom" role="tablist">
         <li class="nav-item">
             <a class="nav-link active" data-bs-toggle="tab" href="#users-tab">
@@ -242,43 +242,13 @@
             </a>
         </li>
         <li class="nav-item">
-            <a class="nav-link" data-bs-toggle="tab" href="#feature-zugriff-tab">
-                <i class="bi bi-shield-check me-1"></i>Feature-Zugriff
+            <a class="nav-link" data-bs-toggle="tab" href="#mitarbeiter-urlaub-tab" id="tab-mitarbeiter-config">
+                <i class="bi bi-person-gear me-1"></i>Mitarbeiter & Urlaub <span class="badge bg-secondary ms-1" id="tabMitarbeiterCount">0</span>
             </a>
         </li>
         <li class="nav-item">
-            <a class="nav-link" data-bs-toggle="tab" href="#architektur-tab">
-                <i class="bi bi-diagram-3 me-1"></i>Architektur
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" data-bs-toggle="tab" href="#reports-tab">
-                <i class="bi bi-envelope-paper me-1"></i>E-Mail Reports
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" data-bs-toggle="tab" href="#titles-tab">
-                <i class="bi bi-card-text me-1"></i>Title-Mapping
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" data-bs-toggle="tab" href="#navigation-tab">
-                <i class="bi bi-list-ul me-1"></i>Navigation
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" data-bs-toggle="tab" href="#mitarbeiter-config-tab" id="tab-mitarbeiter-config">
-                <i class="bi bi-person-gear me-1"></i>Mitarbeiter-Konfig <span class="badge bg-secondary ms-1" id="tabMitarbeiterCount">0</span>
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" data-bs-toggle="tab" href="#urlaubsverwaltung-tab">
-                <i class="bi bi-umbrella me-1"></i>Urlaubsverwaltung
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" data-bs-toggle="tab" href="#mitarbeiterverwaltung-tab">
-                <i class="bi bi-people me-1"></i>Mitarbeiterverwaltung
+            <a class="nav-link" data-bs-toggle="tab" href="#einstellungen-tab">
+                <i class="bi bi-gear me-1"></i>Einstellungen
             </a>
         </li>
     </ul>
@@ -323,22 +293,21 @@
                     </tbody>
                 </table>
             </div>
-        </div>
-
-        <!-- TAB: Feature-Zugriff (vereint: Nach Rolle + Nach Feature + Matrix) -->
-        <div class="tab-pane fade" id="feature-zugriff-tab">
+            <hr class="my-4">
+            <h5 class="mb-3"><i class="bi bi-shield-check me-1"></i>Rollen & Module (Feature-Zugriff)</h5>
+            <!-- Feature-Zugriff: Nach Rolle bearbeiten, Nach Feature/Matrix nur Übersicht -->
             <div class="rechte-info-banner" style="background: linear-gradient(135deg, #faf5ff 0%, #fdf2f8 100%); border-color: #e9d5ff;">
-                <strong>Feature-Zugriff:</strong> Hier legst du fest, welche Module jede Rolle sehen darf. Eine Stelle zum Bearbeiten — wähle die Sicht unten. Änderungen gelten für <strong>alle User</strong> mit dieser Rolle.
+                <strong>Feature-Zugriff:</strong> Hier legst du fest, welche Module jede Rolle sehen darf. <strong>Zum Bearbeiten:</strong> Sicht „Nach Rolle“ — Rolle wählen, Häkchen setzen, speichern. „Nach Feature“ und „Matrix“ sind nur zur Übersicht (keine Bearbeitung).
             </div>
             <ul class="nav nav-pills mb-3" id="featureZugriffSubTabs" role="tablist">
                 <li class="nav-item">
-                    <button class="nav-link active" id="sub-nach-rolle-pill" data-bs-toggle="pill" data-bs-target="#sub-nach-rolle" type="button">Nach Rolle</button>
+                    <button class="nav-link active" id="sub-nach-rolle-pill" data-bs-toggle="pill" data-bs-target="#sub-nach-rolle" type="button">Nach Rolle <span class="badge bg-primary ms-1">Bearbeiten</span></button>
                 </li>
                 <li class="nav-item">
-                    <button class="nav-link" id="sub-nach-feature-pill" data-bs-toggle="pill" data-bs-target="#sub-nach-feature" type="button">Nach Feature</button>
+                    <button class="nav-link" id="sub-nach-feature-pill" data-bs-toggle="pill" data-bs-target="#sub-nach-feature" type="button">Nach Feature (nur Übersicht)</button>
                 </li>
                 <li class="nav-item">
-                    <button class="nav-link" id="sub-matrix-pill" data-bs-toggle="pill" data-bs-target="#sub-matrix" type="button">Matrix (Übersicht)</button>
+                    <button class="nav-link" id="sub-matrix-pill" data-bs-toggle="pill" data-bs-target="#sub-matrix" type="button">Matrix (nur Übersicht)</button>
                 </li>
             </ul>
             <div class="tab-content" id="featureZugriffSubContent">
@@ -351,45 +320,14 @@
                             <i class="bi bi-check me-1"></i>Änderungen speichern
                         </button>
                     </div>
-                    <div class="card mt-4" id="filterModeCard">
-                        <div class="card-header py-2">
-                            <i class="bi bi-funnel me-2"></i>Filter-Verhalten für Listen
-                        </div>
-                        <div class="card-body py-2">
-                            <p class="text-muted small mb-2">Für Seiten mit Listen-Filter (Auftragseingang, Auslieferungen, OPOS, Leistungsübersicht Werkstatt): Verhalten pro Rolle festlegen.</p>
-                            <div class="table-responsive">
-                                <table class="table table-sm mb-0" id="filterModeTable">
-                                    <thead><tr><th>Feature</th><th>Rolle</th><th>Verhalten</th></tr></thead>
-                                    <tbody id="filterModeBody"></tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
+                    <p class="text-muted small mt-3 mb-1"><i class="bi bi-funnel me-1"></i>Bei Listen-Features (Auftragseingang, Auslieferungen, OPOS, Leistungsübersicht Werkstatt): Filter-Verhalten direkt neben dem Feature wählen.</p>
                 </div>
                 <div class="tab-pane fade" id="sub-nach-feature">
-                    <div class="card mb-3">
-                        <div class="card-body">
-                            <p class="text-muted small mb-3">Rolle wählen und Zugriff pro Feature ein- oder abwählen. Speichern übernimmt die Änderungen für diese Rolle.</p>
-                            <div class="row align-items-end mb-3">
-                                <div class="col-md-4">
-                                    <label class="form-label small mb-1">Rolle</label>
-                                    <select class="form-select" id="roleFeatureSelect" onchange="onRoleForFeaturesChange()">
-                                        <option value="">— Rolle wählen —</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-4">
-                                    <button type="button" class="btn btn-primary" id="saveRoleFeaturesBtn" onclick="saveRoleFeatures()" disabled>
-                                        <i class="bi bi-check me-1"></i>Zugriff für diese Rolle speichern
-                                    </button>
-                                </div>
-                            </div>
-                            <div id="roleFeaturesList" class="border rounded p-3 bg-light" style="max-height: 320px; overflow-y: auto;">
-                                <span class="text-muted">Bitte zuerst eine Rolle wählen.</span>
-                            </div>
-                        </div>
+                    <div class="alert alert-info mb-3">
+                        <i class="bi bi-info-circle me-2"></i><strong>Nur Übersicht.</strong> Zum Ändern der Zugriffe: Sicht <strong>„Nach Rolle“</strong> verwenden (Rolle wählen, Häkchen setzen, speichern).
                     </div>
-                    <h5 class="mb-2"><i class="bi bi-key me-1"></i>Pro Feature Rollen bearbeiten</h5>
-                    <p class="text-muted small mb-3">Klick auf Stift öffnet die Rollen für dieses Feature.</p>
+                    <h5 class="mb-2"><i class="bi bi-key me-1"></i>Welche Rollen haben welches Feature?</h5>
+                    <p class="text-muted small mb-3">Read-only — Änderungen nur in der Sicht „Nach Rolle“.</p>
                     <div class="row" id="featuresGrid">
                         <div class="col-12 text-center py-4">
                             <div class="spinner-border text-primary" role="status"></div>
@@ -397,7 +335,7 @@
                     </div>
                 </div>
                 <div class="tab-pane fade" id="sub-matrix">
-                    <p class="text-muted small mb-2">Read-only — welche Rolle hat Zugriff auf welches Feature. Zum Ändern: Sicht „Nach Rolle“ oder „Nach Feature“.</p>
+                    <p class="text-muted small mb-2">Read-only — welche Rolle hat Zugriff auf welches Feature. Zum Ändern: Sicht <strong>„Nach Rolle“</strong> verwenden.</p>
                     <div class="table-responsive border rounded">
                         <table class="table table-sm rechte-matrix-table mb-0" id="matrixTable">
                             <thead></thead>
@@ -408,153 +346,161 @@
             </div>
         </div>
 
-        <!-- TAB: Architektur (Kaskade) -->
-        <div class="tab-pane fade" id="architektur-tab">
-            <div class="rechte-info-banner" style="background: linear-gradient(135deg, #f0fdfa 0%, #ecfdf5 100%); border-color: #99f6e4;">
-                <strong>Architektur:</strong> So wird die Portal-Rolle ermittelt — eine klare Kaskade.
-            </div>
-            <div class="rechte-arch-step" style="border-color: #6366f1; background: #6366f108;">
-                <strong>1. Login via LDAP</strong><br>
-                <small class="text-muted">AD liefert nur: ✓ Identität (wer bist du?) — KEINE Rechte!</small>
-            </div>
-            <div class="rechte-arch-step" style="border-color: #dc2626; background: #dc262608;">
-                <strong>2. admin in user_roles?</strong><br>
-                <small class="text-muted">Ja → Rolle = admin, voller Zugriff. Fertig.</small>
-            </div>
-            <div class="rechte-arch-step" style="border-color: #059669; background: #05966908;">
-                <strong>3. portal_role_override gesetzt?</strong><br>
-                <small class="text-muted">Ja → Diese Rolle verwenden (vom Admin im Portal zugewiesen).</small>
-            </div>
-            <div class="rechte-arch-step" style="border-color: #6b7280; background: #f9fafb;">
-                <strong>4. Fallback: mitarbeiter</strong><br>
-                <small class="text-muted">Minimaler Zugriff (nur Urlaubsplaner, eigene Daten).</small>
-            </div>
-        </div>
-
-        <!-- TAB 2: E-Mail Reports -->
-        <div class="tab-pane fade" id="reports-tab">
-            <!-- Migration Button (einmalig) -->
-            <div class="alert alert-info d-none" id="migrationAlert">
-                <div class="d-flex justify-content-between align-items-center">
-                    <span><i class="bi bi-info-circle me-2"></i>Bestehende Empfaenger wurden noch nicht migriert.</span>
-                    <button class="btn btn-sm btn-primary" onclick="migrateSubscribers()">
-                        <i class="bi bi-arrow-repeat me-1"></i>Jetzt migrieren
-                    </button>
-                </div>
-            </div>
-
-            <div class="row" id="reportsGrid">
-                <div class="col-12 text-center py-4">
-                    <div class="spinner-border text-primary" role="status"></div>
-                    <div class="mt-2">Lade Reports...</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- TAB: Title-Mapping -->
-        <div class="tab-pane fade" id="titles-tab">
-            <div class="card">
-                <div class="card-header card-header-admin">
-                    <i class="bi bi-card-text me-2"></i>LDAP-Title zu Portal-Rolle
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-sm title-mapping mb-0">
+        <!-- TAB: Mitarbeiter & Urlaub (gebündelt) -->
+        <div class="tab-pane fade" id="mitarbeiter-urlaub-tab">
+            <ul class="nav nav-pills mb-3" role="tablist">
+                <li class="nav-item"><a class="nav-link active" data-bs-toggle="pill" href="#sub-mitarbeiter-config"><i class="bi bi-person-gear me-1"></i>Mitarbeiter-Konfig</a></li>
+                <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#sub-urlaubsverwaltung"><i class="bi bi-umbrella me-1"></i>Urlaubsverwaltung</a></li>
+                <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#sub-mitarbeiterverwaltung"><i class="bi bi-people me-1"></i>Mitarbeiterverwaltung</a></li>
+            </ul>
+            <div class="tab-content">
+                <div class="tab-pane fade show active" id="sub-mitarbeiter-config">
+                    <div class="rechte-info-banner" style="background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border-color: #a7f3d0;">
+                        <strong>Mitarbeiter-Konfig:</strong> Abteilung, Standort, Genehmiger (Urlaub) und Vertretung pro Mitarbeiter. Genehmiger ergibt sich aus den Regeln (Gruppe/Standort). Vertretungen bearbeiten: <a href="/admin/organigramm" target="_blank">Organigramm <i class="bi bi-box-arrow-up-right small"></i></a> oder Stift pro Zeile.
+                    </div>
+                    <div class="d-flex gap-2 flex-wrap mb-3">
+                        <input type="text" class="form-control" id="mitarbeiterConfigSearch" placeholder="Mitarbeiter suchen…" style="max-width: 280px;">
+                        <select class="form-select" id="mitarbeiterConfigDept" style="max-width: 220px;">
+                            <option value="">Alle Abteilungen</option>
+                        </select>
+                    </div>
+                    <div class="small text-muted mb-2"><span id="mitarbeiterConfigCounter">0 Mitarbeiter</span></div>
+                    <div class="table-responsive border rounded">
+                        <table class="table table-hover mb-0" id="mitarbeiterConfigTable">
                             <thead class="table-light">
                                 <tr>
-                                    <th>LDAP-Title</th>
-                                    <th>Portal-Rolle</th>
+                                    <th>Mitarbeiter</th>
+                                    <th>Abteilung</th>
+                                    <th>Standort</th>
+                                    <th>Genehmiger (Urlaub)</th>
+                                    <th>Vertritt</th>
+                                    <th>wird vertreten</th>
+                                    <th class="text-center" style="width:100px;">Aktion</th>
                                 </tr>
                             </thead>
-                            <tbody id="titlesBody">
-                                <tr>
-                                    <td colspan="2" class="text-center py-3">
-                                        <div class="spinner-border spinner-border-sm text-primary"></div>
-                                    </td>
-                                </tr>
+                            <tbody id="mitarbeiterConfigBody">
+                                <tr><td colspan="7" class="text-center py-4"><div class="spinner-border text-primary"></div><div class="mt-2">Lade Mitarbeiter-Konfig…</div></td></tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
-            </div>
-            <div class="alert alert-warning mt-3">
-                <i class="bi bi-exclamation-triangle me-2"></i>
-                Diese Mappings sind in <code>config/roles_config.py</code> definiert.
-                Zum Hinzufuegen neuer Titles muss die Datei bearbeitet werden.
+                <div class="tab-pane fade" id="sub-urlaubsverwaltung">
+                    <div class="rechte-info-banner" style="background: linear-gradient(135deg, #eff6ff 0%, #f0f9ff 100%); border-color: #bae6fd;">
+                        <strong>Urlaubsverwaltung:</strong> Ansprüche, Sperren und Freie Tage – alles hier. <a href="/urlaubsplaner/chef" class="ms-2" target="_blank"><i class="bi bi-diagram-3"></i> Chef-Übersicht öffnen</a>
+                    </div>
+                    <iframe src="/urlaubsplaner/admin?embed=1" class="border rounded w-100" style="min-height: calc(100vh - 280px); height: 900px;" title="Urlaubsplaner Administration"></iframe>
+                </div>
+                <div class="tab-pane fade" id="sub-mitarbeiterverwaltung">
+                    <div class="rechte-info-banner" style="background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border-color: #a7f3d0;">
+                        <strong>Mitarbeiterverwaltung:</strong> Digitale Personalakte – Stammdaten, Vertrag, Arbeitszeit, Urlaubseinstellungen. Links: Mitarbeiter wählen, rechts: Datensatz bearbeiten.
+                    </div>
+                    <iframe src="/admin/mitarbeiterverwaltung?embed=1" class="border rounded w-100" style="min-height: calc(100vh - 280px); height: 900px;" title="Mitarbeiterverwaltung"></iframe>
+                </div>
             </div>
         </div>
 
-        <!-- TAB 5: Navigation -->
-        <div class="tab-pane fade" id="navigation-tab">
-            <div class="card mb-3">
-                <div class="card-header card-header-admin d-flex justify-content-between align-items-center">
-                    <span><i class="bi bi-list-ul me-2"></i>Navigation verwalten</span>
-                    <button class="btn btn-sm btn-light" onclick="loadNavigationItems()">
-                        <i class="bi bi-arrow-clockwise me-1"></i>Aktualisieren
-                    </button>
-                </div>
-                <div class="card-body">
-                    <div class="alert alert-info mb-3">
-                        <i class="bi bi-info-circle me-2"></i>
-                        Navigation-Items aus der Datenbank. Stift = bearbeiten, Papierkorb = löschen. Nach Änderung ggf. Browser aktualisieren.
-                        <strong>Feature-Zugriff</strong> (welche Rolle sieht welches Modul) wird im Tab <strong>Feature-Zugriff</strong> gepflegt; hier nur Menüstruktur und <code>requires_feature</code> pro Menüpunkt.
-                    </div>
-                    <div id="navigationTree" class="mt-3">
-                        <div class="text-center py-4">
-                            <div class="spinner-border text-primary" role="status"></div>
+        <!-- TAB: Einstellungen (Navigation, Title-Mapping, E-Mail Reports, Architektur) -->
+        <div class="tab-pane fade" id="einstellungen-tab">
+            <ul class="nav nav-pills mb-3" role="tablist">
+                <li class="nav-item"><a class="nav-link active" data-bs-toggle="pill" href="#sub-navigation"><i class="bi bi-list-ul me-1"></i>Navigation</a></li>
+                <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#sub-titles"><i class="bi bi-card-text me-1"></i>Title-Mapping</a></li>
+                <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#sub-reports"><i class="bi bi-envelope-paper me-1"></i>E-Mail Reports</a></li>
+                <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#sub-architektur"><i class="bi bi-diagram-3 me-1"></i>Architektur</a></li>
+            </ul>
+            <div class="tab-content">
+                <div class="tab-pane fade show active" id="sub-navigation">
+                    <div class="card mb-3">
+                        <div class="card-header card-header-admin d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-list-ul me-2"></i>Navigation verwalten</span>
+                            <button class="btn btn-sm btn-light" onclick="loadNavigationItems()">
+                                <i class="bi bi-arrow-clockwise me-1"></i>Aktualisieren
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-info mb-3">
+                                <i class="bi bi-info-circle me-2"></i>
+                                Navigation-Items aus der Datenbank. Stift = bearbeiten, Papierkorb = löschen. Nach Änderung ggf. Browser aktualisieren.
+                                <strong>Feature-Zugriff</strong> (welche Rolle sieht welches Modul) wird unter <strong>User & Rollen → Rollen & Module</strong> gepflegt; hier nur Menüstruktur und <code>requires_feature</code> pro Menüpunkt.
+                            </div>
+                            <div id="navigationTree" class="mt-3">
+                                <div class="text-center py-4">
+                                    <div class="spinner-border text-primary" role="status"></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
+                <div class="tab-pane fade" id="sub-titles">
+                    <div class="card">
+                        <div class="card-header card-header-admin">
+                            <i class="bi bi-card-text me-2"></i>LDAP-Title zu Portal-Rolle
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-sm title-mapping mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>LDAP-Title</th>
+                                            <th>Portal-Rolle</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="titlesBody">
+                                        <tr>
+                                            <td colspan="2" class="text-center py-3">
+                                                <div class="spinner-border spinner-border-sm text-primary"></div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-warning mt-3">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        Diese Mappings sind in <code>config/roles_config.py</code> definiert.
+                        Zum Hinzufuegen neuer Titles muss die Datei bearbeitet werden.
+                    </div>
+                </div>
+                <div class="tab-pane fade" id="sub-reports">
+                    <div class="alert alert-info d-none" id="migrationAlert">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-info-circle me-2"></i>Bestehende Empfaenger wurden noch nicht migriert.</span>
+                            <button class="btn btn-sm btn-primary" onclick="migrateSubscribers()">
+                                <i class="bi bi-arrow-repeat me-1"></i>Jetzt migrieren
+                            </button>
+                        </div>
+                    </div>
+                    <div class="row" id="reportsGrid">
+                        <div class="col-12 text-center py-4">
+                            <div class="spinner-border text-primary" role="status"></div>
+                            <div class="mt-2">Lade Reports...</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="tab-pane fade" id="sub-architektur">
+                    <div class="rechte-info-banner" style="background: linear-gradient(135deg, #f0fdfa 0%, #ecfdf5 100%); border-color: #99f6e4;">
+                        <strong>Architektur:</strong> So wird die Portal-Rolle ermittelt — eine klare Kaskade.
+                    </div>
+                    <div class="rechte-arch-step" style="border-color: #6366f1; background: #6366f108;">
+                        <strong>1. Login via LDAP</strong><br>
+                        <small class="text-muted">AD liefert nur: ✓ Identität (wer bist du?) — KEINE Rechte!</small>
+                    </div>
+                    <div class="rechte-arch-step" style="border-color: #dc2626; background: #dc262608;">
+                        <strong>2. admin in user_roles?</strong><br>
+                        <small class="text-muted">Ja → Rolle = admin, voller Zugriff. Fertig.</small>
+                    </div>
+                    <div class="rechte-arch-step" style="border-color: #059669; background: #05966908;">
+                        <strong>3. portal_role_override gesetzt?</strong><br>
+                        <small class="text-muted">Ja → Diese Rolle verwenden (vom Admin im Portal zugewiesen).</small>
+                    </div>
+                    <div class="rechte-arch-step" style="border-color: #6b7280; background: #f9fafb;">
+                        <strong>4. Fallback: mitarbeiter</strong><br>
+                        <small class="text-muted">Minimaler Zugriff (nur Urlaubsplaner, eigene Daten).</small>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <!-- TAB: Mitarbeiter-Konfig -->
-        <div class="tab-pane fade" id="mitarbeiter-config-tab">
-            <div class="rechte-info-banner" style="background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border-color: #a7f3d0;">
-                <strong>Mitarbeiter-Konfig:</strong> Abteilung, Standort, Genehmiger (Urlaub) und Vertretung pro Mitarbeiter. Genehmiger ergibt sich aus den Regeln (Gruppe/Standort). Vertretungen bearbeiten: <a href="/admin/organigramm" target="_blank">Organigramm <i class="bi bi-box-arrow-up-right small"></i></a> oder Stift pro Zeile.
-            </div>
-            <div class="d-flex gap-2 flex-wrap mb-3">
-                <input type="text" class="form-control" id="mitarbeiterConfigSearch" placeholder="Mitarbeiter suchen…" style="max-width: 280px;">
-                <select class="form-select" id="mitarbeiterConfigDept" style="max-width: 220px;">
-                    <option value="">Alle Abteilungen</option>
-                </select>
-            </div>
-            <div class="small text-muted mb-2"><span id="mitarbeiterConfigCounter">0 Mitarbeiter</span></div>
-            <div class="table-responsive border rounded">
-                <table class="table table-hover mb-0" id="mitarbeiterConfigTable">
-                    <thead class="table-light">
-                        <tr>
-                            <th>Mitarbeiter</th>
-                            <th>Abteilung</th>
-                            <th>Standort</th>
-                            <th>Genehmiger (Urlaub)</th>
-                            <th>Vertritt</th>
-                            <th>wird vertreten</th>
-                            <th class="text-center" style="width:100px;">Aktion</th>
-                        </tr>
-                    </thead>
-                    <tbody id="mitarbeiterConfigBody">
-                        <tr><td colspan="7" class="text-center py-4"><div class="spinner-border text-primary"></div><div class="mt-2">Lade Mitarbeiter-Konfig…</div></td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- TAB: Urlaubsverwaltung (inkl. Vollansicht Urlaubsplaner-Admin) -->
-        <div class="tab-pane fade" id="urlaubsverwaltung-tab">
-            <div class="rechte-info-banner" style="background: linear-gradient(135deg, #eff6ff 0%, #f0f9ff 100%); border-color: #bae6fd;">
-                <strong>Urlaubsverwaltung:</strong> Ansprüche, Sperren und Freie Tage – alles hier. <a href="/urlaubsplaner/chef" class="ms-2" target="_blank"><i class="bi bi-diagram-3"></i> Chef-Übersicht öffnen</a>
-            </div>
-            <iframe src="/urlaubsplaner/admin?embed=1" class="border rounded w-100" style="min-height: calc(100vh - 280px); height: 900px;" title="Urlaubsplaner Administration"></iframe>
-        </div>
-
-        <!-- TAB: Mitarbeiterverwaltung (Digitale Personalakte, eingebettet) -->
-        <div class="tab-pane fade" id="mitarbeiterverwaltung-tab">
-            <div class="rechte-info-banner" style="background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border-color: #a7f3d0;">
-                <strong>Mitarbeiterverwaltung:</strong> Digitale Personalakte – Stammdaten, Vertrag, Arbeitszeit, Urlaubseinstellungen. Links: Mitarbeiter wählen, rechts: Datensatz bearbeiten.
-            </div>
-            <iframe src="/admin/mitarbeiterverwaltung?embed=1" class="border rounded w-100" style="min-height: calc(100vh - 280px); height: 900px;" title="Mitarbeiterverwaltung"></iframe>
-        </div>
     </div>
 </div>
 
@@ -755,6 +701,44 @@
     </div>
 </div>
 
+<!-- Modal: Rechte & Navi für User (nur Anzeige) -->
+<div class="modal fade" id="effectiveRightsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-eye me-2"></i>Rechte & Navi für <span id="effectiveRightsUserName"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="effectiveRightsLoading" class="text-center py-4">
+                    <div class="spinner-border text-primary"></div>
+                    <div class="mt-2">Lade Rechte…</div>
+                </div>
+                <div id="effectiveRightsContent" style="display: none;">
+                    <p class="text-muted small mb-3">Nur Anzeige – Bearbeitung: Rolle in der Tabelle, Features unter „Rollen & Module“.</p>
+                    <div class="mb-3">
+                        <strong>Wirksame Rolle:</strong> <span id="effectiveRightsRole" class="badge bg-secondary"></span>
+                    </div>
+                    <div class="mb-3">
+                        <strong>Features (Zugriff):</strong>
+                        <div id="effectiveRightsFeatures" class="small border rounded p-2 bg-light" style="max-height: 140px; overflow-y: auto;"></div>
+                    </div>
+                    <div>
+                        <strong>Navigation (sichtbare Menüpunkte):</strong>
+                        <div id="effectiveRightsNav" class="small border rounded p-2 bg-light" style="max-height: 220px; overflow-y: auto;"></div>
+                    </div>
+                </div>
+                <div id="effectiveRightsError" class="alert alert-danger" style="display: none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Modal: Feature-Zugriff bearbeiten -->
 <div class="modal fade" id="featureModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
@@ -917,10 +901,10 @@ document.addEventListener('DOMContentLoaded', function() {
     loadReports();
     loadEmployees();
     loadDashboards();
-    // Tab-Wechsel: Mitarbeiter-Konfig und Urlaubsverwaltung nachladen
-    const tabMitarbeiter = document.querySelector('a[href="#mitarbeiter-config-tab"]');
-    if (tabMitarbeiter) {
-        tabMitarbeiter.addEventListener('shown.bs.tab', function() {
+    // Tab-Wechsel: Mitarbeiter & Urlaub – beim Öffnen des Tabs Mitarbeiter-Konfig nachladen
+    const tabMitarbeiterUrlaub = document.querySelector('a[href="#mitarbeiter-urlaub-tab"]');
+    if (tabMitarbeiterUrlaub) {
+        tabMitarbeiterUrlaub.addEventListener('shown.bs.tab', function() {
             loadEmployeesConfig();
         });
     }
@@ -1004,25 +988,9 @@ function getFilterModeFor(feature, role) {
     return r ? r.filter_mode : 'all_filterable';
 }
 
+// Filter-Verhalten ist jetzt inline in renderRoleFeaturesGrouped (Dropdown pro Listen-Feature)
 function renderFilterModeTable() {
-    const tbody = document.getElementById('filterModeBody');
-    if (!tbody) return;
-    const role = selectedRoleForFeatures;
-    if (!role) {
-        tbody.innerHTML = '<tr><td colspan="3" class="text-muted small">Bitte oben eine Rolle wählen.</td></tr>';
-        return;
-    }
-    const featureLabels = { auftragseingang: 'Auftragseingang', auslieferungen: 'Auslieferungen', opos: 'OPOS', werkstatt_leistungsuebersicht: 'Leistungsübersicht Werkstatt' };
-    tbody.innerHTML = FILTER_FEATURES.map(f => {
-        const current = getFilterModeFor(f, role);
-        const opts = ['own_only', 'own_default', 'all_filterable'].map(m =>
-            '<option value="' + m + '"' + (current === m ? ' selected' : '') + '>' + FILTER_MODE_LABELS[m] + '</option>'
-        ).join('');
-        return '<tr><td>' + escapeHtml(featureLabels[f] || f) + '</td><td><span class="badge bg-secondary">' + escapeHtml(role) + '</span></td><td><select class="form-select form-select-sm filter-mode-select" data-feature="' + escapeHtml(f) + '" data-role="' + escapeHtml(role) + '">' + opts + '</select></td></tr>';
-    }).join('');
-    tbody.querySelectorAll('.filter-mode-select').forEach(sel => {
-        sel.addEventListener('change', function() { saveFilterMode(this.dataset.feature, this.dataset.role, this.value); });
-    });
+    if (selectedRoleForFeatures) renderRoleFeaturesGrouped(selectedRoleForFeatures);
 }
 
 async function saveFilterMode(featureName, roleName, filterMode) {
@@ -1128,6 +1096,7 @@ function renderUsersTable() {
                         ${portalRoleOptions}
                     </select>
                     <div class="mt-1">
+                        <button class="btn btn-sm btn-outline-primary me-1" data-user-id="${user.id}" data-user-name="${escapeHtml(user.display_name)}" onclick="openEffectiveRightsModalFromBtn(this)" title="Rechte & Navi anzeigen"><i class="bi bi-eye"></i></button>
                         <button class="btn btn-sm btn-outline-secondary me-1" data-user-id="${user.id}" data-user-name="${escapeHtml(user.display_name)}" data-user-roles="${escapeHtml(user.roles)}" onclick="openRoleModalFromBtn(this)" title="DB-Rollen"><i class="bi bi-pencil"></i></button>
                         <button class="btn btn-sm btn-outline-secondary" data-user-id="${user.id}" data-user-name="${escapeHtml(user.display_name)}" data-user-url="${(user.dashboard_url || '').replace(/"/g, '&quot;')}" onclick="openDashboardModalFromBtn(this)" title="Startseite"><i class="bi bi-house-door"></i></button>
                     </div>
@@ -1192,9 +1161,10 @@ function getRoleClass(role) {
     return 'role-default';
 }
 
-// Features-Grid rendern
+// Features-Grid rendern (read-only in "Nach Feature" – keine Bearbeitung)
 function renderFeaturesGrid() {
     const grid = document.getElementById('featuresGrid');
+    if (!grid) return;
 
     const html = Object.entries(featureData).map(([feature, roles]) => {
         const rolesList = roles.map(r => {
@@ -1206,12 +1176,7 @@ function renderFeaturesGrid() {
             <div class="col-md-4 col-lg-3">
                 <div class="feature-card">
                     <div class="card-header">
-                        <span><i class="bi bi-key me-1"></i>${feature}</span>
-                        <button class="btn btn-sm btn-outline-primary" 
-                                onclick="openFeatureModal('${feature}')"
-                                title="Bearbeiten">
-                            <i class="bi bi-pencil"></i>
-                        </button>
+                        <span><i class="bi bi-key me-1"></i>${escapeHtml(feature)}</span>
                     </div>
                     <div class="card-body">
                         <div class="feature-roles">${rolesList}</div>
@@ -1222,39 +1187,11 @@ function renderFeaturesGrid() {
     }).join('');
 
     grid.innerHTML = html;
-
-    // Rollen-Dropdown für "Rollen & Feature-Zugriff" füllen
-    const roleSelect = document.getElementById('roleFeatureSelect');
-    if (roleSelect && availablePortalRoles.length) {
-        roleSelect.innerHTML = '<option value="">— Rolle wählen —</option>' +
-            availablePortalRoles.map(r => '<option value="' + escapeHtml(r) + '">' + escapeHtml(r) + '</option>').join('');
-    }
 }
 
+// "Nach Feature" ist nur noch Übersicht – keine Bearbeitung (onRoleForFeaturesChange nicht mehr genutzt)
 function onRoleForFeaturesChange() {
-    const role = (document.getElementById('roleFeatureSelect') || {}).value;
-    const listEl = document.getElementById('roleFeaturesList');
-    const saveBtn = document.getElementById('saveRoleFeaturesBtn');
-    if (!listEl) return;
-    if (!role) {
-        listEl.innerHTML = '<span class="text-muted">Bitte zuerst eine Rolle wählen.</span>';
-        if (saveBtn) saveBtn.disabled = true;
-        return;
-    }
-    const allFeatures = Object.keys(featureData || {}).sort();
-    if (allFeatures.length === 0) {
-        listEl.innerHTML = '<span class="text-muted">Keine Features geladen.</span>';
-        if (saveBtn) saveBtn.disabled = true;
-        return;
-    }
-    const checkboxes = allFeatures.map((f, i) => {
-        const roles = featureData[f] || [];
-        const checked = roles.includes(role) || roles.includes('*') ? ' checked' : '';
-        const safeId = 'rf_' + i;
-        return `<div class="form-check"><input class="form-check-input" type="checkbox" id="${safeId}" data-feature="${escapeHtml(f)}" ${checked}><label class="form-check-label" for="${safeId}">${escapeHtml(f)}</label></div>`;
-    }).join('');
-    listEl.innerHTML = checkboxes;
-    if (saveBtn) saveBtn.disabled = false;
+    // Platzhalter falls noch irgendwo aufgerufen; Rolle/Checkboxen nur in "Nach Rolle"
 }
 
 // Rollen-Features Tab: Rollen als Buttons
@@ -1289,12 +1226,11 @@ function selectRoleForFeatures(role) {
         infoEl.innerHTML = '<strong>Rolle: ' + escapeHtml(role) + '</strong> — ' + count + ' Features mit Zugriff. Checkboxen unten anpassen und speichern.';
     }
     renderRoleFeaturesGrouped(role);
-    renderFilterModeTable();
     const saveBtn = document.getElementById('saveRoleFeaturesBtn2');
     if (saveBtn) saveBtn.disabled = false;
 }
 
-// Rollen-Features Tab: gruppierte Feature-Checkboxen
+// Rollen-Features Tab: gruppierte Feature-Checkboxen; bei Listen-Features Filter-Dropdown inline
 function renderRoleFeaturesGrouped(role) {
     const container = document.getElementById('roleFeaturesGrouped');
     if (!container) return;
@@ -1306,6 +1242,7 @@ function renderRoleFeaturesGrouped(role) {
         byGroup[group].push(f);
     });
     const groupOrder = ['Finanzen', 'Verkauf', 'Werkstatt / Teile', 'Werkstatt', 'HR / Urlaub', 'Planung', 'Vergütung', 'Integrationen', 'System', 'Sonstige'];
+    const filterLabels = { own_only: 'Nur eigene', own_default: 'Eigene, filterbar', all_filterable: 'Alle' };
     let html = '';
     groupOrder.forEach(g => {
         const features = byGroup[g];
@@ -1314,11 +1251,22 @@ function renderRoleFeaturesGrouped(role) {
             const roles = featureData[f] || [];
             const checked = roles.includes(role) || roles.includes('*') ? ' checked' : '';
             const safeId = 'rfg_' + g.replace(/\s/g, '_') + '_' + i;
-            return `<div class="form-check"><input class="form-check-input" type="checkbox" id="${safeId}" data-feature="${escapeHtml(f)}" ${checked}><label class="form-check-label" for="${safeId}">${escapeHtml(f)}</label></div>`;
+            let filterHtml = '';
+            if (FILTER_FEATURES && FILTER_FEATURES.includes(f)) {
+                const current = getFilterModeFor(f, role);
+                const opts = ['own_only', 'own_default', 'all_filterable'].map(m =>
+                    '<option value="' + m + '"' + (current === m ? ' selected' : '') + '>' + (filterLabels[m] || m) + '</option>'
+                ).join('');
+                filterHtml = ' <select class="form-select form-select-sm d-inline-block ms-1 filter-mode-inline" style="max-width:130px" data-feature="' + escapeHtml(f) + '" data-role="' + escapeHtml(role) + '">' + opts + '</select>';
+            }
+            return `<div class="form-check d-flex align-items-center flex-wrap gap-1"><input class="form-check-input" type="checkbox" id="${safeId}" data-feature="${escapeHtml(f)}" ${checked}><label class="form-check-label" for="${safeId}">${escapeHtml(f)}</label>${filterHtml}</div>`;
         }).join('');
         html += `<div class="col-md-6 col-lg-4"><div class="rechte-feature-group-card"><div class="group-head">${escapeHtml(g)}</div><div class="p-2">${cells}</div></div></div>`;
     });
     container.innerHTML = html || '<div class="col-12 text-muted">Keine Features.</div>';
+    container.querySelectorAll('.filter-mode-inline').forEach(sel => {
+        sel.addEventListener('change', function() { saveFilterMode(this.dataset.feature, this.dataset.role, this.value); });
+    });
 }
 
 // Matrix-Tab: Feature × Rolle (read-only)
@@ -1343,18 +1291,14 @@ function renderMatrixTable() {
 }
 
 async function saveRoleFeatures() {
-    // Rolle: aus Rollen-Features-Tab (Button) oder aus Feature-Zugriff-Dropdown
-    const role = selectedRoleForFeatures || (document.getElementById('roleFeatureSelect') || {}).value;
+    // Nur Sicht "Nach Rolle": Rolle per Button wählen, Checkboxen in roleFeaturesGrouped
+    const role = selectedRoleForFeatures;
     if (!role) {
-        alert('Bitte zuerst eine Rolle wählen (User & Rollen oder Rollen-Features-Tab).');
+        alert('Bitte in der Sicht „Nach Rolle“ zuerst eine Rolle wählen (Button oben), dann Häkchen setzen und speichern.');
         return;
     }
-    // Checkboxen: gleicher Kontext wie Rolle – Rollen-Features-Tab (Buttons) → gruppiert, sonst Feature-Zugriff (Dropdown) → Liste
     const groupedEl = document.getElementById('roleFeaturesGrouped');
-    const listEl = document.getElementById('roleFeaturesList');
-    const useGrouped = !!selectedRoleForFeatures;
-    const container = useGrouped ? groupedEl : listEl;
-    const inputs = container ? container.querySelectorAll('input[type="checkbox"]:checked') : [];
+    const inputs = groupedEl ? groupedEl.querySelectorAll('input[type="checkbox"]:checked') : [];
     const features = Array.from(inputs).map(el => el.dataset.feature).filter(Boolean);
     try {
         const response = await fetch(`/api/admin/role/${encodeURIComponent(role)}/features`, {
@@ -1407,6 +1351,62 @@ function openDashboardModalFromBtn(btn) {
     const name = btn.dataset.userName || '';
     const url = btn.dataset.userUrl || '';
     openDashboardModal(id, name, url);
+}
+
+function openEffectiveRightsModalFromBtn(btn) {
+    const id = parseInt(btn.dataset.userId, 10);
+    const name = (btn.dataset.userName || '').replace(/&quot;/g, '"');
+    openEffectiveRightsModal(id, name);
+}
+
+async function openEffectiveRightsModal(userId, displayName) {
+    document.getElementById('effectiveRightsUserName').textContent = displayName || 'User';
+    document.getElementById('effectiveRightsLoading').style.display = 'block';
+    document.getElementById('effectiveRightsContent').style.display = 'none';
+    document.getElementById('effectiveRightsError').style.display = 'none';
+    new bootstrap.Modal(document.getElementById('effectiveRightsModal')).show();
+
+    try {
+        const response = await fetch('/api/admin/user/' + userId + '/effective-rights', { credentials: 'same-origin' });
+        const data = await response.json();
+        document.getElementById('effectiveRightsLoading').style.display = 'none';
+        if (!response.ok) {
+            document.getElementById('effectiveRightsError').textContent = data.error || 'Fehler beim Laden';
+            document.getElementById('effectiveRightsError').style.display = 'block';
+            return;
+        }
+        document.getElementById('effectiveRightsRole').textContent = data.effective_role || '—';
+        document.getElementById('effectiveRightsRole').className = 'badge ' + (getRoleClass(data.effective_role) || 'bg-secondary');
+        const featuresEl = document.getElementById('effectiveRightsFeatures');
+        featuresEl.innerHTML = (data.features && data.features.length)
+            ? data.features.map(f => '<span class="badge bg-light text-dark border me-1 mb-1">' + escapeHtml(f) + '</span>').join('')
+            : '<span class="text-muted">Keine</span>';
+        const navEl = document.getElementById('effectiveRightsNav');
+        navEl.innerHTML = renderNavTree(data.navigation || []);
+        document.getElementById('effectiveRightsContent').style.display = 'block';
+    } catch (e) {
+        document.getElementById('effectiveRightsLoading').style.display = 'none';
+        document.getElementById('effectiveRightsError').textContent = 'Fehler: ' + (e.message || 'Netzwerkfehler');
+        document.getElementById('effectiveRightsError').style.display = 'block';
+    }
+}
+
+function renderNavTree(items, level) {
+    if (!items || !items.length) return '<span class="text-muted">Keine</span>';
+    level = level || 0;
+    const pad = level ? 'padding-left: ' + (level * 12) + 'px' : '';
+    let html = '<ul class="list-unstyled mb-0" style="' + pad + '">';
+    items.forEach(item => {
+        const label = escapeHtml(item.label || '');
+        const url = item.url ? (' <small class="text-muted">' + escapeHtml(item.url) + '</small>') : '';
+        html += '<li class="mb-1">' + label + url;
+        if (item.children && item.children.length) {
+            html += renderNavTree(item.children, level + 1);
+        }
+        html += '</li>';
+    });
+    html += '</ul>';
+    return html;
 }
 
 function openRoleModal(userId, userName, currentRoles) {
@@ -2541,11 +2541,11 @@ async function loadUrlaubBalance() {
     }
 }
 
-// Navigation beim Tab-Wechsel laden
+// Navigation beim Öffnen des Einstellungen-Tabs laden
 document.addEventListener('DOMContentLoaded', function() {
-    const navTab = document.querySelector('a[href="#navigation-tab"]');
-    if (navTab) {
-        navTab.addEventListener('shown.bs.tab', function() {
+    const einstellungenTab = document.querySelector('a[href="#einstellungen-tab"]');
+    if (einstellungenTab) {
+        einstellungenTab.addEventListener('shown.bs.tab', function() {
             loadNavigationItems();
         });
     }

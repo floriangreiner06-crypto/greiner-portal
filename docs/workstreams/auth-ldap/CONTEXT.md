@@ -3,6 +3,11 @@
 ## Status: Aktiv
 ## Letzte Aktualisierung: 2026-03-02
 
+### Rechteverwaltung Entschlackung (2026-03-02)
+- **Vorschlag B:** Nur Sicht „Nach Rolle“ bearbeitbar; „Nach Feature“ und „Matrix“ nur Übersicht (read-only). Speichern nur aus „Nach Rolle“. Feature-Karten ohne Stift-Button.
+- **Vorschlag D:** Haupt-Tabs auf 3 reduziert: **User & Rollen** (User-Liste + Rollen & Module/Feature-Zugriff in einem Tab), **Mitarbeiter & Urlaub** (Pills: Mitarbeiter-Konfig, Urlaubsverwaltung, Mitarbeiterverwaltung), **Einstellungen** (Pills: Navigation, Title-Mapping, E-Mail Reports, Architektur).
+- **Vorschlag C:** Filter-Verhalten für Listen (Auftragseingang, Auslieferungen, OPOS, Leistungsübersicht Werkstatt) inline: kleines Dropdown neben dem Feature-Haken in der Rollen-Ansicht; separate Karte „Filter-Verhalten für Listen“ entfernt.
+
 ### Fix: Rollen/Features-Speichern (2026-02-27)
 - **Problem:** Änderungen an Rollen & Feature-Zugriff wurden nicht gespeichert.
 - **Ursache:** In `saveRoleFeatures()` wurden immer die Checkboxen aus `roleFeaturesGrouped` (Tab „Rollen-Features“) ausgelesen, auch wenn der Nutzer im Tab „Feature-Zugriff“ (Dropdown + `roleFeaturesList`) geändert hatte → falsche/leere Feature-Liste ging an die API.
@@ -64,6 +69,12 @@ Auth umfasst LDAP/AD-Integration, RBAC, Session-Management, Rollen-Config, Dashb
 ## Auf Eis gelegt (vorerst)
 
 - **Modul zur LDAP-Bearbeitung:** Bearbeitung von LDAP/AD-Daten im Portal (z. B. Abteilung, Standort, Vorgesetzter im Portal ändern, ggf. Zurückschreiben ins AD) ist **vorerst nicht geplant**. AD ↔ Drive (Sync, Mapping, Login, Passwort-Self-Service) läuft; weitere LDAP-Edit-Funktionen bleiben zurückgestellt.
+
+- ✅ **Rechte & Navi am User (Option A, 2026-03-02):** Button „Rechte & Navi“ (Auge) pro User in der User & Rollen-Tabelle; Modal zeigt wirksame Rolle, Feature-Liste und sichtbare Navigation (read-only). API: `GET /api/admin/user/<id>/effective-rights`. `navigation_utils.get_navigation_for_role(role, allowed_features)` für Navi-Vorschau. Doku: `NACHSTER_SCHRITT_RECHTE_USER_SICHT.md`, `EINSCHAETZUNG_BEARBEITUNG_AM_USER.md`.
+
+## Nächster Schritt (optional)
+
+- Weitere UX-Anpassungen an der Rechteverwaltung oder andere Workstreams.
 
 ## Offene Entscheidungen
 

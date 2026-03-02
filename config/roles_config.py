@@ -145,6 +145,10 @@ FEATURE_ACCESS = {
     # Buchhaltung/Admin/Verkaufsleitung: alle Posten; Verkäufer: nur eigene (Filter in API)
     'opos': ['admin', 'buchhaltung', 'verkauf_leitung', 'verkauf'],
 
+    # Provision (Vergütung) – migration_verkauf_features_complete
+    'provision': ['admin', 'geschaeftsleitung', 'verkauf', 'verkauf_leitung'],
+    'provision_vkl': ['admin', 'geschaeftsleitung', 'verkauf_leitung'],  # Provisions-Dashboard (VKL)
+
     # Marketing Potenzial / Predictive Scoring (Call-Agent, 2026-02-21)
     'marketing_potenzial': ['admin'],
 }

@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DRIVE Startseite – Mockup</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-page: #f6f7f9;
+      --bg-card: #ffffff;
+      --text-primary: #1a1d21;
+      --text-secondary: #5c6370;
+      --text-muted: #8b929e;
+      --border: #e8eaed;
+      --accent: #1e3a5f;
+      --accent-soft: #2c5282;
+      --success: #0d9488;
+      --warning: #d97706;
+      --danger: #dc2626;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+      --shadow: 0 4px 12px rgba(0,0,0,0.06);
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-page);
+      color: var(--text-primary);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+    .container { max-width: 1280px; margin: 0 auto; padding: 0 24px; }
+
+    /* Header */
+    .hero {
+      background: linear-gradient(160deg, #1e3a5f 0%, #2d4a6f 50%, #1e3a5f 100%);
+      color: #fff;
+      padding: 40px 0 48px;
+      margin-bottom: 32px;
+    }
+    .hero .container { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px; }
+    .hero h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin: 0 0 6px 0;
+      letter-spacing: -0.02em;
+    }
+    .hero .tagline {
+      font-size: 1rem;
+      opacity: 0.92;
+      font-weight: 500;
+      margin: 0;
+    }
+    .hero .user {
+      text-align: right;
+      font-size: 0.9rem;
+      opacity: 0.9;
+    }
+    .hero .user strong { font-weight: 600; }
+
+    /* Sections */
+    .section-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin: 0 0 16px 0;
+    }
+    .section-title i { margin-right: 8px; opacity: 0.8; }
+
+    /* KPI Badges Grid */
+    .badges-kpi {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+    .badge-kpi {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 20px;
+      background: var(--bg-card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border);
+      text-decoration: none;
+      color: inherit;
+      transition: box-shadow 0.2s, transform 0.2s, border-color 0.2s;
+    }
+    .badge-kpi:hover {
+      box-shadow: var(--shadow);
+      transform: translateY(-2px);
+      border-color: var(--accent);
+      color: inherit;
+    }
+    .badge-kpi .icon {
+      width: 52px;
+      height: 52px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      color: #fff;
+      flex-shrink: 0;
+    }
+    .badge-kpi .content { flex: 1; min-width: 0; }
+    .badge-kpi .value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 2px;
+    }
+    .badge-kpi .value.ok { color: var(--success); }
+    .badge-kpi .value.warn { color: var(--warning); }
+    .badge-kpi .value.danger { color: var(--danger); }
+    .badge-kpi .label {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+    }
+    .badge-kpi .arrow {
+      color: var(--border);
+      font-size: 1.2rem;
+      flex-shrink: 0;
+    }
+    .badge-kpi:hover .arrow { color: var(--accent); }
+
+    /* Icon colors - dezent, nicht verspielt */
+    .icon-werkstatt { background: linear-gradient(145deg, #334155, #475569); }
+    .icon-kapazitaet { background: linear-gradient(145deg, #4f46e5, #6366f1); }
+    .icon-fahrzeuge { background: linear-gradient(145deg, #0d9488, #14b8a6); }
+    .icon-urlaub { background: linear-gradient(145deg, #d97706, #f59e0b); }
+    .icon-verkauf { background: linear-gradient(145deg, #1e3a5f, #2c5282); }
+    .icon-opos { background: linear-gradient(145deg, #7c3aed, #8b5cf6); }
+    .icon-garantie { background: linear-gradient(145deg, #059669, #10b981); }
+    .icon-provision { background: linear-gradient(145deg, #0e7490, #06b6d4); }
+    .icon-qa { background: linear-gradient(145deg, #b91c1c, #dc2626); }
+    .icon-tek { background: linear-gradient(145deg, #1e40af, #2563eb); }
+
+    /* Modul-Karten */
+    .badges-modul {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 20px;
+    }
+    .modul-card {
+      background: var(--bg-card);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border);
+      transition: box-shadow 0.2s, transform 0.2s, border-color 0.2s;
+      text-decoration: none;
+      color: inherit;
+      display: block;
+    }
+    .modul-card:hover {
+      box-shadow: var(--shadow);
+      transform: translateY(-2px);
+      border-color: var(--accent);
+      color: inherit;
+    }
+    .modul-card .modul-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.3rem;
+      color: #fff;
+      margin-bottom: 16px;
+    }
+    .modul-card h3 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin: 0 0 6px 0;
+    }
+    .modul-card p {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      margin: 0 0 14px 0;
+      line-height: 1.4;
+    }
+    .modul-card .links {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+    .modul-card .links span { display: block; padding: 4px 0; }
+    .modul-card .links i { margin-right: 6px; width: 16px; opacity: 0.7; }
+
+    .modul-bank { --modul-icon: linear-gradient(145deg, #1e3a5f, #2c5282); }
+    .modul-urlaub { --modul-icon: linear-gradient(145deg, #d97706, #f59e0b); }
+    .modul-verkauf { --modul-icon: linear-gradient(145deg, #0d9488, #14b8a6); }
+    .modul-aftersales { --modul-icon: linear-gradient(145deg, #7c3aed, #8b5cf6); }
+    .modul-controlling { --modul-icon: linear-gradient(145deg, #1e40af, #2563eb); }
+    .modul-opos { --modul-icon: linear-gradient(145deg, #6d28d9, #7c3aed); }
+    .modul-provision { --modul-icon: linear-gradient(145deg, #0e7490, #06b6d4); }
+    .modul-zielplanung { --modul-icon: linear-gradient(145deg, #15803d, #16a34a); }
+    .modul-planung { --modul-icon: linear-gradient(145deg, #a16207, #ca8a04); }
+    .modul-whatsapp { --modul-icon: linear-gradient(145deg, #059669, #10b981); }
+    .modul-eautoseller { --modul-icon: linear-gradient(145deg, #334155, #475569); }
+    .modul-qa { --modul-icon: linear-gradient(145deg, #b91c1c, #dc2626); }
+    .modul-garantie { --modul-icon: linear-gradient(145deg, #047857, #059669); }
+    .modul-hilfe { --modul-icon: linear-gradient(145deg, #4b5563, #6b7280); }
+    .modul-card .modul-icon { background: var(--modul-icon); }
+
+    .page-footer {
+      margin-top: 48px;
+      padding: 24px 0;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-align: center;
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="container">
+      <div>
+        <h1>DRIVE Portal</h1>
+        <p class="tagline">Die geilste ultimative Startseite für Mitarbeiter im Autohaus Greiner!</p>
+      </div>
+      <div class="user">
+        <strong>Max Mustermann</strong><br>
+        Freitag, 27. Februar 2026
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <h2 class="section-title"><i class="bi bi-speedometer2"></i> Quickinfo – Kennzahlen auf einen Blick</h2>
+    <div class="badges-kpi">
+      <a href="/werkstatt/stempeluhr" class="badge-kpi">
+        <div class="icon icon-werkstatt"><i class="bi bi-wrench-adjustable"></i></div>
+        <div class="content">
+          <div class="value ok">98 %</div>
+          <div class="label">Werkstatt heute (Leistungsgrad)</div>
+        </div>
+        <i class="bi bi-chevron-right arrow"></i>
+      </a>
+      <a href="/aftersales/kapazitaet" class="badge-kpi">
+        <div class="icon icon-kapazitaet"><i class="bi bi-calendar-range"></i></div>
+        <div class="content">
+          <div class="value ok">87 %</div>
+          <div class="label">Werkstatt Auslastung · 2,1 Tage Arbeit</div>
+        </div>
+        <i class="bi bi-chevron-right arrow"></i>
+      </a>
+      <a href="/bankenspiegel/fahrzeugfinanzierungen" class="badge-kpi">
+        <div class="icon icon-fahrzeuge"><i class="bi bi-car-front"></i></div>
+        <div class="content">
+          <div class="value">42</div>
+          <div class="label">Finanzierte Fahrzeuge · 3,2 Mio € Saldo</div>
+        </div>
+        <i class="bi bi-chevron-right arrow"></i>
+      </a>
+      <a href="/urlaubsplaner/v2" class="badge-kpi">
+        <div class="icon icon-urlaub"><i class="bi bi-calendar-check"></i></div>
+        <div class="content">
+          <div class="value warn">3</div>
+          <div class="label">Offene Urlaubsanträge</div>
+        </div>
+        <i class="bi bi-chevron-right arrow"></i>
+      </a>
+      <a href="/verkauf/auftragseingang" class="badge-kpi">
+        <div class="icon icon-verkauf"><i class="bi bi-graph-up"></i></div>
+        <div class="content">
+          <div class="value">24 <span style="color:var(--text-muted);font-weight:400;">/</span> <span class="ok">18</span></div>
+          <div class="label">Aufträge / Auslieferungen (Monat)</div>
+        </div>
+        <i class="bi bi-chevron-right arrow"></i>
+      </a>
+      <a href="/controlling/opos" class="badge-kpi">
+        <div class="icon icon-opos"><i class="bi bi-receipt-cutoff"></i></div>
+        <div class="content">
+          <div class="value">156</div>
+          <div class="label">Offene Posten (OPOS) · 1,2 Mio €</div>
+        </div>
+        <i class="bi bi-chevron-right arrow"></i>
+      </a>
+      <a href="/aftersales/garantie/auftraege" class="badge-kpi">
+        <div class="icon icon-garantie"><i class="bi bi-shield-check"></i></div>
+        <div class="content">
+          <div class="value">7</div>
+          <div class="label">Offene Garantieaufträge</div>
+        </div>
+        <i class="bi bi-chevron-right arrow"></i>
+      </a>
+      <a href="/provision/dashboard" class="badge-kpi">
+        <div class="icon icon-provision"><i class="bi bi-currency-euro"></i></div>
+        <div class="content">
+          <div class="value">4</div>
+          <div class="label">Provisions-Läufe offen (VKL)</div>
+        </div>
+        <i class="bi bi-chevron-right arrow"></i>
+      </a>
+      <a href="/provision/meine" class="badge-kpi">
+        <div class="icon icon-provision"><i class="bi bi-wallet2"></i></div>
+        <div class="content">
+          <div class="value ok">2.840 €</div>
+          <div class="label">Meine Provision (Monat)</div>
+        </div>
+        <i class="bi bi-chevron-right arrow"></i>
+      </a>
+      <a href="/qa/bugs" class="badge-kpi">
+        <div class="icon icon-qa"><i class="bi bi-bug"></i></div>
+        <div class="content">
+          <div class="value danger">2</div>
+          <div class="label">Offene QA-Bugs</div>
+        </div>
+        <i class="bi bi-chevron-right arrow"></i>
+      </a>
+      <a href="/controlling/tek" class="badge-kpi">
+        <div class="icon icon-tek"><i class="bi bi-bar-chart-line"></i></div>
+        <div class="content">
+          <div class="value ok">12,4 %</div>
+          <div class="label">TEK DB1 heute</div>
+        </div>
+        <i class="bi bi-chevron-right arrow"></i>
+      </a>
+    </div>
+
+    <h2 class="section-title"><i class="bi bi-grid-3x3-gap"></i> Ihre Module – Direktlinks zu Features</h2>
+    <div class="badges-modul">
+      <a href="/bankenspiegel/dashboard" class="modul-card modul-bank">
+        <div class="modul-icon"><i class="bi bi-bank2"></i></div>
+        <h3>Bankenspiegel</h3>
+        <p>Konten, Salden, Transaktionen, Fahrzeugfinanzierungen</p>
+        <div class="links">
+          <span><i class="bi bi-speedometer2"></i> Dashboard</span>
+          <span><i class="bi bi-wallet2"></i> Konten</span>
+          <span><i class="bi bi-receipt"></i> Transaktionen</span>
+        </div>
+      </a>
+      <a href="/urlaubsplaner/v2" class="modul-card modul-urlaub">
+        <div class="modul-icon"><i class="bi bi-calendar-check"></i></div>
+        <h3>Urlaubsplaner</h3>
+        <p>Urlaub beantragen, genehmigen, Chef-Übersicht</p>
+        <div class="links">
+          <span><i class="bi bi-calendar-plus"></i> Mein Urlaub</span>
+          <span><i class="bi bi-diagram-3"></i> Chef-Übersicht</span>
+        </div>
+      </a>
+      <a href="/verkauf/auftragseingang" class="modul-card modul-verkauf">
+        <div class="modul-icon"><i class="bi bi-cart3"></i></div>
+        <h3>Verkauf & Aufträge</h3>
+        <p>Auftragseingang, Auslieferungen, Deckungsbeiträge</p>
+        <div class="links">
+          <span><i class="bi bi-clipboard-data"></i> Auftragseingang</span>
+          <span><i class="bi bi-truck"></i> Auslieferungen</span>
+        </div>
+      </a>
+      <a href="/aftersales/kapazitaet" class="modul-card modul-aftersales">
+        <div class="modul-icon"><i class="bi bi-tools"></i></div>
+        <h3>After Sales</h3>
+        <p>Kapazität, Stempeluhr, Cockpit, Renner & Penner</p>
+        <div class="links">
+          <span><i class="bi bi-calendar-range"></i> Kapazität</span>
+          <span><i class="bi bi-stopwatch"></i> Stempeluhr LIVE</span>
+          <span><i class="bi bi-speedometer2"></i> Cockpit</span>
+        </div>
+      </a>
+      <a href="/controlling" class="modul-card modul-controlling">
+        <div class="modul-icon"><i class="bi bi-graph-up-arrow"></i></div>
+        <h3>Controlling</h3>
+        <p>TEK, BWA, Berichte, Kennzahlen</p>
+        <div class="links">
+          <span><i class="bi bi-bar-chart-line"></i> TEK</span>
+          <span><i class="bi bi-pie-chart"></i> BWA</span>
+        </div>
+      </a>
+      <a href="/controlling/opos" class="modul-card modul-opos">
+        <div class="modul-icon"><i class="bi bi-receipt-cutoff"></i></div>
+        <h3>Offene Posten (OPOS)</h3>
+        <p>Fahrzeugverkauf offene Posten, Rechnungsdetails</p>
+        <div class="links">
+          <span><i class="bi bi-list-ul"></i> OPOS-Übersicht</span>
+        </div>
+      </a>
+      <a href="/provision/meine" class="modul-card modul-provision">
+        <div class="modul-icon"><i class="bi bi-currency-euro"></i></div>
+        <h3>Provision</h3>
+        <p>Meine Provision, Vorlauf, VKL-Dashboard</p>
+        <div class="links">
+          <span><i class="bi bi-wallet2"></i> Meine Provision</span>
+          <span><i class="bi bi-speedometer2"></i> Dashboard (VKL)</span>
+        </div>
+      </a>
+      <a href="/verkauf/zielplanung" class="modul-card modul-zielplanung">
+        <div class="modul-icon"><i class="bi bi-bullseye"></i></div>
+        <h3>Verkäufer-Zielplanung</h3>
+        <p>Ziele, Soll-Ist, Verkäuferdetails</p>
+        <div class="links">
+          <span><i class="bi bi-graph-up"></i> Zielplanung</span>
+        </div>
+      </a>
+      <a href="/verkauf/budget" class="modul-card modul-planung">
+        <div class="modul-icon"><i class="bi bi-calendar-month"></i></div>
+        <h3>Planung & Budget</h3>
+        <p>Budget-Planung, Lieferforecast</p>
+        <div class="links">
+          <span><i class="bi bi-calculator"></i> Budget</span>
+          <span><i class="bi bi-truck"></i> Lieferforecast</span>
+        </div>
+      </a>
+      <a href="/whatsapp/verkauf" class="modul-card modul-whatsapp">
+        <div class="modul-icon"><i class="bi bi-whatsapp"></i></div>
+        <h3>WhatsApp</h3>
+        <p>Chat, Verkauf, Kontakte</p>
+        <div class="links">
+          <span><i class="bi bi-chat-dots"></i> Chat</span>
+        </div>
+      </a>
+      <a href="/verkauf/eautoseller-bestand" class="modul-card modul-eautoseller">
+        <div class="modul-icon"><i class="bi bi-car-front-fill"></i></div>
+        <h3>eAutoseller Bestand</h3>
+        <p>Fahrzeugbestand eAutoseller</p>
+        <div class="links">
+          <span><i class="bi bi-grid"></i> Bestand</span>
+        </div>
+      </a>
+      <a href="/qa/bugs" class="modul-card modul-qa">
+        <div class="modul-icon"><i class="bi bi-bug"></i></div>
+        <h3>QA & Bug-Übersicht</h3>
+        <p>Feature-Checks, Bug-Reports</p>
+        <div class="links">
+          <span><i class="bi bi-list-check"></i> Bugs</span>
+        </div>
+      </a>
+      <a href="/aftersales/garantie/auftraege" class="modul-card modul-garantie">
+        <div class="modul-icon"><i class="bi bi-shield-check"></i></div>
+        <h3>Garantieaufträge</h3>
+        <p>Offene Garantie, Aktenstatus</p>
+        <div class="links">
+          <span><i class="bi bi-folder2-open"></i> Offene Aufträge</span>
+        </div>
+      </a>
+      <a href="/hilfe" class="modul-card modul-hilfe">
+        <div class="modul-icon"><i class="bi bi-question-circle"></i></div>
+        <h3>Hilfe</h3>
+        <p>Anleitungen, Support, KI-Hilfe</p>
+        <div class="links">
+          <span><i class="bi bi-book"></i> Hilfe öffnen</span>
+        </div>
+      </a>
+    </div>
+
+    <footer class="page-footer">
+      Mockup: Ultimative Startseite DRIVE – Alle Badges als Quickinfo &amp; Feature-Links. Design: klar, professionell, nicht verspielt.
+    </footer>
+  </main>
+</body>
+</html>

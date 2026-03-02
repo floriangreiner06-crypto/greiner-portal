@@ -281,6 +281,58 @@ def set_user_portal_role(user_id):
         return jsonify({'error': str(e)}), 500
 
 
+@admin_api.route('/api/admin/user/<int:user_id>/effective-rights', methods=['GET'])
+@admin_required
+def get_user_effective_rights(user_id):
+    """Rechte & Navi für einen User (nur Anzeige). Liefert wirksame Rolle, Feature-Liste und sichtbare Navigation."""
+    try:
+        from config.roles_config import get_allowed_features
+        from api.navigation_utils import get_navigation_for_role
+
+        ph = sql_placeholder()
+        with db_session() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f'''
+                SELECT u.id, u.display_name, u.portal_role_override,
+                       (SELECT 1 FROM user_roles ur JOIN roles r ON ur.role_id = r.id
+                        WHERE ur.user_id = u.id AND r.name = 'admin' LIMIT 1) AS is_admin
+                FROM users u WHERE u.id = {ph}
+            ''', (user_id,))
+            row = cursor.fetchone()
+        if not row:
+            return jsonify({'error': 'User nicht gefunden'}), 404
+
+        row_dict = row_to_dict(row)
+        is_admin = row_dict.get('is_admin') is not None
+        effective_role = 'admin' if is_admin else (
+            (row_dict.get('portal_role_override') or '').strip() or 'mitarbeiter'
+        )
+        allowed_features = get_allowed_features(effective_role)
+        if is_admin:
+            from config.roles_config import get_feature_access_from_db
+            allowed_features = sorted(get_feature_access_from_db().keys())
+        features_list = sorted(allowed_features) if isinstance(allowed_features, (list, set)) else []
+        nav_tree = get_navigation_for_role(effective_role, set(features_list))
+
+        def nav_to_serializable(items):
+            out = []
+            for it in items:
+                node = {'label': it.get('label'), 'url': it.get('url'), 'icon': it.get('icon')}
+                if it.get('children'):
+                    node['children'] = nav_to_serializable(it['children'])
+                out.append(node)
+            return out
+
+        return jsonify({
+            'display_name': row_dict.get('display_name'),
+            'effective_role': effective_role,
+            'features': features_list,
+            'navigation': nav_to_serializable(nav_tree)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @admin_api.route('/api/admin/feature-access', methods=['GET'])
 @admin_required
 def get_feature_access():
