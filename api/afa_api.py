@@ -6,11 +6,13 @@ Erstellt: 2026-02-16 | Workstream: Controlling
 Locosoft-Import: EK-Formel und Fahrzeugfilter (VFW/Mietwagen) wie kalkulation_helpers / DB1.
 """
 
+import logging
 from decimal import Decimal
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
 
 from flask import Blueprint, jsonify, request
+from flask_login import current_user
 
 from api.db_utils import db_session, row_to_dict, rows_to_list, locosoft_session
 
@@ -28,6 +30,59 @@ BETRIEBSNR_TO_STANDORT = {1: 'DEG', 2: 'HYU', 3: 'LAN'}
 AFA_KONTO_SOLL = {1: 450001, 2: 450001, 3: 450002}
 AFA_KONTO_HABEN_MIETWAGEN = {1: 90301, 2: 90301, 3: 90302}   # 090301, 090302
 AFA_KONTO_HABEN_VFW = {1: 90401, 2: 90401, 3: 90402}         # 090401, 090402 (VFW DEG/HYU/Leapmotor, LAN)
+
+# Zwischensummen pro Standort + Art (VFW DEG, Mietwagen DEG, VFW HYU, …) — eine Zeile pro Abteilung
+STANDORT_NAMEN = {1: 'DEG', 2: 'HYU', 3: 'LAN'}
+
+
+def _csv_euro(value):
+    """Geldbetrag für CSV: Format xxxx,xx (Komma als Dezimaltrennzeichen)."""
+    if value is None:
+        return ''
+    try:
+        return '{:.2f}'.format(round(float(value), 2)).replace('.', ',')
+    except (TypeError, ValueError):
+        return ''
+
+
+def _zwischensummen_fuer_positionen(positionen):
+    """Zwischensummen des AfA-Betrags pro Abteilung (Standort + Art): VFW DEG, Mietwagen DEG, VFW HYU,
+    Mietwagen HYU, VFW LAN, Mietwagen LAN. Eine Zwischensumme pro (betriebsnr, fahrzeugart), eingefügt
+    nach der letzten Zeile dieser Gruppe. Reihenfolge: DEG (VFW, Miet), HYU (VFW, Miet), LAN (VFW, Miet)."""
+    if not positionen:
+        return []
+    # Gruppenschlüssel: (betriebsnr, fahrzeugart)
+    summe_pro_gruppe = {}
+    last_index_pro_gruppe = {}
+    for i, p in enumerate(positionen):
+        bn = int(p.get('betriebsnr') or 1)
+        art = (p.get('fahrzeugart') or '').strip().upper() or 'VFW'
+        key = (bn, art)
+        summe_pro_gruppe[key] = summe_pro_gruppe.get(key, 0) + (p.get('afa_betrag') or 0)
+        last_index_pro_gruppe[key] = i
+    # Ausgabe in fester Reihenfolge: DEG, HYU, LAN; je VFW dann Mietwagen
+    reihenfolge = [(1, 'VFW'), (1, 'MIETWAGEN'), (2, 'VFW'), (2, 'MIETWAGEN'), (3, 'VFW'), (3, 'MIETWAGEN')]
+    result = []
+    for (bn, art) in reihenfolge:
+        key = (bn, art)
+        if key not in last_index_pro_gruppe:
+            continue
+        idx = last_index_pro_gruppe[key]
+        standort = STANDORT_NAMEN.get(bn, f'BN{bn}')
+        label_art = 'VFW' if art == 'VFW' else 'Mietwagen'
+        if art == 'MIETWAGEN':
+            konto = AFA_KONTO_HABEN_MIETWAGEN.get(bn, 90301)
+        else:
+            konto = AFA_KONTO_HABEN_VFW.get(bn, 90401)
+        konto_str = f'0{konto}' if konto < 100000 else str(konto)  # 90301 -> 090301
+        result.append({
+            'after_index': idx,
+            'konto_haben': konto,
+            'label': f'{label_art} {standort} ({konto_str})',
+            'summe_afa': round(summe_pro_gruppe.get(key, 0), 2),
+        })
+    result.sort(key=lambda z: z['after_index'])
+    return result
 
 
 def _afa_konten(betriebsnr, fahrzeugart, fahrzeug=None):
@@ -222,6 +277,576 @@ def dashboard():
 
 
 # =============================================================================
+# GET /api/afa/abverkauf-uebersicht
+# =============================================================================
+
+def _hole_locosoft_verkaufspreise_fuer_vins(vins):
+    """
+    Holt für eine Liste von VINs aus Locosoft die Verkaufspreise (noch nicht verkaufte Fahrzeuge).
+    Priorität: out_estimated_invoice_value (Verkaufspreis/Auszeichnung wie in L132PR Kalkulation),
+    dann out_sale_price_internet, out_sale_price_minimum, zuletzt out_recommended_retail_price.
+    Rückgabe: dict vin -> { verkaufspreis_aktuell, ... }
+    """
+    if not vins:
+        return {}
+    vins_clean = [v.strip() for v in vins if v and str(v).strip()]
+    if not vins_clean:
+        return {}
+    placeholders = ','.join(['%s'] * len(vins_clean))
+    try:
+        with locosoft_session() as conn:
+            cur = conn.cursor()
+            # Join nur über vehicle_number = internal_number (vehicles.dealer_vehicle_type/-number können NULL sein)
+            cur.execute(f"""
+                SELECT TRIM(v.vin) AS vin,
+                    dv.out_estimated_invoice_value,
+                    dv.out_sale_price_internet,
+                    dv.out_sale_price_minimum,
+                    dv.out_recommended_retail_price
+                FROM vehicles v
+                JOIN dealer_vehicles dv ON dv.vehicle_number = v.internal_number
+                WHERE TRIM(v.vin) IN ({placeholders})
+                    AND dv.out_invoice_date IS NULL
+            """, vins_clean)
+            rows = cur.fetchall()
+        result = {}
+        for r in rows:
+            vin = (r[0] or '').strip()
+            if not vin:
+                continue
+            # L132PR „Verkaufspreis incl. MwSt bzw. Rechnungsbetrag“ = out_estimated_invoice_value
+            auszeichnung = float(r[1]) if r[1] is not None else None
+            internet = float(r[2]) if r[2] is not None else None
+            minimum = float(r[3]) if r[3] is not None else None
+            rr = float(r[4]) if r[4] is not None else None
+            # 0,00 als „nicht gepflegt“ – Fallback auf andere Preisfelder
+            def _valid(v):
+                return v is not None and v > 0
+            vk_brutto = (auszeichnung if _valid(auszeichnung) else None) or (
+                internet if _valid(internet) else None) or (
+                minimum if _valid(minimum) else None) or (rr if _valid(rr) else None)
+            # Netto für Vergleich mit Buchwert (Anlagevermögen immer netto): VK_brutto / 1,19
+            vk_netto = round(vk_brutto / 1.19, 2) if vk_brutto is not None else None
+            row_data = {
+                'verkaufspreis_aktuell': vk_netto,
+                'verkaufspreis_brutto': round(vk_brutto, 2) if vk_brutto is not None else None,
+                'out_estimated_invoice_value': auszeichnung,
+                'out_sale_price_internet': internet,
+                'out_sale_price_minimum': minimum,
+                'out_recommended_retail_price': rr,
+            }
+            result[vin] = row_data
+            if vin.upper() != vin:
+                result[vin.upper()] = row_data
+        return result
+    except Exception:
+        return {}
+
+
+@afa_api.route('/api/afa/abverkauf-uebersicht', methods=['GET'])
+def abverkauf_uebersicht():
+    """
+    Übersicht aktiver VFW/Mietwagen für schnelleren Abverkauf: Einstandspreis, Buchwert,
+    AfA bisher, aktueller Verkaufspreis (aus Locosoft). Motiviert durch Sichtbarkeit von
+    Verkaufspreis vs. Buchwert.
+    """
+    try:
+        heute = date.today()
+        with db_session() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, vin, kennzeichen, fahrzeug_bezeichnung, marke, modell,
+                       fahrzeugart, betriebsnr, anschaffungskosten_netto, afa_monatlich,
+                       nutzungsdauer_monate, anschaffungsdatum, tageszulassung
+                FROM afa_anlagevermoegen
+                WHERE status = 'aktiv'
+                ORDER BY betriebsnr, fahrzeugart, fahrzeug_bezeichnung
+            """)
+            rows = cur.fetchall()
+            colnames = [c[0] for c in (cur.description or [])]
+            liste = []
+            vins = []
+            for r in rows:
+                row = row_to_dict(r, cur) if hasattr(r, 'keys') else dict(zip(colnames, r))
+                if not row:
+                    continue
+                ak = float(row.get('anschaffungskosten_netto') or 0)
+                vin = (row.get('vin') or '').strip()
+                rest = berechne_restbuchwert(row, heute)
+                buchwert = round(rest, 2) if rest is not None else None
+                afa_bisher = round(ak - (rest or 0), 2) if rest is not None else None
+                f = {
+                    'id': row.get('id'), 'vin': vin,
+                    'kennzeichen': row.get('kennzeichen'), 'fahrzeug_bezeichnung': row.get('fahrzeug_bezeichnung'),
+                    'marke': row.get('marke'), 'fahrzeugart': row.get('fahrzeugart'),
+                    'standort': BETRIEBSNR_TO_STANDORT.get(row.get('betriebsnr') or 1, 'DEG'),
+                    'einstandspreis': round(ak, 2),
+                    'buchwert': buchwert,
+                    'afa_bisher': afa_bisher,
+                }
+                if vin:
+                    vins.append(vin)
+                liste.append(f)
+        preise = _hole_locosoft_verkaufspreise_fuer_vins(vins)
+        for f in liste:
+            vin = (f.get('vin') or '').strip()
+            loco = (preise.get(vin) or preise.get(vin.upper()) or {}) if vin else {}
+            f['verkaufspreis_aktuell'] = loco.get('verkaufspreis_aktuell')  # netto (Locosoft brutto / 1,19)
+            buch = f.get('buchwert')
+            vk = f.get('verkaufspreis_aktuell')
+            if buch is not None and vk is not None:
+                f['differenz_vk_minus_buchwert'] = round(vk - buch, 2)  # netto zu netto
+            else:
+                f['differenz_vk_minus_buchwert'] = None
+        return jsonify({'ok': True, 'fahrzeuge': liste})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+def _hole_erstzulassung_fuer_vins(vins):
+    """
+    Holt aus Locosoft vehicles das Erstzulassungsdatum pro VIN.
+    Rückgabe: dict vin -> date (oder None)
+    """
+    if not vins:
+        return {}
+    vins_clean = [v.strip() for v in vins if v and str(v).strip()]
+    if not vins_clean:
+        return {}
+    placeholders = ','.join(['%s'] * len(vins_clean))
+    try:
+        with locosoft_session() as conn:
+            cur = conn.cursor()
+            cur.execute(f"""
+                SELECT TRIM(vin) AS vin, first_registration_date
+                FROM vehicles
+                WHERE TRIM(vin) IN ({placeholders})
+            """, vins_clean)
+            rows = cur.fetchall()
+        result = {}
+        for r in rows:
+            vin = (r[0] or '').strip()
+            if not vin:
+                continue
+            ez = r[1]
+            if hasattr(ez, 'isoformat'):
+                result[vin] = ez.isoformat() if ez else None
+            else:
+                result[vin] = str(ez) if ez else None
+            if vin.upper() != vin:
+                result[vin.upper()] = result[vin]
+        return result
+    except Exception:
+        return {}
+
+
+def _hole_brief_locosoft_fuer_vins(vins):
+    """
+    Holt aus Locosoft codes_vehicle_list den Wert des Zusatzcodes 'BRIEF' (KFZ-Brief / Finanzierung)
+    pro VIN. value_text = z.B. 'Genobank' wenn Fahrzeug bei Genobank finanziert.
+    Rückgabe: dict vin -> value_text (str oder None)
+    """
+    if not vins:
+        return {}
+    vins_clean = [v.strip() for v in vins if v and str(v).strip()]
+    if not vins_clean:
+        return {}
+    vins_upper = [v.upper() for v in vins_clean]
+    placeholders = ','.join(['%s'] * len(vins_upper))
+    try:
+        with locosoft_session() as conn:
+            cur = conn.cursor()
+            cur.execute(f"""
+                SELECT UPPER(TRIM(v.vin)) AS vin, TRIM(cv.value_text) AS brief
+                FROM vehicles v
+                INNER JOIN codes_vehicle_list cv ON cv.vehicle_number = v.internal_number
+                WHERE UPPER(TRIM(cv.code)) = 'BRIEF'
+                  AND UPPER(TRIM(v.vin)) IN ({placeholders})
+            """, vins_upper)
+            rows = cur.fetchall()
+        result = {}
+        for r in rows:
+            vin_key = (r[0] or '').strip()
+            brief = (r[1] or '').strip() if r[1] else None
+            if not vin_key:
+                continue
+            result[vin_key] = brief or None
+            for v in vins_clean:
+                if v.upper() == vin_key:
+                    result[v] = brief or None
+        return result
+    except Exception:
+        return {}
+
+
+def _hole_eautoseller_bwa_placements_from_db(vins):
+    """
+    Liest gecachte eAutoSeller BWA-Platzierungen aus eautoseller_bwa_placement (gefüllt vom Celery-Task sync_eautoseller_data).
+    Rückgabe: dict vin -> { mobile_platz, total_hits, platz_1_retail_gross, error } (wie get_market_placements_for_vins)
+    """
+    if not vins:
+        return {}
+    vins_clean = [v.strip() for v in vins if v and len(str(v).strip()) == 17][:50]
+    if not vins_clean:
+        return {}
+    placeholders = ','.join(['%s'] * len(vins_clean))
+    result = {}
+    try:
+        with db_session() as conn:
+            cur = conn.cursor()
+            cur.execute(f"""
+                SELECT vin, mobile_platz, total_hits, platz_1_retail_gross, mobile_url, error_message
+                FROM eautoseller_bwa_placement
+                WHERE vin IN ({placeholders})
+            """, vins_clean)
+            rows = cur.fetchall()
+            colnames = [c[0] for c in (cur.description or [])]
+            for r in rows:
+                row = row_to_dict(r, cur) if hasattr(r, 'keys') else dict(zip(colnames, r))
+                vin = (row.get('vin') or '').strip()
+                if not vin:
+                    continue
+                result[vin] = {
+                    'mobile_platz': row.get('mobile_platz'),
+                    'total_hits': row.get('total_hits'),
+                    'platz_1_retail_gross': float(row['platz_1_retail_gross']) if row.get('platz_1_retail_gross') is not None else None,
+                    'mobile_url': row.get('mobile_url'),
+                    'error': row.get('error_message'),
+                }
+                if vin.upper() != vin:
+                    result[vin.upper()] = result[vin]
+        return result
+    except Exception:
+        return {}
+
+
+def _eautoseller_bwa_sync_status():
+    """
+    Liefert Status des BWA-Caches (für Hinweis auf der Seite).
+    Returns: dict mit last_fetched_at, total, with_platz, all_have_error
+    """
+    try:
+        with db_session() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT
+                    MAX(fetched_at) AS last_fetched_at,
+                    COUNT(*) AS total,
+                    COUNT(*) FILTER (WHERE mobile_platz IS NOT NULL) AS with_platz,
+                    COUNT(*) FILTER (WHERE error_message IS NOT NULL AND error_message != '') AS with_error
+                FROM eautoseller_bwa_placement
+            """)
+            row = cur.fetchone()
+            if not row:
+                return {'last_fetched_at': None, 'total': 0, 'with_platz': 0, 'all_have_error': False}
+            colnames = [c[0] for c in (cur.description or [])]
+            d = row_to_dict(row, cur) if hasattr(row, 'keys') else dict(zip(colnames, row))
+        total = int(d.get('total') or 0)
+        with_platz = int(d.get('with_platz') or 0)
+        with_error = int(d.get('with_error') or 0)
+        last = d.get('last_fetched_at')
+        return {
+            'last_fetched_at': last.isoformat() if last and hasattr(last, 'isoformat') else str(last) if last else None,
+            'total': total,
+            'with_platz': with_platz,
+            'all_have_error': total > 0 and with_error >= total,
+        }
+    except Exception:
+        return {'last_fetched_at': None, 'total': 0, 'with_platz': 0, 'all_have_error': False}
+
+
+def _hole_zinsen_pro_vin(vins):
+    """
+    Liest aus fahrzeugfinanzierungen die verursachten Zinsen pro VIN (monatlich + gesamt).
+    VIN-Abgleich: 1) case-insensitiv über UPPER(TRIM(vin)), 2) Fallback über vin_kurz (letzte 8 Zeichen).
+    Rückgabe: dict vin -> { zinsen_monat, zinsen_gesamt, finanzinstitut }
+    Bei mehreren Finanzierungen pro VIN: Summen.
+    """
+    if not vins:
+        return {}
+    vins_clean = [v.strip() for v in vins if v and str(v).strip()]
+    if not vins_clean:
+        return {}
+    vins_upper = [v.upper() for v in vins_clean]
+    placeholders = ','.join(['%s'] * len(vins_upper))
+    result = {}
+    try:
+        with db_session() as conn:
+            cur = conn.cursor()
+            # 1) Abgleich über volle VIN (case-insensitiv)
+            cur.execute(f"""
+                SELECT UPPER(TRIM(vin)) AS vin,
+                       COALESCE(SUM(zinsen_letzte_periode), 0) AS zinsen_monat,
+                       COALESCE(SUM(zinsen_gesamt), 0) AS zinsen_gesamt,
+                       MAX(finanzinstitut) AS finanzinstitut
+                FROM fahrzeugfinanzierungen
+                WHERE UPPER(TRIM(vin)) IN ({placeholders}) AND aktiv = true
+                GROUP BY UPPER(TRIM(vin))
+            """, vins_upper)
+            rows = cur.fetchall()
+            colnames = [c[0] for c in (cur.description or [])]
+            for r in rows:
+                row = row_to_dict(r, None) if hasattr(r, 'keys') else dict(zip(colnames, r))
+                vin_key = (row.get('vin') or '').strip()
+                if not vin_key:
+                    continue
+                data = {
+                    'zinsen_monat': round(float(row.get('zinsen_monat') or 0), 2),
+                    'zinsen_gesamt': round(float(row.get('zinsen_gesamt') or 0), 2),
+                    'finanzinstitut': row.get('finanzinstitut'),
+                }
+                result[vin_key] = data
+                for v in vins_clean:
+                    if v.upper() == vin_key:
+                        result[v] = data
+
+            # 2) Fallback: keine Treffer per voller VIN → Abgleich über vin_kurz (letzte 8 Zeichen)
+            matched_upper = {v.upper() for v in vins_clean if v.upper() in result or v in result}
+            unmatched = [v for v in vins_clean if v.upper() not in matched_upper]
+            if unmatched:
+                last8_to_vins = {}
+                for v in unmatched:
+                    key = (v[-8:].upper() if len(v) >= 8 else v.upper())
+                    last8_to_vins.setdefault(key, []).append(v)
+                last8_list = list(last8_to_vins.keys())
+                ph2 = ','.join(['%s'] * len(last8_list))
+                cur.execute(f"""
+                    SELECT UPPER(TRIM(vin_kurz)) AS vin_kurz,
+                           COALESCE(SUM(zinsen_letzte_periode), 0) AS zinsen_monat,
+                           COALESCE(SUM(zinsen_gesamt), 0) AS zinsen_gesamt,
+                           MAX(finanzinstitut) AS finanzinstitut
+                    FROM fahrzeugfinanzierungen
+                    WHERE vin_kurz IS NOT NULL AND TRIM(vin_kurz) != ''
+                      AND UPPER(TRIM(vin_kurz)) IN ({ph2}) AND aktiv = true
+                    GROUP BY UPPER(TRIM(vin_kurz))
+                """, last8_list)
+                rows2 = cur.fetchall()
+                colnames2 = [c[0] for c in (cur.description or [])]
+                for r in rows2:
+                    row = row_to_dict(r, None) if hasattr(r, 'keys') else dict(zip(colnames2, r))
+                    vk = (row.get('vin_kurz') or '').strip()
+                    if not vk:
+                        continue
+                    data = {
+                        'zinsen_monat': round(float(row.get('zinsen_monat') or 0), 2),
+                        'zinsen_gesamt': round(float(row.get('zinsen_gesamt') or 0), 2),
+                        'finanzinstitut': row.get('finanzinstitut'),
+                    }
+                    for v in last8_to_vins.get(vk, []):
+                        result[v] = data
+                        result[v.upper()] = data
+
+            # 3) Genobank: Zinsen berechnen, wenn in DB noch 0 (Import schreibt nur zins_startdatum, keine Zinsen)
+            # Wie bankenspiegel_api: saldo × zinssatz/100 × tage_seit_zinsstart/365
+            zinssatz_genobank = None
+            cur.execute("""
+                SELECT sollzins FROM konten
+                WHERE kontonummer = '4700057908' OR iban LIKE '%%4700057908%%'
+                LIMIT 1
+            """)
+            row_z = cur.fetchone()
+            if row_z and row_z[0] is not None:
+                zinssatz_genobank = float(row_z[0])
+            if zinssatz_genobank is None:
+                cur.execute("SELECT zinssatz FROM ek_finanzierung_konditionen WHERE finanzinstitut = 'Genobank' LIMIT 1")
+                row_z = cur.fetchone()
+                if row_z and row_z[0] is not None:
+                    zinssatz_genobank = float(row_z[0])
+            if zinssatz_genobank is None:
+                zinssatz_genobank = 5.5
+
+            cur.execute(f"""
+                SELECT UPPER(TRIM(vin)) AS vin, zins_startdatum, aktueller_saldo
+                FROM fahrzeugfinanzierungen
+                WHERE finanzinstitut = 'Genobank' AND aktiv = true
+                  AND (zinsen_gesamt IS NULL OR zinsen_gesamt = 0)
+                  AND zins_startdatum IS NOT NULL AND aktueller_saldo > 0
+                  AND UPPER(TRIM(vin)) IN ({placeholders})
+            """, vins_upper)
+            rows_geno = cur.fetchall()
+            for r in rows_geno:
+                vin_key = (r[0] or '').strip()
+                zins_start = r[1]
+                saldo = float(r[2] or 0)
+                if not vin_key or saldo <= 0:
+                    continue
+                try:
+                    if hasattr(zins_start, 'year'):
+                        zins_start_date = zins_start
+                    elif zins_start:
+                        zins_start_date = date.fromisoformat(str(zins_start)[:10])
+                    else:
+                        continue
+                    tage = (date.today() - zins_start_date).days
+                    if tage <= 0:
+                        continue
+                    z_ges = round(saldo * zinssatz_genobank / 100 * tage / 365, 2)
+                    z_monat = round(saldo * zinssatz_genobank / 100 * 30 / 365, 2)
+                except (TypeError, ValueError):
+                    continue
+                data = {
+                    'zinsen_monat': z_monat,
+                    'zinsen_gesamt': z_ges,
+                    'finanzinstitut': 'Genobank',
+                }
+                if vin_key in result and (result[vin_key].get('zinsen_gesamt') or 0) == 0:
+                    result[vin_key].update(data)
+                else:
+                    result[vin_key] = data
+                for v in vins_clean:
+                    if v.upper() == vin_key:
+                        result[v] = result[vin_key]
+        return result
+    except Exception:
+        return {}
+
+
+# Standzeit ab diesem Wert (Tage): quasi nur noch Zwang zur Vermarktung, Zinsenrückholung fraglich
+STANDZEIT_ZWANG_VERMARKTUNG_TAGE = 300
+
+
+def _empfehlung_texte(differenz, zinsen_monat, standzeit_tage=None):
+    """
+    Kurzempfehlung für GF/VKL: Ziele positiver Cashflow und hoher Umschlag.
+    differenz = VK netto − Buchwert (netto); zinsen_monat = verursachte Zinsen/Monat.
+    Bei Standzeit >= STANDZEIT_ZWANG_VERMARKTUNG_TAGE: Zwang zur Vermarktung (Zinsenrückholung fraglich).
+    """
+    if standzeit_tage is not None and standzeit_tage >= STANDZEIT_ZWANG_VERMARKTUNG_TAGE:
+        return 'Zwang zur Vermarktung (Zinsenrückholung fraglich)'
+    if differenz is None:
+        return 'Verkaufspreis in Locosoft prüfen'
+    if differenz >= 2000:
+        return 'Aktiv vermarkten – Auktion prüfen'
+    if differenz >= 0:
+        return 'Absoluten Mindestpreis in mobile.de, jetzt verkaufen'
+    if differenz >= -1000:
+        return 'Prüfen: Verkauf oder halten'
+    return 'Unter Buchwert – bewusste Entscheidung'
+
+
+def _get_verkaufsempfehlungen_liste():
+    """
+    Interne Hilfsfunktion: baut die komplette Verkaufsempfehlungen-Liste (alle aktiven AfA-Fahrzeuge).
+    Wird von der Route und vom PDF-Report (20 älteste) genutzt.
+    Returns: list of dicts mit u.a. standzeit_tage, buchwert, empfehlung, fahrzeug_bezeichnung.
+    """
+    heute = date.today()
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, vin, kennzeichen, fahrzeug_bezeichnung, marke, modell,
+                   fahrzeugart, betriebsnr, anschaffungskosten_netto, afa_monatlich,
+                   nutzungsdauer_monate, anschaffungsdatum, tageszulassung
+            FROM afa_anlagevermoegen
+            WHERE status = 'aktiv'
+            ORDER BY anschaffungsdatum ASC, betriebsnr, fahrzeugart, fahrzeug_bezeichnung
+        """)
+        rows = cur.fetchall()
+        colnames = [c[0] for c in (cur.description or [])]
+        liste = []
+        vins = []
+        for r in rows:
+            row = row_to_dict(r, cur) if hasattr(r, 'keys') else dict(zip(colnames, r))
+            if not row:
+                continue
+            ak = float(row.get('anschaffungskosten_netto') or 0)
+            vin = (row.get('vin') or '').strip()
+            rest = berechne_restbuchwert(row, heute)
+            buchwert = round(rest, 2) if rest is not None else None
+            afa_bisher = round(ak - (rest or 0), 2) if rest is not None else None
+            ad = row.get('anschaffungsdatum')
+            ad_iso = ad.isoformat() if hasattr(ad, 'isoformat') else (str(ad)[:10] if ad else None)
+            ad_date = ad if (ad and hasattr(ad, 'year')) else (date.fromisoformat(str(ad)[:10]) if ad else None)
+            standzeit_tage = (heute - ad_date).days if ad_date else None
+            f = {
+                'id': row.get('id'), 'vin': vin,
+                'kennzeichen': row.get('kennzeichen'), 'fahrzeug_bezeichnung': row.get('fahrzeug_bezeichnung'),
+                'marke': row.get('marke'), 'fahrzeugart': row.get('fahrzeugart'),
+                'art_kurz': 'Miet' if (row.get('fahrzeugart') or '').upper() == 'MIETWAGEN' else 'VFW',
+                'standort': BETRIEBSNR_TO_STANDORT.get(row.get('betriebsnr') or 1, 'DEG'),
+                'einkaufsdatum': ad_iso,
+                'standzeit_tage': standzeit_tage,
+                'einstandspreis': round(ak, 2),
+                'buchwert': buchwert,
+                'afa_bisher': afa_bisher,
+            }
+            if vin:
+                vins.append(vin)
+            liste.append(f)
+    preise = _hole_locosoft_verkaufspreise_fuer_vins(vins)
+    zinsen_map = _hole_zinsen_pro_vin(vins)
+    ez_map = _hole_erstzulassung_fuer_vins(vins)
+    brief_map = _hole_brief_locosoft_fuer_vins(vins)
+    # eAutoSeller BWA: aus gecachter Tabelle (gefüllt vom Celery-Task sync_eautoseller_data)
+    placements = _hole_eautoseller_bwa_placements_from_db(vins)
+    for f in liste:
+        vin = (f.get('vin') or '').strip()
+        loco = (preise.get(vin) or preise.get(vin.upper()) or {}) if vin else {}
+        f['verkaufspreis_aktuell'] = loco.get('verkaufspreis_aktuell')
+        buch = f.get('buchwert')
+        vk = f.get('verkaufspreis_aktuell')
+        if buch is not None and vk is not None:
+            f['differenz_vk_minus_buchwert'] = round(vk - buch, 2)
+        else:
+            f['differenz_vk_minus_buchwert'] = None
+        zins = (zinsen_map.get(vin) or zinsen_map.get(vin.upper()) or {}) if vin else {}
+        f['zinsen_monat'] = zins.get('zinsen_monat', 0)
+        f['zinsen_gesamt'] = zins.get('zinsen_gesamt', 0)
+        f['finanzinstitut'] = zins.get('finanzinstitut')
+        f['erstzulassungsdatum'] = (ez_map.get(vin) or ez_map.get(vin.upper())) if vin else None
+        f['brief_locosoft'] = (brief_map.get(vin) or brief_map.get(vin.upper())) if vin else None
+        # eAutoSeller BWA/Bewerter: mobile.de Platz + Treffer (+ optional Platz 1 Preis)
+        placement = (placements.get(vin) or placements.get(vin.upper()) or {}) if vin else {}
+        f['mobile_platz'] = placement.get('mobile_platz')
+        f['total_hits'] = placement.get('total_hits')
+        f['platz_1_retail_gross'] = placement.get('platz_1_retail_gross')
+        f['eautoseller_placement_error'] = placement.get('error')
+        # „im Haus“ / „Brief im Haus“: 5 % kalkulatorisch auf Einstand für gesamte Standdauer (wenn keine echten Zinsdaten)
+        brief_text = (f.get('brief_locosoft') or '') if isinstance(f.get('brief_locosoft'), str) else ''
+        brief_im_haus = 'im haus' in brief_text.lower() or 'brief im haus' in brief_text.lower()
+        z_ges = f.get('zinsen_gesamt') or 0
+        if brief_im_haus and (z_ges == 0 or not zins):
+            einstand = float(f.get('einstandspreis') or 0)
+            standzeit_tage = f.get('standzeit_tage') or 0
+            if einstand > 0 and standzeit_tage > 0:
+                z_ges = round(einstand * 0.05 * standzeit_tage / 365, 2)
+                f['zinsen_gesamt'] = z_ges
+                f['zinsen_monat'] = round(einstand * 0.05 / 12, 2)
+            elif einstand > 0:
+                f['zinsen_monat'] = round(einstand * 0.05 / 12, 2)
+                f['zinsen_gesamt'] = round(f['zinsen_monat'] * 6, 2)  # grobe Schätzung
+        # Abverkaufspreis-Vorschlag (netto): Buchwert + 50 % Zinsen gesamt
+        buch = f.get('buchwert')
+        z_ges = f.get('zinsen_gesamt') or 0
+        if buch is not None:
+            f['abverkaufspreis_vorschlag'] = round(buch + 0.5 * z_ges, 2)
+        else:
+            f['abverkaufspreis_vorschlag'] = None
+        f['empfehlung'] = _empfehlung_texte(
+            f.get('differenz_vk_minus_buchwert'),
+            f.get('zinsen_monat'),
+            f.get('standzeit_tage'),
+        )
+    return liste
+
+
+@afa_api.route('/api/afa/verkaufsempfehlungen', methods=['GET'])
+def verkaufsempfehlungen():
+    """
+    Wie abverkauf-uebersicht, ergänzt um verursachte Zinsen (fahrzeugfinanzierungen) und
+    Empfehlungstext. Nur für GF/VKL (Feature afa_verkaufsempfehlungen).
+    """
+    if not current_user.is_authenticated or not current_user.can_access_feature('afa_verkaufsempfehlungen'):
+        return jsonify({'ok': False, 'error': 'Zugriff nur für Geschäftsführung / Verkaufsleitung'}), 403
+    try:
+        liste = _get_verkaufsempfehlungen_liste()
+        eautoseller_status = _eautoseller_bwa_sync_status()
+        return jsonify({'ok': True, 'fahrzeuge': liste, 'eautoseller_bwa_status': eautoseller_status})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+# =============================================================================
 # GET /api/afa/fahrzeuge
 # =============================================================================
 
@@ -303,6 +928,18 @@ def fahrzeug_detail(fk_id):
         f['buchungen'] = buchungen
         heute = date.today()
         f['restbuchwert_aktuell'] = berechne_restbuchwert(f, heute) if f.get('status') == 'aktiv' else f.get('restbuchwert_abgang')
+        # Bei aktiven Fahrzeugen: Verkaufspreis aus Locosoft + rechnerischer Buchgewinn/Verlust (VK netto − Restbuchwert)
+        if f.get('status') == 'aktiv':
+            vin = (f.get('vin') or '').strip()
+            if vin:
+                preise = _hole_locosoft_verkaufspreise_fuer_vins([vin])
+                loco = preise.get(vin) or preise.get(vin.upper()) or {}
+                vk = loco.get('verkaufspreis_aktuell')
+                if vk is not None:
+                    f['verkaufspreis_aktuell'] = round(float(vk), 2)
+                    rest = f.get('restbuchwert_aktuell')
+                    if rest is not None:
+                        f['rechnerisch_buchgewinn_verlust'] = round(float(vk) - float(rest), 2)
         return jsonify({'ok': True, 'fahrzeug': f})
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
@@ -386,6 +1023,8 @@ def monatsberechnung():
         heute = date.today()
         jahr, monat = heute.year, heute.month
     buchungsmonat = date(jahr, monat, 1)
+    # Letzter Tag des Monats: Fahrzeuge mit Anschaffung z.B. am 19.02. sollen im Februar zur Buchung erscheinen
+    monatsende = buchungsmonat + relativedelta(months=1, days=-1)
 
     try:
         with db_session() as conn:
@@ -399,7 +1038,7 @@ def monatsberechnung():
                 AND (tageszulassung IS NULL OR tageszulassung = false)
                 AND anschaffungsdatum <= %s
                 AND (abgangsdatum IS NULL OR abgangsdatum >= %s)
-            """, (buchungsmonat, buchungsmonat))
+            """, (monatsende, buchungsmonat))
             rows = cur.fetchall()
         aktive = [_fahrzeug_from_row(r, cur) for r in rows]
 
@@ -430,19 +1069,24 @@ def monatsberechnung():
             })
             summe += afa
 
-        # Sortierung: Mietwagen DEG, LAN, HYU; dann VFW DEG, LAN, HYU, Leapmotor (Buchhaltung zum Kontrollieren)
+        # Sortierung: Standort DEG → HYU → LAN, innerhalb Standort zuerst VFW dann Mietwagen (VFW DEG, Mietwagen DEG, VFW HYU, Mietwagen HYU, VFW LAN, Mietwagen LAN)
         def _sort_key_pos(p):
             art = (p.get('fahrzeugart') or '').upper()
-            bn = p.get('betriebsnr') or 1
+            bn = int(p.get('betriebsnr') or 1)
             is_leap = 'Leapmotor' in (p.get('marke') or '') + (p.get('fahrzeug_bezeichnung') or '')
-            return (0 if art == 'MIETWAGEN' else 1, {1: 0, 3: 1, 2: 2}.get(bn, 0), 1 if (art == 'VFW' and is_leap) else 0)
+            standort_ord = {1: 0, 2: 1, 3: 2}.get(bn, 0)  # DEG, HYU, LAN
+            art_ord = 0 if art == 'VFW' else 1
+            return (standort_ord, art_ord, 1 if (art == 'VFW' and is_leap) else 0)
         positionen.sort(key=_sort_key_pos)
+
+        zwischensummen = _zwischensummen_fuer_positionen(positionen)
 
         return jsonify({
             'ok': True,
             'buchungsmonat': buchungsmonat.isoformat()[:7],
             'positionen': positionen,
             'summe_afa': round(summe, 2),
+            'zwischensummen': zwischensummen,
         })
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
@@ -487,15 +1131,22 @@ def buchungsliste():
             # "CSV exportieren" ohne Parameter: Hyundai (2) ausschließen, nur DEG/LAN (1, 3)
             positionen = [p for p in positionen if (p.get('betriebsnr') or 0) in (1, 3)]
         summe = round(sum(p.get('afa_betrag') or 0 for p in positionen), 2)
-        # CSV mit fortlaufender Nr.
+        zwischensummen = _zwischensummen_fuer_positionen(positionen)
+        # CSV: Datenzeilen + nach jeder Abteilung Zwischensummenzeile, am Ende Summe
         header = ['Nr.', 'Kennzeichen', 'Fahrgestellnr.', 'Standort', 'Bezeichnung', 'Art', 'Betrieb', 'Soll', 'Haben', 'AfA-Betrag']
-        csv_rows = [[i + 1, p.get('kennzeichen'), p.get('vin') or '', p.get('standort') or '', p.get('fahrzeug_bezeichnung'), p.get('fahrzeugart'), p.get('betriebsnr'), '{:06d}'.format(p.get('konto_soll') or 0), '{:06d}'.format(p.get('konto_haben') or 0), p.get('afa_betrag')] for i, p in enumerate(positionen)]
-        summe_row = ['', '', '', '', '', '', '', '', 'Summe', summe]
+        csv_rows = []
+        for i, p in enumerate(positionen):
+            csv_rows.append([i + 1, p.get('kennzeichen'), p.get('vin') or '', p.get('standort') or '', p.get('fahrzeug_bezeichnung'), p.get('fahrzeugart'), p.get('betriebsnr'), '{:06d}'.format(p.get('konto_soll') or 0), '{:06d}'.format(p.get('konto_haben') or 0), _csv_euro(p.get('afa_betrag'))])
+            for z in zwischensummen:
+                if z['after_index'] == i:
+                    csv_rows.append(['', '', '', '', z['label'], '', '', '', '', _csv_euro(z['summe_afa'])])
+        summe_row = ['', '', '', '', 'Summe', '', '', '', '', _csv_euro(summe)]
         return jsonify({
             'ok': True,
             'buchungsmonat': data['buchungsmonat'],
             'positionen': positionen,
             'summe_afa': summe,
+            'zwischensummen': zwischensummen,
             'export_csv_zeilen': [header, *csv_rows, summe_row],
         })
     except Exception as e:
@@ -700,6 +1351,7 @@ def berechne_monat():
         heute = date.today()
         jahr, monat = heute.year, heute.month
     buchungsmonat = date(jahr, monat, 1)
+    monatsende = buchungsmonat + relativedelta(months=1, days=-1)
 
     try:
         with db_session() as conn:
@@ -711,7 +1363,7 @@ def berechne_monat():
                 AND (tageszulassung IS NULL OR tageszulassung = false)
                 AND anschaffungsdatum <= %s
                 AND (abgangsdatum IS NULL OR abgangsdatum >= %s)
-            """, (buchungsmonat, buchungsmonat))
+            """, (monatsende, buchungsmonat))
             rows = cur.fetchall()
         fahrzeuge = [_fahrzeug_from_row(r, cur) for r in rows]
         inserted = 0

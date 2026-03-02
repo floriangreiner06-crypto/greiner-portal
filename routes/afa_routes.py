@@ -23,3 +23,16 @@ def afa_dashboard():
         page_title='AfA Vorführwagen / Mietwagen',
         active_page='controlling',
     )
+
+
+@afa_bp.route('/afa/verkaufsempfehlungen')
+@login_required
+def afa_verkaufsempfehlungen():
+    """Verkaufsempfehlungen für AfA-Fahrzeuge (GF/VKL): Cashflow, Umschlag, Zinsen."""
+    if not current_user.can_access_feature('afa_verkaufsempfehlungen'):
+        abort(403)
+    return render_template(
+        'controlling/afa_verkaufsempfehlungen.html',
+        page_title='Verkaufsempfehlungen AfA',
+        active_page='controlling',
+    )

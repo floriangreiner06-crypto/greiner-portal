@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+
+{% block title %}Verkaufsempfehlungen AfA{% endblock %}
+
+{% block extra_css %}
+<style>
+    .afa-table { font-size: 0.9rem; border-collapse: collapse; }
+    .afa-table th { background: #343a40; color: #fff; padding: 0.5rem; white-space: nowrap; position: sticky; top: 0; z-index: 2; box-shadow: 0 1px 0 #495057; }
+    .afa-table td { padding: 0.4rem 0.5rem; vertical-align: middle; }
+    .afa-table tbody tr:hover { background: #f8f9fa; }
+    .afa-table-wrap { max-height: min(75vh, 800px); overflow: auto; }
+    .afa-table .col-bezeichnung { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .empf-zwang { color: #b02a37; font-weight: 700; }
+    .empf-aktiv { color: #198754; font-weight: 600; }
+    .empf-sinnvoll { color: #0d6efd; }
+    .empf-pruefen { color: #fd7e14; }
+    .empf-unter-bw { color: #dc3545; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h4 class="mb-0"><i class="bi bi-graph-up-arrow text-success"></i> Verkaufsempfehlungen AfA</h4>
+            <small class="text-muted">VFW & Mietwagen — Ziele: positiver Cashflow, hoher Umschlag. Inkl. verursachte Zinsen (Einkaufsfinanzierung).</small>
+        </div>
+        <button type="button" class="btn btn-primary" id="btn-laden" title="Daten aktualisieren"><i class="bi bi-arrow-clockwise"></i> Aktualisieren</button>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <p class="text-muted small mb-3">Differenz = Verkaufspreis (netto) − Buchwert. Zinsen aus <strong>fahrzeugfinanzierungen</strong>. Bei „im Haus“ / „Brief im Haus“: <strong>5 % kalkulatorisch</strong>. <strong>Brief (Locosoft)</strong> = Zusatzcode BRIEF. <strong>mobile.de Platz</strong> und <strong>Treffer</strong> aus eAutoSeller Bewerter (BWA), aktualisiert über den <strong>eAutoSeller-Sync</strong> (Admin/Tasks). <strong>Abverkauf</strong> = Buchwert + 50 % Zinsen (netto).</p>
+            <div id="eautoseller-warnung" class="alert alert-warning small py-2 mb-2 d-none" role="alert"></div>
+            <div class="table-responsive afa-table-wrap">
+                <table class="table table-sm afa-table mb-0">
+                    <thead>
+                        <tr>
+                            <th>VIN</th>
+                            <th>Kz.</th>
+                            <th>Bezeichnung</th>
+                            <th>Standort</th>
+                            <th>Art</th>
+                            <th>Erstzul.</th>
+                            <th>Einkauf</th>
+                            <th class="text-end" title="Standzeit in Tagen">Tage</th>
+                            <th class="text-end">Einstand (€)</th>
+                            <th class="text-end">Buchwert (€)</th>
+                            <th class="text-end">AfA (€)</th>
+                            <th class="text-end">VK netto (€)</th>
+                            <th class="text-end">Diff. (€)</th>
+                            <th class="text-end" title="Rechnerisch: VK netto − Buchwert">Buchgewinn/Verlust (€)</th>
+                            <th class="text-end" title="Zinsen/Monat">Z/M (€)</th>
+                            <th class="text-end" title="Zinsen gesamt">Z ges. (€)</th>
+                            <th title="Locosoft BRIEF (z. B. Genobank, im Haus)">Brief</th>
+                            <th class="text-end" title="eAutoSeller Bewerter: Platz auf mobile.de">mobile.de Platz</th>
+                            <th class="text-end" title="eAutoSeller: Treffer/Vergleichsanzahl">Treffer</th>
+                            <th class="text-end" title="eAutoSeller: Preis Platz 1 (brutto)">Platz 1 (€)</th>
+                            <th class="text-end" title="Buchwert + 50 % Zinsen">Abverkauf (€)</th>
+                            <th>Empfehlung</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody">
+                        <tr><td colspan="23" class="text-center text-muted py-4">Klick auf „Aktualisieren“ zum Laden.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <p class="small text-muted mt-2"><a href="{{ url_for('afa.afa_dashboard') }}"><i class="bi bi-arrow-left"></i> Zurück zum AfA-Dashboard</a></p>
+</div>
+
+<!-- Fahrzeug-Detail-Modal (auf dieser Seite, kein Absprung) -->
+<div class="modal fade" id="vempf-detail-modal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-car-front"></i> <span id="vempf-detail-titel">Fahrzeug</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="vempf-detail-kpis" class="row g-2 mb-3"></div>
+                <div class="chart-container mb-3" style="height: 280px;">
+                    <canvas id="vempf-detail-chart"></canvas>
+                </div>
+                <div id="vempf-detail-buchgewinn" class="alert alert-secondary">
+                    <span id="vempf-detail-buchgewinn-text">–</span>
+                    <br><small class="text-muted">Verkaufserlös − Restbuchwert (nach Abgang buchen).</small>
+                </div>
+                <p class="small text-muted"><a href="#" id="vempf-detail-link-afa">Im AfA-Dashboard bearbeiten</a></p>
+                <table class="table table-sm">
+                    <thead><tr><th>Monat</th><th>AfA</th><th>Restbuchwert</th><th>Kumuliert</th></tr></thead>
+                    <tbody id="vempf-detail-buchungen"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const API = '/api/afa';
+    const tbody = document.getElementById('tbody');
+    const colSpan = 23;
+
+    function fmtDate(s) {
+        if (!s) return '–';
+        if (s.length >= 10) return s.substring(0, 10);
+        return s;
+    }
+
+    function fmtEuro(v) {
+        if (v == null || v === '' || isNaN(v)) return '–';
+        return Number(v).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function empfehlungClass(empf) {
+        if (!empf) return '';
+        if (empf.indexOf('Zwang zur Vermarktung') !== -1) return 'empf-zwang';
+        if (empf.indexOf('Aktiv') !== -1) return 'empf-aktiv';
+        if (empf.indexOf('Mindestpreis') !== -1 || empf.indexOf('jetzt verkaufen') !== -1) return 'empf-sinnvoll';
+        if (empf.indexOf('sinnvoll') !== -1) return 'empf-sinnvoll';
+        if (empf.indexOf('Prüfen') !== -1) return 'empf-pruefen';
+        if (empf.indexOf('Unter Buchwert') !== -1) return 'empf-unter-bw';
+        return '';
+    }
+
+    var vempfDetailChart = null;
+    function openDetail(id) {
+        fetch(API + '/fahrzeug/' + id)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.ok) { alert(data.error || 'Fehler'); return; }
+                var f = data.fahrzeug;
+                document.getElementById('vempf-detail-titel').textContent = (f.kennzeichen || f.vin || 'ID ' + id) + ' — ' + (f.fahrzeug_bezeichnung || f.modell || '');
+                document.getElementById('vempf-detail-kpis').innerHTML =
+                    '<div class="col"><strong>EK netto</strong> ' + fmtEuro(f.anschaffungskosten_netto) + '</div>' +
+                    '<div class="col"><strong>Monatl. AfA</strong> ' + fmtEuro(f.afa_monatlich) + '</div>' +
+                    '<div class="col"><strong>Restbuchwert</strong> ' + fmtEuro(f.restbuchwert_aktuell != null ? f.restbuchwert_aktuell : f.restbuchwert_abgang) + '</div>';
+                var buchungen = f.buchungen || [];
+                document.getElementById('vempf-detail-buchungen').innerHTML = buchungen.length === 0
+                    ? '<tr><td colspan="4" class="text-muted">Keine Buchungen erfasst.</td></tr>'
+                    : buchungen.map(function(b) {
+                        return '<tr><td>' + (b.buchungsmonat || '-') + '</td><td>' + fmtEuro(b.afa_betrag) + '</td><td>' + fmtEuro(b.restbuchwert) + '</td><td>' + fmtEuro(b.kumuliert) + '</td></tr>';
+                    }).join('');
+                var bwEl = document.getElementById('vempf-detail-buchgewinn');
+                var bwText = document.getElementById('vempf-detail-buchgewinn-text');
+                if (f.buchgewinn_verlust != null) {
+                    bwText.innerHTML = '<strong>' + (f.buchgewinn_verlust >= 0 ? 'Buchgewinn: ' : 'Buchverlust: ') + fmtEuro(f.buchgewinn_verlust) + '</strong>';
+                    bwEl.className = 'alert ' + (f.buchgewinn_verlust >= 0 ? 'alert-success' : 'alert-danger');
+                } else if (f.rechnerisch_buchgewinn_verlust != null && f.verkaufspreis_aktuell != null) {
+                    var r = f.rechnerisch_buchgewinn_verlust;
+                    bwText.innerHTML = 'Rechnerisch bei aktuellem VK: ' + fmtEuro(f.verkaufspreis_aktuell) + ' − ' + fmtEuro(f.restbuchwert_aktuell) + ' = <strong>' + (r >= 0 ? 'Buchgewinn ' : 'Buchverlust ') + fmtEuro(r) + '</strong>';
+                    bwEl.className = 'alert ' + (r >= 0 ? 'alert-success' : 'alert-danger');
+                } else {
+                    bwText.textContent = 'Buchgewinn/Buchverlust: – (wird beim Abgang buchen ermittelt; rechnerisch nur bei VK in Locosoft)';
+                    bwEl.className = 'alert alert-secondary';
+                }
+                document.getElementById('vempf-detail-link-afa').href = '/controlling/afa#detail-' + id;
+                if (typeof Chart !== 'undefined') {
+                    if (vempfDetailChart) vempfDetailChart.destroy();
+                    var ctx = document.getElementById('vempf-detail-chart').getContext('2d');
+                    var labels = buchungen.map(function(b) { return b.buchungsmonat || ''; });
+                    var restWerte = buchungen.map(function(b) { return b.restbuchwert; });
+                    if (labels.length === 0) {
+                        restWerte.push(f.restbuchwert_aktuell != null ? f.restbuchwert_aktuell : f.anschaffungskosten_netto);
+                        labels.push('AK');
+                    }
+                    vempfDetailChart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [{ label: 'Restbuchwert (€)', data: restWerte, borderColor: '#0d6efd', fill: false, tension: 0.1 }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: { y: { beginAtZero: true } }
+                        }
+                    });
+                }
+                var modalEl = document.getElementById('vempf-detail-modal');
+                var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                modal.show();
+            })
+            .catch(function(e) { alert('Fehler: ' + (e.message || 'Laden fehlgeschlagen')); });
+    }
+
+    function load() {
+        tbody.innerHTML = '<tr><td colspan="' + colSpan + '" class="text-center text-muted py-3">Lade …</td></tr>';
+        fetch(API + '/verkaufsempfehlungen')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.ok) {
+                    tbody.innerHTML = '<tr><td colspan="' + colSpan + '" class="text-danger">' + (data.error || 'Fehler') + '</td></tr>';
+                    return;
+                }
+                var list = data.fahrzeuge || [];
+                if (list.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="' + colSpan + '" class="text-center text-muted py-3">Keine aktiven AfA-Fahrzeuge.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = list.map(function(f) {
+                    var diff = f && f.differenz_vk_minus_buchwert;
+                    var diffCl = diff != null ? (diff >= 0 ? 'text-success' : 'text-danger') : '';
+                    var empf = (f && f.empfehlung) || '–';
+                    var empfCl = empfehlungClass(empf);
+                    var standzeit = f && f.standzeit_tage != null ? f.standzeit_tage : '–';
+                    var bezeichnung = (f && f.fahrzeug_bezeichnung ? f.fahrzeug_bezeichnung : '–');
+                    return '<tr>' +
+                        '<td class="text-nowrap">' + (f && f.vin ? f.vin : '–') + '</td>' +
+                        '<td class="text-nowrap">' + (f && f.kennzeichen ? f.kennzeichen : '–') + '</td>' +
+                        '<td class="col-bezeichnung" title="' + (bezeichnung !== '–' ? bezeichnung.replace(/"/g, '&quot;') : '') + '">' + bezeichnung + '</td>' +
+                        '<td>' + (f && f.standort ? f.standort : '–') + '</td>' +
+                        '<td>' + (f && f.art_kurz ? f.art_kurz : '–') + '</td>' +
+                        '<td class="text-nowrap">' + fmtDate(f && f.erstzulassungsdatum) + '</td>' +
+                        '<td class="text-nowrap">' + fmtDate(f && f.einkaufsdatum) + '</td>' +
+                        '<td class="text-end">' + standzeit + '</td>' +
+                        '<td class="text-end">' + fmtEuro(f && f.einstandspreis) + '</td>' +
+                        '<td class="text-end">' + fmtEuro(f && f.buchwert) + '</td>' +
+                        '<td class="text-end">' + fmtEuro(f && f.afa_bisher) + '</td>' +
+                        '<td class="text-end">' + fmtEuro(f && f.verkaufspreis_aktuell) + '</td>' +
+                        '<td class="text-end ' + diffCl + '">' + (diff != null ? fmtEuro(diff) : '–') + '</td>' +
+                        (function() {
+                            if (diff == null) return '<td class="text-end text-muted">–</td>';
+                            var bwCl = diff >= 0 ? 'text-success' : 'text-danger';
+                            var bwLabel = diff >= 0 ? 'Buchgewinn ' : 'Buchverlust ';
+                            return '<td class="text-end ' + bwCl + '">' + bwLabel + fmtEuro(diff) + '</td>';
+                        })() +
+                        '<td class="text-end">' + fmtEuro(f && f.zinsen_monat) + '</td>' +
+                        '<td class="text-end">' + fmtEuro(f && f.zinsen_gesamt) + '</td>' +
+                        '<td>' + (f && f.brief_locosoft ? f.brief_locosoft : '–') + '</td>' +
+                        '<td class="text-end">' + (f && f.mobile_platz != null ? f.mobile_platz : '–') + '</td>' +
+                        '<td class="text-end">' + (f && f.total_hits != null ? f.total_hits : '–') + '</td>' +
+                        '<td class="text-end">' + (f && f.platz_1_retail_gross != null ? fmtEuro(f.platz_1_retail_gross) : '–') + '</td>' +
+                        '<td class="text-end">' + fmtEuro(f && f.abverkaufspreis_vorschlag) + '</td>' +
+                        '<td class="' + empfCl + '">' + empf + '</td>' +
+                        '<td><button type="button" class="btn btn-sm btn-outline-primary detail-btn" data-id="' + (f && f.id ? f.id : '') + '">Detail</button></td>' +
+                        '</tr>';
+                }).join('');
+                tbody.querySelectorAll('.detail-btn').forEach(function(btn) {
+                    btn.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        var id = parseInt(btn.getAttribute('data-id'), 10);
+                        if (id) openDetail(id);
+                    });
+                });
+                // eAutoSeller-Daten kommen aus Sync (DB); kein Banner für gecachte Fehler mehr
+                var warnEl = document.getElementById('eautoseller-warnung');
+                if (warnEl) warnEl.classList.add('d-none');
+            })
+            .catch(function(e) {
+                tbody.innerHTML = '<tr><td colspan="' + colSpan + '" class="text-danger">' + (e.message || 'Fehler beim Laden') + '</td></tr>';
+            });
+    }
+
+    document.getElementById('btn-laden').addEventListener('click', load);
+    load();
+})();
+</script>
+{% endblock %}

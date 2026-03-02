@@ -70,6 +70,10 @@ def send_report_test(
     if report_id == "afa_bestand_report" or "send_afa_bestand_report" in script:
         return _send_afa_bestand_report_test(connector, email, heute)
 
+    # AfA Verkaufsempfehlungen (20 älteste)
+    if report_id == "afa_verkaufsempfehlungen_report" or "send_afa_verkaufsempfehlungen_report" in script:
+        return _send_afa_verkaufsempfehlungen_report_test(connector, email, heute)
+
     return False, "Testversand für diesen Report noch nicht implementiert"
 
 
@@ -125,6 +129,20 @@ def _send_afa_bestand_report_test(connector, email: str, heute) -> Tuple[bool, s
         count = send_reports(connector, test_email=email)
         if count > 0:
             return True, f"AfA Bestand Report wurde an {email} gesendet."
+        return False, "Keine E-Mail versendet."
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return False, str(e)
+
+
+def _send_afa_verkaufsempfehlungen_report_test(connector, email: str, heute) -> Tuple[bool, str]:
+    """AfA Verkaufsempfehlungen (20 älteste) – Testversand an eine Adresse."""
+    try:
+        from scripts.send_afa_verkaufsempfehlungen_report import send_reports
+        count = send_reports(connector, test_email=email)
+        if count > 0:
+            return True, f"AfA Verkaufsempfehlungen Report wurde an {email} gesendet."
         return False, "Keine E-Mail versendet."
     except Exception as e:
         import traceback

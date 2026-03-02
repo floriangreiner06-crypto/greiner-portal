@@ -179,6 +179,18 @@ def _init_standard_reports():
         'category': 'controlling'
     }
 
+    # AfA Verkaufsempfehlungen – 20 älteste Fahrzeuge (Liquidität/Cashflow)
+    REPORT_REGISTRY['afa_verkaufsempfehlungen_report'] = {
+        'name': 'AfA Verkaufsempfehlungen (20 älteste)',
+        'description': '20 älteste VFW/Mietwagen nach Standzeit mit Empfehlung (Liquidität, Auktion, Mindestpreis). Mit PDF-Anhang.',
+        'script': 'scripts/send_afa_verkaufsempfehlungen_report.py',
+        'schedule': '20:15 Mo-Fr',
+        'supports_standort': False,
+        'supports_bereiche': False,
+        'icon': '📊',
+        'category': 'controlling'
+    }
+
 # Beim Import initialisieren
 _init_standard_reports()
 

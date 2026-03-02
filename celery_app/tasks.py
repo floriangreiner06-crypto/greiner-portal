@@ -1774,6 +1774,51 @@ def email_afa_bestand_report(force=False):
         return {'success': False, 'error': str(e)}
 
 
+@shared_task(soft_time_limit=300, name='celery_app.tasks.email_afa_verkaufsempfehlungen_report')
+def email_afa_verkaufsempfehlungen_report(force=False):
+    """
+    AfA Verkaufsempfehlungen (20 älteste) – E-Mail-Report.
+    Schedule: 20:15 Mo–Fr. force=True: manueller Start aus Admin/Celery-UI.
+    """
+    import subprocess
+    import os
+    try:
+        script_paths = [
+            '/opt/greiner-portal/scripts/send_afa_verkaufsempfehlungen_report.py',
+            os.path.join(os.path.dirname(__file__), '..', 'scripts', 'send_afa_verkaufsempfehlungen_report.py'),
+        ]
+        script_path = None
+        for p in script_paths:
+            if os.path.exists(p):
+                script_path = p
+                break
+        if not script_path:
+            logger.error("AfA Verkaufsempfehlungen Report: Script nicht gefunden")
+            return {'success': False, 'error': 'Script nicht gefunden'}
+        cmd = [sys.executable, script_path]
+        if force:
+            cmd.append('--force')
+        result = subprocess.run(
+            cmd,
+            cwd='/opt/greiner-portal',
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if result.returncode == 0:
+            logger.info("AfA Verkaufsempfehlungen Report erfolgreich gesendet")
+            return {'success': True, 'stdout': (result.stdout or '')[-500:]}
+        error_msg = (result.stderr or result.stdout or 'Unbekannter Fehler')[-500:]
+        logger.error("AfA Verkaufsempfehlungen Report fehlgeschlagen: %s", error_msg)
+        return {'success': False, 'error': error_msg, 'exit_code': result.returncode}
+    except subprocess.TimeoutExpired:
+        logger.error("AfA Verkaufsempfehlungen Report: Timeout")
+        return {'success': False, 'error': 'Timeout'}
+    except Exception as e:
+        logger.exception("Fehler bei AfA Verkaufsempfehlungen Report")
+        return {'success': False, 'error': str(e)}
+
+
 @shared_task(soft_time_limit=300, name='celery_app.tasks.email_daily_logins')
 def email_daily_logins():
     """
@@ -2179,44 +2224,91 @@ def email_penner_weekly():
 def sync_eautoseller_data():
     """
     eAutoseller Sync - eAutoseller Daten synchronisieren
-    Läuft alle 15 Minuten während Arbeitszeit (7-18 Uhr)
+    Läuft alle 15 Minuten während Arbeitszeit (7-18 Uhr).
+    1) Bestehendes Sync-Script (Fahrzeugbestand etc.)
+    2) BWA-Platzierungen (mobile.de Platz, Treffer, Platz 1) für AfA-VINs abrufen und in eautoseller_bwa_placement speichern.
     """
     import subprocess
     import os
     
+    out = {'success': True, 'script_ok': None, 'bwa_updated': 0}
     try:
-        # Prüfe verschiedene mögliche Pfade
+        # 1) Bestehendes Sync-Script
         script_paths = [
             '/opt/greiner-portal/scripts/sync/sync_eautoseller.py',
             '/opt/greiner-portal/scripts/sync_eautoseller_data.py'
         ]
-        
         script_path = None
         for path in script_paths:
             if os.path.exists(path):
                 script_path = path
                 break
-        
-        if not script_path:
-            logger.warning("eAutoseller Sync-Script nicht gefunden")
-            return {'success': False, 'error': 'Script nicht gefunden'}
-        
-        logger.info("Starte eAutoseller Sync...")
-        result = subprocess.run(
-            ['/opt/greiner-portal/venv/bin/python3', script_path],
-            cwd='/opt/greiner-portal',
-            capture_output=True,
-            text=True,
-            timeout=300
-        )
-        
-        if result.returncode == 0:
-            logger.info("eAutoseller Sync erfolgreich abgeschlossen")
-            return {'success': True, 'stdout': result.stdout[-500:]}
+        if script_path:
+            logger.info("Starte eAutoseller Sync-Script...")
+            result = subprocess.run(
+                ['/opt/greiner-portal/venv/bin/python3', script_path],
+                cwd='/opt/greiner-portal',
+                capture_output=True,
+                text=True,
+                timeout=300
+            )
+            out['script_ok'] = (result.returncode == 0)
+            if result.returncode == 0:
+                logger.info("eAutoseller Sync-Script erfolgreich")
+            else:
+                logger.warning("eAutoseller Sync-Script fehlgeschlagen: %s", (result.stderr or '')[-300:])
         else:
-            logger.error(f"eAutoseller Sync fehlgeschlagen: {result.stderr}")
-            return {'success': False, 'error': result.stderr[-500:]}
-    
+            out['script_ok'] = False
+            logger.warning("eAutoseller Sync-Script nicht gefunden")
+
+        # 2) BWA-Platzierungen für AfA-VINs abrufen und in PostgreSQL speichern (läuft im Worker, oft ohne 401)
+        try:
+            from api.db_utils import db_session
+            from api.eautoseller_api import get_market_placements_for_vins as fetch_placements
+            with db_session() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT DISTINCT TRIM(vin) FROM afa_anlagevermoegen
+                    WHERE status = 'aktiv' AND vin IS NOT NULL AND LENGTH(TRIM(vin)) = 17
+                """)
+                vins = [r[0] for r in cur.fetchall() if r and r[0]]
+            if vins:
+                placements = fetch_placements(vins, max_vins=50)
+                updated = 0
+                with db_session() as conn:
+                    cur = conn.cursor()
+                    for vin, data in placements.items():
+                        if not vin or len(str(vin).strip()) != 17:
+                            continue
+                        vin = str(vin).strip()
+                        err = data.get('error')
+                        cur.execute("""
+                            INSERT INTO eautoseller_bwa_placement
+                            (vin, mobile_platz, total_hits, platz_1_retail_gross, mobile_url, error_message, fetched_at)
+                            VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                            ON CONFLICT (vin) DO UPDATE SET
+                            mobile_platz = EXCLUDED.mobile_platz,
+                            total_hits = EXCLUDED.total_hits,
+                            platz_1_retail_gross = EXCLUDED.platz_1_retail_gross,
+                            mobile_url = EXCLUDED.mobile_url,
+                            error_message = EXCLUDED.error_message,
+                            fetched_at = NOW()
+                        """, (
+                            vin,
+                            data.get('mobile_platz'),
+                            data.get('total_hits'),
+                            data.get('platz_1_retail_gross'),
+                            data.get('mobile_url'),
+                            err[:500] if err else None,
+                        ))
+                        updated += 1
+                    conn.commit()
+                out['bwa_updated'] = updated
+                logger.info("eAutoSeller BWA: %s Platzierungen in eautoseller_bwa_placement geschrieben", updated)
+        except Exception as bwa_e:
+            logger.warning("eAutoSeller BWA-Platzierungen (optional): %s", bwa_e)
+            out['bwa_error'] = str(bwa_e)[:200]
+        return out
     except subprocess.TimeoutExpired:
         logger.error("eAutoseller Sync: Timeout nach 5 Minuten")
         return {'success': False, 'error': 'Timeout'}
@@ -2379,6 +2471,8 @@ def afa_monatsberechnung(jahr=None, monat=None):
             erstes_heute = heute.replace(day=1)
             buchungsmonat = erstes_heute - relativedelta(months=1)
         jahr, monat = buchungsmonat.year, buchungsmonat.month
+        # Letzter Tag des Monats: Fahrzeuge mit Anschaffung z.B. am 19. sollen im selben Monat zur Buchung
+        monatsende = buchungsmonat + relativedelta(months=1, days=-1)
 
         with db_session() as conn:
             cur = conn.cursor()
@@ -2386,9 +2480,10 @@ def afa_monatsberechnung(jahr=None, monat=None):
                 SELECT id, anschaffungsdatum, anschaffungskosten_netto, nutzungsdauer_monate, afa_methode, afa_monatlich
                 FROM afa_anlagevermoegen
                 WHERE status = 'aktiv'
+                AND (tageszulassung IS NULL OR tageszulassung = false)
                 AND anschaffungsdatum <= %s
                 AND (abgangsdatum IS NULL OR abgangsdatum >= %s)
-            """, (buchungsmonat, buchungsmonat))
+            """, (monatsende, buchungsmonat))
             rows = cur.fetchall()
             fahrzeuge = [_fahrzeug_from_row(r, cur) for r in rows]
         inserted = 0

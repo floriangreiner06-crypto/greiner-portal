@@ -173,6 +173,12 @@ app.conf.update(
             'schedule': crontab(minute=0, hour=20, day_of_week='mon-fri'),
             'options': {'queue': 'controlling'}
         },
+        # AfA Verkaufsempfehlungen 20 älteste (20:15 Mo-Fr)
+        'email-afa-verkaufsempfehlungen-report': {
+            'task': 'celery_app.tasks.email_afa_verkaufsempfehlungen_report',
+            'schedule': crontab(minute=15, hour=20, day_of_week='mon-fri'),
+            'options': {'queue': 'controlling'}
+        },
         
         # Wartung
         'db-backup': {
