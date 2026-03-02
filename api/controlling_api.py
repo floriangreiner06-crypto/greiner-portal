@@ -7,6 +7,7 @@ Updated: TAG 117 - Migration auf db_session
 """
 
 from flask import Blueprint, jsonify, request
+from flask_login import login_required
 from datetime import datetime
 
 # Zentrale DB-Utilities (TAG117 + TAG136 + TAG179)
@@ -703,24 +704,29 @@ def _berechne_stueckzahlen_erweitert(monat: int, jahr: int, firma: str = '0', st
         nur_stellantis = False
     
     location_filter = build_locosoft_filter_verkauf(standort_int, nur_stellantis)
-    
+
+    from datetime import date
+    heute_str = date.today().isoformat()
+
     # Wirtschaftsjahr-Start berechnen (1. September)
     WJ_START_MONAT = 9
-    
-    # Aktuelles Jahr: Monat
+
+    # Aktuelles Jahr: Monat (Ende auf heute begrenzen – keine zukünftigen Fakturierungen)
     monat_von = f"{jahr}-{monat:02d}-01"
     if monat == 12:
         monat_bis = f"{jahr+1}-01-01"
     else:
         monat_bis = f"{jahr}-{monat+1:02d}-01"
-    
-    # Aktuelles Jahr: Jahr (kumuliert vom WJ-Start)
+    monat_bis_eff = min(monat_bis, heute_str)
+
+    # Aktuelles Jahr: Jahr (kumuliert vom WJ-Start; Ende auf heute begrenzen)
     if monat >= WJ_START_MONAT:
         jahr_von = f"{jahr}-{WJ_START_MONAT:02d}-01"
     else:
         jahr_von = f"{jahr-1}-{WJ_START_MONAT:02d}-01"
     jahr_bis = monat_bis  # Bis Ende des aktuellen Monats
-    
+    jahr_bis_eff = min(jahr_bis, heute_str)
+
     # Vorjahr: Monat (gleicher Monat)
     vj_monat_von = f"{jahr-1}-{monat:02d}-01"
     if monat == 12:
@@ -748,27 +754,29 @@ def _berechne_stueckzahlen_erweitert(monat: int, jahr: int, firma: str = '0', st
         with locosoft_session() as conn_loco:
             cursor_loco = conn_loco.cursor()
             
-            # NW Monat (aktuell)
+            # NW Monat (aktuell; Ende heute – keine zukünftigen Fakturierungen)
             cursor_loco.execute(f"""
                 SELECT COUNT(*) as stueck
                 FROM dealer_vehicles
                 WHERE out_invoice_date >= %s AND out_invoice_date < %s
                   AND out_invoice_date IS NOT NULL
+                  AND out_invoice_date::date <= CURRENT_DATE
                   AND dealer_vehicle_type IN ('N', 'T', 'V')
                   {location_filter}
-            """, (monat_von, monat_bis))
+            """, (monat_von, monat_bis_eff))
             row = cursor_loco.fetchone()
             nw_monat = int(row[0] or 0) if row else 0
             
-            # NW Jahr (aktuell, kumuliert)
+            # NW Jahr (aktuell, kumuliert; Ende heute)
             cursor_loco.execute(f"""
                 SELECT COUNT(*) as stueck
                 FROM dealer_vehicles
                 WHERE out_invoice_date >= %s AND out_invoice_date < %s
                   AND out_invoice_date IS NOT NULL
+                  AND out_invoice_date::date <= CURRENT_DATE
                   AND dealer_vehicle_type IN ('N', 'T', 'V')
                   {location_filter}
-            """, (jahr_von, jahr_bis))
+            """, (jahr_von, jahr_bis_eff))
             row = cursor_loco.fetchone()
             nw_jahr = int(row[0] or 0) if row else 0
             
@@ -796,27 +804,29 @@ def _berechne_stueckzahlen_erweitert(monat: int, jahr: int, firma: str = '0', st
             row = cursor_loco.fetchone()
             nw_vj_jahr = int(row[0] or 0) if row else 0
             
-            # GW Monat (aktuell)
+            # GW Monat (aktuell; Ende heute)
             cursor_loco.execute(f"""
                 SELECT COUNT(*) as stueck
                 FROM dealer_vehicles
                 WHERE out_invoice_date >= %s AND out_invoice_date < %s
                   AND out_invoice_date IS NOT NULL
+                  AND out_invoice_date::date <= CURRENT_DATE
                   AND dealer_vehicle_type IN ('G', 'D', 'L')
                   {location_filter}
-            """, (monat_von, monat_bis))
+            """, (monat_von, monat_bis_eff))
             row = cursor_loco.fetchone()
             gw_monat = int(row[0] or 0) if row else 0
             
-            # GW Jahr (aktuell, kumuliert)
+            # GW Jahr (aktuell, kumuliert; Ende heute)
             cursor_loco.execute(f"""
                 SELECT COUNT(*) as stueck
                 FROM dealer_vehicles
                 WHERE out_invoice_date >= %s AND out_invoice_date < %s
                   AND out_invoice_date IS NOT NULL
+                  AND out_invoice_date::date <= CURRENT_DATE
                   AND dealer_vehicle_type IN ('G', 'D', 'L')
                   {location_filter}
-            """, (jahr_von, jahr_bis))
+            """, (jahr_von, jahr_bis_eff))
             row = cursor_loco.fetchone()
             gw_jahr = int(row[0] or 0) if row else 0
             
@@ -869,18 +879,23 @@ def _berechne_stueckzahlen_erweitert(monat: int, jahr: int, firma: str = '0', st
 def _berechne_stueckzahlen(datum_von: str, datum_bis: str, firma: str = '0', standort: str = '0'):
     """
     TAG 177: Berechnet NW und GW Stückzahlen aus dealer_vehicles (analog Globalcube).
-    
+    Keine zukünftigen Fakturierungen: datum_bis wird auf heute begrenzt.
+
     NW: dealer_vehicle_type IN ('N', 'T', 'V')
     GW: dealer_vehicle_type IN ('G', 'D', 'L')
-    
+
     Args:
         datum_von, datum_bis: Datumsbereich
         firma: '0'=Alle, '1'=Stellantis, '2'=Hyundai
         standort: '0'=Alle, '1'=Deggendorf, '2'=Landau, 'deg-both'=Deggendorf konsolidiert
-    
+
     Returns: {'nw': int, 'gw': int}
     """
+    from datetime import date
     from api.standort_utils import build_locosoft_filter_verkauf
+    # Keine zukünftigen Fakturierungen zählen
+    heute_str = date.today().isoformat()
+    datum_bis_eff = min(datum_bis, heute_str)
     
     # Standort-Parameter mappen (firma/standort → standort int)
     standort_int = 0
@@ -923,27 +938,29 @@ def _berechne_stueckzahlen(datum_von: str, datum_bis: str, firma: str = '0', sta
         with locosoft_session() as conn_loco:
             cursor_loco = conn_loco.cursor()
             
-            # NW Stückzahl: N, T, V (analog Globalcube)
+            # NW Stückzahl: N, T, V (analog Globalcube); Ende auf heute begrenzt
             cursor_loco.execute(f"""
                 SELECT COUNT(*) as stueck
                 FROM dealer_vehicles
                 WHERE out_invoice_date >= %s AND out_invoice_date < %s
                   AND out_invoice_date IS NOT NULL
+                  AND out_invoice_date::date <= CURRENT_DATE
                   AND dealer_vehicle_type IN ('N', 'T', 'V')
                   {location_filter}
-            """, (datum_von, datum_bis))
+            """, (datum_von, datum_bis_eff))
             row = cursor_loco.fetchone()
             nw_stueck = int(row[0] or 0) if row else 0
             
-            # GW Stückzahl: G, D, L (analog Globalcube)
+            # GW Stückzahl: G, D, L (analog Globalcube); Ende auf heute begrenzt
             cursor_loco.execute(f"""
                 SELECT COUNT(*) as stueck
                 FROM dealer_vehicles
                 WHERE out_invoice_date >= %s AND out_invoice_date < %s
                   AND out_invoice_date IS NOT NULL
+                  AND out_invoice_date::date <= CURRENT_DATE
                   AND dealer_vehicle_type IN ('G', 'D', 'L')
                   {location_filter}
-            """, (datum_von, datum_bis))
+            """, (datum_von, datum_bis_eff))
             row = cursor_loco.fetchone()
             gw_stueck = int(row[0] or 0) if row else 0
             
@@ -3304,3 +3321,25 @@ def get_db1_entwicklung():
             'message': str(e),
             'traceback': traceback.format_exc()
         }), 500
+
+
+# =============================================================================
+# CASHFLOW-/LIQUIDITÄTSVORSCHAU (Phase 1)
+# =============================================================================
+
+@controlling_api.route('/api/controlling/cashflow-vorschau', methods=['GET'])
+@login_required
+def get_cashflow_vorschau_api():
+    """
+    GET /api/controlling/cashflow-vorschau?tage=60
+    Projektion: Saldo heute + Transaktionen + Tilgungen über die nächsten tage.
+    """
+    from api.cashflow_vorschau import get_cashflow_vorschau
+    try:
+        tage = request.args.get('tage', type=int) or 60
+        tage = max(1, min(365, tage))
+        data = get_cashflow_vorschau(tage=tage)
+        return jsonify(data), 200
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500

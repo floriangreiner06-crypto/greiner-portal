@@ -81,39 +81,60 @@ def migrate_navigation_items():
             {'label': 'Zielplanung', 'is_header': True, 'requires_feature': 'bankenspiegel', 'order_index': 8},
             {'label': '1%-Ziel (Unternehmensplan)', 'url': '/controlling/unternehmensplan', 'icon': 'bi-bullseye', 'requires_feature': 'bankenspiegel', 'order_index': 9},
             {'label': 'KST-Ziele (Tagesstatus)', 'url': '/controlling/kst-ziele', 'icon': 'bi-bar-chart', 'requires_feature': 'bankenspiegel', 'order_index': 10},
-            {'label': '', 'is_divider': True, 'order_index': 11},
-            {'label': 'Abteilungsleiter-Planung', 'url': '/planung/abteilungsleiter', 'icon': 'bi-clipboard-check', 'requires_feature': 'controlling', 'order_index': 12},
-            {'label': 'Analysen', 'is_header': True, 'order_index': 13},
-            {'label': 'Zinsen-Analyse', 'url': '/bankenspiegel/zinsen-analyse', 'icon': 'bi-percent', 'requires_feature': 'zinsen', 'order_index': 14},
-            {'label': 'Einkaufsfinanzierung', 'url': '/bankenspiegel/einkaufsfinanzierung', 'icon': 'bi-truck', 'requires_feature': 'einkaufsfinanzierung', 'order_index': 15},
-            {'label': 'Jahresprämie', 'url': '/jahrespraemie/', 'icon': 'bi-gift', 'requires_feature': 'bankenspiegel', 'order_index': 16},
-            {'label': '', 'is_divider': True, 'order_index': 17},
-            {'label': 'Bankenspiegel', 'is_header': True, 'requires_feature': 'bankenspiegel', 'order_index': 18},
-            {'label': 'Dashboard', 'url': '/bankenspiegel/dashboard', 'icon': 'bi-bank2', 'requires_feature': 'bankenspiegel', 'order_index': 19},
-            {'label': 'Kontenübersicht', 'url': '/bankenspiegel/konten', 'icon': 'bi-wallet2', 'requires_feature': 'bankenspiegel', 'order_index': 20},
-            {'label': 'Transaktionen', 'url': '/bankenspiegel/transaktionen', 'icon': 'bi-receipt', 'requires_feature': 'bankenspiegel', 'order_index': 21},
-            {'label': 'Fahrzeugfinanzierungen', 'url': '/bankenspiegel/fahrzeugfinanzierungen', 'icon': 'bi-car-front', 'requires_feature': 'bankenspiegel', 'order_index': 22},
-            {'label': '', 'is_divider': True, 'order_index': 23},
-            {'label': 'Archiv', 'is_header': True, 'requires_feature': 'bankenspiegel', 'order_index': 24},
-            {'label': 'TEK v1', 'url': '/controlling/tek/archiv', 'icon': 'bi-archive', 'requires_feature': 'bankenspiegel', 'order_index': 25},
+            {'label': 'Offene Posten (OPOS)', 'url': '/controlling/opos', 'icon': 'bi-receipt-cutoff', 'requires_feature': 'opos', 'order_index': 11},
+            {'label': '', 'is_divider': True, 'order_index': 12},
+            {'label': 'Abteilungsleiter-Planung', 'url': '/planung/abteilungsleiter', 'icon': 'bi-clipboard-check', 'requires_feature': 'controlling', 'order_index': 13},
+            {'label': 'Analysen', 'is_header': True, 'order_index': 14},
+            {'label': 'Zinsen-Analyse', 'url': '/bankenspiegel/zinsen-analyse', 'icon': 'bi-percent', 'requires_feature': 'zinsen', 'order_index': 15},
+            {'label': 'Einkaufsfinanzierung', 'url': '/bankenspiegel/einkaufsfinanzierung', 'icon': 'bi-truck', 'requires_feature': 'einkaufsfinanzierung', 'order_index': 16},
+            {'label': 'Jahresprämie', 'url': '/jahrespraemie/', 'icon': 'bi-gift', 'requires_feature': 'bankenspiegel', 'order_index': 17},
+            {'label': '', 'is_divider': True, 'order_index': 18},
+            {'label': 'Bankenspiegel', 'is_header': True, 'requires_feature': 'bankenspiegel', 'order_index': 19},
+            {'label': 'Dashboard', 'url': '/bankenspiegel/dashboard', 'icon': 'bi-bank2', 'requires_feature': 'bankenspiegel', 'order_index': 20},
+            {'label': 'Kontenübersicht', 'url': '/bankenspiegel/konten', 'icon': 'bi-wallet2', 'requires_feature': 'bankenspiegel', 'order_index': 21},
+            {'label': 'Transaktionen', 'url': '/bankenspiegel/transaktionen', 'icon': 'bi-receipt', 'requires_feature': 'bankenspiegel', 'order_index': 22},
+            {'label': 'Fahrzeugfinanzierungen', 'url': '/bankenspiegel/fahrzeugfinanzierungen', 'icon': 'bi-car-front', 'requires_feature': 'bankenspiegel', 'order_index': 23},
+            {'label': '', 'is_divider': True, 'order_index': 24},
+            {'label': 'Archiv', 'is_header': True, 'requires_feature': 'bankenspiegel', 'order_index': 25},
+            {'label': 'Liquiditätsvorschau', 'url': '/controlling/liquiditaet', 'icon': 'bi-graph-up', 'requires_feature': 'controlling', 'order_index': 26},
+            # TEK v1 nur für Admin sichtbar (Archiv-Link), nicht für alle mit bankenspiegel
+            {'label': 'TEK v1', 'url': '/controlling/tek/archiv', 'icon': 'bi-archive', 'requires_feature': 'bankenspiegel', 'role_restriction': 'admin', 'order_index': 27},
         ]
         
         for item in controlling_items:
-            cursor.execute('''
-                INSERT INTO navigation_items 
-                    (parent_id, label, url, icon, order_index, requires_feature, is_header, is_divider, category, active)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'dropdown', true)
-                ON CONFLICT DO NOTHING
-            ''', (
-                controlling_id,
-                item['label'],
-                item.get('url'),
-                item.get('icon'),
-                item['order_index'],
-                item.get('requires_feature'),
-                item.get('is_header', False),
-                item.get('is_divider', False)
-            ))
+            if item.get('role_restriction') is not None:
+                cursor.execute('''
+                    INSERT INTO navigation_items 
+                        (parent_id, label, url, icon, order_index, requires_feature, role_restriction, is_header, is_divider, category, active)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'dropdown', true)
+                    ON CONFLICT DO NOTHING
+                ''', (
+                    controlling_id,
+                    item['label'],
+                    item.get('url'),
+                    item.get('icon'),
+                    item['order_index'],
+                    item.get('requires_feature'),
+                    item.get('role_restriction'),
+                    item.get('is_header', False),
+                    item.get('is_divider', False)
+                ))
+            else:
+                cursor.execute('''
+                    INSERT INTO navigation_items 
+                        (parent_id, label, url, icon, order_index, requires_feature, is_header, is_divider, category, active)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'dropdown', true)
+                    ON CONFLICT DO NOTHING
+                ''', (
+                    controlling_id,
+                    item['label'],
+                    item.get('url'),
+                    item.get('icon'),
+                    item['order_index'],
+                    item.get('requires_feature'),
+                    item.get('is_header', False),
+                    item.get('is_divider', False)
+                ))
     
     # Verkauf Dropdown-Items
     verkauf_id = top_level_ids.get('Verkauf')
@@ -124,13 +145,14 @@ def migrate_navigation_items():
             {'label': 'eAutoseller Bestand', 'url': '/verkauf/eautoseller-bestand', 'icon': 'bi-car-front', 'requires_feature': 'auftragseingang', 'order_index': 3},
             {'label': 'GW-Standzeit', 'url': '/verkauf/gw-bestand', 'icon': 'bi-clock-history', 'requires_feature': 'auftragseingang', 'order_index': 4},
             {'label': '', 'is_divider': True, 'order_index': 5},
-            {'label': 'Planung', 'is_header': True, 'role_restriction': 'admin', 'order_index': 6},
-            {'label': 'Budget-Planung', 'url': '/verkauf/budget', 'icon': 'bi-bullseye', 'role_restriction': 'admin', 'order_index': 7},
-            {'label': 'Lieferforecast', 'url': '/verkauf/lieferforecast', 'icon': 'bi-calendar-week', 'role_restriction': 'admin', 'order_index': 8},
-            {'label': '', 'is_divider': True, 'order_index': 9},
-            {'label': 'Tools', 'is_header': True, 'requires_feature': 'auftragseingang', 'order_index': 10},
-            {'label': 'Leasys Programmfinder', 'url': '/verkauf/leasys-programmfinder', 'icon': 'bi-search-heart', 'requires_feature': 'auftragseingang', 'order_index': 11},
-            {'label': 'Leasys Kalkulator', 'url': '/verkauf/leasys-kalkulator', 'icon': 'bi-calculator', 'requires_feature': 'auftragseingang', 'order_index': 12},
+            {'label': 'Planung', 'is_header': True, 'role_restriction': 'admin,geschaeftsleitung,verkauf_leitung', 'order_index': 6},
+            {'label': 'Budget-Planung', 'url': '/verkauf/budget', 'icon': 'bi-bullseye', 'role_restriction': 'admin,geschaeftsleitung,verkauf_leitung', 'order_index': 7},
+            {'label': 'Lieferforecast', 'url': '/verkauf/lieferforecast', 'icon': 'bi-calendar-week', 'role_restriction': 'admin,geschaeftsleitung,verkauf_leitung', 'order_index': 8},
+            {'label': 'Verkäufer-Zielplanung', 'url': '/verkauf/zielplanung', 'icon': 'bi-bullseye text-success', 'role_restriction': 'admin,geschaeftsleitung,verkauf_leitung', 'order_index': 9},
+            {'label': '', 'is_divider': True, 'order_index': 10},
+            {'label': 'Tools', 'is_header': True, 'requires_feature': 'auftragseingang', 'order_index': 11},
+            {'label': 'Leasys Programmfinder', 'url': '/verkauf/leasys-programmfinder', 'icon': 'bi-search-heart', 'requires_feature': 'auftragseingang', 'order_index': 12},
+            {'label': 'Leasys Kalkulator', 'url': '/verkauf/leasys-kalkulator', 'icon': 'bi-calculator', 'requires_feature': 'auftragseingang', 'order_index': 13},
         ]
         
         for item in verkauf_items:
@@ -206,14 +228,16 @@ def migrate_navigation_items():
                 item.get('is_divider', False)
             ))
     
-    # Admin Items
+    # Admin Items (Konfiguration-Hub und Konten zuerst, dann System)
     admin_id = top_level_ids.get('Admin')
     if admin_id:
         admin_items = [
-            {'label': 'System', 'is_header': True, 'role_restriction': 'admin', 'order_index': 1},
-            {'label': 'Task Manager', 'url': '/admin/celery/', 'icon': 'bi-list-task', 'role_restriction': 'admin', 'order_index': 2},
-            {'label': 'Flower Dashboard', 'url': 'http://10.80.80.20:5555', 'icon': 'bi-flower1', 'role_restriction': 'admin', 'order_index': 3},
-            {'label': 'Rechteverwaltung', 'url': '/admin/rechte', 'icon': 'bi-person-lock', 'role_restriction': 'admin', 'order_index': 4},
+            {'label': 'Konfiguration & Verwaltung', 'url': '/admin/konfiguration', 'icon': 'bi-gear-wide-connected', 'order_index': 0, 'role_restriction': 'admin'},
+            {'label': 'Konten & Banken', 'url': '/admin/konten-verwaltung', 'icon': 'bi-wallet2', 'order_index': 1, 'role_restriction': 'admin,buchhaltung'},
+            {'label': 'System', 'is_header': True, 'role_restriction': 'admin', 'order_index': 2},
+            {'label': 'Task Manager', 'url': '/admin/celery/', 'icon': 'bi-list-task', 'role_restriction': 'admin', 'order_index': 3},
+            {'label': 'Flower Dashboard', 'url': 'http://10.80.80.20:5555', 'icon': 'bi-flower1', 'role_restriction': 'admin', 'order_index': 4},
+            {'label': 'Rechteverwaltung', 'url': '/admin/rechte', 'icon': 'bi-person-lock', 'role_restriction': 'admin', 'order_index': 5},
         ]
         
         for item in admin_items:

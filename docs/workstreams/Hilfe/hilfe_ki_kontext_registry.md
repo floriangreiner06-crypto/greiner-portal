@@ -1,6 +1,6 @@
 # Kontext-Registry für KI „Mit KI erweitern“
 
-**Letzte Prüfung:** 2026-03-02 (Session-End auth-ldap; tek-Quellen mtime-geprüft, Registry-Inhalt unverändert).
+**Letzte Prüfung:** 2026-03-02 (Session-End controlling: Liquiditätsvorschau; tek-Quelle CONTEXT.md aktualisiert, tek-Registry-Inhalt unverändert).
 
 **Zweck:** Pro Thema ein kurzer, fachlicher SSOT-Text für die KI. Wird beim „Mit KI erweitern“ an den Prompt angehängt, damit die KI Berechnungsdetails korrekt ergänzen kann.
 

@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block title %}Liquiditätsvorschau – DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stat-box {
+        background: #fff;
+        border-radius: 8px;
+        padding: 0.75rem 1rem;
+        border-left: 4px solid;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .stat-box.saldo { border-left-color: #0d6efd; }
+    .stat-box .stat-label { font-size: 0.75rem; color: #6c757d; text-transform: uppercase; }
+    .stat-box .stat-value { font-size: 1.25rem; font-weight: 700; }
+    .liquid-table { font-size: 0.9rem; }
+    .liquid-table th { background: #343a40; color: #fff; }
+    #chartLiquiditaet { max-height: 320px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h1 class="h4 mb-0">Liquiditätsvorschau</h1>
+            <small class="text-muted">Saldo heute + Transaktionen (IST) + Tilgungen</small>
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+            <label class="mb-0">Zeitraum:</label>
+            <select class="form-select form-select-sm" id="filterTage" style="width: 100px;" onchange="loadData()">
+                <option value="30">30 Tage</option>
+                <option value="60" selected>60 Tage</option>
+                <option value="90">90 Tage</option>
+            </select>
+            <button class="btn btn-sm btn-outline-primary" onclick="loadData()" title="Aktualisieren"><i class="bi bi-arrow-clockwise"></i></button>
+        </div>
+    </div>
+
+    <div class="row g-2 mb-3">
+        <div class="col-md-4">
+            <div class="stat-box saldo">
+                <div class="stat-label">Start-Saldo (heute)</div>
+                <div class="stat-value" id="kpiStartSaldo">–</div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="stat-box">
+                <div class="stat-label">Salden-Stand</div>
+                <div class="stat-value small" id="kpiNeuesterStand">–</div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="stat-box">
+                <div class="stat-label">Projektion</div>
+                <div class="stat-value small" id="kpiProjektion">–</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header py-2">Saldo-Verlauf</div>
+        <div class="card-body">
+            <canvas id="chartLiquiditaet"></canvas>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header py-2">Erwartete Bewegungen (Auszug)</div>
+        <div class="card-body p-0 overflow-auto">
+            <table class="table table-sm table-striped liquid-table mb-0">
+                <thead>
+                    <tr>
+                        <th>Datum</th>
+                        <th class="text-end">Saldo (€)</th>
+                        <th class="text-end">Einnahmen</th>
+                        <th class="text-end">Ausgaben</th>
+                        <th class="text-end">Tilgungen</th>
+                    </tr>
+                </thead>
+                <tbody id="tbodyReihe"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    let chartInstance = null;
+
+    function fmtEuro(x) {
+        if (x == null || isNaN(x)) return '–';
+        return new Intl.NumberFormat('de-DE', { style: 'decimal', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x) + ' €';
+    }
+
+    function fmtDate(iso) {
+        if (!iso) return '–';
+        const d = new Date(iso);
+        return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    }
+
+    function loadData() {
+        const tage = parseInt(document.getElementById('filterTage').value, 10) || 60;
+        fetch('/api/controlling/cashflow-vorschau?tage=' + tage)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) {
+                    document.getElementById('kpiStartSaldo').textContent = 'Fehler';
+                    console.error(data);
+                    return;
+                }
+                document.getElementById('kpiStartSaldo').textContent = fmtEuro(data.start_saldo);
+                document.getElementById('kpiNeuesterStand').textContent = data.neuester_stand ? fmtDate(data.neuester_stand) : '–';
+                document.getElementById('kpiProjektion').textContent = 'nächste ' + data.tage + ' Tage';
+
+                const reihe = data.reihe || [];
+                const labels = reihe.map(function(r) { return r.datum; });
+                const salden = reihe.map(function(r) { return r.saldo; });
+
+                if (chartInstance) chartInstance.destroy();
+                const ctx = document.getElementById('chartLiquiditaet').getContext('2d');
+                chartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Saldo (€)',
+                            data: salden,
+                            borderColor: '#0d6efd',
+                            backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                            fill: true,
+                            tension: 0.2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            y: {
+                                ticks: { callback: function(v) { return v.toLocaleString('de-DE') + ' €'; } }
+                            }
+                        }
+                    }
+                });
+
+                // Tabelle: erste 31 Zeilen (ca. 1 Monat)
+                const maxRows = 31;
+                const tbody = document.getElementById('tbodyReihe');
+                tbody.innerHTML = '';
+                reihe.slice(0, maxRows).forEach(function(r) {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = '<td>' + fmtDate(r.datum) + '</td>' +
+                        '<td class="text-end">' + fmtEuro(r.saldo) + '</td>' +
+                        '<td class="text-end text-success">' + (r.einnahmen > 0 ? fmtEuro(r.einnahmen) : '–') + '</td>' +
+                        '<td class="text-end text-danger">' + (r.ausgaben > 0 ? fmtEuro(r.ausgaben) : '–') + '</td>' +
+                        '<td class="text-end text-danger">' + (r.tilgungen > 0 ? fmtEuro(r.tilgungen) : '–') + '</td>';
+                    tbody.appendChild(tr);
+                });
+                if (reihe.length > maxRows) {
+                    const tr = document.createElement('tr');
+                    tr.className = 'table-secondary';
+                    tr.innerHTML = '<td colspan="5" class="text-center small">… und ' + (reihe.length - maxRows) + ' weitere Tage</td>';
+                    tbody.appendChild(tr);
+                }
+            })
+            .catch(function(err) {
+                document.getElementById('kpiStartSaldo').textContent = 'Fehler';
+                console.error(err);
+            });
+    }
+
+    document.addEventListener('DOMContentLoaded', loadData);
+})();
+</script>
+{% endblock %}

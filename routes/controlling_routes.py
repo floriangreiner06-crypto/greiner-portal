@@ -445,6 +445,16 @@ def unternehmensplan_dashboard():
                          firma=firma)
 
 
+@controlling_bp.route('/liquiditaet')
+@controlling_bp.route('/cashflow-vorschau')
+@login_required
+def liquiditaet_vorschau():
+    """Liquiditätsvorschau (Phase 1): Saldo + Transaktionen + Tilgungen über die nächsten Tage."""
+    return render_template('controlling/liquiditaet_vorschau.html',
+                         page_title='Liquiditätsvorschau',
+                         active_page='controlling')
+
+
 @controlling_bp.route('/kundenzentrale')
 @login_required
 def kundenzentrale_dashboard():
