@@ -1,7 +1,7 @@
 # Verkauf & Fahrzeuge — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-02-17
+## Letzte Aktualisierung: 2026-03-02
 
 ## Beschreibung
 
@@ -18,6 +18,7 @@ Verkauf umfasst Auftragseingang, Auslieferungen, Deckungsbeitrag, Profitabilitä
 - `api/ersatzwagen_api.py` — Ersatzwagen
 - **Provisionsmodul (geplant):** `api/provision_api.py`, `api/provision_service.py`, `api/provision_pdf.py`; Routes: `routes/provision_routes.py`; siehe `provisionsabrechnung/PROVISIONSMODUL_KONZEPT.md` und `UMSETZUNGSPLAN_PROVISIONSMODUL.md`.
 - **Verkäufer-Zielplanung:** `api/verkaeufer_zielplanung_api.py` — Stückzahl, Verteilung, Saisonalität, Monatsziele, gespeicherte Ziele (GET/POST/PUT), Einzelverkäufer-Detail.
+- **VFW-Vermarktung (geplant):** Siehe `VFW_VERMARKTUNG_IMPLEMENTIERUNGSPLAN.md`; geplante API: `api/vfw_api.py`, `api/vfw_kalkulation_service.py`, `api/vfw_pdf.py`.
 
 ### Templates
 - `templates/verkauf_*.html`
@@ -31,6 +32,7 @@ Verkauf umfasst Auftragseingang, Auslieferungen, Deckungsbeitrag, Profitabilitä
 
 - `sales`, `vehicles`, `dealer_vehicles`, `customers_suppliers`
 - `verkaeufer_ziele` — gespeicherte Jahresziele (NW/GW) pro Verkäufer für Zielplanung; Migration: `migrations/add_verkaeufer_ziele_table.sql`
+- `zielplanung_stand` — Planungsstand pro Zieljahr (Parameter + Status entwurf/freigegeben); Migration: `migrations/add_zielplanung_stand_table.sql`. Monatsziele/Auftragseingang nutzen `verkaeufer_ziele` nur bei Status „freigegeben“.
 
 ## Aktueller Stand (✅ erledigt, 🔧 in Arbeit, ❌ offen)
 
@@ -39,18 +41,30 @@ Verkauf umfasst Auftragseingang, Auslieferungen, Deckungsbeitrag, Profitabilitä
 - ✅ AHK FIN Check / Autohauskenner-Portal: Machbarkeits- und Nutzenanalyse erstellt, Portal-Check (keine API); Integration vorerst auf Eis
 - ✅ mobile.de Zukauf/Neueingestellte: API-Optionen analysiert (Search-API + Ad-Stream); Scraping blockiert, offizielle APIs nutzbar. Siehe `MOBILEDE_ZUKAUF_API_OPTIONEN.md`.
 - 🔧 eAutoSeller, Ersatzwagen je nach Projektstand
-- ✅ Provisionsabrechnung Phase 1+2 (Teil): **Live-Preview** (Phase 1) und **Vorlauf + Dashboard** (Phase 2 Teil). SSOT: `api/provision_service.py` (berechne_live_provision, create_vorlauf, get_dashboard_daten, get_lauf_detail), `api/provision_api.py` (live-preview, vorlauf-erstellen, dashboard, lauf/<id>). Views: /provision/meine, /provision/dashboard (VKL), /provision/detail/<id>. PDF-Modul `api/provision_pdf.py` (reportlab); PDF-Pfad wird nach Generierung in DB gespeichert. **Offen:** Einspruch, Endlauf freigeben, PDF-Download-URL; Phase 3 (Kat. V, Lohnbuchhaltung). Abweichung Kraus Jan 2026 (230,61 €) mit Buchhaltung klären (VIN-Liste im Sync).
-- ✅ **Verkäufer-Zielplanung (Erweiterung):** Saisonalität aus Locosoft (API `saisonalitaet/<jahr>`, Monatsverteilung), IST in Monatsverteilung (SSOT gleicher Endpoint). Monatsziele-API nutzt gespeicherte Ziele falls vorhanden.
+- ✅ Provisionsabrechnung Phase 1+2 (Teil): **Live-Preview** (Phase 1) und **Vorlauf + Dashboard** (Phase 2 Teil). SSOT: `api/provision_service.py` (berechne_live_provision, create_vorlauf, get_dashboard_daten, get_lauf_detail), `api/provision_api.py` (live-preview, vorlauf-erstellen, dashboard, lauf/<id>). Views: /provision/meine, /provision/dashboard (VKL), /provision/detail/<id>. PDF-Modul `api/provision_pdf.py` (reportlab); PDF-Pfad wird nach Generierung in DB gespeichert. **Bemessungsgrundlage Kat. I (NW):** provision_config.bemessungsgrundlage wird ausgewertet: bei `rg_netto` erfolgt Provision = Rechnungsnetto × Satz (mit Min/Max) pro Position wie bei II/III; bei `db` wie bisher DB-Summe × Satz. **Locosoft Memo P1:** Pr. 132 Verkauf/Memo „P1“ → DRIVE bucht in Kat. II (VFW/TW), 1 % Rg.Netto; Feld `dealer_vehicles.memo` → `sales.memo` (sync_sales). Doku: `provisionsabrechnung/LOCOSOFT_MEMO_P1_NW_PROVISION.md`. **Max-Grenzen wie Excel:** II_testwagen max 500 €, III_gebrauchtwagen max 300 € (Migration `fix_provision_max_ii_iii_excel.sql`); Vergleich Punzmann: `provisionsabrechnung/VERGLEICH_PUNZMANN_EXCEL_VS_VORLAUF.md`. **VFW/NW > 1 Jahr nach EZ = GW:** Fahrzeuge mit out_sale_type NW/VFW (Kat. I oder II), die zum Rechnungsdatum älter als 1 Jahr nach Erstzulassung sind, werden unter III (Gebrauchtwagen) geführt und mit cfg_iii (1 % Rg.Netto, Min/Max) abgerechnet; `sales.first_registration_date` + `out_invoice_date` in provision_service. **Rechnungsnetto vs. Fahrzeugnetto:** Für Kat. II (VFW/TW) und I (rg_netto) wird `rechnungsbetrag_netto` (invoices.total_net) verwendet; für Kat. III (GW) `netto_vk_preis` (Fahrzeugnetto), da Rechnung Zusätze enthalten kann. **DB2 (GW Bestand) konfigurierbar:** provision_config um `gw_bestand_operator_abzug` und `gw_bestand_operator_komponenten` ergänzt (Migration `add_provision_config_gw_bestand_operators.sql`); Modal Admin/Provisionsarten mit Überschrift „DB2 = DB1 minus …“, sprechenden Feldern (Anteil, Verkaufskostenpauschale) und Operatoren in zwei Schritten. **Vorlauf-Detail:** Kategorien aufsteigend (I→II→III→IV), Kategorie nur einmal als Überschrift, Summenzeile pro Kategorie, Gesamtsumme unten. **Offen:** Einspruch, Endlauf freigeben, PDF-Download-URL; Phase 3 (Kat. V, Lohnbuchhaltung). Abweichung Kraus Jan 2026 (230,61 €) mit Buchhaltung klären. **Minimale Abweichungen** bei GW-Bestand-DB2-Provision: nochmal Abgleich mit Referenzabrechnung geplant. n8n als Workflow-Tool für Provision: optional später für Benachrichtigungen/Freigabe-Ketten; Kernlogik bleibt in DRIVE.
+- ❌ **VFW-Vermarktung (geplant):** Modul für Kalkulation Vorführwagen, Tageszulassungen und Mietwagen (Verkauf + Geschäftsleitung). Phasenplan: 1) Datenbasis & Bestand-Dashboard, 2) Rundschreiben-Manager, 3) Kalkulationsengine + PDF, 4) KI/Alerts. Detaillierter Plan: **`VFW_VERMARKTUNG_IMPLEMENTIERUNGSPLAN.md`**. Bestehende Bausteine: `FahrzeugData.get_vfw_bestand()`, `fahrzeugfinanzierungen`, AfA VFW/Mietwagen, Provisionslogik Block II.
+- ✅ **Verkäufer-Zielplanung (Erweiterung):** Saisonalität aus Locosoft (API `saisonalitaet/<jahr>`, Monatsverteilung), IST in Monatsverteilung (SSOT gleicher Endpoint). Monatsziele-API nutzt gespeicherte Ziele **nur bei freigegebener Planung** (Tabelle `zielplanung_stand`, Status `freigegeben`).
 - ✅ **Auftragseingang Zielerfüllung:** Monatsziele-API; Summary-Karten mit „Zielerfüllung (Zielplanung): NW/GW IST/Ziel (X%)“; Verkäufer-Tabelle mit Spalten Ziel NW, Ziel GW, Erfüllung % (nur Monatsansicht).
 - ✅ **Workflow Zielplanung:** Tabelle `verkaeufer_ziele`, GET/POST Ziele, editierbare Tabelle (Vorschlag übernehmen, Gespeicherte Ziele laden, Speichern). Differenz-Box: Summe vereinbarte Ziele vs. Konzernziel, Hinweis auf Ausgleich in weiteren Planungsgesprächen.
+- ✅ **Speicherkonzept & Freigabe:** Tabelle `zielplanung_stand` speichert pro Zieljahr Parameter (Referenz, Konzernziel NW/GW, NW nach Marke) und Status (`entwurf`/`freigegeben`). Beim Seitenaufruf wird Planungsstand geladen → Formular und Tabelle wiederhergestellt. „Ziele speichern“ schreibt Entwurf (Parameter + Ziele). „Planung freigeben“ setzt Status auf `freigegeben`; ab dann sind Ziele verbindlich für Monatsziele und Auftragseingang. Siehe `VERKAEUFER_ZIELPLANUNG_SPEICHERKONZEPT_FREIGABE.md`.
 - ✅ **Detailansicht pro Verkäufer (Planungsgespräch):** Route `/verkauf/zielplanung/verkaeufer/<nr>`, nur diese Person (Vorjahr, Vorschlag, Vereinbarung), PUT pro Verkäufer; Link „Detail“ in Haupttabelle. Motivierender Aufbau: Hero mit Jahresziel, Steigerung % zum Vorjahr, Badge „Über Planvorschlag“, Erfolgstext nach Speichern.
+- ✅ **Auftragseingang & Auslieferungen – Verkäufer-Filter (konfigurierbar):** Filter-Modus pro Rolle in Rechteverwaltung (Tab Feature-Zugriff → Nach Rolle → „Filter-Verhalten für Listen“): **Nur eigene** (Filter fix, wie bisher für Rolle verkauf), **Eigene, Filter auflösbar**, **Alle, kann filtern**. API nutzt `api/feature_filter_mode.get_filter_mode(role, feature)`; bei `own_only` wird `verkaufer` aus `ldap_employee_mapping.locosoft_id` erzwungen. Betrifft: `api/verkauf_api.py` (_filter_mode_force_own), `api/verkauf_data.py` (Parameter `verkaufer`), Routes/Templates Auftragseingang und Auslieferung, OPOS (`api/opos_api.py`, `templates/controlling/opos.html`, Route `/controlling/opos`).
 - 🔧 **Test mit Anton (Verkaufsleiter)** geplant (nächster Schritt).
 
 ## Offene Entscheidungen / Nächste Schritte
 
+- **VFW-Vermarktung:** Offene Punkte aus `VFW_VERMARKTUNG_IMPLEMENTIERUNGSPLAN.md` klären (VFW-Definition V/D/T, Ampelschwellen, LBO/CSI-Quellen, Snapshot vs. Live); danach Phase 1 starten.
 - **Verkäufer-Zielplanung:** Test mit Anton (Verkaufsleiter) durchführen; Feedback einarbeiten.
 - AHK-Portal (Die Autohauskenner): Keine REST-API gefunden; Integration nur via Link/Deep-Link sinnvoll. Siehe `AHK_PORTAL_ANALYSE.md`.
 - mobile.de Zukauf: API-Anfrage (Search-API / Ad-Stream) an mobile.de gestellt (Kundennr. 504661); Rückmeldung abwarten. Danach ggf. Integration in DRIVE (Celery + UI für Zukauf-Prüfung).
+
+## SSOT Verkauf / Zielplanung / Provision
+
+Damit Verkäufer-Zielplanung und Provisionsabrechnung ohne Redundanzen nebeneinander laufen:
+- **Verkäufer-ID:** überall Locosoft-Mitarbeiternummer (VKB).
+- **Ziele:** nur `verkaeufer_ziele` + `zielplanung_stand`; Provision nutzt keine Ziele (bei Zielerfüllung in Provision nur bestehende Monatsziele-API).
+- **Provisionslogik:** SSOT `api/provision_service.py`; Rohdaten aus `sales` (out_invoice_date).
+- **Auftragseingang:** VerkaufData nutzt `sales` (Vertragsdatum); Zielplanung nutzt Locosoft direkt (Vertragsdatum). **T-Regel Verkaufsleitung:** T = NW nur bis 1 Jahr ab Erstzulassung; älter = GW. `sales.first_registration_date` (Sync aus Locosoft); Zielplanung: JOIN auf `vehicles.first_registration_date`. Details: **`SSOT_VERKAUF_ZIELPLANUNG_PROVISION.md`**.
 
 ## Abhängigkeiten
 

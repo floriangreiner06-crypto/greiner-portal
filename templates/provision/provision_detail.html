@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Provisionslauf – Greiner DRIVE{% endblock %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <h2><i class="bi bi-receipt"></i> Provisionslauf <span id="laufId">{{ lauf_id }}</span></h2>
+    <div id="loading">Lade…</div>
+    <div id="error" class="alert alert-danger" style="display: none;"></div>
+    <div id="content" style="display: none;">
+        <p><strong>Verkäufer:</strong> <span id="vName"></span> &nbsp; <strong>Monat:</strong> <span id="vMonat"></span> &nbsp; <strong>Status:</strong> <span id="vStatus"></span> &nbsp; <strong>Summe:</strong> <span id="vSumme"></span> €</p>
+        <div class="mb-3">
+            <table class="table table-sm table-bordered w-auto">
+                <thead class="table-light"><tr><th>Kategorie</th><th class="text-end">Summe (€)</th></tr></thead>
+                <tbody>
+                    <tr><td>I. Neuwagen</td><td class="text-end" id="dSumI">–</td></tr>
+                    <tr><td>II. Testwagen/VFW</td><td class="text-end" id="dSumII">–</td></tr>
+                    <tr><td>III. Gebrauchtwagen</td><td class="text-end" id="dSumIII">–</td></tr>
+                    <tr><td>IV. GW aus Bestand</td><td class="text-end" id="dSumIV">–</td></tr>
+                    <tr><td>V. Zusatzleistungen</td><td class="text-end" id="dSumV">–</td></tr>
+                    <tr class="table-primary fw-bold"><td>Gesamt</td><td class="text-end" id="dSumGesamt">–</td></tr>
+                    <tr class="table-secondary"><td>Kumuliert (laufend)</td><td class="text-end text-nowrap" id="dSumKumuliert">–</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <h5>Positionen</h5>
+        <table class="table table-sm table-bordered" id="tabPos">
+            <thead class="table-light"><tr><th>Kat.</th><th>Verkäufer</th><th>Einkäufer</th><th>Käufer</th><th>Modell</th><th>Rg.Nr.</th><th class="text-end">Provision</th></tr></thead>
+            <tbody id="tbodyPos"></tbody>
+            <tfoot id="tfootPos" class="table-light"></tfoot>
+        </table>
+        <p class="mt-2">
+            <a href="/provision/dashboard" class="btn btn-outline-secondary">← Dashboard</a>
+            <button type="button" id="btnLoeschen" class="btn btn-outline-danger ms-2" style="display: none;">Vorlauf löschen</button>
+        </p>
+    </div>
+</div>
+<script>
+(function(){
+    var id = {{ lauf_id }};
+    var L=document.getElementById('loading'), E=document.getElementById('error'), C=document.getElementById('content');
+    fetch('/api/provision/lauf/'+id,{credentials:'same-origin'}).then(function(r){return r.json();})
+    .then(function(d){
+        L.style.display='none';
+        if(!d.success){ E.textContent=d.error||'Fehler'; E.style.display='block'; return; }
+        C.style.display='block';
+        var l=d.lauf;
+        document.getElementById('vName').textContent=l.verkaufer_name||'-';
+        document.getElementById('vMonat').textContent=l.abrechnungsmonat||'-';
+        document.getElementById('vStatus').textContent=l.status||'-';
+        document.getElementById('vSumme').textContent=l.summe_gesamt!=null?Number(l.summe_gesamt).toLocaleString('de-DE',{minimumFractionDigits:2}):'-';
+        function fmt(v){ return v!=null&&v!=='' ? Number(v).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2}) : '–'; }
+        document.getElementById('dSumI').textContent=fmt(l.summe_kat_i)+' €';
+        document.getElementById('dSumII').textContent=fmt(l.summe_kat_ii)+' €';
+        document.getElementById('dSumIII').textContent=fmt(l.summe_kat_iii)+' €';
+        document.getElementById('dSumIV').textContent=fmt(l.summe_kat_iv)+' €';
+        document.getElementById('dSumV').textContent=fmt(l.summe_kat_v)+' €';
+        document.getElementById('dSumGesamt').textContent=fmt(l.summe_gesamt)+' €';
+        var sI=Number(l.summe_kat_i)||0,sII=Number(l.summe_kat_ii)||0,sIII=Number(l.summe_kat_iii)||0,sIV=Number(l.summe_kat_iv)||0,sV=Number(l.summe_kat_v)||0;
+        var k1=sI,k2=k1+sII,k3=k2+sIII,k4=k3+sIV,k5=k4+sV;
+        document.getElementById('dSumKumuliert').textContent='I: '+fmt(k1)+' € · I+II: '+fmt(k2)+' € · I+II+III: '+fmt(k3)+' € · I+II+III+IV: '+fmt(k4)+' € · Gesamt: '+fmt(k5)+' €';
+        var katOrder = ['I_neuwagen','II_testwagen','III_gebrauchtwagen','IV_gw_bestand'];
+        var katLabel = {'I_neuwagen':'I. Neuwagen','II_testwagen':'II. Testwagen/VFW','III_gebrauchtwagen':'III. Gebrauchtwagen','IV_gw_bestand':'IV. GW aus Bestand'};
+        var katSumKey = {'I_neuwagen':'summe_kat_i','II_testwagen':'summe_kat_ii','III_gebrauchtwagen':'summe_kat_iii','IV_gw_bestand':'summe_kat_iv'};
+        var tb=document.getElementById('tbodyPos'); tb.innerHTML='';
+        var pos = d.positionen||[];
+        var byKat = {};
+        pos.forEach(function(p){ var k=p.kategorie||''; if(!byKat[k]) byKat[k]=[]; byKat[k].push(p); });
+        katOrder.forEach(function(kat){
+            var rows = byKat[kat];
+            if(!rows||rows.length===0) return;
+            tb.innerHTML+='<tr class="table-secondary fw-bold"><td>'+ (katLabel[kat]||kat) +'</td><td colspan="6"></td></tr>';
+            rows.forEach(function(p){
+                var prov = p.provision_final!=null ? Number(p.provision_final).toLocaleString('de-DE',{minimumFractionDigits:2})+' €' : '–';
+                tb.innerHTML+='<tr><td></td><td>'+(l.verkaufer_name||'–')+'</td><td>'+(p.einkaeufer_name||'–')+'</td><td>'+(p.kaeufer_name||'–')+'</td><td>'+(p.modell||'–')+'</td><td>'+(p.locosoft_rg_nr||'–')+'</td><td class="text-end">'+prov+'</td></tr>';
+            });
+            var sumVal = l[katSumKey[kat]];
+            tb.innerHTML+='<tr class="table-light fw-bold"><td colspan="6" class="text-end">Summe '+ (katLabel[kat]||kat) +'</td><td class="text-end">'+ (sumVal!=null ? Number(sumVal).toLocaleString('de-DE',{minimumFractionDigits:2})+' €' : '–') +'</td></tr>';
+        });
+        document.getElementById('tfootPos').innerHTML='<tr class="table-primary fw-bold"><td colspan="6" class="text-end">Gesamtsumme</td><td class="text-end">'+fmt(l.summe_gesamt)+' €</td></tr>';
+        if ((l.status||'').toUpperCase() === 'VORLAUF') {
+            var btn = document.getElementById('btnLoeschen');
+            btn.style.display = 'inline-block';
+            btn.onclick = function(){ if(!confirm('Vorlauf wirklich löschen?')) return; btn.disabled=true;
+                fetch('/api/provision/vorlauf/'+id+'/loeschen',{method:'POST',credentials:'same-origin'}).then(function(r){return r.json();})
+                .then(function(res){ if(res.success) window.location.href='/provision/dashboard'; else { alert(res.error||'Fehler'); btn.disabled=false; }});
+            };
+        }
+    }).catch(function(err){ L.style.display='none'; E.textContent=err.message; E.style.display='block'; });
+})();
+</script>
+{% endblock %}

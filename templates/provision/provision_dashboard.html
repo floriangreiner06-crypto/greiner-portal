@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Provisions-Dashboard – Greiner DRIVE{% endblock %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <h2><i class="bi bi-cash-stack"></i> Provisions-Dashboard (VKL)</h2>
+    <p class="text-muted">Läufe pro Monat, Vorlauf erstellen.</p>
+    <div class="row mb-3">
+        <div class="col-md-3">
+            <label class="form-label">Monat</label>
+            <input type="month" id="monatSelect" class="form-control" value="{{ default_monat }}">
+        </div>
+    </div>
+    <div id="loading" style="display: none;">Lade…</div>
+    <div id="error" class="alert alert-danger" style="display: none;"></div>
+    <div id="content" style="display: none;">
+        <!-- KPIs -->
+        <div class="row g-3 mb-4" id="kpiRow">
+            <div class="col-sm-6 col-lg-3">
+                <div class="card border-primary h-100">
+                    <div class="card-body">
+                        <div class="text-muted small text-uppercase">Provisionen Gesamt</div>
+                        <div class="fs-4 fw-bold text-primary" id="kpiProvision">–</div>
+                        <div class="small text-muted" id="kpiProvisionSub">–</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+                <div class="card border-info h-100">
+                    <div class="card-body">
+                        <div class="text-muted small text-uppercase">Fahrzeuge</div>
+                        <div class="fs-4 fw-bold text-info" id="kpiFahrzeuge">–</div>
+                        <div class="small text-muted">ausgeliefert</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+                <div class="card border-success h-100">
+                    <div class="card-body">
+                        <div class="text-muted small text-uppercase">Abgeschlossen</div>
+                        <div class="fs-4 fw-bold text-success" id="kpiAbgeschlossen">–</div>
+                        <div class="small text-muted">Endläufe erstellt</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+                <div class="card border-warning h-100">
+                    <div class="card-body">
+                        <div class="text-muted small text-uppercase">Offen</div>
+                        <div class="fs-4 fw-bold text-warning" id="kpiOffen">–</div>
+                        <div class="small text-muted">noch zu bearbeiten</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <h5>Läufe</h5>
+        <table class="table table-sm table-bordered" id="tabLaeufe">
+            <thead class="table-light"><tr><th>Verkäufer</th><th>Status</th><th>Summe</th><th>Aktionen</th></tr></thead>
+            <tbody></tbody>
+        </table>
+        <h5 class="mt-4">Verkäufer (Vorlauf erstellen)</h5>
+        <table class="table table-sm table-bordered" id="tabVk">
+            <thead class="table-light"><tr><th>VKB</th><th>Name</th><th></th></tr></thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+<script>
+(function(){
+    var M=document.getElementById('monatSelect'), L=document.getElementById('loading'), E=document.getElementById('error'), C=document.getElementById('content');
+    function load(){
+        var monat=M.value; if(!monat) return;
+        L.style.display='block'; E.style.display='none';
+        fetch('/api/provision/dashboard?monat='+encodeURIComponent(monat),{credentials:'same-origin'}).then(function(r){return r.json();})
+        .then(function(d){
+            L.style.display='none';
+            if(!d.success){ E.textContent=d.error||'Fehler'; E.style.display='block'; C.style.display='none'; return; }
+            C.style.display='block';
+            var kpis = d.kpis || {};
+            document.getElementById('kpiProvision').textContent = (kpis.provision_gesamt != null ? Number(kpis.provision_gesamt).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0,00') + ' €';
+            document.getElementById('kpiProvisionSub').textContent = d.monat ? (d.monat.replace(/-/g, ' ').replace(/(\d{4}) (\d{2})/, function(_,y,m){ var mo=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']; return mo[parseInt(m,10)-1]+' '+y; })) : '';
+            document.getElementById('kpiFahrzeuge').textContent = kpis.fahrzeuge != null ? Number(kpis.fahrzeuge) : '0';
+            document.getElementById('kpiAbgeschlossen').textContent = kpis.abgeschlossen != null ? Number(kpis.abgeschlossen) : '0';
+            document.getElementById('kpiOffen').textContent = kpis.offen != null ? Number(kpis.offen) : '0';
+            var tb=document.querySelector('#tabLaeufe tbody'); tb.innerHTML='';
+            (d.laeufe||[]).forEach(function(l){
+                var status=(l.status||'').toUpperCase();
+                var delBtn= status==='VORLAUF' ? ' <button class="btn btn-sm btn-outline-danger ms-1" data-lauf-id="'+l.id+'" title="Vorlauf löschen">Löschen</button>' : '';
+                tb.innerHTML+='<tr><td>'+(l.verkaufer_name||'-')+'</td><td>'+(l.status||'-')+'</td><td>'+(l.summe_gesamt!=null?Number(l.summe_gesamt).toLocaleString('de-DE',{minimumFractionDigits:2}):'-')+' €</td><td><a href="/provision/detail/'+l.id+'">Detail</a>'+delBtn+'</td></tr>';
+            });
+            var ids=(d.laeufe||[]).map(function(l){return l.verkaufer_id;});
+            tb=document.querySelector('#tabVk tbody'); tb.innerHTML='';
+            (d.verkaeufer||[]).forEach(function(v){
+                var vkb=v.salesman_number||v.vkb||'-', name=v.name||'-';
+                var btn=ids.indexOf(vkb)===-1?'<button class="btn btn-sm btn-primary" data-vkb="'+vkb+'">Vorlauf</button>':'<span class="text-muted">vorhanden</span>';
+                tb.innerHTML+='<tr><td>'+vkb+'</td><td>'+name+'</td><td>'+btn+'</td></tr>';
+            });
+            tb.querySelectorAll('[data-vkb]').forEach(function(b){
+                b.onclick=function(){ var v=parseInt(this.getAttribute('data-vkb'),10), m=M.value; this.disabled=true;
+                    fetch('/api/provision/vorlauf-erstellen',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({verkaufer_id:v,monat:m})})
+                    .then(function(r){return r.json();}).then(function(res){if(res.success) load(); else{ alert(res.error); b.disabled=false; }});
+                };
+            });
+            document.querySelectorAll('#tabLaeufe [data-lauf-id]').forEach(function(btn){
+                btn.onclick=function(){ var id=parseInt(this.getAttribute('data-lauf-id'),10); if(!confirm('Vorlauf wirklich löschen?')) return; this.disabled=true;
+                    fetch('/api/provision/vorlauf/'+id+'/loeschen',{method:'POST',credentials:'same-origin'}).then(function(r){return r.json();})
+                    .then(function(res){ if(res.success) load(); else{ alert(res.error||'Fehler'); btn.disabled=false; }});
+                };
+            });
+        }).catch(function(err){ L.style.display='none'; E.textContent=err.message; E.style.display='block'; });
+    }
+    M.addEventListener('change',load); load();
+})();
+</script>
+{% endblock %}

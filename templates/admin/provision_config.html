@@ -1,0 +1,476 @@
+{% extends "base.html" %}
+
+{% block title %}Admin – Provisionsarten – DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .card-header-provision {
+        background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%);
+        color: white;
+        font-weight: 600;
+    }
+    .provision-table { font-size: 0.85rem; }
+    .provision-table th { background: #f8fafc; white-space: nowrap; }
+    .provision-table .num { text-align: right; }
+    .provision-table .kategorie { font-weight: 600; }
+    .badge-db { background: #0ea5e9; }
+    .badge-rg { background: #8b5cf6; }
+    .badge-manuell { background: #64748b; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-1">Provisionsarten</h1>
+            <p class="text-muted mb-0">Verwaltung der Provisionsregeln (SSOT für die Abrechnungslogik)</p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <label class="mb-0 small text-muted">Monat (optional):</label>
+            <input type="month" class="form-control form-control-sm" id="filter-monat" style="width: 10rem;" title="Leer = alle Einträge">
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-filter-clear">Alle</button>
+            <button type="button" class="btn btn-primary" id="btn-neu">
+                <i class="bi bi-plus-lg"></i> Neue Provisionsart
+            </button>
+        </div>
+    </div>
+
+    <div id="alert-placeholder"></div>
+
+    <div class="card shadow-sm">
+        <div class="card-header card-header-provision">
+            <i class="bi bi-percent"></i> provision_config
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped provision-table mb-0">
+                    <thead>
+                        <tr>
+                            <th>Kategorie</th>
+                            <th>Bezeichnung</th>
+                            <th>Bemessung</th>
+                            <th class="num">%</th>
+                            <th class="num">Min €</th>
+                            <th class="num">Max €</th>
+                            <th class="num">Stückprämie</th>
+                            <th class="num">Stück max</th>
+                            <th>Zielprämie</th>
+                            <th class="num">Zielerr. €</th>
+                            <th class="num">Fallback</th>
+                            <th class="num">GW-Anteil</th>
+                            <th class="num">VK-Pauschale</th>
+                            <th>Op. DB/Abzug</th>
+                            <th>Op. Anteil/Pausch.</th>
+                            <th>Gültig ab</th>
+                            <th>Gültig bis</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-config">
+                        <tr><td colspan="18" class="text-center text-muted py-4">Lade …</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <p class="small text-muted mt-2">
+        Die Berechnung (Live-Preview, Vorlauf, Endlauf) liest ausschließlich diese Einträge. Pro Kategorie kann es mehrere Einträge mit unterschiedlichem <em>Gültig ab</em> geben (Versionierung). Für einen Abrechnungsmonat gilt der Eintrag mit <code>gueltig_ab &le; Monat</code> und <code>gueltig_bis</code> leer oder <code>&ge; Monat</code>.
+    </p>
+</div>
+
+<!-- Modal Bearbeiten / Neu -->
+<div class="modal fade" id="modalEdit" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalEditTitle">Provisionsart bearbeiten</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formEdit">
+                    <input type="hidden" id="edit-id" name="id">
+                    <div class="row">
+                        <div class="col-md-6 mb-2">
+                            <label class="form-label">Kategorie <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="edit-kategorie" name="kategorie" required placeholder="z.B. I_neuwagen, V_finanzierung">
+                            <small class="text-muted">Nur bei Neuanlage; danach nicht änderbar.</small>
+                        </div>
+                        <div class="col-md-6 mb-2">
+                            <label class="form-label">Bezeichnung <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="edit-bezeichnung" name="bezeichnung" required>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-2">
+                            <label class="form-label">Bemessungsgrundlage</label>
+                            <select class="form-select" id="edit-bemessungsgrundlage" name="bemessungsgrundlage">
+                                <option value="db">db (Deckungsbeitrag)</option>
+                                <option value="rg_netto">rg_netto</option>
+                                <option value="manuell">manuell</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-2">
+                            <label class="form-label">Prozentsatz <span class="text-danger">*</span></label>
+                            <input type="number" step="0.01" class="form-control" id="edit-prozentsatz" name="prozentsatz" required>
+                            <small class="text-muted">z.B. 12 für 12%, 0.12 je nach Konvention (DRIVE: 0.12 bzw. 30 für Anteil %)</small>
+                        </div>
+                        <div class="col-md-4 mb-2">
+                            <label class="form-label">Gültig ab <span class="text-danger">*</span></label>
+                            <input type="date" class="form-control" id="edit-gueltig-ab" name="gueltig_ab" required>
+                            <small class="text-muted">Nur bei Neuanlage änderbar.</small>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-3 mb-2">
+                            <label class="form-label">Min €</label>
+                            <input type="number" step="0.01" class="form-control" id="edit-min-betrag" name="min_betrag" placeholder="–">
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <label class="form-label">Max €</label>
+                            <input type="number" step="0.01" class="form-control" id="edit-max-betrag" name="max_betrag" placeholder="–">
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <label class="form-label">Stückprämie €</label>
+                            <input type="number" step="0.01" class="form-control" id="edit-stueck-praemie" name="stueck_praemie" placeholder="–">
+                            <small class="text-muted">Bei Zielprämie: Übererfüllung €/Stück.</small>
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <label class="form-label">Stück max</label>
+                            <input type="number" class="form-control" id="edit-stueck-max" name="stueck_max" placeholder="–">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-2">
+                            <div class="form-check mt-4">
+                                <input class="form-check-input" type="checkbox" id="edit-use-zielpraemie" name="use_zielpraemie">
+                                <label class="form-check-label" for="edit-use-zielpraemie">Zielprämie (NW)</label>
+                            </div>
+                            <small class="text-muted">Ziel aus Verkäufer-Zielplanung; Prämie bei Zielerreichung + Übererfüllung.</small>
+                        </div>
+                        <div class="col-md-4 mb-2">
+                            <label class="form-label">Zielerreichung €</label>
+                            <input type="number" step="0.01" class="form-control" id="edit-zielerreichung-betrag" name="zielerreichung_betrag" placeholder="z.B. 100">
+                            <small class="text-muted">Prämie bei Erreichen des Monatsziels.</small>
+                        </div>
+                        <div class="col-md-4 mb-2">
+                            <label class="form-label">Fallback-Ziel (Test)</label>
+                            <input type="number" min="0" class="form-control" id="edit-zielpraemie-fallback" name="zielpraemie_fallback_ziel" placeholder="z.B. 1">
+                            <small class="text-muted">Wenn Zielplanung 0 liefert: dieses Ziel verwenden (Test ohne Freigabe).</small>
+                        </div>
+                    </div>
+                    <div id="db2-section" style="display: none;">
+                        <h6 class="border-bottom pb-2 mb-3 mt-2">DB2 = DB1 minus GW-Umsatzprovision (1 % Netto) minus Verkaufskostenpauschale</h6>
+                        <p class="small text-muted mb-3">Provision = Prozentsatz auf DB2. Nur Kategorie IV_gw_bestand.</p>
+                        <div class="row mb-2">
+                            <div class="col-md-4 mb-2">
+                                <label class="form-label">Anteil (z. B. 0,01 = 1 %)</label>
+                                <input type="number" step="0.0001" class="form-control" id="edit-param-j60" name="param_j60" placeholder="0,01">
+                            </div>
+                            <div class="col-md-4 mb-2">
+                                <label class="form-label">Verkaufskostenpauschale (€)</label>
+                                <input type="number" step="0.01" class="form-control" id="edit-param-j61" name="param_j61" placeholder="175">
+                            </div>
+                        </div>
+                        <div class="small text-muted mb-2">Berechnung in zwei Schritten:</div>
+                        <div class="row">
+                            <div class="col-md-6 mb-2">
+                                <label class="form-label">Schritt 1: Anteil und Pauschale verbinden</label>
+                                <select class="form-select" id="edit-gw-operator-komponenten" name="gw_bestand_operator_komponenten">
+                                    <option value="plus">Plus → Abzug = (DB × Anteil) + Pauschale</option>
+                                    <option value="minus">Minus → Abzug = (DB × Anteil) − Pauschale</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-2">
+                                <label class="form-label">Schritt 2: Abzug auf DB anwenden</label>
+                                <select class="form-select" id="edit-gw-operator-abzug" name="gw_bestand_operator_abzug">
+                                    <option value="minus">Minus → DB2 = DB − Abzug</option>
+                                    <option value="plus">Plus → DB2 = DB + Abzug</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-2">
+                            <label class="form-label">Gültig bis</label>
+                            <input type="date" class="form-control" id="edit-gueltig-bis" name="gueltig_bis" placeholder="–">
+                            <small class="text-muted">Leer = unbegrenzt.</small>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-primary" id="btn-save-edit">
+                    <i class="bi bi-check-lg"></i> Speichern
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const API_CONFIG_LIST = "{{ url_for('provision_api.config_list') }}";
+    const API_CONFIG_GET_BASE = "{{ url_for('provision_api.config_get', config_id=0) }}".replace(/0$/, '');
+    const tbody = document.getElementById('tbody-config');
+    const filterMonat = document.getElementById('filter-monat');
+    const btnFilterClear = document.getElementById('btn-filter-clear');
+    const btnNeu = document.getElementById('btn-neu');
+    const modalEl = document.getElementById('modalEdit');
+    const formEdit = document.getElementById('formEdit');
+
+    function getModal() {
+        if (typeof bootstrap === 'undefined' || !bootstrap.Modal) return null;
+        return bootstrap.Modal.getOrCreateInstance(modalEl);
+    }
+    const modalEditTitle = document.getElementById('modalEditTitle');
+    const editId = document.getElementById('edit-id');
+    const btnSaveEdit = document.getElementById('btn-save-edit');
+
+    function showAlert(msg, type) {
+        const el = document.getElementById('alert-placeholder');
+        el.innerHTML = '<div class="alert alert-' + (type || 'info') + ' alert-dismissible fade show" role="alert">' + msg + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>';
+    }
+
+    function loadList() {
+        const monat = filterMonat.value ? filterMonat.value.replace(/-/g, '-') : '';
+        const url = monat ? API_CONFIG_LIST + '?monat=' + encodeURIComponent(monat) : API_CONFIG_LIST;
+        tbody.innerHTML = '<tr><td colspan="18" class="text-center text-muted py-3">Lade …</td></tr>';
+        fetch(url, { credentials: 'same-origin' })
+            .then(function(r) {
+                if (!r.ok) {
+                    return r.text().then(function(t) {
+                        var msg = t && t.length > 300 ? t.substring(0, 300) + '…' : (t || '');
+                        throw new Error('HTTP ' + r.status + (msg ? ': ' + msg : ''));
+                    });
+                }
+                return r.json();
+            })
+            .then(function(data) {
+                try {
+                    if (!data || typeof data.success === 'undefined') {
+                        tbody.innerHTML = '<tr><td colspan="18" class="text-danger">Ungültige Antwort vom Server.</td></tr>';
+                        return;
+                    }
+                    if (!data.success) {
+                        tbody.innerHTML = '<tr><td colspan="18" class="text-danger">' + escapeHtml(data.error || 'Fehler') + '</td></tr>';
+                        return;
+                    }
+                    const items = data.items || [];
+                    if (items.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="18" class="text-muted text-center py-4">Keine Einträge.</td></tr>';
+                        return;
+                    }
+                    tbody.innerHTML = items.map(function(r) {
+                        const bem = (r.bemessungsgrundlage || '').trim();
+                        const bemClass = bem === 'db' ? 'badge-db' : (bem === 'rg_netto' ? 'badge-rg' : 'badge-manuell');
+                        const proz = r.prozentsatz != null ? (r.prozentsatz < 2 ? (r.prozentsatz * 100).toFixed(0) + '%' : r.prozentsatz + '%') : '–';
+                        return '<tr>' +
+                            '<td class="kategorie">' + escapeHtml(r.kategorie || '') + '</td>' +
+                            '<td>' + escapeHtml(r.bezeichnung || '') + '</td>' +
+                            '<td><span class="badge ' + bemClass + '">' + escapeHtml(bem || '–') + '</span></td>' +
+                            '<td class="num">' + proz + '</td>' +
+                            '<td class="num">' + (r.min_betrag != null ? formatNum(r.min_betrag) : '–') + '</td>' +
+                            '<td class="num">' + (r.max_betrag != null ? formatNum(r.max_betrag) : '–') + '</td>' +
+                            '<td class="num">' + (r.stueck_praemie != null ? formatNum(r.stueck_praemie) : '–') + '</td>' +
+'<td class="num">' + (r.stueck_max != null ? r.stueck_max : '–') + '</td>' +
+                        '<td>' + (r.use_zielpraemie ? 'Ja' : '–') + '</td>' +
+                        '<td class="num">' + (r.zielerreichung_betrag != null ? formatNum(r.zielerreichung_betrag) : '–') + '</td>' +
+                        '<td class="num">' + (r.zielpraemie_fallback_ziel != null ? r.zielpraemie_fallback_ziel : '–') + '</td>' +
+                        '<td class="num">' + (r.param_j60 != null ? r.param_j60 : '–') + '</td>' +
+                            '<td class="num">' + (r.param_j61 != null ? formatNum(r.param_j61) : '–') + '</td>' +
+                            '<td>' + (r.gw_bestand_operator_abzug || '–') + '</td>' +
+                            '<td>' + (r.gw_bestand_operator_komponenten || '–') + '</td>' +
+                            '<td>' + (r.gueltig_ab || '–') + '</td>' +
+                            '<td>' + (r.gueltig_bis || '–') + '</td>' +
+'<td><button type="button" class="btn btn-sm btn-outline-primary btn-edit" data-id="' + r.id + '"><i class="bi bi-pencil"></i></button></td></tr>';
+                    });
+                    tbody.querySelectorAll('.btn-edit').forEach(function(btn) {
+                        btn.addEventListener('click', function() { openEdit(parseInt(btn.getAttribute('data-id'), 10)); });
+                    });
+                } catch (e) {
+                    tbody.innerHTML = '<tr><td colspan="18" class="text-danger">Fehler beim Anzeigen: ' + escapeHtml(e.message) + '</td></tr>';
+                }
+            })
+            .catch(function(e) {
+                tbody.innerHTML = '<tr><td colspan="18" class="text-danger">Netzwerkfehler: ' + escapeHtml(e.message) + '</td></tr>';
+            });
+    }
+
+    function formatNum(x) {
+        if (typeof x !== 'number') return '–';
+        return x % 1 === 0 ? x : x.toFixed(2);
+    }
+    function escapeHtml(s) {
+        if (s == null) return '';
+        var div = document.createElement('div');
+        div.textContent = s;
+        return div.innerHTML;
+    }
+
+    function openEdit(id) {
+        if (id) {
+            modalEditTitle.textContent = 'Provisionsart bearbeiten';
+            editId.value = id;
+            document.getElementById('edit-kategorie').readOnly = true;
+            document.getElementById('edit-gueltig-ab').readOnly = true;
+            fetch(API_CONFIG_GET_BASE + id)
+                .then(r => r.json())
+                .then(function(data) {
+                    if (!data.success || !data.item) {
+                        showAlert(data.error || 'Nicht gefunden', 'danger');
+                        return;
+                    }
+                    fillForm(data.item);
+                    var m = getModal(); if (m) m.show();
+                })
+                .catch(function(e) {
+                    showAlert('Fehler: ' + e.message, 'danger');
+                });
+        } else {
+            modalEditTitle.textContent = 'Neue Provisionsart';
+            editId.value = '';
+            document.getElementById('edit-kategorie').readOnly = false;
+            document.getElementById('edit-gueltig-ab').readOnly = false;
+            formEdit.reset();
+            editId.value = '';
+            document.getElementById('edit-kategorie').value = '';
+            document.getElementById('edit-bezeichnung').value = '';
+            document.getElementById('edit-bemessungsgrundlage').value = 'db';
+            document.getElementById('edit-prozentsatz').value = '0';
+            document.getElementById('edit-gueltig-ab').value = new Date().toISOString().slice(0, 10);
+            document.getElementById('edit-min-betrag').value = '';
+            document.getElementById('edit-max-betrag').value = '';
+            document.getElementById('edit-stueck-praemie').value = '';
+            document.getElementById('edit-stueck-max').value = '';
+            document.getElementById('edit-param-j60').value = '';
+            document.getElementById('edit-param-j61').value = '';
+            document.getElementById('edit-gueltig-bis').value = '';
+            var selAbzug = document.getElementById('edit-gw-operator-abzug');
+            var selKomp = document.getElementById('edit-gw-operator-komponenten');
+            if (selAbzug) selAbzug.value = 'minus';
+            if (selKomp) selKomp.value = 'plus';
+            document.getElementById('edit-use-zielpraemie').checked = false;
+            document.getElementById('edit-zielerreichung-betrag').value = '';
+            document.getElementById('edit-zielpraemie-fallback').value = '';
+            var db2Section = document.getElementById('db2-section');
+            if (db2Section) db2Section.style.display = 'none';
+            var m = getModal(); if (m) m.show();
+        }
+    }
+
+    function fillForm(item) {
+        document.getElementById('edit-kategorie').value = item.kategorie || '';
+        document.getElementById('edit-bezeichnung').value = item.bezeichnung || '';
+        document.getElementById('edit-bemessungsgrundlage').value = item.bemessungsgrundlage || 'db';
+        document.getElementById('edit-prozentsatz').value = item.prozentsatz != null ? item.prozentsatz : '';
+        document.getElementById('edit-gueltig-ab').value = (item.gueltig_ab || '').toString().slice(0, 10);
+        document.getElementById('edit-min-betrag').value = item.min_betrag != null ? item.min_betrag : '';
+        document.getElementById('edit-max-betrag').value = item.max_betrag != null ? item.max_betrag : '';
+        document.getElementById('edit-stueck-praemie').value = item.stueck_praemie != null ? item.stueck_praemie : '';
+        document.getElementById('edit-stueck-max').value = item.stueck_max != null ? item.stueck_max : '';
+        document.getElementById('edit-param-j60').value = item.param_j60 != null ? item.param_j60 : '';
+        document.getElementById('edit-param-j61').value = item.param_j61 != null ? item.param_j61 : '';
+        var opAbzug = (item.gw_bestand_operator_abzug || 'minus').toLowerCase();
+        var opKomp = (item.gw_bestand_operator_komponenten || 'plus').toLowerCase();
+        var selAbzug = document.getElementById('edit-gw-operator-abzug');
+        var selKomp = document.getElementById('edit-gw-operator-komponenten');
+        if (selAbzug) selAbzug.value = (opAbzug === 'plus' ? 'plus' : 'minus');
+        if (selKomp) selKomp.value = (opKomp === 'minus' ? 'minus' : 'plus');
+        document.getElementById('edit-gueltig-bis').value = (item.gueltig_bis || '').toString().slice(0, 10);
+        document.getElementById('edit-use-zielpraemie').checked = !!item.use_zielpraemie;
+        document.getElementById('edit-zielerreichung-betrag').value = item.zielerreichung_betrag != null ? item.zielerreichung_betrag : '';
+        document.getElementById('edit-zielpraemie-fallback').value = item.zielpraemie_fallback_ziel != null ? item.zielpraemie_fallback_ziel : '';
+        var db2Section = document.getElementById('db2-section');
+        if (db2Section) db2Section.style.display = (item.kategorie === 'IV_gw_bestand') ? 'block' : 'none';
+    }
+
+    function collectForm() {
+        var o = {
+            kategorie: document.getElementById('edit-kategorie').value.trim(),
+            bezeichnung: document.getElementById('edit-bezeichnung').value.trim(),
+            bemessungsgrundlage: document.getElementById('edit-bemessungsgrundlage').value.trim() || 'db',
+            prozentsatz: parseFloat(document.getElementById('edit-prozentsatz').value) || 0,
+            gueltig_ab: document.getElementById('edit-gueltig-ab').value.trim(),
+            min_betrag: document.getElementById('edit-min-betrag').value.trim() || null,
+            max_betrag: document.getElementById('edit-max-betrag').value.trim() || null,
+            stueck_praemie: document.getElementById('edit-stueck-praemie').value.trim() || null,
+            stueck_max: document.getElementById('edit-stueck-max').value.trim() || null,
+            param_j60: document.getElementById('edit-param-j60').value.trim() || null,
+            param_j61: document.getElementById('edit-param-j61').value.trim() || null,
+            gw_bestand_operator_abzug: (document.getElementById('edit-gw-operator-abzug') || {}).value || 'minus',
+            gw_bestand_operator_komponenten: (document.getElementById('edit-gw-operator-komponenten') || {}).value || 'plus',
+            gueltig_bis: document.getElementById('edit-gueltig-bis').value.trim() || null,
+            use_zielpraemie: document.getElementById('edit-use-zielpraemie').checked,
+            zielerreichung_betrag: document.getElementById('edit-zielerreichung-betrag').value.trim() || null,
+            zielpraemie_fallback_ziel: document.getElementById('edit-zielpraemie-fallback').value.trim() || null
+        };
+        if (o.min_betrag !== null) o.min_betrag = parseFloat(o.min_betrag);
+        if (o.max_betrag !== null) o.max_betrag = parseFloat(o.max_betrag);
+        if (o.stueck_praemie !== null) o.stueck_praemie = parseFloat(o.stueck_praemie);
+        if (o.stueck_max !== null) o.stueck_max = parseInt(o.stueck_max, 10);
+        if (o.param_j60 !== null) o.param_j60 = parseFloat(o.param_j60);
+        if (o.param_j61 !== null) o.param_j61 = parseFloat(o.param_j61);
+        if (o.gueltig_bis === null || o.gueltig_bis === '') o.gueltig_bis = null;
+        if (o.zielerreichung_betrag !== null) o.zielerreichung_betrag = parseFloat(o.zielerreichung_betrag);
+        if (o.zielpraemie_fallback_ziel !== null) o.zielpraemie_fallback_ziel = parseInt(o.zielpraemie_fallback_ziel, 10);
+        return o;
+    }
+
+    btnSaveEdit.addEventListener('click', function() {
+        var id = editId.value ? parseInt(editId.value, 10) : null;
+        var payload = collectForm();
+        if (!payload.kategorie || !payload.bezeichnung || !payload.gueltig_ab) {
+            showAlert('Kategorie, Bezeichnung und Gültig ab sind Pflichtfelder.', 'warning');
+            return;
+        }
+        btnSaveEdit.disabled = true;
+        var url, method;
+        if (id) {
+            url = API_CONFIG_GET_BASE + id;
+            method = 'PUT';
+            delete payload.kategorie;
+            delete payload.gueltig_ab;
+        } else {
+            url = API_CONFIG_LIST;
+            method = 'POST';
+        }
+        fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+            .then(r => r.json())
+            .then(function(data) {
+                btnSaveEdit.disabled = false;
+                if (data.success) {
+                    var m = getModal(); if (m) m.hide();
+                    showAlert(data.message || 'Gespeichert.', 'success');
+                    loadList();
+                } else {
+                    showAlert(data.error || 'Fehler beim Speichern', 'danger');
+                }
+            })
+            .catch(function(e) {
+                btnSaveEdit.disabled = false;
+                showAlert('Fehler: ' + e.message, 'danger');
+            });
+    });
+
+    btnNeu.addEventListener('click', function() { openEdit(null); });
+    btnFilterClear.addEventListener('click', function() {
+        filterMonat.value = '';
+        loadList();
+    });
+    filterMonat.addEventListener('change', loadList);
+    document.getElementById('edit-kategorie').addEventListener('input', function() {
+        var db2Section = document.getElementById('db2-section');
+        if (db2Section) db2Section.style.display = (this.value.trim() === 'IV_gw_bestand') ? 'block' : 'none';
+    });
+
+    loadList();
+})();
+</script>
+{% endblock %}

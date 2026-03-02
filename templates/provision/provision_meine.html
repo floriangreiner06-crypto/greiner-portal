@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% block title %}Meine Provision – Greiner DRIVE{% endblock %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2><i class="bi bi-cash-coin"></i> Meine Provision</h2>
+            <p class="text-muted">Live-Berechnung aus Verkaufsdaten (Rechnungsdatum). Kein Abrechnungslauf – reine Vorschau.</p>
+        </div>
+    </div>
+
+    <div class="row mb-3">
+        <div class="col-md-3">
+            <label class="form-label">Abrechnungsmonat</label>
+            <input type="month" id="monatSelect" class="form-control" value="{{ default_monat }}">
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+            <button type="button" class="btn btn-primary" id="btnAktualisieren">
+                <i class="bi bi-arrow-clockwise"></i> Aktualisieren
+            </button>
+        </div>
+    </div>
+
+    <div id="loading" class="text-muted mb-3" style="display: none;">
+        <i class="bi bi-hourglass-split"></i> Berechne…
+    </div>
+    <div id="error" class="alert alert-danger" style="display: none;"></div>
+    <div id="provisionDeaktiviert" class="alert alert-info" style="display: none;" role="alert"></div>
+
+    <div id="result" style="display: none;">
+        <!-- Persönliche KPIs -->
+        <div class="row g-3 mb-4" id="kpiRow">
+            <div class="col-sm-6 col-lg-3">
+                <div class="card border-primary h-100">
+                    <div class="card-body">
+                        <div class="text-muted small text-uppercase">Provision Gesamt</div>
+                        <div class="fs-4 fw-bold text-primary" id="kpiProvision">–</div>
+                        <div class="small text-muted" id="kpiProvisionSub">–</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+                <div class="card border-info h-100">
+                    <div class="card-body">
+                        <div class="text-muted small text-uppercase">Fahrzeuge</div>
+                        <div class="fs-4 fw-bold text-info" id="kpiFahrzeuge">–</div>
+                        <div class="small text-muted">ausgeliefert (Monat)</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+                <div class="card border-success h-100">
+                    <div class="card-body">
+                        <div class="text-muted small text-uppercase">Neuwagen</div>
+                        <div class="fs-4 fw-bold text-success" id="kpiNeuwagen">–</div>
+                        <div class="small text-muted" id="kpiNeuwagenSub">Stück</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+                <div class="card border-secondary h-100">
+                    <div class="card-body">
+                        <div class="text-muted small text-uppercase">Stückprämie</div>
+                        <div class="fs-4 fw-bold" id="kpiStueckpraemie">–</div>
+                        <div class="small text-muted">Neuwagen (max. 15 Stück)</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row mb-3">
+            <div class="col-12">
+                <h5>Zusammenfassung <span id="labelMonat"></span></h5>
+                <table class="table table-sm table-bordered w-auto">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Kategorie</th>
+                            <th class="text-end">Summe (€)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>I. Neuwagen</td><td class="text-end" id="sumI">0,00</td></tr>
+                        <tr><td>II. Testwagen/VFW</td><td class="text-end" id="sumII">0,00</td></tr>
+                        <tr><td>III. Gebrauchtwagen</td><td class="text-end" id="sumIII">0,00</td></tr>
+                        <tr><td>IV. GW aus Bestand</td><td class="text-end" id="sumIV">0,00</td></tr>
+                        <tr><td>V. Zusatzleistungen</td><td class="text-end" id="sumV">0,00</td></tr>
+                        <tr class="table-primary fw-bold"><td>Gesamt</td><td class="text-end" id="sumGesamt">0,00</td></tr>
+                        <tr class="table-secondary"><td>Kumuliert (laufend)</td><td class="text-end text-nowrap" id="sumKumuliert">–</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="accordion" id="accordionPositionen">
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseI">I. Neuwagen (<span id="cntI">0</span>)</button>
+                </h2>
+                <div id="collapseI" class="accordion-collapse collapse" data-bs-parent="#accordionPositionen">
+                    <div class="accordion-body"><table class="table table-sm" id="tabI"><thead><tr><th>Verkäufer</th><th>Einkäufer</th><th>Käufer</th><th>Modell</th><th class="text-end">DB</th></tr></thead><tbody></tbody><tfoot id="tfootI" class="table-light"></tfoot></table></div>
+                </div>
+            </div>
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseII">II. Testwagen/VFW (<span id="cntII">0</span>)</button>
+                </h2>
+                <div id="collapseII" class="accordion-collapse collapse" data-bs-parent="#accordionPositionen">
+                    <div class="accordion-body"><table class="table table-sm" id="tabII"><thead><tr><th>Verkäufer</th><th>Einkäufer</th><th>Käufer</th><th>Modell</th><th class="text-end">Rg.Netto</th><th class="text-end">Provision</th></tr></thead><tbody></tbody><tfoot id="tfootII" class="table-light"></tfoot></table></div>
+                </div>
+            </div>
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseIII">III. Gebrauchtwagen (<span id="cntIII">0</span>)</button>
+                </h2>
+                <div id="collapseIII" class="accordion-collapse collapse" data-bs-parent="#accordionPositionen">
+                    <div class="accordion-body"><table class="table table-sm" id="tabIII"><thead><tr><th>Verkäufer</th><th>Einkäufer</th><th>Käufer</th><th>Modell</th><th class="text-end">Rg.Netto</th><th class="text-end">Provision</th></tr></thead><tbody></tbody><tfoot id="tfootIII" class="table-light"></tfoot></table></div>
+                </div>
+            </div>
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseIV">IV. GW aus Bestand (<span id="cntIV">0</span>)</button>
+                </h2>
+                <div id="collapseIV" class="accordion-collapse collapse" data-bs-parent="#accordionPositionen">
+                    <div class="accordion-body"><table class="table table-sm" id="tabIV"><thead><tr><th>Verkäufer</th><th>Einkäufer</th><th>Käufer</th><th>Modell</th><th class="text-end">DB</th><th class="text-end">Provision</th></tr></thead><tbody></tbody><tfoot id="tfootIV" class="table-light"></tfoot></table></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const monatSelect = document.getElementById('monatSelect');
+    const btnAktualisieren = document.getElementById('btnAktualisieren');
+    const loading = document.getElementById('loading');
+    const error = document.getElementById('error');
+    const provisionDeaktiviert = document.getElementById('provisionDeaktiviert');
+    const result = document.getElementById('result');
+
+    function fmtNum(x) { return (x == null || x === '') ? '0,00' : Number(x).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+    function load() {
+        const monat = monatSelect.value;
+        if (!monat) return;
+        loading.style.display = 'block';
+        error.style.display = 'none';
+        provisionDeaktiviert.style.display = 'none';
+        result.style.display = 'none';
+
+        fetch('/api/provision/live-preview?monat=' + encodeURIComponent(monat), { credentials: 'same-origin' })
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                loading.style.display = 'none';
+                if (!data.success) {
+                    error.textContent = data.error || 'Unbekannter Fehler';
+                    error.style.display = 'block';
+                    return;
+                }
+                error.style.display = 'none';
+                if (data.provision_deaktiviert) {
+                    provisionDeaktiviert.textContent = data.message || 'Für Sie wird keine Provisionsabrechnung durchgeführt.';
+                    provisionDeaktiviert.style.display = 'block';
+                    return;
+                }
+                provisionDeaktiviert.style.display = 'none';
+                result.style.display = 'block';
+
+                var monatLabel = (monat || '').replace(/(\d{4})-(\d{2})/, function(_, y, m) {
+                    var mo = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+                    return mo[parseInt(m, 10) - 1] + ' ' + y;
+                });
+                document.getElementById('kpiProvision').textContent = fmtNum(data.summe_gesamt) + ' €';
+                document.getElementById('kpiProvisionSub').textContent = monatLabel || monat || '';
+                var fzg = (data.positionen_i || []).length + (data.positionen_ii || []).length + (data.positionen_iii || []).length + (data.positionen_iv || []).length;
+                document.getElementById('kpiFahrzeuge').textContent = fzg;
+                document.getElementById('kpiNeuwagen').textContent = (data.stueck_neuwagen != null ? data.stueck_neuwagen : 0);
+                document.getElementById('kpiNeuwagenSub').textContent = 'Stück';
+                document.getElementById('kpiStueckpraemie').textContent = fmtNum(data.summe_stueckpraemie) + ' €';
+
+                document.getElementById('labelMonat').textContent = monat;
+                document.getElementById('sumI').textContent = fmtNum(data.summe_kat_i);
+                document.getElementById('sumII').textContent = fmtNum(data.summe_kat_ii);
+                document.getElementById('sumIII').textContent = fmtNum(data.summe_kat_iii);
+                document.getElementById('sumIV').textContent = fmtNum(data.summe_kat_iv);
+                document.getElementById('sumV').textContent = fmtNum(data.summe_kat_v);
+                document.getElementById('sumGesamt').textContent = fmtNum(data.summe_gesamt);
+                var sI = Number(data.summe_kat_i) || 0, sII = Number(data.summe_kat_ii) || 0, sIII = Number(data.summe_kat_iii) || 0, sIV = Number(data.summe_kat_iv) || 0, sV = Number(data.summe_kat_v) || 0;
+                var k1 = sI, k2 = k1 + sII, k3 = k2 + sIII, k4 = k3 + sIV, k5 = k4 + sV;
+                document.getElementById('sumKumuliert').textContent = 'I: ' + fmtNum(k1) + ' € · I+II: ' + fmtNum(k2) + ' € · I+II+III: ' + fmtNum(k3) + ' € · I+II+III+IV: ' + fmtNum(k4) + ' € · Gesamt: ' + fmtNum(k5) + ' €';
+
+                document.getElementById('cntI').textContent = (data.positionen_i || []).length;
+                document.getElementById('cntII').textContent = (data.positionen_ii || []).length;
+                document.getElementById('cntIII').textContent = (data.positionen_iii || []).length;
+                document.getElementById('cntIV').textContent = (data.positionen_iv || []).length;
+
+                var tbody = document.querySelector('#tabI tbody');
+                tbody.innerHTML = '';
+                var vName = data.verkaufer_name || '-';
+                (data.positionen_i || []).forEach(function(p) {
+                    tbody.innerHTML += '<tr><td>' + vName + '</td><td>' + (p.einkaeufer_name || '-') + '</td><td>' + (p.kaeufer_name || '-') + '</td><td>' + (p.modell || '-') + '</td><td class="text-end">' + fmtNum(p.deckungsbeitrag) + '</td></tr>';
+                });
+                tbody = document.querySelector('#tabII tbody');
+                tbody.innerHTML = '';
+                (data.positionen_ii || []).forEach(function(p) {
+                    tbody.innerHTML += '<tr><td>' + vName + '</td><td>' + (p.einkaeufer_name || '-') + '</td><td>' + (p.kaeufer_name || '-') + '</td><td>' + (p.modell || '-') + '</td><td class="text-end">' + fmtNum(p.rg_netto) + '</td><td class="text-end">' + fmtNum(p.provision) + '</td></tr>';
+                });
+                tbody = document.querySelector('#tabIII tbody');
+                tbody.innerHTML = '';
+                (data.positionen_iii || []).forEach(function(p) {
+                    tbody.innerHTML += '<tr><td>' + vName + '</td><td>' + (p.einkaeufer_name || '-') + '</td><td>' + (p.kaeufer_name || '-') + '</td><td>' + (p.modell || '-') + '</td><td class="text-end">' + fmtNum(p.rg_netto) + '</td><td class="text-end">' + fmtNum(p.provision) + '</td></tr>';
+                });
+                tbody = document.querySelector('#tabIV tbody');
+                tbody.innerHTML = '';
+                (data.positionen_iv || []).forEach(function(p) {
+                    tbody.innerHTML += '<tr><td>' + vName + '</td><td>' + (p.einkaeufer_name || '-') + '</td><td>' + (p.kaeufer_name || '-') + '</td><td>' + (p.modell || '-') + '</td><td class="text-end">' + fmtNum(p.deckungsbeitrag) + '</td><td class="text-end">' + fmtNum(p.provision) + '</td></tr>';
+                });
+                document.getElementById('tfootI').innerHTML = '<tr class="fw-bold"><td colspan="4">Summe</td><td class="text-end">' + fmtNum(data.summe_kat_i) + ' €</td></tr>';
+                document.getElementById('tfootII').innerHTML = '<tr class="fw-bold"><td colspan="5">Summe</td><td class="text-end">' + fmtNum(data.summe_kat_ii) + ' €</td></tr>';
+                document.getElementById('tfootIII').innerHTML = '<tr class="fw-bold"><td colspan="5">Summe</td><td class="text-end">' + fmtNum(data.summe_kat_iii) + ' €</td></tr>';
+                document.getElementById('tfootIV').innerHTML = '<tr class="fw-bold"><td colspan="5">Summe</td><td class="text-end">' + fmtNum(data.summe_kat_iv) + ' €</td></tr>';
+            })
+            .catch(function(err) {
+                loading.style.display = 'none';
+                error.textContent = 'Netzwerkfehler: ' + err.message;
+                error.style.display = 'block';
+            });
+    }
+
+    btnAktualisieren.addEventListener('click', load);
+    monatSelect.addEventListener('change', load);
+    load();
+})();
+</script>
+{% endblock %}

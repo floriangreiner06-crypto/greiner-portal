@@ -1,0 +1,452 @@
+"""
+Provisionsmodul – REST-API.
+Live-Preview nutzt ausschließlich provision_service (SSOT).
+"""
+from flask import Blueprint, jsonify, request
+from flask_login import login_required, current_user
+
+from api.provision_service import berechne_live_provision, create_vorlauf, delete_vorlauf, get_dashboard_daten, get_lauf_detail
+from api.db_utils import db_session, rows_to_list
+
+provision_api = Blueprint('provision_api', __name__, url_prefix='/api/provision')
+
+
+def _get_vkb_for_request():
+    """
+    Ermittelt VKB des aktuellen Users (über ldap_employee_mapping → employees.locosoft_id).
+    SSOT: gleiche Logik wie Urlaubsplaner (vacation_api.get_employee_from_session).
+    """
+    from api.vacation_api import get_employee_from_session
+    _employee_id, _ldap_user, employee_data = get_employee_from_session()
+    if employee_data and employee_data.get('locosoft_id') is not None:
+        return int(employee_data['locosoft_id'])
+    return None
+
+
+def _may_see_all_verkaufer():
+    """VKL / Admin dürfen beliebigen Verkäufer abfragen."""
+    return current_user.is_authenticated and (
+        getattr(current_user, 'has_role', lambda _: False)('admin') or
+        getattr(current_user, 'portal_role', '') == 'admin' or
+        getattr(current_user, 'has_role', lambda _: False)('geschaeftsfuehrung')
+    )
+
+
+def _may_manage_config():
+    """Nur Admin darf Provisionsarten (provision_config) verwalten."""
+    return current_user.is_authenticated and (
+        getattr(current_user, 'portal_role', '') == 'admin' or
+        getattr(current_user, 'has_role', lambda _: False)('admin')
+    )
+
+
+@provision_api.route('/live-preview', methods=['GET'])
+@login_required
+def live_preview():
+    """
+    GET /api/provision/live-preview?monat=YYYY-MM&verkaufer_id=<optional>
+    Berechnung aus sales + provision_config (kein DB-Write).
+    Verkäufer: nur eigene VKB. VKL/Admin: verkaufer_id optional.
+    """
+    monat = request.args.get('monat')
+    if not monat or len(monat) != 7 or monat[4] != '-':
+        return jsonify({'success': False, 'error': 'Parameter monat (YYYY-MM) fehlt oder ungültig'}), 400
+
+    verkaufer_id_param = request.args.get('verkaufer_id', type=int)
+    vkb = None
+
+    if verkaufer_id_param is not None and _may_see_all_verkaufer():
+        vkb = verkaufer_id_param
+        is_own = False
+    else:
+        vkb = _get_vkb_for_request()
+        if vkb is None:
+            return jsonify({
+                'success': False,
+                'error': 'Kein Verkäufer (VKB) zu Ihrem Benutzer zugeordnet. Bitte prüfen Sie ldap_employee_mapping / employees.locosoft_id.'
+            }), 403
+        is_own = True
+
+    # Bei eigener Ansicht: prüfen ob Provision für diesen MA deaktiviert ist
+    if is_own:
+        with db_session() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT COALESCE(provision_aktiv, true) FROM employees WHERE locosoft_id = %s LIMIT 1",
+                (vkb,)
+            )
+            row = cur.fetchone()
+        if row is not None and row[0] is False:
+            return jsonify({
+                'success': True,
+                'provision_deaktiviert': True,
+                'message': 'Für Sie wird keine Provisionsabrechnung durchgeführt (z. B. Verkaufsleitung / Geschäftsführung).',
+            })
+
+    try:
+        result = berechne_live_provision(vkb, monat)
+        result['success'] = True
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@provision_api.route('/vorlauf-erstellen', methods=['POST'])
+@login_required
+def vorlauf_erstellen():
+    """
+    POST /api/provision/vorlauf-erstellen
+    Body: { "verkaufer_id": 2007, "monat": "2026-01" }
+    Nur VKL/Admin. Erstellt provision_laeufe + positionen, optional PDF.
+    """
+    if not _may_see_all_verkaufer():
+        return jsonify({'success': False, 'error': 'Nur VKL/Admin dürfen einen Vorlauf erstellen.'}), 403
+    data = request.get_json() or {}
+    vkb = data.get('verkaufer_id')
+    monat = data.get('monat')
+    if vkb is None or not monat or len(monat) != 7 or monat[4] != '-':
+        return jsonify({'success': False, 'error': 'verkaufer_id und monat (YYYY-MM) erforderlich'}), 400
+    try:
+        vkb = int(vkb)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'verkaufer_id muss eine Zahl sein'}), 400
+    erstellt_von = getattr(current_user, 'username', None) or getattr(current_user, 'display_name', '') or 'system'
+    result = create_vorlauf(vkb, monat, erstellt_von)
+    if result.get('error') and not result.get('lauf_id'):
+        return jsonify({'success': False, 'error': result['error']}), 400
+    return jsonify({
+        'success': True,
+        'lauf_id': result['lauf_id'],
+        'pdf_vorlauf': result.get('pdf_vorlauf'),
+        'message': 'Vorlauf erstellt.' if not result.get('error') else result['error'],
+    })
+
+
+@provision_api.route('/vorlauf/<int:lauf_id>/loeschen', methods=['POST', 'DELETE'])
+@login_required
+def vorlauf_loeschen(lauf_id):
+    """
+    POST/DELETE /api/provision/vorlauf/<id>/loeschen
+    Löscht einen Vorlauf (nur Status VORLAUF). Nur VKL/Admin.
+    """
+    if not _may_see_all_verkaufer():
+        return jsonify({'success': False, 'error': 'Nur VKL/Admin dürfen einen Vorlauf löschen.'}), 403
+    result = delete_vorlauf(lauf_id)
+    if not result.get('success'):
+        return jsonify({'success': False, 'error': result.get('error', 'Unbekannter Fehler')}), 400
+    return jsonify({'success': True, 'message': 'Vorlauf gelöscht.'})
+
+
+@provision_api.route('/dashboard', methods=['GET'])
+@login_required
+def dashboard():
+    """GET /api/provision/dashboard?monat=YYYY-MM – Nur VKL/Admin."""
+    if not _may_see_all_verkaufer():
+        return jsonify({'success': False, 'error': 'Nur VKL/Admin'}), 403
+    monat = request.args.get('monat')
+    if not monat or len(monat) != 7 or monat[4] != '-':
+        from datetime import datetime
+        monat = datetime.now().strftime('%Y-%m')
+    try:
+        data = get_dashboard_daten(monat)
+        data['success'] = True
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@provision_api.route('/lauf/<int:lauf_id>', methods=['GET'])
+@login_required
+def lauf_detail(lauf_id):
+    """GET /api/provision/lauf/<id> – Lauf inkl. Positionen. Verkäufer nur eigener Lauf."""
+    data = get_lauf_detail(lauf_id)
+    if not data:
+        return jsonify({'success': False, 'error': 'Lauf nicht gefunden'}), 404
+    vkb = data['lauf'].get('verkaufer_id')
+    my_vkb = _get_vkb_for_request()
+    if not _may_see_all_verkaufer() and my_vkb != vkb:
+        return jsonify({'success': False, 'error': 'Kein Zugriff'}), 403
+    data['success'] = True
+    return jsonify(data)
+
+
+# =============================================================================
+# Admin: Provisionsarten (provision_config) verwalten – nur Admin
+# =============================================================================
+
+@provision_api.route('/config', methods=['GET'])
+@login_required
+def config_list():
+    """
+    GET /api/provision/config?monat=YYYY-MM (optional)
+    Liste aller provision_config-Einträge. Mit monat: nur für diesen Monat gültige.
+    Ohne monat: alle Einträge (für Admin-Übersicht inkl. Vergangenheit/Zukunft).
+    """
+    if not _may_manage_config():
+        return jsonify({'success': False, 'error': 'Nur Admin darf Provisionsarten verwalten.'}), 403
+    monat = request.args.get('monat')
+    try:
+        with db_session() as conn:
+            cur = conn.cursor()
+            base_cols = "id, kategorie, bezeichnung, bemessungsgrundlage, prozentsatz, min_betrag, max_betrag, stueck_praemie, stueck_max, param_j60, param_j61, COALESCE(gw_bestand_operator_abzug, 'minus') AS gw_bestand_operator_abzug, COALESCE(gw_bestand_operator_komponenten, 'plus') AS gw_bestand_operator_komponenten, gueltig_ab, gueltig_bis, erstellt_von, erstellt_am"
+            ext_cols = ", COALESCE(use_zielpraemie, false) AS use_zielpraemie, zielerreichung_betrag, zielpraemie_fallback_ziel"
+            try:
+                if monat and len(monat) == 7 and monat[4] == '-':
+                    cur.execute("SELECT " + base_cols + ext_cols + " FROM provision_config WHERE gueltig_ab <= %s AND (gueltig_bis IS NULL OR gueltig_bis >= %s) ORDER BY kategorie", (monat + '-01', monat + '-01'))
+                else:
+                    cur.execute("SELECT " + base_cols + ext_cols + " FROM provision_config ORDER BY kategorie, gueltig_ab DESC")
+            except Exception:
+                if monat and len(monat) == 7 and monat[4] == '-':
+                    cur.execute("SELECT " + base_cols + " FROM provision_config WHERE gueltig_ab <= %s AND (gueltig_bis IS NULL OR gueltig_bis >= %s) ORDER BY kategorie", (monat + '-01', monat + '-01'))
+                else:
+                    cur.execute("SELECT " + base_cols + " FROM provision_config ORDER BY kategorie, gueltig_ab DESC")
+            rows = rows_to_list(cur.fetchall())
+        for r in rows:
+            r.setdefault('use_zielpraemie', False)
+            r.setdefault('zielerreichung_betrag', None)
+            r.setdefault('zielpraemie_fallback_ziel', None)
+        # Datum/Decimal als JSON-tauglich
+        for r in rows:
+            for key in ('gueltig_ab', 'gueltig_bis', 'erstellt_am'):
+                if r.get(key) is not None:
+                    r[key] = str(r[key])
+            for key in ('prozentsatz', 'min_betrag', 'max_betrag', 'stueck_praemie', 'param_j60', 'param_j61', 'zielerreichung_betrag'):
+                if r.get(key) is not None:
+                    r[key] = float(r[key])
+            if r.get('stueck_max') is not None:
+                r['stueck_max'] = int(r['stueck_max'])
+            if r.get('zielpraemie_fallback_ziel') is not None:
+                r['zielpraemie_fallback_ziel'] = int(r['zielpraemie_fallback_ziel'])
+            r['use_zielpraemie'] = bool(r.get('use_zielpraemie'))
+        return jsonify({'success': True, 'items': rows})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@provision_api.route('/config/<int:config_id>', methods=['GET'])
+@login_required
+def config_get(config_id):
+    """GET /api/provision/config/<id> – Einzelne Regel."""
+    if not _may_manage_config():
+        return jsonify({'success': False, 'error': 'Nur Admin'}), 403
+    try:
+        with db_session() as conn:
+            cur = conn.cursor()
+            try:
+                cur.execute("""
+                    SELECT id, kategorie, bezeichnung, bemessungsgrundlage, prozentsatz,
+                           min_betrag, max_betrag, stueck_praemie, stueck_max, param_j60, param_j61,
+                           COALESCE(gw_bestand_operator_abzug, 'minus') AS gw_bestand_operator_abzug,
+                           COALESCE(gw_bestand_operator_komponenten, 'plus') AS gw_bestand_operator_komponenten,
+                           gueltig_ab, gueltig_bis, erstellt_von, erstellt_am,
+                           COALESCE(use_zielpraemie, false) AS use_zielpraemie, zielerreichung_betrag, zielpraemie_fallback_ziel
+                    FROM provision_config WHERE id = %s
+                """, (config_id,))
+            except Exception:
+                cur.execute("""
+                    SELECT id, kategorie, bezeichnung, bemessungsgrundlage, prozentsatz,
+                           min_betrag, max_betrag, stueck_praemie, stueck_max, param_j60, param_j61,
+                           gueltig_ab, gueltig_bis, erstellt_von, erstellt_am
+                    FROM provision_config WHERE id = %s
+                """, (config_id,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'success': False, 'error': 'Nicht gefunden'}), 404
+        r = dict(row)
+        for key in ('gueltig_ab', 'gueltig_bis', 'erstellt_am'):
+            if r.get(key) is not None:
+                r[key] = str(r[key])
+        for key in ('prozentsatz', 'min_betrag', 'max_betrag', 'stueck_praemie', 'param_j60', 'param_j61', 'zielerreichung_betrag'):
+            if r.get(key) is not None:
+                r[key] = float(r[key])
+        if r.get('stueck_max') is not None:
+            r['stueck_max'] = int(r['stueck_max'])
+        r.setdefault('use_zielpraemie', False)
+        r.setdefault('zielerreichung_betrag', None)
+        r.setdefault('zielpraemie_fallback_ziel', None)
+        if r.get('zielpraemie_fallback_ziel') is not None:
+            r['zielpraemie_fallback_ziel'] = int(r['zielpraemie_fallback_ziel'])
+        r['use_zielpraemie'] = bool(r.get('use_zielpraemie'))
+        return jsonify({'success': True, 'item': r})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@provision_api.route('/config', methods=['POST'])
+@login_required
+def config_create():
+    """
+    POST /api/provision/config – Neue Provisionsart anlegen.
+    Body: kategorie, bezeichnung, bemessungsgrundlage, prozentsatz, gueltig_ab;
+    optional: min_betrag, max_betrag, stueck_praemie, stueck_max, param_j60, param_j61.
+    """
+    if not _may_manage_config():
+        return jsonify({'success': False, 'error': 'Nur Admin'}), 403
+    data = request.get_json() or {}
+    kategorie = (data.get('kategorie') or '').strip()
+    bezeichnung = (data.get('bezeichnung') or '').strip()
+    bemessungsgrundlage = (data.get('bemessungsgrundlage') or 'db').strip()
+    gueltig_ab = (data.get('gueltig_ab') or '').strip()
+    if not kategorie or not bezeichnung or not gueltig_ab:
+        return jsonify({'success': False, 'error': 'kategorie, bezeichnung und gueltig_ab sind Pflichtfelder.'}), 400
+    try:
+        prozentsatz = float(data.get('prozentsatz', 0))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'prozentsatz muss eine Zahl sein.'}), 400
+    erstellt_von = getattr(current_user, 'username', None) or getattr(current_user, 'display_name', '') or 'system'
+
+    def _float_or_none(v):
+        if v is None or v == '':
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    def _int_or_none(v):
+        if v is None or v == '':
+            return None
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+
+    min_betrag = _float_or_none(data.get('min_betrag'))
+    max_betrag = _float_or_none(data.get('max_betrag'))
+    stueck_praemie = _float_or_none(data.get('stueck_praemie'))
+    stueck_max = _int_or_none(data.get('stueck_max'))
+    param_j60 = _float_or_none(data.get('param_j60'))
+    param_j61 = _float_or_none(data.get('param_j61'))
+    gw_op_abzug = (data.get('gw_bestand_operator_abzug') or 'minus').strip().lower()
+    if gw_op_abzug not in ('minus', 'plus'):
+        gw_op_abzug = 'minus'
+    gw_op_komponenten = (data.get('gw_bestand_operator_komponenten') or 'plus').strip().lower()
+    if gw_op_komponenten not in ('plus', 'minus'):
+        gw_op_komponenten = 'plus'
+    use_zielpraemie = data.get('use_zielpraemie') in (True, 'true', 1, '1')
+    zielerreichung_betrag = _float_or_none(data.get('zielerreichung_betrag'))
+    zielpraemie_fallback_ziel = _int_or_none(data.get('zielpraemie_fallback_ziel'))
+
+    try:
+        with db_session() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO provision_config (
+                    kategorie, bezeichnung, bemessungsgrundlage, prozentsatz,
+                    min_betrag, max_betrag, stueck_praemie, stueck_max, param_j60, param_j61,
+                    gw_bestand_operator_abzug, gw_bestand_operator_komponenten,
+                    gueltig_ab, erstellt_von, use_zielpraemie, zielerreichung_betrag, zielpraemie_fallback_ziel
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (kategorie, bezeichnung, bemessungsgrundlage, prozentsatz,
+                  min_betrag, max_betrag, stueck_praemie, stueck_max, param_j60, param_j61,
+                  gw_op_abzug, gw_op_komponenten,
+                  gueltig_ab, erstellt_von, use_zielpraemie, zielerreichung_betrag, zielpraemie_fallback_ziel))
+            row = cur.fetchone()
+            new_id = row[0] if row else None
+            conn.commit()
+        return jsonify({'success': True, 'id': new_id, 'message': 'Provisionsart angelegt.'})
+    except Exception as e:
+        if 'unique' in str(e).lower() or 'duplicate' in str(e).lower():
+            return jsonify({'success': False, 'error': 'Diese Kategorie existiert bereits mit gleichem gueltig_ab.'}), 400
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@provision_api.route('/config/<int:config_id>', methods=['PUT'])
+@login_required
+def config_update(config_id):
+    """
+    PUT /api/provision/config/<id> – Bestehende Regel bearbeiten.
+    Body: beliebige Felder (bezeichnung, prozentsatz, min_betrag, max_betrag, …).
+    kategorie und gueltig_ab können nicht geändert werden (Versionierung).
+    """
+    if not _may_manage_config():
+        return jsonify({'success': False, 'error': 'Nur Admin'}), 403
+    data = request.get_json() or {}
+
+    def _float_or_none(v):
+        if v is None or v == '':
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    def _int_or_none(v):
+        if v is None or v == '':
+            return None
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+
+    updates = []
+    params = []
+    for key, col in [
+        ('bezeichnung', 'bezeichnung'), ('bemessungsgrundlage', 'bemessungsgrundlage'),
+        ('prozentsatz', 'prozentsatz'), ('min_betrag', 'min_betrag'), ('max_betrag', 'max_betrag'),
+        ('stueck_praemie', 'stueck_praemie'), ('stueck_max', 'stueck_max'),
+        ('param_j60', 'param_j60'), ('param_j61', 'param_j61'), ('gueltig_bis', 'gueltig_bis'),
+        ('gw_bestand_operator_abzug', 'gw_bestand_operator_abzug'),
+        ('gw_bestand_operator_komponenten', 'gw_bestand_operator_komponenten'),
+        ('use_zielpraemie', 'use_zielpraemie'), ('zielerreichung_betrag', 'zielerreichung_betrag'),
+        ('zielpraemie_fallback_ziel', 'zielpraemie_fallback_ziel'),
+    ]:
+        v = data.get(key)
+        if key == 'gueltig_bis':
+            # Nur setzen wenn explizit im Body (erlaubt NULL zum Leeren)
+            if key not in data:
+                continue
+            val = v.strip() if isinstance(v, str) and v else (str(v) if v else None)
+            updates.append("gueltig_bis = %s")
+            params.append(val)
+            continue
+        if key == 'use_zielpraemie':
+            val = v in (True, 'true', 1, '1')
+            updates.append("use_zielpraemie = %s")
+            params.append(val)
+            continue
+        if key in ('gw_bestand_operator_abzug', 'gw_bestand_operator_komponenten'):
+            val = (v or '').strip().lower() if v is not None else None
+            if val not in ('minus', 'plus'):
+                continue
+            updates.append(f"{col} = %s")
+            params.append(val)
+            continue
+        if v is None:
+            continue
+        elif key in ('prozentsatz', 'min_betrag', 'max_betrag', 'stueck_praemie', 'param_j60', 'param_j61', 'zielerreichung_betrag'):
+            val = _float_or_none(v)
+            if val is None and v is not None and v != '':
+                continue
+        elif key == 'zielpraemie_fallback_ziel':
+            if key not in data:
+                continue
+            val = _int_or_none(v)
+            updates.append("zielpraemie_fallback_ziel = %s")
+            params.append(val)
+            continue
+        elif key == 'stueck_max':
+            val = _int_or_none(v)
+            if val is None and v is not None and v != '':
+                continue
+        else:
+            val = (v or '').strip() if isinstance(v, str) else v
+        updates.append(f"{col} = %s")
+        params.append(val)
+    if not updates:
+        return jsonify({'success': False, 'error': 'Keine Felder zum Aktualisieren angegeben.'}), 400
+    params.append(config_id)
+    try:
+        with db_session() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE provision_config SET " + ", ".join(updates) + " WHERE id = %s",
+                params
+            )
+            if cur.rowcount == 0:
+                return jsonify({'success': False, 'error': 'Eintrag nicht gefunden.'}), 404
+            conn.commit()
+        return jsonify({'success': True, 'message': 'Aktualisiert.'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
