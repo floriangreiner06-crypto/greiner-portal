@@ -242,13 +242,8 @@
             </a>
         </li>
         <li class="nav-item">
-            <a class="nav-link" data-bs-toggle="tab" href="#rollen-features-tab">
-                <i class="bi bi-shield-check me-1"></i>Rollen-Features
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" data-bs-toggle="tab" href="#matrix-tab">
-                <i class="bi bi-grid-3x3 me-1"></i>Matrix
+            <a class="nav-link" data-bs-toggle="tab" href="#feature-zugriff-tab">
+                <i class="bi bi-shield-check me-1"></i>Feature-Zugriff
             </a>
         </li>
         <li class="nav-item">
@@ -259,11 +254,6 @@
         <li class="nav-item">
             <a class="nav-link" data-bs-toggle="tab" href="#reports-tab">
                 <i class="bi bi-envelope-paper me-1"></i>E-Mail Reports
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" data-bs-toggle="tab" href="#features-tab">
-                <i class="bi bi-key me-1"></i>Nach Feature
             </a>
         </li>
         <li class="nav-item">
@@ -335,35 +325,90 @@
             </div>
         </div>
 
-        <!-- TAB 2: Rollen-Features (Mockup: Rollen-Buttons + gruppierte Checkboxen) -->
-        <div class="tab-pane fade" id="rollen-features-tab">
+        <!-- TAB: Feature-Zugriff (vereint: Nach Rolle + Nach Feature + Matrix) -->
+        <div class="tab-pane fade" id="feature-zugriff-tab">
             <div class="rechte-info-banner" style="background: linear-gradient(135deg, #faf5ff 0%, #fdf2f8 100%); border-color: #e9d5ff;">
-                <strong>Rollen-Features:</strong> Hier legst du fest, welche Module jede Rolle sehen darf. Änderungen gelten für <strong>alle User</strong> mit dieser Rolle.
+                <strong>Feature-Zugriff:</strong> Hier legst du fest, welche Module jede Rolle sehen darf. Eine Stelle zum Bearbeiten — wähle die Sicht unten. Änderungen gelten für <strong>alle User</strong> mit dieser Rolle.
             </div>
-            <div class="mb-3 d-flex flex-wrap gap-2" id="roleSelectorButtons"></div>
-            <div class="mb-3 p-3 rounded border" id="selectedRoleInfo" style="display:none;"></div>
-            <div class="row g-3" id="roleFeaturesGrouped"></div>
-            <div class="mt-3">
-                <button type="button" class="btn btn-primary" id="saveRoleFeaturesBtn2" onclick="saveRoleFeatures()" disabled>
-                    <i class="bi bi-check me-1"></i>Änderungen speichern
-                </button>
+            <ul class="nav nav-pills mb-3" id="featureZugriffSubTabs" role="tablist">
+                <li class="nav-item">
+                    <button class="nav-link active" id="sub-nach-rolle-pill" data-bs-toggle="pill" data-bs-target="#sub-nach-rolle" type="button">Nach Rolle</button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link" id="sub-nach-feature-pill" data-bs-toggle="pill" data-bs-target="#sub-nach-feature" type="button">Nach Feature</button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link" id="sub-matrix-pill" data-bs-toggle="pill" data-bs-target="#sub-matrix" type="button">Matrix (Übersicht)</button>
+                </li>
+            </ul>
+            <div class="tab-content" id="featureZugriffSubContent">
+                <div class="tab-pane fade show active" id="sub-nach-rolle">
+                    <div class="mb-3 d-flex flex-wrap gap-2" id="roleSelectorButtons"></div>
+                    <div class="mb-3 p-3 rounded border" id="selectedRoleInfo" style="display:none;"></div>
+                    <div class="row g-3" id="roleFeaturesGrouped"></div>
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-primary" id="saveRoleFeaturesBtn2" onclick="saveRoleFeatures()" disabled>
+                            <i class="bi bi-check me-1"></i>Änderungen speichern
+                        </button>
+                    </div>
+                    <div class="card mt-4" id="filterModeCard">
+                        <div class="card-header py-2">
+                            <i class="bi bi-funnel me-2"></i>Filter-Verhalten für Listen
+                        </div>
+                        <div class="card-body py-2">
+                            <p class="text-muted small mb-2">Für Seiten mit Listen-Filter (Auftragseingang, Auslieferungen, OPOS, Leistungsübersicht Werkstatt): Verhalten pro Rolle festlegen.</p>
+                            <div class="table-responsive">
+                                <table class="table table-sm mb-0" id="filterModeTable">
+                                    <thead><tr><th>Feature</th><th>Rolle</th><th>Verhalten</th></tr></thead>
+                                    <tbody id="filterModeBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="tab-pane fade" id="sub-nach-feature">
+                    <div class="card mb-3">
+                        <div class="card-body">
+                            <p class="text-muted small mb-3">Rolle wählen und Zugriff pro Feature ein- oder abwählen. Speichern übernimmt die Änderungen für diese Rolle.</p>
+                            <div class="row align-items-end mb-3">
+                                <div class="col-md-4">
+                                    <label class="form-label small mb-1">Rolle</label>
+                                    <select class="form-select" id="roleFeatureSelect" onchange="onRoleForFeaturesChange()">
+                                        <option value="">— Rolle wählen —</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <button type="button" class="btn btn-primary" id="saveRoleFeaturesBtn" onclick="saveRoleFeatures()" disabled>
+                                        <i class="bi bi-check me-1"></i>Zugriff für diese Rolle speichern
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="roleFeaturesList" class="border rounded p-3 bg-light" style="max-height: 320px; overflow-y: auto;">
+                                <span class="text-muted">Bitte zuerst eine Rolle wählen.</span>
+                            </div>
+                        </div>
+                    </div>
+                    <h5 class="mb-2"><i class="bi bi-key me-1"></i>Pro Feature Rollen bearbeiten</h5>
+                    <p class="text-muted small mb-3">Klick auf Stift öffnet die Rollen für dieses Feature.</p>
+                    <div class="row" id="featuresGrid">
+                        <div class="col-12 text-center py-4">
+                            <div class="spinner-border text-primary" role="status"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="tab-pane fade" id="sub-matrix">
+                    <p class="text-muted small mb-2">Read-only — welche Rolle hat Zugriff auf welches Feature. Zum Ändern: Sicht „Nach Rolle“ oder „Nach Feature“.</p>
+                    <div class="table-responsive border rounded">
+                        <table class="table table-sm rechte-matrix-table mb-0" id="matrixTable">
+                            <thead></thead>
+                            <tbody id="matrixBody"></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <!-- TAB 3: Matrix (Feature × Rolle, read-only) -->
-        <div class="tab-pane fade" id="matrix-tab">
-            <div class="rechte-info-banner" style="background: linear-gradient(135deg, #fefce8 0%, #fef9c3 100%); border-color: #fde68a;">
-                <strong>Berechtigungsmatrix:</strong> Übersicht — welche Rolle hat Zugriff auf welches Feature. Read-only.
-            </div>
-            <div class="table-responsive border rounded">
-                <table class="table table-sm rechte-matrix-table mb-0" id="matrixTable">
-                    <thead></thead>
-                    <tbody id="matrixBody"></tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- TAB 4: Architektur (Kaskade) -->
+        <!-- TAB: Architektur (Kaskade) -->
         <div class="tab-pane fade" id="architektur-tab">
             <div class="rechte-info-banner" style="background: linear-gradient(135deg, #f0fdfa 0%, #ecfdf5 100%); border-color: #99f6e4;">
                 <strong>Architektur:</strong> So wird die Portal-Rolle ermittelt — eine klare Kaskade.
@@ -406,44 +451,7 @@
             </div>
         </div>
 
-        <!-- TAB 3: Feature-Zugriff -->
-        <div class="tab-pane fade" id="features-tab">
-            <!-- Rollen-Ansicht: Rolle wählen → Features an/aus -->
-            <div class="card mb-4">
-                <div class="card-header card-header-admin">
-                    <i class="bi bi-shield-check me-2"></i>Rollen &amp; Feature-Zugriff
-                </div>
-                <div class="card-body">
-                    <p class="text-muted small mb-3">Rolle wählen und Zugriff pro Feature ein- oder abwählen. Speichern übernimmt die Änderungen für diese Rolle.</p>
-                    <div class="row align-items-end mb-3">
-                        <div class="col-md-4">
-                            <label class="form-label small mb-1">Rolle</label>
-                            <select class="form-select" id="roleFeatureSelect" onchange="onRoleForFeaturesChange()">
-                                <option value="">— Rolle wählen —</option>
-                            </select>
-                        </div>
-                        <div class="col-md-4">
-                            <button type="button" class="btn btn-primary" id="saveRoleFeaturesBtn" onclick="saveRoleFeatures()" disabled>
-                                <i class="bi bi-check me-1"></i>Zugriff für diese Rolle speichern
-                            </button>
-                        </div>
-                    </div>
-                    <div id="roleFeaturesList" class="border rounded p-3 bg-light" style="max-height: 320px; overflow-y: auto;">
-                        <span class="text-muted">Bitte zuerst eine Rolle wählen.</span>
-                    </div>
-                </div>
-            </div>
-            <!-- Nach Feature (bestehend) -->
-            <h5 class="mb-2"><i class="bi bi-key me-1"></i>Nach Feature</h5>
-            <p class="text-muted small mb-3">Pro Feature die Rollen mit Zugriff bearbeiten (Klick auf Stift).</p>
-            <div class="row" id="featuresGrid">
-                <div class="col-12 text-center py-4">
-                    <div class="spinner-border text-primary" role="status"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- TAB 4: Title-Mapping -->
+        <!-- TAB: Title-Mapping -->
         <div class="tab-pane fade" id="titles-tab">
             <div class="card">
                 <div class="card-header card-header-admin">
@@ -489,6 +497,7 @@
                     <div class="alert alert-info mb-3">
                         <i class="bi bi-info-circle me-2"></i>
                         Navigation-Items aus der Datenbank. Stift = bearbeiten, Papierkorb = löschen. Nach Änderung ggf. Browser aktualisieren.
+                        <strong>Feature-Zugriff</strong> (welche Rolle sieht welches Modul) wird im Tab <strong>Feature-Zugriff</strong> gepflegt; hier nur Menüstruktur und <code>requires_feature</code> pro Menüpunkt.
                     </div>
                     <div id="navigationTree" class="mt-3">
                         <div class="text-center py-4">
@@ -607,6 +616,11 @@
             <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
                 <input type="hidden" id="mitarbeiterConfigEmpId" value="">
                 <h6 id="mitarbeiterConfigEmpName" class="mb-3"></h6>
+                <div class="alert alert-light border py-2 mb-3 small" id="mitarbeiterConfigLocosoftInfo">
+                    <strong>Locosoft-ID (für Filter „nur eigene“):</strong> <span id="mitarbeiterConfigLocosoftId">—</span>
+                    <span class="text-muted ms-1">(Auftragseingang, Auslieferungen, OPOS, Leistungsübersicht Werkstatt)</span>
+                    <br><span class="text-muted">Zum Setzen: <a href="#" id="mitarbeiterConfigPersonalakteLinkLocosoft">Digitale Personalakte</a> → Sync aus Locosoft, oder manuell in der DB (<code>ldap_employee_mapping.locosoft_id</code>).</span>
+                </div>
                 <div class="row">
                     <div class="col-md-6">
                         <div class="mb-3">
@@ -866,6 +880,7 @@ let usersData = [];
 let rolesData = [];
 let availablePortalRoles = [];
 let featureData = {};
+let filterModeData = [];
 let titleData = {};
 let reportsData = {};
 let currentReportId = null;
@@ -951,22 +966,82 @@ async function loadUsersRoles() {
     }
 }
 
-// Feature-Zugriff laden
-async function loadFeatureAccess() {
+// Feature-Zugriff laden (cacheBuster z.B. Date.now() für frischen Abruf nach Speichern)
+async function loadFeatureAccess(cacheBuster) {
     try {
-        const response = await fetch('/api/admin/feature-access');
-        const data = await response.json();
-
+        const qs = cacheBuster ? '?_=' + cacheBuster : '';
+        const [accRes, modesRes] = await Promise.all([
+            fetch('/api/admin/feature-access' + qs, { cache: 'no-store', credentials: 'same-origin' }),
+            fetch('/api/admin/feature-filter-modes' + qs, { cache: 'no-store', credentials: 'same-origin' }).catch(() => ({ ok: false }))
+        ]);
+        const data = await accRes.json();
         featureData = data.feature_access;
         titleData = data.title_to_role;
+
+        if (modesRes.ok) {
+            const modesJson = await modesRes.json();
+            filterModeData = modesJson.modes || [];
+        } else {
+            filterModeData = [];
+        }
 
         renderFeaturesGrid();
         renderTitlesTable();
         renderRoleSelectorButtons();
         renderMatrixTable();
+        renderFilterModeTable();
         if (selectedRoleForFeatures) renderRoleFeaturesGrouped(selectedRoleForFeatures);
     } catch (error) {
         console.error('Fehler:', error);
+    }
+}
+
+var FILTER_FEATURES = ['auftragseingang', 'auslieferungen', 'opos', 'werkstatt_leistungsuebersicht'];
+var FILTER_MODE_LABELS = { own_only: 'Nur eigene (Filter nicht auflösbar)', own_default: 'Eigene, Filter auflösbar', all_filterable: 'Alle, kann filtern' };
+
+function getFilterModeFor(feature, role) {
+    const r = filterModeData.find(m => m.feature_name === feature && m.role_name === role);
+    return r ? r.filter_mode : 'all_filterable';
+}
+
+function renderFilterModeTable() {
+    const tbody = document.getElementById('filterModeBody');
+    if (!tbody) return;
+    const role = selectedRoleForFeatures;
+    if (!role) {
+        tbody.innerHTML = '<tr><td colspan="3" class="text-muted small">Bitte oben eine Rolle wählen.</td></tr>';
+        return;
+    }
+    const featureLabels = { auftragseingang: 'Auftragseingang', auslieferungen: 'Auslieferungen', opos: 'OPOS', werkstatt_leistungsuebersicht: 'Leistungsübersicht Werkstatt' };
+    tbody.innerHTML = FILTER_FEATURES.map(f => {
+        const current = getFilterModeFor(f, role);
+        const opts = ['own_only', 'own_default', 'all_filterable'].map(m =>
+            '<option value="' + m + '"' + (current === m ? ' selected' : '') + '>' + FILTER_MODE_LABELS[m] + '</option>'
+        ).join('');
+        return '<tr><td>' + escapeHtml(featureLabels[f] || f) + '</td><td><span class="badge bg-secondary">' + escapeHtml(role) + '</span></td><td><select class="form-select form-select-sm filter-mode-select" data-feature="' + escapeHtml(f) + '" data-role="' + escapeHtml(role) + '">' + opts + '</select></td></tr>';
+    }).join('');
+    tbody.querySelectorAll('.filter-mode-select').forEach(sel => {
+        sel.addEventListener('change', function() { saveFilterMode(this.dataset.feature, this.dataset.role, this.value); });
+    });
+}
+
+async function saveFilterMode(featureName, roleName, filterMode) {
+    try {
+        const res = await fetch('/api/admin/feature-filter-mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ feature_name: featureName, role_name: roleName, filter_mode: filterMode })
+        });
+        const data = await res.json();
+        if (data.success) {
+            const existing = filterModeData.find(m => m.feature_name === featureName && m.role_name === roleName);
+            if (existing) existing.filter_mode = filterMode; else filterModeData.push({ feature_name: featureName, role_name: roleName, filter_mode: filterMode });
+        } else {
+            alert('Fehler: ' + (data.error || 'Unbekannt'));
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Fehler beim Speichern des Filter-Modus');
     }
 }
 
@@ -1214,6 +1289,7 @@ function selectRoleForFeatures(role) {
         infoEl.innerHTML = '<strong>Rolle: ' + escapeHtml(role) + '</strong> — ' + count + ' Features mit Zugriff. Checkboxen unten anpassen und speichern.';
     }
     renderRoleFeaturesGrouped(role);
+    renderFilterModeTable();
     const saveBtn = document.getElementById('saveRoleFeaturesBtn2');
     if (saveBtn) saveBtn.disabled = false;
 }
@@ -1273,10 +1349,12 @@ async function saveRoleFeatures() {
         alert('Bitte zuerst eine Rolle wählen (User & Rollen oder Rollen-Features-Tab).');
         return;
     }
-    // Checkboxen: aus Rollen-Features-Tab (gruppiert) oder aus Feature-Zugriff-Liste
+    // Checkboxen: gleicher Kontext wie Rolle – Rollen-Features-Tab (Buttons) → gruppiert, sonst Feature-Zugriff (Dropdown) → Liste
     const groupedEl = document.getElementById('roleFeaturesGrouped');
     const listEl = document.getElementById('roleFeaturesList');
-    const inputs = groupedEl ? groupedEl.querySelectorAll('input[type="checkbox"]:checked') : (listEl ? listEl.querySelectorAll('input[type="checkbox"]:checked') : []);
+    const useGrouped = !!selectedRoleForFeatures;
+    const container = useGrouped ? groupedEl : listEl;
+    const inputs = container ? container.querySelectorAll('input[type="checkbox"]:checked') : [];
     const features = Array.from(inputs).map(el => el.dataset.feature).filter(Boolean);
     try {
         const response = await fetch(`/api/admin/role/${encodeURIComponent(role)}/features`, {
@@ -1286,7 +1364,8 @@ async function saveRoleFeatures() {
         });
         const result = await response.json();
         if (result.success) {
-            await loadFeatureAccess();
+            // Immer neu vom Server laden (mit Cache-Buster), eine klare Quelle
+            await loadFeatureAccess(Date.now());
             onRoleForFeaturesChange();
             if (selectedRoleForFeatures) renderRoleFeaturesGrouped(selectedRoleForFeatures);
             alert(result.message || 'Gespeichert.');
@@ -1744,30 +1823,23 @@ async function openDashboardModal(userId, userName, currentUrl) {
         return;
     }
     
-    // User-Rollen ermitteln
-    const userRoles = user.roles.split(', ').filter(r => r.trim() && r.trim() !== 'keine');
-    
-    // Verfügbare Dashboards filtern (basierend auf User-Rollen/Features)
-    // Für Admin: Alle Dashboards anzeigen
-    const isAdmin = userRoles.includes('admin');
+    // Wirksame Portal-Rolle nutzen (nicht user.roles aus user_roles-Tabelle!)
+    // effective_portal_role bestimmt Feature-Zugriff (z. B. verkauf → kein bankenspiegel).
+    const effectiveRole = (user.effective_portal_role || '').trim() || 'mitarbeiter';
+    const isAdmin = effectiveRole === 'admin';
+    const userRolesForFilter = [effectiveRole];
     
     let filteredDashboards = availableDashboards;
     if (!isAdmin) {
-        // Filter: Nur Dashboards auf die User Zugriff hat
+        // Nur Startseiten anzeigen, auf die diese Rolle Feature-Zugriff hat
         filteredDashboards = availableDashboards.filter(dashboard => {
-            // Prüfe Feature-Zugriff
             if (dashboard.requires_feature) {
-                // Prüfe ob User-Rolle Zugriff auf Feature hat
                 const featureRoles = featureData[dashboard.requires_feature] || [];
-                return userRoles.some(role => featureRoles.includes(role) || featureRoles.includes('*'));
+                return featureRoles.some(r => userRolesForFilter.includes(r) || r === '*');
             }
-            
-            // Prüfe Rollen-Restriktion
             if (dashboard.role_restriction) {
-                return userRoles.includes(dashboard.role_restriction);
+                return userRolesForFilter.includes(dashboard.role_restriction);
             }
-            
-            // Keine Restriktion = verfügbar
             return true;
         });
     }
@@ -2276,15 +2348,22 @@ async function openMitarbeiterConfigModal(empId) {
         yearSelect.insertBefore(opt, yearSelect.firstChild);
     }
     yearSelect.value = currentYear;
-    document.getElementById('mitarbeiterConfigPersonalakteLink').href = '/admin/mitarbeiterverwaltung?embed=1&employee_id=' + emp.id;
+    const personalakteUrl = '/admin/mitarbeiterverwaltung?embed=1&employee_id=' + emp.id;
+    document.getElementById('mitarbeiterConfigPersonalakteLink').href = personalakteUrl;
+    const locoLink = document.getElementById('mitarbeiterConfigPersonalakteLinkLocosoft');
+    if (locoLink) locoLink.href = personalakteUrl;
     await loadSubstitutesForModal(emp.id);
     bootstrap.Modal.getOrCreateInstance(document.getElementById('mitarbeiterConfigModal')).show();
     // Employee-Detail für Urlaub laden
+    const locosoftSpan = document.getElementById('mitarbeiterConfigLocosoftId');
+    if (locosoftSpan) locosoftSpan.textContent = '…';
     try {
         const r = await fetch('/api/employee-management/employee/' + emp.id);
         const data = await r.json();
         if (data.success && data.employee) {
             mitarbeiterConfigEmployeeDetail = data.employee;
+            const locId = data.employee.mapping_locosoft_id ?? data.employee.locosoft_id;
+            if (locosoftSpan) locosoftSpan.textContent = (locId != null && locId !== '') ? String(locId) : 'nicht gesetzt (Filter „nur eigene“ greift nicht)';
             const vs = (data.employee.vacation_settings || {});
             document.getElementById('mitarbeiterConfigMaxUrlaubslänge').value = vs.max_vacation_length ?? 14;
             const calcSelect = document.getElementById('mitarbeiterConfigCalculationMethod');

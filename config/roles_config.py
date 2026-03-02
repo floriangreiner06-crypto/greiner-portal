@@ -112,6 +112,9 @@ FEATURE_ACCESS = {
     'fahrzeuge': ['admin', 'buchhaltung', 'verkauf_leitung', 'verkauf', 'disposition'],
     'stellantis_bestand': ['admin', 'buchhaltung', 'verkauf_leitung', 'verkauf', 'disposition'],
 
+    # Startseiten-Dashboard (Top-Level Navi) – alle außer reine Werkstatt-Rolle (optional anpassbar)
+    'dashboard': ['admin', 'buchhaltung', 'verkauf_leitung', 'verkauf', 'werkstatt_leitung', 'service_leitung', 'serviceberater', 'service', 'disposition', 'lager', 'callcenter', 'marketing', 'mitarbeiter'],
+
     # Urlaubsplaner - alle
     'urlaubsplaner': ['*'],
 
@@ -120,6 +123,8 @@ FEATURE_ACCESS = {
     'aftersales': ['admin', 'buchhaltung', 'werkstatt', 'werkstatt_leitung', 'service', 'service_leitung', 'serviceberater'],
     # Fahrzeuganlage (Scan & Copy, Phase 2: SOAP-Anlage Locosoft – erst Kunde, dann Fahrzeug)
     'fahrzeuganlage': ['admin', 'buchhaltung', 'werkstatt', 'werkstatt_leitung', 'service', 'service_leitung', 'serviceberater', 'disposition'],
+    # Leistungsübersicht Werkstatt (eigener Navi-Punkt, Filter „nur eigene“ konfigurierbar)
+    'werkstatt_leistungsuebersicht': ['admin', 'buchhaltung', 'werkstatt', 'werkstatt_leitung', 'service_leitung', 'serviceberater'],
 
     # SB-Controlling (TAG121)
     'sb_dashboard': ['admin', 'buchhaltung', 'service_leitung', 'serviceberater'],
@@ -193,11 +198,13 @@ def get_allowed_features(role: str) -> list:
 # DB-BASIERTE FEATURE-ZUGRIFFSVERWALTUNG (TAG 190)
 # =============================================================================
 
-# Cache für Feature-Zugriff (TAG 192: Performance-Optimierung)
+# Cache für Feature-Zugriff (TAG 192: Performance; deaktiviert – Multi-Worker-Stale-Bug)
+# In-Memory-Cache war pro Gunicorn-Worker: Nach Speichern in Rechteverwaltung sah ein anderer
+# Worker weiter alte Daten (z. B. OPOS für verkauf wieder aktiv). Daher kein Cache – Tabelle klein.
 _feature_access_cache = None
 _cache_timestamp = None
 from datetime import datetime, timedelta
-CACHE_TTL = timedelta(minutes=5)
+CACHE_TTL = timedelta(0)  # deaktiviert (0 = immer aus DB lesen)
 
 
 def clear_feature_access_cache():
@@ -212,12 +219,13 @@ def get_feature_access_from_db():
     Lädt Feature-Zugriff aus Datenbank, Fallback auf FEATURE_ACCESS
     
     TAG 190: Hybrid-Ansatz - DB hat Priorität, Config als Fallback
-    TAG 192: Mit In-Memory-Cache (5 Min TTL) für Performance
+    Cache deaktiviert (CACHE_TTL=0), damit nach Speichern in Rechteverwaltung alle Worker
+    sofort frische Daten liefern (kein Stale-Cache bei mehreren Gunicorn-Workern).
     """
     global _feature_access_cache, _cache_timestamp
     
-    # Cache prüfen
-    if _feature_access_cache and _cache_timestamp:
+    # Cache prüfen (bei CACHE_TTL=0 nie gültig → immer DB)
+    if _feature_access_cache and _cache_timestamp and CACHE_TTL.total_seconds() > 0:
         if datetime.now() - _cache_timestamp < CACHE_TTL:
             return _feature_access_cache
     

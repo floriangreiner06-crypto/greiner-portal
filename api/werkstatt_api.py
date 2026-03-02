@@ -15,7 +15,7 @@ Updated: TAG 136 - PostgreSQL-kompatibel
 
 from flask import Blueprint, jsonify, request
 from datetime import datetime, timedelta
-from flask_login import login_required
+from flask_login import login_required, current_user
 import logging
 
 # Zentrale DB-Utilities (TAG117, TAG136: PostgreSQL-kompatibel)
@@ -28,6 +28,26 @@ from utils.kpi_definitions import berechne_anwesenheitsgrad_fuer_mechaniker_list
 logger = logging.getLogger(__name__)
 
 werkstatt_api = Blueprint('werkstatt_api', __name__, url_prefix='/api/werkstatt')
+
+
+def _get_current_user_mechaniker_nr():
+    """Locosoft-Mitarbeiternummer (Mechaniker-Nr) des eingeloggten Users für Filter 'nur eigene Leistung'."""
+    if not current_user.is_authenticated:
+        return None
+    username = getattr(current_user, 'username', '') or ''
+    ldap_username = username.split('@')[0] if '@' in username else username
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT lem.locosoft_id
+            FROM ldap_employee_mapping lem
+            JOIN employees e ON lem.employee_id = e.id
+            WHERE lem.ldap_username = %s AND e.aktiv = true
+        """, (ldap_username,))
+        row = cur.fetchone()
+    if row and row[0] is not None:
+        return int(row[0])
+    return None
 
 
 def get_date_range(zeitraum, von=None, bis=None):
@@ -62,8 +82,9 @@ def get_date_range(zeitraum, von=None, bis=None):
 
 
 @werkstatt_api.route('/leistung', methods=['GET'])
+@login_required
 def get_leistung():
-    """GET /api/werkstatt/leistung - Mechaniker-Leistungsdaten"""
+    """GET /api/werkstatt/leistung - Mechaniker-Leistungsdaten. Bei Filter-Modus 'nur eigene' nur angemeldeter Mechaniker."""
     try:
         zeitraum = request.args.get('zeitraum', 'monat')
         von = request.args.get('von')
@@ -76,6 +97,7 @@ def get_leistung():
         
         # TAG 190: Verwende WerkstattData.get_mechaniker_leistung() für Locosoft-konforme Berechnung
         from api.werkstatt_data import WerkstattData
+        from api.feature_filter_mode import get_filter_mode
         from datetime import datetime
         
         betrieb_nr = None
@@ -85,10 +107,21 @@ def get_leistung():
         von_date = datetime.fromisoformat(datum_von).date()
         bis_date = datetime.fromisoformat(datum_bis).date()
         
+        # Filter „nur eigene Leistung“ wie bei Auftragseingang/Auslieferungen (feature_filter_mode)
+        mechaniker_nr_filter = None
+        filter_own_only = False
+        role = getattr(current_user, 'portal_role', '') or 'mitarbeiter'
+        mode = get_filter_mode(role, 'werkstatt_leistungsuebersicht')
+        if mode in ('own_only', 'own_default'):
+            mechaniker_nr_filter = _get_current_user_mechaniker_nr()
+            if mechaniker_nr_filter is not None:
+                filter_own_only = mode == 'own_only'
+        
         data = WerkstattData.get_mechaniker_leistung(
             von=von_date,
             bis=bis_date,
             betrieb=betrieb_nr,
+            mechaniker_nr=mechaniker_nr_filter,
             inkl_ehemalige=inkl_ehemalige,
             sort_by=sort
         )
@@ -339,7 +372,8 @@ def get_leistung():
                 'abwesenheitstage': abwesenheitstage
             },
             'benchmarks': benchmarks,  # TAG 199: Marktvergleiche
-            'trend': trend
+            'trend': trend,
+            'filter_own_only': filter_own_only  # True wenn Rolle nur eigene Leistung sieht (Filter nicht auflösbar)
         })
 
     except Exception as e:

@@ -49,26 +49,60 @@ def get_navigation_for_user():
         all_items = rows_to_list(cursor.fetchall())
         conn.close()
         
+        # Effektives requires_feature: Einträge ohne eigenes Feature erben vom Eltern-Menü
+        # (damit alle Menüs rechtsbeschränkt sind; z.B. Werkstatt-Kinder nur bei Berechtigung)
+        all_items_by_id = {item['id']: item for item in all_items}
+        effective_feature_by_id = {}
+        for item in all_items:
+            effective_feature_by_id[item['id']] = (item.get('requires_feature') or '').strip() or None
+        changed = True
+        while changed:
+            changed = False
+            for item in all_items:
+                if effective_feature_by_id.get(item['id']):
+                    continue
+                pid = item.get('parent_id')
+                if pid and pid in effective_feature_by_id and effective_feature_by_id.get(pid):
+                    effective_feature_by_id[item['id']] = effective_feature_by_id[pid]
+                    changed = True
+        
         # Filter: Nur Items auf die User Zugriff hat (Python-Filterung)
         filtered_items = []
         user_role = getattr(current_user, 'portal_role', 'mitarbeiter') if hasattr(current_user, 'portal_role') else 'mitarbeiter'
         
         for item in all_items:
-            # Prüfe Feature-Zugriff
-            if item.get('requires_feature'):
+            # Prüfe Feature-Zugriff (effektiv: eigenes oder geerbtes Feature)
+            eff = effective_feature_by_id.get(item['id'])
+            if eff:
                 if not (hasattr(current_user, 'can_access_feature') and 
-                        current_user.can_access_feature(item['requires_feature'])):
+                        current_user.can_access_feature(eff)):
                     continue
             
-            # Prüfe Rollen-Restriktion
+            # Prüfe Rollen-Restriktion (einzelne Rolle oder kommasep. Liste)
             if item.get('role_restriction'):
-                if user_role != item['role_restriction']:
-                    # Prüfe auch ob User admin ist (admin sieht alles)
+                allowed_roles = [r.strip() for r in str(item['role_restriction']).split(',') if r.strip()]
+                if user_role not in allowed_roles:
+                    # Admin sieht alles
                     if not (hasattr(current_user, 'can_access_feature') and 
                             current_user.can_access_feature('admin')):
                         continue
             
             filtered_items.append(item)
+        
+        # Eltern von sichtbaren Items nachziehen (damit z.B. "Werkstatt" erscheint,
+        # wenn User nur Feature "fahrzeuganlage" hat, nicht "aftersales")
+        all_items_by_id = {item['id']: item for item in all_items}
+        filtered_ids = {item['id'] for item in filtered_items}
+        while True:
+            to_add = []
+            for item in filtered_items:
+                pid = item.get('parent_id')
+                if pid and pid not in filtered_ids and pid in all_items_by_id:
+                    to_add.append(all_items_by_id[pid])
+                    filtered_ids.add(pid)
+            if not to_add:
+                break
+            filtered_items.extend(to_add)
         
         # Struktur als Baum aufbauen
         items_by_id = {item['id']: item for item in filtered_items}
@@ -83,6 +117,19 @@ def get_navigation_for_user():
                     parent['children'].append(item)
             else:
                 root_items.append(item)
+        
+        # Rekursiv: Dropdowns ohne sichtbare Kinder ausblenden (auf allen Ebenen)
+        def remove_empty_dropdowns(items):
+            result = []
+            for item in list(items):
+                if item.get('is_dropdown') and item.get('children'):
+                    item['children'] = remove_empty_dropdowns(item['children'])
+                if item.get('is_dropdown') and len(item.get('children', [])) == 0:
+                    continue  # Leeres Dropdown weglassen
+                result.append(item)
+            return result
+        
+        root_items = remove_empty_dropdowns(root_items)
         
         # TAG 192: In Flask g speichern (Per-Request-Cache)
         if has_request_context():

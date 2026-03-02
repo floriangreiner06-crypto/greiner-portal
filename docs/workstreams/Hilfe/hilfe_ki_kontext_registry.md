@@ -1,6 +1,6 @@
 # Kontext-Registry für KI „Mit KI erweitern“
 
-**Letzte Prüfung:** 2026-02-28 (Session-End; TEK Breakeven 4-Monats-Schnitt, VJ-Datumsbug).
+**Letzte Prüfung:** 2026-03-02 (Session-End; tek/urlaub-Quellen geprüft, inhaltlich unverändert).
 
 **Zweck:** Pro Thema ein kurzer, fachlicher SSOT-Text für die KI. Wird beim „Mit KI erweitern“ an den Prompt angehängt, damit die KI Berechnungsdetails korrekt ergänzen kann.
 

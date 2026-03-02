@@ -9,7 +9,7 @@ Celery Task Management: /admin/celery/
 Flower Dashboard: :5555
 """
 from flask import Blueprint, jsonify, request
-from flask_login import current_user
+from flask_login import current_user, login_required
 from datetime import datetime
 from decorators.auth_decorators import admin_required
 import os
@@ -93,7 +93,7 @@ def get_users_roles():
                     'name': row_dict['dashboard_name']
                 }
 
-            # User mit Rollen laden
+            # User mit Rollen laden (inkl. portal_role_override für granulare Rechte)
             cursor.execute(f'''
                 SELECT
                     u.id,
@@ -102,11 +102,12 @@ def get_users_roles():
                     u.ou,
                     u.title,
                     u.last_login,
+                    u.portal_role_override,
                     {concat_func} as roles
                 FROM users u
                 LEFT JOIN user_roles ur ON u.id = ur.user_id
                 LEFT JOIN roles r ON ur.role_id = r.id
-                GROUP BY u.id, u.username, u.display_name, u.ou, u.title, u.last_login
+                GROUP BY u.id, u.username, u.display_name, u.ou, u.title, u.last_login, u.portal_role_override
                 ORDER BY u.display_name
             ''')
 
@@ -115,6 +116,14 @@ def get_users_roles():
                 row_dict = row_to_dict(row)
                 user_id = row_dict['id']
                 dashboard_config = dashboard_configs.get(user_id, {})
+                roles_str = row_dict['roles'] or 'keine'
+                # Option B: Wirksame Portal-Rolle nur aus DB – Admin > zugewiesene Rolle > Default mitarbeiter
+                if roles_str and 'admin' in [r.strip() for r in roles_str.split(',')]:
+                    effective_portal_role = 'admin'
+                elif row_dict.get('portal_role_override'):
+                    effective_portal_role = (row_dict['portal_role_override'] or '').strip() or 'mitarbeiter'
+                else:
+                    effective_portal_role = 'mitarbeiter'
                 
                 users.append({
                     'id': user_id,
@@ -123,18 +132,23 @@ def get_users_roles():
                     'ou': row_dict['ou'],
                     'title': row_dict['title'],
                     'last_login': row_dict['last_login'],
-                    'roles': row_dict['roles'] or 'keine',
+                    'roles': roles_str,
+                    'portal_role_override': row_dict.get('portal_role_override'),
+                    'effective_portal_role': effective_portal_role or 'mitarbeiter',
                     'dashboard_url': dashboard_config.get('url'),
                     'dashboard_name': dashboard_config.get('name')
                 })
 
-            # Verfügbare Rollen
+            # Verfügbare Rollen (DB-Rollen für user_roles)
             cursor.execute('SELECT id, name, description FROM roles ORDER BY name')
             roles = rows_to_list(cursor.fetchall())
 
+            from config.roles_config import PORTAL_ROLES_FOR_ADMIN
+
         return jsonify({
             'users': users,
-            'available_roles': roles
+            'available_roles': roles,
+            'available_portal_roles': PORTAL_ROLES_FOR_ADMIN,
         })
 
     except Exception as e:
@@ -232,22 +246,90 @@ def remove_role(user_id):
         return jsonify({'error': str(e)}), 500
 
 
+@admin_api.route('/api/admin/user/<int:user_id>/portal-role', methods=['POST'])
+@admin_required
+def set_user_portal_role(user_id):
+    """Portal-Rolle (Override) für User setzen – granulare Rechteverwaltung.
+    Bestimmt die wirksame Rolle für Navi + Feature-Zugriff (sofern User nicht Admin).
+    Body: { "portal_role": "verkauf" } oder { "portal_role": null } um auf LDAP zurückzusetzen.
+    """
+    try:
+        data = request.get_json() or {}
+        portal_role = data.get('portal_role')
+        if portal_role is not None and portal_role != '':
+            portal_role = str(portal_role).strip()
+            if not portal_role:
+                portal_role = None
+        else:
+            portal_role = None
+
+        ph = sql_placeholder()
+        with db_session() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                convert_placeholders('UPDATE users SET portal_role_override = ? WHERE id = ?'),
+                (portal_role, user_id)
+            )
+            if cursor.rowcount == 0:
+                return jsonify({'error': 'User nicht gefunden'}), 404
+            conn.commit()
+
+        msg = f'Portal-Rolle auf "{portal_role}" gesetzt' if portal_role else 'Portal-Rolle zurückgesetzt (aus LDAP)'
+        return jsonify({'message': msg, 'success': True})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @admin_api.route('/api/admin/feature-access', methods=['GET'])
 @admin_required
 def get_feature_access():
-    """Feature-Zugriffs-Matrix laden (DB + Config-Fallback)
-    TAG 190: Erweitert um DB-basierte Verwaltung
+    """Feature-Zugriffs-Matrix für Rechteverwaltung: nur aus DB, kein Merge mit Config.
+    Redundanz entfernt: get_feature_access_from_db() mischt FEATURE_ACCESS (Config) mit DB
+    und kann dadurch gelöschte Rollen wieder anzeigen. Hier lesen wir nur die Tabelle feature_access.
     """
     try:
-        from config.roles_config import get_feature_access_from_db, TITLE_TO_ROLE
-        
-        # DB-basierte Feature-Zugriffe laden (mit Fallback auf Config)
-        feature_access = get_feature_access_from_db()
+        from config.roles_config import TITLE_TO_ROLE, FEATURE_ACCESS, clear_feature_access_cache
+        from flask import make_response
 
-        return jsonify({
+        clear_feature_access_cache()
+
+        # Nur DB lesen – keine Zusammenführung mit FEATURE_ACCESS (keine Redundanz)
+        db_access = {}
+        with db_session() as conn:
+            cur = conn.cursor()
+            cur.execute('SELECT feature_name, role_name FROM feature_access ORDER BY feature_name, role_name')
+            for row in cur.fetchall():
+                fn = row.get('feature_name', row[0]) if hasattr(row, 'get') else row[0]
+                rn = row.get('role_name', row[1]) if hasattr(row, 'get') else row[1]
+                if fn not in db_access:
+                    db_access[fn] = []
+                db_access[fn].append(rn)
+
+        # Alle Feature-Keys (Config + Nav), Werte nur aus DB – fehlende Features = []
+        all_keys = set(FEATURE_ACCESS.keys())
+        try:
+            with db_session() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT DISTINCT requires_feature FROM navigation_items
+                    WHERE active = true AND requires_feature IS NOT NULL AND TRIM(requires_feature) != ''
+                """)
+                for row in cur.fetchall():
+                    f = (row[0] if hasattr(row, '__getitem__') else getattr(row, 'requires_feature', None) or '').strip()
+                    if f:
+                        all_keys.add(f)
+        except Exception:
+            pass
+        feature_access = {f: db_access.get(f, []) for f in sorted(all_keys)}
+
+        resp = make_response(jsonify({
             'feature_access': feature_access,
             'title_to_role': TITLE_TO_ROLE
-        })
+        }))
+        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        resp.headers['Pragma'] = 'no-cache'
+        return resp
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -370,7 +452,8 @@ def update_feature_access(feature):
                     ''', (feature, role, created_by, datetime.now().isoformat()))
             
             conn.commit()
-        
+        from config.roles_config import clear_feature_access_cache
+        clear_feature_access_cache()
         return jsonify({
             'message': f'Feature "{feature}" aktualisiert',
             'success': True
@@ -378,6 +461,118 @@ def update_feature_access(feature):
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@admin_api.route('/api/admin/role/<role_name>/features', methods=['POST'])
+@admin_required
+def set_role_features(role_name):
+    """Feature-Zugriff für eine Rolle setzen (Rollen-Ansicht).
+    Body: { "features": ["bankenspiegel", "controlling", ...] }
+    Ersetzt alle Feature-Zuordnungen für diese Rolle in der DB.
+    """
+    try:
+        # Admin: portal_role == 'admin' ODER can_access_feature('admin') (admin-Feature in allowed_features)
+        is_admin = getattr(current_user, 'portal_role', '') == 'admin'
+        if not is_admin and not (hasattr(current_user, 'can_access_feature') and current_user.can_access_feature('admin')):
+            return jsonify({'error': 'Keine Berechtigung'}), 403
+        data = request.get_json() or {}
+        features = data.get('features', [])
+        if not isinstance(features, list):
+            return jsonify({'error': 'features muss eine Liste sein'}), 400
+        features = [f for f in features if f and isinstance(f, str)]
+        ph = sql_placeholder()
+        created_by = getattr(current_user, 'username', None) or 'admin'
+        with db_session() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f'DELETE FROM feature_access WHERE role_name = {ph}',
+                (role_name,)
+            )
+            for feature in features:
+                cursor.execute(
+                    f'''
+                    INSERT INTO feature_access (feature_name, role_name, created_by, created_at)
+                    VALUES ({ph}, {ph}, {ph}, {ph})
+                    ON CONFLICT (feature_name, role_name) DO NOTHING
+                    ''',
+                    (feature, role_name, created_by, datetime.now().isoformat())
+                )
+            conn.commit()
+        from config.roles_config import clear_feature_access_cache
+        clear_feature_access_cache()
+        return jsonify({
+            'message': f'Rolle "{role_name}": {len(features)} Features gesetzt',
+            'success': True
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# =============================================================================
+# FEATURE FILTER MODE (Listen mit Verkäufer-Filter: nur eigene / auflösbar / alle)
+# =============================================================================
+
+# Features, die einen Verkäufer-Filter haben und konfigurierbar sind
+from api.feature_filter_mode import get_filter_mode as _get_filter_mode, FEATURE_FILTER_FEATURES
+
+
+@admin_api.route('/api/admin/feature-filter-modes', methods=['GET'])
+@admin_required
+def get_feature_filter_modes():
+    """Alle Filter-Modi für Rechteverwaltung (Admin)."""
+    try:
+        with db_session() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT feature_name, role_name, filter_mode
+                FROM feature_filter_mode
+                ORDER BY feature_name, role_name
+            ''')
+            rows = cursor.fetchall()
+        modes = [{'feature_name': r[0], 'role_name': r[1], 'filter_mode': r[2]} for r in rows]
+        return jsonify({'success': True, 'modes': modes})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_api.route('/api/admin/feature-filter-mode', methods=['POST'])
+@admin_required
+def set_feature_filter_mode():
+    """Filter-Modus für Feature + Rolle setzen. Body: feature_name, role_name, filter_mode."""
+    try:
+        data = request.get_json() or {}
+        feature_name = (data.get('feature_name') or '').strip()
+        role_name = (data.get('role_name') or '').strip()
+        filter_mode = (data.get('filter_mode') or '').strip()
+        if feature_name not in FEATURE_FILTER_FEATURES:
+            return jsonify({'error': f'Unbekanntes Feature für Filter-Modus: {feature_name}'}), 400
+        if filter_mode not in ('own_only', 'own_default', 'all_filterable'):
+            return jsonify({'error': 'filter_mode muss own_only, own_default oder all_filterable sein'}), 400
+        ph = sql_placeholder()
+        with db_session() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f'''
+                INSERT INTO feature_filter_mode (feature_name, role_name, filter_mode)
+                VALUES ({ph}, {ph}, {ph})
+                ON CONFLICT (feature_name, role_name) DO UPDATE SET filter_mode = EXCLUDED.filter_mode
+            ''', (feature_name, role_name, filter_mode))
+            conn.commit()
+        return jsonify({'success': True, 'message': f'{feature_name} / {role_name}: {filter_mode}'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_api.route('/api/admin/feature-filter-mode/<feature_name>', methods=['GET'])
+@login_required
+def get_my_feature_filter_mode(feature_name):
+    """Filter-Modus für aktuellen User und Feature (für Seiten mit Verkäufer-Filter)."""
+    if not current_user.is_authenticated:
+        return jsonify({'error': 'Nicht angemeldet'}), 401
+    if feature_name not in FEATURE_FILTER_FEATURES:
+        return jsonify({'filter_mode': 'all_filterable'}), 200
+    role = getattr(current_user, 'portal_role', '') or 'mitarbeiter'
+    mode = _get_filter_mode(role, feature_name)
+    return jsonify({'filter_mode': mode})
 
 
 # =============================================================================
@@ -811,6 +1006,41 @@ def set_user_dashboard_config(user_id):
         with db_session() as conn:
             cursor = conn.cursor()
             
+            # Wirksame Portal-Rolle des Ziel-Users ermitteln
+            cursor.execute(f'''
+                SELECT u.portal_role_override,
+                    (SELECT 1 FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE ur.user_id = u.id AND r.name = 'admin' LIMIT 1) AS has_admin
+                FROM users u WHERE u.id = {ph}
+            ''', (user_id,))
+            user_row = cursor.fetchone()
+            if not user_row:
+                return jsonify({'error': 'User nicht gefunden'}), 404
+            override = (user_row[0] or '').strip() if user_row[0] else ''
+            has_admin = user_row[1] is not None
+            effective_role = 'admin' if has_admin else (override or 'mitarbeiter')
+            
+            # Dashboard-Zeile und requires_feature prüfen
+            cursor.execute(f'''
+                SELECT requires_feature, role_restriction FROM available_dashboards
+                WHERE active = true AND url = {ph}
+            ''', (target_url,))
+            dash_row = cursor.fetchone()
+            if dash_row:
+                req_feature = (dash_row[0] or '').strip() if dash_row[0] else ''
+                role_restriction = (dash_row[1] or '').strip() if dash_row[1] else ''
+                if req_feature:
+                    from config.roles_config import get_feature_access_from_db
+                    fa = get_feature_access_from_db()
+                    allowed_roles = fa.get(req_feature, [])
+                    if effective_role != 'admin' and effective_role not in allowed_roles and '*' not in allowed_roles:
+                        return jsonify({
+                            'error': f'Die Rolle "{effective_role}" hat keinen Zugriff auf diese Startseite (Feature: {req_feature}). Zuweisung nicht erlaubt.'
+                        }), 400
+                if role_restriction and effective_role != 'admin' and effective_role != role_restriction:
+                    return jsonify({
+                        'error': f'Diese Startseite ist auf die Rolle "{role_restriction}" beschränkt. User hat Rolle "{effective_role}".'
+                    }), 400
+            
             # Prüfe ob Konfiguration existiert
             cursor.execute(f'''
                 SELECT id FROM user_dashboard_config WHERE user_id = {ph}
@@ -973,7 +1203,25 @@ def get_all_navigation_items():
                 ORDER BY order_index, label
             ''')
             
-            items = rows_to_list(cursor.fetchall())
+            raw = rows_to_list(cursor.fetchall())
+            # JSON-sicher: bool/None explizit (PostgreSQL kann sonst nicht serialisierbar liefern)
+            items = []
+            for row in raw:
+                items.append({
+                    'id': int(row['id']) if row.get('id') is not None else None,
+                    'parent_id': int(row['parent_id']) if row.get('parent_id') is not None else None,
+                    'label': str(row['label']) if row.get('label') is not None else None,
+                    'url': str(row['url']) if row.get('url') is not None else None,
+                    'icon': str(row['icon']) if row.get('icon') is not None else None,
+                    'order_index': int(row['order_index']) if row.get('order_index') is not None else 0,
+                    'requires_feature': str(row['requires_feature']) if row.get('requires_feature') is not None else None,
+                    'role_restriction': str(row['role_restriction']) if row.get('role_restriction') is not None else None,
+                    'is_dropdown': bool(row.get('is_dropdown')),
+                    'is_header': bool(row.get('is_header')),
+                    'is_divider': bool(row.get('is_divider')),
+                    'active': bool(row.get('active', True)),
+                    'category': str(row['category']) if row.get('category') is not None else 'main',
+                })
         
         return jsonify({'items': items})
     

@@ -1,7 +1,7 @@
 # Werkstatt & Aftersales — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-02-25
+## Letzte Aktualisierung: 2026-03-02
 
 ## Beschreibung
 
@@ -63,7 +63,10 @@ Werkstatt und Aftersales umfassen Stempeluhr/Live-Monitoring, Mechaniker-Leistun
 - **Offene Aufträge – Umsetzung Serviceberater (2026-02-25):** **Mein Bereich** (`/sb/mein-bereich`): KPIs und Hero kompakter; Block „Offene Aufträge“ (Anzahl + Link „Alle anzeigen“); Schnellzugriff „Meine offenen Aufträge“. **Serviceberater Controlling** (`/aftersales/serviceberater/`): KPIs kompakt; Serviceberater in **Tabelle** (Tagesziel + Spalte „Offene Aufträge“, klickbar → Werkstatt Live gefiltert); keine großen Karten mehr untereinander. **API:** `GET /api/serviceberater/offene-auftraege` (für SB), `GET /api/serviceberater/offene-auftraege-counts` (für Controlling), `GET /api/werkstatt/live/auftraege?serviceberater_nr=X` (Filter). Werkstatt Live liest `?serviceberater_nr=` aus der URL.
 - ✅ **Offene Aufträge – Bring-Termin & Summen (2026-02-25):** Filter **„Ohne Bring-Termin in der Zukunft“** (vorbereitete Aufträge abwählbar): Parameter `bringtermin_nur_vergangen=true` in allen drei APIs; Locosoft-Filter `estimated_inbound_time IS NULL OR DATE(estimated_inbound_time) <= CURRENT_DATE`. **Summierte Werteaufstellung** (wie Locosoft-PDF): Response `summen: { summe_lohn, summe_teile, gesamtsumme }`; **Lohn** aus `labours` (net_price_in_order, unfakturiert), **Teile** aus Tabelle **`parts`** (SUM(p.sum), unfakturiert) – nicht aus labours.labour_type ET. **Frontend:** Toggle in Werkstatt Live (bei Filter Serviceberater), Mein Bereich und Serviceberater Controlling; Anzeige Summe Lohn / Summe Teile / Gesamt.
 - ✅ **Offene Aufträge – Link „Alle anzeigen“ & Werkstatt Live (2026-02-25):** „Alle anzeigen“ verlinkt auf `/werkstatt/live?serviceberater_nr=<ma_id>` (ggf. + `bringtermin_nur_vergangen=true`) → gefilterte Übersicht nur für diesen Serviceberater. Werkstatt Live zeigt bei Filter einen Badge **„Nur: [Name]“** an.
-- ❌ **Offene Aufträge – Testing (2026-02-26):** Summen (Lohn/Teile) und gefilterte Ansicht morgen testen.
+- ❌ **Offene Aufträge – Testing (2026-02-26):** Summen (Lohn/Teile) und gefilterte Ansicht testen.
+- **Testanleitung Edith (2026-02-26):** `TESTANLEITUNG_EDITH_OFFENE_AUFTRAEGE.md` (+ .html zum PDF-Druck) für Serviceassistenz (Rolle Serviceleiter): Onboarding DRIVE, Serviceberater Controlling, Offene Aufträge vs. Locosoft (SB-Zuordnung, AVG, Werte EUR). Liegt im Repo und im Windows-Sync `docs/workstreams/werkstatt/`. Empfehlung User-Test-Workstream: `USER_TEST_WORKSTREAM_EMPFEHLUNG.md` (Testanleitungen dem getesteten Workstream zuordnen).
+- ✅ **Gudat Fakturierungsstatus (2026-02-26):** Machbarkeit geprüft. Die Status „interne Abrechnung fakturiert“ und „Auftrag fakturiert“ kommen in Gudat von `dossier.states[]` (GraphQL). DRIVE wertet korrekt aus Locosoft (AW Fakturiert/Offen); Gudat-Status können **ergänzend** angezeigt werden, um Diskrepanzen sichtbar zu machen (z. B. Gudat „fakturiert“, Locosoft noch offen). SSOT für Fakturierung bleibt Locosoft. Siehe `GUDAT_FAKTUR_STATUS_MACHBARKEIT.md`.
+- ✅ **Leistungsübersicht: nur eigene Leistung für Mechaniker (2026-03-02):** Filter-Modus wie bei Auftragseingang/OPOS: Feature `werkstatt_leistungsuebersicht`, Rolle werkstatt = „Nur eigene (Filter nicht auflösbar)“. API filtert auf `ldap_employee_mapping.locosoft_id`; Hinweis „Anzeige: nur eigene Leistung“ und Karte **Entgangener Umsatz** werden für Mechaniker (filter_own_only) ausgeblendet. Navi-Punkt „Leistungsübersicht“ mit eigenem Feature `werkstatt_leistungsuebersicht`, damit Rolle werkstatt ihn ohne ganzes aftersales sieht.
 
 ### Gudat-Credentials (SSOT)
 

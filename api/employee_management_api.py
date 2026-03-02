@@ -73,8 +73,7 @@ def get_employees_list():
                     e.exit_date,
                     e.email
                 FROM employees e
-                WHERE e.aktiv = true
-                ORDER BY e.department_name, e.last_name, e.first_name
+                ORDER BY e.aktiv DESC, e.department_name, e.last_name, e.first_name
             """)
             
             employees = []
@@ -128,11 +127,12 @@ def get_employee_detail(employee_id):
         with db_session() as conn:
             cursor = conn.cursor()
             
-            # 1. Grunddaten aus employees
+            # 1. Grunddaten aus employees + Mapping (Locosoft-ID für Filter „nur eigene“)
             cursor.execute("""
                 SELECT 
                     e.*,
-                    lem.ldap_username
+                    lem.ldap_username,
+                    lem.locosoft_id AS mapping_locosoft_id
                 FROM employees e
                 LEFT JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
                 WHERE e.id = %s
@@ -222,6 +222,7 @@ def get_employee_detail(employee_id):
                 'department_name': emp_dict.get('department_name'),
                 'location': emp_dict.get('location'),
                 'locosoft_id': emp_dict.get('locosoft_id'),
+                'mapping_locosoft_id': emp_dict.get('mapping_locosoft_id'),  # für Filter Auftragseingang/Leistungsübersicht
                 'personal_nr': emp_dict.get('personal_nr'),
                 'aktiv': bool(emp_dict.get('aktiv', True)),
                 'ldap_username': emp_dict.get('ldap_username'),
@@ -260,6 +261,7 @@ def get_employee_detail(employee_id):
                 'country': emp_dict.get('country', 'Deutschland'),
                 'federal_state': emp_dict.get('federal_state'),
                 'deactivate_after_exit': bool(emp_dict.get('deactivate_after_exit', False)),
+                'provision_aktiv': bool(emp_dict.get('provision_aktiv', True)),
                 
                 # Zugehörige Daten
                 'working_time_models': working_time_models,
@@ -434,6 +436,12 @@ def update_employee(employee_id):
             if 'deactivate_after_exit' in data:
                 update_fields.append('deactivate_after_exit = %s')
                 update_values.append(data['deactivate_after_exit'])
+                # Mail-Anfrage: Haken soll MA im Urlaubsplaner ausblenden → aktiv = False/True
+                update_fields.append('aktiv = %s')
+                update_values.append(not data['deactivate_after_exit'])  # True = aktiv, False = ausgeblendet
+            if 'provision_aktiv' in data:
+                update_fields.append('provision_aktiv = %s')
+                update_values.append(bool(data['provision_aktiv']))
             
             if update_fields:
                 update_values.append(employee_id)

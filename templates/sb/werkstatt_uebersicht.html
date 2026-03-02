@@ -271,6 +271,9 @@
                 Werkstatt Leistungsübersicht
             </h2>
             <p class="text-muted mb-0">Mechaniker-Performance & Produktivität</p>
+            <div id="filterOwnOnlyHint" class="alert alert-info py-2 mt-2 mb-0 small d-none" role="status">
+                <i class="bi bi-person-check me-1"></i>Anzeige: nur eigene Leistung (Rollen-Einstellung)
+            </div>
         </div>
         <div>
             <button class="btn btn-outline-secondary" onclick="exportData()">
@@ -422,8 +425,8 @@
             </div>
         </div>
         
-        <!-- Entgangener Umsatz (NEU!) -->
-        <div class="col-lg-3 col-md-6">
+        <!-- Entgangener Umsatz (für Mechaniker mit "nur eigene" ausgeblendet) -->
+        <div class="col-lg-3 col-md-6" id="entgangenerUmsatzCard">
             <div class="card kpi-card-loss h-100" onclick="showEntgangenerUmsatzModal()" data-bs-toggle="tooltip" title="Klicken für Details">
                 <div class="card-body text-center py-3">
                     <h6 class="text-muted mb-2">
@@ -817,6 +820,14 @@ function loadData() {
             if (data.success) {
                 mechanikerData = data.mechaniker;
                 gesamtData = data.gesamt || {};
+                const hint = document.getElementById('filterOwnOnlyHint');
+                if (hint) {
+                    if (data.filter_own_only) hint.classList.remove('d-none'); else hint.classList.add('d-none');
+                }
+                const entgangenerCard = document.getElementById('entgangenerUmsatzCard');
+                if (entgangenerCard) {
+                    if (data.filter_own_only) entgangenerCard.classList.add('d-none'); else entgangenerCard.classList.remove('d-none');
+                }
                 updateAllKPIs(data);
                 updateMechanikerCards(data.mechaniker);
                 updateDetailTable(data.mechaniker);
@@ -1569,6 +1580,30 @@ function showAuftragDetail(auftragNr) {
                             <small class="text-info">Ohne Mech.: ${s.nicht_zugeordnet_aw || 0} AW</small>
                         </p>
                         <p>${statusBadges}</p>
+                    </div>
+                </div>
+                <div class="row mt-2">
+                    <div class="col-12">
+                        <h6 class="text-muted"><i class="bi bi-check2-square"></i> Gudat-Vorgangsstatus (zur Kontrolle)</h6>
+                        ${(function(){
+                            const gudat = data.gudat || {};
+                            const states = gudat.states || [];
+                            const offenAw = parseFloat(s.offen_aw) || 0;
+                            const gudatZeigtFakturiert = states.some(st => (st.name || '').toLowerCase().indexOf('fakturiert') !== -1);
+                            const diskrepanz = gudatZeigtFakturiert && offenAw > 0;
+                            let block = '';
+                            if (states.length > 0) {
+                                block += '<p class="mb-1">' + states.map(st => '<span class="badge bg-secondary me-1">' + (st.name || '-').replace(/</g,'&lt;') + '</span>').join(' ') + '</p>';
+                            } else if (gudat.dossier_id) {
+                                block += '<p class="mb-0 small text-muted">Keine Vorgangsstatus von Gudat geladen (Dossier vorhanden).</p>';
+                            } else {
+                                block += '<p class="mb-0 small text-muted">Gudat-Daten für diesen Auftrag nicht verfügbar.</p>';
+                            }
+                            if (diskrepanz) {
+                                block += '<div class="alert alert-warning py-2 mb-0 mt-1"><i class="bi bi-exclamation-triangle me-1"></i> In Gudat als erledigt markiert – in Locosoft noch nicht abgerechnet. Bitte prüfen.</div>';
+                            }
+                            return block;
+                        })()}
                     </div>
                 </div>
                 <hr>
