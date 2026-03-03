@@ -7,12 +7,14 @@ Locosoft-Import: EK-Formel und Fahrzeugfilter (VFW/Mietwagen) wie kalkulation_he
 """
 
 import logging
+import os
 from decimal import Decimal
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, send_file
 from flask_login import current_user
+from io import BytesIO
 
 from api.db_utils import db_session, row_to_dict, rows_to_list, locosoft_session
 
@@ -280,6 +282,49 @@ def dashboard():
 # GET /api/afa/abverkauf-uebersicht
 # =============================================================================
 
+def _hole_locosoft_rechnungsdatum_fuer_vins(vins):
+    """
+    Liefert pro VIN das Rechnungsdatum (out_invoice_date) aus Locosoft, falls gesetzt.
+    Rückgabe: dict vin -> ISO-Datumstr oder None. Fahrzeug bleibt in der Liste;
+    Anzeige „Rechnung (Locosoft): dd.mm.yyyy – Abgang in DRIVE buchen“.
+    """
+    if not vins:
+        return {}
+    vins_clean = [v.strip() for v in vins if v and str(v).strip()]
+    if not vins_clean:
+        return {}
+    placeholders = ','.join(['%s'] * len(vins_clean))
+    result = {}
+    try:
+        with locosoft_session() as conn:
+            cur = conn.cursor()
+            cur.execute(f"""
+                SELECT TRIM(v.vin) AS vin, dv.out_invoice_date
+                FROM vehicles v
+                JOIN dealer_vehicles dv ON dv.vehicle_number = v.internal_number
+                    AND dv.dealer_vehicle_type = v.dealer_vehicle_type
+                    AND dv.dealer_vehicle_number = v.dealer_vehicle_number
+                WHERE TRIM(v.vin) IN ({placeholders})
+                    AND dv.out_invoice_date IS NOT NULL
+            """, vins_clean)
+            rows = cur.fetchall()
+        for r in rows:
+            vin = (r[0] or '').strip()
+            if not vin:
+                continue
+            d = r[1]
+            if hasattr(d, 'isoformat'):
+                val = d.isoformat()[:10] if d else None
+            else:
+                val = str(d)[:10] if d else None
+            result[vin] = val
+            if vin.upper() != vin:
+                result[vin.upper()] = val
+        return result
+    except Exception:
+        return {}
+
+
 def _hole_locosoft_verkaufspreise_fuer_vins(vins):
     """
     Holt für eine Liste von VINs aus Locosoft die Verkaufspreise (noch nicht verkaufte Fahrzeuge).
@@ -405,39 +450,57 @@ def abverkauf_uebersicht():
 
 def _hole_erstzulassung_fuer_vins(vins):
     """
-    Holt aus Locosoft vehicles das Erstzulassungsdatum pro VIN.
-    Rückgabe: dict vin -> date (oder None)
+    Holt aus Locosoft vehicles Erstzulassung, Km-Stand und Marke (makes.description) pro VIN.
+    Rückgabe: (ez_map, km_map, marke_map) jeweils dict vin -> Wert.
     """
     if not vins:
-        return {}
+        return {}, {}, {}
     vins_clean = [v.strip() for v in vins if v and str(v).strip()]
     if not vins_clean:
-        return {}
+        return {}, {}, {}
     placeholders = ','.join(['%s'] * len(vins_clean))
+    ez_map = {}
+    km_map = {}
+    marke_map = {}
     try:
         with locosoft_session() as conn:
             cur = conn.cursor()
             cur.execute(f"""
-                SELECT TRIM(vin) AS vin, first_registration_date
-                FROM vehicles
-                WHERE TRIM(vin) IN ({placeholders})
+                SELECT TRIM(v.vin) AS vin, v.first_registration_date, v.mileage_km,
+                       TRIM(m.description) AS marke
+                FROM vehicles v
+                LEFT JOIN makes m ON v.make_number = m.make_number
+                WHERE TRIM(v.vin) IN ({placeholders})
             """, vins_clean)
             rows = cur.fetchall()
-        result = {}
         for r in rows:
             vin = (r[0] or '').strip()
             if not vin:
                 continue
             ez = r[1]
             if hasattr(ez, 'isoformat'):
-                result[vin] = ez.isoformat() if ez else None
+                ez_val = ez.isoformat() if ez else None
             else:
-                result[vin] = str(ez) if ez else None
+                ez_val = str(ez) if ez else None
+            ez_map[vin] = ez_val
             if vin.upper() != vin:
-                result[vin.upper()] = result[vin]
-        return result
+                ez_map[vin.upper()] = ez_val
+            km = r[2]
+            if km is not None:
+                try:
+                    km_map[vin] = int(km)
+                    if vin.upper() != vin:
+                        km_map[vin.upper()] = int(km)
+                except (TypeError, ValueError):
+                    km_map[vin] = None
+            marke = (r[3] or '').strip() if r[3] else None
+            if marke:
+                marke_map[vin] = marke
+                if vin.upper() != vin:
+                    marke_map[vin.upper()] = marke
+        return ez_map, km_map, marke_map
     except Exception:
-        return {}
+        return {}, {}, {}
 
 
 def _hole_brief_locosoft_fuer_vins(vins):
@@ -773,9 +836,11 @@ def _get_verkaufsempfehlungen_liste():
             if vin:
                 vins.append(vin)
             liste.append(f)
+    # Rechnungsdatum aus Locosoft: Fahrzeug bleibt in der Liste, Anzeige wenn Rechnung vorhanden (Abgang in DRIVE buchen)
+    rechnungsdatum_map = _hole_locosoft_rechnungsdatum_fuer_vins(vins)
     preise = _hole_locosoft_verkaufspreise_fuer_vins(vins)
     zinsen_map = _hole_zinsen_pro_vin(vins)
-    ez_map = _hole_erstzulassung_fuer_vins(vins)
+    ez_map, km_map, marke_map = _hole_erstzulassung_fuer_vins(vins)
     brief_map = _hole_brief_locosoft_fuer_vins(vins)
     # eAutoSeller BWA: aus gecachter Tabelle (gefüllt vom Celery-Task sync_eautoseller_data)
     placements = _hole_eautoseller_bwa_placements_from_db(vins)
@@ -794,7 +859,15 @@ def _get_verkaufsempfehlungen_liste():
         f['zinsen_gesamt'] = zins.get('zinsen_gesamt', 0)
         f['finanzinstitut'] = zins.get('finanzinstitut')
         f['erstzulassungsdatum'] = (ez_map.get(vin) or ez_map.get(vin.upper())) if vin else None
+        f['km_stand'] = (km_map.get(vin) or km_map.get(vin.upper())) if vin else None
+        # Marke aus Locosoft (makes.description) hat Vorrang vor AfA-Stammdaten
+        loco_marke = (marke_map.get(vin) or marke_map.get(vin.upper())) if vin else None
+        if loco_marke:
+            f['marke'] = loco_marke
         f['brief_locosoft'] = (brief_map.get(vin) or brief_map.get(vin.upper())) if vin else None
+        # Rechnungsdatum Locosoft: anzeigen wenn gesetzt (Fahrzeug bleibt in Liste bis Abgang in DRIVE)
+        f['locosoft_rechnungsdatum'] = (rechnungsdatum_map.get(vin) or rechnungsdatum_map.get(vin.upper())) if vin else None
+        f['locosoft_verkauft'] = bool(f.get('locosoft_rechnungsdatum'))
         # eAutoSeller BWA/Bewerter: mobile.de Platz + Treffer (+ optional Platz 1 Preis)
         placement = (placements.get(vin) or placements.get(vin.upper()) or {}) if vin else {}
         f['mobile_platz'] = placement.get('mobile_platz')
@@ -827,6 +900,20 @@ def _get_verkaufsempfehlungen_liste():
             f.get('zinsen_monat'),
             f.get('standzeit_tage'),
         )
+    # Differenz DRIVE vs. Buchhaltung (Locosoft-Guthaben): anteiliger Aufschlag pro Fahrzeug,
+    # damit der „echte“ Buchgewinn (bezogen auf DRIVE-Restbuchwert) wenigstens realisiert wird.
+    # Konfiguration: AFA_DIFFERENZ_DRIVE_LOCOSOFT (€, positiv = Betrag, um den Buchhaltung hinter DRIVE liegt).
+    try:
+        differenz_gesamt = float(os.getenv('AFA_DIFFERENZ_DRIVE_LOCOSOFT', '0') or 0)
+    except (TypeError, ValueError):
+        differenz_gesamt = 0.0
+    summe_buchwert = sum(f.get('buchwert') or 0 for f in liste)
+    for f in liste:
+        buch = f.get('buchwert') or 0
+        if summe_buchwert and summe_buchwert > 0 and differenz_gesamt > 0:
+            f['aufschlag_echter_buchgewinn'] = round(buch / summe_buchwert * differenz_gesamt, 2)
+        else:
+            f['aufschlag_echter_buchgewinn'] = 0
     return liste
 
 
@@ -841,7 +928,54 @@ def verkaufsempfehlungen():
     try:
         liste = _get_verkaufsempfehlungen_liste()
         eautoseller_status = _eautoseller_bwa_sync_status()
-        return jsonify({'ok': True, 'fahrzeuge': liste, 'eautoseller_bwa_status': eautoseller_status})
+        try:
+            afa_differenz_gesamt = float(os.getenv('AFA_DIFFERENZ_DRIVE_LOCOSOFT', '0') or 0)
+        except (TypeError, ValueError):
+            afa_differenz_gesamt = 0
+        return jsonify({
+            'ok': True,
+            'fahrzeuge': liste,
+            'eautoseller_bwa_status': eautoseller_status,
+            'afa_differenz_gesamt': afa_differenz_gesamt,
+        })
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@afa_api.route('/api/afa/export/auktion-pdf', methods=['POST'])
+def export_auktion_pdf():
+    """
+    PDF-Export für Auktion (Zeitnah): ausgewählte Fahrzeuge mit
+    Marke, Typ, EZ, Km Stand, Abverkaufspreis. Erwartet JSON: {"ids": [1, 2, 3]} (afa_anlagevermoegen.id).
+    """
+    if not current_user.is_authenticated or not current_user.can_access_feature('afa_verkaufsempfehlungen'):
+        return jsonify({'ok': False, 'error': 'Zugriff nur für Geschäftsführung / Verkaufsleitung'}), 403
+    data = request.get_json(silent=True) or {}
+    ids = data.get('ids') or []
+    if not ids:
+        return jsonify({'ok': False, 'error': 'Keine Fahrzeuge ausgewählt (ids erforderlich)'}), 400
+    try:
+        id_set = {int(x) for x in ids if x is not None}
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'Ungültige ids'}), 400
+    if not id_set:
+        return jsonify({'ok': False, 'error': 'Keine gültigen Fahrzeug-IDs'}), 400
+    try:
+        from api.afa_verkaufsempfehlungen_pdf import generate_auktion_zeitnah_pdf
+        liste = _get_verkaufsempfehlungen_liste()
+        auswahl = [f for f in liste if f.get('id') in id_set]
+        if not auswahl:
+            return jsonify({'ok': False, 'error': 'Keine der ausgewählten Fahrzeuge in den Verkaufsempfehlungen gefunden'}), 404
+        pdf_bytes = generate_auktion_zeitnah_pdf(auswahl)
+        if not pdf_bytes:
+            return jsonify({'ok': False, 'error': 'PDF konnte nicht erstellt werden'}), 500
+        filename = f"DRIVE_Auktion_Zeitnah_{date.today().isoformat()}.pdf"
+        return send_file(
+            BytesIO(pdf_bytes),
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=filename,
+        )
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
 

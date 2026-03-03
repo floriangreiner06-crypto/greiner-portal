@@ -5,11 +5,16 @@
 {% block extra_css %}
 <style>
     .afa-table { font-size: 0.9rem; border-collapse: collapse; }
-    .afa-table th { background: #343a40; color: #fff; padding: 0.5rem; white-space: nowrap; position: sticky; top: 0; z-index: 2; box-shadow: 0 1px 0 #495057; }
-    .afa-table td { padding: 0.4rem 0.5rem; vertical-align: middle; }
+    .afa-table th { background: #343a40; color: #fff; padding: 0.5rem 0.6rem; white-space: nowrap; position: sticky; top: 0; z-index: 2; box-shadow: 0 1px 0 #495057; }
+    .afa-table td { padding: 0.55rem 0.6rem; vertical-align: middle; min-height: 2.25rem; line-height: 1.35; }
     .afa-table tbody tr:hover { background: #f8f9fa; }
-    .afa-table-wrap { max-height: min(75vh, 800px); overflow: auto; }
+    /* Scroll nur innerhalb der Box → horizontaler Scrollbalken direkt unter der Tabelle, nicht ganz unten auf der Seite */
+    .afa-table-wrap { width: 100%; min-width: 0; max-height: calc(100vh - 220px); overflow: auto; -webkit-overflow-scrolling: touch; scroll-behavior: smooth; }
+    .afa-table-wrap thead th { position: sticky; top: 0; z-index: 2; }
     .afa-table .col-bezeichnung { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .afa-table .text-end { white-space: nowrap; }
+    .afa-table .col-aufschlag { background: rgba(13, 110, 253, 0.12); min-width: 5rem; }
+    .afa-table td.col-aufschlag { background: rgba(13, 110, 253, 0.08); font-weight: 600; }
     .empf-zwang { color: #b02a37; font-weight: 700; }
     .empf-aktiv { color: #198754; font-weight: 600; }
     .empf-sinnvoll { color: #0d6efd; }
@@ -25,17 +30,25 @@
             <h4 class="mb-0"><i class="bi bi-graph-up-arrow text-success"></i> Verkaufsempfehlungen AfA</h4>
             <small class="text-muted">VFW & Mietwagen — Ziele: positiver Cashflow, hoher Umschlag. Inkl. verursachte Zinsen (Einkaufsfinanzierung).</small>
         </div>
-        <button type="button" class="btn btn-primary" id="btn-laden" title="Daten aktualisieren"><i class="bi bi-arrow-clockwise"></i> Aktualisieren</button>
+        <div class="d-flex align-items-center gap-2">
+            <span class="small text-muted me-2">Auktion (Zeitnah):</span>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-alle-auswaehlen" title="Alle Fahrzeuge für PDF auswählen">Alle</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-keine-auswaehlen" title="Auswahl aufheben">Keine</button>
+            <button type="button" class="btn btn-success btn-sm" id="btn-pdf-auktion" title="PDF mit Marke, Typ, EZ, Km, Abverkaufspreis herunterladen" disabled><i class="bi bi-file-pdf"></i> PDF Auktion exportieren</button>
+            <button type="button" class="btn btn-primary" id="btn-laden" title="Daten aktualisieren"><i class="bi bi-arrow-clockwise"></i> Aktualisieren</button>
+        </div>
     </div>
 
     <div class="card">
         <div class="card-body">
-            <p class="text-muted small mb-3">Differenz = Verkaufspreis (netto) − Buchwert. Zinsen aus <strong>fahrzeugfinanzierungen</strong>. Bei „im Haus“ / „Brief im Haus“: <strong>5 % kalkulatorisch</strong>. <strong>Brief (Locosoft)</strong> = Zusatzcode BRIEF. <strong>mobile.de Platz</strong> und <strong>Treffer</strong> aus eAutoSeller Bewerter (BWA), aktualisiert über den <strong>eAutoSeller-Sync</strong> (Admin/Tasks). <strong>Abverkauf</strong> = Buchwert + 50 % Zinsen (netto).</p>
+            <p class="text-muted small mb-3">Differenz = Verkaufspreis (netto) − Buchwert. Zinsen aus <strong>fahrzeugfinanzierungen</strong>. Bei „im Haus“ / „Brief im Haus“: <strong>5 % kalkulatorisch</strong>. <strong>Brief (Locosoft)</strong> = Zusatzcode BRIEF. <strong>mobile.de Platz</strong> und <strong>Treffer</strong> aus eAutoSeller Bewerter (BWA), aktualisiert über den <strong>eAutoSeller-Sync</strong> (Admin/Tasks). <strong>Abverkauf</strong> = Buchwert + 50 % Zinsen (netto). <strong>Aufschlag (€)</strong> = anteilige Differenz DRIVE vs. Buchhaltung, um den „echten“ Buchgewinn zu realisieren (AFA_DIFFERENZ_DRIVE_LOCOSOFT).</p>
+            <div id="afa-differenz-hinweis" class="alert alert-info small py-2 mb-2 d-none" role="alert"></div>
             <div id="eautoseller-warnung" class="alert alert-warning small py-2 mb-2 d-none" role="alert"></div>
             <div class="table-responsive afa-table-wrap">
                 <table class="table table-sm afa-table mb-0">
                     <thead>
                         <tr>
+                            <th class="text-center" title="Für PDF Auktion (Zeitnah) auswählen"><input type="checkbox" id="check-all" class="form-check-input" title="Alle auswählen"></th>
                             <th>VIN</th>
                             <th>Kz.</th>
                             <th>Bezeichnung</th>
@@ -49,6 +62,7 @@
                             <th class="text-end">AfA (€)</th>
                             <th class="text-end">VK netto (€)</th>
                             <th class="text-end">Diff. (€)</th>
+                            <th class="text-end col-aufschlag" title="Anteiliger Aufschlag für echten Buchgewinn (DRIVE vs. Buchhaltung)">Aufschlag (€)</th>
                             <th class="text-end" title="Rechnerisch: VK netto − Buchwert">Buchgewinn/Verlust (€)</th>
                             <th class="text-end" title="Zinsen/Monat">Z/M (€)</th>
                             <th class="text-end" title="Zinsen gesamt">Z ges. (€)</th>
@@ -57,12 +71,13 @@
                             <th class="text-end" title="eAutoSeller: Treffer/Vergleichsanzahl">Treffer</th>
                             <th class="text-end" title="eAutoSeller: Preis Platz 1 (brutto)">Platz 1 (€)</th>
                             <th class="text-end" title="Buchwert + 50 % Zinsen">Abverkauf (€)</th>
+                            <th title="Rechnungsdatum in Locosoft – Abgang in DRIVE buchen">Rechnung (Locosoft)</th>
                             <th>Empfehlung</th>
                             <th></th>
                         </tr>
                     </thead>
                     <tbody id="tbody">
-                        <tr><td colspan="23" class="text-center text-muted py-4">Klick auf „Aktualisieren“ zum Laden.</td></tr>
+                        <tr><td colspan="26" class="text-center text-muted py-4">Klick auf „Aktualisieren“ zum Laden.</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -102,12 +117,18 @@
 (function() {
     const API = '/api/afa';
     const tbody = document.getElementById('tbody');
-    const colSpan = 23;
+    const colSpan = 26;
 
     function fmtDate(s) {
         if (!s) return '–';
         if (s.length >= 10) return s.substring(0, 10);
         return s;
+    }
+    function fmtDateDE(s) {
+        if (!s) return '';
+        var str = String(s).substring(0, 10);
+        if (str.length === 10 && str[4] === '-' && str[7] === '-') return str.slice(8, 10) + '.' + str.slice(5, 7) + '.' + str.slice(0, 4);
+        return str;
     }
 
     function fmtEuro(v) {
@@ -208,7 +229,9 @@
                     var empfCl = empfehlungClass(empf);
                     var standzeit = f && f.standzeit_tage != null ? f.standzeit_tage : '–';
                     var bezeichnung = (f && f.fahrzeug_bezeichnung ? f.fahrzeug_bezeichnung : '–');
+                    var id = (f && f.id != null) ? f.id : '';
                     return '<tr>' +
+                        '<td class="text-center"><input type="checkbox" class="form-check-input row-check" data-id="' + id + '" aria-label="Für Auktion-PDF auswählen"></td>' +
                         '<td class="text-nowrap">' + (f && f.vin ? f.vin : '–') + '</td>' +
                         '<td class="text-nowrap">' + (f && f.kennzeichen ? f.kennzeichen : '–') + '</td>' +
                         '<td class="col-bezeichnung" title="' + (bezeichnung !== '–' ? bezeichnung.replace(/"/g, '&quot;') : '') + '">' + bezeichnung + '</td>' +
@@ -222,6 +245,7 @@
                         '<td class="text-end">' + fmtEuro(f && f.afa_bisher) + '</td>' +
                         '<td class="text-end">' + fmtEuro(f && f.verkaufspreis_aktuell) + '</td>' +
                         '<td class="text-end ' + diffCl + '">' + (diff != null ? fmtEuro(diff) : '–') + '</td>' +
+                        '<td class="text-end col-aufschlag" title="Aufschlag für echten Buchgewinn (DRIVE vs. Buchhaltung)">' + fmtEuro(f && f.aufschlag_echter_buchgewinn) + '</td>' +
                         (function() {
                             if (diff == null) return '<td class="text-end text-muted">–</td>';
                             var bwCl = diff >= 0 ? 'text-success' : 'text-danger';
@@ -235,6 +259,12 @@
                         '<td class="text-end">' + (f && f.total_hits != null ? f.total_hits : '–') + '</td>' +
                         '<td class="text-end">' + (f && f.platz_1_retail_gross != null ? fmtEuro(f.platz_1_retail_gross) : '–') + '</td>' +
                         '<td class="text-end">' + fmtEuro(f && f.abverkaufspreis_vorschlag) + '</td>' +
+                        (function() {
+                            var rd = f && f.locosoft_rechnungsdatum;
+                            if (!rd) return '<td class="text-muted">–</td>';
+                            var d = fmtDateDE(rd);
+                            return '<td class="text-nowrap text-warning" title="In Locosoft verkauft – Abgang in DRIVE buchen">' + d + ' <small class="text-muted">Abgang buchen</small></td>';
+                        })() +
                         '<td class="' + empfCl + '">' + empf + '</td>' +
                         '<td><button type="button" class="btn btn-sm btn-outline-primary detail-btn" data-id="' + (f && f.id ? f.id : '') + '">Detail</button></td>' +
                         '</tr>';
@@ -246,9 +276,24 @@
                         if (id) openDetail(id);
                     });
                 });
+                // Auktion-PDF: Auswahl aktivieren
+                document.getElementById('btn-pdf-auktion').disabled = false;
+                var checkAll = document.getElementById('check-all');
+                if (checkAll) {
+                    checkAll.checked = false;
+                    checkAll.onclick = function() {
+                        tbody.querySelectorAll('.row-check').forEach(function(cb) { cb.checked = checkAll.checked; });
+                    };
+                }
                 // eAutoSeller-Daten kommen aus Sync (DB); kein Banner für gecachte Fehler mehr
                 var warnEl = document.getElementById('eautoseller-warnung');
                 if (warnEl) warnEl.classList.add('d-none');
+                // Hinweis wenn Gesamtdifferenz DRIVE vs. Buchhaltung konfiguriert ist
+                var diffHinweis = document.getElementById('afa-differenz-hinweis');
+                if (diffHinweis && data.afa_differenz_gesamt > 0) {
+                    diffHinweis.textContent = 'Gesamtdifferenz DRIVE vs. Buchhaltung: ' + Number(data.afa_differenz_gesamt).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' € — Aufschläge pro Fahrzeug anteilig nach Buchwert, um echten Buchgewinn zu realisieren.';
+                    diffHinweis.classList.remove('d-none');
+                } else if (diffHinweis) diffHinweis.classList.add('d-none');
             })
             .catch(function(e) {
                 tbody.innerHTML = '<tr><td colspan="' + colSpan + '" class="text-danger">' + (e.message || 'Fehler beim Laden') + '</td></tr>';
@@ -256,6 +301,47 @@
     }
 
     document.getElementById('btn-laden').addEventListener('click', load);
+
+    document.getElementById('btn-alle-auswaehlen').addEventListener('click', function() {
+        tbody.querySelectorAll('.row-check').forEach(function(cb) { cb.checked = true; });
+        var checkAll = document.getElementById('check-all');
+        if (checkAll) checkAll.checked = true;
+    });
+    document.getElementById('btn-keine-auswaehlen').addEventListener('click', function() {
+        tbody.querySelectorAll('.row-check').forEach(function(cb) { cb.checked = false; });
+        var checkAll = document.getElementById('check-all');
+        if (checkAll) checkAll.checked = false;
+    });
+    document.getElementById('btn-pdf-auktion').addEventListener('click', function() {
+        var ids = [];
+        tbody.querySelectorAll('.row-check:checked').forEach(function(cb) {
+            var id = parseInt(cb.getAttribute('data-id'), 10);
+            if (id) ids.push(id);
+        });
+        if (ids.length === 0) {
+            alert('Bitte mindestens ein Fahrzeug für den Auktion-PDF-Export auswählen.');
+            return;
+        }
+        var btn = this;
+        btn.disabled = true;
+        fetch(API + '/export/auktion-pdf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/pdf' },
+            body: JSON.stringify({ ids: ids })
+        }).then(function(res) {
+            if (!res.ok) return res.json().then(function(j) { throw new Error(j.error || res.statusText); });
+            return res.blob();
+        }).then(function(blob) {
+            var a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'DRIVE_Auktion_Zeitnah_' + new Date().toISOString().slice(0, 10) + '.pdf';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        }).catch(function(e) {
+            alert('Fehler: ' + (e.message || 'PDF-Export fehlgeschlagen'));
+        }).finally(function() { btn.disabled = false; });
+    });
+
     load();
 })();
 </script>
