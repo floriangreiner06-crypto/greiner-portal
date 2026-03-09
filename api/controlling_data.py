@@ -332,16 +332,28 @@ def get_tek_data(monat=None, jahr=None, firma='0', standort='0', modus='teil', u
 # BREAKEVEN-PROGNOSE (SSOT – eine Logik für Portal und PDF)
 # =============================================================================
 
+# Ab diesem Tag des Monats fließt der Vormonat in den 4M-Kostenschnitt ein.
+# Lohn/Gehalt wird typisch zu Monatsbeginn gebucht; bis dahin ist der Vormonat
+# in Locosoft unvollständig → am Monatsanfang Vormonat weglassen für stabileren BE.
+STICHTAG_VORMONAT_4M = 5
+
 def _letzte_4_abgeschlossene_monate():
     """
-    Zeitraum der letzten 4 abgeschlossenen Kalendermonate vor dem aktuellen Monat (schwankungsstabil).
-    Bsp.: Im Februar → Okt, Nov, Dez, Jan; im März → Nov, Dez, Jan, Feb.
+    Zeitraum der letzten 4 abgeschlossenen Kalendermonate (schwankungsstabil).
+    Am Monatsanfang (Tag < STICHTAG_VORMONAT_4M): Vormonat weglassen, da Lohn/Gehalt
+    erst zu Monatsbeginn gebucht wird – sonst wäre der 4M-Schnitt zu niedrig.
+    Bsp.: März, Tag 1–4 → Okt, Nov, Dez, Jan (ohne Feb); ab 5. März → Nov, Dez, Jan, Feb.
     Returns: (von_str, bis_str) für SQL >= von AND < bis.
     """
     heute = date.today()
     erster_aktuell = date(heute.year, heute.month, 1)
-    von_4m = erster_aktuell - relativedelta(months=4)
-    bis_4m = erster_aktuell
+    if heute.day < STICHTAG_VORMONAT_4M:
+        # Vormonat noch nicht buchungsabgeschlossen → 4 Monate davor
+        von_4m = erster_aktuell - relativedelta(months=5)
+        bis_4m = erster_aktuell - relativedelta(months=1)
+    else:
+        von_4m = erster_aktuell - relativedelta(months=4)
+        bis_4m = erster_aktuell
     return von_4m.isoformat(), bis_4m.isoformat()
 
 
@@ -429,12 +441,9 @@ def berechne_breakeven_prognose_standort(monat: int, jahr: int, aktueller_db1: f
     werktage = get_werktage_monat(jahr, monat, stichtag=stichtag)
     werktage_gesamt = werktage['gesamt']
     werktage_vergangen = werktage['vergangen']
-    if tage_mit_daten >= 5:
-        # Wie GlobalCube: (DB1 / vergangene Werktage) × Werktage gesamt
-        divisor = werktage_vergangen if werktage_vergangen > 0 else max(tage_mit_daten, 1)
-        hochrechnung_db1 = (aktueller_db1 / divisor) * werktage_gesamt
-    else:
-        hochrechnung_db1 = aktueller_db1
+    # Prognose immer aus aktuellem Monat (wie Gesamt-TEK), nicht nur ab Tag 5
+    divisor = werktage_vergangen if werktage_vergangen > 0 else max(tage_mit_daten, 1)
+    hochrechnung_db1 = (aktueller_db1 / divisor) * werktage_gesamt
 
     if aktueller_db1 >= kosten_pro_monat:
         status, ampel = 'positiv', 'gruen'
@@ -584,44 +593,12 @@ def berechne_breakeven_prognose(monat: int, jahr: int, aktueller_db1: float,
     werktage_vergangen = werktage['vergangen']
     tage_im_monat = werktage_gesamt
 
-    hochrechnung_db1 = None
-    prognose_methode = None
+    # Prognose immer aus aktuellem Monat: (DB1 / vergangene Werktage) × Werktage gesamt (wie GlobalCube).
+    # Kein Vormonats-Schnitt mehr – Breakeven bleibt 4-Monats-Kostenschnitt.
+    divisor = werktage_vergangen if werktage_vergangen > 0 else max(tage_mit_daten, 1)
+    hochrechnung_db1 = (aktueller_db1 / divisor) * werktage_gesamt
+    prognose_methode = 'hochrechnung'
     db1_3m_schnitt = None
-    if tage_mit_daten < 5:
-        vor_3m_start = (datetime.strptime(von, '%Y-%m-%d') - relativedelta(months=3)).strftime('%Y-%m-%d')
-        if get_db_type() == 'postgresql':
-            monat_expr = "TO_CHAR(accounting_date, 'YYYY-MM')"
-        else:
-            monat_expr = "strftime('%Y-%m', accounting_date)"
-        with db_session() as conn:
-            cursor = conn.cursor()
-            cursor.execute(convert_placeholders(f"""
-                SELECT {monat_expr} as monat,
-                    SUM(CASE WHEN nominal_account_number BETWEEN 800000 AND 889999 OR nominal_account_number BETWEEN 893200 AND 893299
-                        THEN CASE WHEN debit_or_credit = 'H' THEN posted_value ELSE -posted_value END ELSE 0 END) / 100.0 as umsatz,
-                    SUM(CASE WHEN nominal_account_number BETWEEN 700000 AND 799999
-                        THEN CASE WHEN debit_or_credit = 'S' THEN posted_value ELSE -posted_value END ELSE 0 END) / 100.0 as einsatz
-                FROM loco_journal_accountings
-                WHERE accounting_date >= ? AND accounting_date < ?
-                  {firma_filter_umsatz}
-                GROUP BY {monat_expr}
-                ORDER BY monat DESC
-                LIMIT 3
-            """), (vor_3m_start, von))
-            db1_3m_rows = [row_to_dict(r) for r in cursor.fetchall()]
-        if db1_3m_rows and len(db1_3m_rows) >= 2:
-            db1_werte = [float(row.get('umsatz') or 0) - float(row.get('einsatz') or 0) for row in db1_3m_rows]
-            db1_3m_schnitt = sum(db1_werte) / len(db1_werte)
-            hochrechnung_db1 = db1_3m_schnitt
-            prognose_methode = 'gleitend_3m'
-        else:
-            prognose_methode = 'keine_daten'
-    else:
-        # Referenz GlobalCube: Prognose = (DB1 / vergangene Werktage) × Werktage gesamt.
-        # Divisor = werktage_vergangen (nicht tage_mit_daten), sonst wird Prognose zu schlecht.
-        divisor = werktage_vergangen if werktage_vergangen > 0 else max(tage_mit_daten, 1)
-        hochrechnung_db1 = (aktueller_db1 / divisor) * werktage_gesamt
-        prognose_methode = 'hochrechnung'
 
     if aktueller_db1 >= kosten_pro_monat:
         status, ampel = 'positiv', 'gruen'
@@ -650,7 +627,8 @@ def berechne_breakeven_prognose(monat: int, jahr: int, aktueller_db1: float,
         'gap_prozent': round((aktueller_db1 - kosten_pro_monat) / kosten_pro_monat * 100, 1) if kosten_pro_monat > 0 else 0,
         'status': status,
         'ampel': ampel,
-        'hinweis_umlage': tage_mit_daten < 5,
+        'hinweis_umlage': False,
+        'kosten_ohne_vormonat': heute.day < STICHTAG_VORMONAT_4M,
         'werktage': {'gesamt': werktage_gesamt, 'vergangen': werktage_vergangen, 'verbleibend': werktage['verbleibend'], 'fortschritt_prozent': werktage['fortschritt_prozent']},
         'db1_soll_bis_heute': round(db1_soll_bis_heute, 2),
         'db1_pro_werktag': round(db1_pro_werktag, 2),
