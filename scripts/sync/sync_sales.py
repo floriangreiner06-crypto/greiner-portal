@@ -65,6 +65,26 @@ def load_env():
                 env[key.strip()] = value.strip()
     return env
 
+
+def _scalar(val):
+    """Wandelt Werte in Skalare um. Verhindert 'not all arguments converted during string formatting',
+    wenn Locosoft z.B. Composite/Array als Tuple liefert. Gibt nie ein Tuple/Liste zurueck."""
+    if val is None:
+        return None
+    while isinstance(val, (list, tuple)):
+        if len(val) == 0:
+            return None
+        val = val[0]
+    if isinstance(val, (list, tuple)):
+        return str(val)[:500] if val else None
+    if hasattr(val, '__float__') and not isinstance(val, (int, float, bool)):
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            pass
+    return val
+
+
 def sync_sales():
     """Synchronisiert Sales von Locosoft nach PostgreSQL mit DB-Berechnung"""
 
@@ -99,6 +119,7 @@ def sync_sales():
             dv.dealer_vehicle_number,
             dv.dealer_vehicle_type,
             v.vin,
+            v.first_registration_date,
             dv.vehicle_number as internal_number,
             dv.out_invoice_date,
             dv.out_invoice_number::TEXT,
@@ -109,6 +130,7 @@ def sync_sales():
             dv.out_make_number,
             dv.mileage_km,
             dv.out_salesman_number_1,
+            dv.in_buy_salesman_number,
             dv.buyer_customer_no::TEXT,
             m.description as model_description,
 
@@ -137,7 +159,13 @@ def sync_sales():
                  WHERE dsa.dealer_vehicle_type = dv.dealer_vehicle_type
                  AND dsa.dealer_vehicle_number = dv.dealer_vehicle_number),
                 0
-            ) as verkaufsunterstuetzung
+            ) as verkaufsunterstuetzung,
+
+            -- Memo (Pr. 132 Reiter Verkauf): P1 = NW wie VFW/TW abrechnen (1% Rg.Netto)
+            TRIM(dv.memo) AS memo,
+
+            -- Rechnungsbetrag netto (invoices.total_net) = SSOT für Provisionsbasis, korrekte Abrechnung
+            i.total_net AS rechnungsbetrag_netto
 
         FROM dealer_vehicles dv
         LEFT JOIN vehicles v
@@ -167,12 +195,17 @@ def sync_sales():
     log("Synchronisiere Sales mit Deckungsbeitrag-Berechnung...")
     for row in sales:
         try:
-            (dealer_vehicle_number, dealer_vehicle_type, vin, internal_number,
+            (dealer_vehicle_number, dealer_vehicle_type, vin, first_registration_date, internal_number,
              out_invoice_date, out_invoice_number, out_sale_price, out_sale_type,
              out_subsidiary, out_sales_contract_date, make_number, mileage_km,
-             salesman_number, buyer_customer_no, model_description,
+             salesman_number, in_buy_salesman_number, buyer_customer_no, model_description,
              fahrzeuggrundpreis, zubehoer, fracht_brief_neben,
-             kosten_intern_rg, einsatz_erhoehung_intern, sonstige_kosten, out_invoice_type, mwst, verkaufsunterstuetzung) = row
+             kosten_intern_rg, einsatz_erhoehung_intern, sonstige_kosten, out_invoice_type, mwst, verkaufsunterstuetzung, memo, rechnungsbetrag_netto) = row
+            memo = (memo.strip()[:50] if isinstance(memo, str) and memo.strip() else None) or None
+            try:
+                rechnungsbetrag_netto = float(rechnungsbetrag_netto) if rechnungsbetrag_netto is not None else None
+            except (TypeError, ValueError):
+                rechnungsbetrag_netto = None
 
             # TAG 144: dealer_vehicle_number/type sind TEXT in unserer DB, aber INTEGER in Locosoft
             dealer_vehicle_number = str(dealer_vehicle_number) if dealer_vehicle_number else None
@@ -183,7 +216,8 @@ def sync_sales():
             make_number = int(make_number) if make_number else None
             mileage_km = int(mileage_km) if mileage_km else None
             salesman_number = int(salesman_number) if salesman_number else None
-            out_subsidiary = int(out_subsidiary) if out_subsidiary else None
+            in_buy_salesman_number = int(in_buy_salesman_number) if in_buy_salesman_number else None
+            out_subsidiary = int(out_subsidiary) if out_subsidiary is not None else None
             internal_number = int(internal_number) if internal_number else None
 
             # Deckungsbeitrag-Komponenten zu float
@@ -237,6 +271,28 @@ def sync_sales():
                 db_prozent = None
                 netto_price = None
 
+            # Parameter als Skalare (psycopg2 pyformat: Tuple in Parametern = "not all arguments converted")
+            _s = _scalar
+            update_params = (
+                _s(vin), _s(first_registration_date), _s(internal_number), _s(out_invoice_date), _s(out_invoice_number),
+                _s(out_sale_price), _s(out_sale_type), _s(out_invoice_type), _s(out_subsidiary), _s(out_sales_contract_date),
+                _s(make_number), _s(model_description), _s(mileage_km), _s(salesman_number), _s(in_buy_salesman_number), _s(buyer_customer_no),
+                _s(netto_price), _s(netto_vk_preis), _s(deckungsbeitrag), _s(db_prozent),
+                _s(fahrzeuggrundpreis), _s(zubehoer), _s(fracht_brief_neben),
+                _s(kosten_intern_rg), _s(einsatz_erhoehung_intern), _s(sonstige_kosten), _s(verkaufsunterstuetzung),
+                _s(memo), _s(rechnungsbetrag_netto),
+                _s(dealer_vehicle_number), _s(dealer_vehicle_type)
+            )
+            insert_params = (
+                _s(dealer_vehicle_number), _s(dealer_vehicle_type), _s(vin), _s(first_registration_date), _s(internal_number),
+                _s(out_invoice_date), _s(out_invoice_number), _s(out_sale_price), _s(out_sale_type), _s(out_invoice_type),
+                _s(out_subsidiary), _s(out_sales_contract_date), _s(make_number), _s(model_description),
+                _s(mileage_km), _s(salesman_number), _s(in_buy_salesman_number), _s(buyer_customer_no),
+                _s(netto_price), _s(netto_vk_preis), _s(deckungsbeitrag), _s(db_prozent),
+                _s(fahrzeuggrundpreis), _s(zubehoer), _s(fracht_brief_neben),
+                _s(kosten_intern_rg), _s(einsatz_erhoehung_intern), _s(sonstige_kosten), _s(verkaufsunterstuetzung), _s(memo), _s(rechnungsbetrag_netto)
+            )
+
             # Pruefen ob existiert
             target_cursor.execute("""
                 SELECT id FROM sales
@@ -251,6 +307,7 @@ def sync_sales():
                 target_cursor.execute("""
                     UPDATE sales SET
                         vin = %s,
+                        first_registration_date = %s,
                         internal_number = %s,
                         out_invoice_date = %s,
                         out_invoice_number = %s,
@@ -263,6 +320,7 @@ def sync_sales():
                         model_description = %s,
                         mileage_km = %s,
                         salesman_number = %s,
+                        in_buy_salesman_number = %s,
                         buyer_customer_no = %s,
                         netto_price = %s,
                         netto_vk_preis = %s,
@@ -275,40 +333,26 @@ def sync_sales():
                         einsatz_erhoehung_intern = %s,
                         sonstige_kosten = %s,
                         verkaufsunterstuetzung = %s,
+                        memo = %s,
+                        rechnungsbetrag_netto = %s,
                         synced_at = CURRENT_TIMESTAMP
                     WHERE dealer_vehicle_number = %s
                       AND dealer_vehicle_type = %s
-                """, (
-                    vin, internal_number, out_invoice_date, out_invoice_number,
-                    out_sale_price, out_sale_type, out_invoice_type, out_subsidiary, out_sales_contract_date,
-                    make_number, model_description, mileage_km, salesman_number, buyer_customer_no,
-                    netto_price, netto_vk_preis, deckungsbeitrag, db_prozent,
-                    fahrzeuggrundpreis, zubehoer, fracht_brief_neben,
-                    kosten_intern_rg, einsatz_erhoehung_intern, sonstige_kosten, verkaufsunterstuetzung,
-                    dealer_vehicle_number, dealer_vehicle_type
-                ))
+                """, update_params)
                 updated += 1
             else:
-                # INSERT
+                # INSERT (31 Spalten + synced_at; 31 %s + CURRENT_TIMESTAMP)
                 target_cursor.execute("""
                     INSERT INTO sales (
-                        dealer_vehicle_number, dealer_vehicle_type, vin, internal_number,
+                        dealer_vehicle_number, dealer_vehicle_type, vin, first_registration_date, internal_number,
                         out_invoice_date, out_invoice_number, out_sale_price, out_sale_type, out_invoice_type,
                         out_subsidiary, out_sales_contract_date, make_number, model_description,
-                        mileage_km, salesman_number, buyer_customer_no,
+                        mileage_km, salesman_number, in_buy_salesman_number, buyer_customer_no,
                         netto_price, netto_vk_preis, deckungsbeitrag, db_prozent,
                         fahrzeuggrundpreis, zubehoer, fracht_brief_neben,
-                        kosten_intern_rg, einsatz_erhoehung_intern, sonstige_kosten, verkaufsunterstuetzung, synced_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
-                """, (
-                    dealer_vehicle_number, dealer_vehicle_type, vin, internal_number,
-                    out_invoice_date, out_invoice_number, out_sale_price, out_sale_type, out_invoice_type,
-                    out_subsidiary, out_sales_contract_date, make_number, model_description,
-                    mileage_km, salesman_number, buyer_customer_no,
-                    netto_price, netto_vk_preis, deckungsbeitrag, db_prozent,
-                    fahrzeuggrundpreis, zubehoer, fracht_brief_neben,
-                    kosten_intern_rg, einsatz_erhoehung_intern, sonstige_kosten, verkaufsunterstuetzung
-                ))
+                        kosten_intern_rg, einsatz_erhoehung_intern, sonstige_kosten, verkaufsunterstuetzung, memo, rechnungsbetrag_netto, synced_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                """, insert_params)
                 inserted += 1
 
             # Commit alle 100 Zeilen
@@ -318,6 +362,9 @@ def sync_sales():
 
         except Exception as e:
             log(f"Fehler bei {dealer_vehicle_number}/{dealer_vehicle_type}: {e}", "ERROR")
+            if errors == 0:
+                import traceback
+                traceback.print_exc()
             errors += 1
             target_conn.rollback()
             if errors > 50:

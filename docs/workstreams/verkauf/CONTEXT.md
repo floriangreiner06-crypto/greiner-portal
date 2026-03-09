@@ -1,7 +1,7 @@
 # Verkauf & Fahrzeuge — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-03-02
+## Letzte Aktualisierung: 2026-03-09
 
 ## Beschreibung
 
@@ -26,7 +26,7 @@ Verkauf umfasst Auftragseingang, Auslieferungen, Deckungsbeitrag, Profitabilitä
 
 ### Celery Tasks
 - `sync_sales`, `email_auftragseingang`, `sync_eautoseller_data`
-- **sync_sales:** Verkauf Sync (Locosoft → Portal `sales`), Auftragseingang-Datenquelle. Läuft stündlich 7–18 Uhr Mo–Fr (`celery_app/__init__.py`). Bei fehlenden Tagesaufträgen: Sync manuell ausführen oder nächsten Lauf abwarten.
+- **sync_sales:** Verkauf Sync (Locosoft → Portal `sales`), Auftragseingang-Datenquelle. Läuft stündlich 7–18 Uhr Mo–Fr (`celery_app/__init__.py`). Bei fehlenden Tagesaufträgen: Sync manuell ausführen oder nächsten Lauf abwarten. **Fix 2026-03-09:** INSERT hatte 30 %s bei 31 Spalten → neue Verträge schlugen mit „not all arguments converted“ fehl; behoben (31. %s ergänzt, Parameter robust mit _scalar).
 
 ## DB-Tabellen (PostgreSQL drive_portal)
 
@@ -49,6 +49,7 @@ Verkauf umfasst Auftragseingang, Auslieferungen, Deckungsbeitrag, Profitabilitä
 - ✅ **Speicherkonzept & Freigabe:** Tabelle `zielplanung_stand` speichert pro Zieljahr Parameter (Referenz, Konzernziel NW/GW, NW nach Marke) und Status (`entwurf`/`freigegeben`). Beim Seitenaufruf wird Planungsstand geladen → Formular und Tabelle wiederhergestellt. „Ziele speichern“ schreibt Entwurf (Parameter + Ziele). „Planung freigeben“ setzt Status auf `freigegeben`; ab dann sind Ziele verbindlich für Monatsziele und Auftragseingang. Siehe `VERKAEUFER_ZIELPLANUNG_SPEICHERKONZEPT_FREIGABE.md`.
 - ✅ **Detailansicht pro Verkäufer (Planungsgespräch):** Route `/verkauf/zielplanung/verkaeufer/<nr>`, nur diese Person (Vorjahr, Vorschlag, Vereinbarung), PUT pro Verkäufer; Link „Detail“ in Haupttabelle. Motivierender Aufbau: Hero mit Jahresziel, Steigerung % zum Vorjahr, Badge „Über Planvorschlag“, Erfolgstext nach Speichern.
 - ✅ **Auftragseingang & Auslieferungen – Verkäufer-Filter (konfigurierbar):** Filter-Modus pro Rolle in Rechteverwaltung (Tab Feature-Zugriff → Nach Rolle → „Filter-Verhalten für Listen“): **Nur eigene** (Filter fix, wie bisher für Rolle verkauf), **Eigene, Filter auflösbar**, **Alle, kann filtern**. API nutzt `api/feature_filter_mode.get_filter_mode(role, feature)`; bei `own_only` wird `verkaufer` aus `ldap_employee_mapping.locosoft_id` erzwungen. Betrifft: `api/verkauf_api.py` (_filter_mode_force_own), `api/verkauf_data.py` (Parameter `verkaufer`), Routes/Templates Auftragseingang und Auslieferung, OPOS (`api/opos_api.py`, `templates/controlling/opos.html`, Route `/controlling/opos`).
+- ✅ **Sync_sales INSERT-Bug (2026-03-09):** Auftragseingang zeigte nur 2 statt aller März-2026-Aufträge. Ursache: INSERT in `scripts/sync/sync_sales.py` hatte 30 Platzhalter bei 31 Spalten; neue Verträge (nur INSERT, kein UPDATE) schlugen mit „not all arguments converted during string formatting“ fehl. Fix: 31. %s ergänzt, Parameter mit _scalar() gegen Tuple-Werte aus Locosoft abgesichert, out_subsidiary=0 korrekt (nicht zu None). 31 neue Aufträge danach fehlerfrei übernommen (u. a. Debitor 3008888 / Kaufvertrag 71731).
 - 🔧 **Test mit Anton (Verkaufsleiter)** geplant (nächster Schritt).
 
 ## Offene Entscheidungen / Nächste Schritte
