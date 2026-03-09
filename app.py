@@ -27,7 +27,7 @@ else:
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 Jahr in Produktion
 
 # Globale Static-Version (ändert sich bei jedem Flask-Neustart)
-STATIC_VERSION = '20260127171000'  # TAG 214 - Hypovereinsbank Eurokredit: IBAN anzeigen
+STATIC_VERSION = '20260228120000'  # Kategorisierung: grüner Haken bleibt nach Reload
 print(f"📦 Static Version: {STATIC_VERSION}")
 
 # Template-Kontext: Macht STATIC_VERSION in allen Templates verfügbar
@@ -713,9 +713,10 @@ def mein_bereich():
     # TAG 164: ma_id Parameter für Geschäfts-/Serviceleitung
     ma_id_param = request.args.get('ma_id')
     
-    # Prüfe Berechtigung: Wenn ma_id angegeben, muss User admin/controlling sein
+    # Prüfe Berechtigung: Wenn ma_id angegeben, muss User admin, controlling oder service_leitung sein
     if ma_id_param:
-        if not (current_user.can_access_feature('admin') or current_user.can_access_feature('controlling')):
+        if not (current_user.can_access_feature('admin') or current_user.can_access_feature('controlling')
+                or current_user.can_access_feature('service_leitung')):
             from flask import abort
             abort(403)
     

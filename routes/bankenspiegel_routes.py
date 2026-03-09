@@ -132,6 +132,18 @@ def transaktionen():
         now=datetime.now()
     )
 
+
+@bankenspiegel_bp.route('/kategorisierung')
+def kategorisierung():
+    """
+    Kategorisierung von Banktransaktionen (Buchhaltung/Admin).
+    Manuelle Zuordnung oder Regeln/KI-Vorschläge prüfen und übernehmen.
+    """
+    return render_template(
+        'bankenspiegel_kategorisierung.html',
+        now=datetime.now()
+    )
+
 # ============================================================================
 # EINKAUFSFINANZIERUNG (Konsolidiert: Fahrzeugfinanzierungen + Zinsen-Analyse)
 # ============================================================================

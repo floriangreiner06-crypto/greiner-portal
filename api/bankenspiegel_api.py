@@ -345,57 +345,71 @@ def get_dashboard():
 @login_required
 def get_konten():
     """
-    GET /api/bankenspiegel/konten?bank_id=1
-    Kontenliste mit Salden
+    GET /api/bankenspiegel/konten?bank_id=1&alle=1
+    Kontenliste mit Salden. alle=1: inkl. inaktive Konten, liefert bank_id und aktiv (für Verwaltung).
     TAG 136: PostgreSQL-kompatibel
     """
+    from flask_login import current_user
+
     try:
         bank_id = request.args.get('bank_id', type=int)
+        alle = request.args.get('alle', type=int) == 1
 
         with db_session() as conn:
             cursor = conn.cursor()
 
-            # Query - direkt auf konten mit JOIN zu salden für Sortierung nach kontoinhaber
-            # TAG 180: Kreditlinie und verfügbare Kreditlinie hinzugefügt, Sortierung nach Kontoinhaber
-            # TAG 213: Bank-Name "Intern / Gesellschafter" ausblenden (redundant)
-            query = """
-                SELECT
-                    k.id,
-                    CASE 
-                        WHEN b.bank_name = 'Intern / Gesellschafter' THEN NULL
-                        ELSE b.bank_name
-                    END as bank_name,
-                    k.kontoname,
-                    k.iban,
-                    k.kontotyp,
-                    'EUR' as waehrung,
-                    COALESCE(s.saldo, 0) as saldo,
-                    s.datum as stand_datum,
-                    1 as aktiv,
-                    COALESCE(k.kreditlinie, 0) as kreditlinie,
-                    CASE 
-                        WHEN k.kreditlinie IS NOT NULL AND k.kreditlinie > 0 THEN
-                            k.kreditlinie + COALESCE(s.saldo, 0)
-                        ELSE NULL
-                    END as verfuegbar,
-                    k.kontoinhaber
-                FROM konten k
-                LEFT JOIN banken b ON k.bank_id = b.id
-                LEFT JOIN (
-                    SELECT konto_id, saldo, datum
-                    FROM salden
-                    WHERE (konto_id, datum) IN (
-                        SELECT konto_id, MAX(datum)
-                        FROM salden
-                        GROUP BY konto_id
-                    )
-                ) s ON k.id = s.konto_id
-                WHERE k.aktiv = true
-            """
+            if alle:
+                # Verwaltung: alle Konten, mit bank_id und aktiv
+                query = """
+                    SELECT
+                        k.id,
+                        k.bank_id,
+                        CASE WHEN b.bank_name = 'Intern / Gesellschafter' THEN NULL ELSE b.bank_name END as bank_name,
+                        k.kontoname,
+                        k.iban,
+                        k.kontotyp,
+                        'EUR' as waehrung,
+                        COALESCE(s.saldo, 0) as saldo,
+                        s.datum as stand_datum,
+                        (k.aktiv = true) as aktiv,
+                        COALESCE(k.kreditlinie, 0) as kreditlinie,
+                        CASE WHEN k.kreditlinie IS NOT NULL AND k.kreditlinie > 0 THEN k.kreditlinie + COALESCE(s.saldo, 0) ELSE NULL END as verfuegbar,
+                        k.kontoinhaber,
+                        COALESCE(k.sort_order, 999) as sort_order
+                    FROM konten k
+                    LEFT JOIN banken b ON k.bank_id = b.id
+                    LEFT JOIN (
+                        SELECT konto_id, saldo, datum FROM salden
+                        WHERE (konto_id, datum) IN (SELECT konto_id, MAX(datum) FROM salden GROUP BY konto_id)
+                    ) s ON k.id = s.konto_id
+                    WHERE 1=1
+                """
+            else:
+                # Normale Übersicht: nur aktive
+                query = """
+                    SELECT
+                        k.id,
+                        CASE WHEN b.bank_name = 'Intern / Gesellschafter' THEN NULL ELSE b.bank_name END as bank_name,
+                        k.kontoname,
+                        k.iban,
+                        k.kontotyp,
+                        'EUR' as waehrung,
+                        COALESCE(s.saldo, 0) as saldo,
+                        s.datum as stand_datum,
+                        1 as aktiv,
+                        COALESCE(k.kreditlinie, 0) as kreditlinie,
+                        CASE WHEN k.kreditlinie IS NOT NULL AND k.kreditlinie > 0 THEN k.kreditlinie + COALESCE(s.saldo, 0) ELSE NULL END as verfuegbar,
+                        k.kontoinhaber
+                    FROM konten k
+                    LEFT JOIN banken b ON k.bank_id = b.id
+                    LEFT JOIN (
+                        SELECT konto_id, saldo, datum FROM salden
+                        WHERE (konto_id, datum) IN (SELECT konto_id, MAX(datum) FROM salden GROUP BY konto_id)
+                    ) s ON k.id = s.konto_id
+                    WHERE k.aktiv = true
+                """
 
             params = []
-
-            # Filter nach Bank - TAG 136: dynamischer Placeholder
             if bank_id:
                 query += " AND k.bank_id = %s"
                 params.append(bank_id)
@@ -516,6 +530,106 @@ def get_konten():
             'success': False,
             'error': str(e)
         }), 500
+
+
+@bankenspiegel_api.route('/banken', methods=['GET'])
+@login_required
+def get_banken():
+    """
+    GET /api/bankenspiegel/banken
+    Liste aller Banken (für Dropdown in Konten-Verwaltung).
+    """
+    try:
+        with db_session() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, bank_name FROM banken
+                ORDER BY bank_name
+            """)
+            rows = cursor.fetchall()
+        banken = [{'id': r['id'], 'bank_name': r['bank_name']} for r in rows]
+        return jsonify({'success': True, 'banken': banken}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bankenspiegel_api.route('/konten/<int:konto_id>', methods=['PATCH'])
+@login_required
+def patch_konto(konto_id):
+    """
+    PATCH /api/bankenspiegel/konten/<id>
+    Konto bearbeiten (nur admin/buchhaltung). Erlaubte Felder: kontoname, iban, bank_id, kreditlinie, aktiv, kontoinhaber, sort_order.
+    """
+    from flask_login import current_user
+
+    if not (current_user.has_role('admin') or current_user.has_role('buchhaltung')):
+        return jsonify({'success': False, 'error': 'Keine Berechtigung'}), 403
+
+    data = request.get_json() or {}
+    allowed = ('kontoname', 'iban', 'bank_id', 'kreditlinie', 'aktiv', 'kontoinhaber', 'sort_order')
+    updates = []
+    params = []
+
+    if 'kontoname' in data and data['kontoname'] is not None:
+        v = (data['kontoname'] or '').strip()
+        if not v:
+            return jsonify({'success': False, 'error': 'Kontoname darf nicht leer sein'}), 400
+        updates.append('kontoname = %s')
+        params.append(v)
+    if 'iban' in data:
+        updates.append('iban = %s')
+        params.append((data['iban'] or '').strip() or None)
+    if 'bank_id' in data and data['bank_id'] is not None:
+        try:
+            bid = int(data['bank_id'])
+            if bid <= 0:
+                return jsonify({'success': False, 'error': 'Ungültige bank_id'}), 400
+            updates.append('bank_id = %s')
+            params.append(bid)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Ungültige bank_id'}), 400
+    if 'kreditlinie' in data:
+        try:
+            kl = float(data['kreditlinie']) if data['kreditlinie'] not in (None, '') else 0
+            if kl < 0:
+                return jsonify({'success': False, 'error': 'Kreditlinie darf nicht negativ sein'}), 400
+            updates.append('kreditlinie = %s')
+            params.append(kl)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Ungültige Kreditlinie'}), 400
+    if 'aktiv' in data:
+        updates.append('aktiv = %s')
+        params.append(bool(data['aktiv']))
+    if 'kontoinhaber' in data:
+        updates.append('kontoinhaber = %s')
+        params.append((data['kontoinhaber'] or '').strip() or None)
+    if 'sort_order' in data and data['sort_order'] is not None:
+        try:
+            so = int(data['sort_order'])
+            updates.append('sort_order = %s')
+            params.append(so)
+        except (TypeError, ValueError):
+            pass
+
+    if not updates:
+        return jsonify({'success': False, 'error': 'Keine Felder zum Aktualisieren'}), 400
+
+    updates.append('aktualisiert_am = NOW()')
+    params.append(konto_id)
+
+    try:
+        with db_session() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE konten SET " + ", ".join(updates) + " WHERE id = %s",
+                params
+            )
+            if cursor.rowcount == 0:
+                return jsonify({'success': False, 'error': 'Konto nicht gefunden'}), 404
+        return jsonify({'success': True}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 # ============================================================================
 # ENDPOINT 3: TRANSAKTIONEN (TAG 136: PostgreSQL-kompatibel)
@@ -740,6 +854,233 @@ def get_transaktionen():
             'success': False,
             'error': str(e)
         }), 500
+
+
+# ============================================================================
+# TRANSAKTIONS-KATEGORISIERUNG (regelbasiert + optional KI)
+# ============================================================================
+
+@bankenspiegel_api.route('/transaktionen/kategorisierung', methods=['GET'])
+@login_required
+def get_transaktionen_kategorisierung():
+    """
+    GET /api/bankenspiegel/transaktionen/kategorisierung
+    Transaktionen für die Kategorisierungs-UI (mit gegenkonto_name, unterkategorie).
+    Query: nur_unkategorisiert=true|false, kategorie=..., von=, bis=, limit=100, offset=0
+    """
+    from api.db_connection import convert_placeholders
+    try:
+        nur_unkategorisiert = request.args.get('nur_unkategorisiert', 'false').lower() in ('true', '1', 'yes')
+        kategorie_filter = request.args.get('kategorie')
+        von = request.args.get('von')
+        bis = request.args.get('bis')
+        suche = request.args.get('suche')
+        limit = min(request.args.get('limit', default=100, type=int), 500)
+        offset = request.args.get('offset', default=0, type=int)
+
+        with db_session() as conn:
+            cursor = conn.cursor()
+            query = """
+                SELECT
+                    t.id,
+                    t.buchungsdatum,
+                    t.betrag,
+                    t.verwendungszweck,
+                    t.buchungstext,
+                    t.gegenkonto_name,
+                    t.kategorie,
+                    t.unterkategorie,
+                    k.kontoname,
+                    b.bank_name
+                FROM transaktionen t
+                JOIN konten k ON t.konto_id = k.id
+                JOIN banken b ON k.bank_id = b.id
+                WHERE 1=1
+            """
+            params = []
+            if nur_unkategorisiert:
+                query += " AND (t.kategorie IS NULL OR t.kategorie = '')"
+            if kategorie_filter:
+                query += " AND t.kategorie = ?"
+                params.append(kategorie_filter)
+            if von:
+                query += " AND t.buchungsdatum >= ?"
+                params.append(von)
+            if bis:
+                query += " AND t.buchungsdatum <= ?"
+                params.append(bis)
+            search_term = None
+            if suche:
+                query += " AND (t.buchungstext LIKE ? OR t.verwendungszweck LIKE ? OR t.gegenkonto_name LIKE ?)"
+                search_term = "%" + str(suche).replace("%", "\\%").replace("_", "\\_") + "%"
+                params.extend([search_term, search_term, search_term])
+            query += " ORDER BY t.buchungsdatum DESC, t.id DESC"
+            query += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+            cursor.execute(convert_placeholders(query), params)
+            rows = cursor.fetchall()
+            transaktionen = rows_to_list(rows)
+
+            for t in transaktionen:
+                if t.get('buchungsdatum') and hasattr(t['buchungsdatum'], 'isoformat'):
+                    t['buchungsdatum'] = t['buchungsdatum'].strftime('%Y-%m-%d')
+
+            count_query = """
+                SELECT COUNT(*) as total FROM transaktionen t
+                JOIN konten k ON t.konto_id = k.id
+                JOIN banken b ON k.bank_id = b.id
+                WHERE 1=1
+            """
+            count_params = []
+            if nur_unkategorisiert:
+                count_query += " AND (t.kategorie IS NULL OR t.kategorie = '')"
+            if kategorie_filter:
+                count_query += " AND t.kategorie = ?"
+                count_params.append(kategorie_filter)
+            if von:
+                count_query += " AND t.buchungsdatum >= ?"
+                count_params.append(von)
+            if bis:
+                count_query += " AND t.buchungsdatum <= ?"
+                count_params.append(bis)
+            if suche and search_term:
+                count_query += " AND (t.buchungstext LIKE ? OR t.verwendungszweck LIKE ? OR t.gegenkonto_name LIKE ?)"
+                count_params.extend([search_term, search_term, search_term])
+            cursor.execute(convert_placeholders(count_query), count_params)
+            total = (row_to_dict(cursor.fetchone()) or {}).get('total', 0)
+        return jsonify({
+            'success': True,
+            'transaktionen': transaktionen,
+            'total': total,
+            'limit': limit,
+            'offset': offset,
+        }), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bankenspiegel_api.route('/kategorien', methods=['GET'])
+@login_required
+def get_transaktion_kategorien():
+    """
+    GET /api/bankenspiegel/kategorien
+    Liste der Kategorien/Unterkategorien aus den Regeln (für Filter/Dropdown).
+    """
+    from api.transaktion_kategorisierung import get_kategorien_liste
+    return jsonify({'success': True, 'kategorien': get_kategorien_liste()}), 200
+
+
+@bankenspiegel_api.route('/transaktionen/kategorisieren', methods=['POST'])
+@login_required
+def post_transaktionen_kategorisieren():
+    """
+    POST /api/bankenspiegel/transaktionen/kategorisieren
+    Wendet regelbasierte Kategorisierung auf (unkategorisierte) Transaktionen an.
+    Body: { "limit": 500, "nur_unkategorisiert": true, "mit_ki": false, "sonstige_neu_pruefen": false }
+    mit_ki=true: nach Regeln noch unkategorisierte per LM Studio vorschlagen (Batch).
+    sonstige_neu_pruefen=true: bestehende "Sonstige Ausgaben" mit aktuellen Regeln neu prüfen.
+    """
+    from api.transaktion_kategorisierung import kategorisiere_batch
+    try:
+        data = request.get_json() or {}
+        limit = min(int(data.get('limit', 500)), 2000)
+        nur_unkategorisiert = data.get('nur_unkategorisiert', True)
+        mit_ki = data.get('mit_ki', False)
+        sonstige_neu_pruefen = data.get('sonstige_neu_pruefen', False)
+
+        with db_session() as conn:
+            result = kategorisiere_batch(conn, limit=limit, nur_unkategorisiert=nur_unkategorisiert, overwrite=False)
+            sonstige_result = None
+            if sonstige_neu_pruefen:
+                sonstige_result = kategorisiere_batch(
+                    conn, limit=limit, nur_unkategorisiert=False, nur_sonstige_ausgaben=True
+                )
+
+        if mit_ki:
+            # Bei "Mit KI": immer noch unkategorisierte holen und an LM Studio schicken (max 50)
+            try:
+                from api.ai_api import kategorisiere_transaktion_mit_ki
+                with db_session() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        convert_placeholders("""
+                            SELECT id, verwendungszweck, buchungstext, gegenkonto_name, betrag
+                            FROM transaktionen
+                            WHERE (kategorie IS NULL OR kategorie = '')
+                            ORDER BY buchungsdatum DESC LIMIT 50
+                        """),
+                    )
+                    rows = cursor.fetchall()
+                updates = []
+                for row in rows:
+                    rid = row.get('id') if hasattr(row, 'get') else row[0]
+                    vw = row.get('verwendungszweck') if hasattr(row, 'get') else (row[1] if len(row) > 1 else None)
+                    bt = row.get('buchungstext') if hasattr(row, 'get') else (row[2] if len(row) > 2 else None)
+                    gk = row.get('gegenkonto_name') if hasattr(row, 'get') else (row[3] if len(row) > 3 else None)
+                    betrag = row.get('betrag') if hasattr(row, 'get') else (row[4] if len(row) > 4 else None)
+                    vorschlag = kategorisiere_transaktion_mit_ki(verwendungszweck=vw, buchungstext=bt, gegenkonto_name=gk, betrag=betrag)
+                    if vorschlag and vorschlag.get('kategorie'):
+                        updates.append((vorschlag.get('kategorie'), vorschlag.get('unterkategorie'), rid))
+                ki_count = 0
+                if updates:
+                    ph = sql_placeholder()
+                    with db_session() as conn2:
+                        cur = conn2.cursor()
+                        for kat, unterkat, rid in updates:
+                            cur.execute(
+                                convert_placeholders("""
+                                    UPDATE transaktionen SET kategorie = """ + ph + """, unterkategorie = """ + ph + """ WHERE id = """ + ph
+                                ),
+                                (kat, unterkat, rid),
+                            )
+                            if cur.rowcount > 0:
+                                ki_count += 1
+                        conn2.commit()
+                result['ki_aktualisiert'] = ki_count
+            except Exception as ki_err:
+                result['ki_fehler'] = str(ki_err)
+                result['ki_aktualisiert'] = 0
+        else:
+            result['ki_aktualisiert'] = 0
+
+        if sonstige_result is not None:
+            result['sonstige_neu_pruefen'] = sonstige_result
+
+        return jsonify({'success': True, 'ergebnis': result}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bankenspiegel_api.route('/transaktionen/<int:trans_id>/kategorie', methods=['PATCH', 'PUT'])
+@login_required
+def patch_transaktion_kategorie(trans_id):
+    """
+    PATCH /api/bankenspiegel/transaktionen/<id>/kategorie
+    Setzt Kategorie einer Transaktion (manuell oder nach KI-Vorschlag).
+    Body: { "kategorie": "...", "unterkategorie": "..." }
+    Oder Body leer: Regeln anwenden.
+    """
+    from api.transaktion_kategorisierung import kategorisiere_transaktion_in_db
+    from api.db_connection import convert_placeholders
+    try:
+        data = request.get_json() or {}
+        kategorie = data.get('kategorie')
+        unterkategorie = data.get('unterkategorie')
+        regeln_anwenden = data.get('regeln_anwenden', False)
+
+        with db_session() as conn:
+            if regeln_anwenden or (kategorie is None and unterkategorie is None):
+                ok = kategorisiere_transaktion_in_db(conn, trans_id, overwrite=True)
+            else:
+                ok = kategorisiere_transaktion_in_db(conn, trans_id, kategorie=kategorie, unterkategorie=unterkategorie, overwrite=True)
+            if ok:
+                conn.commit()
+        if not ok:
+            return jsonify({'success': False, 'error': 'Transaktion nicht gefunden oder nicht aktualisiert'}), 404
+        return jsonify({'success': True, 'trans_id': trans_id}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 # ============================================================================
 # ENDPOINT 4: EINKAUFSFINANZIERUNG (FIXED - TAG 72, TAG 136: PostgreSQL)
@@ -2002,3 +2343,199 @@ def get_fahrzeug_details():
             'success': False,
             'error': str(e)
         }), 500
+
+
+# =============================================================================
+# KREDITVERTRÄGE / AUSFÜHRUNGSBESTIMMUNGEN (Modalitäten-DB)
+# =============================================================================
+
+@bankenspiegel_api.route('/modalitaeten', methods=['GET'])
+@login_required
+def get_modalitaeten():
+    """
+    GET /api/bankenspiegel/modalitaeten
+    Query: anbieter (Kuerzel), regel_key, vertragsart_id
+    Liefert Anbieter, Vertragsarten und Ausführungsbestimmungen (strukturiert).
+    """
+    try:
+        anbieter_filter = request.args.get('anbieter')
+        regel_key_filter = request.args.get('regel_key')
+        vertragsart_id = request.args.get('vertragsart_id', type=int)
+
+        with db_session() as conn:
+            cur = conn.cursor()
+
+            # Anbieter
+            cur.execute("""
+                SELECT id, name, kuerzel, aktiv
+                FROM kredit_anbieter
+                WHERE aktiv = true
+                ORDER BY name
+            """)
+            anbieter = rows_to_list(cur.fetchall(), cur)
+
+            # Vertragsarten (mit Anbieter-Name)
+            cur.execute("""
+                SELECT va.id, va.anbieter_id, a.name as anbieter_name, a.kuerzel as anbieter_kuerzel,
+                       va.bezeichnung, va.produkt_code, va.gueltig_von, va.gueltig_bis
+                FROM kredit_vertragsart va
+                JOIN kredit_anbieter a ON va.anbieter_id = a.id
+                WHERE va.aktiv = true AND a.aktiv = true
+                ORDER BY a.name, va.bezeichnung
+            """)
+            vertragsarten = rows_to_list(cur.fetchall(), cur)
+
+            # Ausführungsbestimmungen (mit Vertragsart + Anbieter)
+            params = []
+            where_parts = ["ab.aktiv = true"]
+            if anbieter_filter:
+                where_parts.append("a.kuerzel = %s")
+                params.append(anbieter_filter.strip())
+            if regel_key_filter:
+                where_parts.append("ab.regel_key = %s")
+                params.append(regel_key_filter.strip())
+            if vertragsart_id:
+                where_parts.append("ab.vertragsart_id = %s")
+                params.append(vertragsart_id)
+
+            cur.execute(f"""
+                SELECT ab.id, ab.vertragsart_id, ab.dokument_id, ab.regel_typ, ab.regel_key,
+                       ab.regel_wert, ab.einheit, ab.bedingung, ab.volltext, ab.gueltig_von, ab.gueltig_bis, ab.sortierung,
+                       va.bezeichnung as vertragsart_bezeichnung, va.produkt_code,
+                       a.name as anbieter_name, a.kuerzel as anbieter_kuerzel,
+                       d.titel as dokument_titel
+                FROM kredit_ausfuehrungsbestimmungen ab
+                JOIN kredit_vertragsart va ON ab.vertragsart_id = va.id
+                JOIN kredit_anbieter a ON va.anbieter_id = a.id
+                LEFT JOIN kredit_dokumente d ON ab.dokument_id = d.id
+                WHERE {' AND '.join(where_parts)}
+                ORDER BY a.name, va.bezeichnung, ab.sortierung, ab.regel_typ
+            """, tuple(params) if params else ())
+            regeln = rows_to_list(cur.fetchall(), cur)
+
+        return jsonify({
+            'success': True,
+            'anbieter': anbieter,
+            'vertragsarten': vertragsarten,
+            'ausfuehrungsbestimmungen': regeln
+        }), 200
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bankenspiegel_api.route('/modalitaeten/suche', methods=['GET'])
+@login_required
+def suche_modalitaeten():
+    """
+    GET /api/bankenspiegel/modalitaeten/suche?q=zinsfreiheit
+    Volltextsuche in Ausführungsbestimmungen (regel_typ, regel_key, regel_wert, bedingung, volltext).
+    """
+    try:
+        q = (request.args.get('q') or '').strip()
+        if not q:
+            return jsonify({'success': True, 'treffer': []}), 200
+
+        with db_session() as conn:
+            cur = conn.cursor()
+            # plainto_tsquery für deutsche Begriffe; Limit 50
+            cur.execute("""
+                SELECT ab.id, ab.vertragsart_id, ab.regel_typ, ab.regel_key, ab.regel_wert, ab.einheit, ab.bedingung,
+                       left(ab.volltext, 300) as volltext_auszug,
+                       va.bezeichnung as vertragsart_bezeichnung, a.name as anbieter_name, a.kuerzel as anbieter_kuerzel
+                FROM kredit_ausfuehrungsbestimmungen ab
+                JOIN kredit_vertragsart va ON ab.vertragsart_id = va.id
+                JOIN kredit_anbieter a ON va.anbieter_id = a.id
+                WHERE ab.aktiv = true AND ab.tsv @@ plainto_tsquery('german', %s)
+                ORDER BY a.name, va.bezeichnung, ab.sortierung
+                LIMIT 50
+            """, (q,))
+            treffer = rows_to_list(cur.fetchall(), cur)
+
+        return jsonify({'success': True, 'treffer': treffer}), 200
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bankenspiegel_api.route('/modalitaeten/<int:regel_id>', methods=['PATCH'])
+@login_required
+def update_modalitaet(regel_id):
+    """
+    PATCH /api/bankenspiegel/modalitaeten/<id>
+    Body: { "regel_wert": "...", "bedingung": "optional" }
+    Aktualisiert eine Ausführungsbestimmung (nur admin).
+    """
+    from flask_login import current_user
+    if not current_user.is_authenticated or not current_user.has_role('admin'):
+        return jsonify({'success': False, 'error': 'Nur Admin'}), 403
+    try:
+        data = request.get_json() or {}
+        regel_wert = data.get('regel_wert')
+        bedingung = data.get('bedingung')
+        if regel_wert is None:
+            return jsonify({'success': False, 'error': 'regel_wert fehlt'}), 400
+        with db_session() as conn:
+            cur = conn.cursor()
+            if bedingung is not None:
+                cur.execute("""
+                    UPDATE kredit_ausfuehrungsbestimmungen
+                    SET regel_wert = %s, bedingung = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s AND aktiv = true
+                """, (regel_wert, bedingung, regel_id))
+            else:
+                cur.execute("""
+                    UPDATE kredit_ausfuehrungsbestimmungen
+                    SET regel_wert = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s AND aktiv = true
+                """, (regel_wert, regel_id))
+            if cur.rowcount == 0:
+                return jsonify({'success': False, 'error': 'Regel nicht gefunden oder inaktiv'}), 404
+            conn.commit()
+        return jsonify({'success': True, 'id': regel_id}), 200
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bankenspiegel_api.route('/modalitaeten', methods=['POST'])
+@login_required
+def create_modalitaet():
+    """
+    POST /api/bankenspiegel/modalitaeten
+    Body: vertragsart_id, regel_typ, regel_key, regel_wert, einheit (optional), bedingung (optional)
+    Legt eine neue Ausführungsbestimmung an (nur admin).
+    """
+    from flask_login import current_user
+    if not current_user.is_authenticated or not current_user.has_role('admin'):
+        return jsonify({'success': False, 'error': 'Nur Admin'}), 403
+    try:
+        data = request.get_json() or {}
+        vertragsart_id = data.get('vertragsart_id')
+        regel_typ = (data.get('regel_typ') or '').strip()
+        regel_key = (data.get('regel_key') or '').strip()
+        regel_wert = (data.get('regel_wert') or '').strip()
+        if not vertragsart_id or not regel_typ or not regel_key or not regel_wert:
+            return jsonify({'success': False, 'error': 'vertragsart_id, regel_typ, regel_key, regel_wert erforderlich'}), 400
+        einheit = (data.get('einheit') or '').strip() or None
+        bedingung = (data.get('bedingung') or '').strip() or None
+        with db_session() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO kredit_ausfuehrungsbestimmungen (vertragsart_id, regel_typ, regel_key, regel_wert, einheit, bedingung, sortierung, aktiv)
+                VALUES (%s, %s, %s, %s, %s, %s, 999, true)
+                RETURNING id
+            """, (vertragsart_id, regel_typ, regel_key, regel_wert, einheit, bedingung))
+            row = cur.fetchone()
+            new_id = row_to_dict(row)['id'] if row else None
+            conn.commit()
+        return jsonify({'success': True, 'id': new_id}), 201
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500

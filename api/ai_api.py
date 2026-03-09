@@ -11,7 +11,7 @@ Verwendet LM Studio Server (http://46.229.10.1:4433) für:
 """
 
 from flask import Blueprint, jsonify, request
-from flask_login import login_required
+from flask_login import login_required, current_user
 import requests
 import json
 import os
@@ -25,28 +25,46 @@ ai_api = Blueprint('ai_api', __name__, url_prefix='/api/ai')
 
 
 # ============================================================================
-# CONFIGURATION
+# CONFIGURATION – SSOT: config/credentials.json → lm_studio
 # ============================================================================
 
+# Nur Fallback, wenn credentials.json keinen lm_studio-Block hat (z. B. Testumgebung)
+_LM_STUDIO_FALLBACK = {
+    'api_url': 'http://46.229.10.1:4433/v1',
+    'default_model': 'mistralai/devstral-small-2-2512',
+    'vision_model': 'qwen/qwen3-vl-4b',
+    'embedding_model': 'text-embedding-nomic-embed-text-v1.5',
+    'timeout': 30,
+}
+
+
 def get_lm_studio_config():
-    """Lädt LM Studio Konfiguration aus credentials.json"""
+    """Lädt LM Studio Konfiguration aus config/credentials.json (lm_studio)."""
     creds_file = 'config/credentials.json'
     if os.path.exists(creds_file):
         try:
             with open(creds_file, 'r') as f:
                 creds = json.load(f)
                 if 'lm_studio' in creds:
-                    return creds['lm_studio']
+                    # Env-Overrides für Deployment/Umgebungen
+                    cfg = dict(creds['lm_studio'])
+                    if os.getenv('LM_STUDIO_API_URL'):
+                        cfg['api_url'] = os.getenv('LM_STUDIO_API_URL')
+                    if os.getenv('LM_STUDIO_DEFAULT_MODEL'):
+                        cfg['default_model'] = os.getenv('LM_STUDIO_DEFAULT_MODEL')
+                    if os.getenv('LM_STUDIO_VISION_MODEL'):
+                        cfg['vision_model'] = os.getenv('LM_STUDIO_VISION_MODEL')
+                    if os.getenv('LM_STUDIO_TIMEOUT'):
+                        cfg['timeout'] = int(os.getenv('LM_STUDIO_TIMEOUT'))
+                    return cfg
         except Exception as e:
             logger.error(f"Fehler beim Laden der LM Studio Credentials: {e}")
-    
-    # Fallback: Environment Variables oder Defaults
-    return {
-        'api_url': os.getenv('LM_STUDIO_API_URL', 'http://46.229.10.1:4433/v1'),
-        'default_model': os.getenv('LM_STUDIO_DEFAULT_MODEL', 'mistralai/magistral-small-2509'),  # TAG 195: Geändert von olmo-3-32b-think (Think-Modell) zu mistralai (bessere JSON-Ausgaben)
-        'embedding_model': os.getenv('LM_STUDIO_EMBEDDING_MODEL', 'text-embedding-nomic-embed-text-v1.5'),
-        'timeout': int(os.getenv('LM_STUDIO_TIMEOUT', '30'))
-    }
+    out = dict(_LM_STUDIO_FALLBACK)
+    out['api_url'] = os.getenv('LM_STUDIO_API_URL', out['api_url'])
+    out['default_model'] = os.getenv('LM_STUDIO_DEFAULT_MODEL', out['default_model'])
+    out['vision_model'] = os.getenv('LM_STUDIO_VISION_MODEL', out['vision_model'])
+    out['timeout'] = int(os.getenv('LM_STUDIO_TIMEOUT', str(out['timeout'])))
+    return out
 
 
 # ============================================================================
@@ -59,20 +77,21 @@ class LMStudioClient:
     def __init__(self):
         self.config = get_lm_studio_config()
         self.base_url = self.config.get('api_url', 'http://46.229.10.1:4433/v1')
-        self.default_model = self.config.get('default_model', 'mistralai/magistral-small-2509')  # TAG 195: Geändert für bessere JSON-Ausgaben
+        self.default_model = self.config.get('default_model', _LM_STUDIO_FALLBACK['default_model'])
+        self.vision_model = self.config.get('vision_model', 'qwen/qwen3-vl-4b')
         self.embedding_model = self.config.get('embedding_model', 'text-embedding-nomic-embed-text-v1.5')
         self.timeout = self.config.get('timeout', 30)
     
-    def _make_request(self, endpoint: str, payload: Dict[str, Any], method: str = 'POST') -> Optional[Dict[str, Any]]:
+    def _make_request(self, endpoint: str, payload: Dict[str, Any], method: str = 'POST', timeout: Optional[int] = None) -> Optional[Dict[str, Any]]:
         """Macht HTTP-Request an LM Studio API"""
         url = f"{self.base_url}/{endpoint}"
         headers = {"Content-Type": "application/json"}
-        
+        t = timeout if timeout is not None else self.timeout
         try:
             if method == 'GET':
-                response = requests.get(url, headers=headers, timeout=self.timeout)
+                response = requests.get(url, headers=headers, timeout=t)
             else:
-                response = requests.post(url, json=payload, headers=headers, timeout=self.timeout)
+                response = requests.post(url, json=payload, headers=headers, timeout=t)
             
             response.raise_for_status()
             return response.json()
@@ -82,11 +101,15 @@ class LMStudioClient:
         except requests.exceptions.RequestException as e:
             logger.error(f"LM Studio API Fehler: {endpoint} - {str(e)}")
             return None
+        except ValueError as e:
+            # response.json() bei HTML-Antwort (z. B. Proxy-Fehlerseite)
+            logger.error(f"LM Studio API: Antwort war kein JSON (z. B. HTML): {endpoint} - {str(e)}")
+            return None
         except Exception as e:
             logger.error(f"Unerwarteter Fehler bei LM Studio API: {endpoint} - {str(e)}")
             return None
     
-    def chat_completion(self, messages: list, model: Optional[str] = None, max_tokens: int = 500, temperature: float = 0.3) -> Optional[str]:
+    def chat_completion(self, messages: list, model: Optional[str] = None, max_tokens: int = 500, temperature: float = 0.3, timeout: Optional[int] = None) -> Optional[str]:
         """
         Sendet Chat-Completion Request
         
@@ -95,6 +118,7 @@ class LMStudioClient:
             model: Modell-Name (optional, verwendet default_model)
             max_tokens: Maximale Token-Anzahl
             temperature: Temperatur (0.0-1.0)
+            timeout: Request-Timeout in Sekunden (optional, sonst Config-Default)
         
         Returns:
             Antwort-Text oder None bei Fehler
@@ -107,11 +131,54 @@ class LMStudioClient:
             "temperature": temperature
         }
         
-        result = self._make_request("chat/completions", payload)
+        result = self._make_request("chat/completions", payload, timeout=timeout)
         if result and "choices" in result and len(result["choices"]) > 0:
             return result["choices"][0].get("message", {}).get("content", "")
         return None
-    
+
+    def chat_completion_vision(
+        self,
+        image_base64: str,
+        image_media_type: str,
+        text_prompt: str,
+        model: Optional[str] = None,
+        max_tokens: int = 1024,
+        temperature: float = 0.0,
+        timeout: Optional[int] = 90,
+    ) -> Optional[str]:
+        """
+        Chat mit Bild (OpenAI-kompatibel: image_url mit data-URL). Für Fahrzeugschein-OCR.
+        content: [ {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,..."}}, {"type": "text", "text": "..."} ]
+        """
+        model = model or self.vision_model
+        data_url = f"data:{image_media_type or 'image/jpeg'};base64,{image_base64}"
+        payload = {
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": data_url}},
+                        {"type": "text", "text": text_prompt},
+                    ],
+                }
+            ],
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        result = self._make_request("chat/completions", payload, timeout=timeout)
+        if result and "choices" in result and len(result["choices"]) > 0:
+            msg = result["choices"][0].get("message", {})
+            content = msg.get("content")
+            if isinstance(content, str):
+                return content
+            if isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict) and part.get("type") == "text":
+                        return part.get("text", "")
+            return ""
+        return None
+
     def completion(self, prompt: str, model: Optional[str] = None, max_tokens: int = 100, temperature: float = 0.7) -> Optional[str]:
         """
         Sendet Completion Request (Text-Vervollständigung)
@@ -208,8 +275,7 @@ def chat():
         max_tokens = data.get('max_tokens', 500)
         temperature = data.get('temperature', 0.3)
         
-        # TAG 195: Verwende mistralai als Default für bessere JSON-Ausgaben
-        model = model or "mistralai/magistral-small-2509"
+        model = model or lm_studio_client.default_model
         response = lm_studio_client.chat_completion(
             messages=messages,
             model=model,
@@ -256,6 +322,155 @@ def embedding():
     except Exception as e:
         logger.error(f"Fehler bei Embedding: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
+# USE CASE: TRANSAKTIONS-KATEGORISIERUNG (Bankenspiegel)
+# ============================================================================
+
+# Kategorien-Liste für KI-Prompt (muss mit transaktion_kategorisierung.REGELN abgestimmt sein)
+TRANSAKTION_KATEGORIEN_FUER_KI = [
+    "Intern", "Einkaufsfinanzierung", "Personal", "Miete & Nebenkosten", "Versicherung",
+    "Steuern", "Betrieb", "Bank & Zinsen", "Lieferanten", "Einnahmen", "Sonstige Ausgaben", "Sonstige Einnahmen"
+]
+
+
+def _hole_kategorisierung_beispiele(limit: int = 12) -> list:
+    """Lädt zuletzt kategorisierte Transaktionen als Few-Shot-Beispiele (KI lernt mit)."""
+    try:
+        from api.db_utils import db_session
+        from api.db_connection import convert_placeholders
+        beispiele = []
+        with db_session() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                convert_placeholders("""
+                    SELECT verwendungszweck, buchungstext, gegenkonto_name, betrag, kategorie, unterkategorie
+                    FROM transaktionen
+                    WHERE kategorie IS NOT NULL AND kategorie != ''
+                    ORDER BY id DESC
+                    LIMIT """ + str(min(int(limit), 20)))
+            )
+            for row in cur.fetchall():
+                vw = row.get("verwendungszweck") if hasattr(row, "get") else (row[0] if len(row) > 0 else None)
+                bt = row.get("buchungstext") if hasattr(row, "get") else (row[1] if len(row) > 1 else None)
+                gk = row.get("gegenkonto_name") if hasattr(row, "get") else (row[2] if len(row) > 2 else None)
+                bet = row.get("betrag") if hasattr(row, "get") else (row[3] if len(row) > 3 else None)
+                kat = row.get("kategorie") if hasattr(row, "get") else (row[4] if len(row) > 4 else None)
+                unter = row.get("unterkategorie") if hasattr(row, "get") else (row[5] if len(row) > 5 else None)
+                if kat:
+                    text_parts = [str(vw or ""), str(bt or ""), str(gk or "")]
+                    text = " | ".join(p for p in text_parts if p.strip())[:300]
+                    bet_str = f"{bet:.2f} €" if bet is not None else "—"
+                    beispiele.append({
+                        "text": text,
+                        "betrag": bet_str,
+                        "kategorie": kat,
+                        "unterkategorie": unter or ""
+                    })
+        return beispiele
+    except Exception as e:
+        logger.warning("Kategorisierung-Beispiele laden: %s", e)
+        return []
+
+
+def kategorisiere_transaktion_mit_ki(
+    verwendungszweck: Optional[str] = None,
+    buchungstext: Optional[str] = None,
+    gegenkonto_name: Optional[str] = None,
+    betrag: Optional[float] = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    Schlägt Kategorie/Unterkategorie für eine Banktransaktion per LM Studio vor.
+    Nutzt Few-Shot-Beispiele aus zuletzt gespeicherten Kategorisierungen (KI lernt mit).
+    Returns: {"kategorie": "...", "unterkategorie": "..."} oder None bei Fehler.
+    """
+    text_parts = [
+        str(verwendungszweck or ""),
+        str(buchungstext or ""),
+        str(gegenkonto_name or ""),
+    ]
+    betrag_str = f"{betrag:.2f} €" if betrag is not None else "nicht angegeben"
+    text = " | ".join(p for p in text_parts if p.strip())
+    kategorien_str = ", ".join(TRANSAKTION_KATEGORIEN_FUER_KI)
+
+    beispiele = _hole_kategorisierung_beispiele(limit=12)
+    beispiele_block = ""
+    if beispiele:
+        lines = ["Beispiele aus euren bereits kategorisierten Buchungen (daran orientieren):"]
+        for b in beispiele[:10]:
+            uk = (" / " + b["unterkategorie"]) if b.get("unterkategorie") else ""
+            lines.append(f"- Text: {b['text']} | Betrag: {b['betrag']} → Kategorie: {b['kategorie']}{uk}")
+        beispiele_block = "\n".join(lines) + "\n\n"
+
+    prompt = f"""{beispiele_block}Kategorisiere diese Banktransaktion (Autohaus) in genau eine Kategorie.
+Verwendungszweck/Buchungstext/Gegenkonto: {text[:500]}
+Betrag: {betrag_str}
+
+Wähle NUR eine der folgenden Kategorien: {kategorien_str}
+Unterkategorie kann spezifischer sein (z.B. bei Einkaufsfinanzierung: Stellantis, Santander, Hyundai; bei Personal: Gehalt; bei Lieferanten: Teile, Sonstige).
+
+Antworte NUR mit diesem JSON, nichts anderes:
+{{"kategorie": "Gewählte Kategorie", "unterkategorie": "Unterkategorie oder null"}}
+"""
+
+    messages = [
+        {
+            "role": "system",
+            "content": "Du bist ein Buchhalter. Du kategorisierst Bankbuchungen für ein Autohaus. Orientiere dich an den gegebenen Beispielen. Antworte ausschließlich mit gültigem JSON: {\"kategorie\": \"...\", \"unterkategorie\": \"...\"}."
+        },
+        {"role": "user", "content": prompt}
+    ]
+    response = lm_studio_client.chat_completion(
+        messages=messages,
+        max_tokens=150,
+        temperature=0.2
+    )
+    if not response:
+        return None
+    try:
+        response_clean = response.strip()
+        if response_clean.startswith("```"):
+            lines = response_clean.split("\n")
+            response_clean = "\n".join(lines[1:-1]) if len(lines) > 2 else response_clean
+        out = json.loads(response_clean)
+        k = (out.get("kategorie") or "").strip()
+        if not k:
+            return None
+        return {
+            "kategorie": k,
+            "unterkategorie": (out.get("unterkategorie") or "").strip() or None
+        }
+    except json.JSONDecodeError:
+        logger.warning("KI Kategorisierung: Kein gültiges JSON - %s", response[:200])
+        return None
+
+
+@ai_api.route('/kategorisiere/transaktion', methods=['POST'])
+@login_required
+def api_kategorisiere_transaktion():
+    """
+    POST /api/ai/kategorisiere/transaktion
+    Schlägt für eine Banktransaktion Kategorie/Unterkategorie per LM Studio vor.
+    Body: { "verwendungszweck": "...", "buchungstext": "...", "gegenkonto_name": "...", "betrag": 123.45 }
+    """
+    try:
+        data = request.get_json() or {}
+        vorschlag = kategorisiere_transaktion_mit_ki(
+            verwendungszweck=data.get("verwendungszweck"),
+            buchungstext=data.get("buchungstext"),
+            gegenkonto_name=data.get("gegenkonto_name"),
+            betrag=data.get("betrag"),
+        )
+        if vorschlag is None:
+            return jsonify({
+                "success": False,
+                "error": "KI konnte keine Kategorie vorschlagen (Timeout oder ungültige Antwort)"
+            }), 500
+        return jsonify({"success": True, "vorschlag": vorschlag}), 200
+    except Exception as e:
+        logger.error("Fehler bei KI-Kategorisierung: %s", str(e))
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 # ============================================================================
@@ -368,10 +583,8 @@ Antworte im JSON-Format:
             }
         ]
         
-        # TAG 195: Verwende mistralai für bessere JSON-Ausgaben
         response = lm_studio_client.chat_completion(
             messages=messages,
-            model="mistralai/magistral-small-2509",  # Explizit setzen
             max_tokens=500,
             temperature=0.3
         )
@@ -688,10 +901,8 @@ Antworte im JSON-Format:
             }
         ]
         
-        # TAG 195: Explizit mistralai-Modell für bessere JSON-Ausgaben
         ki_response = lm_studio_client.chat_completion(
             messages=messages,
-            model="mistralai/magistral-small-2509",  # Explizit setzen für strukturierte Ausgaben
             max_tokens=500,
             temperature=0.3
         )
@@ -943,13 +1154,8 @@ Antworte im JSON-Format:
             }
         ]
         
-        # Verwende alternatives Modell für bessere JSON-Ausgabe (kein "think"-Modell)
-        # "think"-Modelle geben Denkprozess statt direkter Antwort aus
-        model = "mistralai/magistral-small-2509"  # Besseres Modell für strukturierte Ausgaben
-        
         response_content = lm_studio_client.chat_completion(
             messages=messages,
-            model=model,
             max_tokens=800,
             temperature=0.7  # Etwas kreativer für Beschreibungen
         )
@@ -1024,3 +1230,118 @@ Antworte im JSON-Format:
             'success': False,
             'error': str(e)
         }), 500
+
+
+# ============================================================================
+# NATURSPRACHLICHE ANALYSEN AUF DRIVE-GESCHÄFTSDATEN (LM Studio)
+# ============================================================================
+# Konzept: docs/workstreams/integrations/KONZEPT_NATURSPRACHLICHE_ANALYSEN_DRIVE_DATEN.md
+# Keine freie SQL-Generierung – vordefinierte Daten-Views aus SSOT-APIs als Kontext.
+
+
+def _build_tek_context(tek_data: Dict[str, Any], monat: int, jahr: int) -> str:
+    """Baut einen kompakten Text-Kontext aus get_tek_data für das LLM."""
+    if not tek_data:
+        return "Keine TEK-Daten verfügbar."
+    lines = [f"TEK-Daten für {monat}/{jahr} (Tägliche Erfolgskontrolle):"]
+    gesamt = tek_data.get("gesamt") or {}
+    lines.append(
+        f"Gesamt: Umsatz {gesamt.get('umsatz', 0):,.0f} €, Einsatz {gesamt.get('einsatz', 0):,.0f} €, "
+        f"DB1 {gesamt.get('db1', 0):,.0f} €, Marge {gesamt.get('marge', 0):.1f} %. "
+        f"Prognose Monatsende: {gesamt.get('prognose', 0):,.0f} €, Breakeven: {gesamt.get('breakeven', 0):,.0f} €."
+    )
+    wg = gesamt.get("werktage") or {}
+    if wg:
+        lines.append(
+            f"Werktage: {wg.get('vergangen', 0)} von {wg.get('gesamt', 0)} (verbleibend: {wg.get('verbleibend', 0)})."
+        )
+    bereiche = tek_data.get("bereiche") or []
+    if bereiche:
+        lines.append("Bereiche:")
+        for b in bereiche:
+            name = b.get("id") or b.get("name") or "?"
+            lines.append(
+                f"  {name}: Umsatz {float(b.get('umsatz') or 0):,.0f} €, DB1 {float(b.get('db1') or 0):,.0f} €, "
+                f"Marge {float(b.get('marge') or 0):.1f} %"
+            )
+    vm = tek_data.get("vm") or {}
+    vj = tek_data.get("vj") or {}
+    if vm or vj:
+        lines.append(
+            f"Vormonat: DB1 {vm.get('db1', 0):,.0f} €, Marge {vm.get('marge', 0):.1f} %. "
+            f"Vorjahr (gleicher Zeitraum): DB1 {vj.get('db1', 0):,.0f} €, Marge {vj.get('marge', 0):.1f} %."
+        )
+    return "\n".join(lines)
+
+
+@ai_api.route('/analyse/geschaeftsdaten', methods=['POST'])
+@login_required
+def analyse_geschaeftsdaten():
+    """
+    Natursprachliche Analyse auf echten DRIVE-Geschäftsdaten (LM Studio).
+
+    POST Body: { "frage": "Wie steht die TEK heute?", "bereich": "tek" (optional) }
+    Nur vordefinierte Daten-Views (SSOT), keine freie SQL-Generierung.
+    Erster Bereich: TEK (Controlling) – erfordert Feature 'controlling'.
+    """
+    try:
+        if not (hasattr(current_user, "can_access_feature") and current_user.can_access_feature("controlling")):
+            return jsonify({
+                "success": False,
+                "error": "Keine Berechtigung für Geschäftsdaten-Analyse (Feature 'controlling' erforderlich)."
+            }), 403
+
+        data = request.get_json() or {}
+        frage = (data.get("frage") or "").strip()
+        if not frage:
+            return jsonify({"success": False, "error": "Bitte 'frage' im JSON-Body angeben."}), 400
+
+        bereich = (data.get("bereich") or "tek").strip().lower()
+        if bereich != "tek":
+            return jsonify({
+                "success": False,
+                "error": f"Bereich '{bereich}' nicht unterstützt. Aktuell nur 'tek' (TEK/Controlling)."
+            }), 400
+
+        # SSOT: TEK-Daten aus controlling_data (aktueller Monat)
+        from datetime import date
+        from api.controlling_data import get_tek_data
+
+        heute = date.today()
+        tek_data = get_tek_data(monat=heute.month, jahr=heute.year, firma="0", standort="0")
+        kontext_str = _build_tek_context(tek_data, heute.month, heute.year)
+
+        system_prompt = (
+            "Du bist ein Assistent für DRIVE-Kennzahlen (Autohaus). "
+            "Antworte ausschließlich auf Basis der folgenden Daten. Erfinde keine Zahlen. "
+            "Halte die Antwort kurz (2–5 Sätze), auf Deutsch."
+        )
+        user_prompt = f"Daten:\n{kontext_str}\n\nFrage des Nutzers: {frage}"
+
+        response_text = lm_studio_client.chat_completion(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=400,
+            temperature=0.2,
+            timeout=45,
+        )
+
+        if not response_text:
+            return jsonify({
+                "success": False,
+                "error": "LM Studio hat keine Antwort geliefert (Timeout oder Server nicht erreichbar).",
+                "kontext_bereich": "tek",
+            }), 502
+
+        return jsonify({
+            "success": True,
+            "antwort": response_text.strip(),
+            "kontext_bereich": "tek",
+            "stichtag": heute.isoformat(),
+        }), 200
+
+    except Exception as e:
+        logger.exception("Fehler bei Geschäftsdaten-Analyse: %s", str(e))
+        return jsonify({"success": False, "error": str(e)}), 500

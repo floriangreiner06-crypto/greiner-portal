@@ -1,6 +1,6 @@
 # Kontext-Registry für KI „Mit KI erweitern“
 
-**Letzte Prüfung:** 2026-03-09 (Session-End controlling: TEK Prognose immer aus aktuellem Monat).
+**Letzte Prüfung:** 2026-02-28 (Session-End controlling: CONTEXT Kategorisierung ergänzt).
 
 **Zweck:** Pro Thema ein kurzer, fachlicher SSOT-Text für die KI. Wird beim „Mit KI erweitern“ an den Prompt angehängt, damit die KI Berechnungsdetails korrekt ergänzen kann.
 

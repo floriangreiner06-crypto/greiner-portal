@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 # Kontext-Registry: Schlüsselwörter (lower) -> Kontext für KI (fachliche SSOT-Beschreibung).
-# Entspricht docs/workstreams/Hilfe/hilfe_ki_kontext_registry.md (Letzte Prüfung: 2026-03-09; Session-End controlling: TEK Prognose immer aus aktuellem Monat)
+# Entspricht docs/workstreams/Hilfe/hilfe_ki_kontext_registry.md (Letzte Prüfung: 2026-02-28; Session-End controlling: CONTEXT Kategorisierung ergänzt)
 HILFE_KI_KONTEXT_REGISTRY = {
     "tek": """Die TEK (Tägliche Erfolgskontrolle) im DRIVE zeigt tägliche Kennzahlen für Umsatz, Einsatz, DB1 (Deckungsbeitrag 1), Marge und eine Breakeven-Prognose. Alle Berechnungen kommen aus einer zentralen Quelle (api/controlling_data.py).
 - **Umsatz:** Tagesumsatz aus Locosoft (Fahrzeugverkauf, Werkstatt, Teile etc.), Konten 800000–889999.
