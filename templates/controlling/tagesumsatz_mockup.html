@@ -1,0 +1,540 @@
+{% extends "base.html" %}
+
+{% block title %}Tagesumsatz – Rechnungsdatum{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Page: dezent hinterlegt, Karten heben sich ab */
+    .tagesumsatz-page { background: #f8f9fc; min-height: 60vh; }
+
+    /* Header: ruhig, klare Hierarchie */
+    .tagesumsatz-hero {
+        margin-bottom: 1.5rem;
+    }
+    .tagesumsatz-hero h1 { font-size: 1.5rem; font-weight: 600; color: #1a1d21; letter-spacing: -0.02em; }
+    .tagesumsatz-hero .lead { font-size: 0.8125rem; color: #6b7280; font-weight: 400; margin-top: 0.15rem; }
+    .tagesumsatz-date-wrap {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        padding: 0.35rem 0.75rem;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .tagesumsatz-date-wrap input[type="date"] {
+        border: none;
+        background: transparent;
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: #374151;
+    }
+    .tagesumsatz-date-wrap input[type="date"]:focus { outline: none; }
+    .tagesumsatz-date-wrap .btn-date { padding: 0.25rem 0.5rem; font-size: 0.8rem; border-radius: 6px; }
+
+    /* Hero-KPI: ein großer Umsatz im Fokus */
+    .tagesumsatz-hero-kpi {
+        background: linear-gradient(145deg, #ffffff 0%, #fafbfc 100%);
+        border: 1px solid #e5e7eb;
+        border-radius: 14px;
+        padding: 1.25rem 1.5rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        margin-bottom: 1rem;
+    }
+    .tagesumsatz-hero-kpi .hero-label {
+        font-size: 0.6875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #9ca3af;
+        font-weight: 500;
+    }
+    .tagesumsatz-hero-kpi .hero-value {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #111827;
+        letter-spacing: -0.03em;
+        line-height: 1.2;
+    }
+    .tagesumsatz-hero-kpi .hero-sub {
+        font-size: 0.8rem;
+        color: #6b7280;
+        margin-top: 0.25rem;
+    }
+
+    /* Kompakte KPI-Reihe: zurückhaltend, einheitlich */
+    .tagesumsatz-kpi-row { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.5rem; }
+    .tagesumsatz-kpi-card {
+        flex: 1;
+        min-width: 140px;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 0.85rem 1rem;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+        transition: box-shadow 0.2s, border-color 0.2s;
+    }
+    .tagesumsatz-kpi-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+        border-color: #d1d5db;
+    }
+    .tagesumsatz-kpi-card .kpi-label {
+        font-size: 0.6875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #9ca3af;
+        font-weight: 500;
+        margin-bottom: 0.2rem;
+    }
+    .tagesumsatz-kpi-card .kpi-value {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #111827;
+        font-variant-numeric: tabular-nums;
+    }
+    .tagesumsatz-kpi-card .kpi-sub { font-size: 0.75rem; color: #6b7280; margin-top: 0.15rem; }
+    .tagesumsatz-kpi-card.kpi-werkstatt .kpi-value { color: #059669; }
+    .tagesumsatz-kpi-card.kpi-fahrzeug .kpi-value { color: #7c3aed; }
+    .tagesumsatz-kpi-card.kpi-anzahl .kpi-value { color: #0d9488; }
+
+    /* Hinweis: unaufdringlich */
+    .tagesumsatz-hint {
+        font-size: 0.75rem;
+        color: #9ca3af;
+        margin-bottom: 1.25rem;
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+    .tagesumsatz-hint i { opacity: 0.8; }
+
+    /* Sektionen: klare Karten, weiche Kanten */
+    .tagesumsatz-block {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+        margin-bottom: 1rem;
+    }
+    .tagesumsatz-block .block-head {
+        padding: 0.65rem 1.25rem;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: #374151;
+        background: #fafbfc;
+        border-bottom: 1px solid #f3f4f6;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .tagesumsatz-block .block-head.werkstatt { border-left: 3px solid #059669; }
+    .tagesumsatz-block .block-head.fahrzeug  { border-left: 3px solid #7c3aed; }
+    .tagesumsatz-block .block-head.trend     { border-left: 3px solid #2563eb; }
+    .tagesumsatz-block .block-body { padding: 1rem 1.25rem; }
+
+    /* Tabellen: luftig, lesbar */
+    .tagesumsatz-tbl { width: 100%; font-size: 0.8125rem; border-collapse: collapse; }
+    .tagesumsatz-tbl th {
+        text-align: left;
+        font-weight: 500;
+        color: #6b7280;
+        padding: 0.5rem 0.75rem 0.5rem 0;
+        border-bottom: 1px solid #f3f4f6;
+    }
+    .tagesumsatz-tbl td {
+        padding: 0.5rem 0.75rem 0.5rem 0;
+        border-bottom: 1px solid #f9fafb;
+        color: #374151;
+        font-variant-numeric: tabular-nums;
+    }
+    .tagesumsatz-tbl tbody tr:hover { background: #fafbfc; }
+    .tagesumsatz-tbl .num { text-align: right; }
+    .tagesumsatz-tbl .row-sum { font-weight: 600; background: #f8fafc; color: #111827; }
+    .tagesumsatz-tbl .row-sum:hover { background: #f1f5f9; }
+    .tagesumsatz-tbl tbody tr[data-detail]:not(.row-sum) { cursor: pointer; }
+    .tagesumsatz-tbl tbody tr[data-detail]:not(.row-sum):hover { background: #eff6ff; }
+    .tagesumsatz-tbl tbody tr[data-detail] .detail-hint { font-size: 0.7rem; color: #9ca3af; margin-left: 0.35rem; }
+    .tagesumsatz-tbl tbody tr[data-detail]:hover .detail-hint { color: #3b82f6; }
+
+    /* 7-Tage: Balken + Y-Achse (größer, beschriftet) */
+    .tagesumsatz-chart-wrap {
+        display: flex;
+        align-items: stretch;
+        gap: 0.5rem;
+        min-height: 120px;
+    }
+    .tagesumsatz-y-axis {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        font-size: 0.6875rem;
+        color: #6b7280;
+        font-variant-numeric: tabular-nums;
+        padding: 0.15rem 0.35rem 0 0;
+        border-right: 1px solid #e5e7eb;
+        min-width: 3.5rem;
+    }
+    .tagesumsatz-bars {
+        display: flex;
+        align-items: flex-end;
+        gap: 0.5rem;
+        flex: 1;
+        height: 100px;
+    }
+    .tagesumsatz-bars .bar-wrap {
+        flex: 1;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        align-items: center;
+        min-width: 0;
+    }
+    .tagesumsatz-bars .bar {
+        width: 100%;
+        max-width: 36px;
+        border-radius: 6px 6px 0 0;
+        background: linear-gradient(180deg, #3b82f6 0%, #60a5fa 100%);
+        min-height: 10px;
+        flex-shrink: 0;
+        transition: height 0.3s ease;
+    }
+    .tagesumsatz-bars .bar.today { background: linear-gradient(180deg, #1d4ed8 0%, #3b82f6 100%); }
+    .tagesumsatz-bars .bar-label { font-size: 0.6875rem; color: #9ca3af; margin-top: 0.35rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4 tagesumsatz-page">
+
+    <!-- Header + Datum -->
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-2 tagesumsatz-hero">
+        <div>
+            <h1 class="mb-0">Tagesumsatz</h1>
+            <p class="lead mb-0">Nach Rechnungsdatum · wie Locosoft 272/273, ohne manuell zu filtern</p>
+        </div>
+        <div class="tagesumsatz-date-wrap">
+            <input type="date" id="filterDatum" value="{{ heute|default('', true) }}">
+            <button type="button" class="btn btn-sm btn-outline-secondary btn-date" onclick="setHeute()">Heute</button>
+            <button type="button" class="btn btn-sm btn-outline-primary btn-date" onclick="loadData()" title="Aktualisieren">
+                <i class="bi bi-arrow-clockwise"></i>
+            </button>
+        </div>
+    </div>
+
+    <p class="tagesumsatz-hint">
+        <i class="bi bi-info-circle"></i>
+        Locosoft-PostgreSQL (Rechnungsdatum), tagesaktuell. TEK bleibt unverändert (Buchungsdatum).
+    </p>
+
+    <!-- Hero: ein großer Umsatz -->
+    <div class="tagesumsatz-hero-kpi">
+        <div class="hero-label">Gesamtumsatz netto</div>
+        <div class="hero-value" id="kpiGesamt">—</div>
+        <div class="hero-sub" id="kpiGesamtBrutto">Brutto inkl. MwSt.: —</div>
+    </div>
+
+    <!-- KPI-Reihe: Werkstatt · Fahrzeug · Rechnungen -->
+    <div class="tagesumsatz-kpi-row">
+        <div class="tagesumsatz-kpi-card kpi-werkstatt">
+            <div class="kpi-label">Dienstleistung + ET</div>
+            <div class="kpi-value" id="kpiWerkstatt">—</div>
+            <div class="kpi-sub">L272 · Lohn + Teile</div>
+        </div>
+        <div class="tagesumsatz-kpi-card kpi-fahrzeug">
+            <div class="kpi-label">Fahrzeug</div>
+            <div class="kpi-value" id="kpiFahrzeug">—</div>
+            <div class="kpi-sub">L273 · NW + GW</div>
+        </div>
+        <div class="tagesumsatz-kpi-card kpi-anzahl">
+            <div class="kpi-label">Rechnungen</div>
+            <div class="kpi-value" id="kpiAnzahl">—</div>
+            <div class="kpi-sub" id="kpiAnzahlDetail">—</div>
+        </div>
+    </div>
+
+    <!-- Ertrag (optional, kompakt) -->
+    <div class="tagesumsatz-kpi-row">
+        <div class="tagesumsatz-kpi-card">
+            <div class="kpi-label">Lohn Bruttoertrag</div>
+            <div class="kpi-value" id="kpiLohnErtrag">—</div>
+        </div>
+        <div class="tagesumsatz-kpi-card">
+            <div class="kpi-label">Teile Bruttoertrag</div>
+            <div class="kpi-value" id="kpiTeileErtrag">—</div>
+        </div>
+        <div class="tagesumsatz-kpi-card">
+            <div class="kpi-label">Fahrzeug DB</div>
+            <div class="kpi-value" id="kpiFahrzeugDB">—</div>
+            <div class="kpi-sub" title="Aus Portal sales (Sync). Geringe Abweichung zu L273PR möglich (Filter/Stichtag).">optional · aus sales</div>
+        </div>
+    </div>
+
+    <!-- Block: Dienstleistung & Ersatzteile -->
+    <div class="tagesumsatz-block">
+        <div class="block-head werkstatt">
+            <i class="bi bi-wrench-adjustable"></i>
+            Dienstleistung & Ersatzteile (L272PR)
+        </div>
+        <div class="block-body">
+            <table class="tagesumsatz-tbl">
+                <thead>
+                    <tr>
+                        <th>Rechnungsart</th>
+                        <th class="num">Anzahl</th>
+                        <th class="num">Lohn netto</th>
+                        <th class="num">Teile netto</th>
+                        <th class="num">Summe netto</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody272">
+                    <tr class="row-sum">
+                        <td>Summe</td>
+                        <td class="num" id="summe272Anz">0</td>
+                        <td class="num" id="summe272Lohn">0,00 €</td>
+                        <td class="num" id="summe272Teile">0,00 €</td>
+                        <td class="num" id="summe272Gesamt">0,00 €</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Block: Fahrzeugrechnungen -->
+    <div class="tagesumsatz-block">
+        <div class="block-head fahrzeug">
+            <i class="bi bi-car-front"></i>
+            Fahrzeugrechnungen (L273PR)
+        </div>
+        <div class="block-body">
+            <table class="tagesumsatz-tbl">
+                <thead>
+                    <tr>
+                        <th>Typ</th>
+                        <th class="num">Anzahl</th>
+                        <th class="num">Umsatz netto</th>
+                        <th class="num">DB</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody273">
+                    <tr class="row-sum">
+                        <td>Summe</td>
+                        <td class="num" id="summe273Anz">0</td>
+                        <td class="num" id="summe273Gesamt">0,00 €</td>
+                        <td class="num">—</td>
+                    </tr>
+                </tbody>
+            </table>
+            <p class="small text-muted mb-0 mt-1" id="fahrzeugVkuHinweis" style="display:none;"></p>
+        </div>
+    </div>
+
+    <!-- Block: Letzte 7 Tage -->
+    <div class="tagesumsatz-block">
+        <div class="block-head trend">
+            <i class="bi bi-graph-up"></i>
+            Umsatz nach Tag (letzte 7 Tage)
+        </div>
+        <div class="block-body">
+            <div class="tagesumsatz-chart-wrap">
+                <div class="tagesumsatz-y-axis" id="yAxis7">
+                    <span id="yAxis7Max">—</span>
+                    <span>0</span>
+                </div>
+                <div class="tagesumsatz-bars" id="bars7"></div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Detail-Modal: Einzelrechnungen pro Klick -->
+<div class="modal fade" id="tagesumsatzDetailModal" tabindex="-1" aria-labelledby="tagesumsatzDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="tagesumsatzDetailModalLabel">Einzelrechnungen</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-2" id="modalSubtitle">—</p>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead id="modalThead"></thead>
+                        <tbody id="modalTbody"></tbody>
+                    </table>
+                </div>
+                <p class="small text-muted mb-0" id="modalFooter">—</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var today = new Date();
+    var heuteStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+
+    function getDatum() {
+        var el = document.getElementById('filterDatum');
+        return el ? el.value : heuteStr;
+    }
+
+    function setHeute() {
+        var el = document.getElementById('filterDatum');
+        if (el) { el.value = heuteStr; loadData(); }
+    }
+
+    function fmtEuro(x) {
+        if (x === null || x === undefined || isNaN(x)) return '—';
+        return Number(x).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+    }
+
+    function setText(id, text) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = text;
+    }
+
+    function openDetailModal(bereich, typ, label) {
+        var datum = getDatum();
+        var modal = document.getElementById('tagesumsatzDetailModal');
+        var titleEl = document.getElementById('tagesumsatzDetailModalLabel');
+        var subtitleEl = document.getElementById('modalSubtitle');
+        var theadEl = document.getElementById('modalThead');
+        var tbodyEl = document.getElementById('modalTbody');
+        var footerEl = document.getElementById('modalFooter');
+        if (!modal || !titleEl) return;
+        titleEl.textContent = 'Einzelrechnungen: ' + (label || bereich + ' Typ ' + typ);
+        subtitleEl.textContent = 'Datum: ' + datum + ' · ' + (label || '');
+        theadEl.innerHTML = '';
+        tbodyEl.innerHTML = '<tr><td colspan="5" class="text-center">…</td></tr>';
+        footerEl.textContent = '—';
+        var modalBs = window.bootstrap && bootstrap.Modal ? new bootstrap.Modal(modal) : null;
+        if (modalBs) modalBs.show();
+
+        fetch('/controlling/api/tagesumsatz/detail?datum=' + encodeURIComponent(datum) + '&bereich=' + encodeURIComponent(bereich) + '&typ=' + encodeURIComponent(typ))
+            .then(function(r) {
+                if (!r.ok) throw new Error(r.statusText);
+                return r.json();
+            })
+            .then(function(data) {
+                var items = data.items || [];
+                if (data.bereich === '272') {
+                    theadEl.innerHTML = '<tr><th>Rechnungsnr</th><th class="num">Auftragsnr</th><th class="num">Kunde</th><th class="num">Lohn netto</th><th class="num">Teile netto</th><th class="num">Summe netto</th></tr>';
+                    tbodyEl.innerHTML = items.map(function(it) {
+                        return '<tr><td>' + (it.rechnungsnr || '—') + '</td><td class="num">' + (it.auftragsnr != null ? it.auftragsnr : '—') + '</td><td class="num">' + (it.kunde != null ? it.kunde : '—') + '</td><td class="num">' + fmtEuro(it.lohn_netto) + '</td><td class="num">' + fmtEuro(it.teile_netto) + '</td><td class="num">' + fmtEuro(it.summe_netto) + '</td></tr>';
+                    }).join('');
+                } else {
+                    theadEl.innerHTML = '<tr><th>Rechnungsnr</th><th>VIN / Modell</th><th>Modell</th><th class="num">Umsatz netto</th><th class="num">DB</th></tr>';
+                    tbodyEl.innerHTML = items.map(function(it) {
+                        return '<tr><td>' + (it.rechnungsnr || '—') + '</td><td>' + (it.vin || '—') + '</td><td>' + (it.modell || '—') + '</td><td class="num">' + fmtEuro(it.umsatz_netto) + '</td><td class="num">' + fmtEuro(it.db1) + '</td></tr>';
+                    }).join('');
+                }
+                footerEl.textContent = items.length + ' Position(en)';
+            })
+            .catch(function(err) {
+                tbodyEl.innerHTML = '<tr><td colspan="5" class="text-danger">' + (err.message || 'Laden fehlgeschlagen') + '</td></tr>';
+                footerEl.textContent = '—';
+            });
+    }
+
+    function loadData() {
+        var datum = getDatum();
+        setText('kpiGesamt', '…');
+        setText('kpiWerkstatt', '…');
+        setText('kpiFahrzeug', '…');
+        setText('kpiAnzahl', '…');
+
+        fetch('/controlling/api/tagesumsatz?datum=' + encodeURIComponent(datum))
+            .then(function(r) {
+                if (!r.ok) throw new Error(r.statusText);
+                return r.json();
+            })
+            .then(function(data) {
+                setText('kpiGesamt', fmtEuro(data.gesamt_netto));
+                setText('kpiGesamtBrutto', 'Brutto inkl. MwSt.: ' + fmtEuro(data.gesamt_brutto));
+                setText('kpiWerkstatt', fmtEuro(data.werkstatt_netto));
+                setText('kpiFahrzeug', fmtEuro(data.fahrzeug_netto));
+                setText('kpiAnzahl', String(data.anzahl_rechnungen));
+                setText('kpiAnzahlDetail', data.anzahl_detail || '—');
+                setText('kpiLohnErtrag', fmtEuro(data.lohn_ertrag));
+                setText('kpiTeileErtrag', fmtEuro(data.teile_ertrag));
+                setText('kpiFahrzeugDB', data.fahrzeug_db != null ? fmtEuro(data.fahrzeug_db) : '—');
+
+                var tbody272 = document.getElementById('tbody272');
+                if (tbody272 && data.detail_272) {
+                    var html = '';
+                    data.detail_272.forEach(function(r) {
+                        if (r.anzahl > 0 || r.summe_netto > 0) {
+                            html += '<tr data-detail data-bereich="272" data-typ="' + (r.typ || '') + '" data-label="' + (r.art || '').replace(/"/g, '&quot;') + '" title="Klick: Einzelrechnungen anzeigen"><td>' + r.art + '<span class="detail-hint" aria-hidden="true"> · Klick für Details</span></td><td class="num">' + r.anzahl + '</td><td class="num">' + fmtEuro(r.lohn_netto) + '</td><td class="num">' + fmtEuro(r.teile_netto) + '</td><td class="num">' + fmtEuro(r.summe_netto) + '</td></tr>';
+                        }
+                    });
+                    var s = data.summe_272 || {};
+                    html += '<tr class="row-sum"><td>Summe</td><td class="num" id="summe272Anz">' + s.anzahl + '</td><td class="num" id="summe272Lohn">' + fmtEuro(s.lohn_netto) + '</td><td class="num" id="summe272Teile">' + fmtEuro(s.teile_netto) + '</td><td class="num" id="summe272Gesamt">' + fmtEuro(s.summe_netto) + '</td></tr>';
+                    tbody272.innerHTML = html;
+                    tbody272.querySelectorAll('tr[data-detail]').forEach(function(tr) {
+                        tr.addEventListener('click', function() {
+                            openDetailModal(this.getAttribute('data-bereich'), this.getAttribute('data-typ'), this.getAttribute('data-label'));
+                        });
+                    });
+                }
+
+                var tbody273 = document.getElementById('tbody273');
+                if (tbody273 && data.detail_273) {
+                    var html = '';
+                    data.detail_273.forEach(function(r) {
+                        if (r.anzahl > 0 || r.umsatz_netto > 0 || (r.db1 != null && r.db1 !== 0)) {
+                            html += '<tr data-detail data-bereich="273" data-typ="' + (r.typ_id || r.typ || '') + '" data-label="' + (r.typ || '').replace(/"/g, '&quot;') + '" title="Klick: Einzelrechnungen anzeigen"><td>' + r.typ + '<span class="detail-hint" aria-hidden="true"> · Klick für Details</span></td><td class="num">' + r.anzahl + '</td><td class="num">' + fmtEuro(r.umsatz_netto) + '</td><td class="num">' + (r.db1 != null ? fmtEuro(r.db1) : '—') + '</td></tr>';
+                        }
+                    });
+                    var s = data.summe_273 || {};
+                    html += '<tr class="row-sum"><td>Summe</td><td class="num" id="summe273Anz">' + s.anzahl + '</td><td class="num" id="summe273Gesamt">' + fmtEuro(s.summe_netto) + '</td><td class="num" id="summe273DB">' + (s.summe_db != null ? fmtEuro(s.summe_db) : '—') + '</td></tr>';
+                    tbody273.innerHTML = html;
+                    var vkuEl = document.getElementById('fahrzeugVkuHinweis');
+                    if (vkuEl && data.fahrzeug_vku_sum != null && Number(data.fahrzeug_vku_sum) > 0) {
+                        vkuEl.textContent = 'Abweichung zu L273PR (wenn „VKH im DB berücksichtigt: Nein“) entspricht der VKU-Summe des Tages: ' + fmtEuro(data.fahrzeug_vku_sum) + '.';
+                        vkuEl.style.display = 'block';
+                    } else if (vkuEl) {
+                        vkuEl.style.display = 'none';
+                    }
+                    tbody273.querySelectorAll('tr[data-detail]').forEach(function(tr) {
+                        tr.addEventListener('click', function() {
+                            openDetailModal(this.getAttribute('data-bereich'), this.getAttribute('data-typ'), this.getAttribute('data-label'));
+                        });
+                    });
+                }
+
+                var bars7 = document.getElementById('bars7');
+                var yAxis7Max = document.getElementById('yAxis7Max');
+                if (bars7 && data.letzte_7_tage && data.letzte_7_tage.length) {
+                    var maxNetto = Math.max.apply(null, data.letzte_7_tage.map(function(d) { return d.umsatz_netto || 0; })) || 1;
+                    if (yAxis7Max) yAxis7Max.textContent = fmtEuro(maxNetto);
+                    var minBarPct = 28; /* Mindesthöhe für Tage mit Umsatz > 0 */
+                    bars7.innerHTML = data.letzte_7_tage.map(function(d) {
+                        var val = d.umsatz_netto || 0;
+                        var pct = val > 0 ? Math.max(minBarPct, Math.round((val / maxNetto) * 100)) : 0;
+                        var todayClass = (d.datum === heuteStr) ? ' today' : '';
+                        return '<div class="bar-wrap" title="' + d.datum + ': ' + (val > 0 ? fmtEuro(val) : '0,00 €') + '"><div class="bar' + todayClass + '" style="height:' + pct + '%;"></div><span class="bar-label">' + d.tag + '.</span></div>';
+                    }).join('');
+                } else if (yAxis7Max) yAxis7Max.textContent = '—';
+            })
+            .catch(function(err) {
+                setText('kpiGesamt', 'Fehler');
+                setText('kpiGesamtBrutto', err.message || 'Laden fehlgeschlagen');
+                setText('kpiWerkstatt', '—');
+                setText('kpiFahrzeug', '—');
+                setText('kpiAnzahl', '—');
+                console.error('Tagesumsatz API:', err);
+            });
+    }
+
+    window.setHeute = setHeute;
+    window.loadData = loadData;
+
+    var fd = document.getElementById('filterDatum');
+    if (fd && !fd.value) fd.value = heuteStr;
+    loadData();
+})();
+</script>
+{% endblock %}

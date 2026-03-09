@@ -654,8 +654,12 @@ def api_tagesumsatz():
     lohn_erlös_netto = sum(by_type.get(t, {}).get('job_netto', 0) for t in (2, 3, 4, 5, 6))
     teile_erlös_netto = sum(by_type.get(t, {}).get('part_netto', 0) for t in (2, 3, 4, 5, 6))
 
-    # Fahrzeug-DB1: zuerst aus Locosoft für den Tag (gleiche Quelle wie L273PR), Fallback Portal sales
+    # L273PR: Anzahl, Umsatz netto und DB aus dealer_vehicles (gleiche Quelle wie L273PR – keine Mischung mit invoices)
     db_by_type = {}
+    fahrzeug_anzahl_by_type = {}
+    fahrzeug_umsatz_by_type = {}
+    fahrzeug_brutto_loco = 0
+    fahrzeug_vku_sum = 0.0
     try:
         with locosoft_session() as conn:
             cur = conn.cursor()
@@ -666,18 +670,23 @@ def api_tagesumsatz():
                        COALESCE(dv.calc_basic_charge, 0) + COALESCE(dv.calc_accessory, 0)
                          + COALESCE(dv.calc_extra_expenses, 0) + COALESCE(dv.calc_usage_value_encr_internal, 0) AS einsatzwert,
                        COALESCE(dv.calc_cost_internal_invoices, 0) + COALESCE(dv.calc_cost_other, 0) AS variable_kosten,
-                       COALESCE(i.full_vat_value, 0) + COALESCE(i.reduced_vat_value, 0) AS mwst,
+                       (SELECT COALESCE(i.full_vat_value, 0) + COALESCE(i.reduced_vat_value, 0)
+                        FROM invoices i
+                        WHERE i.invoice_type = dv.out_invoice_type AND i.invoice_number = dv.out_invoice_number
+                        LIMIT 1) AS mwst,
                        (SELECT COALESCE(SUM(dsa.claimed_amount), 0)
                         FROM dealer_sales_aid dsa
                         WHERE dsa.dealer_vehicle_type = dv.dealer_vehicle_type
                           AND dsa.dealer_vehicle_number = dv.dealer_vehicle_number) AS vku
                 FROM dealer_vehicles dv
-                LEFT JOIN invoices i ON i.invoice_type = dv.out_invoice_type
-                  AND i.invoice_number = dv.out_invoice_number
                 WHERE dv.out_invoice_date >= %s AND dv.out_invoice_date < %s
                   AND dv.out_invoice_date IS NOT NULL
             """, (von, bis))
-            loco_db_by_type = {}
+            loco_db = {}
+            loco_anzahl = {}
+            loco_umsatz = {}
+            loco_brutto = {}
+            vku_sum_tag = 0.0
             for row in cur.fetchall():
                 ot = row[0]
                 if ot not in (7, 8):
@@ -688,22 +697,33 @@ def api_tagesumsatz():
                 variable_kosten = float(row[4] or 0)
                 mwst = float(row[5] or 0)
                 vku = float(row[6] or 0)
+                if mwst == 0 and out_sale_price and out_sale_price > 0:
+                    is_diff = (ot == 8) or (out_sale_type == 'B')
+                    marge_brutto = out_sale_price - einsatzwert
+                    mwst = (marge_brutto / 1.19 * 0.19) if is_diff and marge_brutto > 0 else (out_sale_price / 1.19 * 0.19)
+                netto = out_sale_price - mwst if out_sale_price else 0
+                loco_anzahl[ot] = loco_anzahl.get(ot, 0) + 1
+                loco_umsatz[ot] = loco_umsatz.get(ot, 0) + netto
+                loco_brutto[ot] = loco_brutto.get(ot, 0) + out_sale_price
                 if out_sale_price and out_sale_price > 0:
-                    if mwst == 0:
-                        is_diff = (ot == 8) or (out_sale_type == 'B')
-                        marge_brutto = out_sale_price - einsatzwert
-                        mwst = (marge_brutto / 1.19 * 0.19) if is_diff and marge_brutto > 0 else (out_sale_price / 1.19 * 0.19)
                     db1 = out_sale_price - mwst - einsatzwert - variable_kosten + vku
-                    loco_db_by_type[ot] = loco_db_by_type.get(ot, 0) + db1
-            db_by_type = loco_db_by_type
+                    loco_db[ot] = loco_db.get(ot, 0) + db1
+                vku_sum_tag += vku
+            db_by_type = loco_db
+            fahrzeug_anzahl_by_type = loco_anzahl
+            fahrzeug_umsatz_by_type = loco_umsatz
+            fahrzeug_brutto_loco = sum(loco_brutto.get(t, 0) for t in (7, 8))
+            fahrzeug_vku_sum = vku_sum_tag
     except Exception:
         pass
-    if not db_by_type:
+    if not db_by_type or not fahrzeug_anzahl_by_type:
+        fahrzeug_brutto_loco = sum(by_type.get(t, {}).get('total_brutto', 0) for t in (7, 8))
         try:
             with db_session() as conn:
                 cur = conn.cursor()
                 cur.execute("""
-                    SELECT out_invoice_type, COALESCE(SUM(deckungsbeitrag), 0) AS db1
+                    SELECT out_invoice_type, COALESCE(SUM(deckungsbeitrag), 0) AS db1,
+                           COUNT(*), COALESCE(SUM(netto_vk_preis), SUM(out_sale_price), 0)
                     FROM sales
                     WHERE out_invoice_date >= %s AND out_invoice_date < %s
                       AND out_invoice_date IS NOT NULL
@@ -711,10 +731,20 @@ def api_tagesumsatz():
                 """, (von, bis))
                 for row in cur.fetchall():
                     ot = row[0]
-                    if ot is not None:
+                    if ot is not None and ot in (7, 8):
                         db_by_type[ot] = float(row[1] or 0)
+                        fahrzeug_anzahl_by_type[ot] = int(row[2] or 0)
+                        fahrzeug_umsatz_by_type[ot] = float(row[3] or 0)
         except Exception:
             pass
+
+    # Fahrzeug-Netto für Gesamtsumme: aus dealer_vehicles (L273PR), nicht aus invoices
+    fahrzeug_netto = sum(fahrzeug_umsatz_by_type.get(t, 0) for t in (7, 8))
+    # Gesamtumsatz = Werkstatt (invoices) + Fahrzeug (dealer_vehicles)
+    gesamt_netto = werkstatt_netto + fahrzeug_netto
+    gesamt_brutto = by_type.get(2, {}).get('total_brutto', 0) + sum(by_type.get(t, {}).get('total_brutto', 0) for t in (3, 4, 5, 6)) + fahrzeug_brutto_loco
+    # Anzahl Rechnungen: 272 aus invoices, 273 aus dealer_vehicles
+    anzahl_rechnungen = sum(by_type.get(t, {}).get('anzahl', 0) for t in (2, 3, 4, 5, 6)) + sum(fahrzeug_anzahl_by_type.get(t, 0) for t in (7, 8))
 
     # Detail 272 (Typen 2–6) inkl. typ für Detail-Modal
     for itype in (2, 3, 4, 5, 6):
@@ -732,28 +762,33 @@ def api_tagesumsatz():
     summe_272_teile = sum(t['teile_netto'] for t in detail_272)
     summe_272_gesamt = sum(t['summe_netto'] for t in detail_272)
 
-    # Detail 273 (Typen 7, 8) – aus invoices + DB1 aus sales
+    # Detail 273 (Typen 7, 8) – aus dealer_vehicles (L273PR), Anzahl + Umsatz + DB aus einer Quelle
     summe_273_db = 0.0
     for itype in (7, 8):
-        t = by_type.get(itype, {'anzahl': 0, 'total_netto': 0})
+        anz = fahrzeug_anzahl_by_type.get(itype, 0)
+        ums = fahrzeug_umsatz_by_type.get(itype, 0)
         db1 = db_by_type.get(itype, 0)
         summe_273_db += db1
         detail_273.append({
             'typ': ART_LABELS.get(itype, 'Typ ' + str(itype)),
             'typ_id': itype,
-            'anzahl': t['anzahl'],
-            'umsatz_netto': t['total_netto'],
+            'anzahl': anz,
+            'umsatz_netto': ums,
             'db1': db1,
         })
-    summe_273_anzahl = sum(t['anzahl'] for t in detail_273)
-    summe_273_gesamt = sum(t['umsatz_netto'] for t in detail_273)
+    summe_273_anzahl = sum(fahrzeug_anzahl_by_type.get(t, 0) for t in (7, 8))
+    summe_273_gesamt = sum(fahrzeug_umsatz_by_type.get(t, 0) for t in (7, 8))
 
-    # Anzahl-Detail-Text
+    # Anzahl-Detail-Text (272 aus by_type, 273 aus fahrzeug_anzahl_by_type)
     parts_detail = []
-    for itype in (2, 3, 4, 5, 6, 7, 8):
+    for itype in (2, 3, 4, 5, 6):
         t = by_type.get(itype, {'anzahl': 0})
-        if t['anzahl']:
+        if t.get('anzahl'):
             parts_detail.append('{} {}'.format(ART_LABELS.get(itype, str(itype)), t['anzahl']))
+    for itype in (7, 8):
+        anz = fahrzeug_anzahl_by_type.get(itype, 0)
+        if anz:
+            parts_detail.append('{} {}'.format(ART_LABELS.get(itype, str(itype)), anz))
     anzahl_detail = ' · '.join(parts_detail) if parts_detail else '—'
 
     # Letzte 7 Tage (für Balken) – immer 7 Einträge, fehlende Tage mit 0
@@ -799,6 +834,7 @@ def api_tagesumsatz():
         'lohn_ertrag': round(lohn_ertrag, 2),
         'teile_ertrag': round(teile_ertrag, 2),
         'fahrzeug_db': round(summe_273_db, 2) if summe_273_db else None,
+        'fahrzeug_vku_sum': round(fahrzeug_vku_sum, 2),
         'detail_272': detail_272,
         'summe_272': {'anzahl': summe_272_anzahl, 'lohn_netto': summe_272_lohn, 'teile_netto': summe_272_teile, 'summe_netto': summe_272_gesamt},
         'detail_273': detail_273,
