@@ -213,17 +213,22 @@ def generate_arbeitskarte_pdf(data: dict) -> bytes:
     elements.append(Paragraph("ARBEITSKARTE", title_style))
     elements.append(Spacer(1, 0.5*cm))
     
-    # Diagnose durch Arbeitsausführenden (aus GUDAT)
+    # Diagnose durch Arbeitsausführenden (aus GUDAT oder Fallback Locosoft/Dossier/Order)
     # TAG 212: Verbesserte Diagnose-Anzeige mit Hinweis wenn keine Daten vorhanden
+    # Erweiterung: Fallback aus dossier.note, order.note oder Locosoft job_beschreibung
     gudat = data.get('gudat')
     gudat_tasks = gudat.get('tasks', []) if gudat else []
+    diagnose_quelle = (gudat or {}).get('diagnose_quelle')
     
     # Prüfe ob GUDAT-Daten vorhanden sind, aber keine Tasks
     gudat_available_but_no_tasks = gudat and not gudat_tasks
     
     if gudat_tasks:
         elements.append(Paragraph("Diagnose durch Arbeitsausführenden", heading_style))
-        
+        if diagnose_quelle:
+            quellen_text = {'gudat_dossier': 'GUDAT Dossier', 'gudat_order': 'GUDAT Auftrag', 'locosoft': 'Locosoft'}
+            elements.append(Paragraph(f"<i>(Quelle: {quellen_text.get(diagnose_quelle, diagnose_quelle)})</i>", normal_style))
+            elements.append(Spacer(1, 0.15*cm))
         for task in gudat_tasks:
             desc = task.get('description', '') or ''
             if desc:

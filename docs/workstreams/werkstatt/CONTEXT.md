@@ -1,7 +1,7 @@
 # Werkstatt & Aftersales — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-03-02
+## Letzte Aktualisierung: 2026-03-10
 
 ## Beschreibung
 
@@ -43,6 +43,7 @@ Werkstatt und Aftersales umfassen Stempeluhr/Live-Monitoring, Mechaniker-Leistun
 - ✅ **Alarm-E-Mail Doppelversand (2026-02-12):** Race-Condition behoben: „INSERT first“ statt „SELECT → SEND → INSERT“. Pro Auftrag/Empfänger/Tag wird nur noch 1 E-Mail gesendet, auch bei überlappenden Celery-Läufen (z. B. 09:45 und 10:00). Siehe `docs/BUGFIX_ALARM_EMAIL_DOPPELT_TAG213.md`.
 - ✅ Stempeluhr, Serviceberater, Gudat-Anbindung in Nutzung
 - 🔧 ML, Garantieakte, ServiceBox je nach Projektstand
+- **ServiceBox Inspektions-/Wartungspläne (2026-03-10):** Machbarkeit geklärt. Wartungsplan-Scraper (VIN-basiert) existieren (`tools/scrapers/servicebox_wartungsplan_*.py`), schreiben derzeit nur JSON; kein zentraler „alle Pläne“-Katalog in ServiceBox. **Ja:** regelmäßiges Scrapen priorisierter VINs (z. B. aus Locosoft) + DB-Tabelle + Portal-Anzeige möglich. Siehe `SERVICEBOX_INSPEKTIONS_WARTUNGSPLAENE_MACHBARKEIT.md`.
 - ✅ **Versicherungs-Rechnungsprüfung:** DB + M4 (inkl. UE IWW Textbausteine gescrapt, API + UI) + M1 (Ebene 1+2); M2/M3 offen
 - **Navigation:** Unfall-Rechnungsprüfung & Unfall-Wissensdatenbank unter **Service → Werkstatt** (DB-Navigation, Migration `migration_tag216_navigation_unfall.sql`) sowie im Fallback-Menü „After Sales“ → „Unfall / Versicherung“ in `base.html`.
 - **UE IWW Scraper:** `scripts/imports/scrape_ue_iww.py` – Vollscrape 781 Einträge; NUL-Fix im DB-Import; Optionen `--from-json`, `--seed-only`. Export: `data/ue_iww_export.json`.
@@ -67,6 +68,8 @@ Werkstatt und Aftersales umfassen Stempeluhr/Live-Monitoring, Mechaniker-Leistun
 - **Testanleitung Edith (2026-02-26):** `TESTANLEITUNG_EDITH_OFFENE_AUFTRAEGE.md` (+ .html zum PDF-Druck) für Serviceassistenz (Rolle Serviceleiter): Onboarding DRIVE, Serviceberater Controlling, Offene Aufträge vs. Locosoft (SB-Zuordnung, AVG, Werte EUR). Liegt im Repo und im Windows-Sync `docs/workstreams/werkstatt/`. Empfehlung User-Test-Workstream: `USER_TEST_WORKSTREAM_EMPFEHLUNG.md` (Testanleitungen dem getesteten Workstream zuordnen).
 - ✅ **Gudat Fakturierungsstatus (2026-02-26):** Machbarkeit geprüft. Die Status „interne Abrechnung fakturiert“ und „Auftrag fakturiert“ kommen in Gudat von `dossier.states[]` (GraphQL). DRIVE wertet korrekt aus Locosoft (AW Fakturiert/Offen); Gudat-Status können **ergänzend** angezeigt werden, um Diskrepanzen sichtbar zu machen (z. B. Gudat „fakturiert“, Locosoft noch offen). SSOT für Fakturierung bleibt Locosoft. Siehe `GUDAT_FAKTUR_STATUS_MACHBARKEIT.md`.
 - ✅ **Leistungsübersicht: nur eigene Leistung für Mechaniker (2026-03-02):** Filter-Modus wie bei Auftragseingang/OPOS: Feature `werkstatt_leistungsuebersicht`, Rolle werkstatt = „Nur eigene (Filter nicht auflösbar)“. API filtert auf `ldap_employee_mapping.locosoft_id`; Hinweis „Anzeige: nur eigene Leistung“ und Karte **Entgangener Umsatz** werden für Mechaniker (filter_own_only) ausgeblendet. Navi-Punkt „Leistungsübersicht“ mit eigenem Feature `werkstatt_leistungsuebersicht`, damit Rolle werkstatt ihn ohne ganzes aftersales sieht.
+- ✅ **Garantie/Arbeitskarte: Diagnose-Text (Doku Mechaniker) (2026-03-10):** „Diagnose durch Arbeitsausführenden“ kam bisher nur aus GUDAT `workshopTask.description` – oft leer. **Erweiterung:** (1) GUDAT: `orders.note` und `dossier.note` werden mitgeholt und als Fallback genutzt, wenn keine Task-Description. (2) Locosoft-Fallback: Wenn GUDAT kein Dossier oder keine Beschreibung liefert, wird die erste Arbeitsposition mit Text (`job_beschreibung` aus `labours.text_line`) als Diagnose verwendet. Im PDF wird die Quelle angezeigt: „(Quelle: GUDAT Dossier)“ / „(Quelle: GUDAT Auftrag)“ / „(Quelle: Locosoft)“. Dateien: `api/arbeitskarte_api.py`, `api/arbeitskarte_pdf.py`.
+- **DSE (Datenschutz-Einwilligung) Werkstattaufträge (2026-03-10):** Machbarkeit geprüft und dokumentiert; **bis auf weiteres verworfen** (keine Umsetzung geplant). Consent-Status abfragen wäre über Locosoft `privacy_protection_consent` + `orders.order_customer` machbar; DSE-PDF-Generierung in DRIVE möglich; Anhängen an Gudat/Locosoft erfordert API-Klärung. Doku: `DSE_EINWILLIGUNG_LOCOSOFT_GUDAT_MACHBARKEIT.md`.
 
 ### Gudat-Credentials (SSOT)
 

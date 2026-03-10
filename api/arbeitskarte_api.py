@@ -284,11 +284,11 @@ def hole_arbeitskarte_daten(order_number: int):
                     if dossier_id:
                         break
                 
-                # TAG 192: Falls nicht heute gefunden, suche in letzten 90 Tagen
+                # TAG 192: Falls nicht heute gefunden, suche in letzten 90 Tagen + 30 Tage Zukunft (geplante Tasks)
                 if not dossier_id:
-                    logger.info(f"Dossier für Auftrag {order_number} nicht heute gefunden, suche in letzten 90 Tagen...")
+                    logger.info(f"Dossier für Auftrag {order_number} nicht heute gefunden, suche in letzten 90 Tagen + 30 Tage Zukunft...")
                     start_date = (date.today() - timedelta(days=90)).isoformat()
-                    end_date = date.today().isoformat()
+                    end_date = (date.today() + timedelta(days=30)).isoformat()
                     
                     # Pagination - mehrere Requests
                     max_pages = 10  # Max 10 Seiten = 2000 Tasks
@@ -347,6 +347,77 @@ def hole_arbeitskarte_daten(order_number: int):
                         if dossier_id:
                             break
                 
+                # Fallback: Suche via Appointments (Auftrag kann nur als Termin in Gudat sein, ohne WorkshopTask mit START_DATE)
+                if not dossier_id:
+                    logger.info(f"Dossier für Auftrag {order_number} nicht in workshopTasks gefunden, suche in Appointments...")
+                    start_date = (date.today() - timedelta(days=90)).isoformat()
+                    end_date = (date.today() + timedelta(days=30)).isoformat()
+                    order_number_str = str(order_number).strip()
+                    # Gudat erlaubt max 200 pro Request ("Maximum number of 200 requested items exceeded")
+                    first_per_page = 200
+                    query_appointments_inline = (
+                        """
+                    query GetAppointmentsByDate {
+                      appointments(first: %d, page: %d, where: {
+                        AND: [
+                          {column: START_DATE_TIME, operator: GTE, value: "%s"},
+                          {column: START_DATE_TIME, operator: LTE, value: "%s"}
+                        ]
+                      }) {
+                        data {
+                          id
+                          dossier {
+                            id
+                            orders { number }
+                          }
+                        }
+                      }
+                    }
+                    """
+                    )
+                    try:
+                        all_appointments = []
+                        for page in range(1, 51):  # max 50 Seiten = 10000 Termine (Gudat max 200/Request)
+                            query_apt = query_appointments_inline % (first_per_page, page, start_date, end_date)
+                            resp = client.session.post(
+                                f"{client.BASE_URL}/graphql",
+                                json={"operationName": "GetAppointmentsByDate", "query": query_apt},
+                                headers={'Accept': 'application/json', 'X-XSRF-TOKEN': client._get_xsrf(), 'Content-Type': 'application/json'}
+                            )
+                            apt_data = resp.json()
+                            if 'errors' in apt_data:
+                                logger.warning(f"GraphQL-Fehler Appointments-Suche für Auftrag {order_number} (Seite {page}): {apt_data.get('errors')}")
+                                break
+                            appointments = apt_data.get('data', {}).get('appointments', {}).get('data', [])
+                            if not isinstance(appointments, list):
+                                break
+                            if not appointments:
+                                break
+                            all_appointments.extend(appointments)
+                            if len(appointments) < first_per_page:
+                                break
+                        if all_appointments and not apt_data.get('errors'):
+                            logger.info(f"Appointments-Suche: {len(all_appointments)} Termine im Zeitraum {start_date} bis {end_date}")
+                        for apt in all_appointments:
+                                dossier = apt.get('dossier', {}) or {}
+                                orders = dossier.get('orders', []) or []
+                                for order in orders:
+                                    order_num = order.get('number')
+                                    if order_num is None:
+                                        continue
+                                    on_str = str(order_num).strip()
+                                    match = (on_str == order_number_str or
+                                             (str(order_num).isdigit() and str(order_number).isdigit() and int(order_num) == int(order_number)) or
+                                             (on_str.lstrip('0') == order_number_str.lstrip('0')))
+                                    if match:
+                                        dossier_id = dossier.get('id')
+                                        logger.info(f"✅ Dossier für Auftrag {order_number} via Appointments gefunden: dossier_id={dossier_id}")
+                                        break
+                                if dossier_id:
+                                    break
+                    except Exception as ex:
+                        logger.warning(f"Appointments-Suche fehlgeschlagen für Auftrag {order_number}: {ex}")
+                
                 if dossier_id:
                     # Hole vollständige Dossier-Daten
                     # Versuche zuerst mit comments, falls das fehlschlägt, verwende nur note
@@ -359,6 +430,11 @@ def hole_arbeitskarte_daten(order_number: int):
                         orders {
                           id
                           number
+                          note
+                        }
+                        states {
+                          id
+                          name
                         }
                         comments {
                           id
@@ -426,6 +502,11 @@ def hole_arbeitskarte_daten(order_number: int):
                         orders {
                           id
                           number
+                          note
+                        }
+                        states {
+                          id
+                          name
                         }
                         workshopTasks(
                           where: {HAS: {relation: "workshopTaskPackage", amount: 0, operator: EQ, condition: {column: ID, operator: IS_NOT_NULL}}}
@@ -466,6 +547,11 @@ def hole_arbeitskarte_daten(order_number: int):
                         orders {
                           id
                           number
+                          note
+                        }
+                        states {
+                          id
+                          name
                         }
                         workshopTasks(
                           where: {HAS: {relation: "workshopTaskPackage", amount: 0, operator: EQ, condition: {column: ID, operator: IS_NOT_NULL}}}
@@ -503,13 +589,17 @@ def hole_arbeitskarte_daten(order_number: int):
                     use_fallback = False
                     use_fallback_no_order = False
                     
-                    # Prüfe auf GraphQL-Fehler (z.B. wenn `order` auf Task nicht verfügbar)
+                    # Prüfe auf GraphQL-Fehler (z.B. wenn `order` oder `states` nicht verfügbar)
+                    use_fallback_no_states = False
                     if 'errors' in data:
                         errors = data.get('errors', [])
                         error_messages = [str(err) for err in errors]
                         logger.warning(f"GraphQL-Fehler beim Holen von Dossier-Daten: {error_messages}")
-                        
-                        # Prüfe ob Fehler wegen `order` auf Task
+                        states_field_error = any(
+                            'states' in str(err).lower() or 'field "states"' in str(err) or
+                            'Cannot query field "states"' in str(err) or 'Unknown field "states"' in str(err)
+                            for err in errors
+                        )
                         order_field_error = any(
                             'order' in str(err).lower() or 
                             'field "order"' in str(err) or 
@@ -521,8 +611,9 @@ def hole_arbeitskarte_daten(order_number: int):
                             logger.warning(f"GraphQL-Fehler: 'order' Feld auf workshopTask nicht verfügbar. Verwende Fallback ohne order-Feld.")
                             use_fallback_no_order = True
                         else:
-                            # Anderer Fehler (z.B. comments nicht verfügbar)
                             use_fallback = True
+                        if states_field_error:
+                            use_fallback_no_states = True
                     
                     # Falls Fehler, versuche Fallback-Query ohne comments (und ggf. ohne order)
                     if use_fallback or use_fallback_no_order:
@@ -538,11 +629,44 @@ def hole_arbeitskarte_daten(order_number: int):
                         )
                         data = response.json()
                         if 'errors' in data:
+                            err_str = str(data['errors'])
+                            if 'states' in err_str.lower() or use_fallback_no_states:
+                                use_fallback_no_states = True
                             logger.error(f"GraphQL-Fehler auch bei Fallback-Query: {data['errors']}")
-                            # Auch bei Fallback-Fehler: use_fallback_no_order beibehalten wenn es so gesetzt war
                         else:
-                            use_fallback = True  # Markiere dass Fallback verwendet wurde
-                            # use_fallback_no_order bleibt True wenn es so gesetzt war
+                            use_fallback = True
+                    
+                    # Wenn Fehler wegen "states": ein letzter Versuch ohne states-Feld (TAG: Gudat-Vorgangsstatus)
+                    if use_fallback_no_states and ('errors' in data or not data.get('data', {}).get('dossier')):
+                        query_no_states = """
+                        query GetDossierDrawerData($id: ID!) {
+                          dossier(id: $id) {
+                            id
+                            note
+                            orders { id number note }
+                            comments { id text created_at user { id name } }
+                            workshopTasks(where: {HAS: {relation: "workshopTaskPackage", amount: 0, operator: EQ, condition: {column: ID, operator: IS_NOT_NULL}}}) {
+                              id description work_load work_state order { id number }
+                              comments { id text created_at user { id name } }
+                            }
+                            workshopTaskPackages { id workshopTasks { id description work_load work_state order { id number } } }
+                          }
+                        }
+                        """
+                        try:
+                            response = client.session.post(
+                                f"{client.BASE_URL}/graphql",
+                                json={"operationName": "GetDossierDrawerData", "query": query_no_states, "variables": {"id": str(dossier_id)}},
+                                headers={'Accept': 'application/json', 'X-XSRF-TOKEN': client._get_xsrf(), 'Content-Type': 'application/json'}
+                            )
+                            data = response.json()
+                            if 'errors' not in data and data.get('data', {}).get('dossier'):
+                                dossier = data.get('data', {}).get('dossier')
+                                dossier['states'] = []
+                                data = {'data': {'dossier': dossier}}
+                                logger.info("Dossier ohne states-Feld geladen (Gudat-API unterstützt states nicht).")
+                        except Exception as ex:
+                            logger.warning(f"Fallback ohne states fehlgeschlagen: {ex}")
                     
                     dossier = data.get('data', {}).get('dossier')
                     
@@ -679,6 +803,7 @@ def hole_arbeitskarte_daten(order_number: int):
                         gudat_daten = {
                             'dossier_id': dossier.get('id'),
                             'dossier_note': dossier_note,
+                            'states': dossier.get('states') or [],
                             'rueckfragen': rueckfragen,
                             'tasks': [
                                 {
@@ -689,12 +814,48 @@ def hole_arbeitskarte_daten(order_number: int):
                                 } for task in tasks_with_desc
                             ]
                         }
-                        # TAG 212: Logging für Diagnose-Informationen
+                        # Diagnose-Fallback: Wenn keine Task-Beschreibung, aus dossier.note, order.note oder Locosoft
                         if not tasks_with_desc:
-                            logger.warning(f"⚠️ Auftrag {order_number}: GUDAT-Dossier gefunden (ID: {dossier.get('id')}), aber keine Tasks mit description - Diagnose-Informationen fehlen in PDF!")
+                            fallback_desc = None
+                            diagnose_quelle = None
+                            if dossier_note and dossier_note.strip():
+                                fallback_desc = dossier_note.strip()
+                                diagnose_quelle = 'gudat_dossier'
+                            if not fallback_desc:
+                                for ord_obj in dossier.get('orders', []):
+                                    if str(ord_obj.get('number', '')).strip() == str(order_number).strip():
+                                        onote = ord_obj.get('note')
+                                        if onote and onote.strip():
+                                            fallback_desc = onote.strip()
+                                            diagnose_quelle = 'gudat_order'
+                                            break
+                            if not fallback_desc and job_beschreibung and job_beschreibung.strip():
+                                fallback_desc = job_beschreibung.strip()
+                                diagnose_quelle = 'locosoft'
+                            if fallback_desc:
+                                gudat_daten['tasks'] = [
+                                    {'task_id': None, 'description': fallback_desc, 'work_load': None, 'work_state': None}
+                                ]
+                                gudat_daten['diagnose_quelle'] = diagnose_quelle
+                                logger.info(f"Auftrag {order_number}: Diagnose-Fallback verwendet (Quelle: {diagnose_quelle})")
+                            else:
+                                logger.warning(f"⚠️ Auftrag {order_number}: GUDAT-Dossier gefunden (ID: {dossier.get('id')}), aber keine Tasks mit description - Diagnose-Informationen fehlen in PDF!")
                     else:
                         logger.warning(f"⚠️ Auftrag {order_number}: GUDAT-Dossier nicht gefunden - keine Diagnose-Informationen verfügbar")
                         gudat_daten = None
+                        # Locosoft-Fallback: Auch ohne GUDAT Diagnose aus Arbeitspositionen anzeigen
+                        if job_beschreibung and job_beschreibung.strip():
+                            gudat_daten = {
+                                'dossier_id': None,
+                                'dossier_note': None,
+                                'states': [],
+                                'rueckfragen': [],
+                                'tasks': [
+                                    {'task_id': None, 'description': job_beschreibung.strip(), 'work_load': None, 'work_state': None}
+                                ],
+                                'diagnose_quelle': 'locosoft'
+                            }
+                            logger.info(f"Auftrag {order_number}: Diagnose aus Locosoft (kein GUDAT-Dossier)")
     except Exception as e:
         print(f"GUDAT-Fehler: {e}")
         gudat_daten = None
@@ -1784,11 +1945,12 @@ def speichere_garantieakte(order_number):
                           dossier(id: $id) {
                             id
                             note
-                            orders {
-                              id
-                              number
-                            }
-                            workshopTasks(
+                        orders {
+                          id
+                          number
+                          note
+                        }
+                        workshopTasks(
                               where: {HAS: {relation: "workshopTaskPackage", amount: 0, operator: EQ, condition: {column: ID, operator: IS_NOT_NULL}}}
                             ) {
                               id
@@ -1902,7 +2064,37 @@ def speichere_garantieakte(order_number):
                                     ]
                                     logger.info(f"✅ Diagnose-Informationen zu daten hinzugefügt, PDF wird mit Diagnose-Informationen generiert")
                                 else:
-                                    logger.warning(f"⚠️ Dossier {dossier_id} gefunden, aber keine Tasks mit description")
+                                    # Fallback: dossier.note, order.note oder Locosoft job_beschreibung
+                                    fallback_desc = None
+                                    diagnose_quelle = None
+                                    dossier_note = dossier.get('note')
+                                    if dossier_note and dossier_note.strip():
+                                        fallback_desc = dossier_note.strip()
+                                        diagnose_quelle = 'gudat_dossier'
+                                    if not fallback_desc:
+                                        for ord_obj in dossier.get('orders', []):
+                                            if str(ord_obj.get('number', '')).strip() == str(order_number).strip():
+                                                onote = ord_obj.get('note')
+                                                if onote and onote.strip():
+                                                    fallback_desc = onote.strip()
+                                                    diagnose_quelle = 'gudat_order'
+                                                    break
+                                    if not fallback_desc:
+                                        job_beschr = (daten.get('locosoft') or {}).get('auftrag', {}).get('job_beschreibung')
+                                        if job_beschr and str(job_beschr).strip():
+                                            fallback_desc = str(job_beschr).strip()
+                                            diagnose_quelle = 'locosoft'
+                                    if fallback_desc:
+                                        if not daten.get('gudat'):
+                                            daten['gudat'] = {}
+                                        daten['gudat']['dossier_id'] = dossier.get('id')
+                                        daten['gudat']['tasks'] = [
+                                            {'task_id': None, 'description': fallback_desc, 'work_load': None, 'work_state': None}
+                                        ]
+                                        daten['gudat']['diagnose_quelle'] = diagnose_quelle
+                                        logger.info(f"✅ Diagnose-Fallback nachträglich gesetzt (Quelle: {diagnose_quelle})")
+                                    else:
+                                        logger.warning(f"⚠️ Dossier {dossier_id} gefunden, aber keine Tasks mit description")
                     except Exception as e:
                         logger.error(f"⚠️ Fehler beim Nachholen von Diagnose-Informationen: {e}")
                         import traceback
