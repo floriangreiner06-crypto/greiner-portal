@@ -1,7 +1,7 @@
 # Externe Integrationen — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-02-20 (KI-Analyse, Versionsstand-Doc, .cursorrules Markdown-Sync)
+## Letzte Aktualisierung: 2026-03-10 (ecoDMS Button + Session-Ende)
 
 ## Beschreibung
 
@@ -64,13 +64,26 @@ Integrationen umfassen WhatsApp Business API, eAutoSeller API, ecoDMS, FinTS/HBC
 - ✅ **WhatsApp:** Kern fertig; Inbound per Polling (Webhook deaktiviert). Offen: Betriebstests, Teile-Automatik, optionale Auto-Antworten (siehe WHATSAPP_STAND.md)
 - ✅ **KI-Analyse (2026-02-20):** [KI_CLAUDE_BEDROCK_ANWENDUNGSANALYSE.md](KI_CLAUDE_BEDROCK_ANWENDUNGSANALYSE.md) – Bewertung aller DRIVE-Features auf Claude/Bedrock-Mehrwert (Unfall-Gutachten, Bankenspiegel, WhatsApp, Einkaufsfinanzierung, BWA-Erklärung, AfA/DATEV, Werkstatt text_line). Einkaufsfinanzierung und BWA als eigene Abschnitte ergänzt.
 - ✅ **DRIVE_VERSIONSSTAND_AKTUELL.md** im Projektdocs + Regel in .cursorrules: .md aus docs/ automatisch ins Windows-Sync kopieren (gleicher Pfad unter /mnt/greiner-portal-sync/docs/).
-- 🔧 ecoDMS, FinTS je nach Projektstand
+- ✅ **ecoDMS:** Belegsuche zur Kategorisierung umgesetzt (API unter `transaktionen/ecodms/`, Button „Beleg“ + Modal in `bankenspiegel_transaktionen_combined.js`). Weiterentwicklung: Workstream Controlling (siehe `docs/workstreams/controlling/ecodms/`).
+- 🔧 FinTS je nach Projektstand
 - ❌ Offene Punkte ggf. in Session-TODOs
 
-## KI (Claude/Bedrock) in DRIVE
+---
+
+## ecoDMS — Belege zur Kategorisierung (Workstream Controlling)
+
+**ecoDMS** (Belegsuche in der Bankenspiegel-Kategorisierung) wird im **Workstream Controlling** weiterentwickelt, da die Funktion dem Bankenspiegel/Transaktionen zugeordnet ist.
+
+- **Doku & Plan:** `docs/workstreams/controlling/ecodms/` — ECODMS_API_PLAN_UND_TEST.md, ECODMS_SWAGGER_EINBINDUNG.md
+- **API:** `api/ecodms_api.py`; Endpoints unter `api/bankenspiegel_api.py` (transaktionen/ecodms/belege, folders, document/&lt;id&gt;/download, openapi-status)
+- **UI:** Bankenspiegel → Kategorisierung, Button „Beleg suchen“ pro Zeile; `static/js/bankenspiegel_transaktionen_combined.js`
+- **Scripts:** `scripts/test_ecodms_api.py`, `scripts/ecodms_find_swagger_url.py`, `scripts/ecodms_api_folders_call.py`
+
+## KI (Claude/Bedrock, LM Studio) in DRIVE
 
 - **Fahrzeuganlage:** Claude via AWS Bedrock (eu-central-1) für Fahrzeugschein-OCR bereits aktiv (Werkstatt-Modul).
-- **Analyse weiterer Einsatzstellen:** [KI_CLAUDE_BEDROCK_ANWENDUNGSANALYSE.md](KI_CLAUDE_BEDROCK_ANWENDUNGSANALYSE.md) – Bewertung aller DRIVE-Features auf KI-Mehrwert (Unfall-Gutachten, Bankenspiegel-Kategorisierung, WhatsApp Verkauf/Teile, DATEV/AfA, Werkstatt text_line, Urlaub/Planung); keine Code-Änderungen, nur Analyse.
+- **Natursprachliche Analysen auf Geschäftsdaten (LM Studio):** `POST /api/ai/analyse/geschaeftsdaten` – Frage in natürlicher Sprache, Backend lädt vordefinierte Daten (z. B. TEK aus SSOT), LM Studio formuliert Antwort. Konzept: [KONZEPT_NATURSPRACHLICHE_ANALYSEN_DRIVE_DATEN.md](KONZEPT_NATURSPRACHLICHE_ANALYSEN_DRIVE_DATEN.md). Erster Bereich: `tek` (Feature controlling).
+- **Analyse weiterer Einsatzstellen:** [KI_CLAUDE_BEDROCK_ANWENDUNGSANALYSE.md](KI_CLAUDE_BEDROCK_ANWENDUNGSANALYSE.md) – Bewertung aller DRIVE-Features auf KI-Mehrwert; keine Code-Änderungen, nur Analyse.
 
 ## Offene Entscheidungen
 
