@@ -13,7 +13,7 @@ Fixed: 21.11.2025 - TAG 72 - Einkaufsfinanzierung repariert
 Updated: TAG 117 - Migration auf db_session (Connection-Safety)
 """
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, Response
 from flask_login import login_required
 from datetime import datetime, date, timedelta
 from typing import Optional, Dict, List, Any
@@ -866,17 +866,20 @@ def get_transaktionen_kategorisierung():
     """
     GET /api/bankenspiegel/transaktionen/kategorisierung
     Transaktionen für die Kategorisierungs-UI (mit gegenkonto_name, unterkategorie).
-    Query: nur_unkategorisiert=true|false, kategorie=..., von=, bis=, limit=100, offset=0
+    Query: nur_unkategorisiert=true|false, nur_kategorisiert=true|false, kategorie=..., von=, bis=, limit=100, offset=0
     """
     from api.db_connection import convert_placeholders
     try:
         nur_unkategorisiert = request.args.get('nur_unkategorisiert', 'false').lower() in ('true', '1', 'yes')
+        nur_kategorisiert = request.args.get('nur_kategorisiert', 'false').lower() in ('true', '1', 'yes')
         kategorie_filter = request.args.get('kategorie')
         von = request.args.get('von')
         bis = request.args.get('bis')
-        suche = request.args.get('suche')
+        suche = (request.args.get('suche') or '').strip()
         limit = min(request.args.get('limit', default=100, type=int), 500)
         offset = request.args.get('offset', default=0, type=int)
+        if nur_unkategorisiert and nur_kategorisiert:
+            nur_kategorisiert = False  # beide = alle
 
         with db_session() as conn:
             cursor = conn.cursor()
@@ -890,6 +893,7 @@ def get_transaktionen_kategorisierung():
                     t.gegenkonto_name,
                     t.kategorie,
                     t.unterkategorie,
+                    COALESCE(t.kategorie_manuell, false) AS kategorie_manuell,
                     k.kontoname,
                     b.bank_name
                 FROM transaktionen t
@@ -900,6 +904,8 @@ def get_transaktionen_kategorisierung():
             params = []
             if nur_unkategorisiert:
                 query += " AND (t.kategorie IS NULL OR t.kategorie = '')"
+            if nur_kategorisiert:
+                query += " AND t.kategorie IS NOT NULL AND t.kategorie != ''"
             if kategorie_filter:
                 query += " AND t.kategorie = ?"
                 params.append(kategorie_filter)
@@ -911,7 +917,8 @@ def get_transaktionen_kategorisierung():
                 params.append(bis)
             search_term = None
             if suche:
-                query += " AND (t.buchungstext LIKE ? OR t.verwendungszweck LIKE ? OR t.gegenkonto_name LIKE ?)"
+                # ILIKE = case-insensitive (PostgreSQL), damit "Krebs" auch "IT Krebs" / "KREBS" findet
+                query += " AND (t.buchungstext ILIKE ? OR t.verwendungszweck ILIKE ? OR COALESCE(t.gegenkonto_name, '') ILIKE ?)"
                 search_term = "%" + str(suche).replace("%", "\\%").replace("_", "\\_") + "%"
                 params.extend([search_term, search_term, search_term])
             query += " ORDER BY t.buchungsdatum DESC, t.id DESC"
@@ -924,6 +931,10 @@ def get_transaktionen_kategorisierung():
             for t in transaktionen:
                 if t.get('buchungsdatum') and hasattr(t['buchungsdatum'], 'isoformat'):
                     t['buchungsdatum'] = t['buchungsdatum'].strftime('%Y-%m-%d')
+                # Kategorie/Unterkategorie + nur bei kategorie_manuell grün (vom User gespeichert)
+                t['kategorie'] = t.get('kategorie') if t.get('kategorie') else None
+                t['unterkategorie'] = t.get('unterkategorie') if t.get('unterkategorie') else None
+                t['kategorie_manuell'] = bool(t.get('kategorie_manuell'))
 
             count_query = """
                 SELECT COUNT(*) as total FROM transaktionen t
@@ -934,6 +945,8 @@ def get_transaktionen_kategorisierung():
             count_params = []
             if nur_unkategorisiert:
                 count_query += " AND (t.kategorie IS NULL OR t.kategorie = '')"
+            if nur_kategorisiert:
+                count_query += " AND t.kategorie IS NOT NULL AND t.kategorie != ''"
             if kategorie_filter:
                 count_query += " AND t.kategorie = ?"
                 count_params.append(kategorie_filter)
@@ -944,17 +957,20 @@ def get_transaktionen_kategorisierung():
                 count_query += " AND t.buchungsdatum <= ?"
                 count_params.append(bis)
             if suche and search_term:
-                count_query += " AND (t.buchungstext LIKE ? OR t.verwendungszweck LIKE ? OR t.gegenkonto_name LIKE ?)"
+                count_query += " AND (t.buchungstext ILIKE ? OR t.verwendungszweck ILIKE ? OR COALESCE(t.gegenkonto_name, '') ILIKE ?)"
                 count_params.extend([search_term, search_term, search_term])
             cursor.execute(convert_placeholders(count_query), count_params)
             total = (row_to_dict(cursor.fetchone()) or {}).get('total', 0)
-        return jsonify({
+        resp = jsonify({
             'success': True,
             'transaktionen': transaktionen,
             'total': total,
             'limit': limit,
             'offset': offset,
-        }), 200
+        })
+        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
+        resp.headers['Pragma'] = 'no-cache'
+        return resp, 200
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -970,15 +986,117 @@ def get_transaktion_kategorien():
     return jsonify({'success': True, 'kategorien': get_kategorien_liste()}), 200
 
 
+@bankenspiegel_api.route('/transaktionen/ecodms/openapi-status', methods=['GET'])
+@login_required
+def get_ecodms_openapi_status():
+    """
+    GET /api/bankenspiegel/transaktionen/ecodms/openapi-status
+    Liefert, ob die ecoDMS OpenAPI/Swagger-Spec geladen werden konnte (für Diagnose bei 404).
+    """
+    from api.ecodms_api import get_openapi_spec, ECODMS_OPENAPI_SPEC_URL, BASE_URL
+    spec = get_openapi_spec()
+    paths = list((spec.get("paths") or {}).keys()) if spec else []
+    return jsonify({
+        "spec_loaded": spec is not None,
+        "config_url": ECODMS_OPENAPI_SPEC_URL,
+        "base_url": BASE_URL,
+        "paths_count": len(paths),
+        "paths_sample": paths[:30],
+    }), 200
+
+
+@bankenspiegel_api.route('/transaktionen/ecodms/folders', methods=['GET'])
+@login_required
+def get_ecodms_folders():
+    """
+    GET /api/bankenspiegel/transaktionen/ecodms/folders
+    Liest die Ordnerliste von ecoDMS per API (für Konfiguration/Diagnose).
+    """
+    from api.ecodms_api import get_folders, resolve_folder_id, FOLDER_BELEGE
+    result = get_folders()
+    resolved_id = resolve_folder_id(FOLDER_BELEGE) if result.get('success') else None
+    return jsonify({
+        'success': result.get('success', False),
+        'folders': result.get('folders', []),
+        'config_folder_belege': FOLDER_BELEGE,
+        'resolved_folder_id': resolved_id,
+        'error': result.get('error'),
+    }), 200
+
+
+@bankenspiegel_api.route('/transaktionen/ecodms/belege', methods=['GET'])
+@login_required
+def get_ecodms_belege():
+    """
+    GET /api/bankenspiegel/transaktionen/ecodms/belege?datum=2025-01-15&betrag=-123.45&referenz=...
+    Sucht im ecoDMS-Archiv nach Belegen passend zur Buchung (Kategorisierung „Beleg suchen“).
+    Liegt unter transaktionen/, da Transaktions-URLs zusammengefasst sind.
+    Immer JSON-Antwort (kein HTML), damit das Frontend nicht mit Parse-Fehlern abbricht.
+    """
+    from api.ecodms_api import search_belege
+    try:
+        datum_str = request.args.get('datum')
+        betrag = request.args.get('betrag', type=float)
+        referenz = request.args.get('referenz', '').strip() or None
+        buchungsdatum = None
+        if datum_str:
+            try:
+                buchungsdatum = datetime.strptime(datum_str[:10], '%Y-%m-%d').date()
+            except (ValueError, TypeError):
+                pass
+        result = search_belege(buchungsdatum=buchungsdatum, betrag=betrag, referenz=referenz)
+        if result.get('error') and not result.get('success'):
+            return jsonify({
+                'success': False,
+                'documents': [],
+                'error': result['error'],
+            }), 200
+        return jsonify({
+            'success': result['success'],
+            'documents': result.get('documents', []),
+            'kreditor_vermutet': result.get('kreditor_vermutet'),
+            'filter_gelockert': result.get('filter_gelockert', False),
+            'error': result.get('error'),
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'documents': [],
+            'error': f'ecoDMS-Anfrage fehlgeschlagen: {e!s}',
+        }), 200
+
+
+@bankenspiegel_api.route('/transaktionen/ecodms/document/<int:doc_id>/download', methods=['GET'])
+@login_required
+def get_ecodms_document_download(doc_id):
+    """
+    GET /api/bankenspiegel/transaktionen/ecodms/document/<docId>/download
+    Proxy-Download: lädt Beleg von ecoDMS und streamt als Datei (ohne ecoDMS-Login).
+    Unter transaktionen/ für konsistente API-Struktur.
+    """
+    from api.ecodms_api import get_document_stream
+    stream, content_type = get_document_stream(str(doc_id))
+    if stream is None:
+        return jsonify({'success': False, 'error': 'Dokument nicht gefunden oder ecoDMS nicht erreichbar.'}), 404
+    ext = '.pdf' if content_type and 'pdf' in content_type else '.bin'
+    filename = f'beleg_{doc_id}{ext}'
+    return Response(
+        stream,
+        mimetype=content_type or 'application/octet-stream',
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+    )
+
+
 @bankenspiegel_api.route('/transaktionen/kategorisieren', methods=['POST'])
 @login_required
 def post_transaktionen_kategorisieren():
     """
     POST /api/bankenspiegel/transaktionen/kategorisieren
     Wendet regelbasierte Kategorisierung auf (unkategorisierte) Transaktionen an.
-    Body: { "limit": 500, "nur_unkategorisiert": true, "mit_ki": false, "sonstige_neu_pruefen": false }
+    Body: { "limit": 500, "nur_unkategorisiert": true, "mit_ki": false, "sonstige_neu_pruefen": false, "regeln_ueberschreiben": false }
     mit_ki=true: nach Regeln noch unkategorisierte per LM Studio vorschlagen (Batch).
     sonstige_neu_pruefen=true: bestehende "Sonstige Ausgaben" mit aktuellen Regeln neu prüfen.
+    regeln_ueberschreiben=true: Regeln auf die letzten limit Transaktionen erneut anwenden (überschreibt bestehende Kategorie).
     """
     from api.transaktion_kategorisierung import kategorisiere_batch
     try:
@@ -987,9 +1105,13 @@ def post_transaktionen_kategorisieren():
         nur_unkategorisiert = data.get('nur_unkategorisiert', True)
         mit_ki = data.get('mit_ki', False)
         sonstige_neu_pruefen = data.get('sonstige_neu_pruefen', False)
+        regeln_ueberschreiben = data.get('regeln_ueberschreiben', False)
 
         with db_session() as conn:
-            result = kategorisiere_batch(conn, limit=limit, nur_unkategorisiert=nur_unkategorisiert, overwrite=False)
+            if regeln_ueberschreiben:
+                result = kategorisiere_batch(conn, limit=limit, nur_unkategorisiert=False, overwrite=True)
+            else:
+                result = kategorisiere_batch(conn, limit=limit, nur_unkategorisiert=nur_unkategorisiert, overwrite=False)
             sonstige_result = None
             if sonstige_neu_pruefen:
                 sonstige_result = kategorisiere_batch(
@@ -1067,6 +1189,10 @@ def patch_transaktion_kategorie(trans_id):
         kategorie = data.get('kategorie')
         unterkategorie = data.get('unterkategorie')
         regeln_anwenden = data.get('regeln_anwenden', False)
+        if isinstance(kategorie, str):
+            kategorie = kategorie.strip() or None
+        if isinstance(unterkategorie, str):
+            unterkategorie = unterkategorie.strip() or None
 
         with db_session() as conn:
             if regeln_anwenden or (kategorie is None and unterkategorie is None):

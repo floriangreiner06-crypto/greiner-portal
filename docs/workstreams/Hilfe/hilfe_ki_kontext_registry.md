@@ -1,6 +1,6 @@
 # Kontext-Registry für KI „Mit KI erweitern“
 
-**Letzte Prüfung:** 2026-03-10 (Session-End werkstatt: tek/urlaub-Quellen geprüft, keine inhaltliche Änderung).
+**Letzte Prüfung:** 2026-02-28 (Session-End controlling: CONTEXT.md aktualisiert, tek-Inhalt unverändert).
 
 **Zweck:** Pro Thema ein kurzer, fachlicher SSOT-Text für die KI. Wird beim „Mit KI erweitern“ an den Prompt angehängt, damit die KI Berechnungsdetails korrekt ergänzen kann.
 

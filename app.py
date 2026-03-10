@@ -27,7 +27,7 @@ else:
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 Jahr in Produktion
 
 # Globale Static-Version (ändert sich bei jedem Flask-Neustart)
-STATIC_VERSION = '20260228120000'  # Kategorisierung: grüner Haken bleibt nach Reload
+STATIC_VERSION = '20260228140000'  # ecoDMS Belegsuche: Fallback Ordner Buchhaltung + Modal-Text
 print(f"📦 Static Version: {STATIC_VERSION}")
 
 # Template-Kontext: Macht STATIC_VERSION in allen Templates verfügbar
