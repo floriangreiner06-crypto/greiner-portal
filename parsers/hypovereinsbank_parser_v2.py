@@ -76,16 +76,19 @@ class HypoVereinsbankParser:
             self.endsaldo = float(betrag_str)
     
     def _extract_transactions_from_page(self, page):
-        """Transaktionen von einer Seite extrahieren"""
-        # Tabelle extrahieren
+        """Transaktionen von einer Seite extrahieren.
+        HVB-PDFs können mehrere Tabellen pro Seite haben (z.B. Buchungszeilen aufgeteilt);
+        nur die erste zu nutzen ließ Zeilen weg (z.B. PL Gutschein). Daher alle Tabellen."""
         tables = page.extract_tables()
         
         if not tables:
             return
         
-        # Erste Tabelle nutzen
-        table = tables[0]
-        
+        for table in tables:
+            self._parse_transaction_table(table)
+    
+    def _parse_transaction_table(self, table):
+        """Eine Tabelle in Transaktionszeilen parsen (Datum, Valuta, Verwendungszweck, Betrag)."""
         for row in table:
             if len(row) < 4:
                 continue
