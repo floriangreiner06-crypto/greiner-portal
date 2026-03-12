@@ -195,6 +195,7 @@
                 <div class="prognose-item">
                     <span class="text-muted">Hochrechnung:</span>
                     <strong id="hochrechnung">-</strong>
+                    <small class="text-muted ms-1" id="prognoseMethodeLabel"></small>
                 </div>
                 <div class="prognose-item">
                     <span class="text-muted">vs. VM:</span>
@@ -226,6 +227,7 @@
                 <div class="small text-muted mt-1" id="breakevenHinweis" style="font-size: 0.7rem;">
                     Hochrechnung DB1 (Ø/Tag × Werktage) vs. Ø Kosten (4 Monate)
                 </div>
+                <div class="small text-info mt-0" id="breakevenStichtagHinweis" style="font-size: 0.7rem; display: none;"></div>
             </div>
         </div>
     </div>
@@ -273,7 +275,7 @@
     <div class="mt-2 small text-muted">
         <i class="bi bi-info-circle me-1"></i>
         Klick auf Bereich für Drill-Down |
-        Stk = Fahrzeugstück (nur NW/GW, aus Locosoft dealer_vehicles - fakturierte Auslieferungen) |
+        Stk = Fahrzeugstück (nur NW/GW, aus FIBU – gebuchte Verkäufe, wie Detail-Ansicht) |
         VM = Vormonat | VJ = Vorjahr |
         <span class="text-warning">*</span> = kalkulatorischer Einsatz
     </div>
@@ -468,6 +470,12 @@ function renderPrognose(data) {
     const hochrechnung = (p.hochrechnung_db1 != null && p.hochrechnung_db1 !== undefined) ? p.hochrechnung_db1 : (tagesschnitt * wt.gesamt);
     document.getElementById('tagesschnitt').textContent = fmtEuro(tagesschnitt);
     document.getElementById('hochrechnung').textContent = fmtEuro(hochrechnung);
+    const methodeEl = document.getElementById('prognoseMethodeLabel');
+    if (methodeEl) {
+        if (p.prognose_methode === 'gleitend_3m') methodeEl.textContent = '(Ø letzte 3 Monate)';
+        else if (p.prognose_methode === 'keine_daten') methodeEl.textContent = '(noch keine Prognose)';
+        else methodeEl.textContent = '';
+    }
 
     // vs. Vormonat
     if (vm && vm.db1 !== undefined) {
@@ -513,6 +521,17 @@ function renderBreakeven(data) {
 
     // Schwelle (Kosten) anzeigen
     schwelleEl.textContent = fmtEuro(breakeven);
+
+    // Am Monatsanfang: Hinweis, dass Vormonat bei Kosten weggelassen wird (Lohn/Gehalt wird später gebucht)
+    const stichtagHinweisEl = document.getElementById('breakevenStichtagHinweis');
+    if (stichtagHinweisEl) {
+        if (p.kosten_ohne_vormonat) {
+            stichtagHinweisEl.textContent = 'Ø Kosten: 4M ohne Vormonat (Lohn/Gehalt wird zu Monatsbeginn gebucht).';
+            stichtagHinweisEl.style.display = 'block';
+        } else {
+            stichtagHinweisEl.style.display = 'none';
+        }
+    }
 
     // Ampel-Logik
     renderAmpel(ampelEl, abstandEl, hochrechnung, abstand);

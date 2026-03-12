@@ -122,49 +122,41 @@ def normalisiere_fibu_modell(modell: str) -> str:
 
 def get_stueckzahlen_locosoft(von: str, bis: str, bereich: str = '1-NW', firma: str = '0', standort: str = '0') -> dict:
     """
-    Holt Fahrzeug-Stückzahlen aus Locosoft dealer_vehicles.
-    
-    TAG167 FIX: Stückzahlen aus dealer_vehicles (tatsächliche Auslieferungen),
-    NICHT aus journal_accountings (nur bereits gebuchte Verkäufe)!
-    
-    Grund: dealer_vehicles zeigt alle fakturierten Auslieferungen sofort,
-    während journal_accountings nur bereits gebuchte Verkäufe enthält.
-    Die FIBU-Buchungen kommen oft verzögert (z.B. bei Monatsabschluss).
+    Holt Fahrzeug-Stückzahlen aus Locosoft dealer_vehicles (nur fakturierte Auslieferungen).
+
+    TAG167: Stückzahlen aus dealer_vehicles (tatsächliche Auslieferungen), nicht aus journal_accountings.
+    TAG: Nur out_invoice_date, keine zukünftigen Rechnungsdaten – damit Portal/E-Mail mit Detail-Ansicht (FIBU) übereinstimmen.
+    Typen analog controlling_api/GlobalCube: NW = N,T,V (Neuwagen, Tageszulassung, Vorführwagen), GW = G,D,L.
 
     Returns: {
-        'modelle': {
-            'Astra': {'stueck': 6, 'gesamt_vk': 220000, 'avg_vk': 36666},
-            'Corsa': {'stueck': 4, 'gesamt_vk': 80000, 'avg_vk': 20000},
-            ...
-        },
+        'modelle': { 'Astra': {'stueck': 6, ...}, ... },
         'gesamt_stueck': 10
     }
     """
     try:
-        # Fahrzeugtyp basierend auf Bereich
-        fzg_typ = 'N' if bereich == '1-NW' else 'G'  # N=Neuwagen, G=Gebrauchtwagen
+        # Typ-Filter analog controlling_api / GlobalCube (TAG169)
+        if bereich == '1-NW':
+            typ_filter = "dv.dealer_vehicle_type IN ('N', 'T', 'V')"  # Neuwagen, Tageszulassung, Vorführwagen
+        else:
+            typ_filter = "dv.dealer_vehicle_type IN ('G', 'D', 'L')"   # Gebrauchtwagen, Demo, Leihfahrzeug
 
         # Standort-Filter (location in dealer_vehicles)
-        # Locosoft locations: DEGO=Deggendorf Opel, DEGH=Deggendorf Hyundai, LANO=Landau Opel
         standort_filter = ""
-        if firma == '1':  # Stellantis (Opel/Leapmotor)
-            standort_filter = "AND dv.location IN ('DEGO', 'LANO')"  # Beide Stellantis-Standorte
+        if firma == '1':
+            standort_filter = "AND dv.location IN ('DEGO', 'LANO')"
             if standort == '1':
-                standort_filter = "AND dv.location = 'DEGO'"  # Nur Deggendorf
+                standort_filter = "AND dv.location = 'DEGO'"
             elif standort == '2':
-                standort_filter = "AND dv.location = 'LANO'"  # Nur Landau
-        elif firma == '2':  # Hyundai
-            standort_filter = "AND dv.location = 'DEGH'"  # Hyundai-Standort
+                standort_filter = "AND dv.location = 'LANO'"
+        elif firma == '2':
+            standort_filter = "AND dv.location = 'DEGH'"
 
-        # locosoft_session() ist ein Context Manager!
+        heute_str = date.today().isoformat()
+        bis_effektiv = min(bis, heute_str)
+
         with locosoft_session() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-
-            # TAG176: Nur fakturierte Fahrzeuge bis HEUTE zählen (keine zukünftigen Fakturierungen!)
-            # Primäres Datum: COALESCE(out_invoice_date, out_sales_contract_date)
-            heute_str = date.today().isoformat()
-            bis_effektiv = min(bis, heute_str)
-            # Explizit: Rechnungs-/Vertragsdatum darf nicht in der Zukunft liegen (Absicherung)
+            # Nur fakturierte Fahrzeuge mit Rechnungsdatum bis HEUTE (keine zukünftigen Fakturen)
             cur.execute(f"""
                 SELECT
                     COALESCE(m.description, 'Unbekannt') as modell_raw,
@@ -174,15 +166,16 @@ def get_stueckzahlen_locosoft(von: str, bis: str, bereich: str = '1-NW', firma: 
                 FROM dealer_vehicles dv
                 JOIN vehicles v ON v.internal_number = dv.vehicle_number
                 LEFT JOIN models m ON v.model_code = m.model_code AND v.make_number = m.make_number
-                WHERE dv.dealer_vehicle_type = %s
+                WHERE {typ_filter}
                   AND dv.out_sale_price > 0
-                  AND COALESCE(dv.out_invoice_date, dv.out_sales_contract_date) >= %s
-                  AND COALESCE(dv.out_invoice_date, dv.out_sales_contract_date) <= %s
-                  AND COALESCE(dv.out_invoice_date, dv.out_sales_contract_date)::date <= CURRENT_DATE
+                  AND dv.out_invoice_date IS NOT NULL
+                  AND dv.out_invoice_date::date >= %s
+                  AND dv.out_invoice_date::date <= %s
+                  AND dv.out_invoice_date::date <= CURRENT_DATE
                   {standort_filter}
                 GROUP BY m.description
                 ORDER BY stueck DESC
-            """, (fzg_typ, von, bis_effektiv))
+            """, (von, bis_effektiv))
 
             rows = cur.fetchall()
             cur.close()
@@ -221,6 +214,70 @@ def get_stueckzahlen_locosoft(von: str, bis: str, bereich: str = '1-NW', firma: 
         print(f"[STUECK] Locosoft-Abfrage fehlgeschlagen: {e}")
         traceback.print_exc()
         return {'modelle': {}, 'gesamt_stueck': 0, 'error': str(e)}
+
+
+def get_stueckzahlen_fibu(von: str, bis: str, firma_filter_umsatz: str = None, firma: str = '0', standort: str = '0') -> dict:
+    """
+    Stückzahlen NW/GW aus FIBU (loco_journal_accountings) – gleiche Logik wie Detail-Modal.
+    Summe der pro-Konto distinct vehicle_reference (81xxxx = NW, 82xxxx = GW), damit Übersicht = Detail (18 = 18).
+    Entweder firma_filter_umsatz übergeben (Route) oder (firma, standort) für Script/Report.
+    """
+    if firma_filter_umsatz is None:
+        firma_filter_umsatz = ""
+        if firma == '1':
+            firma_filter_umsatz = "AND subsidiary_to_company_ref = 1"
+            if standort == '1':
+                firma_filter_umsatz += " AND branch_number = 1"
+            elif standort == '2':
+                firma_filter_umsatz += " AND branch_number = 3"
+        elif firma == '2':
+            firma_filter_umsatz = "AND subsidiary_to_company_ref = 2"
+    guv_filter = get_guv_filter()
+    nw, gw = 0, 0
+    try:
+        with db_session() as conn:
+            cursor = conn.cursor()
+            # NW: 81xxxx – gleiche Aggregation wie api_tek_detail (typ=bereich)
+            cursor.execute(convert_placeholders("""
+                SELECT COALESCE(SUM(stueck), 0) as total
+                FROM (
+                    SELECT nominal_account_number,
+                           COUNT(DISTINCT CASE WHEN vehicle_reference IS NOT NULL AND TRIM(vehicle_reference) != ''
+                               THEN vehicle_reference END) as stueck
+                    FROM loco_journal_accountings
+                    WHERE accounting_date >= ? AND accounting_date < ?
+                      AND nominal_account_number BETWEEN 810000 AND 819999
+                      """ + firma_filter_umsatz + """
+                      """ + guv_filter + """
+                    GROUP BY nominal_account_number
+                    HAVING ABS(SUM(CASE WHEN debit_or_credit='H' THEN posted_value ELSE -posted_value END)) > 0
+                ) sub
+            """), (von, bis))
+            row = cursor.fetchone()
+            nw = int(row[0] or 0) if row else 0
+            # GW: 82xxxx
+            cursor.execute(convert_placeholders("""
+                SELECT COALESCE(SUM(stueck), 0) as total
+                FROM (
+                    SELECT nominal_account_number,
+                           COUNT(DISTINCT CASE WHEN vehicle_reference IS NOT NULL AND TRIM(vehicle_reference) != ''
+                               THEN vehicle_reference END) as stueck
+                    FROM loco_journal_accountings
+                    WHERE accounting_date >= ? AND accounting_date < ?
+                      AND nominal_account_number BETWEEN 820000 AND 829999
+                      """ + firma_filter_umsatz + """
+                      """ + guv_filter + """
+                    GROUP BY nominal_account_number
+                    HAVING ABS(SUM(CASE WHEN debit_or_credit='H' THEN posted_value ELSE -posted_value END)) > 0
+                ) sub
+            """), (von, bis))
+            row = cursor.fetchone()
+            gw = int(row[0] or 0) if row else 0
+    except Exception as e:
+        import traceback
+        print(f"[STUECK FIBU] Fehlgeschlagen: {e}")
+        traceback.print_exc()
+    return {'nw': nw, 'gw': gw}
 
 
 controlling_bp = Blueprint('controlling', __name__, url_prefix='/controlling')
@@ -1364,18 +1421,17 @@ def api_tek():
             bereiche[bkey]['vj_db1'] = vj_b.get('db1', 0)
 
         # =====================================================================
-        # STÜCKZAHLEN FÜR NW/GW (aus dealer_vehicles)
+        # STÜCKZAHLEN FÜR NW/GW (aus FIBU = gleiche Quelle wie Detail-Modal, 18 = 18)
         # =====================================================================
-        stueck_nw = get_stueckzahlen_locosoft(von, bis, '1-NW', firma, standort)
-        stueck_gw = get_stueckzahlen_locosoft(von, bis, '2-GW', firma, standort)
-
-        # VM-Stückzahlen
-        vm_stueck_nw = get_stueckzahlen_locosoft(vm_von_bereich, vm_bis_bereich, '1-NW', firma, standort)
-        vm_stueck_gw = get_stueckzahlen_locosoft(vm_von_bereich, vm_bis_bereich, '2-GW', firma, standort)
-
-        # VJ-Stückzahlen
-        vj_stueck_nw = get_stueckzahlen_locosoft(vj_von_bereich, vj_bis_bereich, '1-NW', firma, standort)
-        vj_stueck_gw = get_stueckzahlen_locosoft(vj_von_bereich, vj_bis_bereich, '2-GW', firma, standort)
+        stueck_fibu = get_stueckzahlen_fibu(von, bis, firma_filter_umsatz)
+        stueck_nw = {'gesamt_stueck': stueck_fibu['nw']}
+        stueck_gw = {'gesamt_stueck': stueck_fibu['gw']}
+        vm_fibu = get_stueckzahlen_fibu(vm_von_bereich, vm_bis_bereich, firma_filter_umsatz)
+        vm_stueck_nw = {'gesamt_stueck': vm_fibu['nw']}
+        vm_stueck_gw = {'gesamt_stueck': vm_fibu['gw']}
+        vj_fibu = get_stueckzahlen_fibu(vj_von_bereich, vj_bis_bereich, firma_filter_umsatz)
+        vj_stueck_nw = {'gesamt_stueck': vj_fibu['nw']}
+        vj_stueck_gw = {'gesamt_stueck': vj_fibu['gw']}
 
         # Stückzahlen zu Bereichen hinzufügen
         if '1-NW' in bereiche:

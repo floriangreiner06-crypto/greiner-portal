@@ -56,7 +56,7 @@ def get_tek_data_from_api(monat=None, jahr=None, standort=None):
     # Extrahiere die Kernlogik aus api_tek() für interne Nutzung
     try:
         # Importiere die benötigten Funktionen
-        from routes.controlling_routes import get_stueckzahlen_locosoft, get_werkstatt_produktivitaet
+        from routes.controlling_routes import get_stueckzahlen_fibu, get_werkstatt_produktivitaet
         from api.controlling_data import get_tek_data as get_tek_data_core
         from api.db_utils import locosoft_session
         import psycopg2.extras
@@ -72,14 +72,14 @@ def get_tek_data_from_api(monat=None, jahr=None, standort=None):
             umlage='mit'
         )
         
-        # Stückzahlen holen (wie api_tek Zeile 1038-1061)
+        # Stückzahlen aus FIBU (wie api_tek / Detail-Modal, Übersicht = Detail)
         von = f"{jahr}-{monat:02d}-01"
         bis = f"{jahr}-{monat+1:02d}-01" if monat < 12 else f"{jahr+1}-01-01"
+        stueck_fibu = get_stueckzahlen_fibu(von, bis, firma=firma, standort=standort_param)
+        stueck_nw = {'gesamt_stueck': stueck_fibu['nw']}
+        stueck_gw = {'gesamt_stueck': stueck_fibu['gw']}
         
-        stueck_nw = get_stueckzahlen_locosoft(von, bis, '1-NW', firma, standort_param)
-        stueck_gw = get_stueckzahlen_locosoft(von, bis, '2-GW', firma, standort_param)
-        
-        # Stückzahlen zu Bereichen hinzufügen (wie api_tek Zeile 1049-1068)
+        # Stückzahlen zu Bereichen hinzufügen (wie api_tek)
         bereiche_dict = {}
         for b in api_data.get('bereiche', []):
             bkey = b.get('id', '')
@@ -197,8 +197,9 @@ def get_tek_data_from_api(monat=None, jahr=None, standort=None):
                     }
                 
                 # Heute-Stückzahlen
-                heute_stueck_nw = get_stueckzahlen_locosoft(heute_str, morgen_str, '1-NW', firma, standort_param)
-                heute_stueck_gw = get_stueckzahlen_locosoft(heute_str, morgen_str, '2-GW', firma, standort_param)
+                heute_fibu = get_stueckzahlen_fibu(heute_str, morgen_str, firma_filter_umsatz)
+                heute_stueck_nw = {'gesamt_stueck': heute_fibu['nw']}
+                heute_stueck_gw = {'gesamt_stueck': heute_fibu['gw']}
                 
                 # Heute-Daten zu Bereichen hinzufügen
                 for bkey in bereiche_dict:
