@@ -509,7 +509,7 @@
                     <div>
                         <h5 class="mb-0">
                             <i class="bi bi-people"></i> 
-                            Gudat Team-Kapazität
+                            Gudat Team-Kapazität <span id="gudat-center-label" class="text-white-50"></span>
                             <small class="badge bg-light text-dark ms-2" id="gudat-update-time">Lädt...</small>
                         </h5>
                     </div>
@@ -1182,6 +1182,30 @@ function showAuftragDetail(auftragNr) {
                         <p>${statusBadges}</p>
                     </div>
                 </div>
+                <div class="row mt-2">
+                    <div class="col-12">
+                        <h6 class="text-muted"><i class="bi bi-check2-square"></i> Gudat-Vorgangsstatus (zur Kontrolle)</h6>
+                        ${(function(){
+                            const gudat = data.gudat || {};
+                            const states = gudat.states || [];
+                            const offenAw = parseFloat(s.offen_aw) || 0;
+                            const gudatZeigtFakturiert = states.some(st => (st.name || '').toLowerCase().indexOf('fakturiert') !== -1);
+                            const diskrepanz = gudatZeigtFakturiert && offenAw > 0;
+                            let block = '';
+                            if (states.length > 0) {
+                                block += '<p class="mb-1">' + states.map(st => '<span class="badge bg-secondary me-1">' + (st.name || '-').replace(/</g,'&lt;') + '</span>').join(' ') + '</p>';
+                            } else if (gudat.dossier_id) {
+                                block += '<p class="mb-0 small text-muted">Keine Vorgangsstatus von Gudat geladen (Dossier vorhanden).</p>';
+                            } else {
+                                block += '<p class="mb-0 small text-muted">Gudat-Daten für diesen Auftrag nicht verfügbar.</p>';
+                            }
+                            if (diskrepanz) {
+                                block += '<div class="alert alert-warning py-2 mb-0 mt-1"><i class="bi bi-exclamation-triangle me-1"></i> In Gudat als erledigt markiert – in Locosoft noch nicht abgerechnet. Bitte prüfen.</div>';
+                            }
+                            return block;
+                        })()}
+                    </div>
+                </div>
                 <hr>
                 <h6><i class="bi bi-list-check"></i> Positionen (${s.anzahl_positionen || 0})</h6>
                 <table class="table table-sm">
@@ -1224,7 +1248,10 @@ function showAuftragDetail(auftragNr) {
 // ============================================================
 
 function loadGudatKapazitaet() {
-    fetch('/api/werkstatt/live/gudat/kapazitaet')  // TAG122: /live/ fehlte
+    const betrieb = document.getElementById('kapa-betrieb-filter')?.value || '';
+    let url = '/api/werkstatt/live/gudat/kapazitaet';
+    if (betrieb) url += '?subsidiary=' + encodeURIComponent(betrieb);
+    fetch(url)
         .then(r => r.json())
         .then(data => {
             if (data.success) {
@@ -1232,6 +1259,9 @@ function loadGudatKapazitaet() {
                 document.getElementById('gudat-update-time').textContent = 
                     'Stand: ' + new Date().toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'});
             } else {
+                const centerLabel = (data.center === 'landau') ? ' (Landau)' : (data.center === 'deggendorf' ? ' (Deggendorf)' : '');
+                const labelEl = document.getElementById('gudat-center-label');
+                if (labelEl) labelEl.textContent = centerLabel;
                 showGudatError(data.error || 'API-Fehler');
             }
         })
@@ -1242,6 +1272,9 @@ function loadGudatKapazitaet() {
 }
 
 function renderGudatWidget(data) {
+    const centerName = (data.center === 'landau') ? ' (Landau)' : (data.center === 'deggendorf' ? ' (Deggendorf)' : '');
+    const labelEl = document.getElementById('gudat-center-label');
+    if (labelEl) labelEl.textContent = centerName;
     // KPIs
     document.getElementById('gudat-total-capacity').textContent = Math.round(data.kapazitaet || 0) + ' AW';
     document.getElementById('gudat-planned').textContent = Math.round(data.geplant || 0) + ' AW';
@@ -1331,9 +1364,9 @@ function renderGudatWeek(days) {
                 <div class="day-date">${dateStr}</div>
                 ${isClosed ? 
                     `<div class="day-value ${valueClass}" style="font-size: 14px;">${statusText}</div>` :
-                    `<div class="day-value ${valueClass}">${Math.round(day.utilization || 0)}%</div>`
+                    `<div class="day-value ${valueClass}" title="Auslastung = verplant / Kapazität (nicht Anteil frei)">${Math.round(day.utilization || 0)}%</div>`
                 }
-                <div class="day-free ${freeText.includes('überbucht') ? 'text-danger' : ''}">${freeText}</div>
+                <div class="day-free ${freeText.includes('überbucht') ? 'text-danger' : ''}" title="Freie AW an diesem Tag">${freeText}</div>
                 ${!isClosed && day.capacity ? `<div class="day-capacity" style="font-size: 10px; color: #95a5a6;">${Math.round(day.capacity)} AW</div>` : ''}
             </div>
         `;
