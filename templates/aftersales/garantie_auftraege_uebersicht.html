@@ -40,7 +40,14 @@
                     Nur fertige
                 </label>
             </div>
-            <button class="btn btn-primary" onclick="loadAuftraege()">
+            <label class="ms-2 mb-0 align-middle">Letzte</label>
+            <select id="filterMaxTage" class="form-select form-select-sm ms-1" style="width: auto;" onchange="loadAuftraege()">
+                <option value="0">alle</option>
+                <option value="30">30 Tage</option>
+                <option value="90" selected>90 Tage</option>
+                <option value="180">180 Tage</option>
+            </select>
+            <button class="btn btn-primary ms-2" onclick="loadAuftraege()">
                 <i class="bi bi-arrow-clockwise"></i> Aktualisieren
             </button>
         </div>
@@ -69,11 +76,15 @@
                             <tr>
                                 <th>Auftrag</th>
                                 <th>Datum</th>
+                                <th title="Tage seit Auftragserfassung">Alter</th>
                                 <th>Kunde</th>
                                 <th>Fahrzeug</th>
                                 <th>Serviceberater</th>
                                 <th class="text-end">AW</th>
                                 <th class="text-end">Offen</th>
+                                <th title="Bring-Termin (Locosoft)">Termin</th>
+                                <th title="Ungelieferte Teile am Auftrag">Teile</th>
+                                <th title="Gudat: Dossier für diesen Auftrag gefunden?">Gudat</th>
                                 <th class="garantie-akte-status">Garantieakte</th>
                                 <th>Aktion</th>
                             </tr>
@@ -82,6 +93,9 @@
                         </tbody>
                     </table>
                 </div>
+                <p class="small text-muted mt-2 mb-0">
+                    <i class="bi bi-info-circle"></i> In der Liste stehen nur Aufträge, die in Locosoft <strong>offen</strong> sind und <strong>bereits bearbeitet werden</strong>. „Gudat“ = Dossier für diesen Auftrag in Gudat gefunden (Suche heute + 90 Tage). Wenn kein Dossier, aber der Bring-Termin schon vorbei ist, erscheint der Hinweis „Termin bereits gewesen – Dossier in Gudat prüfen“.
+                </p>
             </div>
             
             <div id="empty" class="text-center py-5 text-muted d-none">
@@ -147,13 +161,23 @@ function loadAuftraege() {
     // Filter auslesen
     const markeFilter = document.querySelector('input[name="markeFilter"]:checked')?.value || 'alle';
     const fertigFilter = document.getElementById('filterFertig').checked;
-    const url = `/api/garantie/auftraege/offen?marke=${markeFilter}&fertig=${fertigFilter}`;
+    const maxTage = document.getElementById('filterMaxTage')?.value || '90';
+    const url = `/api/garantie/auftraege/offen?marke=${markeFilter}&fertig=${fertigFilter}&max_tage=${maxTage}`;
     
     fetch(url)
-        .then(response => response.json())
-        .then(data => {
+        .then(response => response.text())
+        .then(text => {
             document.getElementById('loading').classList.add('d-none');
-            
+            let data = null;
+            try {
+                data = JSON.parse(text);
+            } catch (_) {
+                document.getElementById('error').textContent = text && text.trimStart().startsWith('<')
+                    ? 'Server hat eine Fehlerseite zurückgegeben. Bitte später erneut versuchen oder Aktualisieren klicken.'
+                    : ('Fehler beim Laden: ' + (text ? text.slice(0, 80) : 'Keine Antwort'));
+                document.getElementById('error').classList.remove('d-none');
+                return;
+            }
             if (!data.success) {
                 document.getElementById('error').textContent = data.error || 'Fehler beim Laden der Aufträge';
                 document.getElementById('error').classList.remove('d-none');
@@ -235,12 +259,33 @@ function renderAuftraege(auftraege) {
             `;
         }
         
+        const tageOffen = a.tage_offen != null ? a.tage_offen : '-';
+        const terminStr = a.termin_bringen ? (a.termin_bringen.length > 10 ? a.termin_bringen.slice(0, 10) + ' ' + a.termin_bringen.slice(11, 16) : a.termin_bringen) : '-';
+        const teileOffen = a.teile_offen_anzahl != null && a.teile_offen_anzahl > 0
+            ? `<span class="badge bg-info">${a.teile_offen_anzahl}</span>` : '<span class="text-muted">0</span>';
+        const alterClass = (tageOffen !== '-' && tageOffen > 90) ? 'text-warning' : '';
+        const terminGewesen = (function() {
+            if (!a.termin_bringen) return false;
+            const t = a.termin_bringen.replace(' ', 'T').slice(0, 16);
+            const d = new Date(t);
+            return !isNaN(d.getTime()) && d < new Date();
+        })();
+        let gudatHtml = '';
+        if (a.gudat_dossier_gefunden === true) {
+            gudatHtml = '<span class="badge bg-success"><i class="bi bi-check-circle"></i> Dossier gefunden</span>';
+        } else {
+            gudatHtml = '<span class="badge bg-secondary"><i class="bi bi-dash-circle"></i> Kein Dossier</span>';
+            if (terminGewesen) {
+                gudatHtml += '<br><small class="text-warning" title="Bring-Termin liegt in der Vergangenheit"><i class="bi bi-exclamation-triangle"></i> Termin bereits gewesen – Dossier in Gudat prüfen</small>';
+            }
+        }
         return `
             <tr>
                 <td>
                     <strong><a href="javascript:void(0)" onclick="showAuftragDetail(${a.auftrag_nr})" class="text-primary" title="Auftragsdetails anzeigen">${a.auftrag_nr}</a></strong>
                 </td>
                 <td>${a.order_date || '-'}</td>
+                <td class="text-end ${alterClass}" title="Tage seit Auftragserfassung">${tageOffen}</td>
                 <td>${a.kunde || '-'}</td>
                 <td>
                     ${a.kennzeichen ? `<strong>${a.kennzeichen}</strong><br>` : ''}
@@ -251,6 +296,9 @@ function renderAuftraege(auftraege) {
                 <td class="text-end">
                     ${a.offen_aw > 0 ? `<span class="badge bg-warning text-dark">${a.offen_aw.toFixed(1)}</span>` : '<span class="badge bg-success">0</span>'}
                 </td>
+                <td class="small">${terminStr}</td>
+                <td class="text-end">${teileOffen}</td>
+                <td class="small">${gudatHtml}</td>
                 <td class="garantie-akte-status">${akteStatus}</td>
                 <td>${aktion}</td>
             </tr>

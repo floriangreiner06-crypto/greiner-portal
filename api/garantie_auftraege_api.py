@@ -11,10 +11,320 @@ import os
 import json
 import logging
 
+from datetime import date, timedelta
+
 from api.db_utils import locosoft_session
 from api.standort_utils import BETRIEB_NAMEN
 
 logger = logging.getLogger(__name__)
+
+# Gudat Center aus Standort: 1/2 = Deggendorf, 3 = Landau
+def _gudat_center_from_subsidiary(subsidiary):
+    return 'landau' if subsidiary == 3 else 'deggendorf'
+
+
+def _normalize_order_num(num) -> str:
+    """Einheitliche Darstellung für Set-Vergleich."""
+    if num is None:
+        return ""
+    s = str(num).strip()
+    return s.lstrip("0") or "0"
+
+
+def _normalize_kennzeichen(kz) -> str:
+    """Kennzeichen für Abgleich normalisieren (Leerzeichen weg, Großbuchstaben)."""
+    if kz is None or not str(kz).strip():
+        return ""
+    return str(kz).strip().upper().replace(" ", "").replace("-", "")
+
+
+def _gudat_auftragsnummern_mit_dossier(center: str) -> dict:
+    """
+    Holt einmalig alle Auftragsnummern und Kennzeichen, die in Gudat (für dieses Center) ein Dossier haben.
+    Returns: {"order_numbers": set(str), "license_plates": set(str)} (normalisiert).
+    """
+    order_numbers = set()
+    license_plates = set()
+    try:
+        from api.gudat_api import get_gudat_client
+        client = get_gudat_client(center)
+    except Exception as e:
+        logger.debug("Gudat-Client für Batch-Check nicht verfügbar: %s", e)
+        return {"order_numbers": set(), "license_plates": set()}
+
+    headers = {"Accept": "application/json", "Content-Type": "application/json"}
+    try:
+        headers["X-XSRF-TOKEN"] = client._get_xsrf()
+    except Exception:
+        pass
+
+    query_tasks = """
+    query GetWorkshopTasks($page: Int!, $itemsPerPage: Int!, $where: QueryWorkshopTasksWhereWhereConditions) {
+      workshopTasks(first: $itemsPerPage, page: $page, where: $where) {
+        data { id, dossier { id, orders { number }, vehicle { license_plate } } }
+      }
+    }
+    """
+    start_date = (date.today() - timedelta(days=90)).isoformat()
+    end_date = (date.today() + timedelta(days=30)).isoformat()
+    # Appointments: reines Datum (YYYY-MM-DD), Gudat akzeptiert das zuverlässiger als mit Uhrzeit
+    apt_start = start_date
+    apt_end = end_date
+
+    def collect_from_tasks(tasks):
+        for task in tasks or []:
+            dossier = task.get("dossier") or {}
+            for order in dossier.get("orders", []) or []:
+                n = order.get("number")
+                if n is not None:
+                    order_numbers.add(_normalize_order_num(n))
+                    order_numbers.add(str(n).strip())
+            vehicle = dossier.get("vehicle") or {}
+            lp = vehicle.get("license_plate")
+            if lp and str(lp).strip():
+                license_plates.add(_normalize_kennzeichen(lp))
+
+    # 1) Heute
+    try:
+        r = client.session.post(
+            f"{client.BASE_URL}/graphql",
+            json={
+                "operationName": "GetWorkshopTasks",
+                "query": query_tasks,
+                "variables": {
+                    "page": 1,
+                    "itemsPerPage": 200,
+                    "where": {"AND": [{"column": "START_DATE", "operator": "EQ", "value": date.today().isoformat()}]},
+                },
+            },
+            headers=headers,
+        )
+        data = r.json()
+        if "errors" not in data:
+            collect_from_tasks((data.get("data") or {}).get("workshopTasks", {}).get("data", []))
+    except Exception as e:
+        logger.debug("Gudat workshopTasks (heute) Batch: %s", e)
+
+    # 2) 90 Tage zurück + 30 vor, max 5 Seiten
+    for page in range(1, 6):
+        try:
+            r = client.session.post(
+                f"{client.BASE_URL}/graphql",
+                json={
+                    "operationName": "GetWorkshopTasks",
+                    "query": query_tasks,
+                    "variables": {
+                        "page": page,
+                        "itemsPerPage": 200,
+                        "where": {
+                            "AND": [
+                                {"column": "START_DATE", "operator": "GTE", "value": start_date},
+                                {"column": "START_DATE", "operator": "LTE", "value": end_date},
+                            ]
+                        },
+                    },
+                },
+                headers=headers,
+            )
+            data = r.json()
+            if data.get("errors"):
+                break
+            tasks = (data.get("data") or {}).get("workshopTasks", {}).get("data", []) or []
+            if not tasks:
+                break
+            collect_from_tasks(tasks)
+        except Exception as e:
+            logger.debug("Gudat workshopTasks (Range) Batch Seite %s: %s", page, e)
+
+    # 3) Appointments-Fallback (Dossier „abgeholt“ etc.), max 20 Seiten
+    first_per_page = 200
+    query_apt_inline = (
+        """
+    query GetAppointmentsByDate {
+      appointments(first: %d, page: %d, where: {
+        AND: [
+          {column: START_DATE_TIME, operator: GTE, value: "%s"},
+          {column: START_DATE_TIME, operator: LTE, value: "%s"}
+        ]
+      }) {
+        data { id, dossier { id, orders { number }, vehicle { license_plate } } }
+      }
+    }
+    """
+    )
+    for page in range(1, 21):
+        try:
+            query_apt = query_apt_inline % (first_per_page, page, apt_start, apt_end)
+            r = client.session.post(
+                f"{client.BASE_URL}/graphql",
+                json={"operationName": "GetAppointmentsByDate", "query": query_apt},
+                headers=headers,
+            )
+            apt_data = r.json()
+            if apt_data.get("errors"):
+                break
+            appointments = (apt_data.get("data") or {}).get("appointments", {}).get("data", []) or []
+            if not appointments:
+                break
+            for apt in appointments:
+                dossier = apt.get("dossier") or {}
+                for order in dossier.get("orders", []) or []:
+                    n = order.get("number")
+                    if n is not None:
+                        order_numbers.add(_normalize_order_num(n))
+                        order_numbers.add(str(n).strip())
+                vehicle = dossier.get("vehicle") or {}
+                lp = vehicle.get("license_plate")
+                if lp and str(lp).strip():
+                    license_plates.add(_normalize_kennzeichen(lp))
+            if len(appointments) < first_per_page:
+                break
+        except Exception as e:
+            logger.debug("Gudat Appointments Batch Seite %s: %s", page, e)
+
+    return {"order_numbers": order_numbers, "license_plates": license_plates}
+
+
+def _gudat_dossier_gefunden(order_number: int, subsidiary: int) -> bool:
+    """
+    Prüft ob in Gudat ein Dossier mit dieser Auftragsnummer existiert (nur Suche, kein Laden).
+    Nutzt workshopTasks (heute, dann 90 Tage zurück + 30 vor).
+    Returns: True wenn gefunden, False sonst. Bei Fehler: False (kein Abbruch).
+    """
+    def order_match(order_num, target):
+        if order_num is None:
+            return False
+        a = str(order_num).strip()
+        b = str(target).strip()
+        if a == b:
+            return True
+        if a.isdigit() and b.isdigit() and int(a) == int(b):
+            return True
+        if a.lstrip('0') == b.lstrip('0'):
+            return True
+        return False
+
+    try:
+        from api.gudat_api import get_gudat_client
+        center = _gudat_center_from_subsidiary(subsidiary or 1)
+        client = get_gudat_client(center)
+    except Exception as e:
+        logger.debug("Gudat-Client für Dossier-Check nicht verfügbar: %s", e)
+        return False
+
+    query_tasks = """
+    query GetWorkshopTasks($page: Int!, $itemsPerPage: Int!, $where: QueryWorkshopTasksWhereWhereConditions) {
+      workshopTasks(first: $itemsPerPage, page: $page, where: $where) {
+        data {
+          id
+          dossier { id, orders { number } }
+        }
+      }
+    }
+    """
+    headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
+    try:
+        headers['X-XSRF-TOKEN'] = client._get_xsrf()
+    except Exception:
+        pass
+
+    # 1) Heute
+    variables = {
+        "page": 1,
+        "itemsPerPage": 200,
+        "where": {"AND": [{"column": "START_DATE", "operator": "EQ", "value": date.today().isoformat()}]}
+    }
+    try:
+        r = client.session.post(
+            f"{client.BASE_URL}/graphql",
+            json={"operationName": "GetWorkshopTasks", "query": query_tasks, "variables": variables},
+            headers=headers
+        )
+        data = r.json()
+        if 'errors' not in data:
+            for task in (data.get('data') or {}).get('workshopTasks', {}).get('data', []) or []:
+                for order in (task.get('dossier') or {}).get('orders', []) or []:
+                    if order_match(order.get('number'), order_number):
+                        return True
+    except Exception as e:
+        logger.debug("Gudat workshopTasks (heute) für Auftrag %s: %s", order_number, e)
+
+    # 2) 90 Tage zurück + 30 vor (max 5 Seiten)
+    start_date = (date.today() - timedelta(days=90)).isoformat()
+    end_date = (date.today() + timedelta(days=30)).isoformat()
+    for page in range(1, 6):
+        variables = {
+            "page": page,
+            "itemsPerPage": 200,
+            "where": {
+                "AND": [
+                    {"column": "START_DATE", "operator": "GTE", "value": start_date},
+                    {"column": "START_DATE", "operator": "LTE", "value": end_date}
+                ]
+            }
+        }
+        try:
+            r = client.session.post(
+                f"{client.BASE_URL}/graphql",
+                json={"operationName": "GetWorkshopTasks", "query": query_tasks, "variables": variables},
+                headers=headers
+            )
+            data = r.json()
+            if 'errors' in data:
+                break
+            tasks = (data.get('data') or {}).get('workshopTasks', {}).get('data', []) or []
+            if not tasks:
+                break
+            for task in tasks:
+                for order in (task.get('dossier') or {}).get('orders', []) or []:
+                    if order_match(order.get('number'), order_number):
+                        return True
+        except Exception as e:
+            logger.debug("Gudat workshopTasks (Range) für Auftrag %s: %s", order_number, e)
+
+    # 3) Fallback: Appointments (Dossier z. B. „abgeholt“ – Tasks nicht mehr in workshopTasks)
+    try:
+        first_per_page = 200
+        query_apt_inline = (
+            """
+        query GetAppointmentsByDate {
+          appointments(first: %d, page: %d, where: {
+            AND: [
+              {column: START_DATE_TIME, operator: GTE, value: "%s"},
+              {column: START_DATE_TIME, operator: LTE, value: "%s"}
+            ]
+          }) {
+            data {
+              id
+              dossier { id, orders { number } }
+            }
+          }
+        }
+        """
+        )
+        for page in range(1, 51):
+            query_apt = query_apt_inline % (first_per_page, page, start_date, end_date)
+            r = client.session.post(
+                f"{client.BASE_URL}/graphql",
+                json={"operationName": "GetAppointmentsByDate", "query": query_apt},
+                headers=headers,
+            )
+            apt_data = r.json()
+            if apt_data.get('errors'):
+                break
+            appointments = (apt_data.get('data') or {}).get('appointments', {}).get('data', []) or []
+            if not appointments:
+                break
+            for apt in appointments:
+                for order in (apt.get('dossier') or {}).get('orders', []) or []:
+                    if order_match(order.get('number'), order_number):
+                        return True
+            if len(appointments) < first_per_page:
+                break
+    except Exception as e:
+        logger.debug("Gudat Appointments-Fallback für Auftrag %s: %s", order_number, e)
+
+    return False
 
 bp = Blueprint('garantie_auftraege_api', __name__, url_prefix='/api/garantie/auftraege')
 
@@ -165,8 +475,7 @@ def get_offene_garantieauftraege():
     Query-Parameter:
         - marke: Filter nach Marke ('opel', 'hyundai', 'alle') - default: 'alle'
         - fertig: Filter nach fertigen Aufträgen ('true'/'false') - default: 'false'
-                     'true' = nur komplett gestempelte (offen_aw = 0)
-                     'false' = alle (auch noch nicht fertige)
+        - max_tage: Nur Aufträge der letzten N Tage (0 = alle) - default: 0
     
     Returns:
         Liste von Aufträgen mit:
@@ -177,6 +486,7 @@ def get_offene_garantieauftraege():
         from flask import request
         marke_filter = request.args.get('marke', 'alle').lower()
         fertig_filter = request.args.get('fertig', 'false').lower() == 'true'
+        max_tage = request.args.get('max_tage', '0', type=lambda x: int(x) if str(x).isdigit() else 0)
         
         # Betriebs-Filter basierend auf Marke
         # Opel = Betrieb 1 (Deggendorf Opel) + 3 (Landau Opel)
@@ -199,6 +509,8 @@ def get_offene_garantieauftraege():
                         o.number as auftrag_nr,
                         o.subsidiary as betrieb,
                         o.order_date,
+                        o.estimated_inbound_time as termin_bringen,
+                        o.clearing_delay_type,
                         o.has_open_positions,
                         o.order_taking_employee_no as sb_nr,
                         sb.name as sb_name,
@@ -270,11 +582,22 @@ def get_offene_garantieauftraege():
                         ORDER BY order_number, employee_number, start_time, end_time
                     ) dedup
                     GROUP BY order_number
+                ),
+                teile_offen AS (
+                    SELECT order_number, COUNT(*)::int as anzahl_offen
+                    FROM parts p
+                    WHERE p.order_number IN (SELECT auftrag_nr FROM garantie_auftraege)
+                      AND (p.is_invoiced = false OR p.is_invoiced IS NULL)
+                    GROUP BY order_number
                 )
                 SELECT
                     g.auftrag_nr,
                     g.betrieb,
                     g.order_date,
+                    g.termin_bringen,
+                    g.clearing_delay_type,
+                    COALESCE(te.anzahl_offen, 0) as teile_offen_anzahl,
+                    (CURRENT_DATE - (g.order_date::date))::int as tage_offen,
                     g.sb_name,
                     g.kennzeichen,
                     g.marke,
@@ -290,6 +613,7 @@ def get_offene_garantieauftraege():
                 FROM garantie_auftraege g
                 LEFT JOIN auftrag_summen s ON g.auftrag_nr = s.order_number
                 LEFT JOIN stempel_summen st ON g.auftrag_nr = st.order_number
+                LEFT JOIN teile_offen te ON g.auftrag_nr = te.order_number
                 WHERE g.ist_garantie = true
                   AND g.wird_bearbeitet = true
             """
@@ -300,36 +624,62 @@ def get_offene_garantieauftraege():
                 query += f" AND g.betrieb IN ({placeholders})"
             
             # Filter nach "fertig" hinzufügen (komplett gestempelt = gestempelt_aw >= total_aw)
-            # Toleranz: 95% reicht (wegen Rundungen)
             if fertig_filter:
                 query += """ AND CASE 
                         WHEN st.gestempelt_min IS NULL THEN 0.0
                         ELSE st.gestempelt_min / 6.0
                     END >= COALESCE(s.total_aw, 0) * 0.95"""
             
+            # Optional: nur Aufträge der letzten N Tage (reduziert „alte“ Einträge)
+            params_list = list(betriebe_filter) if betriebe_filter else []
+            if max_tage and max_tage > 0:
+                query += " AND g.order_date >= CURRENT_DATE - INTERVAL '1 day' * %s"
+                params_list.append(max_tage)
+            
             query += " ORDER BY g.order_date DESC"
             
-            if betriebe_filter:
-                cursor.execute(query, betriebe_filter)
+            if params_list:
+                cursor.execute(query, params_list)
             else:
                 cursor.execute(query)
             auftraege = cursor.fetchall()
             
-            # Für jeden Auftrag: Prüfe Garantieakte-Status
+            # Gudat-Dossier-Status: einmal pro Center alle Auftragsnummern holen (Batch), dann Lookup
+            centers = set()
+            for auftrag in auftraege:
+                betrieb = auftrag.get('betrieb')
+                centers.add(_gudat_center_from_subsidiary(betrieb or 1))
+            gudat_sets = {}
+            for c in centers:
+                gudat_sets[c] = _gudat_auftragsnummern_mit_dossier(c)
+            
             result = []
             for auftrag in auftraege:
                 auftrag_nr = auftrag['auftrag_nr']
                 kunde = auftrag['kunde'] or f'Kunde_{auftrag_nr}'
-                
-                # Prüfe ob Garantieakte existiert
-                # TAG 189: Brand-Erkennung aus subsidiary für get_garantieakte_metadata
-                akte_info = get_garantieakte_metadata(auftrag_nr, kunde, auftrag.get('betrieb'))
-                
+                betrieb = auftrag.get('betrieb')
+                center = _gudat_center_from_subsidiary(betrieb or 1)
+                gudat = gudat_sets.get(center, {"order_numbers": set(), "license_plates": set()})
+                nr_norm = _normalize_order_num(auftrag_nr)
+                nr_raw = str(auftrag_nr).strip()
+                kz_norm = _normalize_kennzeichen(auftrag.get("kennzeichen"))
+                order_ok = nr_norm in gudat.get("order_numbers", set()) or nr_raw in gudat.get("order_numbers", set())
+                lp_ok = kz_norm and kz_norm in gudat.get("license_plates", set())
+                gudat_dossier_gefunden = order_ok or lp_ok
+
+                akte_info = get_garantieakte_metadata(auftrag_nr, kunde, betrieb)
+
+                termin_ts = auftrag.get('termin_bringen')
                 result.append({
                     'auftrag_nr': auftrag_nr,
                     'betrieb': auftrag['betrieb'],
                     'betrieb_name': BETRIEB_NAMEN.get(auftrag['betrieb'], 'Unbekannt'),
                     'order_date': auftrag['order_date'].strftime('%Y-%m-%d') if auftrag['order_date'] else None,
+                    'tage_offen': int(auftrag.get('tage_offen') or 0),
+                    'termin_bringen': termin_ts.strftime('%Y-%m-%d %H:%M') if termin_ts else None,
+                    'clearing_delay_type': auftrag.get('clearing_delay_type'),
+                    'teile_offen_anzahl': int(auftrag.get('teile_offen_anzahl') or 0),
+                    'gudat_dossier_gefunden': gudat_dossier_gefunden,
                     'serviceberater': auftrag['sb_name'],
                     'kennzeichen': auftrag['kennzeichen'],
                     'marke': auftrag['marke'],
@@ -353,7 +703,8 @@ def get_offene_garantieauftraege():
                 'filter': {
                     'marke': marke_filter,
                     'betriebe': betriebe_filter,
-                    'fertig': fertig_filter
+                    'fertig': fertig_filter,
+                    'max_tage': max_tage
                 }
             })
             

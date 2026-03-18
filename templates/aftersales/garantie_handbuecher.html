@@ -4,37 +4,37 @@
 
 {% block content %}
 <div class="container-fluid py-4">
-    <div class="mb-4">
-        <h1><i class="bi bi-journal-bookmark text-warning"></i> Garantie – Handbücher & Richtlinien</h1>
-        <p class="text-muted mb-0">Referenz für die Auftragskontrolle. Dokumente öffnen sich im Browser oder können heruntergeladen werden.</p>
+    <div class="mb-4 d-flex justify-content-between align-items-start flex-wrap gap-2">
+        <div>
+            <h1><i class="bi bi-journal-bookmark text-warning"></i> Garantie – Handbücher & Richtlinien</h1>
+            <p class="text-muted mb-0">Referenz für die Auftragskontrolle. Dokumente öffnen sich im Browser oder können heruntergeladen werden.</p>
+        </div>
+        <div id="upload-btn-wrap" class="d-none">
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#garantieUploadModal">
+                <i class="bi bi-upload"></i> Dokument hochladen
+            </button>
+        </div>
     </div>
 
-    <div class="card">
+    <div class="card mb-3">
         <div class="card-header">
-            <h5 class="mb-0"><i class="bi bi-folder2-open"></i> Handbücher</h5>
+            <h5 class="mb-0"><i class="bi bi-folder2-open"></i> Handbücher & Richtlinien</h5>
         </div>
         <div class="card-body">
-            <p class="text-muted small mb-3">Sync-Verzeichnis: <code>docs/workstreams/werkstatt/garantie</code> (bzw. F:\Greiner Portal\Greiner_Portal_NEU\Server\…\garantie).</p>
-            <div class="list-group list-group-flush">
-                {% for h in handbuecher %}
-                <div class="list-group-item d-flex justify-content-between align-items-center">
-                    <div>
-                        <strong>{{ h.titel }}</strong>
-                        {% if h.stand %}<span class="text-muted ms-2">(Stand {{ h.stand }})</span>{% endif %}
-                        <br>
-                        <span class="badge bg-secondary">{{ h.marke }}</span>
-                    </div>
-                    <div>
-                        {% if h.vorhanden %}
-                        <a href="{{ url_for('aftersales_garantie.garantie_handbuch_pdf', filename=h.datei) }}" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm">
-                            <i class="bi bi-file-pdf"></i> Öffnen
-                        </a>
-                        {% else %}
-                        <span class="text-muted small">Datei noch nicht synchronisiert</span>
-                        {% endif %}
-                    </div>
-                </div>
-                {% endfor %}
+            <p class="text-muted small mb-3">Dokumente aus <code>data/uploads/garantie</code> oder Sync <code>docs/workstreams/werkstatt/garantie</code>.</p>
+            <div id="list-handbuecher" class="list-group list-group-flush">
+                <div class="list-group-item text-muted"><em>Lade …</em></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="bi bi-envelope-paper"></i> Rundschreiben</h5>
+        </div>
+        <div class="card-body">
+            <div id="list-rundschreiben" class="list-group list-group-flush">
+                <div class="list-group-item text-muted"><em>Lade …</em></div>
             </div>
         </div>
     </div>
@@ -45,4 +45,177 @@
         </a>
     </div>
 </div>
+
+<!-- Modal: Dokument hochladen -->
+<div class="modal fade" id="garantieUploadModal" tabindex="-1" aria-labelledby="garantieUploadModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="garantieUploadModalLabel"><i class="bi bi-upload"></i> Garantie-Dokument hochladen</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="upload-file" class="form-label">PDF-Datei <span class="text-danger">*</span></label>
+                    <input type="file" class="form-control" id="upload-file" accept=".pdf">
+                </div>
+                <div class="mb-3">
+                    <label for="upload-titel" class="form-label">Titel (Anzeige)</label>
+                    <input type="text" class="form-control" id="upload-titel" placeholder="z. B. Garantie-Richtlinie Hyundai">
+                </div>
+                <div class="mb-3">
+                    <label for="upload-marke" class="form-label">Marke / Bereich</label>
+                    <select class="form-select" id="upload-marke">
+                        <option value="">— Bitte wählen —</option>
+                        <option value="Übergreifend">Übergreifend</option>
+                        <option value="Hyundai">Hyundai</option>
+                        <option value="Opel / Stellantis">Opel / Stellantis</option>
+                        <option value="Leapmotor">Leapmotor</option>
+                        <option value="Sonstige">Sonstige</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="upload-stand" class="form-label">Stand (z. B. 01/2026)</label>
+                    <input type="text" class="form-control" id="upload-stand" placeholder="01/2026 oder Mai 2025">
+                </div>
+                <div class="mb-3">
+                    <label for="upload-typ" class="form-label">Typ</label>
+                    <select class="form-select" id="upload-typ">
+                        <option value="handbuch">Handbuch</option>
+                        <option value="richtlinie">Richtlinie</option>
+                        <option value="rundschreiben">Rundschreiben</option>
+                    </select>
+                </div>
+                <div id="upload-error" class="alert alert-danger d-none" role="alert"></div>
+                <div id="upload-success" class="alert alert-success d-none" role="alert"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-primary" id="upload-submit">
+                    <i class="bi bi-upload"></i> Hochladen
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const listHandbuecher = document.getElementById('list-handbuecher');
+    const listRundschreiben = document.getElementById('list-rundschreiben');
+    const uploadBtnWrap = document.getElementById('upload-btn-wrap');
+
+    function renderList(items, container, pdfUrlPrefix) {
+        if (!items.length) {
+            container.innerHTML = '<div class="list-group-item text-muted"><em>Keine Einträge.</em></div>';
+            return;
+        }
+        container.innerHTML = items.map(function(d) {
+            const link = d.vorhanden
+                ? '<a href="' + pdfUrlPrefix + encodeURIComponent(d.dateiname) + '" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm"><i class="bi bi-file-pdf"></i> Öffnen</a>'
+                : '<span class="text-muted small">Datei noch nicht hochgeladen</span>';
+            const stand = d.stand ? ' <span class="text-muted">(Stand ' + escapeHtml(d.stand) + ')</span>' : '';
+            return '<div class="list-group-item d-flex justify-content-between align-items-center">' +
+                '<div><strong>' + escapeHtml(d.titel) + '</strong>' + stand + '<br><span class="badge bg-secondary">' + escapeHtml(d.marke || '—') + '</span></div>' +
+                '<div>' + link + '</div></div>';
+        }).join('');
+    }
+
+    function escapeHtml(s) {
+        if (s == null) return '';
+        var div = document.createElement('div');
+        div.textContent = s;
+        return div.innerHTML;
+    }
+
+    function loadDokumente() {
+        fetch('/api/garantie/dokumente')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.success) {
+                    listHandbuecher.innerHTML = '<div class="list-group-item text-danger">Fehler beim Laden.</div>';
+                    listRundschreiben.innerHTML = '';
+                    return;
+                }
+                var pdfUrlPrefix = '{{ url_for("aftersales_garantie.garantie_handbuch_pdf", filename="") }}';
+                if (pdfUrlPrefix && !/\/$/.test(pdfUrlPrefix)) pdfUrlPrefix += '/';
+                var all = data.dokumente || [];
+                var handbuecher = all.filter(function(d) { return d.typ === 'handbuch' || d.typ === 'richtlinie'; });
+                var rundschreiben = all.filter(function(d) { return d.typ === 'rundschreiben'; });
+                renderList(handbuecher, listHandbuecher, pdfUrlPrefix);
+                renderList(rundschreiben, listRundschreiben, pdfUrlPrefix);
+                if (data.can_upload) uploadBtnWrap.classList.remove('d-none');
+            })
+            .catch(function() {
+                listHandbuecher.innerHTML = '<div class="list-group-item text-danger">Netzwerkfehler.</div>';
+                listRundschreiben.innerHTML = '';
+            });
+    }
+
+    loadDokumente();
+
+    // Upload
+    var modal = document.getElementById('garantieUploadModal');
+    if (modal) {
+        var fileInput = document.getElementById('upload-file');
+        var titelInput = document.getElementById('upload-titel');
+        var markeSelect = document.getElementById('upload-marke');
+        var standInput = document.getElementById('upload-stand');
+        var typSelect = document.getElementById('upload-typ');
+        var errDiv = document.getElementById('upload-error');
+        var okDiv = document.getElementById('upload-success');
+        document.getElementById('upload-submit').addEventListener('click', function() {
+            var file = fileInput.files[0];
+            if (!file) {
+                errDiv.textContent = 'Bitte eine PDF-Datei wählen.';
+                errDiv.classList.remove('d-none');
+                okDiv.classList.add('d-none');
+                return;
+            }
+            errDiv.classList.add('d-none');
+            okDiv.classList.add('d-none');
+            var fd = new FormData();
+            fd.append('file', file);
+            fd.append('titel', titelInput.value.trim() || file.name.replace(/\.pdf$/i, ''));
+            fd.append('marke', markeSelect.value || '');
+            fd.append('stand', standInput.value.trim() || '');
+            fd.append('typ', typSelect.value || 'handbuch');
+            fetch('/api/garantie/dokumente/upload', { method: 'POST', body: fd, credentials: 'same-origin' })
+                .then(function(r) { return r.json(); })
+                .then(function(res) {
+                    if (res.success) {
+                        okDiv.textContent = 'Dokument wurde hochgeladen.';
+                        okDiv.classList.remove('d-none');
+                        fileInput.value = '';
+                        titelInput.value = '';
+                        standInput.value = '';
+                        loadDokumente();
+                        setTimeout(function() {
+                            var b = document.querySelector('#garantieUploadModal .btn-close');
+                            if (b) b.click();
+                            okDiv.classList.add('d-none');
+                        }, 1500);
+                    } else {
+                        errDiv.textContent = res.error || 'Upload fehlgeschlagen.';
+                        errDiv.classList.remove('d-none');
+                    }
+                })
+                .catch(function() {
+                    errDiv.textContent = 'Netzwerkfehler.';
+                    errDiv.classList.remove('d-none');
+                });
+        });
+        modal.addEventListener('show.bs.modal', function() {
+            errDiv.classList.add('d-none');
+            okDiv.classList.add('d-none');
+        });
+        fileInput.addEventListener('change', function() {
+            if (fileInput.files[0] && !titelInput.value.trim())
+                titelInput.value = fileInput.files[0].name.replace(/\.pdf$/i, '');
+        });
+    }
+})();
+</script>
 {% endblock %}

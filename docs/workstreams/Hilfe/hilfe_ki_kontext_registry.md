@@ -1,6 +1,6 @@
 # Kontext-Registry für KI „Mit KI erweitern“
 
-**Letzte Prüfung:** 2026-03-12 (Session controlling: TEK Stückzahlen NW/GW aus FIBU = Detail ergänzt).
+**Letzte Prüfung:** 2026-03-18 (Session werkstatt: Registry-Quellen-Check, inhaltlich unverändert).
 
 **Zweck:** Pro Thema ein kurzer, fachlicher SSOT-Text für die KI. Wird beim „Mit KI erweitern“ an den Prompt angehängt, damit die KI Berechnungsdetails korrekt ergänzen kann.
 

@@ -69,38 +69,26 @@ def garantie_auftraege_uebersicht():
 @login_required
 def garantie_handbuecher():
     """
-    Garantie – Handbücher & Richtlinien (Phase 1 Wissensbasis).
-    Liste der Handbücher mit Links zum Download.
+    Garantie – Handbücher & Richtlinien. Liste wird per API (/api/garantie/dokumente) geladen.
     """
-    base_dir = _garantie_handbuecher_dir()
-    handbuecher = []
-    for h in GARANTIE_HANDBUECHER:
-        path = os.path.join(base_dir, h['datei'])
-        handbuecher.append({
-            'datei': h['datei'],
-            'titel': h['titel'],
-            'marke': h['marke'],
-            'stand': h['stand'],
-            'vorhanden': os.path.isfile(path),
-        })
-    return render_template('aftersales/garantie_handbuecher.html', handbuecher=handbuecher)
+    return render_template('aftersales/garantie_handbuecher.html')
 
 
 @bp.route('/handbuch/<path:filename>')
 @login_required
 def garantie_handbuch_pdf(filename):
     """
-    Stellt ein Garantie-Handbuch-PDF aus dem Sync-Verzeichnis bereit.
+    Stellt ein Garantie-PDF bereit. Zuerst data/uploads/garantie, dann Legacy docs/.../garantie.
     Nur sichere Dateinamen (alphanumerisch, Leerzeichen, Bindestrich, Unterstrich, Punkt) erlaubt.
     """
-    # Path-Traversal verhindern: nur Basename, nur .pdf
+    from api.garantie_dokumente_api import get_garantie_pdf_path
     basename = os.path.basename(filename).strip()
     if not basename.lower().endswith('.pdf'):
         return jsonify({'error': 'Nur PDF-Dateien erlaubt'}), 400
     if not re.match(r'^[a-zA-Z0-9 ._\-]+\.pdf$', basename):
         return jsonify({'error': 'Ungültiger Dateiname'}), 400
-    path = os.path.join(_garantie_handbuecher_dir(), basename)
-    if not os.path.isfile(path):
+    path = get_garantie_pdf_path(basename)
+    if not path:
         return jsonify({'error': 'Datei nicht gefunden'}), 404
     return send_file(
         path,

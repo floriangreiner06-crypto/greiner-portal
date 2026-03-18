@@ -27,7 +27,7 @@ else:
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 Jahr in Produktion
 
 # Globale Static-Version (ändert sich bei jedem Flask-Neustart)
-STATIC_VERSION = '20260228140000'  # ecoDMS Belegsuche: Fallback Ordner Buchhaltung + Modal-Text
+STATIC_VERSION = '20260318120000'  # EZ-Spalte Fahrzeugfinanzierungen-Modal (Cache-Bust)
 print(f"📦 Static Version: {STATIC_VERSION}")
 
 # Template-Kontext: Macht STATIC_VERSION in allen Templates verfügbar
@@ -778,6 +778,14 @@ try:
 except Exception as e:
     print(f"⚠️  Garantie Aufträge API nicht geladen: {e}")
 
+# Garantie-Dokumente (Handbücher, Richtlinien, Rundschreiben) – Liste + Upload
+try:
+    from api.garantie_dokumente_api import bp as garantie_dokumente_api
+    app.register_blueprint(garantie_dokumente_api)
+    print("✅ Garantie-Dokumente API registriert: /api/garantie/dokumente")
+except Exception as e:
+    print(f"⚠️  Garantie-Dokumente API nicht geladen: {e}")
+
 # Mobis Teilebezug API (TAG 175 - Über Locosoft SOAP)
 try:
     from api.mobis_teilebezug_api import bp as mobis_teilebezug_api
@@ -1023,77 +1031,7 @@ def leasys_programmfinder():
     return render_template('leasys_programmfinder.html')
 
 
-# ========================================
-# WERKSTATT MONITOR-ROUTES (ohne Login, Token-Auth)
-# Normale Werkstatt-Routes sind in werkstatt_routes.py (TAG 130)
-# ========================================
-
-@app.route('/monitor/stempeluhr')
-@app.route('/werkstatt/stempeluhr/monitor')
-def werkstatt_stempeluhr_monitor():
-    """
-    Werkstatt Stempeluhr - MONITOR VERSION (ohne Login)
-    Zugriff über Token-Parameter oder interne IP.
-    """
-    # Monitor-Token (geheim halten!)
-    MONITOR_TOKEN = 'Greiner2024Werkstatt!'
-    
-    # Token aus URL prüfen
-    token = request.args.get('token', '')
-    
-    # IP prüfen
-    client_ip = request.remote_addr
-    if request.headers.get('X-Forwarded-For'):
-        client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
-    
-    # Zugriff erlauben wenn: korrekter Token ODER interne IP
-    is_internal = client_ip.startswith('10.80.80.') or client_ip == '127.0.0.1'
-    is_valid_token = token == MONITOR_TOKEN
-    
-    if not (is_internal or is_valid_token):
-        return "Zugriff verweigert. Token erforderlich.", 403
-    
-    return render_template('aftersales/werkstatt_stempeluhr_monitor.html')
-
-
-# ========================================
-# TAG 126: LIVEBOARD MONITOR (ohne Login)
-# ========================================
-
-@app.route('/monitor/liveboard')
-@app.route('/monitor/liveboard/gantt')
-def werkstatt_liveboard_monitor():
-    """
-    Werkstatt Live-Board - MONITOR VERSION (ohne Login)
-    Zugriff über Token-Parameter oder interne IP.
-
-    URLs:
-    - /monitor/liveboard?token=XXX&betrieb=deg        (Karten-Ansicht)
-    - /monitor/liveboard/gantt?token=XXX&betrieb=deg  (Gantt-Ansicht)
-    """
-    # Monitor-Token (geheim halten!)
-    MONITOR_TOKEN = 'Greiner2024Werkstatt!'
-
-    # Token aus URL prüfen
-    token = request.args.get('token', '')
-
-    # IP prüfen
-    client_ip = request.remote_addr
-    if request.headers.get('X-Forwarded-For'):
-        client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
-
-    # Zugriff erlauben wenn: korrekter Token ODER interne IP
-    is_internal = client_ip.startswith('10.80.80.') or client_ip == '127.0.0.1'
-    is_valid_token = token == MONITOR_TOKEN
-
-    if not (is_internal or is_valid_token):
-        return "Zugriff verweigert. Token erforderlich.", 403
-
-    # Gantt oder Karten-Ansicht?
-    if request.path.endswith('/gantt'):
-        return render_template('aftersales/werkstatt_liveboard_gantt.html')
-    else:
-        return render_template('aftersales/werkstatt_liveboard.html')
-
-
-# TAG 116/130: Kapazitätsplanung + Anwesenheit sind jetzt in werkstatt_routes.py
+# Werkstatt-Monitor-Ansichten (ohne Login) → routes/werkstatt_routes.py
+# /monitor/stempeluhr, /werkstatt/stempeluhr/monitor (Stempeluhr)
+# /monitor/liveboard, /monitor/liveboard/gantt (Live-Board)
+# Daten: /api/werkstatt/live/stempeluhr, /api/werkstatt/live/board
