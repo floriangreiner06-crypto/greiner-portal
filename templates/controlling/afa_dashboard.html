@@ -101,6 +101,7 @@
                     <option value="2">2 (HYU)</option>
                     <option value="3">3 (LAN)</option>
                 </select>
+                <input type="text" id="filter-kennzeichen" class="form-control form-control-sm" style="width: 10rem;" placeholder="Kennzeichen suchen…" title="Kennzeichen (Teil suche, Groß-/Kleinschreibung egal)">
             </div>
         </div>
         <div class="card-body p-0">
@@ -124,6 +125,39 @@
                     </thead>
                     <tbody id="tab-fahrzeuge">
                         <tr><td colspan="12" class="text-center text-muted py-4">Lade Daten...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Abverkauf-Übersicht: Verkaufspreis, Buchwert, AfA – für schnelleren Abverkauf -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <h6 class="mb-0"><i class="bi bi-graph-up-arrow text-success"></i> Abverkauf-Übersicht</h6>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="btn-abverkauf-laden" title="Aktuelle Verkaufspreise aus Locosoft laden">Aktualisieren</button>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small mb-2">Aktiver VFW-/Mietwagen-Bestand mit <strong>Einstandspreis</strong>, <strong>Buchwert</strong>, <strong>AfA bisher</strong> und <strong>Verkaufspreis laut Auszeichnung</strong> (Locosoft: L132PR Kalkulation / Rechnungsbetrag). Differenz = Verkaufspreis − Buchwert – für schnelleren Abverkauf.</p>
+            <div class="table-responsive">
+                <table class="table table-sm afa-table mb-0">
+                    <thead>
+                        <tr>
+                            <th>VIN</th>
+                            <th>Kennzeichen</th>
+                            <th>Bezeichnung</th>
+                            <th>Standort</th>
+                            <th>Art</th>
+                            <th class="text-end">Einstandspreis (€)</th>
+                            <th class="text-end">Buchwert (€)</th>
+                            <th class="text-end">AfA bisher (€)</th>
+                            <th class="text-end" title="Locosoft Verkaufspreis (brutto) ÷ 1,19 für Vergleich mit Buchwert">Verkaufspreis Auszeichnung (netto €)</th>
+                            <th class="text-end">Differenz (€)</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="abverkauf-tbody">
+                        <tr><td colspan="11" class="text-center text-muted py-3">Klick auf „Aktualisieren“ zum Laden.</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -253,7 +287,10 @@
                 <div class="chart-container mb-3">
                     <canvas id="detail-chart"></canvas>
                 </div>
-                <div id="detail-buchgewinn" class="alert alert-secondary d-none"></div>
+                <div id="detail-buchgewinn" class="alert alert-secondary" title="Verkaufserlös (netto) − Restbuchwert zum Abgangsdatum = periodenwirksamer Gewinn oder Verlust (GuV).">
+                    <span id="detail-buchgewinn-text">–</span>
+                    <br><small class="text-muted">Verkaufserlös (netto) − Restbuchwert zum Abgang = periodenwirksamer Gewinn/Verlust (GuV). Erscheint nach „Abgang buchen“.</small>
+                </div>
                 <div id="detail-tageszulassung" class="mb-3 d-none">
                     <label class="form-check">
                         <input type="checkbox" class="form-check-input" id="detail-check-tageszulassung">
@@ -376,10 +413,12 @@
         const art = document.getElementById('filter-art').value;
         const marke = document.getElementById('filter-marke').value;
         const betrieb = document.getElementById('filter-betrieb').value;
+        const kennzeichen = (document.getElementById('filter-kennzeichen').value || '').trim().toLowerCase();
         let list = fahrzeuge;
         if (art) list = list.filter(f => f.fahrzeugart === art);
         if (marke) list = list.filter(f => (f.marke || '').indexOf(marke) !== -1);
         if (betrieb) list = list.filter(f => String(f.betriebsnr) === betrieb);
+        if (kennzeichen) list = list.filter(f => (f.kennzeichen || '').toLowerCase().indexOf(kennzeichen) !== -1);
 
         const tbody = document.getElementById('tab-fahrzeuge');
         if (list.length === 0) {
@@ -427,10 +466,23 @@
                 if (!data.ok) { throw new Error(data.error || 'Monatsberechnung fehlgeschlagen'); }
                 const pos = data.positionen || [];
                 const summe = data.summe_afa || 0;
+                const zwischensummen = data.zwischensummen || [];
+                const zByIndex = {};
+                zwischensummen.forEach(z => { zByIndex[z.after_index] = z; });
                 const fmtKonto = (k) => k != null ? String(k).padStart(6, '0') : '-';
-                tbody.innerHTML = pos.length === 0
-                    ? '<tr><td colspan="9" class="text-center text-muted">Keine aktiven Fahrzeuge in diesem Monat.</td></tr>'
-                    : pos.map((p, i) => '<tr><td class="text-end">' + (i + 1) + '</td><td>' + (p.kennzeichen || '-') + '</td><td>' + (p.vin || '-') + '</td><td>' + (p.standort || '-') + '</td><td>' + (p.fahrzeug_bezeichnung || '-') + '</td><td>' + (p.fahrzeugart || '-') + '</td><td>' + fmtKonto(p.konto_soll) + '</td><td>' + fmtKonto(p.konto_haben) + '</td><td>' + fmtEuro(p.afa_betrag) + '</td></tr>').join('');
+                if (pos.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">Keine aktiven Fahrzeuge in diesem Monat.</td></tr>';
+                } else {
+                    const rows = [];
+                    pos.forEach((p, i) => {
+                        rows.push('<tr><td class="text-end">' + (i + 1) + '</td><td>' + (p.kennzeichen || '-') + '</td><td>' + (p.vin || '-') + '</td><td>' + (p.standort || '-') + '</td><td>' + (p.fahrzeug_bezeichnung || '-') + '</td><td>' + (p.fahrzeugart || '-') + '</td><td>' + fmtKonto(p.konto_soll) + '</td><td>' + fmtKonto(p.konto_haben) + '</td><td>' + fmtEuro(p.afa_betrag) + '</td></tr>');
+                        const z = zByIndex[i];
+                        if (z) {
+                            rows.push('<tr class="table-light"><td colspan="8" class="text-end fw-bold">Zwischensumme ' + (z.label || '') + '</td><td class="fw-bold">' + fmtEuro(z.summe_afa) + '</td></tr>');
+                        }
+                    });
+                    tbody.innerHTML = rows.join('');
+                }
                 document.getElementById('monatsuebersicht-summe').textContent = fmtEuro(summe);
             })
             .catch(e => {
@@ -471,12 +523,20 @@
                     : buchungen.map(b => '<tr><td>' + (b.buchungsmonat || '-') + '</td><td>' + fmtEuro(b.afa_betrag) + '</td><td>' + fmtEuro(b.restbuchwert) + '</td><td>' + fmtEuro(b.kumuliert) + '</td></tr>').join('');
 
                 const bwEl = document.getElementById('detail-buchgewinn');
+                const bwText = document.getElementById('detail-buchgewinn-text');
                 if (f.buchgewinn_verlust != null) {
-                    bwEl.classList.remove('d-none');
-                    bwEl.textContent = (f.buchgewinn_verlust >= 0 ? 'Buchgewinn: ' : 'Buchverlust: ') + fmtEuro(f.buchgewinn_verlust);
+                    bwText.innerHTML = '<strong>' + (f.buchgewinn_verlust >= 0 ? 'Buchgewinn: ' : 'Buchverlust: ') + fmtEuro(f.buchgewinn_verlust) + '</strong>';
+                    bwText.className = 'fw-bold';
                     bwEl.className = 'alert ' + (f.buchgewinn_verlust >= 0 ? 'alert-success' : 'alert-danger');
+                } else if (f.rechnerisch_buchgewinn_verlust != null && f.verkaufspreis_aktuell != null) {
+                    var r = f.rechnerisch_buchgewinn_verlust;
+                    bwText.innerHTML = 'Rechnerisch bei aktuellem VK: ' + fmtEuro(f.verkaufspreis_aktuell) + ' − ' + fmtEuro(f.restbuchwert_aktuell) + ' = <strong>' + (r >= 0 ? 'Buchgewinn ' : 'Buchverlust ') + fmtEuro(r) + '</strong>';
+                    bwText.className = '';
+                    bwEl.className = 'alert ' + (r >= 0 ? 'alert-success' : 'alert-danger');
                 } else {
-                    bwEl.classList.add('d-none');
+                    bwText.textContent = 'Buchgewinn/Buchverlust: – (wird beim Abgang buchen ermittelt; rechnerisch nur bei VK in Locosoft)';
+                    bwText.className = '';
+                    bwEl.className = 'alert alert-secondary';
                 }
 
                 if (detailChart) detailChart.destroy();
@@ -613,6 +673,49 @@
     }
     document.getElementById('btn-abgangs-kontrolle').addEventListener('click', loadAbgangsKontrolle);
 
+    function loadAbverkaufUebersicht() {
+        const tbody = document.getElementById('abverkauf-tbody');
+        const colSpan = 11;
+        tbody.innerHTML = '<tr><td colspan="' + colSpan + '" class="text-center text-muted py-3">Lade …</td></tr>';
+        fetch(API + '/abverkauf-uebersicht')
+            .then(r => r.json())
+            .then(data => {
+                if (!data.ok) {
+                    tbody.innerHTML = '<tr><td colspan="' + colSpan + '" class="text-danger">' + (data.error || 'Fehler') + '</td></tr>';
+                    return;
+                }
+                const list = data.fahrzeuge || [];
+                if (list.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="' + colSpan + '" class="text-center text-muted py-3">Keine aktiven Fahrzeuge.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = list.map(f => {
+                    const diff = f && f.differenz_vk_minus_buchwert;
+                    const diffCl = diff != null ? (diff >= 0 ? 'text-success' : 'text-danger') : '';
+                    return '<tr>' +
+                        '<td class="text-nowrap">' + (f && f.vin ? f.vin : '-') + '</td>' +
+                        '<td>' + (f && f.kennzeichen ? f.kennzeichen : '-') + '</td>' +
+                        '<td>' + (f && f.fahrzeug_bezeichnung ? f.fahrzeug_bezeichnung : '-') + '</td>' +
+                        '<td>' + (f && f.standort ? f.standort : '-') + '</td>' +
+                        '<td>' + (f && f.fahrzeugart ? f.fahrzeugart : '-') + '</td>' +
+                        '<td class="text-end">' + fmtEuro(f && f.einstandspreis) + '</td>' +
+                        '<td class="text-end">' + fmtEuro(f && f.buchwert) + '</td>' +
+                        '<td class="text-end">' + fmtEuro(f && f.afa_bisher) + '</td>' +
+                        '<td class="text-end">' + fmtEuro(f && f.verkaufspreis_aktuell) + '</td>' +
+                        '<td class="text-end ' + diffCl + '">' + (diff != null ? fmtEuro(diff) : '-') + '</td>' +
+                        '<td><button type="button" class="btn btn-sm btn-outline-primary detail-btn" data-id="' + (f && f.id ? f.id : '') + '">Detail</button></td>' +
+                        '</tr>';
+                }).join('');
+                tbody.querySelectorAll('.detail-btn').forEach(btn => {
+                    btn.addEventListener('click', () => openDetail(parseInt(btn.dataset.id, 10)));
+                });
+            })
+            .catch(e => {
+                tbody.innerHTML = '<tr><td colspan="11" class="text-danger">' + (e.message || 'Fehler beim Laden') + '</td></tr>';
+            });
+    }
+    document.getElementById('btn-abverkauf-laden').addEventListener('click', loadAbverkaufUebersicht);
+
     function csvExport(betriebFilter) {
         const mp = document.getElementById('monat-picker').value;
         if (!mp) { alert('Bitte Monat wählen.'); return; }
@@ -648,6 +751,7 @@
     document.getElementById('filter-art').addEventListener('change', () => dashboardData && renderFahrzeuge(dashboardData.fahrzeuge));
     document.getElementById('filter-marke').addEventListener('change', () => dashboardData && renderFahrzeuge(dashboardData.fahrzeuge));
     document.getElementById('filter-betrieb').addEventListener('change', () => dashboardData && renderFahrzeuge(dashboardData.fahrzeuge));
+    document.getElementById('filter-kennzeichen').addEventListener('input', () => dashboardData && renderFahrzeuge(dashboardData.fahrzeuge));
 
     const now = new Date();
     document.getElementById('monat-picker').value = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
@@ -816,6 +920,22 @@
 
     loadDashboard();
     loadMonatsuebersicht();
+    loadAbverkaufUebersicht();
+
+    // Hash #detail-<id> öffnet Fahrzeug-Modal (z. B. Klick auf „Detail“ von Verkaufsempfehlungen)
+    (function checkDetailHash() {
+        var hash = window.location.hash;
+        var m = hash && hash.match(/^#detail-(\d+)$/);
+        if (m) {
+            var id = parseInt(m[1], 10);
+            if (id && typeof openDetail === 'function') {
+                openDetail(id);
+                if (window.history && window.history.replaceState) {
+                    history.replaceState(null, '', window.location.pathname + window.location.search);
+                }
+            }
+        }
+    })();
 })();
 </script>
 {% endblock %}
