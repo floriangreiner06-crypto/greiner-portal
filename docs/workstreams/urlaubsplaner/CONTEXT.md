@@ -1,7 +1,7 @@
 # Urlaubsplaner — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-02-27 (AD/Abteilungen Doku, Genehmiger-Service SQL-Fix)
+## Letzte Aktualisierung: 2026-03-19 (kein Samstagsdienst, Genehmiger löschen, Teilzeit Nicht-Arbeitstage)
 
 ## Projektkontext (Stand diese Woche)
 
@@ -73,7 +73,12 @@ Urlaubsplaner deckt Urlaubsanträge, Genehmigungsprozess, Chef-Übersicht, Urlau
 - ✅ **Strukturelle Entkopplung (Genehmiger vs. Kalender):** Damit ein Fehler in der Genehmiger-Logik nicht die ganze Seite leer macht: (1) **Backend** `get_my_balance`: `get_approver_summary` in try/except – bei Exception sicheres Default-`approver_info`, kein 500. (2) **Frontend** `loadMe`: bei `!r.success` kein harter Return ohne Hinweis; Konsole warnt, `isAppr`/`isAdmin` auf false, danach laufen `loadAllEmployees` und Kalender weiter. (3) `loadAllEmployees` bei Fehler: `allEmployees = []` explizit, klare Konsole-Meldung.
 - ✅ **Resturlaub nur aus DRIVE (2026-02):** `_compute_rest_display` liefert nur den View-Wert; keine Locosoft-Kappe. Balance, My-Balance, Validierung und Team-Übersicht nutzen ausschließlich Portal-Daten (View `v_vacation_balance_*`, Mitarbeiterverwaltung/Moduldaten/Urlaubsanspruch). Locosoft optional nur für Anzeige (z. B. Kalender).
 - **Outlook-Kalender (Microsoft Graph):** Ab 2026-02: Bei Genehmigung schreibt DRIVE in **zwei** Ziele – (1) Shared Mailbox **drive@** (Übersicht für Führungskräfte, Sichtbarkeit nur für FK in M365 konfigurieren, siehe `KALENDER_DRIVE_NUR_FUEHRUNGSKRAEFTE.md`), (2) **persönlicher M365-Kalender** des Mitarbeiters (erscheint in Team-Ansicht des Vorgesetzten). Event-IDs in `vacation_bookings` für Storno-Löschung. Die Outlook-Kalendergruppe „Team: …“ kommt aus AD/M365, nicht aus DRIVE – siehe `OUTLOOK_TEAMKALENDER_VS_DRIVE.md`.
+- ✅ **Genehmiger-E-Mail pro Zeitraum (2026-03-12):** Bei zusammenhängend gebuchtem Urlaub wird nur **eine E-Mail** mit dem gesamten Zeitraum an die Genehmiger gesendet (nicht mehr eine E-Mail pro Tag). Umsetzung: Spalte `vacation_bookings.approver_notification_sent_at`; bei Einzelbuchung (/book) wird ein Celery-Task (5 s Verzögerung, task_id pro Mitarbeiter) geplant, der offene pending-Buchungen in Zeiträume gruppiert und pro Zeitraum eine Mail sendet; bei book-batch eine Mail sofort und Markierung aller Buchungen. Migration: `migrations/add_vacation_bookings_approver_notification_sent.sql`. Celery-Task: `send_vacation_approver_notification`.
+- ✅ **Genehmigungs-Mail an MA (Doppel-User, 2026-03-12):** Wenn `employees.email` leer war, holte der Fallback die E-Mail aus `users` via `ldap_employee_mapping`. Bei **doppelten User-Einträgen** (gleiche Person, unterschiedliche Schreibweise Username) konnte `LIMIT 1` die „falsche“ Zeile liefern → z. B. Katrina Kramhöller erhielt keine Mail. **Lösung:** (1) Duplikat-User in DB zusammengeführt (Migration `merge_duplicate_users.sql`), (2) Fallback-Abfrage mit `ORDER BY u.last_login DESC NULLS LAST` für eindeutigen Treffer. Siehe auth-ldap CONTEXT.
+- ✅ **„Samstagsdienst (Info)“ → „kein Samstagsdienst (Info)“ (2026-03):** Nur Umbenennung in Anzeige und DB (`vacation_types.name`); keine Änderung der Logik (kein Urlaubstag-Abzug).
+- ✅ **Genehmiger dürfen Team-Urlaub löschen (2026-03):** Rolf/Wolfgang (und alle Genehmiger) können nicht nur Urlaub für ihr Team eintragen, sondern auch stornieren. Einzel-Storno `/cancel` und Batch-Storno `/cancel-batch`: wenn Buchungsinhaber in `get_team_for_approver(ldap_username)`, ist Storno erlaubt.
 - 🔧 E-Mails (HR/MA) je nach Integrations-Stand
+- **Workflow & n8n:** Einschätzung ob Workflow nach n8n migriert werden soll und Visualisierung für HR/GF → `URLAUBSPLANER_WORKFLOW_N8N_EINSCHAETZUNG.md` (Empfehlung: keine n8n-Migration; Visualisierung als Doku/Diagramm; Editierbarkeit im DRIVE)
 
 ### Mitarbeiterverwaltung (Admin, TAG 213)
 - ✅ Route `/admin/mitarbeiterverwaltung`, Template mit Sidebar (Mitarbeiterliste), Tabs: Deckblatt, Adressdaten, Mitarbeiterdaten (Vertrag, Arbeitszeitmodell, Ausnahmen), Moduldaten (Urlaubsplaner, Zeiten ohne Urlaub)
@@ -107,7 +112,7 @@ Urlaubsplaner deckt Urlaubsanträge, Genehmigungsprozess, Chef-Übersicht, Urlau
 ### Feedback 3.2 umgesetzt (2026-02-13)
 - **Nr. 3 Urlaubsanspruch-Optionen:** Dropdown in der Mitarbeiterverwaltung auf Personalplaner-Werte umgestellt: **5,5 | 11 | 16 | 22 | 27 | 30** Tage (+ „Andere …“). Datei: `templates/admin/mitarbeiterverwaltung.html`.
 - **Rest-Anzeige oben links:** Kommt aus `/my-balance`; seit 2026-02 nur noch View-Wert (DRIVE), keine Locosoft-Kappe. Datei: `api/vacation_api.py`.
-- **Freie Tage im Arbeitszeitmodell:** Anforderung dokumentiert; Umsetzung vorgeschlagen unter `FREIE_TAGE_ARBEITSZEITMODELL_VORSCHLAG.md` (nur Teilzeit, Freie Tage im Modell pflegen → im Urlaubsplaner ausgrauen; rote Kreise = freie Tage, grüne = Regelarbeitstage). Noch nicht implementiert.
+- ✅ **Nicht-Arbeitstage Teilzeit (2026-03):** Arbeitszeitmodell mit `work_weekdays` (Mitarbeiterverwaltung) wird ausgewertet. „Nicht Arbeitstage“ im Urlaubsplaner in anderem Grau dargestellt (`--nicht-arbeitstag`), bei Urlaubsantrag nicht vom Kontingent abgezogen (wie Wochenende). Spalte `vacation_bookings.contingent_days`, View `v_vacation_balance_*` nutzt `COALESCE(contingent_days, day_part)`. Balance-API liefert `non_work_weekdays` pro MA; Legende „Nicht-Arbeitstag (Teilzeit)“.
 
 ### Usertest „Urlaubsplaner neu“ (Vanessa) umgesetzt (2026-02-16)
 - **Masseneingabe:** Option „Spezifische Mitarbeiter“ als Standard, Multi-Select sichtbar; Urlaubssperren werden auch bei Masseneingabe geprüft (kein Admin-Bypass). API: `vacation_admin_api.mass_booking`.
@@ -150,6 +155,10 @@ Urlaubsplaner deckt Urlaubsanträge, Genehmigungsprozess, Chef-Übersicht, Urlau
 - **Sandra Schimmer:** „Wieder zu wenig Resturlaub“ trotz 16 Tage Rest in der Liste → Validierung nutzte andere Quelle (Locosoft-Formel) als die Anzeige (View + Locosoft-Cap). **Lösung:** Hilfsfunktion `_get_available_rest_days_for_validation()` berechnet verfügbaren Rest **wie die Balance-Anzeige** (View + min(View, Anspruch − Locosoft)); Einzel- und Batch-Buchung nutzen diese Quelle. Kein Abweichen mehr zwischen Liste und Buchungsprüfung.
 - **Herbert Huber:** 0 Tage Rest, Buchung trotzdem möglich → Bei Batch fehlte View-Fallback, `available_days` blieb `None`. **Lösung:** Batch nutzt dieselbe Hilfsfunktion (immer View-Basis); bei 0 Rest wird abgelehnt (`requested_days > available_days`).
 - **Keine Neuberechnung des Resturlaubs:** Nach Urlaubsantrag bzw. Typ-Änderung blieb die angezeigte Restzahl unverändert. **Lösung:** Nach Typ-Änderung (Edit-Popup) wird `loadAllEmployees()` aufgerufen, damit die Tabelle den Resturlaub neu lädt. Nach Antrag-Einreichung war `loadAllEmployees()` bereits vorhanden.
+
+### Wiedereintreter (Re-Hire) erscheinen nicht im Planer
+- **Ursache:** View `v_vacation_balance_*` und LDAP-Sync berücksichtigen nur `employees.aktiv = true`. Alte Datensätze (nach Kündigung) bleiben mit `aktiv = false` in der DB und werden vom LDAP-Sync nicht zugeordnet.
+- **Lösung:** Mitarbeiter in `employees` reaktivieren (`aktiv = true`, ggf. `exit_date = NULL`), LDAP-Mapping anlegen/aktualisieren, Urlaubsplaner-Seite laden (Entitlements werden automatisch ergänzt). Siehe **`REHIRE_URLAUBSPLANER_ANLEITUNG.md`** in diesem Ordner.
 
 ### Offene Punkte aus Usertest (Urlaubsplaner)
 - Optional prüfen: falsche Darstellung bei Vanessa (Frontend/Filter), E-Mail an HR nach Genehmigung.

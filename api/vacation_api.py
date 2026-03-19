@@ -44,6 +44,7 @@ from flask_login import login_required, current_user
 from decorators.auth_decorators import admin_required, role_required
 from datetime import datetime, date, timedelta
 import json
+import os
 
 # Zentrale DB-Utilities (TAG 117 - Migration abgeschlossen)
 from api.db_utils import db_session, row_to_dict, rows_to_list
@@ -111,8 +112,10 @@ def _validate_vacation_year(year):
 
 def _check_substitute_vacation_conflict(cursor, substitute_employee_id, dates_list):
     """
-    Vertretungsregel: Der Vertreter darf in dem Zeitraum keinen Urlaub buchen,
-    in dem die von ihm vertretene Person abwesend ist (Urlaub/Abwesenheit).
+    Vertretungsregel („mindestens eine Vertretung anwesend“):
+    Ein Vertreter darf Urlaub nur dann nicht buchen, wenn die vertretene Person an dem Tag
+    abwesend ist UND an demselben Tag keine andere Vertretung für diese Person anwesend ist.
+    (Mehrere Vertreter pro Person = OR: Es reicht, wenn einer da ist.)
     substitute_employee_id = Mitarbeiter, der buchen will (ist Vertreter).
     dates_list = Liste von Datumsstrings 'YYYY-MM-DD'.
     Returns: None wenn OK; sonst (blocked_dates, vertretene_name) für Fehlermeldung.
@@ -132,19 +135,48 @@ def _check_substitute_vacation_conflict(cursor, substitute_employee_id, dates_li
             return None
         placeholders = ','.join(['%s'] * len(dates_list))
         blocked = []
-        # Name der Person, die an den blockierten Tagen tatsächlich Urlaub hat (für Fehlermeldung)
         conflict_vertretene_name = None
         for row in substituted:
             vertretene_id = row[0]
             vname = row[1] if len(row) > 1 else 'Mitarbeiter'
+            # Tage, an denen die vertretene Person abwesend ist
             cursor.execute(f"""
                 SELECT booking_date FROM vacation_bookings
                 WHERE employee_id = %s AND booking_date IN ({placeholders})
                 AND status IN ('pending', 'approved')
             """, (vertretene_id,) + tuple(dates_list))
-            found = cursor.fetchall()
-            for r in found:
-                blocked.append(str(r[0]))
+            vertretene_absent_dates = [str(r[0]) for r in cursor.fetchall()]
+            if not vertretene_absent_dates:
+                continue
+            # Alle anderen Vertreter für dieselbe Person (ohne den aktuell buchenden)
+            cursor.execute("""
+                SELECT substitute_id FROM substitution_rules
+                WHERE employee_id = %s AND substitute_id != %s
+            """, (vertretene_id, substitute_employee_id))
+            other_substitute_ids = [r[0] for r in cursor.fetchall()]
+            for d in vertretene_absent_dates:
+                # Block nur, wenn an Tag d keine andere Vertretung anwesend ist
+                if not other_substitute_ids:
+                    # Einziger Vertreter: darf nicht fehlen, wenn Vertretene fehlt
+                    blocked.append(d)
+                    if conflict_vertretene_name is None:
+                        conflict_vertretene_name = vname
+                    continue
+                # Gibt es mindestens einen anderen Vertreter ohne Buchung an d? (anwesend)
+                cursor.execute(f"""
+                    SELECT 1 FROM substitution_rules sr
+                    WHERE sr.employee_id = %s AND sr.substitute_id != %s
+                    AND NOT EXISTS (
+                        SELECT 1 FROM vacation_bookings vb
+                        WHERE vb.employee_id = sr.substitute_id AND vb.booking_date = %s
+                        AND vb.status IN ('pending', 'approved')
+                    )
+                    LIMIT 1
+                """, (vertretene_id, substitute_employee_id, d))
+                if cursor.fetchone():
+                    # Mindestens eine andere Vertretung ist an d anwesend → kein Block
+                    continue
+                blocked.append(d)
                 if conflict_vertretene_name is None:
                     conflict_vertretene_name = vname
         if blocked:
@@ -228,7 +260,12 @@ def _check_max_absence_per_dept_location(cursor, employee_id, dates_list, vacati
 
 
 # E-Mail-Konfiguration
-HR_EMAIL = 'hr@auto-greiner.de'  # HR-Mailbox für Locosoft-Einträge
+HR_EMAIL = 'hr@auto-greiner.de'  # HR-Mailbox für Locosoft-Einträge (Fallback)
+# Mehrere HR-Empfänger (z. B. Dennis, Katrina, Jennifer): HR_EMAILS in .env kommagetrennt
+_hr_emails_str = os.environ.get('HR_EMAILS', 'hr@auto-greiner.de')
+HR_EMAILS = [e.strip() for e in _hr_emails_str.split(',') if e.strip()]
+if not HR_EMAILS:
+    HR_EMAILS = [HR_EMAIL]
 DRIVE_EMAIL = 'drive@auto-greiner.de'  # Absender
 
 # ============================================================================
@@ -354,18 +391,112 @@ def is_vacation_admin(ldap_username=None):
     return username_clean in allowed_users
 
 
+# Samstagsdienst: nur HR-Admin und Anton dürfen eintragen/editieren (kein Genehmigungsworkflow)
+SAMSTAGSDIENST_ALLOWED_LDAP = ['anton.suess']
+
+
+def can_manage_samstagsdienst(ldap_username=None):
+    """True wenn User Samstagsdienst eintragen und bearbeiten darf (HR-Admin oder Anton)."""
+    if not ldap_username:
+        return False
+    if is_vacation_admin(ldap_username):
+        return True
+    un = (ldap_username or '').lower().split('@')[0].strip()
+    return un in SAMSTAGSDIENST_ALLOWED_LDAP
+
+
 def _compute_rest_display(anspruch, resturlaub_view, loco_urlaub=0):
     """
-    SSOT für Resturlaub-Anzeige: min(Portal-Rest, Anspruch − Locosoft-Urlaub).
-    Locosoft liefert nur 'urlaub' (Url, BUr); Zeitausgleich (ZA) mindert Rest nicht.
+    Resturlaub nur aus DRIVE (View). Keine Locosoft-Kappe mehr.
+    loco_urlaub wird ignoriert (Vereinbarung: Urlaubsanspruchsberechnung ohne Locosoft).
     """
-    anspruch = float(anspruch or 0)
     rest = max(0.0, round(float(resturlaub_view or 0), 1))
-    loco = float(loco_urlaub or 0)
-    if loco > 0:
-        capped = max(0.0, round(anspruch - loco, 1))
-        rest = min(rest, capped)
-    return max(0.0, round(rest, 1))
+    return rest
+
+
+def _get_work_weekdays_for_employee_at_date(cursor, employee_id, d):
+    """
+    Liefert die Menge der Arbeitstage (0=Mo..6=So) für einen MA an einem Datum.
+    Quelle: employee_working_time_models.work_weekdays (gültiges Modell zu d).
+    Wenn kein Modell oder work_weekdays NULL: Mo–Fr = {0,1,2,3,4}.
+    """
+    if hasattr(d, 'year'):
+        date_val = d
+    else:
+        try:
+            date_val = datetime.strptime(str(d)[:10], '%Y-%m-%d').date()
+        except Exception:
+            return {0, 1, 2, 3, 4}
+    cursor.execute("""
+        SELECT work_weekdays FROM employee_working_time_models
+        WHERE employee_id = %s AND start_date <= %s AND (end_date IS NULL OR end_date >= %s)
+        ORDER BY start_date DESC LIMIT 1
+    """, (employee_id, date_val, date_val))
+    row = cursor.fetchone()
+    if not row or not row[0]:
+        return {0, 1, 2, 3, 4}
+    raw = str(row[0]).strip()
+    if not raw:
+        return {0, 1, 2, 3, 4}
+    try:
+        return set(int(x.strip()) for x in raw.split(',') if x.strip().isdigit())
+    except Exception:
+        return {0, 1, 2, 3, 4}
+
+
+def _count_working_days_for_employee(cursor, employee_id, dates, day_part='full'):
+    """
+    Zählt nur Arbeitstage (nicht Wochenende, nicht Nicht-Arbeitstage laut Arbeitszeitmodell).
+    Rückgabe: Anzahl Tage, die vom Urlaubskonto abgezogen werden.
+    """
+    day_val = 1.0 if day_part == 'full' else 0.5
+    total = 0.0
+    for d in dates:
+        try:
+            if hasattr(d, 'weekday'):
+                date_obj = d
+            else:
+                date_obj = datetime.strptime(str(d)[:10], '%Y-%m-%d').date()
+            wd = date_obj.weekday()  # 0=Mo, 6=So
+        except Exception:
+            total += day_val
+            continue
+        if wd >= 5:  # Sa, So
+            continue
+        work = _get_work_weekdays_for_employee_at_date(cursor, employee_id, date_obj)
+        if wd in work:
+            total += day_val
+    return total
+
+
+def _contingent_days_for_booking(employee_id, booking_date, day_part, cursor):
+    """
+    contingent_days für eine Urlaubsbuchung (type_id=1): 0 wenn Nicht-Arbeitstag/Wochenende, sonst 1.0/0.5.
+    """
+    try:
+        date_obj = datetime.strptime(str(booking_date)[:10], '%Y-%m-%d').date()
+    except Exception:
+        return 1.0 if day_part == 'full' else 0.5
+    wd = date_obj.weekday()
+    if wd >= 5:
+        return 0
+    work = _get_work_weekdays_for_employee_at_date(cursor, employee_id, date_obj)
+    if wd not in work:
+        return 0
+    return 1.0 if day_part == 'full' else 0.5
+
+
+def _get_non_work_weekdays_for_employee_year(cursor, employee_id, year):
+    """
+    Liefert Liste der Wochentage (0=Mo..6=So), an denen der MA nicht arbeitet (Nicht-Arbeitstage).
+    Repräsentativ: 1. Juli des Jahres. Nur Werktage (0–4); Wochenende (5,6) immer nicht gearbeitet.
+    """
+    try:
+        mid = date(year, 7, 1)
+    except Exception:
+        return []
+    work = _get_work_weekdays_for_employee_at_date(cursor, employee_id, mid)
+    return [d for d in range(7) if d not in work]
 
 
 def _get_available_rest_days_for_validation(cursor, employee_id, booking_year, locosoft_id=None):
@@ -393,19 +524,38 @@ def _get_available_rest_days_for_validation(cursor, employee_id, booking_year, l
         anspruch = max(0.0, round(float(anspruch_raw), 1))
         resturlaub_view_raw = float(row[3]) if row[3] is not None else (anspruch_raw - (float(row[1] or 0) + float(row[2] or 0)))
         resturlaub_view = max(0.0, round(float(resturlaub_view_raw), 1))
-        loco_urlaub = 0
-        if LOCOSOFT_AVAILABLE and locosoft_id:
-            try:
-                loco = get_absences_for_employee(locosoft_id, booking_year)
-                loco_urlaub = (loco or {}).get('urlaub', 0) or 0
-            except Exception:
-                pass
-        available_days = _compute_rest_display(anspruch, resturlaub_view, loco_urlaub)
+        # Resturlaub nur aus DRIVE (View), keine Locosoft-Anfrage für Anspruchsberechnung
+        available_days = _compute_rest_display(anspruch, resturlaub_view, 0)
         info = {'anspruch': anspruch, 'resturlaub_view': resturlaub_view, 'verfuegbar': available_days}
         return available_days, info
     except Exception as e:
         print(f"⚠️ _get_available_rest_days_for_validation: {e}")
         return 0.0, None
+
+
+def _get_employee_email_fallback(cursor, employee_id):
+    """
+    E-Mail des Mitarbeiters für Genehmigungs-Benachrichtigung.
+    Fallback: Wenn employees.email leer ist, E-Mail aus users (via ldap_employee_mapping) holen,
+    damit z.B. Dennis, Katrina, Jennifer die Genehmigungs-Mail erhalten.
+    """
+    cursor.execute("""
+        SELECT e.email FROM employees e WHERE e.id = %s AND e.aktiv = true
+    """, (employee_id,))
+    row = cursor.fetchone()
+    if row and row[0] and str(row[0]).strip():
+        return str(row[0]).strip()
+    cursor.execute("""
+        SELECT u.email FROM ldap_employee_mapping lem
+        JOIN users u ON LOWER(TRIM(SPLIT_PART(COALESCE(u.username,'') || '@', '@', 1))) = LOWER(TRIM(COALESCE(lem.ldap_username,'')))
+        WHERE lem.employee_id = %s AND u.email IS NOT NULL AND TRIM(u.email) != ''
+        ORDER BY u.last_login DESC NULLS LAST
+        LIMIT 1
+    """, (employee_id,))
+    row = cursor.fetchone()
+    if row and row[0]:
+        return str(row[0]).strip()
+    return None
 
 
 def get_employee_by_id(employee_id):
@@ -532,7 +682,7 @@ def send_approval_email_to_hr(booking_details: dict, approver_name: str):
         
         result = graph.send_mail(
             sender_email=DRIVE_EMAIL,
-            to_emails=[HR_EMAIL],
+            to_emails=HR_EMAILS,
             subject=subject,
             body_html=body_html
         )
@@ -543,6 +693,82 @@ def send_approval_email_to_hr(booking_details: dict, approver_name: str):
         
     except Exception as e:
         print(f"❌ Fehler beim Senden der HR-E-Mail: {e}")
+        return False
+
+
+def send_approval_email_to_hr_batch(bookings_details_list: list, approver_name: str):
+    """
+    Sendet eine Sammel-E-Mail an HR für mehrere genehmigte Buchungen (ein Zeitraum pro Mail).
+    bookings_details_list: Liste von dicts wie für send_approval_email_to_hr (date, employee_name, department, vacation_type, day_part, …).
+    """
+    if not GRAPH_AVAILABLE or not bookings_details_list:
+        return False
+    try:
+        graph = GraphMailConnector()
+        # Betreff: erster Mitarbeiter + Zeitraum
+        first = bookings_details_list[0]
+        dates = [b.get('date', '') for b in bookings_details_list]
+        dates_sorted = sorted(set(dates))
+        if len(dates_sorted) == 1:
+            date_range_str = dates_sorted[0]
+        else:
+            date_range_str = f"{dates_sorted[0]} bis {dates_sorted[-1]}"
+        try:
+            d1 = datetime.strptime(dates_sorted[0], '%Y-%m-%d')
+            d2 = datetime.strptime(dates_sorted[-1], '%Y-%m-%d')
+            date_range_str = f"{d1.strftime('%d.%m.%Y')} – {d2.strftime('%d.%m.%Y')}"
+        except Exception:
+            pass
+        employee_name = first.get('employee_name', 'Unbekannt')
+        subject = f"✅ Urlaub genehmigt: {employee_name} – {date_range_str} ({len(bookings_details_list)} Tag(e))"
+        # Tabelle: Zeilen pro Buchung
+        rows_html = ""
+        for b in sorted(bookings_details_list, key=lambda x: (x.get('employee_name', ''), x.get('date', ''))):
+            dt = b.get('date', '')
+            try:
+                date_obj = datetime.strptime(dt, '%Y-%m-%d')
+                date_fmt = date_obj.strftime('%d.%m.%Y')
+                wd = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'][date_obj.weekday()]
+            except Exception:
+                date_fmt = dt
+                wd = ''
+            part = b.get('day_part') == 'full' and 'Ganzer Tag' or 'Halber Tag'
+            rows_html += f"""
+                <tr>
+                    <td style="padding: 8px; border: 1px solid #dee2e6;">{b.get('employee_name', '-')}</td>
+                    <td style="padding: 8px; border: 1px solid #dee2e6;">{b.get('department', '-')}</td>
+                    <td style="padding: 8px; border: 1px solid #dee2e6;">{wd}, {date_fmt}</td>
+                    <td style="padding: 8px; border: 1px solid #dee2e6;">{b.get('vacation_type', 'Urlaub')}</td>
+                    <td style="padding: 8px; border: 1px solid #dee2e6;">{part}</td>
+                </tr>
+            """
+        body_html = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 700px;">
+            <h2 style="color: #28a745;">✅ Urlaubsanträge genehmigt (Sammelmail)</h2>
+            <p>Genehmigt von <strong>{approver_name}</strong>. Bitte die folgenden Einträge in <strong>Locosoft</strong> übernehmen.</p>
+            <table style="border-collapse: collapse; width: 100%; margin: 20px 0;">
+                <tr style="background: #f8f9fa;">
+                    <th style="padding: 8px; border: 1px solid #dee2e6;">Mitarbeiter</th>
+                    <th style="padding: 8px; border: 1px solid #dee2e6;">Abteilung</th>
+                    <th style="padding: 8px; border: 1px solid #dee2e6;">Datum</th>
+                    <th style="padding: 8px; border: 1px solid #dee2e6;">Art</th>
+                    <th style="padding: 8px; border: 1px solid #dee2e6;">Umfang</th>
+                </tr>
+                {rows_html}
+            </table>
+            <p style="background: #fff3cd; padding: 15px; border-radius: 5px; border-left: 4px solid #ffc107;">
+                <strong>📋 Aktion erforderlich:</strong> Bitte alle genannten Einträge in Locosoft eintragen.
+            </p>
+            <hr style="border: none; border-top: 1px solid #dee2e6; margin: 20px 0;">
+            <p style="color: #6c757d; font-size: 12px;">Greiner DRIVE Portal – automatische Benachrichtigung</p>
+        </div>
+        """
+        result = graph.send_mail(sender_email=DRIVE_EMAIL, to_emails=HR_EMAILS, subject=subject, body_html=body_html)
+        if result:
+            print(f"✅ HR-Sammel-E-Mail gesendet ({len(bookings_details_list)} Buchungen)")
+        return result
+    except Exception as e:
+        print(f"❌ Fehler beim Senden der HR-Sammel-E-Mail: {e}")
         return False
 
 
@@ -825,7 +1051,7 @@ def send_cancellation_email_to_hr(booking_details: dict, employee_name: str, rea
         
         return graph.send_mail(
             sender_email=DRIVE_EMAIL,
-            to_emails=[HR_EMAIL],
+            to_emails=HR_EMAILS,
             subject=subject,
             body_html=body_html
         )
@@ -891,8 +1117,8 @@ def send_sickness_notification(booking_details: dict, approvers: list):
         </div>
         """
         
-        # E-Mail-Empfänger: HR + Teamleitung (Prio 1 Genehmiger) + GL
-        recipients = [HR_EMAIL]
+        # E-Mail-Empfänger: HR (alle konfigurierten) + Teamleitung (Prio 1 Genehmiger) + GL
+        recipients = list(HR_EMAILS)
         
         # Teamleitung hinzufügen
         if approvers:
@@ -923,27 +1149,27 @@ def send_sickness_notification(booking_details: dict, approvers: list):
 
 
 def send_new_request_notification_to_approvers(booking_details: dict, approvers: list):
-    """Sendet E-Mail an Genehmiger wenn ein neuer Urlaubsantrag eingegangen ist."""
+    """Sendet E-Mail an Genehmiger wenn ein neuer Urlaubsantrag eingegangen ist (einzelner Tag)."""
     if not GRAPH_AVAILABLE:
         return False
     if not approvers:
         return False
-    
+
     try:
         graph = GraphMailConnector()
-        
+
         booking_date = booking_details.get('date', '')
         try:
             date_obj = datetime.strptime(booking_date, '%Y-%m-%d')
             date_formatted = date_obj.strftime('%d.%m.%Y')
             weekday = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'][date_obj.weekday()]
-        except:
+        except Exception:
             date_formatted = booking_date
             weekday = ''
-        
+
         employee_name = booking_details.get('employee_name', 'Unbekannt')
         vacation_type = booking_details.get('vacation_type', 'Urlaub')
-        
+
         # TAG 113: Halber Tag mit VM/NM Angabe
         if booking_details.get('day_part') == 'full':
             day_part = 'Ganzer Tag'
@@ -955,17 +1181,17 @@ def send_new_request_notification_to_approvers(booking_details: dict, approvers:
                 day_part = 'Halber Tag (Nachmittag)'
             else:
                 day_part = 'Halber Tag'
-        
+
         department = booking_details.get('department', '')
         comment = booking_details.get('comment', '')
-        
+
         type_icons = {'Urlaub': '🏖️', 'Zeitausgleich': '⏰', 'Krankheit': '🤒', 'Schulung': '📚', 'Sonderurlaub': '👶', 'Arzttermin': '🏥'}
         icon = type_icons.get(vacation_type, '📅')
-        
+
         subject = f"📋 Neuer Urlaubsantrag: {employee_name} - {date_formatted}"
-        
+
         comment_row = f'<tr><td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Kommentar</td><td style="padding: 10px; border: 1px solid #dee2e6;">{comment}</td></tr>' if comment else ''
-        
+
         body_html = f"""<div style="font-family: Arial, sans-serif; max-width: 600px;">
             <h2 style="color: #007bff;">{icon} Neuer Urlaubsantrag</h2>
             <table style="border-collapse: collapse; width: 100%; margin: 20px 0;">
@@ -983,19 +1209,142 @@ def send_new_request_notification_to_approvers(booking_details: dict, approvers:
             <hr style="border: none; border-top: 1px solid #dee2e6; margin: 20px 0;">
             <p style="color: #6c757d; font-size: 12px;">Diese E-Mail wurde automatisch vom Greiner DRIVE Portal gesendet.</p>
         </div>"""
-        
+
         approver_emails = [a.get('approver_email') for a in approvers if a.get('approver_email') and a.get('priority') == 1]
         if not approver_emails:
             approver_emails = [a.get('approver_email') for a in approvers if a.get('approver_email')]
         if not approver_emails:
             return False
-        
+
         result = graph.send_mail(sender_email=DRIVE_EMAIL, to_emails=approver_emails, subject=subject, body_html=body_html)
         if result:
             print(f"✅ Genehmiger-E-Mail gesendet an {approver_emails}")
         return result
     except Exception as e:
         print(f"❌ Fehler: {e}")
+        return False
+
+
+def send_pending_approver_notifications_for_employee(employee_id: int):
+    """
+    Sendet für einen Mitarbeiter gebündelte Genehmiger-E-Mails: alle pending Buchungen
+    ohne approver_notification_sent_at werden in zusammenhängende Zeiträume gruppiert,
+    pro Zeitraum wird genau eine E-Mail gesendet. Danach werden die betroffenen Buchungen
+    mit approver_notification_sent_at markiert.
+    Eine E-Mail pro Zeitraum (nicht pro Tag) – behebt das Problem mehrfacher Mails bei
+    zusammenhängend gebuchtem Urlaub.
+    """
+    if not GRAPH_AVAILABLE:
+        return False
+    try:
+        with db_session() as conn:
+            cursor = conn.cursor()
+            # Nur Spalte prüfen, wenn sie existiert (Migration ggf. noch nicht gelaufen)
+            try:
+                cursor.execute("""
+                    SELECT vb.id, vb.booking_date, vb.day_part, vb.vacation_type_id,
+                           e.first_name || ' ' || e.last_name AS employee_name,
+                           COALESCE(e.department_name, '') AS department,
+                           vt.name AS vacation_type_name
+                    FROM vacation_bookings vb
+                    JOIN employees e ON e.id = vb.employee_id
+                    JOIN vacation_types vt ON vt.id = vb.vacation_type_id
+                    WHERE vb.employee_id = %s AND vb.status = 'pending'
+                      AND vb.approver_notification_sent_at IS NULL
+                    ORDER BY vb.booking_date
+                """, (employee_id,))
+            except Exception as col_err:
+                if 'approver_notification_sent_at' in str(col_err):
+                    return False  # Spalte fehlt noch
+                raise
+            rows = cursor.fetchall()
+        if not rows:
+            return False
+
+        # Gruppierung: zusammenhängende Datumsblöcke
+        def row_to_dict(r):
+            return {
+                'id': r[0], 'booking_date': r[1], 'day_part': r[2], 'vacation_type_id': r[3],
+                'employee_name': r[4], 'department': r[5], 'vacation_type_name': r[6]
+            }
+
+        items = [row_to_dict(r) for r in rows]
+        groups = []
+        current = [items[0]]
+        for i in range(1, len(items)):
+            prev_date = datetime.strptime(str(current[-1]['booking_date']), '%Y-%m-%d').date()
+            curr_date = datetime.strptime(str(items[i]['booking_date']), '%Y-%m-%d').date()
+            if (curr_date - prev_date).days == 1:
+                current.append(items[i])
+            else:
+                groups.append(current)
+                current = [items[i]]
+        groups.append(current)
+
+        approvers = get_approvers_for_employee(employee_id)
+        approver_emails = [a.get('approver_email') for a in approvers if a.get('approver_email') and a.get('priority') == 1]
+        if not approver_emails:
+            approver_emails = [a.get('approver_email') for a in approvers if a.get('approver_email')]
+        if not approver_emails:
+            return False
+
+        graph = GraphMailConnector()
+        type_icons = {'Urlaub': '🏖️', 'Zeitausgleich': '⏰', 'Krankheit': '🤒', 'Schulung': '📚'}
+        now_iso = datetime.now().isoformat()
+        any_sent = False
+
+        for group in groups:
+            ids = [g['id'] for g in group]
+            dates = sorted([str(g['booking_date']) for g in group])
+            first = group[0]
+            employee_name = first.get('employee_name', 'Unbekannt')
+            department = first.get('department', '')
+            vacation_type_name = first.get('vacation_type_name', 'Urlaub')
+            day_part = first.get('day_part', 'full')
+            umfang = 'Ganzer Tag' if day_part == 'full' else 'Halber Tag'
+            dates_formatted = [datetime.strptime(d, '%Y-%m-%d').strftime('%d.%m.%Y') for d in dates]
+            if len(dates) == 1:
+                date_display = dates_formatted[0]
+                subject = f"📋 Neuer Urlaubsantrag: {employee_name} - {date_display}"
+            else:
+                date_display = f"{dates_formatted[0]} - {dates_formatted[-1]} ({len(dates)} Tage)"
+                subject = f"📋 Neuer Urlaubsantrag: {employee_name} - {len(dates)} Tage"
+            icon = type_icons.get(vacation_type_name, '📅')
+            dates_list_html = '<ul style="margin: 10px 0; padding-left: 20px;">' + ''.join(f'<li>{d}</li>' for d in dates_formatted) + '</ul>'
+            body_html = f"""
+            <div style="font-family: Arial, sans-serif; max-width: 600px;">
+                <h2 style="color: #007bff;">{icon} Neuer Urlaubsantrag</h2>
+                <table style="border-collapse: collapse; width: 100%; margin: 20px 0;">
+                    <tr style="background: #f8f9fa;"><td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Mitarbeiter</td><td style="padding: 10px; border: 1px solid #dee2e6;">{employee_name}</td></tr>
+                    <tr><td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Abteilung</td><td style="padding: 10px; border: 1px solid #dee2e6;">{department}</td></tr>
+                    <tr style="background: #f8f9fa;"><td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Zeitraum</td><td style="padding: 10px; border: 1px solid #dee2e6;">{date_display}</td></tr>
+                    <tr><td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Art</td><td style="padding: 10px; border: 1px solid #dee2e6;">{vacation_type_name}</td></tr>
+                    <tr style="background: #f8f9fa;"><td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Umfang</td><td style="padding: 10px; border: 1px solid #dee2e6;">{umfang}</td></tr>
+                    <tr><td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Tage</td><td style="padding: 10px; border: 1px solid #dee2e6;">{dates_list_html}</td></tr>
+                </table>
+                <p style="background: #cce5ff; padding: 15px; border-radius: 5px; border-left: 4px solid #007bff;">
+                    <strong>📋 Aktion erforderlich:</strong><br>
+                    Bitte im <a href="http://drive.auto-greiner.de/urlaubsplaner">Greiner DRIVE Portal</a> genehmigen oder ablehnen.
+                </p>
+                <hr style="border: none; border-top: 1px solid #dee2e6; margin: 20px 0;">
+                <p style="color: #6c757d; font-size: 12px;">Diese E-Mail wurde automatisch vom Greiner DRIVE Portal gesendet.</p>
+            </div>
+            """
+            if graph.send_mail(sender_email=DRIVE_EMAIL, to_emails=approver_emails, subject=subject, body_html=body_html):
+                any_sent = True
+                print(f"✅ Genehmiger-E-Mail (Zeitraum) gesendet für {employee_name}: {date_display}")
+            with db_session() as conn2:
+                cur2 = conn2.cursor()
+                placeholders = ','.join(['%s'] * len(ids))
+                cur2.execute(
+                    f"UPDATE vacation_bookings SET approver_notification_sent_at = %s WHERE id IN ({placeholders})",
+                    [now_iso] + ids
+                )
+                conn2.commit()
+
+        return any_sent
+    except Exception as e:
+        print(f"❌ send_pending_approver_notifications_for_employee: {e}")
         return False
 
 
@@ -1127,22 +1476,9 @@ def get_my_balance():
         else:
             balance['resturlaub'] = max(0, round(float(balance['resturlaub']), 1))
 
-        # Locosoft: Rest = min(Portal-Rest, Anspruch − Locosoft-Urlaub), damit Kalender und Rest übereinstimmen
+        # Leerer Start / Workflow DRIVE-only: Banner und Rest nur aus DRIVE, keine Locosoft-Werte.
         locosoft_absences = None
-        if LOCOSOFT_AVAILABLE and employee_data and employee_data.get('locosoft_id'):
-            locosoft_absences = get_absences_for_employee(
-                employee_data['locosoft_id'],
-                year
-            )
-            if locosoft_absences:
-                balance['urlaub_locosoft'] = locosoft_absences.get('urlaub', 0)
-                balance['zeitausgleich'] = locosoft_absences.get('zeitausgleich', 0)
-                balance['krank'] = locosoft_absences.get('krank', 0)
-                balance['sonstige'] = locosoft_absences.get('sonstige', 0)
-                loco_urlaub = locosoft_absences.get('urlaub', 0) or 0
-                balance['resturlaub'] = _compute_rest_display(
-                    balance.get('anspruch'), balance['resturlaub'], loco_urlaub
-                )
+        # Locosoft-Abruf für my-balance aus; Banner zeigt verbraucht/0 (DRIVE)
 
         # Genehmiger-Infos: Fehler hier dürfen my-balance nicht zu 500 führen (strukturell entkoppeln)
         try:
@@ -1161,6 +1497,8 @@ def get_my_balance():
                 'pending_requests': 0,
             }
             print(f"⚠️ get_approver_summary fehlgeschlagen (my-balance liefert trotzdem Balance): {e}")
+
+        approver_info['can_manage_samstagsdienst'] = can_manage_samstagsdienst(ldap_username)
 
         payload = {
             'success': True,
@@ -1345,7 +1683,8 @@ def get_my_team():
                 anspruch = max(0, round(float(anspruch_raw or 0), 1))
                 resturlaub_raw = row[7] if row[7] is not None else (anspruch_raw - (row[5] or 0) - (row[6] or 0))
                 resturlaub_view = max(0, round(float(resturlaub_raw or 0), 1))
-                resturlaub_display = _compute_rest_display(anspruch, resturlaub_view, urlaub)
+                # Resturlaub nur aus DRIVE (View), keine Locosoft-Kappe
+                resturlaub_display = _compute_rest_display(anspruch, resturlaub_view, 0)
                 verfuegbar = resturlaub_display
                 team.append({
                     'employee_id': row[0],
@@ -1618,12 +1957,21 @@ def approve_vacation():
 
         # Ab hier: Buchung ist bereits genehmigt. E-Mails/Kalender dürfen Fehler nicht an den User durchreichen (Margit-Bug).
         approver_name = f"{employee_data.get('first_name', '')} {employee_data.get('last_name', '')}".strip()
+        employee_email = (booking[7] or '').strip() if booking[7] else ''
+        if not employee_email:
+            with db_session() as conn2:
+                cur2 = conn2.cursor()
+                employee_email = _get_employee_email_fallback(cur2, booking[0]) or ''
+            if employee_email:
+                print(f"ℹ️ Genehmigungs-Mail: E-Mail aus users-Fallback für employee_id={booking[0]}")
+            else:
+                print(f"⚠️ Keine E-Mail für Mitarbeiter (employee_id={booking[0]}) – Genehmigungs-Mail an Mitarbeiter kann nicht versendet werden. Bitte in Mitarbeiterverwaltung oder AD pflegen.")
         booking_details = {
             'date': booking[2],
             'day_part': booking[3],
             'vacation_type': booking[5] or 'Urlaub',
             'employee_name': booking[6],
-            'employee_email': booking[7],
+            'employee_email': employee_email,
             'department': booking[8] or ''
         }
         hr_email_sent = False
@@ -1678,6 +2026,112 @@ def approve_vacation():
             'error': str(e),
             'traceback': traceback.format_exc()
         }), 500
+
+
+@vacation_api.route('/approve-batch', methods=['POST'])
+@login_required
+def approve_batch_vacation():
+    """
+    POST /api/vacation/approve-batch
+    Genehmigt mehrere Urlaubsanträge und sendet eine Sammel-E-Mail an HR (ein Zeitraum pro Mail).
+    Body: { "booking_ids": [1, 2, 3, ...] }
+    """
+    try:
+        employee_id, ldap_username, employee_data = get_employee_from_session()
+        if not employee_id:
+            return jsonify({'success': False, 'error': 'Nicht angemeldet'}), 401
+        is_admin = is_vacation_admin(ldap_username)
+        is_approver_flag = is_approver(ldap_username)
+        if not is_admin and not is_approver_flag:
+            return jsonify({'success': False, 'error': 'Keine Genehmiger-Berechtigung'}), 403
+
+        data = request.get_json() or {}
+        booking_ids = data.get('booking_ids') or []
+        if not booking_ids:
+            return jsonify({'success': False, 'error': 'booking_ids erforderlich'}), 400
+        comment = data.get('comment', '')
+
+        team_ids = None
+        if not is_admin:
+            team_members = get_team_for_approver(ldap_username)
+            team_ids = [m['employee_id'] for m in team_members]
+            if not team_ids:
+                return jsonify({'success': False, 'error': 'Kein Team zugeordnet'}), 403
+
+        approved = []
+        bookings_data = []
+        with db_session() as conn:
+            cursor = conn.cursor()
+            for bid in booking_ids:
+                cursor.execute("""
+                    SELECT vb.id, vb.employee_id, vb.status, vb.booking_date, vb.day_part,
+                           vb.vacation_type_id, vt.name as vacation_type,
+                           e.first_name || ' ' || e.last_name as employee_name,
+                           e.email as employee_email, e.department_name
+                    FROM vacation_bookings vb
+                    JOIN employees e ON vb.employee_id = e.id
+                    LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
+                    WHERE vb.id = %s
+                """, (bid,))
+                row = cursor.fetchone()
+                if not row:
+                    continue
+                if row[2] != 'pending':
+                    continue
+                if not is_admin and row[1] not in team_ids:
+                    continue
+                upd = f"""
+                    UPDATE vacation_bookings
+                    SET status = 'approved', approved_by = {sql_placeholder()}, approved_at = {sql_placeholder()},
+                    comment = CASE WHEN comment IS NULL OR comment = '' THEN {sql_placeholder()} ELSE comment || ' | Genehmigt: ' || {sql_placeholder()} END
+                    WHERE id = {sql_placeholder()}
+                """
+                upd = convert_placeholders(upd)
+                cursor.execute(upd, (employee_id, datetime.now().isoformat(), comment, comment, bid))
+                approved.append(bid)
+                bdate = row[3]
+                if hasattr(bdate, 'isoformat'):
+                    bdate = bdate.isoformat()
+                elif not isinstance(bdate, str):
+                    bdate = str(bdate)
+                emp_email = (row[8] or '').strip() if row[8] else ''
+                if not emp_email:
+                    emp_email = _get_employee_email_fallback(cursor, row[1]) or ''
+                bookings_data.append({
+                    'booking_id': bid,
+                    'date': bdate,
+                    'day_part': row[4],
+                    'vacation_type': row[6] or 'Urlaub',
+                    'employee_name': row[7],
+                    'employee_email': emp_email,
+                    'department': row[9] or ''
+                })
+            conn.commit()
+
+        approver_name = f"{employee_data.get('first_name', '')} {employee_data.get('last_name', '')}".strip()
+        hr_email_sent = False
+        if approved and bookings_data:
+            details_for_hr = [{'date': b['date'], 'employee_name': b['employee_name'], 'department': b['department'], 'vacation_type': b['vacation_type'], 'day_part': b['day_part']} for b in bookings_data]
+            try:
+                hr_email_sent = send_approval_email_to_hr_batch(details_for_hr, approver_name)
+            except Exception as e:
+                print(f"⚠️ approve-batch HR-Mail: {e}")
+            for b in bookings_data:
+                try:
+                    send_approval_notification_to_employee(b, approver_name)
+                    add_to_team_calendar(b)
+                except Exception as e:
+                    print(f"⚠️ approve-batch Einzel-Mail/Kalender: {e}")
+
+        return jsonify({
+            'success': True,
+            'message': f'{len(approved)} Antrag/Anträge genehmigt',
+            'approved_ids': approved,
+            'notifications': {'hr_email': hr_email_sent}
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({'success': False, 'error': str(e), 'traceback': traceback.format_exc()}), 500
 
 
 @vacation_api.route('/reject', methods=['POST'])
@@ -1877,26 +2331,7 @@ def get_all_balances():
             cursor.execute(query, params)
             balance_rows = cursor.fetchall()
 
-            # Locosoft-Urlaub holen, damit Rest = min(Portal-Rest, Anspruch − Locosoft) (Kalender zeigt beides)
-            emp_to_loco = {}
-            if LOCOSOFT_AVAILABLE and balance_rows:
-                cursor.execute("""
-                    SELECT id, locosoft_id FROM employees
-                    WHERE aktiv = true AND locosoft_id IS NOT NULL
-                """)
-                emp_to_loco = {row[0]: row[1] for row in cursor.fetchall()}
-            loco_urlaub_by_emp = {}
-            if emp_to_loco:
-                try:
-                    loco_to_emp = {v: k for k, v in emp_to_loco.items()}
-                    loco_absences = get_absences_for_employees(list(loco_to_emp.keys()), year)
-                    for loco_id, data in loco_absences.items():
-                        emp_id = loco_to_emp.get(loco_id)
-                        if emp_id is not None:
-                            loco_urlaub_by_emp[emp_id] = data.get('urlaub', 0) or 0
-                except Exception as e:
-                    print(f"⚠️ Locosoft für Balance: {e}")
-
+            # Resturlaub nur aus DRIVE (View), keine Locosoft-Anfrage für Anspruchsberechnung
             balances = []
             for row in balance_rows:
                 emp_id = row[0]
@@ -1908,8 +2343,7 @@ def get_all_balances():
                 anspruch = max(0, round(float(anspruch_raw or 0), 1))
                 resturlaub_view_raw = row[7] if row[7] is not None else (anspruch_raw - (row[5] or 0) - (row[6] or 0))
                 resturlaub_view = max(0, round(float(resturlaub_view_raw or 0), 1))
-                loco_u = loco_urlaub_by_emp.get(emp_id, 0) or 0
-                resturlaub_display = _compute_rest_display(anspruch, resturlaub_view, loco_u)
+                resturlaub_display = _compute_rest_display(anspruch, resturlaub_view, 0)
 
                 # TAG 123: Mitarbeiter ohne AD-Mapping in spezielle Gruppe
                 if not has_ad:
@@ -1917,6 +2351,8 @@ def get_all_balances():
                 else:
                     display_dept = dept_name
 
+                # Teilzeit: Nicht-Arbeitstage (0=Mo..6=So) für Grau-Markierung im Planer
+                non_work_weekdays = _get_non_work_weekdays_for_employee_year(cursor, emp_id, year)
                 balances.append({
                     'employee_id': emp_id,
                     'name': row[1],
@@ -1927,7 +2363,8 @@ def get_all_balances():
                     'verbraucht': row[5],
                     'geplant': row[6],
                     'resturlaub': resturlaub_display,
-                    'has_ad_mapping': has_ad
+                    'has_ad_mapping': has_ad,
+                    'non_work_weekdays': non_work_weekdays,
                 })
 
         resp = jsonify({
@@ -1981,7 +2418,9 @@ def get_all_bookings():
                     vb.booking_date,
                     vb.day_part,
                     vb.status,
-                    vb.vacation_type_id
+                    vb.vacation_type_id,
+                    vb.created_at,
+                    vb.approved_at
                 FROM vacation_bookings vb
                 WHERE {sql_year('vb.booking_date')} = {sql_placeholder()}
                   AND vb.status IN ('approved', 'pending')
@@ -2005,6 +2444,13 @@ def get_all_bookings():
                     booked_dates[emp_id] = set()
                 booked_dates[emp_id].add(date)
 
+                def _ts(ts):
+                    if ts is None:
+                        return None
+                    if hasattr(ts, 'isoformat'):
+                        return ts.isoformat()
+                    return str(ts)
+
                 bookings.append({
                     'id': row[0],
                     'employee_id': emp_id,
@@ -2012,7 +2458,9 @@ def get_all_bookings():
                     'day_part': row[3],
                     'status': row[4],
                     'type_id': row[5],
-                    'source': 'portal'
+                    'source': 'portal',
+                    'created_at': _ts(row[6]),
+                    'approved_at': _ts(row[7])
                 })
 
             # 2. Locosoft-Mapping holen (employee_id -> locosoft_id)
@@ -2025,8 +2473,8 @@ def get_all_bookings():
             emp_to_loco = {row[0]: row[1] for row in cursor.fetchall()}
             loco_to_emp = {v: k for k, v in emp_to_loco.items()}
 
-        # 3. Locosoft-Abwesenheiten laden (nur wenn Service verfügbar)
-        if LOCOSOFT_AVAILABLE and loco_to_emp:
+        # 3. Locosoft-Abwesenheiten laden – AUS für „leerer Start“: Kalender nur aus DRIVE
+        if False and LOCOSOFT_AVAILABLE and loco_to_emp:
             try:
                 locosoft_ids = list(loco_to_emp.keys())
                 loco_days = get_absence_days_for_employees(locosoft_ids, year)
@@ -2206,7 +2654,8 @@ def get_my_bookings():
                 vb.vacation_type_id,
                 vt.name as vacation_type_name,
                 vb.comment,
-                vb.created_at
+                vb.created_at,
+                vb.approved_at
             FROM vacation_bookings vb
             LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
             WHERE vb.employee_id = {sql_placeholder()}
@@ -2263,6 +2712,12 @@ def get_my_bookings():
                 booking_date_str = booking_date if isinstance(booking_date, str) else str(booking_date)
                 in_locosoft = booking_date_str in locosoft_dates
 
+                def _ts(ts):
+                    if ts is None:
+                        return None
+                    if hasattr(ts, 'isoformat'):
+                        return ts.isoformat()
+                    return str(ts)
                 bookings.append({
                     'id': row[0],
                     'date': booking_date_str,
@@ -2271,7 +2726,8 @@ def get_my_bookings():
                     'type_id': row[4],
                     'type_name': row[5],
                     'comment': row[6],
-                    'created_at': row[7] if not hasattr(row[7], 'isoformat') else row[7].isoformat() if row[7] else None,
+                    'created_at': _ts(row[7]),
+                    'approved_at': _ts(row[8]) if len(row) > 8 else None,
                     'in_locosoft': in_locosoft
                 })
 
@@ -2331,7 +2787,8 @@ def get_requests():
                 vb.vacation_type_id,
                 vt.name as vacation_type_name,
                 vb.comment,
-                vb.created_at
+                vb.created_at,
+                vb.approved_at
             FROM vacation_bookings vb
             LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
             WHERE vb.employee_id = {sql_placeholder()}
@@ -2360,6 +2817,12 @@ def get_requests():
                 elif not isinstance(booking_date, str):
                     booking_date = str(booking_date)
                 
+                def _ts(ts):
+                    if ts is None:
+                        return None
+                    if hasattr(ts, 'isoformat'):
+                        return ts.isoformat()
+                    return str(ts)
                 requests_list.append({
                     'id': row[0],
                     'date': booking_date,
@@ -2368,7 +2831,8 @@ def get_requests():
                     'type_id': row[4],
                     'type_name': row[5],
                     'comment': row[6],
-                    'created_at': row[7] if not hasattr(row[7], 'isoformat') else row[7].isoformat() if row[7] else None
+                    'created_at': _ts(row[7]),
+                    'approved_at': _ts(row[8]) if len(row) > 8 else None
                 })
 
         return jsonify({
@@ -2415,13 +2879,25 @@ def book_vacation():
                 'error': 'Fehlende Daten: date erforderlich'
             }), 400
 
-        # TAG 127: Admin-Buchung für anderen Mitarbeiter
+        # TAG 127: Admin- oder Genehmiger-Buchung für anderen Mitarbeiter (2026-03: Genehmiger für Teammitglieder)
         for_employee_id = data.get('for_employee_id')
         booking_for_other = False
 
         if for_employee_id and for_employee_id != current_employee_id:
-            # Prüfe Admin-Rechte
-            if not is_vacation_admin(ldap_username):
+            user_is_admin = is_vacation_admin(ldap_username)
+            user_is_approver = is_approver(ldap_username) if ldap_username else False
+            # Admin darf für alle buchen; Genehmiger nur für Teammitglieder (Urlaub, Schulung, Samstagsdienst)
+            if user_is_admin:
+                pass  # erlaubt
+            elif user_is_approver:
+                team = get_team_for_approver(ldap_username)
+                team_ids = [m.get('employee_id') for m in team if m.get('employee_id') is not None]
+                if for_employee_id not in team_ids:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Sie können nur für Ihr zugeordnetes Team buchen'
+                    }), 403
+            else:
                 return jsonify({
                     'success': False,
                     'error': 'Keine Berechtigung, für andere Mitarbeiter zu buchen'
@@ -2461,6 +2937,18 @@ def book_vacation():
                 'error': 'day_part muss "full" oder "half" sein'
             }), 400
 
+        # Genehmiger dürfen für Teammitglieder nur Urlaub (1), Schulung (9) eintragen – Samstagsdienst (13) nur HR-Admin/Anton
+        if booking_for_other and not is_vacation_admin(ldap_username) and vacation_type_id not in (1, 9):
+            return jsonify({
+                'success': False,
+                'error': 'Als Genehmiger können Sie für Teammitglieder nur Urlaub oder Schulung eintragen'
+            }), 403
+        if booking_for_other and vacation_type_id == 13 and not can_manage_samstagsdienst(ldap_username):
+            return jsonify({
+                'success': False,
+                'error': 'kein Samstagsdienst kann nur von HR-Admin oder Anton eingetragen werden'
+            }), 403
+
         with db_session() as conn:
             cursor = conn.cursor()
 
@@ -2480,8 +2968,8 @@ def book_vacation():
             # ====================================================================
             resturlaub_info = None
 
-            if vacation_type_id == 1:  # Nur bei echtem Urlaub
-                requested_days = 1.0 if day_part == 'full' else 0.5
+            if vacation_type_id == 1:  # Nur bei echtem Urlaub (Teilzeit: nur Arbeitstage zählen)
+                requested_days = _count_working_days_for_employee(cursor, employee_id, [booking_date], day_part)
                 booking_year = int(booking_date[:4])
                 booking_year, err = _validate_vacation_year(booking_year)
                 if err:
@@ -2523,10 +3011,11 @@ def book_vacation():
                     'blocked_dates': blocked_dates
                 }), 400
 
-            # Berechtigung: Krankheit NUR Admin; Schulung Genehmiger oder Admin; ZA nur Admin (Test DRIVE / Testanleitung)
-            # vacation_type_id: 5=Krankheit, 6=Zeitausgleich (ZA), 9=Schulung
+            # Berechtigung: Krankheit NUR Admin; Schulung/Samstagsdienst Genehmiger oder Admin; ZA nur Admin (Test DRIVE / Testanleitung)
+            # vacation_type_id: 5=Krankheit, 6=Zeitausgleich (ZA), 9=Schulung, 13=Samstagsdienst (reine Info)
             is_sickness = vacation_type_id == 5
             is_schulung = vacation_type_id == 9
+            is_samstagsdienst = vacation_type_id == 13
             is_za = vacation_type_id == 6
             user_is_admin = is_vacation_admin(ldap_username)
             user_is_approver = is_approver(ldap_username) if ldap_username else False
@@ -2543,6 +3032,12 @@ def book_vacation():
                         'success': False,
                         'error': 'Schulung kann nur von Genehmiger oder Admin eingetragen werden'
                     }), 403
+            elif is_samstagsdienst:
+                if not can_manage_samstagsdienst(ldap_username):
+                    return jsonify({
+                        'success': False,
+                        'error': 'kein Samstagsdienst kann nur von HR-Admin oder Anton eingetragen werden'
+                    }), 403
             elif is_za:
                 if not user_is_admin:
                     return jsonify({
@@ -2550,7 +3045,7 @@ def book_vacation():
                         'error': 'Zeitausgleich kann nur von Admins eingetragen werden'
                     }), 403
 
-            is_admin_only_type = is_sickness or is_za or is_schulung  # alle drei direkt approved
+            is_admin_only_type = is_sickness or is_za or is_schulung or is_samstagsdienst  # alle direkt approved, keine HR-Mail bei Samstagsdienst
 
             # Status-Logik:
             # - Admin-Buchung für anderen: direkt 'approved' (wird manuell in Locosoft nachgepflegt)
@@ -2561,18 +3056,27 @@ def book_vacation():
             else:
                 initial_status = 'pending'
 
+            # contingent_days: bei Urlaub (type_id=1) 0 für Nicht-Arbeitstag/Wochenende, sonst 1.0/0.5
+            contingent_days_val = None
+            if vacation_type_id == 1:
+                contingent_days_val = _contingent_days_for_booking(employee_id, booking_date, day_part, cursor)
             # TAG 136: PostgreSQL-kompatible Query - verwende ? und convert_placeholders()
             query = """
                 INSERT INTO vacation_bookings (
                     employee_id, booking_date, vacation_type_id,
-                    day_part, status, comment, created_by, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    day_part, status, comment, created_by, created_at, contingent_days
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
+            if get_db_type() == 'postgresql':
+                query += " RETURNING id"
             query = convert_placeholders(query)
             cursor.execute(query, (employee_id, booking_date, vacation_type_id, day_part, initial_status, comment,
-                  current_employee_id, datetime.now().isoformat()))
-
-            booking_id = cursor.lastrowid
+                  current_employee_id, datetime.now().isoformat(), contingent_days_val))
+            if get_db_type() == 'postgresql':
+                row = cursor.fetchone()
+                booking_id = row[0] if row else None
+            else:
+                booking_id = cursor.lastrowid
             conn.commit()
 
             # Vacation type name für E-Mail holen
@@ -2615,6 +3119,21 @@ def book_vacation():
                 }
             }), 201
 
+        if is_samstagsdienst:
+            # Samstagsdienst: reine Info, keine E-Mail an HR
+            return jsonify({
+                'success': True,
+                'booking_id': booking_id,
+                'message': f'kein Samstagsdienst für {target_name} eingetragen (Info)',
+                'booking': {
+                    'id': booking_id,
+                    'date': booking_date,
+                    'day_part': day_part,
+                    'status': 'approved',
+                    'vacation_type': vacation_type_name
+                }
+            }), 201
+
         if is_za or booking_for_other:
             # TAG 127: ZA oder Admin-Buchung für anderen: Direkt approved, E-Mail an HR
             type_name = 'Zeitausgleich' if is_za else vacation_type_name
@@ -2632,8 +3151,19 @@ def book_vacation():
                 'for_employee': target_name if booking_for_other else None
             }), 201
 
-        # Normaler Urlaub: E-Mail an Genehmiger
-        approver_email_sent = send_new_request_notification_to_approvers(booking_details_for_email, approvers)
+        # Normaler Urlaub: E-Mail an Genehmiger – gebündelt pro Zeitraum (eine Mail für zusammenhängende Tage)
+        approver_email_sent = False
+        try:
+            from celery_app.tasks import send_vacation_approver_notification
+            send_vacation_approver_notification.apply_async(
+                args=[employee_id],
+                countdown=5,
+                task_id=f"vacation_approver_{employee_id}"
+            )
+            approver_email_sent = True  # Task geplant
+        except Exception:
+            # Fallback: sofort eine E-Mail für diesen einen Tag senden
+            approver_email_sent = send_new_request_notification_to_approvers(booking_details_for_email, approvers)
 
         return jsonify({
             'success': True,
@@ -2687,7 +3217,7 @@ def cancel_vacation():
         with db_session() as conn:
             cursor = conn.cursor()
 
-            # Hole Booking-Details inkl. Kalender-Event-IDs für Storno
+            # Hole Booking-Details inkl. Kalender-Event-IDs und vacation_type_id für Storno
             cursor.execute("""
                 SELECT
                     vb.employee_id,
@@ -2699,7 +3229,8 @@ def cancel_vacation():
                     e.department_name,
                     e.email as owner_email,
                     vb.calendar_event_id_employee,
-                    vb.calendar_event_id_drive
+                    vb.calendar_event_id_drive,
+                    vb.vacation_type_id
                 FROM vacation_bookings vb
                 JOIN employees e ON vb.employee_id = e.id
                 LEFT JOIN vacation_types vt ON vb.vacation_type_id = vt.id
@@ -2717,23 +3248,33 @@ def cancel_vacation():
             owner_email = booking[7]
             calendar_event_id_employee = booking[8] if len(booking) > 8 else None
             calendar_event_id_drive = booking[9] if len(booking) > 9 else None
+            booking_vacation_type_id = booking[10] if len(booking) > 10 else None
 
-            # Prüfe ob User Admin ist (GRP_Urlaub_Admin)
-            is_admin = False
-            cursor.execute("""
-                SELECT ad_groups FROM users
-                WHERE username LIKE %s OR username = %s
-            """, (f"%{ldap_username}%", ldap_username))
-            user_row = cursor.fetchone()
-            if user_row and user_row[0]:
-                try:
-                    groups = json.loads(user_row[0]) if isinstance(user_row[0], str) else user_row[0]
-                    is_admin = 'GRP_Urlaub_Admin' in groups
-                except:
-                    pass
+            # kein Samstagsdienst (13): nur HR-Admin oder Anton dürfen stornieren
+            if booking_vacation_type_id == 13:
+                if not can_manage_samstagsdienst(ldap_username):
+                    return jsonify({'success': False, 'error': 'kein Samstagsdienst darf nur von HR-Admin oder Anton bearbeitet werden'}), 403
+            else:
+                # Prüfe ob User Admin ist (GRP_Urlaub_Admin)
+                is_admin = False
+                cursor.execute("""
+                    SELECT ad_groups FROM users
+                    WHERE username LIKE %s OR username = %s
+                """, (f"%{ldap_username}%", ldap_username))
+                user_row = cursor.fetchone()
+                if user_row and user_row[0]:
+                    try:
+                        groups = json.loads(user_row[0]) if isinstance(user_row[0], str) else user_row[0]
+                        is_admin = 'GRP_Urlaub_Admin' in groups
+                    except:
+                        pass
 
-            if not is_own_booking and not is_admin:
-                return jsonify({'success': False, 'error': 'Nur eigene Buchungen können storniert werden (oder Admin-Berechtigung erforderlich)'}), 403
+                # Eigene Buchung, Admin oder Genehmiger für Teammitglied dürfen stornieren (Rolf, Wolfgang etc.)
+                if not is_own_booking and not is_admin:
+                    team_members = get_team_for_approver(ldap_username)
+                    team_ids = [m.get('employee_id') for m in (team_members or []) if m.get('employee_id') is not None]
+                    if booking_owner_id not in team_ids:
+                        return jsonify({'success': False, 'error': 'Nur eigene Buchungen können storniert werden (oder Admin-/Genehmiger-Berechtigung für Ihr Team)'}), 403
 
             # Bereits genehmigte Buchungen können auch storniert werden (mit Benachrichtigung)
             was_approved = booking[1] == 'approved'
@@ -2807,9 +3348,10 @@ def cancel_vacation():
             except Exception as e:
                 print(f"⚠️ Mitarbeiter-E-Mail bei Admin-Storno fehlgeschlagen: {e}")
         
-        # Wenn bereits genehmigt war: auch HR informieren (muss in Locosoft storniert werden)
+        # Wenn bereits genehmigt war: HR informieren (muss in Locosoft storniert werden)
+        # Ausnahme: "Typ geändert" – dann folgt sofort eine neue Buchung (z. B. Krankheit), HR bekommt nur die passende E-Mail (z. B. Krankheit eintragen), keine irreführende "Urlaub gelöscht"-Mail
         hr_email_sent = False
-        if was_approved:
+        if was_approved and not (reason and 'Typ geändert' in str(reason).strip()):
             hr_email_sent = send_cancellation_email_to_hr(
                 booking_details,
                 booking_details['employee_name'],  # Name des Buchungs-Eigentümers
@@ -2892,8 +3434,16 @@ def book_vacation_batch():
         target_employee_data = employee_data
 
         if for_employee_id and for_employee_id != employee_id:
-            # Prüfe ob Admin
-            if not is_vacation_admin(ldap_username):
+            user_is_admin = is_vacation_admin(ldap_username)
+            user_is_approver = ldap_username and is_approver(ldap_username)
+            if user_is_admin:
+                pass
+            elif user_is_approver:
+                team = get_team_for_approver(ldap_username)
+                team_ids = [m.get('employee_id') for m in team if m.get('employee_id') is not None]
+                if for_employee_id not in team_ids:
+                    return jsonify({'success': False, 'error': 'Sie können nur für Ihr zugeordnetes Team buchen'}), 403
+            else:
                 return jsonify({'success': False, 'error': 'Keine Berechtigung für Buchung für andere'}), 403
 
             target_employee_data = get_employee_by_id(for_employee_id)
@@ -2915,9 +3465,17 @@ def book_vacation_batch():
 
             # Krankheit (type_id 5) nur für Admins – Korrektur: war fälschlich type_id == 3 (Test DRIVE)
             is_sickness = vacation_type_id == 5
+            is_samstagsdienst = vacation_type_id == 13
             if is_sickness:
                 if not is_vacation_admin(ldap_username):
                     return jsonify({'success': False, 'error': 'Krankheitstage können nur von Admins eingetragen werden'}), 403
+            if is_samstagsdienst:
+                if not can_manage_samstagsdienst(ldap_username):
+                    return jsonify({'success': False, 'error': 'kein Samstagsdienst kann nur von HR-Admin oder Anton eingetragen werden'}), 403
+
+            # Genehmiger dürfen für Teammitglieder nur Urlaub (1), Schulung (9) eintragen – Samstagsdienst (13) nur HR-Admin/Anton
+            if booking_for_other and not is_vacation_admin(ldap_username) and vacation_type_id not in (1, 9):
+                return jsonify({'success': False, 'error': 'Als Genehmiger können Sie für Teammitglieder nur Urlaub oder Schulung eintragen'}), 403
 
             # TAG 198: Prüfe Urlaubssperren
             if vacation_type_id == 1:  # Nur für Urlaub prüfen
@@ -2957,9 +3515,9 @@ def book_vacation_batch():
                     'free_dates': [str(fd[0]) for fd in free_dates]
                 }), 400
 
-            # Resturlaub-Validierung für Urlaub (type_id=1) – gleiche Logik wie Anzeige (Usertest Sandra/Herbert)
+            # Resturlaub-Validierung für Urlaub (type_id=1) – nur Arbeitstage zählen (Teilzeit)
             if vacation_type_id == 1:
-                requested_days = len(dates) * (1.0 if day_part == 'full' else 0.5)
+                requested_days = _count_working_days_for_employee(cursor, employee_id, dates, day_part)
                 booking_year = int(dates[0][:4])
                 try:
                     from api.vacation_year_utils import ensure_vacation_year_setup_simple
@@ -3014,21 +3572,27 @@ def book_vacation_batch():
                     'blocked_dates': blocked_dates
                 }), 400
 
-            # Alle Buchungen einfügen
-            # TAG 127: Admin-Direktbuchungen sind sofort genehmigt
-            initial_status = 'approved' if (is_sickness or admin_direct_booking) else 'pending'
+            # Alle Buchungen einfügen (contingent_days bei Urlaub: 0 für Nicht-Arbeitstage)
+            # TAG 127: Admin-Direktbuchungen sofort genehmigt; kein Samstagsdienst (13) nur HR-Admin/Anton, sofort approved; Genehmiger für Team: Urlaub/Schulung sofort approved
+            approver_booking_for_team = booking_for_other and not is_vacation_admin(ldap_username) and vacation_type_id in (1, 9)
+            initial_status = 'approved' if (is_sickness or admin_direct_booking or vacation_type_id == 13 or approver_booking_for_team) else 'pending'
             booking_ids = []
-            # TAG 136: PostgreSQL-kompatible Query - verwende ? und convert_placeholders()
-            # WICHTIG: Query als Single-Line String, dann convert_placeholders() aufrufen
-            insert_query = "INSERT INTO vacation_bookings (employee_id, booking_date, vacation_type_id, day_part, status, comment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+            use_returning = get_db_type() == 'postgresql'
+            insert_query = "INSERT INTO vacation_bookings (employee_id, booking_date, vacation_type_id, day_part, status, comment, created_at, contingent_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            if use_returning:
+                insert_query += " RETURNING id"
             insert_query = convert_placeholders(insert_query)
-            # Debug: Prüfe ob Konvertierung funktioniert hat
             if '?' in insert_query:
                 print(f"⚠️ WARNUNG: convert_placeholders() hat nicht funktioniert! Query enthält noch ?: {insert_query[:100]}")
                 print(f"⚠️ DB_TYPE: {get_db_type()}")
             for d in dates:
-                cursor.execute(insert_query, (employee_id, d, vacation_type_id, day_part, initial_status, comment, datetime.now().isoformat()))
-                booking_ids.append(cursor.lastrowid)
+                cont_days = _contingent_days_for_booking(employee_id, d, day_part, cursor) if vacation_type_id == 1 else None
+                cursor.execute(insert_query, (employee_id, d, vacation_type_id, day_part, initial_status, comment, datetime.now().isoformat(), cont_days))
+                if use_returning:
+                    row = cursor.fetchone()
+                    booking_ids.append(row[0] if row else None)
+                else:
+                    booking_ids.append(cursor.lastrowid)
 
             # Vacation Type Name holen
             query = f"SELECT name FROM vacation_types WHERE id = {sql_placeholder()}"
@@ -3043,8 +3607,8 @@ def book_vacation_batch():
         target_employee_name = f"{target_employee_data.get('first_name', '')} {target_employee_data.get('last_name', '')}".strip()
         department = target_employee_data.get('department', '') or target_employee_data.get('department_name', '')
 
-        if admin_direct_booking and booking_for_other:
-            # Info-Mail an HR für Locosoft-Eintrag
+        if booking_for_other and initial_status == 'approved' and vacation_type_id != 13:
+            # Info-Mail an HR für Locosoft-Eintrag (Admin oder Genehmiger hat für anderen eingetragen; nicht bei Samstagsdienst)
             email_sent = False
             if GRAPH_AVAILABLE:
                 try:
@@ -3081,7 +3645,7 @@ def book_vacation_batch():
                     </div>
                     """
 
-                    email_sent = graph.send_mail(sender_email=DRIVE_EMAIL, to_emails=[HR_EMAIL], subject=subject, body_html=body_html)
+                    email_sent = graph.send_mail(sender_email=DRIVE_EMAIL, to_emails=HR_EMAILS, subject=subject, body_html=body_html)
                     if email_sent:
                         print(f"✅ HR-Info-Mail gesendet für {target_employee_name}: {vacation_type_name}")
                 except Exception as e:
@@ -3092,6 +3656,14 @@ def book_vacation_batch():
                 'booking_ids': booking_ids,
                 'message': f'{len(dates)} Tag(e) für {target_employee_name} eingetragen (genehmigt)',
                 'email_sent': email_sent
+            }), 201
+
+        # Samstagsdienst (13): reine Info, kein Genehmigungsworkflow – keine E-Mail an Genehmiger
+        if vacation_type_id == 13:
+            return jsonify({
+                'success': True,
+                'booking_ids': booking_ids,
+                'message': f'{len(dates)} Tag(e) kein Samstagsdienst für {target_employee_name} eingetragen (Info, keine Genehmigung nötig)'
             }), 201
 
         # EINE E-Mail für alle Tage (E-Mail-Batching) - normaler Antrag
@@ -3167,6 +3739,21 @@ def book_vacation_batch():
                     email_sent = graph.send_mail(sender_email=DRIVE_EMAIL, to_emails=approver_emails, subject=subject, body_html=body_html)
                     if email_sent:
                         print(f"✅ Batch-E-Mail gesendet für {len(dates)} Tage an {approver_emails}")
+                        # Markieren, damit verzögerter Task keine doppelte Mail sendet
+                        valid_ids = [bid for bid in booking_ids if bid is not None]
+                        if valid_ids:
+                            try:
+                                with db_session() as conn_sent:
+                                    cur_sent = conn_sent.cursor()
+                                    placeholders = ','.join(['%s'] * len(valid_ids))
+                                    cur_sent.execute(
+                                        f"UPDATE vacation_bookings SET approver_notification_sent_at = %s WHERE id IN ({placeholders})",
+                                        [datetime.now().isoformat()] + valid_ids
+                                    )
+                                    conn_sent.commit()
+                            except Exception as upd_err:
+                                if 'approver_notification_sent_at' not in str(upd_err):
+                                    print(f"❌ Markierung approver_notification_sent_at: {upd_err}")
             except Exception as e:
                 print(f"❌ Batch-E-Mail Fehler: {e}")
         
@@ -3211,7 +3798,7 @@ def cancel_vacation_batch():
         with db_session() as conn:
             cursor = conn.cursor()
 
-            # Prüfe Admin-Status
+            # Prüfe Admin-Status und Samstagsdienst-Berechtigung
             is_admin = False
             query = f"SELECT ad_groups FROM users WHERE username LIKE {sql_placeholder()} OR username = {sql_placeholder()}"
             query = convert_placeholders(query)
@@ -3223,6 +3810,7 @@ def cancel_vacation_batch():
                     is_admin = 'GRP_Urlaub_Admin' in groups
                 except:
                     pass
+            can_manage_sat = can_manage_samstagsdienst(ldap_username)
 
             cancelled = []
             errors = []
@@ -3232,7 +3820,7 @@ def cancel_vacation_batch():
 
             for bid in booking_ids:
                 cursor.execute("""
-                    SELECT vb.employee_id, vb.status, vb.booking_date, e.first_name || ' ' || e.last_name
+                    SELECT vb.employee_id, vb.status, vb.booking_date, e.first_name || ' ' || e.last_name, vb.vacation_type_id
                     FROM vacation_bookings vb
                     JOIN employees e ON vb.employee_id = e.id
                     WHERE vb.id = %s
@@ -3244,9 +3832,18 @@ def cancel_vacation_batch():
                     continue
 
                 is_own = row[0] == employee_id
-                if not is_own and not is_admin:
-                    errors.append(f"Keine Berechtigung für Buchung {bid}")
-                    continue
+                vacation_type_id_b = row[4] if len(row) > 4 else None
+                # kein Samstagsdienst (13): nur HR-Admin oder Anton dürfen stornieren
+                if vacation_type_id_b == 13:
+                    if not can_manage_sat:
+                        errors.append(f"kein Samstagsdienst-Buchung {bid} darf nur von HR-Admin oder Anton bearbeitet werden")
+                        continue
+                elif not is_own and not is_admin:
+                    team_members = get_team_for_approver(ldap_username)
+                    team_ids = [m.get('employee_id') for m in (team_members or []) if m.get('employee_id') is not None]
+                    if row[0] not in team_ids:
+                        errors.append(f"Keine Berechtigung für Buchung {bid}")
+                        continue
 
                 if row[1] == 'approved':
                     was_approved_any = True
@@ -3302,7 +3899,7 @@ def cancel_vacation_batch():
                 
                 # E-Mail an HR wenn genehmigt war
                 if was_approved_any:
-                    graph.send_mail(sender_email=DRIVE_EMAIL, to_emails=[HR_EMAIL], subject=subject, body_html=body_html)
+                    graph.send_mail(sender_email=DRIVE_EMAIL, to_emails=HR_EMAILS, subject=subject, body_html=body_html)
             except Exception as e:
                 print(f"⚠️ Batch-Cancel E-Mail Fehler: {e}")
         

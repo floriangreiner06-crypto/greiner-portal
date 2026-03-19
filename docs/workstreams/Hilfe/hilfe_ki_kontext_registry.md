@@ -1,6 +1,6 @@
 # Kontext-Registry für KI „Mit KI erweitern“
 
-**Letzte Prüfung:** 2026-03-18 (Session werkstatt: Registry-Quellen-Check, inhaltlich unverändert).
+**Letzte Prüfung:** 2026-03-19 (Session urlaubsplaner: Resturlaub nur DRIVE, Teilzeit Nicht-Arbeitstage, Genehmiger löschen).
 
 **Zweck:** Pro Thema ein kurzer, fachlicher SSOT-Text für die KI. Wird beim „Mit KI erweitern“ an den Prompt angehängt, damit die KI Berechnungsdetails korrekt ergänzen kann.
 
@@ -32,4 +32,4 @@ Wenn du einen Hilfe-Artikel zu TEK oder Breakeven erweiterst, ergänze einen kur
 
 **Kontext für KI:**
 
-Urlaubsplaner im DRIVE: Anspruch und Resturlaub kommen aus der Mitarbeiterverwaltung (Portal). Resturlaub = min(Portal-View-Rest, Anspruch − Locosoft-Urlaub); Krankheit mindert den Resturlaub nicht. Genehmiger werden über AD-Gruppen (z. B. „Genehmiger für Urlaub Disposition“ oder GRP_Urlaub_Genehmiger_*) und Team (AD manager bzw. Abteilung) ermittelt. Bei Genehmigung: E-Mail an HR und Mitarbeiter, optional Eintrag in Outlook-Kalender (drive@ und Mitarbeiter-Kalender).
+Urlaubsplaner im DRIVE: Anspruch und Resturlaub kommen ausschließlich aus der Mitarbeiterverwaltung (Portal-View); Locosoft fließt nicht mehr in die Resturlaubsberechnung ein. Krankheit mindert den Resturlaub nicht. Teilzeit: Nicht-Arbeitstage (Arbeitszeitmodell work_weekdays) werden im Planer grau dargestellt und bei Urlaubsantrag nicht vom Kontingent abgezogen (contingent_days). Genehmiger (AD-Gruppen, z. B. GRP_Urlaub_Genehmiger_*) dürfen für ihr Team auch Urlaub eintragen und stornieren. Kategorie „kein Samstagsdienst (Info)“: reine Info, kein Urlaubstag-Abzug. Bei Genehmigung: E-Mail an HR und Mitarbeiter, optional Outlook-Kalender (drive@ und Mitarbeiter-Kalender).
