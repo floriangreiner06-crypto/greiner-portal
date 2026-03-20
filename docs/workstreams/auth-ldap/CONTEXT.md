@@ -1,16 +1,19 @@
 # Auth & LDAP — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-02-27
+## Letzte Aktualisierung: 2026-03-20
 
 ### Feature eautoseller / „verlorene“ Verkauf-Features (2026-02-27)
 - **Problem:** eautoseller unter Verkauf und in Rechteverwaltung nicht auffindbar. Ursache: Feature nur in DB/Navi, nicht in `FEATURE_ACCESS` (config/roles_config.py).
 - **Lösung:** `FEATURE_ACCESS` um **eautoseller**, **gw_standzeit**, **planung**, **verkaeufer_zielplanung**, **leasys** ergänzt. Feature-Zugriff sichtbar unter **User & Rollen → Feature-Zugriff → Nach Rolle**. Rolle „Verkauf“ hat eautoseller bewusst nicht (Admin/VKL/Disposition schon); bei Bedarf dort anhaken. Doku: `FEATURE_EAUTOSELLER_UND_VERKAUF.md`.
 
-### Rechteverwaltung Entschlackung (2026-03-02)
-- **Vorschlag B:** Nur Sicht „Nach Rolle“ bearbeitbar; „Nach Feature“ und „Matrix“ nur Übersicht (read-only). Speichern nur aus „Nach Rolle“. Feature-Karten ohne Stift-Button.
-- **Vorschlag D:** Haupt-Tabs auf 3 reduziert: **User & Rollen** (User-Liste + Rollen & Module/Feature-Zugriff in einem Tab), **Mitarbeiter & Urlaub** (Pills: Mitarbeiter-Konfig, Urlaubsverwaltung, Mitarbeiterverwaltung), **Einstellungen** (Pills: Navigation, Title-Mapping, E-Mail Reports, Architektur).
-- **Vorschlag C:** Filter-Verhalten für Listen (Auftragseingang, Auslieferungen, OPOS, Leistungsübersicht Werkstatt) inline: kleines Dropdown neben dem Feature-Haken in der Rollen-Ansicht; separate Karte „Filter-Verhalten für Listen“ entfernt.
+### Redesign → eigener Workstream „design“ (2026-03-13)
+- **Rechteverwaltung-UI, DRIVE-Theme und alle Design/Mockup-Themen** liegen im Workstream **design** (`docs/workstreams/design/CONTEXT.md`). Dort: Figma als Tool, Vorschläge B/C/D für Rechteverwaltung-Entschlackung, Theme, nächste Schritte. auth-ldap bleibt zuständig für **Rollen, Features, API und Rechte-Logik**; UI/Layout/Redesign werden im Workstream design geführt.
+
+### Fix: Doppelte User in Rechteverwaltung (2026-03-12)
+- **Problem:** Dieselbe Person erschien mehrfach in der User-Liste (z. B. Katrina Kramhöller, Katrin Geppert, Christian Meyer je 2×) mit unterschiedlichem „Letzter Login“. Zudem erhielt Katrina Kramhöller keine E-Mail bei Urlaub-Genehmigung (Fallback holt E-Mail aus users via ldap_employee_mapping; bei zwei User-Zeilen konnte die „falsche“ Zeile gewählt werden).
+- **Ursache:** Login-Lookup war case-sensitiv (`username = ?`). AD liefert teils unterschiedliche Schreibweise → zweiter Login legte neuen User an. Fallback-Abfrage `_get_employee_email_fallback` (vacation_api) mit `LIMIT 1` ohne ORDER → nicht deterministisch welcher User gewählt wurde.
+- **Lösung:** (1) Auth: Lookup in `_cache_user` und `_log_auth_event` mit `LOWER(TRIM(username))`. (2) Rechteverwaltung: API dedupliziert Anzeige pro LOWER(username). (3) **DB-Merge:** Migration `migrations/merge_duplicate_users.sql` – Duplikat-User 39, 46, 71 gelöscht; Referenzen auf 73, 72, 41 umgezogen; nur noch ein User pro Person. (4) Urlaubsplaner: `_get_employee_email_fallback` mit `ORDER BY u.last_login DESC NULLS LAST` → eindeutiger Treffer.
 
 ### Fix: Rollen/Features-Speichern (2026-02-27)
 - **Problem:** Änderungen an Rollen & Feature-Zugriff wurden nicht gespeichert.
@@ -19,7 +22,7 @@
 
 ## Beschreibung
 
-Auth umfasst LDAP/AD-Integration, RBAC, Session-Management, Rollen-Config, Dashboard-Personalisierung, Rechte-Verwaltung und Portal-Name-Survey. **Theme & Design:** Vorschläge und Mockups für ein zentrales DRIVE-Theme (Farben, Schriften, Startseite) liegen in diesem Workstream-Ordner (MOCKUP_THEME_*.html, EINSCHAETZUNG_DRIVE_DESIGN_ANPASSUNG.md, README_THEME_MOCKUPS.md). Die Umsetzung von Theme und Badges pro Rolle wird hier mitgeführt. Siehe WORKSTREAM_THEME_DESIGN_EMPFEHLUNG.md für die Frage „eigener Workstream Design?“.
+Auth umfasst LDAP/AD-Integration, RBAC, Session-Management, Rollen-Config, Dashboard-Personalisierung, Rechte-Verwaltung und Portal-Name-Survey. **UI/Theme/Redesign** (Rechteverwaltung-Layout, DRIVE-Theme, Figma-Mockups) werden im Workstream **design** geführt (`docs/workstreams/design/CONTEXT.md`). Ältere Theme-Referenzen (MOCKUP_THEME_*.html, EINSCHAETZUNG_DRIVE_DESIGN_ANPASSUNG.md, README_THEME_MOCKUPS.md) bleiben in diesem Ordner; Badges pro Rolle und Startseiten-Konfiguration sind weiterhin mit auth-ldap abgestimmt (Rollen/Features hier, Look & Feel im Workstream design).
 
 ## Module & Dateien
 
@@ -47,6 +50,11 @@ Auth umfasst LDAP/AD-Integration, RBAC, Session-Management, Rollen-Config, Dashb
 
 ## Aktueller Stand (✅ erledigt, 🔧 in Arbeit, ❌ offen)
 
+- ✅ **Vanessa Develop-Setup (Testsystem) eingerichtet (2026-03-20):** Linux-User `vanessa-dev` angelegt, SSH-Key-Login aktiv, Schreibrechte auf `/data/greiner-test` gesetzt, sudo eng begrenzt auf `systemctl restart/status greiner-test`.
+- ✅ **Stabile Develop-URL ohne `/test`-Prefix (2026-03-20):** Separater Nginx-vHost auf `http://drive:5002` konfiguriert (extern 5002 → intern Test-Gunicorn 127.0.0.1:5001), damit Login/Redirects im Develop-System bleiben.
+- ✅ **Testsystem visuell markiert (2026-03-20):** `TESTSYSTEM`-Badge/Hinweis in `templates/base.html` und `templates/login.html` ergänzt; Erkennung für `/test` und Host/Port-basiertes Develop (`5002`) aktiv.
+- ✅ **Vanessa-Dokumentation & Prompts bereitgestellt (2026-03-20):** Setup-Anleitungen, Quickstart und Prompt-Sammlung im Sync unter `docs/vanessa-claude-testsystem/` abgelegt.
+- 🔧 **Develop-Login-Fehleranalyse (2026-03-20):** LDAP-Authentifizierung funktioniert, aber es gab DB-Auth-Fehler (`fe_sendauth: no password supplied`) im Testsystem; `python-dotenv` in Test-venv nachinstalliert und Test-`.env` um DB-Variablen ergänzt. Finaler Login-Check nach Restart und User-Test läuft.
 - ✅ **AD-Passwort ändern (Self-Service):** Nutzer können unter „Passwort ändern“ (User-Dropdown) ihr Active-Directory-Passwort ändern. Das neue Passwort gilt ab der nächsten Anmeldung für Windows und Drive. LDAPS (Port 636), ldap3 `ad_modify_password` (DELETE+ADD unicodePwd). Route: `/profil/passwort`, Template: `profil_passwort.html`. Erfolgs-/Fehler-Feedback direkt auf der Seite („Vom AD bestätigt“ / „vom AD-Server nicht akzeptiert“). Fehlermeldungen nutzerfreundlich übersetzt (Keys in ldap_connector, `PASSWORT_FEHLER_UEBERSETZUNG` + `_passwort_fehler_fuer_anwender()` in app.py) – keine technischen/englischen Texte im UI.
 - ✅ LDAP-Login, Rollen, RBAC, Rechte-Verwaltung im Einsatz
 - ✅ **Option B (Rechte nur aus Portal):** Zugriff wird ausschließlich in der Rechteverwaltung festgelegt. LDAP liefert nur Identität (wer darf sich anmelden). Pro User eine **Rolle** zuweisen (Dropdown „Rolle zuweisen“). „— Bitte zuweisen —“ = noch keine Rolle → Zugriff wie „mitarbeiter“ (minimal). OU/Title (AD) nur zur Info.
@@ -79,11 +87,13 @@ Auth umfasst LDAP/AD-Integration, RBAC, Session-Management, Rollen-Config, Dashb
 
 ## Nächster Schritt (optional)
 
-- Weitere UX-Anpassungen an der Rechteverwaltung oder andere Workstreams.
+- Finaler End-to-End-Login-Test auf `http://drive:5002` (erfolgreicher AD-Login inkl. Session-Anlage in `users`) bestätigen.
+- Vanessa startet Redesign-Iteration im Testsystem (`/data/greiner-test`) mit Prompt-Set aus `docs/vanessa-claude-testsystem/PROMPTS_FUER_CLAUDE.md`.
+- Optional: Fallback-harte Konfiguration per `EnvironmentFile` in `greiner-test.service` ergänzen, damit DB-Variablen unabhängig von dotenv geladen werden.
 
 ## Offene Entscheidungen
 
-- (Keine aktuell)
+- Ob Develop dauerhaft über `http://drive:5002` bleibt oder zusätzlich ein dedizierter Hostname (z. B. `drive-test`) im internen DNS angelegt wird.
 
 ## Wichtige Hinweise (TAG 2026-02-19, Session-Ende)
 

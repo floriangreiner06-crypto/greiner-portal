@@ -23,6 +23,8 @@ from functools import lru_cache
 import threading
 
 # Zeep SOAP-Client
+SOAP_DEPS_AVAILABLE = True
+SOAP_DEPS_ERROR = None
 try:
     from zeep import Client, Settings
     from zeep.transports import Transport
@@ -31,9 +33,13 @@ try:
     from requests import Session
     from requests.adapters import HTTPAdapter
     from urllib3.util.retry import Retry
-except ImportError:
-    print("Bitte zeep und requests installieren: pip install zeep requests")
-    sys.exit(1)
+except ImportError as e:
+    # IMPORTANT: Library code must never terminate the whole app at import-time.
+    # In test/dev environments some optional SOAP dependencies may be missing.
+    SOAP_DEPS_AVAILABLE = False
+    SOAP_DEPS_ERROR = e
+    Fault = Exception
+    TransportError = Exception
 
 # Logging
 logger = logging.getLogger(__name__)
@@ -95,6 +101,12 @@ class LocosoftSOAPClient:
         return cls._instance
 
     def __init__(self):
+        if not SOAP_DEPS_AVAILABLE:
+            raise RuntimeError(
+                "Locosoft SOAP Abhängigkeiten fehlen (zeep/requests). "
+                "Bitte installieren: pip install zeep requests"
+            ) from SOAP_DEPS_ERROR
+
         if self._initialized:
             return
 

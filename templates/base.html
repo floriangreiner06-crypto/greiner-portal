@@ -75,6 +75,18 @@
     {% block extra_css %}{% endblock %}
 </head>
 <body>
+    {% set host = request.host|lower %}
+    {% set fwd_port = request.headers.get('X-Forwarded-Port', '') %}
+    {% set is_test_system = request.headers.get('X-Forwarded-Prefix', '').startswith('/test')
+        or request.path.startswith('/test')
+        or host.startswith('drive-test')
+        or host.endswith(':5002')
+        or fwd_port == '5002' %}
+    {% if is_test_system %}
+    <div style="position:fixed;top:10px;right:12px;z-index:2000;background:#dc2626;color:#fff;padding:6px 12px;border-radius:999px;font-weight:700;font-size:12px;letter-spacing:.5px;box-shadow:0 6px 18px rgba(0,0,0,.25);">
+        TESTSYSTEM
+    </div>
+    {% endif %}
 
     <!-- TOP NAVBAR -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary sticky-top">
@@ -92,6 +104,9 @@
                 </span>
                 <span class="fw-bold">DRIVE</span>
             </a>
+            {% if is_test_system %}
+            <span class="badge bg-danger ms-2" title="Sie arbeiten in der Testumgebung">TEST</span>
+            {% endif %}
 
             <!-- Mobile Toggle -->
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
