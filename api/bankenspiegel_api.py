@@ -104,7 +104,7 @@ def find_vehicle_by_vin(loco_cursor, vin, fields='marke_modell'):
         """
         params = (vin_upper, vin_upper, vin_upper, vin_upper, vin_like)
     elif fields == 'marke_modell':
-        # Marke und Modell
+        # Marke, Modell und Erstzulassung (für EZ-Anzeige auf Fahrzeugfinanzierungen)
         query = """
             SELECT 
                 COALESCE(
@@ -112,7 +112,8 @@ def find_vehicle_by_vin(loco_cursor, vin, fields='marke_modell'):
                     NULLIF(TRIM(mo.description), ''),
                     ''
                 ) as modell,
-                COALESCE(NULLIF(TRIM(m.description), ''), '') as marke
+                COALESCE(NULLIF(TRIM(m.description), ''), '') as marke,
+                v.first_registration_date as erstzulassung
             FROM vehicles v
             LEFT JOIN makes m
                 ON v.make_number = m.make_number
@@ -414,15 +415,15 @@ def get_konten():
                 query += " AND k.bank_id = %s"
                 params.append(bank_id)
 
-            # TAG 180: Sortierung nach Kontoinhaber (Autohaus Greiner zuerst, dann Auto Greiner, dann Rest)
+            # Primär manuelle Sortierung; Kontoinhaber-Bucket nur als sekundärer Tie-Breaker
             query += """
                 ORDER BY 
+                    COALESCE(k.sort_order, 999),
                     CASE 
                         WHEN LOWER(COALESCE(k.kontoinhaber, '')) LIKE '%autohaus greiner%' THEN 1
                         WHEN LOWER(COALESCE(k.kontoinhaber, '')) LIKE '%auto greiner%' THEN 2
                         ELSE 3
                     END,
-                    k.sort_order,
                     k.kontoname
             """
 
@@ -515,7 +516,50 @@ def get_konten():
                         konto['iban'] = 'Sachkonto Locosoft 070101'
                         break
 
-            # Statistik - TAG 136: float() für PostgreSQL Decimal
+            # EKF-Konten (Einkaufsfinanzierung): Stellantis, Hyundai Finance, Santander aus fahrzeugfinanzierungen
+            # Aggregierte Salden pro Institut als virtuelle Konten für die Kontenübersicht
+            ekf_institute = ('Stellantis', 'Hyundai Finance', 'Santander')
+            cursor.execute("""
+                SELECT finanzinstitut, COALESCE(SUM(aktueller_saldo), 0) as saldo_sum
+                FROM fahrzeugfinanzierungen
+                WHERE aktiv = true AND finanzinstitut IN %s
+                GROUP BY finanzinstitut
+            """, (ekf_institute,))
+            ekf_rows = cursor.fetchall()
+            cursor.execute("""
+                SELECT finanzinstitut, gesamt_limit
+                FROM ek_finanzierung_konditionen
+                WHERE finanzinstitut IN %s
+            """, (ekf_institute,))
+            ekf_limits = {}
+            for r in cursor.fetchall():
+                d = row_to_dict(r, cursor)
+                ekf_limits[d['finanzinstitut']] = float(d.get('gesamt_limit') or 0)
+            for idx, row in enumerate(ekf_rows):
+                r = row_to_dict(row, cursor)
+                inst = r['finanzinstitut']
+                saldo_sum = float(r.get('saldo_sum') or 0)
+                # Saldo aus Sicht Liquidität: Schulden = negativ (wie bei Kreditkonten)
+                saldo_eur = -saldo_sum
+                kreditlinie = ekf_limits.get(inst) or 0
+                verfuegbar = (kreditlinie + saldo_eur) if kreditlinie and kreditlinie > 0 else None
+                ekf_konto = {
+                    'id': -(idx + 1),  # negative ID: kein echtes Konto, kein Transaktionen-Link
+                    'bank_name': inst,
+                    'kontoname': f'EKF {inst}',
+                    'iban': 'EKF (aggregiert)',
+                    'saldo': round(saldo_eur, 2),
+                    'stand_datum': None,
+                    'aktiv': 1,
+                    'kreditlinie': kreditlinie if kreditlinie else 0,
+                    'verfuegbar': round(verfuegbar, 2) if verfuegbar is not None else None,
+                    'ekf': True,
+                }
+                if alle:
+                    ekf_konto['bank_id'] = None  # Verwaltung: EKF sind keine Bankkonten
+                konten.append(ekf_konto)
+
+            # Statistik - TAG 136: float() für PostgreSQL Decimal (inkl. EKF-Schulden)
             gesamtsaldo = sum(float(k['saldo'] or 0) for k in konten)
 
         return jsonify({
@@ -553,6 +597,71 @@ def get_banken():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@bankenspiegel_api.route('/ekf-bewegungen', methods=['GET'])
+@login_required
+def get_ekf_bewegungen():
+    """
+    GET /api/bankenspiegel/ekf-bewegungen?institut=Stellantis
+    EKF-Positionen (aktive Verträge) als „Bewegungen“ – Stand aus CSV-Import, keine Kontoauszüge.
+    Pro Fahrzeug eine Zeile: Vertragsbeginn, aktueller Saldo (als negative Verbindlichkeit), VIN/Modell/Kennzeichen.
+    """
+    institut = request.args.get('institut', type=str)
+    if not institut or institut not in ('Stellantis', 'Hyundai Finance', 'Santander'):
+        return jsonify({'success': False, 'error': 'Parameter institut fehlt oder ungültig (Stellantis, Hyundai Finance, Santander)'}), 400
+    try:
+        with db_session() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT
+                    vertragsbeginn AS buchungsdatum,
+                    (-1.0 * COALESCE(aktueller_saldo, 0)) AS betrag,
+                    vin,
+                    modell,
+                    kennzeichen,
+                    original_betrag,
+                    aktueller_saldo,
+                    alter_tage,
+                    zinsfreiheit_tage
+                FROM fahrzeugfinanzierungen
+                WHERE finanzinstitut = %s AND aktiv = true
+                ORDER BY vertragsbeginn DESC NULLS LAST, vin
+            """, (institut,))
+            rows = cursor.fetchall()
+        bewegungen = []
+        for r in rows:
+            d = row_to_dict(r, cursor)
+            vin = (d.get('vin') or '').strip()
+            modell = (d.get('modell') or '').strip()
+            kennz = (d.get('kennzeichen') or '').strip()
+            verwendungszweck = ' | '.join(filter(None, [vin and f'VIN {vin[-8:]}', modell or None, kennz or None])) or vin or '—'
+            buchungsdatum = d.get('buchungsdatum')
+            if hasattr(buchungsdatum, 'strftime'):
+                buchungsdatum = buchungsdatum.strftime('%Y-%m-%d')
+            bewegungen.append({
+                'id': None,
+                'konto_id': None,
+                'buchungsdatum': buchungsdatum,
+                'betrag': round(float(d.get('betrag') or 0), 2),
+                'verwendungszweck': verwendungszweck,
+                'buchungstext': f"EKF {institut}",
+                'kategorie': 'EKF Position',
+                'vin': vin,
+                'modell': modell,
+                'kennzeichen': kennz,
+                'original_betrag': float(d.get('original_betrag') or 0),
+                'aktueller_saldo': float(d.get('aktueller_saldo') or 0),
+            })
+        return jsonify({
+            'success': True,
+            'institut': institut,
+            'transaktionen': bewegungen,
+            'count': len(bewegungen),
+            'hinweis': 'Stand aus CSV-Import – keine Kontoauszüge.'
+        }), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @bankenspiegel_api.route('/konten/<int:konto_id>', methods=['PATCH'])
 @login_required
 def patch_konto(konto_id):
@@ -565,10 +674,15 @@ def patch_konto(konto_id):
     if not (current_user.has_role('admin') or current_user.has_role('buchhaltung')):
         return jsonify({'success': False, 'error': 'Keine Berechtigung'}), 403
 
+    # EKF-Konten (negative ID) sind virtuelle Aggregate, nicht bearbeitbar
+    if konto_id <= 0:
+        return jsonify({'success': False, 'error': 'EKF-Konten (Einkaufsfinanzierung) sind nicht bearbeitbar'}), 400
+
     data = request.get_json() or {}
-    allowed = ('kontoname', 'iban', 'bank_id', 'kreditlinie', 'aktiv', 'kontoinhaber', 'sort_order')
     updates = []
     params = []
+    ziel_position = None
+    aktuelle_position = None
 
     if 'kontoname' in data and data['kontoname'] is not None:
         v = (data['kontoname'] or '').strip()
@@ -606,26 +720,84 @@ def patch_konto(konto_id):
     if 'sort_order' in data and data['sort_order'] is not None:
         try:
             so = int(data['sort_order'])
-            updates.append('sort_order = %s')
-            params.append(so)
+            if so < 1:
+                return jsonify({'success': False, 'error': 'Sortierung muss >= 1 sein'}), 400
+            ziel_position = so
         except (TypeError, ValueError):
-            pass
+            return jsonify({'success': False, 'error': 'Ungültige Sortierung'}), 400
 
-    if not updates:
+    if not updates and ziel_position is None:
         return jsonify({'success': False, 'error': 'Keine Felder zum Aktualisieren'}), 400
-
-    updates.append('aktualisiert_am = NOW()')
-    params.append(konto_id)
 
     try:
         with db_session() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "UPDATE konten SET " + ", ".join(updates) + " WHERE id = %s",
-                params
-            )
-            if cursor.rowcount == 0:
+            cursor.execute("SELECT sort_order FROM konten WHERE id = %s", (konto_id,))
+            row = cursor.fetchone()
+            if row is None:
                 return jsonify({'success': False, 'error': 'Konto nicht gefunden'}), 404
+            try:
+                aktuelle_position = int(row['sort_order']) if row['sort_order'] is not None else 999
+            except Exception:
+                aktuelle_position = int(row[0]) if isinstance(row, (list, tuple)) and row[0] is not None else 999
+
+            # Nur bei echter Positionsänderung verschieben
+            if ziel_position is not None and ziel_position == aktuelle_position:
+                ziel_position = None
+
+            if updates:
+                updates.append('aktualisiert_am = NOW()')
+                params.append(konto_id)
+                cursor.execute(
+                    "UPDATE konten SET " + ", ".join(updates) + " WHERE id = %s",
+                    params
+                )
+
+            # Manuelle Reihenfolge inkl. "Verrutschen" der anderen Konten
+            if ziel_position is not None:
+                cursor.execute("SELECT COUNT(*) AS cnt FROM konten")
+                cnt_row = cursor.fetchone()
+                try:
+                    gesamt = int(cnt_row['cnt'])
+                except Exception:
+                    gesamt = int(cnt_row[0]) if isinstance(cnt_row, (list, tuple)) and cnt_row else 0
+                if gesamt <= 0:
+                    return jsonify({'success': False, 'error': 'Keine Konten für Sortierung gefunden'}), 500
+
+                ziel_position = max(1, min(ziel_position, gesamt))
+
+                if ziel_position < aktuelle_position:
+                    # Nach oben verschieben: Zwischenbereich nach unten schieben
+                    cursor.execute(
+                        """
+                        UPDATE konten
+                        SET sort_order = COALESCE(sort_order, 999) + 1,
+                            aktualisiert_am = NOW()
+                        WHERE id <> %s
+                          AND COALESCE(sort_order, 999) >= %s
+                          AND COALESCE(sort_order, 999) < %s
+                        """,
+                        (konto_id, ziel_position, aktuelle_position)
+                    )
+                elif ziel_position > aktuelle_position:
+                    # Nach unten verschieben: Zwischenbereich nach oben schieben
+                    cursor.execute(
+                        """
+                        UPDATE konten
+                        SET sort_order = COALESCE(sort_order, 999) - 1,
+                            aktualisiert_am = NOW()
+                        WHERE id <> %s
+                          AND COALESCE(sort_order, 999) > %s
+                          AND COALESCE(sort_order, 999) <= %s
+                        """,
+                        (konto_id, aktuelle_position, ziel_position)
+                    )
+
+                # Zielkonto auf gewünschte Position setzen
+                cursor.execute(
+                    "UPDATE konten SET sort_order = %s, aktualisiert_am = NOW() WHERE id = %s",
+                    (ziel_position, konto_id)
+                )
         return jsonify({'success': True}), 200
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -1494,10 +1666,15 @@ def get_einkaufsfinanzierung():
                 loco_cursor = loco_conn.cursor()
                 for row in top_rows:
                     r = row_to_dict(row, cursor)
-                    if not (r.get('modell') or '').strip() or (r.get('modell') or '').strip().lower() == 'unbekannt':
-                        loco_data = find_vehicle_by_vin(loco_cursor, r.get('vin'), fields='marke_modell')
-                        if loco_data and (loco_data.get('modell') or '').strip():
-                            r['modell'] = (loco_data['modell'] or '').strip()
+                    loco_data = find_vehicle_by_vin(loco_cursor, r.get('vin'), fields='marke_modell')
+                    if loco_data:
+                        if not (r.get('modell') or '').strip() or (r.get('modell') or '').strip().lower() == 'unbekannt':
+                            if (loco_data.get('modell') or '').strip():
+                                r['modell'] = (loco_data['modell'] or '').strip()
+                        ez = loco_data.get('erstzulassung')
+                        r['erstzulassung'] = ez.isoformat() if ez and hasattr(ez, 'isoformat') else (ez if ez else None)
+                    else:
+                        r['erstzulassung'] = None
                     top_fahrzeuge.append({
                         'institut': r['finanzinstitut'],
                         'vin': r['vin'][-8:] if r['vin'] else '???',
@@ -1506,7 +1683,8 @@ def get_einkaufsfinanzierung():
                         'saldo': float(r['aktueller_saldo']) if r['aktueller_saldo'] else 0,
                         'original': float(r['original_betrag']) if r['original_betrag'] else 0,
                         'alter': r['alter_tage'],
-                        'zinsfreiheit': r['zinsfreiheit_tage']
+                        'zinsfreiheit': r['zinsfreiheit_tage'],
+                        'erstzulassung': r.get('erstzulassung')
                     })
 
             # 4. ZINSFREIHEIT-WARNUNGEN (<= 30 Tage ODER bereits über Zinsfreiheit) – Modell ggf. aus Locosoft
@@ -1536,10 +1714,15 @@ def get_einkaufsfinanzierung():
                 loco_cursor = loco_conn.cursor()
                 for row in warn_rows:
                     r = row_to_dict(row, cursor)
-                    if not (r.get('modell') or '').strip() or (r.get('modell') or '').strip().lower() == 'unbekannt':
-                        loco_data = find_vehicle_by_vin(loco_cursor, r.get('vin'), fields='marke_modell')
-                        if loco_data and (loco_data.get('modell') or '').strip():
-                            r['modell'] = (loco_data['modell'] or '').strip()
+                    loco_data = find_vehicle_by_vin(loco_cursor, r.get('vin'), fields='marke_modell')
+                    if loco_data:
+                        if not (r.get('modell') or '').strip() or (r.get('modell') or '').strip().lower() == 'unbekannt':
+                            if (loco_data.get('modell') or '').strip():
+                                r['modell'] = (loco_data['modell'] or '').strip()
+                        ez = loco_data.get('erstzulassung')
+                        r['erstzulassung'] = ez.isoformat() if ez and hasattr(ez, 'isoformat') else (ez if ez else None)
+                    else:
+                        r['erstzulassung'] = None
                     zinsfreiheit_tage = r['zinsfreiheit_tage']
                     alter_tage = r['alter_tage'] or 0
                     if alter_tage > zinsfreiheit_tage:
@@ -1554,7 +1737,8 @@ def get_einkaufsfinanzierung():
                         'tage_uebrig': tage_uebrig,
                         'saldo': float(r['aktueller_saldo']) if r['aktueller_saldo'] else 0,
                         'alter': alter_tage,
-                        'kritisch': tage_uebrig < 15 if tage_uebrig >= 0 else True
+                        'kritisch': tage_uebrig < 15 if tage_uebrig >= 0 else True,
+                        'erstzulassung': r.get('erstzulassung')
                     })
 
         return jsonify({
@@ -1619,16 +1803,20 @@ def get_fahrzeuge_mit_zinsen():
             c.execute(final_query, params)
             fahrzeuge = rows_to_list(c.fetchall())
 
-            # Modell aus Locosoft nachladen, wo in fahrzeuge_mit_zinsen leer
+            # Modell und Erstzulassung aus Locosoft nachladen
             from api.db_utils import locosoft_session
-            need_modell = [f for f in fahrzeuge if not (f.get('modell') or '').strip() or (f.get('modell') or '').strip().lower() == 'unbekannt']
-            if need_modell:
-                with locosoft_session() as loco_conn:
-                    loco_cursor = loco_conn.cursor()
-                    for f in need_modell:
-                        loco_data = find_vehicle_by_vin(loco_cursor, f.get('vin'), fields='marke_modell')
-                        if loco_data and (loco_data.get('modell') or '').strip():
-                            f['modell'] = (loco_data['modell'] or '').strip()
+            with locosoft_session() as loco_conn:
+                loco_cursor = loco_conn.cursor()
+                for f in fahrzeuge:
+                    loco_data = find_vehicle_by_vin(loco_cursor, f.get('vin'), fields='marke_modell')
+                    if loco_data:
+                        if not (f.get('modell') or '').strip() or (f.get('modell') or '').strip().lower() == 'unbekannt':
+                            if (loco_data.get('modell') or '').strip():
+                                f['modell'] = (loco_data['modell'] or '').strip()
+                        ez = loco_data.get('erstzulassung')
+                        f['erstzulassung'] = ez.isoformat() if ez and hasattr(ez, 'isoformat') else (ez if ez else None)
+                    else:
+                        f['erstzulassung'] = None
 
             # Statistik berechnen
             gesamt_saldo = sum(float(f.get('aktueller_saldo') or 0) for f in fahrzeuge)
@@ -2059,7 +2247,9 @@ def get_fahrzeuge_by_marke():
                                 loco_modell = loco_data.get('modell', '')
                                 if loco_modell and (not modell or modell.strip() == '' or modell.strip().lower() == 'unbekannt'):
                                     fz_dict['modell'] = loco_modell
-                                
+                                # Erstzulassung für Anzeige
+                                ez = loco_data.get('erstzulassung')
+                                fz_dict['erstzulassung'] = ez.isoformat() if ez and hasattr(ez, 'isoformat') else (ez if ez else None)
                                 # Marke aus Locosoft (hat Priorität)
                                 loco_marke = loco_data.get('marke', '')
                                 if loco_marke:
@@ -2082,6 +2272,7 @@ def get_fahrzeuge_by_marke():
                                     fz_dict['marke'] = 'Unbekannt'
                                 else:
                                     fz_dict['marke'] = marke_db
+                                fz_dict['erstzulassung'] = None
                         else:
                             # Keine VIN, verwende DB-Werte
                             if not modell or modell.strip() == '' or modell.strip().lower() == 'unbekannt':
@@ -2090,6 +2281,7 @@ def get_fahrzeuge_by_marke():
                                 fz_dict['marke'] = 'Unbekannt'
                             else:
                                 fz_dict['marke'] = marke_db
+                            fz_dict['erstzulassung'] = None
                         
                         # Marken-Filter NACH Locosoft-Abruf
                         if marke:
@@ -2206,27 +2398,24 @@ def get_fahrzeuge_by_marke():
             cursor.execute(query, params if len(params) > 1 else (params[0],))
             fahrzeuge = rows_to_list(cursor.fetchall())
             
-            # Modell aus Locosoft nachladen, wenn in fahrzeugfinanzierungen leer
-            # (Detail-Modal zeigt Modell aus Locosoft; Liste soll konsistent sein)
+            # Modell und Erstzulassung aus Locosoft nachladen
             if fahrzeuge:
                 from api.db_utils import locosoft_session
-                need_modell = [
-                    fz for fz in fahrzeuge
-                    if not (fz.get('modell') or '').strip()
-                    or (fz.get('modell') or '').strip().lower() == 'unbekannt'
-                ]
-                if need_modell:
-                    with locosoft_session() as loco_conn:
-                        loco_cursor = loco_conn.cursor()
-                        for fz in need_modell:
-                            vin = fz.get('vin')
-                            if not vin:
-                                continue
-                            loco_data = find_vehicle_by_vin(loco_cursor, vin, fields='marke_modell')
-                            if loco_data:
-                                modell = (loco_data.get('modell') or '').strip()
-                                if modell:
-                                    fz['modell'] = modell
+                with locosoft_session() as loco_conn:
+                    loco_cursor = loco_conn.cursor()
+                    for fz in fahrzeuge:
+                        vin = fz.get('vin')
+                        if not vin:
+                            continue
+                        loco_data = find_vehicle_by_vin(loco_cursor, vin, fields='marke_modell')
+                        if loco_data:
+                            modell = (loco_data.get('modell') or '').strip()
+                            if modell and (not (fz.get('modell') or '').strip() or (fz.get('modell') or '').strip().lower() == 'unbekannt'):
+                                fz['modell'] = modell
+                            ez = loco_data.get('erstzulassung')
+                            fz['erstzulassung'] = ez.isoformat() if ez and hasattr(ez, 'isoformat') else (ez if ez else None)
+                        else:
+                            fz['erstzulassung'] = None
             
         return jsonify({
             'success': True,

@@ -29,7 +29,7 @@ function formatIBAN(iban) {
 // Konten laden
 async function loadKonten() {
     try {
-        const response = await fetch('/api/bankenspiegel/konten');
+        const response = await fetch('/api/bankenspiegel/konten', { cache: 'no-store' });
         if (!response.ok) throw new Error('API Fehler');
         
         const data = await response.json();
@@ -130,14 +130,27 @@ function updateKontenTable() {
         
         // TAG 213/214: LocoSoft-Konto erkennen (IBAN beginnt mit "Sachkonto Locosoft")
         const isLocosoftKonto = konto.iban && konto.iban.startsWith('Sachkonto Locosoft');
-        const rowClass = isLocosoftKonto ? 'table-info' : '';
+        // EKF-Konten (Einkaufsfinanzierung Stellantis, Hyundai Finance, Santander)
+        const isEKF = konto.ekf === true;
+        const rowClass = isLocosoftKonto ? 'table-info' : (isEKF ? 'table-warning' : '');
         // TAG 214: IBAN auch für LocoSoft-Konten anzeigen (z.B. "Sachkonto Locosoft 070101")
         const ibanDisplay = konto.iban ? `<code class="small">${konto.iban}</code>` : '<span class="text-muted">-</span>';
-        const transaktionenButton = isLocosoftKonto 
-            ? '<span class="text-muted small">-</span>' 
-            : `<button class="btn btn-sm btn-outline-primary" onclick="showTransaktionen(${konto.id})">
+        let transaktionenButton;
+        if (isEKF) {
+            transaktionenButton = `
+                <a href="/bankenspiegel/transaktionen?ekf_institut=${encodeURIComponent(konto.bank_name || '')}" class="btn btn-sm btn-outline-primary me-1" title="Positionen aus CSV-Stand">
+                    <i class="bi bi-list me-1"></i>Bewegungen
+                </a>
+                <a href="/bankenspiegel/einkaufsfinanzierung" class="btn btn-sm btn-outline-secondary" title="EKF-Übersicht">
+                    <i class="bi bi-truck me-1"></i>Einkaufsfinanzierung
+                </a>`;
+        } else if (isLocosoftKonto) {
+            transaktionenButton = '<span class="text-muted small">-</span>';
+        } else {
+            transaktionenButton = `<button class="btn btn-sm btn-outline-primary" onclick="showTransaktionen(${konto.id})">
                 <i class="bi bi-list me-1"></i>Transaktionen
             </button>`;
+        }
         
         return `
             <tr class="${rowClass}">

@@ -66,8 +66,21 @@ def db_session():
             cursor.execute("SELECT ...")
             conn.commit()
     """
-    with get_db_context() as conn:
+    conn = get_db()
+    try:
         yield conn
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 # =============================================================================

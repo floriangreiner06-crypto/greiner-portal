@@ -1,6 +1,6 @@
 # Kontext-Registry für KI „Mit KI erweitern“
 
-**Letzte Prüfung:** 2026-03-19 (Session urlaubsplaner: Resturlaub nur DRIVE, Teilzeit Nicht-Arbeitstage, Genehmiger löschen).
+**Letzte Prüfung:** 2026-03-20 (Session controlling: Konten-Verwaltung Persistenz/Sortierung geprüft; Registry-Einträge TEK/Urlaub gegengeprüft).
 
 **Zweck:** Pro Thema ein kurzer, fachlicher SSOT-Text für die KI. Wird beim „Mit KI erweitern“ an den Prompt angehängt, damit die KI Berechnungsdetails korrekt ergänzen kann.
 
