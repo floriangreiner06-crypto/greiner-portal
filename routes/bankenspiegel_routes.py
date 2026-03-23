@@ -22,6 +22,7 @@ Version: 2.0 - KOMPLETT
 """
 
 from flask import Blueprint, render_template, redirect, url_for
+from flask_login import current_user
 from datetime import datetime
 
 # Blueprint erstellen
@@ -105,27 +106,26 @@ def konten():
     JavaScript: bankenspiegel_konten.js
     CSS: bankenspiegel.css
     """
+    can_trigger_bankimport = (
+        current_user.is_authenticated
+        and (current_user.has_role('admin') or current_user.has_role('buchhaltung'))
+    )
     return render_template(
         'bankenspiegel_konten.html',
-        now=datetime.now()
+        now=datetime.now(),
+        can_trigger_bankimport=can_trigger_bankimport,
     )
 
 
 @bankenspiegel_bp.route('/transaktionen')
 def transaktionen():
     """
-    Transaktionsliste
-    
-    Features:
-    - Erweiterte Filter (Datum, Konto, Typ)
-    - Live-Statistik (Einnahmen/Ausgaben)
-    - Pagination (50 Items/Seite)
-    - Volltext-Suche in Verwendungszweck
-    - Standard: Letzte 90 Tage
-    
+    Transaktionen: eine Seite mit Tabs „Übersicht“ | „Kategorisieren“ (Option A).
+    - Übersicht: Filter, Karten, Tabelle (wie bisher).
+    - Kategorisieren: Filter, Regeln/KI, Kategorie/Unterkategorie pro Zeile.
+    URL-Parameter: ?mode=kategorisierung öffnet direkt den Tab Kategorisieren.
     Template: bankenspiegel_transaktionen.html
-    JavaScript: bankenspiegel_transaktionen.js
-    CSS: bankenspiegel.css
+    JavaScript: bankenspiegel_transaktionen_combined.js
     """
     return render_template(
         'bankenspiegel_transaktionen.html',
@@ -136,13 +136,10 @@ def transaktionen():
 @bankenspiegel_bp.route('/kategorisierung')
 def kategorisierung():
     """
-    Kategorisierung von Banktransaktionen (Buchhaltung/Admin).
-    Manuelle Zuordnung oder Regeln/KI-Vorschläge prüfen und übernehmen.
+    Redirect auf Transaktionen-Seite mit Modus Kategorisieren.
+    Eine Seite „Transaktionen“ mit Tabs Übersicht | Kategorisieren (Option A).
     """
-    return render_template(
-        'bankenspiegel_kategorisierung.html',
-        now=datetime.now()
-    )
+    return redirect(url_for('bankenspiegel.transaktionen', mode='kategorisierung'))
 
 # ============================================================================
 # EINKAUFSFINANZIERUNG (Konsolidiert: Fahrzeugfinanzierungen + Zinsen-Analyse)

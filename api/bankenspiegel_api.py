@@ -14,7 +14,7 @@ Updated: TAG 117 - Migration auf db_session (Connection-Safety)
 """
 
 from flask import Blueprint, jsonify, request, Response
-from flask_login import login_required
+from flask_login import login_required, current_user
 from datetime import datetime, date, timedelta
 from typing import Optional, Dict, List, Any
 
@@ -2078,6 +2078,39 @@ def get_zeitverlauf():
             'success': False,
             'error': str(e)
         }), 500
+
+# ============================================================================
+# ENDPOINT: BANKIMPORT (Celery MT940 + HVB-PDF)
+# ============================================================================
+
+@bankenspiegel_api.route('/bankimport-anstossen', methods=['POST'])
+@login_required
+def post_bankimport_anstossen():
+    """
+    POST /api/bankenspiegel/bankimport-anstossen
+    Stößt die gleichen Jobs an wie im Task Manager: import_mt940, import_hvb_pdf.
+    Nur admin oder buchhaltung (wie Konten-Verwaltung).
+    """
+    try:
+        if not (current_user.has_role('admin') or current_user.has_role('buchhaltung')):
+            return jsonify({'success': False, 'error': 'Keine Berechtigung'}), 403
+
+        from celery_app.tasks import import_mt940, import_hvb_pdf
+
+        r_mt940 = import_mt940.delay()
+        r_hvb = import_hvb_pdf.delay()
+
+        return jsonify({
+            'success': True,
+            'message': 'Bankimport (MT940 und HVB-PDF) wurde in die Warteschlange gelegt.',
+            'tasks': [
+                {'name': 'import_mt940', 'task_id': r_mt940.id},
+                {'name': 'import_hvb_pdf', 'task_id': r_hvb.id},
+            ],
+        }), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 # ============================================================================
 # ENDPOINT: DATENSTAND

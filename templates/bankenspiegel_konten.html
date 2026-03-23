@@ -3,6 +3,7 @@
 {% block title %}Bankenspiegel - Konten{% endblock %}
 
 {% block content %}
+<div id="kontenPageMeta" class="d-none" data-can-bankimport="{{ 1 if can_trigger_bankimport else 0 }}"></div>
 <div class="container-fluid py-4">
     <!-- Header -->
     <div class="row mb-4">
@@ -26,7 +27,15 @@
             <a href="/bankenspiegel/zeitverlauf" class="btn btn-outline-info">
                 <i class="bi bi-graph-up me-1"></i>Zeitverlauf
             </a>
-            <button class="btn btn-outline-primary" onclick="loadKonten()">
+            {% if current_user.is_authenticated and current_user.can_access_feature('bankenspiegel') %}
+            <a href="/admin/konfiguration" class="btn btn-outline-secondary">
+                <i class="bi bi-gear me-1"></i>Konfiguration
+            </a>
+            <a href="/admin/konten-verwaltung" class="btn btn-outline-secondary">
+                <i class="bi bi-pencil-square me-1"></i>Konten verwalten
+            </a>
+            {% endif %}
+            <button type="button" class="btn btn-outline-primary" onclick="aktualisierenKontenPage()" title="{% if can_trigger_bankimport %}Ansicht neu laden; stößt zusätzlich Bankimport (MT940 + HVB-PDF) an.{% else %}Konten und Datenstand aus der Datenbank neu laden.{% endif %}">
                 <i class="bi bi-arrow-clockwise me-1"></i>Aktualisieren
             </button>
         </div>

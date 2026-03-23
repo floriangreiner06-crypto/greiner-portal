@@ -26,6 +26,47 @@ function formatIBAN(iban) {
     return iban;  // Volle IBAN anzeigen
 }
 
+function canTriggerBankimport() {
+    const el = document.getElementById('kontenPageMeta');
+    return el && String(el.dataset.canBankimport) === '1';
+}
+
+/**
+ * Aktualisieren: für admin/buchhaltung zusätzlich Celery import_mt940 + import_hvb_pdf;
+ * anschließend immer Konten und Datenstand neu laden.
+ */
+async function aktualisierenKontenPage() {
+    if (canTriggerBankimport()) {
+        try {
+            const res = await fetch('/api/bankenspiegel/bankimport-anstossen', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+            });
+            const ct = (res.headers.get('Content-Type') || '');
+            if (!ct.includes('application/json')) {
+                alert('Die Server-Antwort war keine JSON-Seite (z. B. Sitzung abgelaufen). Bitte ggf. neu anmelden.');
+            } else {
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    alert(
+                        data.message +
+                        '\n\nDie Salden aktualisieren sich, sobald die Jobs fertig sind (oft 1–2 Minuten). ' +
+                        'Anschließend erneut „Aktualisieren“ wählen oder die Seite neu laden.'
+                    );
+                } else if (data && data.error) {
+                    alert('Bankimport: ' + data.error);
+                }
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Bankimport konnte nicht gestartet werden: ' + (e.message || String(e)));
+        }
+    }
+    await loadKonten();
+    await loadDatenstand();
+}
+
 // Konten laden
 async function loadKonten() {
     try {

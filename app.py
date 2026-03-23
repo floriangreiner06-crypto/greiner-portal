@@ -27,7 +27,7 @@ else:
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 Jahr in Produktion
 
 # Globale Static-Version (ändert sich bei jedem Flask-Neustart)
-STATIC_VERSION = '20260320081500'  # Cache-Bust: Konten-Verwaltung JS Fixes
+STATIC_VERSION = '20260323120000'  # Cache-Bust: Konten Aktualisieren → Celery Bankimport
 print(f"📦 Static Version: {STATIC_VERSION}")
 
 # Template-Kontext: Macht STATIC_VERSION in allen Templates verfügbar
