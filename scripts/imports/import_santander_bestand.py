@@ -7,17 +7,19 @@ Importiert Fahrzeugfinanzierungen von Santander Bank aus CSV
 Verzeichnis: /opt/greiner-portal/scripts/imports/
 Author: Claude AI + Florian Greiner
 Date: 2025-11-08
-Version: 1.1 - MIT ZINSDATEN
+Version: 1.2 (TAG146) - PostgreSQL Migration
 """
 
-import sqlite3
 import csv
 import sys
 from datetime import datetime
 from pathlib import Path
 
+# Projekt-Pfad
+sys.path.insert(0, '/opt/greiner-portal')
+from api.db_connection import get_db
+
 # Konfiguration
-DB_PATH = '/opt/greiner-portal/data/greiner_controlling.db'
 CSV_DIR = '/mnt/buchhaltung/Buchhaltung/Kontoauszüge/Santander'
 FINANZINSTITUT = 'Santander'
 
@@ -61,7 +63,7 @@ def import_santander_bestand(csv_file=None, dry_run=False):
     """
 
     print("="*80)
-    print("🚗 SANTANDER BESTANDSLISTE IMPORT (V1.1 - MIT ZINSDATEN)")
+    print("🚗 SANTANDER BESTANDSLISTE IMPORT (V1.2 - MIT ZINSDATEN + PostgreSQL)")
     print("="*80)
     print()
 
@@ -79,29 +81,13 @@ def import_santander_bestand(csv_file=None, dry_run=False):
             return False
         print(f"📄 Verwende: {csv_file.name}")
 
-    print(f"🗄️  Datenbank: {DB_PATH}")
+    print(f"🗄️  Datenbank: PostgreSQL (drive_portal)")
     print(f"🔄 Dry-Run: {'JA (keine Änderungen)' if dry_run else 'NEIN (schreibt in DB)'}")
     print()
 
     # Datenbank öffnen
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db()
     c = conn.cursor()
-
-    # Prüfe ob Schema erweitert wurde
-    c.execute("PRAGMA table_info(fahrzeugfinanzierungen)")
-    columns = [row[1] for row in c.fetchall()]
-    required_cols = ['finanzinstitut', 'zins_startdatum', 'endfaelligkeit']
-    missing_cols = [col for col in required_cols if col not in columns]
-    
-    if missing_cols:
-        print(f"❌ FEHLER: Datenbank-Schema nicht vollständig!")
-        print(f"   Fehlende Spalten: {', '.join(missing_cols)}")
-        print("   Bitte erst Migrationen ausführen:")
-        print("   cd /opt/greiner-portal/migrations/phase1")
-        print("   ./run_migration_santander.sh")
-        print("   sqlite3 data/greiner_controlling.db < 007_add_zinsdaten.sql")
-        conn.close()
-        return False
 
     # Statistik
     stats = {
@@ -118,7 +104,7 @@ def import_santander_bestand(csv_file=None, dry_run=False):
     # Backup vor dem Löschen (falls kein Dry-Run)
     if not dry_run:
         print("🗑️  Lösche alte Santander-Einträge...")
-        c.execute("DELETE FROM fahrzeugfinanzierungen WHERE finanzinstitut = ?", (FINANZINSTITUT,))
+        c.execute("DELETE FROM fahrzeugfinanzierungen WHERE finanzinstitut = %s", (FINANZINSTITUT,))
         geloescht = c.rowcount
         print(f"   ✅ {geloescht} alte Einträge gelöscht")
         print()
@@ -129,6 +115,8 @@ def import_santander_bestand(csv_file=None, dry_run=False):
 
     with open(csv_file, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f, delimiter=';')
+        # Spalte O (15. Spalte, Index 14) = Kategorie/Mobilität-Info laut Santander-CSV
+        col_o_header = reader.fieldnames[14] if reader.fieldnames and len(reader.fieldnames) > 14 else None
 
         for row in reader:
             stats['gelesen'] += 1
@@ -152,6 +140,34 @@ def import_santander_bestand(csv_file=None, dry_run=False):
                 lieferdatum = parse_german_date(row.get('Lieferdatum', ''))
 
                 produkt = row.get('Produkt', '').strip()
+
+                # Kategorie/Mobilität: Primär aus Spalte O (15. Spalte), Fallback aus Produkt-Pfad
+                spalte_o = (row.get(col_o_header, '').strip() if col_o_header else '')
+                if spalte_o:
+                    # Normalisierung für Auswertung (Mobilität-Rahmen 500k): gleiche Werte wie aus Produkt-Pfad
+                    so = spalte_o.strip()
+                    if 'Vorführer' in so or so == 'Vorführer':
+                        produkt_kategorie = 'Vorführer'
+                    elif 'Vermieter' in so or 'Mobil' in so or 'Mobilität' in so:
+                        produkt_kategorie = 'Mobil/Vermieter'
+                    elif 'Neu' in so or so == 'Neuwagen':
+                        produkt_kategorie = 'Neuwagen'
+                    elif 'Gebraucht' in so:
+                        produkt_kategorie = 'Gebraucht'
+                    else:
+                        produkt_kategorie = so
+                else:
+                    # Aus Produkt-Pfad ableiten, z.B. "PartPlus/Fahrzeuge/Mobil/Vermieter" → "Mobil/Vermieter"
+                    if '/Neu' in produkt:
+                        produkt_kategorie = 'Neuwagen'
+                    elif '/Gebraucht' in produkt:
+                        produkt_kategorie = 'Gebraucht'
+                    elif 'Mobil/Vermieter' in produkt:
+                        produkt_kategorie = 'Mobil/Vermieter'
+                    elif 'Mobil/Vorführer' in produkt:
+                        produkt_kategorie = 'Vorführer'
+                    else:
+                        produkt_kategorie = produkt or ''
                 herstellername = row.get('Herstellername', '').strip().strip('"')
                 modellname = row.get('Modellname', '').strip().strip('"')
                 farbe = row.get('Farbe', '').strip()
@@ -195,8 +211,9 @@ def import_santander_bestand(csv_file=None, dry_run=False):
                             finanzierungsnummer,
                             finanzierungsstatus,
                             dokumentstatus,
-                            rrdi,
+                            hersteller,
                             produktfamilie,
+                            produkt_kategorie,
                             vin,
                             modell,
                             alter_tage,
@@ -214,14 +231,15 @@ def import_santander_bestand(csv_file=None, dry_run=False):
                             endfaelligkeit,
                             import_datum,
                             datei_quelle
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s)
                     """, (
                         FINANZINSTITUT,
                         finanzierungsnr,
                         status,
                         dokumentstatus,
-                        herstellername,  # RRDI = Herstellername
+                        herstellername,  # Hersteller (korrekt!)
                         produkt,         # Produktfamilie
+                        produkt_kategorie,  # Kategorie
                         vin,
                         modellname,
                         alter_tage,
@@ -286,28 +304,26 @@ def import_santander_bestand(csv_file=None, dry_run=False):
             print(f"{institut:<20} | {anzahl:>8} | {saldo:>15,.2f} € | {original:>15,.2f} €")
         print()
 
-        # ZINSEN-STATISTIK
+        # ZINSEN-STATISTIK (direktes Query statt View)
         c.execute("""
-            SELECT COUNT(*) FROM fahrzeuge_mit_zinsen 
-            WHERE finanzinstitut = ? AND zinsstatus = 'Zinsen laufen'
+            SELECT
+                COUNT(*) as anzahl,
+                SUM(aktueller_saldo) as saldo,
+                SUM(zinsen_gesamt) as zinsen_gesamt,
+                AVG(CURRENT_DATE - zins_startdatum) as avg_tage
+            FROM fahrzeugfinanzierungen
+            WHERE finanzinstitut = %s
+              AND zins_startdatum IS NOT NULL
+              AND finanzierungsstatus = 'Aktiv'
         """, (FINANZINSTITUT,))
-        zinsen_laufen = c.fetchone()[0]
-        
-        if zinsen_laufen > 0:
+        row = c.fetchone()
+
+        if row and row[0] > 0:
             print("💰 ZINSEN-ÜBERSICHT:")
-            c.execute("""
-                SELECT 
-                    SUM(aktueller_saldo) as saldo,
-                    SUM(zinsen_gesamt) as zinsen_gesamt,
-                    AVG(tage_seit_zinsstart) as avg_tage
-                FROM fahrzeuge_mit_zinsen 
-                WHERE finanzinstitut = ? AND zinsstatus = 'Zinsen laufen'
-            """, (FINANZINSTITUT,))
-            row = c.fetchone()
-            print(f"  Fahrzeuge mit Zinsen:    {zinsen_laufen:>6}")
-            print(f"  Finanzierung (Zinsen):   {row[0]:>15,.2f} €")
-            print(f"  Zinsen gesamt:           {row[1]:>15,.2f} €")
-            print(f"  Ø Tage seit Zinsstart:   {row[2]:>15.0f} Tage")
+            print(f"  Fahrzeuge mit Zinsen:    {row[0]:>6}")
+            print(f"  Finanzierung (Zinsen):   {row[1]:>15,.2f} €")
+            print(f"  Zinsen gesamt:           {row[2]:>15,.2f} €")
+            print(f"  Ø Tage seit Zinsstart:   {row[3]:>15.0f} Tage")
             print()
 
     conn.close()
