@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Zielauswertung Verkauf - Greiner DRIVE{% endblock %}
+{% block content %}
+<div class="container-fluid mt-3 mb-3">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h4 class="mb-0"><i class="bi bi-bullseye"></i> Zielauswertung (Werktag-Trend)</h4>
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('verkauf.verkaufsleiter_dashboard') }}"><i class="bi bi-arrow-left"></i> zurück Dashboard</a>
+  </div>
+  <div id="ziel-error" class="alert alert-danger d-none"></div>
+
+  <div class="row g-2 mb-2">
+    <div class="col-md-6">
+      <div class="card h-100 border-success">
+        <div class="card-body">
+          <h6 class="card-title text-success">Monat aktuell</h6>
+          <div class="mb-2">NW: <strong id="zw-monat-nw">–</strong> · GW: <strong id="zw-monat-gw">–</strong></div>
+          <div class="progress mb-1" style="height: .75rem;"><div id="zw-bar-nw" class="progress-bar bg-success" style="width:0%"></div></div>
+          <div class="small text-muted mb-2" id="zw-bar-nw-text">NW Trend –</div>
+          <div class="progress mb-1" style="height: .75rem;"><div id="zw-bar-gw" class="progress-bar bg-warning" style="width:0%"></div></div>
+          <div class="small text-muted" id="zw-bar-gw-text">GW Trend –</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card h-100 border-primary">
+        <div class="card-body">
+          <h6 class="card-title text-primary">YTD klein (gegen Werktag-Soll)</h6>
+          <table class="table table-sm mb-0">
+            <tbody>
+              <tr><td>NW IST / Soll</td><td class="text-end" id="zw-ytd-nw">–</td></tr>
+              <tr><td>GW IST / Soll</td><td class="text-end" id="zw-ytd-gw">–</td></tr>
+              <tr><td>NW Trend</td><td class="text-end" id="zw-ytd-nw-pct">–</td></tr>
+              <tr><td>GW Trend</td><td class="text-end" id="zw-ytd-gw-pct">–</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body py-2">
+      <h6 class="card-title mb-1">Interpretation</h6>
+      <ul class="small mb-0">
+        <li><strong>Trend Werktag</strong> vergleicht IST mit Soll bis heute (nicht mit vollem Monatsziel).</li>
+        <li><strong>Grün</strong> = auf Kurs, <strong>Gelb</strong> = leicht unter Soll, <strong>Rot</strong> = deutlicher Rückstand.</li>
+        <li>Die Kennzahlen nutzen dieselbe SSOT wie das Verkaufsleiter-Dashboard.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='js/verkauf_zielauswertung.js') }}?v={{ STATIC_VERSION }}"></script>
+{% endblock %}

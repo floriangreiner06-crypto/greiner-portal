@@ -1,0 +1,354 @@
+{% extends "base.html" %}
+{% block title %}KI Assistent - DRIVE{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12 col-xl-10">
+            <h1 class="mb-2"><i class="bi bi-robot"></i> KI Assistent</h1>
+            <p class="text-muted mb-4">
+                Stelle eine Business-Frage in natürlicher Sprache. Die Antwort kommt als lesbarer Text und strukturiertes JSON.
+                Bei TEK, Auftragseingang und ServiceBox erscheint optional eine <strong>Grafik</strong> (Haken „Grafik anzeigen“).
+                Keine Grafik trotzdem? <strong>Strg+F5</strong> (Cache leeren) und prüfen, ob im JSON der Schlüssel <code>visualization</code> enthalten ist.
+            </p>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12 col-xl-10">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <form id="ki-query-form">
+                        <div class="mb-3">
+                            <label for="frage" class="form-label fw-bold">Frage</label>
+                            <textarea id="frage" class="form-control" rows="3" placeholder="Beispiel: Wie ist unser Auftragseingang im aktuellen Monat?" required></textarea>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-12 col-md-4 mb-3">
+                                <label for="bereich" class="form-label">Bereich (optional)</label>
+                                <select id="bereich" class="form-control">
+                                    <option value="">Automatisch erkennen</option>
+                                    <option value="controlling">Controlling</option>
+                                    <option value="verkauf">Verkauf</option>
+                                    <option value="teile">Teile/Lager</option>
+                                </select>
+                            </div>
+                            <div class="col-6 col-md-4 mb-3">
+                                <label for="monat" class="form-label">Monat (optional)</label>
+                                <input id="monat" type="number" min="1" max="12" class="form-control" placeholder="1-12">
+                            </div>
+                            <div class="col-6 col-md-4 mb-3">
+                                <label for="jahr" class="form-label">Jahr (optional)</label>
+                                <input id="jahr" type="number" min="2020" max="2100" class="form-control" placeholder="2026">
+                            </div>
+                        </div>
+
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="ki-show-charts" checked>
+                            <label class="form-check-label" for="ki-show-charts">Grafik anzeigen (wenn verfügbar)</label>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <button id="submit-btn" type="submit" class="btn btn-primary">
+                                <i class="bi bi-send"></i> Frage senden
+                            </button>
+                            <span id="status" class="text-muted small"></span>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-12 col-xl-10">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <strong>Antwort</strong>
+                </div>
+                <div class="card-body">
+                    <div id="answer-text" class="mb-3 text-dark">Noch keine Anfrage gesendet.</div>
+                    <div id="ki-viz-wrap" class="mb-3 d-none">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <strong id="ki-viz-title" class="text-secondary small"></strong>
+                            <span id="ki-viz-meta" class="text-muted small"></span>
+                        </div>
+                        <div class="ki-chart-host border rounded bg-white" style="height: 300px; min-height: 280px; position: relative;">
+                            <canvas id="ki-chart" aria-label="Datenvisualisierung"></canvas>
+                        </div>
+                        <p id="ki-viz-fallback" class="text-warning small mt-2 mb-0 d-none" role="status"></p>
+                    </div>
+                    <details>
+                        <summary class="text-primary" style="cursor: pointer;">JSON Details anzeigen</summary>
+                        <pre id="answer-json" class="mt-3 mb-0 p-3 bg-light border rounded" style="max-height: 420px; overflow: auto;">{}</pre>
+                    </details>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+    const form = document.getElementById('ki-query-form');
+    const frageEl = document.getElementById('frage');
+    const bereichEl = document.getElementById('bereich');
+    const monatEl = document.getElementById('monat');
+    const jahrEl = document.getElementById('jahr');
+    const statusEl = document.getElementById('status');
+    const answerTextEl = document.getElementById('answer-text');
+    const answerJsonEl = document.getElementById('answer-json');
+    const submitBtn = document.getElementById('submit-btn');
+    const vizWrap = document.getElementById('ki-viz-wrap');
+    const vizTitle = document.getElementById('ki-viz-title');
+    const vizMeta = document.getElementById('ki-viz-meta');
+    const chartCanvas = document.getElementById('ki-chart');
+    const vizFallback = document.getElementById('ki-viz-fallback');
+    const showChartsEl = document.getElementById('ki-show-charts');
+    let pendingConversation = null;
+    let kiChart = null;
+
+    try {
+        const saved = localStorage.getItem('ki_assistent_show_charts');
+        if (saved === '0') showChartsEl.checked = false;
+        if (saved === '1') showChartsEl.checked = true;
+    } catch (e) { /* ignore */ }
+    showChartsEl.addEventListener('change', function() {
+        try {
+            localStorage.setItem('ki_assistent_show_charts', showChartsEl.checked ? '1' : '0');
+        } catch (e) { /* ignore */ }
+        if (!showChartsEl.checked) clearVisualization();
+    });
+
+    function clearVisualization() {
+        if (kiChart && typeof kiChart.destroy === 'function') {
+            try { kiChart.destroy(); } catch (e) { /* ignore */ }
+        }
+        kiChart = null;
+        if (vizWrap) vizWrap.classList.add('d-none');
+        if (vizTitle) vizTitle.textContent = '';
+        if (vizMeta) vizMeta.textContent = '';
+        if (vizFallback) {
+            vizFallback.classList.add('d-none');
+            vizFallback.textContent = '';
+        }
+    }
+
+    function mergeChartOptions(base, extra) {
+        if (!extra || typeof extra !== 'object') return base;
+        const out = Object.assign({}, base);
+        for (const k of Object.keys(extra)) {
+            const ev = extra[k];
+            const bv = base[k];
+            if (ev && typeof ev === 'object' && !Array.isArray(ev) && bv && typeof bv === 'object' && !Array.isArray(bv)) {
+                out[k] = mergeChartOptions(bv, ev);
+            } else {
+                out[k] = ev;
+            }
+        }
+        return out;
+    }
+
+    function renderVisualization(v) {
+        clearVisualization();
+        if (!v || !showChartsEl.checked) return false;
+        if (typeof Chart === 'undefined') {
+            console.warn('Chart.js nicht geladen');
+            return false;
+        }
+        if (v.type === 'kpi_cards') {
+            /* V1: nur Balken; kpi_cards für später */
+            return false;
+        }
+        if (v.type !== 'bar' && v.type !== 'line') return false;
+        const labels = v.labels;
+        const datasets = v.datasets;
+        if (!Array.isArray(labels) || !Array.isArray(datasets) || !labels.length || !datasets.length) return false;
+
+        vizWrap.classList.remove('d-none');
+        vizTitle.textContent = v.title || 'Visualisierung';
+        const meta = v.meta || {};
+        const metaParts = [];
+        if (meta.unit) metaParts.push(meta.unit);
+        if (meta.source) metaParts.push(meta.source);
+        vizMeta.textContent = metaParts.join(' · ');
+
+        const defaultOpts = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: datasets.length > 1 },
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx) {
+                            const val = ctx.parsed && (ctx.parsed.y !== undefined ? ctx.parsed.y : ctx.parsed);
+                            const n = typeof val === 'number' ? val : parseFloat(val);
+                            const dsLabel = ctx.dataset && ctx.dataset.label ? ctx.dataset.label + ': ' : '';
+                            if (!isNaN(n) && Math.abs(n) >= 1000) {
+                                return dsLabel + n.toLocaleString('de-DE', { maximumFractionDigits: 2 });
+                            }
+                            return dsLabel + (isNaN(n) ? String(val) : n.toLocaleString('de-DE', { maximumFractionDigits: 2 }));
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: { beginAtZero: true }
+            }
+        };
+        const options = mergeChartOptions(defaultOpts, v.options || {});
+
+        const ctx = chartCanvas.getContext('2d');
+        kiChart = new Chart(ctx, {
+            type: v.type,
+            data: {
+                labels: labels,
+                datasets: datasets.map(function(ds) {
+                    return {
+                        label: ds.label || '',
+                        data: Array.isArray(ds.data) ? ds.data.map(Number) : [],
+                        backgroundColor: ds.backgroundColor,
+                        borderColor: ds.borderColor,
+                        borderWidth: ds.borderWidth,
+                        fill: ds.fill
+                    };
+                })
+            },
+            options: options
+        });
+        return true;
+    }
+
+    function setLoading(isLoading) {
+        submitBtn.disabled = isLoading;
+        statusEl.textContent = isLoading ? 'Anfrage läuft...' : '';
+    }
+
+    function renderResponse(data) {
+        if (data && data.needs_clarification) {
+            clearVisualization();
+            const question = data.clarification_question || 'Bitte Frage praezisieren.';
+            answerTextEl.innerHTML =
+                '<div><span class="text-warning">Rueckfrage: </span>' + question + '</div>' +
+                '<div class="mt-2 d-flex flex-wrap gap-2">' +
+                '<button type="button" class="btn btn-sm btn-outline-primary clarification-btn" data-value="aktueller Monat">Aktueller Monat</button>' +
+                '<button type="button" class="btn btn-sm btn-outline-primary clarification-btn" data-value="YTD">YTD</button>' +
+                '<button type="button" class="btn btn-sm btn-outline-primary clarification-btn" data-value="heute">Heute</button>' +
+                '</div>';
+            pendingConversation = (data && data.conversation) ? data.conversation : null;
+        } else if (data && data.success) {
+            answerTextEl.textContent = data.answer_text || 'Keine Textantwort vorhanden.';
+            pendingConversation = null;
+            if (data.visualization && showChartsEl.checked) {
+                try {
+                    const ok = renderVisualization(data.visualization);
+                    if (!ok && vizFallback) {
+                        vizWrap.classList.remove('d-none');
+                        vizFallback.classList.remove('d-none');
+                        vizFallback.textContent =
+                            'Grafik-Daten sind vorhanden, aber das Diagramm konnte nicht gezeichnet werden (Chart.js blockiert oder veralteter Seiten-Cache). Bitte Strg+F5 oder Netzwerk/Firewall prüfen.';
+                    }
+                } catch (e) {
+                    console.warn('Visualisierung konnte nicht gerendert werden', e);
+                    clearVisualization();
+                    if (vizFallback) {
+                        vizWrap.classList.remove('d-none');
+                        vizFallback.classList.remove('d-none');
+                        vizFallback.textContent = 'Fehler beim Zeichnen der Grafik: ' + (e && e.message ? e.message : String(e));
+                    }
+                }
+            } else {
+                clearVisualization();
+                if (data.visualization && !showChartsEl.checked && vizFallback) {
+                    vizFallback.classList.remove('d-none');
+                    vizWrap.classList.remove('d-none');
+                    vizFallback.textContent = 'Grafik deaktiviert: Haken bei „Grafik anzeigen“ setzen und erneut senden.';
+                } else if (
+                    showChartsEl.checked &&
+                    vizFallback &&
+                    vizWrap &&
+                    !data.visualization &&
+                    ['verkauf_auftragseingang', 'tek_summary', 'servicebox_bestellungen'].indexOf(data.effective_intent || '') >= 0
+                ) {
+                    vizWrap.classList.remove('d-none');
+                    vizFallback.classList.remove('d-none');
+                    vizFallback.textContent =
+                        'Die API-Antwort enthält kein Feld „visualization“ (Server-Stand veraltet oder Anfrage ohne Grafik). Bitte Portal-Code deployen bzw. greiner-portal neu starten; in den JSON-Details prüfen.';
+                }
+            }
+        } else {
+            clearVisualization();
+            answerTextEl.innerHTML = '<span class="text-danger">Fehler: </span>' +
+                ((data && data.error) ? data.error : 'Unbekannter Fehler');
+        }
+        answerJsonEl.textContent = JSON.stringify(data || {}, null, 2);
+    }
+
+    form.addEventListener('submit', async function(event) {
+        event.preventDefault();
+        const frage = (frageEl.value || '').trim();
+        if (!frage) return;
+
+        const payload = { frage: frage, include_visualization: !!showChartsEl.checked };
+        const bereich = (bereichEl.value || '').trim();
+        if (bereich) payload.bereich = bereich;
+
+        const monat = (monatEl.value || '').trim();
+        const jahr = (jahrEl.value || '').trim();
+        if (monat || jahr) {
+            payload.zeitraum = {
+                month: monat ? parseInt(monat, 10) : undefined,
+                year: jahr ? parseInt(jahr, 10) : undefined,
+                ytd: true
+            };
+        }
+        if (pendingConversation && pendingConversation.previous_question) {
+            payload.previous_question = pendingConversation.previous_question;
+            payload.clarification_answer = frage;
+        }
+
+        setLoading(true);
+        try {
+            const response = await fetch('/api/ai/query', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify(payload)
+            });
+
+            const contentType = response.headers.get('content-type') || '';
+            if (!contentType.includes('application/json')) {
+                renderResponse({ success: false, error: 'Server lieferte kein JSON. Bitte erneut versuchen.' });
+                return;
+            }
+
+            const data = await response.json();
+            renderResponse(data);
+        } catch (error) {
+            renderResponse({ success: false, error: 'Netzwerk- oder Serverfehler: ' + error.message });
+        } finally {
+            setLoading(false);
+        }
+    });
+
+    frageEl.addEventListener('keydown', function(event) {
+        // Enter sendet direkt; Shift+Enter bleibt Zeilenumbruch
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            form.requestSubmit();
+        }
+    });
+
+    document.addEventListener('click', function(event) {
+        const btn = event.target.closest('.clarification-btn');
+        if (!btn) return;
+        const value = btn.getAttribute('data-value') || '';
+        frageEl.value = value;
+        form.requestSubmit();
+    });
+})();
+</script>
+{% endblock %}

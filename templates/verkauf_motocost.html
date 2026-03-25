@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}Motocost Aufkauf - Greiner DRIVE{% endblock %}
+{% block content %}
+<div class="container-fluid mt-3 mb-4">
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+        <div>
+          <h4 class="mb-1"><i class="bi bi-car-front"></i> Motocost Aufkauf (DRIVE)</h4>
+          <div class="text-muted small">Workaround ohne API: JSON importieren und sauber in DRIVE auswerten (Default-Quelle: Motocost `auto1`)</div>
+        </div>
+        <div class="text-muted small" id="motocost-meta">Noch kein Import vorhanden</div>
+      </div>
+
+      <div class="alert alert-info py-2 mb-3">
+        <strong>Heute ohne API:</strong> JSON aus Browser-Script oder Dashboard-Export hochladen.
+      </div>
+
+      <div class="row g-2 mb-3 border-bottom pb-3">
+        <div class="col-lg-4">
+          <label class="form-label mb-1">JSON-Datei importieren</label>
+          <input type="file" id="motocost-file" class="form-control form-control-sm" accept=".json,application/json">
+        </div>
+        <div class="col-lg-2 d-flex align-items-end">
+          <button id="motocost-import" class="btn btn-primary btn-sm w-100">Importieren</button>
+        </div>
+        <div class="col-lg-3 d-flex align-items-end">
+          <button id="motocost-reload" class="btn btn-outline-secondary btn-sm w-100">Daten neu laden</button>
+        </div>
+        <div class="col-lg-3 d-flex align-items-end">
+          <button id="motocost-benchmark" class="btn btn-outline-dark btn-sm w-100">Benchmark (5x)</button>
+        </div>
+      </div>
+
+      <div class="row g-2 mb-2">
+        <div class="col-xl-2 col-md-4">
+          <label class="form-label mb-1">Plattform</label>
+          <select id="f-plattform" class="form-control form-control-sm" multiple></select>
+        </div>
+        <div class="col-xl-2 col-md-4">
+          <label class="form-label mb-1">Verkauf</label>
+          <select id="f-verkaufsart" class="form-control form-control-sm" multiple></select>
+        </div>
+        <div class="col-xl-2 col-md-4">
+          <label class="form-label mb-1">Problem</label>
+          <select id="f-problem" class="form-control form-control-sm" multiple></select>
+        </div>
+        <div class="col-xl-2 col-md-4">
+          <label class="form-label mb-1">Land</label>
+          <select id="f-land" class="form-control form-control-sm" multiple></select>
+        </div>
+        <div class="col-xl-2 col-md-4">
+          <label class="form-label mb-1">Hersteller</label>
+          <select id="f-marke" class="form-control form-control-sm" multiple></select>
+        </div>
+        <div class="col-xl-2 col-md-4">
+          <label class="form-label mb-1">Modell (Text)</label>
+          <input id="f-modell-text" class="form-control form-control-sm" placeholder="z. B. A6">
+        </div>
+      </div>
+
+      <div class="row g-2 mb-3">
+        <div class="col-xl-2 col-md-3">
+          <label class="form-label mb-1">Kilometer bis</label>
+          <input id="f-km-bis" class="form-control form-control-sm" placeholder="100000">
+        </div>
+        <div class="col-xl-2 col-md-3">
+          <label class="form-label mb-1">EZ ab (Jahr)</label>
+          <input id="f-ez-ab" class="form-control form-control-sm" placeholder="2016">
+        </div>
+        <div class="col-xl-2 col-md-3">
+          <label class="form-label mb-1">Marge ab</label>
+          <input id="f-marge-ab" class="form-control form-control-sm" placeholder="3000">
+        </div>
+        <div class="col-xl-2 col-md-3">
+          <label class="form-label mb-1">Preis ab</label>
+          <input id="f-preis-ab" class="form-control form-control-sm" placeholder="3000">
+        </div>
+        <div class="col-xl-2 col-md-3">
+          <label class="form-label mb-1">Preis bis</label>
+          <input id="f-preis-bis" class="form-control form-control-sm" placeholder="40000">
+        </div>
+        <div class="col-xl-2 col-md-3 d-flex align-items-end">
+          <button id="motocost-apply" class="btn btn-success btn-sm w-100">Filter anwenden</button>
+        </div>
+      </div>
+
+      <div class="row g-2 mb-3">
+        <div class="col-xl-2 col-md-4">
+          <label class="form-label mb-1">Kraftstoff</label>
+          <select id="f-kraftstoff" class="form-control form-control-sm" multiple></select>
+        </div>
+        <div class="col-xl-2 col-md-4">
+          <label class="form-label mb-1">Getriebe</label>
+          <select id="f-getriebe" class="form-control form-control-sm" multiple></select>
+        </div>
+        <div class="col-xl-2 col-md-4">
+          <label class="form-label mb-1">Fahrzeugtyp</label>
+          <select id="f-karosserie" class="form-control form-control-sm" multiple></select>
+        </div>
+        <div class="col-xl-2 col-md-4">
+          <label class="form-label mb-1">MwSt.</label>
+          <select id="f-mwst" class="form-control form-control-sm" multiple></select>
+        </div>
+        <div class="col-xl-2 col-md-4">
+          <label class="form-label mb-1">Seite</label>
+          <select id="f-page-size" class="form-control form-control-sm">
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+        </div>
+        <div class="col-xl-2 col-md-4 d-flex align-items-end">
+          <button id="motocost-reset" class="btn btn-outline-secondary btn-sm w-100">Filter zurücksetzen</button>
+        </div>
+      </div>
+
+      <div id="motocost-alert" class="alert d-none py-2"></div>
+      <div class="small text-muted mb-2" id="motocost-benchmark-result">Bereit.</div>
+
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle" id="motocost-table">
+          <thead class="table-light">
+            <tr>
+              <th>Bild</th>
+              <th>Marke</th>
+              <th>Modell</th>
+              <th class="text-end">Preis</th>
+              <th class="text-end">Marge</th>
+              <th>EZ</th>
+              <th class="text-end">KM</th>
+              <th>Problem</th>
+              <th>Kraftstoff</th>
+              <th>Getriebe</th>
+              <th>Plattform</th>
+              <th>Link</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="d-flex justify-content-between align-items-center mt-2">
+        <button id="motocost-prev" class="btn btn-outline-secondary btn-sm">Zurück</button>
+        <div class="small text-muted" id="motocost-page-info">Seite 1</div>
+        <button id="motocost-next" class="btn btn-outline-secondary btn-sm">Weiter</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/verkauf_motocost.js') }}?v={{ STATIC_VERSION }}"></script>
+{% endblock %}

@@ -1,0 +1,1065 @@
+{% extends "base.html" %}
+
+{% block title %}Garantieaufträge - Greiner DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .garantie-akte-status {
+        min-width: 200px;
+    }
+    .status-badge {
+        font-size: 0.85rem;
+    }
+    .btn-create-akte {
+        white-space: nowrap;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1><i class="bi bi-shield-check text-warning"></i> Garantieaufträge</h1>
+            <p class="text-muted mb-0">Übersicht aller offenen Garantieaufträge</p>
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+            <div class="btn-group" role="group">
+                <input type="radio" class="btn-check" name="markeFilter" id="filterAlle" value="alle" checked onchange="loadAuftraege()">
+                <label class="btn btn-outline-primary" for="filterAlle">Alle</label>
+                
+                <input type="radio" class="btn-check" name="markeFilter" id="filterOpel" value="opel" onchange="loadAuftraege()">
+                <label class="btn btn-outline-primary" for="filterOpel">Opel</label>
+                
+                <input type="radio" class="btn-check" name="markeFilter" id="filterHyundai" value="hyundai" onchange="loadAuftraege()">
+                <label class="btn btn-outline-primary" for="filterHyundai">Hyundai</label>
+            </div>
+            <div class="form-check ms-2">
+                <input class="form-check-input" type="checkbox" id="filterFertig" onchange="loadAuftraege()">
+                <label class="form-check-label" for="filterFertig">
+                    Nur fertige
+                </label>
+            </div>
+            <label class="ms-2 mb-0 align-middle">Letzte</label>
+            <select id="filterMaxTage" class="form-select form-select-sm ms-1" style="width: auto;" onchange="loadAuftraege()">
+                <option value="0">alle</option>
+                <option value="30">30 Tage</option>
+                <option value="90" selected>90 Tage</option>
+                <option value="180">180 Tage</option>
+            </select>
+            <button class="btn btn-primary ms-2" onclick="loadAuftraege()">
+                <i class="bi bi-arrow-clockwise"></i> Aktualisieren
+            </button>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="bi bi-list-ul"></i> Offene Garantieaufträge
+                <span class="badge bg-primary ms-2" id="anzahlBadge">-</span>
+            </h5>
+        </div>
+        <div class="card-body">
+            <div id="loading" class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Lade...</span>
+                </div>
+            </div>
+            
+            <div id="error" class="alert alert-danger d-none"></div>
+            
+            <div id="tableContainer" class="d-none">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Auftrag</th>
+                                <th>Datum</th>
+                                <th title="Tage seit Auftragserfassung">Alter</th>
+                                <th>Kunde</th>
+                                <th>Fahrzeug</th>
+                                <th>Serviceberater</th>
+                                <th class="text-end">AW</th>
+                                <th class="text-end">Offen</th>
+                                <th title="Bring-Termin (Locosoft)">Termin</th>
+                                <th title="Friststatus aus Hintergrund-Precheck">Frist</th>
+                                <th title="Ungelieferte Teile am Auftrag">Teile</th>
+                                <th title="Gudat: Dossier für diesen Auftrag gefunden?">Gudat</th>
+                                <th title="Automatische Handlungsempfehlung (regelbasiert/KI)">Empfehlung</th>
+                                <th class="garantie-akte-status">Garantieakte</th>
+                                <th>Aktion</th>
+                            </tr>
+                        </thead>
+                        <tbody id="auftraegeTableBody">
+                        </tbody>
+                    </table>
+                </div>
+                <p class="small text-muted mt-2 mb-0">
+                    <i class="bi bi-info-circle"></i> In der Liste stehen nur Aufträge, die in Locosoft <strong>offen</strong> sind und <strong>bereits bearbeitet werden</strong>. „Gudat“ = Dossier für diesen Auftrag in Gudat gefunden (Suche heute + 90 Tage). Wenn kein Dossier, aber der Bring-Termin schon vorbei ist, erscheint der Hinweis „Termin bereits gewesen – Dossier in Gudat prüfen“.
+                </p>
+            </div>
+            
+            <div id="empty" class="text-center py-5 text-muted d-none">
+                <i class="bi bi-inbox fs-1"></i>
+                <p class="mt-3">Keine offenen Garantieaufträge gefunden</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Auftrag Detail Modal (SSOT - wiederverwendet) -->
+<div class="modal fade" id="auftragModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-file-text"></i> Auftrag <span id="modalAuftragNr">-</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="auftragModalBody">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary"></div>
+                    <div class="mt-2">Lade Auftragsdetails...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Garantie-Prüfung / Empfehlung Modal (Option A KI) -->
+<div class="modal fade" id="garantiePruefungModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-shield-check"></i> Garantie-Prüfung – Auftrag <span id="modalGarantiePruefungAuftragNr">-</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="garantiePruefungModalBody">
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary"></div>
+                    <div class="mt-2">Prüfung wird ausgeführt...</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <p class="small text-muted me-auto mb-0"><i class="bi bi-info-circle"></i> KI-Vorschlag – bitte anhand der offiziellen Handbücher prüfen.</p>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- TT-Zeit Modal (TAG 195) -->
+<div class="modal fade" id="ttZeitModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-clock-history"></i> TT-Zeit-Analyse - Auftrag <span id="modalTTZeitAuftragNr">-</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="ttZeitModalBody">
+                <!-- Wird dynamisch gefüllt -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>
+                <button type="button" class="btn btn-success" id="btnTTZeitBestaetigen" onclick="bestaetigeGSWPruefung()" disabled>
+                    <i class="bi bi-check-circle"></i> GSW Portal geprüft - Keine Arbeitsoperationsnummer
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let aktuellerAuftrag = null;
+
+function loadAuftraege() {
+    document.getElementById('loading').classList.remove('d-none');
+    document.getElementById('error').classList.add('d-none');
+    document.getElementById('tableContainer').classList.add('d-none');
+    document.getElementById('empty').classList.add('d-none');
+    
+    // Filter auslesen
+    const markeFilter = document.querySelector('input[name="markeFilter"]:checked')?.value || 'alle';
+    const fertigFilter = document.getElementById('filterFertig').checked;
+    const maxTage = document.getElementById('filterMaxTage')?.value || '90';
+    const url = `/api/garantie/auftraege/offen?marke=${markeFilter}&fertig=${fertigFilter}&max_tage=${maxTage}`;
+    
+    fetch(url)
+        .then(response => response.text())
+        .then(text => {
+            document.getElementById('loading').classList.add('d-none');
+            let data = null;
+            try {
+                data = JSON.parse(text);
+            } catch (_) {
+                document.getElementById('error').textContent = text && text.trimStart().startsWith('<')
+                    ? 'Server hat eine Fehlerseite zurückgegeben. Bitte später erneut versuchen oder Aktualisieren klicken.'
+                    : ('Fehler beim Laden: ' + (text ? text.slice(0, 80) : 'Keine Antwort'));
+                document.getElementById('error').classList.remove('d-none');
+                return;
+            }
+            if (!data.success) {
+                document.getElementById('error').textContent = data.error || 'Fehler beim Laden der Aufträge';
+                document.getElementById('error').classList.remove('d-none');
+                return;
+            }
+            
+            const auftraege = data.auftraege || [];
+            document.getElementById('anzahlBadge').textContent = auftraege.length;
+            
+            if (auftraege.length === 0) {
+                document.getElementById('empty').classList.remove('d-none');
+                return;
+            }
+            
+            renderAuftraege(auftraege);
+            document.getElementById('tableContainer').classList.remove('d-none');
+        })
+        .catch(err => {
+            document.getElementById('loading').classList.add('d-none');
+            document.getElementById('error').textContent = 'Fehler beim Laden: ' + err.message;
+            document.getElementById('error').classList.remove('d-none');
+        });
+}
+
+function renderAuftraege(auftraege) {
+    const tbody = document.getElementById('auftraegeTableBody');
+    
+    tbody.innerHTML = auftraege.map(a => {
+        const akte = a.garantieakte || {};
+        const fahrzeug = `${a.marke || ''} ${a.modell || ''}`.trim() || '-';
+        
+        let akteStatus = '';
+        let aktion = '';
+        
+        if (akte.existiert) {
+            // Akte existiert - zeige Info
+            akteStatus = `
+                <div>
+                    <span class="badge bg-success status-badge">
+                        <i class="bi bi-check-circle"></i> Vorhanden
+                    </span>
+                    ${akte.erstelldatum ? `
+                        <div class="small text-muted mt-1">
+                            <i class="bi bi-calendar"></i> ${formatDate(akte.erstelldatum)}
+                        </div>
+                    ` : ''}
+                    ${akte.ersteller ? `
+                        <div class="small text-muted">
+                            <i class="bi bi-person"></i> ${akte.ersteller}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+            const windowsPath = akte.windows_path || '';
+            aktion = `
+                ${windowsPath ? `
+                    <button class="btn btn-sm btn-primary btn-open-folder" 
+                            data-path="${escapeHtml(windowsPath)}"
+                            title="Ordner im Windows Explorer öffnen: ${escapeHtml(windowsPath)}">
+                        <i class="bi bi-folder-open"></i> Öffnen
+                    </button>
+                ` : `
+                    <button class="btn btn-sm btn-outline-secondary" onclick="oeffneAkte(${a.auftrag_nr})" title="Akte öffnen">
+                        <i class="bi bi-folder-open"></i>
+                    </button>
+                `}
+            `;
+        } else {
+            // Akte existiert nicht - zeige Button zum Erstellen
+            akteStatus = `
+                <span class="badge bg-warning text-dark status-badge">
+                    <i class="bi bi-exclamation-triangle"></i> Nicht vorhanden
+                </span>
+            `;
+            aktion = `
+                <button class="btn btn-sm btn-primary btn-create-akte" onclick="erstelleGarantieakte(${a.auftrag_nr}, '${escapeHtml(a.kunde)}')">
+                    <i class="bi bi-file-earmark-pdf"></i> Erstellen
+                </button>
+            `;
+        }
+        
+        const tageOffen = a.tage_offen != null ? a.tage_offen : '-';
+        const terminStr = a.termin_bringen ? (a.termin_bringen.length > 10 ? a.termin_bringen.slice(0, 10) + ' ' + a.termin_bringen.slice(11, 16) : a.termin_bringen) : '-';
+        const teileOffen = a.teile_offen_anzahl != null && a.teile_offen_anzahl > 0
+            ? `<span class="badge bg-info">${a.teile_offen_anzahl}</span>` : '<span class="text-muted">0</span>';
+        const precheck = a.precheck || {};
+        const resttage = precheck.resttage;
+        const fristStatus = precheck.frist_status || 'unbekannt';
+        const fristBadgeClass = fristStatus === 'rot'
+            ? 'bg-danger'
+            : fristStatus === 'gelb'
+                ? 'bg-warning text-dark'
+                : fristStatus === 'gruen'
+                    ? 'bg-success'
+                    : 'bg-secondary';
+        const fristLabel = precheck.fristen_bewertung || (resttage == null ? 'Unbekannt' : `Noch ${resttage} Tage`);
+        const empfehlungKurz = precheck.ki_empfehlung_kurz || '-';
+        const alterClass = (tageOffen !== '-' && tageOffen > 90) ? 'text-warning' : '';
+        const terminGewesen = (function() {
+            if (!a.termin_bringen) return false;
+            const t = a.termin_bringen.replace(' ', 'T').slice(0, 16);
+            const d = new Date(t);
+            return !isNaN(d.getTime()) && d < new Date();
+        })();
+        let gudatHtml = '';
+        if (a.gudat_dossier_gefunden === true) {
+            gudatHtml = '<span class="badge bg-success"><i class="bi bi-check-circle"></i> Dossier gefunden</span>';
+        } else {
+            gudatHtml = '<span class="badge bg-secondary"><i class="bi bi-dash-circle"></i> Kein Dossier</span>';
+            if (terminGewesen) {
+                gudatHtml += '<br><small class="text-warning" title="Bring-Termin liegt in der Vergangenheit"><i class="bi bi-exclamation-triangle"></i> Termin bereits gewesen – Dossier in Gudat prüfen</small>';
+            }
+        }
+        return `
+            <tr>
+                <td>
+                    <strong><a href="javascript:void(0)" onclick="showAuftragDetail(${a.auftrag_nr})" class="text-primary" title="Auftragsdetails anzeigen">${a.auftrag_nr}</a></strong>
+                </td>
+                <td>${a.order_date || '-'}</td>
+                <td class="text-end ${alterClass}" title="Tage seit Auftragserfassung">${tageOffen}</td>
+                <td>${a.kunde || '-'}</td>
+                <td>
+                    ${a.kennzeichen ? `<strong>${a.kennzeichen}</strong><br>` : ''}
+                    <small class="text-muted">${fahrzeug}</small>
+                </td>
+                <td>${a.serviceberater || '-'}</td>
+                <td class="text-end">${a.total_aw.toFixed(1)}</td>
+                <td class="text-end">
+                    ${a.offen_aw > 0 ? `<span class="badge bg-warning text-dark">${a.offen_aw.toFixed(1)}</span>` : '<span class="badge bg-success">0</span>'}
+                </td>
+                <td class="small">${terminStr}</td>
+                <td class="small">
+                    <span class="badge ${fristBadgeClass}">${escapeHtml(fristLabel)}</span>
+                </td>
+                <td class="text-end">${teileOffen}</td>
+                <td class="small">${gudatHtml}</td>
+                <td class="small" title="${escapeHtml(precheck.ki_empfehlung_lang || empfehlungKurz)}">${escapeHtml(empfehlungKurz)}</td>
+                <td class="garantie-akte-status">${akteStatus}</td>
+                <td>${aktion}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function erstelleGarantieakte(orderNumber, kundeName) {
+    if (!confirm(`Garantieakte für Auftrag ${orderNumber} erstellen?`)) {
+        return;
+    }
+    
+    aktuellerAuftrag = orderNumber;
+    const btn = event.target.closest('button');
+    const originalHtml = btn.innerHTML;
+    
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Erstelle...';
+    
+    // Erste Anfrage ohne Dossier-ID
+    erstelleGarantieakteInternal(orderNumber, null, btn, originalHtml);
+}
+
+function erstelleGarantieakteInternal(orderNumber, dossierId, btn, originalHtml) {
+    const requestBody = dossierId ? { dossier_id: dossierId } : {};
+    
+    fetch(`/api/arbeitskarte/${orderNumber}/speichern`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Erfolg - zeige Link zum Windows-Ordner
+            const windowsPath = data.windows_path || '';
+            if (windowsPath) {
+                const linkText = `Garantieakte erfolgreich erstellt!\n\n${data.anzahl_dateien} Dateien gespeichert\n\nPfad: ${windowsPath}\n\nOrdner im Windows Explorer öffnen?`;
+                if (confirm(linkText)) {
+                    // Windows-Explorer öffnen (UNC-Pfad: file://///server/share/path - 5 Slashes!)
+                    let path = windowsPath.replace(/^\\\\+/, '').replace(/\\/g, '/');
+                    const fileUrl = `file://///${path}`;
+                    window.open(fileUrl, '_blank');
+                }
+            }
+            // Seite neu laden
+            loadAuftraege();
+        } else if (data.dossier_not_found) {
+            // Dossier nicht gefunden - zeige Anleitung
+            const anleitung = `Kein Dossier in GUDAT für Auftrag ${orderNumber} gefunden.\n\n` +
+                `⚠️ WICHTIG: Die Dossier-ID ist NICHT die Auftragsnummer!\n` +
+                `Die Dossier-ID ist eine separate Nummer in GUDAT (z.B. 20472).\n\n` +
+                `So finden Sie die Dossier-ID:\n` +
+                `1. Öffnen Sie das Dossier in GUDAT\n` +
+                `2. Schauen Sie in die Browser-Adresszeile\n` +
+                `3. Die Dossier-ID steht nach "/dossier/" oder "/dossiers/"\n` +
+                `   Beispiel: .../dossier/20472 → Dossier-ID ist "20472"\n\n` +
+                `Kennzeichen: ${data.license_plate || '-'}\n` +
+                `VIN: ${data.vin || '-'}\n\n` +
+                `Bitte geben Sie die GUDAT Dossier-ID ein (nicht die Auftragsnummer):`;
+            
+            const dossierId = prompt(anleitung, '');
+            
+            if (dossierId && dossierId.trim()) {
+                // Erneute Anfrage mit manueller Dossier-ID
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Erstelle mit Dossier-ID ' + dossierId.trim() + '...';
+                erstelleGarantieakteInternal(orderNumber, dossierId.trim(), btn, originalHtml);
+            } else {
+                // Abgebrochen
+                alert('Garantieakte-Erstellung abgebrochen. Dossier-ID erforderlich.');
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
+            }
+        } else if (data.dossier_id_not_found) {
+            // Manuelle Dossier-ID wurde nicht gefunden
+            let errorMsg = data.message || data.error || 'Dossier-ID nicht gefunden';
+            if (data.is_likely_order_number) {
+                errorMsg = errorMsg.replace(/\n/g, '\n');
+            }
+            alert('Fehler: ' + errorMsg);
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        } else {
+            alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
+    })
+    .catch(err => {
+        alert('Fehler beim Erstellen: ' + err.message);
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+    });
+}
+
+// Auftrag Detail Modal (SSOT - wiederverwendet)
+function showAuftragDetail(auftragNr) {
+    const modal = new bootstrap.Modal(document.getElementById('auftragModal'));
+    document.getElementById('modalAuftragNr').textContent = auftragNr;
+    document.getElementById('auftragModalBody').innerHTML = `
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary"></div>
+            <div class="mt-2">Lade Auftragsdetails...</div>
+        </div>
+    `;
+    modal.show();
+    
+    fetch(`/api/werkstatt/live/auftrag/${auftragNr}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (!data.success) {
+                document.getElementById('auftragModalBody').innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle"></i> ${data.error || 'Fehler beim Laden'}
+                    </div>
+                `;
+                return;
+            }
+            renderAuftragDetail(data);
+        })
+        .catch(err => {
+            console.error('Modal Error:', err);
+            document.getElementById('auftragModalBody').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle"></i> Verbindungsfehler: ${err.message}
+                </div>
+            `;
+        });
+}
+
+function renderAuftragDetail(data) {
+    const a = data.auftrag || {};
+    const f = a.fahrzeug || {};
+    const positionen = data.positionen || [];
+    const teile = data.teile || [];
+    const summen = a.summen || {};
+    
+    // Status-Badges
+    let statusBadges = '';
+    if (a.status && a.status.ist_offen) {
+        statusBadges += '<span class="badge bg-warning text-dark me-1"><i class="bi bi-clock"></i> Offen</span>';
+    }
+    if (a.status && a.status.hat_abgeschlossene) {
+        statusBadges += '<span class="badge bg-success me-1"><i class="bi bi-check"></i> Teilweise abgeschlossen</span>';
+    }
+    if (summen && summen.vollstaendig_abgerechnet === false) {
+        statusBadges += `<span class="badge bg-warning text-dark me-1"><i class="bi bi-exclamation-triangle"></i> ${summen.offen_aw || 0} AW offen</span>`;
+    }
+    if (summen && summen.vollstaendig_zugeordnet === false) {
+        statusBadges += `<span class="badge bg-info me-1"><i class="bi bi-person-x"></i> ${summen.nicht_zugeordnet_aw || 0} AW ohne Mech.</span>`;
+    }
+    
+    let html = `
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <h6><i class="bi bi-car-front"></i> Fahrzeug</h6>
+                <table class="table table-sm table-borderless mb-0">
+                    <tr><td><strong>Kennzeichen:</strong></td><td>${f.kennzeichen || '-'}</td></tr>
+                    <tr><td><strong>Marke/Modell:</strong></td><td>${f.marke || ''} ${f.modell || ''}</td></tr>
+                    <tr><td><strong>KM-Stand:</strong></td><td>${f.km_stand ? f.km_stand.toLocaleString('de-DE') + ' km' : '-'}</td></tr>
+                    <tr><td><strong>VIN:</strong></td><td><small class="text-muted">${f.vin || '-'}</small></td></tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <h6><i class="bi bi-person"></i> Kunde & Auftrag</h6>
+                <table class="table table-sm table-borderless mb-0">
+                    <tr><td><strong>Kunde:</strong></td><td>${a.kunde || '-'}</td></tr>
+                    <tr><td><strong>Serviceberater:</strong></td><td>${a.serviceberater || '-'}</td></tr>
+                    <tr><td><strong>Datum:</strong></td><td>${a.datum || '-'}</td></tr>
+                    <tr><td><strong>Betrieb:</strong></td><td>${a.betrieb_name || a.betrieb || '-'}</td></tr>
+                </table>
+            </div>
+        </div>
+        
+        <div class="row mb-3">
+            <div class="col-12">
+                <h6><i class="bi bi-info-circle"></i> Status</h6>
+                <div class="mb-2">${statusBadges || '<span class="badge bg-secondary">Keine Status-Info</span>'}</div>
+            </div>
+        </div>
+    `;
+    
+    // Positionen
+    if (positionen.length > 0) {
+        html += `
+            <h6><i class="bi bi-list-check"></i> Positionen (${positionen.length})</h6>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                    <thead>
+                        <tr>
+                            <th>Pos</th>
+                            <th>Beschreibung</th>
+                            <th class="text-end">Vorgabe AW</th>
+                            <th>Mechaniker</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        positionen.forEach((pos, idx) => {
+            html += `
+                <tr>
+                    <td>${pos.position || idx + 1}</td>
+                    <td><small>${pos.beschreibung || '-'}</small></td>
+                    <td class="text-end">${(pos.vorgabe_aw || 0).toFixed(1)}</td>
+                    <td><small>${pos.mechaniker || '-'}</small></td>
+                    <td>${pos.abgerechnet ? '<span class="badge bg-success">Fertig</span>' : '<span class="badge bg-warning text-dark">Offen</span>'}</td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+    
+    // Teile
+    if (teile.length > 0) {
+        html += `
+            <h6 class="mt-3"><i class="bi bi-box-seam"></i> Teile (${teile.length})</h6>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                    <thead>
+                        <tr>
+                            <th>Teilenummer</th>
+                            <th>Bezeichnung</th>
+                            <th class="text-end">Menge</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        teile.slice(0, 10).forEach(teil => {
+            html += `
+                <tr>
+                    <td><small>${teil.teilenummer || '-'}</small></td>
+                    <td><small>${teil.bezeichnung || '-'}</small></td>
+                    <td class="text-end">${teil.menge || 0}</td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+        if (teile.length > 10) {
+            html += `<p class="text-muted small">... und ${teile.length - 10} weitere Teile</p>`;
+        }
+    }
+    
+    // Summen
+    if (summen) {
+        html += `
+            <div class="row mt-3">
+                <div class="col-md-6">
+                    <h6><i class="bi bi-calculator"></i> Summen</h6>
+                    <table class="table table-sm table-borderless">
+                        <tr><td><strong>Vorgabe AW:</strong></td><td class="text-end">${(summen.total_aw || 0).toFixed(1)}</td></tr>
+                        <tr><td><strong>Offen AW:</strong></td><td class="text-end">${(summen.offen_aw || 0).toFixed(1)}</td></tr>
+                        <tr><td><strong>Positionen:</strong></td><td class="text-end">${summen.anzahl_positionen || 0}</td></tr>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
+    
+    // GUDAT-Rückfragen
+    const gudat = data.gudat || {};
+    const rueckfragen = gudat.rueckfragen || [];
+    console.log('GUDAT-Daten:', gudat);
+    console.log('Rückfragen:', rueckfragen);
+    if (rueckfragen.length > 0) {
+        html += `
+            <div class="row mt-3">
+                <div class="col-12">
+                    <h6><i class="bi bi-chat-left-text"></i> Rückfragen aus GUDAT (${rueckfragen.length})</h6>
+                    <div class="list-group">
+        `;
+        
+        rueckfragen.forEach((r, idx) => {
+            const datum = r.erstellt_am ? new Date(r.erstellt_am).toLocaleString('de-DE') : '';
+            html += `
+                        <div class="list-group-item">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">
+                                    <span class="badge bg-info me-2">${r.typ || 'Nachricht'}</span>
+                                    ${r.autor || 'Unbekannt'}
+                                </h6>
+                                <small class="text-muted">${datum}</small>
+                            </div>
+                            <p class="mb-1 mt-2">${escapeHtml(r.text || '')}</p>
+                        </div>
+            `;
+        });
+        
+        html += `
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    // TAG 195: TT-Zeit-Prüfung Button (nur bei Garantieaufträgen)
+    // Prüfe ob Garantieauftrag (alle Aufträge in dieser Übersicht sind Garantieaufträge)
+    html += `
+        <div class="row mt-3">
+            <div class="col-12">
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary btn-sm" onclick="erstelleGarantieakte(${a.auftrag_nr || auftragNr || 'null'}, '${escapeHtml(a.kunde || '')}')" id="btnGarantieakte">
+                        <i class="bi bi-file-earmark-pdf"></i> Garantieakte erstellen
+                    </button>
+                    <button class="btn btn-info btn-sm" onclick="pruefeTTZeit(${a.auftrag_nr || auftragNr || 'null'})" id="btnTTZeit">
+                        <i class="bi bi-clock-history"></i> TT-Zeit prüfen
+                    </button>
+                    <button class="btn btn-outline-primary btn-sm" onclick="pruefeGarantie(${a.auftrag_nr || auftragNr || 'null'})" id="btnGarantiePruefung">
+                        <i class="bi bi-robot"></i> Prüfung / Empfehlung
+                    </button>
+                </div>
+                <div id="garantieakteStatus" class="mt-2"></div>
+                <div id="ttZeitStatus" class="mt-2"></div>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('auftragModalBody').innerHTML = html;
+}
+
+function oeffneAkte(orderNumber) {
+    // TODO: Windows-Explorer öffnen oder Pfad anzeigen
+    alert('Funktion zum Öffnen der Akte wird noch implementiert');
+}
+
+// ============================================================================
+// TT-ZEIT-ANALYSE (TAG 195)
+// ============================================================================
+
+// ============================================================================
+// GARANTIE-PRÜFUNG / EMPFEHLUNG (Option A KI)
+// ============================================================================
+
+function pruefeGarantie(auftragNr) {
+    const btn = event?.target?.closest('button') || document.getElementById('btnGarantiePruefung');
+    if (!btn) return;
+
+    const modal = new bootstrap.Modal(document.getElementById('garantiePruefungModal'));
+    document.getElementById('modalGarantiePruefungAuftragNr').textContent = auftragNr;
+    document.getElementById('garantiePruefungModalBody').innerHTML = `
+        <div class="text-center py-4">
+            <div class="spinner-border text-primary"></div>
+            <div class="mt-2">Prüfung wird ausgeführt...</div>
+        </div>
+    `;
+    modal.show();
+
+    fetch('/api/garantie/pruefung', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_number: parseInt(auftragNr, 10) })
+    })
+    .then(response => {
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            return response.text().then(text => {
+                const msg = response.status === 401
+                    ? 'Anmeldung abgelaufen oder Session ungültig. Bitte Seite neu laden und erneut anmelden.'
+                    : response.status === 404
+                    ? 'API-Endpunkt nicht gefunden. Bitte Portal-Neustart prüfen (sudo systemctl restart greiner-portal).'
+                    : 'Server hat eine Fehlerseite (HTML) statt JSON zurückgegeben. Bitte später erneut versuchen oder Server-Logs prüfen.';
+                throw new Error(msg);
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            showGarantiePruefungErgebnis(data, auftragNr);
+        } else {
+            document.getElementById('garantiePruefungModalBody').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle"></i> ${escapeHtml(data.error || 'Prüfung fehlgeschlagen')}
+                </div>
+            `;
+        }
+    })
+    .catch(err => {
+        document.getElementById('garantiePruefungModalBody').innerHTML = `
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle"></i> ${escapeHtml(err.message)}
+            </div>
+        `;
+    });
+}
+
+function showGarantiePruefungErgebnis(data, auftragNr) {
+    const checkliste = data.checkliste || [];
+    const empfehlung = data.empfehlung || '';
+    const marke = data.marke_verwendet || '';
+
+    let html = '';
+    if (marke) {
+        html += `<p class="small text-muted mb-2"><i class="bi bi-tag"></i> Bedingungen: ${escapeHtml(marke)}</p>`;
+    }
+    if (checkliste.length > 0) {
+        html += `<h6 class="mb-2"><i class="bi bi-list-check"></i> Prüfpunkte</h6><ul class="list-group mb-3">`;
+        checkliste.forEach(item => {
+            const erfuellt = item.erfuellt === true;
+            const punkt = item.punkt || 'Prüfpunkt';
+            const hinweis = item.hinweis || '';
+            html += `
+                <li class="list-group-item d-flex justify-content-between align-items-start">
+                    <div>
+                        <span class="badge me-2 ${erfuellt ? 'bg-success' : 'bg-warning text-dark'}">${erfuellt ? 'Erfüllt' : 'Fehlt'}</span>
+                        ${escapeHtml(punkt)}
+                        ${hinweis ? `<br><small class="text-muted">${escapeHtml(hinweis)}</small>` : ''}
+                    </div>
+                </li>
+            `;
+        });
+        html += `</ul>`;
+    }
+    html += `<h6 class="mb-2"><i class="bi bi-chat-quote"></i> Empfehlung</h6><div class="alert alert-light border">${escapeHtml(empfehlung) || '<span class="text-muted">Keine Empfehlung.</span>'}</div>`;
+    document.getElementById('garantiePruefungModalBody').innerHTML = html;
+}
+
+function pruefeTTZeit(auftragNr) {
+    const btn = event?.target?.closest('button') || document.getElementById('btnTTZeit');
+    if (!btn) return;
+    
+    const originalHtml = btn.innerHTML;
+    
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Analysiere...';
+    
+    fetch(`/api/ai/analysiere/tt-zeit/${auftragNr}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        // Prüfe ob Response JSON ist
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            // Response ist HTML (Fehlerseite) - lade als Text
+            return response.text().then(text => {
+                console.error('API hat HTML zurückgegeben:', text.substring(0, 500));
+                throw new Error('Server-Fehler: API hat HTML statt JSON zurückgegeben. Bitte Server-Logs prüfen.');
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+        
+        if (!data.success) {
+            alert(`Fehler: ${data.error || 'Unbekannter Fehler'}`);
+            return;
+        }
+        
+        // Zeige Modal mit Analyse-Ergebnissen
+        showTTZeitModal(data, auftragNr);
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+        alert(`Fehler bei TT-Zeit-Analyse: ${err.message}\n\nBitte prüfen Sie:\n- Ist der Server gestartet?\n- Gibt es Fehler in den Server-Logs?`);
+        console.error('TT-Zeit-Analyse Fehler:', err);
+    });
+}
+
+function showTTZeitModal(data, auftragNr) {
+    const modal = new bootstrap.Modal(document.getElementById('ttZeitModal'));
+    document.getElementById('modalTTZeitAuftragNr').textContent = auftragNr;
+    
+    const tp = data.technische_pruefung || {};
+    const ki = data.ki_analyse || {};
+    const warnung = data.warnung || {};
+    const regeln = data.abrechnungsregeln || {};
+    const teil = tp.schadhaftes_teil;
+    
+    let html = `
+        <!-- Technische Prüfung -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-check-circle"></i> Technische Prüfung</h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Garantieauftrag:</strong> ${tp.is_garantie ? '<span class="badge bg-success">Ja</span>' : '<span class="badge bg-danger">Nein</span>'}</p>
+                        <p><strong>Stempelzeiten:</strong> ${tp.stempelzeiten_vorhanden ? '<span class="badge bg-success">Vorhanden</span>' : '<span class="badge bg-danger">Fehlt</span>'}</p>
+                        ${tp.stempelzeiten_vorhanden ? `
+                            <p class="small text-muted">
+                                ${tp.stempelzeiten_anzahl || 0} Stempelungen<br>
+                                ${(tp.stempelzeiten_stunden || 0).toFixed(2)} Stunden (${(tp.stempelzeiten_minuten || 0).toFixed(1)} Min)
+                            </p>
+                        ` : ''}
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>TT-Zeit bereits eingereicht:</strong> ${tp.tt_zeit_vorhanden ? '<span class="badge bg-warning">Ja</span>' : '<span class="badge bg-success">Nein</span>'}</p>
+                        ${teil ? `
+                            <p><strong>Schadhaften Teil:</strong></p>
+                            <p class="small">
+                                <strong>${teil.teilenummer || '-'}</strong><br>
+                                ${teil.beschreibung || '-'}
+                            </p>
+                        ` : '<p class="text-warning"><strong>Schadhaften Teil nicht identifiziert!</strong></p>'}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- KI-Analyse -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-robot"></i> KI-Analyse</h6>
+            </div>
+            <div class="card-body">
+                <p><strong>Begründung:</strong></p>
+                <p class="small">${ki.begruendung || 'Nicht verfügbar'}</p>
+                
+                <p class="mt-2"><strong>Empfehlung:</strong></p>
+                <p class="small"><strong>${ki.empfehlung || 'Bitte manuell prüfen'}</strong></p>
+                
+                ${ki.hinweise && ki.hinweise.length > 0 ? `
+                    <p class="mt-2"><strong>Hinweise:</strong></p>
+                    <ul class="small">
+                        ${ki.hinweise.map(h => `<li>${escapeHtml(h)}</li>`).join('')}
+                    </ul>
+                ` : ''}
+            </div>
+        </div>
+        
+        <!-- Warnung -->
+        <div class="alert alert-warning">
+            <h6><i class="bi bi-exclamation-triangle"></i> ${warnung.text || 'Warnung'}</h6>
+            <p class="mb-0 small">${warnung.hinweis || ''}</p>
+        </div>
+        
+        <!-- Abrechnungsregeln -->
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-info-circle"></i> Abrechnungsregeln</h6>
+            </div>
+            <div class="card-body">
+                <p><strong>Bis 0,9 Stunden (9 AW):</strong></p>
+                <p class="small">
+                    ✅ Ohne Freigabe abrechenbar<br>
+                    Max. ${regeln.bis_09_stunden?.max_aw || 9} AW (${regeln.bis_09_stunden?.max_minuten || 54} Min)<br>
+                    Max. Vergütung: ${(regeln.bis_09_stunden?.verguetung_max || 75.87).toFixed(2)}€
+                </p>
+                
+                <p class="mt-2"><strong>Ab 1,0 Stunden (10 AW):</strong></p>
+                <p class="small">
+                    ⚠️ Freigabe erforderlich<br>
+                    Min. ${regeln.ab_10_stunden?.min_aw || 10} AW (${regeln.ab_10_stunden?.min_minuten || 60} Min)<br>
+                    Freigabe über: ${regeln.ab_10_stunden?.freigabe_ueber || 'GWMS (Antragstyp: T, Freigabetyp: DK)'}
+                </p>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('ttZeitModalBody').innerHTML = html;
+    
+    // Button aktivieren wenn technische Prüfung OK
+    const btnBestaetigen = document.getElementById('btnTTZeitBestaetigen');
+    if (tp.is_garantie && tp.stempelzeiten_vorhanden && !tp.tt_zeit_vorhanden && teil) {
+        btnBestaetigen.disabled = false;
+    } else {
+        btnBestaetigen.disabled = true;
+    }
+    
+    modal.show();
+}
+
+function bestaetigeGSWPruefung() {
+    const auftragNr = parseInt(document.getElementById('modalTTZeitAuftragNr').textContent);
+    
+    if (!confirm(`Bestätigen Sie, dass Sie im GSW Portal geprüft haben und KEINE Arbeitsoperationsnummer für das schadhaften Teil vorhanden ist?\n\nAuftrag: ${auftragNr}`)) {
+        return;
+    }
+    
+    // TODO: Bestätigung in Datenbank speichern (optional)
+    // fetch(`/api/ai/tt-zeit/bestaetigen/${auftragNr}`, { method: 'POST' })
+    
+    alert('✅ Bestätigung gespeichert! Sie können nun TT-Zeit über die Garantie SOAP API hinzufügen.');
+    
+    // Modal schließen
+    bootstrap.Modal.getInstance(document.getElementById('ttZeitModal')).hide();
+}
+
+function oeffneWindowsOrdner(windowsPath) {
+    console.log('oeffneWindowsOrdner aufgerufen mit:', windowsPath);
+    
+    if (!windowsPath) {
+        alert('Pfad nicht verfügbar');
+        return;
+    }
+    
+    // Zeige sofort eine Bestätigung
+    const bestaetigung = confirm(
+        `Ordner im Windows Explorer öffnen?\n\nPfad: ${windowsPath}\n\nFalls der Ordner nicht automatisch geöffnet wird, können Sie den Pfad in die Zwischenablage kopieren.`
+    );
+    
+    if (!bestaetigung) {
+        return;
+    }
+    
+    // Versuche UNC-Pfad zu öffnen
+    // UNC-Pfad für Windows: file://///server/share/path (5 Slashes!)
+    let path = windowsPath.replace(/^\\\\+/, '').replace(/\\/g, '/');
+    const fileUrl = `file://///${path}`;
+    
+    console.log('Versuche zu öffnen:', fileUrl);
+    
+    try {
+        // Versuche direkt zu öffnen
+        const opened = window.open(fileUrl, '_blank');
+        
+        // Falls das nicht funktioniert (Browser blockiert), zeige Alternative
+        setTimeout(() => {
+            // Prüfe ob ein Popup-Blocker aktiv ist oder der Link blockiert wurde
+            if (!opened || opened.closed || typeof opened.closed == 'undefined') {
+                // Browser hat den Link blockiert - zeige Pfad zum Kopieren
+                const copy = confirm(
+                    `Der Ordner konnte nicht automatisch geöffnet werden (Browser blockiert file:// Links).\n\nPfad: ${windowsPath}\n\nPfad in Zwischenablage kopieren?`
+                );
+                
+                if (copy) {
+                    // Kopiere Pfad in Zwischenablage
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(windowsPath).then(() => {
+                            alert('Pfad wurde in die Zwischenablage kopiert!\n\nSie können ihn jetzt im Windows Explorer einfügen (Strg+V in der Adressleiste).');
+                        }).catch(() => {
+                            // Fallback: Zeige Pfad in Prompt
+                            prompt('Bitte kopieren Sie diesen Pfad:', windowsPath);
+                        });
+                    } else {
+                        // Fallback: Zeige Pfad in Prompt
+                        prompt('Bitte kopieren Sie diesen Pfad:', windowsPath);
+                    }
+                }
+            }
+        }, 1000);
+    } catch (e) {
+        console.error('Fehler beim Öffnen:', e);
+        // Fallback: Zeige Pfad zum Kopieren
+        const copy = confirm(
+            `Der Ordner konnte nicht automatisch geöffnet werden.\n\nFehler: ${e.message}\n\nPfad: ${windowsPath}\n\nPfad in Zwischenablage kopieren?`
+        );
+        
+        if (copy) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(windowsPath).then(() => {
+                    alert('Pfad wurde in die Zwischenablage kopiert!');
+                }).catch(() => {
+                    prompt('Bitte kopieren Sie diesen Pfad:', windowsPath);
+                });
+            } else {
+                prompt('Bitte kopieren Sie diesen Pfad:', windowsPath);
+            }
+        }
+    }
+}
+
+function formatDate(dateString) {
+    if (!dateString) return '-';
+    try {
+        const date = new Date(dateString);
+        return date.toLocaleString('de-DE', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    } catch (e) {
+        return dateString;
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Event-Listener für "Öffnen"-Buttons (Event Delegation)
+document.addEventListener('click', function(e) {
+    if (e.target.closest('.btn-open-folder')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const button = e.target.closest('.btn-open-folder');
+        const windowsPath = button.getAttribute('data-path');
+        console.log('Button geklickt, Pfad:', windowsPath);
+        if (windowsPath) {
+            oeffneWindowsOrdner(windowsPath);
+        } else {
+            alert('Pfad nicht gefunden');
+        }
+    }
+});
+
+// Beim Laden der Seite
+document.addEventListener('DOMContentLoaded', function() {
+    loadAuftraege();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+
+{% block title %}Modalitäten & Parameter – DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .card-header-modal { background: linear-gradient(135deg, #0f766e 0%, #115e59 100%); color: white; font-weight: 600; }
+    .anbieter-card { border-left: 4px solid #0d9488; }
+    .table-modalitaeten { font-size: 0.9rem; }
+    .table-modalitaeten th { background: #f1f5f9; white-space: nowrap; }
+    .table-modalitaeten .regel-wert-input { max-width: 140px; }
+    .badge-typ { font-size: 0.75rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+        <div>
+            <a href="/admin/konfiguration" class="btn btn-outline-secondary btn-sm mb-2"><i class="bi bi-arrow-left me-1"></i>Konfiguration</a>
+            <h1 class="h3 mb-1">Modalitäten & Parameter</h1>
+            <p class="text-muted mb-0">Kreditrahmen, Zinsfreiheit, Zinssätze und Steuerparameter (z. B. Ziel Linienauslastung Stellantis). Änderungen sind eher selten, z. B. quartalsweise.</p>
+        </div>
+        <div>
+            <button type="button" class="btn btn-primary" id="btn-reload"><i class="bi bi-arrow-clockwise me-1"></i>Aktualisieren</button>
+        </div>
+    </div>
+
+    <div id="alert-placeholder"></div>
+
+    <div class="mb-3">
+        <label class="form-label mb-0 me-2">Anbieter</label>
+        <select class="form-select form-select-sm d-inline-block w-auto" id="filter-anbieter">
+            <option value="">Alle Anbieter</option>
+        </select>
+    </div>
+
+    <div id="modalitaeten-container">
+        <div class="text-center text-muted py-4">Lade Modalitäten …</div>
+    </div>
+
+    <div class="alert alert-light border mt-3">
+        <strong><i class="bi bi-plus-circle me-1"></i>Neuer Parameter</strong> – Mit „Neuer Parameter“ pro Vertragsart können Sie z. B. <code>linienauslastung_ziel</code> (Ziel Linienauslastung Stellantis in %) anlegen. Diese Werte werden von Einkaufsfinanzierung und Zinsen-Optimierung gelesen.
+    </div>
+</div>
+
+<!-- Modal Neuer Parameter -->
+<div class="modal fade" id="modalNeuerParameter" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Neuer Parameter</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="new-vertragsart-id">
+                <div class="mb-2 text-muted small" id="new-vertragsart-label">–</div>
+                <div class="mb-3">
+                    <label class="form-label">Regel-Typ *</label>
+                    <select class="form-select" id="new-regel-typ">
+                        <option value="">– Bitte wählen oder unten eingeben –</option>
+                    </select>
+                    <div class="mt-1 d-none" id="new-regel-typ-custom-wrap">
+                        <input type="text" class="form-control form-control-sm" id="new-regel-typ-custom" placeholder="z. B. ziel oder kreditrahmen_gesamt">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Regel-Key *</label>
+                    <select class="form-select" id="new-regel-key">
+                        <option value="">– Bitte wählen oder unten eingeben –</option>
+                    </select>
+                    <div class="mt-1 d-none" id="new-regel-key-custom-wrap">
+                        <input type="text" class="form-control form-control-sm" id="new-regel-key-custom" placeholder="z. B. linienauslastung_ziel">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Wert *</label>
+                    <input type="text" class="form-control" id="new-regel-wert" placeholder="z. B. 85" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Einheit</label>
+                    <input type="text" class="form-control" id="new-einheit" placeholder="z. B. Prozent oder Euro">
+                </div>
+                <div class="mb-0">
+                    <label class="form-label">Bedingung / Hinweis</label>
+                    <input type="text" class="form-control" id="new-bedingung" placeholder="z. B. Ziel Auslastung Stellantis EK">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-primary" id="btn-new-save"><i class="bi bi-check-lg me-1"></i>Anlegen</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const API = '/api/bankenspiegel/modalitaeten';
+    const container = document.getElementById('modalitaeten-container');
+    const filterAnbieter = document.getElementById('filter-anbieter');
+    const alertPlaceholder = document.getElementById('alert-placeholder');
+
+    function showAlert(msg, type) {
+        alertPlaceholder.innerHTML = '<div class="alert alert-' + (type || 'info') + ' alert-dismissible fade show">' + msg + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>';
+    }
+
+    function groupByAnbieter(data) {
+        const byAnbieter = {};
+        (data.ausfuehrungsbestimmungen || []).forEach(function(r) {
+            const key = r.anbieter_name || 'Sonstige';
+            if (!byAnbieter[key]) byAnbieter[key] = { kuerzel: r.anbieter_kuerzel, vertragsarten: {} };
+            const va = r.vertragsart_bezeichnung + '|' + (r.produkt_code || '');
+            if (!byAnbieter[key].vertragsarten[va]) byAnbieter[key].vertragsarten[va] = { id: r.vertragsart_id, bezeichnung: r.vertragsart_bezeichnung, produkt_code: r.produkt_code, regeln: [] };
+            byAnbieter[key].vertragsarten[va].regeln.push(r);
+        });
+        return byAnbieter;
+    }
+
+    function render(data) {
+        const byAnbieter = groupByAnbieter(data);
+        const filterVal = (filterAnbieter.value || '').toLowerCase();
+        let html = '';
+        Object.keys(byAnbieter).sort().forEach(function(anbieterName) {
+            if (filterVal && anbieterName.toLowerCase().indexOf(filterVal) < 0) return;
+            const block = byAnbieter[anbieterName];
+            const vertragsarten = Object.keys(block.vertragsarten).sort();
+            html += '<div class="card shadow-sm anbieter-card mb-4"><div class="card-header card-header-modal">';
+            html += '<i class="bi bi-bank me-2"></i>' + escapeHtml(anbieterName) + ' <span class="badge bg-light text-dark ms-2">' + vertragsarten.length + ' Vertragsart(en)</span></div><div class="card-body p-0">';
+            vertragsarten.forEach(function(vaKey) {
+                const va = block.vertragsarten[vaKey];
+                va.regeln.sort(function(a, b) { return (a.sortierung || 0) - (b.sortierung || 0); });
+                html += '<div class="p-3 border-bottom bg-light d-flex justify-content-between align-items-center"><strong>' + escapeHtml(va.bezeichnung) + '</strong>';
+                if (va.produkt_code) html += ' <span class="text-muted">(' + escapeHtml(va.produkt_code) + ')</span>';
+                html += ' <button type="button" class="btn btn-sm btn-outline-success btn-new-param" data-vertragsart-id="' + va.id + '" data-label="' + escapeHtml(anbieterName) + ' – ' + escapeHtml(va.bezeichnung) + '"><i class="bi bi-plus me-1"></i>Neuer Parameter</button></div>';
+                html += '<div class="table-responsive"><table class="table table-hover mb-0 table-modalitaeten"><thead><tr><th>Regel-Typ</th><th>Regel-Key</th><th>Wert</th><th>Einheit</th><th>Bedingung</th><th></th></tr></thead><tbody>';
+                va.regeln.forEach(function(r) {
+                    html += '<tr data-id="' + r.id + '"><td><span class="badge bg-secondary badge-typ">' + escapeHtml(r.regel_typ || '') + '</span></td>';
+                    html += '<td>' + escapeHtml(r.regel_key || '') + '</td>';
+                    html += '<td><input type="text" class="form-control form-control-sm regel-wert-input" value="' + escapeHtml(String(r.regel_wert || '')) + '" data-id="' + r.id + '"></td>';
+                    html += '<td>' + escapeHtml(r.einheit || '') + '</td><td class="small">' + escapeHtml((r.bedingung || '') + '') + '</td>';
+                    html += '<td><button type="button" class="btn btn-sm btn-outline-primary btn-save" data-id="' + r.id + '">Speichern</button></td></tr>';
+                });
+                html += '</tbody></table></div>';
+            });
+            html += '</div></div>';
+        });
+        container.innerHTML = html || '<div class="alert alert-secondary">Keine Ausführungsbestimmungen gefunden.</div>';
+
+        container.querySelectorAll('.btn-save').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                const id = parseInt(this.getAttribute('data-id'), 10);
+                const row = container.querySelector('tr[data-id="' + id + '"]');
+                const input = row ? row.querySelector('.regel-wert-input') : null;
+                const val = input ? input.value.trim() : '';
+                if (val === '') { showAlert('Bitte einen Wert eintragen.', 'warning'); return; }
+                fetch(API + '/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ regel_wert: val }) })
+                    .then(function(res) { return res.json().then(function(j) { return { ok: res.ok, j: j }; }); })
+                    .then(function(r) {
+                        if (r.ok) showAlert('Gespeichert.', 'success'); else showAlert(r.j.error || 'Fehler', 'danger');
+                    })
+                    .catch(function() { showAlert('Netzwerkfehler.', 'danger'); });
+            });
+        });
+        container.querySelectorAll('.btn-new-param').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                document.getElementById('new-vertragsart-id').value = this.getAttribute('data-vertragsart-id');
+                document.getElementById('new-vertragsart-label').textContent = this.getAttribute('data-label');
+                document.getElementById('new-regel-wert').value = '';
+                document.getElementById('new-einheit').value = '';
+                document.getElementById('new-bedingung').value = '';
+                new bootstrap.Modal(document.getElementById('modalNeuerParameter')).show();
+            });
+        });
+    }
+
+    function fillModalDropdowns() {
+        var regeln = lastData && lastData.ausfuehrungsbestimmungen ? lastData.ausfuehrungsbestimmungen : [];
+        var typen = regeln.map(function(r) { return (r.regel_typ || '').trim(); }).filter(Boolean);
+        typen = typen.filter(function(t, i) { return typen.indexOf(t) === i; }).sort();
+        var keys = regeln.map(function(r) { return (r.regel_key || '').trim(); }).filter(Boolean);
+        keys = keys.filter(function(k, i) { return keys.indexOf(k) === i; }).sort();
+        var selTyp = document.getElementById('new-regel-typ');
+        var selKey = document.getElementById('new-regel-key');
+        selTyp.innerHTML = '<option value="">– Bitte wählen oder unten eingeben –</option>' + typen.map(function(t) { return '<option value="' + escapeHtml(t) + '">' + escapeHtml(t) + '</option>'; }).join('') + '<option value="__custom__">– Anderer Typ (Eingabe) –</option>';
+        selKey.innerHTML = '<option value="">– Bitte wählen oder unten eingeben –</option>' + keys.map(function(k) { return '<option value="' + escapeHtml(k) + '">' + escapeHtml(k) + '</option>'; }).join('') + '<option value="__custom__">– Anderer Key (Eingabe) –</option>';
+        selTyp.value = '';
+        selKey.value = '';
+        document.getElementById('new-regel-typ-custom').value = '';
+        document.getElementById('new-regel-key-custom').value = '';
+        document.getElementById('new-regel-typ-custom-wrap').classList.add('d-none');
+        document.getElementById('new-regel-key-custom-wrap').classList.add('d-none');
+    }
+
+    function escapeHtml(s) {
+        if (s == null) return '';
+        const div = document.createElement('div');
+        div.textContent = s;
+        return div.innerHTML;
+    }
+
+    let lastData = null;
+
+    function load() {
+        container.innerHTML = '<div class="text-center text-muted py-4">Lade …</div>';
+        fetch(API).then(function(res) { return res.json(); }).then(function(data) {
+            if (!data.success) { container.innerHTML = '<div class="alert alert-danger">' + escapeHtml(data.error || 'Fehler') + '</div>'; return; }
+            lastData = data;
+            const anbieter = data.anbieter || [];
+            filterAnbieter.innerHTML = '<option value="">Alle Anbieter</option>' + anbieter.map(function(a) {
+                return '<option value="' + escapeHtml(a.name || '') + '">' + escapeHtml(a.name || '') + '</option>';
+            }).join('');
+            render(data);
+        }).catch(function() {
+            container.innerHTML = '<div class="alert alert-danger">Laden fehlgeschlagen.</div>';
+        });
+    }
+
+    document.getElementById('btn-reload').addEventListener('click', load);
+    filterAnbieter.addEventListener('change', function() { if (lastData) render(lastData); });
+
+    var modalEl = document.getElementById('modalNeuerParameter');
+    modalEl.addEventListener('show.bs.modal', function() {
+        if (lastData && lastData.ausfuehrungsbestimmungen && lastData.ausfuehrungsbestimmungen.length > 0) {
+            fillModalDropdowns();
+        } else {
+            fetch(API).then(function(res) { return res.json(); }).then(function(data) {
+                if (data.success) { lastData = data; fillModalDropdowns(); }
+            });
+        }
+    });
+
+    document.getElementById('new-regel-typ').addEventListener('change', function() {
+        document.getElementById('new-regel-typ-custom-wrap').classList.toggle('d-none', this.value !== '__custom__');
+    });
+    document.getElementById('new-regel-key').addEventListener('change', function() {
+        document.getElementById('new-regel-key-custom-wrap').classList.toggle('d-none', this.value !== '__custom__');
+    });
+
+    document.getElementById('btn-new-save').addEventListener('click', function() {
+        const vertragsart_id = parseInt(document.getElementById('new-vertragsart-id').value, 10);
+        var typSel = document.getElementById('new-regel-typ');
+        var keySel = document.getElementById('new-regel-key');
+        const regel_typ = (typSel.value === '__custom__' ? document.getElementById('new-regel-typ-custom').value : typSel.value).trim();
+        const regel_key = (keySel.value === '__custom__' ? document.getElementById('new-regel-key-custom').value : keySel.value).trim();
+        const regel_wert = document.getElementById('new-regel-wert').value.trim();
+        const einheit = document.getElementById('new-einheit').value.trim() || null;
+        const bedingung = document.getElementById('new-bedingung').value.trim() || null;
+        if (!vertragsart_id || !regel_typ || !regel_key || !regel_wert) { showAlert('Regel-Typ, Regel-Key und Wert sind Pflichtfelder.', 'warning'); return; }
+        fetch(API, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ vertragsart_id: vertragsart_id, regel_typ: regel_typ, regel_key: regel_key, regel_wert: regel_wert, einheit: einheit, bedingung: bedingung })
+        }).then(function(res) { return res.json(); }).then(function(data) {
+            if (data.success) {
+                bootstrap.Modal.getInstance(document.getElementById('modalNeuerParameter')).hide();
+                showAlert('Parameter angelegt.', 'success');
+                load();
+            } else showAlert(data.error || 'Fehler', 'danger');
+        }).catch(function() { showAlert('Netzwerkfehler.', 'danger'); });
+    });
+
+    load();
+})();
+</script>
+{% endblock %}
