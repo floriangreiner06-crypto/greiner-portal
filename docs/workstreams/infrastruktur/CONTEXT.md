@@ -17,6 +17,7 @@
   - `DEALER_PORTABILITY_GIT_BASELINE.md`
   - `MERGE_ROLLOUT_PLAN_SANE_DRIVE_PRs.md`
   - `TEAM_WORKFLOW_PROD_DEV.md`
+  - `HOTFIX_CHECKLIST.md`
 
 ## Naechste Schritte
 - Teambriefing auf Rollenaufteilung (Florian=Prod, Vanessa=Dev).
