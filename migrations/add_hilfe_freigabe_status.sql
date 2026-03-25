@@ -8,7 +8,9 @@ ALTER TABLE hilfe_artikel
     ADD COLUMN IF NOT EXISTS freigegeben_von VARCHAR(100);
 
 -- Bestehende Artikel gelten als freigegeben
-UPDATE hilfe_artikel SET freigabe_status = 'freigegeben', freigegeben_am = CURRENT_TIMESTAMP WHERE freigabe_status IS NULL OR freigabe_status = '';
+UPDATE hilfe_artikel
+SET freigabe_status = 'freigegeben', freigegeben_am = CURRENT_TIMESTAMP
+WHERE freigabe_status IS NULL OR freigabe_status = '' OR freigabe_status = 'entwurf';
 
 -- Default für neue Zeilen
 ALTER TABLE hilfe_artikel ALTER COLUMN freigabe_status SET DEFAULT 'entwurf';
