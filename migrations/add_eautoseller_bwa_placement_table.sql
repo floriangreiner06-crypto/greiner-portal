@@ -1,6 +1,6 @@
 -- eAutoSeller BWA-Platzierung cachen (mobile.de Platz, Treffer, Platz 1)
 -- Celery-Task füllt die Tabelle; Verkaufsempfehlungen AfA lesen von hier (kein Live-API-Call im Request).
--- Ausführung: PGPASSWORD=DrivePortal2024 psql -h 127.0.0.1 -U drive_user -d drive_portal -f migrations/add_eautoseller_bwa_placement_table.sql
+-- Ausführung: PGPASSWORD=<PASSWORT> psql -h 127.0.0.1 -U drive_user -d drive_portal -f migrations/add_eautoseller_bwa_placement_table.sql
 
 CREATE TABLE IF NOT EXISTS eautoseller_bwa_placement (
     vin VARCHAR(17) PRIMARY KEY,

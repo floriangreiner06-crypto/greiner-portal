@@ -1,6 +1,6 @@
 -- Max. Abwesenheit pro Abteilung und Standort (Vertretung/Abwesenheit)
 -- Default 50% (nur planbare Abwesenheit: Urlaub + Schulung; Krankheit nicht planbar)
--- Ausführung: PGPASSWORD=DrivePortal2024 psql -h 127.0.0.1 -U drive_user -d drive_portal -f migrations/add_department_absence_limits.sql
+-- Ausführung: PGPASSWORD=<PASSWORT> psql -h 127.0.0.1 -U drive_user -d drive_portal -f migrations/add_department_absence_limits.sql
 
 BEGIN;
 
