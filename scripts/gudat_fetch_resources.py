@@ -86,7 +86,7 @@ def fetch_resources(base_url, group, center, token):
 
 def main():
     os.chdir(PROJECT_ROOT)
-    center = (sys.argv[1] or "deggendorf").lower().strip()
+    center = (sys.argv[1] if len(sys.argv) > 1 else "deggendorf").lower().strip()
     want_json = "--json" in sys.argv
 
     cfg = load_gudat_config()

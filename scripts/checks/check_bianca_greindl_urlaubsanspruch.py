@@ -53,7 +53,7 @@ def main():
         if not wt:
             print("  (keine Einträge – Teilzeit wird in DRIVE nicht für Anspruch genutzt)")
         for r in wt:
-            print(f"  {r[2]}–{r[3]}: {r[4]} h/Woche, {r[5]} Tage/Woche – {r[6] or '-'}")
+            print(f"  {r[1]}–{r[2]}: {r[3]} h/Woche, {r[4]} Tage/Woche – {r[5] or '-'}")
 
         # 4. View-Saldo (v_vacation_balance_2026)
         cur.execute("""

@@ -14,7 +14,9 @@ def run_pdftotext(pdf_path):
     try:
         r = subprocess.run(["pdftotext", "-layout", str(pdf_path), "-"],
             capture_output=True, text=True, timeout=60, cwd=str(PROJECT_ROOT))
-        return r.stdout or "" if r.returncode == 0 else ""
+        if r.returncode == 0:
+            return r.stdout or ""
+        return ""
     except Exception as e:
         print("pdftotext:", e, file=sys.stderr)
         return ""
@@ -62,8 +64,9 @@ def main():
             continue
         betrieb = "LAN" if "landau" in pdf.name.lower() else "DEG"
         art = "MIETWAGEN" if "mietwagen" in pdf.name.lower() else "VFW"
-        all_pos.extend(parse_pdf(txt, pdf.name, betrieb, art))
-        print(pdf.name, len(parse_pdf(txt, pdf.name, betrieb, art)), "Positionen", file=sys.stderr)
+        parsed = parse_pdf(txt, pdf.name, betrieb, art)
+        all_pos.extend(parsed)
+        print(pdf.name, len(parsed), "Positionen", file=sys.stderr)
     if args.locosoft and all_pos:
         try:
             sys.path.insert(0, str(PROJECT_ROOT))
