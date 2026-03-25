@@ -142,9 +142,9 @@ def berechne_werkstatt_kpis_fuer_zeitraum(
         logger.error(f"Fehler beim Berechnen der Werkstatt-KPIs: {str(e)}")
         # Fallback: Placeholder-Werte
         return {
-            'produktivitaet': 105.0,
-            'leistungsgrad': 90.0,
-            'auslastung': 75.0,
+            'produktivitaet': 0.0,
+            'leistungsgrad': 0.0,
+            'auslastung': 0.0,
             'stempelzeit': 0.0,
             'anwesenheit': 0.0,
             'aw': 0.0,
@@ -417,7 +417,7 @@ def lade_ist_werte_fuer_monat(
             row = cursor_loco.fetchone()
             aw_verkauft = float(row[0] or 0) if row else 0
             # AW zu Stunden umrechnen: 1 AW = 6 Minuten = 0.1 Stunden
-            result['stunden_verkauft_ist'] = aw_verkauft / 6.0
+            result['stunden_verkauft_ist'] = aw_verkauft / 10.0
             
             # Stundensatz = Umsatz / Stunden (nicht AW!)
             if result['stunden_verkauft_ist'] > 0:
@@ -1347,7 +1347,7 @@ class AbteilungsleiterPlanungData:
                         row = cursor_loco.fetchone()
                         aw_verkauft = float(row[0] or 0) if row else 0
                         # AW zu Stunden umrechnen: 1 AW = 6 Minuten = 0.1 Stunden
-                        result['stunden_verkauft'] = aw_verkauft / 6.0
+                        result['stunden_verkauft'] = aw_verkauft / 10.0
                         
                         # Stundensatz = Umsatz / Stunden (nicht AW!)
                         if result['stunden_verkauft'] > 0:

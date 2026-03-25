@@ -1194,6 +1194,7 @@ def set_user_dashboard_config(user_id):
 # =============================================================================
 
 @admin_api.route('/api/admin/navigation', methods=['GET'])
+@admin_required
 def get_navigation_items():
     """Navigation-Items für aktuellen User laden
     TAG 190: Gefiltert nach Feature-Zugriff und Rollen
