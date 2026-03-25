@@ -3,8 +3,7 @@ Werkstatt Routes
 ================
 Flask Routes für Werkstatt-Modul - ZENTRALISIERT (TAG 130)
 
-Alle Werkstatt-Routes sind hier definiert.
-Monitor-Routes (ohne Login) bleiben in app.py wegen Token-Auth.
+Alle Werkstatt-Routes sind hier definiert, inkl. Monitor-Ansichten (ohne Login, Token/IP).
 
 Erstellt: 2025-12-04 (TAG 90)
 Aktualisiert: 2025-12-06 (TAG 98) - ML-Integration
@@ -13,10 +12,13 @@ Aktualisiert: 2025-12-12 (TAG 116) - Kapazitätsplanung + Anwesenheits-Report
 Aktualisiert: 2025-12-20 (TAG 130) - Routes konsolidiert, Duplikate aus app.py entfernt
 """
 
-from flask import Blueprint, render_template, redirect, url_for, flash
+from flask import Blueprint, render_template, redirect, url_for, flash, request
 from decorators.auth_decorators import login_required
 
 werkstatt_routes = Blueprint('werkstatt', __name__)
+
+# Monitor-Token für alle Monitor-Ansichten ohne Login (geheim halten!)
+MONITOR_TOKEN = 'Greiner2024Werkstatt!'
 
 
 # ============================================================
@@ -80,7 +82,7 @@ def werkstatt_stempeluhr():
     return render_template('aftersales/werkstatt_stempeluhr.html')
 
 
-# HINWEIS: /werkstatt/stempeluhr/monitor ist in app.py definiert (Token-Auth, kein Login)
+# Monitor-Ansichten (Token/IP) siehe unten: /monitor/stempeluhr, /monitor/liveboard
 
 
 @werkstatt_routes.route('/werkstatt/tagesbericht')
@@ -130,6 +132,15 @@ def werkstatt_bestellung_detail(bestellnummer):
 def werkstatt_preisradar():
     """Preisradar"""
     return render_template('aftersales/preisradar.html')
+
+
+@werkstatt_routes.route('/werkstatt/fahrzeuganlage')
+@login_required
+def werkstatt_fahrzeuganlage():
+    """Fahrzeuganlage – Fahrzeugschein scannen (OCR), Copy nach Locosoft"""
+    if not (hasattr(current_user, 'can_access_feature') and current_user.can_access_feature('fahrzeuganlage')):
+        abort(403)
+    return render_template('fahrzeuganlage.html')
 
 
 @werkstatt_routes.route('/werkstatt/renner-penner')
@@ -205,6 +216,52 @@ def werkstatt_liveboard():
 def werkstatt_liveboard_gantt():
     """Werkstatt Live-Board Gantt-Ansicht - Horizontale Zeitleiste (TAG 126)"""
     return render_template('aftersales/werkstatt_liveboard_gantt.html')
+
+
+# ============================================================
+# MONITOR-ANSICHTEN (ohne Login, Token oder interne IP)
+# Daten ausschließlich über API: /api/werkstatt/live/board, /api/werkstatt/live/stempeluhr
+# ============================================================
+
+@werkstatt_routes.route('/monitor/stempeluhr')
+@werkstatt_routes.route('/werkstatt/stempeluhr/monitor')
+def werkstatt_stempeluhr_monitor():
+    """
+    Stempeluhr – Monitor (ohne Login).
+    Zugriff: ?token=XXX oder von interner IP.
+    Daten: GET /api/werkstatt/live/stempeluhr
+    """
+    if not _monitor_allowed():
+        return "Zugriff verweigert. Token erforderlich.", 403
+    return render_template('aftersales/werkstatt_stempeluhr_monitor.html')
+
+
+# LIVE-BOARD MONITOR (Karten + Gantt)
+
+def _monitor_allowed():
+    """Erlaubt Zugriff bei korrektem Token oder interner IP (für alle Monitor-Ansichten)."""
+    token = request.args.get('token', '')
+    if token == MONITOR_TOKEN:
+        return True
+    client_ip = request.remote_addr
+    if request.headers.get('X-Forwarded-For'):
+        client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    return client_ip.startswith('10.80.80.') or client_ip == '127.0.0.1'
+
+
+@werkstatt_routes.route('/monitor/liveboard')
+@werkstatt_routes.route('/monitor/liveboard/gantt')
+def werkstatt_liveboard_monitor():
+    """
+    Werkstatt Live-Board – Monitor (ohne Login).
+    Zugriff: ?token=XXX oder von interner IP.
+    Daten: gleiche API wie eingeloggte Ansicht (/api/werkstatt/live/board, /stempeluhr).
+    """
+    if not _monitor_allowed():
+        return "Zugriff verweigert. Token erforderlich.", 403
+    if request.path.endswith('/gantt'):
+        return render_template('aftersales/werkstatt_liveboard_gantt.html')
+    return render_template('aftersales/werkstatt_liveboard.html')
 
 
 # ============================================================
