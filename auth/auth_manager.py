@@ -9,14 +9,14 @@ Date: 2025-11-08
 import os
 import logging
 from datetime import datetime
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Tuple
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
-import sqlite3
 import json
 
 from auth.ldap_connector import LDAPConnector
-from config.roles_config import get_role_from_title, get_allowed_features
+from api.db_connection import get_db, convert_placeholders
+from config.roles_config import get_role_from_title, get_allowed_features, FEATURE_ACCESS
 
 # Logging
 logging.basicConfig(level=logging.INFO)
@@ -121,7 +121,8 @@ class User(UserMixin):
     
     def __init__(self, user_id: int, username: str, display_name: str, 
                  email: str, ou: str, roles: List[str], permissions: Dict[str, Any],
-                 title: str = None, portal_role: str = None, allowed_features: List[str] = None):
+                 title: str = None, portal_role: str = None, allowed_features: List[str] = None,
+                 company: str = None):
         self.id = user_id
         self.username = username
         self.display_name = display_name
@@ -132,6 +133,14 @@ class User(UserMixin):
         self.title = title
         self.portal_role = portal_role or 'mitarbeiter'
         self.allowed_features = allowed_features or []
+        self.company = company  # TAG 109: AD company Attribut
+        # TAG 109: Standort aus company ableiten für Stempeluhr-Default
+        if company and 'Landau' in company:
+            self.standort = 'landau'
+            self.standort_subsidiaries = '3'
+        else:
+            self.standort = 'deggendorf'
+            self.standort_subsidiaries = '1,2'
     
     def get_id(self):
         """Flask-Login benötigt diese Methode"""
@@ -181,9 +190,9 @@ class User(UserMixin):
 
 class AuthManager:
     """Verwaltet Authentication und Authorization"""
-    
-    def __init__(self, db_path: str = 'data/greiner_controlling.db'):
-        self.db_path = db_path
+
+    def __init__(self):
+        # TAG 142: Keine db_path mehr - nutzt get_db() für PostgreSQL
         self.ldap = LDAPConnector()
         
     def authenticate_user(self, username: str, password: str) -> Optional[User]:
@@ -218,18 +227,12 @@ class AuthManager:
             # OU aus DN extrahieren
             ou = self._extract_ou_from_dn(user_details['dn'])
             
-            # Title aus LDAP holen
+            # Title aus LDAP holen (nur für Anzeige/Cache, nicht für Zugriff)
             ldap_title = user_details.get('title')
-            
-            # Portal-Rolle aus Title ermitteln (TAG76)
-            portal_role = get_role_from_title(ldap_title)
-            
-            # Erlaubte Features für diese Rolle
-            allowed_features = get_allowed_features(portal_role)
-            
-            # Rollen basierend auf OU zuweisen
+
+            # Rollen basierend auf OU zuweisen (für user_roles, nur admin wirkt für Zugriff)
             roles, permissions = self._get_roles_for_ou(ou)
-            
+
             # User in Datenbank cachen/updaten
             user_id = self._cache_user(
                 username=username,
@@ -240,8 +243,23 @@ class AuthManager:
                 roles=roles,
                 title=ldap_title
             )
-            
-            # User-Objekt erstellen
+
+            # Option B: Zugriff nur aus Portal – keine LDAP-Rolle für Berechtigung
+            # Wirksame Rolle = admin (user_roles) ODER in Rechteverwaltung zugewiesene Rolle ODER Default mitarbeiter
+            if self._is_db_admin(user_id):
+                portal_role = 'admin'
+                roles = ['admin']
+                permissions = OU_ROLE_MAPPING['Geschäftsleitung']['permissions']
+                # 'admin' in allowed_features damit can_access_feature('admin') für Rechteverwaltung/Speichern etc. True ist
+                allowed_features = ['admin'] + list(FEATURE_ACCESS.keys())
+                logger.info(f"👑 Admin-Override für {username} - alle Features freigeschaltet")
+            else:
+                override = self._get_portal_role_override(user_id)
+                portal_role = (override or 'mitarbeiter').strip() or 'mitarbeiter'
+                allowed_features = get_allowed_features(portal_role)
+                logger.info(f"✅ Login: {username} → Portal-Rolle: {portal_role} (aus {'Rechteverwaltung' if override else 'Default'})")
+
+            # User-Objekt erstellen (TAG 109: company für Standort)
             user = User(
                 user_id=user_id,
                 username=username,
@@ -252,7 +270,8 @@ class AuthManager:
                 permissions=permissions,
                 title=ldap_title,
                 portal_role=portal_role,
-                allowed_features=allowed_features
+                allowed_features=allowed_features,
+                company=user_details.get('company')  # TAG 109: Für Standort-Default
             )
             
             # Erfolgreichen Login loggen
@@ -312,62 +331,125 @@ class AuthManager:
             # Fallback für unbekannte OUs: Basis-Rechte
             logger.warning(f"⚠️ Unbekannte OU: {ou} → Basis-Rechte")
             return (['user'], {'see_own_data': True})
-    
-    def _cache_user(self, username: str, display_name: str, email: str, 
+
+    def _get_portal_role_override(self, user_id: int):
+        """
+        Granulare Rechte: Liefert die in der Rechteverwaltung gesetzte Portal-Rolle.
+        Return: Rolle (str) oder None wenn kein Override.
+        """
+        try:
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute(
+                convert_placeholders('SELECT portal_role_override FROM users WHERE id = ?'),
+                (user_id,)
+            )
+            row = cursor.fetchone()
+            conn.close()
+            if row and row.get('portal_role_override'):
+                return row['portal_role_override'].strip()
+            return None
+        except Exception as e:
+            logger.warning(f"portal_role_override lesen: {e}")
+            return None
+
+    def _is_db_admin(self, user_id: int) -> bool:
+        """
+        TAG134: Prüft ob User in user_roles als admin markiert ist.
+        Ermöglicht manuelle Admin-Zuweisung unabhängig vom LDAP-Title.
+        TAG142: Umgestellt auf PostgreSQL via get_db()
+        """
+        try:
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute(convert_placeholders('''
+                SELECT 1 FROM user_roles ur
+                JOIN roles r ON ur.role_id = r.id
+                WHERE ur.user_id = ? AND r.name = 'admin'
+            '''), (user_id,))
+            is_admin = cursor.fetchone() is not None
+            conn.close()
+            return is_admin
+        except Exception as e:
+            logger.error(f"❌ Fehler bei Admin-Check: {str(e)}")
+            return False
+
+    def _cache_user(self, username: str, display_name: str, email: str,
                     ou: str, ad_groups: List[str], roles: List[str], title: str = None) -> int:
         """
-        Speichert/aktualisiert User in lokaler DB (Cache)
-        
+        Speichert/aktualisiert User in DB (Cache)
+        TAG142: Umgestellt auf PostgreSQL via get_db()
+
         Returns:
             user_id
         """
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = get_db()
             cursor = conn.cursor()
-            
-            # Prüfe ob User existiert
-            cursor.execute('SELECT id FROM users WHERE username = ?', (username,))
+
+            # Prüfe ob User existiert (case-insensitiv: gleiche Person, anderer Schreibweise → Update, kein Doppel-Eintrag)
+            cursor.execute(convert_placeholders(
+                'SELECT id FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(?))'
+            ), (username,))
             existing = cursor.fetchone()
-            
+
             if existing:
                 # User updaten
                 user_id = existing[0]
-                cursor.execute('''
-                    UPDATE users 
-                    SET display_name = ?, email = ?, ou = ?, title = ?, 
+                cursor.execute(convert_placeholders('''
+                    UPDATE users
+                    SET display_name = ?, email = ?, ou = ?, title = ?,
                         ad_groups = ?, last_login = ?
                     WHERE id = ?
-                ''', (display_name, email, ou, title, json.dumps(ad_groups), 
+                '''), (display_name, email, ou, title, json.dumps(ad_groups),
                       datetime.now().isoformat(), user_id))
-                
-                # Rollen aktualisieren
-                cursor.execute('DELETE FROM user_roles WHERE user_id = ?', (user_id,))
+
+                # Rollen aktualisieren - ABER Admin-Rollen behalten!
+                # Prüfen ob User bereits Admin ist
+                cursor.execute(convert_placeholders('''
+                    SELECT 1 FROM user_roles ur
+                    JOIN roles r ON ur.role_id = r.id
+                    WHERE ur.user_id = ? AND r.name = 'admin'
+                '''), (user_id,))
+                is_admin = cursor.fetchone() is not None
+
+                if is_admin:
+                    # Admin-User: Rollen NICHT überschreiben
+                    logger.info(f"👑 User {username} ist Admin - Rolle wird beibehalten")
+                    conn.commit()
+                    conn.close()
+                    return user_id
+
+                # Nicht-Admin: Rollen basierend auf OU aktualisieren
+                cursor.execute(convert_placeholders('DELETE FROM user_roles WHERE user_id = ?'), (user_id,))
             else:
-                # Neuen User anlegen
-                cursor.execute('''
+                # Neuen User anlegen - PostgreSQL RETURNING für ID
+                cursor.execute(convert_placeholders('''
                     INSERT INTO users (username, display_name, email, ou, title, ad_groups, last_login, created_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (username, display_name, email, ou, title, json.dumps(ad_groups),
+                    RETURNING id
+                '''), (username, display_name, email, ou, title, json.dumps(ad_groups),
                       datetime.now().isoformat(), datetime.now().isoformat()))
-                user_id = cursor.lastrowid
-            
+                result = cursor.fetchone()
+                user_id = result[0] if result else None
+
             # Rollen zuweisen
             for role_name in roles:
                 # Hole role_id
-                cursor.execute('SELECT id FROM roles WHERE name = ?', (role_name,))
+                cursor.execute(convert_placeholders('SELECT id FROM roles WHERE name = ?'), (role_name,))
                 role = cursor.fetchone()
                 if role:
                     role_id = role[0]
-                    cursor.execute('''
+                    cursor.execute(convert_placeholders('''
                         INSERT INTO user_roles (user_id, role_id, assigned_at)
                         VALUES (?, ?, ?)
-                    ''', (user_id, role_id, datetime.now().isoformat()))
-            
+                    '''), (user_id, role_id, datetime.now().isoformat()))
+
             conn.commit()
             conn.close()
-            
+
             return user_id
-            
+
         except Exception as e:
             logger.error(f"❌ Fehler beim Cachen des Users: {str(e)}")
             raise
@@ -375,34 +457,35 @@ class AuthManager:
     def get_user_by_id(self, user_id: int) -> Optional[User]:
         """
         Lädt User aus DB (für Session-Management)
-        
+        TAG142: Umgestellt auf PostgreSQL via get_db()
+
         Args:
             user_id: User-ID
-            
+
         Returns:
             User-Objekt oder None
         """
         try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
+            conn = get_db()
             cursor = conn.cursor()
-            
+
             # User laden
-            cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))
+            cursor.execute(convert_placeholders('SELECT * FROM users WHERE id = ?'), (user_id,))
             user_row = cursor.fetchone()
-            
+
             if not user_row:
+                conn.close()
                 return None
-            
+
             # Rollen laden
-            cursor.execute('''
-                SELECT r.name 
+            cursor.execute(convert_placeholders('''
+                SELECT r.name
                 FROM roles r
                 JOIN user_roles ur ON r.id = ur.role_id
                 WHERE ur.user_id = ?
-            ''', (user_id,))
-            roles = [row['name'] for row in cursor.fetchall()]
-            
+            '''), (user_id,))
+            roles = [row[0] for row in cursor.fetchall()]
+
             conn.close()
             
             # Permissions aus Rollen ableiten
@@ -412,11 +495,27 @@ class AuthManager:
                     if config['role'] == role_name:
                         permissions.update(config['permissions'])
             
-            # Title und Portal-Rolle ermitteln (TAG76)
-            from config.roles_config import get_role_from_title, get_allowed_features
+            # Option B: Portal-Rolle nur aus DB – kein LDAP-Fallback
+            from config.roles_config import get_allowed_features, FEATURE_ACCESS
             user_title = user_row['title']
-            portal_role = get_role_from_title(user_title)
-            allowed_features = get_allowed_features(portal_role)
+            if 'admin' in roles:
+                portal_role = 'admin'
+                permissions = OU_ROLE_MAPPING['Geschäftsleitung']['permissions']
+                allowed_features = ['admin'] + list(FEATURE_ACCESS.keys())
+                logger.info(f"👑 Admin-Override für User {user_id} - alle Features freigeschaltet")
+            else:
+                override = user_row.get('portal_role_override')
+                portal_role = (override or 'mitarbeiter').strip() or 'mitarbeiter'
+                allowed_features = get_allowed_features(portal_role)
+
+            # TAG 109: Company aus LDAP holen für Standort-Default
+            company = None
+            try:
+                user_details = self.ldap.get_user_details(user_row['username'])
+                if user_details:
+                    company = user_details.get('company')
+            except:
+                pass  # Falls LDAP nicht erreichbar, company bleibt None
             
             # User-Objekt erstellen
             user = User(
@@ -429,7 +528,8 @@ class AuthManager:
                 permissions=permissions,
                 title=user_title,
                 portal_role=portal_role,
-                allowed_features=allowed_features
+                allowed_features=allowed_features,
+                company=company  # TAG 109: Für Standort-Default
             )
             
             return user
@@ -438,29 +538,44 @@ class AuthManager:
             logger.error(f"❌ Fehler beim Laden des Users: {str(e)}")
             return None
     
-    def _log_auth_event(self, username: str, action: str, details: str, 
+    def _log_auth_event(self, username: str, action: str, details: str,
                         ip_address: str = None):
-        """Loggt Authentication-Events in Audit-Log"""
+        """
+        Loggt Authentication-Events in Audit-Log
+        TAG142: Umgestellt auf PostgreSQL via get_db()
+        """
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = get_db()
             cursor = conn.cursor()
-            
-            # User-ID holen (falls vorhanden)
-            cursor.execute('SELECT id FROM users WHERE username = ?', (username,))
+
+            # User-ID holen (falls vorhanden, case-insensitiv)
+            cursor.execute(convert_placeholders(
+                'SELECT id FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(?))'
+            ), (username,))
             user_row = cursor.fetchone()
             user_id = user_row[0] if user_row else None
-            
+
             # Event loggen
-            cursor.execute('''
-                INSERT INTO auth_audit_log (user_id, action, ip_address, timestamp, details)
+            cursor.execute(convert_placeholders('''
+                INSERT INTO auth_audit_log (user_id, action, ip_address, timestamp, details_json)
                 VALUES (?, ?, ?, ?, ?)
-            ''', (user_id, action, ip_address, datetime.now().isoformat(), details))
-            
+            '''), (user_id, action, ip_address, datetime.now().isoformat(), details))
+
             conn.commit()
             conn.close()
-            
+
         except Exception as e:
             logger.error(f"❌ Fehler beim Loggen des Auth-Events: {str(e)}")
+
+    def change_password(self, username: str, old_password: str, new_password: str) -> Tuple[bool, Optional[str]]:
+        """
+        Ändert das AD-Passwort des Benutzers (Self-Service).
+        Das neue Passwort gilt sofort für Windows-Anmeldung und Drive.
+
+        Returns:
+            (success: bool, error_message: Optional[str])
+        """
+        return self.ldap.change_user_password(username, old_password, new_password)
     
     def logout_user(self, user: User):
         """Loggt User aus (für Audit-Trail)"""
