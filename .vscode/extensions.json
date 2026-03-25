@@ -1,0 +1,15 @@
+{
+  "recommendations": [
+    "eamodio.gitlens",
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "charliermarsh.ruff",
+    "ms-azuretools.vscode-docker",
+    "redhat.vscode-yaml",
+    "ms-vscode.makefile-tools",
+    "editorconfig.editorconfig"
+  ],
+  "unwantedRecommendations": [
+    "ms-python.autopep8"
+  ]
+}
