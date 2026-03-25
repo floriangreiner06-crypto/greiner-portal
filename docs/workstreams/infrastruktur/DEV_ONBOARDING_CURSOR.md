@@ -24,3 +24,8 @@ Einheitliche Entwicklungsumgebung fuer DRIVE, damit Teammitglieder mit den gleic
 ## Hinweise
 - User-Settings bleiben individuell; `.vscode/*` liefert Team-Baseline.
 - Bei Abweichungen zuerst Workspace-Dateien pruefen, dann lokale Overrides.
+
+## Team-Arbeitsmodus (Prod vs Dev)
+- Florian arbeitet produktionsnah auf `main` fuer kleine Hotfixes.
+- Vanessa arbeitet auf `develop`/`feature/*` und testet auf der Dev-Instanz (`:5002`).
+- Detailregel siehe `TEAM_WORKFLOW_PROD_DEV.md`.
