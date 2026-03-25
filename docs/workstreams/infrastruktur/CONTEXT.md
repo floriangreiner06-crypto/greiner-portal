@@ -18,6 +18,7 @@
   - `MERGE_ROLLOUT_PLAN_SANE_DRIVE_PRs.md`
   - `TEAM_WORKFLOW_PROD_DEV.md`
   - `HOTFIX_CHECKLIST.md`
+  - `INSTALLATION_ANLEITUNG_VANESSA_WINDOWS_RDP_CURSOR.md`
 
 ## Naechste Schritte
 - Teambriefing auf Rollenaufteilung (Florian=Prod, Vanessa=Dev).
