@@ -3,7 +3,7 @@
 -- Nur freigegebene Artikel erscheinen in der öffentlichen Hilfe.
 
 ALTER TABLE hilfe_artikel
-    ADD COLUMN IF NOT EXISTS freigabe_status VARCHAR(20) DEFAULT 'entwurf',
+    ADD COLUMN IF NOT EXISTS freigabe_status VARCHAR(20),
     ADD COLUMN IF NOT EXISTS freigegeben_am TIMESTAMP,
     ADD COLUMN IF NOT EXISTS freigegeben_von VARCHAR(100);
 

@@ -6,11 +6,11 @@ UPDATE navigation_items
 SET requires_feature = 'aftersales'
 WHERE parent_id = (SELECT id FROM navigation_items WHERE label = 'Service' AND parent_id IS NULL LIMIT 1)
   AND label IN ('Werkstatt', 'Garantie', 'Serviceberater')
-  AND is_dropdown = true;
+  AND category = 'dropdown';
 
 -- DRIVE (Werkstatt-Live/ML) nur mit werkstatt_live oder aftersales
 UPDATE navigation_items
 SET requires_feature = 'werkstatt_live'
 WHERE parent_id = (SELECT id FROM navigation_items WHERE label = 'Service' AND parent_id IS NULL LIMIT 1)
   AND label = 'DRIVE'
-  AND is_dropdown = true;
+  AND category = 'dropdown';
