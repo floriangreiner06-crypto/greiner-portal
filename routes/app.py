@@ -27,66 +27,13 @@ else:
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 Jahr in Produktion
 
 # Globale Static-Version (ändert sich bei jedem Flask-Neustart)
-STATIC_VERSION = '20260324093000'  # Cache-Bust: Dashboard KPI "Freie Linien"
+STATIC_VERSION = '20251207020000'  # TAG 100 - Teile-Status Dashboard
 print(f"📦 Static Version: {STATIC_VERSION}")
 
 # Template-Kontext: Macht STATIC_VERSION in allen Templates verfügbar
 @app.context_processor
 def inject_version():
     return {'STATIC_VERSION': STATIC_VERSION}
-
-
-# Template-Funktion: Navigation aus DB laden (TAG 190)
-@app.context_processor
-def inject_navigation():
-    """Lädt Navigation-Items aus DB für aktuellen User
-    TAG 190: DB-basierte Navigation mit Feature-Filterung
-    
-    Aktivierung: USE_DB_NAVIGATION=true in .env oder als Environment-Variable
-    """
-    try:
-        # Prüfe ob DB-Navigation aktiviert ist (Config-Flag)
-        # Standard: false (Fallback auf hardcoded Navigation)
-        # Prüfe zuerst Environment-Variable, dann .env Dateien
-        use_db_navigation = os.getenv('USE_DB_NAVIGATION', 'false').lower() == 'true'
-        
-        # Falls nicht als Environment-Variable gesetzt, .env Dateien direkt lesen
-        if not use_db_navigation:
-            # Prüfe config/.env (wird von systemd geladen)
-            env_files = [
-                os.path.join(os.path.dirname(__file__), 'config', '.env'),
-                os.path.join(os.path.dirname(__file__), '.env')
-            ]
-            for env_file in env_files:
-                if os.path.exists(env_file):
-                    with open(env_file, 'r') as f:
-                        for line in f:
-                            if line.strip().startswith('USE_DB_NAVIGATION='):
-                                value = line.split('=', 1)[1].strip().lower()
-                                use_db_navigation = value == 'true'
-                                break
-                    if use_db_navigation:
-                        break
-        
-        # TAG 192: Debug-Logging entfernt (Performance)
-        
-        if not use_db_navigation:
-            return {'navigation_items': None}  # Fallback auf hardcoded Navigation
-        
-        if not current_user.is_authenticated:
-            return {'navigation_items': []}
-        
-        from api.navigation_utils import get_navigation_for_user
-        items = get_navigation_for_user()
-        # TAG 192: Debug-Logging entfernt (Performance)
-        # print(f"🔵 Navigation-Items geladen: {len(items)} Top-Level Items")
-        return {'navigation_items': items}
-        
-    except Exception as e:
-        print(f"⚠️ Fehler beim Laden der Navigation: {e}")
-        import traceback
-        traceback.print_exc()
-        return {'navigation_items': None}  # Fallback
 # ============================================================================
 
 
@@ -196,16 +143,6 @@ def login():
     
     return render_template('login.html')
 
-@app.route('/docs/navigation-visualisierung')
-def navigation_visualisierung():
-    """Navigation-Verbesserungsvorschlag Visualisierung
-    TAG 190: Zeigt aktuelle vs. vorgeschlagene Navigation-Struktur
-    """
-    from flask import send_from_directory
-    import os
-    docs_dir = os.path.join(os.path.dirname(__file__), 'docs')
-    return send_from_directory(docs_dir, 'NAVIGATION_VISUALISIERUNG_TAG190.html')
-
 @app.route('/logout')
 @login_required
 def logout():
@@ -217,73 +154,6 @@ def logout():
     return redirect(url_for('login'))
 
 
-# Nutzerfreundliche Fehlermeldungen für Passwort-Ändern (keine technischen Begriffe)
-PASSWORT_FEHLER_UEBERSETZUNG = {
-    'aktuelles_passwort_falsch': 'Das von Ihnen eingegebene aktuelle Passwort stimmt nicht. Bitte prüfen Sie es und versuchen Sie es erneut.',
-    'felder_leer': 'Bitte füllen Sie alle Felder aus.',
-    'passwort_zu_kurz': 'Das neue Passwort muss mindestens 8 Zeichen haben.',
-    'benutzer_nicht_gefunden': 'Ihr Benutzerkonto konnte im Verzeichnis nicht gefunden werden. Bitte wenden Sie sich an die IT.',
-    'server_abgelehnt': 'Die Passwortänderung konnte nicht durchgeführt werden. Bitte versuchen Sie es später erneut oder wenden Sie sich an die IT.',
-    'richtlinie_oder_verbindung': 'Die Passwortänderung ist an dieser Stelle nicht möglich (z. B. Firmenrichtlinie oder Verbindung). Bitte wenden Sie sich an die IT.',
-    'passwortrichtlinie': 'Das neue Passwort erfüllt die Anforderungen nicht (z. B. Länge, Zeichen). Bitte beachten Sie die Passwortrichtlinie Ihres Unternehmens.',
-    'verbindung_verzeichnis': 'Die Verbindung zum Verzeichnisdienst ist fehlgeschlagen. Bitte versuchen Sie es später erneut oder wenden Sie sich an die IT.',
-    'unerwarteter_fehler': 'Ein unerwarteter Fehler ist aufgetreten. Bitte versuchen Sie es später erneut oder wenden Sie sich an die IT.',
-    'wiederholung_stimmt_nicht': 'Das neue Passwort und die Wiederholung stimmen nicht überein. Bitte geben Sie beide Felder identisch ein.',
-    'auth_nicht_verfuegbar': 'Die Anmeldung ist derzeit nicht verfügbar. Bitte versuchen Sie es später erneut oder wenden Sie sich an die IT.',
-}
-
-
-def _passwort_fehler_fuer_anwender(msg_or_key):
-    """Übersetzt technische/englische Fehlermeldungen in verständliche deutsche Texte."""
-    if not msg_or_key:
-        return PASSWORT_FEHLER_UEBERSETZUNG.get('unerwarteter_fehler')
-    key = (msg_or_key or '').strip()
-    if key in PASSWORT_FEHLER_UEBERSETZUNG:
-        return PASSWORT_FEHLER_UEBERSETZUNG[key]
-    # Bekannte technische/englische Phrasen abfangen
-    lower = key.lower()
-    if 'invalid' in lower and ('credential' in lower or 'password' in lower):
-        return PASSWORT_FEHLER_UEBERSETZUNG['aktuelles_passwort_falsch']
-    if 'unwilling' in lower or 'will_not_perform' in lower:
-        return PASSWORT_FEHLER_UEBERSETZUNG['richtlinie_oder_verbindung']
-    if 'constraint' in lower or 'policy' in lower:
-        return PASSWORT_FEHLER_UEBERSETZUNG['passwortrichtlinie']
-    if 'bind' in lower or 'ldap' in lower or 'connection' in lower:
-        return PASSWORT_FEHLER_UEBERSETZUNG['verbindung_verzeichnis']
-    # Unbekannte Meldung: generisch, technischen Text nicht anzeigen
-    return PASSWORT_FEHLER_UEBERSETZUNG['unerwarteter_fehler']
-
-
-@app.route('/profil/passwort', methods=['GET', 'POST'])
-@login_required
-def profil_passwort():
-    """Self-Service: AD-Passwort ändern. Gilt ab nächster Anmeldung für Windows und Drive."""
-    def form_page(error_msg=None, success=False):
-        return render_template(
-            'profil_passwort.html',
-            error=_passwort_fehler_fuer_anwender(error_msg) if error_msg else None,
-            show_success=success,
-        )
-
-    if request.method == 'POST':
-        old = request.form.get('current_password', '')
-        new = request.form.get('new_password', '')
-        repeat = request.form.get('new_password_repeat', '')
-        if new != repeat:
-            return form_page(error_msg='wiederholung_stimmt_nicht')
-        if not auth_manager:
-            return form_page(error_msg='auth_nicht_verfuegbar')
-        try:
-            success, err = auth_manager.change_password(current_user.username, old, new)
-            if success:
-                return redirect(url_for('profil_passwort', success=1))
-            return form_page(error_msg=err or 'unerwarteter_fehler')
-        except Exception as e:
-            return form_page(error_msg=str(e))
-    # GET: Erfolg von Redirect anzeigen oder Formular
-    return form_page(success=(request.args.get('success') == '1'))
-
-
 # ============================================================================
 # MAIN ROUTES
 # ============================================================================
@@ -292,41 +162,6 @@ def profil_passwort():
 def health():
     """Health-Check Endpoint"""
     return jsonify({'status': 'healthy'})
-
-@app.route('/debug/navigation')
-@login_required
-def debug_navigation():
-    """Debug: Zeigt Navigation-Status
-    TAG 190: Prüft ob DB-Navigation aktiviert ist
-    """
-    import os
-    use_db_nav = os.getenv('USE_DB_NAVIGATION', 'NOT SET')
-    
-    # Prüfe config/.env
-    env_value = None
-    env_file = os.path.join(os.path.dirname(__file__), 'config', '.env')
-    if os.path.exists(env_file):
-        with open(env_file, 'r') as f:
-            for line in f:
-                if line.strip().startswith('USE_DB_NAVIGATION='):
-                    env_value = line.split('=', 1)[1].strip()
-                    break
-    
-    # Prüfe ob navigation_items geladen werden
-    from api.navigation_utils import get_navigation_for_user
-    try:
-        items = get_navigation_for_user()
-        items_count = len(items) if items else 0
-    except Exception as e:
-        items_count = f"ERROR: {str(e)}"
-    
-    return jsonify({
-        'env_var': use_db_nav,
-        'env_file_value': env_value,
-        'env_file_path': env_file,
-        'navigation_items_count': items_count,
-        'current_user': current_user.username if hasattr(current_user, 'username') else 'unknown'
-    })
 
 # ============================================================================
 # BLUEPRINTS REGISTRIEREN
@@ -353,14 +188,6 @@ try:
 except Exception as e:
     print(f"⚠️  Vacation Chef API nicht geladen: {e}")
 
-# Employee Management API (TAG 213 - Mitarbeiterverwaltung)
-try:
-    from api.employee_management_api import employee_management_api
-    app.register_blueprint(employee_management_api)
-    print("✅ Employee Management API registriert: /api/employee-management/")
-except Exception as e:
-    print(f"⚠️  Employee Management API nicht geladen: {e}")
-
 # Urlaubsplaner V2 Route
 @app.route('/urlaubsplaner/v2')
 @login_required
@@ -380,16 +207,7 @@ def urlaubsplaner_chef():
 @login_required
 def urlaubsplaner_admin():
     """HR-Admin: Urlaubsansprüche verwalten"""
-    base = 'base_embed.html' if request.args.get('embed') else 'base.html'
-    return render_template('urlaubsplaner_admin.html', base_template=base)
-
-# Mitarbeiterverwaltung (TAG 213 - Umfassende Mitarbeiterverwaltung)
-@app.route('/admin/mitarbeiterverwaltung')
-@login_required
-def mitarbeiterverwaltung():
-    """Umfassende Mitarbeiterverwaltung nach Muster 'Digitale Personalakte'"""
-    base = 'base_embed.html' if request.args.get('embed') else 'base.html'
-    return render_template('admin/mitarbeiterverwaltung.html', base_template=base)
+    return render_template('urlaubsplaner_admin.html')
 
 # Organigramm (TAG 113 - Organisation & Vertretungsregeln)
 @app.route('/admin/organigramm')
@@ -417,29 +235,16 @@ print("✅ Bankenspiegel Frontend registriert: /bankenspiegel/")
 
 # Verkauf API
 from api.verkauf_api import verkauf_api
-from api.profitabilitaet_api import profitabilitaet_api
 from api.parts_api import parts_api
 from api.admin_api import admin_api
 from api.zins_optimierung_api import zins_api
 from api.teile_api import teile_api
-from api.gewinnplanung_v2_gw_api import gewinnplanung_v2_gw_api
 app.register_blueprint(verkauf_api)
-app.register_blueprint(profitabilitaet_api)
 app.register_blueprint(parts_api)
 app.register_blueprint(admin_api)
 app.register_blueprint(teile_api)
 app.register_blueprint(zins_api)
-app.register_blueprint(gewinnplanung_v2_gw_api)
-print("✅ Gewinnplanung V2 GW API registriert: /api/gewinnplanung/v2/gw/")
 print("✅ Verkauf API registriert: /api/verkauf/")
-
-# Stundensatz-Kalkulation API (TAG 169)
-try:
-    from api.stundensatz_kalkulation_api import stundensatz_api
-    app.register_blueprint(stundensatz_api)
-    print("✅ Stundensatz-Kalkulation API registriert: /api/stundensatz/")
-except Exception as e:
-    print(f"⚠️  Stundensatz-Kalkulation API nicht geladen: {e}")
 
 # Fahrzeug API (TAG 160 - Bestand aus Locosoft)
 try:
@@ -478,21 +283,9 @@ except Exception as e:
 # Verkauf Frontend Routes
 from routes.verkauf_routes import verkauf_bp
 from routes.controlling_routes import controlling_bp
-from routes.afa_routes import afa_bp
 app.register_blueprint(verkauf_bp)
 print("✅ Verkauf Frontend registriert: /verkauf/")
-
-# Provisionsmodul (Phase 1: Live-Preview, SSOT in api/provision_service)
-try:
-    from api.provision_api import provision_api
-    from routes.provision_routes import provision_bp
-    app.register_blueprint(provision_api)
-    app.register_blueprint(provision_bp)
-    print("✅ Provisionsmodul registriert: /api/provision/, /provision/")
-except Exception as e:
-    print(f"⚠️  Provisionsmodul nicht geladen: {e}")
 app.register_blueprint(controlling_bp)
-app.register_blueprint(afa_bp)
 print("✅ Controlling registriert: /controlling/")
 
 # Werkstatt Frontend Routes (TAG 119)
@@ -500,49 +293,13 @@ from routes.werkstatt_routes import werkstatt_routes
 app.register_blueprint(werkstatt_routes)
 print("✅ Werkstatt Frontend registriert: /werkstatt/")
 
-# WhatsApp Routes (TAG 211)
-try:
-    from routes.whatsapp_routes import whatsapp_bp
-    app.register_blueprint(whatsapp_bp)
-    print("✅ WhatsApp Routes registriert: /whatsapp/")
-except Exception as e:
-    print(f"⚠️  WhatsApp Routes nicht geladen: {e}")
-
 # Controlling API (BWA)
 try:
     from api.controlling_api import controlling_api
     app.register_blueprint(controlling_api)
-    
-    # Finanzreporting API (TAG 178 - Cube-Funktionalität)
-    from api.finanzreporting_api import finanzreporting_api
-    app.register_blueprint(finanzreporting_api)
-    print("✅ Finanzreporting API registriert: /api/finanzreporting/")
     print("✅ Controlling API registriert: /api/controlling/")
-    
-    # Kontenmapping API (TAG 181)
-    from api.kontenmapping_api import kontenmapping_api
-    app.register_blueprint(kontenmapping_api)
-    print("✅ Kontenmapping API registriert: /api/kontenmapping/")
-    # AfA-Modul Vorführwagen/Mietwagen (2026-02-16)
-    from api.afa_api import afa_api
-    app.register_blueprint(afa_api)
-    print("✅ AfA API registriert: /api/afa/")
-    # OPOS – Offene Posten (2026-02-19)
-    from api.opos_api import opos_api
-    app.register_blueprint(opos_api)
-    print("✅ OPOS API registriert: /api/controlling/opos")
 except Exception as e:
     print(f"⚠️  Controlling API nicht geladen: {e}")
-
-# Marketing Potenzial / Predictive Scoring (2026-02-21)
-try:
-    from api.marketing_potenzial_api import marketing_potenzial_api
-    from routes.marketing_routes import marketing_bp
-    app.register_blueprint(marketing_potenzial_api)
-    app.register_blueprint(marketing_bp)
-    print("✅ Marketing Potenzial API + Frontend: /api/marketing/potenzial/, /marketing/potenzial")
-except Exception as e:
-    print(f"⚠️  Marketing Potenzial nicht geladen: {e}")
 
 # Jahresprämie API & Routes
 try:
@@ -593,8 +350,9 @@ if __name__ == '__main__':
     print(f"🔐 Auth-System: {'✅ Aktiviert' if auth_manager else '⚠️  Nicht verfügbar'}")
     print(f"🔑 Secret Key: {'✅ Geladen' if app.config.get('SECRET_KEY') else '❌ Fehlt'}")
     print("=" * 80)
-    
-    app.run(host='0.0.0.0', port=5000, debug=True)
+
+    debug = os.environ.get('FLASK_DEBUG', '0').strip().lower() in ('1', 'true', 'yes')
+    app.run(host='0.0.0.0', port=5000, debug=debug)
 
 # ========================================
 # DASHBOARD (STARTSEITE)
@@ -605,47 +363,14 @@ if __name__ == '__main__':
 @login_required
 def start():
     """
-    Dynamische Startseite nach Login (TAG122, TAG190)
-    
-    TAG 190: Prüft zuerst individuelle Dashboard-Konfiguration,
-    dann Fallback auf rollenbasierte Weiterleitung.
-    
-    Leitet basierend auf:
-    1. Individuelle Konfiguration (TAG 190) - hat Priorität
-    2. portal_role zum passenden Dashboard:
-       - serviceberater → Aftersales mit Standort-Filter
-       - werkstatt_leitung → Werkstatt Dashboard
-       - verkauf/verkauf_leitung → Verkauf Auftragseingang
-       - admin/buchhaltung → Allgemeines Dashboard
+    Dynamische Startseite nach Login (TAG122)
+
+    Leitet basierend auf portal_role zum passenden Dashboard:
+    - serviceberater → Aftersales mit Standort-Filter
+    - werkstatt_leitung → Werkstatt Dashboard
+    - verkauf/verkauf_leitung → Verkauf Auftragseingang
+    - admin/buchhaltung → Allgemeines Dashboard
     """
-    # TAG 190: Prüfe individuelle Dashboard-Konfiguration
-    try:
-        from api.db_connection import get_db
-        from api.db_utils import row_to_dict
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT target_url 
-            FROM user_dashboard_config 
-            WHERE user_id = %s AND target_url IS NOT NULL
-        ''', (current_user.id,))
-        
-        row = cursor.fetchone()
-        conn.close()
-        
-        if row:
-            config = row_to_dict(row)
-            target_url = config.get('target_url')
-            if target_url:
-                print(f"🔍 [start()] User {current_user.display_name}: Individuelle Konfiguration → {target_url}")
-                return redirect(target_url)
-    except Exception as e:
-        print(f"⚠️ [start()] Fehler beim Laden der Dashboard-Konfiguration: {e}")
-        # Fallback auf rollenbasierte Weiterleitung
-    
-    # Fallback: Rollenbasierte Weiterleitung (bestehende Logik)
     role = getattr(current_user, 'portal_role', 'mitarbeiter')
     standort = getattr(current_user, 'standort', 'deggendorf')
 
@@ -654,7 +379,6 @@ def start():
     is_serviceberater = False
     if role == 'serviceberater':
         is_serviceberater = True
-        print(f"🔍 [start()] User {current_user.display_name}: portal_role='serviceberater' → Weiterleitung zu mein_bereich")
     else:
         # Fallback: Prüfe ob User in SERVICEBERATER_CONFIG ist
         from api.serviceberater_api import get_sb_config_from_ldap
@@ -663,11 +387,6 @@ def start():
             sb_config = get_sb_config_from_ldap(display_name)
             if sb_config:
                 is_serviceberater = True
-                print(f"🔍 [start()] User {display_name}: In SERVICEBERATER_CONFIG gefunden (MA-ID {sb_config.get('ma_id')}) → Weiterleitung zu mein_bereich")
-            else:
-                print(f"🔍 [start()] User {display_name}: NICHT in SERVICEBERATER_CONFIG → Weiterleitung zu dashboard")
-        else:
-            print(f"🔍 [start()] User {current_user.username}: Kein display_name → Weiterleitung zu dashboard")
     
     if is_serviceberater:
         return redirect(url_for('mein_bereich'))
@@ -697,102 +416,25 @@ def dashboard():
 
 
 @app.route('/mein-bereich')
-@app.route('/sb/mein-bereich')  # TAG 164: Alternative URL für Kompatibilität
 @login_required
 def mein_bereich():
     """
     Persönlicher Bereich für Serviceberater (TAG122)
-    
-    TAG 164: Unterstützt ma_id Parameter für Geschäfts-/Serviceleitung
+
     Zeigt KPI-Badges und Schnellzugriff auf relevante Bereiche
     """
-    from flask import request
     from datetime import datetime
-    from flask_login import current_user
-    
-    # TAG 164: ma_id Parameter für Geschäfts-/Serviceleitung
-    ma_id_param = request.args.get('ma_id')
-    
-    # Prüfe Berechtigung: Wenn ma_id angegeben, muss User admin, controlling oder service_leitung sein
-    if ma_id_param:
-        if not (current_user.can_access_feature('admin') or current_user.can_access_feature('controlling')
-                or current_user.can_access_feature('service_leitung')):
-            from flask import abort
-            abort(403)
-    
-    return render_template('sb/mein_bereich.html', 
-                         now=datetime.now(),
-                         ma_id_param=ma_id_param)
+    return render_template('sb/mein_bereich.html', now=datetime.now())
 
 
 # After Sales Routes
 from routes.aftersales import teile_routes
 from routes.aftersales import serviceberater_routes
-from routes.aftersales import garantie_routes
 from routes.admin_routes import admin_routes
 app.register_blueprint(teile_routes.bp)
 app.register_blueprint(serviceberater_routes.bp)
-app.register_blueprint(garantie_routes.bp)
 app.register_blueprint(admin_routes)
 print("✅ Serviceberater Routes registriert: /aftersales/serviceberater/")
-print("✅ Garantie Routes registriert: /aftersales/garantie/")
-
-# QA API & Routes (TAG 192)
-# QA-Feature temporär entfernt (TAG 192 - Performance)
-# from api.qa_api import qa_api
-# from routes.qa_routes import qa_routes
-# app.register_blueprint(qa_api)
-# app.register_blueprint(qa_routes)
-print("✅ QA API registriert: /api/qa/")
-print("✅ QA Routes registriert: /qa/")
-
-# Arbeitskarte API (TAG 173)
-try:
-    from api.arbeitskarte_api import bp as arbeitskarte_bp
-    app.register_blueprint(arbeitskarte_bp)
-    print("✅ Arbeitskarte API registriert: /api/arbeitskarte/")
-except Exception as e:
-    print(f"⚠️  Arbeitskarte API nicht geladen: {e}")
-
-# Werkstatt SOAP API (TAG 173 - Stempelzeiten-Verteilung)
-try:
-    from api.werkstatt_soap_api import bp as werkstatt_soap_bp
-    app.register_blueprint(werkstatt_soap_bp)
-    print("✅ Werkstatt SOAP API registriert: /api/werkstatt/soap/")
-except Exception as e:
-    print(f"⚠️  Werkstatt SOAP API nicht geladen: {e}")
-
-# Garantie SOAP API
-try:
-    from api.garantie_soap_api import bp as garantie_soap_api
-    app.register_blueprint(garantie_soap_api)
-    print("✅ Garantie SOAP API registriert: /api/garantie/soap/")
-except Exception as e:
-    print(f"⚠️  Garantie SOAP API nicht geladen: {e}")
-
-# Garantie Aufträge API (TAG 181)
-try:
-    from api.garantie_auftraege_api import bp as garantie_auftraege_api
-    app.register_blueprint(garantie_auftraege_api)
-    print("✅ Garantie Aufträge API registriert: /api/garantie/auftraege/")
-except Exception as e:
-    print(f"⚠️  Garantie Aufträge API nicht geladen: {e}")
-
-# Garantie-Dokumente (Handbücher, Richtlinien, Rundschreiben) – Liste + Upload
-try:
-    from api.garantie_dokumente_api import bp as garantie_dokumente_api
-    app.register_blueprint(garantie_dokumente_api)
-    print("✅ Garantie-Dokumente API registriert: /api/garantie/dokumente")
-except Exception as e:
-    print(f"⚠️  Garantie-Dokumente API nicht geladen: {e}")
-
-# Mobis Teilebezug API (TAG 175 - Über Locosoft SOAP)
-try:
-    from api.mobis_teilebezug_api import bp as mobis_teilebezug_api
-    app.register_blueprint(mobis_teilebezug_api)
-    print("✅ Mobis Teilebezug API registriert: /api/mobis/teilebezug/")
-except Exception as e:
-    print(f"⚠️  Mobis Teilebezug API nicht geladen: {e}")
 
 # Serviceberater API
 try:
@@ -818,62 +460,10 @@ try:
 except Exception as e:
     print(f"⚠️  Werkstatt API nicht geladen: {e}")
 
-# Unfall-Rechnungsprüfung – Wissensdatenbank (M4)
-try:
-    from api.unfall_wissensbasis_api import unfall_wissensbasis_api
-    app.register_blueprint(unfall_wissensbasis_api)
-    print("✅ Unfall-Wissensdatenbank API registriert: /api/unfall/")
-except Exception as e:
-    print(f"⚠️  Unfall-Wissensdatenbank API nicht geladen: {e}")
-
-try:
-    from api.unfall_rechnungspruefung_api import unfall_rechnungspruefung_api
-    app.register_blueprint(unfall_rechnungspruefung_api)
-    print("✅ Unfall-Rechnungsprüfung API registriert: /api/unfall/auftraege, /auftrag/<nr>/check")
-except Exception as e:
-    print(f"⚠️  Unfall-Rechnungsprüfung API nicht geladen: {e}")
-
-# Fahrzeuganlage API (Fahrzeugschein-OCR via AWS Bedrock)
-try:
-    from api.fahrzeuganlage_api import fahrzeuganlage_api
-    app.register_blueprint(fahrzeuganlage_api)
-    print("✅ Fahrzeuganlage API registriert: /api/fahrzeuganlage/")
-except Exception as e:
-    print(f"⚠️  Fahrzeuganlage API nicht geladen: {e}")
-
 # Werkstatt LIVE API (Echtzeit-Daten aus Locosoft)
 try:
     from api.werkstatt_live_api import werkstatt_live_bp
     app.register_blueprint(werkstatt_live_bp)
-    
-    # Gudat → Locosoft Sync API (TAG 200 - Test-Integration)
-    try:
-        from api.gudat_locosoft_sync_api import bp as gudat_locosoft_sync_bp
-        app.register_blueprint(gudat_locosoft_sync_bp)
-        print("✅ Gudat-Locosoft Sync API registriert: /api/gudat-locosoft/")
-    except Exception as e:
-        print(f"⚠️  Gudat-Locosoft Sync API nicht geladen: {e}")
-    
-    # TAG 165: Abteilungsleiter-Planung
-    try:
-        from api.abteilungsleiter_planung_api import planung_bp
-        app.register_blueprint(planung_bp)
-        print("✅ Abteilungsleiter-Planung API registriert")
-    except ImportError as e:
-        print(f"⚠️  Abteilungsleiter-Planung API nicht gefunden: {e}")
-    
-    # TAG 165: Abteilungsleiter-Planung Routes
-    try:
-        from routes.planung_routes import planung_routes
-        app.register_blueprint(planung_routes)
-        print("✅ Abteilungsleiter-Planung Routes registriert")
-        
-        # Gewinnplanungstool V2 (TAG 169)
-        from routes.gewinnplanung_v2_routes import gewinnplanung_v2_routes
-        app.register_blueprint(gewinnplanung_v2_routes)
-        print("✅ Gewinnplanungstool V2 Routes registriert: /planung/v2/")
-    except ImportError as e:
-        print(f"⚠️  Abteilungsleiter-Planung Routes nicht gefunden: {e}")
     print("✅ Werkstatt LIVE API registriert: /api/werkstatt/live/")
 except Exception as e:
     print(f"⚠️  Werkstatt LIVE API nicht geladen: {e}")
@@ -890,14 +480,6 @@ except Exception as e:
 try:
     from api.ml_api import ml_api
     app.register_blueprint(ml_api)
-    
-    # AI API (LM Studio Integration) - TAG 195
-    try:
-        from api.ai_api import ai_api
-        app.register_blueprint(ai_api)
-        print("✅ AI API (LM Studio) registriert")
-    except Exception as e:
-        print(f"⚠️  AI API konnte nicht geladen werden: {e}")
     print("✅ ML API registriert: /api/ml/")
 except Exception as e:
     print(f"⚠️  ML API nicht geladen: {e}")
@@ -964,14 +546,6 @@ try:
 except Exception as e:
     print(f"⚠️  Budget API nicht geladen: {e}")
 
-# Verkäufer-Zielplanung API (Kalenderjahr, NW/GW-Verteilung)
-try:
-    from api.verkaeufer_zielplanung_api import verkaeufer_zielplanung_bp
-    app.register_blueprint(verkaeufer_zielplanung_bp)
-    print("✅ Verkäufer-Zielplanung API registriert: /api/verkaeufer-zielplanung/")
-except Exception as e:
-    print(f"⚠️  Verkäufer-Zielplanung API nicht geladen: {e}")
-
 # Unternehmensplan API - 1%-Rendite Dashboard (TAG 157)
 try:
     from api.unternehmensplan_api import unternehmensplan_bp
@@ -987,16 +561,6 @@ try:
     print("✅ KST-Ziele API registriert: /api/kst-ziele/")
 except Exception as e:
     print(f"⚠️  KST-Ziele API nicht geladen: {e}")
-
-# Hilfe-Modul (Workstream Hilfe – 2026-02-24)
-try:
-    from api.hilfe_api import hilfe_api
-    from routes.hilfe_routes import hilfe_bp
-    app.register_blueprint(hilfe_api)
-    app.register_blueprint(hilfe_bp)
-    print("✅ Hilfe-Modul registriert: /api/hilfe/, /hilfe/")
-except Exception as e:
-    print(f"⚠️  Hilfe-Modul nicht geladen: {e}")
 
 # Ersatzwagen-Kalender Test-UI (TAG 131)
 @app.route('/test/ersatzwagen')
@@ -1027,21 +591,12 @@ if os.getenv('FLASK_ENV') == 'development' or app.debug:
 @app.route('/verkauf/leasys-programmfinder')
 @login_required
 def leasys_programmfinder():
-    """Leasys Programmfinder - Hilft Verkäufern das richtige Master Agreement zu finden"""
+    """Leasys Programmfinder – Zugriff nur mit Feature „leasys“."""
+    from flask import abort
+    if not (hasattr(current_user, 'can_access_feature') and current_user.can_access_feature('leasys')):
+        abort(403)
     return render_template('leasys_programmfinder.html')
 
 
-@app.route('/ki-assistent')
-@login_required
-def ki_assistent():
-    """
-    Kleines Frontend für den Hybrid-Query-Endpunkt.
-    URL in DRIVE: /ki-assistent
-    """
-    return render_template('ki_assistent.html')
-
-
-# Werkstatt-Monitor-Ansichten (ohne Login) → routes/werkstatt_routes.py
-# /monitor/stempeluhr, /werkstatt/stempeluhr/monitor (Stempeluhr)
-# /monitor/liveboard, /monitor/liveboard/gantt (Live-Board)
-# Daten: /api/werkstatt/live/stempeluhr, /api/werkstatt/live/board
+# Werkstatt-Monitor-Ansichten → routes/werkstatt_routes.py
+# /monitor/stempeluhr, /werkstatt/stempeluhr/monitor, /monitor/liveboard, /monitor/liveboard/gantt
