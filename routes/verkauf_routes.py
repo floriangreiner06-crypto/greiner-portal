@@ -2,12 +2,30 @@
 Verkauf Routes
 HTML-Seiten für Verkaufsbereich
 """
-from flask import Blueprint, render_template, request
+from flask import Blueprint, render_template, request, abort
 from flask_login import login_required, current_user
 from datetime import datetime
 from utils.standort_filter_helpers import parse_standort_params
 
 verkauf_bp = Blueprint('verkauf', __name__, url_prefix='/verkauf')
+
+
+@verkauf_bp.route('/dashboard')
+@login_required
+def verkaufsleiter_dashboard():
+    """Verkaufsleiter-Dashboard (VKL, GF, Admin) – Feature verkauf_dashboard."""
+    if not (hasattr(current_user, 'can_access_feature') and current_user.can_access_feature('verkauf_dashboard')):
+        abort(403)
+    return render_template('verkauf_dashboard.html', now=datetime.now())
+
+
+@verkauf_bp.route('/zielauswertung')
+@login_required
+def zielauswertung():
+    """Kompakte Zielauswertung (Trend gegen Werktage) für VKL/GF/Admin."""
+    if not (hasattr(current_user, 'can_access_feature') and current_user.can_access_feature('verkauf_dashboard')):
+        abort(403)
+    return render_template('verkauf_zielauswertung.html', now=datetime.now())
 
 
 @verkauf_bp.route('/auftragseingang')
@@ -132,6 +150,15 @@ def budget_wizard():
                          now=datetime.now(),
                          standort=standort,
                          konsolidiert=konsolidiert)
+
+
+@verkauf_bp.route('/motocost')
+@login_required
+def motocost_dashboard():
+    """Motocost Aufkauf-Ansicht (Workaround via JSON-Import)."""
+    if not (hasattr(current_user, 'can_access_feature') and current_user.can_access_feature('verkauf_dashboard')):
+        abort(403)
+    return render_template('verkauf_motocost.html', now=datetime.now())
 
 
 @verkauf_bp.route('/eautoseller-bestand')

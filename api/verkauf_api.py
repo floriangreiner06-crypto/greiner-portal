@@ -10,7 +10,7 @@ Updated: TAG 159 - Refactoring auf Data-Module Pattern
 """
 
 from flask import Blueprint, jsonify, request
-from flask_login import login_required
+from flask_login import login_required, current_user
 from datetime import datetime, date
 from typing import Dict, List
 
@@ -742,6 +742,32 @@ def get_verkaufer_performance():
         return jsonify(result)
     else:
         return jsonify(result), 500
+
+
+@verkauf_api.route('/dashboard-vkl', methods=['GET'])
+@login_required
+def get_dashboard_vkl():
+    """
+    GET /api/verkauf/dashboard-vkl
+    KPIs für VKL/GF/Admin; AfA und EKF nur bei passendem Feature.
+    """
+    try:
+        if not (
+            hasattr(current_user, 'can_access_feature')
+            and current_user.can_access_feature('verkauf_dashboard')
+        ):
+            return jsonify({'success': False, 'error': 'Kein Zugriff'}), 403
+        include_afa = current_user.can_access_feature('afa_verkaufsempfehlungen')
+        include_ekf = current_user.can_access_feature('einkaufsfinanzierung')
+        from api.verkauf_vkl_dashboard_service import build_vkl_dashboard_payload
+
+        ytd_mode = (request.args.get('ytd_mode', 'calendar') or 'calendar').lower()
+        if ytd_mode not in ('calendar', 'fiscal'):
+            ytd_mode = 'calendar'
+        data = build_vkl_dashboard_payload(include_afa=include_afa, include_ekf=include_ekf, ytd_mode=ytd_mode)
+        return jsonify(data), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @verkauf_api.route('/nw-pipeline', methods=['GET'])

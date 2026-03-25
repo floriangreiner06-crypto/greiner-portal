@@ -36,7 +36,8 @@ Verkauf umfasst Auftragseingang, Auslieferungen, Deckungsbeitrag, Profitabilitä
 
 ## Aktueller Stand (✅ erledigt, 🔧 in Arbeit, ❌ offen)
 
-- ✅ Auftragseingang-Report: Testversand nutzt VerkaufData (SSOT), voller Report-Inhalt (Verkäufer-Tabellen, Werktage/Prognose) im E-Mail-Body statt nur PDF-Anhang
+- ✅ **Auftragseingang E-Mail (Celery `email_auftragseingang`):** `scripts/send_daily_auftragseingang.py` nutzt nur noch `reports/auftragseingang_report_builder.build_auftragseingang_report_package` (SSOT = `VerkaufData`) – gleiches Layout wie zuvor korrekt: Werktage, Ø AE/Tag, Prognose, Verkäufer-/Marken-Tabellen im Body, volles PDF. Ursache des „alten“ Mails war die **im Script duplizierte SQL-Zählung** (nur `dealer_vehicle_type`), nicht der Task selbst. Admin-Testversand (`reports/send_test.py`) ruft denselben Builder auf.
+- ✅ **VKL-Dashboard (`/verkauf/dashboard`):** Nach Rollback wieder angebunden: Routen Dashboard/Zielauswertung/Motocost, `GET /api/verkauf/dashboard-vkl`, `api/verkauf_vkl_dashboard_service.py`, VKL-Hilfsmethoden in `api/verkauf_data.py` (`_NW_SUM_CASE`/`_GW_SUM_CASE`, Segmente, Forecast, Marken-Split).
 - ✅ Auftragseingang, Profitabilität, Gewinnplanung im Einsatz
 - ✅ AHK FIN Check / Autohauskenner-Portal: Machbarkeits- und Nutzenanalyse erstellt, Portal-Check (keine API); Integration vorerst auf Eis
 - ✅ mobile.de Zukauf/Neueingestellte: API-Optionen analysiert (Search-API + Ad-Stream); Scraping blockiert, offizielle APIs nutzbar. Siehe `MOBILEDE_ZUKAUF_API_OPTIONEN.md`.
@@ -62,6 +63,7 @@ Verkauf umfasst Auftragseingang, Auslieferungen, Deckungsbeitrag, Profitabilitä
 - AHK-Portal (Die Autohauskenner): Keine REST-API gefunden; Integration nur via Link/Deep-Link sinnvoll. Siehe `AHK_PORTAL_ANALYSE.md`.
 - mobile.de Zukauf: API-Anfrage (Search-API / Ad-Stream) an mobile.de gestellt (Kundennr. 504661); Rückmeldung abwarten. Danach ggf. Integration in DRIVE (Celery + UI für Zukauf-Prüfung).
 - **UI-Feinschliff Verkäufer-Tabellen:** Optional „Alle auf/zu“ auch in Auftragseingang ergänzen (wie Auslieferungen), falls im VKL-Review gewünscht.
+- Optional: `get_auftragseingang_nw_marke_modell` in `VerkaufData` ergänzen (PDF-Abschnitt „Neuwagen nach Marke und Modell“ im Builder derzeit nur wenn Methode existiert).
 
 ## SSOT Verkauf / Zielplanung / Provision
 

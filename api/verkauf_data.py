@@ -60,6 +60,10 @@ DEDUP_FILTER = """
     )
 """
 
+# SQL: 1/0 für NW bzw. GW (T-Regel / EZ) für VKL-Dashboard-Aggregationen
+_NW_SUM_CASE = "CASE WHEN s.dealer_vehicle_type IN ('N', 'V') THEN 1 WHEN s.dealer_vehicle_type = 'T' AND (s.first_registration_date IS NULL OR (s.out_sales_contract_date::date - s.first_registration_date) <= 365) THEN 1 ELSE 0 END"
+_GW_SUM_CASE = "CASE WHEN s.dealer_vehicle_type IN ('D', 'G') THEN 1 WHEN s.dealer_vehicle_type = 'T' AND s.first_registration_date IS NOT NULL AND (s.out_sales_contract_date::date - s.first_registration_date) > 365 THEN 1 ELSE 0 END"
+
 
 # ==============================================================================
 # HELPER FUNCTIONS
@@ -458,6 +462,536 @@ class VerkaufData:
         except Exception as e:
             logger.error(f"Fehler in get_auftragseingang_summary: {e}")
             return {'success': False, 'error': str(e), 'summary': []}
+
+    @staticmethod
+    def get_auftragseingang_segments(
+        month: int = None,
+        year: int = None,
+        ytd: bool = False,
+        verkaufer: int = None,
+    ) -> Dict[str, Any]:
+        """
+        Stückzahlen + DB1 (deckungsbeitrag) nach SSOT-NW/GW (T-Regel) sowie V/T-Rohzahl für VFW/T.
+        Auftragseingang = Vertragsdatum out_sales_contract_date.
+        ytd=True: 1..month im Jahr year kumuliert.
+        """
+        if month is None:
+            month = datetime.now().month
+        if year is None:
+            year = datetime.now().year
+        try:
+            with db_session() as conn:
+                cursor = conn.cursor()
+                vk_sql = " AND s.salesman_number = %s" if verkaufer else ""
+                vk_params = [int(verkaufer)] if verkaufer else []
+                if ytd:
+                    where_time = """
+                        EXTRACT(YEAR FROM s.out_sales_contract_date) = %s
+                        AND EXTRACT(MONTH FROM s.out_sales_contract_date)::int <= %s
+                    """
+                    time_params = [str(year), month]
+                else:
+                    where_time = """
+                        EXTRACT(YEAR FROM s.out_sales_contract_date) = %s
+                        AND EXTRACT(MONTH FROM s.out_sales_contract_date) = %s
+                    """
+                    time_params = [str(year), f"{month:02d}"]
+                cursor.execute(
+                    f"""
+                    SELECT
+                        SUM(({_NW_SUM_CASE}))::bigint AS stueck_nw,
+                        SUM(({_GW_SUM_CASE}))::bigint AS stueck_gw,
+                        SUM(CASE WHEN s.dealer_vehicle_type IN ('T', 'V') THEN 1 ELSE 0 END)::bigint AS stueck_tv,
+                        SUM(CASE WHEN ({_NW_SUM_CASE}) = 1
+                            THEN COALESCE(s.deckungsbeitrag, 0) ELSE 0 END) AS db_nw,
+                        SUM(CASE WHEN ({_GW_SUM_CASE}) = 1
+                            THEN COALESCE(s.deckungsbeitrag, 0) ELSE 0 END) AS db_gw,
+                        SUM(CASE WHEN s.dealer_vehicle_type IN ('T', 'V')
+                            THEN COALESCE(s.deckungsbeitrag, 0) ELSE 0 END) AS db_tv
+                    FROM sales s
+                    WHERE {where_time}
+                      AND s.salesman_number IS NOT NULL
+                      {vk_sql}
+                      {DEDUP_FILTER}
+                    """,
+                    time_params + vk_params,
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return {
+                        "success": True,
+                        "month": month,
+                        "year": year,
+                        "ytd": ytd,
+                        "stueck_nw": 0,
+                        "stueck_gw": 0,
+                        "stueck_tv": 0,
+                        "db_nw": 0.0,
+                        "db_gw": 0.0,
+                        "db_tv": 0.0,
+                    }
+                return {
+                    "success": True,
+                    "month": month,
+                    "year": year,
+                    "ytd": ytd,
+                    "stueck_nw": int(row["stueck_nw"] or 0),
+                    "stueck_gw": int(row["stueck_gw"] or 0),
+                    "stueck_tv": int(row["stueck_tv"] or 0),
+                    "db_nw": round(_convert_decimal(row["db_nw"]), 2),
+                    "db_gw": round(_convert_decimal(row["db_gw"]), 2),
+                    "db_tv": round(_convert_decimal(row["db_tv"]), 2),
+                }
+        except Exception as e:
+            logger.error("get_auftragseingang_segments: %s", e)
+            return {"success": False, "error": str(e)}
+
+    @staticmethod
+    def get_auslieferung_segments(
+        month: int = None,
+        year: int = None,
+        ytd: bool = False,
+        verkaufer: int = None,
+    ) -> Dict[str, Any]:
+        """Wie get_auftragseingang_segments, aber Rechnungsdatum out_invoice_date (bis heute)."""
+        if month is None:
+            month = datetime.now().month
+        if year is None:
+            year = datetime.now().year
+        try:
+            with db_session() as conn:
+                cursor = conn.cursor()
+                vk_sql = " AND s.salesman_number = %s" if verkaufer else ""
+                vk_params = [int(verkaufer)] if verkaufer else []
+                if ytd:
+                    where_time = """
+                        EXTRACT(YEAR FROM s.out_invoice_date) = %s
+                        AND EXTRACT(MONTH FROM s.out_invoice_date)::int <= %s
+                        AND s.out_invoice_date IS NOT NULL
+                        AND s.out_invoice_date <= CURRENT_DATE
+                    """
+                    time_params = [str(year), month]
+                else:
+                    where_time = """
+                        EXTRACT(YEAR FROM s.out_invoice_date) = %s
+                        AND EXTRACT(MONTH FROM s.out_invoice_date) = %s
+                        AND s.out_invoice_date IS NOT NULL
+                        AND s.out_invoice_date <= CURRENT_DATE
+                    """
+                    time_params = [str(year), f"{month:02d}"]
+                cursor.execute(
+                    f"""
+                    SELECT
+                        SUM(({_NW_SUM_CASE}))::bigint AS stueck_nw,
+                        SUM(({_GW_SUM_CASE}))::bigint AS stueck_gw,
+                        SUM(CASE WHEN s.dealer_vehicle_type IN ('T', 'V') THEN 1 ELSE 0 END)::bigint AS stueck_tv,
+                        SUM(CASE WHEN ({_NW_SUM_CASE}) = 1
+                            THEN COALESCE(s.deckungsbeitrag, 0) ELSE 0 END) AS db_nw,
+                        SUM(CASE WHEN ({_GW_SUM_CASE}) = 1
+                            THEN COALESCE(s.deckungsbeitrag, 0) ELSE 0 END) AS db_gw,
+                        SUM(CASE WHEN s.dealer_vehicle_type IN ('T', 'V')
+                            THEN COALESCE(s.deckungsbeitrag, 0) ELSE 0 END) AS db_tv
+                    FROM sales s
+                    WHERE {where_time}
+                      AND s.salesman_number IS NOT NULL
+                      {vk_sql}
+                      {DEDUP_FILTER}
+                    """,
+                    time_params + vk_params,
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return {
+                        "success": True,
+                        "month": month,
+                        "year": year,
+                        "ytd": ytd,
+                        "stueck_nw": 0,
+                        "stueck_gw": 0,
+                        "stueck_tv": 0,
+                        "db_nw": 0.0,
+                        "db_gw": 0.0,
+                        "db_tv": 0.0,
+                    }
+                return {
+                    "success": True,
+                    "month": month,
+                    "year": year,
+                    "ytd": ytd,
+                    "stueck_nw": int(row["stueck_nw"] or 0),
+                    "stueck_gw": int(row["stueck_gw"] or 0),
+                    "stueck_tv": int(row["stueck_tv"] or 0),
+                    "db_nw": round(_convert_decimal(row["db_nw"]), 2),
+                    "db_gw": round(_convert_decimal(row["db_gw"]), 2),
+                    "db_tv": round(_convert_decimal(row["db_tv"]), 2),
+                }
+        except Exception as e:
+            logger.error("get_auslieferung_segments: %s", e)
+            return {"success": False, "error": str(e)}
+
+
+
+
+
+    @staticmethod
+    def get_auftragseingang_segments_range(
+        start_date: str,
+        end_date: str,
+        verkaufer: int = None,
+    ) -> Dict[str, Any]:
+        """Auftragseingang-Segmente im Datumsbereich (inklusive), Vertragsdatum-basiert."""
+        try:
+            with db_session() as conn:
+                cursor = conn.cursor()
+                vk_sql = " AND s.salesman_number = %s" if verkaufer else ""
+                vk_params = [int(verkaufer)] if verkaufer else []
+                cursor.execute(
+                    f"""
+                    SELECT
+                        SUM(({_NW_SUM_CASE}))::bigint AS stueck_nw,
+                        SUM(({_GW_SUM_CASE}))::bigint AS stueck_gw,
+                        SUM(CASE WHEN s.dealer_vehicle_type IN ('T', 'V') THEN 1 ELSE 0 END)::bigint AS stueck_tv,
+                        SUM(CASE WHEN ({_NW_SUM_CASE}) = 1 THEN COALESCE(s.deckungsbeitrag, 0) ELSE 0 END) AS db_nw,
+                        SUM(CASE WHEN ({_GW_SUM_CASE}) = 1 THEN COALESCE(s.deckungsbeitrag, 0) ELSE 0 END) AS db_gw,
+                        SUM(CASE WHEN s.dealer_vehicle_type IN ('T', 'V') THEN COALESCE(s.deckungsbeitrag, 0) ELSE 0 END) AS db_tv
+                    FROM sales s
+                    WHERE s.out_sales_contract_date::date BETWEEN %s AND %s
+                      AND s.salesman_number IS NOT NULL
+                      {vk_sql}
+                      {DEDUP_FILTER}
+                    """,
+                    [start_date, end_date] + vk_params,
+                )
+                row = cursor.fetchone()
+                return {
+                    'success': True,
+                    'start_date': start_date,
+                    'end_date': end_date,
+                    'stueck_nw': int(row['stueck_nw'] or 0),
+                    'stueck_gw': int(row['stueck_gw'] or 0),
+                    'stueck_tv': int(row['stueck_tv'] or 0),
+                    'db_nw': round(_convert_decimal(row['db_nw']), 2),
+                    'db_gw': round(_convert_decimal(row['db_gw']), 2),
+                    'db_tv': round(_convert_decimal(row['db_tv']), 2),
+                }
+        except Exception as e:
+            logger.error("get_auftragseingang_segments_range: %s", e)
+            return {'success': False, 'error': str(e)}
+
+    @staticmethod
+    def get_auslieferung_segments_range(
+        start_date: str,
+        end_date: str,
+        verkaufer: int = None,
+    ) -> Dict[str, Any]:
+        """Auslieferungs-Segmente im Datumsbereich (inklusive), Rechnungsdatum-basiert."""
+        try:
+            with db_session() as conn:
+                cursor = conn.cursor()
+                vk_sql = " AND s.salesman_number = %s" if verkaufer else ""
+                vk_params = [int(verkaufer)] if verkaufer else []
+                cursor.execute(
+                    f"""
+                    SELECT
+                        SUM(({_NW_SUM_CASE}))::bigint AS stueck_nw,
+                        SUM(({_GW_SUM_CASE}))::bigint AS stueck_gw,
+                        SUM(CASE WHEN s.dealer_vehicle_type IN ('T', 'V') THEN 1 ELSE 0 END)::bigint AS stueck_tv,
+                        SUM(CASE WHEN ({_NW_SUM_CASE}) = 1 THEN COALESCE(s.deckungsbeitrag, 0) ELSE 0 END) AS db_nw,
+                        SUM(CASE WHEN ({_GW_SUM_CASE}) = 1 THEN COALESCE(s.deckungsbeitrag, 0) ELSE 0 END) AS db_gw,
+                        SUM(CASE WHEN s.dealer_vehicle_type IN ('T', 'V') THEN COALESCE(s.deckungsbeitrag, 0) ELSE 0 END) AS db_tv
+                    FROM sales s
+                    WHERE s.out_invoice_date IS NOT NULL
+                      AND s.out_invoice_date::date BETWEEN %s AND %s
+                      AND s.out_invoice_date <= CURRENT_DATE
+                      AND s.salesman_number IS NOT NULL
+                      {vk_sql}
+                      {DEDUP_FILTER}
+                    """,
+                    [start_date, end_date] + vk_params,
+                )
+                row = cursor.fetchone()
+                return {
+                    'success': True,
+                    'start_date': start_date,
+                    'end_date': end_date,
+                    'stueck_nw': int(row['stueck_nw'] or 0),
+                    'stueck_gw': int(row['stueck_gw'] or 0),
+                    'stueck_tv': int(row['stueck_tv'] or 0),
+                    'db_nw': round(_convert_decimal(row['db_nw']), 2),
+                    'db_gw': round(_convert_decimal(row['db_gw']), 2),
+                    'db_tv': round(_convert_decimal(row['db_tv']), 2),
+                }
+        except Exception as e:
+            logger.error("get_auslieferung_segments_range: %s", e)
+            return {'success': False, 'error': str(e)}
+
+    @staticmethod
+    def get_auftragseingang_marken_split(
+        month: int = None,
+        year: int = None,
+        ytd: bool = False,
+        verkaufer: int = None,
+    ) -> Dict[str, Any]:
+        """Auftragseingang nach Marke getrennt für N, V und T (Stück)."""
+        if month is None:
+            month = datetime.now().month
+        if year is None:
+            year = datetime.now().year
+        try:
+            with db_session() as conn:
+                cursor = conn.cursor()
+                vk_sql = " AND s.salesman_number = %s" if verkaufer else ""
+                vk_params = [int(verkaufer)] if verkaufer else []
+                if ytd:
+                    where_time = """
+                        EXTRACT(YEAR FROM s.out_sales_contract_date) = %s
+                        AND EXTRACT(MONTH FROM s.out_sales_contract_date)::int <= %s
+                    """
+                    time_params = [str(year), month]
+                else:
+                    where_time = """
+                        EXTRACT(YEAR FROM s.out_sales_contract_date) = %s
+                        AND EXTRACT(MONTH FROM s.out_sales_contract_date) = %s
+                    """
+                    time_params = [str(year), f"{month:02d}"]
+
+                cursor.execute(
+                    f"""
+                    SELECT
+                        s.make_number,
+                        SUM(CASE WHEN s.dealer_vehicle_type = 'N' THEN 1 ELSE 0 END)::bigint AS n,
+                        SUM(CASE WHEN s.dealer_vehicle_type = 'V' THEN 1 ELSE 0 END)::bigint AS vfw,
+                        SUM(CASE WHEN s.dealer_vehicle_type = 'T' THEN 1 ELSE 0 END)::bigint AS t
+                    FROM sales s
+                    WHERE {where_time}
+                      AND s.salesman_number IS NOT NULL
+                      {vk_sql}
+                      {DEDUP_FILTER}
+                    GROUP BY s.make_number
+                    ORDER BY s.make_number
+                    """,
+                    time_params + vk_params,
+                )
+
+                result = []
+                for row in cursor.fetchall():
+                    marke = MARKEN.get(row['make_number'], f"Marke {row['make_number']}")
+                    result.append({
+                        'make_number': row['make_number'],
+                        'marke': marke,
+                        'n': int(row['n'] or 0),
+                        'vfw': int(row['vfw'] or 0),
+                        't': int(row['t'] or 0),
+                        'summe': int((row['n'] or 0) + (row['vfw'] or 0) + (row['t'] or 0)),
+                    })
+
+                return {
+                    'success': True,
+                    'month': month,
+                    'year': year,
+                    'ytd': ytd,
+                    'marken': result,
+                }
+        except Exception as e:
+            logger.error("get_auftragseingang_marken_split: %s", e)
+            return {'success': False, 'error': str(e), 'marken': []}
+
+    @staticmethod
+    def get_offene_auftraege_forecast() -> Dict[str, Any]:
+        """Alle Aufträge mit Vertragsdatum, die noch nicht abgerechnet sind (out_invoice_date IS NULL)."""
+        try:
+            with db_session() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    f"""
+                    SELECT
+                        COUNT(*)::bigint AS anzahl,
+                        SUM(
+                            CASE
+                                WHEN s.out_sales_contract_date::date >= CURRENT_DATE - INTERVAL '180 days'
+                                THEN 1 ELSE 0
+                            END
+                        )::bigint AS anzahl_operativ_bis_180_tage,
+                        SUM(
+                            CASE
+                                WHEN s.out_sales_contract_date::date < CURRENT_DATE - INTERVAL '180 days'
+                                THEN 1 ELSE 0
+                            END
+                        )::bigint AS anzahl_altlasten_ueber_180_tage,
+                        SUM(COALESCE(s.out_sale_price, 0)) AS umsatz_brutto,
+                        SUM(CASE WHEN ({_NW_SUM_CASE}) = 1 THEN 1 ELSE 0 END)::bigint AS nw,
+                        SUM(CASE WHEN ({_GW_SUM_CASE}) = 1 THEN 1 ELSE 0 END)::bigint AS gw,
+                        SUM(CASE WHEN s.dealer_vehicle_type IN ('T','V') THEN 1 ELSE 0 END)::bigint AS tv
+                    FROM sales s
+                    WHERE s.out_sales_contract_date IS NOT NULL
+                      AND s.out_invoice_date IS NULL
+                      AND s.salesman_number IS NOT NULL
+                      {DEDUP_FILTER}
+                    """
+                )
+                total = cursor.fetchone()
+
+                cursor.execute(
+                    f"""
+                    SELECT
+                        MIN(s.out_sales_contract_date)::date AS aeltester_offener_vertrag,
+                        SUM(
+                            CASE
+                                WHEN s.out_sales_contract_date::date < CURRENT_DATE - INTERVAL '180 days'
+                                THEN 1 ELSE 0
+                            END
+                        )::bigint AS anzahl_offen_ueber_180_tage
+                    FROM sales s
+                    WHERE s.out_sales_contract_date IS NOT NULL
+                      AND s.out_invoice_date IS NULL
+                      AND s.salesman_number IS NOT NULL
+                      {DEDUP_FILTER}
+                    """
+                )
+                quality = cursor.fetchone()
+
+                cursor.execute(
+                    f"""
+                    SELECT
+                        s.make_number,
+                        COUNT(*)::bigint AS anzahl,
+                        SUM(CASE WHEN s.dealer_vehicle_type = 'N' THEN 1 ELSE 0 END)::bigint AS n,
+                        SUM(CASE WHEN s.dealer_vehicle_type = 'V' THEN 1 ELSE 0 END)::bigint AS vfw,
+                        SUM(CASE WHEN s.dealer_vehicle_type = 'T' THEN 1 ELSE 0 END)::bigint AS t
+                    FROM sales s
+                    WHERE s.out_sales_contract_date IS NOT NULL
+                      AND s.out_invoice_date IS NULL
+                      AND s.salesman_number IS NOT NULL
+                      {DEDUP_FILTER}
+                    GROUP BY s.make_number
+                    ORDER BY anzahl DESC
+                    """
+                )
+                marken = []
+                for row in cursor.fetchall():
+                    marken.append({
+                        'make_number': row['make_number'],
+                        'marke': MARKEN.get(row['make_number'], f"Marke {row['make_number']}"),
+                        'anzahl': int(row['anzahl'] or 0),
+                        'n': int(row['n'] or 0),
+                        'vfw': int(row['vfw'] or 0),
+                        't': int(row['t'] or 0),
+                    })
+
+                return {
+                    'success': True,
+                    'anzahl': int(total['anzahl'] or 0),
+                    'anzahl_operativ_bis_180_tage': int(total['anzahl_operativ_bis_180_tage'] or 0),
+                    'anzahl_altlasten_ueber_180_tage': int(total['anzahl_altlasten_ueber_180_tage'] or 0),
+                    'umsatz_brutto': round(_convert_decimal(total['umsatz_brutto']), 2),
+                    'nw': int(total['nw'] or 0),
+                    'gw': int(total['gw'] or 0),
+                    'tv': int(total['tv'] or 0),
+                    'aeltester_offener_vertrag': (
+                        quality['aeltester_offener_vertrag'].isoformat()
+                        if quality and quality.get('aeltester_offener_vertrag')
+                        else None
+                    ),
+                    'anzahl_offen_ueber_180_tage': int(
+                        (quality.get('anzahl_offen_ueber_180_tage') if quality else 0) or 0
+                    ),
+                    'datengrundlage': 'sales mit Vertragsdatum gesetzt, ohne Rechnungsdatum, salesman_number != NULL, mit N/T/V-Dedup',
+                    'marken': marken,
+                }
+        except Exception as e:
+            logger.error("get_offene_auftraege_forecast: %s", e)
+            return {'success': False, 'error': str(e), 'anzahl': 0, 'marken': []}
+
+    @staticmethod
+    def get_db_marken_split_monat(
+        month: int = None,
+        year: int = None,
+    ) -> Dict[str, Any]:
+        """
+        DB1 nach Marke und Segment (NW / VFW-T / GW) auf Rechnungsdatum im Monat.
+        Markenfokus Dashboard: Opel (40), Hyundai (27), Leapmotor (41).
+        """
+        if month is None:
+            month = datetime.now().month
+        if year is None:
+            year = datetime.now().year
+        try:
+            with db_session() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT
+                        s.make_number,
+                        SUM(CASE WHEN s.dealer_vehicle_type = 'N' THEN 1 ELSE 0 END)::bigint AS cnt_nw,
+                        SUM(CASE WHEN s.dealer_vehicle_type IN ('T', 'V') THEN 1 ELSE 0 END)::bigint AS cnt_tv,
+                        SUM(CASE WHEN s.dealer_vehicle_type IN ('D', 'G') THEN 1 ELSE 0 END)::bigint AS cnt_gw,
+                        SUM(CASE WHEN s.dealer_vehicle_type = 'N' THEN COALESCE(s.deckungsbeitrag, 0) ELSE 0 END) AS db_nw,
+                        SUM(CASE WHEN s.dealer_vehicle_type IN ('T', 'V') THEN COALESCE(s.deckungsbeitrag, 0) ELSE 0 END) AS db_tv,
+                        SUM(CASE WHEN s.dealer_vehicle_type IN ('D', 'G') THEN COALESCE(s.deckungsbeitrag, 0) ELSE 0 END) AS db_gw
+                    FROM sales s
+                    WHERE EXTRACT(YEAR FROM s.out_invoice_date) = %s
+                      AND EXTRACT(MONTH FROM s.out_invoice_date) = %s
+                      AND s.out_invoice_date IS NOT NULL
+                      AND s.out_invoice_date <= CURRENT_DATE
+                      AND s.salesman_number IS NOT NULL
+                      AND s.make_number IN (27, 40, 41)
+                      AND NOT EXISTS (
+                        SELECT 1 FROM sales s2
+                        WHERE s2.vin = s.vin
+                          AND s2.out_sales_contract_date = s.out_sales_contract_date
+                          AND s2.dealer_vehicle_type IN ('T', 'V')
+                          AND s.dealer_vehicle_type = 'N'
+                      )
+                    GROUP BY s.make_number
+                    ORDER BY s.make_number
+                    """,
+                    (str(year), f"{month:02d}"),
+                )
+                data = {27: {"db_nw": 0.0, "db_tv": 0.0, "db_gw": 0.0},
+                        40: {"db_nw": 0.0, "db_tv": 0.0, "db_gw": 0.0},
+                        41: {"db_nw": 0.0, "db_tv": 0.0, "db_gw": 0.0}}
+                counts = {27: {"cnt_nw": 0, "cnt_tv": 0, "cnt_gw": 0},
+                          40: {"cnt_nw": 0, "cnt_tv": 0, "cnt_gw": 0},
+                          41: {"cnt_nw": 0, "cnt_tv": 0, "cnt_gw": 0}}
+                for r in cursor.fetchall():
+                    mk = int(r["make_number"])
+                    data[mk] = {
+                        "db_nw": round(_convert_decimal(r["db_nw"]), 2),
+                        "db_tv": round(_convert_decimal(r["db_tv"]), 2),
+                        "db_gw": round(_convert_decimal(r["db_gw"]), 2),
+                    }
+                    counts[mk] = {
+                        "cnt_nw": int(r["cnt_nw"] or 0),
+                        "cnt_tv": int(r["cnt_tv"] or 0),
+                        "cnt_gw": int(r["cnt_gw"] or 0),
+                    }
+                rows = []
+                for mk in (40, 27, 41):
+                    item = data[mk]
+                    cnt = counts[mk]
+                    cnt_summe = int(cnt["cnt_nw"] + cnt["cnt_tv"] + cnt["cnt_gw"])
+                    db_summe = round(item["db_nw"] + item["db_tv"] + item["db_gw"], 2)
+                    rows.append({
+                        "make_number": mk,
+                        "marke": MARKEN.get(mk, f"Marke {mk}"),
+                        "stueck_nw": int(cnt["cnt_nw"]),
+                        "stueck_tv": int(cnt["cnt_tv"]),
+                        "stueck_gw": int(cnt["cnt_gw"]),
+                        "db_nw": item["db_nw"],
+                        "db_tv": item["db_tv"],
+                        "db_gw": item["db_gw"],
+                        "db_summe": db_summe,
+                        "stueck_summe": cnt_summe,
+                        "db_pro_stueck_nw": round((item["db_nw"] / cnt["cnt_nw"]), 2) if cnt["cnt_nw"] > 0 else 0.0,
+                        "db_pro_stueck_tv": round((item["db_tv"] / cnt["cnt_tv"]), 2) if cnt["cnt_tv"] > 0 else 0.0,
+                        "db_pro_stueck_gw": round((item["db_gw"] / cnt["cnt_gw"]), 2) if cnt["cnt_gw"] > 0 else 0.0,
+                        "db_pro_stueck": round((db_summe / cnt_summe), 2) if cnt_summe > 0 else 0.0,
+                    })
+                return {"success": True, "month": month, "year": year, "marken": rows}
+        except Exception as e:
+            logger.error("get_db_marken_split_monat: %s", e)
+            return {"success": False, "error": str(e), "marken": []}
+
 
     @staticmethod
     def get_auftragseingang_detail(
