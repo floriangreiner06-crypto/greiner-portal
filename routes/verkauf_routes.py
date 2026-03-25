@@ -38,7 +38,13 @@ def auslieferung_detail():
     Zeigt ausgelieferte Fahrzeuge aufgeschlüsselt nach Verkäufer und Modellen
     Basiert auf Rechnungsdatum
     """
-    return render_template('verkauf_auslieferung_detail.html', now=datetime.now())
+    standort, konsolidiert = parse_standort_params(request)
+    return render_template(
+        'verkauf_auslieferung_detail.html',
+        now=datetime.now(),
+        standort=standort,
+        konsolidiert=konsolidiert
+    )
 
 
 @verkauf_bp.route('/leasys-kalkulator')

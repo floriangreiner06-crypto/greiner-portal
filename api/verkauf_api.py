@@ -308,8 +308,11 @@ def get_auftragseingang_summary():
     month = request.args.get('month', datetime.now().month, type=int)
     year = request.args.get('year', datetime.now().year, type=int)
     location = request.args.get('location', type=int)
+    zeitraum = request.args.get('zeitraum', 'month')
 
-    result = VerkaufData.get_auftragseingang_summary(day=day, month=month, year=year, location=location)
+    result = VerkaufData.get_auftragseingang_summary(
+        day=day, month=month, year=year, location=location, zeitraum=zeitraum
+    )
 
     if result['success']:
         return jsonify(result)
@@ -331,10 +334,11 @@ def get_auftragseingang_detail():
     year = request.args.get('year', datetime.now().year, type=int)
     location = request.args.get('location', type=int)
     verkaufer = request.args.get('verkaufer', type=int)
+    zeitraum = request.args.get('zeitraum', 'month')
 
     result = VerkaufData.get_auftragseingang_detail(
         day=day, month=month, year=year,
-        location=location, verkaufer=verkaufer
+        location=location, verkaufer=verkaufer, zeitraum=zeitraum
     )
 
     if result['success']:
@@ -359,8 +363,11 @@ def get_auslieferung_summary():
     day = request.args.get('day', '') or None
     month = request.args.get('month', datetime.now().month, type=int)
     year = request.args.get('year', datetime.now().year, type=int)
+    zeitraum = request.args.get('zeitraum', 'month')
 
-    result = VerkaufData.get_auslieferung_summary(day=day, month=month, year=year)
+    result = VerkaufData.get_auslieferung_summary(
+        day=day, month=month, year=year, zeitraum=zeitraum
+    )
 
     if result['success']:
         return jsonify(result)
@@ -382,10 +389,11 @@ def get_auslieferung_detail():
     location = request.args.get('location', type=int)
     verkaufer = request.args.get('verkaufer', type=int)
     vin_search = request.args.get('vin', '') or None
+    zeitraum = request.args.get('zeitraum', 'month')
 
     result = VerkaufData.get_auslieferung_detail(
         day=day, month=month, year=year,
-        location=location, verkaufer=verkaufer, vin_search=vin_search
+        location=location, verkaufer=verkaufer, vin_search=vin_search, zeitraum=zeitraum
     )
 
     if result['success']:

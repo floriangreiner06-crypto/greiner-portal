@@ -19,6 +19,7 @@ Erstellt: TAG 159 (2026-01-02)
 Autor: Claude AI
 """
 
+import calendar
 import logging
 from datetime import datetime, date, timedelta
 from typing import Dict, Any, List, Optional
@@ -113,6 +114,130 @@ def _convert_decimal(value) -> float:
     if isinstance(value, Decimal):
         return float(value)
     return value if value is not None else 0
+
+
+def _build_auftragseingang_datum_filter(
+    day: Optional[str] = None,
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    zeitraum: str = 'month'
+) -> tuple[str, list, Dict[str, Any]]:
+    """
+    Erstellt Datumsfilter für Auftragseingang:
+    - day: exakter Kalendertag
+    - month: Kalendermonat
+    - calendar_year: Kalenderjahr (Jan-Dez)
+    - fiscal_year: Geschäftsjahr (Sep-Aug)
+    """
+    if year is None:
+        year = datetime.now().year
+    if month is None:
+        month = datetime.now().month
+
+    mode = (zeitraum or 'month').lower()
+
+    if day:
+        start_date = datetime.strptime(day, '%Y-%m-%d').date()
+        end_date = start_date
+        meta = {
+            'zeitraum': 'day',
+            'day': day,
+            'month': None,
+            'year': year,
+            'geschaeftsjahr': None
+        }
+    elif mode == 'calendar_year':
+        start_date = date(year, 1, 1)
+        end_date = date(year, 12, 31)
+        meta = {
+            'zeitraum': 'calendar_year',
+            'day': None,
+            'month': None,
+            'year': year,
+            'geschaeftsjahr': None
+        }
+    elif mode == 'fiscal_year':
+        start_date = date(year, 9, 1)
+        end_date = date(year + 1, 8, 31)
+        meta = {
+            'zeitraum': 'fiscal_year',
+            'day': None,
+            'month': None,
+            'year': year,
+            'geschaeftsjahr': f"{year}/{str(year + 1)[2:]}"
+        }
+    else:
+        last_day = calendar.monthrange(year, month)[1]
+        start_date = date(year, month, 1)
+        end_date = date(year, month, last_day)
+        meta = {
+            'zeitraum': 'month',
+            'day': None,
+            'month': month,
+            'year': year,
+            'geschaeftsjahr': None
+        }
+
+    return "DATE(s.out_sales_contract_date) BETWEEN %s AND %s", [start_date, end_date], meta
+
+
+def _build_auslieferung_datum_filter(
+    day: Optional[str] = None,
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    zeitraum: str = 'month'
+) -> tuple[str, list, Dict[str, Any]]:
+    """Erstellt Datumsfilter für Auslieferungen auf Rechnungsdatum."""
+    if year is None:
+        year = datetime.now().year
+    if month is None:
+        month = datetime.now().month
+
+    mode = (zeitraum or 'month').lower()
+
+    if day:
+        start_date = datetime.strptime(day, '%Y-%m-%d').date()
+        end_date = start_date
+        meta = {
+            'zeitraum': 'day',
+            'day': day,
+            'month': None,
+            'year': year,
+            'geschaeftsjahr': None
+        }
+    elif mode == 'calendar_year':
+        start_date = date(year, 1, 1)
+        end_date = date(year, 12, 31)
+        meta = {
+            'zeitraum': 'calendar_year',
+            'day': None,
+            'month': None,
+            'year': year,
+            'geschaeftsjahr': None
+        }
+    elif mode == 'fiscal_year':
+        start_date = date(year, 9, 1)
+        end_date = date(year + 1, 8, 31)
+        meta = {
+            'zeitraum': 'fiscal_year',
+            'day': None,
+            'month': None,
+            'year': year,
+            'geschaeftsjahr': f"{year}/{str(year + 1)[2:]}"
+        }
+    else:
+        last_day = calendar.monthrange(year, month)[1]
+        start_date = date(year, month, 1)
+        end_date = date(year, month, last_day)
+        meta = {
+            'zeitraum': 'month',
+            'day': None,
+            'month': month,
+            'year': year,
+            'geschaeftsjahr': None
+        }
+
+    return "DATE(s.out_invoice_date) BETWEEN %s AND %s", [start_date, end_date], meta
 
 
 # ==============================================================================
@@ -258,7 +383,8 @@ class VerkaufData:
         day: str = None,
         month: int = None,
         year: int = None,
-        location: int = None
+        location: int = None,
+        zeitraum: str = 'month'
     ) -> Dict[str, Any]:
         """
         Holt Auftragseingang-Summary nach Marke und Fahrzeugtyp.
@@ -288,17 +414,15 @@ class VerkaufData:
                         # Filter-String anpassen: "AND out_subsidiary = X" -> "AND s.out_subsidiary = X"
                         standort_filter = standort_filter_sql.replace("out_subsidiary", "s.out_subsidiary")
 
-                if day:
-                    where_clause = f"WHERE DATE(s.out_sales_contract_date) = %s {standort_filter} {DEDUP_FILTER}"
-                    params = [day]
-                else:
-                    where_clause = f"""
-                        WHERE EXTRACT(YEAR FROM s.out_sales_contract_date) = %s
-                          AND EXTRACT(MONTH FROM s.out_sales_contract_date) = %s
-                          {standort_filter}
-                          {DEDUP_FILTER}
-                    """
-                    params = [str(year), f"{month:02d}"]
+                date_filter_sql, date_params, zeitraum_meta = _build_auftragseingang_datum_filter(
+                    day=day, month=month, year=year, zeitraum=zeitraum
+                )
+                where_clause = f"""
+                    WHERE {date_filter_sql}
+                      {standort_filter}
+                      {DEDUP_FILTER}
+                """
+                params = date_params
 
                 cursor.execute(f"""
                     SELECT
@@ -327,9 +451,7 @@ class VerkaufData:
 
                 return {
                     'success': True,
-                    'day': day,
-                    'month': month if not day else None,
-                    'year': year,
+                    **zeitraum_meta,
                     'summary': summary
                 }
 
@@ -343,7 +465,8 @@ class VerkaufData:
         month: int = None,
         year: int = None,
         location: int = None,
-        verkaufer: int = None
+        verkaufer: int = None,
+        zeitraum: str = 'month'
     ) -> Dict[str, Any]:
         """
         Holt detaillierten Auftragseingang nach Verkäufer mit Modell-Aufschlüsselung.
@@ -370,13 +493,11 @@ class VerkaufData:
                 where_clauses = ["s.salesman_number IS NOT NULL"]
                 params = []
 
-                if day:
-                    where_clauses.append("DATE(s.out_sales_contract_date) = %s")
-                    params.append(day)
-                else:
-                    where_clauses.append("EXTRACT(YEAR FROM s.out_sales_contract_date) = %s")
-                    where_clauses.append("EXTRACT(MONTH FROM s.out_sales_contract_date) = %s")
-                    params.extend([str(year), f"{month:02d}"])
+                date_filter_sql, date_params, zeitraum_meta = _build_auftragseingang_datum_filter(
+                    day=day, month=month, year=year, zeitraum=zeitraum
+                )
+                where_clauses.append(date_filter_sql)
+                params.extend(date_params)
 
                 # TAG 177: SSOT-Filter für Verkäufe (konsolidiert für Standort 1)
                 if location:
@@ -458,9 +579,7 @@ class VerkaufData:
 
                 return {
                     'success': True,
-                    'day': day,
-                    'month': month if not day else None,
-                    'year': year,
+                    **zeitraum_meta,
                     'verkaufer': list(verkaufer_dict.values())
                 }
 
@@ -472,7 +591,8 @@ class VerkaufData:
     def get_auslieferung_summary(
         day: str = None,
         month: int = None,
-        year: int = None
+        year: int = None,
+        zeitraum: str = 'month'
     ) -> Dict[str, Any]:
         """
         Holt Auslieferungs-Summary nach Marke (basiert auf Rechnungsdatum).
@@ -494,23 +614,16 @@ class VerkaufData:
             with db_session() as conn:
                 cursor = conn.cursor()
 
-                if day:
-                    where_clause = f"""
-                        WHERE DATE(s.out_invoice_date) = %s
-                          AND s.out_invoice_date IS NOT NULL
-                          AND s.out_invoice_date <= CURRENT_DATE
-                          {DEDUP_FILTER}
-                    """
-                    params = [day]
-                else:
-                    where_clause = f"""
-                        WHERE EXTRACT(YEAR FROM s.out_invoice_date) = %s
-                          AND EXTRACT(MONTH FROM s.out_invoice_date) = %s
-                          AND s.out_invoice_date IS NOT NULL
-                          AND s.out_invoice_date <= CURRENT_DATE
-                          {DEDUP_FILTER}
-                    """
-                    params = [str(year), f"{month:02d}"]
+                date_filter_sql, date_params, zeitraum_meta = _build_auslieferung_datum_filter(
+                    day=day, month=month, year=year, zeitraum=zeitraum
+                )
+                where_clause = f"""
+                    WHERE {date_filter_sql}
+                      AND s.out_invoice_date IS NOT NULL
+                      AND s.out_invoice_date <= CURRENT_DATE
+                      {DEDUP_FILTER}
+                """
+                params = date_params
 
                 cursor.execute(f"""
                     SELECT
@@ -539,9 +652,7 @@ class VerkaufData:
 
                 return {
                     'success': True,
-                    'day': day,
-                    'month': month if not day else None,
-                    'year': year,
+                    **zeitraum_meta,
                     'summary': summary
                 }
 
@@ -556,7 +667,8 @@ class VerkaufData:
         year: int = None,
         location: int = None,
         verkaufer: int = None,
-        vin_search: str = None
+        vin_search: str = None,
+        zeitraum: str = 'month'
     ) -> Dict[str, Any]:
         """
         Holt detaillierte Auslieferungen mit Einzelfahrzeugen und DB-Daten.
@@ -588,13 +700,11 @@ class VerkaufData:
                 ]
                 params = []
 
-                if day:
-                    where_clauses.append("DATE(s.out_invoice_date) = %s")
-                    params.append(day)
-                else:
-                    where_clauses.append("EXTRACT(YEAR FROM s.out_invoice_date) = %s")
-                    where_clauses.append("EXTRACT(MONTH FROM s.out_invoice_date) = %s")
-                    params.extend([str(year), f"{month:02d}"])
+                date_filter_sql, date_params, zeitraum_meta = _build_auslieferung_datum_filter(
+                    day=day, month=month, year=year, zeitraum=zeitraum
+                )
+                where_clauses.append(date_filter_sql)
+                params.extend(date_params)
 
                 # TAG 177: SSOT-Filter für Verkäufe (konsolidiert für Standort 1)
                 if location:
@@ -714,9 +824,7 @@ class VerkaufData:
 
                 return {
                     'success': True,
-                    'day': day,
-                    'month': month if not day else None,
-                    'year': year,
+                    **zeitraum_meta,
                     'vin_filter': vin_search,
                     'verkaufer': verkaufer_list
                 }

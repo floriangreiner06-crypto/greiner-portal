@@ -1,7 +1,7 @@
 # Verkauf & Fahrzeuge — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-03-09
+## Letzte Aktualisierung: 2026-03-25
 
 ## Beschreibung
 
@@ -45,6 +45,9 @@ Verkauf umfasst Auftragseingang, Auslieferungen, Deckungsbeitrag, Profitabilitä
 - ❌ **VFW-Vermarktung (geplant):** Modul für Kalkulation Vorführwagen, Tageszulassungen und Mietwagen (Verkauf + Geschäftsleitung). Phasenplan: 1) Datenbasis & Bestand-Dashboard, 2) Rundschreiben-Manager, 3) Kalkulationsengine + PDF, 4) KI/Alerts. Detaillierter Plan: **`VFW_VERMARKTUNG_IMPLEMENTIERUNGSPLAN.md`**. Bestehende Bausteine: `FahrzeugData.get_vfw_bestand()`, `fahrzeugfinanzierungen`, AfA VFW/Mietwagen, Provisionslogik Block II.
 - ✅ **Verkäufer-Zielplanung (Erweiterung):** Saisonalität aus Locosoft (API `saisonalitaet/<jahr>`, Monatsverteilung), IST in Monatsverteilung (SSOT gleicher Endpoint). Monatsziele-API nutzt gespeicherte Ziele **nur bei freigegebener Planung** (Tabelle `zielplanung_stand`, Status `freigegeben`).
 - ✅ **Auftragseingang Zielerfüllung:** Monatsziele-API; Summary-Karten mit „Zielerfüllung (Zielplanung): NW/GW IST/Ziel (X%)“; Verkäufer-Tabelle mit Spalten Ziel NW, Ziel GW, Erfüllung % (nur Monatsansicht).
+- ✅ **Auftragseingang Zeitraum-Filter Kalenderjahr/Geschäftsjahr (TAG 223):** Auftragseingang unterstützt jetzt `zeitraum=calendar_year|fiscal_year|month|day`; Geschäftsjahr ist verbindlich **Sep–Aug** (`year` = Startjahr, z. B. 2025 → GJ 2025/26). Verkäufer-Übersicht für Besprechung mit klaren Spalten **NW / TVFW / GW / Gesamt** in einem Klick auf Kalenderjahr oder Geschäftsjahr.
+- ✅ **Auslieferungen analog Zeitraum-Filter + kompakte Jahresdarstellung (TAG 223):** Auslieferungen unterstützen jetzt ebenfalls `zeitraum=calendar_year|fiscal_year|month|day` auf Rechnungsdatum. Bei Kalenderjahr/Geschäftsjahr sind Verkäufer standardmäßig eingeklappt (Summenzeile), Details per Klick; bei Tag/Monat standardmäßig geöffnet.
+- ✅ **UI-Angleichung Auftragseingang/Auslieferungen (TAG 223):** Auslieferungen wurden auf dieselbe Filter-Bedienlogik wie Auftragseingang gebracht (Quick-Buttons inkl. Kalenderjahr/Geschäftsjahr, Standort-Tabs statt Dropdown). Tabellenköpfe und Kennzahl-Spalten wurden visuell vereinheitlicht; große Zeiträume zeigen kompakte Summenzeilen mit optionalen Details.
 - ✅ **Workflow Zielplanung:** Tabelle `verkaeufer_ziele`, GET/POST Ziele, editierbare Tabelle (Vorschlag übernehmen, Gespeicherte Ziele laden, Speichern). Differenz-Box: Summe vereinbarte Ziele vs. Konzernziel, Hinweis auf Ausgleich in weiteren Planungsgesprächen.
 - ✅ **Speicherkonzept & Freigabe:** Tabelle `zielplanung_stand` speichert pro Zieljahr Parameter (Referenz, Konzernziel NW/GW, NW nach Marke) und Status (`entwurf`/`freigegeben`). Beim Seitenaufruf wird Planungsstand geladen → Formular und Tabelle wiederhergestellt. „Ziele speichern“ schreibt Entwurf (Parameter + Ziele). „Planung freigeben“ setzt Status auf `freigegeben`; ab dann sind Ziele verbindlich für Monatsziele und Auftragseingang. Siehe `VERKAEUFER_ZIELPLANUNG_SPEICHERKONZEPT_FREIGABE.md`.
 - ✅ **Detailansicht pro Verkäufer (Planungsgespräch):** Route `/verkauf/zielplanung/verkaeufer/<nr>`, nur diese Person (Vorjahr, Vorschlag, Vereinbarung), PUT pro Verkäufer; Link „Detail“ in Haupttabelle. Motivierender Aufbau: Hero mit Jahresziel, Steigerung % zum Vorjahr, Badge „Über Planvorschlag“, Erfolgstext nach Speichern.
@@ -58,6 +61,7 @@ Verkauf umfasst Auftragseingang, Auslieferungen, Deckungsbeitrag, Profitabilitä
 - **Verkäufer-Zielplanung:** Test mit Anton (Verkaufsleiter) durchführen; Feedback einarbeiten.
 - AHK-Portal (Die Autohauskenner): Keine REST-API gefunden; Integration nur via Link/Deep-Link sinnvoll. Siehe `AHK_PORTAL_ANALYSE.md`.
 - mobile.de Zukauf: API-Anfrage (Search-API / Ad-Stream) an mobile.de gestellt (Kundennr. 504661); Rückmeldung abwarten. Danach ggf. Integration in DRIVE (Celery + UI für Zukauf-Prüfung).
+- **UI-Feinschliff Verkäufer-Tabellen:** Optional „Alle auf/zu“ auch in Auftragseingang ergänzen (wie Auslieferungen), falls im VKL-Review gewünscht.
 
 ## SSOT Verkauf / Zielplanung / Provision
 

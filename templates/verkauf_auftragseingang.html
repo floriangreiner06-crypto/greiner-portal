@@ -19,6 +19,12 @@
                 <button type="button" class="btn btn-primary" id="btnMonat">
                     <i class="bi bi-calendar-month"></i> Dieser Monat
                 </button>
+                <button type="button" class="btn btn-outline-primary" id="btnKalenderjahr">
+                    <i class="bi bi-calendar3"></i> Kalenderjahr
+                </button>
+                <button type="button" class="btn btn-outline-primary" id="btnGeschaeftsjahr">
+                    <i class="bi bi-calendar-range"></i> Geschäftsjahr
+                </button>
             </div>
         </div>
     </div>
@@ -30,6 +36,8 @@
             <select id="periodSelect" class="form-select">
                 <option value="month" selected>Monat</option>
                 <option value="day">Tag</option>
+                <option value="calendar_year">Kalenderjahr</option>
+                <option value="fiscal_year">Geschäftsjahr (Sep-Aug)</option>
             </select>
         </div>
         <div class="col-md-2">
@@ -181,7 +189,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Event Listeners
     document.getElementById('loadBtn').addEventListener('click', loadData);
-    document.getElementById('periodSelect').addEventListener('change', togglePeriodInputs);
+    document.getElementById('periodSelect').addEventListener('change', () => {
+        togglePeriodInputs();
+        const period = document.getElementById('periodSelect').value;
+        if (period === 'day') updateQuickButtons('heute');
+        else if (period === 'month') updateQuickButtons('monat');
+        else if (period === 'calendar_year') updateQuickButtons('kalenderjahr');
+        else if (period === 'fiscal_year') updateQuickButtons('geschaeftsjahr');
+    });
 
     // Quick-Buttons
     document.getElementById('btnHeute').addEventListener('click', () => {
@@ -201,6 +216,23 @@ document.addEventListener('DOMContentLoaded', function() {
         loadData();
     });
 
+    document.getElementById('btnKalenderjahr').addEventListener('click', () => {
+        document.getElementById('periodSelect').value = 'calendar_year';
+        document.getElementById('yearSelect').value = now.getFullYear();
+        togglePeriodInputs();
+        updateQuickButtons('kalenderjahr');
+        loadData();
+    });
+
+    document.getElementById('btnGeschaeftsjahr').addEventListener('click', () => {
+        const fiscalStartYear = (now.getMonth() + 1) >= 9 ? now.getFullYear() : now.getFullYear() - 1;
+        document.getElementById('periodSelect').value = 'fiscal_year';
+        document.getElementById('yearSelect').value = fiscalStartYear;
+        togglePeriodInputs();
+        updateQuickButtons('geschaeftsjahr');
+        loadData();
+    });
+
     // Verkäufer-Liste laden
     loadVerkauferList();
 
@@ -214,6 +246,10 @@ function updateQuickButtons(active) {
     document.getElementById('btnHeute').classList.toggle('btn-outline-primary', active !== 'heute');
     document.getElementById('btnMonat').classList.toggle('btn-primary', active === 'monat');
     document.getElementById('btnMonat').classList.toggle('btn-outline-primary', active !== 'monat');
+    document.getElementById('btnKalenderjahr').classList.toggle('btn-primary', active === 'kalenderjahr');
+    document.getElementById('btnKalenderjahr').classList.toggle('btn-outline-primary', active !== 'kalenderjahr');
+    document.getElementById('btnGeschaeftsjahr').classList.toggle('btn-primary', active === 'geschaeftsjahr');
+    document.getElementById('btnGeschaeftsjahr').classList.toggle('btn-outline-primary', active !== 'geschaeftsjahr');
 }
 
 function togglePeriodInputs() {
@@ -224,8 +260,11 @@ function togglePeriodInputs() {
     if (period === 'day') {
         monthSelect.style.display = 'none';
         daySelect.style.display = 'block';
-    } else {
+    } else if (period === 'month') {
         monthSelect.style.display = 'block';
+        daySelect.style.display = 'none';
+    } else {
+        monthSelect.style.display = 'none';
         daySelect.style.display = 'none';
     }
 }
@@ -348,12 +387,14 @@ async function loadSummary() {
     container.innerHTML = '<div class="col-12 text-center"><div class="spinner-border"></div></div>';
 
     try {
-        let url = `/api/verkauf/auftragseingang/summary?year=${currentYear}`;
+        let url = `/api/verkauf/auftragseingang/summary?zeitraum=${encodeURIComponent(currentPeriod)}&year=${currentYear}`;
         
         if (currentPeriod === 'month') {
             url += `&month=${currentMonth}`;
         } else {
-            url += `&day=${currentDay}`;
+            if (currentPeriod === 'day') {
+                url += `&day=${currentDay}`;
+            }
         }
         
         // TAG 177: Standort-Filter hinzufügen
@@ -403,7 +444,7 @@ async function loadSummary() {
             <div class="col-md-3">
                 <div class="card text-center border-warning">
                     <div class="card-body">
-                        <h6><strong>Test/Vorführ</strong></h6>
+                        <h6><strong>TVFW</strong></h6>
                         <h3 class="text-warning"><strong>${testvorfuehr.gesamt}</strong></h3>
                         
                     </div>
@@ -465,12 +506,14 @@ async function loadDetails() {
     container.innerHTML = '<div class="text-center"><div class="spinner-border"></div></div>';
 
     try {
-        let url = `/api/verkauf/auftragseingang/detail?year=${currentYear}`;
+        let url = `/api/verkauf/auftragseingang/detail?zeitraum=${encodeURIComponent(currentPeriod)}&year=${currentYear}`;
         
         if (currentPeriod === 'month') {
             url += `&month=${currentMonth}`;
         } else {
-            url += `&day=${currentDay}`;
+            if (currentPeriod === 'day') {
+                url += `&day=${currentDay}`;
+            }
         }
         
         if (currentLocation) url += `&location=${encodeURIComponent(currentLocation)}`;
@@ -495,12 +538,15 @@ async function loadDetails() {
         }
         const hasZiele = Object.keys(zieleByNr).length > 0;
 
-        let html = '<div class="table-responsive"><table class="table table-striped table-hover">';
-        html += '<thead class="table-dark"><tr><th>Verkäufer</th><th class="text-center">Neu</th><th class="text-center">Test/Vorführ</th><th class="text-center">Gebraucht</th><th class="text-center">Gesamt</th>';
-        if (hasZiele) html += '<th class="text-center">Ziel NW</th><th class="text-center">Ziel GW</th><th class="text-center">Erfüllung</th>';
-        html += '<th>Modelle</th></tr></thead><tbody>';
+        const isLargePeriod = currentPeriod === 'calendar_year' || currentPeriod === 'fiscal_year';
 
-        data.verkaufer.forEach(vk => {
+        let html = '<div class="table-responsive"><table class="table table-striped table-hover">';
+        html += '<thead class="table-dark"><tr><th>Verkäufer</th><th class="text-center">NW</th><th class="text-center">TVFW</th><th class="text-center">GW</th><th class="text-center">Gesamt</th>';
+        if (hasZiele) html += '<th class="text-center">Ziel NW</th><th class="text-center">Ziel GW</th><th class="text-center">Erfüllung</th>';
+        html += isLargePeriod ? '<th class="text-center">Details</th>' : '<th>Modelle</th>';
+        html += '</tr></thead><tbody>';
+
+        data.verkaufer.forEach((vk, idx) => {
             const istNw = (vk.summe_neu || 0) + (vk.summe_test_vorfuehr || 0);
             const istGw = vk.summe_gebraucht || 0;
             const ziel = zieleByNr[vk.verkaufer_nummer];
@@ -516,13 +562,27 @@ async function loadDetails() {
                     zielCells = '<td class="text-center">-</td><td class="text-center">-</td><td class="text-center small text-muted">-</td>';
                 }
             }
-            html += '<tr><td><strong>' + (vk.verkaufer_name || 'Unbekannt') + '</strong></td>' +
-                '<td class="text-center"><span class="badge bg-success">' + (vk.summe_neu || 0) + '</span></td>' +
-                '<td class="text-center"><span class="badge bg-warning text-dark">' + (vk.summe_test_vorfuehr || 0) + '</span></td>' +
-                '<td class="text-center"><span class="badge bg-secondary">' + (vk.summe_gebraucht || 0) + '</span></td>' +
-                '<td class="text-center"><strong>' + (vk.summe_gesamt || 0) + '</strong></td>' +
-                (hasZiele ? zielCells : '') +
-                '<td>' + formatModelle(vk) + '</td></tr>';
+
+            if (isLargePeriod) {
+                const detailId = 'vkDetail_' + (vk.verkaufer_nummer || idx);
+                const colSpan = hasZiele ? 9 : 6;
+                html += '<tr><td><strong>' + (vk.verkaufer_name || 'Unbekannt') + '</strong></td>' +
+                    '<td class="text-center"><span class="badge bg-success">' + (vk.summe_neu || 0) + '</span></td>' +
+                    '<td class="text-center"><span class="badge bg-warning text-dark">' + (vk.summe_test_vorfuehr || 0) + '</span></td>' +
+                    '<td class="text-center"><span class="badge bg-secondary">' + (vk.summe_gebraucht || 0) + '</span></td>' +
+                    '<td class="text-center"><strong>' + (vk.summe_gesamt || 0) + '</strong></td>' +
+                    (hasZiele ? zielCells : '') +
+                    '<td class="text-center"><button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#' + detailId + '" aria-expanded="false" aria-controls="' + detailId + '"><i class="bi bi-chevron-down"></i></button></td></tr>';
+                html += '<tr class="collapse" id="' + detailId + '"><td colspan="' + colSpan + '">' + formatModelle(vk) + '</td></tr>';
+            } else {
+                html += '<tr><td><strong>' + (vk.verkaufer_name || 'Unbekannt') + '</strong></td>' +
+                    '<td class="text-center"><span class="badge bg-success">' + (vk.summe_neu || 0) + '</span></td>' +
+                    '<td class="text-center"><span class="badge bg-warning text-dark">' + (vk.summe_test_vorfuehr || 0) + '</span></td>' +
+                    '<td class="text-center"><span class="badge bg-secondary">' + (vk.summe_gebraucht || 0) + '</span></td>' +
+                    '<td class="text-center"><strong>' + (vk.summe_gesamt || 0) + '</strong></td>' +
+                    (hasZiele ? zielCells : '') +
+                    '<td>' + formatModelle(vk) + '</td></tr>';
+            }
         });
 
         html += '</tbody></table></div>';
