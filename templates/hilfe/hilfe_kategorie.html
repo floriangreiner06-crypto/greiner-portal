@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Hilfe – {{ kategorie_slug }} – Greiner DRIVE{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/hilfe.css') }}?v={{ STATIC_VERSION }}">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('hilfe.uebersicht') }}">Hilfe</a></li>
+            <li class="breadcrumb-item active" id="breadcrumb-kat" aria-current="page">{{ kategorie_slug }}</li>
+        </ol>
+    </nav>
+
+    <div id="kategorie-header" class="mb-4"></div>
+    <ul id="artikel-list" class="list-group list-group-flush">
+        <li class="list-group-item text-muted"><span class="spinner-border spinner-border-sm"></span> Wird geladen…</li>
+    </ul>
+</div>
+
+<script>
+(function() {
+    const slug = '{{ kategorie_slug }}';
+    fetch('/api/hilfe/kategorie/' + encodeURIComponent(slug), { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('artikel-list').innerHTML = '<li class="list-group-item text-danger">' + data.error + '</li>';
+                return;
+            }
+            document.getElementById('breadcrumb-kat').textContent = data.name || slug;
+            document.getElementById('kategorie-header').innerHTML = '<h1><i class="bi ' + (data.icon || 'bi-question-circle') + '"></i> ' + (data.name || slug) + '</h1>' +
+                (data.beschreibung ? '<p class="text-muted">' + data.beschreibung + '</p>' : '');
+            const artikel = data.artikel || [];
+            const list = document.getElementById('artikel-list');
+            if (artikel.length === 0) {
+                list.innerHTML = '<li class="list-group-item text-muted">Keine Artikel in dieser Kategorie.</li>';
+                return;
+            }
+            list.innerHTML = artikel.map(a =>
+                '<li class="list-group-item"><a href="/hilfe/artikel/' + a.id + '">' + a.titel + '</a></li>'
+            ).join('');
+        })
+        .catch(() => {
+            document.getElementById('artikel-list').innerHTML = '<li class="list-group-item text-danger">Fehler beim Laden.</li>';
+        });
+})();
+</script>
+{% endblock %}

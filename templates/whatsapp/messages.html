@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+
+{% block title %}WhatsApp Nachrichten - Greiner DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .message-card {
+        background: white;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .message-inbound {
+        border-left: 4px solid #28a745;
+    }
+    .message-outbound {
+        border-left: 4px solid #007bff;
+    }
+    .message-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+    }
+    .message-contact {
+        font-weight: 600;
+        color: #333;
+    }
+    .message-time {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+    .message-content {
+        margin-top: 0.5rem;
+        color: #333;
+    }
+    .message-status {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        display: inline-block;
+    }
+    .status-sent { background: #e3f2fd; color: #1976d2; }
+    .status-delivered { background: #e8f5e9; color: #388e3c; }
+    .status-read { background: #f3e5f5; color: #7b1fa2; }
+    .status-failed { background: #ffebee; color: #c62828; }
+    .message-type-badge {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        background: #f5f5f5;
+        color: #666;
+        margin-left: 0.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2><i class="bi bi-whatsapp text-success"></i> WhatsApp Nachrichten</h2>
+                <div>
+                    <button type="button" class="btn btn-success me-2" data-bs-toggle="modal" data-bs-target="#neueNachrichtModal">
+                        <i class="bi bi-plus-lg"></i> Neue Nachricht
+                    </button>
+                    <a href="{{ url_for('whatsapp.contacts_list') }}" class="btn btn-outline-primary">
+                        <i class="bi bi-people"></i> Kontakte
+                    </a>
+                </div>
+            </div>
+
+            {% if error %}
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle"></i> {{ error }}
+            </div>
+            {% endif %}
+
+            {% if messages %}
+            <div class="messages-list">
+                {% for msg in messages %}
+                <div class="message-card message-{{ msg.direction }}">
+                    <div class="message-header">
+                        <div>
+                            <span class="message-contact">
+                                {% if msg.workshop_name %}
+                                    {{ msg.workshop_name }}
+                                {% else %}
+                                    {{ msg.phone_number }}
+                                {% endif %}
+                            </span>
+                            <span class="message-type-badge">{{ msg.message_type }}</span>
+                        </div>
+                        <div>
+                            <span class="message-time">
+                                {{ msg.created_at.strftime('%d.%m.%Y %H:%M') if msg.created_at else 'Unbekannt' }}
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <div class="message-content">
+                        {% if msg.message_type == 'text' %}
+                            {{ msg.content or '(Kein Text)' }}
+                        {% elif msg.message_type == 'image' %}
+                            <i class="bi bi-image"></i> Bild
+                            {% if msg.caption %}
+                                <br><small class="text-muted">{{ msg.caption }}</small>
+                            {% endif %}
+                        {% elif msg.message_type == 'document' %}
+                            <i class="bi bi-file-earmark"></i> Dokument
+                            {% if msg.caption %}
+                                <br><small class="text-muted">{{ msg.caption }}</small>
+                            {% endif %}
+                        {% else %}
+                            {{ msg.message_type|title }}
+                        {% endif %}
+                    </div>
+                    
+                    {% if msg.direction == 'outbound' %}
+                    <div class="mt-2">
+                        <span class="message-status status-{{ msg.status }}">
+                            {% if msg.status == 'sent' %}Gesendet
+                            {% elif msg.status == 'delivered' %}Zugestellt
+                            {% elif msg.status == 'read' %}Gelesen
+                            {% elif msg.status == 'failed' %}Fehlgeschlagen
+                            {% else %}{{ msg.status|title }}
+                            {% endif %}
+                        </span>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> Noch keine Nachrichten vorhanden.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Neue Nachricht (Nummer + Text, sofort senden) -->
+<div class="modal fade" id="neueNachrichtModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-whatsapp text-success"></i> Neue Nachricht</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="neueNachrichtForm">
+                    <div class="mb-3">
+                        <label for="neuTo" class="form-label">Telefonnummer</label>
+                        <input type="text" class="form-control" id="neuTo" name="to" placeholder="z.B. 4917612345678" required>
+                        <small class="text-muted">Mit Ländercode, ohne +</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="neuMessage" class="form-label">Nachricht</label>
+                        <textarea class="form-control" id="neuMessage" name="message" rows="4" required></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-success" id="btnNeueNachrichtSenden">
+                    <i class="bi bi-send"></i> Senden
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('btnNeueNachrichtSenden').addEventListener('click', function() {
+    var to = document.getElementById('neuTo').value.trim().replace(/\s/g, '');
+    var message = document.getElementById('neuMessage').value.trim();
+    if (!to || !message) {
+        alert('Bitte Nummer und Nachricht eingeben.');
+        return;
+    }
+    this.disabled = true;
+    fetch('{{ url_for("whatsapp.send_message") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: to, message: message, type: 'text' })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(result) {
+        if (result.success) {
+            bootstrap.Modal.getInstance(document.getElementById('neueNachrichtModal')).hide();
+            document.getElementById('neueNachrichtForm').reset();
+            window.location.reload();
+        } else {
+            alert('Fehler: ' + (result.error || 'Nachricht konnte nicht gesendet werden'));
+        }
+    })
+    .catch(function(err) {
+        alert('Fehler beim Senden');
+        console.error(err);
+    })
+    .finally(function() { document.getElementById('btnNeueNachrichtSenden').disabled = false; });
+});
+</script>
+{% endblock %}

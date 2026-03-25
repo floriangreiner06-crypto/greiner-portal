@@ -1,0 +1,1527 @@
+{% extends "base.html" %}
+
+{% block title %}BWA - Betriebswirtschaftliche Auswertung{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* =========================================
+       BWA v2 - Compact Design (Excel-ähnlich)
+       Maximale Informationsdichte, Fokus auf Zahlen
+       ========================================= */
+    
+    body {
+        background: #ffffff;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        font-size: 13px;
+    }
+    
+    .container-fluid {
+        padding: 1rem;
+        max-width: 100%;
+        margin: 0 auto;
+    }
+    
+    /* =========================================
+       HEADER - Kompakt
+       ========================================= */
+    .header-compact {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 1rem;
+        border-bottom: 2px solid #0d6efd;
+        margin-bottom: 0.75rem;
+    }
+    
+    .header-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #212529;
+        margin: 0;
+    }
+    
+    .header-meta {
+        font-size: 0.85rem;
+        color: #6c757d;
+        margin-top: 0.25rem;
+    }
+    
+    /* =========================================
+       FILTER - Inline, kompakt
+       ========================================= */
+    .filter-inline {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+        padding: 0.5rem 1rem;
+        background: #f8f9fa;
+        border-bottom: 1px solid #dee2e6;
+        margin-bottom: 0.5rem;
+        flex-wrap: wrap;
+    }
+    
+    .filter-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .filter-item label {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #495057;
+        margin: 0;
+        white-space: nowrap;
+    }
+    
+    /* =========================================
+       KPI-ROW - Kompakt, horizontal
+       ========================================= */
+    .kpi-compact-row {
+        display: flex;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+        background: #f8f9fa;
+        border-bottom: 1px solid #dee2e6;
+        margin-bottom: 0.5rem;
+        flex-wrap: wrap;
+    }
+    
+    .kpi-item {
+        display: flex;
+        flex-direction: column;
+        min-width: 180px;
+        padding-right: 0.75rem;
+        border-right: 1px solid #dee2e6;
+    }
+    
+    .kpi-item:last-child {
+        border-right: none;
+    }
+    
+    .kpi-label-small {
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: #6c757d;
+        text-transform: uppercase;
+        margin-bottom: 0.25rem;
+    }
+    
+    .kpi-ytd-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.5rem;
+        margin-top: 0.25rem;
+        padding-top: 0.25rem;
+        border-top: 1px solid #e9ecef;
+    }
+    
+    .kpi-ytd-label {
+        font-size: 0.65rem;
+        color: #6c757d;
+        font-weight: 500;
+    }
+    
+    .kpi-ytd-value {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #495057;
+        font-family: 'Courier New', monospace;
+    }
+    
+    .kpi-value-compact {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #212529;
+        line-height: 1.2;
+    }
+    
+    .kpi-delta-small {
+        font-size: 0.75rem;
+        color: #6c757d;
+        margin-top: 0.15rem;
+    }
+    
+    .kpi-delta-small.positive { color: #198754; }
+    .kpi-delta-small.negative { color: #dc3545; }
+    
+    /* =========================================
+       WJ-Info kompakt
+       ========================================= */
+    .wj-compact {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem 1rem;
+        background: #f8f9fa;
+        border-bottom: 1px solid #dee2e6;
+        margin-bottom: 0.5rem;
+        font-size: 0.85rem;
+    }
+    
+    .wj-progress-mini {
+        width: 150px;
+        height: 4px;
+        background: #e9ecef;
+        border-radius: 2px;
+        overflow: hidden;
+    }
+    
+    .wj-progress-mini-fill {
+        height: 100%;
+        background: #0d6efd;
+        transition: width 0.3s;
+    }
+    
+    /* =========================================
+       TABELLE - Excel-ähnlich, kompakt
+       ========================================= */
+    .table-wrapper {
+        background: white;
+        border: 1px solid #dee2e6;
+        position: relative;
+    }
+    
+    .table-compact {
+        margin: 0;
+        font-size: 0.8rem;
+        border-collapse: collapse;
+        table-layout: fixed;
+        width: 100%;
+    }
+    
+    .table-compact thead th {
+        background: #343a40;
+        color: white;
+        font-weight: 600;
+        padding: 0.35rem 0.4rem;
+        border: 1px solid #495057;
+        white-space: nowrap;
+        font-size: 0.7rem;
+        text-align: center;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .table-compact thead th.text-start {
+        text-align: left;
+    }
+    
+    .table-compact thead th.text-end {
+        text-align: right;
+    }
+    
+    .table-compact tbody td {
+        padding: 0.35rem 0.4rem;
+        border: 1px solid #e9ecef;
+        vertical-align: middle;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .table-compact tbody td:first-child {
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .table-compact tbody tr:hover {
+        background: #f8f9fa;
+    }
+    
+    .table-compact tbody tr.row-header {
+        background: #495057;
+        color: white;
+        font-weight: 600;
+    }
+    
+    .table-compact tbody tr.row-sum {
+        background: #e9ecef;
+        font-weight: 600;
+    }
+    
+    .table-compact tbody tr.row-bereich {
+        cursor: pointer;
+    }
+    
+    .table-compact tbody tr.row-bereich:hover {
+        background: #e3f2fd;
+    }
+    
+    .table-compact tbody tr.row-result {
+        background: #d4edda;
+        font-weight: 700;
+    }
+    
+    .table-compact tbody tr.row-highlight {
+        background: #fff3cd;
+    }
+    
+    /* Zahlen-Formatierung - Monospace */
+    .number {
+        font-family: 'Courier New', monospace;
+        font-weight: 600;
+        text-align: right;
+    }
+    
+    .number.positive {
+        color: #198754;
+    }
+    
+    .number.negative {
+        color: #dc3545;
+    }
+    
+    .number.large {
+        font-size: 0.95rem;
+    }
+    
+    .number.medium {
+        font-size: 0.9rem;
+    }
+    
+    /* Bereich-Icons kompakt */
+    .icon-small {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border-radius: 2px;
+        text-align: center;
+        line-height: 20px;
+        font-size: 0.65rem;
+        font-weight: 700;
+        color: white;
+        margin-right: 0.4rem;
+    }
+    
+    .icon-small.nw { background: #0d6efd; }
+    .icon-small.gw { background: #fd7e14; }
+    .icon-small.me { background: #6f42c1; }
+    .icon-small.tz { background: #20c997; }
+    .icon-small.mw { background: #6c757d; }
+    .icon-small.so { background: #adb5bd; }
+    
+    /* Delta kompakt */
+    .delta-inline {
+        font-size: 0.75rem;
+        font-weight: 600;
+        padding: 0.1rem 0.4rem;
+        border-radius: 2px;
+        display: inline-block;
+    }
+    
+    .delta-inline.positive {
+        background: #d1e7dd;
+        color: #0f5132;
+    }
+    
+    .delta-inline.negative {
+        background: #f8d7da;
+        color: #842029;
+    }
+    
+    .delta-inline.neutral {
+        background: #e9ecef;
+        color: #6c757d;
+    }
+    
+    /* Tabelle passt ins Fenster, nur vertikal scrollen */
+    .table-scroll {
+        max-height: calc(100vh - 350px);
+        overflow-y: auto;
+        overflow-x: hidden;
+        width: 100%;
+    }
+    
+    .table-scroll::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    
+    .table-scroll::-webkit-scrollbar-track {
+        background: #f1f1f1;
+    }
+    
+    .table-scroll::-webkit-scrollbar-thumb {
+        background: #888;
+        border-radius: 4px;
+    }
+    
+    .table-scroll::-webkit-scrollbar-thumb:hover {
+        background: #555;
+    }
+    
+    /* Legende kompakt */
+    .legend-compact {
+        display: flex;
+        gap: 1rem;
+        padding: 0.5rem 1rem;
+        background: #f8f9fa;
+        border-top: 1px solid #dee2e6;
+        font-size: 0.75rem;
+        flex-wrap: wrap;
+    }
+    
+    .legend-item-compact {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+    
+    /* Loading */
+    .loading-overlay {
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(255,255,255,0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+    }
+    
+    /* Alte Klassen für Kompatibilität */
+    .val-pos { color: #198754; font-weight: 600; }
+    .val-neg { color: #dc3545; font-weight: 600; }
+    .val-muted { color: #6c757d; }
+    
+    /* Bereich-Icons (alte Klasse für Kompatibilität) */
+    .bereich-icon {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border-radius: 2px;
+        text-align: center;
+        line-height: 20px;
+        font-size: 0.65rem;
+        font-weight: 700;
+        color: white;
+        margin-right: 0.4rem;
+    }
+    .bereich-icon.nw { background: #0d6efd; }
+    .bereich-icon.gw { background: #fd7e14; }
+    .bereich-icon.me { background: #6f42c1; }
+    .bereich-icon.tz { background: #20c997; }
+    .bereich-icon.mw { background: #6c757d; }
+    .bereich-icon.so { background: #adb5bd; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-2">
+    <!-- Header -->
+    <div class="header-compact">
+        <div>
+            <h5 class="header-title">
+                <i class="bi bi-table me-2"></i>
+                BWA - Betriebswirtschaftliche Auswertung
+            </h5>
+            <div class="header-meta" id="bwa-subtitle"></div>
+        </div>
+        <div>
+            <a href="/controlling/bwa/archiv" class="btn btn-sm btn-outline-secondary me-1" title="Alte BWA Version">
+                <i class="bi bi-archive"></i>
+            </a>
+            <button class="btn btn-sm btn-outline-secondary me-1">
+                <i class="bi bi-download"></i> Export
+            </button>
+            <button class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-printer"></i> Drucken
+            </button>
+        </div>
+    </div>
+    
+    <!-- Filter Inline -->
+    <div class="filter-inline">
+        <div class="filter-item">
+            <label>Monat:</label>
+            <select id="filterMonat" class="form-select form-select-sm" style="width: 120px;">
+                <option value="1">Januar</option>
+                <option value="2">Februar</option>
+                <option value="3">März</option>
+                <option value="4">April</option>
+                <option value="5">Mai</option>
+                <option value="6">Juni</option>
+                <option value="7">Juli</option>
+                <option value="8">August</option>
+                <option value="9">September</option>
+                <option value="10">Oktober</option>
+                <option value="11">November</option>
+                <option value="12">Dezember</option>
+            </select>
+        </div>
+        <div class="filter-item">
+            <label>Jahr:</label>
+            <select id="filterJahr" class="form-select form-select-sm" style="width: 90px;">
+                <option value="2026">2026</option>
+                <option value="2025">2025</option>
+                <option value="2024">2024</option>
+                <option value="2023">2023</option>
+            </select>
+        </div>
+        <div class="filter-item">
+            <label>Standort:</label>
+            {% set current_standort = standort %}
+            {% set show_konsolidiert = true %}
+            {% set additional_params = {'monat': request.args.get('monat', ''), 'jahr': request.args.get('jahr', '')} %}
+            {% include 'components/standort_filter_tabs.html' %}
+        </div>
+        <div class="filter-item">
+            <label>Kostenstellen:</label>
+            <div class="btn-group">
+                <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" id="kstFilterBtn" data-bs-toggle="dropdown" aria-expanded="false" style="min-width: 150px;">
+                    <span id="kstFilterText">Alle</span>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end" id="kstFilterDropdown" style="max-height: 300px; overflow-y: auto;">
+                    <li>
+                        <label class="dropdown-item-text">
+                            <input type="checkbox" id="kst-all" class="form-check-input me-2" checked>
+                            <strong>Alle Kostenstellen</strong>
+                        </label>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li>
+                        <label class="dropdown-item-text">
+                            <input type="checkbox" id="kst-0" class="form-check-input me-2 kst-checkbox" value="0">
+                            KST 0 - Gemeinkosten
+                        </label>
+                    </li>
+                    <li>
+                        <label class="dropdown-item-text">
+                            <input type="checkbox" id="kst-1" class="form-check-input me-2 kst-checkbox" value="1">
+                            KST 1 - Neuwagen
+                        </label>
+                    </li>
+                    <li>
+                        <label class="dropdown-item-text">
+                            <input type="checkbox" id="kst-2" class="form-check-input me-2 kst-checkbox" value="2">
+                            KST 2 - Gebrauchtwagen
+                        </label>
+                    </li>
+                    <li>
+                        <label class="dropdown-item-text">
+                            <input type="checkbox" id="kst-3" class="form-check-input me-2 kst-checkbox" value="3">
+                            KST 3 - Service/Werkstatt
+                        </label>
+                    </li>
+                    <li>
+                        <label class="dropdown-item-text">
+                            <input type="checkbox" id="kst-4" class="form-check-input me-2 kst-checkbox" value="4">
+                            KST 4 - Teile & Zubehör
+                        </label>
+                    </li>
+                    <li>
+                        <label class="dropdown-item-text">
+                            <input type="checkbox" id="kst-5" class="form-check-input me-2 kst-checkbox" value="5">
+                            KST 5 - Mietwagen
+                        </label>
+                    </li>
+                    <li>
+                        <label class="dropdown-item-text">
+                            <input type="checkbox" id="kst-6" class="form-check-input me-2 kst-checkbox" value="6">
+                            KST 6 - Sonstiges
+                        </label>
+                    </li>
+                    <li>
+                        <label class="dropdown-item-text">
+                            <input type="checkbox" id="kst-7" class="form-check-input me-2 kst-checkbox" value="7">
+                            KST 7 - Verwaltung
+                        </label>
+                    </li>
+                </ul>
+            </div>
+        </div>
+        <div class="filter-item">
+            <button id="btnLaden" class="btn btn-primary btn-sm">
+                <i class="bi bi-arrow-clockwise me-1"></i>Laden
+            </button>
+        </div>
+    </div>
+    
+    <!-- WJ-Info kompakt -->
+    <div class="wj-compact">
+        <div>
+            <strong>Wirtschaftsjahr <span id="wj-year">2025/26</span></strong> <span class="text-muted" id="wj-range">(Sep 2025 - Aug 2026)</span> | <span class="text-muted" id="wj-monat-label">Monat 2 von 12</span>
+        </div>
+        <div class="wj-progress-mini">
+            <div class="wj-progress-mini-fill" id="wj-progress-bar" style="width: 16.7%"></div>
+        </div>
+    </div>
+    
+    <!-- KPI-Row kompakt -->
+    <div class="kpi-compact-row">
+        <div class="kpi-item">
+            <div class="kpi-label-small">Umsatzerlöse</div>
+            <div class="kpi-value-compact" id="kpi-umsatz">-</div>
+            <div class="kpi-delta-small" id="kpi-umsatz-delta"></div>
+            <div class="kpi-ytd-row">
+                <span class="kpi-ytd-label">YTD:</span>
+                <span class="kpi-ytd-value" id="kpi-umsatz-ytd">-</span>
+                <span class="kpi-ytd-label">YTD VJ:</span>
+                <span class="kpi-ytd-value" id="kpi-umsatz-ytd-vj">-</span>
+            </div>
+        </div>
+        <div class="kpi-item">
+            <div class="kpi-label-small">Bruttoertrag (DB1)</div>
+            <div class="kpi-value-compact" id="kpi-db1">-</div>
+            <div class="kpi-delta-small" id="kpi-db1-delta"></div>
+            <div class="kpi-ytd-row">
+                <span class="kpi-ytd-label">YTD:</span>
+                <span class="kpi-ytd-value" id="kpi-db1-ytd">-</span>
+                <span class="kpi-ytd-label">YTD VJ:</span>
+                <span class="kpi-ytd-value" id="kpi-db1-ytd-vj">-</span>
+            </div>
+        </div>
+        <div class="kpi-item">
+            <div class="kpi-label-small">Deckungsbeitrag 2</div>
+            <div class="kpi-value-compact" id="kpi-db2">-</div>
+            <div class="kpi-delta-small" id="kpi-db2-delta"></div>
+            <div class="kpi-ytd-row">
+                <span class="kpi-ytd-label">YTD:</span>
+                <span class="kpi-ytd-value" id="kpi-db2-ytd">-</span>
+                <span class="kpi-ytd-label">YTD VJ:</span>
+                <span class="kpi-ytd-value" id="kpi-db2-ytd-vj">-</span>
+            </div>
+        </div>
+        <div class="kpi-item">
+            <div class="kpi-label-small">Betriebsergebnis</div>
+            <div class="kpi-value-compact" id="kpi-be">-</div>
+            <div class="kpi-delta-small" id="kpi-be-delta"></div>
+            <div class="kpi-ytd-row">
+                <span class="kpi-ytd-label">YTD:</span>
+                <span class="kpi-ytd-value" id="kpi-be-ytd">-</span>
+                <span class="kpi-ytd-label">YTD VJ:</span>
+                <span class="kpi-ytd-value" id="kpi-be-ytd-vj">-</span>
+            </div>
+        </div>
+        <div class="kpi-item">
+            <div class="kpi-label-small">Unternehmensergebnis</div>
+            <div class="kpi-value-compact" id="kpi-ue">-</div>
+            <div class="kpi-delta-small" id="kpi-ue-delta"></div>
+            <div class="kpi-ytd-row">
+                <span class="kpi-ytd-label">YTD:</span>
+                <span class="kpi-ytd-value" id="kpi-ue-ytd">-</span>
+                <span class="kpi-ytd-label">YTD VJ:</span>
+                <span class="kpi-ytd-value" id="kpi-ue-ytd-vj">-</span>
+            </div>
+        </div>
+    </div>
+
+    <p class="text-muted small mb-2 px-1"><i class="bi bi-info-circle me-1"></i> Die AfA (Vorführwagen/Mietwagen) ist in den <strong>indirekten Kosten</strong> enthalten und mindert das Betriebsergebnis – fachlich korrekt. Ein höherer AfA-Anteil kann das BE entsprechend belasten.</p>
+    
+    <!-- Haupttabelle - Excel-ähnlich -->
+    <div class="table-wrapper">
+        <div class="table-scroll position-relative">
+            <div class="loading-overlay d-none" id="loading">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Laden...</span>
+                </div>
+            </div>
+            <table class="table table-compact mb-0">
+                <thead>
+                    <tr>
+                        <th class="text-start" style="width: 26%">Position</th>
+                        <th style="width: 5%">Stk.M</th>
+                        <th style="width: 5%">Stk.VJ</th>
+                        <th class="text-end" style="width: 10%">Monat</th>
+                        <th class="text-end" style="width: 10%">VJ</th>
+                        <th style="width: 6%">Abw.</th>
+                        <th style="width: 5%">Stk.YTD</th>
+                        <th style="width: 5%">Stk.VJ</th>
+                        <th class="text-end" style="width: 10%">YTD</th>
+                        <th class="text-end" style="width: 10%">YTD VJ</th>
+                        <th style="width: 8%">Abw.YTD</th>
+                    </tr>
+                </thead>
+                <tbody id="bwa-body">
+                    <!-- Wird per JavaScript gefüllt -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <!-- Legende kompakt -->
+    <div class="legend-compact">
+        <div class="legend-item-compact">
+            <span class="icon-small nw">NW</span>
+            <span>Neuwagen</span>
+        </div>
+        <div class="legend-item-compact">
+            <span class="icon-small gw">GW</span>
+            <span>Gebrauchtwagen</span>
+        </div>
+        <div class="legend-item-compact">
+            <span class="icon-small me">ME</span>
+            <span>Mechanik/Lohn</span>
+        </div>
+        <div class="legend-item-compact">
+            <span class="icon-small tz">TZ</span>
+            <span>Teile & Zubehör</span>
+        </div>
+        <div class="legend-item-compact">
+            <span class="icon-small mw">MW</span>
+            <span>Mietwagen</span>
+        </div>
+        <div class="legend-item-compact">
+            <span class="icon-small so">SO</span>
+            <span>Sonstige</span>
+        </div>
+    </div>
+</div>
+
+<!-- Drill-Down Modal -->
+<div class="modal fade" id="drilldownModal" tabindex="-1" aria-labelledby="drilldownModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="drilldownModalLabel">Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+            </div>
+            <div class="modal-body">
+                <div id="drilldown-loading" class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Laden...</span>
+                    </div>
+                </div>
+                <div id="drilldown-content" class="d-none">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <span class="text-muted" id="drilldown-subtitle"></span>
+                        <span class="badge bg-secondary" id="drilldown-count"></span>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0" id="drilldown-table">
+                            <thead class="table-light" id="drilldown-thead"></thead>
+                            <tbody id="drilldown-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="drilldown-error" class="d-none alert alert-danger"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    'use strict';
+
+    // Formatierung
+    function fmtEuro(val) {
+        if (val === null || val === undefined) return '-';
+        return new Intl.NumberFormat('de-DE', {
+            style: 'currency', currency: 'EUR',
+            minimumFractionDigits: 0, maximumFractionDigits: 0
+        }).format(val);
+    }
+
+    function fmtEuroCompact(val) {
+        if (val === null || val === undefined) return '-';
+        const absVal = Math.abs(val);
+        if (absVal >= 1000000) {
+            return (val / 1000000).toFixed(2).replace('.', ',') + ' Mio €';
+        } else if (absVal >= 1000) {
+            return (val / 1000).toFixed(0).replace('.', ',') + ' T€';
+        }
+        return fmtEuro(val);
+    }
+
+    function fmtProzent(val) {
+        if (val === null || val === undefined) return '-';
+        return val.toFixed(1).replace('.', ',') + '%';
+    }
+
+    function calcDelta(aktuell, vorjahr) {
+        if (!vorjahr || vorjahr === 0) return aktuell !== 0 ? 100 : 0;
+        return ((aktuell - vorjahr) / Math.abs(vorjahr)) * 100;
+    }
+
+    function renderDelta(delta, invert = false) {
+        if (delta === null || delta === undefined) return '';
+        const isPositive = invert ? delta < 0 : delta > 0;
+        const cls = Math.abs(delta) < 1 ? 'delta-inline neutral' : (isPositive ? 'delta-inline positive' : 'delta-inline negative');
+        const icon = isPositive ? '↑' : (delta < 0 ? '↓' : '→');
+        return `<span class="${cls}">${icon} ${Math.abs(delta).toFixed(1)}%</span>`;
+    }
+
+    function renderValue(val, addClass = '', size = 'large') {
+        if (val === null || val === undefined) return '<span class="val-muted">-</span>';
+        const cls = val > 0 ? 'number positive' : (val < 0 ? 'number negative' : 'val-muted');
+        const sizeClass = size === 'large' ? 'large' : 'medium';
+        return `<span class="${cls} ${sizeClass}">${fmtEuro(val)}</span>`;
+    }
+
+    // Bereichs-Icons (kompakt)
+    const bereichIcons = {
+        'NW': '<span class="icon-small nw">NW</span>',
+        'GW': '<span class="icon-small gw">GW</span>',
+        'ME': '<span class="icon-small me">ME</span>',
+        'TZ': '<span class="icon-small tz">TZ</span>',
+        'MW': '<span class="icon-small mw">MW</span>',
+        'SO': '<span class="icon-small so">SO</span>'
+    };
+
+    // TAG 177: Standort aus URL lesen (Tab-Navigation)
+    function getStandortFromURL() {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get('standort') || '0';
+    }
+    
+    function getKonsolidiertFromURL() {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get('konsolidiert') === 'true';
+    }
+    
+    // TAG 177: Firma automatisch aus Standort ableiten
+    function getFirmaFromStandort(standort, konsolidiert) {
+        // Standort 1 (Deggendorf Opel) oder 3 (Landau Opel) → Firma 1 (Stellantis)
+        // Standort 2 (Deggendorf Hyundai) → Firma 2 (Hyundai)
+        // Standort 0 (Alle) → Firma 0 (Alle)
+        if (standort === '1' || standort === '3') {
+            return '1'; // Stellantis
+        } else if (standort === '2') {
+            return '2'; // Hyundai
+        }
+        return '0'; // Alle
+    }
+    
+    // TAG 177: Standort für BWA-API mappen (deg-both für konsolidiert, 2→3 für Landau)
+    function mapStandortForBWA(standort, konsolidiert) {
+        if (konsolidiert && standort === '1') {
+            return 'deg-both'; // Deggendorf konsolidiert (Stellantis+Hyundai)
+        }
+        // BWA verwendet standort=2 für Landau, wir verwenden standort=3
+        if (standort === '3') {
+            return '2'; // Landau
+        }
+        if (standort === '1') {
+            return '1'; // Deggendorf (Stellantis)
+        }
+        return standort || '0'; // Alle oder wie übergeben
+    }
+
+    // Kostenstellen-Filter Funktionen
+    function getSelectedKSTs() {
+        const checkboxes = document.querySelectorAll('.kst-checkbox:checked');
+        const ksts = Array.from(checkboxes).map(cb => cb.value);
+        return ksts.length > 0 ? ksts.join(',') : '';
+    }
+    
+    function updateKSTFilterText() {
+        const selected = getSelectedKSTs();
+        const allChecked = document.getElementById('kst-all').checked;
+        const textEl = document.getElementById('kstFilterText');
+        
+        if (allChecked || selected === '') {
+            textEl.textContent = 'Alle';
+        } else {
+            const count = selected.split(',').length;
+            textEl.textContent = count === 1 ? `KST ${selected}` : `${count} KST`;
+        }
+    }
+
+    // Daten laden
+    async function loadData() {
+        const monat = document.getElementById('filterMonat').value;
+        const jahr = document.getElementById('filterJahr').value;
+        const standort = getStandortFromURL();
+        const konsolidiert = getKonsolidiertFromURL();
+        const firma = getFirmaFromStandort(standort, konsolidiert);
+        const bwaStandort = mapStandortForBWA(standort, konsolidiert);
+        const kst = getSelectedKSTs();
+
+        const loading = document.getElementById('loading');
+        loading.classList.remove('d-none');
+
+        try {
+            let url = `/api/controlling/bwa/v2?monat=${monat}&jahr=${jahr}&firma=${firma}&standort=${bwaStandort}`;
+            if (kst) {
+                url += `&kst=${kst}`;
+            }
+            console.log('BWA API Call:', url);
+            const response = await fetch(url);
+            const result = await response.json();
+            console.log('BWA API Response:', result);
+
+            if (result.status === 'ok') {
+                renderBWA(result);
+            } else {
+                console.error('API-Fehler:', result.message);
+                alert('Fehler beim Laden: ' + result.message);
+            }
+        } catch (err) {
+            console.error('Fehler:', err);
+            alert('Fehler beim Laden der Daten');
+        } finally {
+            loading.classList.add('d-none');
+        }
+    }
+
+    // BWA rendern
+    function renderBWA(data) {
+        const aktuell = data.aktuell;
+        const vorjahr = data.vorjahr;
+        const ytd = data.ytd;
+        const ytd_vorjahr = data.ytd_vorjahr || {
+            umsatz: 0,
+            einsatz: 0,
+            db1: 0,
+            bereiche: [],
+            variable_kosten: 0,
+            db2: 0,
+            direkte_kosten: 0,
+            db3: 0,
+            indirekte_kosten: 0,
+            betriebsergebnis: 0,
+            neutrales_ergebnis: 0,
+            unternehmensergebnis: 0
+        };
+
+        // Subtitle aktualisieren
+        document.getElementById('bwa-subtitle').textContent =
+            `${data.monat_name} ${data.jahr} | ${data.standort_name}`;
+
+        // WJ-Fortschritt
+        document.getElementById('wj-progress-bar').style.width = data.wj_progress + '%';
+        document.getElementById('wj-monat-label').textContent = `Monat ${data.wj_monat} von 12`;
+
+        // WJ-Range berechnen
+        const monat = parseInt(document.getElementById('filterMonat').value);
+        const jahr = parseInt(document.getElementById('filterJahr').value);
+        const wjStart = monat >= 9 ? jahr : jahr - 1;
+        document.getElementById('wj-year').textContent = `${wjStart}/${wjStart + 1}`;
+        document.getElementById('wj-range').textContent = `(Sep ${wjStart} - Aug ${wjStart + 1})`;
+
+        // KPI-Karten (Monat + YTD)
+        updateKPI('kpi-umsatz', aktuell.umsatz, vorjahr.umsatz);
+        updateKPIYTD('kpi-umsatz', ytd.umsatz, ytd_vorjahr.umsatz || 0);
+        
+        updateKPI('kpi-db1', aktuell.db1, vorjahr.db1);
+        updateKPIYTD('kpi-db1', ytd.db1, ytd_vorjahr.db1 || 0);
+        
+        updateKPI('kpi-db2', aktuell.db2, vorjahr.db2);
+        updateKPIYTD('kpi-db2', ytd.db2, ytd_vorjahr.db2 || 0);
+        
+        updateKPI('kpi-be', aktuell.betriebsergebnis, vorjahr.betriebsergebnis);
+        updateKPIYTD('kpi-be', ytd.betriebsergebnis, ytd_vorjahr.betriebsergebnis || 0);
+        
+        updateKPI('kpi-ue', aktuell.unternehmensergebnis, vorjahr.unternehmensergebnis);
+        updateKPIYTD('kpi-ue', ytd.unternehmensergebnis, ytd_vorjahr.unternehmensergebnis || 0);
+
+        // Tabelle rendern
+        const tbody = document.getElementById('bwa-body');
+        let html = '';
+
+        // 1. Umsatzerlöse - klickbar
+        html += `<tr class="row-sum row-bereich" data-drilldown="umsatz" title="Klicken für Details">
+            <td><strong>Umsatzerlöse</strong></td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
+            <td class="text-end">${renderValue(aktuell.umsatz, '', 'large')}</td>
+            <td class="text-end">${renderValue(vorjahr.umsatz, '', 'medium')}</td>
+            <td class="text-center">${renderDelta(calcDelta(aktuell.umsatz, vorjahr.umsatz))}</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
+            <td class="text-end">${renderValue(ytd.umsatz, '', 'large')}</td>
+            <td class="text-end">${renderValue(ytd_vorjahr.umsatz || 0, '', 'medium')}</td>
+            <td class="text-center">${renderDelta(calcDelta(ytd.umsatz, ytd_vorjahr.umsatz || 0))}</td>
+        </tr>`;
+
+        // 2. Einsatzwerte - klickbar
+        html += `<tr class="row-sum row-bereich" data-drilldown="einsatz" title="Klicken für Details">
+            <td><strong>Einsatzwerte</strong></td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
+            <td class="text-end">${renderValue(-aktuell.einsatz, '', 'large')}</td>
+            <td class="text-end">${renderValue(-vorjahr.einsatz, '', 'medium')}</td>
+            <td class="text-center">${renderDelta(calcDelta(aktuell.einsatz, vorjahr.einsatz), true)}</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
+            <td class="text-end">${renderValue(-ytd.einsatz, '', 'large')}</td>
+            <td class="text-end">${renderValue(-(ytd_vorjahr.einsatz || 0), '', 'medium')}</td>
+            <td class="text-center">${renderDelta(calcDelta(ytd.einsatz, ytd_vorjahr.einsatz || 0), true)}</td>
+        </tr>`;
+
+        // 3. Bruttoertrag (DB1) Gesamt
+        html += `<tr class="row-header">
+            <td colspan="11"><strong>Bruttoerträge nach Bereichen (DB1)</strong></td>
+        </tr>`;
+
+        // 4. Bereiche
+        for (let i = 0; i < aktuell.bereiche.length; i++) {
+            const b = aktuell.bereiche[i];
+            const vj = vorjahr.bereiche[i];
+            const y = ytd.bereiche[i];
+            const y_vj = (ytd_vorjahr.bereiche && ytd_vorjahr.bereiche[i]) ? ytd_vorjahr.bereiche[i] : { bruttoertrag: 0, stueck: 0 };
+            
+            // Stückzahlen nur für NW und GW anzeigen (analog Globalcube: Monat, Jahr, VJ Monat, VJ Jahr)
+            let stueck_monat = '-';
+            let stueck_vj_monat = '-';
+            let stueck_jahr = '-';
+            let stueck_vj_jahr = '-';
+            let abw_stueck_monat = '';
+            let abw_stueck_jahr = '';
+            
+            if (b.key === 'NW' || b.key === 'GW') {
+                // TAG182: Erweiterte Struktur für alle Variationen
+                // Monat: b.stueck enthält {monat, jahr, vj_monat, vj_jahr}
+                const stueck = b.stueck || { monat: 0, jahr: 0, vj_monat: 0, vj_jahr: 0 };
+                // YTD: y.stueck enthält {monat, jahr, vj_monat, vj_jahr} - verwende 'jahr' für YTD
+                const stueck_ytd = y.stueck || { monat: 0, jahr: 0, vj_monat: 0, vj_jahr: 0 };
+                // YTD Vorjahr: y_vj.stueck enthält {monat, jahr, vj_monat, vj_jahr} - verwende 'jahr' für YTD Vorjahr
+                const stueck_ytd_vj = y_vj.stueck || { monat: 0, jahr: 0, vj_monat: 0, vj_jahr: 0 };
+                
+                // Monat: aktuell und Vorjahr
+                stueck_monat = (typeof stueck === 'object' && stueck.monat !== undefined) ? stueck.monat : (typeof stueck === 'number' ? stueck : 0);
+                stueck_vj_monat = (typeof stueck === 'object' && stueck.vj_monat !== undefined) ? stueck.vj_monat : 0;
+                
+                // YTD: aktuell und Vorjahr (verwende 'jahr' aus der Struktur)
+                stueck_jahr = (typeof stueck_ytd === 'object' && stueck_ytd.jahr !== undefined) ? stueck_ytd.jahr : (typeof stueck_ytd === 'number' ? stueck_ytd : 0);
+                stueck_vj_jahr = (typeof stueck_ytd_vj === 'object' && stueck_ytd_vj.jahr !== undefined) ? stueck_ytd_vj.jahr : (typeof stueck_ytd_vj === 'number' ? stueck_ytd_vj : 0);
+                
+                // Abweichungen in Stück berechnen
+                const abw_monat = stueck_monat - stueck_vj_monat;
+                const abw_jahr = stueck_jahr - stueck_vj_jahr;
+                abw_stueck_monat = abw_monat !== 0 ? (abw_monat > 0 ? '+' : '') + abw_monat : '0';
+                abw_stueck_jahr = abw_jahr !== 0 ? (abw_jahr > 0 ? '+' : '') + abw_jahr : '0';
+            } else {
+                // Für andere Bereiche: einfache Zahl (nicht Globalcube-Struktur)
+                stueck_vj_monat = (typeof vj.stueck === 'object') ? 0 : (vj.stueck || 0);
+                stueck_vj_jahr = (typeof y_vj.stueck === 'object') ? 0 : (y_vj.stueck || 0);
+            }
+
+            html += `<tr class="row-bereich" data-drilldown="bereich" data-bereich="${b.key}" title="Klicken für Details">
+                <td>${bereichIcons[b.key] || ''} Bruttoertrag ${b.name}</td>
+                <td class="text-center"><strong>${stueck_monat}</strong></td>
+                <td class="text-center">${stueck_vj_monat}</td>
+                <td class="text-end">${renderValue(b.bruttoertrag, '', 'large')}</td>
+                <td class="text-end">${renderValue(vj.bruttoertrag, '', 'medium')}</td>
+                <td class="text-center">${renderDelta(calcDelta(b.bruttoertrag, vj.bruttoertrag))}${abw_stueck_monat ? '<br><small class="text-muted">(' + abw_stueck_monat + ' Stk.)</small>' : ''}</td>
+                <td class="text-center"><strong>${stueck_jahr}</strong></td>
+                <td class="text-center">${stueck_vj_jahr}</td>
+                <td class="text-end">${renderValue(y.bruttoertrag, '', 'large')}</td>
+                <td class="text-end">${renderValue(y_vj.bruttoertrag || 0, '', 'medium')}</td>
+                <td class="text-center">${renderDelta(calcDelta(y.bruttoertrag, y_vj.bruttoertrag || 0))}${abw_stueck_jahr ? '<br><small class="text-muted">(' + abw_stueck_jahr + ' Stk.)</small>' : ''}</td>
+            </tr>`;
+        }
+
+        // 5. DB1 Summe
+        html += `<tr class="row-sum">
+            <td><strong>Bruttoertrag Gesamt (DB1)</strong></td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
+            <td class="text-end"><strong>${renderValue(aktuell.db1, '', 'large')}</strong></td>
+            <td class="text-end">${renderValue(vorjahr.db1, '', 'medium')}</td>
+            <td class="text-center">${renderDelta(calcDelta(aktuell.db1, vorjahr.db1))}</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
+            <td class="text-end"><strong>${renderValue(ytd.db1, '', 'large')}</strong></td>
+            <td class="text-end">${renderValue(ytd_vorjahr.db1 || 0, '', 'medium')}</td>
+            <td class="text-center"><strong>${renderDelta(calcDelta(ytd.db1, ytd_vorjahr.db1 || 0))}</strong></td>
+        </tr>`;
+
+        // 6. Variable Kosten
+        html += `<tr class="row-bereich" data-drilldown="variable" title="Klicken für Details">
+            <td>Variable Kosten</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
+            <td class="text-end">${renderValue(-aktuell.variable_kosten, '', 'large')}</td>
+            <td class="text-end">${renderValue(-vorjahr.variable_kosten, '', 'medium')}</td>
+            <td class="text-center">${renderDelta(calcDelta(aktuell.variable_kosten, vorjahr.variable_kosten), true)}</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
+            <td class="text-end">${renderValue(-ytd.variable_kosten, '', 'large')}</td>
+            <td class="text-end">${renderValue(-(ytd_vorjahr.variable_kosten || 0), '', 'medium')}</td>
+            <td class="text-center">${renderDelta(calcDelta(ytd.variable_kosten, ytd_vorjahr.variable_kosten || 0), true)}</td>
+        </tr>`;
+
+        // 7. DB2 Ergebnis
+        html += `<tr class="row-sum">
+            <td><strong>Deckungsbeitrag 2 (DB2)</strong></td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
+            <td class="text-end"><strong>${renderValue(aktuell.db2, '', 'large')}</strong></td>
+            <td class="text-end">${renderValue(vorjahr.db2, '', 'medium')}</td>
+            <td class="text-center">${renderDelta(calcDelta(aktuell.db2, vorjahr.db2))}</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
+            <td class="text-end"><strong>${renderValue(ytd.db2, '', 'large')}</strong></td>
+            <td class="text-end">${renderValue(ytd_vorjahr.db2 || 0, '', 'medium')}</td>
+            <td class="text-center"><strong>${renderDelta(calcDelta(ytd.db2, ytd_vorjahr.db2 || 0))}</strong></td>
+        </tr>`;
+
+        // 8. Direkte Kosten
+        html += `<tr class="row-bereich" data-drilldown="direkte" title="Klicken für Details">
+            <td>Direkte Kosten</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
+            <td class="text-end">${renderValue(-aktuell.direkte_kosten, '', 'large')}</td>
+            <td class="text-end">${renderValue(-vorjahr.direkte_kosten, '', 'medium')}</td>
+            <td class="text-center">${renderDelta(calcDelta(aktuell.direkte_kosten, vorjahr.direkte_kosten), true)}</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
+            <td class="text-end">${renderValue(-ytd.direkte_kosten, '', 'large')}</td>
+            <td class="text-end">${renderValue(-(ytd_vorjahr.direkte_kosten || 0), '', 'medium')}</td>
+            <td class="text-center">${renderDelta(calcDelta(ytd.direkte_kosten, ytd_vorjahr.direkte_kosten || 0), true)}</td>
+        </tr>`;
+
+        // 9. DB3 Ergebnis
+        html += `<tr class="row-sum">
+            <td><strong>Deckungsbeitrag 3 (DB3)</strong></td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
+            <td class="text-end"><strong>${renderValue(aktuell.db3, '', 'large')}</strong></td>
+            <td class="text-end">${renderValue(vorjahr.db3, '', 'medium')}</td>
+            <td class="text-center">${renderDelta(calcDelta(aktuell.db3, vorjahr.db3))}</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
+            <td class="text-end"><strong>${renderValue(ytd.db3, '', 'large')}</strong></td>
+            <td class="text-end">${renderValue(ytd_vorjahr.db3 || 0, '', 'medium')}</td>
+            <td class="text-center"><strong>${renderDelta(calcDelta(ytd.db3, ytd_vorjahr.db3 || 0))}</strong></td>
+        </tr>`;
+
+        // 10. Indirekte Kosten
+        html += `<tr class="row-bereich" data-drilldown="indirekte" title="Klicken für Details">
+            <td>Indirekte Kosten</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
+            <td class="text-end">${renderValue(-aktuell.indirekte_kosten, '', 'large')}</td>
+            <td class="text-end">${renderValue(-vorjahr.indirekte_kosten, '', 'medium')}</td>
+            <td class="text-center">${renderDelta(calcDelta(aktuell.indirekte_kosten, vorjahr.indirekte_kosten), true)}</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
+            <td class="text-end">${renderValue(-ytd.indirekte_kosten, '', 'large')}</td>
+            <td class="text-end">${renderValue(-(ytd_vorjahr.indirekte_kosten || 0), '', 'medium')}</td>
+            <td class="text-center">${renderDelta(calcDelta(ytd.indirekte_kosten, ytd_vorjahr.indirekte_kosten || 0), true)}</td>
+        </tr>`;
+
+        // 11. Betriebsergebnis
+        html += `<tr class="row-sum row-highlight">
+            <td><strong>Betriebsergebnis (BE)</strong></td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
+            <td class="text-end"><strong>${renderValue(aktuell.betriebsergebnis, '', 'large')}</strong></td>
+            <td class="text-end">${renderValue(vorjahr.betriebsergebnis, '', 'medium')}</td>
+            <td class="text-center">${renderDelta(calcDelta(aktuell.betriebsergebnis, vorjahr.betriebsergebnis))}</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
+            <td class="text-end"><strong>${renderValue(ytd.betriebsergebnis, '', 'large')}</strong></td>
+            <td class="text-end">${renderValue(ytd_vorjahr.betriebsergebnis || 0, '', 'medium')}</td>
+            <td class="text-center"><strong>${renderDelta(calcDelta(ytd.betriebsergebnis, ytd_vorjahr.betriebsergebnis || 0))}</strong></td>
+        </tr>`;
+
+        // 12. Neutrales Ergebnis
+        html += `<tr class="row-bereich" data-drilldown="neutral" title="Klicken für Details">
+            <td>Neutrales Ergebnis</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
+            <td class="text-end">${renderValue(aktuell.neutrales_ergebnis, '', 'large')}</td>
+            <td class="text-end">${renderValue(vorjahr.neutrales_ergebnis, '', 'medium')}</td>
+            <td class="text-center">${renderDelta(calcDelta(aktuell.neutrales_ergebnis, vorjahr.neutrales_ergebnis))}</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
+            <td class="text-end">${renderValue(ytd.neutrales_ergebnis, '', 'large')}</td>
+            <td class="text-end">${renderValue(ytd_vorjahr.neutrales_ergebnis || 0, '', 'medium')}</td>
+            <td class="text-center">${renderDelta(calcDelta(ytd.neutrales_ergebnis, ytd_vorjahr.neutrales_ergebnis || 0))}</td>
+        </tr>`;
+
+        // 13. Unternehmensergebnis - FINAL
+        html += `<tr class="row-result">
+            <td><strong>Unternehmensergebnis (UE)</strong></td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
+            <td class="text-end"><strong>${renderValue(aktuell.unternehmensergebnis, '', 'large')}</strong></td>
+            <td class="text-end">${renderValue(vorjahr.unternehmensergebnis, '', 'medium')}</td>
+            <td class="text-center">${renderDelta(calcDelta(aktuell.unternehmensergebnis, vorjahr.unternehmensergebnis))}</td>
+            <td class="text-center">-</td>
+            <td class="text-center">-</td>
+            <td class="text-end"><strong>${renderValue(ytd.unternehmensergebnis, '', 'large')}</strong></td>
+            <td class="text-end">${renderValue(ytd_vorjahr.unternehmensergebnis || 0, '', 'medium')}</td>
+            <td class="text-center"><strong>${renderDelta(calcDelta(ytd.unternehmensergebnis, ytd_vorjahr.unternehmensergebnis || 0))}</strong></td>
+        </tr>`;
+
+        tbody.innerHTML = html;
+    }
+
+    function updateKPI(id, aktuell, vorjahr, invertDelta = false) {
+        document.getElementById(id).textContent = fmtEuroCompact(aktuell);
+        const delta = calcDelta(aktuell, vorjahr);
+        const deltaClass = Math.abs(delta) < 1 ? 'neutral' : (invertDelta ? (delta < 0 ? 'positive' : 'negative') : (delta > 0 ? 'positive' : 'negative'));
+        const deltaIcon = delta > 0 ? '↑' : (delta < 0 ? '↓' : '→');
+        document.getElementById(id + '-delta').innerHTML = `<span class="kpi-delta-small ${deltaClass}">${deltaIcon} ${Math.abs(delta).toFixed(1)}% vs. VJ</span>`;
+    }
+    
+    function updateKPIYTD(id, ytd, ytd_vorjahr) {
+        document.getElementById(id + '-ytd').textContent = fmtEuroCompact(ytd);
+        document.getElementById(id + '-ytd-vj').textContent = fmtEuroCompact(ytd_vorjahr);
+    }
+
+    // Event-Listener
+    document.getElementById('btnLaden').addEventListener('click', loadData);
+
+    // Filter-Change-Handler
+    // TAG 177: Firma-Dropdown entfernt, Standort-Tabs übernehmen die Navigation
+
+    // Drill-Down Modal
+    const drilldownModal = new bootstrap.Modal(document.getElementById('drilldownModal'));
+
+    async function openDrilldown(typ, bereich = null) {
+        const monat = document.getElementById('filterMonat').value;
+        const jahr = document.getElementById('filterJahr').value;
+        const standort = getStandortFromURL();
+        const konsolidiert = getKonsolidiertFromURL();
+        const firma = getFirmaFromStandort(standort, konsolidiert);
+        const bwaStandort = mapStandortForBWA(standort, konsolidiert);
+
+        // Modal öffnen und Ladezustand zeigen
+        document.getElementById('drilldown-loading').classList.remove('d-none');
+        document.getElementById('drilldown-content').classList.add('d-none');
+        document.getElementById('drilldown-error').classList.add('d-none');
+        drilldownModal.show();
+
+        try {
+            let url = `/api/controlling/bwa/v2/drilldown?typ=${typ}&monat=${monat}&jahr=${jahr}&firma=${firma}&standort=${bwaStandort}`;
+            if (bereich) {
+                url += `&bereich=${bereich}`;
+            }
+
+            const response = await fetch(url);
+            const result = await response.json();
+
+            if (result.status === 'ok') {
+                renderDrilldown(result);
+            } else {
+                document.getElementById('drilldown-error').textContent = result.message || 'Fehler beim Laden';
+                document.getElementById('drilldown-error').classList.remove('d-none');
+            }
+        } catch (err) {
+            console.error('Drill-Down Fehler:', err);
+            document.getElementById('drilldown-error').textContent = 'Fehler beim Laden der Details';
+            document.getElementById('drilldown-error').classList.remove('d-none');
+        } finally {
+            document.getElementById('drilldown-loading').classList.add('d-none');
+        }
+    }
+
+    function renderDrilldown(data) {
+        document.getElementById('drilldownModalLabel').textContent = data.titel;
+        document.getElementById('drilldown-subtitle').textContent = `${data.monat_name} ${data.jahr}`;
+        document.getElementById('drilldown-count').textContent = `${data.anzahl} Konten`;
+
+        const thead = document.getElementById('drilldown-thead');
+        const tbody = document.getElementById('drilldown-body');
+
+        // Prüfe ob es Bereich-Daten sind (haben db, db_pct, stueck)
+        const isBereichData = data.details.length > 0 && data.details[0].db !== undefined;
+
+        if (isBereichData) {
+            // === BEREICH-ANSICHT: Pro Modell mit DB%, Stück, DB/Stück ===
+            thead.innerHTML = `<tr>
+                <th style="width: 75px;">Konto</th>
+                <th>Modell</th>
+                <th class="text-end" style="width: 95px;">Erlös</th>
+                <th class="text-end" style="width: 95px;">Einsatz</th>
+                <th class="text-end" style="width: 85px;">DB</th>
+                <th class="text-end" style="width: 60px;">DB%</th>
+                <th class="text-center" style="width: 50px;">Stk</th>
+                <th class="text-end" style="width: 80px;">DB/Stk</th>
+            </tr>`;
+
+            let html = '';
+            let sumErloes = 0, sumEinsatz = 0, sumDB = 0, sumStueck = 0;
+
+            for (const item of data.details) {
+                const dbClass = item.db > 0 ? 'text-success' : (item.db < 0 ? 'text-danger' : '');
+                const dbPctClass = item.db_pct >= 10 ? 'text-success' : (item.db_pct < 5 ? 'text-danger' : 'text-warning');
+
+                html += `<tr>
+                    <td><code class="text-muted">${item.konto}</code></td>
+                    <td>${item.bezeichnung}</td>
+                    <td class="text-end text-success">${fmtEuro(item.wert)}</td>
+                    <td class="text-end text-danger">${fmtEuro(item.einsatz)}</td>
+                    <td class="text-end ${dbClass}"><strong>${fmtEuro(item.db)}</strong></td>
+                    <td class="text-end ${dbPctClass}"><strong>${item.db_pct.toFixed(1)}%</strong></td>
+                    <td class="text-center">${item.stueck || '-'}</td>
+                    <td class="text-end">${item.db_pro_stueck ? fmtEuro(item.db_pro_stueck) : '-'}</td>
+                </tr>`;
+
+                sumErloes += item.wert;
+                sumEinsatz += item.einsatz;
+                sumDB += item.db;
+                sumStueck += item.stueck || 0;
+            }
+
+            // Summenzeile
+            const sumDbPct = sumErloes ? (sumDB / sumErloes * 100) : 0;
+            const sumDbProStueck = sumStueck > 0 ? (sumDB / sumStueck) : 0;
+            const sumDbClass = sumDB > 0 ? 'text-success' : 'text-danger';
+
+            html += `<tr class="table-primary fw-bold">
+                <td colspan="2"><i class="fas fa-equals text-primary me-2"></i>SUMME / DURCHSCHNITT</td>
+                <td class="text-end text-success">${fmtEuro(sumErloes)}</td>
+                <td class="text-end text-danger">${fmtEuro(sumEinsatz)}</td>
+                <td class="text-end ${sumDbClass}">${fmtEuro(sumDB)}</td>
+                <td class="text-end">${sumDbPct.toFixed(1)}%</td>
+                <td class="text-center">${sumStueck}</td>
+                <td class="text-end">${sumDbProStueck ? fmtEuro(sumDbProStueck) : '-'}</td>
+            </tr>`;
+
+            tbody.innerHTML = html;
+
+        } else {
+            // Prüfe ob es Umsatz-Daten mit Bereich sind
+            const hasBereich = data.details.length > 0 && data.details[0].bereich !== undefined;
+
+            if (hasBereich) {
+                // === UMSATZ-ANSICHT: Gruppiert nach Kostenstellen (klappbar) ===
+                thead.innerHTML = `<tr>
+                    <th style="width: 90px;">Konto</th>
+                    <th>Bezeichnung</th>
+                    <th class="text-end" style="width: 120px;">Betrag</th>
+                    <th class="text-end" style="width: 70px;">%</th>
+                </tr>`;
+
+                let html = '';
+                const gesamtSumme = data.details.reduce((s, d) => s + d.wert, 0);
+
+                // Nach Bereich gruppieren
+                const bereiche = {};
+                for (const item of data.details) {
+                    const key = item.bereich;
+                    if (!bereiche[key]) {
+                        bereiche[key] = {
+                            code: item.bereich,
+                            name: item.bereich_name,
+                            order: item.bereich_order,
+                            items: [],
+                            summe: 0
+                        };
+                    }
+                    bereiche[key].items.push(item);
+                    bereiche[key].summe += item.wert;
+                }
+
+                // Nach Order sortiert ausgeben
+                const sortedBereiche = Object.values(bereiche).sort((a, b) => a.order - b.order);
+                const bereichColors = {
+                    'NW': 'table-primary',
+                    'GW': 'table-info',
+                    'TZ': 'table-warning',
+                    'ME': 'table-success',
+                    'MW': 'table-secondary',
+                    'SO': 'table-light'
+                };
+
+                for (const bereich of sortedBereiche) {
+                    const bgClass = bereichColors[bereich.code] || 'table-light';
+                    const pctOfTotal = gesamtSumme ? (bereich.summe / gesamtSumme * 100) : 0;
+
+                    // Bereich-Header (klickbar, default eingeklappt)
+                    html += `<tr class="${bgClass} bereich-header" data-bereich="${bereich.code}" style="cursor: pointer;">
+                        <td colspan="2"><strong><i class="fas fa-chevron-right bereich-chevron me-2"></i>${bereich.name} (${bereich.code})</strong>
+                            <span class="badge bg-secondary ms-2">${bereich.items.length} Konten</span></td>
+                        <td class="text-end"><strong class="text-success">${fmtEuro(bereich.summe)}</strong></td>
+                        <td class="text-end"><strong>${pctOfTotal.toFixed(1)}%</strong></td>
+                    </tr>`;
+
+                    // Einzelne Konten im Bereich (default versteckt)
+                    for (const item of bereich.items) {
+                        const pctOfBereich = bereich.summe ? (item.wert / bereich.summe * 100) : 0;
+                        const wertClass = item.wert > 0 ? 'text-success' : (item.wert < 0 ? 'text-danger' : '');
+                        html += `<tr class="bereich-detail bereich-detail-${bereich.code}" style="display: none;">
+                            <td><code class="text-muted">${item.konto}</code></td>
+                            <td class="ps-3">${item.bezeichnung}</td>
+                            <td class="text-end ${wertClass}">${fmtEuro(item.wert)}</td>
+                            <td class="text-end text-muted">${pctOfBereich.toFixed(1)}%</td>
+                        </tr>`;
+                    }
+                }
+
+                // Gesamt-Summe
+                html += `<tr class="table-dark">
+                    <td colspan="2"><strong><i class="fas fa-equals me-2"></i>GESAMT</strong></td>
+                    <td class="text-end"><strong class="text-success">${fmtEuro(gesamtSumme)}</strong></td>
+                    <td class="text-end"><strong>100%</strong></td>
+                </tr>`;
+
+                tbody.innerHTML = html;
+
+                // Click-Handler für klappbare Bereich-Header
+                tbody.querySelectorAll('.bereich-header').forEach(header => {
+                    header.addEventListener('click', function() {
+                        const bereichCode = this.dataset.bereich;
+                        const details = tbody.querySelectorAll(`.bereich-detail-${bereichCode}`);
+                        const chevron = this.querySelector('.bereich-chevron');
+                        const isOpen = details[0]?.style.display !== 'none';
+
+                        details.forEach(row => {
+                            row.style.display = isOpen ? 'none' : 'table-row';
+                        });
+
+                        // Chevron drehen
+                        chevron.classList.toggle('fa-chevron-right', isOpen);
+                        chevron.classList.toggle('fa-chevron-down', !isOpen);
+                    });
+                });
+
+            } else {
+                // === STANDARD-ANSICHT: Gruppiert nach Erlös/Einsatz/Kosten ===
+                thead.innerHTML = `<tr>
+                    <th style="width: 90px;">Konto</th>
+                    <th>Bezeichnung</th>
+                    <th class="text-end" style="width: 120px;">Betrag</th>
+                    <th class="text-end" style="width: 70px;">%</th>
+                </tr>`;
+
+                let html = '';
+                const erloese = data.details.filter(d => d.typ === 'Erlös');
+                const einsatz = data.details.filter(d => d.typ === 'Einsatz');
+                const kosten = data.details.filter(d => d.typ === 'Kosten');
+
+                const sumErloese = erloese.reduce((s, d) => s + d.wert, 0);
+                const sumEinsatz = einsatz.reduce((s, d) => s + d.wert, 0);
+                const sumKosten = kosten.reduce((s, d) => s + d.wert, 0);
+
+                function renderGroup(items, summe, label, colorClass, bgClass) {
+                    if (items.length === 0) return '';
+                    let groupHtml = `<tr class="${bgClass}">
+                        <td colspan="2"><strong><i class="fas fa-${colorClass === 'text-success' ? 'arrow-up' : 'arrow-down'} ${colorClass} me-2"></i>${label}</strong></td>
+                        <td class="text-end"><strong class="${colorClass}">${fmtEuro(summe)}</strong></td>
+                        <td class="text-end text-muted">100%</td>
+                    </tr>`;
+
+                    for (const item of items) {
+                        const pct = summe !== 0 ? Math.abs(item.wert / summe * 100) : 0;
+                        const wertClass = item.wert > 0 ? 'text-success' : (item.wert < 0 ? 'text-danger' : '');
+                        groupHtml += `<tr>
+                            <td><code class="text-muted">${item.konto}</code></td>
+                            <td class="ps-3">${item.bezeichnung}</td>
+                            <td class="text-end ${wertClass}">${fmtEuro(item.wert)}</td>
+                            <td class="text-end text-muted">${pct.toFixed(1)}%</td>
+                        </tr>`;
+                    }
+                    return groupHtml;
+                }
+
+                html += renderGroup(erloese, sumErloese, 'ERLÖSE', 'text-success', 'table-success');
+                html += renderGroup(einsatz, sumEinsatz, 'EINSATZ', 'text-danger', 'table-warning');
+                html += renderGroup(kosten, sumKosten, 'KOSTEN', 'text-danger', 'table-danger');
+
+                if (erloese.length > 0 && einsatz.length > 0) {
+                    const db1 = sumErloese + sumEinsatz;
+                    const db1Class = db1 > 0 ? 'text-success' : 'text-danger';
+                    html += `<tr class="table-primary">
+                        <td colspan="2"><strong><i class="fas fa-equals text-primary me-2"></i>= BRUTTOERTRAG (DB1)</strong></td>
+                        <td class="text-end"><strong class="${db1Class}">${fmtEuro(db1)}</strong></td>
+                        <td></td>
+                    </tr>`;
+                } else if (data.details.length > 0) {
+                    const summeClass = data.summe > 0 ? 'text-success' : 'text-danger';
+                    html += `<tr class="table-secondary">
+                        <td colspan="2"><strong>SUMME</strong></td>
+                        <td class="text-end"><strong class="${summeClass}">${fmtEuro(data.summe)}</strong></td>
+                        <td></td>
+                    </tr>`;
+                }
+
+                tbody.innerHTML = html;
+            }
+        }
+
+        document.getElementById('drilldown-content').classList.remove('d-none');
+    }
+
+    // Klick-Handler für Drill-Down Zeilen
+    document.getElementById('bwa-body').addEventListener('click', function(e) {
+        const row = e.target.closest('tr[data-drilldown]');
+        if (row) {
+            const typ = row.dataset.drilldown;
+            const bereich = row.dataset.bereich || null;
+            openDrilldown(typ, bereich);
+        }
+    });
+
+    // Init
+    document.addEventListener('DOMContentLoaded', function() {
+        // Zeitraum aus URL-Parametern lesen (falls vorhanden)
+        const urlParams = new URLSearchParams(window.location.search);
+        const monatParam = urlParams.get('monat');
+        const jahrParam = urlParams.get('jahr');
+        
+        if (monatParam) {
+            document.getElementById('filterMonat').value = monatParam;
+        } else {
+            // TAG 181: Standard = Vormonat (BWA im laufenden Monat nur bedingt aussagefähig)
+            const heute = new Date();
+            let vormonat = heute.getMonth(); // 0-11, aktueller Monat
+            let vorjahr = heute.getFullYear();
+            
+            if (vormonat === 0) {
+                // Januar -> Dezember des Vorjahres
+                vormonat = 12;
+                vorjahr = vorjahr - 1;
+            }
+            
+            document.getElementById('filterMonat').value = vormonat;
+            document.getElementById('filterJahr').value = vorjahr;
+        }
+        
+        if (jahrParam) {
+            document.getElementById('filterJahr').value = jahrParam;
+        } else if (!monatParam) {
+            // Nur wenn nicht in URL und Monat auch nicht: Vormonat-Jahr setzen
+            const heute = new Date();
+            let vormonat = heute.getMonth();
+            let vorjahr = heute.getFullYear();
+            
+            if (vormonat === 0) {
+                vormonat = 12;
+                vorjahr = vorjahr - 1;
+            }
+            
+            document.getElementById('filterJahr').value = vorjahr;
+        }
+        
+        // TAG 181: KST-Filter initialisieren
+        // "Alle" Checkbox
+        document.getElementById('kst-all').addEventListener('change', function() {
+            const checkboxes = document.querySelectorAll('.kst-checkbox');
+            checkboxes.forEach(cb => {
+                cb.checked = this.checked;
+            });
+            updateKSTFilterText();
+        });
+        
+        // Einzelne KST-Checkboxen
+        document.querySelectorAll('.kst-checkbox').forEach(cb => {
+            cb.addEventListener('change', function() {
+                const allChecked = Array.from(document.querySelectorAll('.kst-checkbox')).every(c => c.checked);
+                document.getElementById('kst-all').checked = allChecked;
+                updateKSTFilterText();
+            });
+        });
+        
+        // KST-Filter aus URL initialisieren
+        const kstParam = urlParams.get('kst');
+        if (kstParam) {
+            const ksts = kstParam.split(',');
+            document.getElementById('kst-all').checked = false;
+            ksts.forEach(kst => {
+                const cb = document.getElementById(`kst-${kst}`);
+                if (cb) cb.checked = true;
+            });
+            updateKSTFilterText();
+        }
+
+        // Initial laden
+        loadData();
+    });
+
+})();
+</script>
+{% endblock %}

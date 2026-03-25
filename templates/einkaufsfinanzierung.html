@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Einkaufsfinanzierung - Greiner Portal{% endblock %}
+{% block title %}Fahrzeugfinanzierungen - Greiner DRIVE{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/einkaufsfinanzierung.css') }}?v={{ STATIC_VERSION }}">
@@ -13,8 +13,8 @@
         <div class="col-12">
             <div class="d-flex justify-content-between align-items-center">
                 <div>
-                    <h1 class="h2 mb-1">🚗 Einkaufsfinanzierung</h1>
-                    <p class="text-muted mb-0">Bestandskonten: Stellantis & Santander</p>
+                    <h1 class="h2 mb-1">🚗 Fahrzeugfinanzierungen</h1>
+                    <p class="text-muted mb-0">Stellantis, Santander, Hyundai Finance & Genobank</p>
                 </div>
                 <div>
                     <button id="refreshBtn" class="btn btn-outline-primary">
@@ -174,6 +174,7 @@
                                     <th>Institut</th>
                                     <th>VIN</th>
                                     <th>Modell</th>
+                                    <th>EZ</th>
                                     <th>Tage übrig</th>
                                     <th class="text-end">Saldo</th>
                                     <th class="text-end">Alter</th>
@@ -262,6 +263,7 @@
                                     <th>Institut</th>
                                     <th>VIN</th>
                                     <th>Modell</th>
+                                    <th>EZ</th>
                                     <th class="text-end">
                                         <i class="bi bi-clock-history me-1"></i>Tage seit Zinsstart
                                     </th>
@@ -289,6 +291,102 @@
             </div>
         </div>
 
+        <!-- ZINSEN-ANALYSE (Konsolidiert) -->
+        <div id="zinsenAnalyseSection" class="mb-4">
+            <div class="card border-primary">
+                <div class="card-header bg-primary bg-opacity-10">
+                    <h5 class="mb-0">
+                        <i class="bi bi-percent text-primary me-2"></i>
+                        📊 Zinsen-Analyse & Handlungsempfehlungen
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <!-- Zinsen-KPIs -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-3">
+                            <div class="card bg-danger bg-opacity-10">
+                                <div class="card-body text-center">
+                                    <small class="text-muted d-block mb-1">Zinskosten / Monat</small>
+                                    <h3 id="zinsenMonatGesamt" class="mb-0 text-danger">-</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-secondary bg-opacity-10">
+                                <div class="card-body text-center">
+                                    <small class="text-muted d-block mb-1">Zinskosten / Jahr</small>
+                                    <h3 id="zinsenJahrGesamt" class="mb-0">-</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-danger border-danger border-2">
+                                <div class="card-body text-center">
+                                    <small class="text-muted d-block mb-1">🔴 DRINGEND</small>
+                                    <h3 id="anzahlDringend" class="mb-0 text-danger">-</h3>
+                                    <small class="text-muted">Über Zinsfreiheit</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-warning border-warning border-2">
+                                <div class="card-body text-center">
+                                    <small class="text-muted d-block mb-1">🟡 WARNUNG</small>
+                                    <h3 id="anzahlWarnung" class="mb-0 text-warning">-</h3>
+                                    <small class="text-muted">Bald ablaufend (&lt;14 Tage)</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Aufschlüsselung nach Institut -->
+                    <div class="table-responsive mb-4">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Institut</th>
+                                    <th class="text-end">Fahrzeuge</th>
+                                    <th class="text-end">Saldo</th>
+                                    <th class="text-end">Zinsen/Monat</th>
+                                    <th class="text-end">Zinsen/Jahr</th>
+                                    <th class="text-center">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="institutTabelle">
+                                <tr><td colspan="6" class="text-center"><span class="spinner-border spinner-border-sm"></span> Laden...</td></tr>
+                            </tbody>
+                            <tfoot class="table-light fw-bold">
+                                <tr>
+                                    <td>GESAMT</td>
+                                    <td class="text-end" id="gesamtFahrzeuge">-</td>
+                                    <td class="text-end" id="gesamtSaldo">-</td>
+                                    <td class="text-end text-danger" id="gesamtMonat">-</td>
+                                    <td class="text-end" id="gesamtJahr">-</td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+
+                    <!-- Handlungsempfehlungen -->
+                    <div id="empfehlungenSection" class="d-none">
+                        <div class="card border-success">
+                            <div class="card-header bg-success bg-opacity-10">
+                                <h5 class="mb-0 text-success">
+                                    <i class="bi bi-lightbulb me-2"></i>Handlungsempfehlungen
+                                    <span class="badge bg-success ms-2" id="badgeEmpfehlungen">0</span>
+                                </h5>
+                                <span class="text-success fw-bold" id="gesamtErsparnis">Potenzielle Ersparnis: -</span>
+                            </div>
+                            <div class="card-body p-0">
+                                <div id="empfehlungenListe"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="card mb-4">
             <div class="card-header bg-white">
                 <h5 class="mb-0">
@@ -306,6 +404,7 @@
                                 <th>VIN</th>
                                 <th>Modell</th>
                                 <th>Marke</th>
+                                <th>EZ</th>
                                 <th class="text-end">Aktuell</th>
                                 <th class="text-end">Original</th>
                                 <th class="text-end">Alter (Tage)</th>
@@ -319,6 +418,290 @@
             </div>
         </div>
 
+    </div>
+</div>
+
+<!-- Modal: Empfohlene Fahrzeuge zur Umfinanzierung -->
+<div class="modal fade" id="empfehlungFahrzeugeModal" tabindex="-1" aria-labelledby="empfehlungFahrzeugeModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="empfehlungFahrzeugeModalLabel">
+                    <i class="bi bi-truck me-2"></i>
+                    <span id="empfehlungFahrzeugeModalTitle">Empfohlene Fahrzeuge</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+            </div>
+            <div class="modal-body">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>#</th>
+                                <th>VIN</th>
+                                <th>Modell</th>
+                                <th>Erstzulassung (EZ)</th>
+                                <th class="text-end">Saldo</th>
+                                <th class="text-end">Tage über Zinsfreiheit</th>
+                                <th class="text-center">Mobilität (Santander)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="empfehlungFahrzeugeTableBody">
+                            <!-- Dynamisch gefüllt -->
+                        </tbody>
+                        <tfoot class="table-light fw-bold">
+                            <tr>
+                                <td colspan="4">Summe</td>
+                                <td class="text-end" id="empfehlungFahrzeugeSumme">-</td>
+                                <td></td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal für Marken-Fahrzeuge -->
+<div class="modal fade" id="markeFahrzeugeModal" tabindex="-1" aria-labelledby="markeFahrzeugeModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="markeFahrzeugeModalLabel">
+                    <i class="bi bi-car-front me-2"></i>
+                    <span id="modalMarkeTitle">Fahrzeuge</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="markeFahrzeugeLoading" class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Lade Fahrzeuge...</span>
+                    </div>
+                    <p class="mt-3 text-muted">Lade Fahrzeugliste...</p>
+                </div>
+                <div id="markeFahrzeugeContent" class="d-none">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>VIN</th>
+                                    <th>Modell</th>
+                                    <th>Marke</th>
+                                    <th>EZ</th>
+                                    <th class="text-end">Aktueller Saldo</th>
+                                    <th class="text-end">Original</th>
+                                    <th class="text-end">Alter (Tage)</th>
+                                    <th class="text-end">Zinsen Gesamt</th>
+                                    <th class="text-end">Zinsen/Monat</th>
+                                    <th class="text-end">Abbezahlt</th>
+                                </tr>
+                            </thead>
+                            <tbody id="markeFahrzeugeTableBody">
+                                <!-- Dynamisch gefüllt -->
+                            </tbody>
+                            <tfoot class="table-light fw-bold">
+                                <tr>
+                                    <td colspan="4">GESAMT</td>
+                                    <td class="text-end" id="modalGesamtSaldo">-</td>
+                                    <td class="text-end" id="modalGesamtOriginal">-</td>
+                                    <td class="text-end" id="modalDurchschnittStandzeit">-</td>
+                                    <td class="text-end text-danger" id="modalGesamtZinsen">-</td>
+                                    <td class="text-end text-warning" id="modalGesamtZinsenMonat">-</td>
+                                    <td class="text-end" id="modalGesamtAbbezahlt">-</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal für Fahrzeugdetails aus Locosoft -->
+<div class="modal fade" id="fahrzeugDetailsModal" tabindex="-1" aria-labelledby="fahrzeugDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="fahrzeugDetailsModalLabel">
+                    <i class="bi bi-car-front me-2"></i>
+                    <span id="modalFahrzeugTitle">Fahrzeugdetails</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="fahrzeugDetailsLoading" class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Lade Fahrzeugdetails...</span>
+                    </div>
+                    <p class="mt-3 text-muted">Lade Daten aus Locosoft...</p>
+                </div>
+                <div id="fahrzeugDetailsContent" class="d-none">
+                    <div class="row g-3">
+                        <!-- Fahrzeugdaten -->
+                        <div class="col-md-6">
+                            <h6 class="border-bottom pb-2 mb-3">
+                                <i class="bi bi-car-front text-primary me-2"></i>Fahrzeugdaten
+                            </h6>
+                            <table class="table table-sm table-borderless">
+                                <tr>
+                                    <td class="text-muted" style="width: 40%;">VIN:</td>
+                                    <td><code id="detailVin">-</code></td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Typ:</td>
+                                    <td id="detailTyp">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Marke/Modell:</td>
+                                    <td id="detailModell">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Erstzulassung:</td>
+                                    <td id="detailEZ">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">KM-Stand:</td>
+                                    <td id="detailKM">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Kennzeichen:</td>
+                                    <td id="detailKZ">-</td>
+                                </tr>
+                            </table>
+                        </div>
+                        
+                        <!-- Bestandsdaten -->
+                        <div class="col-md-6">
+                            <h6 class="border-bottom pb-2 mb-3">
+                                <i class="bi bi-calendar-check text-success me-2"></i>Bestandsdaten
+                            </h6>
+                            <table class="table table-sm table-borderless">
+                                <tr>
+                                    <td class="text-muted" style="width: 40%;">Eingang:</td>
+                                    <td id="detailEingang">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Standzeit:</td>
+                                    <td id="detailStandzeit">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Standort:</td>
+                                    <td id="detailStandort">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Lagerort:</td>
+                                    <td id="detailLagerort">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Kommissionsnummer:</td>
+                                    <td id="detailKomNr">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Status:</td>
+                                    <td id="detailStatus">-</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <!-- Finanzierungsdaten (falls vorhanden) -->
+                    <div id="detailFinanzierungSection" class="mt-4 d-none">
+                        <h6 class="border-bottom pb-2 mb-3">
+                            <i class="bi bi-wallet2 text-danger me-2"></i>Finanzierungsdaten
+                        </h6>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <div class="card bg-light">
+                                    <div class="card-body p-3">
+                                        <small class="text-muted d-block">Finanzinstitut</small>
+                                        <strong id="detailFinanzinstitut">-</strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card bg-light">
+                                    <div class="card-body p-3">
+                                        <small class="text-muted d-block">Aktueller Saldo</small>
+                                        <strong class="text-danger" id="detailSaldo">-</strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card bg-light">
+                                    <div class="card-body p-3">
+                                        <small class="text-muted d-block">Originalbetrag</small>
+                                        <strong id="detailOriginal">-</strong>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-2">
+                            <div class="col-md-4">
+                                <div class="card bg-light border-danger">
+                                    <div class="card-body p-3">
+                                        <small class="text-muted d-block">Zinsen Gesamt</small>
+                                        <strong class="text-danger" id="detailZinsenGesamt">-</strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card bg-light border-warning">
+                                    <div class="card-body p-3">
+                                        <small class="text-muted d-block">Zinsen/Monat</small>
+                                        <strong class="text-warning" id="detailZinsenMonat">-</strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card bg-light">
+                                    <div class="card-body p-3">
+                                        <small class="text-muted d-block">Zinsfreiheit</small>
+                                        <strong id="detailZinsfreiheit">-</strong>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-2">
+                            <div class="col-md-6">
+                                <div class="card bg-info bg-opacity-10 border-info">
+                                    <div class="card-body p-3">
+                                        <small class="text-muted d-block">
+                                            <i class="bi bi-calendar-event me-1"></i>Zinsstartdatum
+                                        </small>
+                                        <strong id="detailZinsStartdatum" class="text-info">-</strong>
+                                        <br>
+                                        <small class="text-muted" id="detailZinsStartdatumInfo">Zinsstartdatum</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card bg-secondary bg-opacity-10">
+                                    <div class="card-body p-3">
+                                        <small class="text-muted d-block">
+                                            <i class="bi bi-clock-history me-1"></i>Tage seit Zinsstart
+                                        </small>
+                                        <strong id="detailTageSeitZinsstart">-</strong>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}

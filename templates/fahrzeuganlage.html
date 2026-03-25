@@ -1,0 +1,451 @@
+{% extends "base.html" %}
+
+{% block title %}Fahrzeuganlage – {{ app_name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .fahrzeuganlage-upload {
+        border: 2px dashed #dee2e6;
+        border-radius: 12px;
+        padding: 2rem;
+        text-align: center;
+        background: #f8f9fa;
+        min-height: 180px;
+    }
+    .fahrzeuganlage-upload.dragover { border-color: #0d6efd; background: #e7f1ff; }
+    .preview-img { max-width: 100%; max-height: 280px; border-radius: 8px; }
+    .field-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .field-row label { min-width: 140px; margin-bottom: 0; font-weight: 500; }
+    .field-row input { flex: 1; }
+    .conf-badge { font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; }
+    .conf-high { background: #d1e7dd; color: #0f5132; }
+    .conf-mid { background: #fff3cd; color: #664d03; }
+    .conf-low { background: #f8d7da; color: #842029; }
+    .btn-copy { padding: 0.25rem 0.5rem; }
+    #resultSection { display: none; }
+    #historyTable tbody tr { cursor: default; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1"><i class="bi bi-card-image text-primary"></i> Fahrzeuganlage</h2>
+            <p class="text-muted mb-0">Fahrzeugschein scannen → OCR (LM Studio / AWS Bedrock) → prüfen &amp; nach Locosoft übernehmen. <span class="badge bg-secondary">DSGVO: eu-central-1 / LM Studio RZ</span></p>
+        </div>
+        <div>
+            <a href="/api/fahrzeuganlage/health" class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener">Health</a>
+        </div>
+    </div>
+
+    <!-- Upload -->
+    <div class="card mb-4">
+        <div class="card-header"><i class="bi bi-upload me-2"></i>Bild oder PDF hochladen</div>
+        <div class="card-body">
+            <div class="fahrzeuganlage-upload" id="uploadZone">
+                <input type="file" id="fileInput" accept="image/jpeg,image/png,image/jpg,application/pdf" class="d-none">
+                <p class="mb-2">Datei hierher ziehen oder klicken (JPG, PNG oder PDF)</p>
+                <button type="button" class="btn btn-outline-primary me-2" onclick="document.getElementById('fileInput').click();"><i class="bi bi-folder2-open"></i> Datei wählen</button>
+                <button type="button" class="btn btn-outline-secondary" id="btnCamera" disabled><i class="bi bi-camera"></i> Kamera</button>
+            </div>
+            <div id="previewBox" class="mt-3 text-center" style="display:none;">
+                <img id="previewImg" class="preview-img" alt="Vorschau" style="display:none;">
+                <p id="previewPdfHint" class="text-muted mb-2" style="display:none;"><i class="bi bi-file-pdf"></i> PDF – erste Seite wird gescannt</p>
+                <div class="mt-2">
+                    <button type="button" class="btn btn-primary" id="btnScan"><i class="bi bi-search"></i> Scannen</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btnClearPreview">Abbrechen</button>
+                </div>
+            </div>
+            <div id="scanProgress" class="mt-3 text-center" style="display:none;">
+                <div class="spinner-border text-primary" role="status"></div>
+                <p class="mt-2 mb-0">OCR läuft (LM Studio / Bedrock)…</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ergebnis (nach Scan) -->
+    <div class="card mb-4" id="resultSection">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-check2-square me-2"></i>Ergebnis</span>
+            <span class="badge bg-secondary" id="scanIdBadge"></span>
+        </div>
+        <div class="card-body">
+            <div id="duplicateWarning" class="alert alert-warning mb-3" style="display:none;">
+                <i class="bi bi-exclamation-triangle me-2"></i><span id="duplicateText">Fahrzeug möglicherweise bereits in Locosoft.</span>
+            </div>
+            <div id="duplicateOk" class="alert alert-success mb-3" style="display:none;">
+                <i class="bi bi-check-circle me-2"></i>Kein Dublette gefunden (FIN/Kennzeichen).
+            </div>
+            <div id="compareSection" class="mb-3" style="display:none;">
+                <h6 class="text-muted mb-2"><i class="bi bi-arrow-left-right me-1"></i>Vergleich mit Locosoft</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered" id="compareTable">
+                        <thead><tr><th>Feld</th><th>Scan</th><th>Locosoft</th><th></th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <h6 class="text-muted mb-2">Fahrzeugdaten</h6>
+                    <div id="vehicleFields"></div>
+                    <div id="vinDecodeResult" class="alert alert-info small mt-2" style="display:none;" role="alert"></div>
+                </div>
+                <div class="col-md-6">
+                    <h6 class="text-muted mb-2">Halterdaten</h6>
+                    <div id="holderFields"></div>
+                </div>
+            </div>
+            <div class="mt-3">
+                <button type="button" class="btn btn-outline-primary" id="btnCopyAll"><i class="bi bi-clipboard"></i> Alle Daten kopieren (Locosoft-Format)</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm ms-2" id="btnCheckDuplicate"><i class="bi bi-search"></i> Dublette prüfen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Letzte Scans -->
+    <div class="card">
+        <div class="card-header"><i class="bi bi-clock-history me-2"></i>Letzte Scans</div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover" id="historyTable">
+                    <thead><tr><th>Datum</th><th>Kennzeichen</th><th>FIN</th><th>Marke/Modell</th><th>Halter</th><th>Conf.</th><th></th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const API = '/api/fahrzeuganlage';
+    let currentFile = null;
+    let currentScanId = null;
+    let currentData = null;
+    let currentLocosoftData = null;
+
+    /** Antwort als JSON parsen; bei HTML (Fehlerseite) klare Meldung statt "Unexpected token '<'" */
+    function parseJsonResponse(r) {
+        return r.text().then(function(text) {
+            var t = (text || '').trim();
+            if (t.indexOf('<') === 0) {
+                throw new Error('Server hat eine Fehlerseite geliefert statt Daten. Bitte später erneut versuchen.');
+            }
+            try {
+                return JSON.parse(text);
+            } catch (e) {
+                throw new Error('Ungültige Server-Antwort (kein JSON).');
+            }
+        });
+    }
+
+    const vehicleKeys = ['kennzeichen','fin','erstzulassung','marke','handelsbezeichnung','typ_variante_version','hsn','tsn','hubraum_ccm','leistung_kw','kraftstoff','farbe','naechste_hu'];
+    const holderKeys = ['halter_name','halter_vorname','halter_strasse','halter_plz','halter_ort'];
+    const labels = {
+        kennzeichen:'Kennzeichen', fin:'FIN', erstzulassung:'Erstzulassung', marke:'Marke', handelsbezeichnung:'Handelsbezeichnung',
+        typ_variante_version:'Typ/Variante', hsn:'HSN', tsn:'TSN', hubraum_ccm:'Hubraum (ccm)', leistung_kw:'Leistung (kW)',
+        kraftstoff:'Kraftstoff', farbe:'Farbe', naechste_hu:'Nächste HU',
+        halter_name:'Name', halter_vorname:'Vorname', halter_strasse:'Straße', halter_plz:'PLZ', halter_ort:'Ort'
+    };
+
+    function renderFields(containerId, keys, data, confidence) {
+        const conf = (data && data.confidence) ? data.confidence : {};
+        const container = document.getElementById(containerId);
+        container.innerHTML = '';
+        keys.forEach(function(k) {
+            const val = (data && data[k]) != null ? String(data[k]) : '';
+            const pct = (k === 'kennzeichen' && conf.kennzeichen != null) ? conf.kennzeichen : (k === 'fin' && conf.fin != null) ? conf.fin : (conf.gesamt != null) ? conf.gesamt : null;
+            let badge = '';
+            if (pct != null && typeof pct === 'number') {
+                const c = pct >= 0.95 ? 'conf-high' : (pct >= 0.8 ? 'conf-mid' : 'conf-low');
+                badge = '<span class="conf-badge ' + c + '">' + Math.round(pct * 100) + '%</span>';
+            }
+            const id = 'field_' + k;
+            const finBtns = (k === 'fin') ? '<button type="button" class="btn btn-sm btn-outline-primary ms-1" id="btnVinDecode" title="VIN prüfen und mit Claude (AWS Bedrock) entschlüsseln"><i class="bi bi-upc-scan"></i> Entschlüsseln</button>' : '';
+            container.innerHTML += '<div class="field-row"><label for="' + id + '">' + (labels[k] || k) + '</label><input type="text" class="form-control form-control-sm" id="' + id + '" value="' + escapeHtml(val) + '"><span>' + badge + '</span><button type="button" class="btn btn-sm btn-outline-secondary btn-copy" data-copy="' + id + '" title="Kopieren"><i class="bi bi-clipboard"></i></button>' + finBtns + '</div>';
+        });
+        container.querySelectorAll('[data-copy]').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var el = document.getElementById(btn.getAttribute('data-copy'));
+                if (el && el.value) {
+                    navigator.clipboard.writeText(el.value).then(function() { btn.classList.add('btn-success'); setTimeout(function() { btn.classList.remove('btn-success'); }, 600); });
+                }
+            });
+        });
+        var btnVinDecode = document.getElementById('btnVinDecode');
+        if (btnVinDecode) {
+            btnVinDecode.addEventListener('click', function() {
+                var vin = getScanValue('fin');
+                var resultEl = document.getElementById('vinDecodeResult');
+                if (!vin) {
+                    resultEl.style.display = 'block';
+                    resultEl.className = 'alert alert-warning small mt-2';
+                    resultEl.textContent = 'Bitte zuerst FIN eingeben.';
+                    return;
+                }
+                resultEl.style.display = 'block';
+                resultEl.className = 'alert alert-secondary small mt-2';
+                resultEl.textContent = 'VIN wird geprüft und entschlüsselt …';
+                fetch(API + '/vin-decode?vin=' + encodeURIComponent(vin))
+                    .then(function(r) { return parseJsonResponse(r); })
+                    .then(function(j) {
+                        if (j.error) {
+                            resultEl.className = 'alert alert-warning small mt-2';
+                            resultEl.textContent = j.error;
+                            return;
+                        }
+                        var parts = [];
+                        if (j.corrected && j.vin) {
+                            var finEl = document.getElementById('field_fin');
+                            if (finEl) { finEl.value = j.vin; }
+                            parts.push('Korrigierte VIN: ' + j.vin);
+                        }
+                        if (j.valid) parts.push('Prüfziffer OK.');
+                        else if (j.vin) parts.push('Hinweis: Prüfziffer ungültig – bitte prüfen.');
+                        if (j.decode) {
+                            if (j.decode.fehler) {
+                                parts.push('Decode: ' + j.decode.fehler);
+                            } else {
+                                if (j.decode.hersteller_hinweis) parts.push('Hersteller: ' + j.decode.hersteller_hinweis);
+                                if (j.decode.modelljahr) parts.push('Modelljahr: ' + j.decode.modelljahr);
+                                if (j.decode.hinweis) parts.push(j.decode.hinweis);
+                            }
+                        }
+                        resultEl.className = 'alert alert-info small mt-2';
+                        resultEl.textContent = parts.join(' ');
+                    })
+                    .catch(function(e) {
+                        resultEl.className = 'alert alert-danger small mt-2';
+                        resultEl.textContent = 'Fehler: ' + (e.message || 'Unbekannt');
+                    });
+            });
+        }
+    }
+
+    function escapeHtml(s) {
+        if (s == null) return '';
+        var d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
+    }
+
+    function showResult(id, data) {
+        currentScanId = id;
+        currentData = data || {};
+        document.getElementById('resultSection').style.display = 'block';
+        document.getElementById('scanIdBadge').textContent = 'Scan #' + id;
+        var forRender = {};
+        vehicleKeys.forEach(function(k) { forRender[k] = currentData[k]; });
+        holderKeys.forEach(function(k) { forRender[k] = currentData[k]; });
+        if (currentData.halter) {
+            forRender.halter_name = currentData.halter.nachname;
+            forRender.halter_vorname = currentData.halter.vorname;
+            forRender.halter_strasse = currentData.halter.strasse;
+            forRender.halter_plz = currentData.halter.plz;
+            forRender.halter_ort = currentData.halter.ort;
+        }
+        forRender.confidence = currentData.confidence || {};
+        renderFields('vehicleFields', vehicleKeys, forRender, currentData.confidence);
+        renderFields('holderFields', holderKeys, forRender, currentData.confidence);
+        document.getElementById('duplicateWarning').style.display = 'none';
+        document.getElementById('duplicateOk').style.display = 'none';
+        document.getElementById('compareSection').style.display = 'none';
+        var vinDecodeResult = document.getElementById('vinDecodeResult');
+        if (vinDecodeResult) { vinDecodeResult.style.display = 'none'; }
+        checkDuplicate();
+    }
+
+    function getScanValue(key) {
+        var el = document.getElementById('field_' + key);
+        return (el && el.value) ? el.value.trim() : (currentData && currentData[key] != null) ? String(currentData[key]).trim() : '';
+    }
+
+    function checkDuplicate() {
+        var fin = getScanValue('fin');
+        var kz = getScanValue('kennzeichen');
+        var cmpSection = document.getElementById('compareSection');
+        var cmpTbody = document.querySelector('#compareTable tbody');
+        if (!fin && !kz) {
+            cmpSection.style.display = 'none';
+            return;
+        }
+        fetch(API + '/check-duplicate?fin=' + encodeURIComponent(fin) + '&kennzeichen=' + encodeURIComponent(kz))
+            .then(function(r) { return r.json(); })
+            .then(function(j) {
+                var w = document.getElementById('duplicateWarning');
+                var o = document.getElementById('duplicateOk');
+                if (j.exists) {
+                    w.style.display = 'block';
+                    o.style.display = 'none';
+                    var dupMsg = 'Fahrzeug bereits in Locosoft (vehicle_number: ' + (j.vehicle_number || '-') + ').';
+                    if (j.matched_by === 'kennzeichen') {
+                        dupMsg = 'Dublette über Kennzeichen gefunden (FIN weicht ab – bitte FIN aus Locosoft übernehmen). vehicle_number: ' + (j.vehicle_number || '-');
+                    } else if (j.matched_by === 'vin_fuzzy') {
+                        dupMsg = 'Dublette gefunden (VIN weicht um 1–2 Zeichen ab – vermutlich OCR-Fehler, bitte FIN aus Locosoft übernehmen). vehicle_number: ' + (j.vehicle_number || '-');
+                    }
+                    document.getElementById('duplicateText').textContent = dupMsg;
+                    if (j.locosoft_data && cmpTbody) {
+                        var loco = j.locosoft_data;
+                        currentLocosoftData = loco;
+                        var compareKeys = ['kennzeichen','fin','erstzulassung','marke','handelsbezeichnung','hsn','tsn','hubraum_ccm','leistung_kw','farbe'];
+                        cmpTbody.innerHTML = '';
+                        compareKeys.forEach(function(key) {
+                            var scanVal = getScanValue(key);
+                            var locoVal = (loco[key] != null && loco[key] !== '') ? String(loco[key]).trim() : '–';
+                            if (key === 'hubraum_ccm' || key === 'leistung_kw') scanVal = scanVal || '–';
+                            var diff = (scanVal !== locoVal);
+                            var btnCell = '';
+                            if (diff && locoVal !== '–') {
+                                btnCell = '<span class="badge bg-warning text-dark me-1">Differenz</span> <button type="button" class="btn btn-sm btn-outline-success btn-loco-takeover" data-field="' + escapeHtml(key) + '" title="Wert aus Locosoft ins Feld übernehmen"><i class="bi bi-arrow-down-left"></i> Locosoft übernehmen</button>';
+                            } else {
+                                btnCell = diff ? '<span class="badge bg-warning text-dark">Differenz</span>' : '<span class="text-success">✓</span>';
+                            }
+                            var row = '<tr' + (diff ? ' class="table-warning"' : '') + '><td>' + escapeHtml(labels[key] || key) + '</td><td>' + escapeHtml(scanVal || '–') + '</td><td>' + escapeHtml(locoVal) + '</td><td>' + btnCell + '</td></tr>';
+                            cmpTbody.innerHTML += row;
+                        });
+                        cmpTbody.querySelectorAll('.btn-loco-takeover').forEach(function(btn) {
+                            btn.addEventListener('click', function() {
+                                var key = btn.getAttribute('data-field');
+                                var el = document.getElementById('field_' + key);
+                                if (el && currentLocosoftData && currentLocosoftData[key] != null) {
+                                    el.value = String(currentLocosoftData[key]).trim();
+                                    checkDuplicate();
+                                }
+                            });
+                        });
+                        cmpSection.style.display = 'block';
+                    } else {
+                        cmpSection.style.display = 'none';
+                    }
+                } else {
+                    w.style.display = 'none';
+                    o.style.display = 'block';
+                    cmpSection.style.display = 'none';
+                }
+            })
+            .catch(function() {
+                document.getElementById('duplicateWarning').style.display = 'none';
+                document.getElementById('duplicateOk').style.display = 'none';
+                cmpSection.style.display = 'none';
+            });
+    }
+
+    function copyAll() {
+        var parts = [];
+        vehicleKeys.concat(holderKeys).forEach(function(k) {
+            var el = document.getElementById('field_' + k);
+            if (el && el.value) parts.push((labels[k] || k) + ': ' + el.value);
+        });
+        var text = parts.join('\n');
+        if (text) {
+            navigator.clipboard.writeText(text).then(function() {
+                var btn = document.getElementById('btnCopyAll');
+                btn.classList.add('btn-success');
+                btn.innerHTML = '<i class="bi bi-check"></i> Kopiert!';
+                setTimeout(function() { btn.classList.remove('btn-success'); btn.innerHTML = '<i class="bi bi-clipboard"></i> Alle Daten kopieren (Locosoft-Format)'; }, 2000);
+            });
+        }
+    }
+
+    function openScan(scanId) {
+        fetch(API + '/scan/' + scanId).then(function(r) {
+            if (!r.ok) throw new Error('Scan nicht gefunden');
+            return parseJsonResponse(r);
+        }).then(function(data) {
+            var id = data.id != null ? data.id : scanId;
+            if (data.ocr_confidence != null && !data.confidence) data.confidence = { gesamt: data.ocr_confidence };
+            showResult(id, data);
+            document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }).catch(function(err) { alert('Scan konnte nicht geladen werden: ' + (err.message || err)); });
+    }
+
+    function loadHistory() {
+        fetch(API + '/history?limit=20').then(function(r) { return parseJsonResponse(r); })
+            .then(function(j) {
+                var tbody = document.querySelector('#historyTable tbody');
+                tbody.innerHTML = '';
+                (j.items || []).forEach(function(row) {
+                    var scanDate = row.scan_date ? new Date(row.scan_date).toLocaleString('de-DE') : '-';
+                    var conf = row.ocr_confidence != null ? Math.round(row.ocr_confidence * 100) + '%' : '-';
+                    var id = row.id != null ? row.id : '';
+                    tbody.innerHTML += '<tr class="align-middle"><td>' + escapeHtml(scanDate) + '</td><td>' + escapeHtml(row.kennzeichen) + '</td><td>' + escapeHtml(row.fin) + '</td><td>' + escapeHtml((row.marke || '') + ' ' + (row.handelsbezeichnung || '')) + '</td><td>' + escapeHtml((row.halter_name || '') + ' ' + (row.halter_vorname || '')) + '</td><td>' + conf + '</td><td><button type="button" class="btn btn-sm btn-outline-primary" data-scan-id="' + escapeHtml(String(id)) + '" title="Scan mit Vergleichsergebnis anzeigen"><i class="bi bi-box-arrow-up-right"></i> Anzeigen</button></td></tr>';
+                });
+                tbody.querySelectorAll('[data-scan-id]').forEach(function(btn) {
+                    btn.addEventListener('click', function() { openScan(this.getAttribute('data-scan-id')); });
+                });
+            })
+            .catch(function() {});
+    }
+
+    document.getElementById('uploadZone').addEventListener('click', function(e) { if (e.target === this || e.target.tagName === 'P') document.getElementById('fileInput').click(); });
+    document.getElementById('uploadZone').addEventListener('dragover', function(e) { e.preventDefault(); this.classList.add('dragover'); });
+    document.getElementById('uploadZone').addEventListener('dragleave', function() { this.classList.remove('dragover'); });
+    document.getElementById('uploadZone').addEventListener('drop', function(e) {
+        e.preventDefault();
+        this.classList.remove('dragover');
+        var f = e.dataTransfer && e.dataTransfer.files[0];
+        if (f && f.type && (f.type.indexOf('image') === 0 || f.type === 'application/pdf')) { currentFile = f; showPreview(f); }
+    });
+
+    document.getElementById('fileInput').addEventListener('change', function() {
+        var f = this.files[0];
+        if (f) { currentFile = f; showPreview(f); }
+    });
+
+    function showPreview(file) {
+        var isPdf = file.type === 'application/pdf' || (file.name && file.name.toLowerCase().endsWith('.pdf'));
+        var imgEl = document.getElementById('previewImg');
+        var pdfHint = document.getElementById('previewPdfHint');
+        if (isPdf) {
+            imgEl.style.display = 'none';
+            imgEl.removeAttribute('src');
+            pdfHint.style.display = 'block';
+        } else {
+            pdfHint.style.display = 'none';
+            imgEl.src = URL.createObjectURL(file);
+            imgEl.style.display = 'block';
+        }
+        document.getElementById('previewBox').style.display = 'block';
+    }
+
+    document.getElementById('btnClearPreview').addEventListener('click', function() {
+        currentFile = null;
+        document.getElementById('previewBox').style.display = 'none';
+        document.getElementById('fileInput').value = '';
+    });
+
+    document.getElementById('btnScan').addEventListener('click', function() {
+        if (!currentFile) return;
+        document.getElementById('previewBox').style.display = 'none';
+        document.getElementById('scanProgress').style.display = 'block';
+        var fd = new FormData();
+        fd.append('image', currentFile);
+        fd.append('file', currentFile);
+        fetch(API + '/scan', { method: 'POST', body: fd, credentials: 'same-origin' })
+            .then(function(r) {
+                document.getElementById('scanProgress').style.display = 'none';
+                return parseJsonResponse(r).then(function(j) {
+                    if (!r.ok) throw new Error(j.error || r.statusText || 'Fehler ' + r.status);
+                    return j;
+                });
+            })
+            .then(function(j) {
+                currentFile = null;
+                showResult(j.id, j.data);
+                loadHistory();
+            })
+            .catch(function(err) {
+                document.getElementById('scanProgress').style.display = 'none';
+                document.getElementById('previewBox').style.display = 'block';
+                alert('Scan fehlgeschlagen: ' + (err.message || err));
+            });
+    });
+
+    document.getElementById('btnCopyAll').addEventListener('click', copyAll);
+    document.getElementById('btnCheckDuplicate').addEventListener('click', checkDuplicate);
+    loadHistory();
+})();
+</script>
+{% endblock %}
