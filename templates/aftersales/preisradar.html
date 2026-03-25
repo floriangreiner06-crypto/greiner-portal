@@ -1,0 +1,632 @@
+{% extends "base.html" %}
+
+{% block title %}Preisradar - Teile-Preisvergleich{% endblock %}
+
+{% block extra_css %}
+<style>
+    .search-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 15px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+    }
+    
+    .search-input {
+        font-size: 1.5rem;
+        padding: 1rem 1.5rem;
+        border-radius: 10px;
+        border: none;
+        width: 100%;
+    }
+    
+    .search-btn {
+        font-size: 1.2rem;
+        padding: 1rem 2rem;
+        border-radius: 10px;
+        background: #28a745;
+        border: none;
+        color: white;
+    }
+    
+    .search-btn:hover {
+        background: #218838;
+    }
+    
+    .price-card {
+        border-radius: 12px;
+        border: 2px solid #e9ecef;
+        transition: all 0.3s ease;
+        height: 100%;
+    }
+    
+    .price-card:hover {
+        border-color: #667eea;
+        box-shadow: 0 5px 20px rgba(102, 126, 234, 0.2);
+    }
+    
+    .price-card.best-price {
+        border-color: #28a745;
+        background: linear-gradient(180deg, #d4edda 0%, #ffffff 30%);
+    }
+    
+    .price-card.best-price .card-header {
+        background: #28a745 !important;
+        color: white;
+    }
+    
+    .price-card.loading-card {
+        opacity: 0.7;
+    }
+    
+    .price-value {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #333;
+    }
+    
+    .price-card.best-price .price-value {
+        color: #28a745;
+    }
+    
+    .savings-badge {
+        background: #28a745;
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-size: 1.1rem;
+        font-weight: 600;
+    }
+    
+    .source-logo {
+        height: 40px;
+        object-fit: contain;
+    }
+    
+    .loading-spinner {
+        display: none;
+    }
+    
+    .loading .loading-spinner {
+        display: inline-block;
+    }
+    
+    .loading .search-text {
+        display: none;
+    }
+    
+    .result-section {
+        display: none;
+    }
+    
+    .info-table td {
+        padding: 0.5rem 0;
+    }
+    
+    .info-table td:first-child {
+        color: #6c757d;
+        width: 40%;
+    }
+    
+    .availability-badge {
+        padding: 0.3rem 0.8rem;
+        border-radius: 15px;
+        font-size: 0.85rem;
+    }
+    
+    .availability-badge.available {
+        background: #d4edda;
+        color: #155724;
+    }
+    
+    .availability-badge.unavailable {
+        background: #f8d7da;
+        color: #721c24;
+    }
+    
+    .no-results {
+        display: none;
+        text-align: center;
+        padding: 3rem;
+        color: #6c757d;
+    }
+    
+    .quick-search-btn {
+        background: rgba(255,255,255,0.2);
+        border: 1px solid rgba(255,255,255,0.3);
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        margin: 0.25rem;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .quick-search-btn:hover {
+        background: rgba(255,255,255,0.3);
+    }
+    
+    .source-checkbox {
+        display: flex;
+        align-items: center;
+        background: rgba(255,255,255,0.15);
+        padding: 0.5rem 1rem;
+        border-radius: 10px;
+        margin: 0.25rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .source-checkbox:hover {
+        background: rgba(255,255,255,0.25);
+    }
+    
+    .source-checkbox input {
+        margin-right: 0.5rem;
+        width: 18px;
+        height: 18px;
+    }
+    
+    .source-checkbox.loading {
+        opacity: 0.7;
+    }
+    
+    .source-checkbox .spinner-border {
+        width: 16px;
+        height: 16px;
+        margin-left: 0.5rem;
+    }
+    
+    .dello-warning {
+        font-size: 0.75rem;
+        color: rgba(255,255,255,0.7);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="mb-0">
+                <i class="bi bi-radar text-primary"></i> Preisradar
+            </h1>
+            <p class="text-muted">Teile-Preisvergleich über mehrere Lieferanten</p>
+        </div>
+    </div>
+    
+    <!-- Search Card -->
+    <div class="search-card">
+        <div class="row align-items-center">
+            <div class="col-lg-7">
+                <h3 class="mb-3"><i class="bi bi-search"></i> Teilenummer suchen</h3>
+                <div class="input-group">
+                    <input type="text" 
+                           id="teilenummerInput" 
+                           class="search-input" 
+                           placeholder="z.B. 9837096880, 1109AL, 13507405..."
+                           autocomplete="off">
+                    <button class="search-btn" id="searchBtn" onclick="searchPart()">
+                        <span class="loading-spinner spinner-border spinner-border-sm me-2"></span>
+                        <span class="search-text"><i class="bi bi-search me-2"></i>Suchen</span>
+                    </button>
+                </div>
+                <div class="mt-3">
+                    <span class="text-white-50">Schnellsuche:</span>
+                    <button class="quick-search-btn" onclick="quickSearch('1109AL')">Ölfilter</button>
+                    <button class="quick-search-btn" onclick="quickSearch('9837096880')">Ölwanne</button>
+                    <button class="quick-search-btn" onclick="quickSearch('13507405')">RDKS-Ventil</button>
+                </div>
+            </div>
+            <div class="col-lg-5 mt-3 mt-lg-0">
+                <div class="bg-white bg-opacity-10 rounded-3 p-3">
+                    <h5 class="mb-3"><i class="bi bi-sliders"></i> Quellen</h5>
+                    <div class="d-flex flex-wrap">
+                        <label class="source-checkbox">
+                            <input type="checkbox" checked disabled>
+                            <i class="bi bi-database me-1"></i> Locosoft OEM
+                        </label>
+                        <label class="source-checkbox">
+                            <input type="checkbox" checked disabled>
+                            <i class="bi bi-shop me-1"></i> Schäferbarthold
+                        </label>
+                        <label class="source-checkbox" id="delloCheckboxLabel">
+                            <input type="checkbox" id="delloCheckbox" onchange="onDelloToggle()">
+                            <i class="bi bi-truck me-1"></i> Dello/Automega
+                            <span class="spinner-border text-light d-none" id="delloSpinner"></span>
+                        </label>
+                    </div>
+                    <div class="dello-warning mt-2">
+                        <i class="bi bi-info-circle"></i> Dello dauert ca. 15-20 Sek (Echtzeit-Abfrage)
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- No Results -->
+    <div class="no-results" id="noResults">
+        <i class="bi bi-search fs-1 text-muted"></i>
+        <h4 class="mt-3">Keine Ergebnisse</h4>
+        <p>Für diese Teilenummer wurden keine Preise gefunden.</p>
+    </div>
+    
+    <!-- Results Section -->
+    <div class="result-section" id="resultSection">
+        
+        <!-- Empfehlung Banner -->
+        <div class="alert alert-success d-flex align-items-center mb-4" id="recommendationBanner">
+            <i class="bi bi-trophy-fill fs-3 me-3"></i>
+            <div>
+                <h5 class="mb-1" id="recommendationTitle">Günstigster Preis bei...</h5>
+                <span class="savings-badge" id="savingsBadge">Ersparnis: 0,00 €</span>
+            </div>
+        </div>
+        
+        <!-- Price Cards -->
+        <div class="row g-4" id="priceCardsContainer">
+            <!-- Cards werden per JS eingefügt -->
+        </div>
+        
+    </div>
+    
+    <!-- Info Footer -->
+    <div class="row mt-5">
+        <div class="col-12">
+            <div class="card bg-light border-0">
+                <div class="card-body">
+                    <h6><i class="bi bi-info-circle"></i> Hinweise</h6>
+                    <ul class="mb-0 small text-muted">
+                        <li>Preise werden in Echtzeit abgerufen</li>
+                        <li><strong>Locosoft:</strong> OEM-Preis mit Ihrem EK-Rabatt</li>
+                        <li><strong>Schäferbarthold:</strong> Einkaufspreis inkl. Kundenrabatt (~8 Sek)</li>
+                        <li><strong>Dello/Automega:</strong> Optional zuschaltbar (~15-20 Sek)</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Globale Variablen
+    let currentTeilenummer = '';
+    let currentResults = null;
+    
+    // Enter-Taste zum Suchen
+    document.getElementById('teilenummerInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            searchPart();
+        }
+    });
+    
+    // Quick Search
+    function quickSearch(teilenummer) {
+        document.getElementById('teilenummerInput').value = teilenummer;
+        document.getElementById('delloCheckbox').checked = false;
+        searchPart();
+    }
+    
+    // Dello Checkbox Toggle
+    function onDelloToggle() {
+        const checkbox = document.getElementById('delloCheckbox');
+        
+        if (checkbox.checked && currentTeilenummer) {
+            // Dello nachladen
+            loadDello();
+        } else if (!checkbox.checked && currentResults) {
+            // Dello entfernen und neu anzeigen
+            if (currentResults.quellen && currentResults.quellen.dello) {
+                delete currentResults.quellen.dello;
+                displayResults(currentResults);
+            }
+        }
+    }
+    
+    // Dello nachladen
+    function loadDello() {
+        if (!currentTeilenummer) return;
+        
+        const spinner = document.getElementById('delloSpinner');
+        const label = document.getElementById('delloCheckboxLabel');
+        
+        spinner.classList.remove('d-none');
+        label.classList.add('loading');
+        
+        // Dello-Platzhalter-Card anzeigen
+        addDelloPlaceholder();
+        
+        fetch(`/api/teile/vergleich/${encodeURIComponent(currentTeilenummer)}?dello=true`)
+            .then(response => response.json())
+            .then(data => {
+                spinner.classList.add('d-none');
+                label.classList.remove('loading');
+                
+                if (data.success && data.quellen) {
+                    // Alle Quellen aus Response mergen (nicht nur Dello), damit Schäferbarthold
+                    // aus der zweiten Antwort angezeigt wird und Badge/Karte korrekt erscheinen
+                    currentResults.quellen = { ...currentResults.quellen, ...data.quellen };
+                    if (data.empfehlung) {
+                        currentResults.empfehlung = data.empfehlung;
+                    }
+                    displayResults(currentResults);
+                }
+            })
+            .catch(error => {
+                console.error('Dello Error:', error);
+                spinner.classList.add('d-none');
+                label.classList.remove('loading');
+                document.getElementById('delloCheckbox').checked = false;
+                removeDelloPlaceholder();
+                alert('Fehler beim Laden von Dello: ' + error.message);
+            });
+    }
+    
+    // Dello Platzhalter
+    function addDelloPlaceholder() {
+        const container = document.getElementById('priceCardsContainer');
+        const placeholder = `
+            <div class="col-md-6 col-lg-4" id="delloPlaceholder">
+                <div class="card price-card loading-card">
+                    <div class="card-header d-flex align-items-center" style="background: #fd7e14; color: white;">
+                        <i class="bi bi-truck fs-4 me-2"></i>
+                        <span class="fw-bold">Dello/Automega</span>
+                        <span class="spinner-border spinner-border-sm ms-auto"></span>
+                    </div>
+                    <div class="card-body text-center py-5">
+                        <div class="spinner-border text-warning mb-3" style="width: 3rem; height: 3rem;"></div>
+                        <p class="text-muted mb-0">Preise werden geladen...</p>
+                        <small class="text-muted">(ca. 15-20 Sekunden)</small>
+                    </div>
+                </div>
+            </div>
+        `;
+        container.insertAdjacentHTML('beforeend', placeholder);
+    }
+    
+    function removeDelloPlaceholder() {
+        const placeholder = document.getElementById('delloPlaceholder');
+        if (placeholder) placeholder.remove();
+    }
+    
+    // Hauptsuche
+    function searchPart() {
+        const teilenummer = document.getElementById('teilenummerInput').value.trim();
+        
+        if (!teilenummer) {
+            alert('Bitte Teilenummer eingeben');
+            return;
+        }
+        
+        currentTeilenummer = teilenummer;
+        
+        // Dello Checkbox zurücksetzen
+        document.getElementById('delloCheckbox').checked = false;
+        
+        // UI Loading State
+        const btn = document.getElementById('searchBtn');
+        btn.classList.add('loading');
+        btn.disabled = true;
+        
+        document.getElementById('resultSection').style.display = 'none';
+        document.getElementById('noResults').style.display = 'none';
+        
+        // API Call (ohne Dello)
+        fetch(`/api/teile/vergleich/${encodeURIComponent(teilenummer)}`)
+            .then(response => response.json())
+            .then(data => {
+                btn.classList.remove('loading');
+                btn.disabled = false;
+                
+                if (data.success && data.quellen && Object.keys(data.quellen).length > 0) {
+                    currentResults = data;
+                    displayResults(data);
+                } else {
+                    currentResults = null;
+                    document.getElementById('noResults').style.display = 'block';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                btn.classList.remove('loading');
+                btn.disabled = false;
+                alert('Fehler beim Abrufen der Preise: ' + error.message);
+            });
+    }
+    
+    // Ergebnisse anzeigen
+    function displayResults(data) {
+        const container = document.getElementById('priceCardsContainer');
+        container.innerHTML = '';
+        
+        // Preise sammeln für Vergleich
+        const preise = [];
+        
+        for (const [key, quelle] of Object.entries(data.quellen)) {
+            if (quelle.preis && !quelle.error) {
+                preise.push({
+                    key: key,
+                    name: quelle.name || key,
+                    preis: quelle.preis
+                });
+            }
+        }
+        
+        // Sortieren nach Preis
+        preise.sort((a, b) => a.preis - b.preis);
+        const guenstigster = preise.length > 0 ? preise[0].key : null;
+        
+        // Cards erstellen (auch Quellen mit Fehler anzeigen, damit z.B. Schäferbarthold sichtbar bleibt)
+        for (const [key, quelle] of Object.entries(data.quellen)) {
+            const isBest = !quelle.error && key === guenstigster;
+            const card = createPriceCard(key, quelle, isBest);
+            container.innerHTML += card;
+        }
+        
+        // Empfehlung Banner
+        if (data.empfehlung) {
+            document.getElementById('recommendationTitle').textContent = 
+                `Günstigster Preis: ${data.empfehlung.guenstigster} mit ${formatPrice(data.empfehlung.preis)}`;
+            
+            if (data.empfehlung.ersparnis) {
+                document.getElementById('savingsBadge').textContent = 
+                    `Ersparnis: ${formatPrice(data.empfehlung.ersparnis)} (${data.empfehlung.ersparnis_prozent}%)`;
+                document.getElementById('savingsBadge').style.display = 'inline-block';
+            } else {
+                document.getElementById('savingsBadge').style.display = 'none';
+            }
+            
+            document.getElementById('recommendationBanner').style.display = 'flex';
+        } else {
+            document.getElementById('recommendationBanner').style.display = 'none';
+        }
+        
+        document.getElementById('resultSection').style.display = 'block';
+    }
+    
+    // Preis-Card HTML (quelle kann .error haben → Fehler-Karte anzeigen)
+    function createPriceCard(key, quelle, isBest) {
+        let icon, bgColor;
+        switch(key) {
+            case 'locosoft':
+                icon = 'bi-database';
+                bgColor = '#0d6efd';
+                break;
+            case 'schaeferbarthold':
+                icon = 'bi-shop';
+                bgColor = '#6f42c1';
+                break;
+            case 'dello':
+                icon = 'bi-truck';
+                bgColor = '#fd7e14';
+                break;
+            default:
+                icon = 'bi-box';
+                bgColor = '#6c757d';
+        }
+        
+        const sourceNames = { locosoft: 'Locosoft OEM', schaeferbarthold: 'Schäferbarthold', dello: 'Dello/Automega' };
+        const displayName = quelle.name || sourceNames[key] || key;
+        
+        if (quelle.error) {
+            return `
+                <div class="col-md-6 col-lg-4">
+                    <div class="card price-card">
+                        <div class="card-header d-flex align-items-center" style="background: ${bgColor}; color: white;">
+                            <i class="bi ${icon} fs-4 me-2"></i>
+                            <span class="fw-bold">${displayName}</span>
+                        </div>
+                        <div class="card-body text-center py-4">
+                            <p class="text-muted mb-0"><i class="bi bi-exclamation-triangle text-warning"></i> Abfrage fehlgeschlagen</p>
+                            <small class="text-muted">${escapeHtml((quelle.error || '').substring(0, 80))}${(quelle.error && quelle.error.length > 80) ? '…' : ''}</small>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        let availabilityHtml = '';
+        if (quelle.verfuegbar !== undefined) {
+            const availClass = quelle.verfuegbar ? 'available' : 'unavailable';
+            const availText = quelle.verfuegbar ? 'Verfügbar' : 'Nicht verfügbar';
+            const availIcon = quelle.verfuegbar ? 'bi-check-circle' : 'bi-x-circle';
+            availabilityHtml = `
+                <span class="availability-badge ${availClass}">
+                    <i class="bi ${availIcon}"></i> ${availText}
+                </span>
+            `;
+        }
+        
+        // UPE und EK Zeilen
+        let preisDetails = '';
+        if (quelle.upe) {
+            preisDetails += `
+                <tr>
+                    <td>UPE:</td>
+                    <td>${formatPrice(quelle.upe)}</td>
+                </tr>
+            `;
+        }
+        if (quelle.ek) {
+            preisDetails += `
+                <tr>
+                    <td><strong>EK:</strong></td>
+                    <td><strong class="text-success">${formatPrice(quelle.ek)}</strong></td>
+                </tr>
+            `;
+        }
+        if (quelle.rabatt_prozent) {
+            preisDetails += `
+                <tr>
+                    <td>Rabatt:</td>
+                    <td><span class="text-success">-${quelle.rabatt_prozent}%</span> ${quelle.rabatt_code ? `(${quelle.rabatt_code})` : ''}</td>
+                </tr>
+            `;
+        }
+        if (quelle.alle_ergebnisse && quelle.alle_ergebnisse > 1) {
+            preisDetails += `
+                <tr>
+                    <td>Alternativen:</td>
+                    <td>${quelle.alle_ergebnisse} Treffer</td>
+                </tr>
+            `;
+        }
+        
+        // Hauptpreis ist EK wenn vorhanden
+        const hauptpreis = quelle.ek || quelle.preis || quelle.upe;
+        
+        return `
+            <div class="col-md-6 col-lg-4">
+                <div class="card price-card ${isBest ? 'best-price' : ''}">
+                    <div class="card-header d-flex align-items-center" style="background: ${isBest ? '' : bgColor}; color: white;">
+                        <i class="bi ${icon} fs-4 me-2"></i>
+                        <span class="fw-bold">${displayName}</span>
+                        ${isBest ? '<span class="badge bg-warning text-dark ms-auto"><i class="bi bi-trophy"></i> Günstigster</span>' : ''}
+                    </div>
+                    <div class="card-body text-center">
+                        <div class="price-value mb-3">
+                            ${hauptpreis ? formatPrice(hauptpreis) : 'N/A'}
+                        </div>
+                        <small class="text-muted">EK-Preis</small>
+                        ${availabilityHtml}
+                        <hr>
+                        <table class="info-table w-100 text-start">
+                            <tr>
+                                <td>Teilenummer:</td>
+                                <td><code>${quelle.teilenummer || '-'}</code></td>
+                            </tr>
+                            <tr>
+                                <td>Beschreibung:</td>
+                                <td>${quelle.beschreibung || '-'}</td>
+                            </tr>
+                            ${quelle.marke ? `<tr><td>Marke:</td><td>${quelle.marke}</td></tr>` : ''}
+                            ${preisDetails}
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Preis formatieren
+    function formatPrice(price) {
+        return new Intl.NumberFormat('de-DE', {
+            style: 'currency',
+            currency: 'EUR'
+        }).format(price);
+    }
+    
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+</script>
+{% endblock %}

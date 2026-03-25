@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block title %}Bankenspiegel - Kategorisierung{% endblock %}
+
+{% block extra_css %}
+<style>
+  .kategorisierung-gespeichert { white-space: nowrap; }
+  .kategorisierung-ki-lernen { white-space: nowrap; font-size: 0.85em; }
+  /* Grüne Hinterlegung für kategorisierte/trainierte Zeilen (dauerhaft) */
+  #kategorisierungTable tr.table-success,
+  #kategorisierungTable tr[data-kategorisiert="true"] { background-color: rgba(25, 135, 84, 0.18) !important; }
+  /* Buchungstext-Spalte: Volltext anzeigen, umbrechen, kein Abschneiden */
+  #kategorisierungTable .kategorisierung-buchungstext {
+    max-width: 45vw;
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    vertical-align: top;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h2 mb-0">
+                <i class="bi bi-tags me-2"></i>Transaktionen kategorisieren
+            </h1>
+            <p class="text-muted mb-0">Kategorie und Unterkategorie für Buchungen setzen (Buchhaltung)</p>
+        </div>
+        <div class="col-auto">
+            <a href="{{ url_for('bankenspiegel.transaktionen') }}" class="btn btn-outline-secondary me-2">
+                <i class="bi bi-arrow-left me-1"></i>Transaktionen
+            </a>
+            <a href="{{ url_for('bankenspiegel.dashboard') }}" class="btn btn-outline-secondary me-2">
+                <i class="bi bi-bank me-1"></i>Dashboard
+            </a>
+            <button type="button" class="btn btn-outline-primary me-2" id="btnRegeln" onclick="regelnAnwenden()">
+                <i class="bi bi-gear me-1"></i>Regeln anwenden
+            </button>
+            <button type="button" class="btn btn-outline-warning me-2" id="btnRegelnUeberschreiben" onclick="regelnErneutAnwenden()" title="Regeln auf die letzten 500 Transaktionen erneut anwenden (überschreibt bestehende Kategorie – z. B. nach erweiterten Regeln wie KFZ Steuer)">
+                <i class="bi bi-arrow-repeat me-1"></i>Regeln erneut anwenden
+            </button>
+            <button type="button" class="btn btn-outline-info me-2" id="btnKiVorladen" onclick="kiVorschlaegeVorladen()" title="KI-Vorschläge für alle unkategorisierten Zeilen dieser Seite laden (kann 1–2 Min. dauern)">
+                <i class="bi bi-cpu me-1"></i>KI vorladen
+            </button>
+            <button type="button" class="btn btn-primary" onclick="loadTransaktionen()">
+                <i class="bi bi-arrow-clockwise me-1"></i>Aktualisieren
+            </button>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="row mb-3">
+        <div class="col">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body py-3">
+                    <div class="row g-3 align-items-end">
+                        <div class="col-auto">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="nurUnkategorisiert">
+                                <label class="form-check-label" for="nurUnkategorisiert">Nur unkategorisierte</label>
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="nurTrainierte">
+                                <label class="form-check-label" for="nurTrainierte" title="Nur bereits kategorisierte (trainierte) Zeilen">Nur trainierte</label>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted mb-1">Kategorie (Filter)</label>
+                            <select class="form-select form-select-sm" id="filterKategorie">
+                                <option value="">Alle</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted mb-1">Von</label>
+                            <input type="date" class="form-control form-control-sm" id="filterVon">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted mb-1">Bis</label>
+                            <input type="date" class="form-control form-control-sm" id="filterBis">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted mb-1">Suche</label>
+                            <input type="text" class="form-control form-control-sm" id="filterSuche" placeholder="Verwendungszweck, Gegenkonto...">
+                        </div>
+                        <div class="col-md-2">
+                            <button type="button" class="btn btn-sm btn-outline-secondary w-100" onclick="applyFilter()">
+                                <i class="bi bi-funnel me-1"></i>Filter
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hinweis Ladezeit KI -->
+    <div class="row mb-2">
+        <div class="col">
+            <small class="text-muted">
+                <i class="bi bi-info-circle me-1"></i>KI-Vorschläge können pro Zeile 2–5 Sekunden dauern. Bei „KI vorladen“ entsprechend länger.
+            </small>
+        </div>
+    </div>
+    <!-- Info -->
+    <div class="row mb-2">
+        <div class="col">
+            <small class="text-muted" id="infoZeile">Lade Transaktionen...</small>
+            <span id="kiVorladenStatus" class="ms-2 d-none"></span>
+        </div>
+        <div class="col-auto">
+            <nav>
+                <ul class="pagination pagination-sm mb-0" id="pagination"></ul>
+            </nav>
+        </div>
+    </div>
+
+    <!-- Tabelle -->
+    <div class="row">
+        <div class="col">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm mb-0 align-middle" id="kategorisierungTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 95px;">Datum</th>
+                                    <th style="width: 100px;" class="text-end">Betrag</th>
+                                    <th style="min-width: 280px;">Verwendungszweck / Buchungstext / Gegenkonto</th>
+                                    <th style="width: 200px;">Kategorie</th>
+                                    <th style="width: 160px;">Unterkategorie</th>
+                                    <th style="width: 220px;">Aktionen</th>
+                                </tr>
+                            </thead>
+                            <tbody id="kategorisierungBody">
+                                <tr>
+                                    <td colspan="6" class="text-center py-5 text-muted">
+                                        <span class="spinner-border spinner-border-sm me-2"></span>Lade Transaktionen...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast für Meldungen -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="toastMessage" class="toast align-items-center text-bg-success border-0" role="alert">
+        <div class="d-flex">
+            <div class="toast-body" id="toastBody"></div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/bankenspiegel_kategorisierung.js') }}?v={{ STATIC_VERSION }}"></script>
+{% endblock %}

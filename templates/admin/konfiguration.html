@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Konfiguration & Verwaltung – DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .config-hub-header { background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%); color: white; border-radius: 0.5rem; padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; }
+    .config-hub-header .subtitle { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.85; }
+    .config-group-title { font-size: 0.9rem; font-weight: 700; color: #475569; margin: 1rem 0 0.5rem 0; padding-bottom: 0.25rem; border-bottom: 1px solid #e2e8f0; }
+    .config-group-title:first-of-type { margin-top: 0; }
+    .config-card { border: 1px solid #e2e8f0; border-radius: 0.5rem; padding: 1rem 1.25rem; margin-bottom: 0.75rem; transition: border-color 0.15s, box-shadow 0.15s; }
+    .config-card:hover { border-color: #94a3b8; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .config-card a { text-decoration: none; color: inherit; display: flex; align-items: flex-start; gap: 1rem; }
+    .config-card .icon-wrap { width: 2.5rem; height: 2.5rem; border-radius: 0.5rem; background: #f1f5f9; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .config-card .icon-wrap i { font-size: 1.25rem; color: #475569; }
+    .config-card .label { font-weight: 600; color: #0f172a; }
+    .config-card .desc { font-size: 0.85rem; color: #64748b; margin-top: 0.15rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="config-hub-header">
+        <div class="subtitle mb-1">Admin</div>
+        <h1 class="h4 mb-0"><i class="bi bi-gear-wide-connected me-2"></i>Konfiguration & Verwaltung</h1>
+        <p class="mb-0 mt-1 small opacity-90">Übersicht der Konfigurationsseiten – Sie sehen nur die Bereiche, für die Sie berechtigt sind.</p>
+    </div>
+
+    {% if no_access %}
+    <div class="alert alert-warning">
+        <i class="bi bi-lock me-2"></i>Sie haben keine Berechtigung für Konfigurationsseiten. Bei Bedarf wenden Sie sich an einen Administrator.
+        <p class="mb-0 mt-2"><a href="/">Zur Startseite</a></p>
+    </div>
+    {% else %}
+    {% for group_name, items in grouped %}
+    <h2 class="config-group-title">{{ group_name }}</h2>
+    <div class="row">
+        {% for item in items %}
+        <div class="col-12 col-md-6 col-lg-4">
+            <div class="config-card">
+                <a href="{{ item.url }}">
+                    <span class="icon-wrap"><i class="bi {{ item.icon }}"></i></span>
+                    <div>
+                        <span class="label">{{ item.label }}</span>
+                        <p class="desc mb-0">{{ item.description }}</p>
+                    </div>
+                    <i class="bi bi-chevron-right ms-auto text-muted"></i>
+                </a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endfor %}
+    {% endif %}
+</div>
+{% endblock %}

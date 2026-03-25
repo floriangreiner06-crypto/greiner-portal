@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}Konten & Banken verwalten – DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .card-header-konten { background: linear-gradient(135deg, #0f766e 0%, #115e59 100%); color: white; font-weight: 600; }
+    .konten-table { font-size: 0.9rem; }
+    .konten-table th { background: #f8fafc; white-space: nowrap; }
+    .konten-table .num { text-align: right; }
+    .konten-table .badge-aktiv { background: #059669; }
+    .konten-table .badge-inaktiv { background: #6b7280; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+        <div>
+            <a href="/admin/konfiguration" class="btn btn-outline-secondary btn-sm mb-2"><i class="bi bi-arrow-left me-1"></i>Konfiguration</a>
+            <h1 class="h3 mb-1">Konten & Banken</h1>
+            <p class="text-muted mb-0">Bankkonten, Kreditlinien und Stammdaten verwalten. Saldo und „Verfügbar“ sind berechnet und nicht editierbar.</p>
+        </div>
+        <div>
+            <a href="/bankenspiegel/konten" class="btn btn-outline-primary"><i class="bi bi-wallet2 me-1"></i>Zur Kontenübersicht</a>
+            <button type="button" class="btn btn-primary" id="btn-reload"><i class="bi bi-arrow-clockwise me-1"></i>Aktualisieren</button>
+        </div>
+    </div>
+
+    <div id="alert-placeholder"></div>
+
+    <div class="card shadow-sm">
+        <div class="card-header card-header-konten">
+            <i class="bi bi-wallet2"></i> Konten (alle)
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 konten-table">
+                    <thead>
+                        <tr>
+                            <th>Status</th>
+                            <th>Bank</th>
+                            <th>Kontoname</th>
+                            <th>IBAN / Sachkonto</th>
+                            <th class="num">Saldo</th>
+                            <th class="num">Kreditlinie</th>
+                            <th class="num">Verfügbar</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-konten">
+                        <tr><td colspan="8" class="text-center text-muted py-4">Lade Konten …</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Bearbeiten -->
+<div class="modal fade" id="modalEdit" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Konto bearbeiten</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit-konto-id">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Kontoname *</label>
+                        <input type="text" class="form-control" id="edit-kontoname" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Bank</label>
+                        <select class="form-select" id="edit-bank-id">
+                            <option value="">– Bitte wählen –</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">IBAN / Sachkonto</label>
+                        <input type="text" class="form-control" id="edit-iban" placeholder="DE89 … oder z. B. Sachkonto Locosoft 071101">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Kreditlinie (€)</label>
+                        <input type="number" class="form-control" id="edit-kreditlinie" min="0" step="0.01" placeholder="0">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Kontoinhaber</label>
+                        <input type="text" class="form-control" id="edit-kontoinhaber">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Sortierung</label>
+                        <input type="number" class="form-control" id="edit-sort-order" min="0" value="999">
+                    </div>
+                    <div class="col-12">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="edit-aktiv" checked>
+                            <label class="form-check-label" for="edit-aktiv">Konto aktiv (in Übersicht anzeigen)</label>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <p class="small text-muted mb-0">Saldo und „Verfügbar“ werden aus Buchungen berechnet und können hier nicht geändert werden.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-primary" id="btn-save"><i class="bi bi-check-lg me-1"></i>Speichern</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/admin_konten_verwaltung.js') }}?v={{ STATIC_VERSION }}"></script>
+{% endblock %}

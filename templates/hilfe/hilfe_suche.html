@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Hilfe suchen – Greiner DRIVE{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/hilfe.css') }}?v={{ STATIC_VERSION }}">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <h1 class="mb-4"><i class="bi bi-search"></i> Hilfe durchsuchen</h1>
+    <form action="{{ url_for('hilfe.suche') }}" method="get" class="mb-4">
+        <div class="input-group input-group-lg">
+            <input type="search" name="q" class="form-control" placeholder="Suchbegriff…" value="{{ q }}">
+            <button type="submit" class="btn btn-primary">Suchen</button>
+        </div>
+    </form>
+
+    <div id="suche-ergebnis">
+        {% if q %}
+        <p class="text-muted"><span class="spinner-border spinner-border-sm"></span> Suche nach „{{ q }}“…</p>
+        <ul id="suche-list" class="list-group list-group-flush"></ul>
+        {% else %}
+        <p class="text-muted">Bitte einen Suchbegriff eingeben.</p>
+        {% endif %}
+    </div>
+</div>
+
+{% if q %}
+<script>
+(function() {
+    const q = '{{ q | e("js") }}';
+    if (!q || q.length < 2) return;
+    fetch('/api/hilfe/suche?q=' + encodeURIComponent(q), { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            const list = document.getElementById('suche-list');
+            if (!list) return;
+            const artikel = data.artikel || [];
+            if (artikel.length === 0) {
+                list.innerHTML = '<li class="list-group-item text-muted">Keine Treffer.</li>';
+                return;
+            }
+            list.innerHTML = artikel.map(a =>
+                '<li class="list-group-item"><a href="/hilfe/artikel/' + a.id + '">' + a.titel + '</a>' +
+                (a.kategorie_name ? ' <span class="text-muted small">(' + a.kategorie_name + ')</span>' : '') +
+                (a.snippet ? '<div class="small text-muted mt-1">' + a.snippet + '</div>' : '') + '</li>'
+            ).join('');
+        })
+        .catch(() => {
+            if (list) list.innerHTML = '<li class="list-group-item text-danger">Fehler bei der Suche.</li>';
+        });
+})();
+</script>
+{% endif %}
+{% endblock %}

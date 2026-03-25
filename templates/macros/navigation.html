@@ -1,0 +1,56 @@
+{# Navigation Macro - TAG 190 #}
+{# Consecutive dividers are collapsed to one (prevents grey stripes from empty DB divider rows) #}
+{% macro render_navigation_item(item, level=0, prev_was_divider=false) %}
+    {% if item.is_divider %}
+        {% if not prev_was_divider %}
+        <li><hr class="dropdown-divider"></li>
+        {% endif %}
+    {% elif item.is_header %}
+        <li><h6 class="dropdown-header text-muted">{{ item.label }}</h6></li>
+    {% elif item.is_dropdown %}
+        {% set dropdown_id = item.label.lower().replace(' ', '').replace('&', '').replace('ä', 'ae').replace('ö', 'oe').replace('ü', 'ue') + 'Dropdown' + level|string %}
+        {% if level == 0 %}
+            {# Top-Level Dropdown #}
+            <li class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle" href="#" id="{{ dropdown_id }}" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    {% if item.icon %}<i class="bi {{ item.icon }}"></i> {% endif %}{{ item.label }}
+                </a>
+                <ul class="dropdown-menu" aria-labelledby="{{ dropdown_id }}">
+                    {% if item.children %}
+                        {% for child in item.children %}
+                            {{ render_navigation_item(child, level + 1, loop.previtem.is_divider if loop.previtem else false) }}
+                        {% endfor %}
+                    {% endif %}
+                </ul>
+            </li>
+        {% else %}
+            {# Sub-Dropdown (nested) - TAG 193: data-bs-toggle entfernt, nur Custom-Code #}
+            <li class="dropdown-submenu">
+                <a class="dropdown-item dropdown-toggle" href="#" id="{{ dropdown_id }}" role="button" aria-expanded="false">
+                    {% if item.icon %}<i class="bi {{ item.icon }}"></i> {% endif %}{{ item.label }} <i class="bi bi-chevron-right float-end"></i>
+                </a>
+                <ul class="dropdown-menu" aria-labelledby="{{ dropdown_id }}">
+                    {% if item.children %}
+                        {% for child in item.children %}
+                            {{ render_navigation_item(child, level + 1, loop.previtem.is_divider if loop.previtem else false) }}
+                        {% endfor %}
+                    {% endif %}
+                </ul>
+            </li>
+        {% endif %}
+    {% else %}
+        {% if item.parent_id %}
+            {# Dropdown-Child (normales Item) #}
+            <li><a class="dropdown-item" href="{{ item.url or '#' }}">
+                {% if item.icon %}<i class="bi {{ item.icon }}"></i> {% endif %}{{ item.label }}
+            </a></li>
+        {% else %}
+            {# Top-Level Item (kein Dropdown) #}
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == item.url %}active{% endif %}" href="{{ item.url or '#' }}">
+                    {% if item.icon %}<i class="bi {{ item.icon }}"></i> {% endif %}{{ item.label }}
+                </a>
+            </li>
+        {% endif %}
+    {% endif %}
+{% endmacro %}

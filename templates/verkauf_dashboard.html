@@ -1,0 +1,306 @@
+{% extends "base.html" %}
+{% block title %}Verkaufsleiter-Dashboard - Greiner DRIVE{% endblock %}
+{% block content %}
+<style>
+  .vkl {
+    --bg: #0f172a;
+    --card: #111827;
+    --line: #263449;
+    --text: #f8fafc;
+    --muted: #94a3b8;
+    --primary: #7c3aed;
+  }
+
+  .vkl-shell {
+    background:
+      radial-gradient(1100px 420px at -5% -15%, rgba(124,58,237,.24), transparent 55%),
+      radial-gradient(850px 320px at 110% -25%, rgba(56,189,248,.20), transparent 58%),
+      var(--bg);
+    border: 1px solid #1f2b40;
+    border-radius: 16px;
+    padding: 14px;
+  }
+
+  .vkl-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 18px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #4f46e5 0%, #6d28d9 100%);
+    color: #fff;
+    box-shadow: 0 10px 24px rgba(30, 41, 59, .45);
+  }
+  .vkl-title { margin: 0; font-size: 1.24rem; font-weight: 700; }
+  .vkl-sub { margin-top: 2px; font-size: .84rem; opacity: .92; }
+
+  .vkl .btn-group .btn {
+    border-color: rgba(255,255,255,.38);
+    color: #eef3ff;
+    background: rgba(255,255,255,.08);
+    font-size: .78rem;
+  }
+  .vkl .btn-group .btn.btn-secondary {
+    color: #fff;
+    background: rgba(255,255,255,.28);
+    border-color: rgba(255,255,255,.6);
+  }
+
+  .vkl-row { --bs-gutter-x: .75rem; --bs-gutter-y: .75rem; margin-top: .75rem; }
+
+  .vkl-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: 0 8px 18px rgba(2, 8, 23, .45);
+    height: 100%;
+    min-height: 170px;
+    padding: 14px;
+    transition: transform .15s ease, box-shadow .15s ease;
+    display: flex;
+    flex-direction: column;
+  }
+  .vkl-card.kpi { min-height: 182px; }
+  .vkl-card.kpi .kpi-block { flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
+  .vkl-link { text-decoration: none; color: inherit; display: block; }
+  .vkl-link:hover .vkl-card { transform: translateY(-1px); box-shadow: 0 12px 24px rgba(2,8,23,.55); }
+
+  .kpi-title {
+    font-size: .82rem;
+    color: #c3d2e8;
+    text-transform: uppercase;
+    letter-spacing: .35px;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .kpi-value {
+    color: var(--text);
+    font-size: 2.2rem;
+    line-height: 1;
+    font-weight: 800;
+  }
+  .kpi-meta {
+    font-size: .87rem;
+    color: #b9c8dd;
+    margin-top: 8px;
+  }
+  #badge-nw-trend, #badge-gw-trend {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    min-width: 78px;
+    text-align: center;
+  }
+
+  .goal-row { display: grid; grid-template-columns: 34px 1fr 72px; gap: 8px; align-items: center; margin-top: 10px; }
+  .goal-key { font-size: .84rem; font-weight: 600; color: #334155; }
+  .goal-key { color: #cbd5e1; }
+  .goal-wrap { height: 10px; border-radius: 999px; background: #1f2937; overflow: hidden; border: 1px solid #334155; }
+  .goal-fill { height: 100%; }
+  .goal-pct { text-align: right; font-size: .83rem; color: #cbd5e1; }
+
+  .vkl-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+    font-size: .84rem;
+  }
+  .vkl-table th, .vkl-table td {
+    border-bottom: 1px solid #243043;
+    padding: 8px 5px;
+  }
+  .vkl-table td {
+    color: #d9e5f7;
+  }
+  .vkl-subcell {
+    display: block;
+    font-size: .72rem;
+    color: #9fb2cc;
+    margin-top: 2px;
+    line-height: 1.1;
+  }
+  .vkl-table th {
+    color: #bed0ea;
+    font-size: .77rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .28px;
+  }
+  .vkl-table .right { text-align: right; }
+
+  .chip {
+    font-size: .75rem;
+    border-radius: 999px;
+    border: 1px solid #334155;
+    color: #dbe7ff;
+    background: #1e293b;
+    padding: .22rem .5rem;
+  }
+
+  .vkl-note { font-size: .79rem; color: #b3c3da; margin-top: 8px; }
+  .vkl .text-muted { color: #b7c7de !important; }
+
+  .vkl-table tbody tr:hover td { background: rgba(148,163,184,.07); }
+
+  @media (max-width: 991.98px) {
+    .kpi-value { font-size: 1.7rem; }
+    .vkl-card { min-height: 148px; padding: 12px; }
+    .vkl-top { padding: 12px; }
+  }
+</style>
+
+<div class="container-fluid vkl mt-2 mb-3">
+  <div class="vkl-shell">
+    <div class="vkl-top">
+      <div>
+        <h4 class="vkl-title"><i class="bi bi-speedometer2"></i> Verkaufsleiter-Dashboard</h4>
+        <div class="vkl-sub">Monat <span id="dash-stand">…</span> · Fokus: Leitung, Zieltrend (Werktage), Risiko-Fahrzeuge</div>
+      </div>
+      <div class="text-end">
+        <div class="btn-group btn-group-sm mb-1" role="group" aria-label="YTD Modus">
+          <a href="{{ url_for('verkauf.motocost_dashboard') }}" class="btn btn-outline-secondary">Motocost</a>
+          <button type="button" class="btn btn-outline-secondary" id="btn-ytd-calendar">Kalenderjahr</button>
+          <button type="button" class="btn btn-outline-secondary" id="btn-ytd-fiscal">Geschaeftsjahr</button>
+        </div>
+        <div class="vkl-sub" id="ytd-mode-label">YTD: Kalenderjahr</div>
+      </div>
+    </div>
+
+    <div id="dash-error" class="alert alert-danger d-none py-1 small mt-2"></div>
+
+    <div class="row vkl-row">
+      <div class="col-xl-3 col-md-6">
+        <a class="vkl-link" href="{{ url_for('verkauf.auftragseingang') }}">
+          <div class="vkl-card kpi">
+            <div class="kpi-block">
+              <div>
+                <div class="kpi-title">Auftragseingang</div>
+                <div class="kpi-value" id="kpi-ae-gesamt">–</div>
+              </div>
+              <div>
+                <div class="kpi-meta" id="kpi-ae-breakdown">NW – · GW – · V/T –</div>
+                <div class="kpi-meta">YTD: <span id="kpi-ae-ytd">–</span></div>
+              </div>
+            </div>
+          </div>
+        </a>
+      </div>
+
+      <div class="col-xl-3 col-md-6">
+        <a class="vkl-link" href="{{ url_for('verkauf.auslieferung_detail') }}">
+          <div class="vkl-card kpi">
+            <div class="kpi-block">
+              <div>
+                <div class="kpi-title">Auslieferungen</div>
+                <div class="kpi-value" id="kpi-al-gesamt">–</div>
+              </div>
+              <div>
+                <div class="kpi-meta" id="kpi-al-breakdown">NW – · GW – · V/T –</div>
+                <div class="kpi-meta">DB Monat: <span id="kpi-al-db">–</span> · YTD: <span id="kpi-al-ytd">–</span></div>
+              </div>
+            </div>
+          </div>
+        </a>
+      </div>
+
+      <div class="col-xl-3 col-md-6">
+        <a class="vkl-link" href="{{ url_for('verkauf.zielauswertung') }}">
+          <div class="vkl-card kpi">
+            <div class="d-flex justify-content-between align-items-center">
+              <div class="kpi-title mb-0">Ziele Trend (Werktag-Soll)</div>
+              <div>
+                <span id="badge-nw-trend" class="badge bg-secondary">NW</span>
+                <span id="badge-gw-trend" class="badge bg-secondary">GW</span>
+              </div>
+            </div>
+            <div class="goal-row">
+              <div class="goal-key">NW</div>
+              <div class="goal-wrap"><div id="goal-nw-bar" class="goal-fill bg-success" style="width:0%"></div></div>
+              <div class="goal-pct" id="goal-nw-text">–</div>
+            </div>
+            <div class="goal-row">
+              <div class="goal-key">GW</div>
+              <div class="goal-wrap"><div id="goal-gw-bar" class="goal-fill bg-warning" style="width:0%"></div></div>
+              <div class="goal-pct" id="goal-gw-text">–</div>
+            </div>
+            <div class="kpi-meta" id="kpi-jahr-klein">YTD –</div>
+          </div>
+        </a>
+      </div>
+
+      <div class="col-xl-3 col-md-6">
+        <div class="vkl-card kpi">
+          <div class="kpi-block">
+            <div>
+              <div class="kpi-title">Forecast offen (nicht abgerechnet)</div>
+              <div class="kpi-value" id="kpi-forecast-offen">–</div>
+            </div>
+            <div>
+              <div class="kpi-meta" id="kpi-forecast-breakdown">NW – · GW – · V/T –</div>
+              <div class="kpi-meta">Brutto ges.: <span id="kpi-forecast-umsatz">–</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row vkl-row">
+      <div class="col-lg-5">
+        <div class="vkl-card">
+          <div class="kpi-title">DB nach Marke (NW / VFW-T / GW)</div>
+          <table class="vkl-table" id="tbl-db-marken">
+            <thead><tr><th>Marke</th><th class="right">NW</th><th class="right">VFW-T</th><th class="right">GW</th><th class="right">Summe</th><th class="right">DB/Stk</th></tr></thead>
+            <tbody></tbody>
+          </table>
+            <div class="vkl-note">Segmentzellen zeigen DB und darunter DB/Stk je NW, VFW-T, GW.</div>
+        </div>
+      </div>
+
+      <div class="col-lg-7">
+        <div class="row vkl-row">
+          <div class="col-md-6 d-none" id="row-afa">
+            <a class="vkl-link" href="/controlling/afa/verkaufsempfehlungen">
+              <div class="vkl-card">
+                <div class="kpi-title">AfA Standzeit</div>
+                <div class="kpi-value" id="kpi-afa">–</div>
+                <div class="kpi-meta">Fahrzeuge > 300 Tage</div>
+              </div>
+            </a>
+          </div>
+
+          <div class="col-md-6 d-none" id="row-ekf">
+            <a class="vkl-link" href="/bankenspiegel/einkaufsfinanzierung">
+              <div class="vkl-card">
+                <div class="d-flex justify-content-between align-items-center">
+                  <div class="kpi-title mb-0">Einkaufsfinanzierung</div>
+                  <span class="chip">kritisch / warnend: <span id="kpi-ekf-warn">–</span></span>
+                </div>
+                <div class="table-responsive" style="max-height: 9rem;">
+                  <table class="vkl-table" id="tbl-top-zins">
+                    <thead><tr><th>VIN</th><th>Modell</th><th class="right">Saldo</th><th class="right">ZF</th></tr></thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+            </a>
+          </div>
+
+          <div class="col-md-12">
+            <div class="vkl-card" style="min-height: auto;">
+              <div class="kpi-title">Forecast nach Marke</div>
+              <table class="vkl-table" id="tbl-forecast-marken">
+                <thead><tr><th>Marke</th><th class="right">offen</th></tr></thead>
+                <tbody></tbody>
+              </table>
+              <div class="vkl-note" id="forecast-note">Datengrundlage wird geladen …</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/verkauf_dashboard.js') }}?v={{ STATIC_VERSION }}"></script>
+{% endblock %}

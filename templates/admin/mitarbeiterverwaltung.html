@@ -1,0 +1,2147 @@
+{% extends base_template|default('base.html') %}
+
+{% block title %}Mitarbeiterverwaltung - Greiner DRIVE{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<style>
+    body {
+        background-color: #f5f5f5;
+    }
+    
+    .main-container {
+        display: flex;
+        height: {{ '100vh' if base_template|default('') == 'base_embed.html' else 'calc(100vh - 60px)' }};
+        margin-top: {{ '0' if base_template|default('') == 'base_embed.html' else '20px' }};
+    }
+    
+    /* Linke Sidebar */
+    .sidebar {
+        width: 350px;
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-right: 20px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    
+    .sidebar-header {
+        padding: 20px;
+        border-bottom: 1px solid #e0e0e0;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        color: white;
+    }
+    
+    .sidebar-header h2 {
+        margin: 0;
+        font-size: 1.3rem;
+    }
+    
+    .sidebar-search {
+        padding: 15px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .sidebar-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 10px 0;
+    }
+    
+    .employee-group {
+        margin-bottom: 10px;
+    }
+    
+    .employee-group-header {
+        padding: 8px 15px;
+        background: #f8f9fa;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-weight: 600;
+        border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .employee-group-header:hover {
+        background: #e9ecef;
+    }
+    
+    .employee-group-header i {
+        transition: transform 0.2s;
+    }
+    
+    .employee-group-header.collapsed i {
+        transform: rotate(-90deg);
+    }
+    
+    .employee-list {
+        display: none;
+    }
+    
+    .employee-list.expanded {
+        display: block;
+    }
+    
+    .employee-item {
+        padding: 10px 15px 10px 35px;
+        cursor: pointer;
+        border-bottom: 1px solid #f0f0f0;
+        transition: background 0.2s;
+    }
+    
+    .employee-item:hover {
+        background: #f8f9fa;
+    }
+    
+    .employee-item.active {
+        background: #fff3cd;
+        font-weight: 600;
+    }
+    
+    .employee-item-name {
+        font-size: 0.95rem;
+    }
+    .employee-item-inactive {
+        opacity: 0.85;
+        color: #6c757d;
+    }
+    
+    .sidebar-footer {
+        padding: 15px;
+        border-top: 1px solid #e0e0e0;
+        background: #f8f9fa;
+        text-align: center;
+        font-size: 0.9rem;
+        color: #666;
+    }
+    
+    /* Rechte Hauptansicht */
+    .main-content {
+        flex: 1;
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    
+    .main-header {
+        padding: 20px 30px;
+        border-bottom: 1px solid #e0e0e0;
+        background: white;
+    }
+    
+    .main-header-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+    
+    .main-header-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #333;
+    }
+    
+    .main-header-actions {
+        display: flex;
+        gap: 10px;
+    }
+    
+    .main-tabs {
+        border-bottom: 2px solid #e0e0e0;
+        padding: 0 30px;
+        background: white;
+    }
+    
+    .main-tabs .nav-link {
+        border: none;
+        border-bottom: 3px solid transparent;
+        color: #666;
+        padding: 15px 20px;
+        margin-right: 5px;
+        transition: all 0.2s;
+    }
+    
+    .main-tabs .nav-link:hover {
+        color: #007bff;
+        border-bottom-color: #007bff;
+    }
+    
+    .main-tabs .nav-link.active {
+        color: #007bff;
+        border-bottom-color: #007bff;
+        font-weight: 600;
+    }
+    
+    .tab-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 30px;
+    }
+    
+    .tab-pane {
+        display: none;
+    }
+    
+    .tab-pane.active {
+        display: block;
+    }
+    
+    .form-section {
+        margin-bottom: 30px;
+    }
+    
+    .form-section-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-bottom: 15px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #e0e0e0;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #999;
+    }
+    
+    .empty-state i {
+        font-size: 4rem;
+        margin-bottom: 20px;
+        opacity: 0.3;
+    }
+    
+    .btn-save {
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        padding: 15px 30px;
+        font-size: 1.1rem;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        z-index: 1000;
+        display: none;
+    }
+    
+    /* Sichtbar sobald ein Mitarbeiter gewählt ist (nicht nur bei Änderungen) */
+    .btn-save.show {
+        display: block;
+    }
+    
+    .table-actions {
+        display: flex;
+        gap: 5px;
+    }
+    
+    .table-actions .btn {
+        padding: 2px 8px;
+        font-size: 0.85rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid main-container">
+    <!-- Linke Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h2><i class="fas fa-users"></i> Digitale Personalakte</h2>
+            <small>Mitarbeiter</small>
+        </div>
+        
+        <div class="sidebar-search">
+            <input type="text" class="form-control form-control-sm" id="searchEmployees" placeholder="Suche...">
+            <div class="mt-2 d-flex gap-2">
+                <button class="btn btn-sm btn-outline-secondary" id="btnExpandAll">
+                    <i class="fas fa-chevron-down"></i> Aufklappen
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" id="btnCollapseAll">
+                    <i class="fas fa-chevron-up"></i> Zuklappen
+                </button>
+            </div>
+        </div>
+        
+        <div class="sidebar-content" id="employeeList">
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary"></div>
+                <p class="mt-2 text-muted">Daten werden geladen...</p>
+            </div>
+        </div>
+        
+        <div class="sidebar-footer">
+            <span id="employeeCount">0 aktive Mitarbeiter</span>
+        </div>
+    </div>
+    
+    <!-- Rechte Hauptansicht -->
+    <div class="main-content">
+        <div class="main-header">
+            <div class="main-header-top">
+                <div>
+                    <h3 class="main-header-title" id="employeeName">Kein Datensatz gewählt!</h3>
+                    <small class="text-muted" id="employeeDepartment">Bitte wählen Sie einen Datensatz aus.</small>
+                </div>
+                <div class="main-header-actions">
+                    <button class="btn btn-success" id="btnNewEmployee" style="display:none;">
+                        <i class="fas fa-user-plus"></i> Neuen Mitarbeiter anlegen
+                    </button>
+                    <button class="btn btn-outline-secondary" id="btnReports" style="display:none;">
+                        <i class="fas fa-download"></i> Reporte
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="main-tabs" id="mainTabs" style="display:none;">
+            <ul class="nav nav-tabs">
+                <li class="nav-item">
+                    <a class="nav-link active" data-tab="deckblatt">
+                        <i class="fas fa-id-card"></i> Deckblatt
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-tab="adressdaten">
+                        <i class="fas fa-address-book"></i> Adressdaten
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-tab="mitarbeiterdaten">
+                        <i class="fas fa-user-tie"></i> Mitarbeiterdaten
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-tab="moduldaten">
+                        <i class="fas fa-puzzle-piece"></i> Moduldaten
+                    </a>
+                </li>
+            </ul>
+        </div>
+        
+        <div class="tab-content" id="tabContent">
+            <div class="empty-state">
+                <i class="fas fa-info-circle"></i>
+                <h4>Kein Datensatz gewählt!</h4>
+                <p>Bitte wählen Sie einen Datensatz aus.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Speichern Button -->
+<button class="btn btn-success btn-lg btn-save" id="btnSave">
+    <i class="fas fa-save"></i> Speichern
+</button>
+
+<!-- Modal: Urlaubs-Report (Reporte) -->
+<div class="modal fade" id="reportModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="fas fa-file-alt"></i> Urlaubs-Report</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3 d-flex flex-wrap align-items-center gap-2">
+                    <label class="form-label mb-0">Jahr:</label>
+                    <select class="form-select form-select-sm" id="reportYear" style="width:auto;">
+                        <option value="2026">2026</option>
+                        <option value="2025">2025</option>
+                        <option value="2024">2024</option>
+                    </select>
+                    <button type="button" class="btn btn-sm btn-primary" onclick="loadReport()"><i class="fas fa-sync"></i> Laden</button>
+                    <button type="button" class="btn btn-sm btn-success" onclick="exportReport()"><i class="fas fa-file-download"></i> Als CSV exportieren</button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Name</th>
+                                <th>Abteilung</th>
+                                <th class="text-end">Anspruch</th>
+                                <th class="text-end">Übertrag</th>
+                                <th class="text-end">Gesamt</th>
+                                <th class="text-end">Genommen</th>
+                                <th class="text-end">Rest</th>
+                                <th class="text-end">Jan</th><th class="text-end">Feb</th><th class="text-end">Mär</th><th class="text-end">Apr</th><th class="text-end">Mai</th><th class="text-end">Jun</th>
+                                <th class="text-end">Jul</th><th class="text-end">Aug</th><th class="text-end">Sep</th><th class="text-end">Okt</th><th class="text-end">Nov</th><th class="text-end">Dez</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reportTableBody">
+                            <tr><td colspan="19" class="text-muted">Bitte Jahr wählen und Laden klicken.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="text-muted small mt-2">Jahresrückstellung Urlaubstage – monatliche Darstellung wie im Altsystem. Export für Excel nutzbar.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Arbeitszeitmodell (Add/Edit) -->
+<div class="modal fade" id="workingTimeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="workingTimeModalTitle">Arbeitszeitmodell</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="wtm_model_id" value="">
+                <div class="mb-3">
+                    <label class="form-label">Startdatum <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" id="wtm_start_date" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Enddatum (leer = unbefristet)</label>
+                    <input type="date" class="form-control" id="wtm_end_date">
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Stunden/Woche <span class="text-danger">*</span></label>
+                        <input type="number" step="0.5" min="0" class="form-control" id="wtm_hours_per_week" required>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Arbeitstage/Woche</label>
+                        <input type="number" min="1" max="7" class="form-control" id="wtm_working_days_per_week" value="5">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Arbeitstage (Wochentage)</label>
+                    <p class="small text-muted">Welche Tage wird gearbeitet? Leer = alle Werktage (Mo–Fr).</p>
+                    <div class="d-flex flex-wrap gap-3">
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-work-day" data-day="0" id="wtm_mo"> Mo</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-work-day" data-day="1" id="wtm_di"> Di</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-work-day" data-day="2" id="wtm_mi"> Mi</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-work-day" data-day="3" id="wtm_do"> Do</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-work-day" data-day="4" id="wtm_fr"> Fr</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-work-day" data-day="5" id="wtm_sa"> Sa</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-work-day" data-day="6" id="wtm_so"> So</label>
+                    </div>
+                    <label class="form-label mt-2 small">Halber Tag an:</label>
+                    <div class="d-flex flex-wrap gap-3">
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-half-day" data-day="0" id="wtm_half_mo"> Mo ½</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-half-day" data-day="1" id="wtm_half_di"> Di ½</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-half-day" data-day="2" id="wtm_half_mi"> Mi ½</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-half-day" data-day="3" id="wtm_half_do"> Do ½</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-half-day" data-day="4" id="wtm_half_fr"> Fr ½</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-half-day" data-day="5" id="wtm_half_sa"> Sa ½</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-half-day" data-day="6" id="wtm_half_so"> So ½</label>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Beschreibung</label>
+                    <input type="text" class="form-control" id="wtm_description" placeholder="z.B. Vollzeit, Teilzeit 80%">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-primary" id="workingTimeModalSave">
+                    <i class="fas fa-save"></i> Speichern
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Ausnahme (Add) -->
+<div class="modal fade" id="exceptionModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Neue Ausnahme</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Von <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" id="exc_from_date" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Bis <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" id="exc_to_date" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Typ <span class="text-danger">*</span></label>
+                    <select class="form-select" id="exc_exception_type">
+                        <option value="sonderurlaub">Sonderurlaub</option>
+                        <option value="elternzeit">Elternzeit</option>
+                        <option value="sabbatical">Sabbatical</option>
+                        <option value="unbezahlt">Unbezahlter Urlaub</option>
+                        <option value="sonstige">Sonstige</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Bemerkung</label>
+                    <input type="text" class="form-control" id="exc_description">
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="exc_affects_vacation">
+                    <label class="form-check-label" for="exc_affects_vacation">Beeinflusst Urlaubsanspruch</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-primary" id="exceptionModalSave"><i class="fas fa-save"></i> Speichern</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Zeit ohne Urlaubsanspruch (Add) -->
+<div class="modal fade" id="periodNoVacationModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Neuer Zeitraum ohne Urlaubsanspruch</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Von <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" id="pnv_from_date" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Bis <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" id="pnv_to_date" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Typ <span class="text-danger">*</span></label>
+                    <select class="form-select" id="pnv_period_type">
+                        <option value="elternzeit">Elternzeit</option>
+                        <option value="unbezahlt">Unbezahlt</option>
+                        <option value="sabbatical">Sabbatical</option>
+                        <option value="sonstige">Sonstige</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Bezeichnung</label>
+                    <input type="text" class="form-control" id="pnv_description">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-primary" id="periodNoVacationModalSave"><i class="fas fa-save"></i> Speichern</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+/**
+ * MITARBEITERVERWALTUNG - TAG 213
+ * Umfassende Mitarbeiterverwaltung nach Muster "Digitale Personalakte"
+ */
+
+const API_BASE = '/api/employee-management';
+let allEmployees = [];
+let currentEmployeeId = null;
+let currentEmployeeData = null;
+let hasUnsavedChanges = false;
+
+// ============================================================================
+// INIT
+// ============================================================================
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🔧 Mitarbeiterverwaltung wird geladen...');
+    loadEmployees();
+    setupEventListeners();
+});
+
+// ============================================================================
+// EVENT LISTENERS
+// ============================================================================
+function setupEventListeners() {
+    // Suche
+    document.getElementById('searchEmployees').addEventListener('input', filterEmployees);
+    
+    // Aufklappen/Zuklappen
+    document.getElementById('btnExpandAll').addEventListener('click', () => expandAllGroups(true));
+    document.getElementById('btnCollapseAll').addEventListener('click', () => expandAllGroups(false));
+    
+    // Tabs
+    document.querySelectorAll('[data-tab]').forEach(tab => {
+        tab.addEventListener('click', (e) => {
+            e.preventDefault();
+            switchTab(tab.dataset.tab);
+        });
+    });
+    
+    // Speichern
+    document.getElementById('btnSave').addEventListener('click', saveEmployee);
+    
+    // Reporte: Modal öffnen und Report laden
+    document.getElementById('btnReports').addEventListener('click', function() {
+        const y = new Date().getFullYear();
+        const sel = document.getElementById('reportYear');
+        if (sel) {
+            if (!sel.querySelector('option[value="' + y + '"]')) {
+                const opt = document.createElement('option');
+                opt.value = y;
+                opt.textContent = y;
+                sel.insertBefore(opt, sel.firstChild);
+            }
+            sel.value = y;
+        }
+        const modal = new bootstrap.Modal(document.getElementById('reportModal'));
+        modal.show();
+        loadReport();
+    });
+    
+    // Modal Arbeitszeitmodell: Speichern-Button
+    document.getElementById('workingTimeModalSave').addEventListener('click', saveWorkingTimeModelSubmit);
+    document.getElementById('exceptionModalSave').addEventListener('click', saveExceptionSubmit);
+    document.getElementById('periodNoVacationModalSave').addEventListener('click', savePeriodNoVacationSubmit);
+    
+    // Warnung bei ungespeicherten Änderungen
+    window.addEventListener('beforeunload', (e) => {
+        if (hasUnsavedChanges) {
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    });
+}
+
+// ============================================================================
+// DATEN LADEN
+// ============================================================================
+async function loadEmployees() {
+    try {
+        const response = await fetch(`${API_BASE}/employees`);
+        const data = await response.json();
+        
+        if (data.success) {
+            allEmployees = data.employees;
+            renderEmployeeList();
+            const total = (data.employees || []).length;
+            const active = (data.employees || []).filter(e => e.active !== false).length;
+            const inaktive = total - active;
+            document.getElementById('employeeCount').textContent = inaktive > 0
+                ? `${total} Mitarbeiter (${inaktive} inaktiv)`
+                : `${total} Mitarbeiter`;
+            const params = new URLSearchParams(window.location.search);
+            const openId = params.get('employee_id');
+            if (openId) {
+                const id = parseInt(openId, 10);
+                if (id) {
+                    requestAnimationFrame(() => selectEmployee(id));
+                }
+            }
+        } else {
+            showError('Fehler beim Laden der Mitarbeiter: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        showError('Verbindungsfehler');
+    }
+}
+
+// ============================================================================
+// MITARBEITERLISTE RENDERN
+// ============================================================================
+function renderEmployeeList() {
+    const container = document.getElementById('employeeList');
+    
+    // Gruppiere nach Abteilung
+    const grouped = {};
+    allEmployees.forEach(emp => {
+        const dept = emp.department || 'Ohne Abteilung';
+        if (!grouped[dept]) {
+            grouped[dept] = [];
+        }
+        grouped[dept].push(emp);
+    });
+    
+    // Sortiere Abteilungen
+    const sortedDepts = Object.keys(grouped).sort();
+    
+    let html = '';
+    sortedDepts.forEach(dept => {
+        const employees = grouped[dept].sort((a, b) => a.name.localeCompare(b.name));
+        const deptId = dept.replace(/[^a-zA-Z0-9]/g, '_');
+        
+        html += `
+            <div class="employee-group">
+                <div class="employee-group-header" data-group="${deptId}">
+                    <span>${dept}</span>
+                    <i class="fas fa-chevron-down"></i>
+                </div>
+                <div class="employee-list expanded" id="group_${deptId}">
+                    ${employees.map(emp => `
+                        <div class="employee-item ${emp.active === false ? 'employee-item-inactive' : ''}" data-id="${emp.id}" onclick="selectEmployee(${emp.id})">
+                            <div class="employee-item-name">${emp.name}${emp.active === false ? ' <span class="text-muted small">(inaktiv)</span>' : ''}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+    
+    // Event Listeners für Gruppen-Header
+    document.querySelectorAll('.employee-group-header').forEach(header => {
+        header.addEventListener('click', (e) => {
+            if (e.target.tagName !== 'I') {
+                toggleGroup(header.dataset.group);
+            }
+        });
+    });
+}
+
+// ============================================================================
+// MITARBEITER AUSWÄHLEN
+// ============================================================================
+async function selectEmployee(employeeId) {
+    if (hasUnsavedChanges) {
+        if (!confirm('Ungespeicherte Änderungen verwerfen?')) {
+            return;
+        }
+        hasUnsavedChanges = false;
+    }
+    
+    currentEmployeeId = employeeId;
+    
+    // Markiere in Liste
+    document.querySelectorAll('.employee-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    document.querySelector(`.employee-item[data-id="${employeeId}"]`)?.classList.add('active');
+    
+    // Lade Mitarbeiterdaten
+    try {
+        const response = await fetch(`${API_BASE}/employee/${employeeId}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            currentEmployeeData = data.employee;
+            renderEmployeeDetail(data.employee);
+        } else {
+            showError('Fehler beim Laden: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        showError('Verbindungsfehler');
+    }
+}
+
+// ============================================================================
+// MITARBEITER-DETAIL RENDERN
+// ============================================================================
+function renderEmployeeDetail(employee) {
+    // Header aktualisieren
+    document.getElementById('employeeName').textContent = `${employee.last_name} ${employee.first_name}`;
+    document.getElementById('employeeDepartment').textContent = employee.department || 'Keine Abteilung';
+    
+    // Tabs anzeigen, leeren Zustand ausblenden
+    document.getElementById('mainTabs').style.display = 'block';
+    const emptyState = document.querySelector('#tabContent .empty-state');
+    if (emptyState) emptyState.style.display = 'none';
+    document.getElementById('btnNewEmployee').style.display = 'inline-block';
+    document.getElementById('btnReports').style.display = 'inline-block';
+    
+    // Speichern-Button anzeigen (unten rechts), sobald ein Datensatz gewählt ist
+    document.getElementById('btnSave').classList.add('show');
+    
+    // Tab-Content rendern
+    renderTabDeckblatt(employee);
+    renderTabAdressdaten(employee);
+    renderTabMitarbeiterdaten(employee);
+    renderTabModuldaten(employee);
+    
+    // Ersten Tab aktivieren
+    switchTab('deckblatt');
+}
+
+// ============================================================================
+// TAB-FUNKTIONEN
+// ============================================================================
+function switchTab(tabName) {
+    // Tab-Buttons
+    document.querySelectorAll('.nav-link').forEach(link => {
+        link.classList.remove('active');
+    });
+    document.querySelector(`[data-tab="${tabName}"]`)?.classList.add('active');
+    
+    // Tab-Content
+    document.querySelectorAll('.tab-pane').forEach(pane => {
+        pane.classList.remove('active');
+    });
+    const pane = document.getElementById(`tab_${tabName}`);
+    if (pane) {
+        pane.classList.add('active');
+    }
+}
+
+function renderTabDeckblatt(employee) {
+    const container = document.getElementById('tabContent');
+    if (!document.getElementById('tab_deckblatt')) {
+        const pane = document.createElement('div');
+        pane.id = 'tab_deckblatt';
+        pane.className = 'tab-pane';
+        container.appendChild(pane);
+    }
+    
+    const pane = document.getElementById('tab_deckblatt');
+    pane.innerHTML = `
+        <div class="form-section">
+            <div class="form-section-title d-flex justify-content-between align-items-center">
+                <span>Grunddaten</span>
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-primary" onclick="syncPreview()" title="Vorschau der Sync-Änderungen">
+                        <i class="fas fa-eye"></i> Sync-Vorschau
+                    </button>
+                    <button class="btn btn-outline-success" onclick="syncFromLDAP()" title="Aus LDAP synchronisieren">
+                        <i class="fas fa-sync"></i> LDAP
+                    </button>
+                    <button class="btn btn-outline-info" onclick="syncFromLocosoft()" title="Aus Locosoft synchronisieren">
+                        <i class="fas fa-sync"></i> Locosoft
+                    </button>
+                    <button class="btn btn-success" onclick="syncFull()" title="Vollständig synchronisieren">
+                        <i class="fas fa-sync-alt"></i> Vollständig
+                    </button>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Firma</label>
+                        <input type="text" class="form-control" id="deckblatt_company" value="${employee.company || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Abteilung</label>
+                        <input type="text" class="form-control" id="deckblatt_department" value="${employee.department_name || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Gruppe</label>
+                        <input type="text" class="form-control" id="deckblatt_group" value="" onchange="markChanged()">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Letzter Login</label>
+                        <input type="text" class="form-control" value="Nicht verfügbar" disabled>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Eintritt</label>
+                        <input type="date" class="form-control" id="deckblatt_entry_date" value="${employee.entry_date || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Betriebszugehörigkeit</label>
+                        <input type="text" class="form-control" value="${calculateSeniority(employee.entry_date)}" disabled>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Geburtstag</label>
+                        <input type="date" class="form-control" id="deckblatt_birthday" value="${employee.birthday || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Alter</label>
+                        <input type="text" class="form-control" value="${calculateAge(employee.birthday)}" disabled>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderTabAdressdaten(employee) {
+    const container = document.getElementById('tabContent');
+    if (!document.getElementById('tab_adressdaten')) {
+        const pane = document.createElement('div');
+        pane.id = 'tab_adressdaten';
+        pane.className = 'tab-pane';
+        container.appendChild(pane);
+    }
+    
+    const pane = document.getElementById('tab_adressdaten');
+    pane.innerHTML = `
+        <div class="form-section">
+            <div class="form-section-title">Kontakt (privat)</div>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Straße / HausNr.</label>
+                        <input type="text" class="form-control" id="adressdaten_private_street" value="${employee.private_street || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Land</label>
+                        <input type="text" class="form-control" id="adressdaten_private_country" value="${employee.private_country || 'Deutschland'}" onchange="markChanged()">
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label class="form-label">PLZ</label>
+                        <input type="text" class="form-control" id="adressdaten_private_postal_code" value="${employee.private_postal_code || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+                <div class="col-md-8">
+                    <div class="mb-3">
+                        <label class="form-label">Ort</label>
+                        <input type="text" class="form-control" id="adressdaten_private_city" value="${employee.private_city || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label class="form-label">Telefon</label>
+                        <input type="text" class="form-control" id="adressdaten_private_phone" value="${employee.private_phone || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label class="form-label">Mobil</label>
+                        <input type="text" class="form-control" id="adressdaten_private_mobile" value="${employee.private_mobile || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label class="form-label">E-Mail</label>
+                        <input type="email" class="form-control" id="adressdaten_private_email" value="${employee.private_email || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="form-section">
+            <div class="form-section-title">Kontakt (Firma)</div>
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label class="form-label">Personal-Nr. 1</label>
+                        <input type="text" class="form-control" id="adressdaten_personal_nr_1" value="${employee.personal_nr_1 || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label class="form-label">Personal-Nr. 2</label>
+                        <input type="text" class="form-control" id="adressdaten_personal_nr_2" value="${employee.personal_nr_2 || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label class="form-label">Telefon</label>
+                        <input type="text" class="form-control" id="adressdaten_company_phone" value="${employee.company_phone || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label class="form-label">Mobil</label>
+                        <input type="text" class="form-control" id="adressdaten_company_mobile" value="${employee.company_mobile || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label class="form-label">E-Mail</label>
+                        <input type="email" class="form-control" id="adressdaten_company_email" value="${employee.company_email || ''}" onchange="markChanged()">
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderTabMitarbeiterdaten(employee) {
+    const container = document.getElementById('tabContent');
+    if (!document.getElementById('tab_mitarbeiterdaten')) {
+        const pane = document.createElement('div');
+        pane.id = 'tab_mitarbeiterdaten';
+        pane.className = 'tab-pane';
+        container.appendChild(pane);
+    }
+    
+    const pane = document.getElementById('tab_mitarbeiterdaten');
+    pane.innerHTML = `
+        <ul class="nav nav-tabs mb-3">
+            <li class="nav-item">
+                <a class="nav-link active" data-subtab="vertrag">Vertrag</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" data-subtab="arbeitszeitmodelle">Arbeitszeitmodell</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" data-subtab="ausnahmen">Ausnahmen</a>
+            </li>
+        </ul>
+        
+        <div id="subtab_vertrag" class="subtab-content">
+            <div class="form-section">
+                <div class="form-section-title">Einsatzbereich</div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Firma</label>
+                            <input type="text" class="form-control" id="vertrag_company" value="${employee.company || ''}" onchange="markChanged()">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Abteilung</label>
+                            <input type="text" class="form-control" id="vertrag_department" value="${employee.department_name || ''}" onchange="markChanged()">
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Eingest. als</label>
+                            <input type="text" class="form-control" id="vertrag_hired_as" value="${employee.hired_as || ''}" onchange="markChanged()">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Tätigkeit</label>
+                            <input type="text" class="form-control" id="vertrag_activity" value="${employee.activity || ''}" onchange="markChanged()">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <div class="form-section-title">Betriebszugehörigkeit</div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Eintritt</label>
+                            <input type="date" class="form-control" id="vertrag_entry_date" value="${employee.entry_date || ''}" onchange="markChanged()">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Ende Probezeit</label>
+                            <input type="date" class="form-control" id="vertrag_probation_end" value="${employee.probation_end || ''}" onchange="markChanged()">
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Befristet bis</label>
+                            <input type="date" class="form-control" id="vertrag_limited_until" value="${employee.limited_until || ''}" onchange="markChanged()">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Austritt</label>
+                            <input type="date" class="form-control" id="vertrag_exit_date" value="${employee.exit_date || ''}" onchange="markChanged()">
+                        </div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="vertrag_deactivate_after_exit" ${employee.deactivate_after_exit ? 'checked' : ''} onchange="markChanged()">
+                        <label class="form-check-label" for="vertrag_deactivate_after_exit">
+                            Nach Austritt deaktivieren
+                        </label>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="vertrag_provision_aktiv" ${employee.provision_aktiv !== false ? 'checked' : ''} onchange="markChanged()">
+                        <label class="form-check-label" for="vertrag_provision_aktiv">
+                            Erhält Provision (VKB-Abrechnung)
+                        </label>
+                    </div>
+                    <small class="form-text text-muted">Wenn deaktiviert, erscheint die Person nicht in der Vorlauf-Liste und erhält keine Provisionsabrechnung (z.&nbsp;B. Verkaufsleitung, Geschäftsführung).</small>
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <div class="form-section-title">Ferien und Feiertage</div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Land</label>
+                            <select class="form-select" id="vertrag_country" onchange="markChanged()">
+                                <option value="Deutschland" ${employee.country === 'Deutschland' ? 'selected' : ''}>Deutschland</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Bundesland</label>
+                            <select class="form-select" id="vertrag_federal_state" onchange="markChanged()">
+                                <option value="Bayern" ${employee.federal_state === 'Bayern' ? 'selected' : ''}>Bayern</option>
+                                <option value="Rheinland-Pfalz" ${employee.federal_state === 'Rheinland-Pfalz' ? 'selected' : ''}>Rheinland-Pfalz</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <div class="form-section-title">Kündigungsfristen</div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Frist AG</label>
+                            <input type="text" class="form-control" id="vertrag_notice_period_employer" value="${employee.notice_period_employer || ''}" onchange="markChanged()">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Frist AN</label>
+                            <input type="text" class="form-control" id="vertrag_notice_period_employee" value="${employee.notice_period_employee || ''}" onchange="markChanged()">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <div class="form-section-title">Arbeitszeitmodell</div>
+                <div id="workingTimeModelsTable">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Startdatum</th>
+                                <th>Arbeitszeit</th>
+                                <th>Wochenr.</th>
+                                <th>Std.Lohn</th>
+                                <th>Bruttolohn</th>
+                                <th>Beschreibung</th>
+                                <th>Aktion</th>
+                            </tr>
+                        </thead>
+                        <tbody id="workingTimeModelsBody">
+                            ${renderWorkingTimeModels(employee.working_time_models || [])}
+                        </tbody>
+                    </table>
+                    <button class="btn btn-success btn-sm" onclick="addWorkingTimeModel()">
+                        <i class="fas fa-plus"></i> Neuen Datensatz hinzufügen
+                    </button>
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <div class="form-section-title">Ausnahmen der Arbeitszeitmodelle</div>
+                <div id="exceptionsTable">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Von</th>
+                                <th>Bis</th>
+                                <th>Typ</th>
+                                <th>Bemerkung</th>
+                                <th>Aktion</th>
+                            </tr>
+                        </thead>
+                        <tbody id="exceptionsBody">
+                            ${renderExceptions(employee.exceptions || [])}
+                        </tbody>
+                    </table>
+                    <button class="btn btn-success btn-sm" onclick="addException()">
+                        <i class="fas fa-plus"></i> Neue Ausnahme hinzufügen
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Sub-Tab Event Listeners
+    document.querySelectorAll('[data-subtab]').forEach(tab => {
+        tab.addEventListener('click', (e) => {
+            e.preventDefault();
+            switchSubTab(tab.dataset.subtab);
+        });
+    });
+}
+
+function renderTabModuldaten(employee) {
+    const container = document.getElementById('tabContent');
+    if (!document.getElementById('tab_moduldaten')) {
+        const pane = document.createElement('div');
+        pane.id = 'tab_moduldaten';
+        pane.className = 'tab-pane';
+        container.appendChild(pane);
+    }
+    
+    const settings = employee.vacation_settings || {};
+    
+    const pane = document.getElementById('tab_moduldaten');
+    pane.innerHTML = `
+        <ul class="nav nav-tabs mb-3">
+            <li class="nav-item">
+                <a class="nav-link active" data-subtab="urlaubsplaner">Urlaubsplaner</a>
+            </li>
+        </ul>
+        
+        <div id="subtab_urlaubsplaner" class="subtab-content">
+            <div class="form-section">
+                <div class="form-section-title">Einstellungen</div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="settings_show_in_planner" ${settings.show_in_planner !== false ? 'checked' : ''} onchange="markChanged()">
+                                <label class="form-check-label" for="settings_show_in_planner">
+                                    Im Urlaubsplaner anzeigen
+                                </label>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="settings_show_birthday" ${settings.show_birthday !== false ? 'checked' : ''} onchange="markChanged()">
+                                <label class="form-check-label" for="settings_show_birthday">
+                                    Geburtstag anzeigen
+                                </label>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="settings_vacation_expires" ${settings.vacation_expires ? 'checked' : ''} onchange="markChanged()">
+                                <label class="form-check-label" for="settings_vacation_expires">
+                                    Urlaub verfällt nicht
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Max. Übertrag</label>
+                            <input type="number" step="0.1" class="form-control" id="settings_max_carry_over" value="${settings.max_carry_over || 999.0}" onchange="markChanged()">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Url. WE. Grenze</label>
+                            <input type="number" class="form-control" id="settings_weekend_limit" value="${settings.weekend_limit || 0}" onchange="markChanged()">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Max. Urlaubslänge</label>
+                            <input type="number" class="form-control" id="settings_max_vacation_length" value="${settings.max_vacation_length || 14}" onchange="markChanged()">
+                        </div>
+                    </div>
+                </div>
+                <p class="text-muted small mt-2 mb-0">Urlaubseinstellungen werden mit dem Button <strong>„Speichern“</strong> (unten rechts) gespeichert.</p>
+                <p class="text-info small mt-1 mb-2"><i class="fas fa-info-circle"></i> Urlaubsansprüche pro Jahr können auch in der Rechteverwaltung (Tab „Urlaubsverwaltung“) bearbeitet werden.</p>
+            </div>
+            
+            <div class="form-section">
+                <div class="form-section-title">Urlaubsanspruch</div>
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Jahr</label>
+                        <select class="form-select" id="vacation_entitlement_year" onchange="updateVacationEntitlementDropdown()">
+                            ${[2024, 2025, 2026, 2027].map(y => '<option value="'+y+'"' + (y === new Date().getFullYear() ? ' selected' : '') + '>'+y+'</option>').join('')}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Urlaubsanspruch (Tage)</label>
+                        <select class="form-select" id="vacation_entitlement_days" onchange="toggleVacationEntitlementOther(); markChanged()">
+                            <option value="5.5">5,5 Tage</option>
+                            <option value="11">11 Tage</option>
+                            <option value="16">16 Tage</option>
+                            <option value="22">22 Tage</option>
+                            <option value="27" selected>27 Tage (Vollzeit)</option>
+                            <option value="30">30 Tage</option>
+                            <option value="other">Andere …</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4" id="vacation_entitlement_other_wrap" style="display:none;">
+                        <label class="form-label">Tage (Eingabe)</label>
+                        <input type="number" min="0" max="60" step="0.5" class="form-control" id="vacation_entitlement_days_other" placeholder="z.B. 14" onchange="markChanged()">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <button type="button" class="btn btn-primary btn-sm" id="btn_save_entitlement" onclick="saveVacationEntitlement()">
+                        <i class="fas fa-save"></i> Urlaubsanspruch speichern
+                    </button>
+                    <a href="/urlaubsplaner" target="_blank" class="btn btn-sm btn-outline-secondary ms-2"><i class="fas fa-external-link-alt"></i> Im Urlaubsplaner anzeigen</a>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Berechnung der Urlaubswertung</label>
+                    <select class="form-select" id="settings_calculation_method" onchange="markChanged()">
+                        <option value="standard" ${settings.calculation_method === 'standard' ? 'selected' : ''}>Standard (Wertung an Arbeitstagen)</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <div class="form-section-title">Eintragungsfreigabe</div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Eintragen von</label>
+                            <input type="date" class="form-control" id="settings_entry_from" value="${settings.entry_from || ''}" onchange="markChanged()">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Eintragen bis</label>
+                            <input type="date" class="form-control" id="settings_entry_until" value="${settings.entry_until || ''}" onchange="markChanged()">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <div class="form-section-title">Zeiten ohne Urlaubsanspruch</div>
+                <div id="periodsWithoutVacationTable">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Von</th>
+                                <th>Bis</th>
+                                <th>Typ</th>
+                                <th>Bezeichnung</th>
+                                <th>Aktion</th>
+                            </tr>
+                        </thead>
+                        <tbody id="periodsWithoutVacationBody">
+                            ${renderPeriodsWithoutVacation(employee.periods_without_vacation || [])}
+                        </tbody>
+                    </table>
+                    <button class="btn btn-success btn-sm" onclick="addPeriodWithoutVacation()">
+                        <i class="fas fa-plus"></i> Neuen Zeitraum hinzufügen
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    updateVacationEntitlementDropdown();
+}
+
+function getEntitlementForYear(entitlements, year) {
+    if (!entitlements || !entitlements.length) return null;
+    const ent = entitlements.find(e => Number(e.year) === Number(year));
+    return ent ? { total_days: ent.total_days != null ? Number(ent.total_days) : 27, carried_over: Number(ent.carried_over || 0), added_manually: Number(ent.added_manually || 0) } : null;
+}
+
+// Personalplaner-Standardwerte: 30, 27, 22, 16, 11, 5,5 Tage (Feedback 3.2)
+const STANDARD_VACATION_DAYS = [5.5, 11, 16, 22, 27, 30];
+
+function updateVacationEntitlementDropdown() {
+    const yearSel = document.getElementById('vacation_entitlement_year');
+    const daysSel = document.getElementById('vacation_entitlement_days');
+    const otherWrap = document.getElementById('vacation_entitlement_other_wrap');
+    const otherInput = document.getElementById('vacation_entitlement_days_other');
+    if (!yearSel || !daysSel || !currentEmployeeData) return;
+    const year = parseInt(yearSel.value, 10);
+    const ent = getEntitlementForYear(currentEmployeeData.vacation_entitlements, year);
+    const totalDays = ent ? ent.total_days : 27;
+    if (STANDARD_VACATION_DAYS.includes(totalDays)) {
+        daysSel.value = String(totalDays);
+        otherWrap.style.display = 'none';
+        if (otherInput) otherInput.value = '';
+    } else {
+        daysSel.value = 'other';
+        otherWrap.style.display = 'block';
+        if (otherInput) otherInput.value = totalDays;
+    }
+}
+
+function toggleVacationEntitlementOther() {
+    const daysSel = document.getElementById('vacation_entitlement_days');
+    const otherWrap = document.getElementById('vacation_entitlement_other_wrap');
+    const otherInput = document.getElementById('vacation_entitlement_days_other');
+    if (!otherWrap) return;
+    if (daysSel && daysSel.value === 'other') {
+        otherWrap.style.display = 'block';
+        if (otherInput && !otherInput.value) otherInput.value = 27;
+    } else {
+        otherWrap.style.display = 'none';
+    }
+}
+
+async function saveVacationEntitlement() {
+    if (!currentEmployeeId) return;
+    const yearSel = document.getElementById('vacation_entitlement_year');
+    const daysSel = document.getElementById('vacation_entitlement_days');
+    const otherInput = document.getElementById('vacation_entitlement_days_other');
+    const year = yearSel ? parseInt(yearSel.value, 10) : new Date().getFullYear();
+    let anspruch = 27;
+    if (daysSel && daysSel.value === 'other' && otherInput && otherInput.value !== '') {
+        anspruch = parseFloat(otherInput.value, 10) || 27;
+    } else if (daysSel && daysSel.value !== 'other') {
+        anspruch = parseFloat(daysSel.value.replace(',', '.')) || 27;
+    }
+    try {
+        const response = await fetch('/api/vacation/admin/update-entitlement', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ employee_id: currentEmployeeId, year, anspruch, uebertrag: 0, korrektur: 0 })
+        });
+        const result = await response.json();
+        if (!result.success) {
+            alert('Fehler: ' + (result.error || 'Urlaubsanspruch konnte nicht gespeichert werden.'));
+            return;
+        }
+        alert('Urlaubsanspruch gespeichert.');
+        selectEmployee(currentEmployeeId);
+    } catch (e) {
+        console.error(e);
+        alert('Verbindungsfehler.');
+    }
+}
+
+// ============================================================================
+// HELPER-FUNKTIONEN
+// ============================================================================
+function renderWorkingTimeModels(models) {
+    if (models.length === 0) {
+        return '<tr><td colspan="7" class="text-center text-muted">Keine Daten vorhanden!</td></tr>';
+    }
+    return models.map(model => `
+        <tr>
+            <td>${formatDate(model.start_date)}</td>
+            <td>${model.hours_per_week ? `Ø ${model.hours_per_week} pro Woche` : '-'}</td>
+            <td>${model.working_days_per_week || '-'}</td>
+            <td>${model.hourly_wage || '-'}</td>
+            <td>${model.gross_wage || '-'}</td>
+            <td>${model.description || ''}</td>
+            <td>
+                <div class="table-actions">
+                    <button class="btn btn-sm btn-outline-primary" onclick="editWorkingTimeModel(${model.id})">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteWorkingTimeModel(${model.id})">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function renderExceptions(exceptions) {
+    if (exceptions.length === 0) {
+        return '<tr><td colspan="5" class="text-center text-muted">Keine Daten vorhanden!</td></tr>';
+    }
+    return exceptions.map(exception => `
+        <tr>
+            <td>${formatDate(exception.from_date)}</td>
+            <td>${formatDate(exception.to_date)}</td>
+            <td>${exception.exception_type}</td>
+            <td>${exception.description || ''}</td>
+            <td>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteException(${exception.id})">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function renderPeriodsWithoutVacation(periods) {
+    if (periods.length === 0) {
+        return '<tr><td colspan="5" class="text-center text-muted">Keine Daten vorhanden!</td></tr>';
+    }
+    return periods.map(period => `
+        <tr>
+            <td>${formatDate(period.from_date)}</td>
+            <td>${formatDate(period.to_date)}</td>
+            <td>${period.period_type}</td>
+            <td>${period.description || ''}</td>
+            <td>
+                <button class="btn btn-sm btn-outline-danger" onclick="deletePeriodWithoutVacation(${period.id})">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('de-DE');
+}
+
+function toDateInputValue(dateValue) {
+    if (!dateValue) return '';
+    const raw = String(dateValue).trim();
+    const match = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) return match[1];
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return '';
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, '0');
+    const day = String(parsed.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function calculateSeniority(entryDate) {
+    if (!entryDate) return '-';
+    const entry = new Date(entryDate);
+    const now = new Date();
+    const years = now.getFullYear() - entry.getFullYear();
+    const months = now.getMonth() - entry.getMonth();
+    return `${years} Jahre und ${months} Monate`;
+}
+
+function calculateAge(birthday) {
+    if (!birthday) return '-';
+    const birth = new Date(birthday);
+    const now = new Date();
+    let age = now.getFullYear() - birth.getFullYear();
+    // Geburtstag in diesem Jahr noch nicht gehabt? Dann 1 Jahr abziehen
+    if (now.getMonth() < birth.getMonth() || (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate())) {
+        age--;
+    }
+    return age;
+}
+
+function filterEmployees() {
+    const searchTerm = document.getElementById('searchEmployees').value.toLowerCase();
+    document.querySelectorAll('.employee-item').forEach(item => {
+        const name = item.textContent.toLowerCase();
+        item.style.display = name.includes(searchTerm) ? 'block' : 'none';
+    });
+}
+
+function toggleGroup(groupId) {
+    const list = document.getElementById(`group_${groupId}`);
+    const header = document.querySelector(`[data-group="${groupId}"]`);
+    list.classList.toggle('expanded');
+    header.classList.toggle('collapsed');
+}
+
+function expandAllGroups(expand) {
+    document.querySelectorAll('.employee-list').forEach(list => {
+        if (expand) {
+            list.classList.add('expanded');
+        } else {
+            list.classList.remove('expanded');
+        }
+    });
+    document.querySelectorAll('.employee-group-header').forEach(header => {
+        if (expand) {
+            header.classList.remove('collapsed');
+        } else {
+            header.classList.add('collapsed');
+        }
+    });
+}
+
+function switchSubTab(subTabName) {
+    document.querySelectorAll('[data-subtab]').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    document.querySelector(`[data-subtab="${subTabName}"]`)?.classList.add('active');
+    
+    document.querySelectorAll('.subtab-content').forEach(content => {
+        content.style.display = 'none';
+    });
+    document.getElementById(`subtab_${subTabName}`).style.display = 'block';
+}
+
+function markChanged() {
+    hasUnsavedChanges = true;
+    document.getElementById('btnSave').classList.add('show');
+}
+
+// ============================================================================
+// SPEICHERN (ein Button: Stammdaten + Urlaubseinstellungen)
+// ============================================================================
+function collectVacationSettingsData() {
+    const showInPlanner = document.getElementById('settings_show_in_planner');
+    if (!showInPlanner) return null;
+    const showBirthday = document.getElementById('settings_show_birthday');
+    const vacationExpires = document.getElementById('settings_vacation_expires');
+    const maxCarryOver = document.getElementById('settings_max_carry_over');
+    const weekendLimit = document.getElementById('settings_weekend_limit');
+    const maxVacationLength = document.getElementById('settings_max_vacation_length');
+    const calculationMethod = document.getElementById('settings_calculation_method');
+    const entryFrom = document.getElementById('settings_entry_from');
+    const entryUntil = document.getElementById('settings_entry_until');
+    return {
+        show_in_planner: !!showInPlanner?.checked,
+        show_birthday: !!showBirthday?.checked,
+        vacation_expires: !!vacationExpires?.checked,
+        max_carry_over: maxCarryOver?.value ? parseFloat(maxCarryOver.value) : 999.0,
+        weekend_limit: weekendLimit?.value ? parseInt(weekendLimit.value, 10) : 0,
+        max_vacation_length: maxVacationLength?.value ? parseInt(maxVacationLength.value, 10) : 14,
+        calculation_method: calculationMethod?.value || 'standard',
+        entry_from: entryFrom?.value || null,
+        entry_until: entryUntil?.value || null
+    };
+}
+
+async function saveEmployee() {
+    if (!currentEmployeeId) return;
+    
+    const data = collectFormData();
+    
+    try {
+        const response = await fetch(`${API_BASE}/employee/${currentEmployeeId}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        const result = await response.json();
+        
+        if (!result.success) {
+            alert('Fehler beim Speichern: ' + result.error);
+            return;
+        }
+        
+        // Urlaubseinstellungen mit speichern, falls Tab Moduldaten geladen wurde
+        const vacationData = collectVacationSettingsData();
+        if (vacationData) {
+            const resVac = await fetch(`${API_BASE}/employee/${currentEmployeeId}/vacation-settings`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(vacationData)
+            });
+            const resVacJson = await resVac.json();
+            if (!resVacJson.success) {
+                alert('Stammdaten gespeichert, aber Urlaubseinstellungen: ' + (resVacJson.error || 'Fehler'));
+            }
+        }
+        
+        hasUnsavedChanges = false;
+        document.getElementById('btnSave').classList.remove('show');
+        alert('Änderungen gespeichert!');
+        selectEmployee(currentEmployeeId);
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Verbindungsfehler');
+    }
+}
+
+function collectFormData() {
+    const data = {};
+    
+    // Firma, Abteilung, Eintritt: aus dem aktuell sichtbaren Tab (Deckblatt vs. Mitarbeiterdaten/Vertrag)
+    const activeMainTab = document.querySelector('.main-tabs .nav-link.active')?.getAttribute('data-tab');
+    if (activeMainTab === 'deckblatt') {
+        data.company = document.getElementById('deckblatt_company')?.value?.trim() || null;
+        data.department_name = document.getElementById('deckblatt_department')?.value?.trim() || null;
+        data.entry_date = document.getElementById('deckblatt_entry_date')?.value || null;
+    } else if (activeMainTab === 'mitarbeiterdaten') {
+        data.company = document.getElementById('vertrag_company')?.value?.trim() || null;
+        data.department_name = document.getElementById('vertrag_department')?.value?.trim() || null;
+        data.entry_date = document.getElementById('vertrag_entry_date')?.value || null;
+    } else {
+        // Adressdaten/Moduldaten: beide Quellen, nicht-leere Werte bevorzugt
+        const dCompany = document.getElementById('deckblatt_company')?.value?.trim();
+        const vCompany = document.getElementById('vertrag_company')?.value?.trim();
+        data.company = dCompany || vCompany || null;
+        const dDept = document.getElementById('deckblatt_department')?.value?.trim();
+        const vDept = document.getElementById('vertrag_department')?.value?.trim();
+        data.department_name = dDept || vDept || null;
+        const dEntry = document.getElementById('deckblatt_entry_date')?.value;
+        const vEntry = document.getElementById('vertrag_entry_date')?.value;
+        data.entry_date = dEntry || vEntry || null;
+    }
+    data.birthday = document.getElementById('deckblatt_birthday')?.value || null;
+    
+    // Adressdaten
+    data.private_street = document.getElementById('adressdaten_private_street')?.value || null;
+    data.private_city = document.getElementById('adressdaten_private_city')?.value || null;
+    data.private_postal_code = document.getElementById('adressdaten_private_postal_code')?.value || null;
+    data.private_country = document.getElementById('adressdaten_private_country')?.value || null;
+    data.private_phone = document.getElementById('adressdaten_private_phone')?.value || null;
+    data.private_mobile = document.getElementById('adressdaten_private_mobile')?.value || null;
+    data.private_email = document.getElementById('adressdaten_private_email')?.value || null;
+    data.personal_nr_1 = document.getElementById('adressdaten_personal_nr_1')?.value || null;
+    data.personal_nr_2 = document.getElementById('adressdaten_personal_nr_2')?.value || null;
+    data.company_phone = document.getElementById('adressdaten_company_phone')?.value || null;
+    data.company_mobile = document.getElementById('adressdaten_company_mobile')?.value || null;
+    data.company_email = document.getElementById('adressdaten_company_email')?.value || null;
+    
+    // Vertrag
+    data.hired_as = document.getElementById('vertrag_hired_as')?.value || null;
+    data.activity = document.getElementById('vertrag_activity')?.value || null;
+    data.probation_end = document.getElementById('vertrag_probation_end')?.value || null;
+    data.limited_until = document.getElementById('vertrag_limited_until')?.value || null;
+    data.exit_date = document.getElementById('vertrag_exit_date')?.value || null;
+    data.deactivate_after_exit = document.getElementById('vertrag_deactivate_after_exit')?.checked || false;
+    data.provision_aktiv = document.getElementById('vertrag_provision_aktiv')?.checked !== false;
+    data.country = document.getElementById('vertrag_country')?.value || null;
+    data.federal_state = document.getElementById('vertrag_federal_state')?.value || null;
+    data.notice_period_employer = document.getElementById('vertrag_notice_period_employer')?.value || null;
+    data.notice_period_employee = document.getElementById('vertrag_notice_period_employee')?.value || null;
+    
+    return data;
+}
+
+async function loadReport() {
+    const year = document.getElementById('reportYear').value;
+    const tbody = document.getElementById('reportTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="19" class="text-muted">Lade...</td></tr>';
+    try {
+        const r = await fetch('/api/vacation/admin/report-monthly?year=' + year);
+        const data = await r.json();
+        if (!data.success || !data.rows || data.rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="19" class="text-muted">Keine Daten für ' + year + '.</td></tr>';
+            return;
+        }
+        const fmt = (v) => (v != null && v !== '') ? v : '-';
+        tbody.innerHTML = data.rows.map(b => {
+            const m = [b.month_1, b.month_2, b.month_3, b.month_4, b.month_5, b.month_6, b.month_7, b.month_8, b.month_9, b.month_10, b.month_11, b.month_12];
+            const monate = m.map(v => `<td class="text-end">${v !== undefined && v !== null ? v : '-'}</td>`).join('');
+            return `<tr>
+                <td>${fmt(b.name)}</td>
+                <td>${fmt(b.department)}</td>
+                <td class="text-end">${fmt(b.anspruch)}</td>
+                <td class="text-end">${fmt(b.carried_over)}</td>
+                <td class="text-end">${fmt(b.gesamt)}</td>
+                <td class="text-end">${fmt(b.verbraucht)}</td>
+                <td class="text-end"><strong>${fmt(b.resturlaub)}</strong></td>
+                ${monate}
+            </tr>`;
+        }).join('');
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="19" class="text-danger">Fehler: ' + e.message + '</td></tr>';
+    }
+}
+
+function exportReport() {
+    const year = document.getElementById('reportYear').value;
+    window.location.href = '/api/vacation/admin/report-monthly/export?year=' + year;
+}
+
+function showError(message) {
+    alert(message); // TODO: Besseres Error-Handling
+}
+
+// ============================================================================
+// SYNC-FUNKTIONEN
+// ============================================================================
+
+async function syncPreview() {
+    if (!currentEmployeeId) return;
+    
+    try {
+        const response = await fetch(`${API_BASE}/employee/${currentEmployeeId}/sync-preview`);
+        const data = await response.json();
+        
+        if (data.success) {
+            showSyncPreviewModal(data);
+        } else {
+            alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Verbindungsfehler');
+    }
+}
+
+async function syncFromLDAP(overwrite = false) {
+    if (!currentEmployeeId) return;
+    
+    if (!confirm(`Daten aus LDAP synchronisieren?${overwrite ? '\n\nACHTUNG: Vorhandene Daten werden überschrieben!' : '\n\nNur leere Felder werden gefüllt.'}`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/employee/${currentEmployeeId}/sync-from-ldap`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({overwrite: overwrite})
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert(`✅ LDAP-Sync erfolgreich!\n\n${data.count || 0} Felder aktualisiert.`);
+            // Reload employee data
+            selectEmployee(currentEmployeeId);
+        } else {
+            alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Verbindungsfehler');
+    }
+}
+
+async function syncFromLocosoft(overwrite = false) {
+    if (!currentEmployeeId) return;
+    
+    if (!confirm(`Daten aus Locosoft synchronisieren?${overwrite ? '\n\nACHTUNG: Vorhandene Daten werden überschrieben!' : '\n\nNur leere Felder werden gefüllt.'}`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/employee/${currentEmployeeId}/sync-from-locosoft`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({overwrite: overwrite})
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert(`✅ Locosoft-Sync erfolgreich!\n\n${data.count || 0} Felder aktualisiert.`);
+            // Reload employee data
+            selectEmployee(currentEmployeeId);
+        } else {
+            alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Verbindungsfehler');
+    }
+}
+
+async function syncFull(overwrite = false) {
+    if (!currentEmployeeId) return;
+    
+    if (!confirm(`Vollständig synchronisieren (LDAP + Locosoft)?${overwrite ? '\n\nACHTUNG: Vorhandene Daten werden überschrieben!' : '\n\nNur leere Felder werden gefüllt.'}`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/employee/${currentEmployeeId}/sync-full`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({overwrite: overwrite})
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            const ldapCount = Object.keys(data.ldap_changes || {}).length;
+            const locoCount = Object.keys(data.locosoft_changes || {}).length;
+            alert(`✅ Vollständiger Sync erfolgreich!\n\nLDAP: ${ldapCount} Felder\nLocosoft: ${locoCount} Felder`);
+            // Reload employee data
+            selectEmployee(currentEmployeeId);
+        } else {
+            alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Verbindungsfehler');
+    }
+}
+
+function showSyncPreviewModal(data) {
+    let html = '<div class="modal fade" id="syncPreviewModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">';
+    html += '<div class="modal-header"><h5 class="modal-title">Sync-Vorschau</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>';
+    html += '<div class="modal-body">';
+    
+    if (data.ldap_username) {
+        html += `<h6>LDAP (${data.ldap_username})</h6>`;
+        if (Object.keys(data.ldap_changes || {}).length > 0) {
+            html += '<table class="table table-sm"><thead><tr><th>Feld</th><th>Alt</th><th>Neu</th></tr></thead><tbody>';
+            for (const [field, change] of Object.entries(data.ldap_changes)) {
+                html += `<tr><td><strong>${field}</strong></td><td>${change.old || '-'}</td><td class="text-success">${change.new}</td></tr>`;
+            }
+            html += '</tbody></table>';
+        } else {
+            html += '<p class="text-muted">Keine Änderungen</p>';
+        }
+    } else {
+        html += '<p class="text-muted">Kein LDAP-Username vorhanden</p>';
+    }
+    
+    html += '<hr>';
+    
+    if (data.locosoft_id) {
+        html += `<h6>Locosoft (ID: ${data.locosoft_id})</h6>`;
+        if (Object.keys(data.locosoft_changes || {}).length > 0) {
+            html += '<table class="table table-sm"><thead><tr><th>Feld</th><th>Alt</th><th>Neu</th></tr></thead><tbody>';
+            for (const [field, change] of Object.entries(data.locosoft_changes)) {
+                html += `<tr><td><strong>${field}</strong></td><td>${change.old || '-'}</td><td class="text-success">${change.new}</td></tr>`;
+            }
+            html += '</tbody></table>';
+        } else {
+            html += '<p class="text-muted">Keine Änderungen</p>';
+        }
+    } else {
+        html += '<p class="text-muted">Keine Locosoft-ID vorhanden</p>';
+    }
+    
+    html += '</div>';
+    html += '<div class="modal-footer">';
+    html += '<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>';
+    html += '<button type="button" class="btn btn-primary" onclick="syncFull(false); bootstrap.Modal.getInstance(document.getElementById(\'syncPreviewModal\')).hide();">Synchronisieren (nur leere Felder)</button>';
+    html += '<button type="button" class="btn btn-warning" onclick="syncFull(true); bootstrap.Modal.getInstance(document.getElementById(\'syncPreviewModal\')).hide();">Synchronisieren (überschreiben)</button>';
+    html += '</div></div></div></div>';
+    
+    // Entferne existierendes Modal falls vorhanden
+    const existing = document.getElementById('syncPreviewModal');
+    if (existing) existing.remove();
+    
+    // Füge Modal hinzu
+    document.body.insertAdjacentHTML('beforeend', html);
+    
+    // Zeige Modal
+    const modal = new bootstrap.Modal(document.getElementById('syncPreviewModal'));
+    modal.show();
+}
+
+// ============================================================================
+// ARBEITSZEITMODELLE (Add/Edit/Delete)
+// ============================================================================
+let workingTimeModalInstance = null;
+
+function setWtmWeekdays(workWeekdays, halfWeekdays) {
+    const workArr = workWeekdays ? String(workWeekdays).split(',').map(s => s.trim()).filter(Boolean) : [];
+    const halfArr = halfWeekdays ? String(halfWeekdays).split(',').map(s => s.trim()).filter(Boolean) : [];
+    document.querySelectorAll('.wtm-work-day').forEach(cb => {
+        cb.checked = workArr.length === 0 ? ['0','1','2','3','4'].includes(cb.dataset.day) : workArr.includes(cb.dataset.day);
+    });
+    document.querySelectorAll('.wtm-half-day').forEach(cb => {
+        cb.checked = halfArr.includes(cb.dataset.day);
+    });
+}
+
+function getWtmWeekdays() {
+    const work = Array.from(document.querySelectorAll('.wtm-work-day:checked')).map(cb => cb.dataset.day).sort().join(',') || null;
+    const half = Array.from(document.querySelectorAll('.wtm-half-day:checked')).map(cb => cb.dataset.day).sort().join(',') || null;
+    return { work_weekdays: work || null, half_weekdays: half || null };
+}
+
+function addWorkingTimeModel() {
+    if (!currentEmployeeId) return;
+    document.getElementById('workingTimeModalTitle').textContent = 'Neues Arbeitszeitmodell';
+    document.getElementById('wtm_model_id').value = '';
+    document.getElementById('wtm_start_date').value = '';
+    document.getElementById('wtm_end_date').value = '';
+    document.getElementById('wtm_hours_per_week').value = '';
+    document.getElementById('wtm_working_days_per_week').value = '5';
+    document.getElementById('wtm_description').value = '';
+    setWtmWeekdays('0,1,2,3,4', '');
+    if (!workingTimeModalInstance) {
+        workingTimeModalInstance = new bootstrap.Modal(document.getElementById('workingTimeModal'));
+    }
+    workingTimeModalInstance.show();
+}
+
+function editWorkingTimeModel(id) {
+    if (!currentEmployeeId || !currentEmployeeData?.working_time_models) return;
+    const model = currentEmployeeData.working_time_models.find(m => m.id === id);
+    if (!model) return;
+    document.getElementById('workingTimeModalTitle').textContent = 'Arbeitszeitmodell bearbeiten';
+    document.getElementById('wtm_model_id').value = String(model.id);
+    document.getElementById('wtm_start_date').value = toDateInputValue(model.start_date);
+    document.getElementById('wtm_end_date').value = toDateInputValue(model.end_date);
+    document.getElementById('wtm_hours_per_week').value = model.hours_per_week ?? '';
+    document.getElementById('wtm_working_days_per_week').value = model.working_days_per_week ?? 5;
+    document.getElementById('wtm_description').value = model.description || '';
+    setWtmWeekdays(model.work_weekdays, model.half_weekdays);
+    if (!workingTimeModalInstance) {
+        workingTimeModalInstance = new bootstrap.Modal(document.getElementById('workingTimeModal'));
+    }
+    workingTimeModalInstance.show();
+}
+
+async function saveWorkingTimeModelSubmit() {
+    if (!currentEmployeeId) return;
+    const modelId = document.getElementById('wtm_model_id').value.trim();
+    const startDate = document.getElementById('wtm_start_date').value;
+    const hoursPerWeek = document.getElementById('wtm_hours_per_week').value;
+    if (!startDate || !hoursPerWeek) {
+        alert('Bitte Startdatum und Stunden/Woche ausfüllen.');
+        return;
+    }
+    const wd = getWtmWeekdays();
+    const data = {
+        start_date: startDate,
+        end_date: document.getElementById('wtm_end_date').value || null,
+        hours_per_week: parseFloat(hoursPerWeek),
+        working_days_per_week: parseInt(document.getElementById('wtm_working_days_per_week').value, 10) || 5,
+        description: document.getElementById('wtm_description').value?.trim() || null,
+        work_weekdays: wd.work_weekdays,
+        half_weekdays: wd.half_weekdays
+    };
+    try {
+        const url = modelId
+            ? `${API_BASE}/employee/${currentEmployeeId}/working-time-models/${modelId}`
+            : `${API_BASE}/employee/${currentEmployeeId}/working-time-models`;
+        const method = modelId ? 'PUT' : 'POST';
+        const response = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        const result = await response.json();
+        if (result.success) {
+            if (workingTimeModalInstance) workingTimeModalInstance.hide();
+            selectEmployee(currentEmployeeId);
+        } else {
+            alert('Fehler: ' + (result.error || 'Unbekannt'));
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Verbindungsfehler');
+    }
+}
+
+async function deleteWorkingTimeModel(id) {
+    if (!currentEmployeeId) return;
+    if (!confirm('Dieses Arbeitszeitmodell wirklich löschen?')) return;
+    try {
+        const response = await fetch(`${API_BASE}/employee/${currentEmployeeId}/working-time-models/${id}`, { method: 'DELETE' });
+        const result = await response.json();
+        if (result.success) {
+            selectEmployee(currentEmployeeId);
+        } else {
+            alert('Fehler: ' + (result.error || 'Unbekannt'));
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Verbindungsfehler');
+    }
+}
+
+// ============================================================================
+// AUSNAHMEN (Add/Delete)
+// ============================================================================
+let exceptionModalInstance = null;
+
+function addException() {
+    if (!currentEmployeeId) return;
+    document.getElementById('exc_from_date').value = '';
+    document.getElementById('exc_to_date').value = '';
+    document.getElementById('exc_exception_type').value = 'sonderurlaub';
+    document.getElementById('exc_description').value = '';
+    document.getElementById('exc_affects_vacation').checked = false;
+    if (!exceptionModalInstance) {
+        exceptionModalInstance = new bootstrap.Modal(document.getElementById('exceptionModal'));
+    }
+    exceptionModalInstance.show();
+}
+
+async function saveExceptionSubmit() {
+    if (!currentEmployeeId) return;
+    const fromDate = document.getElementById('exc_from_date').value;
+    const toDate = document.getElementById('exc_to_date').value;
+    if (!fromDate || !toDate) {
+        alert('Bitte Von- und Bis-Datum ausfüllen.');
+        return;
+    }
+    const data = {
+        from_date: fromDate,
+        to_date: toDate,
+        exception_type: document.getElementById('exc_exception_type').value,
+        description: document.getElementById('exc_description').value?.trim() || null,
+        affects_vacation_entitlement: document.getElementById('exc_affects_vacation').checked
+    };
+    try {
+        const response = await fetch(`${API_BASE}/employee/${currentEmployeeId}/exceptions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        const result = await response.json();
+        if (result.success) {
+            if (exceptionModalInstance) exceptionModalInstance.hide();
+            selectEmployee(currentEmployeeId);
+        } else {
+            alert('Fehler: ' + (result.error || 'Unbekannt'));
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Verbindungsfehler');
+    }
+}
+
+async function deleteException(id) {
+    if (!currentEmployeeId) return;
+    if (!confirm('Diese Ausnahme wirklich löschen?')) return;
+    try {
+        const response = await fetch(`${API_BASE}/employee/${currentEmployeeId}/exceptions/${id}`, { method: 'DELETE' });
+        const result = await response.json();
+        if (result.success) {
+            selectEmployee(currentEmployeeId);
+        } else {
+            alert('Fehler: ' + (result.error || 'Unbekannt'));
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Verbindungsfehler');
+    }
+}
+
+// ============================================================================
+// ZEITEN OHNE URLAUBSANSPRUCH (Add/Delete)
+// ============================================================================
+let periodNoVacationModalInstance = null;
+
+function addPeriodWithoutVacation() {
+    if (!currentEmployeeId) return;
+    document.getElementById('pnv_from_date').value = '';
+    document.getElementById('pnv_to_date').value = '';
+    document.getElementById('pnv_period_type').value = 'elternzeit';
+    document.getElementById('pnv_description').value = '';
+    if (!periodNoVacationModalInstance) {
+        periodNoVacationModalInstance = new bootstrap.Modal(document.getElementById('periodNoVacationModal'));
+    }
+    periodNoVacationModalInstance.show();
+}
+
+async function savePeriodNoVacationSubmit() {
+    if (!currentEmployeeId) return;
+    const fromDate = document.getElementById('pnv_from_date').value;
+    const toDate = document.getElementById('pnv_to_date').value;
+    if (!fromDate || !toDate) {
+        alert('Bitte Von- und Bis-Datum ausfüllen.');
+        return;
+    }
+    const data = {
+        from_date: fromDate,
+        to_date: toDate,
+        period_type: document.getElementById('pnv_period_type').value,
+        description: document.getElementById('pnv_description').value?.trim() || null
+    };
+    try {
+        const response = await fetch(`${API_BASE}/employee/${currentEmployeeId}/periods-without-vacation`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        const result = await response.json();
+        if (result.success) {
+            if (periodNoVacationModalInstance) periodNoVacationModalInstance.hide();
+            selectEmployee(currentEmployeeId);
+        } else {
+            alert('Fehler: ' + (result.error || 'Unbekannt'));
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Verbindungsfehler');
+    }
+}
+
+async function deletePeriodWithoutVacation(id) {
+    if (!currentEmployeeId) return;
+    if (!confirm('Diesen Zeitraum wirklich löschen?')) return;
+    try {
+        const response = await fetch(`${API_BASE}/employee/${currentEmployeeId}/periods-without-vacation/${id}`, { method: 'DELETE' });
+        const result = await response.json();
+        if (result.success) {
+            selectEmployee(currentEmployeeId);
+        } else {
+            alert('Fehler: ' + (result.error || 'Unbekannt'));
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Verbindungsfehler');
+    }
+}
+</script>
+{% endblock %}

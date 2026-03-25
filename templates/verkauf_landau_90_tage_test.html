@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block title %}Landau 90 Tage Plan (Test) - Greiner DRIVE{% endblock %}
+{% block content %}
+<div class="container-fluid mt-3 mb-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h4 class="mb-0"><i class="bi bi-graph-up-arrow"></i> Standort Landau: 90-Tage-Maßnahmenplan (Test)</h4>
+      <small class="text-muted">Vertrieb + Kundensicht | Stand: 2026-03-23</small>
+    </div>
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('verkauf.verkaufsleiter_dashboard') }}">
+      <i class="bi bi-arrow-left"></i> zurück Dashboard
+    </a>
+  </div>
+
+  <div class="alert alert-info">
+    <strong>Testseite:</strong> Diese Ansicht dient der schnellen internen Abstimmung im Vertrieb und kann nach Freigabe in die finale Navigation überführt werden.
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-3">
+      <div class="card border-primary h-100">
+        <div class="card-body">
+          <div class="small text-muted">Volumen 12M</div>
+          <div class="h5 mb-0">198 Verträge</div>
+          <div class="small">3,10 Mio. EUR Netto</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-warning h-100">
+        <div class="card-body">
+          <div class="small text-muted">Ertrag 12M</div>
+          <div class="h5 mb-0">590 EUR DB/Vertrag</div>
+          <div class="small">4,99 % DB-Quote</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-success h-100">
+        <div class="card-body">
+          <div class="small text-muted">Kundensicht Proxy (nur Bestand)</div>
+          <div class="h5 mb-0">19,8 Tage</div>
+          <div class="small">Vertrag bis Rechnung (out_sale_type = B)</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-secondary h-100">
+        <div class="card-body">
+          <div class="small text-muted">Wiederkäuferquote (24M)</div>
+          <div class="h5 mb-0">3,89 %</div>
+          <div class="small">Kunden mit >=2 Käufen</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header"><strong>5 KPI-Ziele (90 Tage)</strong></div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-striped mb-0">
+          <thead class="thead-light">
+            <tr>
+              <th>KPI</th>
+              <th>Ist</th>
+              <th>Ziel 90 Tage</th>
+              <th>Maßnahmen</th>
+              <th>Owner</th>
+              <th>Rhythmus</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>DB je Vertrag (EUR)</td>
+              <td>590</td>
+              <td><strong>>= 850</strong></td>
+              <td>Deal-Review bei niedriger Marge, Preisleitplanken, Zusatzpakete mit Mindest-DB</td>
+              <td>Verkaufsleitung LAN</td>
+              <td>wöchentlich</td>
+            </tr>
+            <tr>
+              <td>DB-Quote (%)</td>
+              <td>4,99 %</td>
+              <td><strong>>= 6,5 %</strong></td>
+              <td>Mix-Steuerung, Rabattgrenzen je Rolle, Eskalation unter Untergrenze</td>
+              <td>VKL + Teamleiter</td>
+              <td>wöchentlich</td>
+            </tr>
+            <tr>
+              <td>Abschlüsse pro Monat</td>
+              <td>16,5</td>
+              <td><strong>>= 18</strong></td>
+              <td>2 Kampagnen/Monat, Follow-up aller offenen Angebote > 72h</td>
+              <td>Vertriebsteam LAN</td>
+              <td>täglich/weekly</td>
+            </tr>
+            <tr>
+              <td>Vertrag bis Rechnung (Tage, nur Bestand)</td>
+              <td>19,8</td>
+              <td><strong><= 21,0</strong></td>
+              <td>Übergabe-Checkliste, feste Verantwortliche, Daily-Board für Engpässe</td>
+              <td>Innendienst + Dispo</td>
+              <td>täglich</td>
+            </tr>
+            <tr>
+              <td>Wiederkäuferquote 24M (%)</td>
+              <td>3,89 %</td>
+              <td><strong>>= 5,5 %</strong></td>
+              <td>30/60/120-Tage-Kontakt, Service- und Upgrade-Angebote, Inzahlungnahme-Trigger</td>
+              <td>Verkäufer + CRM</td>
+              <td>14-tägig</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-4">
+      <div class="card h-100">
+        <div class="card-header"><strong>Phase 1 (Tag 1-30)</strong></div>
+        <div class="card-body">
+          <ul class="mb-0">
+            <li>DB-Leitplanken je Modell/Segment festlegen</li>
+            <li>Deal-Review für margenschwache Abschlüsse starten</li>
+            <li>Übergabe-Checkliste verbindlich einführen</li>
+            <li>Angebots-SLA (max. 72h ohne Follow-up) aktivieren</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card h-100">
+        <div class="card-header"><strong>Phase 2 (Tag 31-60)</strong></div>
+        <div class="card-body">
+          <ul class="mb-0">
+            <li>Zwei Kampagnen-Typen standardisieren</li>
+            <li>Wöchentliches Mix- und DB-Coaching je Verkäufer</li>
+            <li>Frühindikatoren im Weekly-Review verankern</li>
+            <li>Gegenmaßnahmen pro KPI dokumentieren</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card h-100">
+        <div class="card-header"><strong>Phase 3 (Tag 61-90)</strong></div>
+        <div class="card-body">
+          <ul class="mb-0">
+            <li>Wirksame Maßnahmen als Standard festschreiben</li>
+            <li>Transparenz je Verkäufer (Ziel vs. Ist)</li>
+            <li>Wiederkauf-Trigger dauerhaft im Prozess verankern</li>
+            <li>Entscheidung über Dauerbetrieb nach 90 Tagen</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mt-3">
+    <div class="card-header"><strong>Kundenzufriedenheit Standort Landau (extern)</strong></div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <div class="border rounded p-2 h-100">
+            <div class="small text-muted">AUTOHAUSKENNER (Stand Abruf)</div>
+            <div class="h5 mb-1">4,6 / 5</div>
+            <div class="small">186 Bewertungen (verifiziert laut Plattform)</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="border rounded p-2 h-100">
+            <div class="small text-muted">Google (über AUTOHAUSKENNER referenziert)</div>
+            <div class="h5 mb-1">4,5 / 5</div>
+            <div class="small">122 Bewertungen</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="border rounded p-2 h-100">
+            <div class="small text-muted">Bewertungsbild</div>
+            <div class="h5 mb-1">84 % 5 Sterne</div>
+            <div class="small">16 % 4 Sterne, keine niedrigeren Anteile</div>
+          </div>
+        </div>
+      </div>
+      <hr>
+      <p class="small mb-1"><strong>Quelle:</strong> <a href="https://apps.autohauskenner.de/location/landau-an-der-isar-autohaus-greiner" target="_blank" rel="noopener">AUTOHAUSKENNER — Autohaus Greiner Landau</a></p>
+      <p class="small mb-0 text-muted">Hinweis: Die Google-Zahl ist hier als externe Referenz aus AUTOHAUSKENNER übernommen.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

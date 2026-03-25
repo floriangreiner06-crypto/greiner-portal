@@ -36,8 +36,11 @@ function formatDatum(datum) {
 // Transaktionen laden
 async function loadTransaktionen() {
     try {
-        // Große Anzahl laden für client-side Filterung
-        const response = await fetch('/api/bankenspiegel/transaktionen?limit=10000&offset=0');
+        const urlParams = new URLSearchParams(window.location.search);
+        const kontoIdFromUrl = urlParams.get('konto_id');
+        let apiUrl = '/api/bankenspiegel/transaktionen?limit=10000&offset=0';
+        if (kontoIdFromUrl) apiUrl += '&konto_id=' + encodeURIComponent(kontoIdFromUrl);
+        const response = await fetch(apiUrl);
         if (!response.ok) throw new Error('API Fehler');
         
         const data = await response.json();
@@ -45,11 +48,13 @@ async function loadTransaktionen() {
         
         // Konten für Filter laden
         await loadKontenFilter();
+        // Kategorie-Filter aus Daten füllen
+        fillKategorieFilter();
         
         // Standard-Datum setzen (letzte 90 Tage)
         setDefaultDates();
         
-        // URL-Parameter prüfen (z.B. konto_id)
+        // URL-Parameter prüfen (z.B. konto_id, kategorie)
         checkUrlParams();
         
         // Filter anwenden
@@ -70,12 +75,12 @@ async function loadKontenFilter() {
         const data = await response.json();
         alleKonten = data.konten || [];
         
-        // Konten-Filter befüllen
+        // Nur echte Konten (id > 0), keine EKF-Aggregate – API liefert id, nicht konto_id
         const kontoFilter = document.getElementById('kontoFilter');
         kontoFilter.innerHTML = '<option value="">Alle Konten</option>' +
             alleKonten
-                .filter(k => k.aktiv)
-                .map(k => `<option value="${k.konto_id}">${k.bank_name} - ${k.kontoname || k.iban}</option>`)
+                .filter(k => k.aktiv && !k.ekf && (k.id == null || k.id > 0))
+                .map(k => `<option value="${k.id}">${k.bank_name || ''} - ${k.kontoname || k.iban || ''}</option>`)
                 .join('');
         
     } catch (error) {
@@ -93,13 +98,31 @@ function setDefaultDates() {
     document.getElementById('vonDatum').valueAsDate = heuteStart;
 }
 
+// Kategorie-Dropdown aus vorhandenen Kategorien füllen
+function fillKategorieFilter() {
+    const kat = {};
+    alleTransaktionen.forEach(t => {
+        const k = (t.kategorie || '').trim();
+        if (k) kat[k] = true;
+    });
+    const sel = document.getElementById('kategorieFilter');
+    if (!sel) return;
+    const opts = Object.keys(kat).sort();
+    const esc = s => ('' + s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    sel.innerHTML = '<option value="">Alle Kategorien</option>' + opts.map(o => '<option value="' + esc(o) + '">' + esc(o) + '</option>').join('');
+}
+
 // URL-Parameter prüfen
 function checkUrlParams() {
     const urlParams = new URLSearchParams(window.location.search);
     const kontoId = urlParams.get('konto_id');
+    const kategorie = urlParams.get('kategorie');
     
     if (kontoId) {
         document.getElementById('kontoFilter').value = kontoId;
+    }
+    if (kategorie && document.getElementById('kategorieFilter')) {
+        document.getElementById('kategorieFilter').value = kategorie;
     }
 }
 
@@ -109,6 +132,7 @@ function applyFilters() {
     const bisDatum = document.getElementById('bisDatum').value;
     const kontoId = document.getElementById('kontoFilter').value;
     const typ = document.getElementById('typFilter').value;
+    const kategorie = document.getElementById('kategorieFilter') ? document.getElementById('kategorieFilter').value : '';
     const searchTerm = document.getElementById('searchTransaktionen').value.toLowerCase();
     
     // Transaktionen filtern
@@ -123,6 +147,9 @@ function applyFilters() {
         // Typ-Filter
         if (typ === 'einnahmen' && t.betrag < 0) return false;
         if (typ === 'ausgaben' && t.betrag >= 0) return false;
+        
+        // Kategorie-Filter
+        if (kategorie && (t.kategorie || '').trim() !== kategorie) return false;
         
         // Suche in Verwendungszweck
         if (searchTerm && !t.verwendungszweck?.toLowerCase().includes(searchTerm)) return false;
