@@ -1,0 +1,453 @@
+"""
+GREINER DRIVE - Celery Task Queue
+==================================
+Ersetzt APScheduler mit robusterem Task-Management.
+
+Komponenten:
+- Redis: Message Broker (localhost:6379)
+- Celery Worker: Führt Tasks aus
+- Celery Beat: Scheduler (cron-artig)
+- Flower: Web-UI für Monitoring (Port 5555)
+
+Erstellt: 2025-12-09 (TAG 110)
+"""
+
+from celery import Celery
+from celery.schedules import crontab, schedule
+from datetime import timedelta
+import os
+
+# Basis-Pfad
+BASE_DIR = '/opt/greiner-portal'
+
+# .env laden (wie Flask), damit z. B. EAUTOSELLER_API_KEY / EAUTOSELLER_CLIENT_SECRET für BWA-Sync verfügbar sind
+_env_path = os.path.join(BASE_DIR, 'config', '.env')
+if os.path.exists(_env_path):
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(_env_path)
+    except ImportError:
+        pass
+
+# Celery App erstellen
+app = Celery(
+    'greiner',
+    broker='redis://localhost:6379/0',
+    backend='redis://localhost:6379/1',  # Result Backend
+    include=['celery_app.tasks']
+)
+
+# RedBeat für dynamische Schedules (optional)
+try:
+    from redbeat import RedBeatSchedulerEntry
+    REDBEAT_AVAILABLE = True
+except ImportError:
+    REDBEAT_AVAILABLE = False
+
+# Konfiguration
+app.conf.update(
+    # Zeitzone
+    timezone='Europe/Berlin',
+    enable_utc=False,
+    
+    # RedBeat für dynamische Schedules
+    beat_scheduler='redbeat.RedBeatScheduler',
+    redbeat_redis_url='redis://localhost:6379/2',
+    redbeat_key_prefix='greiner:',
+    
+    # Task-Einstellungen
+    task_serializer='json',
+    accept_content=['json'],
+    result_serializer='json',
+    result_expires=86400,  # Results 24h behalten
+    
+    # Worker-Einstellungen
+    worker_prefetch_multiplier=1,  # Ein Task nach dem anderen
+    worker_max_tasks_per_child=50,  # Worker nach 50 Tasks neu starten (Memory-Leak-Schutz)
+    
+    # Task-Tracking
+    task_track_started=True,
+    task_send_sent_event=True,
+    
+    # Retry-Defaults
+    task_default_retry_delay=60,  # 1 Minute warten vor Retry
+    task_max_retries=3,
+    
+    # Beat Schedule (alle Jobs)
+    beat_schedule={
+        # =====================================================================
+        # CONTROLLING & VERWALTUNG
+        # =====================================================================
+        
+        # Bank & Finanzen - MT940 Import (3x täglich)
+        'import-mt940-08': {
+            'task': 'celery_app.tasks.import_mt940',
+            'schedule': crontab(minute=0, hour=8, day_of_week='mon-fri'),
+            'options': {'queue': 'controlling'}
+        },
+        'import-mt940-12': {
+            'task': 'celery_app.tasks.import_mt940',
+            'schedule': crontab(minute=0, hour=12, day_of_week='mon-fri'),
+            'options': {'queue': 'controlling'}
+        },
+        'import-mt940-17': {
+            'task': 'celery_app.tasks.import_mt940',
+            'schedule': crontab(minute=0, hour=17, day_of_week='mon-fri'),
+            'options': {'queue': 'controlling'}
+        },
+        
+        # HypoVereinsbank PDF (einzige Bank ohne MT940)
+        'import-hvb-pdf': {
+            'task': 'celery_app.tasks.import_hvb_pdf',
+            'schedule': crontab(minute=30, hour=8, day_of_week='mon-fri'),
+            'options': {'queue': 'controlling'}
+        },
+        
+        # Umsatz-Bereinigung
+        'umsatz-bereinigung': {
+            'task': 'celery_app.tasks.umsatz_bereinigung',
+            'schedule': crontab(minute=30, hour=9, day_of_week='mon-fri'),
+            'options': {'queue': 'controlling'}
+        },
+        
+        # Santander Import
+        'import-santander': {
+            'task': 'celery_app.tasks.import_santander',
+            'schedule': crontab(minute=15, hour=8, day_of_week='mon-fri'),
+            'options': {'queue': 'controlling'}
+        },
+        
+        # Hyundai Finance
+        'scrape-hyundai': {
+            'task': 'celery_app.tasks.scrape_hyundai',
+            'schedule': crontab(minute=45, hour=8, day_of_week='mon-fri'),
+            'options': {'queue': 'controlling'}
+        },
+        'import-hyundai': {
+            'task': 'celery_app.tasks.import_hyundai',
+            'schedule': crontab(minute=0, hour=9, day_of_week='mon-fri'),
+            'options': {'queue': 'controlling'}
+        },
+        
+        # Leasys Cache (alle 30 Min während Arbeitszeit)
+        'leasys-cache-refresh': {
+            'task': 'celery_app.tasks.leasys_cache_refresh',
+            'schedule': crontab(minute='*/30', hour='7-18', day_of_week='mon-fri'),
+            'options': {'queue': 'controlling'}
+        },
+        
+        # HR & Mitarbeiter
+        'sync-employees': {
+            'task': 'celery_app.tasks.sync_employees',
+            'schedule': crontab(minute=0, hour=6),
+            'options': {'queue': 'controlling'}
+        },
+        'sync-locosoft-employees': {
+            'task': 'celery_app.tasks.sync_locosoft_employees',
+            'schedule': crontab(minute=15, hour=6),
+            'options': {'queue': 'controlling'}
+        },
+        'sync-ad-departments': {
+            'task': 'celery_app.tasks.sync_ad_departments',
+            'schedule': crontab(minute=20, hour=6),
+            'options': {'queue': 'controlling'}
+        },
+        
+        # E-Mail Reports
+        'email-auftragseingang': {
+            'task': 'celery_app.tasks.email_auftragseingang',
+            'schedule': crontab(minute=15, hour=17, day_of_week='mon-fri'),
+            'options': {'queue': 'controlling'}
+        },
+        'email-werkstatt-tagesbericht': {
+            'task': 'celery_app.tasks.email_werkstatt_tagesbericht',
+            'schedule': crontab(minute=30, hour=17, day_of_week='mon-fri'),
+            'options': {'queue': 'aftersales'}
+        },
+        # TAG209: Login-Report - täglich um 17:30 Uhr
+        'email-daily-logins': {
+            'task': 'celery_app.tasks.email_daily_logins',
+            'schedule': crontab(minute=30, hour=17, day_of_week='mon-fri'),
+            'options': {'queue': 'controlling'}
+        },
+        # TAG176: TEK-E-Mail-Versand aktiviert - nach Locosoft Mirror (19:00)
+        'email-tek-daily': {
+            'task': 'celery_app.tasks.email_tek_daily',
+            'schedule': crontab(minute=30, hour=19, day_of_week='mon-fri'),
+            'options': {'queue': 'controlling'}
+        },
+        # AfA Bestand Abgleich (20:00 nach Locosoft-Update)
+        'email-afa-bestand-report': {
+            'task': 'celery_app.tasks.email_afa_bestand_report',
+            'schedule': crontab(minute=0, hour=20, day_of_week='mon-fri'),
+            'options': {'queue': 'controlling'}
+        },
+        # AfA Verkaufsempfehlungen 20 älteste (20:15 Mo-Fr)
+        'email-afa-verkaufsempfehlungen-report': {
+            'task': 'celery_app.tasks.email_afa_verkaufsempfehlungen_report',
+            'schedule': crontab(minute=15, hour=20, day_of_week='mon-fri'),
+            'options': {'queue': 'controlling'}
+        },
+        
+        # Wartung
+        'db-backup': {
+            'task': 'celery_app.tasks.db_backup',
+            'schedule': crontab(minute=0, hour=3),
+            'options': {'queue': 'controlling'}
+        },
+        'cleanup-backups': {
+            'task': 'celery_app.tasks.cleanup_backups',
+            'schedule': crontab(minute=30, hour=3),
+            'options': {'queue': 'controlling'}
+        },
+        
+        # ML Training
+        'ml-retrain': {
+            'task': 'celery_app.tasks.ml_retrain',
+            'schedule': crontab(minute=15, hour=3),
+            'options': {'queue': 'aftersales'}
+        },
+        
+        # Charge Types Sync (für SVS)
+        'sync-charge-types': {
+            'task': 'celery_app.tasks.sync_charge_types',
+            'schedule': crontab(minute=5, hour=6),
+            'options': {'queue': 'aftersales'}
+        },
+        
+        # =====================================================================
+        # AFTERSALES
+        # =====================================================================
+        
+        # ServiceBox Scraper (3x täglich)
+        'servicebox-scraper-09': {
+            'task': 'celery_app.tasks.servicebox_scraper',
+            'schedule': crontab(minute=30, hour=9, day_of_week='mon-fri'),
+            'options': {'queue': 'aftersales'}
+        },
+        'servicebox-scraper-12': {
+            'task': 'celery_app.tasks.servicebox_scraper',
+            'schedule': crontab(minute=30, hour=12, day_of_week='mon-fri'),
+            'options': {'queue': 'aftersales'}
+        },
+        'servicebox-scraper-16': {
+            'task': 'celery_app.tasks.servicebox_scraper',
+            'schedule': crontab(minute=30, hour=16, day_of_week='mon-fri'),
+            'options': {'queue': 'aftersales'}
+        },
+        
+        # ServiceBox Matcher (nach Scraper)
+        'servicebox-matcher-10': {
+            'task': 'celery_app.tasks.servicebox_matcher',
+            'schedule': crontab(minute=0, hour=10, day_of_week='mon-fri'),
+            'options': {'queue': 'aftersales'}
+        },
+        'servicebox-matcher-13': {
+            'task': 'celery_app.tasks.servicebox_matcher',
+            'schedule': crontab(minute=0, hour=13, day_of_week='mon-fri'),
+            'options': {'queue': 'aftersales'}
+        },
+        'servicebox-matcher-17': {
+            'task': 'celery_app.tasks.servicebox_matcher',
+            'schedule': crontab(minute=0, hour=17, day_of_week='mon-fri'),
+            'options': {'queue': 'aftersales'}
+        },
+        
+        # ServiceBox Import (nach Matcher)
+        'servicebox-import-10': {
+            'task': 'celery_app.tasks.servicebox_import',
+            'schedule': crontab(minute=5, hour=10, day_of_week='mon-fri'),
+            'options': {'queue': 'aftersales'}
+        },
+        'servicebox-import-13': {
+            'task': 'celery_app.tasks.servicebox_import',
+            'schedule': crontab(minute=5, hour=13, day_of_week='mon-fri'),
+            'options': {'queue': 'aftersales'}
+        },
+        'servicebox-import-17': {
+            'task': 'celery_app.tasks.servicebox_import',
+            'schedule': crontab(minute=5, hour=17, day_of_week='mon-fri'),
+            'options': {'queue': 'aftersales'}
+        },
+        
+        # ServiceBox Master (komplett neu laden)
+        'servicebox-master': {
+            'task': 'celery_app.tasks.servicebox_master',
+            'schedule': crontab(minute=0, hour=20, day_of_week='mon-fri'),
+            'options': {'queue': 'aftersales'}
+        },
+        # ServiceBox Passwort-Ablauf: Erinnerungs-E-Mail an Servicelieter (täglich 8:00)
+        'check-servicebox-password-expiry': {
+            'task': 'celery_app.tasks.check_servicebox_password_expiry',
+            'schedule': crontab(minute=0, hour=8, day_of_week='mon-fri'),
+            'options': {'queue': 'aftersales'}
+        },
+        # Garantie Precheck (regelbasiert stündlich + KI-Batch priorisiert)
+        'garantie-precheck-refresh': {
+            'task': 'celery_app.tasks.garantie_precheck_refresh',
+            'schedule': crontab(minute=5, hour='7-18', day_of_week='mon-fri'),
+            'options': {'queue': 'aftersales'}
+        },
+        
+        # Teile
+        'sync-teile': {
+            'task': 'celery_app.tasks.sync_teile',
+            'schedule': crontab(minute='*/30'),  # Alle 30 Min
+            'options': {'queue': 'aftersales'}
+        },
+        'import-teile': {
+            'task': 'celery_app.tasks.import_teile',
+            'schedule': crontab(minute=0, hour='*/2'),  # Alle 2 Stunden
+            'options': {'queue': 'aftersales'}
+        },
+        
+        # =====================================================================
+        # VERKAUF
+        # =====================================================================
+        
+        # Verkauf Sync (stündlich während Arbeitszeit)
+        'sync-sales': {
+            'task': 'celery_app.tasks.sync_sales',
+            'schedule': crontab(minute=0, hour='7-18', day_of_week='mon-fri'),
+            'options': {'queue': 'verkauf'}
+        },
+        
+        # Stellantis Import
+        'import-stellantis': {
+            'task': 'celery_app.tasks.import_stellantis',
+            'schedule': crontab(minute=30, hour=7, day_of_week='mon-fri'),
+            'options': {'queue': 'verkauf'}
+        },
+        
+        # Stammdaten Sync
+        'sync-stammdaten': {
+            'task': 'celery_app.tasks.sync_stammdaten',
+            'schedule': crontab(minute=30, hour=9),
+            'options': {'queue': 'verkauf'}
+        },
+        
+        # Locosoft Mirror (KRITISCH - inkl. VIEWs times, employees)
+        'locosoft-mirror': {
+            'task': 'celery_app.tasks.locosoft_mirror',
+            'schedule': crontab(minute=0, hour=19),
+            'options': {'queue': 'verkauf'}
+        },
+        
+        # Finanzreporting Cube Refresh (nach Locosoft Mirror)
+        # TAG 179: Automatischer Refresh nach Locosoft-Sync (18-19 Uhr)
+        'refresh-finanzreporting-cube': {
+            'task': 'celery_app.tasks.refresh_finanzreporting_cube',
+            'schedule': crontab(minute=20, hour=19),
+            'options': {'queue': 'controlling'}
+        },
+        
+        # BWA Berechnung (nach Mirror)
+        'bwa-berechnung': {
+            'task': 'celery_app.tasks.bwa_berechnung',
+            'schedule': crontab(minute=30, hour=19),
+            'options': {'queue': 'controlling'}
+        },
+        
+        # Werkstatt Leistung (nach Mirror)
+        'werkstatt-leistung': {
+            'task': 'celery_app.tasks.werkstatt_leistung',
+            'schedule': crontab(minute=15, hour=19),
+            'options': {'queue': 'aftersales'}
+        },
+
+        # =====================================================================
+        # LAGER / PENNER MARKTPREISE - TAG 142
+        # =====================================================================
+
+        # Penner Marktpreis-Update (nachts um 3:00)
+        'update-penner-marktpreise': {
+            'task': 'celery_app.tasks.update_penner_marktpreise',
+            'schedule': crontab(minute=0, hour=3),
+            'kwargs': {'min_lagerwert': 50, 'limit': 100},
+            'options': {'queue': 'aftersales'}
+        },
+
+        # Penner Wochenreport (Montag 7:00)
+        'email-penner-weekly': {
+            'task': 'celery_app.tasks.email_penner_weekly',
+            'schedule': crontab(minute=0, hour=7, day_of_week='mon'),
+            'options': {'queue': 'aftersales'}
+        },
+        
+        # =====================================================================
+        # EAUTOSELLER INTEGRATION - TAG 145
+        # =====================================================================
+        
+        # eAutoseller Daten-Sync (alle 15 Min während Arbeitszeit)
+        'sync-eautoseller-data': {
+            'task': 'celery_app.tasks.sync_eautoseller_data',
+            'schedule': crontab(minute='*/15', hour='7-18', day_of_week='mon-fri'),
+            'options': {'queue': 'verkauf'}
+        },
+        
+        # =====================================================================
+        # SERVICEBERATER-BENACHRICHTIGUNGEN - TAG 171
+        # =====================================================================
+        
+        # Serviceberater-Benachrichtigungen bei Zeitüberschreitungen (alle 15 Min während Arbeitszeit)
+        # TAG 182: Reaktiviert mit Fixes (Tracking-Tabelle, Deduplizierung, Fallback nur Matthias König)
+        'benachrichtige-serviceberater-ueberschreitungen': {
+            'task': 'celery_app.tasks.benachrichtige_serviceberater_ueberschreitungen',
+            'schedule': crontab(minute='*/15', hour='7-18', day_of_week='mon-fri'),
+            'options': {'queue': 'aftersales'}
+        },
+
+        # =====================================================================
+        # WHATSAPP POLLING (Alternative zum Webhook — nur bei WHATSAPP_USE_POLLING_INSTEAD_OF_WEBHOOK=true)
+        # =====================================================================
+        'fetch-whatsapp-inbound-polling': {
+            'task': 'celery_app.tasks.fetch_whatsapp_inbound_polling',
+            'schedule': schedule(run_every=timedelta(seconds=30)),  # Alle 30 Sekunden
+            'options': {'queue': 'verkauf'}
+        },
+    },
+    
+    # Task-Routen (welche Queue für welchen Task)
+    task_routes={
+        'celery_app.tasks.import_*': {'queue': 'controlling'},
+        'celery_app.tasks.sync_*': {'queue': 'verkauf'},
+        'celery_app.tasks.servicebox_*': {'queue': 'aftersales'},
+        'celery_app.tasks.werkstatt_*': {'queue': 'aftersales'},
+        'celery_app.tasks.garantie_*': {'queue': 'aftersales'},
+        'celery_app.tasks.benachrichtige_*': {'queue': 'aftersales'},
+    },
+)
+
+# Autodiscover tasks
+app.autodiscover_tasks(['celery_app'])
+
+# =============================================================================
+# SIGNAL HANDLERS - Task-Name-Mapping für Historie
+# =============================================================================
+# TAG210: Speichere Task-Name in Redis bei jedem Task-Start (auch automatisch)
+# Damit funktioniert die Historie-Anzeige auch bei Schedules
+
+from celery.signals import task_prerun
+
+@task_prerun.connect
+def on_task_prerun(sender=None, task_id=None, task=None, **kwargs):
+    """Speichere Task-Name in Redis bei jedem Task-Start (auch automatisch)."""
+    try:
+        import redis
+        redis_client = redis.Redis(host='localhost', port=6379, db=1)
+        mapping_key = f'task-name-mapping:{task_id}'
+        
+        # Task-Name extrahieren
+        if task:
+            # Task-Objekt hat 'name' Attribut
+            full_task_name = task.name if hasattr(task, 'name') else str(task)
+        elif sender:
+            # Sender ist das Task-Objekt
+            full_task_name = sender.name if hasattr(sender, 'name') else str(sender)
+        else:
+            return  # Kein Task-Name verfügbar
+        
+        redis_client.setex(mapping_key, 86400 * 7, full_task_name)  # 7 Tage TTL
+    except Exception as e:
+        # Nicht kritisch, nur für Historie
+        pass

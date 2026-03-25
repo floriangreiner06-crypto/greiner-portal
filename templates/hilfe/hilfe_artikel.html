@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Hilfe – Greiner DRIVE{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/hilfe.css') }}?v={{ STATIC_VERSION }}">
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <nav aria-label="breadcrumb" id="breadcrumb"></nav>
+    <article class="hilfe-artikel mt-3">
+        <div id="artikel-loading" class="text-muted"><span class="spinner-border spinner-border-sm"></span> Artikel wird geladen…</div>
+        <div id="artikel-content" style="display:none;">
+            <h1 id="artikel-titel"></h1>
+            <div id="artikel-inhalt" class="hilfe-inhalt"></div>
+            <div class="mt-4 pt-3 border-top">
+                <p class="text-muted small mb-2">War dieser Artikel hilfreich?</p>
+                <button type="button" class="btn btn-outline-success btn-sm me-2" id="btn-ja"><i class="bi bi-hand-thumbs-up"></i> Ja</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-nein"><i class="bi bi-hand-thumbs-down"></i> Nein</button>
+                <span id="feedback-danke" class="ms-2 text-success small" style="display:none;">Danke für Ihr Feedback.</span>
+            </div>
+        </div>
+        <div id="artikel-error" class="text-danger" style="display:none;"></div>
+    </article>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+(function() {
+    const artikelId = {{ artikel_id }};
+    const breadcrumb = document.getElementById('breadcrumb');
+    const loading = document.getElementById('artikel-loading');
+    const content = document.getElementById('artikel-content');
+    const errorEl = document.getElementById('artikel-error');
+
+    function renderInhalt(art) {
+        const inhaltEl = document.getElementById('artikel-inhalt');
+        if (art.inhalt_format === 'html') {
+            inhaltEl.innerHTML = art.inhalt;
+        } else {
+            inhaltEl.innerHTML = typeof marked !== 'undefined' ? marked.parse(art.inhalt || '') : '<pre>' + (art.inhalt || '').replace(/</g, '&lt;') + '</pre>';
+        }
+    }
+
+    fetch('/api/hilfe/artikel/' + artikelId, { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            loading.style.display = 'none';
+            if (data.error) {
+                errorEl.textContent = data.error;
+                errorEl.style.display = 'block';
+                return;
+            }
+            content.style.display = 'block';
+            document.getElementById('artikel-titel').textContent = data.titel;
+            renderInhalt(data);
+            breadcrumb.innerHTML = '<ol class="breadcrumb"><li class="breadcrumb-item"><a href="{{ url_for("hilfe.uebersicht") }}">Hilfe</a></li>' +
+                '<li class="breadcrumb-item"><a href="/hilfe/' + (data.kategorie_slug || '') + '">' + (data.kategorie_name || '') + '</a></li>' +
+                '<li class="breadcrumb-item active" aria-current="page">' + (data.titel || '').replace(/</g, '&lt;') + '</li></ol>';
+        })
+        .catch(() => {
+            loading.style.display = 'none';
+            errorEl.textContent = 'Fehler beim Laden des Artikels.';
+            errorEl.style.display = 'block';
+        });
+
+    function sendFeedback(hilfreich) {
+        fetch('/api/hilfe/artikel/' + artikelId + '/feedback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ hilfreich: hilfreich })
+        }).then(() => {
+            document.getElementById('feedback-danke').style.display = 'inline';
+            document.getElementById('btn-ja').disabled = true;
+            document.getElementById('btn-nein').disabled = true;
+        });
+    }
+    document.getElementById('btn-ja').addEventListener('click', function() { sendFeedback(true); });
+    document.getElementById('btn-nein').addEventListener('click', function() { sendFeedback(false); });
+})();
+</script>
+{% endblock %}

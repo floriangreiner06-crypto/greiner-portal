@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block title %}{% if artikel_id %}Artikel bearbeiten{% else %}Neuer Artikel{% endif %} – Hilfe – Greiner DRIVE{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/hilfe.css') }}?v={{ STATIC_VERSION }}">
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <h1 class="mb-4">{% if artikel_id %}<i class="bi bi-pencil"></i> Artikel bearbeiten{% else %}<i class="bi bi-plus"></i> Neuer Artikel{% endif %}</h1>
+    <p><a href="{{ url_for('hilfe.admin') }}" class="btn btn-outline-secondary">← Zurück zur Verwaltung</a></p>
+
+    <div id="freigabe-status" class="alert alert-secondary mb-3" style="display:none;"></div>
+
+    <form id="artikel-form" class="mt-4">
+        <input type="hidden" id="artikel-id" value="{{ artikel_id or '' }}">
+        <div class="mb-3">
+            <label for="kategorie_id" class="form-label">Kategorie</label>
+            <select id="kategorie_id" class="form-select" required></select>
+        </div>
+        <div class="mb-3">
+            <label for="titel" class="form-label">Titel</label>
+            <input type="text" id="titel" class="form-control" required placeholder="z. B. Wie beantrage ich Urlaub?">
+        </div>
+        <div class="mb-3">
+            <label for="slug" class="form-label">Slug (URL-Teil)</label>
+            <input type="text" id="slug" class="form-control" placeholder="wird aus Titel erzeugt, wenn leer">
+        </div>
+        <div class="mb-3">
+            <label for="inhalt" class="form-label">Inhalt (Markdown oder HTML)</label>
+            <textarea id="inhalt" class="form-control" rows="12" placeholder="Markdown unterstützt: **fett**, *kursiv*, Listen, Überschriften…"></textarea>
+        </div>
+        <div class="mb-3">
+            <label for="inhalt_format" class="form-label">Format</label>
+            <select id="inhalt_format" class="form-select">
+                <option value="markdown">Markdown</option>
+                <option value="html">HTML</option>
+            </select>
+        </div>
+ <div class="mb-3">
+            <label for="tags" class="form-label">Tags (kommagetrennt)</label>
+            <input type="text" id="tags" class="form-control" placeholder="urlaub, beantragen, genehmigung">
+        </div>
+        <div class="mb-3">
+            <label for="sort_order" class="form-label">Sortierung</label>
+            <input type="number" id="sort_order" class="form-control" value="0">
+        </div>
+        <button type="submit" class="btn btn-primary">Speichern</button>
+        <span id="save-status" class="ms-2"></span>
+        <span id="freigabe-buttons" class="ms-3"></span>
+        <button type="button" id="btn-ki-erweitern" class="btn btn-outline-primary ms-2" style="display:none;"><i class="bi bi-magic"></i> Mit KI erweitern</button>
+    </form>
+</div>
+
+<!-- Modal: KI-Vorschlag -->
+<div class="modal fade" id="modal-ki-vorschlag" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">KI-Vorschlag: Erweiterter Inhalt</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p id="ki-status" class="text-muted">Lädt…</p>
+                <textarea id="ki-vorschlag-inhalt" class="form-control font-monospace" rows="18" style="display:none;"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>
+                <button type="button" id="ki-uebernehmen" class="btn btn-primary" style="display:none;">Vorschlag übernehmen</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const artikelId = {{ artikel_id or 'null' }};
+    const form = document.getElementById('artikel-form');
+    const kategorieSelect = document.getElementById('kategorie_id');
+    const titelEl = document.getElementById('titel');
+    const slugEl = document.getElementById('slug');
+
+    function loadKategorien() {
+        fetch('/api/hilfe/kategorien', { credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(data => {
+                const kats = data.kategorien || [];
+                kategorieSelect.innerHTML = '<option value="">– Kategorie wählen –</option>' +
+                    kats.map(k => '<option value="' + k.id + '">' + k.name + '</option>').join('');
+            });
+    }
+
+    function updateFreigabeUI(data) {
+        const statusEl = document.getElementById('freigabe-status');
+        const btnsEl = document.getElementById('freigabe-buttons');
+        if (!data || !data.freigabe_status) return;
+        statusEl.style.display = 'block';
+        const isFreigegeben = data.freigabe_status === 'freigegeben';
+        statusEl.className = isFreigegeben ? 'alert alert-success mb-3' : 'alert alert-warning mb-3';
+        statusEl.innerHTML = isFreigegeben
+            ? '<strong>Freigegeben</strong>' + (data.freigegeben_am ? ' am ' + data.freigegeben_am.slice(0,10) : '') + (data.freigegeben_von ? ' von ' + data.freigegeben_von : '') + '. Artikel ist in der Hilfe sichtbar.'
+            : '<strong>Entwurf.</strong> Artikel ist nur hier sichtbar, nicht in der öffentlichen Hilfe.';
+        btnsEl.innerHTML = '';
+        if (isFreigegeben) {
+            btnsEl.innerHTML = '<button type="button" id="btn-entwurf" class="btn btn-outline-secondary btn-sm">Zurück auf Entwurf</button>';
+        } else {
+            btnsEl.innerHTML = '<button type="button" id="btn-freigeben" class="btn btn-success btn-sm">Freigeben</button>';
+        }
+        const freigebenBtn = document.getElementById('btn-freigeben');
+        const entwurfBtn = document.getElementById('btn-entwurf');
+        if (freigebenBtn) freigebenBtn.addEventListener('click', function() {
+            fetch('/api/hilfe/admin/artikel/' + artikelId + '/freigeben', { method: 'POST', credentials: 'same-origin' }).then(r => r.json()).then(function(d) {
+                if (d.error) alert(d.error); else fetch('/api/hilfe/admin/artikel/' + artikelId, { credentials: 'same-origin' }).then(r => r.json()).then(updateFreigabeUI);
+            });
+        });
+        if (entwurfBtn) entwurfBtn.addEventListener('click', function() {
+            fetch('/api/hilfe/admin/artikel/' + artikelId + '/entwurf', { method: 'POST', credentials: 'same-origin' }).then(r => r.json()).then(function(d) {
+                if (d.error) alert(d.error); else fetch('/api/hilfe/admin/artikel/' + artikelId, { credentials: 'same-origin' }).then(r => r.json()).then(updateFreigabeUI);
+            });
+        });
+    }
+
+    if (artikelId) {
+        document.getElementById('btn-ki-erweitern').style.display = 'inline-block';
+        fetch('/api/hilfe/admin/artikel/' + artikelId, { credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) { document.getElementById('save-status').textContent = data.error; return; }
+                document.getElementById('kategorie_id').value = data.kategorie_id;
+                titelEl.value = data.titel || '';
+                slugEl.value = data.slug || '';
+                document.getElementById('inhalt').value = data.inhalt || '';
+                document.getElementById('inhalt_format').value = data.inhalt_format || 'markdown';
+                document.getElementById('tags').value = data.tags || '';
+                document.getElementById('sort_order').value = data.sort_order ?? 0;
+                updateFreigabeUI(data);
+            });
+    }
+
+    // Mit KI erweitern
+    const kiBtn = document.getElementById('btn-ki-erweitern');
+    const kiModalEl = document.getElementById('modal-ki-vorschlag');
+    const kiStatus = document.getElementById('ki-status');
+    const kiVorschlagInhalt = document.getElementById('ki-vorschlag-inhalt');
+    const kiUebernehmen = document.getElementById('ki-uebernehmen');
+    if (kiBtn && artikelId && kiModalEl) {
+        kiBtn.addEventListener('click', function() {
+            kiBtn.disabled = true;
+            kiStatus.textContent = 'KI erweitert den Artikel…';
+            kiStatus.style.display = 'block';
+            kiVorschlagInhalt.style.display = 'none';
+            kiUebernehmen.style.display = 'none';
+            var modal = new bootstrap.Modal(kiModalEl);
+            modal.show();
+            fetch('/api/hilfe/ki/erweitern', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ artikel_id: artikelId })
+            }).then(function(r) {
+                var ct = (r.headers.get('Content-Type') || '').toLowerCase();
+                if (ct.indexOf('application/json') === -1) {
+                    return r.text().then(function(t) {
+                        throw new Error('Server antwortete mit HTML statt JSON (z. B. Fehlerseite oder Login). Status: ' + r.status + '. Bitte erneut einloggen oder Logs prüfen.');
+                    });
+                }
+                return r.json();
+            }).then(function(data) {
+                kiBtn.disabled = false;
+                if (data.error) {
+                    var msg = 'Fehler: ' + data.error;
+                    if (data.error.indexOf('not allowed') !== -1 || data.error.indexOf('ValidationException') !== -1) {
+                        msg += '\n\nHinweis: Der IAM-Benutzer, dessen Zugangsdaten in config/credentials.json unter aws_bedrock stehen, braucht Bedrock-Rechte (z. B. AmazonBedrockFullAccess oder bedrock:InvokeModel). Siehe docs/workstreams/Hilfe/BEDROCK_IAM_SETUP.md';
+                    }
+                    kiStatus.textContent = msg;
+                    kiStatus.style.display = 'block';
+                    kiStatus.style.whiteSpace = 'pre-wrap';
+                    return;
+                }
+                kiStatus.textContent = data.kontext_verwendet ? 'Vorschlag (mit fachlichem Kontext aus dem System):' : 'Vorschlag:';
+                kiStatus.style.display = 'block';
+                kiVorschlagInhalt.value = data.inhalt || '';
+                kiVorschlagInhalt.style.display = 'block';
+                kiUebernehmen.style.display = 'inline-block';
+            }).catch(function(e) {
+                kiBtn.disabled = false;
+                kiStatus.textContent = 'Fehler: ' + (e.message || 'Netzwerkfehler');
+                kiStatus.style.display = 'block';
+                kiStatus.style.whiteSpace = 'pre-wrap';
+            });
+        });
+    }
+    if (kiUebernehmen && kiVorschlagInhalt) {
+        kiUebernehmen.addEventListener('click', function() {
+            document.getElementById('inhalt').value = kiVorschlagInhalt.value;
+            bootstrap.Modal.getInstance(kiModalEl).hide();
+        });
+    }
+
+    titelEl.addEventListener('blur', function() {
+        if (!slugEl.value && titelEl.value) slugEl.value = titelEl.value.toLowerCase().replace(/\s+/g, '-').replace(/[äöü]/g, function(m) { return { 'ä':'ae','ö':'oe','ü':'ue' }[m] || m; });
+    });
+
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const status = document.getElementById('save-status');
+        status.textContent = 'Speichert…';
+        const payload = {
+            kategorie_id: parseInt(document.getElementById('kategorie_id').value, 10),
+            titel: titelEl.value.trim(),
+            slug: slugEl.value.trim() || undefined,
+            inhalt: document.getElementById('inhalt').value,
+            inhalt_format: document.getElementById('inhalt_format').value,
+            tags: document.getElementById('tags').value.trim() || undefined,
+            sort_order: parseInt(document.getElementById('sort_order').value, 10) || 0
+        };
+        const url = artikelId ? '/api/hilfe/admin/artikel/' + artikelId : '/api/hilfe/admin/artikel';
+        const method = artikelId ? 'PUT' : 'POST';
+        fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify(payload)
+        }).then(r => r.json()).then(data => {
+            if (data.error) { status.textContent = 'Fehler: ' + data.error; status.className = 'ms-2 text-danger'; return; }
+            status.textContent = 'Gespeichert.';
+            status.className = 'ms-2 text-success';
+            if (data.id && !artikelId) window.location.href = '/hilfe/admin/bearbeiten/' + data.id;
+        }).catch(() => { status.textContent = 'Fehler'; status.className = 'ms-2 text-danger'; });
+    });
+
+    loadKategorien();
+})();
+</script>
+{% endblock %}

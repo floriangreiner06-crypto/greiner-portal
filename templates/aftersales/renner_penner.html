@@ -1,0 +1,688 @@
+{% extends "base.html" %}
+
+{% block title %}Renner & Penner - Lageranalyse{% endblock %}
+
+{% block extra_css %}
+<style>
+    .status-cards {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    @media (max-width: 992px) {
+        .status-cards { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 576px) {
+        .status-cards { grid-template-columns: 1fr; }
+    }
+
+    .status-card {
+        border-radius: 12px;
+        padding: 1.5rem;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .status-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    .status-card.active {
+        outline: 3px solid #333;
+    }
+    .status-renner {
+        background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+        color: white;
+    }
+    .status-normal {
+        background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
+        color: #212529;
+    }
+    .status-penner {
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        color: white;
+    }
+    .status-leiche {
+        background: linear-gradient(135deg, #343a40 0%, #212529 100%);
+        color: white;
+    }
+    .status-card .big-number {
+        font-size: 2rem;
+        font-weight: bold;
+        line-height: 1.2;
+    }
+    .status-card .lagerwert {
+        font-size: 1rem;
+        opacity: 0.9;
+        margin-top: 0.3rem;
+    }
+    .status-card .label {
+        font-size: 0.85rem;
+        opacity: 0.9;
+        margin-top: 0.5rem;
+    }
+
+    .teil-card {
+        border-left: 4px solid #dee2e6;
+        padding: 1rem;
+        margin-bottom: 0.75rem;
+        background: #fff;
+        border-radius: 0 8px 8px 0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        transition: all 0.2s;
+    }
+    .teil-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        transform: translateX(3px);
+    }
+    .teil-card.renner {
+        border-left-color: #28a745;
+        background: linear-gradient(to right, #f0fff4, #fff);
+    }
+    .teil-card.penner {
+        border-left-color: #dc3545;
+        background: linear-gradient(to right, #fff5f5, #fff);
+    }
+    .teil-card.leiche {
+        border-left-color: #343a40;
+        background: linear-gradient(to right, #f8f9fa, #fff);
+    }
+    .teil-card.normal {
+        border-left-color: #ffc107;
+    }
+
+    .teil-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+    }
+    .teil-nr {
+        font-weight: bold;
+        font-size: 1rem;
+        color: #333;
+        font-family: monospace;
+    }
+    .kategorie-badge {
+        padding: 0.3rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: bold;
+    }
+    .kategorie-badge.renner {
+        background: #28a745;
+        color: white;
+    }
+    .kategorie-badge.penner {
+        background: #dc3545;
+        color: white;
+    }
+    .kategorie-badge.leiche {
+        background: #343a40;
+        color: white;
+    }
+    .kategorie-badge.normal {
+        background: #ffc107;
+        color: #212529;
+    }
+
+    .teil-beschreibung {
+        color: #666;
+        font-size: 0.9rem;
+        margin-bottom: 0.5rem;
+    }
+    .teil-stats {
+        display: flex;
+        gap: 1.5rem;
+        font-size: 0.85rem;
+        color: #555;
+    }
+    .teil-stats .stat-label {
+        color: #888;
+        font-size: 0.75rem;
+    }
+    .teil-stats .stat-value {
+        font-weight: bold;
+    }
+
+    .empfehlung {
+        margin-top: 0.5rem;
+        padding: 0.5rem;
+        background: #f8f9fa;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        color: #555;
+    }
+
+    .filter-bar {
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+    }
+
+    .section-tabs {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+    }
+    .section-tab {
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        border: 1px solid #dee2e6;
+        background: white;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-size: 0.9rem;
+    }
+    .section-tab:hover {
+        background: #e9ecef;
+    }
+    .section-tab.active {
+        background: #0d6efd;
+        color: white;
+        border-color: #0d6efd;
+    }
+
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255,255,255,0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .info-box {
+        background: #e7f3ff;
+        border: 1px solid #b6d4fe;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        font-size: 0.9rem;
+    }
+    .info-box strong {
+        color: #0a58ca;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-0">Renner & Penner</h1>
+            <small class="text-muted">Lagerumschlag-Analyse - Garantie/Gewährleistung ausgeschlossen</small>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-primary" onclick="exportCSV()">
+                <i class="bi bi-download"></i> CSV Export
+            </button>
+            <button class="btn btn-outline-secondary" onclick="loadData()">
+                <i class="bi bi-arrow-clockwise"></i> Aktualisieren
+            </button>
+        </div>
+    </div>
+
+    <div class="info-box">
+        <strong>Hinweis:</strong> AT-Teile (Austausch), Kautionen und Garantie-Rückläufer sind ausgeschlossen.
+        <strong>Renner</strong> = Schnelldreher (Nachbestellen!) |
+        <strong>Penner</strong> = Langsamdreher (Abverkauf prüfen) |
+        <strong>Leichen</strong> = 24+ Monate ohne Verkauf
+    </div>
+
+    <!-- Filter -->
+    <div class="filter-bar">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label small">Betrieb</label>
+                <select id="filterBetrieb" class="form-select form-select-sm" onchange="loadData()">
+                    <option value="">Alle Betriebe</option>
+                    <option value="1">Deggendorf</option>
+                    <option value="2">Hyundai DEG</option>
+                    <option value="3">Landau</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small">Marke/Typ</label>
+                <select id="filterMarke" class="form-select form-select-sm" onchange="loadData()">
+                    <option value="">Alle Marken</option>
+                    <option value="0">Opel/Stellantis</option>
+                    <option value="5">Hyundai</option>
+                    <option value="6">Hyundai Zubehör</option>
+                    <option value="10">Fremdteil</option>
+                    <option value="30">Öl/Schmierstoff</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small">Min. Lagerwert</label>
+                <select id="filterMinWert" class="form-select form-select-sm" onchange="loadData()">
+                    <option value="20">ab 20 EUR</option>
+                    <option value="50" selected>ab 50 EUR</option>
+                    <option value="100">ab 100 EUR</option>
+                    <option value="500">ab 500 EUR</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small">Sortierung</label>
+                <select id="filterSort" class="form-select form-select-sm" onchange="loadData()">
+                    <option value="lagerwert">Lagerwert (höchste)</option>
+                    <option value="reichweite">Reichweite (längste)</option>
+                    <option value="tage">Tage seit Abgang</option>
+                    <option value="umschlag">Umschlag (höchste)</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status-Übersicht -->
+    <div class="status-cards" id="statusCards">
+        <div class="status-card status-renner" data-kategorie="renner" onclick="filterKategorie('renner')">
+            <div class="big-number" id="rennerAnzahl">-</div>
+            <div class="lagerwert" id="rennerWert">-</div>
+            <div class="label">RENNER - Nachbestellen!</div>
+        </div>
+        <div class="status-card status-normal" data-kategorie="normal" onclick="filterKategorie('normal')">
+            <div class="big-number" id="normalAnzahl">-</div>
+            <div class="lagerwert" id="normalWert">-</div>
+            <div class="label">NORMAL - Bestand OK</div>
+        </div>
+        <div class="status-card status-penner" data-kategorie="penner" onclick="filterKategorie('penner')">
+            <div class="big-number" id="pennerAnzahl">-</div>
+            <div class="lagerwert" id="pennerWert">-</div>
+            <div class="label">PENNER - Abverkauf prüfen</div>
+        </div>
+        <div class="status-card status-leiche" data-kategorie="leiche" onclick="filterKategorie('leiche')">
+            <div class="big-number" id="leichenAnzahl">-</div>
+            <div class="lagerwert" id="leichenWert">-</div>
+            <div class="label">LEICHEN - Sofort handeln!</div>
+        </div>
+    </div>
+
+    <!-- Section Tabs -->
+    <div class="section-tabs">
+        <button class="section-tab active" data-section="alle" onclick="showSection('alle')">Alle Kategorien</button>
+        <button class="section-tab" data-section="renner" onclick="showSection('renner')">Nur Renner</button>
+        <button class="section-tab" data-section="penner" onclick="showSection('penner')">Nur Penner</button>
+        <button class="section-tab" data-section="leiche" onclick="showSection('leiche')">Nur Leichen</button>
+    </div>
+
+    <!-- Teile-Liste -->
+    <div id="teileContainer">
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-2 text-muted">Lade Daten...</p>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Overlay -->
+<div class="loading-overlay" id="loadingOverlay" style="display: none;">
+    <div class="text-center">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="mt-2">Lade Lageranalyse...</p>
+    </div>
+</div>
+
+<!-- Marktcheck Modal -->
+<div class="modal fade" id="marktcheckModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-search"></i> Marktcheck</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="marktcheckBody">
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary"></div>
+                    <p class="mt-2">Suche Marktpreise...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentData = null;
+let currentSection = 'alle';
+let currentKategorieFilter = null;
+
+async function loadData() {
+    document.getElementById('loadingOverlay').style.display = 'flex';
+
+    try {
+        const betrieb = document.getElementById('filterBetrieb').value;
+        const marke = document.getElementById('filterMarke').value;
+        const minWert = document.getElementById('filterMinWert').value;
+        const sort = document.getElementById('filterSort').value;
+
+        let url = `/api/lager/renner-penner?min_wert=${minWert}&sort=${sort}&limit=300`;
+        if (betrieb) url += `&betrieb=${betrieb}`;
+        if (marke) url += `&marke=${marke}`;
+
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.success) {
+            currentData = data;
+            updateStatusCards(data.summary);
+            renderTeile(data.teile);
+        } else {
+            showError(data.error);
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        showError(error.message);
+    } finally {
+        document.getElementById('loadingOverlay').style.display = 'none';
+    }
+}
+
+function updateStatusCards(summary) {
+    document.getElementById('rennerAnzahl').textContent = summary.renner.anzahl;
+    document.getElementById('rennerWert').textContent = formatCurrency(summary.renner.lagerwert);
+
+    document.getElementById('normalAnzahl').textContent = summary.normal.anzahl;
+    document.getElementById('normalWert').textContent = formatCurrency(summary.normal.lagerwert);
+
+    document.getElementById('pennerAnzahl').textContent = summary.penner.anzahl;
+    document.getElementById('pennerWert').textContent = formatCurrency(summary.penner.lagerwert);
+
+    document.getElementById('leichenAnzahl').textContent = summary.leichen.anzahl;
+    document.getElementById('leichenWert').textContent = formatCurrency(summary.leichen.lagerwert);
+}
+
+function renderTeile(teile) {
+    const container = document.getElementById('teileContainer');
+
+    if (currentSection === 'alle') {
+        // Alle Kategorien anzeigen
+        let html = '';
+
+        if (teile.leiche && teile.leiche.length > 0) {
+            html += renderKategorieSection('Lagerleichen', teile.leiche, 'leiche');
+        }
+        if (teile.penner && teile.penner.length > 0) {
+            html += renderKategorieSection('Langsamdreher (Penner)', teile.penner, 'penner');
+        }
+        if (teile.renner && teile.renner.length > 0) {
+            html += renderKategorieSection('Schnelldreher (Renner)', teile.renner, 'renner');
+        }
+        if (teile.normal && teile.normal.length > 0) {
+            html += renderKategorieSection('Normal', teile.normal, 'normal');
+        }
+
+        container.innerHTML = html || '<p class="text-muted text-center py-4">Keine Teile gefunden</p>';
+    } else {
+        // Nur eine Kategorie
+        const kategorieTeile = teile[currentSection] || teile;
+        if (Array.isArray(kategorieTeile)) {
+            container.innerHTML = renderTeileList(kategorieTeile);
+        } else {
+            container.innerHTML = '<p class="text-muted text-center py-4">Keine Teile in dieser Kategorie</p>';
+        }
+    }
+}
+
+function renderKategorieSection(title, teile, kategorie) {
+    if (!teile || teile.length === 0) return '';
+
+    const icons = { renner: '🟢', penner: '🔴', leiche: '💀', normal: '🟡' };
+    const totalWert = teile.reduce((sum, t) => sum + t.lagerwert, 0);
+
+    return `
+        <div class="mb-4">
+            <h5 class="mb-3">
+                ${icons[kategorie] || ''} ${title}
+                <span class="badge bg-secondary ms-2">${teile.length} Teile</span>
+                <span class="badge bg-info ms-1">${formatCurrency(totalWert)}</span>
+            </h5>
+            ${renderTeileList(teile)}
+        </div>
+    `;
+}
+
+function renderTeileList(teile) {
+    if (!teile || teile.length === 0) return '<p class="text-muted">Keine Teile</p>';
+
+    return teile.map(teil => `
+        <div class="teil-card ${teil.kategorie}">
+            <div class="teil-header">
+                <span class="teil-nr">${teil.part_number}</span>
+                <span class="kategorie-badge ${teil.kategorie}">
+                    ${teil.status_icon || ''} ${teil.kategorie.toUpperCase()}
+                </span>
+            </div>
+            <div class="teil-beschreibung">${teil.beschreibung || '-'}</div>
+            <div class="teil-stats">
+                <div>
+                    <div class="stat-label">Bestand</div>
+                    <div class="stat-value">${formatNumber(teil.bestand)} Stk</div>
+                </div>
+                <div>
+                    <div class="stat-label">Lagerwert</div>
+                    <div class="stat-value">${formatCurrency(teil.lagerwert)}</div>
+                </div>
+                <div>
+                    <div class="stat-label">Verkauf 12M</div>
+                    <div class="stat-value">${formatNumber(teil.verkauf_12m)} Stk</div>
+                </div>
+                <div>
+                    <div class="stat-label">Reichweite</div>
+                    <div class="stat-value">${teil.reichweite_monate ? teil.reichweite_monate + ' Mon.' : '-'}</div>
+                </div>
+                <div>
+                    <div class="stat-label">Letzter Abgang</div>
+                    <div class="stat-value">${teil.letzter_abgang || 'Nie'}</div>
+                </div>
+                <div>
+                    <div class="stat-label">Marke</div>
+                    <div class="stat-value">${teil.marke || '-'}</div>
+                </div>
+            </div>
+            ${teil.empfehlung ? `<div class="empfehlung"><i class="bi bi-lightbulb"></i> ${teil.empfehlung}</div>` : ''}
+            ${(teil.kategorie === 'penner' || teil.kategorie === 'leiche') ? `
+                <div class="mt-2">
+                    <button class="btn btn-sm btn-outline-primary" onclick="openMarktcheck('${teil.part_number}')">
+                        <i class="bi bi-search"></i> Marktcheck
+                    </button>
+                </div>
+            ` : ''}
+        </div>
+    `).join('');
+}
+
+function showSection(section) {
+    currentSection = section;
+
+    // Tab-Buttons aktualisieren
+    document.querySelectorAll('.section-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.section === section);
+    });
+
+    // Karten-Highlight entfernen
+    document.querySelectorAll('.status-card').forEach(card => {
+        card.classList.remove('active');
+    });
+
+    if (currentData) {
+        if (section === 'alle') {
+            renderTeile(currentData.teile);
+        } else {
+            // Spezifische Kategorie aus API laden für mehr Daten
+            loadKategorie(section);
+        }
+    }
+}
+
+async function loadKategorie(kategorie) {
+    const betrieb = document.getElementById('filterBetrieb').value;
+    const marke = document.getElementById('filterMarke').value;
+    const minWert = document.getElementById('filterMinWert').value;
+    const sort = document.getElementById('filterSort').value;
+
+    if (kategorie === 'normal') {
+        // Normal aus bereits geladenen Hauptdaten
+        if (currentData && currentData.teile && currentData.teile.normal) {
+            document.getElementById('teileContainer').innerHTML = renderTeileList(currentData.teile.normal);
+        }
+        return;
+    }
+
+    // Immer Haupt-API mit kategorie-Parameter nutzen (gleiche Logik wie Übersicht, Filter funktioniert garantiert)
+    let url = `/api/lager/renner-penner?kategorie=${kategorie}&min_wert=${minWert}&sort=${sort}&limit=500`;
+    if (betrieb) url += `&betrieb=${betrieb}`;
+    if (marke) url += `&marke=${marke}`;
+
+    try {
+        document.getElementById('teileContainer').innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div> Lade ' + kategorie + '...</div>';
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.success && data.teile) {
+            const teile = Array.isArray(data.teile) ? data.teile : (data.teile[kategorie] || []);
+            document.getElementById('teileContainer').innerHTML = teile.length ? renderTeileList(teile) : '<p class="text-muted text-center py-4">Keine Teile in dieser Kategorie</p>';
+        } else {
+            document.getElementById('teileContainer').innerHTML = '<p class="text-danger text-center py-4">Fehler beim Laden.</p>';
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        document.getElementById('teileContainer').innerHTML = '<p class="text-danger text-center py-4">Fehler beim Laden.</p>';
+    }
+}
+
+function filterKategorie(kategorie) {
+    // Highlight auf Karte
+    document.querySelectorAll('.status-card').forEach(card => {
+        card.classList.toggle('active', card.dataset.kategorie === kategorie);
+    });
+
+    showSection(kategorie);
+}
+
+function exportCSV() {
+    const betrieb = document.getElementById('filterBetrieb').value;
+    const minWert = document.getElementById('filterMinWert').value;
+
+    let url = `/api/lager/export?kategorie=alle&min_wert=${minWert}`;
+    if (betrieb) url += `&betrieb=${betrieb}`;
+
+    window.open(url, '_blank');
+}
+
+function formatCurrency(value) {
+    return new Intl.NumberFormat('de-DE', {
+        style: 'currency',
+        currency: 'EUR'
+    }).format(value || 0);
+}
+
+function formatNumber(value) {
+    return new Intl.NumberFormat('de-DE', {
+        maximumFractionDigits: 1
+    }).format(value || 0);
+}
+
+function showError(message) {
+    document.getElementById('teileContainer').innerHTML = `
+        <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle"></i> Fehler: ${message}
+        </div>
+    `;
+}
+
+async function openMarktcheck(teilenummer) {
+    const modal = new bootstrap.Modal(document.getElementById('marktcheckModal'));
+    const body = document.getElementById('marktcheckBody');
+
+    body.innerHTML = `
+        <div class="text-center py-4">
+            <div class="spinner-border text-primary"></div>
+            <p class="mt-2">Suche Marktpreise für <strong>${teilenummer}</strong>...</p>
+        </div>
+    `;
+    modal.show();
+
+    try {
+        const response = await fetch(`/api/lager/marktcheck/${encodeURIComponent(teilenummer)}`);
+        const data = await response.json();
+
+        if (data.success) {
+            let html = '';
+
+            // Teil-Info
+            if (data.teil) {
+                html += `
+                    <div class="alert alert-info">
+                        <strong>${data.teil.part_number}</strong> - ${data.teil.beschreibung || 'Keine Beschreibung'}
+                        <br>
+                        <small>
+                            EK: ${formatCurrency(data.teil.ek_preis)} |
+                            VK (Locosoft): ${formatCurrency(data.teil.vk_preis_locosoft)} |
+                            Bestand: ${data.teil.bestand} Stk |
+                            Lagerwert: ${formatCurrency(data.teil.lagerwert)}
+                        </small>
+                    </div>
+                `;
+            }
+
+            // Marktquellen
+            html += '<h6 class="mb-3"><i class="bi bi-globe"></i> Online-Marktplätze durchsuchen:</h6>';
+            html += '<div class="list-group">';
+
+            for (const quelle of data.quellen) {
+                const badgeClass = quelle.typ === 'gebraucht' ? 'bg-warning text-dark' :
+                                   quelle.typ === 'neu+gebraucht' ? 'bg-info' : 'bg-success';
+                html += `
+                    <a href="${quelle.url}" target="_blank" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>${quelle.name}</strong>
+                            <br><small class="text-muted">${quelle.hinweis}</small>
+                        </div>
+                        <div>
+                            <span class="badge ${badgeClass} me-2">${quelle.typ}</span>
+                            <i class="bi bi-box-arrow-up-right"></i>
+                        </div>
+                    </a>
+                `;
+            }
+            html += '</div>';
+
+            // Tipps
+            html += `
+                <div class="alert alert-warning mt-3">
+                    <strong><i class="bi bi-lightbulb"></i> Verkaufs-Tipps:</strong>
+                    <ul class="mb-0 mt-2">
+                        <li>Bei eBay als "Sofort-Kaufen" mit Rücknahme anbieten</li>
+                        <li>Preis ca. 20-30% unter Neupreis ansetzen</li>
+                        <li>Gute Fotos und OE-Nummer im Titel verwenden</li>
+                        <li>Alternativ: Rückgabe an Lieferant prüfen</li>
+                    </ul>
+                </div>
+            `;
+
+            body.innerHTML = html;
+        } else {
+            body.innerHTML = `<div class="alert alert-danger">Fehler: ${data.error}</div>`;
+        }
+    } catch (error) {
+        body.innerHTML = `<div class="alert alert-danger">Fehler beim Laden: ${error.message}</div>`;
+    }
+}
+
+// Initial laden
+document.addEventListener('DOMContentLoaded', loadData);
+</script>
+{% endblock %}

@@ -1,0 +1,2674 @@
+{% extends "base.html" %}
+
+{% block title %}Admin - Rechte & Reports - DRIVE{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Rechteverwaltung Mockup-Style */
+    .rechte-header {
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        padding: 1.25rem 1.75rem;
+        color: white;
+        border-radius: 0.5rem;
+        margin-bottom: 0;
+    }
+    .rechte-header .subtitle { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; }
+    .rechte-header .title { font-size: 1.35rem; font-weight: 800; }
+    .rechte-status-bar {
+        background: white;
+        border-bottom: 1px solid #e5e7eb;
+        padding: 0.6rem 1.75rem;
+        font-size: 0.8rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1.5rem;
+    }
+    .rechte-status-bar .stat-ok { color: #059669; }
+    .rechte-status-bar .stat-default { color: #6b7280; }
+    .rechte-status-bar .stat-warn { color: #dc2626; }
+    .rechte-status-bar .stat-ssot { color: #6366f1; margin-left: auto; }
+    .rechte-info-banner {
+        background: linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%);
+        border: 1px solid #bfdbfe;
+        border-radius: 0.6rem;
+        padding: 0.9rem 1.1rem;
+        margin-bottom: 1.25rem;
+        font-size: 0.85rem;
+        line-height: 1.5;
+    }
+    .rechte-source-portal { font-size: 0.65rem; font-weight: 600; color: #059669; background: #ecfdf5; padding: 0.15rem 0.4rem; border-radius: 4px; }
+    .rechte-source-default { font-size: 0.65rem; color: #6b7280; background: #f9fafb; padding: 0.15rem 0.4rem; border-radius: 4px; }
+    .user-row-no-role { background: #fef2f2 !important; }
+    .user-row-no-role:hover { background: #fee2e2 !important; }
+    .rechte-role-btn {
+        padding: 0.5rem 0.9rem;
+        border-radius: 0.5rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+        border: 1px solid #e5e7eb;
+        background: white;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .rechte-role-btn:hover { border-color: #93c5fd; background: #eff6ff; }
+    .rechte-role-btn.active { border-width: 2px; }
+    .rechte-matrix-table { font-size: 0.8rem; }
+    .rechte-matrix-table th { position: sticky; top: 0; background: #f8fafc; z-index: 1; }
+    .rechte-matrix-table .feat-cell { position: sticky; left: 0; background: white; z-index: 0; }
+    .rechte-arch-step { border-radius: 0.5rem; padding: 0.9rem 1.1rem; margin-bottom: 0.5rem; border: 2px solid; }
+    .rechte-feature-group-card { border: 1px solid #e5e7eb; border-radius: 0.5rem; overflow: hidden; }
+    .rechte-feature-group-card .group-head { background: #f8fafc; padding: 0.5rem 0.9rem; font-weight: 700; font-size: 0.8rem; }
+
+    .card-header-admin {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        font-weight: 600;
+    }
+    .user-row { transition: background 0.2s; }
+    .user-row:hover { background: #f8f9fa !important; }
+    .role-badge { font-size: 0.8rem; padding: 0.3rem 0.6rem; margin: 0.1rem; border-radius: 6px; font-weight: 600; }
+    .role-admin { background: #dc2626; color: white; }
+    .role-buchhaltung { background: #2563eb; color: white; }
+    .role-verkauf_leitung { background: #0d9488; color: white; }
+    .role-verkauf { background: #059669; color: white; }
+    .role-werkstatt_leitung { background: #ea580c; color: white; }
+    .role-werkstatt { background: #d97706; color: white; }
+    .role-service_leitung { background: #c026d3; color: white; }
+    .role-serviceberater { background: #a855f7; color: white; }
+    .role-service { background: #7c3aed; color: white; }
+    .role-disposition { background: #4f46e5; color: white; }
+    .role-lager { background: #6366f1; color: white; }
+    .role-callcenter { background: #64748b; color: white; }
+    .role-marketing { background: #475569; color: white; }
+    .role-mitarbeiter { background: #6b7280; color: white; }
+    .role-default { background: #6c757d; color: white; }
+
+    .feature-card {
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        transition: box-shadow 0.2s;
+    }
+    .feature-card:hover {
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .feature-card .card-header {
+        background: #f8f9fa;
+        font-weight: 600;
+        font-size: 0.9rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .feature-roles {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+    }
+    .feature-role {
+        font-size: 0.75rem;
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        background: #e9ecef;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .feature-role:hover {
+        transform: scale(1.05);
+    }
+    .feature-role.admin { background: #f8d7da; }
+    .feature-role.buchhaltung { background: #d4edda; }
+    .feature-role-toggle {
+        cursor: pointer;
+        padding: 0.3rem 0.6rem;
+        border-radius: 4px;
+        margin: 0.2rem;
+        display: inline-block;
+        transition: all 0.2s;
+        border: 2px solid #dee2e6;
+        background: white;
+    }
+    .feature-role-toggle:hover {
+        transform: scale(1.05);
+        border-color: #0d6efd;
+    }
+    .feature-role-toggle.active {
+        background: #0d6efd;
+        color: white;
+        border-color: #0d6efd;
+    }
+
+    .title-mapping {
+        font-size: 0.85rem;
+    }
+    .title-mapping td {
+        padding: 0.4rem 0.75rem;
+    }
+
+    .search-box {
+        max-width: 300px;
+    }
+
+    /* Modal */
+    .role-toggle {
+        cursor: pointer;
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        margin: 0.25rem;
+        display: inline-block;
+        transition: all 0.2s;
+    }
+    .role-toggle:hover {
+        transform: scale(1.05);
+    }
+    .role-toggle.active {
+        box-shadow: 0 0 0 3px rgba(0,123,255,0.5);
+    }
+
+    /* Reports Tab */
+    .report-card {
+        border: 1px solid #dee2e6;
+        border-radius: 10px;
+        transition: all 0.2s;
+        height: 100%;
+    }
+    .report-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .report-icon {
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+    }
+    .report-category {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .subscriber-badge {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+    }
+    .subscriber-list {
+        max-height: 300px;
+        overflow-y: auto;
+    }
+    .subscriber-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem;
+        border-bottom: 1px solid #eee;
+    }
+    .subscriber-item:last-child {
+        border-bottom: none;
+    }
+    .subscriber-inactive {
+        opacity: 0.5;
+        text-decoration: line-through;
+    }
+    .cat-controlling { border-left: 4px solid #0d6efd; }
+    .cat-verkauf { border-left: 4px solid #198754; }
+    .cat-werkstatt { border-left: 4px solid #fd7e14; }
+    .cat-sonstige { border-left: 4px solid #6c757d; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4 px-0">
+    <!-- Header (Mockup-Style) -->
+    <div class="rechte-header d-flex justify-content-between align-items-center mb-0">
+        <div>
+            <div class="subtitle mb-1">DRIVE · Admin</div>
+            <div class="title">🔐 Rechteverwaltung</div>
+        </div>
+        <div class="text-end">
+            <a href="/admin/celery/" class="btn btn-sm btn-outline-light"><i class="bi bi-cpu me-1"></i>Task Manager</a>
+        </div>
+    </div>
+
+    <!-- Status-Bar (wird per JS befüllt) -->
+    <div class="rechte-status-bar" id="rechteStatusBar">
+        <span class="stat-ok">✓ <strong id="statWithRole">0</strong> mit Portal-Rolle</span>
+        <span class="stat-default">📋 <strong id="statDefault">0</strong> Default</span>
+        <span class="stat-warn">⚠ <strong id="statNoRole">0</strong> ohne Rolle</span>
+        <span class="stat-ssot">SSOT: Portal (Option B)</span>
+    </div>
+
+    <!-- Tabs (reduziert auf 3: User & Rollen, Mitarbeiter & Urlaub, Einstellungen) -->
+    <ul class="nav nav-tabs px-3 pt-2 mb-0 bg-white border-bottom" role="tablist">
+        <li class="nav-item">
+            <a class="nav-link active" data-bs-toggle="tab" href="#users-tab">
+                <i class="bi bi-people me-1"></i>User & Rollen <span class="badge bg-secondary ms-1" id="tabUserCount">0</span>
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#mitarbeiter-urlaub-tab" id="tab-mitarbeiter-config">
+                <i class="bi bi-person-gear me-1"></i>Mitarbeiter & Urlaub <span class="badge bg-secondary ms-1" id="tabMitarbeiterCount">0</span>
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#einstellungen-tab">
+                <i class="bi bi-gear me-1"></i>Einstellungen
+            </a>
+        </li>
+    </ul>
+
+    <div class="tab-content bg-white p-3">
+        <!-- TAB 1: User & Rollen (Mockup-ähnlich) -->
+        <div class="tab-pane fade show active" id="users-tab">
+            <div class="rechte-info-banner">
+                <strong>So funktioniert's:</strong> Ein Ort für Rollen, Mitarbeiter-Struktur und Urlaub. Jeder User bekommt <strong>eine Portal-Rolle</strong> zugewiesen (bestimmt Navi &amp; Features). Hier pflegst du zusätzlich <strong>Mitarbeiter-Konfig</strong> (Abteilung, Genehmiger, Vertretung) und <strong>Urlaubsverwaltung</strong> (Ansprüche, Sperren).
+            </div>
+            <div class="d-flex gap-2 flex-wrap mb-3">
+                <input type="text" class="form-control" id="userSearch" placeholder="🔍 Name oder E-Mail suchen…" style="max-width: 280px;">
+                <select class="form-select" id="userFilterStatus" style="max-width: 200px;">
+                    <option value="alle">Alle User</option>
+                    <option value="ohne_rolle">⚠ Ohne Rolle</option>
+                    <option value="mit_override">✅ Mit Portal-Rolle</option>
+                    <option value="nur_default">📋 Nur Default</option>
+                </select>
+            </div>
+            <div class="small text-muted mb-2">
+                <span id="userCounter">0 von 0 Benutzern</span>
+                <span class="text-danger fw-bold ms-2" id="userNoRoleWarn" style="display:none;"></span>
+            </div>
+            <div class="table-responsive border rounded">
+                <table class="table table-hover mb-0" id="usersTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Mitarbeiter</th>
+                            <th>LDAP-Info</th>
+                            <th>Portal-Rolle</th>
+                            <th>Quelle</th>
+                            <th class="text-center" style="width:140px;">Aktion</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersBody">
+                        <tr>
+                            <td colspan="5" class="text-center py-4">
+                                <div class="spinner-border text-primary" role="status"></div>
+                                <div class="mt-2">Lade User...</div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <hr class="my-4">
+            <h5 class="mb-3"><i class="bi bi-shield-check me-1"></i>Rollen & Module (Feature-Zugriff)</h5>
+            <!-- Feature-Zugriff: Nach Rolle bearbeiten, Nach Feature/Matrix nur Übersicht -->
+            <div class="rechte-info-banner" style="background: linear-gradient(135deg, #faf5ff 0%, #fdf2f8 100%); border-color: #e9d5ff;">
+                <strong>Feature-Zugriff:</strong> Hier legst du fest, welche Module jede Rolle sehen darf. <strong>Zum Bearbeiten:</strong> Sicht „Nach Rolle“ — Rolle wählen, Häkchen setzen, speichern. „Nach Feature“ und „Matrix“ sind nur zur Übersicht (keine Bearbeitung).
+            </div>
+            <ul class="nav nav-pills mb-3" id="featureZugriffSubTabs" role="tablist">
+                <li class="nav-item">
+                    <button class="nav-link active" id="sub-nach-rolle-pill" data-bs-toggle="pill" data-bs-target="#sub-nach-rolle" type="button">Nach Rolle <span class="badge bg-primary ms-1">Bearbeiten</span></button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link" id="sub-nach-feature-pill" data-bs-toggle="pill" data-bs-target="#sub-nach-feature" type="button">Nach Feature (nur Übersicht)</button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link" id="sub-matrix-pill" data-bs-toggle="pill" data-bs-target="#sub-matrix" type="button">Matrix (nur Übersicht)</button>
+                </li>
+            </ul>
+            <div class="tab-content" id="featureZugriffSubContent">
+                <div class="tab-pane fade show active" id="sub-nach-rolle">
+                    <div class="mb-3 d-flex flex-wrap gap-2" id="roleSelectorButtons"></div>
+                    <div class="mb-3 p-3 rounded border" id="selectedRoleInfo" style="display:none;"></div>
+                    <div class="row g-3" id="roleFeaturesGrouped"></div>
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-primary" id="saveRoleFeaturesBtn2" onclick="saveRoleFeatures()" disabled>
+                            <i class="bi bi-check me-1"></i>Änderungen speichern
+                        </button>
+                    </div>
+                    <p class="text-muted small mt-3 mb-1"><i class="bi bi-funnel me-1"></i>Bei Listen-Features (Auftragseingang, Auslieferungen, OPOS, Leistungsübersicht Werkstatt): Filter-Verhalten direkt neben dem Feature wählen.</p>
+                </div>
+                <div class="tab-pane fade" id="sub-nach-feature">
+                    <div class="alert alert-info mb-3">
+                        <i class="bi bi-info-circle me-2"></i><strong>Nur Übersicht.</strong> Zum Ändern der Zugriffe: Sicht <strong>„Nach Rolle“</strong> verwenden (Rolle wählen, Häkchen setzen, speichern).
+                    </div>
+                    <h5 class="mb-2"><i class="bi bi-key me-1"></i>Welche Rollen haben welches Feature?</h5>
+                    <p class="text-muted small mb-3">Read-only — Änderungen nur in der Sicht „Nach Rolle“.</p>
+                    <div class="row" id="featuresGrid">
+                        <div class="col-12 text-center py-4">
+                            <div class="spinner-border text-primary" role="status"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="tab-pane fade" id="sub-matrix">
+                    <p class="text-muted small mb-2">Read-only — welche Rolle hat Zugriff auf welches Feature. Zum Ändern: Sicht <strong>„Nach Rolle“</strong> verwenden.</p>
+                    <div class="table-responsive border rounded">
+                        <table class="table table-sm rechte-matrix-table mb-0" id="matrixTable">
+                            <thead></thead>
+                            <tbody id="matrixBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: Mitarbeiter & Urlaub (gebündelt) -->
+        <div class="tab-pane fade" id="mitarbeiter-urlaub-tab">
+            <ul class="nav nav-pills mb-3" role="tablist">
+                <li class="nav-item"><a class="nav-link active" data-bs-toggle="pill" href="#sub-mitarbeiter-config"><i class="bi bi-person-gear me-1"></i>Mitarbeiter-Konfig</a></li>
+                <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#sub-urlaubsverwaltung"><i class="bi bi-umbrella me-1"></i>Urlaubsverwaltung</a></li>
+                <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#sub-mitarbeiterverwaltung"><i class="bi bi-people me-1"></i>Mitarbeiterverwaltung</a></li>
+            </ul>
+            <div class="tab-content">
+                <div class="tab-pane fade show active" id="sub-mitarbeiter-config">
+                    <div class="rechte-info-banner" style="background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border-color: #a7f3d0;">
+                        <strong>Mitarbeiter-Konfig:</strong> Abteilung, Standort, Genehmiger (Urlaub) und Vertretung pro Mitarbeiter. Genehmiger ergibt sich aus den Regeln (Gruppe/Standort). Vertretungen bearbeiten: <a href="/admin/organigramm" target="_blank">Organigramm <i class="bi bi-box-arrow-up-right small"></i></a> oder Stift pro Zeile.
+                    </div>
+                    <div class="d-flex gap-2 flex-wrap mb-3">
+                        <input type="text" class="form-control" id="mitarbeiterConfigSearch" placeholder="Mitarbeiter suchen…" style="max-width: 280px;">
+                        <select class="form-select" id="mitarbeiterConfigDept" style="max-width: 220px;">
+                            <option value="">Alle Abteilungen</option>
+                        </select>
+                    </div>
+                    <div class="small text-muted mb-2"><span id="mitarbeiterConfigCounter">0 Mitarbeiter</span></div>
+                    <div class="table-responsive border rounded">
+                        <table class="table table-hover mb-0" id="mitarbeiterConfigTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Mitarbeiter</th>
+                                    <th>Abteilung</th>
+                                    <th>Standort</th>
+                                    <th>Genehmiger (Urlaub)</th>
+                                    <th>Vertritt</th>
+                                    <th>wird vertreten</th>
+                                    <th class="text-center" style="width:100px;">Aktion</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mitarbeiterConfigBody">
+                                <tr><td colspan="7" class="text-center py-4"><div class="spinner-border text-primary"></div><div class="mt-2">Lade Mitarbeiter-Konfig…</div></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="tab-pane fade" id="sub-urlaubsverwaltung">
+                    <div class="rechte-info-banner" style="background: linear-gradient(135deg, #eff6ff 0%, #f0f9ff 100%); border-color: #bae6fd;">
+                        <strong>Urlaubsverwaltung:</strong> Ansprüche, Sperren und Freie Tage – alles hier. <a href="/urlaubsplaner/chef" class="ms-2" target="_blank"><i class="bi bi-diagram-3"></i> Chef-Übersicht öffnen</a>
+                    </div>
+                    <iframe src="/urlaubsplaner/admin?embed=1" class="border rounded w-100" style="min-height: calc(100vh - 280px); height: 900px;" title="Urlaubsplaner Administration"></iframe>
+                </div>
+                <div class="tab-pane fade" id="sub-mitarbeiterverwaltung">
+                    <div class="rechte-info-banner" style="background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border-color: #a7f3d0;">
+                        <strong>Mitarbeiterverwaltung:</strong> Digitale Personalakte – Stammdaten, Vertrag, Arbeitszeit, Urlaubseinstellungen. Links: Mitarbeiter wählen, rechts: Datensatz bearbeiten.
+                    </div>
+                    <iframe src="/admin/mitarbeiterverwaltung?embed=1" class="border rounded w-100" style="min-height: calc(100vh - 280px); height: 900px;" title="Mitarbeiterverwaltung"></iframe>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: Einstellungen (Navigation, Title-Mapping, E-Mail Reports, Architektur) -->
+        <div class="tab-pane fade" id="einstellungen-tab">
+            <ul class="nav nav-pills mb-3" role="tablist">
+                <li class="nav-item"><a class="nav-link active" data-bs-toggle="pill" href="#sub-navigation"><i class="bi bi-list-ul me-1"></i>Navigation</a></li>
+                <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#sub-titles"><i class="bi bi-card-text me-1"></i>Title-Mapping</a></li>
+                <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#sub-reports"><i class="bi bi-envelope-paper me-1"></i>E-Mail Reports</a></li>
+                <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#sub-architektur"><i class="bi bi-diagram-3 me-1"></i>Architektur</a></li>
+            </ul>
+            <div class="tab-content">
+                <div class="tab-pane fade show active" id="sub-navigation">
+                    <div class="card mb-3">
+                        <div class="card-header card-header-admin d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-list-ul me-2"></i>Navigation verwalten</span>
+                            <button class="btn btn-sm btn-light" onclick="loadNavigationItems()">
+                                <i class="bi bi-arrow-clockwise me-1"></i>Aktualisieren
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-info mb-3">
+                                <i class="bi bi-info-circle me-2"></i>
+                                Navigation-Items aus der Datenbank. Stift = bearbeiten, Papierkorb = löschen. Nach Änderung ggf. Browser aktualisieren.
+                                <strong>Feature-Zugriff</strong> (welche Rolle sieht welches Modul) wird unter <strong>User & Rollen → Rollen & Module</strong> gepflegt; hier nur Menüstruktur und <code>requires_feature</code> pro Menüpunkt.
+                            </div>
+                            <div id="navigationTree" class="mt-3">
+                                <div class="text-center py-4">
+                                    <div class="spinner-border text-primary" role="status"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="tab-pane fade" id="sub-titles">
+                    <div class="card">
+                        <div class="card-header card-header-admin">
+                            <i class="bi bi-card-text me-2"></i>LDAP-Title zu Portal-Rolle
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-sm title-mapping mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>LDAP-Title</th>
+                                            <th>Portal-Rolle</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="titlesBody">
+                                        <tr>
+                                            <td colspan="2" class="text-center py-3">
+                                                <div class="spinner-border spinner-border-sm text-primary"></div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-warning mt-3">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        Diese Mappings sind in <code>config/roles_config.py</code> definiert.
+                        Zum Hinzufuegen neuer Titles muss die Datei bearbeitet werden.
+                    </div>
+                </div>
+                <div class="tab-pane fade" id="sub-reports">
+                    <div class="alert alert-info d-none" id="migrationAlert">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-info-circle me-2"></i>Bestehende Empfaenger wurden noch nicht migriert.</span>
+                            <button class="btn btn-sm btn-primary" onclick="migrateSubscribers()">
+                                <i class="bi bi-arrow-repeat me-1"></i>Jetzt migrieren
+                            </button>
+                        </div>
+                    </div>
+                    <div class="row" id="reportsGrid">
+                        <div class="col-12 text-center py-4">
+                            <div class="spinner-border text-primary" role="status"></div>
+                            <div class="mt-2">Lade Reports...</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="tab-pane fade" id="sub-architektur">
+                    <div class="rechte-info-banner" style="background: linear-gradient(135deg, #f0fdfa 0%, #ecfdf5 100%); border-color: #99f6e4;">
+                        <strong>Architektur:</strong> So wird die Portal-Rolle ermittelt — eine klare Kaskade.
+                    </div>
+                    <div class="rechte-arch-step" style="border-color: #6366f1; background: #6366f108;">
+                        <strong>1. Login via LDAP</strong><br>
+                        <small class="text-muted">AD liefert nur: ✓ Identität (wer bist du?) — KEINE Rechte!</small>
+                    </div>
+                    <div class="rechte-arch-step" style="border-color: #dc2626; background: #dc262608;">
+                        <strong>2. admin in user_roles?</strong><br>
+                        <small class="text-muted">Ja → Rolle = admin, voller Zugriff. Fertig.</small>
+                    </div>
+                    <div class="rechte-arch-step" style="border-color: #059669; background: #05966908;">
+                        <strong>3. portal_role_override gesetzt?</strong><br>
+                        <small class="text-muted">Ja → Diese Rolle verwenden (vom Admin im Portal zugewiesen).</small>
+                    </div>
+                    <div class="rechte-arch-step" style="border-color: #6b7280; background: #f9fafb;">
+                        <strong>4. Fallback: mitarbeiter</strong><br>
+                        <small class="text-muted">Minimaler Zugriff (nur Urlaubsplaner, eigene Daten).</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Modal: Navigation-Item bearbeiten -->
+<div class="modal fade" id="navEditModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Navigation-Item bearbeiten</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="navEditId" value="">
+                <div class="mb-2">
+                    <label class="form-label small">Label</label>
+                    <input type="text" class="form-control" id="navEditLabel" placeholder="Anzeigename">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">URL</label>
+                    <input type="text" class="form-control" id="navEditUrl" placeholder="/pfad/">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">Icon (z.B. bi-house)</label>
+                    <input type="text" class="form-control" id="navEditIcon" placeholder="bi-house">
+                </div>
+                <div class="row mb-2">
+                    <div class="col-6">
+                        <label class="form-label small">Feature (optional)</label>
+                        <input type="text" class="form-control" id="navEditRequiresFeature" placeholder="z.B. bankenspiegel">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">Rollen (optional)</label>
+                        <input type="text" class="form-control" id="navEditRoleRestriction" placeholder="admin,buchhaltung">
+                    </div>
+                </div>
+                <div class="form-check mb-2">
+                    <input type="checkbox" class="form-check-input" id="navEditActive" checked>
+                    <label class="form-check-label" for="navEditActive">Aktiv</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-primary" onclick="saveNavigationItem()">
+                    <i class="bi bi-check me-1"></i>Speichern
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Mitarbeiter-Konfig bearbeiten (Stammdaten, Vertretungen, Urlaub) -->
+<div class="modal fade" id="mitarbeiterConfigModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-person-gear me-2"></i>Mitarbeiter bearbeiten</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
+                <input type="hidden" id="mitarbeiterConfigEmpId" value="">
+                <h6 id="mitarbeiterConfigEmpName" class="mb-3"></h6>
+                <div class="alert alert-light border py-2 mb-3 small" id="mitarbeiterConfigLocosoftInfo">
+                    <strong>Locosoft-ID (für Filter „nur eigene“):</strong> <span id="mitarbeiterConfigLocosoftId">—</span>
+                    <span class="text-muted ms-1">(Auftragseingang, Auslieferungen, OPOS, Leistungsübersicht Werkstatt)</span>
+                    <br><span class="text-muted">Zum Setzen: <a href="#" id="mitarbeiterConfigPersonalakteLinkLocosoft">Digitale Personalakte</a> → Sync aus Locosoft, oder manuell in der DB (<code>ldap_employee_mapping.locosoft_id</code>).</span>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label small">Abteilung</label>
+                            <select class="form-select" id="mitarbeiterConfigDeptEdit"></select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small">Standort</label>
+                            <select class="form-select" id="mitarbeiterConfigLocationEdit">
+                                <option value="">—</option>
+                                <option value="Deggendorf">Deggendorf</option>
+                                <option value="Landau a.d. Isar">Landau a.d. Isar</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small">Vertritt (stellt sich für)</label>
+                        <div id="mitarbeiterConfigVertrittList" class="small mb-2 border rounded p-2" style="min-height: 38px; max-height: 120px; overflow-y: auto;"></div>
+                        <div class="input-group input-group-sm mb-3">
+                            <select class="form-select" id="mitarbeiterConfigVertrittAdd" style="max-width: 200px;"><option value="">— hinzufügen —</option></select>
+                            <button type="button" class="btn btn-outline-primary" onclick="addVertretungRule('vertritt')"><i class="bi bi-plus"></i></button>
+                        </div>
+                        <label class="form-label small">Wird vertreten von</label>
+                        <div id="mitarbeiterConfigWirdVertretenList" class="small mb-2 border rounded p-2" style="min-height: 38px; max-height: 120px; overflow-y: auto;"></div>
+                        <div class="input-group input-group-sm">
+                            <select class="form-select" id="mitarbeiterConfigWirdVertretenAdd" style="max-width: 200px;"><option value="">— hinzufügen —</option></select>
+                            <button type="button" class="btn btn-outline-primary" onclick="addVertretungRule('wird_vertreten')"><i class="bi bi-plus"></i></button>
+                        </div>
+                    </div>
+                </div>
+                <p class="small text-muted mb-0 mt-2"><a href="/admin/organigramm#substitutes" target="_blank"><i class="bi bi-diagram-3"></i> Alle Vertretungsregeln im Organigramm</a></p>
+
+                <hr class="my-4">
+                <h6 class="text-secondary mb-3"><i class="bi bi-umbrella me-1"></i> Urlaub</h6>
+                <div class="row">
+                    <div class="col-md-4">
+                        <label class="form-label small">Urlaubsanspruch (Jahr)</label>
+                        <select class="form-select form-select-sm" id="mitarbeiterConfigUrlaubYear">
+                            <option value="2025">2025</option>
+                            <option value="2026">2026</option>
+                            <option value="2027">2027</option>
+                            <option value="2024">2024</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small">Anspruch (Tage)</label>
+                        <input type="number" class="form-control form-control-sm" id="mitarbeiterConfigUrlaubAnspruch" min="0" max="60" step="0.5" placeholder="27">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small">Übertrag</label>
+                        <input type="number" class="form-control form-control-sm" id="mitarbeiterConfigUrlaubUebertrag" min="0" max="30" step="0.5" placeholder="0">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small">Korrektur (+/-)</label>
+                        <input type="number" class="form-control form-control-sm" id="mitarbeiterConfigUrlaubKorrektur" step="0.5" placeholder="0">
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-3">
+                        <label class="form-label small">Max. Urlaubslänge (am Stück)</label>
+                        <input type="number" class="form-control form-control-sm" id="mitarbeiterConfigMaxUrlaubslänge" min="1" max="30" placeholder="14">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small">Berechnung Urlaubswertung</label>
+                        <select class="form-select form-select-sm" id="mitarbeiterConfigCalculationMethod">
+                            <option value="standard">Standard (Wertung an Arbeitstagen)</option>
+                        </select>
+                    </div>
+                </div>
+                <p class="small text-muted mt-2 mb-0"><a href="#" id="mitarbeiterConfigPersonalakteLink" target="_blank"><i class="bi bi-folder2-open me-1"></i> Alle Daten in der Digitalen Personalakte bearbeiten</a></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-primary" onclick="saveMitarbeiterConfig()"><i class="bi bi-check me-1"></i>Speichern</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Rollen bearbeiten -->
+<div class="modal fade" id="roleModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-shield me-2"></i>Rollen bearbeiten
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h6 id="modalUserName" class="mb-3"></h6>
+                <p class="text-muted small">Klicke auf eine Rolle um sie zuzuweisen/zu entfernen:</p>
+                <div id="roleToggles" class="text-center"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schliessen</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Startseite konfigurieren -->
+<div class="modal fade" id="dashboardModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-house-door me-2"></i>Startseite konfigurieren
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h6 id="dashboardModalUserName" class="mb-3"></h6>
+                <p class="text-muted small mb-3">Wähle die Startseite für diesen User:</p>
+                <select class="form-select" id="dashboardSelect">
+                    <option value="">Standard (rollenbasiert)</option>
+                </select>
+                <div class="mt-3">
+                    <small class="text-muted" id="dashboardPreview"></small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-danger" id="resetDashboardBtn" onclick="resetUserDashboard()" style="display: none;">
+                    <i class="bi bi-arrow-counterclockwise me-1"></i>Zurücksetzen
+                </button>
+                <button type="button" class="btn btn-primary" onclick="saveUserDashboard()">
+                    <i class="bi bi-check me-1"></i>Speichern
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Rechte & Navi für User (nur Anzeige) -->
+<div class="modal fade" id="effectiveRightsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-eye me-2"></i>Rechte & Navi für <span id="effectiveRightsUserName"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="effectiveRightsLoading" class="text-center py-4">
+                    <div class="spinner-border text-primary"></div>
+                    <div class="mt-2">Lade Rechte…</div>
+                </div>
+                <div id="effectiveRightsContent" style="display: none;">
+                    <p class="text-muted small mb-3">Nur Anzeige – Bearbeitung: Rolle in der Tabelle, Features unter „Rollen & Module“.</p>
+                    <div class="mb-3">
+                        <strong>Wirksame Rolle:</strong> <span id="effectiveRightsRole" class="badge bg-secondary"></span>
+                    </div>
+                    <div class="mb-3">
+                        <strong>Features (Zugriff):</strong>
+                        <div id="effectiveRightsFeatures" class="small border rounded p-2 bg-light" style="max-height: 140px; overflow-y: auto;"></div>
+                    </div>
+                    <div>
+                        <strong>Navigation (sichtbare Menüpunkte):</strong>
+                        <div id="effectiveRightsNav" class="small border rounded p-2 bg-light" style="max-height: 220px; overflow-y: auto;"></div>
+                    </div>
+                </div>
+                <div id="effectiveRightsError" class="alert alert-danger" style="display: none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Feature-Zugriff bearbeiten -->
+<div class="modal fade" id="featureModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-key me-2"></i>Feature-Zugriff bearbeiten
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h6 id="featureModalName" class="mb-3"></h6>
+                <p class="text-muted small mb-3">Klicke auf eine Rolle um sie zuzuweisen/zu entfernen:</p>
+                <div id="featureRoleToggles" class="text-center"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>
+                <button type="button" class="btn btn-primary" onclick="saveFeatureAccess()">
+                    <i class="bi bi-check me-1"></i>Speichern
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Report Subscribers -->
+<div class="modal fade" id="reportModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <span id="reportModalIcon"></span>
+                    <span id="reportModalTitle"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted mb-3" id="reportModalDesc"></p>
+
+                <!-- Report-Parameter (nur für konfigurierbare Reports) -->
+                <div class="card mb-3 d-none" id="alarmConfigCard">
+                    <div class="card-header bg-light py-2">
+                        <i class="bi bi-sliders me-1"></i>Alarm-Parameter
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-2">
+                            <div class="col-md-3">
+                                <label class="form-label small mb-0">Min. Überschreitung (%)</label>
+                                <input type="number" min="100" step="1" class="form-control form-control-sm" id="alarmMinPercent">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-0">Min. aktive Min.</label>
+                                <input type="number" min="0" step="1" class="form-control form-control-sm" id="alarmMinActiveMinutes">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-0">Startstunde</label>
+                                <input type="number" min="0" max="23" step="1" class="form-control form-control-sm" id="alarmStartHour">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-0">Endstunde</label>
+                                <input type="number" min="1" max="24" step="1" class="form-control form-control-sm" id="alarmEndHour">
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <label class="form-label small mb-1">Auftragsarten</label>
+                            <div class="d-flex flex-wrap gap-3">
+                                <label class="form-check-label">
+                                    <input type="checkbox" class="form-check-input me-1" id="alarmTypeKunde">Kunde
+                                </label>
+                                <label class="form-check-label">
+                                    <input type="checkbox" class="form-check-input me-1" id="alarmTypeIntern">Intern
+                                </label>
+                                <label class="form-check-label">
+                                    <input type="checkbox" class="form-check-input me-1" id="alarmTypeGarantie">Garantie
+                                </label>
+                                <label class="form-check-label">
+                                    <input type="checkbox" class="form-check-input me-1" id="alarmTypeSonstige">Sonstige
+                                </label>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="saveAlarmConfig()">
+                                <i class="bi bi-check2 me-1"></i>Parameter speichern
+                            </button>
+                            <span id="alarmConfigResult" class="small ms-2 text-muted"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Testversand: Einzelnen Report an eine Adresse senden -->
+                <div class="card mb-3 border-primary">
+                    <div class="card-header bg-light py-2">
+                        <i class="bi bi-send-check me-1"></i>Testversand
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-2">Report einmalig an eine E-Mail-Adresse senden (z.B. zum Prüfen von Inhalt und Anhang).</p>
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-5">
+                                <label class="form-label small mb-0">E-Mail-Adresse</label>
+                                <input type="email" class="form-control form-control-sm" id="testSendEmail"
+                                       placeholder="z.B. name@auto-greiner.de" list="employeeEmails">
+                            </div>
+                            <div class="col-md-3" id="testStandortContainer">
+                                <label class="form-label small mb-0">Standort (optional)</label>
+                                <select class="form-select form-select-sm" id="testSendStandort">
+                                    <option value="">Gesamt / Alle</option>
+                                    <option value="DEG">Deggendorf</option>
+                                    <option value="LAN">Landau</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <button type="button" class="btn btn-primary btn-sm w-100" id="btnTestSend" onclick="sendTestReport()">
+                                    <i class="bi bi-send me-1"></i>Jetzt an diese Adresse senden
+                                </button>
+                            </div>
+                        </div>
+                        <div id="testSendResult" class="mt-2 small" style="display: none;"></div>
+                    </div>
+                </div>
+
+                <!-- Neuen Subscriber hinzufuegen -->
+                <div class="card mb-3">
+                    <div class="card-header bg-light py-2">
+                        <i class="bi bi-plus-circle me-1"></i>Empfaenger hinzufuegen
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-2">
+                            <div class="col-md-5">
+                                <input type="email" class="form-control" id="newSubscriberEmail"
+                                       placeholder="E-Mail-Adresse" list="employeeEmails">
+                                <datalist id="employeeEmails"></datalist>
+                            </div>
+                            <div class="col-md-3" id="standortSelectContainer">
+                                <select class="form-select" id="newSubscriberStandort">
+                                    <option value="">Alle Standorte</option>
+                                    <option value="DEG">Deggendorf</option>
+                                    <option value="LAN">Landau</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <button class="btn btn-primary w-100" onclick="addSubscriber()">
+                                    <i class="bi bi-plus me-1"></i>Hinzufuegen
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Aktuelle Subscriber -->
+                <div class="card">
+                    <div class="card-header bg-light py-2 d-flex justify-content-between">
+                        <span><i class="bi bi-people me-1"></i>Aktuelle Empfaenger</span>
+                        <span class="badge bg-primary" id="subscriberCount">0</span>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="subscriber-list" id="subscriberList">
+                            <div class="text-center py-4 text-muted">Keine Empfaenger</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schliessen</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let usersData = [];
+let rolesData = [];
+let availablePortalRoles = [];
+let featureData = {};
+let filterModeData = [];
+let titleData = {};
+let reportsData = {};
+let currentReportId = null;
+let employeesData = [];
+let employeesConfigData = [];
+let availableDashboards = [];
+let currentDashboardUserId = null;
+let selectedRoleForFeatures = '';
+let currentReportConfig = {};
+
+// Feature-Gruppen für Rollen-Features und Matrix (Lesbarkeit)
+// Alle Features aus Nav (requires_feature) erscheinen durch API-Ergänzung; hier nur Gruppierung
+var FEATURE_GROUPS = {
+    bankenspiegel: 'Finanzen', controlling: 'Finanzen', zinsen: 'Finanzen',
+    afa_verkaufsempfehlungen: 'Controlling',
+    einkaufsfinanzierung: 'Finanzen', fahrzeugfinanzierungen: 'Finanzen', opos: 'Finanzen',
+    auftragseingang: 'Verkauf', auslieferungen: 'Verkauf', verkauf_dashboard: 'Verkauf',
+    fahrzeuge: 'Verkauf', stellantis_bestand: 'Verkauf', verkaeufer_zielplanung: 'Verkauf',
+    urlaubsplaner: 'HR / Urlaub', mitarbeiterverwaltung: 'HR / Urlaub', organigramm: 'HR / Urlaub',
+    urlaub_genehmigen: 'HR / Urlaub',
+    teilebestellungen: 'Werkstatt / Teile', aftersales: 'Werkstatt / Teile',
+    werkstatt: 'Werkstatt', gudat: 'Werkstatt', stempeluhr: 'Werkstatt', werkstatt_live: 'Werkstatt',
+    fahrzeuganlage: 'Werkstatt',
+    planung: 'Planung', abteilungsleiter_planung: 'Planung', kst_ziele: 'Planung',
+    provision: 'Vergütung',
+    whatsapp: 'Integrationen', whatsapp_teile: 'Integrationen', whatsapp_verkauf: 'Integrationen',
+    marketing_potenzial: 'Marketing',
+    qa_dashboard: 'Qualität', sb_dashboard: 'Werkstatt / Teile', sb_ranking: 'Werkstatt / Teile',
+    navigation: 'System', rechteverwaltung: 'System'
+};
+
+// Laden beim Start
+document.addEventListener('DOMContentLoaded', function() {
+    loadUsersRoles();
+    loadFeatureAccess();
+    loadReports();
+    loadEmployees();
+    loadDashboards();
+    // Tab-Wechsel: Mitarbeiter & Urlaub – beim Öffnen des Tabs Mitarbeiter-Konfig nachladen
+    const tabMitarbeiterUrlaub = document.querySelector('a[href="#mitarbeiter-urlaub-tab"]');
+    if (tabMitarbeiterUrlaub) {
+        tabMitarbeiterUrlaub.addEventListener('shown.bs.tab', function() {
+            loadEmployeesConfig();
+        });
+    }
+    // Urlaubsverwaltung-Tab lädt Vollansicht per iframe, kein JS-Load nötig
+    // Filter Mitarbeiter-Konfig
+    const searchMc = document.getElementById('mitarbeiterConfigSearch');
+    const deptMc = document.getElementById('mitarbeiterConfigDept');
+    if (searchMc) searchMc.addEventListener('input', renderMitarbeiterConfigTable);
+    if (deptMc) deptMc.addEventListener('change', renderMitarbeiterConfigTable);
+});
+
+// User & Rollen laden
+async function loadUsersRoles() {
+    try {
+        const response = await fetch('/api/admin/users-roles');
+        const data = await response.json();
+
+        usersData = data.users;
+        rolesData = data.available_roles;
+        availablePortalRoles = data.available_portal_roles || [];
+
+        renderUsersTable();
+        // Rollen-Features-Tab: Buttons und ggf. gruppierte Checkboxen nachziehen (Ladereihenfolge unabhängig)
+        renderRoleSelectorButtons();
+        if (featureData && Object.keys(featureData).length && (availablePortalRoles || []).length) {
+            if (!selectedRoleForFeatures) selectedRoleForFeatures = availablePortalRoles[0];
+            renderRoleFeaturesGrouped(selectedRoleForFeatures);
+            const infoEl = document.getElementById('selectedRoleInfo');
+            if (infoEl) {
+                const role = selectedRoleForFeatures;
+                const count = Object.keys(featureData).filter(f => (featureData[f] || []).includes(role) || (featureData[f] || []).includes('*')).length;
+                infoEl.style.display = 'block';
+                infoEl.innerHTML = '<strong>Rolle: ' + escapeHtml(role) + '</strong> — ' + count + ' Features mit Zugriff. Checkboxen unten anpassen und speichern.';
+            }
+            document.querySelectorAll('#roleSelectorButtons .rechte-role-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.role === selectedRoleForFeatures);
+            });
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        document.getElementById('usersBody').innerHTML =
+            '<tr><td colspan="9" class="text-danger text-center">Fehler beim Laden</td></tr>';
+    }
+}
+
+// Feature-Zugriff laden (cacheBuster z.B. Date.now() für frischen Abruf nach Speichern)
+async function loadFeatureAccess(cacheBuster) {
+    try {
+        const qs = cacheBuster ? '?_=' + cacheBuster : '';
+        const [accRes, modesRes] = await Promise.all([
+            fetch('/api/admin/feature-access' + qs, { cache: 'no-store', credentials: 'same-origin' }),
+            fetch('/api/admin/feature-filter-modes' + qs, { cache: 'no-store', credentials: 'same-origin' }).catch(() => ({ ok: false }))
+        ]);
+        const data = await accRes.json();
+        featureData = data.feature_access;
+        titleData = data.title_to_role;
+
+        if (modesRes.ok) {
+            const modesJson = await modesRes.json();
+            filterModeData = modesJson.modes || [];
+        } else {
+            filterModeData = [];
+        }
+
+        renderFeaturesGrid();
+        renderTitlesTable();
+        renderRoleSelectorButtons();
+        renderMatrixTable();
+        renderFilterModeTable();
+        if (selectedRoleForFeatures) renderRoleFeaturesGrouped(selectedRoleForFeatures);
+    } catch (error) {
+        console.error('Fehler:', error);
+    }
+}
+
+var FILTER_FEATURES = ['auftragseingang', 'auslieferungen', 'opos', 'werkstatt_leistungsuebersicht'];
+var FILTER_MODE_LABELS = { own_only: 'Nur eigene (Filter nicht auflösbar)', own_default: 'Eigene, Filter auflösbar', all_filterable: 'Alle, kann filtern' };
+
+function getFilterModeFor(feature, role) {
+    const r = filterModeData.find(m => m.feature_name === feature && m.role_name === role);
+    return r ? r.filter_mode : 'all_filterable';
+}
+
+// Filter-Verhalten ist jetzt inline in renderRoleFeaturesGrouped (Dropdown pro Listen-Feature)
+function renderFilterModeTable() {
+    if (selectedRoleForFeatures) renderRoleFeaturesGrouped(selectedRoleForFeatures);
+}
+
+async function saveFilterMode(featureName, roleName, filterMode) {
+    try {
+        const res = await fetch('/api/admin/feature-filter-mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ feature_name: featureName, role_name: roleName, filter_mode: filterMode })
+        });
+        const data = await res.json();
+        if (data.success) {
+            const existing = filterModeData.find(m => m.feature_name === featureName && m.role_name === roleName);
+            if (existing) existing.filter_mode = filterMode; else filterModeData.push({ feature_name: featureName, role_name: roleName, filter_mode: filterMode });
+        } else {
+            alert('Fehler: ' + (data.error || 'Unbekannt'));
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Fehler beim Speichern des Filter-Modus');
+    }
+}
+
+// Gefilterte User-Liste (Suche + Status)
+function getFilteredUsers() {
+    const search = (document.getElementById('userSearch') || {}).value || '';
+    const filterStatus = (document.getElementById('userFilterStatus') || {}).value || 'alle';
+    const q = search.toLowerCase().trim();
+    let list = usersData;
+    if (q) {
+        list = list.filter(u => {
+            const name = (u.display_name || '').toLowerCase();
+            const email = (u.email || '').toLowerCase();
+            return name.includes(q) || email.includes(q);
+        });
+    }
+    if (filterStatus === 'ohne_rolle') {
+        list = list.filter(u => !(u.portal_role_override || '').trim());
+    } else if (filterStatus === 'mit_override') {
+        list = list.filter(u => (u.portal_role_override || '').trim());
+    } else if (filterStatus === 'nur_default') {
+        list = list.filter(u => !(u.portal_role_override || '').trim());
+    }
+    return list;
+}
+
+// User-Tabelle rendern (Mockup: Mitarbeiter, LDAP-Info, Portal-Rolle, Quelle, Aktion)
+function renderUsersTable() {
+    const tbody = document.getElementById('usersBody');
+    const filtered = getFilteredUsers();
+
+    if (usersData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center">Keine User gefunden</td></tr>';
+        updateRechteStatusBar(0, 0, 0);
+        return;
+    }
+
+    const hasOverride = usersData.filter(u => (u.portal_role_override || '').trim()).length;
+    const defaultCount = usersData.length - hasOverride;
+    updateRechteStatusBar(hasOverride, defaultCount, defaultCount);
+
+    document.getElementById('tabUserCount').textContent = usersData.length;
+    document.getElementById('userCounter').textContent = filtered.length + ' von ' + usersData.length + ' Benutzern';
+    const noRoleCount = usersData.filter(u => !(u.portal_role_override || '').trim()).length;
+    const warnEl = document.getElementById('userNoRoleWarn');
+    if (noRoleCount > 0) {
+        warnEl.textContent = '⚠ ' + noRoleCount + ' ohne zugewiesene Portal-Rolle (nutzen Default)';
+        warnEl.style.display = 'inline';
+    } else {
+        warnEl.style.display = 'none';
+    }
+
+    tbody.innerHTML = filtered.map(user => {
+        const effectiveRole = user.effective_portal_role || 'mitarbeiter';
+        const effectiveRoleClass = getRoleClass(effectiveRole);
+        const currentOverride = (user.portal_role_override || '').trim();
+        const sourcePortal = currentOverride !== '';
+        const lastLogin = user.last_login ? new Date(user.last_login).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+        const noRoleRow = !sourcePortal ? ' user-row-no-role' : '';
+
+        const portalRoleOptions = ['', ...availablePortalRoles].map(r => {
+            const label = r === '' ? '— Bitte zuweisen —' : r;
+            const selected = currentOverride === r ? ' selected' : '';
+            return `<option value="${r}"${selected}>${label}</option>`;
+        }).join('');
+
+        return `
+            <tr class="user-row${noRoleRow}" data-user-id="${user.id}">
+                <td>
+                    <strong>${escapeHtml(user.display_name)}</strong>
+                    <div class="small text-muted">Letzter Login: ${lastLogin}</div>
+                </td>
+                <td>
+                    <span class="text-muted small">${escapeHtml(user.ou || '—')}</span>
+                    <div class="small">${escapeHtml(user.title || '—')}</div>
+                </td>
+                <td><span class="badge role-badge ${effectiveRoleClass}">${effectiveRole}</span></td>
+                <td>
+                    ${sourcePortal ? '<span class="rechte-source-portal">Portal ✓</span>' : '<span class="rechte-source-default">Default</span>'}
+                </td>
+                <td class="text-center">
+                    <select class="form-select form-select-sm portal-role-select" style="max-width: 11rem; display: inline-block;"
+                            data-user-id="${user.id}" onchange="setPortalRole(${user.id}, this.value)">
+                        ${portalRoleOptions}
+                    </select>
+                    <div class="mt-1">
+                        <button class="btn btn-sm btn-outline-primary me-1" data-user-id="${user.id}" data-user-name="${escapeHtml(user.display_name)}" onclick="openEffectiveRightsModalFromBtn(this)" title="Rechte & Navi anzeigen"><i class="bi bi-eye"></i></button>
+                        <button class="btn btn-sm btn-outline-secondary me-1" data-user-id="${user.id}" data-user-name="${escapeHtml(user.display_name)}" data-user-roles="${escapeHtml(user.roles)}" onclick="openRoleModalFromBtn(this)" title="DB-Rollen"><i class="bi bi-pencil"></i></button>
+                        <button class="btn btn-sm btn-outline-secondary" data-user-id="${user.id}" data-user-name="${escapeHtml(user.display_name)}" data-user-url="${(user.dashboard_url || '').replace(/"/g, '&quot;')}" onclick="openDashboardModalFromBtn(this)" title="Startseite"><i class="bi bi-house-door"></i></button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function updateRechteStatusBar(withRole, defaultCount, noRole) {
+    const el = (id) => document.getElementById(id);
+    if (el('statWithRole')) el('statWithRole').textContent = withRole;
+    if (el('statDefault')) el('statDefault').textContent = defaultCount;
+    if (el('statNoRole')) el('statNoRole').textContent = noRole;
+}
+
+function escapeHtml(s) {
+    if (s == null) return '';
+    const div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+}
+
+async function setPortalRole(userId, value) {
+    const portalRole = value === '' ? null : value;
+    try {
+        const response = await fetch(`/api/admin/user/${userId}/portal-role`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ portal_role: portalRole })
+        });
+        const result = await response.json();
+        if (result.success) {
+            await loadUsersRoles();
+        } else {
+            alert('Fehler: ' + (result.error || result.message));
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Fehler beim Speichern');
+    }
+}
+
+// Rollen-Klasse für Badges (Mockup-Farben)
+function getRoleClass(role) {
+    if (!role) return 'role-default';
+    const r = (role + '').toLowerCase();
+    if (r === 'admin') return 'role-admin';
+    if (r === 'buchhaltung') return 'role-buchhaltung';
+    if (r === 'verkauf_leitung') return 'role-verkauf_leitung';
+    if (r === 'verkauf') return 'role-verkauf';
+    if (r === 'werkstatt_leitung') return 'role-werkstatt_leitung';
+    if (r === 'werkstatt') return 'role-werkstatt';
+    if (r === 'service_leitung') return 'role-service_leitung';
+    if (r === 'serviceberater') return 'role-serviceberater';
+    if (r === 'service') return 'role-service';
+    if (r === 'disposition') return 'role-disposition';
+    if (r === 'lager') return 'role-lager';
+    if (r === 'callcenter') return 'role-callcenter';
+    if (r === 'marketing') return 'role-marketing';
+    if (r === 'mitarbeiter') return 'role-mitarbeiter';
+    return 'role-default';
+}
+
+// Features-Grid rendern (read-only in "Nach Feature" – keine Bearbeitung)
+function renderFeaturesGrid() {
+    const grid = document.getElementById('featuresGrid');
+    if (!grid) return;
+
+    const html = Object.entries(featureData).map(([feature, roles]) => {
+        const rolesList = roles.map(r => {
+            const cls = r === 'admin' ? 'admin' : (r === 'buchhaltung' ? 'buchhaltung' : '');
+            return `<span class="feature-role ${cls}">${r}</span>`;
+        }).join('');
+
+        return `
+            <div class="col-md-4 col-lg-3">
+                <div class="feature-card">
+                    <div class="card-header">
+                        <span><i class="bi bi-key me-1"></i>${escapeHtml(feature)}</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="feature-roles">${rolesList}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    grid.innerHTML = html;
+}
+
+// "Nach Feature" ist nur noch Übersicht – keine Bearbeitung (onRoleForFeaturesChange nicht mehr genutzt)
+function onRoleForFeaturesChange() {
+    // Platzhalter falls noch irgendwo aufgerufen; Rolle/Checkboxen nur in "Nach Rolle"
+}
+
+// Rollen-Features Tab: Rollen als Buttons
+function renderRoleSelectorButtons() {
+    const container = document.getElementById('roleSelectorButtons');
+    if (!container) return;
+    const roles = availablePortalRoles || [];
+    container.innerHTML = roles.map(role => {
+        const count = Object.keys(featureData || {}).filter(f => {
+            const r = featureData[f] || [];
+            return r.includes(role) || r.includes('*');
+        }).length;
+        const active = selectedRoleForFeatures === role ? ' active' : '';
+        const cls = getRoleClass(role);
+        return `<button type="button" class="rechte-role-btn ${cls}${active}" data-role="${escapeHtml(role)}" onclick="selectRoleForFeatures(this.getAttribute('data-role'))">${escapeHtml(role)} <span class="badge bg-secondary ms-1">${count}</span></button>`;
+    }).join('');
+}
+
+function selectRoleForFeatures(role) {
+    selectedRoleForFeatures = role;
+    document.querySelectorAll('#roleSelectorButtons .rechte-role-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.dataset.role === role) btn.classList.add('active');
+    });
+    const infoEl = document.getElementById('selectedRoleInfo');
+    if (infoEl) {
+        const count = Object.keys(featureData || {}).filter(f => {
+            const r = featureData[f] || [];
+            return r.includes(role) || r.includes('*');
+        }).length;
+        infoEl.style.display = 'block';
+        infoEl.innerHTML = '<strong>Rolle: ' + escapeHtml(role) + '</strong> — ' + count + ' Features mit Zugriff. Checkboxen unten anpassen und speichern.';
+    }
+    renderRoleFeaturesGrouped(role);
+    const saveBtn = document.getElementById('saveRoleFeaturesBtn2');
+    if (saveBtn) saveBtn.disabled = false;
+}
+
+// Rollen-Features Tab: gruppierte Feature-Checkboxen; bei Listen-Features Filter-Dropdown inline
+function renderRoleFeaturesGrouped(role) {
+    const container = document.getElementById('roleFeaturesGrouped');
+    if (!container) return;
+    const allFeatures = Object.keys(featureData || {}).sort();
+    const byGroup = {};
+    allFeatures.forEach(f => {
+        const group = FEATURE_GROUPS[f] || 'Sonstige';
+        if (!byGroup[group]) byGroup[group] = [];
+        byGroup[group].push(f);
+    });
+    const groupOrder = ['Finanzen', 'Verkauf', 'Werkstatt / Teile', 'Werkstatt', 'HR / Urlaub', 'Planung', 'Vergütung', 'Integrationen', 'System', 'Sonstige'];
+    const filterLabels = { own_only: 'Nur eigene', own_default: 'Eigene, filterbar', all_filterable: 'Alle' };
+    let html = '';
+    groupOrder.forEach(g => {
+        const features = byGroup[g];
+        if (!features || !features.length) return;
+        const cells = features.map((f, i) => {
+            const roles = featureData[f] || [];
+            const checked = roles.includes(role) || roles.includes('*') ? ' checked' : '';
+            const safeId = 'rfg_' + g.replace(/\s/g, '_') + '_' + i;
+            let filterHtml = '';
+            if (FILTER_FEATURES && FILTER_FEATURES.includes(f)) {
+                const current = getFilterModeFor(f, role);
+                const opts = ['own_only', 'own_default', 'all_filterable'].map(m =>
+                    '<option value="' + m + '"' + (current === m ? ' selected' : '') + '>' + (filterLabels[m] || m) + '</option>'
+                ).join('');
+                filterHtml = ' <select class="form-select form-select-sm d-inline-block ms-1 filter-mode-inline" style="max-width:130px" data-feature="' + escapeHtml(f) + '" data-role="' + escapeHtml(role) + '">' + opts + '</select>';
+            }
+            return `<div class="form-check d-flex align-items-center flex-wrap gap-1"><input class="form-check-input" type="checkbox" id="${safeId}" data-feature="${escapeHtml(f)}" ${checked}><label class="form-check-label" for="${safeId}">${escapeHtml(f)}</label>${filterHtml}</div>`;
+        }).join('');
+        html += `<div class="col-md-6 col-lg-4"><div class="rechte-feature-group-card"><div class="group-head">${escapeHtml(g)}</div><div class="p-2">${cells}</div></div></div>`;
+    });
+    container.innerHTML = html || '<div class="col-12 text-muted">Keine Features.</div>';
+    container.querySelectorAll('.filter-mode-inline').forEach(sel => {
+        sel.addEventListener('change', function() { saveFilterMode(this.dataset.feature, this.dataset.role, this.value); });
+    });
+}
+
+// Matrix-Tab: Feature × Rolle (read-only)
+// Rollen aus featureData + availablePortalRoles, damit alle Spalten erscheinen (unabhängig von Ladereihenfolge)
+function renderMatrixTable() {
+    const thead = document.querySelector('#matrixTable thead');
+    const tbody = document.getElementById('matrixBody');
+    if (!thead || !tbody) return;
+    const features = Object.keys(featureData || {}).sort();
+    const fromData = new Set();
+    Object.values(featureData || {}).forEach(arr => arr.forEach(r => { if (r !== '*') fromData.add(r); }));
+    const roles = [...new Set([...(availablePortalRoles || []), ...fromData, 'admin'])].sort((a, b) => (a === 'admin' ? -1 : b === 'admin' ? 1 : a.localeCompare(b)));
+    thead.innerHTML = '<tr><th class="feat-cell">Feature</th>' + roles.map(r => '<th class="text-center">' + escapeHtml(r) + '</th>').join('') + '</tr>';
+    tbody.innerHTML = features.map(f => {
+        const allowed = featureData[f] || [];
+        const cells = roles.map(r => {
+            const ok = allowed.includes(r) || allowed.includes('*');
+            return '<td class="text-center">' + (ok ? '✓' : '—') + '</td>';
+        }).join('');
+        return '<tr><td class="feat-cell">' + escapeHtml(f) + '</td>' + cells + '</tr>';
+    }).join('');
+}
+
+async function saveRoleFeatures() {
+    // Nur Sicht "Nach Rolle": Rolle per Button wählen, Checkboxen in roleFeaturesGrouped
+    const role = selectedRoleForFeatures;
+    if (!role) {
+        alert('Bitte in der Sicht „Nach Rolle“ zuerst eine Rolle wählen (Button oben), dann Häkchen setzen und speichern.');
+        return;
+    }
+    const groupedEl = document.getElementById('roleFeaturesGrouped');
+    const inputs = groupedEl ? groupedEl.querySelectorAll('input[type="checkbox"]:checked') : [];
+    const features = Array.from(inputs).map(el => el.dataset.feature).filter(Boolean);
+    try {
+        const response = await fetch(`/api/admin/role/${encodeURIComponent(role)}/features`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ features: features })
+        });
+        const result = await response.json();
+        if (result.success) {
+            // Immer neu vom Server laden (mit Cache-Buster), eine klare Quelle
+            await loadFeatureAccess(Date.now());
+            onRoleForFeaturesChange();
+            if (selectedRoleForFeatures) renderRoleFeaturesGrouped(selectedRoleForFeatures);
+            alert(result.message || 'Gespeichert.');
+        } else {
+            alert('Fehler: ' + (result.error || result.message));
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Fehler beim Speichern');
+    }
+}
+
+// Title-Tabelle rendern
+function renderTitlesTable() {
+    const tbody = document.getElementById('titlesBody');
+
+    const html = Object.entries(titleData).map(([title, role]) => {
+        return `
+            <tr>
+                <td>${title}</td>
+                <td><span class="badge ${getRoleClass(role)}">${role}</span></td>
+            </tr>
+        `;
+    }).join('');
+
+    tbody.innerHTML = html;
+}
+
+// Modal oeffnen (aus Buttons mit data-Attributen, um Sonderzeichen in Namen sicher zu handhaben)
+function openRoleModalFromBtn(btn) {
+    const id = parseInt(btn.dataset.userId, 10);
+    const name = btn.dataset.userName || '';
+    const roles = btn.dataset.userRoles || '';
+    openRoleModal(id, name, roles);
+}
+
+function openDashboardModalFromBtn(btn) {
+    const id = parseInt(btn.dataset.userId, 10);
+    const name = btn.dataset.userName || '';
+    const url = btn.dataset.userUrl || '';
+    openDashboardModal(id, name, url);
+}
+
+function openEffectiveRightsModalFromBtn(btn) {
+    const id = parseInt(btn.dataset.userId, 10);
+    const name = (btn.dataset.userName || '').replace(/&quot;/g, '"');
+    openEffectiveRightsModal(id, name);
+}
+
+async function openEffectiveRightsModal(userId, displayName) {
+    document.getElementById('effectiveRightsUserName').textContent = displayName || 'User';
+    document.getElementById('effectiveRightsLoading').style.display = 'block';
+    document.getElementById('effectiveRightsContent').style.display = 'none';
+    document.getElementById('effectiveRightsError').style.display = 'none';
+    new bootstrap.Modal(document.getElementById('effectiveRightsModal')).show();
+
+    try {
+        const response = await fetch('/api/admin/user/' + userId + '/effective-rights', { credentials: 'same-origin' });
+        const data = await response.json();
+        document.getElementById('effectiveRightsLoading').style.display = 'none';
+        if (!response.ok) {
+            document.getElementById('effectiveRightsError').textContent = data.error || 'Fehler beim Laden';
+            document.getElementById('effectiveRightsError').style.display = 'block';
+            return;
+        }
+        document.getElementById('effectiveRightsRole').textContent = data.effective_role || '—';
+        document.getElementById('effectiveRightsRole').className = 'badge ' + (getRoleClass(data.effective_role) || 'bg-secondary');
+        const featuresEl = document.getElementById('effectiveRightsFeatures');
+        featuresEl.innerHTML = (data.features && data.features.length)
+            ? data.features.map(f => '<span class="badge bg-light text-dark border me-1 mb-1">' + escapeHtml(f) + '</span>').join('')
+            : '<span class="text-muted">Keine</span>';
+        const navEl = document.getElementById('effectiveRightsNav');
+        navEl.innerHTML = renderNavTree(data.navigation || []);
+        document.getElementById('effectiveRightsContent').style.display = 'block';
+    } catch (e) {
+        document.getElementById('effectiveRightsLoading').style.display = 'none';
+        document.getElementById('effectiveRightsError').textContent = 'Fehler: ' + (e.message || 'Netzwerkfehler');
+        document.getElementById('effectiveRightsError').style.display = 'block';
+    }
+}
+
+function renderNavTree(items, level) {
+    if (!items || !items.length) return '<span class="text-muted">Keine</span>';
+    level = level || 0;
+    const pad = level ? 'padding-left: ' + (level * 12) + 'px' : '';
+    let html = '<ul class="list-unstyled mb-0" style="' + pad + '">';
+    items.forEach(item => {
+        const label = escapeHtml(item.label || '');
+        const url = item.url ? (' <small class="text-muted">' + escapeHtml(item.url) + '</small>') : '';
+        html += '<li class="mb-1">' + label + url;
+        if (item.children && item.children.length) {
+            html += renderNavTree(item.children, level + 1);
+        }
+        html += '</li>';
+    });
+    html += '</ul>';
+    return html;
+}
+
+function openRoleModal(userId, userName, currentRoles) {
+    document.getElementById('modalUserName').textContent = userName;
+
+    const currentRolesList = currentRoles.split(', ').map(r => r.trim());
+
+    const togglesHtml = rolesData.map(role => {
+        const isActive = currentRolesList.includes(role.name);
+        const cls = getRoleClass(role.name);
+        return `
+            <div class="role-toggle ${cls} ${isActive ? 'active' : ''}"
+                 data-role="${role.name}" data-user-id="${userId}"
+                 onclick="toggleRole(this)">
+                ${role.name}
+                ${isActive ? '<i class="bi bi-check-circle ms-1"></i>' : ''}
+            </div>
+        `;
+    }).join('');
+
+    document.getElementById('roleToggles').innerHTML = togglesHtml;
+
+    new bootstrap.Modal(document.getElementById('roleModal')).show();
+}
+
+// Rolle togglen
+async function toggleRole(element) {
+    const userId = element.dataset.userId;
+    const role = element.dataset.role;
+    const isActive = element.classList.contains('active');
+
+    const method = isActive ? 'DELETE' : 'POST';
+
+    try {
+        const response = await fetch(`/api/admin/user/${userId}/role`, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role: role })
+        });
+
+        const result = await response.json();
+
+        if (result.success || response.ok) {
+            // UI aktualisieren
+            element.classList.toggle('active');
+            if (element.classList.contains('active')) {
+                element.innerHTML = `${role} <i class="bi bi-check-circle ms-1"></i>`;
+            } else {
+                element.innerHTML = role;
+            }
+
+            // Tabelle neu laden
+            await loadUsersRoles();
+        } else {
+            alert('Fehler: ' + (result.error || result.message));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Fehler beim Speichern');
+    }
+}
+
+// Suche & Filter: Tabelle neu rendern (nutzt getFilteredUsers)
+document.getElementById('userSearch').addEventListener('input', function() { renderUsersTable(); });
+document.getElementById('userFilterStatus').addEventListener('change', function() { renderUsersTable(); });
+
+// =============================================================================
+// REPORTS TAB
+// =============================================================================
+
+async function loadReports() {
+    try {
+        const response = await fetch('/api/admin/reports');
+        const data = await response.json();
+
+        if (data.error) {
+            console.error('API Error:', data.error);
+            document.getElementById('reportsGrid').innerHTML =
+                `<div class="col-12 text-danger text-center">Fehler: ${data.error}</div>`;
+            return;
+        }
+
+        reportsData = data.reports;
+
+        // Zeige Migration-Alert wenn keine Subscriber
+        const totalSubs = Object.values(reportsData).reduce((sum, r) => sum + r.subscriber_count, 0);
+        if (totalSubs === 0) {
+            document.getElementById('migrationAlert').classList.remove('d-none');
+        }
+
+        renderReportsGrid();
+    } catch (error) {
+        console.error('Fehler:', error);
+        document.getElementById('reportsGrid').innerHTML =
+            '<div class="col-12 text-danger text-center">Fehler beim Laden der Reports</div>';
+    }
+}
+
+async function loadEmployees() {
+    try {
+        const response = await fetch('/api/admin/reports/employees');
+        const data = await response.json();
+        employeesData = data.employees || [];
+
+        // Datalist fuellen
+        const datalist = document.getElementById('employeeEmails');
+        datalist.innerHTML = employeesData.map(e =>
+            `<option value="${e.email}">${e.name}</option>`
+        ).join('');
+    } catch (error) {
+        console.error('Fehler beim Laden der Mitarbeiter:', error);
+    }
+}
+
+function renderReportsGrid() {
+    const grid = document.getElementById('reportsGrid');
+
+    const categories = {
+        'controlling': { name: 'Controlling', color: 'primary' },
+        'verkauf': { name: 'Verkauf', color: 'success' },
+        'werkstatt': { name: 'Werkstatt', color: 'warning' },
+        'sonstige': { name: 'Sonstige', color: 'secondary' }
+    };
+
+    let html = '';
+
+    for (const [reportId, report] of Object.entries(reportsData)) {
+        const cat = categories[report.category] || categories.sonstige;
+
+        html += `
+            <div class="col-md-6 col-lg-4 mb-3">
+                <div class="report-card p-3 cat-${report.category}">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <div class="report-icon">${report.icon}</div>
+                            <h5 class="mb-1">${report.name}</h5>
+                            <span class="badge bg-${cat.color} report-category">${cat.name}</span>
+                        </div>
+                        <span class="badge bg-primary subscriber-badge">
+                            ${report.subscriber_count} Empfaenger
+                        </span>
+                    </div>
+                    <p class="text-muted small mt-2 mb-2">${report.description}</p>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <small class="text-muted">
+                            <i class="bi bi-clock me-1"></i>${report.schedule}
+                        </small>
+                        <button class="btn btn-sm btn-outline-primary"
+                                onclick="openReportModal('${reportId}')">
+                            <i class="bi bi-gear me-1"></i>Verwalten
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    grid.innerHTML = html || '<div class="col-12 text-muted text-center">Keine Reports gefunden</div>';
+}
+
+async function openReportModal(reportId) {
+    currentReportId = reportId;
+    const report = reportsData[reportId];
+
+    if (!report) {
+        alert('Report nicht gefunden');
+        return;
+    }
+
+    document.getElementById('reportModalIcon').textContent = report.icon;
+    document.getElementById('reportModalTitle').textContent = report.name;
+    document.getElementById('reportModalDesc').textContent = report.description;
+
+    // Standort-Select anzeigen/verstecken (Empfaenger + Testversand)
+    const standortContainer = document.getElementById('standortSelectContainer');
+    const testStandortContainer = document.getElementById('testStandortContainer');
+    if (report.supports_standort) {
+        standortContainer.style.display = 'block';
+        testStandortContainer.style.display = 'block';
+    } else {
+        standortContainer.style.display = 'none';
+        testStandortContainer.style.display = 'none';
+    }
+
+    // Testversand-Ergebnis zuruecksetzen
+    document.getElementById('testSendResult').style.display = 'none';
+    document.getElementById('testSendResult').innerHTML = '';
+    document.getElementById('testSendEmail').value = '';
+
+    // Report-Details laden (Subscriber + Config)
+    await loadReportSubscribers(reportId);
+    applyReportConfigUI(reportId);
+
+    new bootstrap.Modal(document.getElementById('reportModal')).show();
+}
+
+async function loadReportSubscribers(reportId) {
+    try {
+        const response = await fetch(`/api/admin/reports/${reportId}`);
+        const data = await response.json();
+        currentReportConfig = data.config || {};
+
+        const subscribers = data.subscribers || [];
+        const activeCount = subscribers.filter(s => s.active).length;
+
+        document.getElementById('subscriberCount').textContent = activeCount;
+
+        const list = document.getElementById('subscriberList');
+
+        if (subscribers.length === 0) {
+            list.innerHTML = '<div class="text-center py-4 text-muted">Keine Empfaenger konfiguriert</div>';
+            return;
+        }
+
+        list.innerHTML = subscribers.map(sub => {
+            const standortBadge = sub.standort ?
+                `<span class="badge bg-secondary ms-1">${sub.standort}</span>` : '';
+            const inactiveClass = sub.active ? '' : 'subscriber-inactive';
+
+            return `
+                <div class="subscriber-item ${inactiveClass}">
+                    <div>
+                        <i class="bi bi-envelope me-1"></i>
+                        ${sub.email}
+                        ${standortBadge}
+                        ${!sub.active ? '<span class="badge bg-danger ms-1">Inaktiv</span>' : ''}
+                    </div>
+                    <div>
+                        <button class="btn btn-sm btn-outline-secondary me-1"
+                                onclick="toggleSubscription(${sub.id})"
+                                title="${sub.active ? 'Deaktivieren' : 'Aktivieren'}">
+                            <i class="bi bi-${sub.active ? 'pause' : 'play'}"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger"
+                                onclick="deleteSubscription(${sub.id})"
+                                title="Loeschen">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+    } catch (error) {
+        console.error('Fehler:', error);
+    }
+}
+
+function applyReportConfigUI(reportId) {
+    const alarmCard = document.getElementById('alarmConfigCard');
+    const resultEl = document.getElementById('alarmConfigResult');
+    if (resultEl) resultEl.textContent = '';
+
+    if (reportId !== 'alarm_auftrag_ueberschreitung') {
+        alarmCard.classList.add('d-none');
+        return;
+    }
+
+    alarmCard.classList.remove('d-none');
+    const cfg = currentReportConfig || {};
+    document.getElementById('alarmMinPercent').value = Number(cfg.min_percent ?? 100);
+    document.getElementById('alarmMinActiveMinutes').value = Number(cfg.min_active_minutes ?? 30);
+    document.getElementById('alarmStartHour').value = Number(cfg.workday_start_hour ?? 7);
+    document.getElementById('alarmEndHour').value = Number(cfg.workday_end_hour ?? 18);
+
+    const types = new Set((cfg.enabled_order_types || ['kunde', 'intern', 'garantie', 'sonstige']).map(x => (x || '').toLowerCase()));
+    document.getElementById('alarmTypeKunde').checked = types.has('kunde');
+    document.getElementById('alarmTypeIntern').checked = types.has('intern');
+    document.getElementById('alarmTypeGarantie').checked = types.has('garantie');
+    document.getElementById('alarmTypeSonstige').checked = types.has('sonstige');
+}
+
+async function saveAlarmConfig() {
+    if (currentReportId !== 'alarm_auftrag_ueberschreitung') return;
+
+    const enabledOrderTypes = [];
+    if (document.getElementById('alarmTypeKunde').checked) enabledOrderTypes.push('kunde');
+    if (document.getElementById('alarmTypeIntern').checked) enabledOrderTypes.push('intern');
+    if (document.getElementById('alarmTypeGarantie').checked) enabledOrderTypes.push('garantie');
+    if (document.getElementById('alarmTypeSonstige').checked) enabledOrderTypes.push('sonstige');
+
+    const config = {
+        min_percent: Math.max(100, Number(document.getElementById('alarmMinPercent').value || 100)),
+        min_active_minutes: Math.max(0, Number(document.getElementById('alarmMinActiveMinutes').value || 30)),
+        workday_start_hour: Math.min(23, Math.max(0, Number(document.getElementById('alarmStartHour').value || 7))),
+        workday_end_hour: Math.min(24, Math.max(1, Number(document.getElementById('alarmEndHour').value || 18))),
+        enabled_order_types: enabledOrderTypes
+    };
+
+    const resultEl = document.getElementById('alarmConfigResult');
+    resultEl.className = 'small ms-2 text-muted';
+    resultEl.textContent = 'Speichere...';
+
+    try {
+        const response = await fetch(`/api/admin/reports/${currentReportId}/config`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ config })
+        });
+        const data = await response.json();
+        if (data.success) {
+            currentReportConfig = config;
+            resultEl.className = 'small ms-2 text-success';
+            resultEl.textContent = 'Gespeichert.';
+        } else {
+            resultEl.className = 'small ms-2 text-danger';
+            resultEl.textContent = data.error || 'Speichern fehlgeschlagen.';
+        }
+    } catch (err) {
+        resultEl.className = 'small ms-2 text-danger';
+        resultEl.textContent = 'Fehler: ' + (err.message || 'Netzwerkfehler');
+    }
+}
+
+async function addSubscriber() {
+    const email = document.getElementById('newSubscriberEmail').value.trim();
+    const standort = document.getElementById('newSubscriberStandort').value || null;
+
+    if (!email) {
+        alert('Bitte E-Mail-Adresse eingeben');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/admin/reports/${currentReportId}/subscribe`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, standort })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            document.getElementById('newSubscriberEmail').value = '';
+            document.getElementById('newSubscriberStandort').value = '';
+            await loadReportSubscribers(currentReportId);
+            await loadReports(); // Grid aktualisieren
+        } else {
+            alert('Fehler: ' + (result.error || result.message));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Fehler beim Hinzufuegen');
+    }
+}
+
+async function toggleSubscription(subscriptionId) {
+    try {
+        const response = await fetch(`/api/admin/reports/subscription/${subscriptionId}/toggle`, {
+            method: 'POST'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            await loadReportSubscribers(currentReportId);
+            await loadReports();
+        } else {
+            alert('Fehler: ' + (result.error || result.message));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+    }
+}
+
+async function deleteSubscription(subscriptionId) {
+    if (!confirm('Wirklich loeschen?')) return;
+
+    try {
+        const response = await fetch(`/api/admin/reports/subscription/${subscriptionId}`, {
+            method: 'DELETE'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            await loadReportSubscribers(currentReportId);
+            await loadReports();
+        } else {
+            alert('Fehler: ' + (result.error || result.message));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+    }
+}
+
+async function sendTestReport() {
+    const email = document.getElementById('testSendEmail').value.trim();
+    const standortEl = document.getElementById('testSendStandort');
+    const standort = standortEl && standortEl.value ? standortEl.value : null;
+    const resultEl = document.getElementById('testSendResult');
+    const btn = document.getElementById('btnTestSend');
+
+    if (!email) {
+        resultEl.style.display = 'block';
+        resultEl.className = 'mt-2 small text-danger';
+        resultEl.textContent = 'Bitte E-Mail-Adresse eingeben.';
+        return;
+    }
+    if (email.indexOf('@') < 0) {
+        resultEl.style.display = 'block';
+        resultEl.className = 'mt-2 small text-danger';
+        resultEl.textContent = 'Ungueltige E-Mail-Adresse.';
+        return;
+    }
+
+    btn.disabled = true;
+    resultEl.style.display = 'block';
+    resultEl.className = 'mt-2 small text-muted';
+    resultEl.textContent = 'Sende...';
+
+    try {
+        const response = await fetch(`/api/admin/reports/${currentReportId}/send-test`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email, standort: standort })
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            resultEl.className = 'mt-2 small text-success';
+            resultEl.textContent = data.message || 'Report wurde gesendet.';
+        } else {
+            resultEl.className = 'mt-2 small text-danger';
+            resultEl.textContent = data.error || data.message || 'Versand fehlgeschlagen.';
+        }
+    } catch (err) {
+        resultEl.className = 'mt-2 small text-danger';
+        resultEl.textContent = 'Fehler: ' + (err.message || 'Netzwerkfehler');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function migrateSubscribers() {
+    try {
+        const response = await fetch('/api/admin/reports/migrate', {
+            method: 'POST'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            document.getElementById('migrationAlert').classList.add('d-none');
+            await loadReports();
+            alert('Migration erfolgreich! Bestehende Empfaenger wurden uebernommen.');
+        } else {
+            alert('Fehler: ' + result.error);
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Fehler bei der Migration');
+    }
+}
+
+// =============================================================================
+// DASHBOARD-KONFIGURATION FÜR USER (TAG 190 - Admin-only)
+// =============================================================================
+
+async function loadDashboards() {
+    try {
+        const response = await fetch('/api/admin/dashboards');
+        const data = await response.json();
+        availableDashboards = data.dashboards || [];
+    } catch (error) {
+        console.error('Fehler beim Laden der Dashboards:', error);
+    }
+}
+
+async function openDashboardModal(userId, userName, currentUrl) {
+    currentDashboardUserId = userId;
+    document.getElementById('dashboardModalUserName').textContent = userName;
+    
+    const select = document.getElementById('dashboardSelect');
+    const preview = document.getElementById('dashboardPreview');
+    const resetBtn = document.getElementById('resetDashboardBtn');
+    
+    // User-Daten laden um verfügbare Dashboards zu filtern
+    const user = usersData.find(u => u.id === userId);
+    if (!user) {
+        alert('User nicht gefunden');
+        return;
+    }
+    
+    // Wirksame Portal-Rolle nutzen (nicht user.roles aus user_roles-Tabelle!)
+    // effective_portal_role bestimmt Feature-Zugriff (z. B. verkauf → kein bankenspiegel).
+    const effectiveRole = (user.effective_portal_role || '').trim() || 'mitarbeiter';
+    const isAdmin = effectiveRole === 'admin';
+    const userRolesForFilter = [effectiveRole];
+    
+    let filteredDashboards = availableDashboards;
+    if (!isAdmin) {
+        // Nur Startseiten anzeigen, auf die diese Rolle Feature-Zugriff hat
+        filteredDashboards = availableDashboards.filter(dashboard => {
+            if (dashboard.requires_feature) {
+                const featureRoles = featureData[dashboard.requires_feature] || [];
+                return featureRoles.some(r => userRolesForFilter.includes(r) || r === '*');
+            }
+            if (dashboard.role_restriction) {
+                return userRolesForFilter.includes(dashboard.role_restriction);
+            }
+            return true;
+        });
+    }
+    
+    // Dropdown füllen
+    select.innerHTML = '<option value="">Standard (rollenbasiert)</option>';
+    filteredDashboards.forEach(dashboard => {
+        const selected = currentUrl === dashboard.url ? 'selected' : '';
+        select.innerHTML += `<option value="${dashboard.url}" ${selected}>${dashboard.name}</option>`;
+    });
+    
+    // Vorschau aktualisieren
+    updateDashboardPreview();
+    select.addEventListener('change', updateDashboardPreview);
+    
+    // Reset-Button anzeigen wenn Konfiguration vorhanden
+    resetBtn.style.display = currentUrl ? 'block' : 'none';
+    
+    new bootstrap.Modal(document.getElementById('dashboardModal')).show();
+}
+
+function updateDashboardPreview() {
+    const select = document.getElementById('dashboardSelect');
+    const preview = document.getElementById('dashboardPreview');
+    const selectedUrl = select.value;
+    
+    if (selectedUrl) {
+        const dashboard = availableDashboards.find(d => d.url === selectedUrl);
+        if (dashboard) {
+            preview.innerHTML = `<i class="bi bi-info-circle me-1"></i>Nach Login: <code>${dashboard.url}</code>`;
+        }
+    } else {
+        preview.innerHTML = '<i class="bi bi-info-circle me-1"></i>Standard-Weiterleitung basierend auf Rolle';
+    }
+}
+
+async function saveUserDashboard() {
+    if (!currentDashboardUserId) {
+        alert('Kein User ausgewählt');
+        return;
+    }
+    
+    const select = document.getElementById('dashboardSelect');
+    const targetUrl = select.value;
+    
+    try {
+        const method = targetUrl ? 'POST' : 'DELETE';
+        const url = `/api/admin/user/${currentDashboardUserId}/dashboard`;
+        
+        const response = await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: targetUrl ? JSON.stringify({
+                dashboard_type: 'redirect',
+                target_url: targetUrl
+            }) : null
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Modal schließen
+            const modal = bootstrap.Modal.getInstance(document.getElementById('dashboardModal'));
+            modal.hide();
+            
+            // Tabelle neu laden
+            await loadUsersRoles();
+            
+            alert('Startseite erfolgreich gespeichert!');
+        } else {
+            alert('Fehler: ' + (result.error || result.message));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Fehler beim Speichern');
+    }
+}
+
+async function resetUserDashboard() {
+    if (!currentDashboardUserId) {
+        return;
+    }
+    
+    if (!confirm('Wirklich zurücksetzen? User wird dann zur Standard-Startseite weitergeleitet.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/admin/user/${currentDashboardUserId}/dashboard`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Modal schließen
+            const modal = bootstrap.Modal.getInstance(document.getElementById('dashboardModal'));
+            modal.hide();
+            
+            // Tabelle neu laden
+            await loadUsersRoles();
+            
+            alert('Startseite zurückgesetzt!');
+        } else {
+            alert('Fehler: ' + (result.error || result.message));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Fehler beim Zurücksetzen');
+    }
+}
+
+// =============================================================================
+// FEATURE-ZUGRIFF VERWALTUNG (TAG 190)
+// =============================================================================
+
+let currentFeature = null;
+
+async function openFeatureModal(feature) {
+    currentFeature = feature;
+    document.getElementById('featureModalName').textContent = `Feature: ${feature}`;
+    
+    // Aktuelle Rollen für dieses Feature
+    const currentRoles = featureData[feature] || [];
+    
+    // Verfügbare Rollen aus rolesData (bereits geladen) oder Fallback
+    const availableRoles = rolesData.length > 0 
+        ? rolesData.map(r => r.name)
+        : ['admin', 'buchhaltung', 'verkauf_leitung', 'verkauf', 'werkstatt_leitung', 
+           'werkstatt', 'service_leitung', 'service', 'serviceberater', 'disposition', 
+           'lager', 'callcenter', 'marketing', 'mitarbeiter'];
+    
+    // Alle verfügbaren Rollen als Toggles rendern
+    const togglesHtml = availableRoles.map(role => {
+        const isActive = currentRoles.includes(role);
+        const cls = getRoleClass(role);
+        return `
+            <div class="feature-role-toggle ${cls} ${isActive ? 'active' : ''}"
+                 data-role="${role}"
+                 onclick="toggleFeatureRole('${role}', this)">
+                ${role}
+                ${isActive ? ' <i class="bi bi-check-circle ms-1"></i>' : ''}
+            </div>
+        `;
+    }).join('');
+    
+    document.getElementById('featureRoleToggles').innerHTML = togglesHtml;
+    
+    new bootstrap.Modal(document.getElementById('featureModal')).show();
+}
+
+function toggleFeatureRole(role, element) {
+    element.classList.toggle('active');
+    if (element.classList.contains('active')) {
+        element.innerHTML = `${role} <i class="bi bi-check-circle ms-1"></i>`;
+    } else {
+        element.innerHTML = role;
+    }
+}
+
+async function saveFeatureAccess() {
+    if (!currentFeature) {
+        alert('Kein Feature ausgewählt');
+        return;
+    }
+    
+    // Aktive Rollen sammeln
+    const activeRoles = [];
+    document.querySelectorAll('#featureRoleToggles .feature-role-toggle.active').forEach(el => {
+        activeRoles.push(el.dataset.role);
+    });
+    
+    try {
+        const response = await fetch(`/api/admin/feature-access/${currentFeature}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ roles: activeRoles })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Feature-Daten neu laden
+            await loadFeatureAccess();
+            
+            // Modal schließen
+            const modal = bootstrap.Modal.getInstance(document.getElementById('featureModal'));
+            modal.hide();
+            
+            // Erfolgs-Meldung
+            alert('Feature-Zugriff erfolgreich gespeichert!');
+        } else {
+            alert('Fehler: ' + (result.error || result.message));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Fehler beim Speichern');
+    }
+}
+
+// ============================================================================
+// NAVIGATION MANAGEMENT - TAG 190
+// ============================================================================
+
+let navigationItems = [];
+
+async function loadNavigationItems() {
+    const container = document.getElementById('navigationTree');
+    if (!container) return;
+    try {
+        const response = await fetch('/api/admin/navigation/all');
+        let data;
+        try {
+            data = await response.json();
+        } catch (e) {
+            container.innerHTML = '<div class="alert alert-danger">Antwort war kein JSON (z.B. Login-Weiterleitung). HTTP ' + response.status + '</div>';
+            return;
+        }
+        if (!response.ok) {
+            container.innerHTML = '<div class="alert alert-danger">' + (data.error || ('HTTP ' + response.status)) + '</div>';
+            return;
+        }
+        if (data.error) {
+            container.innerHTML = '<div class="alert alert-danger">' + escapeHtml(data.error) + '</div>';
+            return;
+        }
+        navigationItems = data.items || [];
+        renderNavigationTree();
+    } catch (error) {
+        console.error('Fehler beim Laden der Navigation:', error);
+        container.innerHTML = '<div class="alert alert-danger">Fehler beim Laden: ' + escapeHtml(error.message || 'Unbekannt') + '</div>';
+    }
+}
+
+function renderNavigationTree() {
+    const container = document.getElementById('navigationTree');
+    
+    if (navigationItems.length === 0) {
+        container.innerHTML = '<div class="alert alert-info">Keine Navigation-Items gefunden</div>';
+        return;
+    }
+    
+    // Struktur als Baum aufbauen
+    const itemsById = {};
+    const rootItems = [];
+    
+    navigationItems.forEach(item => {
+        itemsById[item.id] = { ...item, children: [] };
+    });
+    
+    navigationItems.forEach(item => {
+        if (item.parent_id) {
+            const parent = itemsById[item.parent_id];
+            if (parent) {
+                parent.children.push(itemsById[item.id]);
+            }
+        } else {
+            rootItems.push(itemsById[item.id]);
+        }
+    });
+    rootItems.sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+    rootItems.forEach(item => {
+        if (item.children) item.children.sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+    });
+    
+    // HTML rendern
+    let html = '<div class="list-group">';
+    rootItems.forEach(item => {
+        html += renderNavigationItem(item, 0);
+    });
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+function renderNavigationItem(item, level) {
+    const indent = level * 20;
+    const badgeClass = item.active ? 'bg-success' : 'bg-secondary';
+    const icon = item.icon ? `<i class="bi ${escapeHtml(item.icon)} me-1"></i>` : '';
+    const label = escapeHtml(item.label || '(Kein Label)');
+    const url = item.url ? escapeHtml(item.url) : '';
+    const reqFeature = item.requires_feature ? escapeHtml(item.requires_feature) : '';
+    const roleRest = item.role_restriction ? escapeHtml(item.role_restriction) : '';
+    
+    let html = `
+        <div class="list-group-item" style="padding-left: ${indent + 10}px;">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    ${icon}
+                    <strong>${label}</strong>
+                    ${item.is_dropdown ? '<span class="badge bg-info ms-2">Dropdown</span>' : ''}
+                    ${item.is_header ? '<span class="badge bg-warning ms-2">Header</span>' : ''}
+                    ${item.is_divider ? '<span class="badge bg-secondary ms-2">Divider</span>' : ''}
+                    ${url ? `<small class="text-muted ms-2">${url}</small>` : ''}
+                    ${reqFeature ? `<span class="badge bg-primary ms-1">Feature: ${reqFeature}</span>` : ''}
+                    ${roleRest ? `<span class="badge bg-danger ms-1">Rolle: ${roleRest}</span>` : ''}
+                    <span class="badge ${badgeClass} ms-2">${item.active ? 'Aktiv' : 'Inaktiv'}</span>
+                </div>
+                <div>
+                    <button class="btn btn-sm btn-outline-primary" onclick="editNavigationItem(${item.id})">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteNavigationItem(${item.id})">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Children rendern
+    if (item.children && item.children.length > 0) {
+        item.children.forEach(child => {
+            html += renderNavigationItem(child, level + 1);
+        });
+    }
+    
+    return html;
+}
+
+function editNavigationItem(itemId) {
+    const item = navigationItems.find(i => i.id === itemId);
+    if (!item) {
+        alert('Item nicht gefunden');
+        return;
+    }
+    document.getElementById('navEditId').value = item.id;
+    document.getElementById('navEditLabel').value = item.label || '';
+    document.getElementById('navEditUrl').value = item.url || '';
+    document.getElementById('navEditIcon').value = item.icon || '';
+    document.getElementById('navEditRequiresFeature').value = item.requires_feature || '';
+    document.getElementById('navEditRoleRestriction').value = item.role_restriction || '';
+    document.getElementById('navEditActive').checked = item.active !== false;
+    new bootstrap.Modal(document.getElementById('navEditModal')).show();
+}
+
+async function saveNavigationItem() {
+    const id = document.getElementById('navEditId').value;
+    if (!id) return;
+    const payload = {
+        label: document.getElementById('navEditLabel').value || '',
+        url: document.getElementById('navEditUrl').value || null,
+        icon: document.getElementById('navEditIcon').value || null,
+        order_index: (navigationItems.find(i => i.id === parseInt(id, 10)) || {}).order_index || 0,
+        requires_feature: document.getElementById('navEditRequiresFeature').value.trim() || null,
+        role_restriction: document.getElementById('navEditRoleRestriction').value.trim() || null,
+        is_dropdown: (navigationItems.find(i => i.id === parseInt(id, 10)) || {}).is_dropdown || false,
+        is_header: (navigationItems.find(i => i.id === parseInt(id, 10)) || {}).is_header || false,
+        is_divider: (navigationItems.find(i => i.id === parseInt(id, 10)) || {}).is_divider || false,
+        active: document.getElementById('navEditActive').checked,
+        category: (navigationItems.find(i => i.id === parseInt(id, 10)) || {}).category || 'main'
+    };
+    try {
+        const response = await fetch('/api/admin/navigation/' + id, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const result = await response.json().catch(() => ({}));
+        if (response.ok && result.success) {
+            bootstrap.Modal.getInstance(document.getElementById('navEditModal')).hide();
+            await loadNavigationItems();
+            alert('Gespeichert.');
+        } else {
+            alert('Fehler: ' + (result.error || response.status));
+        }
+    } catch (e) {
+        alert('Fehler: ' + (e.message || 'Netzwerk'));
+    }
+}
+
+async function deleteNavigationItem(itemId) {
+    if (!confirm('Navigation-Item wirklich löschen? (Unterpunkte können mitgelöscht werden.)')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/admin/navigation/' + itemId, { method: 'DELETE' });
+        let result;
+        try {
+            result = await response.json();
+        } catch (e) {
+            alert('Antwort war kein JSON. HTTP ' + response.status);
+            return;
+        }
+        if (response.ok && result.success) {
+            await loadNavigationItems();
+            alert('Navigation-Item gelöscht.');
+        } else {
+            alert('Fehler: ' + (result.error || result.message || 'HTTP ' + response.status));
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        alert('Fehler beim Löschen: ' + (error.message || 'Netzwerkfehler'));
+    }
+}
+
+// --- Mitarbeiter-Konfig (Rechteverwaltung) ---
+async function loadEmployeesConfig() {
+    const tbody = document.getElementById('mitarbeiterConfigBody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-3"><div class="spinner-border text-primary"></div><div class="mt-2">Lade…</div></td></tr>';
+    try {
+        const response = await fetch('/api/organization/employees-config');
+        const data = await response.json();
+        if (!data.success) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">' + (data.error || 'Fehler') + '</td></tr>';
+            return;
+        }
+        employeesConfigData = data.employees || [];
+        const deptSelect = document.getElementById('mitarbeiterConfigDept');
+        if (deptSelect && deptSelect.options.length <= 1) {
+            const depts = [...new Set(employeesConfigData.map(e => e.department_name).filter(Boolean))].sort();
+            depts.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d;
+                opt.textContent = d;
+                deptSelect.appendChild(opt);
+            });
+        }
+        document.getElementById('tabMitarbeiterCount').textContent = employeesConfigData.length;
+        renderMitarbeiterConfigTable();
+    } catch (e) {
+        console.error(e);
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Netzwerkfehler</td></tr>';
+    }
+}
+
+function renderMitarbeiterConfigTable() {
+    const tbody = document.getElementById('mitarbeiterConfigBody');
+    if (!tbody) return;
+    const search = (document.getElementById('mitarbeiterConfigSearch') || {}).value || '';
+    const dept = (document.getElementById('mitarbeiterConfigDept') || {}).value || '';
+    let list = employeesConfigData.filter(e => {
+        if (search && !(e.name || '').toLowerCase().includes(search.toLowerCase())) return false;
+        if (dept && e.department_name !== dept) return false;
+        return true;
+    });
+    document.getElementById('mitarbeiterConfigCounter').textContent = list.length + ' Mitarbeiter';
+    if (list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Keine Einträge</td></tr>';
+        return;
+    }
+    tbody.innerHTML = list.map(e => {
+        const vertritt = (e.vertritt || []).join(', ') || '—';
+        const wirdVertreten = (e.wird_vertreten || []).join(', ') || '—';
+        const approver = e.approver_name || '—';
+        const deptName = e.department_name ? '<span class="badge bg-warning text-dark">' + escapeHtml(e.department_name) + '</span>' : '—';
+        return '<tr>' +
+            '<td>' + escapeHtml(e.name) + '</td>' +
+            '<td>' + deptName + '</td>' +
+            '<td>' + escapeHtml(e.location || '—') + '</td>' +
+            '<td>' + escapeHtml(approver) + '</td>' +
+            '<td class="small">' + escapeHtml(vertritt) + '</td>' +
+            '<td class="small">' + escapeHtml(wirdVertreten) + '</td>' +
+            '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-primary" onclick="openMitarbeiterConfigModal(' + e.id + ')"><i class="bi bi-pen"></i></button></td>' +
+            '</tr>';
+    }).join('');
+}
+
+let mitarbeiterConfigEmployeeDetail = null; // geladene Detail-Daten (Urlaub, Einstellungen)
+
+async function openMitarbeiterConfigModal(empId) {
+    const emp = employeesConfigData.find(e => e.id === empId);
+    if (!emp) return;
+    document.getElementById('mitarbeiterConfigEmpId').value = emp.id;
+    document.getElementById('mitarbeiterConfigEmpName').textContent = emp.name;
+    const deptSelect = document.getElementById('mitarbeiterConfigDeptEdit');
+    deptSelect.innerHTML = '';
+    const allDepts = [...new Set(employeesConfigData.map(e => e.department_name).filter(Boolean))].sort();
+    const currentDept = (emp.department_name || '').trim();
+    if (currentDept && !allDepts.includes(currentDept)) {
+        const o = document.createElement('option');
+        o.value = currentDept;
+        o.textContent = currentDept;
+        o.selected = true;
+        deptSelect.appendChild(o);
+    }
+    allDepts.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d;
+        opt.textContent = d;
+        if (d === currentDept) opt.selected = true;
+        deptSelect.appendChild(opt);
+    });
+    const locSelect = document.getElementById('mitarbeiterConfigLocationEdit');
+    locSelect.value = emp.location || '';
+    // Vertretungs-Dropdowns: alle außer aktueller MA
+    const others = employeesConfigData.filter(e => e.id !== emp.id).map(e => ({ id: e.id, name: e.name }));
+    const vertrittAdd = document.getElementById('mitarbeiterConfigVertrittAdd');
+    const wirdAdd = document.getElementById('mitarbeiterConfigWirdVertretenAdd');
+    vertrittAdd.innerHTML = '<option value="">— hinzufügen —</option>' + others.map(o => '<option value="' + o.id + '">' + escapeHtml(o.name) + '</option>').join('');
+    wirdAdd.innerHTML = '<option value="">— hinzufügen —</option>' + others.map(o => '<option value="' + o.id + '">' + escapeHtml(o.name) + '</option>').join('');
+    // Urlaub-Felder zurücksetzen
+    mitarbeiterConfigEmployeeDetail = null;
+    document.getElementById('mitarbeiterConfigUrlaubAnspruch').value = '';
+    document.getElementById('mitarbeiterConfigUrlaubUebertrag').value = '';
+    document.getElementById('mitarbeiterConfigUrlaubKorrektur').value = '';
+    document.getElementById('mitarbeiterConfigMaxUrlaubslänge').value = '';
+    const yearSelect = document.getElementById('mitarbeiterConfigUrlaubYear');
+    const currentYear = new Date().getFullYear();
+    if (!yearSelect.querySelector('option[value="' + currentYear + '"]')) {
+        const opt = document.createElement('option');
+        opt.value = currentYear;
+        opt.textContent = currentYear;
+        yearSelect.insertBefore(opt, yearSelect.firstChild);
+    }
+    yearSelect.value = currentYear;
+    const personalakteUrl = '/admin/mitarbeiterverwaltung?embed=1&employee_id=' + emp.id;
+    document.getElementById('mitarbeiterConfigPersonalakteLink').href = personalakteUrl;
+    const locoLink = document.getElementById('mitarbeiterConfigPersonalakteLinkLocosoft');
+    if (locoLink) locoLink.href = personalakteUrl;
+    await loadSubstitutesForModal(emp.id);
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('mitarbeiterConfigModal')).show();
+    // Employee-Detail für Urlaub laden
+    const locosoftSpan = document.getElementById('mitarbeiterConfigLocosoftId');
+    if (locosoftSpan) locosoftSpan.textContent = '…';
+    try {
+        const r = await fetch('/api/employee-management/employee/' + emp.id);
+        const data = await r.json();
+        if (data.success && data.employee) {
+            mitarbeiterConfigEmployeeDetail = data.employee;
+            const locId = data.employee.mapping_locosoft_id ?? data.employee.locosoft_id;
+            if (locosoftSpan) locosoftSpan.textContent = (locId != null && locId !== '') ? String(locId) : 'nicht gesetzt (Filter „nur eigene“ greift nicht)';
+            const vs = (data.employee.vacation_settings || {});
+            document.getElementById('mitarbeiterConfigMaxUrlaubslänge').value = vs.max_vacation_length ?? 14;
+            const calcSelect = document.getElementById('mitarbeiterConfigCalculationMethod');
+            calcSelect.value = (vs.calculation_method || 'standard');
+            fillMitarbeiterConfigEntitlementForYear(data.employee.vacation_entitlements || [], yearSelect.value);
+        }
+    } catch (e) {
+        console.error('Employee-Detail für Urlaub:', e);
+    }
+    yearSelect.onchange = function() {
+        if (mitarbeiterConfigEmployeeDetail && mitarbeiterConfigEmployeeDetail.vacation_entitlements)
+            fillMitarbeiterConfigEntitlementForYear(mitarbeiterConfigEmployeeDetail.vacation_entitlements, yearSelect.value);
+    };
+}
+
+function fillMitarbeiterConfigEntitlementForYear(entitlements, year) {
+    const y = parseInt(year, 10);
+    const e = entitlements.find(ent => parseInt(ent.year, 10) === y);
+    document.getElementById('mitarbeiterConfigUrlaubAnspruch').value = e ? (e.total_days ?? '') : '27';
+    document.getElementById('mitarbeiterConfigUrlaubUebertrag').value = e ? (e.carried_over ?? '') : '0';
+    document.getElementById('mitarbeiterConfigUrlaubKorrektur').value = e ? (e.added_manually ?? '') : '0';
+}
+
+let substitutesData = [];
+
+async function loadSubstitutesForModal(empId) {
+    try {
+        const response = await fetch('/api/organization/substitutes');
+        const data = await response.json();
+        substitutesData = data.substitutes || [];
+        renderVertretungLists(empId);
+    } catch (e) {
+        console.error(e);
+        document.getElementById('mitarbeiterConfigVertrittList').innerHTML = '<span class="text-muted">Fehler beim Laden</span>';
+        document.getElementById('mitarbeiterConfigWirdVertretenList').innerHTML = '';
+    }
+}
+
+function renderVertretungLists(empId) {
+    const vertrittRules = substitutesData.filter(r => r.substitute_id === empId);
+    const wirdVertretenRules = substitutesData.filter(r => r.employee_id === empId);
+    const vertrittList = document.getElementById('mitarbeiterConfigVertrittList');
+    const wirdList = document.getElementById('mitarbeiterConfigWirdVertretenList');
+    vertrittList.innerHTML = vertrittRules.length === 0
+        ? '<span class="text-muted">—</span>'
+        : vertrittRules.map(r => '<span class="d-inline-block me-2 mb-1"><span class="badge bg-light text-dark">' + escapeHtml(r.employee_name) + '</span> <button type="button" class="btn btn-sm btn-link text-danger p-0 ms-1" onclick="deleteVertretungRule(' + r.id + ')" title="Entfernen"><i class="bi bi-x-lg"></i></button></span>').join('');
+    wirdList.innerHTML = wirdVertretenRules.length === 0
+        ? '<span class="text-muted">—</span>'
+        : wirdVertretenRules.map(r => '<span class="d-inline-block me-2 mb-1"><span class="badge bg-light text-dark">' + escapeHtml(r.substitute_name) + '</span> <button type="button" class="btn btn-sm btn-link text-danger p-0 ms-1" onclick="deleteVertretungRule(' + r.id + ')" title="Entfernen"><i class="bi bi-x-lg"></i></button></span>').join('');
+}
+
+async function addVertretungRule(type) {
+    const empId = parseInt(document.getElementById('mitarbeiterConfigEmpId').value, 10);
+    if (!empId) return;
+    const vertrittAdd = document.getElementById('mitarbeiterConfigVertrittAdd');
+    const wirdAdd = document.getElementById('mitarbeiterConfigWirdVertretenAdd');
+    let employee_id, substitute_id;
+    if (type === 'vertritt') {
+        const sel = parseInt(vertrittAdd.value, 10);
+        if (!sel) return;
+        employee_id = sel;
+        substitute_id = empId;
+    } else {
+        const sel = parseInt(wirdAdd.value, 10);
+        if (!sel) return;
+        employee_id = empId;
+        substitute_id = sel;
+    }
+    try {
+        const response = await fetch('/api/organization/substitutes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ employee_id: employee_id, substitute_id: substitute_id, priority: 1 })
+        });
+        const result = await response.json();
+        if (response.ok && result.success) {
+            await loadSubstitutesForModal(empId);
+            if (type === 'vertritt') vertrittAdd.value = ''; else wirdAdd.value = '';
+        } else {
+            alert('Fehler: ' + (result.error || response.status));
+        }
+    } catch (e) {
+        alert('Fehler: ' + (e.message || 'Netzwerk'));
+    }
+}
+
+async function deleteVertretungRule(ruleId) {
+    const empId = parseInt(document.getElementById('mitarbeiterConfigEmpId').value, 10);
+    if (!empId) return;
+    try {
+        const response = await fetch('/api/organization/substitutes/' + ruleId, { method: 'DELETE' });
+        const result = await response.json();
+        if (response.ok && result.success) {
+            await loadSubstitutesForModal(empId);
+        } else {
+            alert('Fehler: ' + (result.error || response.status));
+        }
+    } catch (e) {
+        alert('Fehler: ' + (e.message || 'Netzwerk'));
+    }
+}
+
+async function saveMitarbeiterConfig() {
+    const empId = document.getElementById('mitarbeiterConfigEmpId').value;
+    const department_name = document.getElementById('mitarbeiterConfigDeptEdit').value || null;
+    const location = document.getElementById('mitarbeiterConfigLocationEdit').value || null;
+    if (!empId) return;
+    try {
+        const body = {};
+        if (department_name !== null && department_name !== '') body.department_name = department_name;
+        if (location !== null) body.location = location;
+        const response = await fetch('/api/employee-management/employee/' + empId, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.success) {
+            alert('Fehler Stammdaten: ' + (result.error || response.status));
+            return;
+        }
+        if (mitarbeiterConfigEmployeeDetail) {
+            const maxLen = document.getElementById('mitarbeiterConfigMaxUrlaubslänge').value;
+            const calcMethod = document.getElementById('mitarbeiterConfigCalculationMethod').value;
+            const r2 = await fetch('/api/employee-management/employee/' + empId + '/vacation-settings', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ max_vacation_length: maxLen ? parseInt(maxLen, 10) : 14, calculation_method: calcMethod || 'standard' })
+            });
+            if (!r2.ok) console.warn('Urlaubseinstellungen konnten nicht gespeichert werden.');
+            const year = document.getElementById('mitarbeiterConfigUrlaubYear').value;
+            const anspruch = parseFloat(document.getElementById('mitarbeiterConfigUrlaubAnspruch').value) || 27;
+            const uebertrag = parseFloat(document.getElementById('mitarbeiterConfigUrlaubUebertrag').value) || 0;
+            const korrektur = parseFloat(document.getElementById('mitarbeiterConfigUrlaubKorrektur').value) || 0;
+            const r3 = await fetch('/api/vacation/admin/update-entitlement', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ employee_id: parseInt(empId, 10), year: parseInt(year, 10), anspruch: anspruch, uebertrag: uebertrag, korrektur: korrektur, kommentar: '' })
+            });
+            if (!r3.ok) {
+                const j = await r3.json().catch(() => ({}));
+                console.warn('Urlaubsanspruch:', j.error || r3.status);
+            }
+        }
+        bootstrap.Modal.getInstance(document.getElementById('mitarbeiterConfigModal')).hide();
+        await loadEmployeesConfig();
+    } catch (e) {
+        alert('Fehler: ' + (e.message || 'Netzwerk'));
+    }
+}
+
+// --- Urlaubsverwaltung Tab: Balance aus Vacation-Admin-API ---
+async function loadUrlaubBalance() {
+    const tbody = document.getElementById('urlaubBalanceBody');
+    if (!tbody) return;
+    const year = (document.getElementById('urlaubYearSelect') || {}).value || new Date().getFullYear();
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-2"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr>';
+    try {
+        const response = await fetch('/api/vacation/admin/employees?year=' + year);
+        const data = await response.json();
+        if (!data.success || !data.employees) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Keine Daten oder keine Berechtigung.</td></tr>';
+            return;
+        }
+        const rows = (data.employees || []).slice(0, 100).map(e => {
+            const anspruch = e.anspruch != null ? e.anspruch : '—';
+            const urlaub = e.urlaub != null ? e.urlaub : '—';
+            const verfueg = e.verfuegbar != null ? e.verfuegbar : '—';
+            return '<tr><td>' + escapeHtml(e.name || e.employee_name || '') + '</td><td>' + escapeHtml(e.grp_code || e.department_name || '—') + '</td><td>' + anspruch + '</td><td>' + urlaub + '</td><td>' + verfueg + '</td></tr>';
+        });
+        tbody.innerHTML = rows.length ? rows.join('') : '<tr><td colspan="5" class="text-center text-muted">Keine Einträge</td></tr>';
+    } catch (e) {
+        console.error(e);
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Fehler beim Laden</td></tr>';
+    }
+}
+
+// Navigation beim Öffnen des Einstellungen-Tabs laden
+document.addEventListener('DOMContentLoaded', function() {
+    const einstellungenTab = document.querySelector('a[href="#einstellungen-tab"]');
+    if (einstellungenTab) {
+        einstellungenTab.addEventListener('shown.bs.tab', function() {
+            loadNavigationItems();
+        });
+    }
+});
+</script>
+{% endblock %}

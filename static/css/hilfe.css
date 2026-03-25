@@ -1,0 +1,13 @@
+/* Hilfe-Modul – Workstream Hilfe | 2026-02-24 */
+.hilfe-karte {
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.hilfe-karte:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+.hilfe-inhalt h2 { font-size: 1.25rem; margin-top: 1rem; }
+.hilfe-inhalt h3 { font-size: 1.1rem; margin-top: 0.75rem; }
+.hilfe-inhalt ul, .hilfe-inhalt ol { padding-left: 1.5rem; }
+.hilfe-inhalt pre { background: #f5f5f5; padding: 0.75rem; border-radius: 0.25rem; overflow-x: auto; }
+.hilfe-inhalt code { background: #f5f5f5; padding: 0.1em 0.3em; border-radius: 0.2em; font-size: 0.9em; }
