@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portal DRIVE — Präsentation IT Krebs / eAutoSeller</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f6f8fa;
+      --surface: #ffffff;
+      --surface2: #eaeef2;
+      --text: #1f2328;
+      --text-muted: #656d76;
+      --accent: #0969da;
+      --accent-soft: rgba(9, 105, 218, 0.12);
+      --green: #1a7f37;
+      --orange: #9a6700;
+      --red: #cf222e;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'DM Sans', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      margin: 0;
+      padding: 0;
+    }
+    .slide {
+      min-height: 100vh;
+      padding: 3rem 4rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .slide h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin: 0 0 0.5rem 0;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+    .slide h2 {
+      font-size: 1.75rem;
+      font-weight: 600;
+      margin: 2.5rem 0 1rem 0;
+      color: var(--accent);
+    }
+    .slide h3 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin: 1.5rem 0 0.5rem 0;
+      color: var(--text-muted);
+    }
+    .slide p, .slide li {
+      color: var(--text-muted);
+      margin: 0.5rem 0;
+    }
+    .slide ul {
+      padding-left: 1.5rem;
+      margin: 0.5rem 0;
+    }
+    .subtitle {
+      font-size: 1.25rem;
+      color: var(--text-muted);
+      margin-bottom: 2rem;
+    }
+    .badge {
+      display: inline-block;
+      background: var(--accent-soft);
+      color: var(--accent);
+      padding: 0.25rem 0.6rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-family: 'JetBrains Mono', monospace;
+      margin-right: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .complexity { font-size: 0.9rem; margin-left: 0.5rem; }
+    .complexity.high { color: var(--red); }
+    .complexity.medium { color: var(--orange); }
+    .complexity.low { color: var(--green); }
+    .code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9rem;
+      background: var(--surface2);
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      color: var(--green);
+    }
+    .code-block {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      background: var(--surface);
+      padding: 1rem 1.25rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin: 1rem 0;
+      border-left: 3px solid var(--accent);
+      border: 1px solid var(--surface2);
+      border-left: 3px solid var(--accent);
+    }
+    .code-block .comment { color: var(--text-muted); }
+    .code-block .key { color: var(--orange); }
+    .code-block .str { color: var(--green); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+      font-size: 0.95rem;
+      background: var(--surface);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    th, td {
+      padding: 0.6rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--surface2);
+    }
+    th {
+      color: var(--accent);
+      font-weight: 600;
+      background: var(--surface2);
+    }
+    td { color: var(--text-muted); }
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+      margin: 1rem 0;
+    }
+    @media (max-width: 768px) {
+      .two-col { grid-template-columns: 1fr; }
+      .slide { padding: 2rem 1.5rem; }
+    }
+    .card {
+      background: var(--surface);
+      border-radius: 10px;
+      padding: 1.25rem;
+      border: 1px solid var(--surface2);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .card h3 { margin-top: 0; }
+    .live-demo {
+      background: var(--accent-soft);
+      border: 1px solid var(--accent);
+      border-radius: 12px;
+      padding: 2rem;
+      margin-top: 2rem;
+      text-align: center;
+    }
+    .live-demo .url {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.25rem;
+      color: var(--accent);
+      margin: 0.5rem 0;
+    }
+    .nav-hint {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+    .logo-line {
+      font-size: 1.1rem;
+      color: var(--text-muted);
+      margin-top: 1rem;
+    }
+    .logo-line strong { color: var(--text); }
+    .small { font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+
+  <section class="slide" id="title">
+    <h1>Portal DRIVE</h1>
+    <p class="subtitle">Greiner Autohaus — Überblick für IT Krebs (eAutoSeller)</p>
+    <p class="logo-line"><strong>Eigenentwickelte Reporting-Plattform</strong> · Stellantis · Hyundai · Leapmotor · Entwicklung auf dem Server · Cursor + Workstreams · Live-Demo</p>
+    <div style="margin-top: 2rem;">
+      <span class="badge">Flask 3</span>
+      <span class="badge">PostgreSQL</span>
+      <span class="badge">Celery</span>
+      <span class="badge">LDAP/AD</span>
+      <span class="badge">eAutoSeller API</span>
+    </div>
+  </section>
+
+  <section class="slide" id="technik">
+    <h1>Technik</h1>
+    <p class="subtitle">Stack, Architektur, Datenbanken</p>
+
+    <h2>Tech-Stack</h2>
+    <table>
+      <tr><th>Schicht</th><th>Technologie</th></tr>
+      <tr><td>Backend</td><td>Flask 3.x, Gunicorn (4 Workers), Apache Reverse Proxy</td></tr>
+      <tr><td>Frontend</td><td>Jinja2, Bootstrap 5, jQuery, Chart.js</td></tr>
+      <tr><td>Auth</td><td>LDAP/Active Directory, Flask-Login, OU-basiertes Role-Mapping</td></tr>
+      <tr><td>Datenbank</td><td>PostgreSQL (Haupt-DB), Locosoft-PostgreSQL (read-only)</td></tr>
+      <tr><td>Scheduler</td><td>Celery, RedBeat, Redis, Flower (:5555)</td></tr>
+      <tr><td>Reporting</td><td><strong>DRIVE</strong> (eigenentwickelt: TEK, BWA, E-Mail-Reports, PDFs). Metabase CE (:3001) optional für Ad-hoc-Auswertungen & Überblick.</td></tr>
+    </table>
+
+    <h2>Request-Flow</h2>
+    <div class="code-block">
+Browser → Flask Routes (routes/) → API-Layer (api/) → PostgreSQL
+                ↓
+         Templates (templates/)
+    </div>
+
+    <h2>Datenbanken</h2>
+    <div class="two-col">
+      <div class="card">
+        <h3>DRIVE Portal (Haupt-DB)</h3>
+        <p><span class="code">drive_portal</span> auf 127.0.0.1 · <strong>161 Tabellen</strong></p>
+        <p>Konten, Transaktionen, Urlaub, Fahrzeugfinanzierungen, Navigation, Users, Budget, WhatsApp, …</p>
+      </div>
+      <div class="card">
+        <h3>Locosoft (extern, read-only)</h3>
+        <p><span class="code">loco_auswertung_db</span> auf 10.80.80.8</p>
+        <p>Werkstatt, Aufträge, Zeiten, Kundendaten, Adressbuch für Integrationen</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide" id="entwicklung-features">
+    <h1>Entwicklung der Hauptfeatures</h1>
+    <p class="subtitle">Aufwand & Komplexität (aus Doku)</p>
+
+    <h2>Feature-Übersicht</h2>
+    <table>
+      <tr><th>Bereich</th><th>Hauptfeatures</th><th>Komplexität / Aufwand</th></tr>
+      <tr>
+        <td><strong>Controlling</strong></td>
+        <td>BWA, TEK, Bankenspiegel, Liquiditätsvorschau, AfA VFW/Mietwagen, Kontenmapping, Finanzreporting-Cube</td>
+        <td><span class="complexity high">Hoch</span> — SSOT TEK/Breakeven, viele Reports, MT940/PDF-Import, AfA-Modul mit Locosoft-Abgleich</td>
+      </tr>
+      <tr>
+        <td><strong>Werkstatt</strong></td>
+        <td>Stempeluhr, Live-Board, Serviceberater, Gudat, ML-Prognosen, Garantie, Arbeitskarte, Unfall-Rechnungsprüfung, Fahrzeuganlage (OCR), ServiceBox-Scraper</td>
+        <td><span class="complexity high">Hoch</span> — Locosoft + Gudat + Scraper, ML-Pipeline, mehrere externe Systeme</td>
+      </tr>
+      <tr>
+        <td><strong>Verkauf</strong></td>
+        <td>Auftragseingang, Budget-Planung, eAutoSeller (BWA, Bestand), Leasys, Verkäufer-Zielplanung, Jahresprämie, Renner/Penner, Provisionsmodul</td>
+        <td><span class="complexity medium">Mittel–Hoch</span> — eAutoSeller Swagger-API, Budget/KST-Planung, Provision SSOT</td>
+      </tr>
+      <tr>
+        <td><strong>Urlaubsplaner</strong></td>
+        <td>Buchungen, Genehmigungs-Workflows, Chef-Übersicht, Outlook-Kalender, vacation_approval_rules</td>
+        <td><span class="complexity medium">Mittel</span> — Genehmiger-SSOT, Kalender-Sync, Multi-Standort</td>
+      </tr>
+      <tr>
+        <td><strong>Teile & Lager</strong></td>
+        <td>Teile-Status, Renner/Penner, MOBIS, ServiceBox-Lieferscheine</td>
+        <td><span class="complexity medium">Mittel</span> — Locosoft-Spiegel, Scraper, Marktpreise</td>
+      </tr>
+      <tr>
+        <td><strong>Integrations</strong></td>
+        <td>WhatsApp (Twilio), eAutoSeller, Microsoft Graph Mail, ecoDMS, Locosoft SOAP</td>
+        <td><span class="complexity medium">Mittel</span> — APIs, Polling/Webhook, Credentials getrennt</td>
+      </tr>
+      <tr>
+        <td><strong>Auth/Admin</strong></td>
+        <td>LDAP/AD, Rollen, Feature-Rechte, DB-Navigation, Organigramm</td>
+        <td><span class="complexity medium">Mittel</span> — OU-Mapping, role_features, navigation_items</td>
+      </tr>
+    </table>
+    <p class="small">Komplexität aus CONTEXT.md und Machbarkeits-/Feature-Dokumenten. Kontinuierliche Erweiterung (z. B. TEK SSOT, AfA, Offene Aufträge, Verkaufsempfehlungen).</p>
+  </section>
+
+  <section class="slide" id="ssot-datenquellen">
+    <h1>SSOT & Datenquellen</h1>
+    <p class="subtitle">Single Source of Truth und alle Datenquellen (aus Doku)</p>
+
+    <h2>SSOT (Single Source of Truth)</h2>
+    <table>
+      <tr><th>Thema</th><th>SSOT (Modul / Tabelle / Regel)</th></tr>
+      <tr><td>TEK, Breakeven, Prognose</td><td><span class="code">api/controlling_data.py</span> — get_tek_data, berechne_breakeven_prognose, berechne_breakeven_prognose_standort</td></tr>
+      <tr><td>Werktage</td><td><span class="code">utils/werktage.py</span> — get_werktage_monat (Datenstichtag vor 19:00)</td></tr>
+      <tr><td>4-Lohn-Einsatz</td><td>Rollierender 6-Monats-Schnitt in get_tek_data (Einsatz_aktuell = Umsatz_aktuell × (Einsatz_6M / Umsatz_6M))</td></tr>
+      <tr><td>Liquiditätsvorschau</td><td><span class="code">api/cashflow_vorschau.get_cashflow_vorschau(tage)</span> — Saldo + Transaktionen + Tilgungen</td></tr>
+      <tr><td>AfA Verkaufsempfehlungen</td><td><span class="code">api/afa_api._get_verkaufsempfehlungen_liste</span> (PDF/Report nutzen dieselbe Quelle)</td></tr>
+      <tr><td>Provisionsberechnung</td><td><span class="code">api/provision_service.berechne_live_provision</span>; Regeln: provision_config (SSOT Sätze/Min/Max)</td></tr>
+      <tr><td>Fakturierung Werkstatt</td><td>Locosoft (labours.is_invoiced, invoices); Gudat nur ergänzend für Diskrepanzen</td></tr>
+      <tr><td>Genehmiger Urlaub</td><td><span class="code">vacation_approval_rules</span> (DB); Anspruch: vacation_entitlements; Resturlaub optional Portal = SSOT</td></tr>
+      <tr><td>Verkäufer & Stückziele</td><td>Verkauf = SSOT; Planungsseiten KST/Abteilungsleiter unverändert</td></tr>
+      <tr><td>Hilfe / KI-Kontext</td><td><span class="code">hilfe_ki_kontext_registry</span> — pro Thema fachlicher SSOT-Text für KI-Erweiterung</td></tr>
+    </table>
+
+    <h2>Datenquellen (vollständig)</h2>
+    <table>
+      <tr><th>Quelle</th><th>Typ / Host</th><th>Verwendung</th></tr>
+      <tr><td><strong>PostgreSQL drive_portal</strong></td><td>127.0.0.1:5432</td><td>Haupt-DB, 161 Tabellen (Konten, Transaktionen, Urlaub, Auth, Navigation, Budget, WhatsApp, AfA, …)</td></tr>
+      <tr><td><strong>PostgreSQL Locosoft</strong></td><td>10.80.80.8:5432, read-only</td><td>loco_* Tabellen (orders, labours, times, dealer_vehicles, journal_accountings, parts, vehicles, employees, …)</td></tr>
+      <tr><td><strong>eAutoSeller API</strong></td><td>Swagger/REST</td><td>BWA-Platzierung, Bestand, Celery-Sync (sync_eautoseller_data)</td></tr>
+      <tr><td><strong>WhatsApp (Twilio)</strong></td><td>REST, Inbound Polling</td><td>Nachrichten, Kontakte; Celery fetch_whatsapp_inbound_polling, send_whatsapp_message</td></tr>
+      <tr><td><strong>Microsoft Graph</strong></td><td>REST</td><td>Mail (Serviceberater-Benachrichtigungen, Reports), Kalender (Urlaub)</td></tr>
+      <tr><td><strong>Gudat</strong></td><td>REST/GraphQL (credentials.json)</td><td>Live-Board, Kapazität, Arbeitskarte, Dossier/Orders</td></tr>
+      <tr><td><strong>LDAP/Active Directory</strong></td><td>AD</td><td>Login, OU-basiertes Role-Mapping, ldap_employee_mapping</td></tr>
+      <tr><td><strong>MT940 / CAMT / PDF</strong></td><td>Import (Parser)</td><td>Banktransaktionen, Salden → transaktionen, konten, daily_balances</td></tr>
+      <tr><td><strong>AWS Bedrock / LM Studio</strong></td><td>API</td><td>Fahrzeugschein-OCR, Hilfe-KI (optional), natursprachliche Analysen (TEK-Daten)</td></tr>
+      <tr><td><strong>ServiceBox (Stellantis)</strong></td><td>Scraper (Selenium)</td><td>Bestelldetails, Wartungspläne, Menupricing (VIN W0/VXU)</td></tr>
+      <tr><td><strong>Leasys / Hyundai / Santander</strong></td><td>APIs / Import</td><td>Fahrzeugfinanzierungen, Zinskonditionen, fahrzeugfinanzierungen, tilgungen</td></tr>
+      <tr><td><strong>DAT VIN (optional)</strong></td><td>Web/Token</td><td>Fahrzeuganlage VIN-Lookup (manueller Token bei Headless-Problem)</td></tr>
+      <tr><td><strong>ecoDMS</strong></td><td>API (geplant)</td><td>Dokumente, Kategorisierung</td></tr>
+      <tr><td><strong>Redis</strong></td><td>127.0.0.1:6379</td><td>Celery Message Broker, Caching</td></tr>
+    </table>
+  </section>
+
+  <section class="slide" id="arbeitsweise">
+    <h1>Arbeitsweise</h1>
+    <p class="subtitle">Cursor, Workstreams, Git, Regeln</p>
+
+    <h2>Entwicklungsumgebung</h2>
+    <ul>
+      <li><strong>Server ist Master:</strong> Entwicklung auf <span class="code">/opt/greiner-portal/</span></li>
+      <li>Windows-Sync (<code>\\Srvrdb01\...\Server\</code>) nur Backup; bei Bedarf vom Server ins Sync kopieren</li>
+      <li><strong>Git lebt auf dem Server</strong> — keine force-pushes/rebase ohne Absprache</li>
+      <li>Commit-Konvention: <span class="code">feat(workstream): …</span> / <span class="code">fix(workstream): …</span> / <span class="code">docs(workstream): …</span></li>
+    </ul>
+
+    <h2>Workstream-System</h2>
+    <p>Jedes Thema hat einen Workstream mit <span class="code">docs/workstreams/{workstream}/CONTEXT.md</span>. Beim Arbeiten:</p>
+    <ol>
+      <li>CONTEXT.md des Workstreams lesen</li>
+      <li>Im Kontext arbeiten</li>
+      <li>CONTEXT.md am Ende aktualisieren</li>
+    </ol>
+    <p><strong>Workstreams:</strong> controlling, werkstatt, verkauf, teile-lager, urlaubsplaner, hr, planung, fahrzeugfinanzierungen, infrastruktur, auth-ldap, <strong>integrations</strong> (WhatsApp, eAutoSeller, SOAP, Scraper), marketing, verguetung, Hilfe</p>
+
+    <h2>Cursor & Regeln</h2>
+    <ul>
+      <li><strong>.cursorrules</strong> + <strong>CLAUDE.md</strong> — Architektur, Pfade, SSOT, Deployment, Navi-Regeln</li>
+      <li>Session-Start/Session-Ende über <span class="code">.cursor/commands/</span></li>
+      <li>Agent führt Migrationen und Neustarts selbst aus</li>
+    </ul>
+  </section>
+
+  <section class="slide" id="features-tekkis">
+    <h1>Features für Programmierer & Tekkis</h1>
+    <p class="subtitle">APIs, Scheduler, DB-Navigation, Integrationen</p>
+
+    <h2>Modul-Struktur (API → Routes → Templates)</h2>
+    <table>
+      <tr><th>Bereich</th><th>API (Beispiele)</th><th>Routes</th></tr>
+      <tr><td>Finanzen</td><td>bankenspiegel_api, controlling_api, cashflow_*, afa_api</td><td>bankenspiegel_routes, controlling_routes, afa_routes</td></tr>
+      <tr><td>Verkauf</td><td>verkauf_api, eautoseller_api, budget_api, leasys_api</td><td>verkauf_routes</td></tr>
+      <tr><td>Urlaub</td><td>vacation_api, vacation_chef_api, vacation_admin_api</td><td>app.py</td></tr>
+      <tr><td>Werkstatt</td><td>werkstatt_api, werkstatt_live_api, gudat_data, serviceberater_api</td><td>werkstatt_routes</td></tr>
+      <tr><td>Teile/Lager</td><td>teile_api, renner_penner_api, parts_api</td><td>routes</td></tr>
+      <tr><td>Admin</td><td>admin_api, organization_api, navigation_utils</td><td>admin_routes</td></tr>
+    </table>
+
+    <h2>Für Tekkis spannend</h2>
+    <div class="two-col">
+      <div class="card">
+        <h3>Navigation aus der DB</h3>
+        <p>Menüpunkte aus <span class="code">navigation_items</span>. Neue Punkte per Migration + requires_feature / role_restriction.</p>
+      </div>
+      <div class="card">
+        <h3>Celery + Flower</h3>
+        <p>Tasks in <span class="code">celery_app/tasks.py</span> (eAutoSeller-Sync, WhatsApp-Polling, TEK-E-Mails, Serviceberater, AfA-Reports). Flower :5555, <span class="code">/admin/celery/</span>.</p>
+      </div>
+      <div class="card">
+        <h3>eAutoSeller-Integration</h3>
+        <p><span class="code">api/eautoseller_api.py</span>, <span class="code">lib/eautoseller_client.py</span>. Swagger-API, BWA-Platzierung, Bestand, Celery-Sync.</p>
+      </div>
+      <div class="card">
+        <h3>Reporting: DRIVE + optional Metabase</h3>
+        <p><strong>DRIVE</strong> ist unsere eigenentwickelte Reporting-Plattform (TEK, BWA, Bankenspiegel, E-Mail-Reports, PDFs). <strong>Metabase</strong> (:3001) ergänzend für Ad-hoc-Abfragen und Überblick; Haupt-Reports laufen über DRIVE. MCP, Doku: <span class="code">docs/</span>, <span class="code">docs/workstreams/</span>.</p>
+      </div>
+    </div>
+
+    <h2>Deployment (kurz)</h2>
+    <div class="code-block">
+<span class="comment"># Nach Python-Änderungen</span>
+sudo systemctl restart greiner-portal
+
+<span class="comment"># Nach Celery-Task-Änderungen</span>
+sudo systemctl restart celery-worker celery-beat
+
+<span class="comment"># Migration ausführen</span>
+PGPASSWORD=... psql -h 127.0.0.1 -U drive_user -d drive_portal -f migrations/&lt;datei&gt;.sql
+    </div>
+    <p>Templates: nur Browser-Refresh (Strg+F5), kein Restart.</p>
+  </section>
+
+  <section class="slide" id="live">
+    <h1>Live-Demo</h1>
+    <p class="subtitle">Portal im Browser zeigen</p>
+    <div class="live-demo">
+      <p><strong>Interne Portal-URL</strong></p>
+      <p class="url">http://drive</p>
+      <p style="color: var(--text-muted); margin-top: 1rem;">(Apache Reverse Proxy → Gunicorn :5000)</p>
+      <p style="margin-top: 1.5rem;">Flower: <span class="code">http://drive:5555</span> · Metabase (optional): <span class="code">:3001</span></p>
+    </div>
+    <p style="margin-top: 2rem;">Viel Erfolg beim IT Krebs — freundschaftlicher Austausch mit eAutoSeller.</p>
+  </section>
+
+  <div class="nav-hint">↓ Scrollen für nächste „Folie“</div>
+
+</body>
+</html>
