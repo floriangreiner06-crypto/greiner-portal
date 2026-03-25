@@ -865,12 +865,12 @@ document.addEventListener('DOMContentLoaded', function () {
         setModeInUrl(newMode);
         if (isKat) {
             ensureKategorisierungInit();
+        } else {
+            loadTransaktionenUebersicht();
         }
     }
-    const tabContent = document.getElementById('transaktionenTabContent');
-    if (tabContent) {
-        tabContent.addEventListener('shown.bs.tab', onTabShown);
-    }
+    if (tabUebersicht) tabUebersicht.addEventListener('shown.bs.tab', onTabShown);
+    if (tabKategorisierung) tabKategorisierung.addEventListener('shown.bs.tab', onTabShown);
 
     // Start: Tab per Bootstrap anzeigen und passende Logik starten
     const triggerId = mode === 'kategorisierung' ? 'tab-kategorisierung' : 'tab-uebersicht';

@@ -80,8 +80,10 @@ function updateKPIs(data) {
     document.getElementById('anzahlBanken').textContent = formatZahl(data.anzahl_banken ?? 0);
     const aktiv = data.anzahl_konten ?? 0;
     const gesamt = data.anzahl_konten_gesamt ?? aktiv;
-    document.getElementById('anzahlKonten').textContent = gesamt !== aktiv ? aktiv + ' / ' + gesamt : formatZahl(aktiv);
-    document.getElementById('anzahlKonten').className = 'kpi-value';
+    const aktivEl = document.getElementById('anzahlKontenAktiv');
+    const gesamtEl = document.getElementById('anzahlKontenGesamt');
+    if (aktivEl) aktivEl.textContent = formatZahl(aktiv);
+    if (gesamtEl) gesamtEl.textContent = formatZahl(gesamt);
 
     const l30 = data.letzte_30_tage || {};
     document.getElementById('anzahlTransaktionen').textContent = formatZahl(l30.anzahl_transaktionen ?? 0);
@@ -91,7 +93,7 @@ function updateKPIs(data) {
     const saldo30 = l30.saldo ?? 0;
     const saldo30El = document.getElementById('saldo30Tage');
     saldo30El.textContent = formatBetrag(saldo30);
-    saldo30El.className = (saldo30 >= 0 ? 'text-success' : 'text-danger') + ' fw-600';
+    saldo30El.className = (saldo30 >= 0 ? 'text-success' : 'text-danger') + ' fw-semibold';
 
     const it = data.interne_transfers_30_tage || {};
     document.getElementById('interneTransfersAnzahl').textContent = formatZahl(it.anzahl_transaktionen ?? 0);
