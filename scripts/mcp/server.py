@@ -1,15 +1,22 @@
 #!/usr/bin/env python3
 """MCP Server für Claude Desktop - Greiner Portal"""
 import asyncio
-import sqlite3
 import subprocess
+import json
+import psycopg2
+import psycopg2.extras
 from pathlib import Path
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 import mcp.types as types
 
 BASE_DIR = Path('/opt/greiner-portal')
-DB_PATH = BASE_DIR / 'data/greiner_controlling.db'
+
+def get_db():
+    return psycopg2.connect(
+        host='127.0.0.1', port=5432,
+        dbname='drive_portal', user='drive_user', password='DrivePortal2024'
+    )
 
 server = Server("greiner-portal")
 
@@ -61,7 +68,7 @@ async def list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="db_query",
-            description="SQLite Query auf greiner_controlling.db ausfuehren (nur SELECT)",
+            description="PostgreSQL Query auf drive_portal DB ausfuehren (nur SELECT)",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -152,13 +159,11 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             query = arguments["query"].strip()
             if not query.upper().startswith("SELECT"):
                 return [types.TextContent(type="text", text="FEHLER: Nur SELECT-Queries erlaubt")]
-            conn = sqlite3.connect(str(DB_PATH))
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
+            conn = get_db()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute(query)
             rows = [dict(row) for row in cursor.fetchall()]
             conn.close()
-            import json
             result = json.dumps(rows, indent=2, default=str, ensure_ascii=False)
             if len(result) > 100000:
                 result = result[:100000] + f"\n\n... [ABGESCHNITTEN, {len(rows)} Zeilen total]"

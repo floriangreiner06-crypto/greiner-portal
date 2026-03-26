@@ -27,7 +27,7 @@ else:
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 Jahr in Produktion
 
 # Globale Static-Version (ändert sich bei jedem Flask-Neustart)
-STATIC_VERSION = '20260323120000'  # Cache-Bust: Konten Aktualisieren → Celery Bankimport
+STATIC_VERSION = '20260324093000'  # Cache-Bust: Dashboard KPI "Freie Linien"
 print(f"📦 Static Version: {STATIC_VERSION}")
 
 # Template-Kontext: Macht STATIC_VERSION in allen Templates verfügbar
@@ -1029,6 +1029,16 @@ if os.getenv('FLASK_ENV') == 'development' or app.debug:
 def leasys_programmfinder():
     """Leasys Programmfinder - Hilft Verkäufern das richtige Master Agreement zu finden"""
     return render_template('leasys_programmfinder.html')
+
+
+@app.route('/ki-assistent')
+@login_required
+def ki_assistent():
+    """
+    Kleines Frontend für den Hybrid-Query-Endpunkt.
+    URL in DRIVE: /ki-assistent
+    """
+    return render_template('ki_assistent.html')
 
 
 # Werkstatt-Monitor-Ansichten (ohne Login) → routes/werkstatt_routes.py

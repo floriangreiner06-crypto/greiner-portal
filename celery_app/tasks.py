@@ -28,12 +28,66 @@ def benachrichtige_serviceberater_ueberschreitungen():
         from api.graph_mail_connector import GraphMailConnector
         from api.db_utils import db_session, locosoft_session
         from psycopg2.extras import RealDictCursor
+
+        def _normalize_email_for_send(email: str) -> str:
+            """Normalisiert E-Mail-Adressen robust (u. a. deutsche Umlaute)."""
+            e = (email or '').strip().lower()
+            if not e:
+                return ''
+            e = (
+                e.replace('ä', 'ae')
+                 .replace('ö', 'oe')
+                 .replace('ü', 'ue')
+                 .replace('ß', 'ss')
+            )
+            return e
+
+        def _to_int(value, default):
+            try:
+                return int(value)
+            except Exception:
+                return default
+
+        def _classify_auftragsart(auftrag: dict) -> str:
+            """
+            Vereinheitlichte Auftragsart-Klassifikation für Alarm-Filter.
+            Rückgabe: 'garantie' | 'intern' | 'kunde' | 'sonstige'
+            """
+            if (auftrag.get('garantie') or {}).get('ist_garantie'):
+                return 'garantie'
+
+            kunde_name = (auftrag.get('kunde') or '').lower()
+            if 'intern' in kunde_name:
+                return 'intern'
+
+            if kunde_name and kunde_name != 'unbekannt':
+                return 'kunde'
+            return 'sonstige'
+
+        # Konfiguration aus Admin → E-Mail Reports laden
+        from reports.registry import get_report_config
+        alarm_defaults = {
+            'min_percent': 100,
+            'min_active_minutes': 30,
+            'workday_start_hour': 7,
+            'workday_end_hour': 18,
+            'enabled_order_types': ['kunde', 'intern', 'garantie', 'sonstige']
+        }
+        alarm_cfg = get_report_config('alarm_auftrag_ueberschreitung', alarm_defaults)
+        min_percent = max(100, _to_int(alarm_cfg.get('min_percent'), 100))
+        min_active_minutes = max(0, _to_int(alarm_cfg.get('min_active_minutes'), 30))
+        workday_start_hour = min(23, max(0, _to_int(alarm_cfg.get('workday_start_hour'), 7)))
+        workday_end_hour = min(24, max(1, _to_int(alarm_cfg.get('workday_end_hour'), 18)))
+        enabled_order_types = alarm_cfg.get('enabled_order_types') or alarm_defaults['enabled_order_types']
+        enabled_order_types = {str(x).strip().lower() for x in enabled_order_types if str(x).strip()}
+        if not enabled_order_types:
+            enabled_order_types = set(alarm_defaults['enabled_order_types'])
         
         # Prüfe ob Arbeitszeit (Mo-Fr, 7-18 Uhr)
         jetzt = datetime.now()
         if jetzt.weekday() >= 5:  # Samstag/Sonntag
             return {'success': True, 'message': 'Wochenende - keine Benachrichtigungen'}
-        if jetzt.hour < 7 or jetzt.hour >= 18:
+        if jetzt.hour < workday_start_hour or jetzt.hour >= workday_end_hour:
             return {'success': True, 'message': 'Außerhalb Arbeitszeit - keine Benachrichtigungen'}
         
         logger.info("Prüfe Überschreitungen für Serviceberater-Benachrichtigungen...")
@@ -232,8 +286,11 @@ def benachrichtige_serviceberater_ueberschreitungen():
                 for row in cursor.fetchall():
                     locosoft_id = row[4]
                     if locosoft_id:
+                        normalized_email = _normalize_email_for_send(row[3])
+                        if not normalized_email:
+                            continue
                         employee_emails[locosoft_id] = {
-                            'email': row[3],
+                            'email': normalized_email,
                             'name': f"{row[1]} {row[2]}".strip()
                         }
         
@@ -290,8 +347,11 @@ def benachrichtige_serviceberater_ueberschreitungen():
                     
                     # TAG 193: Mindestlaufzeit-Schwelle (30 Min) für aktive Aufträge
                     # Verhindert E-Mails bei sehr kurzen Stempelungen
-                    if laufzeit_min < 30:
-                        logger.debug(f"Auftrag {auftrag_nr}: Nur {laufzeit_min:.0f} Min aktuell gestempelt (< 30 Min Schwelle) - überspringe")
+                    if laufzeit_min < min_active_minutes:
+                        logger.debug(
+                            f"Auftrag {auftrag_nr}: Nur {laufzeit_min:.0f} Min aktuell gestempelt "
+                            f"(< {min_active_minutes} Min Schwelle) - überspringe"
+                        )
                         continue
                 else:
                     # Abgeschlossener Auftrag: Gesamtlaufzeit verwenden
@@ -313,8 +373,10 @@ def benachrichtige_serviceberater_ueberschreitungen():
                 diff_prozent = (laufzeit_min / vorgabe_min * 100) if vorgabe_min > 0 else 0
                 
                 # WICHTIG: Nur E-Mail senden, wenn tatsächlich überschritten (>100%)
-                if diff_prozent <= 100:
-                    logger.debug(f"Auftrag {auftrag_nr}: {diff_prozent:.1f}% ist KEINE Überschreitung - überspringe")
+                if diff_prozent <= min_percent:
+                    logger.debug(
+                        f"Auftrag {auftrag_nr}: {diff_prozent:.1f}% <= Schwellwert {min_percent}% - überspringe"
+                    )
                     continue
                 
                 # Hole Auftrag-Details für Fahrzeug-Info
@@ -323,6 +385,14 @@ def benachrichtige_serviceberater_ueberschreitungen():
                     continue
                 
                 auftrag = auftrag_detail['auftrag']
+
+                auftragsart = _classify_auftragsart(auftrag)
+                if auftragsart not in enabled_order_types:
+                    logger.debug(
+                        f"Auftrag {auftrag_nr}: Auftragsart '{auftragsart}' nicht aktiv "
+                        f"(aktiv: {sorted(enabled_order_types)}) - überspringe"
+                    )
+                    continue
                 
                 # WICHTIG: Prüfe ob Auftrag noch offene Positionen hat
                 # (abgeschlossene/fakturierte Aufträge bekommen keine Warn-Email)
@@ -364,7 +434,7 @@ def benachrichtige_serviceberater_ueberschreitungen():
                 # TAG 206: Report-Subscriber aus Admin E-Mail Reports (alarm_auftrag_ueberschreitung)
                 empfaenger_emails_set = {e['email'].lower() for e in empfaenger}
                 for sub_email in report_subscriber_emails:
-                    sub_email_lower = sub_email.lower().strip()
+                    sub_email_lower = _normalize_email_for_send(sub_email)
                     if sub_email_lower and sub_email_lower not in empfaenger_emails_set:
                         empfaenger.append({'email': sub_email_lower, 'name': sub_email_lower})
                         empfaenger_emails_set.add(sub_email_lower)
@@ -443,6 +513,10 @@ def benachrichtige_serviceberater_ueberschreitungen():
                             <tr style="background: #f8f9fa;">
                                 <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Betrieb</td>
                                 <td style="padding: 10px; border: 1px solid #dee2e6;">{betrieb_name}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Auftragsart</td>
+                                <td style="padding: 10px; border: 1px solid #dee2e6;">{auftragsart.title()}</td>
                             </tr>
                             <tr>
                                 <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Gestempelt</td>
@@ -2275,12 +2349,16 @@ def sync_eautoseller_data():
             if vins:
                 placements = fetch_placements(vins, max_vins=50)
                 updated = 0
+                seen_vin = set()
                 with db_session() as conn:
                     cur = conn.cursor()
                     for vin, data in placements.items():
                         if not vin or len(str(vin).strip()) != 17:
                             continue
-                        vin = str(vin).strip()
+                        vin_norm = str(vin).strip().upper()
+                        if vin_norm in seen_vin:
+                            continue
+                        seen_vin.add(vin_norm)
                         err = data.get('error')
                         cur.execute("""
                             INSERT INTO eautoseller_bwa_placement
@@ -2294,7 +2372,7 @@ def sync_eautoseller_data():
                             error_message = EXCLUDED.error_message,
                             fetched_at = NOW()
                         """, (
-                            vin,
+                            vin_norm,
                             data.get('mobile_platz'),
                             data.get('total_hits'),
                             data.get('platz_1_retail_gross'),
@@ -2451,6 +2529,23 @@ def fetch_whatsapp_inbound_polling():
         return {'success': False, 'error': str(e)}
 
 
+@shared_task(soft_time_limit=60, name='celery_app.tasks.send_vacation_approver_notification')
+def send_vacation_approver_notification(employee_id):
+    """
+    Sendet gebündelte Genehmiger-E-Mail(s) für einen Mitarbeiter: alle pending Buchungen
+    ohne approver_notification_sent_at werden in Zeiträume gruppiert, pro Zeitraum eine E-Mail.
+    Wird mit countdown=5 und task_id=vacation_approver_{employee_id} geplant, damit bei
+    mehreren Einzelbuchungen (z. B. alter Client) nur eine E-Mail für den Zeitraum rausgeht.
+    """
+    try:
+        from api.vacation_api import send_pending_approver_notifications_for_employee
+        ok = send_pending_approver_notifications_for_employee(employee_id)
+        return {'success': ok}
+    except Exception as e:
+        logger.exception("send_vacation_approver_notification: %s", e)
+        return {'success': False, 'error': str(e)}
+
+
 @shared_task(soft_time_limit=120, name='celery_app.tasks.afa_monatsberechnung')
 def afa_monatsberechnung(jahr=None, monat=None):
     """
@@ -2511,4 +2606,93 @@ def afa_monatsberechnung(jahr=None, monat=None):
         return {'success': True, 'buchungsmonat': f'{jahr}-{monat:02d}', 'anzahl_fahrzeuge': len(fahrzeuge), 'inserted': inserted}
     except Exception as e:
         logger.exception("AfA-Monatsberechnung Fehler: %s", e)
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=900, name='celery_app.tasks.garantie_precheck_refresh')
+def garantie_precheck_refresh(max_orders: int = 120, max_ai: int = 20):
+    """
+    Hintergrund-Precheck für Garantieaufträge.
+    - Regelbasiert: Frist + Kurzempfehlung für offene Garantieaufträge
+    - KI-Vollprüfung: nur priorisierte Aufträge (Akte vorhanden, Frist <= 7 Tage)
+    """
+    try:
+        from api.db_utils import locosoft_session
+        from psycopg2.extras import RealDictCursor
+        from api.garantie_auftraege_api import get_garantieakte_metadata
+        from api.garantie_precheck_service import run_precheck_for_auftrag, is_ai_candidate
+
+        with locosoft_session() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute(
+                """
+                SELECT DISTINCT
+                    o.number as auftrag_nr,
+                    o.subsidiary as betrieb,
+                    o.order_date,
+                    m.description as marke,
+                    mo.description as modell,
+                    v.license_plate as kennzeichen,
+                    COALESCE(cs.family_name || ', ' || cs.first_name, cs.family_name) as kunde
+                FROM orders o
+                LEFT JOIN vehicles v ON o.vehicle_number = v.internal_number
+                LEFT JOIN makes m ON v.make_number = m.make_number
+                LEFT JOIN models mo ON v.make_number = mo.make_number AND v.model_code = mo.model_code
+                LEFT JOIN customers_suppliers cs ON o.order_customer = cs.customer_number
+                WHERE o.has_open_positions = true
+                  AND (
+                      EXISTS (
+                          SELECT 1 FROM labours l
+                          WHERE l.order_number = o.number
+                            AND (l.charge_type = 60 OR l.labour_type IN ('G', 'GS'))
+                      )
+                      OR EXISTS (
+                          SELECT 1 FROM invoices i
+                          WHERE i.order_number = o.number
+                            AND i.invoice_type = 6
+                            AND i.is_canceled = false
+                      )
+                  )
+                  AND (
+                      EXISTS (
+                          SELECT 1 FROM times t
+                          WHERE t.order_number = o.number
+                            AND t.type = 2
+                      )
+                      OR EXISTS (
+                          SELECT 1 FROM labours l2
+                          WHERE l2.order_number = o.number
+                            AND l2.mechanic_no IS NOT NULL
+                      )
+                  )
+                ORDER BY o.order_date DESC
+                LIMIT %s
+                """,
+                (int(max_orders),),
+            )
+            rows = cursor.fetchall() or []
+
+        if not rows:
+            return {'success': True, 'count': 0, 'ai_done': 0, 'message': 'Keine Garantieaufträge'}
+
+        ai_done = 0
+        total = 0
+        for row in rows:
+            auftrag = dict(row)
+            auftrag_nr = int(auftrag.get('auftrag_nr'))
+            kunde = auftrag.get('kunde') or f'Kunde_{auftrag_nr}'
+            betrieb = auftrag.get('betrieb')
+            akte_info = get_garantieakte_metadata(auftrag_nr, kunde, betrieb)
+            auftrag['garantieakte'] = {'existiert': bool(akte_info.get('existiert'))}
+
+            with_ai = ai_done < int(max_ai) and is_ai_candidate(auftrag, threshold_days=7)
+            run_precheck_for_auftrag(auftrag, with_ai=with_ai)
+            if with_ai:
+                ai_done += 1
+            total += 1
+
+        logger.info("Garantie-Precheck aktualisiert: %s Aufträge (%s mit KI)", total, ai_done)
+        return {'success': True, 'count': total, 'ai_done': ai_done}
+    except Exception as e:
+        logger.exception("Fehler bei garantie_precheck_refresh")
         return {'success': False, 'error': str(e)}

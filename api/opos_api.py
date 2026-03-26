@@ -133,6 +133,7 @@ offene AS (
 ),
 -- Bei Stellantis Bank (1007422) steht in sales oft der Endkunde, nicht 1007422.
 -- Mehrere Sales am gleichen Datum: Verkäufer per Betragsnähe (out_sale_price ~ saldo_eur) wählen.
+-- buyer_customer_no aus sales = Käufer/Endkunde (bei Leasing/Finanzierung anders als FIBU-Debitor).
 sales_treffer AS (
   SELECT DISTINCT ON (o.customer_number, o.invoice_number, o.invoice_date)
     o.customer_number,
@@ -140,7 +141,8 @@ sales_treffer AS (
     o.invoice_date,
     o.saldo_eur,
     o.rechnungsersteller_nr,
-    s.salesman_number AS verkaeufer_fahrzeugverkauf
+    s.salesman_number AS verkaeufer_fahrzeugverkauf,
+    s.buyer_customer_no
   FROM offene o
   LEFT JOIN sales s
     ON s.out_invoice_date = o.invoice_date
@@ -160,7 +162,8 @@ mit_verkaeufer AS (
     invoice_date,
     saldo_eur,
     COALESCE(verkaeufer_fahrzeugverkauf, rechnungsersteller_nr) AS verkaufer_nr,
-    (verkaeufer_fahrzeugverkauf IS NOT NULL) AS ist_fahrzeugverkauf
+    (verkaeufer_fahrzeugverkauf IS NOT NULL) AS ist_fahrzeugverkauf,
+    buyer_customer_no
   FROM sales_treffer
   WHERE {mit_where}
 )
@@ -170,6 +173,7 @@ SELECT
   mv.verkaufer_nr,
   mv.ist_fahrzeugverkauf,
   COALESCE(cs.kunde, 'Kunde Nr. ' || mv.customer_number::text) AS kunde,
+  buyer_cs.kunde AS kaeufer,
   mv.invoice_date AS rechnung_datum,
   mv.invoice_number AS rechnung_nr,
   ROUND(mv.saldo_eur, 2) AS betrag_eur,
@@ -182,6 +186,12 @@ LEFT JOIN (
   FROM loco_customers_suppliers
   GROUP BY customer_number
 ) cs ON cs.customer_number = mv.customer_number
+LEFT JOIN (
+  SELECT customer_number,
+         COALESCE(NULLIF(TRIM(MAX(COALESCE(family_name, '') || ', ' || COALESCE(first_name, ''))), ''), 'Kunde ' || customer_number) AS kunde
+  FROM loco_customers_suppliers
+  GROUP BY customer_number
+) buyer_cs ON buyer_cs.customer_number = (NULLIF(TRIM(mv.buyer_customer_no::text), '')::integer)
 ORDER BY verkaeufer_oder_ersteller NULLS LAST, rechnung_datum, mv.customer_number
 """
         params = offene_params + mit_params

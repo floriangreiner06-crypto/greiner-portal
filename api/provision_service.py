@@ -47,7 +47,9 @@ def get_provision_config_for_monat(monat: str) -> Dict[str, Dict[str, Any]]:
                        min_betrag, max_betrag, stueck_praemie, stueck_max, param_j60, param_j61,
                        COALESCE(gw_bestand_operator_abzug, 'minus') AS gw_bestand_operator_abzug,
                        COALESCE(gw_bestand_operator_komponenten, 'plus') AS gw_bestand_operator_komponenten,
-                       COALESCE(use_zielpraemie, false) AS use_zielpraemie, zielerreichung_betrag, zielpraemie_fallback_ziel
+                       COALESCE(use_zielpraemie, false) AS use_zielpraemie, zielerreichung_betrag, zielpraemie_fallback_ziel,
+                       COALESCE(zielpraemie_basis, 'auslieferung') AS zielpraemie_basis,
+                       memo_p1_kategorie
                 FROM provision_config
                 WHERE gueltig_ab <= %s
                   AND (gueltig_bis IS NULL OR gueltig_bis >= %s)
@@ -81,6 +83,8 @@ def get_provision_config_for_monat(monat: str) -> Dict[str, Dict[str, Any]]:
             'use_zielpraemie': bool(r.get('use_zielpraemie')),
             'zielerreichung_betrag': float(r['zielerreichung_betrag']) if r.get('zielerreichung_betrag') is not None else None,
             'zielpraemie_fallback_ziel': int(r['zielpraemie_fallback_ziel']) if r.get('zielpraemie_fallback_ziel') is not None else None,
+            'zielpraemie_basis': (r.get('zielpraemie_basis') or 'auslieferung').strip().lower() if isinstance(r.get('zielpraemie_basis'), str) else 'auslieferung',
+            'memo_p1_kategorie': (r.get('memo_p1_kategorie') or '').strip() or None,
         }
     return by_kategorie
 
@@ -159,6 +163,50 @@ def get_sales_where_einkaeufer_only(vkb: int, monat: str) -> List[Dict[str, Any]
         """, (von, bis, vkb, vkb))
         rows = rows_to_list(cur.fetchall())
     return rows
+
+
+def get_nw_auftragseingang_stueck(vkb: int, monat: str) -> int:
+    """
+    NW-Auftragseingang (Stück) für Verkäufer und Monat auf Basis Vertragsdatum.
+    SSOT-konform zur T-Regel aus Verkauf (T nur bis 1 Jahr nach EZ = NW) inkl. Dedup N→T/V.
+    """
+    year, month = monat.split('-')
+    cfg_i = get_provision_config_for_monat(monat).get('I_neuwagen') or {}
+    p1_target = (cfg_i.get('memo_p1_kategorie') or '').strip()
+    where_p1 = ""
+    if p1_target in ('II_testwagen', 'III_gebrauchtwagen'):
+        where_p1 = "AND UPPER(COALESCE(TRIM(s.memo), '')) <> 'P1'"
+
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute(f"""
+            SELECT COUNT(*) AS anzahl
+            FROM sales s
+            WHERE EXTRACT(YEAR FROM s.out_sales_contract_date) = %s
+              AND EXTRACT(MONTH FROM s.out_sales_contract_date) = %s
+              AND s.salesman_number = %s
+              AND (
+                    s.dealer_vehicle_type = 'N'
+                    OR (
+                        s.dealer_vehicle_type IN ('T', 'V')
+                        AND (
+                            s.first_registration_date IS NULL
+                            OR (s.out_sales_contract_date::date - s.first_registration_date) <= 365
+                        )
+                    )
+              )
+              AND NOT EXISTS (
+                    SELECT 1
+                    FROM sales s2
+                    WHERE s2.vin = s.vin
+                      AND s2.out_sales_contract_date = s.out_sales_contract_date
+                      AND s2.dealer_vehicle_type IN ('T', 'V')
+                      AND s.dealer_vehicle_type = 'N'
+              )
+              {where_p1}
+        """, (str(year), f"{int(month):02d}", vkb))
+        row = cur.fetchone()
+    return int((row.get('anzahl') if hasattr(row, 'get') else row[0]) or 0)
 
 
 def _get_float(r: Dict, key: str) -> float:
@@ -288,16 +336,24 @@ def berechne_live_provision(vkb: int, monat: str) -> Dict[str, Any]:
         einkaeufer = (r.get('einkaeufer_name') or '').strip() or (('VKB ' + str(in_buy)) if (in_buy is not None and einkaeufer_aktiv) else None)
         # DB2 Prov aus Bestand (Kat. IV): zusätzlich zur Umsatzprovision, wenn aktueller VKB = Einkäufer (antauschender VB)
         is_einkaeufer_this_vkb = (in_buy == vkb and einkaeufer_aktiv)
-        # Dispo/HR: Bei Fakturierung wird in Locosoft Pr. 132 Reiter Verkauf, Zeile Memo "P1" eingetragen.
-        # Dann Provision wie VFW/TW (1% Rg.Netto), nicht als Neuwagen (DB/Zielprämie).
+        # P1-Handling ist konfigurierbar über provision_config.memo_p1_kategorie.
         memo_p1 = (r.get('memo') or '').strip().upper() == 'P1'
-        if kat == 'I_neuwagen' and memo_p1:
-            prov = calc_rg_netto_clamp(netto_invoice, cfg_ii)
-            summe_ii += prov
-            positionen_ii.append({
-                'vin': vin, 'rg_nr': rg_nr, 'modell': desc, 'rg_datum': rg_datum,
-                'rg_netto': netto_invoice, 'provision': prov, 'fahrzeugart': typ or '', 'kaeufer_name': kaeufer, 'einkaeufer_name': einkaeufer,
-            })
+        p1_target = (cfg_i.get('memo_p1_kategorie') or '').strip()
+        if kat == 'I_neuwagen' and memo_p1 and p1_target in ('II_testwagen', 'III_gebrauchtwagen'):
+            if p1_target == 'III_gebrauchtwagen':
+                prov = calc_rg_netto_clamp(netto_vehicle, cfg_iii)
+                summe_iii += prov
+                positionen_iii.append({
+                    'vin': vin, 'rg_nr': rg_nr, 'modell': desc, 'rg_datum': rg_datum,
+                    'rg_netto': netto_vehicle, 'provision': prov, 'fahrzeugart': typ or '', 'kaeufer_name': kaeufer, 'einkaeufer_name': einkaeufer,
+                })
+            else:
+                prov = calc_rg_netto_clamp(netto_invoice, cfg_ii)
+                summe_ii += prov
+                positionen_ii.append({
+                    'vin': vin, 'rg_nr': rg_nr, 'modell': desc, 'rg_datum': rg_datum,
+                    'rg_netto': netto_invoice, 'provision': prov, 'fahrzeugart': typ or '', 'kaeufer_name': kaeufer, 'einkaeufer_name': einkaeufer,
+                })
         elif kat == 'I_neuwagen':
             stueck_nw += 1
             bemessung = (cfg_i.get('bemessungsgrundlage') or 'db').strip().lower()
@@ -381,17 +437,22 @@ def berechne_live_provision(vkb: int, monat: str) -> Dict[str, Any]:
     bemessung_i = (cfg_i.get('bemessungsgrundlage') or 'db').strip().lower()
     if bemessung_i != 'rg_netto':
         summe_i = calc_neuwagen(db_sum_nw, stueck_nw, cfg_i)
-    # Zielprämie (NW): Ziel aus Verkäufer-Zielplanung; 100 € Zielerreichung + 50 €/Stück Übererfüllung
+    zielpraemie_basis = (cfg_i.get('zielpraemie_basis') or 'auslieferung').strip().lower()
+    stueck_nw_zielpraemie = stueck_nw
+    if zielpraemie_basis == 'auftragseingang':
+        stueck_nw_zielpraemie = get_nw_auftragseingang_stueck(vkb, monat)
+
+    # Zielprämie (NW): Ziel aus Verkäufer-Zielplanung; Basis konfigurierbar (Auslieferung/Auftragseingang)
     if cfg_i.get('use_zielpraemie') and get_nw_ziel_verkaeufer_monat:
         jahr_int = int(monat[:4])
         monat_int = int(monat[5:7])
         nw_ziel = get_nw_ziel_verkaeufer_monat(vkb, jahr_int, monat_int)
         if nw_ziel == 0 and cfg_i.get('zielpraemie_fallback_ziel'):
             nw_ziel = int(cfg_i['zielpraemie_fallback_ziel'])
-        if nw_ziel and stueck_nw >= nw_ziel:
+        if nw_ziel and stueck_nw_zielpraemie >= nw_ziel:
             ziel_eur = float(cfg_i.get('zielerreichung_betrag') or 100)
             ueber_eur = float(cfg_i.get('stueck_praemie') or 50)
-            stueck_praemie_anteil = ziel_eur + max(0, stueck_nw - nw_ziel) * ueber_eur
+            stueck_praemie_anteil = ziel_eur + max(0, stueck_nw_zielpraemie - nw_ziel) * ueber_eur
         else:
             stueck_praemie_anteil = 0.0
     else:
@@ -422,6 +483,7 @@ def berechne_live_provision(vkb: int, monat: str) -> Dict[str, Any]:
         'positionen_iv': positionen_iv,
         'positionen_v': positionen_v,
         'stueck_neuwagen': stueck_nw,
+        'stueck_neuwagen_zielpraemie_basis': stueck_nw_zielpraemie,
         'config': {
             'I': cfg_i,
             'II': cfg_ii,
@@ -593,7 +655,8 @@ def get_lauf_detail(lauf_id: int) -> Optional[Dict[str, Any]]:
         cur = conn.cursor()
         cur.execute("""
             SELECT id, verkaufer_id, verkaufer_name, abrechnungsmonat, status,
-                   summe_kat_i, summe_kat_ii, summe_kat_iii, summe_kat_iv, summe_kat_v, summe_gesamt,
+                   summe_kat_i, summe_kat_ii, summe_kat_iii, summe_kat_iv, summe_kat_v,
+                   summe_stueckpraemie, summe_gesamt,
                    vorlauf_am, vorlauf_von, pdf_vorlauf, pdf_endlauf
             FROM provision_laeufe WHERE id = %s
         """, (lauf_id,))

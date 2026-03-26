@@ -158,12 +158,21 @@ class TeileData:
             return result
 
         # Bei Verkäufen: Nach Reichweite kategorisieren
+        # PENNER (Reichweite > 24) nur wenn nicht kürzlich verkauft (≤90 Tage = aktiver Abverkauf)
         if verkauf_12m > 0:
             if reichweite > 24:
-                result['kategorie'] = 'penner'
-                result['status_icon'] = '🟠'
-                result['prioritaet'] = 3
-                result['empfehlung'] = 'Überbestand reduzieren'
+                tage_ok = tage_seit_abgang is None or (isinstance(tage_seit_abgang, (int, float)) and tage_seit_abgang > 90)
+                if tage_ok:
+                    result['kategorie'] = 'penner'
+                    result['status_icon'] = '🟠'
+                    result['prioritaet'] = 3
+                    result['empfehlung'] = 'Überbestand reduzieren'
+                else:
+                    result['kategorie'] = 'normal'
+                    result['status_icon'] = '🟡'
+                    result['prioritaet'] = 4
+                    result['empfehlung'] = 'Bestand hoch, Abverkauf aktiv - beobachten'
+                    return result
             elif reichweite > 12:
                 result['kategorie'] = 'normal'
                 result['status_icon'] = '🟡'

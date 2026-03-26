@@ -13,13 +13,12 @@ ARCHITEKTUR:
 WICHTIG:
 - sales-Tabelle: Verkaufsdaten aus Locosoft Mirror (DRIVE Portal DB)
 - Dedup-Filter: Verhindert Doppelzählungen bei N→T/V Umsetzungen
-- Fahrzeugtypen: N=Neu, G=Gebraucht, D=Demo, T=Tausch, V=Vorführ
+- Fahrzeugtypen: N,V=NW; T=NW nur bis 1 Jahr ab Erstzulassung, sonst GW; D,G=GW. SSOT: _NW_GW_* / FAHRZEUGTYP_*.
 
 Erstellt: TAG 159 (2026-01-02)
 Autor: Claude AI
 """
 
-import calendar
 import logging
 from datetime import datetime, date, timedelta
 from typing import Dict, Any, List, Optional
@@ -47,6 +46,25 @@ MARKEN = {
     41: 'Leapmotor'
 }
 
+# SSOT: NW/GW für Auftragseingang, Zielplanung, Auslieferung.
+# Verkaufsleitung: T (Tageszulassung) = NW nur bis 1 Jahr ab Erstzulassung; älter als 1 Jahr = GW.
+# N,V = NW; D,G = GW. first_registration_date aus sales (Sync Locosoft vehicles).
+FAHRZEUGTYP_NW = ('N', 'V', 'T')  # T nur wenn Ez-Regel erfüllt (siehe _NW_GW_*)
+FAHRZEUGTYP_GW = ('D', 'G')
+
+# SQL: fahrzeugart für Abfragen mit T-Regel (sales.first_registration_date)
+_NW_GW_CASE_ART = """CASE
+            WHEN s.dealer_vehicle_type IN ('N', 'V') THEN 'NW'
+            WHEN s.dealer_vehicle_type = 'T' AND (s.first_registration_date IS NULL OR (s.out_sales_contract_date::date - s.first_registration_date) <= 365) THEN 'NW'
+            WHEN s.dealer_vehicle_type = 'T' THEN 'GW'
+            WHEN s.dealer_vehicle_type IN ('D', 'G') THEN 'GW'
+            ELSE 'Sonstige'
+        END"""
+
+# SQL: 1/0 für NW bzw. GW (für SUM in get_verkaufer_performance)
+_NW_SUM_CASE = "CASE WHEN s.dealer_vehicle_type IN ('N', 'V') THEN 1 WHEN s.dealer_vehicle_type = 'T' AND (s.first_registration_date IS NULL OR (s.out_sales_contract_date::date - s.first_registration_date) <= 365) THEN 1 ELSE 0 END"
+_GW_SUM_CASE = "CASE WHEN s.dealer_vehicle_type IN ('D', 'G') THEN 1 WHEN s.dealer_vehicle_type = 'T' AND s.first_registration_date IS NOT NULL AND (s.out_sales_contract_date::date - s.first_registration_date) > 365 THEN 1 ELSE 0 END"
+
 # Dedup-Filter: Verhindert Doppelzählungen bei N→T/V Umsetzungen
 # Regel: Wenn T oder V existiert, ignoriere N für dieselbe VIN am gleichen Datum
 DEDUP_FILTER = """
@@ -59,10 +77,6 @@ DEDUP_FILTER = """
             AND s.dealer_vehicle_type = 'N'
     )
 """
-
-# SQL: 1/0 für NW bzw. GW (T-Regel / EZ) für VKL-Dashboard-Aggregationen
-_NW_SUM_CASE = "CASE WHEN s.dealer_vehicle_type IN ('N', 'V') THEN 1 WHEN s.dealer_vehicle_type = 'T' AND (s.first_registration_date IS NULL OR (s.out_sales_contract_date::date - s.first_registration_date) <= 365) THEN 1 ELSE 0 END"
-_GW_SUM_CASE = "CASE WHEN s.dealer_vehicle_type IN ('D', 'G') THEN 1 WHEN s.dealer_vehicle_type = 'T' AND s.first_registration_date IS NOT NULL AND (s.out_sales_contract_date::date - s.first_registration_date) > 365 THEN 1 ELSE 0 END"
 
 
 # ==============================================================================
@@ -120,130 +134,6 @@ def _convert_decimal(value) -> float:
     return value if value is not None else 0
 
 
-def _build_auftragseingang_datum_filter(
-    day: Optional[str] = None,
-    month: Optional[int] = None,
-    year: Optional[int] = None,
-    zeitraum: str = 'month'
-) -> tuple[str, list, Dict[str, Any]]:
-    """
-    Erstellt Datumsfilter für Auftragseingang:
-    - day: exakter Kalendertag
-    - month: Kalendermonat
-    - calendar_year: Kalenderjahr (Jan-Dez)
-    - fiscal_year: Geschäftsjahr (Sep-Aug)
-    """
-    if year is None:
-        year = datetime.now().year
-    if month is None:
-        month = datetime.now().month
-
-    mode = (zeitraum or 'month').lower()
-
-    if day:
-        start_date = datetime.strptime(day, '%Y-%m-%d').date()
-        end_date = start_date
-        meta = {
-            'zeitraum': 'day',
-            'day': day,
-            'month': None,
-            'year': year,
-            'geschaeftsjahr': None
-        }
-    elif mode == 'calendar_year':
-        start_date = date(year, 1, 1)
-        end_date = date(year, 12, 31)
-        meta = {
-            'zeitraum': 'calendar_year',
-            'day': None,
-            'month': None,
-            'year': year,
-            'geschaeftsjahr': None
-        }
-    elif mode == 'fiscal_year':
-        start_date = date(year, 9, 1)
-        end_date = date(year + 1, 8, 31)
-        meta = {
-            'zeitraum': 'fiscal_year',
-            'day': None,
-            'month': None,
-            'year': year,
-            'geschaeftsjahr': f"{year}/{str(year + 1)[2:]}"
-        }
-    else:
-        last_day = calendar.monthrange(year, month)[1]
-        start_date = date(year, month, 1)
-        end_date = date(year, month, last_day)
-        meta = {
-            'zeitraum': 'month',
-            'day': None,
-            'month': month,
-            'year': year,
-            'geschaeftsjahr': None
-        }
-
-    return "DATE(s.out_sales_contract_date) BETWEEN %s AND %s", [start_date, end_date], meta
-
-
-def _build_auslieferung_datum_filter(
-    day: Optional[str] = None,
-    month: Optional[int] = None,
-    year: Optional[int] = None,
-    zeitraum: str = 'month'
-) -> tuple[str, list, Dict[str, Any]]:
-    """Erstellt Datumsfilter für Auslieferungen auf Rechnungsdatum."""
-    if year is None:
-        year = datetime.now().year
-    if month is None:
-        month = datetime.now().month
-
-    mode = (zeitraum or 'month').lower()
-
-    if day:
-        start_date = datetime.strptime(day, '%Y-%m-%d').date()
-        end_date = start_date
-        meta = {
-            'zeitraum': 'day',
-            'day': day,
-            'month': None,
-            'year': year,
-            'geschaeftsjahr': None
-        }
-    elif mode == 'calendar_year':
-        start_date = date(year, 1, 1)
-        end_date = date(year, 12, 31)
-        meta = {
-            'zeitraum': 'calendar_year',
-            'day': None,
-            'month': None,
-            'year': year,
-            'geschaeftsjahr': None
-        }
-    elif mode == 'fiscal_year':
-        start_date = date(year, 9, 1)
-        end_date = date(year + 1, 8, 31)
-        meta = {
-            'zeitraum': 'fiscal_year',
-            'day': None,
-            'month': None,
-            'year': year,
-            'geschaeftsjahr': f"{year}/{str(year + 1)[2:]}"
-        }
-    else:
-        last_day = calendar.monthrange(year, month)[1]
-        start_date = date(year, month, 1)
-        end_date = date(year, month, last_day)
-        meta = {
-            'zeitraum': 'month',
-            'day': None,
-            'month': month,
-            'year': year,
-            'geschaeftsjahr': None
-        }
-
-    return "DATE(s.out_invoice_date) BETWEEN %s AND %s", [start_date, end_date], meta
-
-
 # ==============================================================================
 # VERKAUFDATA KLASSE
 # ==============================================================================
@@ -268,7 +158,8 @@ class VerkaufData:
     def get_auftragseingang(
         month: int = None,
         year: int = None,
-        location: int = None
+        location: int = None,
+        verkaufer: int = None
     ) -> Dict[str, Any]:
         """
         Holt Auftragseingang nach Verkäufern für heute und Periode.
@@ -276,6 +167,7 @@ class VerkaufData:
         Args:
             month: Monat (1-12), default: aktueller Monat
             year: Jahr, default: aktuelles Jahr
+            verkaufer: Optional: nur diesen Verkäufer (Locosoft-VKB)
 
         Returns:
             Dict mit:
@@ -299,47 +191,45 @@ class VerkaufData:
             with db_session() as conn:
                 cursor = conn.cursor()
 
+                vk_filter = " AND s.salesman_number = %s" if verkaufer else ""
+                vk_params = [int(verkaufer)] if verkaufer else []
+
                 # 1. Aufträge HEUTE
                 cursor.execute(f"""
                     SELECT
                         s.salesman_number,
                         COALESCE(e.first_name || ' ' || e.last_name,
                                  'Verkäufer #' || s.salesman_number || ' (nicht in LocoSoft)') as verkaufer_name,
-                        CASE
-                            WHEN s.dealer_vehicle_type IN ('N', 'V') THEN 'NW'
-                            WHEN s.dealer_vehicle_type IN ('D', 'G', 'T') THEN 'GW'
-                            ELSE 'Sonstige'
-                        END as fahrzeugart,
+                        {_NW_GW_CASE_ART} as fahrzeugart,
                         COUNT(*) as anzahl
                     FROM sales s
                     LEFT JOIN employees e ON s.salesman_number = e.locosoft_id
                     WHERE DATE(s.out_sales_contract_date) = CURRENT_DATE
                       AND s.salesman_number IS NOT NULL
+                      {vk_filter}
                       {DEDUP_FILTER}
                     GROUP BY s.salesman_number, verkaufer_name, fahrzeugart
-                """)
+                """, tuple(vk_params))
                 heute_raw = [dict(row) for row in cursor.fetchall()]
 
                 # 2. Aufträge PERIODE (ganzer Monat)
+                periode_params = [str(year), f"{month:02d}"] + (vk_params if verkaufer else [])
                 cursor.execute(f"""
                     SELECT
                         s.salesman_number,
                         COALESCE(e.first_name || ' ' || e.last_name,
                                  'Verkäufer #' || s.salesman_number || ' (nicht in LocoSoft)') as verkaufer_name,
-                        CASE
-                            WHEN s.dealer_vehicle_type IN ('N', 'V') THEN 'NW'
-                            WHEN s.dealer_vehicle_type IN ('D', 'G', 'T') THEN 'GW'
-                            ELSE 'Sonstige'
-                        END as fahrzeugart,
+                        {_NW_GW_CASE_ART} as fahrzeugart,
                         COUNT(*) as anzahl
                     FROM sales s
                     LEFT JOIN employees e ON s.salesman_number = e.locosoft_id
                     WHERE EXTRACT(YEAR FROM s.out_sales_contract_date) = %s
                       AND EXTRACT(MONTH FROM s.out_sales_contract_date) = %s
                       AND s.salesman_number IS NOT NULL
+                      {vk_filter}
                       {DEDUP_FILTER}
                     GROUP BY s.salesman_number, verkaufer_name, fahrzeugart
-                """, (str(year), f"{month:02d}"))
+                """, tuple(periode_params))
                 periode_raw = [dict(row) for row in cursor.fetchall()]
 
                 # 3. Alle Verkäufer
@@ -388,7 +278,9 @@ class VerkaufData:
         month: int = None,
         year: int = None,
         location: int = None,
-        zeitraum: str = 'month'
+        verkaufer: int = None,
+        von: str = None,
+        bis: str = None,
     ) -> Dict[str, Any]:
         """
         Holt Auftragseingang-Summary nach Marke und Fahrzeugtyp.
@@ -397,6 +289,9 @@ class VerkaufData:
             day: Spezifischer Tag (YYYY-MM-DD), hat Vorrang vor month/year
             month: Monat (1-12)
             year: Jahr
+            verkaufer: Optional: nur diesen Verkäufer (Locosoft-VKB)
+            von: Datumsbereich von (YYYY-MM-DD), z.B. Kalenderjahr/Geschäftsjahr
+            bis: Datumsbereich bis (YYYY-MM-DD)
 
         Returns:
             Dict mit summary nach Marke (gesamt, neu, test_vorfuehr, gebraucht, umsatz)
@@ -418,21 +313,36 @@ class VerkaufData:
                         # Filter-String anpassen: "AND out_subsidiary = X" -> "AND s.out_subsidiary = X"
                         standort_filter = standort_filter_sql.replace("out_subsidiary", "s.out_subsidiary")
 
-                date_filter_sql, date_params, zeitraum_meta = _build_auftragseingang_datum_filter(
-                    day=day, month=month, year=year, zeitraum=zeitraum
-                )
-                where_clause = f"""
-                    WHERE {date_filter_sql}
-                      {standort_filter}
-                      {DEDUP_FILTER}
-                """
-                params = date_params
+                vk_filter = " AND s.salesman_number = %s" if verkaufer else ""
+                if day:
+                    where_clause = f"WHERE DATE(s.out_sales_contract_date) = %s {standort_filter} {vk_filter} {DEDUP_FILTER}"
+                    params = [day] + ([int(verkaufer)] if verkaufer else [])
+                elif von and bis:
+                    where_clause = f"""
+                        WHERE DATE(s.out_sales_contract_date) BETWEEN %s AND %s
+                          {standort_filter}
+                          {vk_filter}
+                          {DEDUP_FILTER}
+                    """
+                    params = [von, bis] + ([int(verkaufer)] if verkaufer else [])
+                else:
+                    where_clause = f"""
+                        WHERE EXTRACT(YEAR FROM s.out_sales_contract_date) = %s
+                          AND EXTRACT(MONTH FROM s.out_sales_contract_date) = %s
+                          {standort_filter}
+                          {vk_filter}
+                          {DEDUP_FILTER}
+                    """
+                    params = [str(year), f"{month:02d}"] + ([int(verkaufer)] if verkaufer else [])
 
                 cursor.execute(f"""
                     SELECT
                         s.make_number,
                         COUNT(*) as gesamt,
                         SUM(CASE WHEN s.dealer_vehicle_type = 'N' THEN 1 ELSE 0 END) as neu,
+                        SUM(CASE WHEN s.dealer_vehicle_type = 'N' THEN 1 ELSE 0 END) as nw,
+                        SUM(CASE WHEN s.dealer_vehicle_type = 'V' THEN 1 ELSE 0 END) as vfw,
+                        SUM(CASE WHEN s.dealer_vehicle_type = 'T' THEN 1 ELSE 0 END) as t,
                         SUM(CASE WHEN s.dealer_vehicle_type IN ('T', 'V') THEN 1 ELSE 0 END) as test_vorfuehr,
                         SUM(CASE WHEN s.dealer_vehicle_type IN ('G', 'D') THEN 1 ELSE 0 END) as gebraucht,
                         SUM(s.out_sale_price) as umsatz_gesamt
@@ -448,6 +358,9 @@ class VerkaufData:
                         'marke': MARKEN.get(row['make_number'], f"Marke {row['make_number']}"),
                         'gesamt': row['gesamt'],
                         'neu': row['neu'] or 0,
+                        'nw': row['nw'] or 0,
+                        'vfw': row['vfw'] or 0,
+                        't': row['t'] or 0,
                         'test_vorfuehr': row['test_vorfuehr'] or 0,
                         'gebraucht': row['gebraucht'] or 0,
                         'umsatz_gesamt': _convert_decimal(row['umsatz_gesamt'])
@@ -455,7 +368,9 @@ class VerkaufData:
 
                 return {
                     'success': True,
-                    **zeitraum_meta,
+                    'day': day,
+                    'month': month if not day else None,
+                    'year': year,
                     'summary': summary
                 }
 
@@ -992,7 +907,6 @@ class VerkaufData:
             logger.error("get_db_marken_split_monat: %s", e)
             return {"success": False, "error": str(e), "marken": []}
 
-
     @staticmethod
     def get_auftragseingang_detail(
         day: str = None,
@@ -1000,7 +914,8 @@ class VerkaufData:
         year: int = None,
         location: int = None,
         verkaufer: int = None,
-        zeitraum: str = 'month'
+        von: str = None,
+        bis: str = None,
     ) -> Dict[str, Any]:
         """
         Holt detaillierten Auftragseingang nach Verkäufer mit Modell-Aufschlüsselung.
@@ -1011,6 +926,8 @@ class VerkaufData:
             year: Jahr
             location: Standort-Filter (1=LAN, 2=DEG)
             verkaufer: Verkäufer-Nummer Filter
+            von: Datumsbereich von (YYYY-MM-DD)
+            bis: Datumsbereich bis (YYYY-MM-DD)
 
         Returns:
             Dict mit Liste von Verkäufern, jeweils mit neu/test_vorfuehr/gebraucht Listen
@@ -1027,11 +944,16 @@ class VerkaufData:
                 where_clauses = ["s.salesman_number IS NOT NULL"]
                 params = []
 
-                date_filter_sql, date_params, zeitraum_meta = _build_auftragseingang_datum_filter(
-                    day=day, month=month, year=year, zeitraum=zeitraum
-                )
-                where_clauses.append(date_filter_sql)
-                params.extend(date_params)
+                if day:
+                    where_clauses.append("DATE(s.out_sales_contract_date) = %s")
+                    params.append(day)
+                elif von and bis:
+                    where_clauses.append("DATE(s.out_sales_contract_date) BETWEEN %s AND %s")
+                    params.extend([von, bis])
+                else:
+                    where_clauses.append("EXTRACT(YEAR FROM s.out_sales_contract_date) = %s")
+                    where_clauses.append("EXTRACT(MONTH FROM s.out_sales_contract_date) = %s")
+                    params.extend([str(year), f"{month:02d}"])
 
                 # TAG 177: SSOT-Filter für Verkäufe (konsolidiert für Standort 1)
                 if location:
@@ -1113,7 +1035,9 @@ class VerkaufData:
 
                 return {
                     'success': True,
-                    **zeitraum_meta,
+                    'day': day,
+                    'month': month if not day else None,
+                    'year': year,
                     'verkaufer': list(verkaufer_dict.values())
                 }
 
@@ -1122,11 +1046,81 @@ class VerkaufData:
             return {'success': False, 'error': str(e), 'verkaufer': []}
 
     @staticmethod
+    def get_auftragseingang_nw_marke_modell(
+        day: str = None,
+        month: int = None,
+        year: int = None,
+        location: int = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Holt Neuwagen-Auftragseingang nach Marke und Modell (nur dealer_vehicle_type='N').
+        Gleiche Filter/Dedup wie get_auftragseingang_detail – SSOT für Report und DRIVE online.
+
+        Returns:
+            Liste von {'marke': str, 'modell': str, 'anzahl': int}
+        """
+        if month is None:
+            month = datetime.now().month
+        if year is None:
+            year = datetime.now().year
+        try:
+            with db_session() as conn:
+                cursor = conn.cursor()
+                where_clauses = [
+                    "s.dealer_vehicle_type = 'N'",
+                    """
+                    NOT EXISTS (
+                        SELECT 1 FROM sales s2
+                        WHERE s2.vin = s.vin
+                            AND s2.out_sales_contract_date = s.out_sales_contract_date
+                            AND s2.dealer_vehicle_type IN ('T', 'V')
+                            AND s.dealer_vehicle_type = 'N'
+                    )
+                    """
+                ]
+                params = []
+                if day:
+                    where_clauses.append("DATE(s.out_sales_contract_date) = %s")
+                    params.append(day)
+                else:
+                    where_clauses.append("EXTRACT(YEAR FROM s.out_sales_contract_date) = %s")
+                    where_clauses.append("EXTRACT(MONTH FROM s.out_sales_contract_date) = %s")
+                    params.extend([str(year), f"{month:02d}"])
+                if location:
+                    standort_filter = build_locosoft_filter_verkauf(int(location), nur_stellantis=False)
+                    if standort_filter:
+                        filter_sql = standort_filter.replace("AND ", "").replace("out_subsidiary", "s.out_subsidiary")
+                        where_clauses.append(filter_sql)
+                where_sql = " AND ".join(where_clauses)
+                cursor.execute(f"""
+                    SELECT
+                        s.make_number,
+                        s.model_description,
+                        COUNT(*) as anzahl
+                    FROM sales s
+                    WHERE {where_sql}
+                    GROUP BY s.make_number, s.model_description
+                    ORDER BY s.make_number, s.model_description
+                """, params)
+                rows = cursor.fetchall()
+                result = []
+                for row in rows:
+                    make_number = row.get('make_number') if isinstance(row, dict) else (row[0] if row else None)
+                    model_desc = (row.get('model_description') if isinstance(row, dict) else (row[1] if row and len(row) > 1 else None)) or 'Unbekannt'
+                    anzahl = row.get('anzahl') if isinstance(row, dict) else (row[2] if row and len(row) > 2 else 0)
+                    marke = MARKEN.get(make_number, f"Marke {make_number}")
+                    result.append({'marke': marke, 'modell': model_desc, 'anzahl': int(anzahl)})
+                return result
+        except Exception as e:
+            logger.error(f"Fehler in get_auftragseingang_nw_marke_modell: {e}")
+            return []
+
+    @staticmethod
     def get_auslieferung_summary(
         day: str = None,
         month: int = None,
         year: int = None,
-        zeitraum: str = 'month'
+        verkaufer: int = None
     ) -> Dict[str, Any]:
         """
         Holt Auslieferungs-Summary nach Marke (basiert auf Rechnungsdatum).
@@ -1135,6 +1129,7 @@ class VerkaufData:
             day: Spezifischer Tag (YYYY-MM-DD)
             month: Monat (1-12)
             year: Jahr
+            verkaufer: Optional: nur diesen Verkäufer (Locosoft-VKB)
 
         Returns:
             Dict mit summary nach Marke
@@ -1148,16 +1143,27 @@ class VerkaufData:
             with db_session() as conn:
                 cursor = conn.cursor()
 
-                date_filter_sql, date_params, zeitraum_meta = _build_auslieferung_datum_filter(
-                    day=day, month=month, year=year, zeitraum=zeitraum
-                )
-                where_clause = f"""
-                    WHERE {date_filter_sql}
-                      AND s.out_invoice_date IS NOT NULL
-                      AND s.out_invoice_date <= CURRENT_DATE
-                      {DEDUP_FILTER}
-                """
-                params = date_params
+                vk_filter = " AND s.salesman_number = %s" if verkaufer else ""
+                vk_params = [int(verkaufer)] if verkaufer else []
+                if day:
+                    where_clause = f"""
+                        WHERE DATE(s.out_invoice_date) = %s
+                          AND s.out_invoice_date IS NOT NULL
+                          AND s.out_invoice_date <= CURRENT_DATE
+                          {vk_filter}
+                          {DEDUP_FILTER}
+                    """
+                    params = [day] + vk_params
+                else:
+                    where_clause = f"""
+                        WHERE EXTRACT(YEAR FROM s.out_invoice_date) = %s
+                          AND EXTRACT(MONTH FROM s.out_invoice_date) = %s
+                          AND s.out_invoice_date IS NOT NULL
+                          AND s.out_invoice_date <= CURRENT_DATE
+                          {vk_filter}
+                          {DEDUP_FILTER}
+                    """
+                    params = [str(year), f"{month:02d}"] + vk_params
 
                 cursor.execute(f"""
                     SELECT
@@ -1186,7 +1192,9 @@ class VerkaufData:
 
                 return {
                     'success': True,
-                    **zeitraum_meta,
+                    'day': day,
+                    'month': month if not day else None,
+                    'year': year,
                     'summary': summary
                 }
 
@@ -1201,8 +1209,7 @@ class VerkaufData:
         year: int = None,
         location: int = None,
         verkaufer: int = None,
-        vin_search: str = None,
-        zeitraum: str = 'month'
+        vin_search: str = None
     ) -> Dict[str, Any]:
         """
         Holt detaillierte Auslieferungen mit Einzelfahrzeugen und DB-Daten.
@@ -1234,11 +1241,13 @@ class VerkaufData:
                 ]
                 params = []
 
-                date_filter_sql, date_params, zeitraum_meta = _build_auslieferung_datum_filter(
-                    day=day, month=month, year=year, zeitraum=zeitraum
-                )
-                where_clauses.append(date_filter_sql)
-                params.extend(date_params)
+                if day:
+                    where_clauses.append("DATE(s.out_invoice_date) = %s")
+                    params.append(day)
+                else:
+                    where_clauses.append("EXTRACT(YEAR FROM s.out_invoice_date) = %s")
+                    where_clauses.append("EXTRACT(MONTH FROM s.out_invoice_date) = %s")
+                    params.extend([str(year), f"{month:02d}"])
 
                 # TAG 177: SSOT-Filter für Verkäufe (konsolidiert für Standort 1)
                 if location:
@@ -1358,7 +1367,9 @@ class VerkaufData:
 
                 return {
                     'success': True,
-                    **zeitraum_meta,
+                    'day': day,
+                    'month': month if not day else None,
+                    'year': year,
                     'vin_filter': vin_search,
                     'verkaufer': verkaufer_list
                 }
@@ -1461,7 +1472,7 @@ class VerkaufData:
                                   AND v.dealer_vehicle_type = o.dealer_vehicle_type
                     LEFT JOIN invoices i ON o.number = i.order_number
                     WHERE v.readmission_date BETWEEN %s AND %s
-                      AND v.dealer_vehicle_type IN ('N', 'V', 'T')
+                      AND v.dealer_vehicle_type IN {FAHRZEUGTYP_NW}
                       {standort_filter}
                     GROUP BY v.readmission_date, v.vin, v.dealer_vehicle_type,
                              v.dealer_vehicle_number, v.license_plate, v.subsidiary,
@@ -1665,8 +1676,8 @@ class VerkaufData:
                         s.salesman_number,
                         COALESCE(e.first_name || ' ' || e.last_name,
                                  'Verkäufer #' || s.salesman_number) as verkaufer_name,
-                        SUM(CASE WHEN s.dealer_vehicle_type IN ('N', 'V') THEN 1 ELSE 0 END) as auftraege_nw,
-                        SUM(CASE WHEN s.dealer_vehicle_type IN ('G', 'D', 'T') THEN 1 ELSE 0 END) as auftraege_gw
+                        SUM({_NW_SUM_CASE}) as auftraege_nw,
+                        SUM({_GW_SUM_CASE}) as auftraege_gw
                     FROM sales s
                     LEFT JOIN employees e ON s.salesman_number = e.locosoft_id
                     WHERE EXTRACT(YEAR FROM s.out_sales_contract_date) = %s
@@ -1681,12 +1692,12 @@ class VerkaufData:
                 cursor.execute(f"""
                     SELECT
                         s.salesman_number,
-                        SUM(CASE WHEN s.dealer_vehicle_type IN ('N', 'V') THEN 1 ELSE 0 END) as auslieferungen_nw,
-                        SUM(CASE WHEN s.dealer_vehicle_type IN ('G', 'D', 'T') THEN 1 ELSE 0 END) as auslieferungen_gw,
-                        SUM(CASE WHEN s.dealer_vehicle_type IN ('N', 'V') THEN COALESCE(s.out_sale_price, 0) ELSE 0 END) as umsatz_nw,
-                        SUM(CASE WHEN s.dealer_vehicle_type IN ('G', 'D', 'T') THEN COALESCE(s.out_sale_price, 0) ELSE 0 END) as umsatz_gw,
-                        SUM(CASE WHEN s.dealer_vehicle_type IN ('N', 'V') THEN COALESCE(s.deckungsbeitrag, 0) ELSE 0 END) as db1_nw,
-                        SUM(CASE WHEN s.dealer_vehicle_type IN ('G', 'D', 'T') THEN COALESCE(s.deckungsbeitrag, 0) ELSE 0 END) as db1_gw
+                        SUM({_NW_SUM_CASE}) as auslieferungen_nw,
+                        SUM({_GW_SUM_CASE}) as auslieferungen_gw,
+                        SUM(CASE WHEN ({_NW_SUM_CASE}) = 1 THEN COALESCE(s.out_sale_price, 0) ELSE 0 END) as umsatz_nw,
+                        SUM(CASE WHEN ({_GW_SUM_CASE}) = 1 THEN COALESCE(s.out_sale_price, 0) ELSE 0 END) as umsatz_gw,
+                        SUM(CASE WHEN ({_NW_SUM_CASE}) = 1 THEN COALESCE(s.deckungsbeitrag, 0) ELSE 0 END) as db1_nw,
+                        SUM(CASE WHEN ({_GW_SUM_CASE}) = 1 THEN COALESCE(s.deckungsbeitrag, 0) ELSE 0 END) as db1_gw
                     FROM sales s
                     WHERE EXTRACT(YEAR FROM s.out_invoice_date) = %s
                       AND EXTRACT(MONTH FROM s.out_invoice_date) = %s

@@ -20,6 +20,15 @@ import os
 # Basis-Pfad
 BASE_DIR = '/opt/greiner-portal'
 
+# .env laden (wie Flask), damit z. B. EAUTOSELLER_API_KEY / EAUTOSELLER_CLIENT_SECRET für BWA-Sync verfügbar sind
+_env_path = os.path.join(BASE_DIR, 'config', '.env')
+if os.path.exists(_env_path):
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(_env_path)
+    except ImportError:
+        pass
+
 # Celery App erstellen
 app = Celery(
     'greiner',
@@ -273,6 +282,12 @@ app.conf.update(
             'schedule': crontab(minute=0, hour=8, day_of_week='mon-fri'),
             'options': {'queue': 'aftersales'}
         },
+        # Garantie Precheck (regelbasiert stündlich + KI-Batch priorisiert)
+        'garantie-precheck-refresh': {
+            'task': 'celery_app.tasks.garantie_precheck_refresh',
+            'schedule': crontab(minute=5, hour='7-18', day_of_week='mon-fri'),
+            'options': {'queue': 'aftersales'}
+        },
         
         # Teile
         'sync-teile': {
@@ -398,6 +413,7 @@ app.conf.update(
         'celery_app.tasks.sync_*': {'queue': 'verkauf'},
         'celery_app.tasks.servicebox_*': {'queue': 'aftersales'},
         'celery_app.tasks.werkstatt_*': {'queue': 'aftersales'},
+        'celery_app.tasks.garantie_*': {'queue': 'aftersales'},
         'celery_app.tasks.benachrichtige_*': {'queue': 'aftersales'},
     },
 )

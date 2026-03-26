@@ -10,7 +10,7 @@ backlog = 2048
 workers = multiprocessing.cpu_count() * 4 + 1  # Erhöht von * 2 auf * 4
 worker_class = "sync"
 worker_connections = 1000
-timeout = 30  # TAG 213: Reduziert von 180 auf 30 Sekunden (3 Min → 30 Sek)
+timeout = 120  # Mind. 90s für Hilfe-KI (LM Studio); war 30s → 502 bei „Mit KI erweitern“
 keepalive = 2
 
 # Logging

@@ -285,6 +285,75 @@ def init_subscriptions_table():
     conn.close()
 
 
+def init_report_configs_table():
+    """
+    Tabelle für report-spezifische Konfigurationen erstellen.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS report_configs (
+            report_type TEXT PRIMARY KEY,
+            config_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_by TEXT
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+def get_report_config(report_type: str, defaults: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Konfiguration für einen Report laden (mit Defaults gemerged).
+    """
+    config: Dict[str, Any] = dict(defaults or {})
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT config_json FROM report_configs WHERE report_type = %s",
+        (report_type,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+
+    if row and row.get('config_json'):
+        db_cfg = row['config_json'] or {}
+        if isinstance(db_cfg, str):
+            try:
+                db_cfg = json.loads(db_cfg)
+            except Exception:
+                db_cfg = {}
+        if isinstance(db_cfg, dict):
+            config.update(db_cfg)
+    return config
+
+
+def set_report_config(report_type: str, config: Dict[str, Any], updated_by: Optional[str] = None) -> bool:
+    """
+    Konfiguration für einen Report speichern/upserten.
+    """
+    if not report_exists(report_type):
+        raise ValueError(f"Report '{report_type}' existiert nicht in Registry")
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO report_configs (report_type, config_json, updated_at, updated_by)
+        VALUES (%s, %s::jsonb, CURRENT_TIMESTAMP, %s)
+        ON CONFLICT (report_type)
+        DO UPDATE SET
+            config_json = EXCLUDED.config_json,
+            updated_at = CURRENT_TIMESTAMP,
+            updated_by = EXCLUDED.updated_by
+    """, (report_type, json.dumps(config or {}), updated_by))
+    conn.commit()
+    conn.close()
+    return True
+
+
 def get_subscribers(report_type: str, standort: str = None, active_only: bool = True) -> List[Dict]:
     """
     Empfänger für einen Report holen.
@@ -552,5 +621,6 @@ def migrate_existing_subscribers():
 # Tabelle beim Import initialisieren
 try:
     init_subscriptions_table()
+    init_report_configs_table()
 except:
     pass  # Ignorieren wenn DB nicht verfügbar (z.B. beim Import-Check)

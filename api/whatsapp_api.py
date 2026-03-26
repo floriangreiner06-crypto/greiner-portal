@@ -320,6 +320,65 @@ class WhatsAppClient:
         logger.debug(f"Markiere Nachricht als gelesen: {message_id} (wird über Webhook verarbeitet)")
         return True
 
+    def fetch_inbound_messages(self, since: datetime) -> List[Dict[str, Any]]:
+        """
+        Holt eingehende Nachrichten von der Twilio API (Polling-Alternative zum Webhook).
+        Nur ausgehende HTTPS-Anfragen — kein öffentlicher Webhook nötig.
+
+        Args:
+            since: Nur Nachrichten mit date_sent >= since
+
+        Returns:
+            Liste von Dicts im gleichen Format wie Webhook (MessageSid, From, To, Body, NumMedia, …)
+        """
+        if not self.client:
+            logger.warning("Twilio-Client nicht initialisiert — fetch_inbound_messages übersprungen")
+            return []
+        try:
+            from_number = self._format_phone_number(self.whatsapp_number)
+            # Twilio: To = unsere Nummer bei Inbound; date_sent_after in UTC.
+            # Manche SDK-Versionen unterstützen 'direction' nicht → ohne Filter holen, dann filtern
+            messages = self.client.messages.list(
+                to=from_number,
+                date_sent_after=since,
+            )
+            messages = [m for m in messages if (getattr(m, 'direction', None) or '').lower() == 'inbound']
+            logger.debug("Twilio messages.list(inbound): %s Nachrichten", len(messages))
+            result = []
+            for msg in messages:
+                # Webhook-ähnliches Dict für process_inbound_message()
+                num_media = int(msg.num_media) if msg.num_media is not None else 0
+                data = {
+                    'MessageSid': msg.sid,
+                    'From': msg.from_,
+                    'To': msg.to,
+                    'Body': msg.body or '',
+                    'NumMedia': str(num_media),
+                    'MediaUrl0': '',
+                    'MediaContentType0': '',
+                }
+                if num_media > 0:
+                    try:
+                        media_list = list(self.client.messages(msg.sid).media.list(limit=1))
+                        if media_list:
+                            media = media_list[0]
+                            data['MediaContentType0'] = getattr(media, 'content_type', '') or ''
+                            # Twilio Media-URL (authentifiziert): Basis + media.uri
+                            data['MediaUrl0'] = (
+                                f"https://api.twilio.com{media.uri.replace('.json', '')}"
+                                if getattr(media, 'uri', None) else ''
+                            )
+                    except Exception as media_err:
+                        logger.debug("Media für Nachricht %s nicht abrufbar: %s", msg.sid, media_err)
+                result.append(data)
+            return result
+        except TwilioRestException as e:
+            logger.error("Twilio API Fehler beim Abrufen eingehender Nachrichten: %s", e)
+            return []
+        except Exception as e:
+            logger.exception("Unerwarteter Fehler beim Abrufen eingehender Nachrichten: %s", e)
+            return []
+
 
 # =============================================================================
 # HELPER FUNCTIONS

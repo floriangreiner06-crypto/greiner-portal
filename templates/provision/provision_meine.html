@@ -79,6 +79,7 @@
                     </thead>
                     <tbody>
                         <tr><td>I. Neuwagen</td><td class="text-end" id="sumI">0,00</td></tr>
+                        <tr><td>Ia. Zielprämie Neuwagen</td><td class="text-end" id="sumStueck">0,00</td></tr>
                         <tr><td>II. Testwagen/VFW</td><td class="text-end" id="sumII">0,00</td></tr>
                         <tr><td>III. Gebrauchtwagen</td><td class="text-end" id="sumIII">0,00</td></tr>
                         <tr><td>IV. GW aus Bestand</td><td class="text-end" id="sumIV">0,00</td></tr>
@@ -178,14 +179,15 @@
 
                 document.getElementById('labelMonat').textContent = monat;
                 document.getElementById('sumI').textContent = fmtNum(data.summe_kat_i);
+                document.getElementById('sumStueck').textContent = fmtNum(data.summe_stueckpraemie);
                 document.getElementById('sumII').textContent = fmtNum(data.summe_kat_ii);
                 document.getElementById('sumIII').textContent = fmtNum(data.summe_kat_iii);
                 document.getElementById('sumIV').textContent = fmtNum(data.summe_kat_iv);
                 document.getElementById('sumV').textContent = fmtNum(data.summe_kat_v);
                 document.getElementById('sumGesamt').textContent = fmtNum(data.summe_gesamt);
-                var sI = Number(data.summe_kat_i) || 0, sII = Number(data.summe_kat_ii) || 0, sIII = Number(data.summe_kat_iii) || 0, sIV = Number(data.summe_kat_iv) || 0, sV = Number(data.summe_kat_v) || 0;
-                var k1 = sI, k2 = k1 + sII, k3 = k2 + sIII, k4 = k3 + sIV, k5 = k4 + sV;
-                document.getElementById('sumKumuliert').textContent = 'I: ' + fmtNum(k1) + ' € · I+II: ' + fmtNum(k2) + ' € · I+II+III: ' + fmtNum(k3) + ' € · I+II+III+IV: ' + fmtNum(k4) + ' € · Gesamt: ' + fmtNum(k5) + ' €';
+                var sI = Number(data.summe_kat_i) || 0, sS = Number(data.summe_stueckpraemie) || 0, sII = Number(data.summe_kat_ii) || 0, sIII = Number(data.summe_kat_iii) || 0, sIV = Number(data.summe_kat_iv) || 0, sV = Number(data.summe_kat_v) || 0;
+                var k1 = sI, k1a = k1 + sS, k2 = k1a + sII, k3 = k2 + sIII, k4 = k3 + sIV, k5 = k4 + sV;
+                document.getElementById('sumKumuliert').textContent = 'I: ' + fmtNum(k1) + ' € · I+Ia: ' + fmtNum(k1a) + ' € · I+Ia+II: ' + fmtNum(k2) + ' € · I+Ia+II+III: ' + fmtNum(k3) + ' € · I+Ia+II+III+IV: ' + fmtNum(k4) + ' € · Gesamt: ' + fmtNum(k5) + ' €';
 
                 document.getElementById('cntI').textContent = (data.positionen_i || []).length;
                 document.getElementById('cntII').textContent = (data.positionen_ii || []).length;

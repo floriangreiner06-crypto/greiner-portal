@@ -99,14 +99,15 @@ FEATURE_ACCESS = {
     'controlling': ['admin', 'buchhaltung'],
     'zinsen': ['admin', 'buchhaltung', 'verkauf_leitung', 'disposition'],  # TAG82: +Verkaufsleitung, +Disposition
 
-    # Einkaufsfinanzierung - Führung + Buchhaltung + Disposition
-    'einkaufsfinanzierung': ['admin', 'buchhaltung', 'disposition'],
+    # Einkaufsfinanzierung - Führung + Buchhaltung + Disposition + VKL/GF (VKL-Dashboard)
+    'einkaufsfinanzierung': ['admin', 'buchhaltung', 'disposition', 'verkauf_leitung', 'geschaeftsleitung'],
     'fahrzeugfinanzierungen': ['admin', 'buchhaltung', 'disposition'],
 
     # Verkauf - Führung + Buchhaltung + Verkauf + Disposition
     'auftragseingang': ['admin', 'buchhaltung', 'verkauf_leitung', 'verkauf', 'disposition'],
     'auslieferungen': ['admin', 'buchhaltung', 'verkauf_leitung', 'verkauf', 'disposition'],
-    'verkauf_dashboard': ['admin', 'buchhaltung', 'verkauf_leitung', 'verkauf', 'disposition'],
+    # Verkaufsleiter-Dashboard: nur GF, VKL, Admin (nicht alle mit allgemeinem Verkauf-Zugang)
+    'verkauf_dashboard': ['admin', 'geschaeftsleitung', 'verkauf_leitung'],
 
     # eAutoseller Bestand (nur VKL/Admin/Disposition – Verkäufer standardmäßig nicht)
     'eautoseller': ['admin', 'verkauf_leitung', 'disposition'],
@@ -162,7 +163,7 @@ FEATURE_ACCESS = {
     'marketing_potenzial': ['admin'],
 
     # AfA Verkaufsempfehlungen (GF/VKL) – positiver Cashflow, hoher Umschlag, inkl. Zinsen
-    'afa_verkaufsempfehlungen': ['admin', 'verkauf_leitung'],
+    'afa_verkaufsempfehlungen': ['admin', 'verkauf_leitung', 'geschaeftsleitung'],
 }
 
 

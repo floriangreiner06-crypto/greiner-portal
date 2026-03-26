@@ -9,7 +9,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Projekt-Pfad:** `/opt/greiner-portal/`
 **Test-Umgebung:** `/data/greiner-test/` (Port 5001)
 **SSH User:** ag-admin
-**Sudo PW:** OHL.greiner2025
+
+### Sudo-Konfiguration (NOPASSWD)
+Für ag-admin sind NOPASSWD-Regeln in `/etc/sudoers.d/greiner-portal` hinterlegt.
+**Kein Passwort im Klartext verwenden!** Stattdessen immer vollen Pfad + `-n` Flag:
+```bash
+sudo -n /usr/bin/systemctl restart greiner-portal   # RICHTIG
+sudo -n /usr/bin/systemctl status greiner-portal     # RICHTIG
+sudo -n /usr/bin/journalctl -u greiner-portal -f     # RICHTIG
+# FALSCH: echo 'password' | sudo -S systemctl ...
+# FALSCH: sudo systemctl ... (ohne -n und vollen Pfad)
+```
+Erlaubte Befehle ohne Passwort: systemctl (start/stop/restart/status) für greiner-portal, celery-worker, celery-beat, flower, metabase; journalctl.
 
 ### Sync-Architektur
 Claude editiert Dateien im Windows-Sync-Verzeichnis. Diese sind auf dem Linux-Server gemountet:
@@ -28,13 +39,13 @@ cp /mnt/greiner-portal-sync/api/vacation_api.py /opt/greiner-portal/api/
 rsync -av --exclude '.git' /mnt/greiner-portal-sync/scheduler/ /opt/greiner-portal/scheduler/
 
 # Nach Python-Änderungen: Neustart erforderlich!
-sudo systemctl restart greiner-portal
+sudo -n /usr/bin/systemctl restart greiner-portal
 
 # Logs
-journalctl -u greiner-portal -f
+sudo -n /usr/bin/journalctl -u greiner-portal -f
 
 # Service-Status
-sudo systemctl status greiner-portal
+sudo -n /usr/bin/systemctl status greiner-portal
 ```
 
 **Templates brauchen KEINEN Neustart** - nur Browser-Refresh (Strg+F5)
@@ -42,7 +53,7 @@ sudo systemctl status greiner-portal
 ### Agent-Arbeitsweise: Migrationen und Neustarts selbst ausführen
 - **Migrationen:** Wenn der Agent eine neue oder geänderte SQL-Migration anlegt (`migrations/*.sql`), soll er sie **selbst ausführen**:  
   `PGPASSWORD=DrivePortal2024 psql -h 127.0.0.1 -U drive_user -d drive_portal -f migrations/<datei>.sql`
-- **Neustarts:** Nach Änderungen an Python/Backend den betroffenen Service **selbst neustarten** (z. B. `sudo systemctl restart greiner-portal` oder bei Celery-Tasks `sudo systemctl restart celery-worker celery-beat`). Nicht nur in der Doku erwähnen – den Befehl ausführen.
+- **Neustarts:** Nach Änderungen an Python/Backend den betroffenen Service **selbst neustarten** (z. B. `sudo -n /usr/bin/systemctl restart greiner-portal` oder bei Celery-Tasks `sudo -n /usr/bin/systemctl restart celery-worker celery-beat`). Nicht nur in der Doku erwähnen – den Befehl ausführen.
 
 ## Kein SQLite (verbindlich)
 - **Scripts und API:** Es darf kein Code mehr sqlite3 oder data/greiner_controlling.db verwenden. Alle Zugriffe auf die Portal-Datenbank ausschließlich über `api.db_connection.get_db()` bzw. `api.db_utils.db_session()`. Locosoft weiterhin über `api.db_utils.get_locosoft_connection()`.
@@ -196,10 +207,10 @@ Historische Session-Docs: docs/archive/sessions/
 
 ```bash
 # Celery Worker Status
-sudo systemctl status celery-worker
+sudo -n /usr/bin/systemctl status celery-worker
 
 # Celery Beat Status (Scheduler)
-sudo systemctl status celery-beat
+sudo -n /usr/bin/systemctl status celery-beat
 
 # Flower Dashboard (Web-UI für Celery)
 # Intern: http://drive:5555 (oder je nach Apache-Konfiguration)

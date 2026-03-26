@@ -14,10 +14,11 @@ from flask import Blueprint, jsonify, request
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from api.db_connection import get_db
-from api.db_utils import db_session, get_locosoft_connection
+from api.db_utils import db_session, get_locosoft_connection, get_guv_filter
 from api.aufhol_logik import apply_aufhol_auf_kst_ziel, get_aufhol_beitrag_fuer_kst
 from api.unternehmensplan_data import get_current_geschaeftsjahr
 from api.kst_planung_bottom_up import get_basis_planung_pro_kst
+from utils.werktage import get_werktage_monat
 
 kst_ziele_bp = Blueprint('kst_ziele', __name__, url_prefix='/api/kst-ziele')
 
@@ -99,13 +100,11 @@ def dashboard():
 
         # Standort-Filter fuer Locosoft
         firma_filter = ""
-        # TAG162: Umlage-Filter für Konzern-Ansicht
+        # TEK-konsistent: Wie TEK "Mit Konzernumlage" + G&V-Filter, damit "bisher gebucht" = TEK-DB1
         umlage_umsatz_filter = ""
+        guv_filter = get_guv_filter()
 
-        if standort == 0:  # Alle/Konzern - Umlage-Konten ausfiltern!
-            umlage_erloese_str = ','.join(map(str, UMLAGE_ERLOESE_KONTEN))
-            umlage_umsatz_filter = f"AND nominal_account_number NOT IN ({umlage_erloese_str})"
-        elif standort == 1:
+        if standort == 1:
             firma_filter = "AND subsidiary_to_company_ref = 1 AND branch_number = 1"
         elif standort == 2:
             firma_filter = "AND subsidiary_to_company_ref = 2"
@@ -191,14 +190,15 @@ def dashboard():
                     SUM(CASE WHEN debit_or_credit = 'H' THEN posted_value ELSE -posted_value END) / 100.0 as umsatz
                 FROM loco_journal_accountings
                 WHERE accounting_date >= %s AND accounting_date < %s
-                  AND nominal_account_number BETWEEN 800000 AND 889999
+                  AND ((nominal_account_number BETWEEN 800000 AND 889999) OR (nominal_account_number BETWEEN 893200 AND 893299))
                   {firma_filter}
                   {umlage_umsatz_filter}
+                  {guv_filter}
                 GROUP BY bereich
             """, (von, bis))
             umsatz_ist = {r['bereich']: float(r['umsatz'] or 0) for r in cursor.fetchall()}
 
-            # Einsatz pro Bereich
+            # Einsatz pro Bereich (TEK-konsistent: G&V-Filter)
             cursor.execute(f"""
                 SELECT
                     CASE
@@ -214,6 +214,7 @@ def dashboard():
                 WHERE accounting_date >= %s AND accounting_date < %s
                   AND nominal_account_number BETWEEN 700000 AND 799999
                   {firma_filter}
+                  {guv_filter}
                 GROUP BY bereich
             """, (von, bis))
             einsatz_ist = {r['bereich']: float(r['einsatz'] or 0) for r in cursor.fetchall()}
@@ -287,14 +288,18 @@ def dashboard():
 
         auslastung_ist = (stunden_verrechnet / stunden_gestempelt * 100) if stunden_gestempelt > 0 else 0
 
-        # Werktage im Monat (ca. 22)
-        werktage_monat = 22
-        # Hochrechnungsfaktor: nur hochrechnen wenn Monat noch nicht voll
-        # Wenn Buchungstage >= Werktage, keine Hochrechnung (Faktor = 1)
-        if tage_mit_daten >= werktage_monat:
-            faktor = 1.0  # Monat ist voll, keine Hochrechnung
+        # TEK-Logik: Echte Werktage (Mo–Fr, Feiertage). Anzeige & Hochrechnung mit Werktage vergangen.
+        werktage_info = get_werktage_monat(kal_jahr, kal_monat)
+        werktage_monat = werktage_info['gesamt']
+        werktage_vergangen = werktage_info.get('vergangen', 0)
+        ist_aktueller_monat = werktage_info.get('ist_aktueller_monat', False)
+        # Hochrechnung: (IST / Werktage vergangen) * Werktage gesamt – nicht Buchungstage (können 12+ sein)
+        if ist_aktueller_monat and werktage_vergangen > 0:
+            faktor = werktage_monat / werktage_vergangen
+        elif tage_mit_daten >= werktage_monat or tage_mit_daten <= 0:
+            faktor = 1.0
         else:
-            faktor = werktage_monat / tage_mit_daten if tage_mit_daten > 0 else 1
+            faktor = werktage_monat / tage_mit_daten
 
         # 7. Bereiche zusammenstellen
         bereiche_liste = ['NW', 'GW', 'Teile', 'Werkstatt', 'Sonstige']
@@ -401,6 +406,7 @@ def dashboard():
             'standort': standort,
             'tage_mit_daten': tage_mit_daten,
             'werktage_monat': werktage_monat,
+            'werktage_vergangen': werktage_info.get('vergangen', 0),
             'hochrechnung_faktor': round(faktor, 2),
             'bereiche': bereiche,
             'gesamt': {
@@ -584,9 +590,13 @@ def tages_status():
                 SELECT COUNT(DISTINCT accounting_date) as tage
                 FROM loco_journal_accountings
                 WHERE accounting_date >= %s AND accounting_date < %s
+                  AND nominal_account_number BETWEEN 700000 AND 899999
             """, (von, bis))
             tage = cursor.fetchone()['tage'] or 1
-            faktor = 22 / tage
+            # TEK-Logik: echte Werktage des Monats
+            wt = get_werktage_monat(kal_jahr, kal_monat)
+            werktage_gesamt = wt['gesamt']
+            faktor = (werktage_gesamt / tage) if tage > 0 else 1
 
             # Status berechnen
             status_liste = []

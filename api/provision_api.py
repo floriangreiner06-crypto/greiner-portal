@@ -189,7 +189,7 @@ def config_list():
         with db_session() as conn:
             cur = conn.cursor()
             base_cols = "id, kategorie, bezeichnung, bemessungsgrundlage, prozentsatz, min_betrag, max_betrag, stueck_praemie, stueck_max, param_j60, param_j61, COALESCE(gw_bestand_operator_abzug, 'minus') AS gw_bestand_operator_abzug, COALESCE(gw_bestand_operator_komponenten, 'plus') AS gw_bestand_operator_komponenten, gueltig_ab, gueltig_bis, erstellt_von, erstellt_am"
-            ext_cols = ", COALESCE(use_zielpraemie, false) AS use_zielpraemie, zielerreichung_betrag, zielpraemie_fallback_ziel"
+            ext_cols = ", COALESCE(use_zielpraemie, false) AS use_zielpraemie, zielerreichung_betrag, zielpraemie_fallback_ziel, COALESCE(zielpraemie_basis, 'auslieferung') AS zielpraemie_basis, memo_p1_kategorie"
             try:
                 if monat and len(monat) == 7 and monat[4] == '-':
                     cur.execute("SELECT " + base_cols + ext_cols + " FROM provision_config WHERE gueltig_ab <= %s AND (gueltig_bis IS NULL OR gueltig_bis >= %s) ORDER BY kategorie", (monat + '-01', monat + '-01'))
@@ -205,6 +205,8 @@ def config_list():
             r.setdefault('use_zielpraemie', False)
             r.setdefault('zielerreichung_betrag', None)
             r.setdefault('zielpraemie_fallback_ziel', None)
+            r.setdefault('zielpraemie_basis', 'auslieferung')
+            r.setdefault('memo_p1_kategorie', None)
         # Datum/Decimal als JSON-tauglich
         for r in rows:
             for key in ('gueltig_ab', 'gueltig_bis', 'erstellt_am'):
@@ -217,6 +219,8 @@ def config_list():
                 r['stueck_max'] = int(r['stueck_max'])
             if r.get('zielpraemie_fallback_ziel') is not None:
                 r['zielpraemie_fallback_ziel'] = int(r['zielpraemie_fallback_ziel'])
+            r['zielpraemie_basis'] = (r.get('zielpraemie_basis') or 'auslieferung')
+            r['memo_p1_kategorie'] = (r.get('memo_p1_kategorie') or None)
             r['use_zielpraemie'] = bool(r.get('use_zielpraemie'))
         return jsonify({'success': True, 'items': rows})
     except Exception as e:
@@ -239,7 +243,8 @@ def config_get(config_id):
                            COALESCE(gw_bestand_operator_abzug, 'minus') AS gw_bestand_operator_abzug,
                            COALESCE(gw_bestand_operator_komponenten, 'plus') AS gw_bestand_operator_komponenten,
                            gueltig_ab, gueltig_bis, erstellt_von, erstellt_am,
-                           COALESCE(use_zielpraemie, false) AS use_zielpraemie, zielerreichung_betrag, zielpraemie_fallback_ziel
+                           COALESCE(use_zielpraemie, false) AS use_zielpraemie, zielerreichung_betrag, zielpraemie_fallback_ziel,
+                           COALESCE(zielpraemie_basis, 'auslieferung') AS zielpraemie_basis, memo_p1_kategorie
                     FROM provision_config WHERE id = %s
                 """, (config_id,))
             except Exception:
@@ -264,8 +269,12 @@ def config_get(config_id):
         r.setdefault('use_zielpraemie', False)
         r.setdefault('zielerreichung_betrag', None)
         r.setdefault('zielpraemie_fallback_ziel', None)
+        r.setdefault('zielpraemie_basis', 'auslieferung')
+        r.setdefault('memo_p1_kategorie', None)
         if r.get('zielpraemie_fallback_ziel') is not None:
             r['zielpraemie_fallback_ziel'] = int(r['zielpraemie_fallback_ziel'])
+        r['zielpraemie_basis'] = (r.get('zielpraemie_basis') or 'auslieferung')
+        r['memo_p1_kategorie'] = (r.get('memo_p1_kategorie') or None)
         r['use_zielpraemie'] = bool(r.get('use_zielpraemie'))
         return jsonify({'success': True, 'item': r})
     except Exception as e:
@@ -326,6 +335,12 @@ def config_create():
     use_zielpraemie = data.get('use_zielpraemie') in (True, 'true', 1, '1')
     zielerreichung_betrag = _float_or_none(data.get('zielerreichung_betrag'))
     zielpraemie_fallback_ziel = _int_or_none(data.get('zielpraemie_fallback_ziel'))
+    zielpraemie_basis = (data.get('zielpraemie_basis') or 'auslieferung').strip().lower()
+    if zielpraemie_basis not in ('auslieferung', 'auftragseingang'):
+        zielpraemie_basis = 'auslieferung'
+    memo_p1_kategorie = (data.get('memo_p1_kategorie') or '').strip() or None
+    if memo_p1_kategorie not in (None, 'II_testwagen', 'III_gebrauchtwagen'):
+        memo_p1_kategorie = None
 
     try:
         with db_session() as conn:
@@ -335,13 +350,13 @@ def config_create():
                     kategorie, bezeichnung, bemessungsgrundlage, prozentsatz,
                     min_betrag, max_betrag, stueck_praemie, stueck_max, param_j60, param_j61,
                     gw_bestand_operator_abzug, gw_bestand_operator_komponenten,
-                    gueltig_ab, erstellt_von, use_zielpraemie, zielerreichung_betrag, zielpraemie_fallback_ziel
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    gueltig_ab, erstellt_von, use_zielpraemie, zielerreichung_betrag, zielpraemie_fallback_ziel, zielpraemie_basis, memo_p1_kategorie
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (kategorie, bezeichnung, bemessungsgrundlage, prozentsatz,
                   min_betrag, max_betrag, stueck_praemie, stueck_max, param_j60, param_j61,
                   gw_op_abzug, gw_op_komponenten,
-                  gueltig_ab, erstellt_von, use_zielpraemie, zielerreichung_betrag, zielpraemie_fallback_ziel))
+                  gueltig_ab, erstellt_von, use_zielpraemie, zielerreichung_betrag, zielpraemie_fallback_ziel, zielpraemie_basis, memo_p1_kategorie))
             row = cur.fetchone()
             new_id = row[0] if row else None
             conn.commit()
@@ -391,6 +406,8 @@ def config_update(config_id):
         ('gw_bestand_operator_komponenten', 'gw_bestand_operator_komponenten'),
         ('use_zielpraemie', 'use_zielpraemie'), ('zielerreichung_betrag', 'zielerreichung_betrag'),
         ('zielpraemie_fallback_ziel', 'zielpraemie_fallback_ziel'),
+        ('zielpraemie_basis', 'zielpraemie_basis'),
+        ('memo_p1_kategorie', 'memo_p1_kategorie'),
     ]:
         v = data.get(key)
         if key == 'gueltig_bis':
@@ -406,11 +423,25 @@ def config_update(config_id):
             updates.append("use_zielpraemie = %s")
             params.append(val)
             continue
-        if key in ('gw_bestand_operator_abzug', 'gw_bestand_operator_komponenten'):
+        if key in ('gw_bestand_operator_abzug', 'gw_bestand_operator_komponenten', 'zielpraemie_basis'):
             val = (v or '').strip().lower() if v is not None else None
-            if val not in ('minus', 'plus'):
+            if key in ('gw_bestand_operator_abzug', 'gw_bestand_operator_komponenten'):
+                if val not in ('minus', 'plus'):
+                    continue
+            elif val not in ('auslieferung', 'auftragseingang'):
                 continue
             updates.append(f"{col} = %s")
+            params.append(val)
+            continue
+        if key == 'memo_p1_kategorie':
+            if key not in data:
+                continue
+            val = (v or '').strip() if isinstance(v, str) else None
+            if val == '':
+                val = None
+            if val not in (None, 'II_testwagen', 'III_gebrauchtwagen'):
+                continue
+            updates.append("memo_p1_kategorie = %s")
             params.append(val)
             continue
         if v is None:

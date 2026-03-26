@@ -83,8 +83,10 @@
                                 <th class="text-end">AW</th>
                                 <th class="text-end">Offen</th>
                                 <th title="Bring-Termin (Locosoft)">Termin</th>
+                                <th title="Friststatus aus Hintergrund-Precheck">Frist</th>
                                 <th title="Ungelieferte Teile am Auftrag">Teile</th>
                                 <th title="Gudat: Dossier für diesen Auftrag gefunden?">Gudat</th>
+                                <th title="Automatische Handlungsempfehlung (regelbasiert/KI)">Empfehlung</th>
                                 <th class="garantie-akte-status">Garantieakte</th>
                                 <th>Aktion</th>
                             </tr>
@@ -121,6 +123,30 @@
                     <div class="spinner-border text-primary"></div>
                     <div class="mt-2">Lade Auftragsdetails...</div>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Garantie-Prüfung / Empfehlung Modal (Option A KI) -->
+<div class="modal fade" id="garantiePruefungModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-shield-check"></i> Garantie-Prüfung – Auftrag <span id="modalGarantiePruefungAuftragNr">-</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="garantiePruefungModalBody">
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary"></div>
+                    <div class="mt-2">Prüfung wird ausgeführt...</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <p class="small text-muted me-auto mb-0"><i class="bi bi-info-circle"></i> KI-Vorschlag – bitte anhand der offiziellen Handbücher prüfen.</p>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>
             </div>
         </div>
     </div>
@@ -263,6 +289,18 @@ function renderAuftraege(auftraege) {
         const terminStr = a.termin_bringen ? (a.termin_bringen.length > 10 ? a.termin_bringen.slice(0, 10) + ' ' + a.termin_bringen.slice(11, 16) : a.termin_bringen) : '-';
         const teileOffen = a.teile_offen_anzahl != null && a.teile_offen_anzahl > 0
             ? `<span class="badge bg-info">${a.teile_offen_anzahl}</span>` : '<span class="text-muted">0</span>';
+        const precheck = a.precheck || {};
+        const resttage = precheck.resttage;
+        const fristStatus = precheck.frist_status || 'unbekannt';
+        const fristBadgeClass = fristStatus === 'rot'
+            ? 'bg-danger'
+            : fristStatus === 'gelb'
+                ? 'bg-warning text-dark'
+                : fristStatus === 'gruen'
+                    ? 'bg-success'
+                    : 'bg-secondary';
+        const fristLabel = precheck.fristen_bewertung || (resttage == null ? 'Unbekannt' : `Noch ${resttage} Tage`);
+        const empfehlungKurz = precheck.ki_empfehlung_kurz || '-';
         const alterClass = (tageOffen !== '-' && tageOffen > 90) ? 'text-warning' : '';
         const terminGewesen = (function() {
             if (!a.termin_bringen) return false;
@@ -297,8 +335,12 @@ function renderAuftraege(auftraege) {
                     ${a.offen_aw > 0 ? `<span class="badge bg-warning text-dark">${a.offen_aw.toFixed(1)}</span>` : '<span class="badge bg-success">0</span>'}
                 </td>
                 <td class="small">${terminStr}</td>
+                <td class="small">
+                    <span class="badge ${fristBadgeClass}">${escapeHtml(fristLabel)}</span>
+                </td>
                 <td class="text-end">${teileOffen}</td>
                 <td class="small">${gudatHtml}</td>
+                <td class="small" title="${escapeHtml(precheck.ki_empfehlung_lang || empfehlungKurz)}">${escapeHtml(empfehlungKurz)}</td>
                 <td class="garantie-akte-status">${akteStatus}</td>
                 <td>${aktion}</td>
             </tr>
@@ -625,6 +667,9 @@ function renderAuftragDetail(data) {
                     <button class="btn btn-info btn-sm" onclick="pruefeTTZeit(${a.auftrag_nr || auftragNr || 'null'})" id="btnTTZeit">
                         <i class="bi bi-clock-history"></i> TT-Zeit prüfen
                     </button>
+                    <button class="btn btn-outline-primary btn-sm" onclick="pruefeGarantie(${a.auftrag_nr || auftragNr || 'null'})" id="btnGarantiePruefung">
+                        <i class="bi bi-robot"></i> Prüfung / Empfehlung
+                    </button>
                 </div>
                 <div id="garantieakteStatus" class="mt-2"></div>
                 <div id="ttZeitStatus" class="mt-2"></div>
@@ -643,6 +688,94 @@ function oeffneAkte(orderNumber) {
 // ============================================================================
 // TT-ZEIT-ANALYSE (TAG 195)
 // ============================================================================
+
+// ============================================================================
+// GARANTIE-PRÜFUNG / EMPFEHLUNG (Option A KI)
+// ============================================================================
+
+function pruefeGarantie(auftragNr) {
+    const btn = event?.target?.closest('button') || document.getElementById('btnGarantiePruefung');
+    if (!btn) return;
+
+    const modal = new bootstrap.Modal(document.getElementById('garantiePruefungModal'));
+    document.getElementById('modalGarantiePruefungAuftragNr').textContent = auftragNr;
+    document.getElementById('garantiePruefungModalBody').innerHTML = `
+        <div class="text-center py-4">
+            <div class="spinner-border text-primary"></div>
+            <div class="mt-2">Prüfung wird ausgeführt...</div>
+        </div>
+    `;
+    modal.show();
+
+    fetch('/api/garantie/pruefung', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_number: parseInt(auftragNr, 10) })
+    })
+    .then(response => {
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            return response.text().then(text => {
+                const msg = response.status === 401
+                    ? 'Anmeldung abgelaufen oder Session ungültig. Bitte Seite neu laden und erneut anmelden.'
+                    : response.status === 404
+                    ? 'API-Endpunkt nicht gefunden. Bitte Portal-Neustart prüfen (sudo systemctl restart greiner-portal).'
+                    : 'Server hat eine Fehlerseite (HTML) statt JSON zurückgegeben. Bitte später erneut versuchen oder Server-Logs prüfen.';
+                throw new Error(msg);
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            showGarantiePruefungErgebnis(data, auftragNr);
+        } else {
+            document.getElementById('garantiePruefungModalBody').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle"></i> ${escapeHtml(data.error || 'Prüfung fehlgeschlagen')}
+                </div>
+            `;
+        }
+    })
+    .catch(err => {
+        document.getElementById('garantiePruefungModalBody').innerHTML = `
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle"></i> ${escapeHtml(err.message)}
+            </div>
+        `;
+    });
+}
+
+function showGarantiePruefungErgebnis(data, auftragNr) {
+    const checkliste = data.checkliste || [];
+    const empfehlung = data.empfehlung || '';
+    const marke = data.marke_verwendet || '';
+
+    let html = '';
+    if (marke) {
+        html += `<p class="small text-muted mb-2"><i class="bi bi-tag"></i> Bedingungen: ${escapeHtml(marke)}</p>`;
+    }
+    if (checkliste.length > 0) {
+        html += `<h6 class="mb-2"><i class="bi bi-list-check"></i> Prüfpunkte</h6><ul class="list-group mb-3">`;
+        checkliste.forEach(item => {
+            const erfuellt = item.erfuellt === true;
+            const punkt = item.punkt || 'Prüfpunkt';
+            const hinweis = item.hinweis || '';
+            html += `
+                <li class="list-group-item d-flex justify-content-between align-items-start">
+                    <div>
+                        <span class="badge me-2 ${erfuellt ? 'bg-success' : 'bg-warning text-dark'}">${erfuellt ? 'Erfüllt' : 'Fehlt'}</span>
+                        ${escapeHtml(punkt)}
+                        ${hinweis ? `<br><small class="text-muted">${escapeHtml(hinweis)}</small>` : ''}
+                    </div>
+                </li>
+            `;
+        });
+        html += `</ul>`;
+    }
+    html += `<h6 class="mb-2"><i class="bi bi-chat-quote"></i> Empfehlung</h6><div class="alert alert-light border">${escapeHtml(empfehlung) || '<span class="text-muted">Keine Empfehlung.</span>'}</div>`;
+    document.getElementById('garantiePruefungModalBody').innerHTML = html;
+}
 
 function pruefeTTZeit(auftragNr) {
     const btn = event?.target?.closest('button') || document.getElementById('btnTTZeit');

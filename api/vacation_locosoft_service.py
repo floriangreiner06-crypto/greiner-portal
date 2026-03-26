@@ -7,8 +7,8 @@ VACATION LOCOSOFT SERVICE
 TAG 103 - Abwesenheitsdaten aus Locosoft
 
 Holt echte Abwesenheitsdaten aus Locosoft PostgreSQL:
-- Urlaub (Url, BUr)
-- Zeitausgleich (ZA.)
+- Urlaub (Url, BUr) – nur diese mindern den Resturlaub im Portal (Rest = min(Portal-Rest, Anspruch − Locosoft-Urlaub))
+- Zeitausgleich (ZA.) – wird getrennt geführt und mindert den Resturlaub nicht
 - Krank (Krn)
 - Sonstige (Sch, Sem, Snd, etc.)
 """
@@ -71,7 +71,6 @@ def get_absences_for_employee(locosoft_id: int, year: int = 2025) -> Dict:
             reason = row[0]
             tage = float(row[1] or 0)
             details[reason] = tage
-            
             if reason in ('Url', 'BUr'):
                 urlaub += tage
             elif reason == 'ZA.':
@@ -156,7 +155,6 @@ def get_absences_for_employees(locosoft_ids: List[int], year: int = 2025) -> Dic
                 continue
             
             result[emp_num]['details'][reason] = tage
-            
             if reason in ('Url', 'BUr'):
                 result[emp_num]['urlaub'] += tage
             elif reason == 'ZA.':
@@ -225,7 +223,6 @@ def get_all_absences(year: int = 2025) -> Dict[int, Dict]:
                 }
             
             result[emp_num]['details'][reason] = tage
-            
             if reason in ('Url', 'BUr'):
                 result[emp_num]['urlaub'] += tage
             elif reason == 'ZA.':

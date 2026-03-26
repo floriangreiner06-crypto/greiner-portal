@@ -1380,6 +1380,116 @@ def patch_transaktion_kategorie(trans_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+def build_einkaufsfinanzierung_top_und_warnungen(cursor, top_limit: int = 10):
+    """
+    Top-Fahrzeuge nach aktuellem Finanzierungssaldo + Zinsfreiheit-Warnungen.
+    Gleiche Logik wie get_einkaufsfinanzierung (SSOT, auch für VKL-Dashboard).
+    """
+    from api.db_utils import locosoft_session
+
+    cursor.execute(
+        """
+        SELECT
+            finanzinstitut,
+            vin,
+            modell,
+            rrdi,
+            aktueller_saldo,
+            original_betrag,
+            alter_tage,
+            zinsfreiheit_tage
+        FROM fahrzeugfinanzierungen
+        WHERE aktiv = true
+        ORDER BY aktueller_saldo DESC
+        LIMIT %s
+        """,
+        (top_limit,),
+    )
+    top_rows = cursor.fetchall()
+    top_fahrzeuge = []
+    with locosoft_session() as loco_conn:
+        loco_cursor = loco_conn.cursor()
+        for row in top_rows:
+            r = row_to_dict(row, cursor)
+            loco_data = find_vehicle_by_vin(loco_cursor, r.get("vin"), fields="marke_modell")
+            if loco_data:
+                if not (r.get("modell") or "").strip() or (r.get("modell") or "").strip().lower() == "unbekannt":
+                    if (loco_data.get("modell") or "").strip():
+                        r["modell"] = (loco_data["modell"] or "").strip()
+                ez = loco_data.get("erstzulassung")
+                r["erstzulassung"] = ez.isoformat() if ez and hasattr(ez, "isoformat") else (ez if ez else None)
+            else:
+                r["erstzulassung"] = None
+            top_fahrzeuge.append({
+                "institut": r["finanzinstitut"],
+                "vin": r["vin"][-8:] if r["vin"] else "???",
+                "modell": r.get("modell") or "-",
+                "marke": r["rrdi"],
+                "saldo": float(r["aktueller_saldo"]) if r["aktueller_saldo"] else 0,
+                "original": float(r["original_betrag"]) if r["original_betrag"] else 0,
+                "alter": r["alter_tage"],
+                "zinsfreiheit": r["zinsfreiheit_tage"],
+                "erstzulassung": r.get("erstzulassung"),
+            })
+
+    cursor.execute(
+        """
+        SELECT
+            finanzinstitut,
+            vin,
+            modell,
+            rrdi,
+            zinsfreiheit_tage,
+            aktueller_saldo,
+            alter_tage
+        FROM fahrzeugfinanzierungen
+        WHERE aktiv = true
+        AND zinsfreiheit_tage IS NOT NULL
+        AND (
+            zinsfreiheit_tage <= 30
+            OR alter_tage > zinsfreiheit_tage
+        )
+        ORDER BY
+            CASE WHEN alter_tage > zinsfreiheit_tage THEN 0 ELSE 1 END,
+            zinsfreiheit_tage ASC
+        """
+    )
+    warn_rows = cursor.fetchall()
+    warnungen = []
+    with locosoft_session() as loco_conn:
+        loco_cursor = loco_conn.cursor()
+        for row in warn_rows:
+            r = row_to_dict(row, cursor)
+            loco_data = find_vehicle_by_vin(loco_cursor, r.get("vin"), fields="marke_modell")
+            if loco_data:
+                if not (r.get("modell") or "").strip() or (r.get("modell") or "").strip().lower() == "unbekannt":
+                    if (loco_data.get("modell") or "").strip():
+                        r["modell"] = (loco_data["modell"] or "").strip()
+                ez = loco_data.get("erstzulassung")
+                r["erstzulassung"] = ez.isoformat() if ez and hasattr(ez, "isoformat") else (ez if ez else None)
+            else:
+                r["erstzulassung"] = None
+            zinsfreiheit_tage = r["zinsfreiheit_tage"]
+            alter_tage = r["alter_tage"] or 0
+            if alter_tage > zinsfreiheit_tage:
+                tage_uebrig = -(alter_tage - zinsfreiheit_tage)
+            else:
+                tage_uebrig = zinsfreiheit_tage - alter_tage
+            warnungen.append({
+                "institut": r["finanzinstitut"],
+                "vin": r["vin"][-8:] if r["vin"] else "???",
+                "modell": r.get("modell") or "-",
+                "marke": r["rrdi"],
+                "tage_uebrig": tage_uebrig,
+                "saldo": float(r["aktueller_saldo"]) if r["aktueller_saldo"] else 0,
+                "alter": alter_tage,
+                "kritisch": tage_uebrig < 15 if tage_uebrig >= 0 else True,
+                "erstzulassung": r.get("erstzulassung"),
+            })
+
+    return top_fahrzeuge, warnungen
+
+
 # ============================================================================
 # ENDPOINT 4: EINKAUFSFINANZIERUNG (FIXED - TAG 72, TAG 136: PostgreSQL)
 # ============================================================================
@@ -1643,103 +1753,7 @@ def get_einkaufsfinanzierung():
                     'marken': marken
                 })
 
-            # 3. TOP 10 TEUERSTE FAHRZEUGE (Modell ggf. aus Locosoft nachladen)
-            cursor.execute("""
-                SELECT
-                    finanzinstitut,
-                    vin,
-                    modell,
-                    rrdi,
-                    aktueller_saldo,
-                    original_betrag,
-                    alter_tage,
-                    zinsfreiheit_tage
-                FROM fahrzeugfinanzierungen
-                WHERE aktiv = true
-                ORDER BY aktueller_saldo DESC
-                LIMIT 10
-            """)
-            top_rows = cursor.fetchall()
-            top_fahrzeuge = []
-            from api.db_utils import locosoft_session
-            with locosoft_session() as loco_conn:
-                loco_cursor = loco_conn.cursor()
-                for row in top_rows:
-                    r = row_to_dict(row, cursor)
-                    loco_data = find_vehicle_by_vin(loco_cursor, r.get('vin'), fields='marke_modell')
-                    if loco_data:
-                        if not (r.get('modell') or '').strip() or (r.get('modell') or '').strip().lower() == 'unbekannt':
-                            if (loco_data.get('modell') or '').strip():
-                                r['modell'] = (loco_data['modell'] or '').strip()
-                        ez = loco_data.get('erstzulassung')
-                        r['erstzulassung'] = ez.isoformat() if ez and hasattr(ez, 'isoformat') else (ez if ez else None)
-                    else:
-                        r['erstzulassung'] = None
-                    top_fahrzeuge.append({
-                        'institut': r['finanzinstitut'],
-                        'vin': r['vin'][-8:] if r['vin'] else '???',
-                        'modell': r.get('modell') or '-',
-                        'marke': r['rrdi'],
-                        'saldo': float(r['aktueller_saldo']) if r['aktueller_saldo'] else 0,
-                        'original': float(r['original_betrag']) if r['original_betrag'] else 0,
-                        'alter': r['alter_tage'],
-                        'zinsfreiheit': r['zinsfreiheit_tage'],
-                        'erstzulassung': r.get('erstzulassung')
-                    })
-
-            # 4. ZINSFREIHEIT-WARNUNGEN (<= 30 Tage ODER bereits über Zinsfreiheit) – Modell ggf. aus Locosoft
-            cursor.execute("""
-                SELECT
-                    finanzinstitut,
-                    vin,
-                    modell,
-                    rrdi,
-                    zinsfreiheit_tage,
-                    aktueller_saldo,
-                    alter_tage
-                FROM fahrzeugfinanzierungen
-                WHERE aktiv = true
-                AND zinsfreiheit_tage IS NOT NULL
-                AND (
-                    zinsfreiheit_tage <= 30
-                    OR alter_tage > zinsfreiheit_tage
-                )
-                ORDER BY 
-                    CASE WHEN alter_tage > zinsfreiheit_tage THEN 0 ELSE 1 END,
-                    zinsfreiheit_tage ASC
-            """)
-            warn_rows = cursor.fetchall()
-            warnungen = []
-            with locosoft_session() as loco_conn:
-                loco_cursor = loco_conn.cursor()
-                for row in warn_rows:
-                    r = row_to_dict(row, cursor)
-                    loco_data = find_vehicle_by_vin(loco_cursor, r.get('vin'), fields='marke_modell')
-                    if loco_data:
-                        if not (r.get('modell') or '').strip() or (r.get('modell') or '').strip().lower() == 'unbekannt':
-                            if (loco_data.get('modell') or '').strip():
-                                r['modell'] = (loco_data['modell'] or '').strip()
-                        ez = loco_data.get('erstzulassung')
-                        r['erstzulassung'] = ez.isoformat() if ez and hasattr(ez, 'isoformat') else (ez if ez else None)
-                    else:
-                        r['erstzulassung'] = None
-                    zinsfreiheit_tage = r['zinsfreiheit_tage']
-                    alter_tage = r['alter_tage'] or 0
-                    if alter_tage > zinsfreiheit_tage:
-                        tage_uebrig = -(alter_tage - zinsfreiheit_tage)
-                    else:
-                        tage_uebrig = zinsfreiheit_tage - alter_tage
-                    warnungen.append({
-                        'institut': r['finanzinstitut'],
-                        'vin': r['vin'][-8:] if r['vin'] else '???',
-                        'modell': r.get('modell') or '-',
-                        'marke': r['rrdi'],
-                        'tage_uebrig': tage_uebrig,
-                        'saldo': float(r['aktueller_saldo']) if r['aktueller_saldo'] else 0,
-                        'alter': alter_tage,
-                        'kritisch': tage_uebrig < 15 if tage_uebrig >= 0 else True,
-                        'erstzulassung': r.get('erstzulassung')
-                    })
+            top_fahrzeuge, warnungen = build_einkaufsfinanzierung_top_und_warnungen(cursor, top_limit=10)
 
         return jsonify({
             'success': True,

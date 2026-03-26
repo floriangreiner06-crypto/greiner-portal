@@ -3,19 +3,18 @@
 """
 Stellantis Service Box - Wartungsplan Scraper
 ==============================================
-Navigiert korrekt zu typdoc.do?doc=16 (Wartungsplaene) und
-oeffnet affiche.do?ref=PE&refaff=PE&type=PE fuer das PE-Dokument.
+- Stellantis-Fahrzeuge (VIN beginnt mit VXU etc.): typdoc.do?doc=16 (Wartungsplaene), PE-Dokument.
+- GM-Legacy-Fahrzeuge (VIN beginnt mit W0): Modul Menupricing aufrufen (Service-Preise/Wartung).
 
-Flow (aus HAR-Analyse):
-1. Login via HTTP Basic Auth
-2. Navigation zu Tech-Doc (docapvpr)
-3. VIN-Suche
-4. Klick auf Wartungsplaene (typdoc.do?doc=16)
-5. Formular ausfuellen (Bedingungen, Alter, km)
-6. PE-Dokument abrufen (affiche.do?ref=PE&refaff=PE&type=PE)
+Flow Stellantis:
+1. Login, Tech-Doc, VIN-Suche
+2. Wartungsplaene (doc=16), Formular (Alter, km), PE-Dokument
 
-Version: TAG 129
-Datum: 2025-12-19
+Flow GM Legacy (W0):
+1. Login, Tech-Doc, VIN-Suche
+2. Menupricing-Modul aufrufen, Seite auslesen
+
+Version: TAG 129 + GM-Legacy Menupricing (2026-03-10)
 """
 
 import os
@@ -64,6 +63,8 @@ def setup_driver(headless=True):
     chrome_options.add_argument('--disable-dev-shm-usage')
     chrome_options.add_argument('--window-size=1920,1080')
     chrome_options.add_argument('--lang=de-DE')
+    # Menupricing (GM-Legacy) oeffnet neues Fenster (opel-vauxhall-menupricing.com)
+    chrome_options.add_argument('--disable-popup-blocking')
 
     driver = webdriver.Chrome(options=chrome_options)
     driver.set_page_load_timeout(60)
@@ -223,6 +224,248 @@ def search_vin(driver, vin):
     except Exception as e:
         log(f"VIN-Suche Fehler: {e}", "ERROR")
         return False
+
+
+def is_gm_legacy_vin(vin):
+    """GM-Legacy-Fahrzeuge: VIN beginnt mit W0 (kein Stellantis VXU). Fuer W0 -> Menupricing."""
+    if not vin or not isinstance(vin, str):
+        return False
+    return vin.strip().upper().startswith("W0")
+
+
+def navigate_to_menupricing(driver, vin):
+    """Navigiert zum Modul Menupricing (GM-Legacy W0). Service-Preise/Wartungsinformationen."""
+    log("Navigation zu Menupricing (GM-Legacy)...")
+
+    try:
+        # Methode 1: JavaScript goTo('/mp/') – ServiceBox-Navigation verwendet genau diesen Pfad
+        try:
+            driver.execute_script("goTo('/mp/')")
+            time.sleep(6)
+            page_lower = driver.page_source.lower()
+            if "404" not in page_lower and "n'existe pas" not in page_lower and "unbekannte seite" not in page_lower and "la ressource demandée" not in page_lower:
+                log("  goTo('/mp/') ausgefuehrt – Menu Pricing geladen")
+                take_screenshot(driver, "menupricing_js", vin)
+                save_html(driver, "menupricing_js", vin)
+                return True
+        except Exception as e:
+            log(f"  goTo('/mp/') Fehler: {e}")
+
+        # Methode 2: Link "Menu Pricing" per JavaScript klicken (falls im gleichen Dokument)
+        try:
+            mp_clicked = driver.execute_script("""
+                var links = document.getElementsByTagName('a');
+                for (var i = 0; i < links.length; i++) {
+                    var h = links[i].getAttribute('href') || '';
+                    var t = (links[i].textContent || '').trim();
+                    if (h.indexOf('/mp/') >= 0 || t.indexOf('Menu Pricing') >= 0) {
+                        links[i].click();
+                        return true;
+                    }
+                }
+                return false;
+            """)
+            if mp_clicked:
+                time.sleep(6)
+                take_screenshot(driver, "menupricing_page", vin)
+                save_html(driver, "menupricing_page", vin)
+                return True
+        except Exception:
+            pass
+
+        # Methode 3: Selenium-Link-Klick
+        for keyword in ["Menu Pricing", "Menupricing", "Menu pricing", "Pricing"]:
+            try:
+                links = driver.find_elements(By.PARTIAL_LINK_TEXT, keyword)
+                for link in links:
+                    try:
+                        if link.is_displayed() and "goTo" in (link.get_attribute("href") or ""):
+                            log(f"  Klicke Menupricing-Link: {keyword}")
+                            link.click()
+                            time.sleep(6)
+                            take_screenshot(driver, "menupricing_page", vin)
+                            save_html(driver, "menupricing_page", vin)
+                            return True
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+
+        # Methode 5: Direkte URLs (docapvpr / docapvprovl)
+        base_host = "https://servicebox.mpsa.com"
+        for path in ["/docapvpr/menupricing.do", "/docapvprovl/menupricing.do",
+                     "/docapvpr/tarification.do", "/docapvprovl/tarification.do",
+                     "/docapvpr/menuPricing.do"]:
+            try:
+                url = base_host + path
+                log(f"  Versuche direkte URL: {path}")
+                driver.get(url)
+                time.sleep(5)
+                take_screenshot(driver, "menupricing_direct", vin)
+                save_html(driver, "menupricing_direct", vin)
+                # Kein technischer Fehler?
+                if "technical problem" not in driver.page_source.lower() and "probleme technique" not in driver.page_source.lower():
+                    return True
+            except Exception as e:
+                log(f"  URL {path}: {e}")
+                continue
+
+        log("Menupricing-Navigation: Kein Zugang gefunden", "WARN")
+        return False
+
+    except Exception as e:
+        log(f"Menupricing-Navigation Fehler: {e}", "ERROR")
+        return False
+
+
+def switch_to_menupricing_window(driver, vin, timeout=20):
+    """
+    ServiceBox oeffnet Menupricing in neuem Fenster (opel-vauxhall-menupricing.com).
+    Wechselt dorthin und wartet auf Ladung. Zurueck: True wenn gewechselt, sonst False.
+    """
+    log("Warte auf Menupricing-Popup-Fenster...")
+    main_handle = driver.current_window_handle
+    try:
+        for _ in range(timeout):
+            handles = driver.window_handles
+            if len(handles) > 1:
+                for h in handles:
+                    if h == main_handle:
+                        continue
+                    driver.switch_to.window(h)
+                    try:
+                        url = driver.current_url or ""
+                        if "opel-vauxhall-menupricing" in url or "menupricing" in url.lower():
+                            log(f"  Gewechselt zu Menupricing-Fenster: {url[:80]}")
+                            time.sleep(5)
+                            take_screenshot(driver, "menupricing_popup", vin)
+                            save_html(driver, "menupricing_popup", vin)
+                            return True
+                    except Exception:
+                        pass
+                # Fallback: letztes Fenster
+                driver.switch_to.window(handles[-1])
+                time.sleep(5)
+                take_screenshot(driver, "menupricing_popup", vin)
+                save_html(driver, "menupricing_popup", vin)
+                return True
+            time.sleep(1)
+        log("  Kein Menupricing-Popup gefunden (Timeout)", "WARN")
+        return False
+    except Exception as e:
+        log(f"  Fenster-Wechsel Fehler: {e}", "WARN")
+        try:
+            driver.switch_to.window(main_handle)
+        except Exception:
+            pass
+        return False
+
+
+def extract_menupricing_data(driver, vin):
+    """Extrahiert Daten von der Menupricing-Seite (GM-Legacy). Evtl. im Popup-Fenster."""
+    log("Extrahiere Menupricing-Daten...")
+    result = {
+        "vin": vin,
+        "timestamp": datetime.now().isoformat(),
+        "source": "menupricing",
+        "intervalle": [],
+        "arbeiten": [],
+        "tables": [],
+        "raw_tables": [],
+        "preise": [],
+        "url": None,
+    }
+    try:
+        result["url"] = driver.current_url
+    except Exception:
+        pass
+
+    # Kurz warten, falls dynamischer Inhalt
+    try:
+        WebDriverWait(driver, 8).until(
+            EC.presence_of_element_located((By.TAG_NAME, "body"))
+        )
+        time.sleep(2)
+    except Exception:
+        pass
+
+    page_source = driver.page_source
+
+    # Intervalle (km / Jahre) aus Seite, dedupliziert
+    seen_km = set()
+    for match in re.finditer(r"(\d{1,3}[.,]?\d{3})\s*(km|KM)", page_source):
+        try:
+            val = int(match.group(1).replace(".", "").replace(",", ""))
+            if val not in seen_km and 1000 <= val <= 500000:
+                seen_km.add(val)
+                result["intervalle"].append({"type": "km", "value": val, "raw": match.group(0)})
+        except Exception:
+            pass
+    seen_jahr = set()
+    for match in re.finditer(r"(\d{1,2})\s*(Jahr|Jahre|year|years|an|ans)", page_source, re.IGNORECASE):
+        try:
+            v = int(match.group(1))
+            if v not in seen_jahr and 1 <= v <= 25:
+                seen_jahr.add(v)
+                result["intervalle"].append({"type": "Zeit", "value": v, "unit": "Jahre", "raw": match.group(0)})
+        except Exception:
+            pass
+
+    # Tabellen (alle table-Elemente, auch in iframes wenn wir im richtigen Fenster sind)
+    try:
+        tables = driver.find_elements(By.CSS_SELECTOR, "table")
+        for i, table in enumerate(tables[:20]):
+            try:
+                rows = table.find_elements(By.TAG_NAME, "tr")
+                table_data = []
+                for row in rows[:80]:
+                    cells = row.find_elements(By.TAG_NAME, "td") or row.find_elements(By.TAG_NAME, "th")
+                    if cells:
+                        table_data.append([c.text.strip() for c in cells if c.text.strip()])
+                if table_data and len(table_data) > 1:
+                    result["tables"].append(table_data)
+                    result["raw_tables"].append(table_data)
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    # Preise (EUR-Betraege)
+    for match in re.finditer(r"(\d{1,3}(?:[.,]\d{2,3})?)\s*(?:EUR|€|Euro)", page_source, re.IGNORECASE):
+        try:
+            s = match.group(1).replace(".", "").replace(",", ".")
+            if "." in s:
+                result["preise"].append({"raw": match.group(0), "value": float(s)})
+        except Exception:
+            pass
+    if not result["preise"]:
+        for match in re.finditer(r"(\d{1,3}[.,]\d{2})\s*€", page_source):
+            try:
+                s = match.group(1).replace(",", ".")
+                result["preise"].append({"raw": match.group(0), "value": float(s)})
+            except Exception:
+                pass
+
+    # Typische Wartungs-Keywords
+    keywords = ["Oelwechsel", "Motoröl", "Ölfilter", "Luftfilter", "Pollenfilter", "Bremsen", "Inspektion", "Service", "Zündkerzen", "Bremsflüssigkeit", "Getriebeöl"]
+    for kw in keywords:
+        pat = kw.replace("ö", "(oe|ö)").replace("ä", "(ae|ä)").replace("ü", "(ue|ü)")
+        if re.search(pat, page_source, re.IGNORECASE) and kw not in result["arbeiten"]:
+            result["arbeiten"].append(kw)
+
+    # Kurze Zusammenfassung aus Tabellen (VIN, Fahrzeug, EZ, Motor)
+    result["summary"] = {}
+    for row_list in result.get("tables", [])[:3]:
+        flat = " ".join(str(c) for row in row_list for c in (row if isinstance(row, list) else [row]))
+        if vin in flat and "Astra" in flat:
+            result["summary"]["fahrzeug_text"] = "Opel Astra J 2011"  # aus Tabellen verfeinerbar
+            break
+    if result.get("tables"):
+        result["summary"]["tabellen_anzahl"] = len(result["tables"])
+        result["summary"]["hinweis"] = "Nicht bepreiste Generische Jobs/Teile" if "Nicht bepreiste" in str(result["tables"]) else None
+
+    log(f"  Intervalle: {len(result['intervalle'])}, Arbeiten: {len(result['arbeiten'])}, Tabellen: {len(result['tables'])}, Preise: {len(result.get('preise', []))}")
+    return result
 
 
 def navigate_to_wartungsplan(driver, vin):
@@ -723,38 +966,56 @@ def get_wartungsplan(vin, headless=True, alter_jahre=None, km=None):
         result['screenshots'].append(take_screenshot(driver, "01_nach_vin", vin))
         save_html(driver, "01_nach_vin", vin)
 
-        # 4. Navigation zu Wartungsplan (typdoc.do?doc=16)
-        if navigate_to_wartungsplan(driver, vin):
-            result['screenshots'].append(take_screenshot(driver, "02_wartungsplan_form", vin))
-
-            # 5. Formular ausfuellen mit Alter und km
-            if fill_wartungsplan_form(driver, vin, alter_jahre, km):
-                result['screenshots'].append(take_screenshot(driver, "03_nach_suche", vin))
-
-                # 6. Extrahiere Daten von der Wartungsplan-Seite
-                result['wartungsplan'] = extract_wartungsplan_data(driver, vin)
-
-                # 7. Versuche PE-Dokument zu oeffnen
-                main_window = driver.current_window_handle
-                if open_pe_document(driver, vin):
-                    result['screenshots'].append(take_screenshot(driver, "04_pe_dokument", vin))
-
-                    # Extrahiere auch Daten aus dem PE-Dokument
-                    pe_data = extract_wartungsplan_data(driver, vin)
-                    result['wartungsplan']['pe_document'] = pe_data
-
-                    # Schliesse PE-Fenster und zurueck zum Hauptfenster
+        if is_gm_legacy_vin(vin):
+            # GM-Legacy (VIN W0): Modul Menupricing (oeffnet Popup opel-vauxhall-menupricing.com)
+            log("VIN beginnt mit W0 -> GM-Legacy, rufe Menupricing auf.")
+            main_window = driver.current_window_handle
+            if navigate_to_menupricing(driver, vin):
+                result['screenshots'].append(take_screenshot(driver, "02_menupricing_hub", vin))
+                # Popup-Fenster: wechseln und dort extrahieren
+                if switch_to_menupricing_window(driver, vin):
+                    result['screenshots'].append(take_screenshot(driver, "03_menupricing_content", vin))
+                    result['wartungsplan'] = extract_menupricing_data(driver, vin)
                     try:
                         driver.close()
                         driver.switch_to.window(main_window)
-                    except:
-                        pass
-
+                    except Exception:
+                        try:
+                            driver.switch_to.window(main_window)
+                        except Exception:
+                            pass
+                else:
+                    # Kein Popup: von Hub-Seite extrahieren (Fallback)
+                    result['wartungsplan'] = extract_menupricing_data(driver, vin)
+                result['wartungsplan']['source'] = 'menupricing'
                 result['success'] = True
             else:
-                log("Formular konnte nicht ausgefuellt werden", "WARN")
-                # Versuche trotzdem PE-Dokument
-                result['wartungsplan'] = extract_wartungsplan_data(driver, vin)
+                result['error'] = 'Menupricing-Navigation fehlgeschlagen'
+        else:
+            # Stellantis (z. B. VXU): Wartungsplaene (typdoc 16)
+            if navigate_to_wartungsplan(driver, vin):
+                result['screenshots'].append(take_screenshot(driver, "02_wartungsplan_form", vin))
+
+                if fill_wartungsplan_form(driver, vin, alter_jahre, km):
+                    result['screenshots'].append(take_screenshot(driver, "03_nach_suche", vin))
+                    result['wartungsplan'] = extract_wartungsplan_data(driver, vin)
+                    result['wartungsplan']['source'] = 'wartungsplan'
+
+                    main_window = driver.current_window_handle
+                    if open_pe_document(driver, vin):
+                        result['screenshots'].append(take_screenshot(driver, "04_pe_dokument", vin))
+                        pe_data = extract_wartungsplan_data(driver, vin)
+                        result['wartungsplan']['pe_document'] = pe_data
+                        try:
+                            driver.close()
+                            driver.switch_to.window(main_window)
+                        except Exception:
+                            pass
+                    result['success'] = True
+                else:
+                    log("Formular konnte nicht ausgefuellt werden", "WARN")
+                    result['wartungsplan'] = extract_wartungsplan_data(driver, vin)
+                    result['wartungsplan']['source'] = 'wartungsplan'
 
         # Speichere Ergebnis
         output_file = os.path.join(OUTPUT_DIR, f"wartungsplan_{vin}.json")

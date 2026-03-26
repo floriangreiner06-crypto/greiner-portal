@@ -62,9 +62,14 @@
         <div class="col-12">
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <h2><i class="bi bi-whatsapp text-success"></i> WhatsApp Nachrichten</h2>
-                <a href="{{ url_for('whatsapp.contacts_list') }}" class="btn btn-outline-primary">
-                    <i class="bi bi-people"></i> Kontakte
-                </a>
+                <div>
+                    <button type="button" class="btn btn-success me-2" data-bs-toggle="modal" data-bs-target="#neueNachrichtModal">
+                        <i class="bi bi-plus-lg"></i> Neue Nachricht
+                    </button>
+                    <a href="{{ url_for('whatsapp.contacts_list') }}" class="btn btn-outline-primary">
+                        <i class="bi bi-people"></i> Kontakte
+                    </a>
+                </div>
             </div>
 
             {% if error %}
@@ -136,4 +141,67 @@
         </div>
     </div>
 </div>
+
+<!-- Modal: Neue Nachricht (Nummer + Text, sofort senden) -->
+<div class="modal fade" id="neueNachrichtModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-whatsapp text-success"></i> Neue Nachricht</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="neueNachrichtForm">
+                    <div class="mb-3">
+                        <label for="neuTo" class="form-label">Telefonnummer</label>
+                        <input type="text" class="form-control" id="neuTo" name="to" placeholder="z.B. 4917612345678" required>
+                        <small class="text-muted">Mit Ländercode, ohne +</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="neuMessage" class="form-label">Nachricht</label>
+                        <textarea class="form-control" id="neuMessage" name="message" rows="4" required></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-success" id="btnNeueNachrichtSenden">
+                    <i class="bi bi-send"></i> Senden
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('btnNeueNachrichtSenden').addEventListener('click', function() {
+    var to = document.getElementById('neuTo').value.trim().replace(/\s/g, '');
+    var message = document.getElementById('neuMessage').value.trim();
+    if (!to || !message) {
+        alert('Bitte Nummer und Nachricht eingeben.');
+        return;
+    }
+    this.disabled = true;
+    fetch('{{ url_for("whatsapp.send_message") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: to, message: message, type: 'text' })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(result) {
+        if (result.success) {
+            bootstrap.Modal.getInstance(document.getElementById('neueNachrichtModal')).hide();
+            document.getElementById('neueNachrichtForm').reset();
+            window.location.reload();
+        } else {
+            alert('Fehler: ' + (result.error || 'Nachricht konnte nicht gesendet werden'));
+        }
+    })
+    .catch(function(err) {
+        alert('Fehler beim Senden');
+        console.error(err);
+    })
+    .finally(function() { document.getElementById('btnNeueNachrichtSenden').disabled = false; });
+});
+</script>
 {% endblock %}

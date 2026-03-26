@@ -34,7 +34,9 @@ Beispiel:
     (oder rename zu DispositionData)
 """
 
+import json
 import logging
+import os
 from datetime import date, datetime, time, timedelta
 from typing import Dict, List, Optional, Any
 
@@ -46,7 +48,105 @@ try:
     GUDAT_AVAILABLE = True
 except ImportError:
     GUDAT_AVAILABLE = False
-    logger.warning("GudatClient nicht verfügbar - Disposition deaktiviert")
+    logger.warning("    GudatClient nicht verfügbar - Disposition deaktiviert")
+
+
+def _load_gudat_da_config() -> Optional[Dict]:
+    """Lädt gudat.api_base_url, group, centers (für DA REST API)."""
+    config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'credentials.json')
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+    except Exception:
+        return None
+    gudat = config.get('external_systems', {}).get('gudat', {})
+    base_url = (gudat.get('api_base_url') or '').strip()
+    centers = gudat.get('centers') or {}
+    if not base_url or not centers:
+        return None
+    return {'base_url': base_url, 'group': gudat.get('group') or 'greiner', 'centers': centers}
+
+
+def _is_da_rest_configured(center: str = 'deggendorf') -> bool:
+    """True wenn für center OAuth-Credentials (client_id, client_secret) konfiguriert sind."""
+    cfg = _load_gudat_da_config()
+    if not cfg or center not in cfg['centers']:
+        return False
+    c = cfg['centers'][center]
+    cid = (c.get('client_id') or '').strip()
+    secret = (c.get('client_secret') or '').strip()
+    return bool(cid and secret and 'PLACEHOLDER' not in (cid + secret))
+
+
+def _get_disposition_via_da_rest(center: str, date_str: str) -> Optional[Dict[str, List[Dict]]]:
+    """
+    Holt Disposition für ein Datum über DA REST API (GET /service_events).
+    Returns gleiches Format wie get_disposition: { mechaniker_name: [ task_dict, ... ] }
+    Bei Fehler oder leer: None.
+    """
+    try:
+        from api.gudat_da_client import gudat_da_request
+    except ImportError:
+        return None
+    params = {'filter[inRange]': f'{date_str},{date_str}', 'include': 'resource'}
+    data, err = gudat_da_request('GET', '/service_events', center, params=params)
+    if err or not data:
+        if err:
+            logger.debug("Gudat DA REST Disposition fehlgeschlagen: %s", err)
+        return None
+    items = data.get('data') if isinstance(data.get('data'), list) else []
+    if not items and isinstance(data, list):
+        items = data
+    by_mechanic: Dict[str, List[Dict]] = {}
+    for event in items:
+        resource = event.get('resource') or {}
+        mech_name = (resource.get('name') or '').strip()
+        if not mech_name:
+            rid = event.get('resource_id')
+            if rid is not None:
+                mech_name = f"Resource {rid}"
+            else:
+                continue
+        start_dt = event.get('start_date_time') or ''
+        task_data = {
+            'gudat_id': event.get('id'),
+            'kennzeichen': event.get('license_plate') or '',
+            'auftrag_nr': event.get('external_ref') or _order_number_from_event(event),
+            'vorgabe_aw': float(event.get('work_load') or 0),
+            'status': '',
+            'beschreibung': (event.get('note') or '')[:500],
+            'service': '',
+            'start_date': start_dt,
+        }
+        if mech_name not in by_mechanic:
+            by_mechanic[mech_name] = []
+        by_mechanic[mech_name].append(task_data)
+    # Immer Dict zurückgeben (auch leer), damit bei 0 Events nicht auf KIC zurückgefallen wird
+    return by_mechanic
+
+
+def _order_number_from_event(event: Dict) -> Any:
+    """Extrahiert Auftragsnummer aus Service-Event (orders[0].number oder ähnlich)."""
+    orders = event.get('orders') or []
+    if orders and isinstance(orders[0], dict):
+        return orders[0].get('number')
+    return None
+
+
+def _load_gudat_config() -> Dict[str, str]:
+    """Lädt Gudat-Credentials aus config/credentials.json (SSOT wie gudat_api.py)."""
+    config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'credentials.json')
+    try:
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+        gudat = config.get('external_systems', {}).get('gudat', {})
+        username = gudat.get('username') or ''
+        password = gudat.get('password') or ''
+        if username and password:
+            return {'username': username, 'password': password}
+    except Exception as e:
+        logger.warning(f"Gudat-Config aus credentials.json nicht geladen: {e}")
+    return {}
 
 
 class GudatData:
@@ -63,12 +163,7 @@ class GudatData:
     - get_kapazitaet(): Team-Kapazitäten (Proxy zu Gudat API)
     """
 
-    # Gudat Credentials (aus Config laden wäre besser)
-    # TODO: Nach config/gudat.json auslagern
-    _config = {
-        'username': 'jgreiner',
-        'password': 'Greiner2024!'
-    }
+    # Gudat-Credentials aus config/credentials.json (siehe _load_gudat_config)
 
     # Cache für wiederholte Abfragen (gleicher Tag)
     _disposition_cache: Dict[str, Dict] = {}
@@ -115,6 +210,11 @@ class GudatData:
             target_date = date.today()
         elif isinstance(target_date, datetime):
             target_date = target_date.date()
+        elif isinstance(target_date, str):
+            try:
+                target_date = datetime.strptime(target_date[:10], '%Y-%m-%d').date()
+            except (ValueError, TypeError):
+                target_date = date.today()
 
         date_str = target_date.isoformat()
 
@@ -123,13 +223,28 @@ class GudatData:
             logger.debug(f"Gudat-Disposition aus Cache: {date_str}")
             return cls._disposition_cache.get(date_str, {})
 
+        # Migration: Zuerst DA REST API (OAuth), Fallback KIC (GraphQL) bei API-Fehler
+        if _is_da_rest_configured('deggendorf'):
+            by_mechanic = _get_disposition_via_da_rest('deggendorf', date_str)
+            if by_mechanic is not None:
+                cls._disposition_cache[date_str] = by_mechanic
+                cls._cache_timestamp = datetime.now()
+                total = sum(len(tasks) for tasks in by_mechanic.values())
+                logger.info("Gudat: Disposition via DA REST: %s Tasks, %s Mechaniker", total, len(by_mechanic))
+                return by_mechanic
+            logger.warning("Gudat DA REST Fehler oder nicht verfügbar, Fallback auf KIC GraphQL")
+
         try:
-            client = GudatClient(cls._config['username'], cls._config['password'])
+            cfg = _load_gudat_config()
+            if not cfg:
+                logger.error("Gudat Credentials nicht in config/credentials.json (external_systems.gudat)")
+                return {}
+            client = GudatClient(cfg['username'], cfg['password'])
             if not client.login():
                 logger.error("Gudat Login fehlgeschlagen")
                 return {}
 
-            # GraphQL Query für workshopTasks
+            # GraphQL Query für workshopTasks (KIC Fallback)
             query = """
             query GetWorkshopTasks($page: Int!, $itemsPerPage: Int!, $where: QueryWorkshopTasksWhereWhereConditions) {
               workshopTasks(first: $itemsPerPage, page: $page, where: $where) {

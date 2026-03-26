@@ -18,6 +18,7 @@ from urllib.parse import urlencode
 from api.db_connection import get_db
 from api.whatsapp_api import WhatsAppClient, normalize_phone_number, get_whatsapp_config
 from api.locosoft_addressbook_api import search_customers as locosoft_search_customers, match_customer_by_phone as locosoft_match_customer_by_phone
+from api.whatsapp_inbound import process_inbound_message
 import json
 import os
 import re
@@ -145,6 +146,11 @@ def validate_message_sid(sid: str) -> bool:
 # WEBHOOK ENDPOINT
 # =============================================================================
 
+def _webhook_disabled_for_polling():
+    """True wenn Polling statt Webhook genutzt wird — dann Webhook nicht anbieten."""
+    return os.getenv('WHATSAPP_USE_POLLING_INSTEAD_OF_WEBHOOK', '').strip().lower() in ('1', 'true', 'yes')
+
+
 @whatsapp_bp.route('/webhook', methods=['POST'])
 def webhook():
     """
@@ -153,11 +159,16 @@ def webhook():
     POST: Eingehende Nachrichten und Status-Updates
     Twilio sendet Form-encoded data, nicht JSON!
     
+    Wenn WHATSAPP_USE_POLLING_INSTEAD_OF_WEBHOOK=true: Endpoint antwortet mit 404 (kein Inbound).
+    
     SICHERHEIT:
     - Twilio Request Validator (Signatur-Validierung)
     - Input-Validierung (Telefonnummern, Message-IDs)
     - Request-Size-Limits (1MB)
     """
+    if _webhook_disabled_for_polling():
+        logger.debug("WhatsApp-Webhook abgelehnt (Polling-Modus aktiv)")
+        return '<?xml version="1.0" encoding="UTF-8"?><Response></Response>', 404
     # Logge Request (für Forensik)
     logger.info(f"Webhook-Request von {request.remote_addr}: "
                 f"Signature={request.headers.get('X-Twilio-Signature', 'N/A')[:20]}..., "
@@ -236,7 +247,7 @@ def webhook():
         if from_number and message_sid:
             # Prüfe ob es eine eingehende Nachricht ist (nicht Status-Update)
             if body or num_media > 0:
-                _handle_incoming_message_twilio(data)
+                process_inbound_message(data)
         
         # Twilio erwartet XML-Response (oder einfachen Text)
         logger.info(f"Webhook erfolgreich verarbeitet: MessageSid={message_sid}, From={from_number}")
@@ -357,133 +368,6 @@ def _handle_status_update_twilio(message_sid: str, status: str):
         
     except Exception as e:
         logger.error(f"Fehler beim Verarbeiten des Status-Updates (Twilio): {str(e)}")
-
-
-def _handle_incoming_message_twilio(data: dict):
-    """
-    Verarbeitet eingehende Nachricht von Twilio.
-    
-    Args:
-        data: Form-encoded data von Twilio
-    """
-    try:
-        message_sid = data.get('MessageSid')
-        from_number = data.get('From', '')
-        body = data.get('Body', '')
-        num_media = int(data.get('NumMedia', '0') or '0')
-        
-        if not message_sid or not from_number:
-            logger.warning(f"Unvollständige Nachricht empfangen: {data}")
-            return
-        
-        # Entferne whatsapp: Prefix von Twilio-Format
-        # Format: whatsapp:+491234567890 -> +491234567890 -> 491234567890
-        if from_number.startswith('whatsapp:'):
-            from_number = from_number.replace('whatsapp:', '')
-        
-        # Normalisiere Telefonnummer
-        phone_number = normalize_phone_number(from_number)
-        
-        # Bestimme Nachrichtentyp
-        message_type = 'text'
-        if num_media > 0:
-            # Prüfe Media-Typ
-            media_content_type = data.get('MediaContentType0', '')
-            if 'image' in media_content_type:
-                message_type = 'image'
-            elif 'video' in media_content_type:
-                message_type = 'video'
-            elif 'audio' in media_content_type:
-                message_type = 'audio'
-            elif 'application' in media_content_type or 'document' in media_content_type:
-                message_type = 'document'
-            else:
-                message_type = 'document'  # Fallback
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Finde oder erstelle Kontakt
-        cursor.execute("""
-            SELECT id FROM whatsapp_contacts 
-            WHERE phone_number = %s
-        """, (phone_number,))
-        contact_row = cursor.fetchone()
-        
-        if contact_row:
-            contact_id = contact_row[0] if isinstance(contact_row, dict) else contact_row['id']
-        else:
-            # Neuer Kontakt - erstelle mit unbekanntem Namen
-            cursor.execute("""
-                INSERT INTO whatsapp_contacts (workshop_name, phone_number, contact_name)
-                VALUES (%s, %s, %s)
-                RETURNING id
-            """, (f"Kontakt {phone_number}", phone_number, None))
-            contact_id = cursor.fetchone()[0] if cursor.rowcount > 0 else None
-            conn.commit()
-            logger.info(f"Neuer WhatsApp-Kontakt erstellt: {phone_number}")
-        # Eingehende Nachricht: Absender-Nummer mit Kunden (locosoft_kunden_sync) matchen
-        try:
-            match = locosoft_match_customer_by_phone(phone_number)
-            if match:
-                display_name = (match.get('display_name') or '').strip() or f"Kunde {match.get('customer_number', '')}"
-                first_name = (match.get('first_name') or '').strip() or None
-                cursor.execute("""
-                    UPDATE whatsapp_contacts
-                    SET workshop_name = %s, contact_name = %s, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = %s
-                """, (display_name, first_name or display_name, contact_id))
-                if cursor.rowcount > 0:
-                    conn.commit()
-                    logger.info(f"WhatsApp-Kontakt gematcht: {phone_number} -> {display_name}")
-        except Exception as match_err:
-            logger.debug(f"Kunden-Match für {phone_number}: {match_err}")
-        
-        # Extrahiere Nachrichteninhalt je nach Typ
-        content = None
-        media_url = None
-        caption = None
-        
-        if message_type == 'text':
-            content = body
-        elif num_media > 0:
-            # Twilio: Media-URLs sind in MediaUrl0, MediaUrl1, etc.
-            media_url = data.get('MediaUrl0', '')
-            # Caption ist im Body (falls vorhanden)
-            caption = body if body else None
-        
-        # Speichere Nachricht in DB
-        cursor.execute("""
-            INSERT INTO whatsapp_messages (
-                contact_id, message_id, direction, message_type,
-                content, media_url, caption, status, created_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (message_id) DO NOTHING
-        """, (
-            contact_id,
-            message_sid,
-            'inbound',
-            message_type,
-            content,
-            media_url,
-            caption,
-            'delivered',  # Eingehende Nachrichten sind bereits zugestellt
-            datetime.now()
-        ))
-        
-        if cursor.rowcount > 0:
-            conn.commit()
-            logger.info(f"Eingehende Twilio-Nachricht gespeichert: {message_sid} von {phone_number}")
-            
-            # TODO: Automatische Antworten (z.B. Bestätigung)
-            # TODO: Teile-Anfrage erkennen und verarbeiten
-        
-        conn.close()
-        
-    except Exception as e:
-        logger.error(f"Fehler beim Verarbeiten der eingehenden Nachricht (Twilio): {str(e)}")
-        import traceback
-        traceback.print_exc()
 
 
 # =============================================================================
@@ -905,27 +789,59 @@ def messages_list():
         return render_template('whatsapp/messages.html', messages=[], error=str(e))
 
 
-@whatsapp_bp.route('/contacts', methods=['GET'])
+@whatsapp_bp.route('/contacts', methods=['GET', 'POST'])
 @login_required
 def contacts_list():
     """
-    Zeigt Kontakte-Liste.
+    GET: Zeigt Kontakte-Liste.
+    POST: Legt einen neuen Kontakt an (JSON: phone_number, workshop_name?, contact_name?).
     """
+    if request.method == 'POST':
+        try:
+            data = request.get_json() or {}
+            phone = (data.get('phone_number') or data.get('phone') or '').strip()
+            if not phone:
+                return jsonify({'error': 'Telefonnummer fehlt'}), 400
+            phone_number = normalize_phone_number(phone)
+            workshop_name = (data.get('workshop_name') or '').strip() or f"Kontakt {phone_number}"
+            contact_name = (data.get('contact_name') or '').strip() or None
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id FROM whatsapp_contacts WHERE phone_number = %s",
+                (phone_number,),
+            )
+            if cursor.fetchone():
+                conn.close()
+                return jsonify({'error': 'Kontakt mit dieser Nummer existiert bereits'}), 400
+            cursor.execute(
+                """
+                INSERT INTO whatsapp_contacts (workshop_name, phone_number, contact_name)
+                VALUES (%s, %s, %s)
+                RETURNING id, workshop_name, phone_number, contact_name
+                """,
+                (workshop_name, phone_number, contact_name),
+            )
+            row = cursor.fetchone()
+            conn.commit()
+            conn.close()
+            contact = dict(zip([d[0] for d in cursor.description], row)) if cursor.description and row else {}
+            return jsonify({'success': True, 'contact': contact}), 201
+        except Exception as e:
+            logger.exception("Fehler beim Anlegen des Kontakts: %s", e)
+            return jsonify({'error': str(e)}), 500
+
     try:
         conn = get_db()
         cursor = conn.cursor()
-        
         cursor.execute("""
             SELECT * FROM whatsapp_contacts
             WHERE active = true
             ORDER BY workshop_name
         """)
         contacts = cursor.fetchall()
-        
         conn.close()
-        
         return render_template('whatsapp/contacts.html', contacts=contacts)
-        
     except Exception as e:
         logger.error(f"Fehler beim Laden der Kontakte: {str(e)}")
         return render_template('whatsapp/contacts.html', contacts=[], error=str(e))

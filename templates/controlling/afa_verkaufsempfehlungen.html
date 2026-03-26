@@ -20,6 +20,10 @@
     .empf-sinnvoll { color: #0d6efd; }
     .empf-pruefen { color: #fd7e14; }
     .empf-unter-bw { color: #dc3545; }
+    /* In Locosoft verkauft: Zeile dezent hervorgehoben, Erinnerung „Abgang in DRIVE buchen“ */
+    .afa-table tbody tr.tr-verkauft { background: rgba(0, 0, 0, 0.06); }
+    .afa-table tbody tr.tr-verkauft:hover { background: rgba(0, 0, 0, 0.08); }
+    .badge-verkauft { font-size: 0.7rem; }
 </style>
 {% endblock %}
 
@@ -30,7 +34,10 @@
             <h4 class="mb-0"><i class="bi bi-graph-up-arrow text-success"></i> Verkaufsempfehlungen AfA</h4>
             <small class="text-muted">VFW & Mietwagen — Ziele: positiver Cashflow, hoher Umschlag. Inkl. verursachte Zinsen (Einkaufsfinanzierung).</small>
         </div>
-        <div class="d-flex align-items-center gap-2">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <label class="d-flex align-items-center gap-1 small text-muted mb-0 me-2" title="Fahrzeuge mit Rechnung in Locosoft (noch Abgang in DRIVE buchen)">
+                <input type="checkbox" id="filter-verkaufte-ausblenden" class="form-check-input"> Verkaufte ausblenden
+            </label>
             <span class="small text-muted me-2">Auktion (Zeitnah):</span>
             <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-alle-auswaehlen" title="Alle Fahrzeuge für PDF auswählen">Alle</button>
             <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-keine-auswaehlen" title="Auswahl aufheben">Keine</button>
@@ -208,21 +215,18 @@
             .catch(function(e) { alert('Fehler: ' + (e.message || 'Laden fehlgeschlagen')); });
     }
 
-    function load() {
-        tbody.innerHTML = '<tr><td colspan="' + colSpan + '" class="text-center text-muted py-3">Lade …</td></tr>';
-        fetch(API + '/verkaufsempfehlungen')
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (!data.ok) {
-                    tbody.innerHTML = '<tr><td colspan="' + colSpan + '" class="text-danger">' + (data.error || 'Fehler') + '</td></tr>';
-                    return;
-                }
-                var list = data.fahrzeuge || [];
-                if (list.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="' + colSpan + '" class="text-center text-muted py-3">Keine aktiven AfA-Fahrzeuge.</td></tr>';
-                    return;
-                }
-                tbody.innerHTML = list.map(function(f) {
+    function renderVempfTable(list) {
+        if (!list || !list.length) {
+            tbody.innerHTML = '<tr><td colspan="' + colSpan + '" class="text-center text-muted py-3">Keine aktiven AfA-Fahrzeuge.</td></tr>';
+            return;
+        }
+        var filterVerkaufte = document.getElementById('filter-verkaufte-ausblenden');
+        var anzeigeListe = (filterVerkaufte && filterVerkaufte.checked) ? list.filter(function(f) { return !(f && f.locosoft_verkauft); }) : list;
+        if (anzeigeListe.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="' + colSpan + '" class="text-center text-muted py-3">Keine Fahrzeuge (evtl. „Verkaufte ausblenden“ deaktivieren).</td></tr>';
+            return;
+        }
+        tbody.innerHTML = anzeigeListe.map(function(f) {
                     var diff = f && f.differenz_vk_minus_buchwert;
                     var diffCl = diff != null ? (diff >= 0 ? 'text-success' : 'text-danger') : '';
                     var empf = (f && f.empfehlung) || '–';
@@ -230,7 +234,8 @@
                     var standzeit = f && f.standzeit_tage != null ? f.standzeit_tage : '–';
                     var bezeichnung = (f && f.fahrzeug_bezeichnung ? f.fahrzeug_bezeichnung : '–');
                     var id = (f && f.id != null) ? f.id : '';
-                    return '<tr>' +
+                    var trClass = (f && f.locosoft_verkauft) ? ' tr-verkauft' : '';
+                    return '<tr class="' + trClass + '">' +
                         '<td class="text-center"><input type="checkbox" class="form-check-input row-check" data-id="' + id + '" aria-label="Für Auktion-PDF auswählen"></td>' +
                         '<td class="text-nowrap">' + (f && f.vin ? f.vin : '–') + '</td>' +
                         '<td class="text-nowrap">' + (f && f.kennzeichen ? f.kennzeichen : '–') + '</td>' +
@@ -255,7 +260,12 @@
                         '<td class="text-end">' + fmtEuro(f && f.zinsen_monat) + '</td>' +
                         '<td class="text-end">' + fmtEuro(f && f.zinsen_gesamt) + '</td>' +
                         '<td>' + (f && f.brief_locosoft ? f.brief_locosoft : '–') + '</td>' +
-                        '<td class="text-end">' + (f && f.mobile_platz != null ? f.mobile_platz : '–') + '</td>' +
+                        (function() {
+                            var pl = f && f.mobile_platz != null ? f.mobile_platz : '–';
+                            var url = f && f.mobile_url ? f.mobile_url : null;
+                            if (url && pl !== '–') return '<td class="text-end"><a href="' + url + '" target="_blank" rel="noopener" class="text-decoration-none" title="Anzeige auf mobile.de">' + pl + ' <i class="bi bi-box-arrow-up-right small"></i></a></td>';
+                            return '<td class="text-end">' + pl + '</td>';
+                        })() +
                         '<td class="text-end">' + (f && f.total_hits != null ? f.total_hits : '–') + '</td>' +
                         '<td class="text-end">' + (f && f.platz_1_retail_gross != null ? fmtEuro(f.platz_1_retail_gross) : '–') + '</td>' +
                         '<td class="text-end">' + fmtEuro(f && f.abverkaufspreis_vorschlag) + '</td>' +
@@ -263,31 +273,58 @@
                             var rd = f && f.locosoft_rechnungsdatum;
                             if (!rd) return '<td class="text-muted">–</td>';
                             var d = fmtDateDE(rd);
-                            return '<td class="text-nowrap text-warning" title="In Locosoft verkauft – Abgang in DRIVE buchen">' + d + ' <small class="text-muted">Abgang buchen</small></td>';
+                            return '<td class="text-nowrap" title="In Locosoft verkauft – Abgang in DRIVE buchen"><span class="badge bg-secondary badge-verkauft me-1">Verkauft</span> ' + d + ' <small class="text-muted">Abgang buchen</small></td>';
                         })() +
                         '<td class="' + empfCl + '">' + empf + '</td>' +
                         '<td><button type="button" class="btn btn-sm btn-outline-primary detail-btn" data-id="' + (f && f.id ? f.id : '') + '">Detail</button></td>' +
                         '</tr>';
-                }).join('');
-                tbody.querySelectorAll('.detail-btn').forEach(function(btn) {
-                    btn.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        var id = parseInt(btn.getAttribute('data-id'), 10);
-                        if (id) openDetail(id);
-                    });
-                });
-                // Auktion-PDF: Auswahl aktivieren
-                document.getElementById('btn-pdf-auktion').disabled = false;
-                var checkAll = document.getElementById('check-all');
-                if (checkAll) {
-                    checkAll.checked = false;
-                    checkAll.onclick = function() {
-                        tbody.querySelectorAll('.row-check').forEach(function(cb) { cb.checked = checkAll.checked; });
-                    };
+        }).join('');
+        tbody.querySelectorAll('.detail-btn').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                var id = parseInt(btn.getAttribute('data-id'), 10);
+                if (id) openDetail(id);
+            });
+        });
+        document.getElementById('btn-pdf-auktion').disabled = false;
+        var checkAll = document.getElementById('check-all');
+        if (checkAll) {
+            checkAll.checked = false;
+            checkAll.onclick = function() {
+                tbody.querySelectorAll('.row-check').forEach(function(cb) { cb.checked = checkAll.checked; });
+            };
+        }
+    }
+
+    function load() {
+        tbody.innerHTML = '<tr><td colspan="' + colSpan + '" class="text-center text-muted py-3">Lade …</td></tr>';
+        fetch(API + '/verkaufsempfehlungen')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.ok) {
+                    tbody.innerHTML = '<tr><td colspan="' + colSpan + '" class="text-danger">' + (data.error || 'Fehler') + '</td></tr>';
+                    return;
                 }
-                // eAutoSeller-Daten kommen aus Sync (DB); kein Banner für gecachte Fehler mehr
+                var list = data.fahrzeuge || [];
+                window._afaVempfListe = list;
+                renderVempfTable(list);
+                // eAutoSeller BWA-Status: Hinweis wenn alle Einträge Fehler haben (z. B. 401)
                 var warnEl = document.getElementById('eautoseller-warnung');
-                if (warnEl) warnEl.classList.add('d-none');
+                var st = data.eautoseller_bwa_status || {};
+                if (warnEl) {
+                    if (st.all_have_error && st.total > 0) {
+                        var msg = 'BWA-Cache (mobile.de Platz): ' + st.total + ' Einträge, 0 mit Platz. ';
+                        if ((st.sample_error || '').indexOf('401') !== -1) {
+                            msg += 'eAutoSeller-API meldet <strong>401 (Fehlerhafte Authorisierung)</strong>. Bitte API-Key und Client-Secret in <code>config/credentials.json</code> prüfen bzw. mit eAutoSeller abklären.';
+                        } else {
+                            msg += 'Letzter Fehler: ' + (st.sample_error || 'unbekannt').substring(0, 120);
+                        }
+                        warnEl.innerHTML = msg;
+                        warnEl.classList.remove('d-none');
+                    } else {
+                        warnEl.classList.add('d-none');
+                    }
+                }
                 // Hinweis wenn Gesamtdifferenz DRIVE vs. Buchhaltung konfiguriert ist
                 var diffHinweis = document.getElementById('afa-differenz-hinweis');
                 if (diffHinweis && data.afa_differenz_gesamt > 0) {
@@ -301,6 +338,13 @@
     }
 
     document.getElementById('btn-laden').addEventListener('click', load);
+
+    var filterVerkaufteEl = document.getElementById('filter-verkaufte-ausblenden');
+    if (filterVerkaufteEl) {
+        filterVerkaufteEl.addEventListener('change', function() {
+            if (window._afaVempfListe) renderVempfTable(window._afaVempfListe);
+        });
+    }
 
     document.getElementById('btn-alle-auswaehlen').addEventListener('click', function() {
         tbody.querySelectorAll('.row-check').forEach(function(cb) { cb.checked = true; });

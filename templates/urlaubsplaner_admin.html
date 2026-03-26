@@ -144,6 +144,7 @@
     <div class="table-container mb-4">
         <h5 class="mb-3"><i class="fas fa-ban text-danger"></i> Urlaubssperren</h5>
         <p class="text-muted small">Sperren für das gewählte Jahr. Löschen zum Entfernen.</p>
+        <p class="text-muted small"><i class="fas fa-info-circle"></i> Bereits gebuchter Urlaub bleibt bestehen; Sperren gelten nur für neue Anträge.</p>
         <div class="mb-2">
             <button type="button" class="btn btn-sm btn-outline-secondary" onclick="loadBlocks()"><i class="fas fa-sync"></i> Aktualisieren</button>
         </div>
@@ -158,11 +159,7 @@
         <div class="row align-items-center">
             <div class="col-md-2">
                 <label class="form-label mb-0">Jahr:</label>
-                <select class="form-select form-select-sm" id="filterYear">
-                    <option value="2025" selected>2025</option>
-                    <option value="2024">2024</option>
-                    <option value="2026">2026</option>
-                </select>
+                <select class="form-select form-select-sm" id="filterYear"></select>
             </div>
             <div class="col-md-2">
                 <label class="form-label mb-0">Standort:</label>
@@ -301,6 +298,18 @@ let currentEditEmployee = null;
 // ============================================================================
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🔧 Urlaubsplaner Admin wird geladen...');
+    // Jahr-Dropdown 2020–2030 (Anmerkung 2026-03)
+    const filterYearSel = document.getElementById('filterYear');
+    if (filterYearSel) {
+        const currentYear = new Date().getFullYear();
+        for (let y = 2020; y <= 2030; y++) {
+            const opt = document.createElement('option');
+            opt.value = y;
+            opt.textContent = y;
+            if (y === currentYear) opt.selected = true;
+            filterYearSel.appendChild(opt);
+        }
+    }
     loadData();
     loadBlocks();
     setupEventListeners();

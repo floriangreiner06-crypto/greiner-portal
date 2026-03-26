@@ -174,6 +174,7 @@
                                     <th>Institut</th>
                                     <th>VIN</th>
                                     <th>Modell</th>
+                                    <th>EZ</th>
                                     <th>Tage übrig</th>
                                     <th class="text-end">Saldo</th>
                                     <th class="text-end">Alter</th>
@@ -262,6 +263,7 @@
                                     <th>Institut</th>
                                     <th>VIN</th>
                                     <th>Modell</th>
+                                    <th>EZ</th>
                                     <th class="text-end">
                                         <i class="bi bi-clock-history me-1"></i>Tage seit Zinsstart
                                     </th>
@@ -402,6 +404,7 @@
                                 <th>VIN</th>
                                 <th>Modell</th>
                                 <th>Marke</th>
+                                <th>EZ</th>
                                 <th class="text-end">Aktuell</th>
                                 <th class="text-end">Original</th>
                                 <th class="text-end">Alter (Tage)</th>
@@ -415,6 +418,52 @@
             </div>
         </div>
 
+    </div>
+</div>
+
+<!-- Modal: Empfohlene Fahrzeuge zur Umfinanzierung -->
+<div class="modal fade" id="empfehlungFahrzeugeModal" tabindex="-1" aria-labelledby="empfehlungFahrzeugeModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="empfehlungFahrzeugeModalLabel">
+                    <i class="bi bi-truck me-2"></i>
+                    <span id="empfehlungFahrzeugeModalTitle">Empfohlene Fahrzeuge</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+            </div>
+            <div class="modal-body">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>#</th>
+                                <th>VIN</th>
+                                <th>Modell</th>
+                                <th>Erstzulassung (EZ)</th>
+                                <th class="text-end">Saldo</th>
+                                <th class="text-end">Tage über Zinsfreiheit</th>
+                                <th class="text-center">Mobilität (Santander)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="empfehlungFahrzeugeTableBody">
+                            <!-- Dynamisch gefüllt -->
+                        </tbody>
+                        <tfoot class="table-light fw-bold">
+                            <tr>
+                                <td colspan="4">Summe</td>
+                                <td class="text-end" id="empfehlungFahrzeugeSumme">-</td>
+                                <td></td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -444,6 +493,7 @@
                                     <th>VIN</th>
                                     <th>Modell</th>
                                     <th>Marke</th>
+                                    <th>EZ</th>
                                     <th class="text-end">Aktueller Saldo</th>
                                     <th class="text-end">Original</th>
                                     <th class="text-end">Alter (Tage)</th>
@@ -457,7 +507,7 @@
                             </tbody>
                             <tfoot class="table-light fw-bold">
                                 <tr>
-                                    <td colspan="3">GESAMT</td>
+                                    <td colspan="4">GESAMT</td>
                                     <td class="text-end" id="modalGesamtSaldo">-</td>
                                     <td class="text-end" id="modalGesamtOriginal">-</td>
                                     <td class="text-end" id="modalDurchschnittStandzeit">-</td>

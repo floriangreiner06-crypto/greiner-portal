@@ -670,7 +670,7 @@ def get_offene_garantieauftraege():
                 akte_info = get_garantieakte_metadata(auftrag_nr, kunde, betrieb)
 
                 termin_ts = auftrag.get('termin_bringen')
-                result.append({
+                eintrag = {
                     'auftrag_nr': auftrag_nr,
                     'betrieb': auftrag['betrieb'],
                     'betrieb_name': BETRIEB_NAMEN.get(auftrag['betrieb'], 'Unbekannt'),
@@ -694,7 +694,19 @@ def get_offene_garantieauftraege():
                         'ersteller': akte_info['ersteller'],
                         'windows_path': akte_info.get('windows_path')
                     }
-                })
+                }
+
+                # Hintergrund-Precheck (Frist + Empfehlung) aus Cache laden; falls leer: Vorprüfung direkt berechnen
+                try:
+                    from api.garantie_precheck_service import get_cached_precheck, run_precheck_for_auftrag
+                    precheck = get_cached_precheck(auftrag_nr)
+                    if not precheck:
+                        precheck = run_precheck_for_auftrag(eintrag, with_ai=False)
+                    eintrag['precheck'] = precheck
+                except Exception as pre_err:
+                    logger.debug("Precheck für Auftrag %s nicht verfügbar: %s", auftrag_nr, pre_err)
+
+                result.append(eintrag)
             
             return jsonify({
                 'success': True,

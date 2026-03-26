@@ -3343,3 +3343,21 @@ def get_cashflow_vorschau_api():
     except Exception as e:
         import traceback
         return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+
+
+@controlling_api.route('/api/controlling/cashflow-ist', methods=['GET'])
+@login_required
+def get_cashflow_ist_api():
+    """
+    GET /api/controlling/cashflow-ist?monate=12
+    IST-Cashflow: Einnahmen/Ausgaben pro Monat (ohne interne Transfers).
+    """
+    from api.cashflow_vorschau import get_cashflow_ist
+    try:
+        monate = request.args.get('monate', type=int) or 12
+        monate = max(1, min(36, monate))
+        data = get_cashflow_ist(monate=monate)
+        return jsonify(data), 200
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500

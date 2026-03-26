@@ -17,7 +17,7 @@
     
     .container-fluid {
         padding: 1rem;
-        max-width: 1800px;
+        max-width: 100%;
         margin: 0 auto;
     }
     
@@ -184,22 +184,26 @@
     
     .table-compact {
         margin: 0;
-        font-size: 0.85rem;
+        font-size: 0.8rem;
         border-collapse: collapse;
+        table-layout: fixed;
+        width: 100%;
     }
     
     .table-compact thead th {
         background: #343a40;
         color: white;
         font-weight: 600;
-        padding: 0.5rem 0.75rem;
+        padding: 0.35rem 0.4rem;
         border: 1px solid #495057;
         white-space: nowrap;
-        font-size: 0.8rem;
+        font-size: 0.7rem;
         text-align: center;
         position: sticky;
         top: 0;
         z-index: 10;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     
     .table-compact thead th.text-start {
@@ -211,9 +215,16 @@
     }
     
     .table-compact tbody td {
-        padding: 0.5rem 0.75rem;
+        padding: 0.35rem 0.4rem;
         border: 1px solid #e9ecef;
         vertical-align: middle;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .table-compact tbody td:first-child {
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     
     .table-compact tbody tr:hover {
@@ -316,11 +327,12 @@
         color: #6c757d;
     }
     
-    /* Scrollbar für große Tabellen */
+    /* Tabelle passt ins Fenster, nur vertikal scrollen */
     .table-scroll {
         max-height: calc(100vh - 350px);
         overflow-y: auto;
-        overflow-x: auto;
+        overflow-x: hidden;
+        width: 100%;
     }
     
     .table-scroll::-webkit-scrollbar {
@@ -595,6 +607,8 @@
             </div>
         </div>
     </div>
+
+    <p class="text-muted small mb-2 px-1"><i class="bi bi-info-circle me-1"></i> Die AfA (Vorführwagen/Mietwagen) ist in den <strong>indirekten Kosten</strong> enthalten und mindert das Betriebsergebnis – fachlich korrekt. Ein höherer AfA-Anteil kann das BE entsprechend belasten.</p>
     
     <!-- Haupttabelle - Excel-ähnlich -->
     <div class="table-wrapper">
@@ -607,17 +621,17 @@
             <table class="table table-compact mb-0">
                 <thead>
                     <tr>
-                        <th class="text-start" style="width: 20%">Position</th>
-                        <th style="width: 4%">Stk.<br>Monat</th>
-                        <th style="width: 4%">Stk.<br>Vorjahr</th>
-                        <th class="text-end" style="width: 8%">Monat</th>
-                        <th class="text-end" style="width: 8%">Vorjahr</th>
-                        <th style="width: 5%">Abw.</th>
-                        <th style="width: 4%">Stk.<br>YTD</th>
-                        <th style="width: 4%">Stk.<br>YTD VJ</th>
-                        <th class="text-end" style="width: 8%">YTD</th>
-                        <th class="text-end" style="width: 8%">YTD Vorjahr</th>
-                        <th style="width: 5%">Abw. YTD</th>
+                        <th class="text-start" style="width: 26%">Position</th>
+                        <th style="width: 5%">Stk.M</th>
+                        <th style="width: 5%">Stk.VJ</th>
+                        <th class="text-end" style="width: 10%">Monat</th>
+                        <th class="text-end" style="width: 10%">VJ</th>
+                        <th style="width: 6%">Abw.</th>
+                        <th style="width: 5%">Stk.YTD</th>
+                        <th style="width: 5%">Stk.VJ</th>
+                        <th class="text-end" style="width: 10%">YTD</th>
+                        <th class="text-end" style="width: 10%">YTD VJ</th>
+                        <th style="width: 8%">Abw.YTD</th>
                     </tr>
                 </thead>
                 <tbody id="bwa-body">

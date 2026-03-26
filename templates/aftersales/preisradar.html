@@ -349,11 +349,9 @@
                 label.classList.remove('loading');
                 
                 if (data.success && data.quellen) {
-                    // Dello-Daten in currentResults einfügen
-                    if (data.quellen.dello) {
-                        currentResults.quellen.dello = data.quellen.dello;
-                    }
-                    // Empfehlung aktualisieren
+                    // Alle Quellen aus Response mergen (nicht nur Dello), damit Schäferbarthold
+                    // aus der zweiten Antwort angezeigt wird und Badge/Karte korrekt erscheinen
+                    currentResults.quellen = { ...currentResults.quellen, ...data.quellen };
                     if (data.empfehlung) {
                         currentResults.empfehlung = data.empfehlung;
                     }
@@ -464,11 +462,9 @@
         preise.sort((a, b) => a.preis - b.preis);
         const guenstigster = preise.length > 0 ? preise[0].key : null;
         
-        // Cards erstellen
+        // Cards erstellen (auch Quellen mit Fehler anzeigen, damit z.B. Schäferbarthold sichtbar bleibt)
         for (const [key, quelle] of Object.entries(data.quellen)) {
-            if (quelle.error) continue;
-            
-            const isBest = key === guenstigster;
+            const isBest = !quelle.error && key === guenstigster;
             const card = createPriceCard(key, quelle, isBest);
             container.innerHTML += card;
         }
@@ -494,7 +490,7 @@
         document.getElementById('resultSection').style.display = 'block';
     }
     
-    // Preis-Card HTML
+    // Preis-Card HTML (quelle kann .error haben → Fehler-Karte anzeigen)
     function createPriceCard(key, quelle, isBest) {
         let icon, bgColor;
         switch(key) {
@@ -513,6 +509,26 @@
             default:
                 icon = 'bi-box';
                 bgColor = '#6c757d';
+        }
+        
+        const sourceNames = { locosoft: 'Locosoft OEM', schaeferbarthold: 'Schäferbarthold', dello: 'Dello/Automega' };
+        const displayName = quelle.name || sourceNames[key] || key;
+        
+        if (quelle.error) {
+            return `
+                <div class="col-md-6 col-lg-4">
+                    <div class="card price-card">
+                        <div class="card-header d-flex align-items-center" style="background: ${bgColor}; color: white;">
+                            <i class="bi ${icon} fs-4 me-2"></i>
+                            <span class="fw-bold">${displayName}</span>
+                        </div>
+                        <div class="card-body text-center py-4">
+                            <p class="text-muted mb-0"><i class="bi bi-exclamation-triangle text-warning"></i> Abfrage fehlgeschlagen</p>
+                            <small class="text-muted">${escapeHtml((quelle.error || '').substring(0, 80))}${(quelle.error && quelle.error.length > 80) ? '…' : ''}</small>
+                        </div>
+                    </div>
+                </div>
+            `;
         }
         
         let availabilityHtml = '';
@@ -570,7 +586,7 @@
                 <div class="card price-card ${isBest ? 'best-price' : ''}">
                     <div class="card-header d-flex align-items-center" style="background: ${isBest ? '' : bgColor}; color: white;">
                         <i class="bi ${icon} fs-4 me-2"></i>
-                        <span class="fw-bold">${quelle.name || key}</span>
+                        <span class="fw-bold">${displayName}</span>
                         ${isBest ? '<span class="badge bg-warning text-dark ms-auto"><i class="bi bi-trophy"></i> Günstigster</span>' : ''}
                     </div>
                     <div class="card-body text-center">
@@ -604,6 +620,13 @@
             style: 'currency',
             currency: 'EUR'
         }).format(price);
+    }
+    
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 </script>
 {% endblock %}

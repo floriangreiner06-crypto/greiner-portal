@@ -2846,15 +2846,19 @@ class WerkstattData:
 
             teile = cursor.fetchall()
 
-            # Gestempelte Zeit aus times-Tabelle holen
+            # Gestempelte Zeit aus times-Tabelle (alle Mechaniker am Auftrag, in Minuten)
+            # Deduplizierung: Locosoft speichert denselben Stempelblock ggf. pro Position mehrfach;
+            # nur einmal pro (order_number, employee_number, start_time, end_time) zählen (wie L211PR).
             cursor.execute("""
-                SELECT COALESCE(SUM(minuten), 0) as gestempelt_min
+                SELECT COALESCE(SUM(minuten), 0)::integer as gestempelt_min
                 FROM (
                     SELECT DISTINCT ON (order_number, employee_number, start_time, end_time)
                         EXTRACT(EPOCH FROM (COALESCE(end_time, NOW()) - start_time)) / 60 as minuten
                     FROM times
                     WHERE order_number = %s
                       AND type = 2
+                      AND end_time IS NOT NULL
+                    ORDER BY order_number, employee_number, start_time, end_time
                 ) dedup
             """, [auftrag_nr])
             

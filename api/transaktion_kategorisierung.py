@@ -36,18 +36,27 @@ TRANSAKTION_KATEGORIEN_REGELN = [
     # --- Miete / Nebenkosten ---
     {"kategorie": "Miete & Nebenkosten", "unterkategorie": "Miete", "begriffe": ["Miete", "Mietzahlung", "Kaltmiete", "Warmmiete"]},
     {"kategorie": "Miete & Nebenkosten", "unterkategorie": "Nebenkosten", "begriffe": ["Nebenkosten", "Heizkosten", "Strom", "Stadtwerke", "Energie", "Gas "]},
-    # --- Versicherung ---
-    {"kategorie": "Versicherung", "unterkategorie": None, "begriffe": ["Versicherung", "Allianz", "Huk", "HUK", "AXA", "Zurich", "Provinzial", "Gothaer"]},
+    # --- Versicherung (inkl. KS Partner: Windschutzscheiben-Ersatz/Reparatur, Abwicklung mit Versicherungen) ---
+    {"kategorie": "Versicherung", "unterkategorie": None, "begriffe": ["Versicherung", "Allianz", "Huk", "HUK", "AXA", "Zurich", "Provinzial", "Gothaer", "KS Partner", "KS Partner-System", "KS Partner System"]},
     # --- Steuern (ohne Lohnsteuer) ---
     {"kategorie": "Steuern", "unterkategorie": "Umsatzsteuer", "begriffe": ["Umsatzsteuer", "USt-Voranmeldung", "Finanzamt"]},
     {"kategorie": "Steuern", "unterkategorie": "Gewerbesteuer", "begriffe": ["Gewerbesteuer", "GewSt"]},
+    {"kategorie": "Steuern", "unterkategorie": "KFZ Steuer", "begriffe": ["Kfz-Steuer", "Kfz Steuer", "Kiz-Steuer", "Bundeskasse", "Kfz-Steuer fuer", "Kfz-Steuer für"]},
     {"kategorie": "Steuern", "unterkategorie": "Sonstige", "begriffe": ["Steuer", "FA ", "Finanzamt"]},
+    # --- Werbung (eigenständige Hauptkategorie, damit im Dropdown auffindbar) ---
+    {"kategorie": "Werbung", "unterkategorie": None, "begriffe": [
+        "Werbekostenbeitrag", "Werbekosten",
+        "banner", "Bannerstop", "banderole", "Banderole", "banderolestop", "modularo",
+        "Werbung", "Marketing"
+    ]},
     # --- Kraftstoff / Energie (Betrieb) ---
     {"kategorie": "Betrieb", "unterkategorie": "Kraftstoff", "begriffe": ["Tankstelle", "Aral", "Shell", "Total ", "Esso", "Jet ", "Raiffeisen Tank"]},
-    # --- Werbung / Marketing (Betrieb) ---
-    {"kategorie": "Betrieb", "unterkategorie": "Werbung", "begriffe": ["Werbekostenbeitrag", "Werbekosten", "KS Partner-System", "KS Partner System"]},
+    # --- Werbung / Marketing (Betrieb, Unterkategorie für Abwärtskompatibilität) ---
+    {"kategorie": "Betrieb", "unterkategorie": "Werbung", "begriffe": ["Werbekostenbeitrag", "Werbekosten", "banner", "Bannerstop", "banderole", "modularo"]},
     # --- Porto / Versand (Betrieb) ---
     {"kategorie": "Betrieb", "unterkategorie": "Versand", "begriffe": ["Deutsche Post", "POSTCARD", "Postcard", "DHL", "Porto", "Briefmarke"]},
+    # --- IT / EDV (Betrieb) ---
+    {"kategorie": "Betrieb", "unterkategorie": "IT / EDV", "begriffe": ["Microsoft", "Software", "Lizenz", "IT ", "EDV", "Telekom", "Vodafone", "O2", "Internet", "Hosting", "Cloud", "Apple ", "Adobe", "VMware", "Antivirus", "Antiviren"]},
     # --- Bank / Zinsen ---
     {"kategorie": "Bank & Zinsen", "unterkategorie": "Zinsen", "begriffe": ["Zinsen", "Sollzins", "Habenzins", "Kontoführung"]},
     {"kategorie": "Bank & Zinsen", "unterkategorie": "Gebühren", "begriffe": ["Kontogebühr", "Entgelt", "Bereitstellungsprovision"]},
@@ -164,10 +173,11 @@ def kategorisiere_transaktion_in_db(
     cursor = conn.cursor()
 
     # Explizit gesetzt (manuell oder KI-Vorschlag) – immer verwenden wenn übergeben, auch bei overwrite=True
-    if kategorie is not None:
+    # Leere Strings nicht als "setzen" werten (verhindert versehentliches Löschen)
+    if kategorie is not None and (kategorie != "" if isinstance(kategorie, str) else True):
         cursor.execute(
             convert_placeholders("""
-                UPDATE transaktionen SET kategorie = """ + ph + """, unterkategorie = """ + ph + """
+                UPDATE transaktionen SET kategorie = """ + ph + """, unterkategorie = """ + ph + """, kategorie_manuell = true
                 WHERE id = """ + ph
             ),
             (kategorie, unterkategorie, trans_id),
@@ -202,7 +212,7 @@ def kategorisiere_transaktion_in_db(
 
     cursor.execute(
         convert_placeholders("""
-            UPDATE transaktionen SET kategorie = """ + ph + """, unterkategorie = """ + ph + """
+            UPDATE transaktionen SET kategorie = """ + ph + """, unterkategorie = """ + ph + """, kategorie_manuell = false
             WHERE id = """ + ph
         ),
         (kat, unterkat, trans_id),
@@ -266,7 +276,7 @@ def kategorisiere_batch(
         try:
             cursor.execute(
                 convert_placeholders("""
-                    UPDATE transaktionen SET kategorie = """ + ph + """, unterkategorie = """ + ph + """
+                    UPDATE transaktionen SET kategorie = """ + ph + """, unterkategorie = """ + ph + """, kategorie_manuell = false
                     WHERE id = """ + ph
                 ),
                 (kat, unterkat, rid),

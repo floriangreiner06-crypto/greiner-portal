@@ -19,11 +19,11 @@
                 <button type="button" class="btn btn-primary" id="btnMonat">
                     <i class="bi bi-calendar-month"></i> Dieser Monat
                 </button>
-                <button type="button" class="btn btn-outline-primary" id="btnKalenderjahr">
-                    <i class="bi bi-calendar3"></i> Kalenderjahr
+                <button type="button" class="btn btn-outline-primary" id="btnJahr">
+                    <i class="bi bi-calendar3"></i> Dieses Jahr
                 </button>
-                <button type="button" class="btn btn-outline-primary" id="btnGeschaeftsjahr">
-                    <i class="bi bi-calendar-range"></i> Geschäftsjahr
+                <button type="button" class="btn btn-outline-primary" id="btnGJ">
+                    <i class="bi bi-calendar-range"></i> Dieses GJ
                 </button>
             </div>
         </div>
@@ -36,8 +36,8 @@
             <select id="periodSelect" class="form-select">
                 <option value="month" selected>Monat</option>
                 <option value="day">Tag</option>
-                <option value="calendar_year">Kalenderjahr</option>
-                <option value="fiscal_year">Geschäftsjahr (Sep-Aug)</option>
+                <option value="year">Kalenderjahr</option>
+                <option value="fiscal">Geschäftsjahr</option>
             </select>
         </div>
         <div class="col-md-2">
@@ -62,7 +62,7 @@
             <input type="date" id="daySelect" class="form-control" style="display:none;">
         </div>
         <div class="col-md-1">
-            <label>Jahr:</label>
+            <label id="yearLabel">Jahr:</label>
             <input type="number" id="yearSelect" class="form-control" min="2020" max="2030">
         </div>
         <!-- Standort-Filter Tabs (zentrales Component) -->
@@ -70,11 +70,18 @@
             {% set current_standort = standort %}
             {% include 'components/standort_filter_tabs.html' %}
         </div>
-        <div class="col-md-2">
+        <div class="col-md-2" id="verkauferFilterWrap">
             <label>Verkäufer:</label>
-            <select id="verkauferSelect" class="form-select">
+            {% if restrict_to_own_salesman and salesman_number %}
+            <div class="form-control-plaintext text-muted small" id="verkauferSelectFixed">
+                <i class="bi bi-person-check"></i> Nur Ihre Daten{% if salesman_name %} ({{ salesman_name }}){% endif %}
+            </div>
+            <input type="hidden" id="verkauferSelect" data-forced="{{ salesman_number }}">
+            {% else %}
+            <select id="verkauferSelect" class="form-select" {% if filter_mode == 'own_default' and salesman_number %}data-default-own="{{ salesman_number }}"{% endif %}>
                 <option value="">Alle Verkäufer</option>
             </select>
+            {% endif %}
         </div>
         <div class="col-md-1">
             <label>&nbsp;</label>
@@ -163,6 +170,11 @@
 {% block scripts %}
 <script>
 // Auftragseingang - JavaScript mit Werktage-Prognose (TAG134)
+// Filter-Modus aus Rechteverwaltung: own_only | own_default | all_filterable
+const filterMode = {{ (filter_mode or 'all_filterable')|tojson }};
+const restrictToOwnSalesman = {{ 'true' if restrict_to_own_salesman else 'false' }};
+const forcedSalesmanNumber = {{ (salesman_number or 'null')|tojson }};
+
 const now = new Date();
 let currentMonth = now.getMonth() + 1; // JavaScript months are 0-indexed
 let currentYear = now.getFullYear();
@@ -173,7 +185,7 @@ function getStandortFromURL() {
 }
 
 let currentLocation = getStandortFromURL();
-let currentVerkaufer = '';
+let currentVerkaufer = (restrictToOwnSalesman && forcedSalesmanNumber !== null) ? String(forcedSalesmanNumber) : (filterMode === 'own_default' && forcedSalesmanNumber !== null ? String(forcedSalesmanNumber) : '');
 let currentPeriod = 'month';
 let currentDay = '';
 let lastTotalAE = 0; // Für Prognose-Berechnung
@@ -189,14 +201,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Event Listeners
     document.getElementById('loadBtn').addEventListener('click', loadData);
-    document.getElementById('periodSelect').addEventListener('change', () => {
-        togglePeriodInputs();
-        const period = document.getElementById('periodSelect').value;
-        if (period === 'day') updateQuickButtons('heute');
-        else if (period === 'month') updateQuickButtons('monat');
-        else if (period === 'calendar_year') updateQuickButtons('kalenderjahr');
-        else if (period === 'fiscal_year') updateQuickButtons('geschaeftsjahr');
-    });
+    document.getElementById('periodSelect').addEventListener('change', togglePeriodInputs);
 
     // Quick-Buttons
     document.getElementById('btnHeute').addEventListener('click', () => {
@@ -216,25 +221,33 @@ document.addEventListener('DOMContentLoaded', function() {
         loadData();
     });
 
-    document.getElementById('btnKalenderjahr').addEventListener('click', () => {
-        document.getElementById('periodSelect').value = 'calendar_year';
+    document.getElementById('btnJahr').addEventListener('click', () => {
+        document.getElementById('periodSelect').value = 'year';
         document.getElementById('yearSelect').value = now.getFullYear();
         togglePeriodInputs();
-        updateQuickButtons('kalenderjahr');
+        updateQuickButtons('jahr');
         loadData();
     });
 
-    document.getElementById('btnGeschaeftsjahr').addEventListener('click', () => {
-        const fiscalStartYear = (now.getMonth() + 1) >= 9 ? now.getFullYear() : now.getFullYear() - 1;
-        document.getElementById('periodSelect').value = 'fiscal_year';
-        document.getElementById('yearSelect').value = fiscalStartYear;
+    document.getElementById('btnGJ').addEventListener('click', () => {
+        document.getElementById('periodSelect').value = 'fiscal';
+        // GJ startet im September: wenn aktuell >= Sep → GJ startet dieses Jahr, sonst letztes Jahr
+        const gjStartYear = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+        document.getElementById('yearSelect').value = gjStartYear;
         togglePeriodInputs();
-        updateQuickButtons('geschaeftsjahr');
+        updateQuickButtons('gj');
         loadData();
     });
 
-    // Verkäufer-Liste laden
-    loadVerkauferList();
+    // Verkäufer-Liste laden (nur wenn Filter sichtbar – nicht bei own_only)
+    if (!restrictToOwnSalesman) {
+        loadVerkauferList().then(() => {
+            if (filterMode === 'own_default' && forcedSalesmanNumber !== null) {
+                var sel = document.getElementById('verkauferSelect');
+                if (sel && sel.tagName === 'SELECT') sel.value = String(forcedSalesmanNumber);
+            }
+        });
+    }
 
     // Initial Load (aktueller Monat)
     updateQuickButtons('monat');
@@ -242,30 +255,27 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function updateQuickButtons(active) {
-    document.getElementById('btnHeute').classList.toggle('btn-primary', active === 'heute');
-    document.getElementById('btnHeute').classList.toggle('btn-outline-primary', active !== 'heute');
-    document.getElementById('btnMonat').classList.toggle('btn-primary', active === 'monat');
-    document.getElementById('btnMonat').classList.toggle('btn-outline-primary', active !== 'monat');
-    document.getElementById('btnKalenderjahr').classList.toggle('btn-primary', active === 'kalenderjahr');
-    document.getElementById('btnKalenderjahr').classList.toggle('btn-outline-primary', active !== 'kalenderjahr');
-    document.getElementById('btnGeschaeftsjahr').classList.toggle('btn-primary', active === 'geschaeftsjahr');
-    document.getElementById('btnGeschaeftsjahr').classList.toggle('btn-outline-primary', active !== 'geschaeftsjahr');
+    ['heute', 'monat', 'jahr', 'gj'].forEach(key => {
+        const btn = document.getElementById('btn' + key.charAt(0).toUpperCase() + key.slice(1));
+        if (!btn) return;
+        btn.classList.toggle('btn-primary', active === key);
+        btn.classList.toggle('btn-outline-primary', active !== key);
+    });
 }
 
 function togglePeriodInputs() {
     const period = document.getElementById('periodSelect').value;
     const monthSelect = document.getElementById('monthSelect');
     const daySelect = document.getElementById('daySelect');
-    
-    if (period === 'day') {
-        monthSelect.style.display = 'none';
-        daySelect.style.display = 'block';
-    } else if (period === 'month') {
-        monthSelect.style.display = 'block';
-        daySelect.style.display = 'none';
+    const yearLabel = document.getElementById('yearLabel');
+
+    monthSelect.style.display = (period === 'month') ? 'block' : 'none';
+    daySelect.style.display = (period === 'day') ? 'block' : 'none';
+
+    if (period === 'fiscal') {
+        yearLabel.textContent = 'GJ-Start:';
     } else {
-        monthSelect.style.display = 'none';
-        daySelect.style.display = 'none';
+        yearLabel.textContent = 'Jahr:';
     }
 }
 
@@ -287,13 +297,26 @@ async function loadVerkauferList() {
     }
 }
 
+function getDateRange(period, year, month) {
+    const y = parseInt(year);
+    if (period === 'year') {
+        return { von: `${y}-01-01`, bis: `${y}-12-31` };
+    }
+    if (period === 'fiscal') {
+        // GJ: 01.09.gjStartYear – 31.08.gjStartYear+1
+        return { von: `${y}-09-01`, bis: `${y + 1}-08-31` };
+    }
+    return null;
+}
+
 async function loadData() {
     currentPeriod = document.getElementById('periodSelect').value;
     currentMonth = document.getElementById('monthSelect').value;
     currentYear = document.getElementById('yearSelect').value;
     currentDay = document.getElementById('daySelect').value;
     currentLocation = getStandortFromURL();
-    currentVerkaufer = document.getElementById('verkauferSelect').value;
+    var sel = document.getElementById('verkauferSelect');
+    currentVerkaufer = restrictToOwnSalesman && forcedSalesmanNumber !== null ? String(forcedSalesmanNumber) : (sel.tagName === 'SELECT' ? sel.value : (sel.dataset.forced || ''));
 
     // Prognose-Zeile nur bei Monatsansicht zeigen
     const prognoseRow = document.getElementById('prognoseRow');
@@ -387,16 +410,16 @@ async function loadSummary() {
     container.innerHTML = '<div class="col-12 text-center"><div class="spinner-border"></div></div>';
 
     try {
-        let url = `/api/verkauf/auftragseingang/summary?zeitraum=${encodeURIComponent(currentPeriod)}&year=${currentYear}`;
-        
-        if (currentPeriod === 'month') {
+        let url = `/api/verkauf/auftragseingang/summary?year=${currentYear}`;
+        const dateRange = getDateRange(currentPeriod, parseInt(currentYear), parseInt(currentMonth));
+        if (dateRange) {
+            url += `&von=${dateRange.von}&bis=${dateRange.bis}`;
+        } else if (currentPeriod === 'month') {
             url += `&month=${currentMonth}`;
         } else {
-            if (currentPeriod === 'day') {
-                url += `&day=${currentDay}`;
-            }
+            url += `&day=${currentDay}`;
         }
-        
+
         // TAG 177: Standort-Filter hinzufügen
         if (currentLocation) url += `&location=${encodeURIComponent(currentLocation)}`;
         
@@ -444,7 +467,7 @@ async function loadSummary() {
             <div class="col-md-3">
                 <div class="card text-center border-warning">
                     <div class="card-body">
-                        <h6><strong>TVFW</strong></h6>
+                        <h6><strong>Test/Vorführ</strong></h6>
                         <h3 class="text-warning"><strong>${testvorfuehr.gesamt}</strong></h3>
                         
                     </div>
@@ -493,6 +516,78 @@ async function loadSummary() {
             const pctGw = zGw > 0 ? Math.round((istGW / zGw) * 100) : '-';
             html += '<div class="row mt-2"><div class="col-12"><p class="mb-0 small text-muted">Zielerfüllung (Zielplanung): <strong>NW</strong> ' + istNW + ' / ' + zNw + ' (' + pctNw + '%) &nbsp;|&nbsp; <strong>GW</strong> ' + istGW + ' / ' + zGw + ' (' + pctGw + '%)</p></div></div>';
         }
+
+        const markenOrder = ['Opel', 'Leapmotor', 'Hyundai'];
+        const markenRows = {};
+        markenOrder.forEach(name => {
+            markenRows[name] = { nw: 0, vfw: 0, t: 0, summe: 0 };
+        });
+
+        data.summary.forEach(marke => {
+            const markenName = (marke.marke || '').trim();
+            if (!markenRows[markenName]) return;
+            const nw = Number(marke.nw || marke.neu || 0);
+            const vfw = Number(marke.vfw || 0);
+            const t = Number(marke.t || 0);
+            markenRows[markenName] = {
+                nw: nw,
+                vfw: vfw,
+                t: t,
+                summe: nw + vfw + t
+            };
+        });
+
+        let totalNw = 0;
+        let totalVfw = 0;
+        let totalT = 0;
+        markenOrder.forEach(name => {
+            totalNw += markenRows[name].nw;
+            totalVfw += markenRows[name].vfw;
+            totalT += markenRows[name].t;
+        });
+
+        html += `
+            <div class="col-12 mt-3">
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Marke</th>
+                                <th class="text-center">NW</th>
+                                <th class="text-center">VFW</th>
+                                <th class="text-center">T</th>
+                                <th class="text-center">Summe</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+
+        markenOrder.forEach(name => {
+            const row = markenRows[name];
+            html += `
+                <tr>
+                    <td><strong>${name}</strong></td>
+                    <td class="text-center">${row.nw}</td>
+                    <td class="text-center">${row.vfw}</td>
+                    <td class="text-center">${row.t}</td>
+                    <td class="text-center"><strong>${row.summe}</strong></td>
+                </tr>
+            `;
+        });
+
+        html += `
+                            <tr class="table-secondary">
+                                <td><strong>Gesamt</strong></td>
+                                <td class="text-center"><strong>${totalNw}</strong></td>
+                                <td class="text-center"><strong>${totalVfw}</strong></td>
+                                <td class="text-center"><strong>${totalT}</strong></td>
+                                <td class="text-center"><strong>${totalNw + totalVfw + totalT}</strong></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
         
         html += '</div>';
         container.innerHTML = html;
@@ -506,16 +601,16 @@ async function loadDetails() {
     container.innerHTML = '<div class="text-center"><div class="spinner-border"></div></div>';
 
     try {
-        let url = `/api/verkauf/auftragseingang/detail?zeitraum=${encodeURIComponent(currentPeriod)}&year=${currentYear}`;
-        
-        if (currentPeriod === 'month') {
+        let url = `/api/verkauf/auftragseingang/detail?year=${currentYear}`;
+        const dateRangeD = getDateRange(currentPeriod, parseInt(currentYear), parseInt(currentMonth));
+        if (dateRangeD) {
+            url += `&von=${dateRangeD.von}&bis=${dateRangeD.bis}`;
+        } else if (currentPeriod === 'month') {
             url += `&month=${currentMonth}`;
         } else {
-            if (currentPeriod === 'day') {
-                url += `&day=${currentDay}`;
-            }
+            url += `&day=${currentDay}`;
         }
-        
+
         if (currentLocation) url += `&location=${encodeURIComponent(currentLocation)}`;
         if (currentVerkaufer) url += `&verkaufer=${encodeURIComponent(currentVerkaufer)}`;
 
@@ -538,15 +633,12 @@ async function loadDetails() {
         }
         const hasZiele = Object.keys(zieleByNr).length > 0;
 
-        const isLargePeriod = currentPeriod === 'calendar_year' || currentPeriod === 'fiscal_year';
-
         let html = '<div class="table-responsive"><table class="table table-striped table-hover">';
-        html += '<thead class="table-dark"><tr><th>Verkäufer</th><th class="text-center">NW</th><th class="text-center">TVFW</th><th class="text-center">GW</th><th class="text-center">Gesamt</th>';
+        html += '<thead class="table-dark"><tr><th>Verkäufer</th><th class="text-center">Neu</th><th class="text-center">Test/Vorführ</th><th class="text-center">Gebraucht</th><th class="text-center">Gesamt</th>';
         if (hasZiele) html += '<th class="text-center">Ziel NW</th><th class="text-center">Ziel GW</th><th class="text-center">Erfüllung</th>';
-        html += isLargePeriod ? '<th class="text-center">Details</th>' : '<th>Modelle</th>';
-        html += '</tr></thead><tbody>';
+        html += '<th>Modelle</th></tr></thead><tbody>';
 
-        data.verkaufer.forEach((vk, idx) => {
+        data.verkaufer.forEach(vk => {
             const istNw = (vk.summe_neu || 0) + (vk.summe_test_vorfuehr || 0);
             const istGw = vk.summe_gebraucht || 0;
             const ziel = zieleByNr[vk.verkaufer_nummer];
@@ -562,27 +654,13 @@ async function loadDetails() {
                     zielCells = '<td class="text-center">-</td><td class="text-center">-</td><td class="text-center small text-muted">-</td>';
                 }
             }
-
-            if (isLargePeriod) {
-                const detailId = 'vkDetail_' + (vk.verkaufer_nummer || idx);
-                const colSpan = hasZiele ? 9 : 6;
-                html += '<tr><td><strong>' + (vk.verkaufer_name || 'Unbekannt') + '</strong></td>' +
-                    '<td class="text-center"><span class="badge bg-success">' + (vk.summe_neu || 0) + '</span></td>' +
-                    '<td class="text-center"><span class="badge bg-warning text-dark">' + (vk.summe_test_vorfuehr || 0) + '</span></td>' +
-                    '<td class="text-center"><span class="badge bg-secondary">' + (vk.summe_gebraucht || 0) + '</span></td>' +
-                    '<td class="text-center"><strong>' + (vk.summe_gesamt || 0) + '</strong></td>' +
-                    (hasZiele ? zielCells : '') +
-                    '<td class="text-center"><button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#' + detailId + '" aria-expanded="false" aria-controls="' + detailId + '"><i class="bi bi-chevron-down"></i></button></td></tr>';
-                html += '<tr class="collapse" id="' + detailId + '"><td colspan="' + colSpan + '">' + formatModelle(vk) + '</td></tr>';
-            } else {
-                html += '<tr><td><strong>' + (vk.verkaufer_name || 'Unbekannt') + '</strong></td>' +
-                    '<td class="text-center"><span class="badge bg-success">' + (vk.summe_neu || 0) + '</span></td>' +
-                    '<td class="text-center"><span class="badge bg-warning text-dark">' + (vk.summe_test_vorfuehr || 0) + '</span></td>' +
-                    '<td class="text-center"><span class="badge bg-secondary">' + (vk.summe_gebraucht || 0) + '</span></td>' +
-                    '<td class="text-center"><strong>' + (vk.summe_gesamt || 0) + '</strong></td>' +
-                    (hasZiele ? zielCells : '') +
-                    '<td>' + formatModelle(vk) + '</td></tr>';
-            }
+            html += '<tr><td><strong>' + (vk.verkaufer_name || 'Unbekannt') + '</strong></td>' +
+                '<td class="text-center"><span class="badge bg-success">' + (vk.summe_neu || 0) + '</span></td>' +
+                '<td class="text-center"><span class="badge bg-warning text-dark">' + (vk.summe_test_vorfuehr || 0) + '</span></td>' +
+                '<td class="text-center"><span class="badge bg-secondary">' + (vk.summe_gebraucht || 0) + '</span></td>' +
+                '<td class="text-center"><strong>' + (vk.summe_gesamt || 0) + '</strong></td>' +
+                (hasZiele ? zielCells : '') +
+                '<td>' + formatModelle(vk) + '</td></tr>';
         });
 
         html += '</tbody></table></div>';

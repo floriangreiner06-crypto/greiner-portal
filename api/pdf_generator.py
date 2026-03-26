@@ -13,6 +13,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 from io import BytesIO
 from datetime import datetime, date
+import re
 
 
 def format_currency(value):
@@ -216,6 +217,76 @@ def generate_auftragseingang_komplett_pdf(tag_data: dict, monat_data: dict, datu
     LIGHT_BG = colors.HexColor('#f8f9fa')
     SUM_BG = colors.HexColor('#e7f1ff')
 
+    def _shorten_model_name(name: str, max_len: int = 24) -> str:
+        text = (name or '–').strip()
+        if len(text) <= max_len:
+            return text
+        return text[:max_len - 1].rstrip() + "…"
+
+    def _normalize_model_name(name: str) -> str:
+        """
+        Vereinheitlicht Modellbezeichnungen für bessere Lesbarkeit im Report.
+        Beispiel: "NEW TUCSON Prime 1.6 T-GDI" -> "Tucson".
+        """
+        raw = (name or '').strip()
+        if not raw:
+            return 'Unbekannt'
+        cleaned = re.sub(r'\s+', ' ', raw).strip()
+        upper = cleaned.upper()
+        tokens = re.findall(r'[A-Z0-9\-\+]+', upper)
+        stopwords = {
+            'NEW', 'FACELIFT', 'FL', 'MY', 'MJ', 'PRIME', 'TREND', 'STYLE',
+            'SELECT', 'NLINE', 'N-LINE', 'N', 'EDITION', 'BUSINESS', 'PLUS',
+            'HYBRID', 'PHEV', 'HEV', 'EV', 'BEV', 'T-GDI', 'CRDI', 'GDI',
+            'DCT', 'AT', 'MT', 'AUTOMATIK', 'SCHALTER', '4X4', '2WD',
+            'BASIS', 'GS', 'ULTIMATE'
+        }
+        model_prefixes = [
+            'TUCSON', 'KONA', 'I10', 'I20', 'I30', 'BAYON', 'SANTA', 'IONIQ',
+            'MOKKA', 'CORSA', 'ASTRA', 'GRANDLAND', 'FRONTERA', 'COMBO',
+            'VIVARO', 'ZAFIRA', 'CROSSLAND', 'INSIGNIA',
+            'C10', 'T03'
+        ]
+
+        for i in range(len(tokens)):
+            for pref in model_prefixes:
+                if tokens[i].startswith(pref):
+                    if pref == 'SANTA' and i + 1 < len(tokens) and tokens[i + 1].startswith('FE'):
+                        return 'Santa Fe'
+                    if pref == 'GRANDLAND':
+                        return 'Grandland'
+                    if pref == 'CROSSLAND':
+                        return 'Crossland'
+                    if pref == 'INSIGNIA':
+                        return 'Insignia'
+                    if pref == 'VIVARO':
+                        return 'Vivaro'
+                    if pref == 'ZAFIRA':
+                        return 'Zafira'
+                    if pref == 'COMBO':
+                        return 'Combo'
+                    if pref == 'T03':
+                        return 'T03'
+                    if pref == 'C10':
+                        return 'C10'
+                    return pref.title().replace('Ioniq', 'IONIQ')
+
+        filtered = [t for t in tokens if t not in stopwords and len(t) > 1]
+        if filtered:
+            return filtered[0].title().replace('Ioniq', 'IONIQ')
+        return _shorten_model_name(cleaned, 20)
+
+    def _build_modelmix_text(vk: dict, max_models: int = 3) -> str:
+        mix = {}
+        for bucket in ('neu', 'test_vorfuehr', 'gebraucht'):
+            for item in (vk.get(bucket) or []):
+                norm = _normalize_model_name(item.get('modell'))
+                mix[norm] = mix.get(norm, 0) + int(item.get('anzahl', 0) or 0)
+        if not mix:
+            return '–'
+        top = sorted(mix.items(), key=lambda x: x[1], reverse=True)[:max_models]
+        return ", ".join([f"{_shorten_model_name(name, 14)} {qty}" for name, qty in top])
+
     # TEK-ähnliche Styles
     title_style = ParagraphStyle(
         'AETitle',
@@ -307,19 +378,24 @@ def generate_auftragseingang_komplett_pdf(tag_data: dict, monat_data: dict, datu
         elements.append(Paragraph(wt_para, prog_style))
     elements.append(Spacer(1, 8))
 
-    # === NEUWAGEN NACH MARKE UND MODELL (nur NW, nicht GW) ===
+    # === NEUWAGEN NACH MARKE UND MODELL (normalisiert) ===
     if nw_tag or nw_monat:
-        elements.append(Paragraph("Neuwagen nach Marke und Modell", section_style))
-        # Eine Tabelle: Marke | Modell | Heute | Monat
-        nw_all_keys = set()
-        nw_tag_map = {(r.get('marke', ''), r.get('modell', '')): r.get('anzahl', 0) for r in (nw_tag or [])}
-        nw_monat_map = {(r.get('marke', ''), r.get('modell', '')): r.get('anzahl', 0) for r in (nw_monat or [])}
+        elements.append(Paragraph("Neuwagen nach Marke und Modelltyp (normalisiert)", section_style))
+        # Eine Tabelle: Marke | Modelltyp | Heute | Monat
+        nw_tag_map = {}
+        for r in (nw_tag or []):
+            key = (r.get('marke', ''), _normalize_model_name(r.get('modell', '')))
+            nw_tag_map[key] = nw_tag_map.get(key, 0) + int(r.get('anzahl', 0) or 0)
+        nw_monat_map = {}
+        for r in (nw_monat or []):
+            key = (r.get('marke', ''), _normalize_model_name(r.get('modell', '')))
+            nw_monat_map[key] = nw_monat_map.get(key, 0) + int(r.get('anzahl', 0) or 0)
         nw_all_keys = set(nw_tag_map.keys()) | set(nw_monat_map.keys())
-        nw_rows = [['Marke', 'Modell', f'Heute ({datum_display})', monat_display]]
+        nw_rows = [['Marke', 'Modelltyp', f'Heute ({datum_display})', monat_display]]
         for (marke, modell) in sorted(nw_all_keys, key=lambda x: (x[0] or '', x[1] or '')):
             nw_rows.append([
                 marke or '–',
-                (modell or '–')[:35],
+                _shorten_model_name(modell or '–', 26),
                 str(nw_tag_map.get((marke, modell), 0)),
                 str(nw_monat_map.get((marke, modell), 0))
             ])
@@ -340,10 +416,10 @@ def generate_auftragseingang_komplett_pdf(tag_data: dict, monat_data: dict, datu
             elements.append(nw_table)
         elements.append(Spacer(1, 8))
 
-    # === HEUTE – nach Verkäufer (ohne Umsatz) ===
+    # === HEUTE – nach Verkäufer mit Modellmix ===
     elements.append(Paragraph(f"Heute ({datum_display}) – nach Verkäufer", section_style))
     if tag_data:
-        tag_table_data = [['Verkäufer', 'NW', 'T/V', 'GW', 'Ges.']]
+        tag_table_data = [['Verkäufer', 'NW', 'T/V', 'GW', 'Ges.', 'Modellmix (Top)']]
         for vk in sorted(tag_data, key=lambda x: x.get('summe_gesamt', 0), reverse=True):
             if vk.get('summe_gesamt', 0) > 0:
                 tag_table_data.append([
@@ -351,17 +427,19 @@ def generate_auftragseingang_komplett_pdf(tag_data: dict, monat_data: dict, datu
                     str(vk.get('summe_neu', 0)),
                     str(vk.get('summe_test_vorfuehr', 0)),
                     str(vk.get('summe_gebraucht', 0)),
-                    str(vk.get('summe_gesamt', 0))
+                    str(vk.get('summe_gesamt', 0)),
+                    _build_modelmix_text(vk)
                 ])
         if len(tag_table_data) > 1:
-            col_widths_detail = [6.5*cm, 2*cm, 2*cm, 2*cm, 2*cm]
+            col_widths_detail = [4.8*cm, 1.6*cm, 1.6*cm, 1.6*cm, 1.3*cm, 5.7*cm]
             tag_table = Table(tag_table_data, colWidths=col_widths_detail)
             tag_table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), DRIVE_BLUE),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
                 ('FONTSIZE', (0, 0), (-1, -1), 9),
-                ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+                ('ALIGN', (1, 0), (4, -1), 'CENTER'),
+                ('ALIGN', (5, 0), (5, -1), 'LEFT'),
                 ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
                 ('TOPPADDING', (0, 0), (-1, -1), 6),
                 ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
@@ -373,10 +451,10 @@ def generate_auftragseingang_komplett_pdf(tag_data: dict, monat_data: dict, datu
     else:
         elements.append(Paragraph("Keine Aufträge heute.", styles['Normal']))
 
-    # === MONAT – nach Verkäufer (ohne Umsatz) ===
+    # === MONAT – nach Verkäufer mit Modellmix ===
     elements.append(Paragraph(f"{monat_display} kumuliert – nach Verkäufer", section_style))
     if monat_data:
-        monat_table_data = [['Verkäufer', 'NW', 'T/V', 'GW', 'Ges.']]
+        monat_table_data = [['Verkäufer', 'NW', 'T/V', 'GW', 'Ges.', 'Modellmix (Top)']]
         for vk in sorted(monat_data, key=lambda x: x.get('summe_gesamt', 0), reverse=True):
             if vk.get('summe_gesamt', 0) > 0:
                 monat_table_data.append([
@@ -384,23 +462,26 @@ def generate_auftragseingang_komplett_pdf(tag_data: dict, monat_data: dict, datu
                     str(vk.get('summe_neu', 0)),
                     str(vk.get('summe_test_vorfuehr', 0)),
                     str(vk.get('summe_gebraucht', 0)),
-                    str(vk.get('summe_gesamt', 0))
+                    str(vk.get('summe_gesamt', 0)),
+                    _build_modelmix_text(vk)
                 ])
         monat_table_data.append([
             'GESAMT',
             str(monat_summary['neu']),
             str(monat_summary['test_vorfuehr']),
             str(monat_summary['gebraucht']),
-            str(monat_summary['gesamt'])
+            str(monat_summary['gesamt']),
+            '–'
         ])
-        col_widths_detail = [6.5*cm, 2*cm, 2*cm, 2*cm, 2*cm]
+        col_widths_detail = [4.8*cm, 1.6*cm, 1.6*cm, 1.6*cm, 1.3*cm, 5.7*cm]
         monat_table = Table(monat_table_data, colWidths=col_widths_detail)
         monat_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), DRIVE_BLUE),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+            ('ALIGN', (1, 0), (4, -1), 'CENTER'),
+            ('ALIGN', (5, 0), (5, -1), 'LEFT'),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
             ('TOPPADDING', (0, 0), (-1, -1), 6),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),

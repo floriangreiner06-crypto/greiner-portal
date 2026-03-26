@@ -107,6 +107,41 @@
     </div>
 </div>
 
+<!-- Modal: Neuer Kontakt -->
+<div class="modal fade" id="addContactModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-person-plus"></i> Neuer Kontakt</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addContactForm">
+                    <div class="mb-3">
+                        <label for="newPhone" class="form-label">Telefonnummer <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="newPhone" name="phone_number" placeholder="z.B. 4917612345678" required>
+                        <small class="text-muted">Mit Ländercode, ohne +</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="newWorkshopName" class="form-label">Name / Bezeichnung</label>
+                        <input type="text" class="form-control" id="newWorkshopName" name="workshop_name" placeholder="z.B. Werkstatt Müller">
+                    </div>
+                    <div class="mb-3">
+                        <label for="newContactName" class="form-label">Ansprechpartner</label>
+                        <input type="text" class="form-control" id="newContactName" name="contact_name" placeholder="Optional">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-primary" id="btnAddContact">
+                    <i class="bi bi-plus-circle"></i> Kontakt anlegen
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Modal: Nachricht senden -->
 <div class="modal fade" id="sendMessageModal" tabindex="-1">
     <div class="modal-dialog">
@@ -133,6 +168,41 @@
 </div>
 
 <script>
+document.getElementById('btnAddContact').addEventListener('click', function() {
+    var phone = document.getElementById('newPhone').value.trim().replace(/\s/g, '');
+    var workshopName = document.getElementById('newWorkshopName').value.trim();
+    var contactName = document.getElementById('newContactName').value.trim();
+    if (!phone) {
+        alert('Bitte Telefonnummer eingeben.');
+        return;
+    }
+    this.disabled = true;
+    fetch('{{ url_for("whatsapp.contacts_list") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            phone_number: phone,
+            workshop_name: workshopName || undefined,
+            contact_name: contactName || undefined
+        })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('addContactModal')).hide();
+            document.getElementById('addContactForm').reset();
+            window.location.reload();
+        } else {
+            alert(data.error || 'Fehler beim Anlegen');
+        }
+    })
+    .catch(function(err) {
+        alert('Fehler beim Anlegen des Kontakts');
+        console.error(err);
+    })
+    .finally(function() { document.getElementById('btnAddContact').disabled = false; });
+});
+
 function sendMessage(phone) {
     document.getElementById('sendToPhone').value = phone;
     const modal = new bootstrap.Modal(document.getElementById('sendMessageModal'));

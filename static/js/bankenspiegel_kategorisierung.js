@@ -7,6 +7,61 @@ let currentLimit = 100;
 let currentOffset = 0;
 let currentTotal = 0;
 
+const SESSION_FILTER_KEY = 'bankenspiegel_kategorisierung_filter';
+
+function getVormonatVonBis() {
+    var now = new Date();
+    var vor = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    var bis = new Date(now.getFullYear(), now.getMonth(), 0); // letzter Tag Vormonat
+    return {
+        von: vor.toISOString().slice(0, 10),
+        bis: bis.toISOString().slice(0, 10)
+    };
+}
+
+function loadFilterFromSession() {
+    try {
+        var raw = sessionStorage.getItem(SESSION_FILTER_KEY);
+        if (!raw) return false;
+        var o = JSON.parse(raw);
+        var von = document.getElementById('filterVon');
+        var bis = document.getElementById('filterBis');
+        var nurUnk = document.getElementById('nurUnkategorisiert');
+        var nurTrain = document.getElementById('nurTrainierte');
+        var kat = document.getElementById('filterKategorie');
+        var suche = document.getElementById('filterSuche');
+        if (von && o.von) von.value = o.von;
+        if (bis && o.bis) bis.value = o.bis;
+        if (nurUnk && typeof o.nur_unkategorisiert === 'boolean') nurUnk.checked = o.nur_unkategorisiert;
+        if (nurTrain && typeof o.nur_trainierte === 'boolean') nurTrain.checked = o.nur_trainierte;
+        if (kat && o.kategorie !== undefined) kat.value = o.kategorie || '';
+        if (suche && o.suche !== undefined) suche.value = o.suche || '';
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function saveFilterToSession() {
+    var von = document.getElementById('filterVon');
+    var bis = document.getElementById('filterBis');
+    var nurUnk = document.getElementById('nurUnkategorisiert');
+    var nurTrain = document.getElementById('nurTrainierte');
+    var kat = document.getElementById('filterKategorie');
+    var suche = document.getElementById('filterSuche');
+    var o = {
+        von: von && von.value ? von.value : '',
+        bis: bis && bis.value ? bis.value : '',
+        nur_unkategorisiert: nurUnk ? nurUnk.checked : false,
+        nur_trainierte: nurTrain ? nurTrain.checked : false,
+        kategorie: kat ? (kat.value || '') : '',
+        suche: suche ? (suche.value || '') : ''
+    };
+    try {
+        sessionStorage.setItem(SESSION_FILTER_KEY, JSON.stringify(o));
+    } catch (e) {}
+}
+
 function formatBetrag(betrag) {
     if (betrag === null || betrag === undefined) return '0,00 €';
     return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(betrag);
@@ -109,8 +164,10 @@ async function loadTransaktionen() {
     const von = document.getElementById('filterVon');
     const bis = document.getElementById('filterBis');
     const suche = document.getElementById('filterSuche');
+    const nurTrain = document.getElementById('nurTrainierte');
     const params = new URLSearchParams({
         nur_unkategorisiert: (nurUnk && nurUnk.checked) ? 'true' : 'false',
+        nur_kategorisiert: (nurTrain && nurTrain.checked) ? 'true' : 'false',
         limit: currentLimit,
         offset: currentOffset
     });
@@ -118,6 +175,7 @@ async function loadTransaktionen() {
     if (von && von.value) params.set('von', von.value);
     if (bis && bis.value) params.set('bis', bis.value);
     if (suche && suche.value) params.set('suche', suche.value);
+    params.set('_', String(Date.now()));
 
     const tbody = document.getElementById('kategorisierungBody');
     if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4"><span class="spinner-border spinner-border-sm me-2"></span>Lade...</td></tr>';
@@ -139,15 +197,17 @@ async function loadTransaktionen() {
                 const kat = (t.kategorie != null && t.kategorie !== '') ? String(t.kategorie).trim() : '';
                 const unter = t.unterkategorie == null ? '' : String(t.unterkategorie);
                 const txt = textZeile(t);
-                const txtShort = txt.length > 120 ? txt.substring(0, 120) + '…' : txt;
                 const hatKategorie = kat.length > 0;
+                const vomUserGespeichert = !!(t.kategorie_manuell === true);
+                const rowClass = vomUserGespeichert ? 'table-success' : '';
+                const dataKategorisiert = vomUserGespeichert ? ' data-kategorisiert="true"' : '';
                 const kiLernenHtml = hatKategorie
                     ? '<span class="text-info kategorisierung-ki-lernen ms-1" title="Wird als KI-Lernbeispiel genutzt"><i class="bi bi-journal-check me-1"></i>KI-Lernbeispiel</span>'
                     : '';
-                return '<tr data-trans-id="' + t.id + '" data-vw="' + escapeHtml(t.verwendungszweck || '') + '" data-bt="' + escapeHtml(t.buchungstext || '') + '" data-gk="' + escapeHtml(t.gegenkonto_name || '') + '" data-betrag="' + (t.betrag != null ? t.betrag : '') + '">' +
+                return '<tr' + (rowClass ? ' class="' + rowClass + '"' : '') + dataKategorisiert + ' data-trans-id="' + t.id + '" data-datum="' + (t.buchungsdatum || '') + '" data-vw="' + escapeHtml(t.verwendungszweck || '') + '" data-bt="' + escapeHtml(t.buchungstext || '') + '" data-gk="' + escapeHtml(t.gegenkonto_name || '') + '" data-betrag="' + (t.betrag != null ? t.betrag : '') + '">' +
                     '<td>' + formatDatum(t.buchungsdatum) + '</td>' +
                     '<td class="text-end">' + formatBetrag(t.betrag) + '</td>' +
-                    '<td class="small" data-full="' + escapeHtml(txt) + '">' + escapeHtml(txtShort) + '</td>' +
+                    '<td class="small text-break kategorisierung-buchungstext" data-full="' + escapeHtml(txt) + '"' + (txt ? ' title="' + escapeHtml(txt.length > 600 ? txt.substring(0, 600) + '…' : txt) + '"' : '') + '>' + escapeHtml(txt || '—') + '</td>' +
                     '<td>' + bauKategorieDropdown(t.id, kat, unter) + '</td>' +
                     '<td>' + bauUnterkategorieDropdown(t.id, kat, unter) + '</td>' +
                     '<td class="aktionen-cell">' +
@@ -233,7 +293,11 @@ async function speichern(transId) {
         if (data.success) {
             showToast('Gespeichert.');
             zeigeGespeichert(transId);
-            if (document.getElementById('nurUnkategorisiert').checked) loadTransaktionen();
+            var nurUnkEl = document.getElementById('nurUnkategorisiert');
+            var nurTrainEl = document.getElementById('nurTrainierte');
+            if ((nurUnkEl && nurUnkEl.checked) || (nurTrainEl && nurTrainEl.checked)) {
+                setTimeout(function () { loadTransaktionen(); }, 150);
+            }
         } else {
             showToast(data.error || 'Speichern fehlgeschlagen', true);
         }
@@ -351,24 +415,57 @@ async function regelnAnwenden() {
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-gear me-1"></i>Regeln anwenden'; }
 }
 
+async function regelnErneutAnwenden() {
+    const btn = document.getElementById('btnRegelnUeberschreiben');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Läuft...'; }
+    try {
+        const res = await fetch('/api/bankenspiegel/transaktionen/kategorisieren', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ limit: 500, regeln_ueberschreiben: true })
+        });
+        const data = await res.json();
+        if (data.success && data.ergebnis) {
+            const r = data.ergebnis;
+            showToast('Regeln erneut: ' + (r.aktualisiert || 0) + ' aktualisiert.');
+            loadTransaktionen();
+        } else {
+            showToast(data.error || 'Regeln erneut anwenden fehlgeschlagen', true);
+        }
+    } catch (e) {
+        showToast('Fehler beim Regeln erneut anwenden', true);
+    }
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Regeln erneut anwenden'; }
+}
+
 function applyFilter() {
+    saveFilterToSession();
     currentOffset = 0;
     loadTransaktionen();
 }
 
 document.addEventListener('DOMContentLoaded', function () {
     loadKategorien().then(function () {
-        const bis = document.getElementById('filterBis');
-        const von = document.getElementById('filterVon');
-        if (bis && !bis.value) {
-            const d = new Date();
-            bis.value = d.toISOString().slice(0, 10);
+        var von = document.getElementById('filterVon');
+        var bis = document.getElementById('filterBis');
+        var restored = loadFilterFromSession();
+        if (!restored) {
+            var vorbis = getVormonatVonBis();
+            if (von) von.value = vorbis.von;
+            if (bis) bis.value = vorbis.bis;
         }
-        if (von && !von.value) {
-            const d = new Date();
-            d.setMonth(d.getMonth() - 3);
-            von.value = d.toISOString().slice(0, 10);
-        }
+        saveFilterToSession();
         loadTransaktionen();
+        [von, bis].forEach(function (el) {
+            if (el) el.addEventListener('change', saveFilterToSession);
+        });
+        var nurUnk = document.getElementById('nurUnkategorisiert');
+        var filterKat = document.getElementById('filterKategorie');
+        var suche = document.getElementById('filterSuche');
+        var nurTrain = document.getElementById('nurTrainierte');
+        if (nurUnk) nurUnk.addEventListener('change', function () { saveFilterToSession(); loadTransaktionen(); });
+        if (nurTrain) nurTrain.addEventListener('change', function () { saveFilterToSession(); loadTransaktionen(); });
+        if (filterKat) filterKat.addEventListener('change', saveFilterToSession);
+        if (suche) suche.addEventListener('input', saveFilterToSession);
     });
 });

@@ -912,13 +912,16 @@ def mein_dashboard():
     hier als Parameter für Testing.
     """
     from flask_login import current_user
-    
+
     monat_param = request.args.get('monat', datetime.now().strftime('%Y-%m'))
     ma_id_param = request.args.get('ma_id')
     ldap_cn = request.args.get('ldap_cn', '')
 
     # TAG 164: ma_id Parameter hat Priorität (für Geschäfts-/Serviceleitung)
     if ma_id_param:
+        if not (current_user.can_access_feature('admin') or current_user.can_access_feature('controlling')
+                or current_user.can_access_feature('service_leitung') or current_user.can_access_feature('verkauf')):
+            return jsonify({'success': False, 'error': 'Keine Berechtigung für SB-Übersicht'}), 403
         try:
             ma_id = int(ma_id_param)
             if ma_id not in SERVICEBERATER_CONFIG:
@@ -1325,13 +1328,21 @@ def tagesziel():
     Tägliche IST vs SOLL für Serviceberater (TAG 164)
     
     Query-Parameter:
-    - ma_id: Locosoft MA-ID (optional, sonst alle SB)
+    - ma_id: Locosoft MA-ID (optional, sonst alle SB) – mit ma_id: nur admin/controlling/service_leitung
     - datum: YYYY-MM-DD (default: heute)
     """
+    from flask_login import current_user
     from api.unternehmensplan_data import get_current_geschaeftsjahr
     from datetime import date
-    
+
     ma_id_param = request.args.get('ma_id', type=int)
+    if ma_id_param:
+        own_sb = get_sb_config_from_ldap(getattr(current_user, 'display_name', '') or '')
+        own_ma_id = own_sb.get('ma_id') if own_sb else None
+        if ma_id_param != own_ma_id and not (current_user.can_access_feature('admin') or current_user.can_access_feature('controlling')
+                or current_user.can_access_feature('service_leitung') or current_user.can_access_feature('verkauf')):
+            return jsonify({'success': False, 'error': 'Keine Berechtigung für SB-Tagesziel'}), 403
+
     datum_param = request.args.get('datum', date.today().isoformat())
     
     try:
@@ -1445,20 +1456,23 @@ def tagesziel():
 @serviceberater_api.route('/monatsziel', methods=['GET'])
 def monatsziel():
     """
-    Monatsziel für Serviceberater (TAG 164)
-    
-    Query-Parameter:
-    - ma_id: Locosoft MA-ID
-    - monat: YYYY-MM (default: aktueller Monat)
+    Monatsziel für Serviceberater (TAG 164). Nur admin/controlling/service_leitung (oder eigener SB).
     """
+    from flask_login import current_user
     from api.unternehmensplan_data import get_current_geschaeftsjahr
     from datetime import date
-    
+
     ma_id = request.args.get('ma_id', type=int)
     monat_param = request.args.get('monat', datetime.now().strftime('%Y-%m'))
-    
+
     if not ma_id:
         return jsonify({'success': False, 'error': 'ma_id erforderlich'}), 400
+    # Berechtigung: admin/controlling/service_leitung/verkauf ODER eigener SB (ma_id = eigene MA-ID)
+    own_sb = get_sb_config_from_ldap(getattr(current_user, 'display_name', '') or '')
+    own_ma_id = own_sb.get('ma_id') if own_sb else None
+    if ma_id != own_ma_id and not (current_user.can_access_feature('admin') or current_user.can_access_feature('controlling')
+            or current_user.can_access_feature('service_leitung') or current_user.can_access_feature('verkauf')):
+        return jsonify({'success': False, 'error': 'Keine Berechtigung für SB-Monatsziel'}), 403
     
     try:
         jahr, monat = monat_param.split('-')

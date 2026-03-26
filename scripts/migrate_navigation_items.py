@@ -73,8 +73,8 @@ def migrate_navigation_items():
         controlling_items = [
             {'label': 'Übersichten', 'is_header': True, 'requires_feature': 'bankenspiegel', 'order_index': 1},
             {'label': 'Dashboard', 'url': '/controlling/dashboard', 'icon': 'bi-speedometer2', 'requires_feature': 'bankenspiegel', 'order_index': 2},
-            {'label': 'BWA', 'url': '/controlling/bwa', 'icon': 'bi-graph-up', 'requires_feature': 'bankenspiegel', 'order_index': 3},
-            {'label': 'TEK (Tägliche Erfolgskontrolle)', 'url': '/controlling/tek', 'icon': 'bi-bar-chart-line', 'requires_feature': 'bankenspiegel', 'order_index': 4},
+            {'label': 'BWA', 'url': '/controlling/bwa', 'icon': 'bi-graph-up', 'requires_feature': 'controlling', 'order_index': 3},
+            {'label': 'TEK (Tägliche Erfolgskontrolle)', 'url': '/controlling/tek', 'icon': 'bi-bar-chart-line', 'requires_feature': 'controlling', 'order_index': 4},
             {'label': 'Kontenmapping', 'url': '/controlling/kontenmapping', 'icon': 'bi-table', 'requires_feature': 'bankenspiegel', 'order_index': 5},
             {'label': 'Auswertung Zeiterfassung', 'url': '/controlling/auswertung-zeiterfassung', 'icon': 'bi-clock-history', 'requires_feature': 'bankenspiegel', 'order_index': 6},
             {'label': '', 'is_divider': True, 'order_index': 7},
@@ -99,6 +99,7 @@ def migrate_navigation_items():
             {'label': 'Liquiditätsvorschau', 'url': '/controlling/liquiditaet', 'icon': 'bi-graph-up', 'requires_feature': 'controlling', 'order_index': 26},
             # TEK v1 nur für Admin sichtbar (Archiv-Link), nicht für alle mit bankenspiegel
             {'label': 'TEK v1', 'url': '/controlling/tek/archiv', 'icon': 'bi-archive', 'requires_feature': 'bankenspiegel', 'role_restriction': 'admin', 'order_index': 27},
+            {'label': 'Tagesumsatz', 'url': '/controlling/tagesumsatz', 'icon': 'bi-currency-euro', 'requires_feature': 'controlling', 'order_index': 29},
         ]
         
         for item in controlling_items:
@@ -234,10 +235,11 @@ def migrate_navigation_items():
         admin_items = [
             {'label': 'Konfiguration & Verwaltung', 'url': '/admin/konfiguration', 'icon': 'bi-gear-wide-connected', 'order_index': 0, 'role_restriction': 'admin'},
             {'label': 'Konten & Banken', 'url': '/admin/konten-verwaltung', 'icon': 'bi-wallet2', 'order_index': 1, 'role_restriction': 'admin,buchhaltung'},
-            {'label': 'System', 'is_header': True, 'role_restriction': 'admin', 'order_index': 2},
-            {'label': 'Task Manager', 'url': '/admin/celery/', 'icon': 'bi-list-task', 'role_restriction': 'admin', 'order_index': 3},
-            {'label': 'Flower Dashboard', 'url': 'http://10.80.80.20:5555', 'icon': 'bi-flower1', 'role_restriction': 'admin', 'order_index': 4},
-            {'label': 'Rechteverwaltung', 'url': '/admin/rechte', 'icon': 'bi-person-lock', 'role_restriction': 'admin', 'order_index': 5},
+            {'label': 'Modalitäten & Parameter', 'url': '/admin/modalitaeten', 'icon': 'bi-sliders', 'order_index': 2, 'role_restriction': 'admin'},
+            {'label': 'System', 'is_header': True, 'role_restriction': 'admin', 'order_index': 3},
+            {'label': 'Task Manager', 'url': '/admin/celery/', 'icon': 'bi-list-task', 'role_restriction': 'admin', 'order_index': 4},
+            {'label': 'Flower Dashboard', 'url': 'http://10.80.80.20:5555', 'icon': 'bi-flower1', 'role_restriction': 'admin', 'order_index': 5},
+            {'label': 'Rechteverwaltung', 'url': '/admin/rechte', 'icon': 'bi-person-lock', 'role_restriction': 'admin', 'order_index': 6},
         ]
         
         for item in admin_items:

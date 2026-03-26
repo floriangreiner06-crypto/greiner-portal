@@ -361,7 +361,7 @@ def extract_bestellung_details(driver, bestellung_info):
                         first_col = safe_get_text(cols[0])
 
                         # Extrahiere Teilenummer (7-10 Ziffern, auch mit Zusatztext)
-                        teilenummer_match = re.search(r'^\s*(\d{7,10})', first_col)
+                        teilenummer_match = re.search(r'^\s*([A-Z0-9]{6,15})', first_col)
                         if teilenummer_match:
                             teilenummer = teilenummer_match.group(1)
                             beschreibung = safe_get_text(cols[1])

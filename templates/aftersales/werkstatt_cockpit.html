@@ -1162,6 +1162,30 @@ function showAuftragDetail(auftragNr) {
                         <p>${statusBadges}</p>
                     </div>
                 </div>
+                <div class="row mt-2">
+                    <div class="col-12">
+                        <h6 class="text-muted"><i class="bi bi-check2-square"></i> Gudat-Vorgangsstatus (zur Kontrolle)</h6>
+                        ${(function(){
+                            const gudat = data.gudat || {};
+                            const states = gudat.states || [];
+                            const offenAw = parseFloat(s.offen_aw) || 0;
+                            const gudatZeigtFakturiert = states.some(st => (st.name || '').toLowerCase().indexOf('fakturiert') !== -1);
+                            const diskrepanz = gudatZeigtFakturiert && offenAw > 0;
+                            let block = '';
+                            if (states.length > 0) {
+                                block += '<p class="mb-1">' + states.map(st => '<span class="badge bg-secondary me-1">' + (st.name || '-').replace(/</g,'&lt;') + '</span>').join(' ') + '</p>';
+                            } else if (gudat.dossier_id) {
+                                block += '<p class="mb-0 small text-muted">Keine Vorgangsstatus von Gudat geladen (Dossier vorhanden).</p>';
+                            } else {
+                                block += '<p class="mb-0 small text-muted">Gudat-Daten für diesen Auftrag nicht verfügbar.</p>';
+                            }
+                            if (diskrepanz) {
+                                block += '<div class="alert alert-warning py-2 mb-0 mt-1"><i class="bi bi-exclamation-triangle me-1"></i> In Gudat als erledigt markiert – in Locosoft noch nicht abgerechnet. Bitte prüfen.</div>';
+                            }
+                            return block;
+                        })()}
+                    </div>
+                </div>
                 <hr>
                 <h6><i class="bi bi-list-check"></i> Positionen (${s.anzahl_positionen || 0})</h6>
                 <table class="table table-sm">

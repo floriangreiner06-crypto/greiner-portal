@@ -13,9 +13,12 @@ from flask import Blueprint, jsonify, request
 from flask_login import login_required, current_user
 from datetime import datetime, date
 from typing import Dict, List
+import json
+import time
+from pathlib import Path
 
 # Zentrale DB-Utilities (für interne Aufträge)
-from api.db_utils import locosoft_session
+from api.db_utils import locosoft_session, db_session
 
 # SSOT Data Module
 from api.verkauf_data import VerkaufData
@@ -27,10 +30,253 @@ verkauf_api = Blueprint('verkauf_api', __name__, url_prefix='/api/verkauf')
 from api.fahrzeug_data import FahrzeugData
 
 
+# ============================================================================
+# Verkäufer-Filter: Rolle "verkauf" nur eigene Daten, Filter nicht auflösbar
+# ============================================================================
+
+def _get_current_user_salesman_number():
+    """Locosoft-Mitarbeiternummer (VKB) des eingeloggten Users für Verkäufer-Filter."""
+    if not current_user.is_authenticated:
+        return None
+    username = getattr(current_user, 'username', '') or ''
+    ldap_username = username.split('@')[0] if '@' in username else username
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT lem.locosoft_id
+            FROM ldap_employee_mapping lem
+            JOIN employees e ON lem.employee_id = e.id
+            WHERE lem.ldap_username = %s AND e.aktiv = true
+        """, (ldap_username,))
+        row = cur.fetchone()
+    if row and row[0] is not None:
+        return int(row[0])
+    return None
+
+
+def _filter_mode_force_own(feature: str):
+    """True wenn für aktuelle Rolle + Feature nur eigene Daten (Filter nicht auflösbar)."""
+    if not current_user.is_authenticated:
+        return False
+    from api.feature_filter_mode import get_filter_mode
+    role = getattr(current_user, 'portal_role', '') or 'mitarbeiter'
+    return get_filter_mode(role, feature) == 'own_only'
+
+
 # Interne Kundennummern (Autohaus Greiner selbst)
 # 3000001 = Autohaus Greiner GmbH (Opel/Stellantis)
 # 3000002 = Auto Greiner GmbH & Co. KG (Hyundai)
 INTERNE_KUNDEN = (3000001, 3000002)
+
+_MOTOCOST_DIR = Path(__file__).resolve().parent.parent / 'data' / 'imports' / 'motocost'
+_MOTOCOST_LATEST_FILE = _MOTOCOST_DIR / 'latest.json'
+
+
+def _can_access_motocost() -> bool:
+    """Motocost-View: vorerst für VKL/GF/Admin über bestehendes Feature."""
+    return bool(
+        hasattr(current_user, 'can_access_feature')
+        and current_user.can_access_feature('verkauf_dashboard')
+    )
+
+
+def _normalize_motocost_rows(raw):
+    """Normalisiert die importierten Zeilen auf eine robuste Standard-Struktur."""
+    if not isinstance(raw, list):
+        raise ValueError('Erwartet JSON-Array mit Fahrzeugzeilen')
+
+    normalized = []
+    for row in raw:
+        if not isinstance(row, dict):
+            continue
+        normalized.append({
+            'bild': row.get('Bild') or row.get('bild') or '',
+            'marke': row.get('Marke') or row.get('marke') or '',
+            'modell': row.get('Modell') or row.get('modell') or '',
+            'preis': row.get('Preis') or row.get('preis'),
+            'mwst': row.get('MwSt') or row.get('mwst') or '',
+            'rabatt': row.get('Rabatt') or row.get('rabatt'),
+            'marge': row.get('Marge') or row.get('marge'),
+            'p10': row.get('P10') or row.get('p10'),
+            'median': row.get('Median') or row.get('median'),
+            'anzahl': row.get('Anzahl') or row.get('anzahl'),
+            'plattform': row.get('Plattform') or row.get('plattform') or '',
+            'verkaufsart': row.get('Verkaufsart') or row.get('verkaufsart') or '',
+            'problem': row.get('Problem') or row.get('problem') or '',
+            'ez': row.get('EZ') or row.get('ez') or '',
+            'km': row.get('KM') or row.get('km'),
+            'kraftstoff': row.get('Kraftstoff') or row.get('kraftstoff') or '',
+            'getriebe': row.get('Getriebe') or row.get('getriebe') or '',
+            'ps': row.get('PS') or row.get('ps'),
+            'karosserie': row.get('Karosserie') or row.get('karosserie') or '',
+            'land': row.get('Land') or row.get('land') or '',
+            'start': row.get('Start') or row.get('start') or '',
+            'ende': row.get('Ende') or row.get('ende') or '',
+            'link': row.get('Link') or row.get('link') or '',
+            'bestandsnummer': row.get('Bestandsnummer') or row.get('bestandsnummer') or '',
+            'problembeschreibung': row.get('Problembeschreibung') or row.get('problembeschreibung') or '',
+            'modellbeschreibung': row.get('Modellbeschreibung') or row.get('modellbeschreibung') or '',
+        })
+    return normalized
+
+
+def _load_motocost_rows_and_meta():
+    if not _MOTOCOST_LATEST_FILE.exists():
+        return [], {'available': False}
+    with _MOTOCOST_LATEST_FILE.open('r', encoding='utf-8') as fh:
+        payload = json.load(fh)
+    rows = payload.get('rows') if isinstance(payload, dict) else payload
+    rows = _normalize_motocost_rows(rows)
+    meta = payload.get('meta', {}) if isinstance(payload, dict) else {}
+    return rows, {**meta, 'available': True}
+
+
+def _as_float(value):
+    if value is None or value == '':
+        return None
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
+def _as_int(value):
+    if value is None or value == '':
+        return None
+    try:
+        return int(float(value))
+    except Exception:
+        return None
+
+
+def _extract_year(value):
+    """EZ kann Epoch-ms oder String sein (z. B. MM/YYYY)."""
+    if value is None or value == '':
+        return None
+    # Epoch milliseconds
+    if isinstance(value, (int, float)) and value > 1000000000:
+        try:
+            return datetime.fromtimestamp(float(value) / 1000.0).year
+        except Exception:
+            return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if len(text) >= 4 and text[:4].isdigit():
+        return int(text[:4])
+    if '/' in text:
+        tail = text.split('/')[-1]
+        if tail.isdigit() and len(tail) == 4:
+            return int(tail)
+    if text.isdigit() and len(text) == 4:
+        return int(text)
+    return None
+
+
+def _contains_any(value, selected):
+    if not selected:
+        return True
+    val = (value or '').strip().lower()
+    return val in selected
+
+
+def _split_multi(param_name):
+    raw = (request.args.get(param_name, '') or '').strip()
+    if not raw:
+        return []
+    return [x.strip().lower() for x in raw.split(',') if x.strip()]
+
+
+def _build_motocost_filter_options(rows):
+    def uniq(key):
+        vals = sorted({str(r.get(key) or '').strip() for r in rows if str(r.get(key) or '').strip()})
+        return vals[:500]
+    return {
+        'plattformen': uniq('plattform'),
+        'verkaufsarten': uniq('verkaufsart'),
+        'probleme': uniq('problem'),
+        'laender': uniq('land'),
+        'marken': uniq('marke'),
+        'modelle': uniq('modell'),
+        'kraftstoff': uniq('kraftstoff'),
+        'getriebe': uniq('getriebe'),
+        'karosserie': uniq('karosserie'),
+        'mwst': uniq('mwst'),
+    }
+
+
+def _apply_motocost_filters(rows):
+    text_modell = (request.args.get('modell_text', '') or '').strip().lower()
+    page = max(1, request.args.get('page', 1, type=int) or 1)
+    page_size = min(200, max(10, request.args.get('page_size', 50, type=int) or 50))
+
+    plattform = _split_multi('plattform')
+    verkaufsart = _split_multi('verkaufsart')
+    problem = _split_multi('problem')
+    land = _split_multi('land')
+    marke = _split_multi('marke')
+    kraftstoff = _split_multi('kraftstoff')
+    getriebe = _split_multi('getriebe')
+    karosserie = _split_multi('karosserie')
+    mwst = _split_multi('mwst')
+
+    km_bis = _as_int(request.args.get('km_bis'))
+    ez_ab = _as_int(request.args.get('ez_ab'))
+    marge_ab = _as_float(request.args.get('marge_ab'))
+    preis_ab = _as_float(request.args.get('preis_ab'))
+    preis_bis = _as_float(request.args.get('preis_bis'))
+
+    filtered = []
+    for row in rows:
+        if not _contains_any(row.get('plattform'), plattform):
+            continue
+        if not _contains_any(row.get('verkaufsart'), verkaufsart):
+            continue
+        if not _contains_any(row.get('problem'), problem):
+            continue
+        if not _contains_any(row.get('land'), land):
+            continue
+        if not _contains_any(row.get('marke'), marke):
+            continue
+        if not _contains_any(row.get('kraftstoff'), kraftstoff):
+            continue
+        if not _contains_any(row.get('getriebe'), getriebe):
+            continue
+        if not _contains_any(row.get('karosserie'), karosserie):
+            continue
+        if not _contains_any(row.get('mwst'), mwst):
+            continue
+
+        if text_modell and text_modell not in str(row.get('modell') or '').lower():
+            continue
+
+        km = _as_int(row.get('km'))
+        if km_bis is not None and (km is None or km > km_bis):
+            continue
+
+        jahr = _extract_year(row.get('ez'))
+        if ez_ab is not None and (jahr is None or jahr < ez_ab):
+            continue
+
+        marge = _as_float(row.get('marge'))
+        if marge_ab is not None and (marge is None or marge < marge_ab):
+            continue
+
+        preis = _as_float(row.get('preis'))
+        if preis_ab is not None and (preis is None or preis < preis_ab):
+            continue
+        if preis_bis is not None and (preis is None or preis > preis_bis):
+            continue
+
+        filtered.append(row)
+
+    filtered.sort(key=lambda r: (_as_float(r.get('marge')) is None, -(_as_float(r.get('marge')) or 0)))
+
+    total = len(filtered)
+    start = (page - 1) * page_size
+    end = start + page_size
+    page_rows = filtered[start:end]
+    return page_rows, total, page, page_size
 
 
 # ============================================================================
@@ -273,16 +519,16 @@ def get_auftragseingang():
     """
     GET /api/verkauf/auftragseingang?month=11&year=2025&location=1
 
-    Liefert Auftragseingang nach Verkäufern
-    - heute: Aufträge vom aktuellen Tag
-    - periode: Kumuliert für gewählten Monat
-    - location: Standort-Filter (1, 2, 3)
+    Liefert Auftragseingang nach Verkäufern.
+    Rolle „verkauf“: nur eigener Verkäufer, Filter nicht auflösbar.
     """
     month = request.args.get('month', datetime.now().month, type=int)
     year = request.args.get('year', datetime.now().year, type=int)
     location = request.args.get('location', type=int)
-
-    result = VerkaufData.get_auftragseingang(month=month, year=year, location=location)
+    verkaufer = request.args.get('verkaufer', type=int)
+    if _filter_mode_force_own('auftragseingang'):
+        verkaufer = _get_current_user_salesman_number()
+    result = VerkaufData.get_auftragseingang(month=month, year=year, location=location, verkaufer=verkaufer)
 
     if result['success']:
         return jsonify(result)
@@ -299,20 +545,18 @@ def get_auftragseingang():
 def get_auftragseingang_summary():
     """
     GET /api/verkauf/auftragseingang/summary?month=11&year=2025&location=1
-    GET /api/verkauf/auftragseingang/summary?day=2025-11-11&location=1
-
-    Liefert Zusammenfassung nach Marke und Fahrzeugtyp für Auftragseingang
-    - location: Standort-Filter (1, 2, 3)
+    Rolle 'verkauf': nur eigener Verkaufer.
     """
     day = request.args.get('day', '') or None
     month = request.args.get('month', datetime.now().month, type=int)
     year = request.args.get('year', datetime.now().year, type=int)
     location = request.args.get('location', type=int)
-    zeitraum = request.args.get('zeitraum', 'month')
-
-    result = VerkaufData.get_auftragseingang_summary(
-        day=day, month=month, year=year, location=location, zeitraum=zeitraum
-    )
+    verkaufer = request.args.get('verkaufer', type=int)
+    von = request.args.get('von', '') or None
+    bis = request.args.get('bis', '') or None
+    if _filter_mode_force_own('auftragseingang'):
+        verkaufer = _get_current_user_salesman_number()
+    result = VerkaufData.get_auftragseingang_summary(day=day, month=month, year=year, location=location, verkaufer=verkaufer, von=von, bis=bis)
 
     if result['success']:
         return jsonify(result)
@@ -325,20 +569,21 @@ def get_auftragseingang_summary():
 def get_auftragseingang_detail():
     """
     GET /api/verkauf/auftragseingang/detail?month=11&year=2025&location=&verkaufer=
-    GET /api/verkauf/auftragseingang/detail?day=2025-11-11&location=&verkaufer=
-
-    Liefert detaillierte Aufschlüsselung nach Verkäufer und Modellen
+    Rolle „verkauf”: nur eigener Verkäufer, Filter nicht auflösbar.
     """
     day = request.args.get('day', '') or None
     month = request.args.get('month', datetime.now().month, type=int)
     year = request.args.get('year', datetime.now().year, type=int)
     location = request.args.get('location', type=int)
     verkaufer = request.args.get('verkaufer', type=int)
-    zeitraum = request.args.get('zeitraum', 'month')
+    von = request.args.get('von', '') or None
+    bis = request.args.get('bis', '') or None
+    if _filter_mode_force_own('auftragseingang'):
+        verkaufer = _get_current_user_salesman_number()
 
     result = VerkaufData.get_auftragseingang_detail(
         day=day, month=month, year=year,
-        location=location, verkaufer=verkaufer, zeitraum=zeitraum
+        location=location, verkaufer=verkaufer, von=von, bis=bis
     )
 
     if result['success']:
@@ -356,18 +601,15 @@ def get_auftragseingang_detail():
 def get_auslieferung_summary():
     """
     GET /api/verkauf/auslieferung/summary?month=11&year=2025
-    GET /api/verkauf/auslieferung/summary?day=2025-11-11
-
-    Liefert Zusammenfassung nach Marke und Fahrzeugtyp für Auslieferungen
+    Rolle „verkauf“: nur eigener Verkäufer.
     """
     day = request.args.get('day', '') or None
     month = request.args.get('month', datetime.now().month, type=int)
     year = request.args.get('year', datetime.now().year, type=int)
-    zeitraum = request.args.get('zeitraum', 'month')
-
-    result = VerkaufData.get_auslieferung_summary(
-        day=day, month=month, year=year, zeitraum=zeitraum
-    )
+    verkaufer = request.args.get('verkaufer', type=int)
+    if _filter_mode_force_own('auslieferungen'):
+        verkaufer = _get_current_user_salesman_number()
+    result = VerkaufData.get_auslieferung_summary(day=day, month=month, year=year, verkaufer=verkaufer)
 
     if result['success']:
         return jsonify(result)
@@ -380,8 +622,7 @@ def get_auslieferung_summary():
 def get_auslieferung_detail():
     """
     GET /api/verkauf/auslieferung/detail?month=11&year=2025&location=&verkaufer=&vin=
-
-    Liefert EINZELFAHRZEUGE mit VIN und DB-Daten
+    Rolle „verkauf“: nur eigener Verkäufer, Filter nicht auflösbar.
     """
     day = request.args.get('day', '') or None
     month = request.args.get('month', datetime.now().month, type=int)
@@ -389,11 +630,12 @@ def get_auslieferung_detail():
     location = request.args.get('location', type=int)
     verkaufer = request.args.get('verkaufer', type=int)
     vin_search = request.args.get('vin', '') or None
-    zeitraum = request.args.get('zeitraum', 'month')
+    if _filter_mode_force_own('auslieferungen'):
+        verkaufer = _get_current_user_salesman_number()
 
     result = VerkaufData.get_auslieferung_detail(
         day=day, month=month, year=year,
-        location=location, verkaufer=verkaufer, vin_search=vin_search, zeitraum=zeitraum
+        location=location, verkaufer=verkaufer, vin_search=vin_search
     )
 
     if result['success']:
@@ -407,11 +649,11 @@ def get_auslieferung_detail():
 # ============================================================================
 
 @verkauf_api.route('/auftragseingang/fahrzeuge', methods=['GET'])
+@login_required
 def get_auftragseingang_fahrzeuge():
     """
     GET /api/verkauf/auftragseingang/fahrzeuge?month=11&year=2025&location=&verkaufer=&vin=
-
-    Liefert EINZELFAHRZEUGE für Auftragseingang (nutzt Detail-Endpoint intern)
+    Rolle „verkauf“: nur eigener Verkäufer.
     """
     day = request.args.get('day', '') or None
     month = request.args.get('month', datetime.now().month, type=int)
@@ -419,6 +661,8 @@ def get_auftragseingang_fahrzeuge():
     location = request.args.get('location', type=int)
     verkaufer = request.args.get('verkaufer', type=int)
     vin_search = request.args.get('vin', '') or None
+    if _filter_mode_force_own('auftragseingang'):
+        verkaufer = _get_current_user_salesman_number()
 
     # Nutzt die gleiche Detail-Funktion
     result = VerkaufData.get_auftragseingang_detail(
@@ -436,6 +680,113 @@ def get_auftragseingang_fahrzeuge():
 def health():
     """Health Check"""
     return jsonify({'status': 'ok', 'service': 'verkauf_api', 'version': '3.0-data-module'})
+
+
+# ============================================================================
+# MOTOCOST IMPORT (Workaround ohne API-Key)
+# ============================================================================
+
+@verkauf_api.route('/motocost/data', methods=['GET'])
+@login_required
+def get_motocost_data():
+    """
+    GET /api/verkauf/motocost/data
+    Liefert zuletzt importierte Motocost-Zeilen aus lokalem JSON.
+    """
+    try:
+        if not _can_access_motocost():
+            return jsonify({'success': False, 'error': 'Kein Zugriff'}), 403
+        rows, meta = _load_motocost_rows_and_meta()
+        return jsonify({'success': True, 'rows': rows, 'meta': meta})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@verkauf_api.route('/motocost/search', methods=['GET'])
+@login_required
+def search_motocost_data():
+    """
+    GET /api/verkauf/motocost/search?...Filter...
+    Serverseitige Filterung + Paging + Benchmark-Messung.
+    """
+    t0 = time.perf_counter()
+    try:
+        if not _can_access_motocost():
+            return jsonify({'success': False, 'error': 'Kein Zugriff'}), 403
+
+        rows, meta = _load_motocost_rows_and_meta()
+        page_rows, total, page, page_size = _apply_motocost_filters(rows)
+        elapsed_ms = round((time.perf_counter() - t0) * 1000, 1)
+
+        return jsonify({
+            'success': True,
+            'rows': page_rows,
+            'meta': meta,
+            'total': total,
+            'page': page,
+            'page_size': page_size,
+            'elapsed_ms': elapsed_ms,
+            'filter_options': _build_motocost_filter_options(rows),
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@verkauf_api.route('/motocost/import', methods=['POST'])
+@login_required
+def import_motocost_data():
+    """
+    POST /api/verkauf/motocost/import
+    Akzeptiert JSON-Datei-Upload (multipart: file) ODER JSON-Body mit {"rows":[...]}.
+    """
+    try:
+        if not _can_access_motocost():
+            return jsonify({'success': False, 'error': 'Kein Zugriff'}), 403
+
+        incoming_rows = None
+        if 'file' in request.files:
+            file = request.files.get('file')
+            if not file or not file.filename:
+                return jsonify({'success': False, 'error': 'Keine Datei empfangen'}), 400
+            raw_payload = json.loads(file.read().decode('utf-8'))
+            incoming_rows = raw_payload.get('rows') if isinstance(raw_payload, dict) else raw_payload
+        else:
+            body = request.get_json(silent=True) or {}
+            incoming_rows = body.get('rows') if isinstance(body, dict) else body
+
+        rows = _normalize_motocost_rows(incoming_rows)
+        if not rows:
+            return jsonify({'success': False, 'error': 'Keine verwertbaren Fahrzeugzeilen gefunden'}), 400
+
+        _MOTOCOST_DIR.mkdir(parents=True, exist_ok=True)
+        now_iso = datetime.now().isoformat(timespec='seconds')
+        payload = {
+            'meta': {
+                'imported_at': now_iso,
+                'imported_by': getattr(current_user, 'username', 'unbekannt'),
+                'row_count': len(rows),
+            },
+            'rows': rows,
+        }
+        with _MOTOCOST_LATEST_FILE.open('w', encoding='utf-8') as fh:
+            json.dump(payload, fh, ensure_ascii=False, indent=2)
+
+        # Historie-Datei für Rückfall bei Demo
+        stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        history_file = _MOTOCOST_DIR / f'motocost_{stamp}.json'
+        with history_file.open('w', encoding='utf-8') as fh:
+            json.dump(payload, fh, ensure_ascii=False, indent=2)
+
+        return jsonify({
+            'success': True,
+            'message': f'{len(rows)} Zeilen importiert',
+            'meta': payload['meta'],
+            'path': str(_MOTOCOST_LATEST_FILE),
+        })
+    except json.JSONDecodeError:
+        return jsonify({'success': False, 'error': 'Ungültiges JSON-Format'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @verkauf_api.route('/verkaufer', methods=['GET'])
@@ -720,29 +1071,8 @@ def get_vin_einkauf_info():
 
 
 # ============================================================================
-# VERKÄUFER PERFORMANCE (NEU TAG159)
+# VERKAUFSLEITER-DASHBOARD (Aggregat, SSOT)
 # ============================================================================
-
-@verkauf_api.route('/performance', methods=['GET'])
-def get_verkaufer_performance():
-    """
-    GET /api/verkauf/performance?month=12&year=2025&verkaufer=123
-
-    Liefert Performance-Kennzahlen pro Verkäufer
-    """
-    month = request.args.get('month', datetime.now().month, type=int)
-    year = request.args.get('year', datetime.now().year, type=int)
-    verkaufer = request.args.get('verkaufer', type=int)
-
-    result = VerkaufData.get_verkaufer_performance(
-        month=month, year=year, verkaufer=verkaufer
-    )
-
-    if result['success']:
-        return jsonify(result)
-    else:
-        return jsonify(result), 500
-
 
 @verkauf_api.route('/dashboard-vkl', methods=['GET'])
 @login_required
@@ -768,6 +1098,31 @@ def get_dashboard_vkl():
         return jsonify(data), 200
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
+# VERKÄUFER PERFORMANCE (NEU TAG159)
+# ============================================================================
+
+@verkauf_api.route('/performance', methods=['GET'])
+def get_verkaufer_performance():
+    """
+    GET /api/verkauf/performance?month=12&year=2025&verkaufer=123
+
+    Liefert Performance-Kennzahlen pro Verkäufer
+    """
+    month = request.args.get('month', datetime.now().month, type=int)
+    year = request.args.get('year', datetime.now().year, type=int)
+    verkaufer = request.args.get('verkaufer', type=int)
+
+    result = VerkaufData.get_verkaufer_performance(
+        month=month, year=year, verkaufer=verkaufer
+    )
+
+    if result['success']:
+        return jsonify(result)
+    else:
+        return jsonify(result), 500
 
 
 @verkauf_api.route('/nw-pipeline', methods=['GET'])

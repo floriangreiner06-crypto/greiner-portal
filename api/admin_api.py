@@ -139,6 +139,21 @@ def get_users_roles():
                     'dashboard_name': dashboard_config.get('name')
                 })
 
+            # Doppelte User zusammenführen: gleicher Username (case-insensitiv) = eine Person
+            # Behalte den Eintrag mit dem neuesten last_login (damit Rolle/Override sichtbar bleibt)
+            by_canonical = {}
+            for u in users:
+                key = (u.get('username') or '').strip().lower()
+                if not key:
+                    key = f"id_{u['id']}"
+                existing = by_canonical.get(key)
+                u_login = u.get('last_login')
+                ex_login = existing.get('last_login') if existing else None
+                if existing is None or (u_login and (ex_login is None or u_login > ex_login)):
+                    by_canonical[key] = u
+            users = list(by_canonical.values())
+            users.sort(key=lambda x: (x.get('display_name') or '').lower())
+
             # Verfügbare Rollen (DB-Rollen für user_roles)
             cursor.execute('SELECT id, name, description FROM roles ORDER BY name')
             roles = rows_to_list(cursor.fetchall())
@@ -665,21 +680,60 @@ def get_reports():
 def get_report_detail(report_id):
     """Details zu einem Report inkl. Subscribers"""
     try:
-        from reports.registry import get_report, get_subscribers
+        from reports.registry import get_report, get_subscribers, get_report_config
 
         report = get_report(report_id)
         if not report:
             return jsonify({'error': f'Report "{report_id}" nicht gefunden'}), 404
 
         subscribers = get_subscribers(report_id, active_only=False)
+        config = get_report_config(report_id, {})
 
         return jsonify({
             'id': report_id,
             **report,
             'subscribers': subscribers,
-            'active_count': sum(1 for s in subscribers if s['active'])
+            'active_count': sum(1 for s in subscribers if s['active']),
+            'config': config
         })
 
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_api.route('/api/admin/reports/<report_id>/config', methods=['GET'])
+@admin_required
+def get_report_config_api(report_id):
+    """Report-Konfiguration laden"""
+    try:
+        from reports.registry import report_exists, get_report_config
+        if not report_exists(report_id):
+            return jsonify({'error': f'Report "{report_id}" nicht gefunden'}), 404
+        return jsonify({'success': True, 'config': get_report_config(report_id, {})})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_api.route('/api/admin/reports/<report_id>/config', methods=['POST'])
+@admin_required
+def save_report_config_api(report_id):
+    """Report-Konfiguration speichern"""
+    try:
+        from reports.registry import report_exists, set_report_config
+
+        if not report_exists(report_id):
+            return jsonify({'error': f'Report "{report_id}" nicht gefunden'}), 404
+
+        data = request.get_json() or {}
+        config = data.get('config') or {}
+        if not isinstance(config, dict):
+            return jsonify({'error': 'config muss ein Objekt sein'}), 400
+
+        updated_by = current_user.username if hasattr(current_user, 'username') else 'admin'
+        set_report_config(report_id, config, updated_by=updated_by)
+        return jsonify({'success': True, 'message': 'Konfiguration gespeichert'})
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -1140,6 +1194,7 @@ def set_user_dashboard_config(user_id):
 # =============================================================================
 
 @admin_api.route('/api/admin/navigation', methods=['GET'])
+@admin_required
 def get_navigation_items():
     """Navigation-Items für aktuellen User laden
     TAG 190: Gefiltert nach Feature-Zugriff und Rollen

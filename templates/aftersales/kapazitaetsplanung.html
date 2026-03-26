@@ -557,8 +557,8 @@
                         <div class="text-center text-muted py-3 w-100">Lade Wochendaten...</div>
                     </div>
                     
-                    <!-- Teams -->
-                    <h6 class="text-muted mb-3"><i class="bi bi-people"></i> Teams nach Auslastung</h6>
+                    <!-- Teams: unsere Kapazität + Externe gebündelt -->
+                    <h6 class="text-muted mb-3"><i class="bi bi-people"></i> Unsere Kapazität (interne Teams)</h6>
                     <div id="gudat-teams-container" class="row g-3">
                         <div class="col-12 text-center text-muted py-3">Lade Team-Daten...</div>
                     </div>
@@ -1297,8 +1297,8 @@ function renderGudatWidget(data) {
     // Woche
     renderGudatWeek(data.woche || []);
     
-    // Teams
-    renderGudatTeams(data.teams || []);
+    // Teams: nur unsere Kapazität (interne Teams) in der Hauptansicht, Externe im Modal
+    renderGudatTeams(data.interne_teams || [], data.externe_teams || []);
 }
 
 function renderGudatWeek(days) {
@@ -1373,70 +1373,100 @@ function renderGudatWeek(days) {
     }).join('');
 }
 
-function renderGudatTeams(teams) {
+function renderGudatTeamCard(team) {
+    const statusClass = 'status-' + (team.status || 'ok');
+    const utilization = team.utilization || 0;
+    const barWidth = Math.min(utilization / 130 * 100, 100);
+    let barColor = team.status === 'overloaded' ? '#e74c3c' : 
+                   team.status === 'warning' ? '#f39c12' : '#27ae60';
+    const icon = team.status === 'overloaded' ? '🔴' : 
+                 team.status === 'warning' ? '🟡' : '🟢';
+    const free = team.free || 0;
+    let freeText = free < 0 ? `${Math.abs(free)} AW überbucht` : `${Math.round(free)} AW frei`;
+    let freeClass = free < 0 ? 'text-danger fw-bold' : 'text-muted';
+    const tooltip = free < 0 ? 'title="Überbuchung: Geplante Arbeit übersteigt verfügbare Kapazität"' : '';
+    return `
+        <div class="gudat-team-card ${statusClass}" ${tooltip}>
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="team-name">${icon} ${team.name}</div>
+                    <div class="team-stats">
+                        ${Math.round(team.capacity || 0)} AW Kapazität • 
+                        <span class="${freeClass}">${freeText}</span>
+                    </div>
+                    ${team.absent > 0 ? `<div class="team-absent" style="font-size: 11px; color: #95a5a6;">${Math.round(team.absent)} AW abwesend</div>` : ''}
+                </div>
+                <div class="team-utilization ${team.status === 'overloaded' ? 'text-danger' : (team.status === 'warning' ? 'text-warning' : 'text-success')}">
+                    ${Math.round(utilization)}%
+                </div>
+            </div>
+            <div class="gudat-progress">
+                <div class="gudat-progress-bar" style="width: ${barWidth}%; background: ${barColor};"></div>
+            </div>
+        </div>
+    `;
+}
+
+function renderGudatTeams(interneTeams, externeTeams) {
     const container = document.getElementById('gudat-teams-container');
     if (!container) return;
     
-    if (!teams.length) {
-        container.innerHTML = '<div class="col-12 text-center text-muted">Keine Team-Daten</div>';
-        return;
-    }
+    window._gudatExterneTeams = externeTeams || [];
     
-    const sorted = teams.sort((a, b) => {
-        const order = {overloaded: 0, warning: 1, ok: 2};
-        return (order[a.status] || 2) - (order[b.status] || 2);
+    const order = { overloaded: 0, warning: 1, ok: 2 };
+    const sorted = (interneTeams || []).slice().sort((a, b) => (order[a.status] || 2) - (order[b.status] || 2));
+    
+    let html = '';
+    sorted.forEach(team => {
+        html += `<div class="col-md-4 col-sm-6">${renderGudatTeamCard(team)}</div>`;
     });
     
-    container.innerHTML = sorted.slice(0, 12).map(team => {
-        const statusClass = 'status-' + (team.status || 'ok');
-        const utilization = team.utilization || 0;
-        const barWidth = Math.min(utilization / 130 * 100, 100);
-        let barColor = team.status === 'overloaded' ? '#e74c3c' : 
-                       team.status === 'warning' ? '#f39c12' : '#27ae60';
-        const icon = team.status === 'overloaded' ? '🔴' : 
-                     team.status === 'warning' ? '🟡' : '🟢';
-        
-        // Freie AW korrekt anzeigen (negative = Überbuchung)
-        const free = team.free || 0;
-        let freeText = '';
-        let freeClass = '';
-        if (free < 0) {
-            freeText = `${Math.abs(free)} AW überbucht`;
-            freeClass = 'text-danger fw-bold';
-        } else {
-            freeText = `${Math.round(free)} AW frei`;
-            freeClass = 'text-muted';
-        }
-        
-        // Tooltip für Überbuchung
-        const tooltip = free < 0 ? 
-            'title="Überbuchung: Geplante Arbeit übersteigt verfügbare Kapazität (Abwesenheiten berücksichtigt)"' : 
-            '';
-        
-        return `
+    if (window._gudatExterneTeams.length > 0) {
+        const n = window._gudatExterneTeams.length;
+        html += `
             <div class="col-md-4 col-sm-6">
-                <div class="gudat-team-card ${statusClass}" ${tooltip}>
+                <div class="gudat-team-card status-ok border-secondary" style="cursor: pointer; border-width: 2px !important;"
+                     onclick="showGudatExterneModal()" role="button"
+                     title="Klicken: Externe Dienstleister anzeigen (nicht unsere Kapazität)">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <div class="team-name">${icon} ${team.name}</div>
-                            <div class="team-stats">
-                                ${Math.round(team.capacity || 0)} AW Kapazität • 
-                                <span class="${freeClass}">${freeText}</span>
+                            <div class="team-name">🔗 Externe Dienstleister (${n})</div>
+                            <div class="team-stats text-muted small">
+                                In Gudat als Kapazität geführt – nicht unsere Monteure/Stunden
                             </div>
-                            ${team.absent > 0 ? `<div class="team-absent" style="font-size: 11px; color: #95a5a6;">${Math.round(team.absent)} AW abwesend</div>` : ''}
                         </div>
-                        <div class="team-utilization ${team.status === 'overloaded' ? 'text-danger' : 
-                             (team.status === 'warning' ? 'text-warning' : 'text-success')}">
-                            ${Math.round(utilization)}%
-                        </div>
+                        <div><i class="bi bi-box-arrow-up-right text-secondary"></i></div>
                     </div>
-                    <div class="gudat-progress">
-                        <div class="gudat-progress-bar" style="width: ${barWidth}%; background: ${barColor};"></div>
-                    </div>
+                    <div class="mt-2 small text-muted">Klicken zum Anzeigen</div>
                 </div>
             </div>
         `;
-    }).join('');
+    }
+    
+    if (!html) {
+        container.innerHTML = '<div class="col-12 text-center text-muted">Keine Team-Daten</div>';
+        return;
+    }
+    container.innerHTML = html;
+}
+
+function showGudatExterneModal() {
+    const teams = window._gudatExterneTeams || [];
+    const modalEl = document.getElementById('gudatExterneModal');
+    const bodyEl = document.getElementById('gudatExterneModalBody');
+    if (!modalEl || !bodyEl) return;
+    if (!teams.length) {
+        bodyEl.innerHTML = '<p class="text-muted">Keine externen Dienstleister.</p>';
+    } else {
+        const order = { overloaded: 0, warning: 1, ok: 2 };
+        const sorted = teams.slice().sort((a, b) => (order[a.status] || 2) - (order[b.status] || 2));
+        bodyEl.innerHTML = '<p class="text-muted small mb-3">Diese Teams sind in Gudat als Kapazität angelegt, zählen aber nicht zu unserer Werkstatt-Kapazität (verfügbare Monteure/Stunden).</p>' +
+            '<div class="row g-2">' +
+            sorted.map(team => `<div class="col-md-6">${renderGudatTeamCard(team)}</div>`).join('') +
+            '</div>';
+    }
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
 }
 
 function showGudatError(msg) {
@@ -1597,6 +1627,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body" id="auftragModalBody"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Gudat: Externe Dienstleister (nicht unsere Kapazität) -->
+<div class="modal fade" id="gudatExterneModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-secondary text-white">
+                <h5 class="modal-title"><i class="bi bi-people"></i> Externe Dienstleister (Gudat)</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Schließen"></button>
+            </div>
+            <div class="modal-body" id="gudatExterneModalBody"></div>
         </div>
     </div>
 </div>

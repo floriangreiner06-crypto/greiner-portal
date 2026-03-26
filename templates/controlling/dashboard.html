@@ -43,52 +43,55 @@
         </div>
     </div>
     
-    <!-- KPI Cards Row 1: LIQUIDITÄT -->
+    <!-- KPI Cards Row 1 -->
     <div class="row mb-4">
-        <!-- KPI 1a: Operative Liquidität -->
-        <div class="col-xl-3 col-md-6 mb-3">
+        <div class="col-xl-4 col-md-6 mb-3">
             <div class="card kpi-card shadow">
                 <div class="card-body">
                     <h6 class="card-subtitle mb-2 text-muted">
                         <i class="bi bi-droplet-fill"></i> Operative Liquidität
+                        <span class="text-muted" title="Frei verfügbare Bankliquidität für das Tagesgeschäft. EK-/Bestandsfinanzierungslinien sind ausgeschlossen.">
+                            <i class="bi bi-info-circle"></i>
+                        </span>
                     </h6>
                     <h2 class="card-title mb-1" id="kpi-liquiditaet-operativ">
                         Lädt...
                     </h2>
                     <p class="card-text">
-                        <small class="text-muted">Aktueller Saldo KK-Konten</small>
+                        <small class="text-muted">Frei verfügbare Bankliquidität (ohne EK-/Bestandsfinanzierung)</small>
                     </p>
                 </div>
             </div>
         </div>
         
-        <!-- KPI 1b: Verfügbare Liquidität -->
-        <div class="col-xl-3 col-md-6 mb-3">
+        <div class="col-xl-4 col-md-6 mb-3">
             <div class="card kpi-card shadow">
                 <div class="card-body">
                     <h6 class="card-subtitle mb-2 text-muted">
                         <i class="bi bi-credit-card-fill"></i> Verfügbare Liquidität
+                        <span class="text-muted" title="Operative Liquidität plus freie Kreditlinien und freier Fahrzeug-Linienanteil.">
+                            <i class="bi bi-info-circle"></i>
+                        </span>
                     </h6>
                     <h2 class="card-title mb-1" id="kpi-liquiditaet-verfuegbar">
                         Lädt...
                     </h2>
                     <p class="card-text">
-                        <small class="text-muted">Inkl. Kreditlinien</small>
+                        <small class="text-muted">Operativ + Linien (Gesamtsicht)</small>
                     </p>
                     <div>
-                        <small class="text-muted">+ Kreditlinien: </small>
+                        <small class="text-muted">+ Freie Linien: </small>
                         <span id="kpi-kreditlinien" class="text-success">...</span>
                     </div>
                     <div class="mt-2">
                         <i class="bi bi-speedometer2"></i> 
-                        Nutzung: <span id="kpi-nutzungsgrad">...</span>
+                        Linien-Nutzung: <span id="kpi-nutzungsgrad">...</span>
                     </div>
                 </div>
             </div>
         </div>
         
-        <!-- KPI 2: Zinsen -->
-        <div class="col-xl-3 col-md-6 mb-3">
+        <div class="col-xl-4 col-md-6 mb-3">
             <div class="card kpi-card shadow">
                 <div class="card-body">
                     <h6 class="card-subtitle mb-2 text-muted">
@@ -104,12 +107,18 @@
             </div>
         </div>
         
-        <!-- KPI 3: Einkauf -->
-        <div class="col-xl-3 col-md-6 mb-3">
+    </div>
+
+    <!-- KPI Row 2 -->
+    <div class="row mb-4">
+        <div class="col-xl-6 col-md-6 mb-3">
             <div class="card kpi-card shadow">
                 <div class="card-body">
                     <h6 class="card-subtitle mb-2 text-muted">
-                        <i class="bi bi-truck"></i> Einkaufsfinanzierung
+                        <i class="bi bi-truck"></i> EK-/Bestandsfinanzierung
+                        <span class="text-muted" title="Fahrzeugbestände und Einkaufsfinanzierung (z. B. Santander/Hyundai/Stellantis/Genobank). Nicht Bestandteil der operativen Liquidität.">
+                            <i class="bi bi-info-circle"></i>
+                        </span>
                     </h6>
                     <h3 class="card-title mb-1">
                         <span id="kpi-einkauf-anzahl">...</span> Fzg
@@ -117,14 +126,13 @@
                     <h4 class="card-title" id="kpi-einkauf-summe">
                         Lädt...
                     </h4>
+                    <p class="card-text mb-0">
+                        <small class="text-muted">Separat ausgewiesen (nicht operativ)</small>
+                    </p>
                 </div>
             </div>
         </div>
-    </div>
-    
-    <!-- KPI Row 2: UMSATZ -->
-    <div class="row mb-4">
-        <div class="col-xl-3 col-md-6 mb-3">
+        <div class="col-xl-6 col-md-6 mb-3">
             <div class="card kpi-card shadow">
                 <div class="card-body">
                     <h6 class="card-subtitle mb-2 text-muted">
@@ -177,7 +185,27 @@
                     </h5>
                 </div>
                 <div class="card-body">
-                    <canvas id="liquiditaet-chart" height="80"></canvas>
+                    <div style="height: 260px;">
+                        <canvas id="liquiditaet-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-percent"></i> Zinskosten-Verlauf (12 Monate)
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="zinskosten-hinweis" class="small text-muted mb-2"></div>
+                    <div style="height: 220px;">
+                        <canvas id="zinskosten-chart"></canvas>
+                    </div>
                 </div>
             </div>
         </div>
@@ -187,16 +215,16 @@
     <div class="row">
         <div class="col-12">
             <div class="card shadow">
-                <div class="card-header bg-danger text-white">
+                <div class="card-header bg-light">
                     <h5 class="mb-0">
-                        <i class="bi bi-exclamation-triangle-fill"></i> Top Alerts
+                        <i class="bi bi-exclamation-triangle-fill text-danger"></i> Top Alerts
                     </h5>
                 </div>
                 <div class="card-body">
-                    <div class="alert alert-danger">
+                    <div class="alert alert-danger py-2 mb-2">
                         <strong>Genobank Überziehung:</strong> Permanent im Soll (~10.000 €/Monat Zinsen)
                     </div>
-                    <div class="alert alert-warning">
+                    <div class="alert alert-warning py-2 mb-0">
                         <strong>Zinslast erhöht:</strong> 290.000 € p.a. - Optimierungspotential 30-50k €
                     </div>
                 </div>

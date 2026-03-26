@@ -387,8 +387,10 @@ class AuthManager:
             conn = get_db()
             cursor = conn.cursor()
 
-            # Prüfe ob User existiert
-            cursor.execute(convert_placeholders('SELECT id FROM users WHERE username = ?'), (username,))
+            # Prüfe ob User existiert (case-insensitiv: gleiche Person, anderer Schreibweise → Update, kein Doppel-Eintrag)
+            cursor.execute(convert_placeholders(
+                'SELECT id FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(?))'
+            ), (username,))
             existing = cursor.fetchone()
 
             if existing:
@@ -546,8 +548,10 @@ class AuthManager:
             conn = get_db()
             cursor = conn.cursor()
 
-            # User-ID holen (falls vorhanden)
-            cursor.execute(convert_placeholders('SELECT id FROM users WHERE username = ?'), (username,))
+            # User-ID holen (falls vorhanden, case-insensitiv)
+            cursor.execute(convert_placeholders(
+                'SELECT id FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(?))'
+            ), (username,))
             user_row = cursor.fetchone()
             user_id = user_row[0] if user_row else None
 

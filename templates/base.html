@@ -122,7 +122,7 @@
                         {% if navigation_items %}
                             {% from 'macros/navigation.html' import render_navigation_item %}
                             {% for item in navigation_items %}
-                                {{ render_navigation_item(item, 0) }}
+                                {{ render_navigation_item(item, 0, loop.previtem.is_divider if loop.previtem else false) }}
                             {% endfor %}
                         {% endif %}
                     {% else %}

@@ -173,12 +173,72 @@
                         </div>
                         <div class="col-md-2">
                             <label>Marke:</label>
-                            <input type="text" id="markeFilter" class="form-control form-control-sm" placeholder="z.B. Opel">
+                            <select id="markeFilter" class="form-select form-select-sm">
+                                <option value="">Alle Marken</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label>Kraftstoff:</label>
+                            <select id="kraftstoffFilter" class="form-select form-select-sm">
+                                <option value="">Alle</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label>Standort:</label>
+                            <select id="standortFilter" class="form-select form-select-sm">
+                                <option value="">Alle</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label>Sortierung:</label>
+                            <select id="sortFilter" class="form-select form-select-sm">
+                                <option value="standzeit_desc">Standzeit (längste zuerst)</option>
+                                <option value="preis_asc">Preis aufsteigend</option>
+                                <option value="preis_desc">Preis absteigend</option>
+                                <option value="km_asc">Km aufsteigend</option>
+                                <option value="km_desc">Km absteigend</option>
+                                <option value="standzeit_asc">Standzeit (kürzeste zuerst)</option>
+                            </select>
                         </div>
                         <div class="col-md-2">
                             <label>Min. Preis (€):</label>
                             <input type="number" id="minPreis" class="form-control form-control-sm" placeholder="z.B. 10000">
                         </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-md-2">
+                            <label>Farbe:</label>
+                            <select id="farbeFilter" class="form-select form-select-sm">
+                                <option value="">Alle</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label>Getriebe:</label>
+                            <select id="getriebeFilter" class="form-select form-select-sm">
+                                <option value="">Alle</option>
+                                <option value="manuell">Manuell</option>
+                                <option value="automatik">Automatik</option>
+                                <option value="halbautomatik">Halbautomatik</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label>EZ von (Jahr):</label>
+                            <input type="number" id="ezVon" class="form-control form-control-sm" placeholder="z.B. 2018" min="1990" max="2030">
+                        </div>
+                        <div class="col-md-2">
+                            <label>EZ bis (Jahr):</label>
+                            <input type="number" id="ezBis" class="form-control form-control-sm" placeholder="z.B. 2024" min="1990" max="2030">
+                        </div>
+                        <div class="col-md-2">
+                            <label>Min. km:</label>
+                            <input type="number" id="minKm" class="form-control form-control-sm" placeholder="z.B. 0">
+                        </div>
+                        <div class="col-md-2">
+                            <label>Max. km:</label>
+                            <input type="number" id="maxKm" class="form-control form-control-sm" placeholder="z.B. 150000">
+                        </div>
+                    </div>
+                    <div class="row mt-2">
                         <div class="col-md-2">
                             <label>Max. Preis (€):</label>
                             <input type="number" id="maxPreis" class="form-control form-control-sm" placeholder="z.B. 50000">
@@ -241,6 +301,8 @@
                                     <th>Marke</th>
                                     <th>Modell</th>
                                     <th>Preis</th>
+                                    <th>Preis-Bewertung</th>
+                                    <th>mobile.de Platz</th>
                                     <th>Hereinnahme</th>
                                     <th>Standzeit</th>
                                     <th>Status</th>
@@ -248,7 +310,7 @@
                             </thead>
                             <tbody id="vehicleTableBody">
                                 <tr>
-                                    <td colspan="6" class="text-center text-muted">
+                                    <td colspan="8" class="text-center text-muted">
                                         <i class="bi bi-arrow-clockwise"></i> Daten werden geladen...
                                     </td>
                                 </tr>
@@ -265,7 +327,8 @@
         <div class="col-12">
             <div class="alert alert-info">
                 <i class="bi bi-info-circle"></i>
-                <strong>Hinweis:</strong> Daten werden direkt aus eAutoseller geladen. 
+                <strong>Hinweis:</strong> Daten werden direkt aus eAutoseller geladen.
+                Die <strong>mobile.de Position</strong> (Börsenplatz) kommt aus dem BWA-Cache (wird vom Celery-Task „eAutoSeller Sync“ periodisch aktualisiert).
                 Letzte Aktualisierung: <span id="lastUpdate">-</span>
             </div>
         </div>
@@ -284,6 +347,7 @@ let currentData = null;
 // Initial Load
 $(document).ready(function() {
     loadKPIs();
+    loadFilterOptions();  // Dropdowns aus API füllen (Marke, Kraftstoff, Standort)
     loadVehicles();
     
     // Refresh Button
@@ -292,8 +356,8 @@ $(document).ready(function() {
         loadVehicles();
     });
     
-    // Filter
-    $('#statusFilter, #minStandzeit, #maxStandzeit').on('change', function() {
+    // Filter (Änderung = clientseitig filtern auf bereits geladene Daten)
+    $('#statusFilter, #markeFilter, #kraftstoffFilter, #standortFilter, #farbeFilter, #getriebeFilter, #sortFilter, #minStandzeit, #maxStandzeit, #ezVon, #ezBis, #minKm, #maxKm').on('change input', function() {
         applyFilters();
     });
     
@@ -325,6 +389,40 @@ $(document).ready(function() {
         }
     );
 });
+
+// Filter-Options aus API laden (Marke, Kraftstoff, Standort) und Dropdowns füllen
+function loadFilterOptions() {
+    $.ajax({
+        url: '/api/eautoseller/vehicles/filter-options',
+        method: 'GET',
+        success: function(response) {
+            if (!response.success) return;
+            var selMarke = $('#markeFilter');
+            var selKraftstoff = $('#kraftstoffFilter');
+            var selStandort = $('#standortFilter');
+            selMarke.find('option:not(:first)').remove();
+            (response.marken || []).forEach(function(m) {
+                selMarke.append($('<option></option>').val(m).text(m));
+            });
+            selKraftstoff.find('option:not(:first)').remove();
+            (response.kraftstoffe || []).forEach(function(k) {
+                selKraftstoff.append($('<option></option>').val(k).text(k));
+            });
+            selStandort.find('option:not(:first)').remove();
+            (response.standorte || []).forEach(function(s) {
+                selStandort.append($('<option></option>').val(s).text(s));
+            });
+            var selFarbe = $('#farbeFilter');
+            selFarbe.find('option:not(:first)').remove();
+            (response.farben || []).forEach(function(f) {
+                selFarbe.append($('<option></option>').val(f).text(f));
+            });
+        },
+        error: function() {
+            console.warn('Filter-Options konnten nicht geladen werden');
+        }
+    });
+}
 
 // Load KPIs from eAutoseller
 function loadKPIs() {
@@ -384,28 +482,47 @@ function updateKPICards(kpis) {
 // Load Vehicles
 function loadVehicles() {
     $('#loadingRow').show();
-    $('#vehicleTableBody').html('<tr><td colspan="6" class="text-center"><div class="spinner-border spinner-border-sm"></div> Lädt...</td></tr>');
+    $('#vehicleTableBody').html('<tr><td colspan="8" class="text-center"><div class="spinner-border spinner-border-sm"></div> Lädt...</td></tr>');
     
+    var params = { active_only: true, use_swagger: true };
+    if ($('#markeFilter').val()) params.marke = $('#markeFilter').val();
+    if ($('#kraftstoffFilter').val()) params.kraftstoff = $('#kraftstoffFilter').val();
+    if ($('#standortFilter').val()) params.standort = $('#standortFilter').val();
+    if ($('#farbeFilter').val()) params.farbe = $('#farbeFilter').val();
+    if ($('#getriebeFilter').val()) params.getriebe = $('#getriebeFilter').val();
+    if ($('#sortFilter').val()) params.sort = $('#sortFilter').val();
+    if ($('#ezVon').val()) params.ez_von = $('#ezVon').val();
+    if ($('#ezBis').val()) params.ez_bis = $('#ezBis').val();
+    if ($('#minKm').val()) params.min_km = $('#minKm').val();
+    if ($('#maxKm').val()) params.max_km = $('#maxKm').val();
+    if ($('#minPreis').val()) params.min_preis = $('#minPreis').val();
+    if ($('#maxPreis').val()) params.max_preis = $('#maxPreis').val();
+    if ($('#minStandzeit').val()) params.min_standzeit = $('#minStandzeit').val();
+    if ($('#maxStandzeit').val()) params.max_standzeit = $('#maxStandzeit').val();
+    if ($('#statusFilter').val()) params.status = $('#statusFilter').val();
     $.ajax({
         url: '/api/eautoseller/vehicles',
         method: 'GET',
-        data: {
-            active_only: true
-        },
-            fetch_hereinnahme: true,
+        data: params,
         success: function(response) {
             if (response.success) {
                 currentData = response.vehicles;
-                updateKPIs(response.statistics);
+                updateKPIs(response.statistics || {});
                 renderVehicles(response.vehicles);
                 $('#lastUpdate').text(new Date().toLocaleString('de-DE'));
+                if (response.from_cache) {
+                    $('#lastUpdate').append(' <span class="badge bg-secondary">Cache</span>');
+                }
+                if (response.is_mock) {
+                    $('#lastUpdate').append(' <span class="badge bg-warning text-dark">Demo-Daten</span>');
+                }
             } else {
                 showAlert('danger', 'Fehler: ' + (response.error || 'Unbekannter Fehler'));
             }
         },
         error: function(xhr) {
             showAlert('danger', 'Fehler beim Laden der Daten: ' + xhr.statusText);
-            $('#vehicleTableBody').html('<tr><td colspan="6" class="text-center text-danger">Fehler beim Laden</td></tr>');
+            $('#vehicleTableBody').html('<tr><td colspan="8" class="text-center text-danger">Fehler beim Laden</td></tr>');
         },
         complete: function() {
             $('#loadingRow').hide();
@@ -470,19 +587,12 @@ function formatCurrency(value) {
     }).format(value);
 }
 
-// Render Vehicles
+// Render Vehicles (Reihenfolge von API oder applyFilters wird beibehalten)
 function renderVehicles(vehicles) {
     if (!vehicles || vehicles.length === 0) {
-        $('#vehicleTableBody').html('<tr><td colspan="6" class="text-center text-muted">Keine Fahrzeuge gefunden</td></tr>');
+        $('#vehicleTableBody').html('<tr><td colspan="8" class="text-center text-muted">Keine Fahrzeuge gefunden</td></tr>');
         return;
     }
-    
-    // Sortiere nach Standzeit (kritisch zuerst)
-    vehicles.sort((a, b) => {
-        const standzeitA = a.standzeit_tage || 0;
-        const standzeitB = b.standzeit_tage || 0;
-        return standzeitB - standzeitA;
-    });
     
     let html = '';
     vehicles.forEach(function(vehicle) {
@@ -501,15 +611,28 @@ function renderVehicles(vehicles) {
             'unknown': '?'
         }[status] || '?';
         
-        const standzeit = vehicle.standzeit_tage !== null ? vehicle.standzeit_tage + ' Tage' : 'N/A';
-        const preis = vehicle.preis ? new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(vehicle.preis) : '-';
-        const hereinnahme = vehicle.hereinnahme ? new Date(vehicle.hereinnahme).toLocaleDateString('de-DE') : '-';
+        const standzeit = vehicle.standzeit_badge || (vehicle.standzeit_tage !== null ? vehicle.standzeit_tage + ' Tage' : 'N/A');
+        const preis = vehicle.preis_formatiert || (vehicle.preis ? new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(vehicle.preis) : '-');
+        const hereinnahme = vehicle.lagereingang ? new Date(vehicle.lagereingang).toLocaleDateString('de-DE') : (vehicle.hereinnahme ? new Date(vehicle.hereinnahme).toLocaleDateString('de-DE') : '-');
+        const preisBewertung = vehicle.preis_bewertung_text ? '<span class="badge bg-secondary" title="Preis-Rating ' + (vehicle.preis_bewertung || '') + '">' + vehicle.preis_bewertung_text + '</span>' : '-';
+        
+        var mobilePlatz = '-';
+        if (vehicle.mobile_platz != null || vehicle.total_hits != null) {
+            var pl = vehicle.mobile_platz != null ? 'Platz ' + vehicle.mobile_platz : '';
+            var hits = vehicle.total_hits != null ? vehicle.total_hits + ' Treffer' : '';
+            mobilePlatz = [pl, hits].filter(Boolean).join(' / ');
+            if (vehicle.mobile_link) {
+                mobilePlatz = '<a href="' + vehicle.mobile_link + '" target="_blank" rel="noopener" class="text-decoration-none">' + mobilePlatz + ' <i class="bi bi-box-arrow-up-right small"></i></a>';
+            }
+        }
         
         html += `
             <tr class="table-${statusClass === 'danger' ? 'danger' : statusClass === 'warning' ? 'warning' : ''}">
                 <td>${vehicle.marke || '-'}</td>
                 <td>${vehicle.modell || '-'}</td>
                 <td>${preis}</td>
+                <td>${preisBewertung}</td>
+                <td>${mobilePlatz}</td>
                 <td>${hereinnahme}</td>
                 <td><strong>${standzeit}</strong></td>
                 <td><span class="badge bg-${statusClass}">${statusIcon} ${status.toUpperCase()}</span></td>
@@ -520,25 +643,71 @@ function renderVehicles(vehicles) {
     $('#vehicleTableBody').html(html);
 }
 
-// Apply Filters
+// Apply Filters (clientseitig auf currentData; Sortierung nach sortFilter)
 function applyFilters() {
     if (!currentData) return;
     
     let filtered = [...currentData];
     
-    // Status Filter
     const statusFilter = $('#statusFilter').val();
     if (statusFilter) {
         filtered = filtered.filter(v => v.standzeit_status === statusFilter);
     }
     
-    // Marke Filter
-    const markeFilter = $('#markeFilter').val().toLowerCase();
+    const markeFilter = ($('#markeFilter').val() || '').toString();
     if (markeFilter) {
-        filtered = filtered.filter(v => v.marke && v.marke.toLowerCase().includes(markeFilter));
+        filtered = filtered.filter(v => v.marke && v.marke === markeFilter);
     }
     
-    // Preis Filter
+    const kraftstoffFilter = ($('#kraftstoffFilter').val() || '').toString();
+    if (kraftstoffFilter) {
+        filtered = filtered.filter(v => v.kraftstoff && v.kraftstoff === kraftstoffFilter);
+    }
+    
+    const standortFilter = ($('#standortFilter').val() || '').toString();
+    if (standortFilter) {
+        filtered = filtered.filter(v => v.standort && v.standort === standortFilter);
+    }
+    
+    const farbeFilter = ($('#farbeFilter').val() || '').toString().toLowerCase();
+    if (farbeFilter) {
+        filtered = filtered.filter(v => {
+            var fb = (v.farbe_basis || '').toLowerCase();
+            var fw = (v.farbe_wording || '').toLowerCase();
+            return fb === farbeFilter || fw === farbeFilter || (fw && fw.indexOf(farbeFilter) >= 0);
+        });
+    }
+    
+    const getriebeFilter = ($('#getriebeFilter').val() || '').toString().toLowerCase();
+    if (getriebeFilter) {
+        filtered = filtered.filter(v => {
+            var g = (v.getriebe || '').toLowerCase();
+            return g.indexOf(getriebeFilter) >= 0 || (getriebeFilter === 'automatik' && v.getriebe_id === 1) || (getriebeFilter === 'manuell' && v.getriebe_id === 0);
+        });
+    }
+    
+    const ezVon = $('#ezVon').val();
+    if (ezVon) {
+        var y = parseInt(ezVon, 10);
+        filtered = filtered.filter(v => (v.ez_jahr || 0) >= y);
+    }
+    
+    const ezBis = $('#ezBis').val();
+    if (ezBis) {
+        var y = parseInt(ezBis, 10);
+        filtered = filtered.filter(v => (v.ez_jahr || 0) <= y);
+    }
+    
+    const minKm = $('#minKm').val();
+    if (minKm) {
+        filtered = filtered.filter(v => (v.km || 0) >= parseInt(minKm, 10));
+    }
+    
+    const maxKm = $('#maxKm').val();
+    if (maxKm) {
+        filtered = filtered.filter(v => (v.km || 0) <= parseInt(maxKm, 10));
+    }
+    
     const minPreis = $('#minPreis').val();
     if (minPreis) {
         filtered = filtered.filter(v => v.preis !== null && v.preis >= parseFloat(minPreis));
@@ -549,17 +718,24 @@ function applyFilters() {
         filtered = filtered.filter(v => v.preis !== null && v.preis <= parseFloat(maxPreis));
     }
     
-    // Min Standzeit
     const minStandzeit = $('#minStandzeit').val();
     if (minStandzeit) {
         filtered = filtered.filter(v => v.standzeit_tage !== null && v.standzeit_tage >= parseInt(minStandzeit));
     }
     
-    // Max Standzeit
     const maxStandzeit = $('#maxStandzeit').val();
     if (maxStandzeit) {
         filtered = filtered.filter(v => v.standzeit_tage !== null && v.standzeit_tage <= parseInt(maxStandzeit));
     }
+    
+    // Sortierung anwenden
+    const sortVal = $('#sortFilter').val() || 'standzeit_desc';
+    if (sortVal === 'preis_asc') filtered.sort((a, b) => (a.preis || 0) - (b.preis || 0));
+    else if (sortVal === 'preis_desc') filtered.sort((a, b) => (b.preis || 0) - (a.preis || 0));
+    else if (sortVal === 'km_asc') filtered.sort((a, b) => (a.km || 0) - (b.km || 0));
+    else if (sortVal === 'km_desc') filtered.sort((a, b) => (b.km || 0) - (a.km || 0));
+    else if (sortVal === 'standzeit_asc') filtered.sort((a, b) => (a.standzeit_tage || 0) - (b.standzeit_tage || 0));
+    else filtered.sort((a, b) => (b.standzeit_tage || 0) - (a.standzeit_tage || 0));
     
     renderVehicles(filtered);
     
@@ -577,6 +753,15 @@ function applyFilters() {
 function resetFilters() {
     $('#statusFilter').val('');
     $('#markeFilter').val('');
+    $('#kraftstoffFilter').val('');
+    $('#standortFilter').val('');
+    $('#farbeFilter').val('');
+    $('#getriebeFilter').val('');
+    $('#sortFilter').val('standzeit_desc');
+    $('#ezVon').val('');
+    $('#ezBis').val('');
+    $('#minKm').val('');
+    $('#maxKm').val('');
     $('#minPreis').val('');
     $('#maxPreis').val('');
     $('#minStandzeit').val('');

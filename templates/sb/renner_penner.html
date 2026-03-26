@@ -529,33 +529,35 @@ function showSection(section) {
 
 async function loadKategorie(kategorie) {
     const betrieb = document.getElementById('filterBetrieb').value;
+    const marke = document.getElementById('filterMarke').value;
     const minWert = document.getElementById('filterMinWert').value;
+    const sort = document.getElementById('filterSort').value;
 
-    let url;
-    if (kategorie === 'renner') {
-        url = `/api/lager/renner?limit=100`;
-    } else if (kategorie === 'penner') {
-        url = `/api/lager/penner?min_wert=${minWert}&limit=100`;
-    } else if (kategorie === 'leiche') {
-        url = `/api/lager/leichen?min_wert=${minWert}&limit=100`;
-    } else {
-        // Normal aus Hauptdaten
-        renderTeile(currentData.teile.normal);
+    if (kategorie === 'normal') {
+        if (currentData && currentData.teile && currentData.teile.normal) {
+            document.getElementById('teileContainer').innerHTML = renderTeileList(currentData.teile.normal);
+        }
         return;
     }
 
+    let url = `/api/lager/renner-penner?kategorie=${kategorie}&min_wert=${minWert}&sort=${sort}&limit=500`;
     if (betrieb) url += `&betrieb=${betrieb}`;
+    if (marke) url += `&marke=${marke}`;
 
     try {
+        document.getElementById('teileContainer').innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div> Lade ' + kategorie + '...</div>';
         const response = await fetch(url);
         const data = await response.json();
 
-        if (data.success) {
-            const teile = data[kategorie] || data.renner || data.penner || data.leichen;
-            document.getElementById('teileContainer').innerHTML = renderTeileList(teile);
+        if (data.success && data.teile) {
+            const teile = Array.isArray(data.teile) ? data.teile : (data.teile[kategorie] || []);
+            document.getElementById('teileContainer').innerHTML = teile.length ? renderTeileList(teile) : '<p class="text-muted text-center py-4">Keine Teile in dieser Kategorie</p>';
+        } else {
+            document.getElementById('teileContainer').innerHTML = '<p class="text-danger text-center py-4">Fehler beim Laden.</p>';
         }
     } catch (error) {
         console.error('Fehler:', error);
+        document.getElementById('teileContainer').innerHTML = '<p class="text-danger text-center py-4">Fehler beim Laden.</p>';
     }
 }
 

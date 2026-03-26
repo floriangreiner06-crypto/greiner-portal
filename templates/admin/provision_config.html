@@ -58,6 +58,8 @@
                             <th>Zielprämie</th>
                             <th class="num">Zielerr. €</th>
                             <th class="num">Fallback</th>
+                            <th>Ziel-Basis</th>
+                            <th>P1-Zuordnung</th>
                             <th class="num">GW-Anteil</th>
                             <th class="num">VK-Pauschale</th>
                             <th>Op. DB/Abzug</th>
@@ -68,7 +70,7 @@
                         </tr>
                     </thead>
                     <tbody id="tbody-config">
-                        <tr><td colspan="18" class="text-center text-muted py-4">Lade …</td></tr>
+                        <tr><td colspan="20" class="text-center text-muted py-4">Lade …</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -159,6 +161,23 @@
                             <input type="number" min="0" class="form-control" id="edit-zielpraemie-fallback" name="zielpraemie_fallback_ziel" placeholder="z.B. 1">
                             <small class="text-muted">Wenn Zielplanung 0 liefert: dieses Ziel verwenden (Test ohne Freigabe).</small>
                         </div>
+                        <div class="col-md-4 mb-2">
+                            <label class="form-label">Zielprämie-Basis</label>
+                            <select class="form-select" id="edit-zielpraemie-basis" name="zielpraemie_basis">
+                                <option value="auslieferung">Auslieferung (Rechnungsdatum)</option>
+                                <option value="auftragseingang">Auftragseingang (Vertragsdatum)</option>
+                            </select>
+                            <small class="text-muted">Für die Zielprüfung (z.B. 5 NW Ziel, 7 NW Auftragseingang).</small>
+                        </div>
+                        <div class="col-md-4 mb-2">
+                            <label class="form-label">P1-Zuordnung (optional)</label>
+                            <select class="form-select" id="edit-memo-p1-kategorie" name="memo_p1_kategorie">
+                                <option value="">Keine Sonderbehandlung</option>
+                                <option value="II_testwagen">P1 nach II Testwagen/VFW</option>
+                                <option value="III_gebrauchtwagen">P1 nach III Gebrauchtwagen</option>
+                            </select>
+                            <small class="text-muted">Nur für Kategorie I relevant; ersetzt hardcoded P1-Logik.</small>
+                        </div>
                     </div>
                     <div id="db2-section" style="display: none;">
                         <h6 class="border-bottom pb-2 mb-3 mt-2">DB2 = DB1 minus GW-Umsatzprovision (1 % Netto) minus Verkaufskostenpauschale</h6>
@@ -237,7 +256,7 @@
     function loadList() {
         const monat = filterMonat.value ? filterMonat.value.replace(/-/g, '-') : '';
         const url = monat ? API_CONFIG_LIST + '?monat=' + encodeURIComponent(monat) : API_CONFIG_LIST;
-        tbody.innerHTML = '<tr><td colspan="18" class="text-center text-muted py-3">Lade …</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="20" class="text-center text-muted py-3">Lade …</td></tr>';
         fetch(url, { credentials: 'same-origin' })
             .then(function(r) {
                 if (!r.ok) {
@@ -251,16 +270,16 @@
             .then(function(data) {
                 try {
                     if (!data || typeof data.success === 'undefined') {
-                        tbody.innerHTML = '<tr><td colspan="18" class="text-danger">Ungültige Antwort vom Server.</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="20" class="text-danger">Ungültige Antwort vom Server.</td></tr>';
                         return;
                     }
                     if (!data.success) {
-                        tbody.innerHTML = '<tr><td colspan="18" class="text-danger">' + escapeHtml(data.error || 'Fehler') + '</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="20" class="text-danger">' + escapeHtml(data.error || 'Fehler') + '</td></tr>';
                         return;
                     }
                     const items = data.items || [];
                     if (items.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="18" class="text-muted text-center py-4">Keine Einträge.</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="20" class="text-muted text-center py-4">Keine Einträge.</td></tr>';
                         return;
                     }
                     tbody.innerHTML = items.map(function(r) {
@@ -279,6 +298,8 @@
                         '<td>' + (r.use_zielpraemie ? 'Ja' : '–') + '</td>' +
                         '<td class="num">' + (r.zielerreichung_betrag != null ? formatNum(r.zielerreichung_betrag) : '–') + '</td>' +
                         '<td class="num">' + (r.zielpraemie_fallback_ziel != null ? r.zielpraemie_fallback_ziel : '–') + '</td>' +
+                        '<td>' + escapeHtml(r.zielpraemie_basis || 'auslieferung') + '</td>' +
+                        '<td>' + escapeHtml(r.memo_p1_kategorie || '–') + '</td>' +
                         '<td class="num">' + (r.param_j60 != null ? r.param_j60 : '–') + '</td>' +
                             '<td class="num">' + (r.param_j61 != null ? formatNum(r.param_j61) : '–') + '</td>' +
                             '<td>' + (r.gw_bestand_operator_abzug || '–') + '</td>' +
@@ -291,11 +312,11 @@
                         btn.addEventListener('click', function() { openEdit(parseInt(btn.getAttribute('data-id'), 10)); });
                     });
                 } catch (e) {
-                    tbody.innerHTML = '<tr><td colspan="18" class="text-danger">Fehler beim Anzeigen: ' + escapeHtml(e.message) + '</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="20" class="text-danger">Fehler beim Anzeigen: ' + escapeHtml(e.message) + '</td></tr>';
                 }
             })
             .catch(function(e) {
-                tbody.innerHTML = '<tr><td colspan="18" class="text-danger">Netzwerkfehler: ' + escapeHtml(e.message) + '</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="20" class="text-danger">Netzwerkfehler: ' + escapeHtml(e.message) + '</td></tr>';
             });
     }
 
@@ -355,6 +376,8 @@
             document.getElementById('edit-use-zielpraemie').checked = false;
             document.getElementById('edit-zielerreichung-betrag').value = '';
             document.getElementById('edit-zielpraemie-fallback').value = '';
+            document.getElementById('edit-zielpraemie-basis').value = 'auslieferung';
+            document.getElementById('edit-memo-p1-kategorie').value = '';
             var db2Section = document.getElementById('db2-section');
             if (db2Section) db2Section.style.display = 'none';
             var m = getModal(); if (m) m.show();
@@ -383,6 +406,8 @@
         document.getElementById('edit-use-zielpraemie').checked = !!item.use_zielpraemie;
         document.getElementById('edit-zielerreichung-betrag').value = item.zielerreichung_betrag != null ? item.zielerreichung_betrag : '';
         document.getElementById('edit-zielpraemie-fallback').value = item.zielpraemie_fallback_ziel != null ? item.zielpraemie_fallback_ziel : '';
+        document.getElementById('edit-zielpraemie-basis').value = item.zielpraemie_basis || 'auslieferung';
+        document.getElementById('edit-memo-p1-kategorie').value = item.memo_p1_kategorie || '';
         var db2Section = document.getElementById('db2-section');
         if (db2Section) db2Section.style.display = (item.kategorie === 'IV_gw_bestand') ? 'block' : 'none';
     }
@@ -405,7 +430,9 @@
             gueltig_bis: document.getElementById('edit-gueltig-bis').value.trim() || null,
             use_zielpraemie: document.getElementById('edit-use-zielpraemie').checked,
             zielerreichung_betrag: document.getElementById('edit-zielerreichung-betrag').value.trim() || null,
-            zielpraemie_fallback_ziel: document.getElementById('edit-zielpraemie-fallback').value.trim() || null
+            zielpraemie_fallback_ziel: document.getElementById('edit-zielpraemie-fallback').value.trim() || null,
+            zielpraemie_basis: document.getElementById('edit-zielpraemie-basis').value || 'auslieferung',
+            memo_p1_kategorie: document.getElementById('edit-memo-p1-kategorie').value || null
         };
         if (o.min_betrag !== null) o.min_betrag = parseFloat(o.min_betrag);
         if (o.max_betrag !== null) o.max_betrag = parseFloat(o.max_betrag);

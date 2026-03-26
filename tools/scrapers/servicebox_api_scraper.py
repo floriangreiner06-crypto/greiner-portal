@@ -406,8 +406,8 @@ def extract_bestellung_details(session, bestellung_info):
                     if len(cols) >= 6:
                         first_col_text = safe_get_text(cols[0])
                         
-                        # Extrahiere Teilenummer auch wenn Zusatztext vorhanden
-                        teilenummer_match = re.search(r'^\s*(\d{7,10})', first_col_text)
+                        # Extrahiere Teilenummer (Ziffern 7-10 oder alphanumerisch z.B. YQ00858200)
+                        teilenummer_match = re.search(r'^\s*([A-Z0-9]{6,15})', first_col_text)
                         if teilenummer_match:
                             teilenummer = teilenummer_match.group(1)
                             

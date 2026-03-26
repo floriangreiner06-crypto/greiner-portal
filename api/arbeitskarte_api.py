@@ -19,6 +19,10 @@ from utils.locosoft_helpers import get_locosoft_connection
 from tools.gudat_client import GudatClient
 from api.arbeitskarte_pdf import generate_arbeitskarte_pdf
 
+# Gudat Center aus Standort: 1/2 = Deggendorf, 3 = Landau (KIC pro Center)
+def _gudat_center_from_subsidiary(subsidiary):
+    return 'landau' if subsidiary == 3 else 'deggendorf'
+
 bp = Blueprint('arbeitskarte', __name__, url_prefix='/api/arbeitskarte')
 logger = logging.getLogger(__name__)
 
@@ -191,13 +195,24 @@ def hole_arbeitskarte_daten(order_number: int):
     
     teile = cursor.fetchall()
     
+    # Standort für Gudat-Center (vor conn.close): 1/2 = Deggendorf, 3 = Landau
+    subsidiary = auftrag[6] if len(auftrag) > 6 else 1
     conn.close()
     
-    # GUDAT-Daten
+    # GUDAT-Daten (KIC pro Center – Landau seit 2026-03 über gudat.centers.landau)
     gudat_daten = None
     try:
-        client = GudatClient(GUDAT_CONFIG['username'], GUDAT_CONFIG['password'])
-        if client.login():
+        client = None
+        try:
+            from api.gudat_api import get_gudat_client
+            center = _gudat_center_from_subsidiary(subsidiary)
+            client = get_gudat_client(center)
+        except Exception as e:
+            logger.warning("Gudat get_gudat_client(center) fehlgeschlagen, Fallback Deggendorf: %s", e)
+            client = GudatClient(GUDAT_CONFIG['username'], GUDAT_CONFIG['password'])
+            if not client.login():
+                client = None
+        if client:
             from datetime import date, timedelta
             
             # TAG 192: Erweiterte Suche - nicht nur heute, sondern auch letzte 90 Tage

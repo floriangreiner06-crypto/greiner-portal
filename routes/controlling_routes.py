@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, jsonify, request, abort
+from flask import Blueprint, render_template, jsonify, request, abort, redirect, url_for
 from flask_login import current_user
 from decorators.auth_decorators import login_required
 import re
@@ -218,8 +218,9 @@ def get_stueckzahlen_locosoft(von: str, bis: str, bereich: str = '1-NW', firma: 
 
 def get_stueckzahlen_fibu(von: str, bis: str, firma_filter_umsatz: str = None, firma: str = '0', standort: str = '0') -> dict:
     """
-    Stückzahlen NW/GW aus FIBU (loco_journal_accountings) – gleiche Logik wie Detail-Modal.
-    Summe der pro-Konto distinct vehicle_reference (81xxxx = NW, 82xxxx = GW), damit Übersicht = Detail (18 = 18).
+    Stückzahlen NW/GW aus FIBU (loco_journal_accountings).
+    Eine Zählung: COUNT(DISTINCT vehicle_reference) pro Bereich (81xxxx / 82xxxx), damit jedes Fahrzeug nur 1x zählt
+    und GW mit Locosoft L273PR (z. B. 29 GFz + 8 diff.St. = 37) übereinstimmt; keine Doppelzählung über Konten.
     Entweder firma_filter_umsatz übergeben (Route) oder (firma, standort) für Script/Report.
     """
     if firma_filter_umsatz is None:
@@ -237,39 +238,27 @@ def get_stueckzahlen_fibu(von: str, bis: str, firma_filter_umsatz: str = None, f
     try:
         with db_session() as conn:
             cursor = conn.cursor()
-            # NW: 81xxxx – gleiche Aggregation wie api_tek_detail (typ=bereich)
+            # NW: 81xxxx – ein Fahrzeug = ein Zähler (distinct über alle Konten)
             cursor.execute(convert_placeholders("""
-                SELECT COALESCE(SUM(stueck), 0) as total
-                FROM (
-                    SELECT nominal_account_number,
-                           COUNT(DISTINCT CASE WHEN vehicle_reference IS NOT NULL AND TRIM(vehicle_reference) != ''
-                               THEN vehicle_reference END) as stueck
-                    FROM loco_journal_accountings
-                    WHERE accounting_date >= ? AND accounting_date < ?
-                      AND nominal_account_number BETWEEN 810000 AND 819999
-                      """ + firma_filter_umsatz + """
-                      """ + guv_filter + """
-                    GROUP BY nominal_account_number
-                    HAVING ABS(SUM(CASE WHEN debit_or_credit='H' THEN posted_value ELSE -posted_value END)) > 0
-                ) sub
+                SELECT COUNT(DISTINCT vehicle_reference) as total
+                FROM loco_journal_accountings
+                WHERE accounting_date >= ? AND accounting_date < ?
+                  AND nominal_account_number BETWEEN 810000 AND 819999
+                  AND vehicle_reference IS NOT NULL AND TRIM(vehicle_reference) != ''
+                  """ + firma_filter_umsatz + """
+                  """ + guv_filter + """
             """), (von, bis))
             row = cursor.fetchone()
             nw = int(row[0] or 0) if row else 0
-            # GW: 82xxxx
+            # GW: 82xxxx – ein Fahrzeug = ein Zähler (Abgleich mit Locosoft L273PR: GFz + diff.St.)
             cursor.execute(convert_placeholders("""
-                SELECT COALESCE(SUM(stueck), 0) as total
-                FROM (
-                    SELECT nominal_account_number,
-                           COUNT(DISTINCT CASE WHEN vehicle_reference IS NOT NULL AND TRIM(vehicle_reference) != ''
-                               THEN vehicle_reference END) as stueck
-                    FROM loco_journal_accountings
-                    WHERE accounting_date >= ? AND accounting_date < ?
-                      AND nominal_account_number BETWEEN 820000 AND 829999
-                      """ + firma_filter_umsatz + """
-                      """ + guv_filter + """
-                    GROUP BY nominal_account_number
-                    HAVING ABS(SUM(CASE WHEN debit_or_credit='H' THEN posted_value ELSE -posted_value END)) > 0
-                ) sub
+                SELECT COUNT(DISTINCT vehicle_reference) as total
+                FROM loco_journal_accountings
+                WHERE accounting_date >= ? AND accounting_date < ?
+                  AND nominal_account_number BETWEEN 820000 AND 829999
+                  AND vehicle_reference IS NOT NULL AND TRIM(vehicle_reference) != ''
+                  """ + firma_filter_umsatz + """
+                  """ + guv_filter + """
             """), (von, bis))
             row = cursor.fetchone()
             gw = int(row[0] or 0) if row else 0
@@ -281,6 +270,13 @@ def get_stueckzahlen_fibu(von: str, bis: str, firma_filter_umsatz: str = None, f
 
 
 controlling_bp = Blueprint('controlling', __name__, url_prefix='/controlling')
+
+
+@controlling_bp.route('/')
+@login_required
+def controlling_index():
+    """Konsistenter Einstiegspunkt auf das Controlling-Dashboard."""
+    return redirect(url_for('controlling.dashboard'))
 
 # =============================================================================
 # KONSTANTEN: MA-VERTEILUNG FÜR UMLAGE
@@ -3500,7 +3496,26 @@ def api_overview():
 
         # TAG 136: PostgreSQL verwendet BOOLEAN, SQLite verwendet 1/0
         aktiv_check = "aktiv = true" if get_db_type() == 'postgresql' else "aktiv = 1"
-        ist_operativ_check = "ist_operativ = true" if get_db_type() == 'postgresql' else "ist_operativ = 1"
+        konten_aktiv_check = "k.aktiv = true" if get_db_type() == 'postgresql' else "k.aktiv = 1"
+        # In PostgreSQL ist ist_operativ historisch als Integer (0/1) modelliert.
+        konten_operativ_check = "k.ist_operativ = 1"
+        # Einkaufs-/Fahrzeugfinanzierungsnahe Konten aus operativer Liquidität ausschließen
+        # (z. B. Santander/Hyundai/Stellantis Linien, Kfz-Brief-Darlehen).
+        ausschluss_ek_finanzierung_check = """
+            NOT (
+                LOWER(COALESCE(k.kontoname, '')) LIKE '%santander%'
+                OR LOWER(COALESCE(k.kontoname, '')) LIKE '%stellantis%'
+                OR LOWER(COALESCE(k.kontoname, '')) LIKE '%hyu kk%'
+                OR LOWER(COALESCE(k.kontoname, '')) LIKE '%hyundai%'
+                OR LOWER(COALESCE(k.kontotyp, '')) LIKE '%kfz brief%'
+                OR LOWER(COALESCE(k.kontotyp, '')) LIKE '%24 monate%'
+                OR LOWER(COALESCE(k.kontotyp, '')) LIKE '%fahrzeug%'
+                OR LOWER(COALESCE(k.kontotyp, '')) LIKE '%einkaufsfinanz%'
+                OR LOWER(COALESCE(b.bank_name, '')) LIKE '%santander%'
+                OR LOWER(COALESCE(b.bank_name, '')) LIKE '%stellantis%'
+                OR LOWER(COALESCE(b.bank_name, '')) LIKE '%hyundai%'
+            )
+        """
 
         # TAG 136: Datumsfunktion für PostgreSQL/SQLite
         if get_db_type() == 'postgresql':
@@ -3512,18 +3527,44 @@ def api_overview():
             cursor = conn.cursor()
 
             cursor.execute(f"""
-                SELECT COALESCE(SUM(saldo), 0) FROM v_aktuelle_kontostaende
-                WHERE anzeige_gruppe = 'autohaus' AND {ist_operativ_check}
+                SELECT COALESCE(SUM(v.saldo), 0)
+                FROM v_aktuelle_kontostaende v
+                JOIN konten k ON k.id = v.id
+                LEFT JOIN banken b ON b.id = k.bank_id
+                WHERE v.anzeige_gruppe = 'autohaus'
+                  AND {konten_aktiv_check}
+                  AND {konten_operativ_check}
+                  AND {ausschluss_ek_finanzierung_check}
             """)
             row = cursor.fetchone()
             operative_liq = float(row[0] if isinstance(row, (list, tuple)) else row['coalesce']) or 0
 
             cursor.execute(f"""
-                SELECT COALESCE(SUM(ABS(kreditlinie)), 0) FROM v_aktuelle_kontostaende
-                WHERE anzeige_gruppe = 'autohaus' AND {ist_operativ_check} AND kreditlinie IS NOT NULL
+                SELECT
+                    COALESCE(SUM(ABS(v.kreditlinie)), 0) AS kreditlinien_gesamt,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN v.kreditlinie IS NULL THEN 0
+                            WHEN v.saldo < 0 THEN GREATEST(v.kreditlinie + v.saldo, 0)
+                            ELSE v.kreditlinie
+                        END
+                    ), 0) AS freie_linien
+                FROM v_aktuelle_kontostaende v
+                JOIN konten k ON k.id = v.id
+                LEFT JOIN banken b ON b.id = k.bank_id
+                WHERE v.anzeige_gruppe = 'autohaus'
+                  AND v.kreditlinie IS NOT NULL
+                  AND {konten_aktiv_check}
+                  AND {konten_operativ_check}
+                  AND {ausschluss_ek_finanzierung_check}
             """)
             row = cursor.fetchone()
-            kreditlinien = float(row[0] if isinstance(row, (list, tuple)) else row['coalesce']) or 0
+            if isinstance(row, (list, tuple)):
+                kreditlinien_gesamt = float(row[0] or 0)
+                freie_linien = float(row[1] or 0)
+            else:
+                kreditlinien_gesamt = float(row.get('kreditlinien_gesamt') or 0)
+                freie_linien = float(row.get('freie_linien') or 0)
 
             cursor.execute(f"""
                 SELECT COALESCE(SUM(original_betrag - aktueller_saldo), 0)
@@ -3532,7 +3573,8 @@ def api_overview():
             row = cursor.fetchone()
             fahrzeug_linien = float(row[0] if isinstance(row, (list, tuple)) else row['coalesce']) or 0
 
-            verfuegbare_liq = operative_liq + kreditlinien + fahrzeug_linien
+            verfuegbare_liq = operative_liq + freie_linien + fahrzeug_linien
+            linien_nutzungsgrad = round(((kreditlinien_gesamt - freie_linien) / kreditlinien_gesamt * 100), 1) if kreditlinien_gesamt > 0 else 0
 
             cursor.execute(f"""
                 SELECT COALESCE(SUM(amount), 0) FROM fibu_buchungen
@@ -3568,9 +3610,10 @@ def api_overview():
         return jsonify({
             'liquiditaet': {
                 'operativ': float(operative_liq),
-                'kreditlinien': float(kreditlinien),
+                'kreditlinien_gesamt': float(kreditlinien_gesamt),
+                'freie_linien': float(freie_linien),
                 'verfuegbar': float(verfuegbare_liq),
-                'nutzungsgrad': round((operative_liq / verfuegbare_liq * 100), 1) if verfuegbare_liq > 0 else 0
+                'nutzungsgrad': float(linien_nutzungsgrad)
             },
             'zinsen': float(zinsen),
             'einkauf': {
@@ -3587,7 +3630,246 @@ def api_overview():
 @controlling_bp.route('/api/trends')
 @login_required
 def api_trends():
-    return jsonify({"status": "coming_soon"})
+    """Monatliche Trends für das Controlling-Dashboard (aktuell: Zinskosten)."""
+    try:
+        heute = date.today()
+        monatserster = date(heute.year, heute.month, 1)
+        monate = []
+        year = monatserster.year
+        month = monatserster.month
+        # Letzte 12 Monate inkl. aktuellem Monat
+        for _ in range(12):
+            monate.append((year, month))
+            month -= 1
+            if month == 0:
+                month = 12
+                year -= 1
+        monate.reverse()
+
+        start_year, start_month = monate[0]
+        start_date = date(start_year, start_month, 1)
+
+        with db_session() as conn:
+            cursor = conn.cursor()
+            if get_db_type() == 'postgresql':
+                cursor.execute(
+                    """
+                    SELECT
+                        EXTRACT(YEAR FROM accounting_date)::int AS jahr,
+                        EXTRACT(MONTH FROM accounting_date)::int AS monat,
+                        COALESCE(SUM(amount), 0) AS zinsen
+                    FROM fibu_buchungen
+                    WHERE buchungstyp = 'zinsen'
+                      AND debit_credit = 'S'
+                      AND accounting_date >= %s
+                    GROUP BY 1, 2
+                    ORDER BY 1, 2
+                    """,
+                    (start_date,)
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT
+                        CAST(strftime('%Y', accounting_date) AS INTEGER) AS jahr,
+                        CAST(strftime('%m', accounting_date) AS INTEGER) AS monat,
+                        COALESCE(SUM(amount), 0) AS zinsen
+                    FROM fibu_buchungen
+                    WHERE buchungstyp = 'zinsen'
+                      AND debit_credit = 'S'
+                      AND accounting_date >= ?
+                    GROUP BY jahr, monat
+                    ORDER BY jahr, monat
+                    """,
+                    (start_date.isoformat(),)
+                )
+            rows = cursor.fetchall()
+
+            # Fallback für Monate ohne FiBu-Zinsdaten:
+            # Zinsbezogene Banktransaktionen (Buchungstext/Verwendungszweck enthält "zins")
+            if get_db_type() == 'postgresql':
+                cursor.execute(
+                    """
+                    SELECT
+                        EXTRACT(YEAR FROM buchungsdatum)::int AS jahr,
+                        EXTRACT(MONTH FROM buchungsdatum)::int AS monat,
+                        COALESCE(SUM(ABS(betrag)), 0) AS zinsen_fallback
+                    FROM transaktionen
+                    WHERE buchungsdatum >= %s
+                      AND betrag < 0
+                      AND (
+                          LOWER(COALESCE(buchungstext, '')) LIKE '%%zins%%'
+                          OR LOWER(COALESCE(verwendungszweck, '')) LIKE '%%zins%%'
+                      )
+                    GROUP BY 1, 2
+                    ORDER BY 1, 2
+                    """,
+                    (start_date,)
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT
+                        CAST(strftime('%Y', buchungsdatum) AS INTEGER) AS jahr,
+                        CAST(strftime('%m', buchungsdatum) AS INTEGER) AS monat,
+                        COALESCE(SUM(ABS(betrag)), 0) AS zinsen_fallback
+                    FROM transaktionen
+                    WHERE buchungsdatum >= ?
+                      AND betrag < 0
+                      AND (
+                          LOWER(COALESCE(buchungstext, '')) LIKE '%zins%'
+                          OR LOWER(COALESCE(verwendungszweck, '')) LIKE '%zins%'
+                      )
+                    GROUP BY jahr, monat
+                    ORDER BY jahr, monat
+                    """,
+                    (start_date.isoformat(),)
+                )
+            fallback_rows = cursor.fetchall()
+
+            # Liquiditätsverlauf: Monatsendstände je Konto aggregiert (operative Autohaus-Konten)
+            if get_db_type() == 'postgresql':
+                cursor.execute(
+                    """
+                    WITH monthly_last AS (
+                        SELECT
+                            s.konto_id,
+                            DATE_TRUNC('month', s.datum)::date AS monatsstart,
+                            MAX(s.datum) AS last_datum
+                        FROM salden s
+                        GROUP BY s.konto_id, DATE_TRUNC('month', s.datum)
+                    ),
+                    monthly_operativ AS (
+                        SELECT
+                            ml.monatsstart,
+                            COALESCE(SUM(s.saldo), 0) AS saldo_sum
+                        FROM monthly_last ml
+                        JOIN salden s ON s.konto_id = ml.konto_id AND s.datum = ml.last_datum
+                        JOIN konten k ON k.id = s.konto_id
+                        WHERE k.aktiv = true
+                          AND k.ist_operativ = 1
+                          AND k.anzeige_gruppe = 'autohaus'
+                          AND ml.monatsstart >= %s
+                        GROUP BY ml.monatsstart
+                    )
+                    SELECT
+                        EXTRACT(YEAR FROM monatsstart)::int AS jahr,
+                        EXTRACT(MONTH FROM monatsstart)::int AS monat,
+                        saldo_sum
+                    FROM monthly_operativ
+                    ORDER BY jahr, monat
+                    """,
+                    (start_date,)
+                )
+            else:
+                cursor.execute(
+                    """
+                    WITH monthly_last AS (
+                        SELECT
+                            s.konto_id,
+                            substr(s.datum, 1, 7) || '-01' AS monatsstart,
+                            MAX(s.datum) AS last_datum
+                        FROM salden s
+                        GROUP BY s.konto_id, substr(s.datum, 1, 7)
+                    ),
+                    monthly_operativ AS (
+                        SELECT
+                            ml.monatsstart,
+                            COALESCE(SUM(s.saldo), 0) AS saldo_sum
+                        FROM monthly_last ml
+                        JOIN salden s ON s.konto_id = ml.konto_id AND s.datum = ml.last_datum
+                        JOIN konten k ON k.id = s.konto_id
+                        WHERE k.aktiv = 1
+                          AND k.ist_operativ = 1
+                          AND k.anzeige_gruppe = 'autohaus'
+                          AND ml.monatsstart >= ?
+                        GROUP BY ml.monatsstart
+                    )
+                    SELECT
+                        CAST(substr(monatsstart, 1, 4) AS INTEGER) AS jahr,
+                        CAST(substr(monatsstart, 6, 2) AS INTEGER) AS monat,
+                        saldo_sum
+                    FROM monthly_operativ
+                    ORDER BY jahr, monat
+                    """,
+                    (start_date.isoformat(),)
+                )
+            liquidity_rows = cursor.fetchall()
+
+        map_monat_zu_zinsen = {}
+        for row in rows:
+            if isinstance(row, (list, tuple)):
+                jahr, monat, zinsen = row[0], row[1], row[2]
+            else:
+                jahr = row.get('jahr')
+                monat = row.get('monat')
+                zinsen = row.get('zinsen')
+            map_monat_zu_zinsen[(int(jahr), int(monat))] = float(zinsen or 0)
+
+        map_monat_zu_zinsen_fallback = {}
+        for row in fallback_rows:
+            if isinstance(row, (list, tuple)):
+                jahr, monat, zinsen_fallback = row[0], row[1], row[2]
+            else:
+                jahr = row.get('jahr')
+                monat = row.get('monat')
+                zinsen_fallback = row.get('zinsen_fallback')
+            map_monat_zu_zinsen_fallback[(int(jahr), int(monat))] = float(zinsen_fallback or 0)
+
+        trend = []
+        for jahr, monat in monate:
+            fibu_key = (jahr, monat)
+            has_fibu_data = fibu_key in map_monat_zu_zinsen
+            has_fallback_data = fibu_key in map_monat_zu_zinsen_fallback
+            if has_fibu_data:
+                zinswert = round(map_monat_zu_zinsen[fibu_key], 2)
+                source = 'fibu'
+                has_data = True
+            elif has_fallback_data:
+                zinswert = round(map_monat_zu_zinsen_fallback[fibu_key], 2)
+                source = 'transaktionen_fallback'
+                has_data = True
+            else:
+                zinswert = None
+                source = 'none'
+                has_data = False
+            trend.append({
+                'jahr': jahr,
+                'monat': monat,
+                'label': f"{monat:02d}/{str(jahr)[2:]}",
+                'zinskosten': zinswert,
+                'has_data': has_data,
+                'source': source,
+            })
+
+        map_monat_zu_liquiditaet = {}
+        for row in liquidity_rows:
+            if isinstance(row, (list, tuple)):
+                jahr, monat, saldo_sum = row[0], row[1], row[2]
+            else:
+                jahr = row.get('jahr')
+                monat = row.get('monat')
+                saldo_sum = row.get('saldo_sum')
+            map_monat_zu_liquiditaet[(int(jahr), int(monat))] = float(saldo_sum or 0)
+
+        liquiditaet_trend = []
+        for jahr, monat in monate:
+            liquiditaet_trend.append({
+                'jahr': jahr,
+                'monat': monat,
+                'label': f"{monat:02d}/{str(jahr)[2:]}",
+                'saldo': round(map_monat_zu_liquiditaet.get((jahr, monat), 0), 2),
+            })
+
+        return jsonify({
+            'trends': {
+                'zinskosten_monat': trend,
+                'liquiditaet_monat': liquiditaet_trend,
+            },
+            'timestamp': datetime.now().isoformat(),
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @controlling_bp.route('/auswertung-zeiterfassung')

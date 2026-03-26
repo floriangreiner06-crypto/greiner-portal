@@ -183,3 +183,55 @@ def upload_dokument():
             except Exception:
                 pass
         return jsonify({"success": False, "error": "Datenbankfehler"}), 500
+
+
+# =============================================================================
+# Garantie-Prüfung (Option A: Fester Kontext + LM Studio)
+# =============================================================================
+
+@bp.route("/pruefung", methods=["POST"])
+@login_required
+def garantie_pruefung():
+    """
+    POST /api/garantie/pruefung
+    Body: { "order_number": int, "marke": "opel"|"hyundai"|"alle" (optional) }
+    Prüft den Garantieauftrag anhand der Bedingungen (Kontext pro Marke) mit LM Studio.
+    Immer JSON-Antwort, damit das Frontend nicht mit HTML-Fehlerseiten parst.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        order_number = data.get("order_number")
+        if order_number is None:
+            return jsonify({"success": False, "error": "order_number fehlt"}), 400
+        try:
+            order_number = int(order_number)
+        except (TypeError, ValueError):
+            return jsonify({"success": False, "error": "order_number muss eine Zahl sein"}), 400
+        marke = data.get("marke")
+
+        from api.garantie_pruefung import run_garantie_pruefung
+
+        result = run_garantie_pruefung(order_number, marke=marke, app=current_app)
+        if not result.get("success") and result.get("error"):
+            return jsonify({
+                "success": False,
+                "error": result["error"],
+                "checkliste": result.get("checkliste", []),
+                "empfehlung": result.get("empfehlung", ""),
+                "marke_verwendet": result.get("marke_verwendet", ""),
+            }), 200
+        return jsonify({
+            "success": True,
+            "checkliste": result.get("checkliste", []),
+            "empfehlung": result.get("empfehlung", ""),
+            "marke_verwendet": result.get("marke_verwendet", ""),
+        }), 200
+    except Exception as e:
+        logger.exception("Garantie-Prüfung: %s", e)
+        return jsonify({
+            "success": False,
+            "error": f"Serverfehler bei der Prüfung: {str(e)}",
+            "checkliste": [],
+            "empfehlung": "",
+            "marke_verwendet": "",
+        }), 500

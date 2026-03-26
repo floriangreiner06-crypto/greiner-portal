@@ -33,43 +33,62 @@ logger = logging.getLogger(__name__)
 # Blueprint erstellen
 gudat_bp = Blueprint('gudat', __name__, url_prefix='/api/gudat')
 
-# Client-Instanz (wird bei erstem Request initialisiert)
-_client = None
+# Client-Cache: pro Center (deggendorf, landau) oder '' für Default
+_clients = {}
 
-def get_gudat_client() -> GudatClient:
-    """Holt oder erstellt den Gudat-Client"""
-    global _client
-    
-    if _client is None:
-        # Lade Credentials aus Config
-        config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'credentials.json')
-        
+def _invalidate_gudat_client(center: str = None):
+    """Entfernt gecachten Client (z. B. nach Session-Fehler), nächster Aufruf macht frischen Login."""
+    global _clients
+    key = (center or '').strip().lower()
+    if key in ('', 'deggendorf'):
+        key = 'default'
+    _clients.pop(key, None)
+    logger.info("Gudat-Client-Cache invalidiert: center=%s", key or 'deggendorf')
+
+def _load_gudat_full_config():
+    """Lädt komplette Gudat-Config (group, centers mit username/password)."""
+    config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'credentials.json')
+    with open(config_path, 'r', encoding='utf-8') as f:
+        config = json.load(f)
+    return config.get('external_systems', {}).get('gudat', {})
+
+def get_gudat_client(center: str = None) -> GudatClient:
+    """
+    Holt oder erstellt den Gudat-Client (KIC).
+    center: 'deggendorf' | 'landau' | None (None = Default Deggendorf, wie bisher)
+    """
+    global _clients
+    key = (center or '').strip().lower()
+    if key in ('', 'deggendorf'):
+        key = 'default'
+    if key not in _clients:
         try:
-            with open(config_path, 'r') as f:
-                config = json.load(f)
-            
-            gudat_config = config.get('external_systems', {}).get('gudat', {})
-            username = gudat_config.get('username')
-            password = gudat_config.get('password')
-            
-            logger.info(f"Gudat-Config geladen: URL={gudat_config.get('portal_url')}, User={username}")
-            
+            gudat = _load_gudat_full_config()
+            group = gudat.get('group') or 'greiner'
+            centers = gudat.get('centers') or {}
+            if key == 'default':
+                # Deggendorf: aus centers.deggendorf, Fallback Top-Level
+                c = centers.get('deggendorf', {})
+                username = c.get('username') or gudat.get('username')
+                password = c.get('password') or gudat.get('password')
+                base_url = f"https://werkstattplanung.net/{group}/deggendorf/kic"
+            else:
+                if key not in centers:
+                    raise ValueError(f"Center '{center}' nicht in gudat.centers konfiguriert")
+                c = centers[key]
+                username = c.get('username')
+                password = c.get('password')
+                base_url = f"https://werkstattplanung.net/{group}/{key}/kic"
             if not username or not password:
                 raise ValueError("Gudat Credentials nicht in config/credentials.json gefunden")
-            
-            _client = GudatClient(username, password)
-            
-            # Login durchführen
-            if not _client.login():
+            _clients[key] = GudatClient(username, password, base_url=base_url)
+            if not _clients[key].login():
                 raise Exception("Gudat Login fehlgeschlagen")
-            
-            logger.info("Gudat-Client erfolgreich initialisiert")
-            
+            logger.info("Gudat-Client initialisiert: center=%s", key)
         except Exception as e:
-            logger.error(f"Gudat-Client Initialisierung fehlgeschlagen: {e}")
+            logger.error("Gudat-Client Initialisierung fehlgeschlagen (center=%s): %s", key, e)
             raise
-    
-    return _client
+    return _clients[key]
 
 
 # =============================================================================
@@ -78,9 +97,10 @@ def get_gudat_client() -> GudatClient:
 
 @gudat_bp.route('/health', methods=['GET'])
 def health():
-    """Health-Check für Gudat-Integration"""
+    """Health-Check für Gudat-Integration (optional: ?center=deggendorf|landau)"""
     try:
-        client = get_gudat_client()
+        center = request.args.get('center', type=str)
+        client = get_gudat_client(center=center)
         return jsonify({
             'status': 'healthy',
             'service': 'gudat',
@@ -103,24 +123,32 @@ def get_workload():
     
     Query-Parameter:
         date: Datum (YYYY-MM-DD), default: heute
+        center: deggendorf | landau (optional, default: deggendorf)
     
     Returns:
         JSON mit Kapazitäts-Summary
     """
     try:
         date = request.args.get('date')
+        center = request.args.get('center', type=str)
         
-        client = get_gudat_client()
+        client = get_gudat_client(center=center)
         data = client.get_workload_summary(date)
         
         if 'error' in data:
+            err = data.get('error', '')
+            if 'Login' in err or '401' in err or 'Session' in err:
+                _invalidate_gudat_client(center)
             return jsonify(data), 400
         
         return jsonify(data)
         
+    except ValueError as e:
+        logger.warning("Gudat Workload (center=%s): %s", center, e)
+        return jsonify({'error': str(e)}), 503
     except Exception as e:
-        logger.error(f"Workload-Fehler: {e}")
-        return jsonify({'error': str(e)}), 500
+        logger.error("Workload-Fehler (center=%s): %s", center, e)
+        return jsonify({'error': str(e)}), 503
 
 
 @gudat_bp.route('/workload/week', methods=['GET'])
@@ -131,6 +159,7 @@ def get_workload_week():
     Query-Parameter:
         start_date: Startdatum (YYYY-MM-DD), default: heute
         with_teams: Wenn true, werden Team-Daten pro Tag mitgeliefert (TAG 200)
+        center: deggendorf | landau (optional)
     
     Returns:
         JSON mit täglichen Kapazitäts-Daten
@@ -139,11 +168,15 @@ def get_workload_week():
     try:
         start_date = request.args.get('start_date')
         with_teams = request.args.get('with_teams', 'false').lower() == 'true'
+        center = request.args.get('center', type=str)
         
-        client = get_gudat_client()
+        client = get_gudat_client(center=center)
         data = client.get_week_overview(start_date)
         
         if 'error' in data:
+            err = data.get('error', '')
+            if 'Login' in err or '401' in err or 'Session' in err:
+                _invalidate_gudat_client(center)
             return jsonify(data), 400
         
         # TAG 200: Team-Daten pro Tag hinzufügen
@@ -191,6 +224,7 @@ def get_workload_raw():
     Query-Parameter:
         date: Startdatum (YYYY-MM-DD), default: heute
         days: Anzahl Tage (1-14), default: 7
+        center: deggendorf | landau (optional)
     
     Returns:
         JSON mit rohen Team-Daten
@@ -198,11 +232,12 @@ def get_workload_raw():
     try:
         date = request.args.get('date')
         days = int(request.args.get('days', 7))
+        center = request.args.get('center', type=str)
         
         if days < 1 or days > 14:
             return jsonify({'error': 'days muss zwischen 1 und 14 liegen'}), 400
         
-        client = get_gudat_client()
+        client = get_gudat_client(center=center)
         data = client.get_workload_raw(date, days)
         
         if not data:
@@ -228,14 +263,16 @@ def get_teams():
     
     Query-Parameter:
         date: Datum (YYYY-MM-DD), default: heute
+        center: deggendorf | landau (optional)
     
     Returns:
         JSON mit Team-Liste und Status
     """
     try:
         date = request.args.get('date')
+        center = request.args.get('center', type=str)
         
-        client = get_gudat_client()
+        client = get_gudat_client(center=center)
         summary = client.get_workload_summary(date)
         
         if 'error' in summary:
@@ -255,9 +292,10 @@ def get_teams():
 
 @gudat_bp.route('/user', methods=['GET'])
 def get_user():
-    """Holt aktuellen Benutzer (für Debugging)"""
+    """Holt aktuellen Benutzer (für Debugging). Optional: ?center=deggendorf|landau"""
     try:
-        client = get_gudat_client()
+        center = request.args.get('center', type=str)
+        client = get_gudat_client(center=center)
         data = client.get_current_user()
         
         if 'error' in data:

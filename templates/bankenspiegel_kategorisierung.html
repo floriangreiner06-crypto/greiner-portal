@@ -6,7 +6,17 @@
 <style>
   .kategorisierung-gespeichert { white-space: nowrap; }
   .kategorisierung-ki-lernen { white-space: nowrap; font-size: 0.85em; }
-  #kategorisierungTable tr.table-success { background-color: rgba(25, 135, 84, 0.12); }
+  /* Grüne Hinterlegung für kategorisierte/trainierte Zeilen (dauerhaft) */
+  #kategorisierungTable tr.table-success,
+  #kategorisierungTable tr[data-kategorisiert="true"] { background-color: rgba(25, 135, 84, 0.18) !important; }
+  /* Buchungstext-Spalte: Volltext anzeigen, umbrechen, kein Abschneiden */
+  #kategorisierungTable .kategorisierung-buchungstext {
+    max-width: 45vw;
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    vertical-align: top;
+  }
 </style>
 {% endblock %}
 
@@ -29,6 +39,9 @@
             <button type="button" class="btn btn-outline-primary me-2" id="btnRegeln" onclick="regelnAnwenden()">
                 <i class="bi bi-gear me-1"></i>Regeln anwenden
             </button>
+            <button type="button" class="btn btn-outline-warning me-2" id="btnRegelnUeberschreiben" onclick="regelnErneutAnwenden()" title="Regeln auf die letzten 500 Transaktionen erneut anwenden (überschreibt bestehende Kategorie – z. B. nach erweiterten Regeln wie KFZ Steuer)">
+                <i class="bi bi-arrow-repeat me-1"></i>Regeln erneut anwenden
+            </button>
             <button type="button" class="btn btn-outline-info me-2" id="btnKiVorladen" onclick="kiVorschlaegeVorladen()" title="KI-Vorschläge für alle unkategorisierten Zeilen dieser Seite laden (kann 1–2 Min. dauern)">
                 <i class="bi bi-cpu me-1"></i>KI vorladen
             </button>
@@ -46,8 +59,14 @@
                     <div class="row g-3 align-items-end">
                         <div class="col-auto">
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="nurUnkategorisiert" checked>
+                                <input class="form-check-input" type="checkbox" id="nurUnkategorisiert">
                                 <label class="form-check-label" for="nurUnkategorisiert">Nur unkategorisierte</label>
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="nurTrainierte">
+                                <label class="form-check-label" for="nurTrainierte" title="Nur bereits kategorisierte (trainierte) Zeilen">Nur trainierte</label>
                             </div>
                         </div>
                         <div class="col-md-2">
@@ -111,7 +130,7 @@
                                 <tr>
                                     <th style="width: 95px;">Datum</th>
                                     <th style="width: 100px;" class="text-end">Betrag</th>
-                                    <th>Verwendungszweck / Buchungstext / Gegenkonto</th>
+                                    <th style="min-width: 280px;">Verwendungszweck / Buchungstext / Gegenkonto</th>
                                     <th style="width: 200px;">Kategorie</th>
                                     <th style="width: 160px;">Unterkategorie</th>
                                     <th style="width: 220px;">Aktionen</th>

@@ -6,7 +6,7 @@ TAG 213: Synchronisiert Mitarbeiterdaten aus LDAP und Locosoft
 """
 
 from typing import Dict, Optional, List, Tuple
-from datetime import datetime
+from datetime import datetime, date
 import logging
 
 from api.db_utils import db_session, locosoft_session, row_to_dict
@@ -139,14 +139,14 @@ def sync_from_ldap(employee_id: int, ldap_username: str, overwrite: bool = False
                     update_fields.append('email = %s')
                     update_values.append(ldap_data['email'])
             
-            # Abteilung
+            # Abteilung (AD = führend: immer übernehmen wenn LDAP Wert hat, auch bei Restwert wie "Wer")
             if overwrite or not emp_dict.get('department_name'):
                 if ldap_data.get('department') and ldap_data['department'] != emp_dict.get('department_name'):
                     changes['department_name'] = {'old': emp_dict.get('department_name'), 'new': ldap_data['department']}
                     update_fields.append('department_name = %s')
                     update_values.append(ldap_data['department'])
             
-            # Standort (location)
+            # Standort (location) – aus AD company
             if overwrite or not emp_dict.get('location'):
                 if ldap_data.get('company'):
                     location = LDAP_COMPANY_MAPPING.get(ldap_data['company'], ldap_data['company'])
@@ -162,12 +162,11 @@ def sync_from_ldap(employee_id: int, ldap_username: str, overwrite: bool = False
                     update_fields.append('title = %s')
                     update_values.append(ldap_data['title'])
             
-            # Company
-            if overwrite or not emp_dict.get('company'):
-                if ldap_data.get('company') and ldap_data['company'] != emp_dict.get('company'):
-                    changes['company'] = {'old': emp_dict.get('company'), 'new': ldap_data['company']}
-                    update_fields.append('company = %s')
-                    update_values.append(ldap_data['company'])
+            # Firma (company): AD ist führend – immer aus LDAP übernehmen wenn vorhanden (auch bei Teil-Eingabe wie "Aut")
+            if ldap_data.get('company') and ldap_data['company'] != emp_dict.get('company'):
+                changes['company'] = {'old': emp_dict.get('company'), 'new': ldap_data['company']}
+                update_fields.append('company = %s')
+                update_values.append(ldap_data['company'])
             
             # Company Email
             if overwrite or not emp_dict.get('company_email'):
@@ -286,6 +285,21 @@ def sync_from_locosoft(employee_id: int, locosoft_id: int, overwrite: bool = Fal
             update_fields = []
             update_values = []
             
+            # Automatik: Bereits vorhandenes Austrittsdatum in der Vergangenheit → deaktivieren (z. B. nachträglicher Sync)
+            exit_date_val = emp_dict.get('exit_date')
+            if exit_date_val and emp_dict.get('aktiv', True):
+                if isinstance(exit_date_val, str):
+                    exit_date_val = datetime.strptime(exit_date_val[:10], '%Y-%m-%d').date()
+                elif hasattr(exit_date_val, 'date'):
+                    exit_date_val = exit_date_val.date()
+                if exit_date_val <= date.today():
+                    update_fields.append('aktiv = %s')
+                    update_values.append(False)
+                    update_fields.append('deactivate_after_exit = %s')
+                    update_values.append(True)
+                    changes['aktiv'] = {'old': True, 'new': False}
+                    changes['deactivate_after_exit'] = {'old': False, 'new': True}
+            
             # Name parsen
             parsed_name = parse_locosoft_name(loco_dict.get('name', ''))
             
@@ -344,6 +358,14 @@ def sync_from_locosoft(employee_id: int, locosoft_id: int, overwrite: bool = Fal
                         changes['exit_date'] = {'old': str(current_exit) if current_exit else None, 'new': str(term_date)}
                         update_fields.append('exit_date = %s')
                         update_values.append(term_date)
+                        # Automatik: Austritt in der Vergangenheit → im Portal deaktivieren (nicht mehr im Urlaubsplaner)
+                        if term_date <= date.today():
+                            update_fields.append('aktiv = %s')
+                            update_values.append(False)
+                            update_fields.append('deactivate_after_exit = %s')
+                            update_values.append(True)
+                            changes['aktiv'] = {'old': True, 'new': False}
+                            changes['deactivate_after_exit'] = {'old': False, 'new': True}
             
             # Personalnummer
             if overwrite or not emp_dict.get('personal_nr'):
@@ -402,6 +424,13 @@ def sync_from_locosoft(employee_id: int, locosoft_id: int, overwrite: bool = Fal
                         changes['exit_date'] = {'old': str(current_exit) if current_exit else None, 'new': str(leave_date)}
                         update_fields.append('exit_date = %s')
                         update_values.append(leave_date)
+                        if leave_date <= date.today():
+                            update_fields.append('aktiv = %s')
+                            update_values.append(False)
+                            update_fields.append('deactivate_after_exit = %s')
+                            update_values.append(True)
+                            changes['aktiv'] = {'old': True, 'new': False}
+                            changes['deactivate_after_exit'] = {'old': False, 'new': True}
             
             # Speichere Änderungen
             if update_fields:
@@ -540,10 +569,9 @@ def _calculate_ldap_changes(employee_id: int, ldap_username: str, emp_dict: Dict
             if ldap_data.get('title') and ldap_data['title'] != emp_dict.get('title'):
                 changes['title'] = {'old': emp_dict.get('title'), 'new': ldap_data['title']}
         
-        # Company
-        if overwrite or not emp_dict.get('company'):
-            if ldap_data.get('company') and ldap_data['company'] != emp_dict.get('company'):
-                changes['company'] = {'old': emp_dict.get('company'), 'new': ldap_data['company']}
+        # Firma (company): AD führend – immer anzeigen/übernehmen wenn LDAP Wert hat
+        if ldap_data.get('company') and ldap_data['company'] != emp_dict.get('company'):
+            changes['company'] = {'old': emp_dict.get('company'), 'new': ldap_data['company']}
         
         # Company Email
         if overwrite or not emp_dict.get('company_email'):

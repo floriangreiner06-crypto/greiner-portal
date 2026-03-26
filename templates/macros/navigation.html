@@ -1,7 +1,10 @@
 {# Navigation Macro - TAG 190 #}
-{% macro render_navigation_item(item, level=0) %}
+{# Consecutive dividers are collapsed to one (prevents grey stripes from empty DB divider rows) #}
+{% macro render_navigation_item(item, level=0, prev_was_divider=false) %}
     {% if item.is_divider %}
+        {% if not prev_was_divider %}
         <li><hr class="dropdown-divider"></li>
+        {% endif %}
     {% elif item.is_header %}
         <li><h6 class="dropdown-header text-muted">{{ item.label }}</h6></li>
     {% elif item.is_dropdown %}
@@ -15,7 +18,7 @@
                 <ul class="dropdown-menu" aria-labelledby="{{ dropdown_id }}">
                     {% if item.children %}
                         {% for child in item.children %}
-                            {{ render_navigation_item(child, level + 1) }}
+                            {{ render_navigation_item(child, level + 1, loop.previtem.is_divider if loop.previtem else false) }}
                         {% endfor %}
                     {% endif %}
                 </ul>
@@ -29,7 +32,7 @@
                 <ul class="dropdown-menu" aria-labelledby="{{ dropdown_id }}">
                     {% if item.children %}
                         {% for child in item.children %}
-                            {{ render_navigation_item(child, level + 1) }}
+                            {{ render_navigation_item(child, level + 1, loop.previtem.is_divider if loop.previtem else false) }}
                         {% endfor %}
                     {% endif %}
                 </ul>

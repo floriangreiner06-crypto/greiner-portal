@@ -411,6 +411,29 @@
                     </div>
                 </div>
                 <div class="mb-3">
+                    <label class="form-label">Arbeitstage (Wochentage)</label>
+                    <p class="small text-muted">Welche Tage wird gearbeitet? Leer = alle Werktage (Mo–Fr).</p>
+                    <div class="d-flex flex-wrap gap-3">
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-work-day" data-day="0" id="wtm_mo"> Mo</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-work-day" data-day="1" id="wtm_di"> Di</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-work-day" data-day="2" id="wtm_mi"> Mi</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-work-day" data-day="3" id="wtm_do"> Do</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-work-day" data-day="4" id="wtm_fr"> Fr</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-work-day" data-day="5" id="wtm_sa"> Sa</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-work-day" data-day="6" id="wtm_so"> So</label>
+                    </div>
+                    <label class="form-label mt-2 small">Halber Tag an:</label>
+                    <div class="d-flex flex-wrap gap-3">
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-half-day" data-day="0" id="wtm_half_mo"> Mo ½</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-half-day" data-day="1" id="wtm_half_di"> Di ½</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-half-day" data-day="2" id="wtm_half_mi"> Mi ½</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-half-day" data-day="3" id="wtm_half_do"> Do ½</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-half-day" data-day="4" id="wtm_half_fr"> Fr ½</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-half-day" data-day="5" id="wtm_half_sa"> Sa ½</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input wtm-half-day" data-day="6" id="wtm_half_so"> So ½</label>
+                    </div>
+                </div>
+                <div class="mb-3">
                     <label class="form-label">Beschreibung</label>
                     <input type="text" class="form-control" id="wtm_description" placeholder="z.B. Vollzeit, Teilzeit 80%">
                 </div>
@@ -1453,6 +1476,19 @@ function formatDate(dateStr) {
     return date.toLocaleDateString('de-DE');
 }
 
+function toDateInputValue(dateValue) {
+    if (!dateValue) return '';
+    const raw = String(dateValue).trim();
+    const match = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) return match[1];
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return '';
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, '0');
+    const day = String(parsed.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
 function calculateSeniority(entryDate) {
     if (!entryDate) return '-';
     const entry = new Date(entryDate);
@@ -1862,6 +1898,23 @@ function showSyncPreviewModal(data) {
 // ============================================================================
 let workingTimeModalInstance = null;
 
+function setWtmWeekdays(workWeekdays, halfWeekdays) {
+    const workArr = workWeekdays ? String(workWeekdays).split(',').map(s => s.trim()).filter(Boolean) : [];
+    const halfArr = halfWeekdays ? String(halfWeekdays).split(',').map(s => s.trim()).filter(Boolean) : [];
+    document.querySelectorAll('.wtm-work-day').forEach(cb => {
+        cb.checked = workArr.length === 0 ? ['0','1','2','3','4'].includes(cb.dataset.day) : workArr.includes(cb.dataset.day);
+    });
+    document.querySelectorAll('.wtm-half-day').forEach(cb => {
+        cb.checked = halfArr.includes(cb.dataset.day);
+    });
+}
+
+function getWtmWeekdays() {
+    const work = Array.from(document.querySelectorAll('.wtm-work-day:checked')).map(cb => cb.dataset.day).sort().join(',') || null;
+    const half = Array.from(document.querySelectorAll('.wtm-half-day:checked')).map(cb => cb.dataset.day).sort().join(',') || null;
+    return { work_weekdays: work || null, half_weekdays: half || null };
+}
+
 function addWorkingTimeModel() {
     if (!currentEmployeeId) return;
     document.getElementById('workingTimeModalTitle').textContent = 'Neues Arbeitszeitmodell';
@@ -1871,6 +1924,7 @@ function addWorkingTimeModel() {
     document.getElementById('wtm_hours_per_week').value = '';
     document.getElementById('wtm_working_days_per_week').value = '5';
     document.getElementById('wtm_description').value = '';
+    setWtmWeekdays('0,1,2,3,4', '');
     if (!workingTimeModalInstance) {
         workingTimeModalInstance = new bootstrap.Modal(document.getElementById('workingTimeModal'));
     }
@@ -1883,11 +1937,12 @@ function editWorkingTimeModel(id) {
     if (!model) return;
     document.getElementById('workingTimeModalTitle').textContent = 'Arbeitszeitmodell bearbeiten';
     document.getElementById('wtm_model_id').value = String(model.id);
-    document.getElementById('wtm_start_date').value = model.start_date || '';
-    document.getElementById('wtm_end_date').value = model.end_date || '';
+    document.getElementById('wtm_start_date').value = toDateInputValue(model.start_date);
+    document.getElementById('wtm_end_date').value = toDateInputValue(model.end_date);
     document.getElementById('wtm_hours_per_week').value = model.hours_per_week ?? '';
     document.getElementById('wtm_working_days_per_week').value = model.working_days_per_week ?? 5;
     document.getElementById('wtm_description').value = model.description || '';
+    setWtmWeekdays(model.work_weekdays, model.half_weekdays);
     if (!workingTimeModalInstance) {
         workingTimeModalInstance = new bootstrap.Modal(document.getElementById('workingTimeModal'));
     }
@@ -1903,12 +1958,15 @@ async function saveWorkingTimeModelSubmit() {
         alert('Bitte Startdatum und Stunden/Woche ausfüllen.');
         return;
     }
+    const wd = getWtmWeekdays();
     const data = {
         start_date: startDate,
         end_date: document.getElementById('wtm_end_date').value || null,
         hours_per_week: parseFloat(hoursPerWeek),
         working_days_per_week: parseInt(document.getElementById('wtm_working_days_per_week').value, 10) || 5,
-        description: document.getElementById('wtm_description').value?.trim() || null
+        description: document.getElementById('wtm_description').value?.trim() || null,
+        work_weekdays: wd.work_weekdays,
+        half_weekdays: wd.half_weekdays
     };
     try {
         const url = modelId

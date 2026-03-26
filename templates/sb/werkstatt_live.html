@@ -737,6 +737,24 @@ function renderAuftragDetail(data) {
         }
     }
     
+    const gudat = data.gudat || {};
+    const states = gudat.states || [];
+    const summen = a.summen || {};
+    const offenAw = parseFloat(summen.offen_aw) || 0;
+    const gudatZeigtFakturiert = states.some(st => (st.name || '').toLowerCase().indexOf('fakturiert') !== -1);
+    const diskrepanz = gudatZeigtFakturiert && offenAw > 0;
+    html += '<hr><h6 class="text-muted"><i class="bi bi-check2-square"></i> Gudat-Vorgangsstatus (zur Kontrolle)</h6>';
+    if (states.length > 0) {
+        html += '<p class="mb-1">' + states.map(st => '<span class="badge bg-secondary me-1">' + (st.name || '-').replace(/</g,'&lt;') + '</span>').join(' ') + '</p>';
+    } else if (gudat.dossier_id) {
+        html += '<p class="mb-0 small text-muted">Keine Vorgangsstatus von Gudat geladen (Dossier vorhanden).</p>';
+    } else {
+        html += '<p class="mb-0 small text-muted">Gudat-Daten für diesen Auftrag nicht verfügbar.</p>';
+    }
+    if (diskrepanz) {
+        html += '<div class="alert alert-warning py-2 mb-0 mt-1"><i class="bi bi-exclamation-triangle me-1"></i> In Gudat als erledigt markiert – in Locosoft noch nicht abgerechnet. Bitte prüfen.</div>';
+    }
+    
     document.getElementById('modalBody').innerHTML = html;
 }
 

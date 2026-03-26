@@ -452,24 +452,45 @@ def get_mechaniker_detail(mechaniker_nr):
                 abgerechnet_auftrags_nrs = [str(a.get('auftrags_nr', '')) for a in auftraege_abgerechnet]
                 
                 live_query = """
-                    WITH stempelungen_mechaniker AS (
-                        -- TAG 215 FIX: Nur Stempelzeit im gefilterten Zeitraum zählen!
-                        -- Problem: Vorher wurde Gesamt-Stempelzeit des Auftrags gezeigt, nicht nur für den Zeitraum
-                        SELECT DISTINCT
-                            t.order_number,
-                            t.employee_number,
-                            SUM(EXTRACT(EPOCH FROM (COALESCE(t.end_time, NOW()) - t.start_time)) / 60) as stempelzeit_min
-                        FROM times t
-                        WHERE t.type = 2
-                            AND t.employee_number = %s
-                            AND t.end_time IS NOT NULL
-                            AND DATE(t.start_time) >= %s AND DATE(t.start_time) <= %s
-                            AND t.order_number > 31
-                        GROUP BY t.order_number, t.employee_number
+                    WITH zeitbloecke_dedup AS (
+                        -- Jeden Stempelblock nur einmal zählen (Locosoft speichert ggf. pro Position;
+                        -- L211PR zeigt eine Realzeit, wir dürfen nicht mehrfach summieren)
+                        SELECT d.order_number, d.employee_number,
+                            EXTRACT(EPOCH FROM (COALESCE(d.end_time, NOW()) - d.start_time)) / 60 as minuten
+                        FROM (
+                            SELECT DISTINCT ON (order_number, employee_number, start_time, end_time)
+                                order_number, employee_number, start_time, end_time
+                            FROM times t
+                            WHERE t.type = 2
+                                AND t.employee_number = %s
+                                AND t.end_time IS NOT NULL
+                                AND DATE(t.start_time) >= %s AND DATE(t.start_time) <= %s
+                                AND t.order_number > 31
+                            ORDER BY order_number, employee_number, start_time, end_time
+                        ) d
+                    ),
+                    stempelungen_mechaniker AS (
+                        SELECT order_number, employee_number,
+                            SUM(minuten)::numeric as stempelzeit_min
+                        FROM zeitbloecke_dedup
+                        GROUP BY order_number, employee_number
+                    ),
+                    zeitbloecke_gesamt_dedup AS (
+                        SELECT d.order_number,
+                            EXTRACT(EPOCH FROM (COALESCE(d.end_time, NOW()) - d.start_time)) / 60 as minuten
+                        FROM (
+                            SELECT DISTINCT ON (order_number, employee_number, start_time, end_time)
+                                order_number, employee_number, start_time, end_time
+                            FROM times t
+                            WHERE t.type = 2
+                                AND t.employee_number = %s
+                                AND t.end_time IS NOT NULL
+                                AND t.order_number IN (SELECT order_number FROM stempelungen_mechaniker)
+                                AND t.order_number > 31
+                            ORDER BY order_number, employee_number, start_time, end_time
+                        ) d
                     ),
                     -- TAG 215 FIX: AW anteilig basierend auf Stempelzeit im Zeitraum
-                    -- Problem: AW ist eine Auftragseigenschaft, nicht zeitabhängig
-                    -- Lösung: AW anteilig basierend auf Stempelzeit-Verhältnis berechnen
                     labours_gesamt AS (
                         SELECT
                             l.order_number,
@@ -481,17 +502,9 @@ def get_mechaniker_detail(mechaniker_nr):
                         GROUP BY l.order_number
                     ),
                     stempelungen_gesamt AS (
-                        -- Gesamt-Stempelzeit des Auftrags (alle Tage, nicht nur Zeitraum)
-                        SELECT
-                            t.order_number,
-                            SUM(EXTRACT(EPOCH FROM (COALESCE(t.end_time, NOW()) - t.start_time)) / 60) as stempelzeit_min_gesamt
-                        FROM times t
-                        WHERE t.type = 2
-                            AND t.employee_number = %s
-                            AND t.end_time IS NOT NULL
-                            AND t.order_number IN (SELECT order_number FROM stempelungen_mechaniker)
-                            AND t.order_number > 31
-                        GROUP BY t.order_number
+                        SELECT order_number, SUM(minuten)::numeric as stempelzeit_min_gesamt
+                        FROM zeitbloecke_gesamt_dedup
+                        GROUP BY order_number
                     ),
                     labours_mechaniker_gefiltert AS (
                         -- AW anteilig: AW_gesamt × (Stempelzeit_Zeitraum / Stempelzeit_Gesamt)

@@ -100,11 +100,21 @@ def kategorisiere_teil(row):
         result['empfehlung'] = 'Abverkauf oder Rückgabe prüfen'
         return result
 
+    # PENNER nur bei hoher Reichweite, wenn NICHT kürzlich verkauft (Bugfix: Teile mit
+    # letztem Abgang z.B. heute sind aktive Läufer, keine Ladenhüter)
     if reichweite > 24:
-        result['kategorie'] = 'penner'
-        result['status_icon'] = '🔴'
-        result['prioritaet'] = 2
-        result['empfehlung'] = 'Bestand zu hoch - Abverkauf prüfen'
+        tage_ok = tage_seit_abgang is None or tage_seit_abgang > 90
+        if tage_ok:
+            result['kategorie'] = 'penner'
+            result['status_icon'] = '🔴'
+            result['prioritaet'] = 2
+            result['empfehlung'] = 'Bestand zu hoch - Abverkauf prüfen'
+            return result
+        # Kürzlich verkauft (≤90 Tage) trotz hoher Reichweite → normal, nur Hinweis
+        result['kategorie'] = 'normal'
+        result['status_icon'] = '🟡'
+        result['prioritaet'] = 4
+        result['empfehlung'] = 'Bestand hoch, Abverkauf aktiv - beobachten'
         return result
 
     # RENNER: Hoher Umschlag oder niedrige Reichweite
@@ -173,6 +183,57 @@ def get_base_query():
     """
 
 
+def get_aggregated_by_part_query():
+    """Wie get_base_query(), aber pro Teilenummer aggregiert (alle Standorte zusammengefasst).
+
+    Jede Teilenummer erscheint nur einmal → genau eine Kategorie (kein „sowohl Renner als auch Penner“).
+    """
+    return """
+        WITH lager_analyse AS (
+            SELECT
+                ps.part_number,
+                pm.description,
+                pm.parts_type,
+                ps.stock_no as betrieb,
+                ps.stock_level as bestand,
+                ps.usage_value as ek_preis,
+                pm.rr_price as vk_preis,
+                ROUND((ps.stock_level * ps.usage_value)::numeric, 2) as lagerwert,
+                ps.sales_current_year as verkauf_aktuell,
+                ps.sales_previous_year as verkauf_vorjahr,
+                COALESCE(ps.sales_current_year, 0) +
+                    (COALESCE(ps.sales_previous_year, 0) *
+                     (EXTRACT(MONTH FROM CURRENT_DATE)::numeric / 12)) as verkauf_12m,
+                ps.last_outflow_date as letzter_abgang,
+                (CURRENT_DATE - ps.last_outflow_date) as tage_seit_abgang,
+                ps.minimum_stock_level as mindestbestand
+            FROM parts_stock ps
+            JOIN parts_master pm ON ps.part_number = pm.part_number
+            WHERE ps.stock_level > 0
+            AND pm.parts_type NOT IN (1, 60, 65)
+            AND UPPER(pm.description) NOT LIKE '%KAUTION%'
+            AND UPPER(pm.description) NOT LIKE '%RUECKLAUFTEIL%'
+            AND UPPER(pm.description) NOT LIKE '%ALTT%WERT%'
+        )
+        SELECT
+            part_number,
+            description,
+            parts_type,
+            SUM(bestand)::numeric as bestand,
+            SUM(lagerwert)::numeric as lagerwert,
+            MAX(ek_preis)::numeric as ek_preis,
+            MAX(vk_preis)::numeric as vk_preis,
+            SUM(verkauf_aktuell)::numeric as verkauf_aktuell,
+            SUM(verkauf_vorjahr)::numeric as verkauf_vorjahr,
+            SUM(verkauf_12m)::numeric as verkauf_12m,
+            MAX(letzter_abgang) as letzter_abgang,
+            (CURRENT_DATE - MAX(letzter_abgang)) as tage_seit_abgang,
+            SUM(mindestbestand)::numeric as mindestbestand
+        FROM lager_analyse
+        GROUP BY part_number, description, parts_type
+    """
+
+
 # =============================================================================
 # API ENDPOINTS
 # =============================================================================
@@ -214,20 +275,18 @@ def get_renner_penner():
         conn.autocommit = True
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
-        query = get_base_query()
-        params = []
-        where_clauses = [f"lagerwert >= {min_wert}"]
-
+        # Ohne Betriebsfilter: pro Teilenummer aggregieren (alle Standorte), damit jede Nummer nur in einer Kategorie landet
         if betrieb:
-            where_clauses.append(f"betrieb = {betrieb}")
-
-        if marke is not None:
-            where_clauses.append(f"parts_type = {marke}")
-
-        if where_clauses:
+            query = get_base_query()
+            where_clauses = [f"lagerwert >= {min_wert}", f"betrieb = {betrieb}"]
+            if marke is not None:
+                where_clauses.append(f"parts_type = {marke}")
             query += " WHERE " + " AND ".join(where_clauses)
+        else:
+            query = "SELECT * FROM (" + get_aggregated_by_part_query().strip() + ") agg WHERE lagerwert >= " + str(min_wert)
+            if marke is not None:
+                query += f" AND parts_type = {marke}"
 
-        # Sortierung
         sort_map = {
             'lagerwert': 'lagerwert DESC',
             'reichweite': 'tage_seit_abgang DESC NULLS LAST',
@@ -235,7 +294,7 @@ def get_renner_penner():
             'tage': 'tage_seit_abgang DESC NULLS LAST'
         }
         query += f" ORDER BY {sort_map.get(sort, 'lagerwert DESC')}"
-        query += f" LIMIT {limit * 3}"  # Mehr laden wegen Filterung
+        query += f" LIMIT {limit * 3}"
 
         cur.execute(query)
         rows = cur.fetchall()
@@ -247,13 +306,14 @@ def get_renner_penner():
         normal = []
 
         for row in rows:
+            rb = row.get('betrieb')
             teil = {
                 'part_number': row['part_number'],
                 'beschreibung': row['description'],
                 'marke': PARTS_TYPE_NAMES.get(row['parts_type'], f"Typ {row['parts_type']}"),
                 'parts_type': row['parts_type'],
-                'betrieb': row['betrieb'],
-                'betrieb_name': BETRIEB_NAMEN.get(row['betrieb'], '?'),
+                'betrieb': rb,
+                'betrieb_name': BETRIEB_NAMEN.get(rb, '?') if rb is not None else 'Alle Standorte',
                 'bestand': float(row['bestand'] or 0),
                 'ek_preis': float(row['ek_preis'] or 0),
                 'vk_preis': float(row['vk_preis'] or 0),
@@ -261,8 +321,8 @@ def get_renner_penner():
                 'verkauf_aktuell': float(row['verkauf_aktuell'] or 0),
                 'verkauf_vorjahr': float(row['verkauf_vorjahr'] or 0),
                 'verkauf_12m': float(row['verkauf_12m'] or 0),
-                'letzter_abgang': row['letzter_abgang'].strftime('%d.%m.%Y') if row['letzter_abgang'] else None,
-                'tage_seit_abgang': row['tage_seit_abgang'],
+                'letzter_abgang': row['letzter_abgang'].strftime('%d.%m.%Y') if row.get('letzter_abgang') else None,
+                'tage_seit_abgang': row.get('tage_seit_abgang'),
                 'mindestbestand': float(row['mindestbestand'] or 0)
             }
 

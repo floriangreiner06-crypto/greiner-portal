@@ -502,8 +502,8 @@ def create_working_time_model(employee_id):
             cursor.execute("""
                 INSERT INTO employee_working_time_models 
                 (employee_id, start_date, end_date, hours_per_week, working_days_per_week, 
-                 weekly_hours, hourly_wage, gross_wage, description)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 weekly_hours, hourly_wage, gross_wage, description, work_weekdays, half_weekdays)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (
                 employee_id,
@@ -514,7 +514,9 @@ def create_working_time_model(employee_id):
                 data.get('weekly_hours'),
                 data.get('hourly_wage'),
                 data.get('gross_wage'),
-                data.get('description')
+                data.get('description'),
+                data.get('work_weekdays'),
+                data.get('half_weekdays')
             ))
             model_id = cursor.fetchone()[0]
             conn.commit()
@@ -537,8 +539,9 @@ def update_working_time_model(employee_id, model_id):
             update_fields = []
             update_values = []
             
-            for field in ['start_date', 'end_date', 'hours_per_week', 'working_days_per_week', 
-                         'weekly_hours', 'hourly_wage', 'gross_wage', 'description']:
+            for field in ['start_date', 'end_date', 'hours_per_week', 'working_days_per_week',
+                         'weekly_hours', 'hourly_wage', 'gross_wage', 'description',
+                         'work_weekdays', 'half_weekdays']:
                 if field in data:
                     update_fields.append(f"{field} = %s")
                     update_values.append(data[field])

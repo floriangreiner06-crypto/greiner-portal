@@ -8,6 +8,16 @@
     .tbl-verkaeufer { font-size: 0.95rem; }
     .tbl-verkaeufer th { white-space: nowrap; }
     .badge-pool { background: #6f42c1; color: #fff; }
+    .badge-planung { background: #0d6efd; color: #fff; font-size: 0.7rem; }
+    .tbl-verkaeufer tr.has-detail-plan { background-color: rgba(13, 110, 253, 0.07); }
+    .tbl-verkaeufer .ziel-delta { font-size: 0.75rem; color: #6c757d; white-space: nowrap; }
+    /* Zielverteilungstabelle ohne horizontales Scrollen – kompakt, volle Breite nutzen */
+    #verteilung-tabelle { overflow-x: visible; }
+    #verteilung-tabelle .tbl-verkaeufer { table-layout: fixed; width: 100%; font-size: 0.85rem; }
+    #verteilung-tabelle .tbl-verkaeufer th, #verteilung-tabelle .tbl-verkaeufer td { padding: 0.25rem 0.35rem; }
+    #verteilung-tabelle .tbl-verkaeufer .input-ziel-nw, #verteilung-tabelle .tbl-verkaeufer .input-ziel-gw { width: 100%; max-width: 3.5em; min-width: 2.5em; }
+    #verteilung-tabelle .tbl-verkaeufer .input-pg-datum { width: 100%; max-width: 7.5em; }
+    #verteilung-tabelle .tbl-verkaeufer .input-pg-notiz { width: 100%; max-width: 5.5em; }
     .kpi-mini { font-weight: 700; color: #0d6efd; }
     .kpi-mini.nw { color: #0d6efd; }
     .kpi-mini.gw { color: #198754; }
@@ -27,6 +37,7 @@
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
                         <label class="mb-0">Jahr:</label>
                         <select id="historie-jahr" class="form-select form-select-sm" style="width: auto;">
+                            <!-- Optionen werden beim Laden auf VJ + weitere Jahre gesetzt -->
                             <option value="2025">2025</option>
                             <option value="2024">2024</option>
                             <option value="2023">2023</option>
@@ -45,7 +56,7 @@
             </div>
         </div>
 
-        <div class="col-lg-6 mb-4">
+        <div class="col-12 mb-4">
             <div class="card zielplanung-card">
                 <div class="card-header">Zielverteilung (Vorschlag)</div>
                 <div class="card-body">
@@ -79,16 +90,23 @@
                         Differenz: <span id="diff-delta-nw">0</span> NW / <span id="diff-delta-gw">0</span> GW.
                         <span class="small d-block mt-1 text-muted">Differenzen können in weiteren Planungsgesprächen ausgeglichen oder bewusst getragen werden.</span>
                     </div>
+                    <div id="planungsstand-banner" class="alert alert-info py-2 mb-2 d-none" role="status">
+                        <span id="planungsstand-text"></span>
+                    </div>
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-ziele-laden">Gespeicherte Ziele laden</button>
                         <button type="button" class="btn btn-sm btn-primary" id="btn-ziele-speichern">Ziele speichern</button>
+                        <button type="button" class="btn btn-sm btn-success d-none" id="btn-freigeben" title="Planung verbindlich für Monatsziele und Auftragseingang machen">Planung freigeben</button>
                         <span id="ziele-speichern-hinweis" class="small text-success d-none"></span>
                     </div>
                     <div id="verteilung-placeholder" class="text-muted small">Konzernziele anpassen und „Berechnen“ klicken.</div>
                     <div id="verteilung-kpis" class="small mb-2 d-none"></div>
-                    <div id="verteilung-tabelle" class="table-responsive d-none">
+                    <div id="verteilung-tabelle" class="d-none">
                         <table class="table table-sm table-hover tbl-verkaeufer">
-                            <thead><tr><th>Nr</th><th>Name</th><th>IST NW</th><th>IST GW</th><th>Ziel Hy</th><th>Ziel Op</th><th>Ziel Lp</th><th>Ziel NW</th><th>Ziel GW</th><th>Summe</th><th>Planungsgespräch</th><th></th></tr></thead>
+                            <colgroup>
+                                <col style="width:3%"><col style="width:12%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:6%"><col style="width:6%"><col style="width:5%"><col style="width:18%"><col style="width:7%">
+                            </colgroup>
+                            <thead><tr><th>Nr</th><th>Name</th><th>IST NW</th><th>IST GW</th><th title="Ziel Hyundai">Hy</th><th title="Ziel Opel">Op</th><th title="Ziel Leapmotor">Lp</th><th>Ziel NW</th><th>Ziel GW</th><th>Summe</th><th title="Planungsgespräch">PG</th><th></th></tr></thead>
                             <tbody id="verteilung-tbody"></tbody>
                             <tfoot id="verteilung-tfoot"></tfoot>
                         </table>
@@ -138,9 +156,131 @@
 <script>
 (function() {
     const API = '/api/verkaeufer-zielplanung';
+    var aktuellerPlanungsstand = null;
 
-    document.getElementById('btn-lade-historie').addEventListener('click', function() {
+    function setPlanungsstandBanner(status, jahr) {
+        var banner = document.getElementById('planungsstand-banner');
+        var text = document.getElementById('planungsstand-text');
+        var btnFreigeben = document.getElementById('btn-freigeben');
+        if (!status) {
+            banner.classList.add('d-none');
+            if (btnFreigeben) btnFreigeben.classList.add('d-none');
+            return;
+        }
+        banner.classList.remove('d-none');
+        if (status === 'freigegeben') {
+            text.textContent = 'Planung ' + jahr + ' ist freigegeben – Ziele sind verbindlich für Monatsziele und Auftragseingang.';
+            if (btnFreigeben) btnFreigeben.classList.add('d-none');
+        } else {
+            text.textContent = 'Entwurf (noch nicht freigegeben). Nach Anpassungen „Ziele speichern“, dann „Planung freigeben“.';
+            if (btnFreigeben) {
+                btnFreigeben.classList.remove('d-none');
+                btnFreigeben.disabled = false;
+            }
+        }
+    }
+
+    function loadPlanungsstand(jahr) {
+        fetch(API + '/planungsstand/' + jahr)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.success) return;
+                var stand = data.planungsstand;
+                var ziele = data.ziele || [];
+                aktuellerPlanungsstand = stand;
+                if (stand) {
+                    document.getElementById('referenz-jahr').value = stand.referenz_jahr;
+                    document.getElementById('konzern-nw').value = stand.konzernziel_nw;
+                    document.getElementById('konzern-gw').value = stand.konzernziel_gw;
+                    document.getElementById('ziel-nw-hyundai').value = stand.ziel_nw_hyundai != null ? stand.ziel_nw_hyundai : '';
+                    document.getElementById('ziel-nw-opel').value = stand.ziel_nw_opel != null ? stand.ziel_nw_opel : '';
+                    document.getElementById('ziel-nw-leapmotor').value = stand.ziel_nw_leapmotor != null ? stand.ziel_nw_leapmotor : '';
+                    setPlanungsstandBanner(stand.status, jahr);
+                } else {
+                    setPlanungsstandBanner(null);
+                }
+                if (stand && ziele.length > 0) {
+                    var refJahr = stand.referenz_jahr;
+                    var zielNw = stand.konzernziel_nw;
+                    var zielGw = stand.konzernziel_gw;
+                    var url = API + '/verteilung?ziel_jahr=' + jahr + '&referenz_jahr=' + refJahr + '&ziel_nw=' + zielNw + '&ziel_gw=' + zielGw;
+                    if (stand.ziel_nw_hyundai != null) url += '&ziel_nw_hyundai=' + stand.ziel_nw_hyundai;
+                    if (stand.ziel_nw_opel != null) url += '&ziel_nw_opel=' + stand.ziel_nw_opel;
+                    if (stand.ziel_nw_leapmotor != null) url += '&ziel_nw_leapmotor=' + stand.ziel_nw_leapmotor;
+                    fetch(url)
+                        .then(function(r) { return r.json(); })
+                        .then(function(vertData) {
+                            if (!vertData.success) return;
+                            var zieleByNr = {};
+                            ziele.forEach(function(z) { zieleByNr[z.mitarbeiter_nr] = z; });
+                            fillVerteilungstabelle(vertData, jahr, refJahr, zieleByNr);
+                        })
+                        .catch(function() {});
+                }
+            })
+            .catch(function() {});
+    }
+
+    function fillVerteilungstabelle(data, zielJahr, refJahr, zieleByNr) {
+        var tbody = document.getElementById('verteilung-tbody');
+        var tfoot = document.getElementById('verteilung-tfoot');
+        tbody.innerHTML = '';
+        data.verkaeufer.forEach(function(v) {
+            var z = zieleByNr && zieleByNr[v.mitarbeiter_nr];
+            var zn = z ? (z.ziel_nw || 0) : (v.ziel_nw || 0);
+            var zg = z ? (z.ziel_gw || 0) : (v.ziel_gw || 0);
+            var vorschlagNw = v.ziel_nw || 0;
+            var vorschlagGw = v.ziel_gw || 0;
+            var pgDatum = z && z.planungsgespraech_am ? z.planungsgespraech_am.substring(0, 10) : '';
+            var pgNotiz = z && z.planungsgespraech_notiz ? z.planungsgespraech_notiz : '';
+            var detailUrl = '/verkauf/zielplanung/verkaeufer/' + v.mitarbeiter_nr + '?jahr=' + zielJahr + '&referenz_jahr=' + refJahr;
+            var hasDetailPlan = !!z;
+            var deltaNw = hasDetailPlan ? (zn - vorschlagNw) : 0;
+            var deltaGw = hasDetailPlan ? (zg - vorschlagGw) : 0;
+            var deltaNwStr = hasDetailPlan ? (deltaNw >= 0 ? '+' + deltaNw : '' + deltaNw) : '';
+            var deltaGwStr = hasDetailPlan ? (deltaGw >= 0 ? '+' + deltaGw : '' + deltaGw) : '';
+            var nameCell = escapeHtml(v.name) + (hasDetailPlan ? ' <span class="badge badge-planung" title="Detail-Planung gespeichert">Planung</span>' : '');
+            var nwCell = '<input type="number" min="0" class="form-control form-control-sm input-ziel-nw" value="' + zn + '">';
+            if (hasDetailPlan) nwCell += '<br><span class="ziel-delta" title="Vorschlag (errechnet) und Differenz zum vereinbarten Wert">Vorschlag ' + vorschlagNw + (deltaNw !== 0 ? ' · Δ ' + deltaNwStr : '') + '</span>';
+            var gwCell = '<input type="number" min="0" class="form-control form-control-sm input-ziel-gw" value="' + zg + '">';
+            if (hasDetailPlan) gwCell += '<br><span class="ziel-delta" title="Vorschlag (errechnet) und Differenz zum vereinbarten Wert">Vorschlag ' + vorschlagGw + (deltaGw !== 0 ? ' · Δ ' + deltaGwStr : '') + '</span>';
+            var tr = document.createElement('tr');
+            if (hasDetailPlan) tr.classList.add('has-detail-plan');
+            tr.setAttribute('data-mitarbeiter-nr', v.mitarbeiter_nr);
+            tr.innerHTML =
+                '<td>' + v.mitarbeiter_nr + '</td>' +
+                '<td>' + nameCell + '</td>' +
+                '<td>' + v.nw_ist + '</td>' +
+                '<td>' + v.gw_ist + '</td>' +
+                '<td>' + (v.ziel_nw_hyundai || 0) + '</td>' +
+                '<td>' + (v.ziel_nw_opel || 0) + '</td>' +
+                '<td>' + (v.ziel_nw_leapmotor || 0) + '</td>' +
+                '<td>' + nwCell + '</td>' +
+                '<td>' + gwCell + '</td>' +
+                '<td class="summe-ziel"></td>' +
+                '<td><input type="date" class="form-control form-control-sm input-pg-datum" title="Planungsgespräch am" value="' + pgDatum + '"> <input type="text" class="form-control form-control-sm input-pg-notiz" placeholder="Notiz" maxlength="200" value="' + escapeHtml(pgNotiz) + '"></td>' +
+                '<td>' + (v.ist_handelsgeschaeft ? '<span class="badge badge-pool">Pool</span> ' : '') + '<a href="' + detailUrl + '" target="_blank" class="small">Detail</a></td>';
+            tbody.appendChild(tr);
+        });
+        updateSummenZeile();
+        updateDifferenzBox();
+        tfoot.innerHTML = '<tr class="table-light"><td colspan="2"><strong>GESAMT</strong></td><td></td><td></td><td></td><td></td><td></td><td id="foot-ziel-nw"></td><td id="foot-ziel-gw"></td><td id="foot-summe"></td><td></td><td></td></tr>';
+        document.getElementById('verteilung-kpis').className = 'small mb-2';
+        document.getElementById('verteilung-kpis').innerHTML =
+            'NW gesamt ' + data.konzernziel_nw + ' (Hyundai ' + (data.konzernziel_nw_hyundai != null ? data.konzernziel_nw_hyundai : '-') + ' / Opel ' + (data.konzernziel_nw_opel != null ? data.konzernziel_nw_opel : '-') + ' / Leapmotor ' + (data.konzernziel_nw_leapmotor != null ? data.konzernziel_nw_leapmotor : '-') + '). GW ' + data.konzernziel_gw + '. ' +
+            'Pool Handelsgeschäft: ' + data.pool_handelsgeschaeft_nw + ' NW / ' + data.pool_handelsgeschaeft_gw + ' GW. ' +
+            'Verteilungspool: ' + data.pool_verteilung_nw + ' NW / ' + data.pool_verteilung_gw + ' GW.';
+        document.getElementById('verteilung-placeholder').classList.add('d-none');
+        document.getElementById('verteilung-kpis').classList.remove('d-none');
+        document.getElementById('verteilung-tabelle').classList.remove('d-none');
+        tbody.querySelectorAll('.input-ziel-nw, .input-ziel-gw').forEach(function(el) { el.addEventListener('input', updateSummenZeile); });
+    }
+
+    function loadHistorie() {
         const jahr = parseInt(document.getElementById('historie-jahr').value, 10);
+        document.getElementById('historie-placeholder').textContent = 'Lade …';
+        document.getElementById('historie-placeholder').classList.remove('d-none');
+        document.getElementById('historie-tabelle').classList.add('d-none');
         fetch(API + '/stueckzahl/' + jahr)
             .then(r => r.json())
             .then(data => {
@@ -150,11 +290,18 @@
                 tbody.innerHTML = '';
                 data.verkaeufer.forEach(function(v) {
                     const tr = document.createElement('tr');
+                    var nwDisplay = v.nw_stueck;
+                    if (v.nw_neu != null || v.nw_vorfuehr != null || v.nw_tageszulassung != null) {
+                        var neu = v.nw_neu || 0, vfw = v.nw_vorfuehr || 0, tz = v.nw_tageszulassung || 0;
+                        if (neu > 0 || vfw > 0 || tz > 0) {
+                            nwDisplay = v.nw_stueck + ' NW (' + neu + ' NW / ' + vfw + ' VFW / ' + tz + ' TZ)';
+                        }
+                    }
                     tr.innerHTML =
                         '<td>' + v.mitarbeiter_nr + '</td>' +
                         '<td>' + escapeHtml(v.name) + '</td>' +
                         '<td>' + (v.standort || '') + '</td>' +
-                        '<td>' + v.nw_stueck + '</td>' +
+                        '<td>' + nwDisplay + '</td>' +
                         '<td>' + (v.nw_hyundai || 0) + '</td>' +
                         '<td>' + (v.nw_opel || 0) + '</td>' +
                         '<td>' + (v.nw_leapmotor || 0) + '</td>' +
@@ -174,6 +321,35 @@
             .catch(function(e) {
                 document.getElementById('historie-placeholder').textContent = 'Fehler: ' + e.message;
             });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        var zielJahr = parseInt(document.getElementById('ziel-jahr').value, 10) || 2026;
+        loadPlanungsstand(zielJahr);
+        document.getElementById('konzern-nw').addEventListener('input', updateDifferenzBox);
+        document.getElementById('konzern-gw').addEventListener('input', updateDifferenzBox);
+
+        // Historie: VJ als Default, Optionen dynamisch, sofort laden
+        var histSelect = document.getElementById('historie-jahr');
+        var aktuellesJahr = new Date().getFullYear();
+        var vj = aktuellesJahr - 1;
+        histSelect.innerHTML = '';
+        for (var y = aktuellesJahr; y >= aktuellesJahr - 4; y--) {
+            var opt = document.createElement('option');
+            opt.value = y;
+            opt.textContent = y;
+            histSelect.appendChild(opt);
+        }
+        histSelect.value = vj;
+        loadHistorie();
+    });
+    document.getElementById('ziel-jahr').addEventListener('change', function() {
+        var jahr = parseInt(this.value, 10) || 2026;
+        loadPlanungsstand(jahr);
+    });
+
+    document.getElementById('btn-lade-historie').addEventListener('click', function() {
+        loadHistorie();
     });
 
     let letzteVerteilung = null;
@@ -195,42 +371,7 @@
             .then(data => {
                 if (!data.success) { document.getElementById('verteilung-placeholder').textContent = 'Fehler: ' + (data.error || 'Unbekannt'); return; }
                 letzteVerteilung = data;
-                const tbody = document.getElementById('verteilung-tbody');
-                const tfoot = document.getElementById('verteilung-tfoot');
-                tbody.innerHTML = '';
-                data.verkaeufer.forEach(function(v) {
-                    const tr = document.createElement('tr');
-                    tr.setAttribute('data-mitarbeiter-nr', v.mitarbeiter_nr);
-                    const detailUrl = '/verkauf/zielplanung/verkaeufer/' + v.mitarbeiter_nr + '?jahr=' + zielJahr + '&referenz_jahr=' + refJahr;
-                    tr.innerHTML =
-                        '<td>' + v.mitarbeiter_nr + '</td>' +
-                        '<td>' + escapeHtml(v.name) + '</td>' +
-                        '<td>' + v.nw_ist + '</td>' +
-                        '<td>' + v.gw_ist + '</td>' +
-                        '<td>' + (v.ziel_nw_hyundai || 0) + '</td>' +
-                        '<td>' + (v.ziel_nw_opel || 0) + '</td>' +
-                        '<td>' + (v.ziel_nw_leapmotor || 0) + '</td>' +
-                        '<td><input type="number" min="0" class="form-control form-control-sm input-ziel-nw" style="width:56px" value="' + (v.ziel_nw || 0) + '"></td>' +
-                        '<td><input type="number" min="0" class="form-control form-control-sm input-ziel-gw" style="width:56px" value="' + (v.ziel_gw || 0) + '"></td>' +
-                        '<td class="summe-ziel"></td>' +
-                        '<td><input type="date" class="form-control form-control-sm input-pg-datum" style="width:120px" title="Planungsgespräch am"> <input type="text" class="form-control form-control-sm input-pg-notiz" placeholder="Notiz" style="width:100px" maxlength="200"></td>' +
-                        '<td>' + (v.ist_handelsgeschaeft ? '<span class="badge badge-pool">Pool</span> ' : '') + '<a href="' + detailUrl + '" target="_blank" class="small">Detail</a></td>';
-                    tbody.appendChild(tr);
-                });
-                updateSummenZeile();
-                updateDifferenzBox();
-                tfoot.innerHTML = '<tr class="table-light"><td colspan="2"><strong>GESAMT</strong></td><td></td><td></td><td></td><td></td><td></td><td id="foot-ziel-nw"></td><td id="foot-ziel-gw"></td><td id="foot-summe"></td><td></td><td></td></tr>';
-                document.getElementById('verteilung-kpis').className = 'small mb-2';
-                document.getElementById('verteilung-kpis').innerHTML =
-                    'NW gesamt ' + data.konzernziel_nw + ' (Hyundai ' + (data.konzernziel_nw_hyundai || '-') + ' / Opel ' + (data.konzernziel_nw_opel || '-') + ' / Leapmotor ' + (data.konzernziel_nw_leapmotor || '-') + '). GW ' + data.konzernziel_gw + '. ' +
-                    'Pool Handelsgeschäft: ' + data.pool_handelsgeschaeft_nw + ' NW / ' + data.pool_handelsgeschaeft_gw + ' GW. ' +
-                    'Verteilungspool: ' + data.pool_verteilung_nw + ' NW / ' + data.pool_verteilung_gw + ' GW.';
-                document.getElementById('verteilung-placeholder').classList.add('d-none');
-                document.getElementById('verteilung-kpis').classList.remove('d-none');
-                document.getElementById('verteilung-tabelle').classList.remove('d-none');
-                tbody.querySelectorAll('.input-ziel-nw, .input-ziel-gw').forEach(function(el) { el.addEventListener('input', updateSummenZeile); });
-                document.getElementById('konzern-nw').addEventListener('input', function() { updateDifferenzBox(); });
-                document.getElementById('konzern-gw').addEventListener('input', function() { updateDifferenzBox(); });
+                fillVerteilungstabelle(data, zielJahr, refJahr, null);
             })
             .catch(function(e) {
                 document.getElementById('verteilung-placeholder').textContent = 'Fehler: ' + e.message;
@@ -285,6 +426,9 @@
 
     document.getElementById('btn-ziele-laden').addEventListener('click', function() {
         const jahr = parseInt(document.getElementById('ziel-jahr').value, 10);
+        const refJahr = parseInt(document.getElementById('referenz-jahr').value, 10);
+        const zielNw = parseInt(document.getElementById('konzern-nw').value, 10) || 0;
+        const zielGw = parseInt(document.getElementById('konzern-gw').value, 10) || 0;
         fetch(API + '/ziele/' + jahr)
             .then(r => r.json())
             .then(function(data) {
@@ -292,27 +436,19 @@
                     alert(data.gespeichert ? 'Keine gespeicherten Ziele für ' + jahr : 'Zuerst „Berechnen“ klicken, dann gespeicherte Ziele laden.');
                     return;
                 }
-                const tbody = document.getElementById('verteilung-tbody');
-                const rows = tbody ? tbody.querySelectorAll('tr[data-mitarbeiter-nr]') : [];
-                if (!rows.length) {
-                    alert('Bitte zuerst „Berechnen“ klicken, um die Tabelle zu füllen.');
-                    return;
-                }
-                const byNr = {};
-                data.ziele.forEach(function(z) { byNr[z.mitarbeiter_nr] = z; });
-                rows.forEach(function(tr) {
-                    const nr = parseInt(tr.getAttribute('data-mitarbeiter-nr'), 10);
-                    const z = byNr[nr];
-                    if (z) {
-                        tr.querySelector('.input-ziel-nw').value = z.ziel_nw || 0;
-                        tr.querySelector('.input-ziel-gw').value = z.ziel_gw || 0;
-                        var d = z.planungsgespraech_am;
-                        if (d) tr.querySelector('.input-pg-datum').value = d.substring(0, 10);
-                        if (z.planungsgespraech_notiz) tr.querySelector('.input-pg-notiz').value = z.planungsgespraech_notiz;
-                    }
+                var zieleByNr = {};
+                data.ziele.forEach(function(z) { zieleByNr[z.mitarbeiter_nr] = z; });
+                var url = API + '/verteilung?ziel_jahr=' + jahr + '&referenz_jahr=' + refJahr + '&ziel_nw=' + zielNw + '&ziel_gw=' + zielGw;
+                var hy = document.getElementById('ziel-nw-hyundai').value.trim();
+                var op = document.getElementById('ziel-nw-opel').value.trim();
+                var lp = document.getElementById('ziel-nw-leapmotor').value.trim();
+                if (hy) url += '&ziel_nw_hyundai=' + hy;
+                if (op) url += '&ziel_nw_opel=' + op;
+                if (lp) url += '&ziel_nw_leapmotor=' + lp;
+                return fetch(url).then(function(r) { return r.json(); }).then(function(vertData) {
+                    if (!vertData.success) { alert('Verteilung konnte nicht geladen werden.'); return; }
+                    fillVerteilungstabelle(vertData, jahr, refJahr, zieleByNr);
                 });
-                updateSummenZeile();
-                updateDifferenzBox();
             })
             .catch(function(e) { alert('Fehler: ' + e.message); });
     });
@@ -334,23 +470,67 @@
             const pgNotiz = tr.querySelector('.input-pg-notiz').value.trim();
             ziele.push({ mitarbeiter_nr: nr, ziel_nw: nw, ziel_gw: gw, planungsgespraech_am: pgDatum || null, planungsgespraech_notiz: pgNotiz || null });
         });
+        var refJahr = parseInt(document.getElementById('referenz-jahr').value, 10);
+        var konzernNw = parseInt(document.getElementById('konzern-nw').value, 10) || 0;
+        var konzernGw = parseInt(document.getElementById('konzern-gw').value, 10) || 0;
+        var hy = document.getElementById('ziel-nw-hyundai').value.trim();
+        var op = document.getElementById('ziel-nw-opel').value.trim();
+        var lp = document.getElementById('ziel-nw-leapmotor').value.trim();
+        var body = {
+            ziele: ziele,
+            referenz_jahr: refJahr,
+            konzernziel_nw: konzernNw,
+            konzernziel_gw: konzernGw
+        };
+        if (hy) body.ziel_nw_hyundai = parseInt(hy, 10);
+        if (op) body.ziel_nw_opel = parseInt(op, 10);
+        if (lp) body.ziel_nw_leapmotor = parseInt(lp, 10);
         fetch(API + '/ziele/' + jahr, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ziele: ziele })
+            body: JSON.stringify(body)
         })
             .then(r => r.json())
             .then(function(data) {
                 if (data.success) {
                     var h = document.getElementById('ziele-speichern-hinweis');
-                    h.textContent = data.message || 'Ziele gespeichert.';
+                    h.textContent = data.message || 'Entwurf gespeichert.';
                     h.classList.remove('d-none');
-                    setTimeout(function() { h.classList.add('d-none'); }, 5000);
+                    setTimeout(function() { h.classList.add('d-none'); }, 6000);
+                    aktuellerPlanungsstand = aktuellerPlanungsstand || {};
+                    aktuellerPlanungsstand.status = 'entwurf';
+                    setPlanungsstandBanner('entwurf', jahr);
                 } else {
                     alert('Fehler: ' + (data.error || 'Unbekannt'));
                 }
             })
             .catch(function(e) { alert('Fehler: ' + e.message); });
+    });
+
+    document.getElementById('btn-freigeben').addEventListener('click', function() {
+        var jahr = parseInt(document.getElementById('ziel-jahr').value, 10);
+        var btn = this;
+        btn.disabled = true;
+        fetch(API + '/planungsstand/' + jahr + '/freigeben', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    aktuellerPlanungsstand = aktuellerPlanungsstand || {};
+                    aktuellerPlanungsstand.status = 'freigegeben';
+                    setPlanungsstandBanner('freigegeben', jahr);
+                    var h = document.getElementById('ziele-speichern-hinweis');
+                    h.textContent = data.message || 'Planung freigegeben.';
+                    h.classList.remove('d-none');
+                    setTimeout(function() { h.classList.add('d-none'); }, 5000);
+                } else {
+                    alert(data.error || 'Freigabe fehlgeschlagen.');
+                    btn.disabled = false;
+                }
+            })
+            .catch(function(e) {
+                alert('Fehler: ' + e.message);
+                btn.disabled = false;
+            });
     });
 
     function escapeHtml(s) {

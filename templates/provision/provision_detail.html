@@ -12,6 +12,7 @@
                 <thead class="table-light"><tr><th>Kategorie</th><th class="text-end">Summe (€)</th></tr></thead>
                 <tbody>
                     <tr><td>I. Neuwagen</td><td class="text-end" id="dSumI">–</td></tr>
+                    <tr><td>Ia. Zielprämie Neuwagen</td><td class="text-end" id="dSumStueck">–</td></tr>
                     <tr><td>II. Testwagen/VFW</td><td class="text-end" id="dSumII">–</td></tr>
                     <tr><td>III. Gebrauchtwagen</td><td class="text-end" id="dSumIII">–</td></tr>
                     <tr><td>IV. GW aus Bestand</td><td class="text-end" id="dSumIV">–</td></tr>
@@ -33,10 +34,166 @@
         </p>
     </div>
 </div>
+
+<!-- Modal: Locosoft-Infos zur Rechnung (bestehende OPOS-API) -->
+<div class="modal fade" id="provision-rechnung-modal" tabindex="-1" aria-labelledby="provision-rechnung-modal-label" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h5 class="modal-title" id="provision-rechnung-modal-label">Rechnung - Locosoft-Daten</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schliessen"></button>
+            </div>
+            <div class="modal-body">
+                <div id="provision-modal-loading" class="text-muted py-3">Lade…</div>
+                <div id="provision-modal-content" style="display: none;">
+                    <p class="mb-2"><strong>Kunde:</strong> <span id="provision-modal-kunde"></span> <span id="provision-modal-customer-nr" class="text-muted small"></span></p>
+                    <p class="mb-3"><strong>Rechnung:</strong> <span id="provision-modal-rg-nr"></span> vom <span id="provision-modal-rg-datum"></span></p>
+                    <p class="mb-3"><strong>Auftrag:</strong> <span id="provision-modal-auftrag">–</span></p>
+                    <div id="provision-modal-rechnungen-wrap" class="mb-3" style="display: none;">
+                        <h6 class="mb-2">Rechnungskopf (loco_invoices)</h6>
+                        <div id="provision-modal-rechnungen"></div>
+                    </div>
+                    <h6 class="mb-2">FIBU-Buchungen (loco_journal_accountings)</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Konto</th>
+                                    <th>S/H</th>
+                                    <th class="text-end">Betrag (EUR)</th>
+                                    <th>Beleg</th>
+                                    <th>Buchdat</th>
+                                    <th>Ausziff.-Nr</th>
+                                    <th>Mitarbeiter</th>
+                                    <th>Buchtext</th>
+                                </tr>
+                            </thead>
+                            <tbody id="provision-modal-buchungen"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="provision-modal-error" class="alert alert-danger py-2 mb-0" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Auftragsdetails (bestehende Werkstatt-API) -->
+<div class="modal fade" id="provision-auftrag-modal" tabindex="-1" aria-labelledby="provision-auftrag-modal-label" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h5 class="modal-title" id="provision-auftrag-modal-label">Auftrag - Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schliessen"></button>
+            </div>
+            <div class="modal-body" id="provision-auftrag-modal-body">
+                <div class="text-center py-4"><div class="spinner-border text-primary"></div></div>
+            </div>
+        </div>
+    </div>
+</div>
 <script>
 (function(){
     var id = {{ lauf_id }};
     var L=document.getElementById('loading'), E=document.getElementById('error'), C=document.getElementById('content');
+    function fmtEuro(v) {
+        if (v == null || isNaN(v)) return '–';
+        return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v);
+    }
+    function escapeHtml(s) {
+        if (s == null) return '';
+        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    function openRechnungModal(invoice, date) {
+        if (!invoice || !date) return;
+        var modalEl = document.getElementById('provision-rechnung-modal');
+        var loadingEl = document.getElementById('provision-modal-loading');
+        var contentEl = document.getElementById('provision-modal-content');
+        var errorEl = document.getElementById('provision-modal-error');
+        loadingEl.style.display = 'block';
+        contentEl.style.display = 'none';
+        errorEl.style.display = 'none';
+
+        var params = new URLSearchParams({ invoice_number: invoice, invoice_date: date });
+        fetch('/api/controlling/opos/rechnung-detail?' + params.toString(), { credentials: 'same-origin' })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(function(data) {
+                loadingEl.style.display = 'none';
+                document.getElementById('provision-modal-kunde').textContent = data.kunde || '–';
+                document.getElementById('provision-modal-customer-nr').textContent = data.customer_number != null ? '(Nr. ' + data.customer_number + ')' : '';
+                document.getElementById('provision-modal-rg-nr').textContent = data.invoice_number || '–';
+                document.getElementById('provision-modal-rg-datum').textContent = data.invoice_date || '–';
+                document.getElementById('provision-modal-auftrag').textContent = '–';
+
+                var wrap = document.getElementById('provision-modal-rechnungen-wrap');
+                var div = document.getElementById('provision-modal-rechnungen');
+                if (data.rechnungen && data.rechnungen.length > 0) {
+                    var auftraege = data.rechnungen
+                        .map(function(inv) { return inv.order_number; })
+                        .filter(function(v) { return v != null && String(v).trim() !== ''; })
+                        .map(function(v) { return String(v).trim(); });
+                    if (auftraege.length > 0) {
+                        var uniq = Array.from(new Set(auftraege));
+                        document.getElementById('provision-modal-auftrag').innerHTML = uniq.map(function(nr){
+                            return '<a href="#" class="provision-auftrag-link" data-auftrag="' + escapeHtml(nr) + '">' + escapeHtml(nr) + '</a>';
+                        }).join(', ');
+                    }
+                    wrap.style.display = 'block';
+                    div.innerHTML = data.rechnungen.map(function(inv) {
+                        var parts = ['Typ ' + (inv.invoice_type || '–'), 'Brutto ' + fmtEuro(inv.total_gross), 'Netto ' + fmtEuro(inv.total_net)];
+                        if (inv.order_number != null) parts.push('Auftrag ' + inv.order_number);
+                        return '<p class="small mb-1">' + parts.join(' · ') + '</p>';
+                    }).join('');
+                } else {
+                    wrap.style.display = 'none';
+                }
+
+                var tbody = document.getElementById('provision-modal-buchungen');
+                tbody.innerHTML = (data.buchungen || []).map(function(b) {
+                    return '<tr><td>' + (b.nominal_account_number || '') + '</td><td>' + (b.debit_or_credit || '') + '</td><td class="text-end">' + fmtEuro(b.betrag_eur) + '</td><td>' + (b.document_type || '') + ' ' + (b.document_number || '') + '</td><td>' + (b.document_date || b.accounting_date || '') + '</td><td>' + (b.clearing_number != null && b.clearing_number !== '' && b.clearing_number !== 0 ? b.clearing_number : 'OP') + '</td><td>' + (b.employee_number || '') + '</td><td class="small">' + escapeHtml(b.posting_text || '') + '</td></tr>';
+                }).join('');
+                contentEl.style.display = 'block';
+                document.querySelectorAll('.provision-auftrag-link').forEach(function(a){
+                    a.addEventListener('click', function(ev){
+                        ev.preventDefault();
+                        openAuftragModal(this.getAttribute('data-auftrag'));
+                    });
+                });
+                if (typeof bootstrap !== 'undefined' && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            })
+            .catch(function(err) {
+                loadingEl.style.display = 'none';
+                errorEl.textContent = 'Fehler: ' + (err.message || 'Unbekannt');
+                errorEl.style.display = 'block';
+                if (typeof bootstrap !== 'undefined' && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            });
+    }
+    function openAuftragModal(auftragNr) {
+        if (!auftragNr) return;
+        var modalEl = document.getElementById('provision-auftrag-modal');
+        var bodyEl = document.getElementById('provision-auftrag-modal-body');
+        bodyEl.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
+        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        fetch('/api/werkstatt/live/auftrag/' + encodeURIComponent(String(auftragNr)), { credentials: 'same-origin' })
+            .then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(function(data){
+                if (!data.success || !data.auftrag) {
+                    bodyEl.innerHTML = '<div class="alert alert-danger mb-0">' + escapeHtml(data.error || 'Auftrag nicht gefunden') + '</div>';
+                    return;
+                }
+                var a = data.auftrag || {};
+                var f = a.fahrzeug || {};
+                var s = a.summen || {};
+                bodyEl.innerHTML = ''
+                    + '<div class="row g-3">'
+                    + '<div class="col-md-6"><h6>Fahrzeug</h6><p class="mb-2"><strong>' + escapeHtml(f.kennzeichen || '-') + '</strong><br>' + escapeHtml((f.marke || '') + ' ' + (f.modell || '')) + '</p><h6>Kunde</h6><p class="mb-0">' + escapeHtml(a.kunde || '-') + '</p></div>'
+                    + '<div class="col-md-6"><h6>Auftrag</h6><p class="mb-2">Nr.: <strong>' + escapeHtml(String(auftragNr)) + '</strong><br>Datum: ' + escapeHtml(a.datum || '-') + '<br>Serviceberater: ' + escapeHtml(a.serviceberater || '-') + '</p><h6>AW-Summen</h6><p class="mb-0">Gesamt: ' + escapeHtml(String(s.total_aw || 0)) + ' AW<br>Fakturiert: ' + escapeHtml(String(s.fakturiert_aw || 0)) + ' AW<br>Offen: ' + escapeHtml(String(s.offen_aw || 0)) + ' AW</p></div>'
+                    + '</div>';
+            })
+            .catch(function(err){
+                bodyEl.innerHTML = '<div class="alert alert-danger mb-0">Fehler: ' + escapeHtml(err.message || 'Unbekannt') + '</div>';
+            });
+    }
     fetch('/api/provision/lauf/'+id,{credentials:'same-origin'}).then(function(r){return r.json();})
     .then(function(d){
         L.style.display='none';
@@ -49,14 +206,15 @@
         document.getElementById('vSumme').textContent=l.summe_gesamt!=null?Number(l.summe_gesamt).toLocaleString('de-DE',{minimumFractionDigits:2}):'-';
         function fmt(v){ return v!=null&&v!=='' ? Number(v).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2}) : '–'; }
         document.getElementById('dSumI').textContent=fmt(l.summe_kat_i)+' €';
+        document.getElementById('dSumStueck').textContent=fmt(l.summe_stueckpraemie)+' €';
         document.getElementById('dSumII').textContent=fmt(l.summe_kat_ii)+' €';
         document.getElementById('dSumIII').textContent=fmt(l.summe_kat_iii)+' €';
         document.getElementById('dSumIV').textContent=fmt(l.summe_kat_iv)+' €';
         document.getElementById('dSumV').textContent=fmt(l.summe_kat_v)+' €';
         document.getElementById('dSumGesamt').textContent=fmt(l.summe_gesamt)+' €';
-        var sI=Number(l.summe_kat_i)||0,sII=Number(l.summe_kat_ii)||0,sIII=Number(l.summe_kat_iii)||0,sIV=Number(l.summe_kat_iv)||0,sV=Number(l.summe_kat_v)||0;
-        var k1=sI,k2=k1+sII,k3=k2+sIII,k4=k3+sIV,k5=k4+sV;
-        document.getElementById('dSumKumuliert').textContent='I: '+fmt(k1)+' € · I+II: '+fmt(k2)+' € · I+II+III: '+fmt(k3)+' € · I+II+III+IV: '+fmt(k4)+' € · Gesamt: '+fmt(k5)+' €';
+        var sI=Number(l.summe_kat_i)||0,sS=Number(l.summe_stueckpraemie)||0,sII=Number(l.summe_kat_ii)||0,sIII=Number(l.summe_kat_iii)||0,sIV=Number(l.summe_kat_iv)||0,sV=Number(l.summe_kat_v)||0;
+        var k1=sI,k1a=k1+sS,k2=k1a+sII,k3=k2+sIII,k4=k3+sIV,k5=k4+sV;
+        document.getElementById('dSumKumuliert').textContent='I: '+fmt(k1)+' € · I+Ia: '+fmt(k1a)+' € · I+Ia+II: '+fmt(k2)+' € · I+Ia+II+III: '+fmt(k3)+' € · I+Ia+II+III+IV: '+fmt(k4)+' € · Gesamt: '+fmt(k5)+' €';
         var katOrder = ['I_neuwagen','II_testwagen','III_gebrauchtwagen','IV_gw_bestand'];
         var katLabel = {'I_neuwagen':'I. Neuwagen','II_testwagen':'II. Testwagen/VFW','III_gebrauchtwagen':'III. Gebrauchtwagen','IV_gw_bestand':'IV. GW aus Bestand'};
         var katSumKey = {'I_neuwagen':'summe_kat_i','II_testwagen':'summe_kat_ii','III_gebrauchtwagen':'summe_kat_iii','IV_gw_bestand':'summe_kat_iv'};
@@ -70,10 +228,19 @@
             tb.innerHTML+='<tr class="table-secondary fw-bold"><td>'+ (katLabel[kat]||kat) +'</td><td colspan="6"></td></tr>';
             rows.forEach(function(p){
                 var prov = p.provision_final!=null ? Number(p.provision_final).toLocaleString('de-DE',{minimumFractionDigits:2})+' €' : '–';
-                tb.innerHTML+='<tr><td></td><td>'+(l.verkaufer_name||'–')+'</td><td>'+(p.einkaeufer_name||'–')+'</td><td>'+(p.kaeufer_name||'–')+'</td><td>'+(p.modell||'–')+'</td><td>'+(p.locosoft_rg_nr||'–')+'</td><td class="text-end">'+prov+'</td></tr>';
+                var rgNr = p.locosoft_rg_nr || '–';
+                var rgDatum = p.rg_datum || '';
+                var rgHtml = (p.locosoft_rg_nr && rgDatum) ? '<a href="#" class="provision-rg-link" data-invoice="' + escapeHtml(p.locosoft_rg_nr) + '" data-date="' + escapeHtml(rgDatum) + '">' + escapeHtml(rgNr) + '</a>' : escapeHtml(rgNr);
+                tb.innerHTML+='<tr><td></td><td>'+(l.verkaufer_name||'–')+'</td><td>'+(p.einkaeufer_name||'–')+'</td><td>'+(p.kaeufer_name||'–')+'</td><td>'+(p.modell||'–')+'</td><td>'+rgHtml+'</td><td class="text-end">'+prov+'</td></tr>';
             });
             var sumVal = l[katSumKey[kat]];
             tb.innerHTML+='<tr class="table-light fw-bold"><td colspan="6" class="text-end">Summe '+ (katLabel[kat]||kat) +'</td><td class="text-end">'+ (sumVal!=null ? Number(sumVal).toLocaleString('de-DE',{minimumFractionDigits:2})+' €' : '–') +'</td></tr>';
+        });
+        tb.querySelectorAll('.provision-rg-link').forEach(function(a){
+            a.addEventListener('click', function(ev){
+                ev.preventDefault();
+                openRechnungModal(this.getAttribute('data-invoice'), this.getAttribute('data-date'));
+            });
         });
         document.getElementById('tfootPos').innerHTML='<tr class="table-primary fw-bold"><td colspan="6" class="text-end">Gesamtsumme</td><td class="text-end">'+fmt(l.summe_gesamt)+' €</td></tr>';
         if ((l.status||'').toUpperCase() === 'VORLAUF') {

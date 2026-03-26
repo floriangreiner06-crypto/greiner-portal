@@ -591,81 +591,12 @@ if os.getenv('FLASK_ENV') == 'development' or app.debug:
 @app.route('/verkauf/leasys-programmfinder')
 @login_required
 def leasys_programmfinder():
-    """Leasys Programmfinder - Hilft Verkäufern das richtige Master Agreement zu finden"""
+    """Leasys Programmfinder – Zugriff nur mit Feature „leasys“."""
+    from flask import abort
+    if not (hasattr(current_user, 'can_access_feature') and current_user.can_access_feature('leasys')):
+        abort(403)
     return render_template('leasys_programmfinder.html')
 
 
-# ========================================
-# WERKSTATT MONITOR-ROUTES (ohne Login, Token-Auth)
-# Normale Werkstatt-Routes sind in werkstatt_routes.py (TAG 130)
-# ========================================
-
-@app.route('/monitor/stempeluhr')
-@app.route('/werkstatt/stempeluhr/monitor')
-def werkstatt_stempeluhr_monitor():
-    """
-    Werkstatt Stempeluhr - MONITOR VERSION (ohne Login)
-    Zugriff über Token-Parameter oder interne IP.
-    """
-    # Monitor-Token (geheim halten!)
-    MONITOR_TOKEN = 'Greiner2024Werkstatt!'
-    
-    # Token aus URL prüfen
-    token = request.args.get('token', '')
-    
-    # IP prüfen
-    client_ip = request.remote_addr
-    if request.headers.get('X-Forwarded-For'):
-        client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
-    
-    # Zugriff erlauben wenn: korrekter Token ODER interne IP
-    is_internal = client_ip.startswith('10.80.80.') or client_ip == '127.0.0.1'
-    is_valid_token = token == MONITOR_TOKEN
-    
-    if not (is_internal or is_valid_token):
-        return "Zugriff verweigert. Token erforderlich.", 403
-    
-    return render_template('aftersales/werkstatt_stempeluhr_monitor.html')
-
-
-# ========================================
-# TAG 126: LIVEBOARD MONITOR (ohne Login)
-# ========================================
-
-@app.route('/monitor/liveboard')
-@app.route('/monitor/liveboard/gantt')
-def werkstatt_liveboard_monitor():
-    """
-    Werkstatt Live-Board - MONITOR VERSION (ohne Login)
-    Zugriff über Token-Parameter oder interne IP.
-
-    URLs:
-    - /monitor/liveboard?token=XXX&betrieb=deg        (Karten-Ansicht)
-    - /monitor/liveboard/gantt?token=XXX&betrieb=deg  (Gantt-Ansicht)
-    """
-    # Monitor-Token (geheim halten!)
-    MONITOR_TOKEN = 'Greiner2024Werkstatt!'
-
-    # Token aus URL prüfen
-    token = request.args.get('token', '')
-
-    # IP prüfen
-    client_ip = request.remote_addr
-    if request.headers.get('X-Forwarded-For'):
-        client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
-
-    # Zugriff erlauben wenn: korrekter Token ODER interne IP
-    is_internal = client_ip.startswith('10.80.80.') or client_ip == '127.0.0.1'
-    is_valid_token = token == MONITOR_TOKEN
-
-    if not (is_internal or is_valid_token):
-        return "Zugriff verweigert. Token erforderlich.", 403
-
-    # Gantt oder Karten-Ansicht?
-    if request.path.endswith('/gantt'):
-        return render_template('aftersales/werkstatt_liveboard_gantt.html')
-    else:
-        return render_template('aftersales/werkstatt_liveboard.html')
-
-
-# TAG 116/130: Kapazitätsplanung + Anwesenheit sind jetzt in werkstatt_routes.py
+# Werkstatt-Monitor-Ansichten → routes/werkstatt_routes.py
+# /monitor/stempeluhr, /werkstatt/stempeluhr/monitor, /monitor/liveboard, /monitor/liveboard/gantt

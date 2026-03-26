@@ -778,6 +778,56 @@
             <div class="modal-body">
                 <p class="text-muted mb-3" id="reportModalDesc"></p>
 
+                <!-- Report-Parameter (nur für konfigurierbare Reports) -->
+                <div class="card mb-3 d-none" id="alarmConfigCard">
+                    <div class="card-header bg-light py-2">
+                        <i class="bi bi-sliders me-1"></i>Alarm-Parameter
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-2">
+                            <div class="col-md-3">
+                                <label class="form-label small mb-0">Min. Überschreitung (%)</label>
+                                <input type="number" min="100" step="1" class="form-control form-control-sm" id="alarmMinPercent">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-0">Min. aktive Min.</label>
+                                <input type="number" min="0" step="1" class="form-control form-control-sm" id="alarmMinActiveMinutes">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-0">Startstunde</label>
+                                <input type="number" min="0" max="23" step="1" class="form-control form-control-sm" id="alarmStartHour">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-0">Endstunde</label>
+                                <input type="number" min="1" max="24" step="1" class="form-control form-control-sm" id="alarmEndHour">
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <label class="form-label small mb-1">Auftragsarten</label>
+                            <div class="d-flex flex-wrap gap-3">
+                                <label class="form-check-label">
+                                    <input type="checkbox" class="form-check-input me-1" id="alarmTypeKunde">Kunde
+                                </label>
+                                <label class="form-check-label">
+                                    <input type="checkbox" class="form-check-input me-1" id="alarmTypeIntern">Intern
+                                </label>
+                                <label class="form-check-label">
+                                    <input type="checkbox" class="form-check-input me-1" id="alarmTypeGarantie">Garantie
+                                </label>
+                                <label class="form-check-label">
+                                    <input type="checkbox" class="form-check-input me-1" id="alarmTypeSonstige">Sonstige
+                                </label>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="saveAlarmConfig()">
+                                <i class="bi bi-check2 me-1"></i>Parameter speichern
+                            </button>
+                            <span id="alarmConfigResult" class="small ms-2 text-muted"></span>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Testversand: Einzelnen Report an eine Adresse senden -->
                 <div class="card mb-3 border-primary">
                     <div class="card-header bg-light py-2">
@@ -873,11 +923,13 @@ let employeesConfigData = [];
 let availableDashboards = [];
 let currentDashboardUserId = null;
 let selectedRoleForFeatures = '';
+let currentReportConfig = {};
 
 // Feature-Gruppen für Rollen-Features und Matrix (Lesbarkeit)
 // Alle Features aus Nav (requires_feature) erscheinen durch API-Ergänzung; hier nur Gruppierung
 var FEATURE_GROUPS = {
     bankenspiegel: 'Finanzen', controlling: 'Finanzen', zinsen: 'Finanzen',
+    afa_verkaufsempfehlungen: 'Controlling',
     einkaufsfinanzierung: 'Finanzen', fahrzeugfinanzierungen: 'Finanzen', opos: 'Finanzen',
     auftragseingang: 'Verkauf', auslieferungen: 'Verkauf', verkauf_dashboard: 'Verkauf',
     fahrzeuge: 'Verkauf', stellantis_bestand: 'Verkauf', verkaeufer_zielplanung: 'Verkauf',
@@ -1596,8 +1648,9 @@ async function openReportModal(reportId) {
     document.getElementById('testSendResult').innerHTML = '';
     document.getElementById('testSendEmail').value = '';
 
-    // Subscriber laden
+    // Report-Details laden (Subscriber + Config)
     await loadReportSubscribers(reportId);
+    applyReportConfigUI(reportId);
 
     new bootstrap.Modal(document.getElementById('reportModal')).show();
 }
@@ -1606,6 +1659,7 @@ async function loadReportSubscribers(reportId) {
     try {
         const response = await fetch(`/api/admin/reports/${reportId}`);
         const data = await response.json();
+        currentReportConfig = data.config || {};
 
         const subscribers = data.subscribers || [];
         const activeCount = subscribers.filter(s => s.active).length;
@@ -1650,6 +1704,72 @@ async function loadReportSubscribers(reportId) {
 
     } catch (error) {
         console.error('Fehler:', error);
+    }
+}
+
+function applyReportConfigUI(reportId) {
+    const alarmCard = document.getElementById('alarmConfigCard');
+    const resultEl = document.getElementById('alarmConfigResult');
+    if (resultEl) resultEl.textContent = '';
+
+    if (reportId !== 'alarm_auftrag_ueberschreitung') {
+        alarmCard.classList.add('d-none');
+        return;
+    }
+
+    alarmCard.classList.remove('d-none');
+    const cfg = currentReportConfig || {};
+    document.getElementById('alarmMinPercent').value = Number(cfg.min_percent ?? 100);
+    document.getElementById('alarmMinActiveMinutes').value = Number(cfg.min_active_minutes ?? 30);
+    document.getElementById('alarmStartHour').value = Number(cfg.workday_start_hour ?? 7);
+    document.getElementById('alarmEndHour').value = Number(cfg.workday_end_hour ?? 18);
+
+    const types = new Set((cfg.enabled_order_types || ['kunde', 'intern', 'garantie', 'sonstige']).map(x => (x || '').toLowerCase()));
+    document.getElementById('alarmTypeKunde').checked = types.has('kunde');
+    document.getElementById('alarmTypeIntern').checked = types.has('intern');
+    document.getElementById('alarmTypeGarantie').checked = types.has('garantie');
+    document.getElementById('alarmTypeSonstige').checked = types.has('sonstige');
+}
+
+async function saveAlarmConfig() {
+    if (currentReportId !== 'alarm_auftrag_ueberschreitung') return;
+
+    const enabledOrderTypes = [];
+    if (document.getElementById('alarmTypeKunde').checked) enabledOrderTypes.push('kunde');
+    if (document.getElementById('alarmTypeIntern').checked) enabledOrderTypes.push('intern');
+    if (document.getElementById('alarmTypeGarantie').checked) enabledOrderTypes.push('garantie');
+    if (document.getElementById('alarmTypeSonstige').checked) enabledOrderTypes.push('sonstige');
+
+    const config = {
+        min_percent: Math.max(100, Number(document.getElementById('alarmMinPercent').value || 100)),
+        min_active_minutes: Math.max(0, Number(document.getElementById('alarmMinActiveMinutes').value || 30)),
+        workday_start_hour: Math.min(23, Math.max(0, Number(document.getElementById('alarmStartHour').value || 7))),
+        workday_end_hour: Math.min(24, Math.max(1, Number(document.getElementById('alarmEndHour').value || 18))),
+        enabled_order_types: enabledOrderTypes
+    };
+
+    const resultEl = document.getElementById('alarmConfigResult');
+    resultEl.className = 'small ms-2 text-muted';
+    resultEl.textContent = 'Speichere...';
+
+    try {
+        const response = await fetch(`/api/admin/reports/${currentReportId}/config`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ config })
+        });
+        const data = await response.json();
+        if (data.success) {
+            currentReportConfig = config;
+            resultEl.className = 'small ms-2 text-success';
+            resultEl.textContent = 'Gespeichert.';
+        } else {
+            resultEl.className = 'small ms-2 text-danger';
+            resultEl.textContent = data.error || 'Speichern fehlgeschlagen.';
+        }
+    } catch (err) {
+        resultEl.className = 'small ms-2 text-danger';
+        resultEl.textContent = 'Fehler: ' + (err.message || 'Netzwerkfehler');
     }
 }
 

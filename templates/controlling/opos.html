@@ -32,7 +32,7 @@
         </div>
     </div>
     <div class="alert alert-light border small py-2 mb-3">
-        <strong>Hinweis:</strong> Es werden nur <strong>offene</strong> Posten angezeigt: In Locosoft sind offene mit „OP“, bezahlte mit Auszifferungsnummer gekennzeichnet; DRIVE nutzt <code>clearing_number</code> (nur Zeilen mit clearing_number leer/0). Zusätzlich nur Kunden mit positivem Debitoren-Gesamtsaldo. Standard: Rechnungsdatum ab „vor 24 Monaten“; Filter „Von“/„Bis“ anpassbar. „Kunde Nr. …“ = Kundennummer nicht im Kundenstamm.<br>
+        <strong>Hinweis:</strong> Es werden nur <strong>offene</strong> Posten angezeigt: In Locosoft sind offene mit „OP“, bezahlte mit Auszifferungsnummer gekennzeichnet; DRIVE nutzt <code>clearing_number</code> (nur Zeilen mit clearing_number leer/0). Zusätzlich nur Kunden mit positivem Debitoren-Gesamtsaldo. Standard: Rechnungsdatum ab „vor 24 Monaten“; Filter „Von“/„Bis“ anpassbar. „Kunde Nr. …“ = Kundennummer nicht im Kundenstamm. <strong>Käufer:</strong> Bei Leasing/Finanzierung ist „Kunde“ der FIBU-Debitor (z. B. Stellantis Bank); „Käufer“ zeigt den Endkunden aus dem Fahrzeugverkauf (Locosoft/sales), sofern zuordenbar.<br>
         <strong>Datenstand:</strong> Die Liste basiert auf dem aktuellen Stand der gespiegelten FIBU-Daten. Wenn sich in Locosoft gerade Zahlungen oder Ausbuchungen geändert haben, kann die Anzeige bis zum nächsten Sync abweichen. Für verbindliche Prüfung: Locosoft L362PR „Unausgeglichene Personenkonten“ (Stichtag) nutzen. Siehe <code>docs/workstreams/controlling/OPOS/OPOS_ABGLEICH_LOCOSOFT.md</code>.
     </div>
 
@@ -95,6 +95,7 @@
                         <tr>
                             <th>Verkäufer / Ansprechpartner</th>
                             <th>Kunde</th>
+                            <th>Käufer</th>
                             <th>Rechnungsdatum</th>
                             <th>Rechnungsnr.</th>
                             <th class="betrag">Betrag (€)</th>
@@ -102,7 +103,7 @@
                         </tr>
                     </thead>
                     <tbody id="opos-tbody">
-                        <tr><td colspan="6" class="text-center text-muted py-4">Lade Daten…</td></tr>
+                        <tr><td colspan="7" class="text-center text-muted py-4">Lade Daten…</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -194,7 +195,7 @@
         if (verkaeufer) params.set('verkaeufer_nr', verkaeufer);
         if (nurFz) params.set('nur_fahrzeugverkauf', nurFz);
 
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Lade…</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Lade…</td></tr>';
         fetch('/api/controlling/opos?' + params.toString())
             .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
             .then(data => {
@@ -204,7 +205,7 @@
                 else hinweisNurEigene.style.display = 'none';
 
                 if (!data.rows || data.rows.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Keine offenen Posten gefunden.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Keine offenen Posten gefunden.</td></tr>';
                     return;
                 }
                 tbody.innerHTML = data.rows.map(row => {
@@ -217,6 +218,7 @@
                     return '<tr>' +
                         '<td>' + (row.verkaeufer_oder_ersteller || '–') + '</td>' +
                         '<td>' + (row.kunde || '–') + '</td>' +
+                        '<td>' + (row.kaeufer || '–') + '</td>' +
                         '<td>' + (row.rechnung_datum || '–') + '</td>' +
                         '<td>' + rgLink + '</td>' +
                         '<td class="betrag">' + fmtEuro(row.betrag_eur) + '</td>' +
@@ -227,7 +229,7 @@
                 });
             })
             .catch(err => {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-4">Fehler: ' + (err.message || 'Unbekannt') + '</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger py-4">Fehler: ' + (err.message || 'Unbekannt') + '</td></tr>';
                 document.getElementById('kpi-anzahl').textContent = '–';
                 document.getElementById('kpi-summe').textContent = '–';
             });

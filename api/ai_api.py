@@ -16,7 +16,11 @@ import requests
 import json
 import os
 import logging
+import re
 from typing import Optional, Dict, Any
+from datetime import date
+
+from decorators.auth_decorators import login_or_api_key_required
 
 logger = logging.getLogger(__name__)
 
@@ -92,8 +96,16 @@ class LMStudioClient:
                 response = requests.get(url, headers=headers, timeout=t)
             else:
                 response = requests.post(url, json=payload, headers=headers, timeout=t)
-            
-            response.raise_for_status()
+
+            if not response.ok:
+                body = (response.text or "")[:500]
+                logger.error(
+                    "LM Studio API %s: HTTP %s - %s. Body: %s",
+                    endpoint, response.status_code, getattr(response, "reason", "") or "",
+                    body,
+                )
+                return None
+
             return response.json()
         except requests.exceptions.Timeout:
             logger.error(f"LM Studio API Timeout: {endpoint}")
@@ -336,7 +348,7 @@ TRANSAKTION_KATEGORIEN_FUER_KI = [
 
 
 def _hole_kategorisierung_beispiele(limit: int = 12) -> list:
-    """Lädt zuletzt kategorisierte Transaktionen als Few-Shot-Beispiele (KI lernt mit)."""
+    """Lädt zuletzt vom User bestätigte Kategorisierungen als Few-Shot-Beispiele (nur kategorie_manuell = true = Übernehmen geklickt)."""
     try:
         from api.db_utils import db_session
         from api.db_connection import convert_placeholders
@@ -347,7 +359,7 @@ def _hole_kategorisierung_beispiele(limit: int = 12) -> list:
                 convert_placeholders("""
                     SELECT verwendungszweck, buchungstext, gegenkonto_name, betrag, kategorie, unterkategorie
                     FROM transaktionen
-                    WHERE kategorie IS NOT NULL AND kategorie != ''
+                    WHERE kategorie IS NOT NULL AND kategorie != '' AND kategorie_manuell = true
                     ORDER BY id DESC
                     LIMIT """ + str(min(int(limit), 20)))
             )
@@ -1272,6 +1284,989 @@ def _build_tek_context(tek_data: Dict[str, Any], monat: int, jahr: int) -> str:
             f"Vorjahr (gleicher Zeitraum): DB1 {vj.get('db1', 0):,.0f} €, Marge {vj.get('marge', 0):.1f} %."
         )
     return "\n".join(lines)
+
+
+def _resolve_time_context(frage: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Löst Zeitbezug auf.
+    Regeln:
+    - Wenn expliziter Zeitraum im Payload übergeben wird: verwenden.
+    - Wenn Frage klare Signale enthält: verwenden.
+    - Wenn unklar und kein Payload: Rückfrage.
+    - Default: aktueller Monat + YTD.
+    """
+    heute = date.today()
+    raw = (frage or "").lower()
+    period = payload.get("zeitraum") if isinstance(payload, dict) else None
+
+    # Expliziter Zeitraum vom Client
+    if isinstance(period, dict) and (period.get("von") or period.get("month")):
+        try:
+            month = int(period.get("month") or heute.month)
+            year = int(period.get("year") or heute.year)
+        except (TypeError, ValueError):
+            return {
+                "needs_clarification": True,
+                "clarification_question": "Ungültiger Zeitraum. Bitte month (1-12) und year (YYYY) numerisch angeben.",
+            }
+        if month < 1 or month > 12:
+            return {
+                "needs_clarification": True,
+                "clarification_question": "Ungültiger Monat. Bitte month zwischen 1 und 12 angeben.",
+            }
+        return {
+            "needs_clarification": False,
+            "label": "explizit",
+            "month": month,
+            "year": year,
+            "ytd": bool(period.get("ytd", True)),
+            "from": period.get("von"),
+            "to": period.get("bis"),
+        }
+
+    has_time_hint = any(token in raw for token in [
+        "heute", "gestern", "tag", "monat", "monatlich", "ytd", "jahr", "quartal", "woche"
+    ])
+    is_ambiguous = any(token in raw for token in ["bisher", "aktuell", "wie läuft", "status"]) and not has_time_hint
+
+    if is_ambiguous:
+        return {
+            "needs_clarification": True,
+            "clarification_question": "Welchen Zeitraum meinst du genau? (aktueller Monat, YTD, letztes Monat, konkretes Datum)",
+        }
+
+    # Default gemäß Anforderung: aktueller Monat + YTD
+    return {
+        "needs_clarification": False,
+        "label": "default_monat_ytd",
+        "month": heute.month,
+        "year": heute.year,
+        "ytd": True,
+        "from": None,
+        "to": None,
+    }
+
+
+def _extract_entities_with_lm(frage: str) -> Dict[str, Any]:
+    """
+    Extrahiert Produkt/Modell-Entitäten aus der Frage.
+    Fail-safe: Gibt leeres Dict zurück.
+    """
+    prompt = f"""
+Extrahiere relevante Entitäten aus dieser Autohaus-Frage.
+Frage: {frage}
+
+Antworte NUR als JSON:
+{{
+  "modell": "z.B. Astra oder null",
+  "teilbegriff": "z.B. Ölfilter oder null",
+  "teilenummer": "z.B. 93185674 oder null"
+}}
+"""
+    response = lm_studio_client.chat_completion(
+        messages=[
+            {"role": "system", "content": "Du extrahierst Entitäten. Nur JSON."},
+            {"role": "user", "content": prompt},
+        ],
+        max_tokens=120,
+        temperature=0.0,
+        timeout=20,
+    )
+    if not response:
+        return {}
+    try:
+        cleaned = response.strip()
+        if cleaned.startswith("```"):
+            lines = cleaned.split("\n")
+            cleaned = "\n".join(lines[1:-1]) if len(lines) > 2 else cleaned
+        data = json.loads(cleaned)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _detect_intent(frage: str, bereich: str = "") -> Dict[str, Any]:
+    raw = (frage or "").lower()
+    domain = (bereich or "").strip().lower()
+
+    # Frueh-Intent: Teilebestellungen/ServiceBox auch bei "bestellt" (nicht nur "Bestellungen")
+    if (
+        any(k in raw for k in ["servicebox", "teilebestellungen", "teilebestellung", "btz"])
+        or ("bestell" in raw and ("teil" in raw or "teile" in raw))
+        or ((" für " in raw or " fuer " in raw or " von " in raw) and "bestellt" in raw)
+    ):
+        return {"id": "servicebox_bestellungen", "confidence": 0.95}
+
+    if domain in ("kunden", "kunde", "adressbuch") or any(k in raw for k in [
+        "kunde", "kunden", "kundennummer", "adressbuch", "telefonnummer", "email"
+    ]):
+        return {"id": "kunden_suche", "confidence": 0.9}
+    if domain in ("servicebox", "teilebestellungen", "bestellungen"):
+        return {"id": "servicebox_bestellungen", "confidence": 0.92}
+    if domain == "controlling" or any(k in raw for k in ["tek", "db1", "breakeven", "monat gelaufen", "marge", "gesamtunternehmen", "gesamt unternehmen"]):
+        return {"id": "tek_summary", "confidence": 0.9}
+    if domain == "verkauf" or any(
+        k in raw
+        for k in [
+            "auftragseingang",
+            "auftrag",
+            "aufträge",
+            "auftraege",
+            "auslieferung",
+            "auslieferungen",
+            "verkäufer",
+            "verkaeufer",
+        ]
+    ):
+        return {"id": "verkauf_auftragseingang", "confidence": 0.9}
+    if domain in ("teile", "lager") or any(k in raw for k in ["lager", "ölfilter", "oelfilter", "teil", "teilenummer"]):
+        return {"id": "teile_lager", "confidence": 0.8}
+    # Default für schnelle Ergebnisse: allgemeine Business-Fragen -> TEK
+    return {"id": "tek_summary", "confidence": 0.55}
+
+
+def _run_query_tek(time_ctx: Dict[str, Any]) -> Dict[str, Any]:
+    from api.controlling_data import get_tek_data
+
+    monat = time_ctx.get("month")
+    jahr = time_ctx.get("year")
+    monat_data = get_tek_data(monat=monat, jahr=jahr, firma="0", standort="0")
+    return {
+        "query_id": "tek_summary",
+        "month_data": monat_data,
+        "time_context": time_ctx,
+    }
+
+
+def _load_auftragseingang_ziele(monat: Any, jahr: Any) -> Dict[str, Any]:
+    """
+    Lädt Monats-/YTD-Ziele für Auftragseingang aus der SSOT-Zielplanung.
+    Fehler brechen die Query nicht; dann {"success": False, ...}.
+    """
+    try:
+        m = int(monat)
+        y = int(jahr)
+        if m < 1 or m > 12:
+            return {"success": False, "error": "ungueltiger monat"}
+
+        from api.verkaeufer_zielplanung_api import get_monatsziele_konzern_dict
+
+        month_goal = get_monatsziele_konzern_dict(y, m)
+        if not month_goal.get("success"):
+            return {"success": False, "error": month_goal.get("error") or "Monatsziel nicht verfügbar"}
+
+        ytd_nw = 0
+        ytd_gw = 0
+        for mm in range(1, m + 1):
+            g = get_monatsziele_konzern_dict(y, mm)
+            if not g.get("success"):
+                continue
+            ytd_nw += int(g.get("ziel_nw_konzern") or 0)
+            ytd_gw += int(g.get("ziel_gw_konzern") or 0)
+
+        return {
+            "success": True,
+            "month": {
+                "stueck_nw": int(month_goal.get("ziel_nw_konzern") or 0),
+                "stueck_gw": int(month_goal.get("ziel_gw_konzern") or 0),
+            },
+            "ytd": {
+                "stueck_nw": int(ytd_nw),
+                "stueck_gw": int(ytd_gw),
+            },
+            "source": "api.verkaeufer_zielplanung_api.get_monatsziele_konzern_dict",
+        }
+    except Exception as e:
+        logger.info("Auftragseingang-Ziele nicht verfügbar: %s", e)
+        return {"success": False, "error": str(e)}
+
+
+def _run_query_verkauf(time_ctx: Dict[str, Any]) -> Dict[str, Any]:
+    from api.verkauf_data import VerkaufData
+
+    monat = time_ctx.get("month")
+    jahr = time_ctx.get("year")
+    segments_month = VerkaufData.get_auftragseingang_segments(month=monat, year=jahr, ytd=False)
+    segments_ytd = VerkaufData.get_auftragseingang_segments(month=monat, year=jahr, ytd=True)
+    targets = _load_auftragseingang_ziele(monat, jahr)
+    return {
+        "query_id": "verkauf_auftragseingang",
+        "segments_month": segments_month,
+        "segments_ytd": segments_ytd,
+        "targets": targets,
+        "time_context": time_ctx,
+    }
+
+
+def _run_query_teile(frage: str) -> Dict[str, Any]:
+    from api.teile_stock_utils import get_stock_level_for_subsidiary
+    from api.db_utils import locosoft_session
+    from psycopg2.extras import RealDictCursor
+
+    entities = _extract_entities_with_lm(frage)
+    raw = (frage or "").lower()
+
+    # Teilenummer direkt aus Frage oder Entitäten
+    part_from_text = re.search(r"\b[A-Z0-9]{6,20}\b", (frage or "").upper())
+    teilenummer = (entities.get("teilenummer") if isinstance(entities, dict) else None) or (part_from_text.group(0) if part_from_text else None)
+    modell = (entities.get("modell") if isinstance(entities, dict) else None) or ("astra" if "astra" in raw else None)
+    teilbegriff = (entities.get("teilbegriff") if isinstance(entities, dict) else None) or ("ölfilter" if ("ölfilter" in raw or "oelfilter" in raw) else None)
+
+    if teilenummer:
+        standorte = {1: "Deggendorf Opel", 2: "Deggendorf Hyundai", 3: "Landau"}
+        stocks = {}
+        total = 0.0
+        for sid, label in standorte.items():
+            info = get_stock_level_for_subsidiary(teilenummer, sid, required_amount=0, use_soap=False)
+            level = float(info.get("stock_level", 0) or 0)
+            stocks[str(sid)] = {"standort": label, "stock_level": level}
+            total += level
+        return {
+            "query_id": "teile_lager",
+            "mode": "part_number_direct",
+            "entities": {"teilenummer": teilenummer},
+            "stock_total": total,
+            "stock_by_location": stocks,
+        }
+
+    # Für die Einschätzung: weiche KI-Erkennung auf Teilebeschreibung
+    if teilbegriff:
+        with locosoft_session() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            model_filter = f"%{modell.lower()}%" if modell else "%"
+            cur.execute(
+                """
+                SELECT
+                    pm.part_number,
+                    pm.description,
+                    COALESCE(SUM(ps.stock_level), 0) AS stock_level
+                FROM parts_master pm
+                LEFT JOIN parts_stock ps ON ps.part_number = pm.part_number
+                WHERE LOWER(pm.description) LIKE %s
+                  AND LOWER(pm.description) LIKE %s
+                GROUP BY pm.part_number, pm.description
+                ORDER BY stock_level DESC
+                LIMIT 20
+                """,
+                (f"%{teilbegriff.lower()}%", model_filter),
+            )
+            rows = cur.fetchall() or []
+        top = [
+            {
+                "part_number": r.get("part_number"),
+                "description": r.get("description"),
+                "stock_level": float(r.get("stock_level") or 0),
+            }
+            for r in rows
+        ]
+        return {
+            "query_id": "teile_lager",
+            "mode": "ai_entity_match",
+            "entities": {"modell": modell, "teilbegriff": teilbegriff},
+            "top_matches": top,
+            "stock_total_top_matches": round(sum(x["stock_level"] for x in top), 2),
+            "note": "Einschätzung über Beschreibungs-Matching; für produktive Präzision später Mapping-Tabelle empfehlenswert.",
+        }
+
+    return {
+        "query_id": "teile_lager",
+        "mode": "needs_clarification",
+        "needs_clarification": True,
+        "clarification_question": "Für Teilebestand bitte Teilenummer oder genaue Teilbezeichnung nennen (z. B. Ölfilter + Modell).",
+    }
+
+
+def _extract_servicebox_customer_term(frage: str) -> str:
+    """
+    Extrahiert Kundensuchbegriff aus Fragen wie:
+    - "Welche Teile haben wir fuer Raedlinger bestellt?"
+    - "Teilebestellungen von Mueller"
+    """
+    text = (frage or "").strip()
+    if not text:
+        return ""
+    lower = text.lower()
+    for marker in [" für ", " fuer ", " von "]:
+        idx = lower.find(marker)
+        if idx >= 0:
+            candidate = text[idx + len(marker):].strip(" ?.!,:;")
+            # haeufiges Endwort entfernen
+            candidate = re.sub(r"\b(bestellt|bestellung|teilebestellung|teile)\b", "", candidate, flags=re.IGNORECASE).strip(" ?.!,:;")
+            if candidate:
+                return candidate
+    return ""
+
+
+def _run_query_servicebox(time_ctx: Dict[str, Any], frage: str = "") -> Dict[str, Any]:
+    """
+    ServiceBox/Teilebestellungen Kennzahlen (analog Teilebestellungen-UI Kacheln).
+    """
+    from api.db_utils import db_session, row_to_dict
+    from api.db_connection import sql_placeholder
+
+    month = int(time_ctx.get("month"))
+    year = int(time_ctx.get("year"))
+    ph = sql_placeholder()
+
+    with db_session() as conn:
+        cursor = conn.cursor()
+
+        # Monatssicht
+        cursor.execute(
+            f"""
+            SELECT
+                COUNT(*) AS total_bestellungen
+            FROM stellantis_bestellungen b
+            WHERE EXTRACT(YEAR FROM b.bestelldatum) = {ph}
+              AND EXTRACT(MONTH FROM b.bestelldatum) = {ph}
+            """,
+            (str(year), f"{month:02d}")
+        )
+        total_bestellungen = int((row_to_dict(cursor.fetchone()) or {}).get("total_bestellungen") or 0)
+
+        cursor.execute(
+            f"""
+            SELECT
+                COUNT(*) AS total_positionen,
+                COALESCE(SUM(p.summe_inkl_mwst), 0) AS gesamtwert
+            FROM stellantis_positionen p
+            JOIN stellantis_bestellungen b ON b.id = p.bestellung_id
+            WHERE EXTRACT(YEAR FROM b.bestelldatum) = {ph}
+              AND EXTRACT(MONTH FROM b.bestelldatum) = {ph}
+            """,
+            (str(year), f"{month:02d}")
+        )
+        stats_row = row_to_dict(cursor.fetchone()) or {}
+
+        # Heute
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS today_bestellungen
+            FROM stellantis_bestellungen
+            WHERE DATE(bestelldatum) = CURRENT_DATE
+            """
+        )
+        today_bestellungen = int((row_to_dict(cursor.fetchone()) or {}).get("today_bestellungen") or 0)
+
+        # Optional: Kundenspezifische Auswertung aus der Frage
+        customer_term = _extract_servicebox_customer_term(frage)
+        customer_stats = None
+        top_parts = []
+        if customer_term:
+            cursor.execute(
+                f"""
+                SELECT
+                    COUNT(DISTINCT b.id) AS total_bestellungen,
+                    COUNT(p.id) AS total_positionen,
+                    COALESCE(SUM(p.summe_inkl_mwst), 0) AS gesamtwert
+                FROM stellantis_bestellungen b
+                LEFT JOIN stellantis_positionen p ON p.bestellung_id = b.id
+                WHERE EXTRACT(YEAR FROM b.bestelldatum) = {ph}
+                  AND EXTRACT(MONTH FROM b.bestelldatum) = {ph}
+                  AND (
+                        COALESCE(b.match_kunde_name, '') ILIKE {ph}
+                     OR COALESCE(b.parsed_kundennummer, '') ILIKE {ph}
+                     OR COALESCE(b.bestellnummer, '') ILIKE {ph}
+                  )
+                """,
+                (str(year), f"{month:02d}", f"%{customer_term}%", f"%{customer_term}%", f"%{customer_term}%")
+            )
+            c_row = row_to_dict(cursor.fetchone()) or {}
+            customer_stats = {
+                "search_term": customer_term,
+                "total_bestellungen": int(c_row.get("total_bestellungen") or 0),
+                "total_positionen": int(c_row.get("total_positionen") or 0),
+                "gesamtwert": round(float(c_row.get("gesamtwert") or 0), 2),
+            }
+
+            cursor.execute(
+                f"""
+                SELECT
+                    p.teilenummer,
+                    COALESCE(MAX(p.beschreibung), 'Unbekannt') AS bezeichnung,
+                    COUNT(*) AS anzahl_positionen,
+                    COALESCE(SUM(p.summe_inkl_mwst), 0) AS gesamtwert
+                FROM stellantis_bestellungen b
+                JOIN stellantis_positionen p ON p.bestellung_id = b.id
+                WHERE EXTRACT(YEAR FROM b.bestelldatum) = {ph}
+                  AND EXTRACT(MONTH FROM b.bestelldatum) = {ph}
+                  AND (
+                        COALESCE(b.match_kunde_name, '') ILIKE {ph}
+                     OR COALESCE(b.parsed_kundennummer, '') ILIKE {ph}
+                     OR COALESCE(b.bestellnummer, '') ILIKE {ph}
+                  )
+                GROUP BY p.teilenummer
+                ORDER BY anzahl_positionen DESC, gesamtwert DESC
+                LIMIT 15
+                """,
+                (str(year), f"{month:02d}", f"%{customer_term}%", f"%{customer_term}%", f"%{customer_term}%")
+            )
+            for r in cursor.fetchall() or []:
+                rr = row_to_dict(r) or {}
+                top_parts.append({
+                    "teilenummer": rr.get("teilenummer"),
+                    "bezeichnung": rr.get("bezeichnung"),
+                    "anzahl_positionen": int(rr.get("anzahl_positionen") or 0),
+                    "gesamtwert": round(float(rr.get("gesamtwert") or 0), 2),
+                })
+
+    result = {
+        "query_id": "servicebox_bestellungen",
+        "time_context": time_ctx,
+        "stats": {
+            "total_bestellungen": total_bestellungen,
+            "total_positionen": int(stats_row.get("total_positionen") or 0),
+            "gesamtwert": round(float(stats_row.get("gesamtwert") or 0), 2),
+            "today_bestellungen": today_bestellungen,
+        },
+    }
+    if customer_stats:
+        result["customer_stats"] = customer_stats
+        result["top_parts"] = top_parts
+    return result
+
+
+def _extract_customer_search_term(frage: str) -> str:
+    """
+    Extrahiert den Suchbegriff für Kundensuche aus der Frage.
+    """
+    text = (frage or "").strip()
+    if not text:
+        return ""
+
+    # Kundennummer direkt erkennen
+    num_match = re.search(r"\b\d{4,10}\b", text)
+    if num_match:
+        return num_match.group(0)
+
+    cleaned = re.sub(
+        r"\b(wie|wer|ist|sind|der|die|das|ein|eine|zu|von|für|den|dem|mit|suche|finde|zeige|mir|bitte|kunde|kunden|kundennummer|telefon|telefonnummer|email|e-mail)\b",
+        " ",
+        text,
+        flags=re.IGNORECASE
+    )
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned or text
+
+
+def _run_query_kunden(frage: str) -> Dict[str, Any]:
+    """
+    Kundenabfrage über vorhandene Adressbuch-SSOT.
+    """
+    from api.locosoft_addressbook_api import search_customers
+
+    term = _extract_customer_search_term(frage)
+    results = search_customers(q=term, limit=20, mobile_only=False)
+
+    # Auf kompaktes, API-taugliches Ergebnis normalisieren
+    kunden = []
+    for item in results[:10]:
+        kunden.append({
+            "customer_number": item.get("customer_number"),
+            "display_name": item.get("display_name") or item.get("contact_name"),
+            "phone": item.get("phone") or item.get("phone_number"),
+            "email": item.get("email"),
+            "city": item.get("home_city"),
+        })
+
+    return {
+        "query_id": "kunden_suche",
+        "search_term": term,
+        "count": len(results),
+        "kunden": kunden,
+    }
+
+
+# =============================================================================
+# KI /api/ai/query – optionale Visualisierung (Chart.js-kompatibel, SSOT-Daten)
+# =============================================================================
+
+def _coerce_bool_include_visualization(raw: Any) -> bool:
+    """Payload-Flag include_visualization (Default: True)."""
+    if raw is None:
+        return True
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, (int, float)):
+        return bool(raw)
+    s = str(raw).strip().lower()
+    return s not in ("0", "false", "no", "off", "")
+
+
+def _build_visualization_tek(result_data: Dict[str, Any], time_ctx: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    md = result_data.get("month_data") or {}
+    gesamt = md.get("gesamt") or {}
+    if not gesamt:
+        return None
+    umsatz = float(gesamt.get("umsatz") or 0)
+    einsatz = float(gesamt.get("einsatz") or 0)
+    db1 = float(gesamt.get("db1") or 0)
+    prognose = float(gesamt.get("prognose") or 0)
+    breakeven = float(gesamt.get("breakeven") or 0)
+    vm = md.get("vm") or {}
+    vj = md.get("vj") or {}
+    vm_db1 = float(vm.get("db1") or 0)
+    vj_db1 = float(vj.get("db1") or 0)
+    labels = ["Umsatz", "Einsatz", "DB1", "Prognose", "Breakeven", "DB1 VM", "DB1 VJ"]
+    data_values = [umsatz, einsatz, db1, prognose, breakeven, vm_db1, vj_db1]
+    month = time_ctx.get("month")
+    year = time_ctx.get("year")
+    title = "TEK (Gesamtunternehmen)"
+    if month is not None and year is not None:
+        title = f"TEK {int(month):02d}/{int(year)}"
+    return {
+        "type": "bar",
+        "title": title,
+        "labels": labels,
+        "datasets": [
+            {
+                "label": "EUR",
+                "data": data_values,
+                "backgroundColor": "rgba(13, 110, 253, 0.55)",
+            }
+        ],
+        "options": {
+            "scales": {
+                "y": {"beginAtZero": True},
+                "x": {"ticks": {"maxRotation": 45, "minRotation": 0}},
+            },
+            "plugins": {"legend": {"display": False}},
+        },
+        "meta": {
+            "unit": "EUR",
+            "source": "api.controlling_data.get_tek_data",
+            "time_context": time_ctx,
+        },
+    }
+
+
+def _build_visualization_verkauf(result_data: Dict[str, Any], time_ctx: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    sm = result_data.get("segments_month") or {}
+    sy = result_data.get("segments_ytd") or {}
+    if sm.get("success") is False or sy.get("success") is False:
+        return None
+    nw_m = int(sm.get("stueck_nw") or 0)
+    gw_m = int(sm.get("stueck_gw") or 0)
+    nw_y = int(sy.get("stueck_nw") or 0)
+    gw_y = int(sy.get("stueck_gw") or 0)
+    month = time_ctx.get("month")
+    year = time_ctx.get("year")
+    targets = result_data.get("targets") or {}
+    has_targets = bool(targets.get("success"))
+    target_month = (targets.get("month") or {}) if has_targets else {}
+    target_ytd = (targets.get("ytd") or {}) if has_targets else {}
+
+    title = "Auftragseingang NW/GW"
+    if month is not None and year is not None:
+        title = f"Auftragseingang NW/GW ({int(month):02d}/{int(year)})"
+
+    datasets = [
+        {
+            "label": "Monat",
+            "data": [nw_m, gw_m],
+            "backgroundColor": "rgba(25, 135, 84, 0.65)",
+        },
+        {
+            "label": "YTD",
+            "data": [nw_y, gw_y],
+            "backgroundColor": "rgba(13, 110, 253, 0.55)",
+        },
+    ]
+    if has_targets:
+        datasets.append({
+            "label": "Ziel Monat",
+            "data": [
+                int(target_month.get("stueck_nw") or 0),
+                int(target_month.get("stueck_gw") or 0),
+            ],
+            "backgroundColor": "rgba(220, 53, 69, 0.45)",
+            "borderColor": "rgba(220, 53, 69, 0.95)",
+            "borderWidth": 1,
+        })
+        datasets.append({
+            "label": "Ziel YTD",
+            "data": [
+                int(target_ytd.get("stueck_nw") or 0),
+                int(target_ytd.get("stueck_gw") or 0),
+            ],
+            "backgroundColor": "rgba(255, 193, 7, 0.45)",
+            "borderColor": "rgba(255, 193, 7, 0.95)",
+            "borderWidth": 1,
+        })
+
+    meta: Dict[str, Any] = {
+        "unit": "Stück",
+        "source": "api.verkauf_data.VerkaufData.get_auftragseingang_segments",
+        "time_context": time_ctx,
+    }
+    if has_targets:
+        meta["target_source"] = targets.get("source")
+        meta["target_reached"] = {
+            "month_nw_pct": round((nw_m / max(int(target_month.get("stueck_nw") or 0), 1)) * 100, 1),
+            "month_gw_pct": round((gw_m / max(int(target_month.get("stueck_gw") or 0), 1)) * 100, 1),
+            "ytd_nw_pct": round((nw_y / max(int(target_ytd.get("stueck_nw") or 0), 1)) * 100, 1),
+            "ytd_gw_pct": round((gw_y / max(int(target_ytd.get("stueck_gw") or 0), 1)) * 100, 1),
+        }
+
+    return {
+        "type": "bar",
+        "title": title,
+        "labels": ["Neuwagen (NW)", "Gebrauchtwagen (GW)"],
+        "datasets": datasets,
+        "options": {
+            "scales": {
+                "x": {"stacked": False},
+                "y": {"beginAtZero": True},
+            },
+            "plugins": {"legend": {"display": True}},
+        },
+        "meta": meta,
+    }
+
+
+def _build_visualization_servicebox(result_data: Dict[str, Any], time_ctx: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    KPI-Balken: Bestellungen, Positionen, Gesamtwert (kEUR), Heute (Bestellungen).
+    Gesamtwert in kEUR skaliert, damit er neben Stückzahlen lesbar bleibt.
+    """
+    base_stats = result_data.get("stats") or {}
+    customer_stats = result_data.get("customer_stats")
+    if customer_stats:
+        agg = customer_stats
+        title_extra = f' – Kunde „{agg.get("search_term") or "?"}“'
+    else:
+        agg = base_stats
+        title_extra = ""
+    b = int(agg.get("total_bestellungen") or 0)
+    p = int(agg.get("total_positionen") or 0)
+    g = float(agg.get("gesamtwert") or 0)
+    today = int(base_stats.get("today_bestellungen") or 0)
+    month = time_ctx.get("month")
+    year = time_ctx.get("year")
+    title = "ServiceBox Teilebestellungen"
+    if month is not None and year is not None:
+        title = f"ServiceBox {int(month):02d}/{int(year)}{title_extra}"
+    else:
+        title = title + title_extra
+    labels = ["Bestellungen", "Positionen", "Gesamtwert (kEUR)", "Heute (Best.)"]
+    data_values = [b, p, round(g / 1000.0, 2), today]
+    return {
+        "type": "bar",
+        "title": title,
+        "labels": labels,
+        "datasets": [
+            {
+                "label": "Kennzahl",
+                "data": data_values,
+                "backgroundColor": "rgba(111, 66, 193, 0.6)",
+            }
+        ],
+        "options": {
+            "scales": {
+                "y": {"beginAtZero": True},
+                "x": {"ticks": {"maxRotation": 30, "minRotation": 0}},
+            },
+            "plugins": {"legend": {"display": False}},
+        },
+        "meta": {
+            "unit": "gemischt (Stück / kEUR)",
+            "source": "stellantis_bestellungen / stellantis_positionen",
+            "time_context": time_ctx,
+            "note": "Gesamtwert als Tausend EUR; Heute = alle Bestellungen mit Datum heute (nicht nur gefilterter Kunde).",
+        },
+    }
+
+
+def _safe_build_visualization(
+    intent_id: str,
+    result_data: Optional[Dict[str, Any]],
+    time_ctx: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """
+    Baut optionalen visualization-Block; Fehler oder fehlende Daten -> None (Antwort bleibt gültig).
+    """
+    if not isinstance(result_data, dict):
+        return None
+    tc = time_ctx if isinstance(time_ctx, dict) else {}
+    try:
+        if intent_id == "tek_summary":
+            return _build_visualization_tek(result_data, tc)
+        if intent_id == "verkauf_auftragseingang":
+            return _build_visualization_verkauf(result_data, tc)
+        if intent_id == "servicebox_bestellungen":
+            return _build_visualization_servicebox(result_data, tc)
+    except Exception as e:
+        logger.warning("Visualization-Build fehlgeschlagen (%s): %s", intent_id, e)
+    return None
+
+
+def _compose_answer_text(intent_id: str, data: Dict[str, Any]) -> str:
+    if intent_id == "kunden_suche":
+        count = int(data.get("count") or 0)
+        term = data.get("search_term") or "deiner Suche"
+        kunden = data.get("kunden") or []
+        if count == 0:
+            return f"Ich habe keine Kunden zu '{term}' gefunden."
+        if count == 1 and kunden:
+            k = kunden[0]
+            return (
+                f"Ich habe 1 passenden Kunden gefunden: {k.get('display_name')} "
+                f"(Nr. {k.get('customer_number')})."
+            )
+        return f"Ich habe {count} passende Kunden zu '{term}' gefunden. Ich zeige die Top-Treffer."
+    if intent_id == "servicebox_bestellungen":
+        customer_stats = data.get("customer_stats") or {}
+        if customer_stats:
+            return (
+                f"ServiceBox fuer '{customer_stats.get('search_term')}': "
+                f"{customer_stats.get('total_bestellungen', 0)} Bestellungen, "
+                f"{customer_stats.get('total_positionen', 0)} Positionen, "
+                f"Gesamtwert {customer_stats.get('gesamtwert', 0):,.2f} EUR."
+            )
+        stats = data.get("stats") or {}
+        return (
+            f"ServiceBox Teilebestellungen: {stats.get('total_bestellungen', 0)} Bestellungen, "
+            f"{stats.get('total_positionen', 0)} Positionen, Gesamtwert {stats.get('gesamtwert', 0):,.2f} EUR. "
+            f"Heute: {stats.get('today_bestellungen', 0)} Bestellungen."
+        )
+    if intent_id == "tek_summary":
+        gesamt = ((data.get("month_data") or {}).get("gesamt") or {})
+        return (
+            f"TEK aktueller Monat: Umsatz {gesamt.get('umsatz', 0):,.0f} EUR, "
+            f"DB1 {gesamt.get('db1', 0):,.0f} EUR, Marge {gesamt.get('marge', 0):.1f}%. "
+            f"Prognose Monatsende {gesamt.get('prognose', 0):,.0f} EUR."
+        )
+    if intent_id == "verkauf_auftragseingang":
+        seg_m = data.get("segments_month") or {}
+        seg_y = data.get("segments_ytd") or {}
+        text = (
+            f"Auftragseingang Monat: NW {seg_m.get('stueck_nw', 0)}, GW {seg_m.get('stueck_gw', 0)}. "
+            f"YTD: NW {seg_y.get('stueck_nw', 0)}, GW {seg_y.get('stueck_gw', 0)}."
+        )
+        targets = data.get("targets") or {}
+        if targets.get("success"):
+            tm = targets.get("month") or {}
+            ty = targets.get("ytd") or {}
+            text += (
+                f" Ziel Monat: NW {tm.get('stueck_nw', 0)}, GW {tm.get('stueck_gw', 0)}; "
+                f"Ziel YTD: NW {ty.get('stueck_nw', 0)}, GW {ty.get('stueck_gw', 0)}."
+            )
+        return text
+    if intent_id == "teile_lager":
+        if data.get("mode") == "part_number_direct":
+            return f"Bestand für Teilenummer {data.get('entities', {}).get('teilenummer')}: gesamt {data.get('stock_total', 0):,.1f} Stück."
+        if data.get("mode") == "ai_entity_match":
+            return (
+                f"Für {data.get('entities', {}).get('teilbegriff', 'das Teil')} "
+                f"({data.get('entities', {}).get('modell') or 'ohne Modellfilter'}) "
+                f"wurden Top-Treffer mit gesamt {data.get('stock_total_top_matches', 0):,.1f} Stück gefunden."
+            )
+    return "Die Frage konnte noch nicht sicher einer Datenabfrage zugeordnet werden."
+
+
+def _get_auth_mode() -> str:
+    return request.environ.get('drive.auth_mode', 'session')
+
+
+def _get_auth_scopes() -> set:
+    raw = request.environ.get('drive.auth_scopes', '')
+    return {s.strip() for s in raw.split(',') if s.strip()}
+
+
+def _is_feature_allowed(feature: str) -> bool:
+    auth_mode = _get_auth_mode()
+    if auth_mode == 'api_key':
+        scopes = _get_auth_scopes()
+        return feature in scopes or '*' in scopes
+    if hasattr(current_user, "is_authenticated") and current_user.is_authenticated:
+        return hasattr(current_user, "can_access_feature") and current_user.can_access_feature(feature)
+    return False
+
+
+def _is_verkauf_intent_allowed() -> bool:
+    """
+    Berechtigungscheck für Auftragseingang-/Verkaufs-Intent.
+    Akzeptiert sowohl grobe als auch feingranulare Features.
+    """
+    return any([
+        _is_feature_allowed("verkauf"),
+        _is_feature_allowed("auftragseingang"),
+        _is_feature_allowed("verkauf_dashboard"),
+        _is_feature_allowed("admin"),
+    ])
+
+
+def _is_servicebox_intent_allowed() -> bool:
+    return any([
+        _is_feature_allowed("teilebestellungen"),
+        _is_feature_allowed("teile"),
+        _is_feature_allowed("lager"),
+        _is_feature_allowed("admin"),
+    ])
+
+
+def _is_kunden_intent_allowed() -> bool:
+    return any([
+        _is_feature_allowed("service"),
+        _is_feature_allowed("serviceberater"),
+        _is_feature_allowed("verkauf"),
+        _is_feature_allowed("verkauf_dashboard"),
+        _is_feature_allowed("whatsapp_verkauf"),
+        _is_feature_allowed("whatsapp_teile"),
+        _is_feature_allowed("admin"),
+    ])
+
+
+def _fallback_to_allowed_intent(preferred_intent: str) -> str:
+    """
+    Liefert einen erlaubten Fallback-Intent statt hartem 403, wenn moeglich.
+    Reihenfolge:
+    1) bevorzugter Intent (falls erlaubt)
+    2) controlling (tek_summary)
+    3) teile_lager
+    4) preferred_intent (fuehrt dann zu normalem 403)
+    """
+    intent_feature_map = {
+        "tek_summary": "controlling",
+        "verkauf_auftragseingang": "verkauf",
+        "teile_lager": "teile",
+        "servicebox_bestellungen": "teilebestellungen",
+        "kunden_suche": "service",
+    }
+
+    if preferred_intent == "verkauf_auftragseingang":
+        if _is_verkauf_intent_allowed():
+            return preferred_intent
+    elif preferred_intent == "kunden_suche":
+        if _is_kunden_intent_allowed():
+            return preferred_intent
+    elif preferred_intent == "servicebox_bestellungen":
+        if _is_servicebox_intent_allowed():
+            return preferred_intent
+    elif _is_feature_allowed(intent_feature_map.get(preferred_intent, "")):
+        return preferred_intent
+    if _is_feature_allowed("controlling"):
+        return "tek_summary"
+    if _is_feature_allowed("teile"):
+        return "teile_lager"
+    return preferred_intent
+
+
+@ai_api.route('/query', methods=['POST'])
+@login_or_api_key_required
+def query_business_data_hybrid():
+    """
+    Hybrid MVP für 'Google-like' Business Query API.
+    - Fragetext -> Intent -> SSOT-Query
+    - Antwort als Text + JSON
+    - Optional: Feld ``visualization`` (Chart.js-Daten: type, title, labels, datasets, options, meta)
+    - ``include_visualization`` im Body (Default true): bei false kein visualization-Block
+    - Zeitbezug: Rückfrage bei Unklarheit, sonst Default aktueller Monat + YTD
+    """
+    try:
+        payload = request.get_json() or {}
+        frage = (payload.get("frage") or "").strip()
+        clarification_answer = (payload.get("clarification_answer") or "").strip()
+        previous_question = (payload.get("previous_question") or "").strip()
+        bereich = (payload.get("bereich") or "").strip()
+        include_visualization = _coerce_bool_include_visualization(payload.get("include_visualization"))
+
+        # Folgefrage-Kontext: Rückfrage beantworten ohne den ursprünglichen Kontext zu verlieren
+        if clarification_answer and previous_question:
+            frage = f"{previous_question}. Praezisierung: {clarification_answer}"
+
+        if not frage:
+            return jsonify({"success": False, "error": "Bitte 'frage' im JSON-Body angeben."}), 400
+
+        time_ctx = _resolve_time_context(frage, payload)
+        if time_ctx.get("needs_clarification"):
+            return jsonify({
+                "success": True,
+                "needs_clarification": True,
+                "clarification_question": time_ctx.get("clarification_question"),
+                "answer_text": "Zeitbezug unklar, bitte Zeitraum präzisieren.",
+                "answer_data": {},
+                "conversation": {
+                    "requires_input": True,
+                    "previous_question": previous_question or frage,
+                    "clarification_type": "timeframe",
+                },
+            }), 200
+
+        intent = _detect_intent(frage, bereich=bereich)
+        intent_id = intent.get("id")
+
+        requested_intent = intent_id
+        intent_id = _fallback_to_allowed_intent(intent_id)
+        fallback_applied = (intent_id != requested_intent)
+
+        if intent_id == "tek_summary":
+            if not _is_feature_allowed("controlling"):
+                return jsonify({"success": False, "error": "Keine Berechtigung fuer Controlling-Daten."}), 403
+            result_data = _run_query_tek(time_ctx)
+        elif intent_id == "verkauf_auftragseingang":
+            if not _is_verkauf_intent_allowed():
+                return jsonify({"success": False, "error": "Keine Berechtigung fuer Verkaufsdaten."}), 403
+            result_data = _run_query_verkauf(time_ctx)
+        elif intent_id == "teile_lager":
+            if not _is_feature_allowed("teile"):
+                return jsonify({"success": False, "error": "Keine Berechtigung fuer Teile-/Lagerdaten."}), 403
+            result_data = _run_query_teile(frage)
+            if result_data.get("needs_clarification"):
+                return jsonify({
+                    "success": True,
+                    "needs_clarification": True,
+                    "clarification_question": result_data.get("clarification_question"),
+                    "answer_text": "Für eine genaue Lagerantwort brauche ich noch eine Präzisierung.",
+                    "answer_data": result_data,
+                    "conversation": {
+                        "requires_input": True,
+                        "previous_question": previous_question or frage,
+                        "clarification_type": "entity",
+                    },
+                }), 200
+        elif intent_id == "servicebox_bestellungen":
+            if not _is_servicebox_intent_allowed():
+                return jsonify({"success": False, "error": "Keine Berechtigung fuer Teilebestellungen/ServiceBox."}), 403
+            result_data = _run_query_servicebox(time_ctx, frage=frage)
+        elif intent_id == "kunden_suche":
+            if not _is_kunden_intent_allowed():
+                return jsonify({"success": False, "error": "Keine Berechtigung fuer Kundenabfragen."}), 403
+            result_data = _run_query_kunden(frage)
+        else:
+            # Fallback auf TEK statt Rückfrage, für direkte Ergebnisse
+            if not _is_feature_allowed("controlling"):
+                return jsonify({"success": False, "error": "Keine Berechtigung für Controlling-Daten."}), 403
+            result_data = _run_query_tek(time_ctx)
+            intent = {"id": "tek_summary", "confidence": 0.5}
+            intent_id = "tek_summary"
+
+        answer_text = _compose_answer_text(intent_id, result_data)
+        if fallback_applied:
+            answer_text = (
+                "Hinweis: Für den ursprünglich erkannten Bereich fehlt die Berechtigung. "
+                "Ich zeige stattdessen verfügbare Daten. " + answer_text
+            )
+        response_body: Dict[str, Any] = {
+            "success": True,
+            "mode": "hybrid_mvp",
+            "needs_clarification": False,
+            "query": intent,
+            "effective_intent": intent_id,
+            "fallback_applied": fallback_applied,
+            "time_context": time_ctx,
+            "answer_text": answer_text,
+            "answer_data": result_data,
+        }
+        if include_visualization:
+            viz = _safe_build_visualization(intent_id, result_data, time_ctx)
+            if viz:
+                response_body["visualization"] = viz
+        return jsonify(response_body), 200
+
+    except Exception as e:
+        logger.exception("Fehler in /api/ai/query: %s", str(e))
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @ai_api.route('/analyse/geschaeftsdaten', methods=['POST'])

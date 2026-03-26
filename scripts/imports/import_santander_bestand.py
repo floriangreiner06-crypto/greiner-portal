@@ -115,6 +115,8 @@ def import_santander_bestand(csv_file=None, dry_run=False):
 
     with open(csv_file, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f, delimiter=';')
+        # Spalte O (15. Spalte, Index 14) = Kategorie/Mobilität-Info laut Santander-CSV
+        col_o_header = reader.fieldnames[14] if reader.fieldnames and len(reader.fieldnames) > 14 else None
 
         for row in reader:
             stats['gelesen'] += 1
@@ -138,19 +140,34 @@ def import_santander_bestand(csv_file=None, dry_run=False):
                 lieferdatum = parse_german_date(row.get('Lieferdatum', ''))
 
                 produkt = row.get('Produkt', '').strip()
-                
-                # Produkt-Kategorie aus Produkt-Pfad ableiten
-                # z.B. "PartPlus/Fahrzeuge/Mobil/Vermieter" → "Mobil/Vermieter"
-                if '/Neu' in produkt:
-                    produkt_kategorie = 'Neuwagen'
-                elif '/Gebraucht' in produkt:
-                    produkt_kategorie = 'Gebraucht'
-                elif 'Mobil/Vermieter' in produkt:
-                    produkt_kategorie = 'Mobil/Vermieter'
-                elif 'Mobil/Vorführer' in produkt:
-                    produkt_kategorie = 'Vorführer'
+
+                # Kategorie/Mobilität: Primär aus Spalte O (15. Spalte), Fallback aus Produkt-Pfad
+                spalte_o = (row.get(col_o_header, '').strip() if col_o_header else '')
+                if spalte_o:
+                    # Normalisierung für Auswertung (Mobilität-Rahmen 500k): gleiche Werte wie aus Produkt-Pfad
+                    so = spalte_o.strip()
+                    if 'Vorführer' in so or so == 'Vorführer':
+                        produkt_kategorie = 'Vorführer'
+                    elif 'Vermieter' in so or 'Mobil' in so or 'Mobilität' in so:
+                        produkt_kategorie = 'Mobil/Vermieter'
+                    elif 'Neu' in so or so == 'Neuwagen':
+                        produkt_kategorie = 'Neuwagen'
+                    elif 'Gebraucht' in so:
+                        produkt_kategorie = 'Gebraucht'
+                    else:
+                        produkt_kategorie = so
                 else:
-                    produkt_kategorie = produkt
+                    # Aus Produkt-Pfad ableiten, z.B. "PartPlus/Fahrzeuge/Mobil/Vermieter" → "Mobil/Vermieter"
+                    if '/Neu' in produkt:
+                        produkt_kategorie = 'Neuwagen'
+                    elif '/Gebraucht' in produkt:
+                        produkt_kategorie = 'Gebraucht'
+                    elif 'Mobil/Vermieter' in produkt:
+                        produkt_kategorie = 'Mobil/Vermieter'
+                    elif 'Mobil/Vorführer' in produkt:
+                        produkt_kategorie = 'Vorführer'
+                    else:
+                        produkt_kategorie = produkt or ''
                 herstellername = row.get('Herstellername', '').strip().strip('"')
                 modellname = row.get('Modellname', '').strip().strip('"')
                 farbe = row.get('Farbe', '').strip()

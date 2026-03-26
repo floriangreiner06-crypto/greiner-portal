@@ -16,7 +16,7 @@ import json
 # Zentrale DB-Utilities (TAG118)
 from api.db_utils import db_session, locosoft_session
 from api.vacation_approver_service import is_approver as is_vacation_approver
-from api.vacation_api import _check_substitute_vacation_conflict
+from api.vacation_api import _check_substitute_vacation_conflict, _check_max_absence_per_dept_location
 
 vacation_admin_api = Blueprint('vacation_admin_api', __name__, url_prefix='/api/vacation/admin')
 
@@ -312,12 +312,14 @@ def mass_booking():
         vacation_type_id = data.get('vacation_type_id', 1)
     except Exception:
         vacation_type_id = 1
-    # Berechtigung: Admin darf alles; bei Schulung/Krankheit auch Genehmiger
+    # Berechtigung: Krankheit (5) NUR Admin; Schulung (9) Genehmiger oder Admin; sonst nur Admin (Test DRIVE)
     ldap_username = getattr(current_user, 'username', '') or ''
     if not is_vacation_admin():
-        if vacation_type_id in (5, 9) and is_vacation_approver(ldap_username):
-            pass  # Genehmiger darf Schulung/Krankheit buchen
-        else:
+        if vacation_type_id == 5:
+            return jsonify({'success': False, 'error': 'Krankheitstage können nur von Admins eingetragen werden'}), 403
+        if vacation_type_id != 9:
+            return jsonify({'success': False, 'error': 'Keine Berechtigung'}), 403
+        if not is_vacation_approver(ldap_username):
             return jsonify({'success': False, 'error': 'Keine Berechtigung'}), 403
     
     try:
@@ -329,6 +331,7 @@ def mass_booking():
         all_employees = data.get('all_employees', False)
         auto_approve = data.get('auto_approve', False)
         comment = data.get('comment', '')
+        override_substitute_rule = data.get('override_substitute_rule', False)  # Vertretungsregel ignorieren (z. B. 24.12./31.12.)
         
         if not dates:
             return jsonify({'success': False, 'error': 'Keine Daten angegeben'}), 400
@@ -369,8 +372,12 @@ def mass_booking():
             # TAG 213 DEBUG: Log welche Mitarbeiter gefunden wurden
             print(f"📅 Masseneingabe: {len(target_employee_ids)} Mitarbeiter gefunden: {target_employee_ids[:5]}...")
             
-            # Buche für alle Mitarbeiter
+            # Buche für alle Mitarbeiter; Zähler für Überspring-Gründe (Transparenz für User)
             created_count = 0
+            skipped_block = 0
+            skipped_already_booked = 0
+            skipped_substitute = 0
+            skipped_max_absence = 0
             status = 'approved' if auto_approve else 'pending'
             
             for emp_id in target_employee_ids:
@@ -391,6 +398,7 @@ def mass_booking():
                                    OR (employee_ids IS NOT NULL AND (',' || employee_ids || ',') LIKE %s))
                         """, (date_str, emp_dept or '', '%,' + str(emp_id) + ',%'))
                         if cursor.fetchone():
+                            skipped_block += 1
                             continue  # Gesperrter Tag – überspringen
                     
                     # Prüfe ob bereits gebucht
@@ -400,19 +408,28 @@ def mass_booking():
                     """, (emp_id, date_str))
                     
                     if cursor.fetchone():
+                        skipped_already_booked += 1
                         continue  # Überspringe wenn bereits gebucht
                     
                     # Vertretungsregel: Vertreter darf an Tagen, an denen die vertretene Person abwesend ist, keinen Urlaub buchen
-                    if vacation_type_id == 1:
+                    # Ausnahme: 24.12. und 31.12. (Betriebsferien) – Vertretungsregel bei Masseneingabe ignorieren
+                    # Oder: berechtigter Nutzer hat "Vertretungsregel ignorieren" (Override) aktiviert
+                    skip_substitute_check = (
+                        override_substitute_rule
+                        or (date_str.endswith('-12-24') or date_str.endswith('-12-31'))
+                    )
+                    if vacation_type_id == 1 and not skip_substitute_check:
                         conflict = _check_substitute_vacation_conflict(cursor, emp_id, [date_str])
                         if conflict:
-                            continue  # Überspringen (Vertretungskonflikt)
+                            skipped_substitute += 1
+                            continue
                     
-                    # Vertretungsregel: Vertreter darf an Tagen, an denen die vertretene Person abwesend ist, keinen Urlaub buchen
-                    if vacation_type_id == 1:
-                        conflict = _check_substitute_vacation_conflict(cursor, emp_id, [date_str])
-                        if conflict:
-                            continue  # Überspringen (Vertretungskonflikt)
+                    # Max. Abwesenheit pro Abteilung/Standort (Urlaub + Schulung; Default 50%)
+                    if vacation_type_id in (1, 9):
+                        cap = _check_max_absence_per_dept_location(cursor, emp_id, [date_str], vacation_type_id)
+                        if cap:
+                            skipped_max_absence += 1
+                            continue  # Überspringen (Grenze würde überschritten)
                     
                     # Erstelle Buchung
                     cursor.execute("""
@@ -433,7 +450,15 @@ def mass_booking():
             'created': created_count,
             'employees': len(target_employee_ids),
             'dates': len(dates),
-            'auto_approve': auto_approve
+            'auto_approve': auto_approve,
+            'override_substitute_rule': override_substitute_rule,
+            'substitute_conflict_skipped': skipped_substitute,
+            'skipped': {
+                'block': skipped_block,
+                'already_booked': skipped_already_booked,
+                'substitute': skipped_substitute,
+                'max_absence': skipped_max_absence
+            }
         })
     
     except Exception as e:
@@ -497,18 +522,18 @@ def year_end_report():
                 'Resturlaub'
             ])
             
-            # Daten
-            # TAG 198: Korrekte Spaltenindizes - View hat: employee_id(0), name(1), email(2), department(3), location(4), anspruch(5), verbraucht(6), geplant(7), resturlaub(8)
+            # Daten (Rollout SSOT: Anspruch/Rest aus View, keine pauschalen Abzüge)
             for row in rows:
-                # Konvertiere None zu leeren Strings, runde Zahlen
+                anspruch = round(float(row[5] or 0), 1)
+                rest = round(float(row[8] or 0), 1) if row[8] is not None else 0
                 writer.writerow([
-                    str(row[1]) if row[1] else '',  # name (Index 1)
-                    str(row[3]) if row[3] else '',  # department (Index 3, nicht 2!)
-                    str(row[4]) if row[4] else '',  # location (Index 4, nicht 3!)
-                    round(float(row[5]), 1) if row[5] is not None else 0,  # anspruch (Index 5, nicht 4!)
-                    round(float(row[6]), 1) if row[6] is not None else 0,  # verbraucht (Index 6, nicht 5!)
-                    round(float(row[7]), 1) if row[7] is not None else 0,  # geplant (Index 7, nicht 6!)
-                    round(float(row[8]), 1) if row[8] is not None else 0   # resturlaub (Index 8, nicht 7!)
+                    str(row[1]) if row[1] else '',
+                    str(row[3]) if row[3] else '',
+                    str(row[4]) if row[4] else '',
+                    anspruch,
+                    round(float(row[6]), 1) if row[6] is not None else 0,
+                    round(float(row[7]), 1) if row[7] is not None else 0,
+                    rest
                 ])
             
             output.seek(0)
@@ -593,11 +618,13 @@ def report_monthly():
             
             rows = []
             for r in balance_rows:
-                emp_id, name, dept, anspruch, verbraucht, resturlaub = r[0], r[1], r[2], float(r[3] or 0), float(r[4] or 0), float(r[5] or 0)
+                emp_id, name, dept, anspruch_raw, verbraucht, resturlaub_raw = r[0], r[1], r[2], float(r[3] or 0), float(r[4] or 0), float(r[5] or 0)
+                anspruch = round(anspruch_raw, 1)
+                resturlaub = max(0, round(resturlaub_raw, 1))
                 extra = emp_extra.get(emp_id, {})
                 carried = extra.get('carried_over', 0)
                 personal_nr = extra.get('personal_nr', '') or ''
-                gesamt = anspruch  # View-Anspruch enthält bereits Übertrag
+                gesamt = anspruch  # effektiver Anspruch (mit Weihnachten/Silvester-Abzug)
                 months = monthly.get(emp_id, {})
                 row = {
                     'employee_id': emp_id,
@@ -693,7 +720,9 @@ def report_monthly_export():
             ])
             
             for r in balance_rows:
-                emp_id, name, dept, anspruch, verbraucht, resturlaub = r[0], r[1], r[2], float(r[3] or 0), float(r[4] or 0), float(r[5] or 0)
+                emp_id, name, dept, anspruch_raw, verbraucht, resturlaub_raw = r[0], r[1], r[2], float(r[3] or 0), float(r[4] or 0), float(r[5] or 0)
+                anspruch = round(anspruch_raw, 1)
+                resturlaub = max(0, round(resturlaub_raw, 1))
                 extra = emp_extra.get(emp_id, {})
                 carried = extra.get('carried_over', 0)
                 personal_nr = extra.get('personal_nr', '') or ''

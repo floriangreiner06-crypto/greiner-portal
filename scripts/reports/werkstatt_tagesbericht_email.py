@@ -413,7 +413,12 @@ def get_subscribers_by_standort():
         return {None: [], 'DEG': [], 'LAN': []}
 
 
-def sende_tagesbericht(datum: date = None, subsidiary: int = None, test_mode: bool = False):
+def sende_tagesbericht(
+    datum: date = None,
+    subsidiary: int = None,
+    test_mode: bool = False,
+    test_email: str = None
+):
     """
     Hauptfunktion: Holt Daten und sendet E-Mail.
     Wenn subsidiary angegeben: nur an diesen Betrieb
@@ -424,14 +429,19 @@ def sende_tagesbericht(datum: date = None, subsidiary: int = None, test_mode: bo
 
     logger.info(f"=== Werkstatt Tagesbericht für {datum} ===")
 
-    # Empfänger aus DB holen
-    subscribers_by_standort = get_subscribers_by_standort()
-    total_subs = sum(len(v) for v in subscribers_by_standort.values())
-    logger.info(f"Empfänger aus DB: {total_subs}")
+    # Empfänger aus DB holen (außer bei explizitem Testempfänger)
+    if test_email:
+        subscribers_by_standort = {None: [test_email], 'DEG': [], 'LAN': []}
+        total_subs = 1
+        logger.info(f"Testempfänger gesetzt: {test_email}")
+    else:
+        subscribers_by_standort = get_subscribers_by_standort()
+        total_subs = sum(len(v) for v in subscribers_by_standort.values())
+        logger.info(f"Empfänger aus DB: {total_subs}")
 
-    if total_subs == 0:
-        logger.warning("KEINE EMPFÄNGER konfiguriert! Bitte in Admin → Reports hinzufügen.")
-        return True  # Kein Fehler, aber nichts zu tun
+        if total_subs == 0:
+            logger.warning("KEINE EMPFÄNGER konfiguriert! Bitte in Admin → Reports hinzufügen.")
+            return True  # Kein Fehler, aber nichts zu tun
 
     connector = GraphMailConnector()
     emails_sent = 0
@@ -478,6 +488,10 @@ def sende_tagesbericht(datum: date = None, subsidiary: int = None, test_mode: bo
                 f.write(html_body)
             logger.info(f"  HTML-Vorschau gespeichert: {preview_path}")
             continue
+
+        # Testempfänger erzwingt konsistenten Einzelversand (Admin-Test)
+        if test_email:
+            empfaenger = [test_email]
 
         # E-Mail senden
         logger.info(f"Sende E-Mail an {len(empfaenger)} Empfänger...")

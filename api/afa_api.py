@@ -544,15 +544,16 @@ def _hole_brief_locosoft_fuer_vins(vins):
 
 def _hole_eautoseller_bwa_placements_from_db(vins):
     """
-    Liest gecachte eAutoSeller BWA-Platzierungen aus eautoseller_bwa_placement (gefüllt vom Celery-Task sync_eautoseller_data).
-    Rückgabe: dict vin -> { mobile_platz, total_hits, platz_1_retail_gross, error } (wie get_market_placements_for_vins)
+    Liest gecachte eAutoSeller-Platzierungen aus eautoseller_bwa_placement (Celery schreibt VINs in Großbuchstaben).
+    Rückgabe: dict vin -> { mobile_platz, total_hits, platz_1_retail_gross, error } (Lookup case-insensitiv).
     """
     if not vins:
         return {}
     vins_clean = [v.strip() for v in vins if v and len(str(v).strip()) == 17][:50]
     if not vins_clean:
         return {}
-    placeholders = ','.join(['%s'] * len(vins_clean))
+    vins_upper = list(dict.fromkeys([v.upper() for v in vins_clean]))
+    placeholders = ','.join(['%s'] * len(vins_upper))
     result = {}
     try:
         with db_session() as conn:
@@ -561,23 +562,25 @@ def _hole_eautoseller_bwa_placements_from_db(vins):
                 SELECT vin, mobile_platz, total_hits, platz_1_retail_gross, mobile_url, error_message
                 FROM eautoseller_bwa_placement
                 WHERE vin IN ({placeholders})
-            """, vins_clean)
+            """, vins_upper)
             rows = cur.fetchall()
             colnames = [c[0] for c in (cur.description or [])]
             for r in rows:
                 row = row_to_dict(r, cur) if hasattr(r, 'keys') else dict(zip(colnames, r))
-                vin = (row.get('vin') or '').strip()
-                if not vin:
+                vin_db = (row.get('vin') or '').strip()
+                if not vin_db:
                     continue
-                result[vin] = {
+                data = {
                     'mobile_platz': row.get('mobile_platz'),
                     'total_hits': row.get('total_hits'),
                     'platz_1_retail_gross': float(row['platz_1_retail_gross']) if row.get('platz_1_retail_gross') is not None else None,
                     'mobile_url': row.get('mobile_url'),
                     'error': row.get('error_message'),
                 }
-                if vin.upper() != vin:
-                    result[vin.upper()] = result[vin]
+                result[vin_db] = data
+                for v in vins_clean:
+                    if v.upper() == vin_db:
+                        result[v] = data
         return result
     except Exception:
         return {}
@@ -586,7 +589,7 @@ def _hole_eautoseller_bwa_placements_from_db(vins):
 def _eautoseller_bwa_sync_status():
     """
     Liefert Status des BWA-Caches (für Hinweis auf der Seite).
-    Returns: dict mit last_fetched_at, total, with_platz, all_have_error
+    Returns: dict mit last_fetched_at, total, with_platz, all_have_error, sample_error
     """
     try:
         with db_session() as conn:
@@ -596,26 +599,31 @@ def _eautoseller_bwa_sync_status():
                     MAX(fetched_at) AS last_fetched_at,
                     COUNT(*) AS total,
                     COUNT(*) FILTER (WHERE mobile_platz IS NOT NULL) AS with_platz,
-                    COUNT(*) FILTER (WHERE error_message IS NOT NULL AND error_message != '') AS with_error
+                    COUNT(*) FILTER (WHERE error_message IS NOT NULL AND error_message != '') AS with_error,
+                    (SELECT error_message FROM eautoseller_bwa_placement
+                     WHERE error_message IS NOT NULL AND error_message != ''
+                     LIMIT 1) AS sample_error
                 FROM eautoseller_bwa_placement
             """)
             row = cur.fetchone()
             if not row:
-                return {'last_fetched_at': None, 'total': 0, 'with_platz': 0, 'all_have_error': False}
+                return {'last_fetched_at': None, 'total': 0, 'with_platz': 0, 'all_have_error': False, 'sample_error': None}
             colnames = [c[0] for c in (cur.description or [])]
             d = row_to_dict(row, cur) if hasattr(row, 'keys') else dict(zip(colnames, row))
         total = int(d.get('total') or 0)
         with_platz = int(d.get('with_platz') or 0)
         with_error = int(d.get('with_error') or 0)
         last = d.get('last_fetched_at')
+        sample_error = (d.get('sample_error') or '').strip() or None
         return {
             'last_fetched_at': last.isoformat() if last and hasattr(last, 'isoformat') else str(last) if last else None,
             'total': total,
             'with_platz': with_platz,
             'all_have_error': total > 0 and with_error >= total,
+            'sample_error': sample_error,
         }
     except Exception:
-        return {'last_fetched_at': None, 'total': 0, 'with_platz': 0, 'all_have_error': False}
+        return {'last_fetched_at': None, 'total': 0, 'with_platz': 0, 'all_have_error': False, 'sample_error': None}
 
 
 def _hole_zinsen_pro_vin(vins):
@@ -868,11 +876,12 @@ def _get_verkaufsempfehlungen_liste():
         # Rechnungsdatum Locosoft: anzeigen wenn gesetzt (Fahrzeug bleibt in Liste bis Abgang in DRIVE)
         f['locosoft_rechnungsdatum'] = (rechnungsdatum_map.get(vin) or rechnungsdatum_map.get(vin.upper())) if vin else None
         f['locosoft_verkauft'] = bool(f.get('locosoft_rechnungsdatum'))
-        # eAutoSeller BWA/Bewerter: mobile.de Platz + Treffer (+ optional Platz 1 Preis)
+        # eAutoSeller BWA/Bewerter: mobile.de Platz + Treffer + Platz 1 Preis + Link (wie eAutoseller Bestand)
         placement = (placements.get(vin) or placements.get(vin.upper()) or {}) if vin else {}
         f['mobile_platz'] = placement.get('mobile_platz')
         f['total_hits'] = placement.get('total_hits')
         f['platz_1_retail_gross'] = placement.get('platz_1_retail_gross')
+        f['mobile_url'] = placement.get('mobile_url')
         f['eautoseller_placement_error'] = placement.get('error')
         # „im Haus“ / „Brief im Haus“: 5 % kalkulatorisch auf Einstand für gesamte Standdauer (wenn keine echten Zinsdaten)
         brief_text = (f.get('brief_locosoft') or '') if isinstance(f.get('brief_locosoft'), str) else ''
@@ -1682,13 +1691,17 @@ def get_locosoft_kandidaten_data():
         rows = cur.fetchall()
     raw = rows_to_list(rows, cur)
 
-    # Bereits importierte VINs / Locosoft-IDs aus Portal
+    # Bereits importierte VINs / Locosoft-IDs aus Portal; plus in Portal als verkauft erfasste VINs (sales)
     with db_session() as conn:
         cur = conn.cursor()
         cur.execute("SELECT vin, locosoft_fahrzeug_id FROM afa_anlagevermoegen WHERE vin IS NOT NULL OR locosoft_fahrzeug_id IS NOT NULL")
         portal_rows = cur.fetchall()
+        # VINs, die in sales mit Rechnungsdatum stehen (verkauft) – nicht zum Import vorschlagen (Locosoft kann verzögert sein)
+        cur.execute("SELECT DISTINCT TRIM(vin) FROM sales WHERE vin IS NOT NULL AND TRIM(vin) != '' AND out_invoice_date IS NOT NULL")
+        sold_rows = cur.fetchall()
     existing_vins = {row[0]: True for row in portal_rows if row and row[0]}
     existing_ids = {row[1]: True for row in portal_rows if row and row[1] is not None}
+    sold_vins = {row[0]: True for row in sold_rows if row and row[0]}
 
     kandidaten = []
     for r in raw:
@@ -1697,6 +1710,8 @@ def get_locosoft_kandidaten_data():
         if not vin and not internal_number:
             continue
         if vin and existing_vins.get(vin):
+            continue
+        if vin and sold_vins.get(vin):
             continue
         if internal_number is not None and existing_ids.get(internal_number):
             continue

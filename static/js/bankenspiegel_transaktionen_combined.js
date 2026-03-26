@@ -83,10 +83,11 @@ async function loadKontenFilter() {
         alleKonten = data.konten || [];
         const kontoFilter = document.getElementById('kontoFilter');
         if (!kontoFilter) return;
+        // Nur echte Konten (id > 0), keine EKF-Aggregate – API liefert id, nicht konto_id
         kontoFilter.innerHTML = '<option value="">Alle Konten</option>' +
             alleKonten
-                .filter(k => k.aktiv)
-                .map(k => `<option value="${k.konto_id}">${k.bank_name} - ${k.kontoname || k.iban}</option>`)
+                .filter(k => k.aktiv && !k.ekf && (k.id == null || k.id > 0))
+                .map(k => `<option value="${k.id}">${k.bank_name || ''} - ${k.kontoname || k.iban || ''}</option>`)
                 .join('');
     } catch (e) {
         console.error('Konten laden:', e);
@@ -124,13 +125,33 @@ function checkUrlParams() {
     if (kategorie && kategorieFilter) kategorieFilter.value = kategorie;
 }
 
+let ekfInstitut = null; // Bei EKF-Ansicht: Stellantis | Hyundai Finance | Santander
+
 async function loadTransaktionenUebersicht() {
     try {
-        const response = await fetch('/api/bankenspiegel/transaktionen?limit=10000&offset=0');
-        if (!response.ok) throw new Error('API Fehler');
-        const data = await response.json();
-        alleTransaktionen = data.transaktionen || [];
-        await loadKontenFilter();
+        const urlParams = new URLSearchParams(window.location.search);
+        const ekfFromUrl = urlParams.get('ekf_institut');
+        const kontoIdFromUrl = urlParams.get('konto_id');
+
+        if (ekfFromUrl && ['Stellantis', 'Hyundai Finance', 'Santander'].includes(ekfFromUrl)) {
+            ekfInstitut = ekfFromUrl;
+            const response = await fetch('/api/bankenspiegel/ekf-bewegungen?institut=' + encodeURIComponent(ekfInstitut));
+            if (!response.ok) throw new Error('EKF-Bewegungen konnten nicht geladen werden.');
+            const data = await response.json();
+            alleTransaktionen = data.transaktionen || [];
+            showEKFHinweisBanner(data.hinweis || 'Stand aus CSV-Import – keine Kontoauszüge.', ekfInstitut);
+            document.getElementById('kontoFilter')?.closest('.col-md-3')?.classList?.add('d-none');
+        } else {
+            ekfInstitut = null;
+            hideEKFHinweisBanner();
+            let apiUrl = '/api/bankenspiegel/transaktionen?limit=10000&offset=0';
+            if (kontoIdFromUrl) apiUrl += '&konto_id=' + encodeURIComponent(kontoIdFromUrl);
+            const response = await fetch(apiUrl);
+            if (!response.ok) throw new Error('API Fehler');
+            const data = await response.json();
+            alleTransaktionen = data.transaktionen || [];
+            await loadKontenFilter();
+        }
         fillKategorieFilter();
         setDefaultDates();
         checkUrlParams();
@@ -139,6 +160,26 @@ async function loadTransaktionenUebersicht() {
         console.error('Fehler beim Laden der Transaktionen:', error);
         alert('Fehler: Transaktionen konnten nicht geladen werden.');
     }
+}
+
+function showEKFHinweisBanner(hinweis, institut) {
+    let banner = document.getElementById('ekfHinweisBanner');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'ekfHinweisBanner';
+        banner.className = 'alert alert-info d-flex align-items-center mb-3';
+        const panel = document.getElementById('panel-uebersicht');
+        if (panel && panel.firstChild) panel.insertBefore(banner, panel.firstChild);
+        else panel?.appendChild(banner);
+    }
+    banner.innerHTML = '<i class="bi bi-info-circle me-2"></i><span><strong>EKF ' + escapeHtml(institut) + ':</strong> ' + escapeHtml(hinweis) + '</span>';
+    banner.classList.remove('d-none');
+}
+
+function hideEKFHinweisBanner() {
+    const banner = document.getElementById('ekfHinweisBanner');
+    if (banner) banner.classList.add('d-none');
+    document.getElementById('kontoFilter')?.closest('.col-md-3')?.classList?.remove('d-none');
 }
 
 function applyFilters() {

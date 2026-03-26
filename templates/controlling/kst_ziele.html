@@ -158,7 +158,7 @@
         <i class="bi bi-info-circle me-1"></i>
         <strong><span id="monat-label">-</span> <span id="jahr-label">-</span></strong>
         <span class="ms-2 text-muted" id="datenstand-text">Lade Daten...</span>
-        <span class="float-end"><span id="tage-mit-daten">-</span> Buchungstage | Hochrechnung auf <span id="werktage">22</span> Werktage</span>
+        <span class="float-end"><span id="werktage-vergangen">-</span> Werktage | Hochrechnung auf <span id="werktage">22</span> Werktage</span>
     </div>
 
     <!-- Gesamt-Status Hero -->
@@ -183,7 +183,7 @@
             <div class="col-md-3 text-center border-start">
                 <div class="text-muted mb-1">DB1 TAGESZIEL</div>
                 <div class="h2 mb-0" id="db1-tag-ziel">-</div>
-                <small>pro Werktag (22 Tage)</small>
+                <small id="db1-tag-ziel-label">pro Werktag (- Werktage)</small>
             </div>
         </div>
         <div class="row mt-3">
@@ -337,7 +337,7 @@ async function loadDashboard() {
         if (data.success) {
             updateGesamt(data);
             updateBereicheAmpel(data.bereiche);
-            updateBereicheDetails(data.bereiche);
+            updateBereicheDetails(data.bereiche, data.werktage_monat);
             updateEmpfehlungen(data);
             updateDatenstand(data);
         } else {
@@ -522,9 +522,12 @@ function updateGesamt(data) {
     document.getElementById('db1-ist').textContent = formatEuro(gesamt.db1_ist);
     document.getElementById('db1-prognose').textContent = formatEuro(gesamt.db1_prognose);
 
-    // Tagesziel berechnen (Monatsziel / 22 Werktage)
-    const tagesZiel = (gesamt.db1_ziel || 0) / 22;
+    // Tagesziel: Monatsziel / echte Werktage (TEK-Logik)
+    const wt = data.werktage_monat || 22;
+    const tagesZiel = (gesamt.db1_ziel || 0) / wt;
     document.getElementById('db1-tag-ziel').textContent = formatEuro(tagesZiel);
+    const labelEl = document.getElementById('db1-tag-ziel-label');
+    if (labelEl) labelEl.textContent = 'pro Werktag (' + wt + ' Werktage)';
 
     // Erreichung
     const erreichung = gesamt.erreichung_pct || 0;
@@ -584,8 +587,9 @@ function updateBereicheAmpel(bereiche) {
     container.innerHTML = html;
 }
 
-function updateBereicheDetails(bereiche) {
+function updateBereicheDetails(bereiche, werktageMonat) {
     const container = document.getElementById('bereiche-details');
+    const wt = werktageMonat || 22;
 
     if (!bereiche || !bereiche.length) {
         container.innerHTML = '<div class="text-center py-3 text-muted">Keine Daten</div>';
@@ -646,7 +650,7 @@ function updateBereicheDetails(bereiche) {
                     </div>
                     <div class="col-3">
                         <div class="text-muted">Ziel/Tag</div>
-                        <div class="fw-bold text-primary">${formatEuro((ziel.db1 || 0) / 22)}</div>
+                        <div class="fw-bold text-primary">${formatEuro((ziel.db1 || 0) / wt)}</div>
                     </div>
                 </div>
                 <div class="progress-ziel">
@@ -703,7 +707,7 @@ function updateDatenstand(data) {
     const datenstandText = document.getElementById('datenstand-text');
     const monatLabel = document.getElementById('monat-label');
     const jahrLabel = document.getElementById('jahr-label');
-    const tageEl = document.getElementById('tage-mit-daten');
+    const tageEl = document.getElementById('werktage-vergangen');
     const werktageEl = document.getElementById('werktage');
 
     const stand = data.stand ? new Date(data.stand).toLocaleString('de-DE') : '-';
@@ -715,8 +719,8 @@ function updateDatenstand(data) {
     monatLabel.textContent = monatNamen[data.kalender_monat] || '-';
     jahrLabel.textContent = data.kalender_jahr || '-';
 
-    // Buchungstage aus API
-    tageEl.textContent = data.tage_mit_daten || 0;
+    // Werktage vergangen (TEK-konsistent), Hochrechnung auf Werktage gesamt
+    if (tageEl) tageEl.textContent = data.werktage_vergangen ?? data.tage_mit_daten ?? 0;
     werktageEl.textContent = data.werktage_monat || 22;
 }
 

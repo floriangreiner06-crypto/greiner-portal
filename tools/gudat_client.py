@@ -43,9 +43,10 @@ class GudatClient:
     
     BASE_URL = "https://werkstattplanung.net/greiner/deggendorf/kic"
     
-    def __init__(self, username: str, password: str):
+    def __init__(self, username: str, password: str, base_url: Optional[str] = None):
         self.username = username
         self.password = password
+        self.BASE_URL = base_url if base_url else self.__class__.BASE_URL
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -94,11 +95,11 @@ class GudatClient:
                 }
             )
             
-            if response.status_code != 201:
+            if response.status_code not in (200, 201):
                 logger.error(f"Login fehlgeschlagen: {response.status_code} - {response.text}")
                 return False
             
-            login_data = response.json()
+            login_data = response.json() if response.text else {}
             logger.info(f"Login erfolgreich: UserId={login_data.get('UserId')}")
             
             # 3. KRITISCH: /ack aufrufen für laravel_token!
@@ -142,26 +143,65 @@ class GudatClient:
             days: Anzahl Tage (1-14)
             
         Returns:
-            Liste der Team-Workload-Daten
+            Liste der Team-Workload-Daten. Bei Fehler [] und self._last_error gesetzt.
         """
-        if not self._logged_in:
-            if not self.login():
-                return []
-        
+        self._last_error = None
         if date is None:
             date = datetime.now().strftime('%Y-%m-%d')
-        
+
+        if not self._logged_in:
+            if not self.login():
+                self._last_error = "Login fehlgeschlagen"
+                logger.warning("Gudat get_workload_raw: %s", self._last_error)
+                return []
+
         response = self._api_request(
             'GET',
             '/api/v1/workload_week_summary',
             params={'date': date, 'days': days}
         )
-        
+
+        # Session abgelaufen: einmal Re-Login und erneut versuchen
+        if response.status_code == 401:
+            logger.info("Gudat API 401 – Re-Login und erneuter Versuch")
+            self._logged_in = False
+            if not self.login():
+                self._last_error = "Session abgelaufen, Re-Login fehlgeschlagen"
+                return []
+            response = self._api_request(
+                'GET',
+                '/api/v1/workload_week_summary',
+                params={'date': date, 'days': days}
+            )
+
         if response.status_code != 200:
-            logger.error(f"API-Fehler: {response.status_code} - {response.text}")
+            self._last_error = f"API {response.status_code}"
+            try:
+                body = response.text[:150] if response.text else ""
+                if body:
+                    self._last_error += f" – {body}"
+            except Exception:
+                pass
+            logger.error("Gudat API-Fehler: %s", self._last_error)
             return []
-        
-        return response.json()
+
+        try:
+            raw = response.json()
+        except Exception as e:
+            self._last_error = f"Ungültige Antwort: {e}"
+            return []
+
+        # API kann Liste oder Dict mit data/teams liefern
+        if isinstance(raw, list):
+            return raw
+        if isinstance(raw, dict):
+            for key in ('data', 'teams'):
+                if key in raw and isinstance(raw[key], list):
+                    return raw[key]
+            self._last_error = "Unerwartetes API-Format (keine Team-Liste)"
+            return []
+        self._last_error = "Unerwartetes API-Format"
+        return []
     
     def get_workload_summary(self, date: str = None) -> Dict[str, Any]:
         """
@@ -179,7 +219,9 @@ class GudatClient:
         raw_data = self.get_workload_raw(date, days=2)
         
         if not raw_data:
-            return {'error': 'Keine Daten erhalten', 'date': date}
+            reason = getattr(self, '_last_error', None)
+            err = 'Keine Daten erhalten' + (f': {reason}' if reason else '')
+            return {'error': err, 'date': date}
         
         # Aggregiere Daten
         total_capacity = 0
@@ -274,7 +316,9 @@ class GudatClient:
         raw_data = self.get_workload_raw(start_date, days=7)
         
         if not raw_data:
-            return {'error': 'Keine Daten erhalten'}
+            reason = getattr(self, '_last_error', None)
+            err = 'Keine Daten erhalten' + (f': {reason}' if reason else '')
+            return {'error': err}
         
         # Sammle alle Daten
         all_dates = set()

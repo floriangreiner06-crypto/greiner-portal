@@ -30,7 +30,10 @@ from api.standort_utils import BETRIEB_NAMEN
 # Für RealDictCursor
 from psycopg2.extras import RealDictCursor
 
-# Gudat Client für Disposition (TAG 125)
+# Gudat Disposition: SSOT in gudat_data (DA REST oder KIC GraphQL Fallback)
+from api.gudat_data import get_gudat_disposition
+
+# Gudat Client für sonstige KIC-Nutzung (z. B. Termine zu Aufträgen)
 sys.path.insert(0, '/opt/greiner-portal/tools')
 try:
     from gudat_client import GudatClient
@@ -60,119 +63,6 @@ def format_datetime(dt):
         return None
     return dt.isoformat() if hasattr(dt, 'isoformat') else str(dt)
 
-# Gudat Credentials (TAG 125)
-GUDAT_CONFIG = {
-    'username': 'florian.greiner@auto-greiner.de',
-    'password': 'Hyundai2025!'
-}
-
-def get_gudat_disposition(target_date=None):
-    """
-    Holt Werkstatt-Disposition aus Gudat (workshopTasks).
-    Returns dict: {mechaniker_name: [tasks]}
-    """
-    if not GUDAT_AVAILABLE:
-        logger.warning("GudatClient nicht verfügbar")
-        return {}
-
-    from datetime import date
-    if target_date is None:
-        target_date = date.today().isoformat()
-    elif hasattr(target_date, 'isoformat'):
-        target_date = target_date.isoformat()
-
-    try:
-        client = GudatClient(GUDAT_CONFIG['username'], GUDAT_CONFIG['password'])
-        if not client.login():
-            logger.error("Gudat Login fehlgeschlagen")
-            return {}
-
-        # GraphQL Query für workshopTasks
-        query = """
-        query GetWorkshopTasks($page: Int!, $itemsPerPage: Int!, $where: QueryWorkshopTasksWhereWhereConditions) {
-          workshopTasks(first: $itemsPerPage, page: $page, where: $where) {
-            data {
-              id
-              start_date
-              work_load
-              work_state
-              description
-              workshopService { id name }
-              resource { id name }
-              dossier {
-                id
-                vehicle { id license_plate }
-                orders { id number }
-              }
-            }
-          }
-        }
-        """
-
-        variables = {
-            "page": 1,
-            "itemsPerPage": 200,
-            "where": {
-                "AND": [{"column": "START_DATE", "operator": "EQ", "value": target_date}]
-            }
-        }
-
-        response = client.session.post(
-            f"{GudatClient.BASE_URL}/graphql",
-            json={"operationName": "GetWorkshopTasks", "query": query, "variables": variables},
-            headers={
-                'Accept': 'application/json',
-                'X-XSRF-TOKEN': client._get_xsrf(),
-                'Content-Type': 'application/json'
-            }
-        )
-
-        data = response.json()
-        if 'errors' in data:
-            logger.error(f"Gudat GraphQL Fehler: {data['errors']}")
-            return {}
-
-        tasks = data.get('data', {}).get('workshopTasks', {}).get('data', [])
-
-        # Gruppiere nach Mechaniker (resource.name)
-        by_mechanic = {}
-        for task in tasks:
-            resource = task.get('resource')
-            if not resource:
-                continue
-            mech_name = resource.get('name', '').strip()
-            if not mech_name:
-                continue
-
-            # Dossier-Daten extrahieren
-            dossier = task.get('dossier') or {}
-            vehicle = dossier.get('vehicle') or {}
-            orders = dossier.get('orders') or []
-
-            # TAG 126: start_date aus Gudat extrahieren für korrekte Zeitpositionierung
-            gudat_start = task.get('start_date')  # Format: "2025-12-18 10:30:00"
-
-            task_data = {
-                'gudat_id': task.get('id'),
-                'kennzeichen': vehicle.get('license_plate', ''),
-                'auftrag_nr': orders[0].get('number') if orders else None,
-                'vorgabe_aw': float(task.get('work_load') or 0),
-                'status': task.get('work_state', ''),
-                'beschreibung': task.get('description', ''),
-                'service': (task.get('workshopService') or {}).get('name', ''),
-                'start_date': gudat_start  # Echte Startzeit aus Gudat
-            }
-
-            if mech_name not in by_mechanic:
-                by_mechanic[mech_name] = []
-            by_mechanic[mech_name].append(task_data)
-
-        logger.info(f"Gudat: {len(tasks)} Tasks für {len(by_mechanic)} Mechaniker geladen")
-        return by_mechanic
-
-    except Exception as e:
-        logger.error(f"Gudat Fehler: {e}")
-        return {}
 
 # Azubis - stempeln nur Anwesenheit, keine Aufträge
 # Diese werden vom Leerlauf-Alarm UND Leistungs-Ranking ausgenommen
@@ -1049,10 +939,29 @@ def get_kapazitaetsplanung():
 # Proxy zur Gudat API für das Kapazitätsplanungs-Widget
 # =============================================================================
 
+def _betrieb_to_gudat_center(subsidiary):
+    """Mapping Betrieb (Locosoft) -> Gudat Center: 1=deggendorf, 3=landau."""
+    if subsidiary in (None, ''):
+        return None
+    try:
+        n = int(subsidiary)
+        if n == 1:
+            return 'deggendorf'
+        if n == 3:
+            return 'landau'
+    except (ValueError, TypeError):
+        pass
+    return None
+
+
 @werkstatt_live_bp.route('/gudat/kapazitaet', methods=['GET'])
 def get_gudat_kapazitaet():
     """
-    Proxy für Gudat Kapazitäts-Daten
+    Proxy für Gudat Kapazitäts-Daten (pro Filiale).
+
+    Query-Parameter:
+        center: deggendorf | landau (optional)
+        subsidiary: 1 | 3 (optional, wird in center übersetzt: 1=deggendorf, 3=landau)
 
     Ruft /api/gudat/workload auf und transformiert die Daten
     ins Format das das Frontend erwartet.
@@ -1064,40 +973,57 @@ def get_gudat_kapazitaet():
     """
     import requests
 
+    center = request.args.get('center', type=str)
+    if not center and request.args.get('subsidiary') is not None:
+        center = _betrieb_to_gudat_center(request.args.get('subsidiary'))
+    if center:
+        center = center.strip().lower()
+
     # Interne Mechanik-Teams (echte Werkstatt-Kapazität)
     INTERNE_TEAMS = {2, 3, 5}  # Allgemeine Reparatur, Diagnosetechnik, NW/GW
 
     try:
-        # Lokalen Gudat-API Endpunkt aufrufen
-        response = requests.get(
-            'http://localhost:5000/api/gudat/workload',
-            timeout=10
-        )
+        workload_url = 'http://localhost:5000/api/gudat/workload'
+        week_url = 'http://localhost:5000/api/gudat/workload/week'
+        if center:
+            workload_url += f'?center={center}'
+            week_url += f'?center={center}'
+
+        response = requests.get(workload_url, timeout=10)
 
         if response.status_code != 200:
+            try:
+                err_body = response.json()
+                err_msg = err_body.get('error', response.text[:200]) if isinstance(err_body, dict) else response.text[:200]
+            except Exception:
+                err_msg = f'Gudat API Fehler: {response.status_code}'
+            if center and 'nicht' not in err_msg.lower() and 'konfiguriert' not in err_msg.lower():
+                err_msg = f"Gudat für {center.capitalize()} nicht verfügbar: {err_msg}"
             return jsonify({
                 'success': False,
-                'error': f'Gudat API Fehler: {response.status_code}'
-            }), response.status_code
+                'error': err_msg,
+                'center': center or 'deggendorf'
+            }), 200  # 200 damit Frontend Erfolg/Fehler einheitlich verarbeiten kann
 
         data = response.json()
 
         if 'error' in data:
+            err_msg = data['error']
+            if center and 'nicht' not in err_msg.lower():
+                err_msg = f"Gudat für {center.capitalize()}: {err_msg}"
             return jsonify({
                 'success': False,
-                'error': data['error']
-            }), 400
+                'error': err_msg,
+                'center': center or 'deggendorf'
+            }), 200
 
-        # Wochen-Daten holen
-        week_response = requests.get(
-            'http://localhost:5000/api/gudat/workload/week',
-            timeout=10
-        )
+        week_response = requests.get(week_url, timeout=10)
         week_data = week_response.json() if week_response.status_code == 200 else {}
 
-        # TAG122: Nur interne Teams für Kapazität zählen
+        # TAG122: Nur interne Teams für Kapazität zählen (Allgemeine Reparatur, Diagnosetechnik, NW/GW)
         teams = data.get('teams', [])
         interne_teams = [t for t in teams if t.get('id') in INTERNE_TEAMS]
+        externe_teams = [t for t in teams if t.get('id') not in INTERNE_TEAMS]
 
         # Kapazität nur aus internen Teams berechnen
         intern_kapazitaet = sum(t.get('capacity', 0) for t in interne_teams)
@@ -1121,11 +1047,12 @@ def get_gudat_kapazitaet():
             'frei': intern_frei,
             'auslastung': intern_auslastung,
             'status': status,
-            'teams': teams,  # Alle Teams für Detail-Ansicht
-            'interne_teams': interne_teams,  # TAG122: Nur Mechanik
+            'teams': teams,  # Alle Teams (Legacy)
+            'interne_teams': interne_teams,  # Echte Kapazität (Monteure/Stunden)
+            'externe_teams': externe_teams,  # Externe Dienstleister (Gudat-Kapazität, nicht unsere)
             'woche': week_data.get('days', []),
             'timestamp': data.get('timestamp', datetime.now().isoformat()),
-            # TAG122: Zusätzliche Info
+            'center': center or 'deggendorf',  # Filiale für Anzeige
             'hinweis': 'Kapazität = nur Allgemeine Reparatur + Diagnosetechnik + NW/GW'
         }
 
@@ -3824,6 +3751,7 @@ def get_drive_kapazitaet():
 def get_werkstatt_liveboard():
     """
     Werkstatt Live-Board: Echtzeit-Übersicht aller Mechaniker und ihrer Aufträge.
+    Zentrale API für alle Ansichten: /werkstatt/liveboard, /werkstatt/liveboard/gantt, /monitor/liveboard.
 
     HYBRID-ANSATZ:
     1. Geplante Aufträge aus Disposition (orders + labours) - Was ist für heute geplant?
