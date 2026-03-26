@@ -1,7 +1,7 @@
 # Infrastruktur & DevOps — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-02-24
+## Letzte Aktualisierung: 2026-03-26
 
 ## Beschreibung
 
@@ -27,7 +27,16 @@ Infrastruktur umfasst Celery/RedBeat, Redis, Deployment, Locosoft-Mirror, Postgr
 - `locosoft_mirror`, `db_backup`, `cleanup_backups`, `email_daily_logins`
 
 ### Services
-- `greiner-portal`, `celery-worker`, `celery-beat`, `flower`, `redis-server`, `metabase`
+- `greiner-portal` (Produktion, Port 5000)
+- `greiner-test` (Develop, Port 5001, nginx auf 5002)
+- `celery-worker`, `celery-beat`, `flower`, `redis-server`, `metabase`
+
+### Develop-Umgebung (seit 2026-03-26)
+- **Pfad:** `/opt/greiner-test/` — Git-Clone, Branch `develop`
+- **URL:** `drive:5002`
+- **DB:** Gleiche wie Produktion (drive_portal) — bewusst geteilt fuer Redesign
+- **Workflow:** develop → cherry-pick/merge → main → restart greiner-portal
+- **Sudoers:** NOPASSWD fuer greiner-portal UND greiner-test in `/etc/sudoers.d/zzz-greiner-portal`
 
 ## DB-Tabellen (PostgreSQL drive_portal)
 
