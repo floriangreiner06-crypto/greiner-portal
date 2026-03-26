@@ -162,6 +162,13 @@
         </div>
     </div>
 
+    <!-- Marken-Zusammenfassung -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div id="markenTableContainer"></div>
+        </div>
+    </div>
+
     <!-- Verkäufer-Details mit Deckungsbeitrag -->
     <div class="row">
         <div class="col-12">
@@ -554,6 +561,47 @@ async function loadDetails() {
                 </div>
             </div>
         `;
+
+        // Marken-Tabelle oben rendern (NW/VFW/GW + DB + DB/Stück pro Marke)
+        const markenOrder = ['Opel', 'Leapmotor', 'Hyundai'];
+        const markenRows = {};
+        markenOrder.forEach(name => { markenRows[name] = { nw: 0, vfw: 0, gw: 0, summe: 0, db: 0, umsatz: 0 }; });
+
+        data.verkaufer.forEach(vk => {
+            (vk.fahrzeuge || []).forEach(fz => {
+                const m = (fz.marke || '').trim();
+                if (!markenRows[m]) return;
+                const db = fz.deckungsbeitrag || 0;
+                const um = fz.umsatz || 0;
+                if (fz.typ === 'N') { markenRows[m].nw++; markenRows[m].summe++; }
+                else if (fz.typ === 'T' || fz.typ === 'V') { markenRows[m].vfw++; markenRows[m].summe++; }
+                else if (fz.typ === 'G' || fz.typ === 'D') { markenRows[m].gw++; markenRows[m].summe++; }
+                markenRows[m].db += db;
+                markenRows[m].umsatz += um;
+            });
+        });
+
+        let mNw = 0, mVfw = 0, mGw = 0, mDb = 0, mUmsatz = 0;
+        markenOrder.forEach(n => { mNw += markenRows[n].nw; mVfw += markenRows[n].vfw; mGw += markenRows[n].gw; mDb += markenRows[n].db; mUmsatz += markenRows[n].umsatz; });
+        const mSumme = mNw + mVfw + mGw;
+
+        let mHtml = `<div class="card mb-3"><div class="card-header bg-primary text-white"><h5 class="mb-0"><i class="bi bi-bar-chart"></i> Zusammenfassung nach Marke</h5></div><div class="card-body p-0">
+            <table class="table table-sm table-bordered mb-0">
+                <thead class="table-light">
+                    <tr><th>Marke</th><th class="text-center">NW</th><th class="text-center">VFW</th><th class="text-center">GW</th><th class="text-center fw-bold">Summe</th><th class="text-end">DB</th><th class="text-end">DB/Stück</th></tr>
+                </thead><tbody>`;
+        markenOrder.forEach(name => {
+            const r = markenRows[name];
+            const dbProStueck = r.summe > 0 ? r.db / r.summe : 0;
+            const dbColor = r.db >= 0 ? 'text-success' : 'text-danger';
+            mHtml += `<tr><td><strong>${name}</strong></td><td class="text-center">${r.nw}</td><td class="text-center">${r.vfw}</td><td class="text-center">${r.gw}</td><td class="text-center fw-bold">${r.summe}</td><td class="text-end ${dbColor}">${formatCurrency(r.db)}</td><td class="text-end ${dbColor}">${formatCurrency(dbProStueck)}</td></tr>`;
+        });
+        const totalDbProStueck = mSumme > 0 ? mDb / mSumme : 0;
+        const totalDbColor = mDb >= 0 ? 'text-success' : 'text-danger';
+        mHtml += `<tr class="table-dark"><td><strong>Gesamt</strong></td><td class="text-center">${mNw}</td><td class="text-center">${mVfw}</td><td class="text-center">${mGw}</td><td class="text-center fw-bold">${mSumme}</td><td class="text-end">${formatCurrency(mDb)}</td><td class="text-end">${formatCurrency(totalDbProStueck)}</td></tr>`;
+        mHtml += `</tbody></table></div></div>`;
+
+        document.getElementById('markenTableContainer').innerHTML = mHtml;
 
         const headerActions = document.querySelector('.card-header .d-flex.justify-content-between > div');
         if (headerActions) {

@@ -1209,7 +1209,9 @@ class VerkaufData:
         year: int = None,
         location: int = None,
         verkaufer: int = None,
-        vin_search: str = None
+        vin_search: str = None,
+        date_from: str = None,
+        date_to: str = None
     ) -> Dict[str, Any]:
         """
         Holt detaillierte Auslieferungen mit Einzelfahrzeugen und DB-Daten.
@@ -1241,7 +1243,11 @@ class VerkaufData:
                 ]
                 params = []
 
-                if day:
+                if date_from and date_to:
+                    where_clauses.append("s.out_invoice_date >= %s")
+                    where_clauses.append("s.out_invoice_date <= %s")
+                    params.extend([date_from, date_to])
+                elif day:
                     where_clauses.append("DATE(s.out_invoice_date) = %s")
                     params.append(day)
                 else:
@@ -1284,6 +1290,7 @@ class VerkaufData:
                         COALESCE(e.first_name || ' ' || e.last_name,
                                  'Verkäufer #' || s.salesman_number || ' (nicht in LocoSoft)') as verkaufer_name,
                         s.dealer_vehicle_type,
+                        s.make_number,
                         s.model_description,
                         s.vin,
                         s.out_invoice_date,
@@ -1324,8 +1331,12 @@ class VerkaufData:
                             'db_gesamt': 0
                         }
 
+                    make_nr = row['make_number']
+                    marke = MARKEN.get(make_nr, f"Marke {make_nr}") if make_nr else 'Unbekannt'
+
                     fahrzeug_info = {
                         'typ': typ,
+                        'marke': marke,
                         'modell': modell,
                         'vin': vin,
                         'vin_kurz': vin[-8:] if len(vin) >= 8 else vin,
@@ -1777,9 +1788,10 @@ def get_auslieferung_summary(day: str = None, month: int = None, year: int = Non
 
 def get_auslieferung_detail(day: str = None, month: int = None, year: int = None,
                             location: int = None, verkaufer: int = None,
-                            vin_search: str = None) -> Dict[str, Any]:
+                            vin_search: str = None, date_from: str = None,
+                            date_to: str = None) -> Dict[str, Any]:
     """Wrapper für VerkaufData.get_auslieferung_detail()"""
-    return VerkaufData.get_auslieferung_detail(day, month, year, location, verkaufer, vin_search)
+    return VerkaufData.get_auslieferung_detail(day, month, year, location, verkaufer, vin_search, date_from, date_to)
 
 def get_verkaufer_liste() -> Dict[str, Any]:
     """Wrapper für VerkaufData.get_verkaufer_liste()"""

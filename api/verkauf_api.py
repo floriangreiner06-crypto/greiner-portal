@@ -625,17 +625,37 @@ def get_auslieferung_detail():
     Rolle „verkauf“: nur eigener Verkäufer, Filter nicht auflösbar.
     """
     day = request.args.get('day', '') or None
-    month = request.args.get('month', datetime.now().month, type=int)
+    month = request.args.get('month', type=int)
     year = request.args.get('year', datetime.now().year, type=int)
+    zeitraum = request.args.get('zeitraum', 'month')
     location = request.args.get('location', type=int)
     verkaufer = request.args.get('verkaufer', type=int)
     vin_search = request.args.get('vin', '') or None
     if _filter_mode_force_own('auslieferungen'):
         verkaufer = _get_current_user_salesman_number()
 
+    # Zeitraum-Logik: calendar_year = Jan-Dez, fiscal_year = Sep(VJ)-Aug
+    date_from = None
+    date_to = None
+    if zeitraum == 'calendar_year':
+        date_from = f"{year}-01-01"
+        date_to = f"{year}-12-31"
+        month = None
+        day = None
+    elif zeitraum == 'fiscal_year':
+        # GJ: Sep Vorjahr bis Aug aktuelles Jahr (GJ 2025 = Sep 2024 bis Aug 2025)
+        # Wenn wir im laufenden GJ sind (Sep 2025 - Aug 2026), year=2025
+        date_from = f"{year}-09-01"
+        date_to = f"{year + 1}-08-31"
+        month = None
+        day = None
+    elif not month:
+        month = datetime.now().month
+
     result = VerkaufData.get_auslieferung_detail(
         day=day, month=month, year=year,
-        location=location, verkaufer=verkaufer, vin_search=vin_search
+        location=location, verkaufer=verkaufer, vin_search=vin_search,
+        date_from=date_from, date_to=date_to
     )
 
     if result['success']:
