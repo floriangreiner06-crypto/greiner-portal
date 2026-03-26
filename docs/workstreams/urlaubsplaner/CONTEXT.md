@@ -1,7 +1,7 @@
 # Urlaubsplaner — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-03-19 (kein Samstagsdienst, Genehmiger löschen, Teilzeit Nicht-Arbeitstage)
+## Letzte Aktualisierung: 2026-03-26 (Genehmiger-Regression nach Git-Cleanup behoben)
 
 ## Projektkontext (Stand diese Woche)
 
@@ -77,6 +77,7 @@ Urlaubsplaner deckt Urlaubsanträge, Genehmigungsprozess, Chef-Übersicht, Urlau
 - ✅ **Genehmigungs-Mail an MA (Doppel-User, 2026-03-12):** Wenn `employees.email` leer war, holte der Fallback die E-Mail aus `users` via `ldap_employee_mapping`. Bei **doppelten User-Einträgen** (gleiche Person, unterschiedliche Schreibweise Username) konnte `LIMIT 1` die „falsche“ Zeile liefern → z. B. Katrina Kramhöller erhielt keine Mail. **Lösung:** (1) Duplikat-User in DB zusammengeführt (Migration `merge_duplicate_users.sql`), (2) Fallback-Abfrage mit `ORDER BY u.last_login DESC NULLS LAST` für eindeutigen Treffer. Siehe auth-ldap CONTEXT.
 - ✅ **„Samstagsdienst (Info)“ → „kein Samstagsdienst (Info)“ (2026-03):** Nur Umbenennung in Anzeige und DB (`vacation_types.name`); keine Änderung der Logik (kein Urlaubstag-Abzug).
 - ✅ **Genehmiger dürfen Team-Urlaub löschen (2026-03):** Rolf/Wolfgang (und alle Genehmiger) können nicht nur Urlaub für ihr Team eintragen, sondern auch stornieren. Einzel-Storno `/cancel` und Batch-Storno `/cancel-batch`: wenn Buchungsinhaber in `get_team_for_approver(ldap_username)`, ist Storno erlaubt.
+- ✅ **Bugfix Genehmiger-Mail + Genehmigungsfähigkeit nach Git-Cleanup (2026-03-26):** Meldung aus Fachbereich: Sascha Berger hatte pending-Urlaub, Rolf Sterr erhielt keine Mail und konnte nicht genehmigen. Root Cause: `vacation_approver_service` nutzte primär AD-Manager-Pfad; regelbasierte Zuordnung aus `vacation_approval_rules` (z. B. Werkstatt/Landau) wurde in diesem Fall nicht zuverlässig für Team + Mail herangezogen. Fix in `api/vacation_approver_service.py`: (1) `_get_rule_based_approvers_impl()` eingeführt, (2) `get_approvers_for_employee()` priorisiert nun Regelwerk und merged ggf. direkten Manager dedupliziert, (3) `get_team_for_approver()` nutzt primär `vacation_approval_rules`, AD-Manager nur Fallback. Verifikation: für Sascha (`employee_id=3`) werden jetzt `rolf.sterr` (prio 1) und `leonhard.keidl` (prio 2) geliefert; Rolfs Team enthält Sascha wieder. Zusätzlich wurden ausstehende Benachrichtigungen für Sascha neu versendet (2 erfolgreiche Mails: 05.06. sowie 08.06.–12.06.). Impact-Check auf offene Anträge: potenziell ähnlich betroffen waren auch Sandra Brendel und Anton Süß; Fix wirkt global.
 - 🔧 E-Mails (HR/MA) je nach Integrations-Stand
 - **Workflow & n8n:** Einschätzung ob Workflow nach n8n migriert werden soll und Visualisierung für HR/GF → `URLAUBSPLANER_WORKFLOW_N8N_EINSCHAETZUNG.md` (Empfehlung: keine n8n-Migration; Visualisierung als Doku/Diagramm; Editierbarkeit im DRIVE)
 
@@ -191,6 +192,7 @@ Urlaubsplaner deckt Urlaubsanträge, Genehmigungsprozess, Chef-Übersicht, Urlau
 ## Offene Entscheidungen
 
 - (Keine festgehalten)
+- 🔧 Optional: kleines Monitoring/Report für pending-Anträge ohne passenden Genehmiger-Empfänger ergänzen (Frühwarnung bei künftigen Drift-Fällen zwischen AD-Manager und `vacation_approval_rules`).
 
 ## Abhängigkeiten
 

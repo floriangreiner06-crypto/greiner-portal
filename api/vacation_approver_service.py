@@ -24,6 +24,8 @@ from api.db_utils import db_session
 logger = logging.getLogger(__name__)
 
 LDAP_CONFIG_PATH = '/opt/greiner-portal/config/ldap_credentials.env'
+# Abteilungs-Aliase analog Chef-Übersicht
+DEPT_TO_APPROVAL_GRP = {'Service & Empfang': 'Service'}
 
 # LDAP-Modul
 try:
@@ -237,6 +239,82 @@ def _get_gl_approvers_impl(cursor) -> List[Dict]:
     return approvers
 
 
+def _get_rule_based_approvers_impl(cursor, employee_id: int) -> List[Dict]:
+    """
+    Regelbasierte Genehmiger aus vacation_approval_rules (SSOT für Urlaubsfreigaben).
+    Nutzt Mitarbeiter-Abteilung + Standort (subsidiary) und liefert Prioritäten aus Regeln.
+    """
+    cursor.execute("""
+        SELECT
+            e.department_name,
+            CASE
+                WHEN e.location = 'Deggendorf' THEN 1
+                WHEN e.location = 'Landau a.d. Isar' THEN 3
+                ELSE NULL
+            END as subsidiary
+        FROM employees e
+        WHERE e.id = %s
+    """, (employee_id,))
+    emp = cursor.fetchone()
+    if not emp:
+        return []
+
+    department_name = (emp['department_name'] or '').strip()
+    subsidiary = emp['subsidiary']
+    if not department_name:
+        return []
+
+    dept_params = [department_name]
+    dept_sql = "LOWER(TRIM(ar.loco_grp_code)) = LOWER(TRIM(%s))"
+    for dept, grp in DEPT_TO_APPROVAL_GRP.items():
+        if department_name == dept:
+            dept_sql += " OR LOWER(TRIM(ar.loco_grp_code)) = LOWER(TRIM(%s))"
+            dept_params.append(grp)
+
+    sub_sql = "ar.subsidiary IS NULL"
+    sub_params = []
+    if subsidiary is not None:
+        sub_sql += " OR ar.subsidiary = %s"
+        sub_params.append(subsidiary)
+
+    cursor.execute(f"""
+        SELECT DISTINCT
+            ar.approver_ldap_username as approver_ldap,
+            ar.priority,
+            ar.loco_grp_code,
+            u.display_name as approver_name,
+            COALESCE(NULLIF(TRIM(u.email), ''), u.username) as approver_email,
+            e2.id as approver_id,
+            u.ad_groups
+        FROM vacation_approval_rules ar
+        LEFT JOIN users u
+          ON LOWER(TRIM(SPLIT_PART(COALESCE(u.username,'') || '@', '@', 1)))
+           = LOWER(TRIM(ar.approver_ldap_username))
+        LEFT JOIN ldap_employee_mapping lem2
+          ON LOWER(TRIM(lem2.ldap_username)) = LOWER(TRIM(ar.approver_ldap_username))
+        LEFT JOIN employees e2 ON e2.id = lem2.employee_id
+        WHERE ar.active = 1
+          AND ({dept_sql})
+          AND ({sub_sql})
+        ORDER BY ar.priority ASC, ar.approver_ldap_username
+    """, tuple(dept_params + sub_params))
+
+    out = []
+    for row in cursor.fetchall():
+        ad_groups = json.loads(row['ad_groups']) if row and row.get('ad_groups') else []
+        out.append({
+            'approver_id': row.get('approver_id'),
+            'approver_name': row.get('approver_name') or row.get('approver_ldap'),
+            'approver_ldap': row.get('approver_ldap'),
+            'approver_email': row.get('approver_email'),
+            'priority': int(row.get('priority') or 1),
+            'ad_group': row.get('loco_grp_code'),
+            'is_admin': 'GRP_Urlaub_Admin' in ad_groups,
+            'is_direct_manager': False
+        })
+    return out
+
+
 def get_approvers_for_employee(employee_id: int) -> List[Dict]:
     """
     Findet Genehmiger für einen Mitarbeiter.
@@ -250,6 +328,9 @@ def get_approvers_for_employee(employee_id: int) -> List[Dict]:
         with db_session() as conn:
             cursor = conn.cursor()
 
+            # 0) Regelbasierte Genehmiger zuerst (vacation_approval_rules als SSOT)
+            rule_approvers = _get_rule_based_approvers_impl(cursor, employee_id)
+
             # 1. Hole LDAP-Username des Mitarbeiters
             cursor.execute("""
                 SELECT lem.ldap_username
@@ -261,7 +342,7 @@ def get_approvers_for_employee(employee_id: int) -> List[Dict]:
             row = cursor.fetchone()
             if not row:
                 logger.warning(f"Kein LDAP-Mapping für employee_id={employee_id}")
-                return []
+                return rule_approvers
 
             employee_ldap = row['ldap_username']
 
@@ -271,13 +352,13 @@ def get_approvers_for_employee(employee_id: int) -> List[Dict]:
 
             if not employee_ad:
                 logger.warning(f"Keine AD-Daten für {employee_ldap}")
-                return []
+                return rule_approvers
 
             manager_username = employee_ad.get('manager_username')
 
             if not manager_username:
                 logger.warning(f"Kein Manager in AD für {employee_ldap} - eskaliere zu GL")
-                return _get_gl_approvers_impl(cursor)
+                return rule_approvers or _get_gl_approvers_impl(cursor)
 
             # 3. Prüfe ob Manager Genehmiger-Rechte hat (SPLIT_PART = Teil vor @)
             manager_norm = _normalize_ldap_username(manager_username)
@@ -293,7 +374,7 @@ def get_approvers_for_employee(employee_id: int) -> List[Dict]:
 
             if not manager_row:
                 logger.warning(f"Manager {manager_username} nicht in users-Tabelle - eskaliere zu GL")
-                return _get_gl_approvers_impl(cursor)
+                return rule_approvers or _get_gl_approvers_impl(cursor)
 
             ad_groups = json.loads(manager_row['ad_groups']) if manager_row['ad_groups'] else []
 
@@ -302,12 +383,12 @@ def get_approvers_for_employee(employee_id: int) -> List[Dict]:
 
             if not is_approver:
                 logger.info(f"Manager {manager_username} hat keine Genehmiger-Gruppe - eskaliere zu GL")
-                return _get_gl_approvers_impl(cursor)
+                return rule_approvers or _get_gl_approvers_impl(cursor)
 
             # Manager ist Genehmiger!
             approver_group = next((g for g in ad_groups if _is_approver_group(g)), 'GRP_Urlaub_Admin')
 
-            return [{
+            manager_approver = {
                 'approver_id': manager_row['employee_id'],
                 'approver_name': manager_row['display_name'],
                 'approver_ldap': manager_username,
@@ -316,7 +397,18 @@ def get_approvers_for_employee(employee_id: int) -> List[Dict]:
                 'ad_group': approver_group,
                 'is_admin': 'GRP_Urlaub_Admin' in ad_groups,
                 'is_direct_manager': True
-            }]
+            }
+
+            # Merge: regelbasierte + direkter Manager (ohne Duplikate)
+            merged = []
+            seen = set()
+            for item in (rule_approvers + [manager_approver]):
+                key = (item.get('approver_ldap') or '').lower()
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                merged.append(item)
+            return sorted(merged, key=lambda x: int(x.get('priority') or 1))
 
     except Exception as e:
         logger.error(f"Fehler bei get_approvers_for_employee: {e}")
@@ -393,7 +485,55 @@ def get_team_for_approver(approver_ldap_username: str, include_self: bool = Fals
                     })
                 return team
 
-            # 3. Normaler Genehmiger: Team = direkte Reports (AD manager) + ggf. Abteilung aus Gruppen-Suffix
+            # 3. Regelbasiertes Team aus vacation_approval_rules (primär)
+            cursor.execute("""
+                SELECT DISTINCT
+                    e.id as employee_id,
+                    e.first_name || ' ' || e.last_name as name,
+                    lem.ldap_username,
+                    lem.locosoft_id,
+                    le.subsidiary,
+                    CASE le.subsidiary
+                        WHEN 1 THEN 'Deggendorf'
+                        WHEN 3 THEN 'Landau'
+                        ELSE 'Unbekannt'
+                    END as standort
+                FROM vacation_approval_rules ar
+                JOIN employees e
+                  ON (
+                       LOWER(TRIM(COALESCE(e.department_name, ''))) = LOWER(TRIM(ar.loco_grp_code))
+                       OR (e.department_name = 'Service & Empfang' AND ar.loco_grp_code = 'Service')
+                     )
+                 AND (
+                       ar.subsidiary IS NULL
+                       OR (ar.subsidiary = 1 AND e.location = 'Deggendorf')
+                       OR (ar.subsidiary = 3 AND e.location = 'Landau a.d. Isar')
+                     )
+                JOIN ldap_employee_mapping lem ON e.id = lem.employee_id
+                LEFT JOIN loco_employees le ON lem.locosoft_id = le.employee_number AND le.is_latest_record IS NOT DISTINCT FROM true
+                WHERE ar.active = 1
+                  AND LOWER(TRIM(ar.approver_ldap_username)) = %s
+                  AND e.aktiv = true
+                ORDER BY name
+            """, (norm,))
+            rule_rows = cursor.fetchall()
+            if rule_rows:
+                team = []
+                for row in rule_rows:
+                    if not include_self and (row['ldap_username'] or '').lower() == norm:
+                        continue
+                    team.append({
+                        'employee_id': row['employee_id'],
+                        'name': row['name'],
+                        'ldap_username': row['ldap_username'],
+                        'locosoft_id': row['locosoft_id'],
+                        'subsidiary': row['subsidiary'],
+                        'standort': row['standort'],
+                        'approver_priority': 1
+                    })
+                return team
+
+            # 4. Fallback: direkte Reports (AD manager) + ggf. Abteilung aus Gruppen-Suffix
             team_raw = get_team_by_manager(approver_ldap_username)
             seen_ids = set()
 
